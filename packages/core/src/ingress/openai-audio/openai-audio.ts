@@ -114,10 +114,13 @@ function timestampGranularities(
 }
 
 // A blank or absent model is the documented default, not an error: OpenAI's own
-// clients omit it. `clientModel` records what the client actually sent so the raw
-// path can skip rewriting when nothing changed.
+// clients omit it. `clientModel` records what the client actually WROTE, untrimmed,
+// so the raw path's equality check skips the rewrite only when nothing changed —
+// `" whisper-1 "` routes on the trimmed id but must still be rewritten, or the
+// padded value reaches upstream and comes back as model-not-found.
 function resolveModel(model: string | null | undefined, fallback: string): ResolvedAudioModel {
-  const trimmed = model?.trim();
-  if (trimmed === undefined || trimmed.length === 0) return { model: fallback, modelDefaulted: true };
-  return { model: trimmed, modelDefaulted: false, clientModel: trimmed };
+  if (typeof model !== 'string') return { model: fallback, modelDefaulted: true };
+  const trimmed = model.trim();
+  if (trimmed.length === 0) return { model: fallback, modelDefaulted: true };
+  return { model: trimmed, modelDefaulted: false, clientModel: model };
 }

@@ -46,4 +46,13 @@ describe('renderTranscription', () => {
     expect(RENDERABLE_TRANSCRIPTION_FORMATS.has(format)).toBe(false);
     expect(() => renderTranscription(RESULT, format)).toThrow(`cannot render response_format: ${format}`);
   });
+
+  // `gpt-4o-transcribe` is pinned to plain JSON inside the SDK, so it answers with
+  // no segments. Emitting `segments: []` would dress a degraded body up as a
+  // successful verbose one; the caller turns this throw into a 501 instead.
+  test('refuses verbose_json when the transport returned no segments', () => {
+    expect(() => renderTranscription({ text: 'hello world', segments: [] }, 'verbose_json')).toThrow(
+      'OpenAI Audio feature is not supported: response_format',
+    );
+  });
 });

@@ -110,8 +110,19 @@ async function convertAudioCandidate<TRequest, TContext>(
   });
 
   // Egress owns the media type and the transcription body shape; the pipeline
-  // never inspects or infers either.
-  const response = await adapter.audioResponse(result, request, { modelId: candidate.modelId });
+  // never inspects or infers either. It can still refuse: a format that needs
+  // segments is only known to be unrenderable once the result is in hand, and
+  // that refusal must reach the client as its own 501 rather than as a 500 from
+  // the generic provider mapper. A later candidate with raw passthrough may well
+  // serve the same request, so this falls back like any other rejection.
+  let response: Response;
+  try {
+    response = await adapter.audioResponse(result, request, { modelId: candidate.modelId });
+  } catch (error) {
+    const mapped = adapter.errors.requestError(error);
+    if (mapped === undefined) throw error;
+    return emitReject(ctx, slot, mapped, mapped.status === 501 ? 'unsupported_feature' : 'invalid_request');
+  }
   slot.spanRef.current = undefined;
   const configPrice = candidateConfigPrice(
     ctx.routerModels,

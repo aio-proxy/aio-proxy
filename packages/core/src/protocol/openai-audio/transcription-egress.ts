@@ -1,3 +1,4 @@
+import { OpenAIAudioUnsupportedFeatureError } from '../../error';
 import type { TranscriptionResultData } from '../audio-adapter';
 
 /**
@@ -13,6 +14,11 @@ import type { TranscriptionResultData } from '../audio-adapter';
  * `gpt-4o-transcribe` models are hardcoded to plain `json`. A candidate that
  * answers without segments normalizes to `[]`, which would render as an empty
  * subtitle body that looks like success. Raw passthrough still serves both.
+ *
+ * `verbose_json` IS a member because whisper-1 — the port's default model —
+ * genuinely returns segments through the same transport. It cannot be settled
+ * before the call the way the others can, so the check moves to the result: see
+ * the throw below.
  */
 export const RENDERABLE_TRANSCRIPTION_FORMATS: ReadonlySet<string> = new Set(['json', 'text', 'verbose_json']);
 
@@ -24,6 +30,13 @@ export function renderTranscription(
     case 'text':
       return new Response(result.text, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     case 'verbose_json':
+      // A `gpt-4o-transcribe` upstream is pinned to plain JSON by the SDK, so it
+      // answers with no segments and no duration. Rendering that as a
+      // verbose-looking envelope with `segments: []` would pass off a degraded
+      // body as a successful one, so refuse instead. `whisper-1` does return
+      // segments and renders normally. Only the result can tell the two apart —
+      // the model id is not a reliable signal across providers.
+      if (result.segments.length === 0) throw new OpenAIAudioUnsupportedFeatureError('response_format');
       return Response.json({
         task: 'transcribe',
         ...(result.language === undefined ? {} : { language: result.language }),

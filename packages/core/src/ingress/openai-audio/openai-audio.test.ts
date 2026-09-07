@@ -22,6 +22,15 @@ describe('parseOpenAISpeech', () => {
     expect(request.clientModel).toBeUndefined();
   });
 
+  // `clientModel` drives the raw path's "nothing changed, replay verbatim" check.
+  // Recording the trimmed value made a padded model look unchanged, so the padding
+  // reached upstream and came back as model-not-found.
+  test('records a padded model untrimmed so the raw path still rewrites it', () => {
+    const request = parseOpenAISpeech({ model: ' tts-1 ', input: 'hello', voice: 'alloy' });
+    expect(request.model).toBe('tts-1');
+    expect(request.clientModel).toBe(' tts-1 ');
+  });
+
   test('carries response_format and speed through', () => {
     const request = parseOpenAISpeech({ input: 'hi', voice: 'nova', response_format: 'opus', speed: 1.25 });
     expect(request.response_format).toBe('opus');
@@ -75,6 +84,12 @@ describe('parseOpenAITranscriptionFields', () => {
     expect(parsed.model).toBe(CPA_DEFAULT_TRANSCRIPTION_MODEL);
     expect(parsed.modelDefaulted).toBe(true);
     expect(parsed.clientModel).toBeUndefined();
+  });
+
+  test('records a padded model untrimmed so the raw path still rewrites it', () => {
+    const parsed = parseOpenAITranscriptionFields({ model: ' whisper-1 ' });
+    expect(parsed.model).toBe('whisper-1');
+    expect(parsed.clientModel).toBe(' whisper-1 ');
   });
 
   // `Number('')`, `Number(' ')` are 0 and `Number('0x10')` is 16, so an unguarded

@@ -322,6 +322,32 @@ test('declines stream_format on the convert path with a fallback-capable 501', a
   expect(terminal.route.recording.finals[0]).toMatchObject({ outcome: 'failure', errorCode: 'unsupported_feature' });
 });
 
+test('turns a segment-less verbose_json result into a fallback-capable 501, not a 500', async () => {
+  // Egress can only tell that `verbose_json` is unrenderable once the result is in
+  // hand. Without the mapping in the pipeline that throw would escape as a generic
+  // 500 and no later raw candidate would get a turn.
+  const provider = {
+    id: 'openai',
+    kind: ProviderKind.Api,
+    enabled: true,
+    capabilityIndex: { [TRANSCRIPTION_MODEL]: new Set(['transcription'] as const) },
+    transcription: { invoke: async () => ({ text: 'hello there', segments: [] }) },
+  } satisfies RuntimeProviderInstance;
+  const { ctx } = harness(
+    openAITranscriptionAdapter,
+    transcriptionRequest({ formFields: { response_format: 'verbose_json' }, response_format: 'verbose_json' }),
+    { operation: 'transcriptions' },
+    { modelId: TRANSCRIPTION_MODEL },
+  );
+
+  const step = await attemptAudioCandidate(ctx, slot(provider, { hasNext: true, modelId: TRANSCRIPTION_MODEL }));
+
+  expect(step.kind).toBe('fallback');
+  const failure = fallbackFailure(step);
+  expect(failure?.status).toBe(501);
+  expect(await failure?.json()).toMatchObject({ error: { code: 'unsupported_feature' } });
+});
+
 test('bills the configured per-request fee on the audio convert path', async () => {
   const provider = {
     id: 'openai',
