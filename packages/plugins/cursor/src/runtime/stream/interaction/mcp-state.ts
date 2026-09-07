@@ -96,7 +96,11 @@ export function updateMcp(
   args: McpArgs | undefined,
   snapshot?: string,
 ): void {
-  if (state.committed || args?.smartModeApprovalOnly) return;
+  if (state.committed) return;
+  if (args?.smartModeApprovalOnly) {
+    dropMcpApprovalProbe(state, outerId, args);
+    return;
+  }
   const outer = outerId || undefined;
   const nested = args?.toolCallId || undefined;
   const name = args === undefined ? undefined : fromWireName(args.toolName || args.name) || undefined;
@@ -155,6 +159,39 @@ export function updateMcp(
   applyMcpEvent(call, event, args, snapshot);
   if (!call.nestedToolCallId) call.input = undefined;
   if (before !== JSON.stringify(call)) {
+    state.revision++;
+    state.progressRevision++;
+  }
+}
+
+function dropMcpApprovalProbe(state: McpState, outerId: string | undefined, args: McpArgs | undefined): void {
+  const outer = outerId || undefined;
+  const nested = args?.toolCallId || undefined;
+  const keys = new Set<string>();
+  if (outer !== undefined) {
+    const key = state.outerAliases.get(outer);
+    if (key !== undefined) keys.add(key);
+  }
+  if (nested !== undefined) {
+    const key = state.nestedAliases.get(nested);
+    if (key !== undefined) keys.add(key);
+  }
+  let changed = false;
+  if (outer !== undefined && (state.earlySnapshots.has(outer) || state.earlyAnnounce.has(outer))) {
+    state.earlySnapshots.delete(outer);
+    state.earlyAnnounce.delete(outer);
+    changed = true;
+  }
+  for (const key of keys) {
+    const call = state.calls.get(key);
+    if (call === undefined) continue;
+    state.calls.delete(key);
+    changed = true;
+    for (const aliases of [state.outerAliases, state.nestedAliases]) {
+      for (const [id, mapped] of aliases) if (mapped === key) aliases.delete(id);
+    }
+  }
+  if (changed) {
     state.revision++;
     state.progressRevision++;
   }

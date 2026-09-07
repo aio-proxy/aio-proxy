@@ -285,8 +285,8 @@ function dispatchServerMessage(
     return;
   }
   if (message.case === 'interactionQuery') {
-    h2.write(encodeInteractionReply(message.value));
     noteDecodedFrame(session, true);
+    h2.write(encodeInteractionReply(message.value));
     session.diagnostics('query-reply', { queryCase: message.value.query.case, queryId: message.value.id });
     return;
   }
@@ -343,14 +343,14 @@ function handleExecMessage(
   exec: ExecServerMessage,
 ): void {
   if (exec.message.case === 'mcpArgs') {
-    if (exec.message.value.smartModeApprovalOnly) {
-      h2.write(encodeMcpApprovalRejection(exec));
-      noteDecodedFrame(session, true);
-      return;
-    }
+    const approval = exec.message.value.smartModeApprovalOnly;
+    if (approval) h2.write(encodeMcpApprovalRejection(exec));
     const before = cursorToolState(session.accumulator);
     for (const part of mapMcpExec(exec.message.value, session.accumulator)) enqueuePart(session, controller, part);
-    noteDecodedFrame(session, cursorToolState(session.accumulator).progressRevision > before.progressRevision);
+    noteDecodedFrame(
+      session,
+      approval || cursorToolState(session.accumulator).progressRevision > before.progressRevision,
+    );
     logToolReadyIfIncreased(session, before.readyCount);
     armHandoff(session);
     return;

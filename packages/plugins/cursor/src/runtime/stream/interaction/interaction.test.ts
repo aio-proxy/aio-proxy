@@ -341,6 +341,27 @@ test.each([
   expect(commitCursorTools(a).find((p) => p.type === 'tool-call')).toMatchObject({ input: '{}' });
 });
 
+test('a later approval-only exec drops a provisional MCP record', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp({ query: argValue('docs') })), a);
+  expect(cursorToolState(a).readyCount).toBe(1);
+  mapMcpExec(
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'nested',
+      smartModeApprovalOnly: true,
+    }),
+    a,
+  );
+  expect(cursorToolState(a)).toMatchObject({ openCount: 0, readyCount: 0 });
+  expect(commitCursorTools(a)).toEqual([]);
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp({ query: argValue('docs') })), a);
+  expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
+    input: '{"query":"docs"}',
+  });
+});
+
 test('exec-first aliases upgrade to the observed outer id before commit', () => {
   const a = createCursorStreamAccumulator();
   mapMcpExec(mcp({ query: argValue('docs') }), a);

@@ -552,6 +552,83 @@ test('an embedded approval-only interaction frame never becomes an executable ca
   expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(1);
 });
 
+test('a later approval-only exec revokes a ready provisional tool', async () => {
+  jest.useFakeTimers();
+  const base = toBinary(
+    McpArgsSchema,
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'probe',
+      args: { query: new TextEncoder().encode('"docs"') },
+    }),
+  );
+  const h = runHarness({ timing: { toolHandoffGraceMs: 100 } });
+  h.send(
+    updateFrame({
+      case: 'toolCallCompleted',
+      value: {
+        callId: 'outer-7',
+        toolCall: { tool: { case: 'mcpToolCall', value: { args: fromBinary(McpArgsSchema, base) } } },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, new Uint8Array([...base, 0x38, 0x01])) },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  jest.advanceTimersByTime(1000);
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(0);
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+});
+
+test('an approval-only exec clears an incomplete provisional record', async () => {
+  const base = toBinary(
+    McpArgsSchema,
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'probe',
+    }),
+  );
+  const h = runHarness();
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-7',
+        toolCall: { tool: { case: 'mcpToolCall', value: { args: fromBinary(McpArgsSchema, base) } } },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, new Uint8Array([...base, 0x38, 0x01])) },
+      },
+    }),
+  );
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await h.result;
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(0);
+});
+
 test('unknown queries fail instead of leaving upstream waiting', async () => {
   const h = runHarness();
   h.send(serverFrame({ case: 'interactionQuery', value: { id: 9 } }));
@@ -977,6 +1054,18 @@ test('a Connect terminal counts as the first decoded frame', async () => {
   expect(phases.indexOf('first-frame')).toBeGreaterThanOrEqual(0);
   expect(phases.indexOf('connect-end')).toBeGreaterThan(phases.indexOf('first-frame'));
   expect(rows.find((row) => row.fields.phase === 'connect-end')?.fields.frameCount).toBeGreaterThan(0);
+  expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
+});
+
+test('an unsupported query counts as a decoded frame', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-query', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send(serverFrame({ case: 'interactionQuery', value: { id: 9 } }));
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_interaction_unsupported' });
+  expect(rows.some((row) => row.fields.phase === 'first-frame')).toBe(true);
   expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
 });
 
