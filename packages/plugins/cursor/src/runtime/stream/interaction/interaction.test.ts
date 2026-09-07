@@ -355,6 +355,58 @@ test('a call-id-only early snapshot increments revision only when the snapshot c
   expect(cursorToolState(a).revision).toBe(1);
 });
 
+test('identity-free snapshots keep first-seen announcement order', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(
+    update({ case: 'partialToolCall', value: { callId: 'outer-a', argsTextDelta: '{"query":"al' } }),
+    a,
+  );
+  mapInteractionUpdate(
+    update({ case: 'partialToolCall', value: { callId: 'outer-b', argsTextDelta: '{"query":"be' } }),
+    a,
+  );
+  const start = (callId: string, nested: string) =>
+    mapInteractionUpdate(
+      update({
+        case: 'toolCallStarted',
+        value: {
+          callId,
+          toolCall: {
+            tool: {
+              case: 'mcpToolCall',
+              value: { args: { name: 'search', toolName: 'search', toolCallId: nested, args: {} } },
+            },
+          },
+        },
+      }),
+      a,
+    );
+  start('outer-b', 'nested-b');
+  mapMcpExec(
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'nested-b',
+      args: { query: argValue('beta') },
+    }),
+    a,
+  );
+  start('outer-a', 'nested-a');
+  mapMcpExec(
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'nested-a',
+      args: { query: argValue('alpha') },
+    }),
+    a,
+  );
+  expect(commitCursorTools(a).filter((part) => part.type === 'tool-call')).toMatchObject([
+    { toolCallId: 'outer-a', input: '{"query":"alpha"}' },
+    { toolCallId: 'outer-b', input: '{"query":"beta"}' },
+  ]);
+});
+
 test('a call-id-only early snapshot joins its later MCP identity', () => {
   const a = createCursorStreamAccumulator();
   mapInteractionUpdate(

@@ -247,6 +247,19 @@ test('incremental system replaces only when explicitly supplied', () => {
   expect(systems(explicit)).toEqual([{ role: 'system', content: 'updated' }]);
 });
 
+test('incremental blank system prompts keep the cached system prefix', () => {
+  const store = new Map<string, Uint8Array>();
+  const systemId = storeCursorBlob(store, new TextEncoder().encode('{"role":"system","content":"original"}'));
+  const base = buildRootPromptMessagesJson(pairedPrompt.slice(0, 2), [systemId], store, -1);
+  const blank = appendCursorRootHistory({
+    rootPromptMessagesJson: base,
+    prompt: [{ role: 'system', content: '   ' }, ...pairedPrompt.slice(2)],
+    blobStore: store,
+  });
+  const systems = (ids: Uint8Array[]) => ids.map((id) => decodeJson(store, id)).filter((m) => m.role === 'system');
+  expect(systems(blank)).toEqual([{ role: 'system', content: 'original' }]);
+});
+
 test('special client ids remain distinct and are not encoded twice on append', () => {
   const clientIds = ['call|1/中文', 'call_1_中文'];
   const store = new Map<string, Uint8Array>();

@@ -12,6 +12,7 @@ type McpCall = {
   outerBound?: string;
   nestedToolCallId: string;
   toolName: string;
+  announceOrder: number;
   buffer: string;
   completion?: Record<string, unknown>;
   exec?: Record<string, unknown>;
@@ -26,6 +27,8 @@ export type McpState = {
   outerAliases: Map<string, string>;
   nestedAliases: Map<string, string>;
   earlySnapshots: Map<string, string>;
+  earlyAnnounce: Map<string, number>;
+  nextAnnounce: number;
   emptyTools: Set<string>;
   revision: number;
   progressRevision: number;
@@ -48,6 +51,8 @@ export function createMcpState(tools: readonly McpToolDefinition[]): McpState {
     outerAliases: new Map(),
     nestedAliases: new Map(),
     earlySnapshots: new Map(),
+    earlyAnnounce: new Map(),
+    nextAnnounce: 0,
     emptyTools,
     revision: 0,
     progressRevision: 0,
@@ -56,17 +61,15 @@ export function createMcpState(tools: readonly McpToolDefinition[]): McpState {
 }
 
 export function readReadyMcpCalls(state: McpState): readonly CursorCompletedToolCall[] {
-  const ready: CursorCompletedToolCall[] = [];
-  for (const call of state.calls.values()) {
-    if (call.input === undefined) continue;
-    ready.push({
+  return [...state.calls.values()]
+    .filter((call) => call.input !== undefined)
+    .sort((left, right) => left.announceOrder - right.announceOrder)
+    .map((call) => ({
       outerCallId: call.outerCallId,
       nestedToolCallId: call.nestedToolCallId,
       toolName: call.toolName,
-      input: call.input,
-    });
-  }
-  return ready;
+      input: call.input!,
+    }));
 }
 
 export function readMcpState(state: McpState) {
@@ -100,6 +103,7 @@ export function updateMcp(
       const previous = state.earlySnapshots.get(outer) ?? '';
       const next = appendMcpSnapshot(previous, snapshot);
       if (next !== previous) {
+        if (!state.earlyAnnounce.has(outer)) state.earlyAnnounce.set(outer, state.nextAnnounce++);
         state.earlySnapshots.set(outer, next);
         state.revision++;
         state.progressRevision++;
@@ -117,6 +121,7 @@ export function updateMcp(
       ...(outer === undefined ? {} : { outerBound: outer }),
       nestedToolCallId: nested ?? '',
       toolName: name!,
+      announceOrder: (outer === undefined ? undefined : state.earlyAnnounce.get(outer)) ?? state.nextAnnounce++,
       buffer: '',
       sawCompletion: false,
       sawExec: false,

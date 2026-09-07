@@ -137,21 +137,16 @@ export function appendCursorRootHistory(input: {
 }): Uint8Array[] {
   const base = [...input.rootPromptMessagesJson];
   const known = collectRootCallIds(base, input.blobStore);
-  const explicitSystem = input.prompt.filter((m) => m.role === 'system');
+  const explicitSystem = input.prompt
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content.trim())
+    .filter((content) => content.length > 0);
   const prefix =
     explicitSystem.length === 0
       ? base
       : [
-          ...explicitSystem.map((m) =>
-            storeCursorBlob(
-              input.blobStore,
-              new TextEncoder().encode(
-                JSON.stringify({
-                  role: 'system',
-                  content: m.content,
-                }),
-              ),
-            ),
+          ...explicitSystem.map((content) =>
+            storeCursorBlob(input.blobStore, new TextEncoder().encode(JSON.stringify({ role: 'system', content }))),
           ),
           ...base.filter((id) => !isRootSystemMessage(id, input.blobStore)),
         ];
