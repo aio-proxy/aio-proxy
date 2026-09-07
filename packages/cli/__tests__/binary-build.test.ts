@@ -66,6 +66,7 @@ test('compiled platform package runs outside the workspace and includes its thir
     expect(stdout).toContain('@aio-proxy/plugin-openai-chatgpt');
     expect(stdout).toContain('@aio-proxy/plugin-google-antigravity');
     expect(stdout).toContain('@aio-proxy/plugin-kimi-code');
+    expect(stdout).toContain('@aio-proxy/plugin-muse-code');
     expect(stdout).toContain('@aio-proxy/plugin-cursor');
   } finally {
     rmSync(home, { recursive: true, force: true });

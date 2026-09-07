@@ -24,6 +24,7 @@ describe('plugin add', () => {
         '@aio-proxy/plugin-github-copilot',
         '@aio-proxy/plugin-google-antigravity',
         '@aio-proxy/plugin-kimi-code',
+        '@aio-proxy/plugin-muse-code',
         '@aio-proxy/plugin-openai-chatgpt',
         '@aio-proxy/plugin-xai-grok',
       ]);
