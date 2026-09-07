@@ -1,4 +1,9 @@
-import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
+import {
+  dedupeQuotaItemIds,
+  type AccountContext,
+  type OAuthQuotaItem,
+  type OAuthQuotaSnapshot,
+} from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from './cli-headers/index';
@@ -43,10 +48,10 @@ export async function readXAIGrokQuota(
     readPlan(fetcher, headers, context.signal),
   ]);
   context.signal.throwIfAborted();
-  const items = dedupeItemIds([
-    ...(weekly.status === 'fulfilled' ? weekly.value : []),
-    ...(monthly.status === 'fulfilled' ? monthly.value : []),
-  ]);
+  const items = dedupeQuotaItemIds(
+    [...(weekly.status === 'fulfilled' ? weekly.value : []), ...(monthly.status === 'fulfilled' ? monthly.value : [])],
+    '_',
+  );
   if (items.length === 0) throw new Error('xAI Grok billing request failed');
   const plan = planResult.status === 'fulfilled' ? planResult.value : undefined;
   return { items, ...(plan === undefined ? {} : { plan }) };
@@ -176,25 +181,6 @@ function productItems(config: BillingObject): readonly OAuthQuotaItem[] {
         ...(percent === undefined ? {} : { remainingRatio: 1 - Math.min(Math.max(percent, 0), 100) / 100 }),
       },
     ];
-  });
-}
-
-// The core validator rejects duplicate item ids outright, so two spellings of one product must not
-// both survive as `product_grok_build`. A generated suffix can itself collide with a product that
-// spells that suffix out (`grok build`, `grok build`, `grok build 2`), so every id the pass hands
-// out — generated or original — is reserved and the counter walks past anything already taken.
-function dedupeItemIds(items: readonly OAuthQuotaItem[]): readonly OAuthQuotaItem[] {
-  const taken = new Set<string>();
-  return items.map((item) => {
-    if (!taken.has(item.id)) {
-      taken.add(item.id);
-      return item;
-    }
-    let count = 2;
-    while (taken.has(`${item.id}_${count}`)) count += 1;
-    const id = `${item.id}_${count}`;
-    taken.add(id);
-    return { ...item, id };
   });
 }
 

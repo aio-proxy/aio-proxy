@@ -75,10 +75,6 @@ function parseVersion(manifest: string): string | undefined {
 
 const sharedCache = createHubVersionCache();
 
-export function hubVersion(): string {
-  return sharedCache.version();
-}
-
 export function antigravityUserAgent(): string {
   return sharedCache.shortUserAgent();
 }

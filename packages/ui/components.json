@@ -20,8 +20,5 @@
     "ui": "#components",
     "lib": "#lib",
     "hooks": "#hooks"
-  },
-  "registries": {
-    "@reui": "https://reui.io/r/{style}/{name}.json"
   }
 }

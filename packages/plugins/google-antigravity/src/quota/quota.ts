@@ -1,9 +1,10 @@
-import type {
-  AccountContext,
-  LocalizedText,
-  OAuthQuotaItem,
-  OAuthQuotaSnapshot,
-  RuntimeFetch,
+import {
+  dedupeQuotaItemIds,
+  type AccountContext,
+  type LocalizedText,
+  type OAuthQuotaItem,
+  type OAuthQuotaSnapshot,
+  type RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -173,7 +174,7 @@ async function fetchSummary(
 
 function summaryItems(payload: unknown): readonly OAuthQuotaItem[] {
   if (!isPlainObject(payload)) throw new Error('Antigravity quota response is invalid');
-  const items = dedupeItemIds(groupItems(Reflect.get(payload, 'groups')));
+  const items = dedupeQuotaItemIds(groupItems(Reflect.get(payload, 'groups')));
   if (items.length === 0) throw new Error('Antigravity quota response contains no usable buckets');
   return items;
 }
@@ -255,23 +256,6 @@ function prefixed(prefix: string, label: LocalizedText): LocalizedText {
   return Object.fromEntries(
     Object.entries(values).map(([locale, text]) => [locale, `${prefix} · ${text}`]),
   ) as LocalizedText;
-}
-
-// The core validator rejects duplicate item ids outright, which would blank the whole card. Two
-// buckets naming the same window in one group must both survive, so a suffix beats a throw.
-function dedupeItemIds(items: readonly OAuthQuotaItem[]): readonly OAuthQuotaItem[] {
-  const taken = new Set<string>();
-  return items.map((item) => {
-    if (!taken.has(item.id)) {
-      taken.add(item.id);
-      return item;
-    }
-    let count = 2;
-    while (taken.has(`${item.id}-${count}`)) count += 1;
-    const id = `${item.id}-${count}`;
-    taken.add(id);
-    return { ...item, id };
-  });
 }
 
 /** `remaining_fraction` is 0..1, but some payloads spell it as a `"55%"` string. */

@@ -9,7 +9,3 @@ export const queryClient = new QueryClient({
     },
   },
 });
-
-export function getQueryClient(): QueryClient {
-  return queryClient;
-}

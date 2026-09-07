@@ -1,4 +1,4 @@
-import type { LocalizedText, OAuthLoginContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { abortableSleep, type LocalizedText, type OAuthLoginContext, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { kimiIdentityHeaders } from './headers';
@@ -208,22 +208,6 @@ function appendCode(text: LocalizedText, code: string): LocalizedText {
   return Object.fromEntries(
     Object.entries(text).map(([locale, value]) => [locale, `${value}\n\n${code}`]),
   ) as LocalizedText;
-}
-
-function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timeout);
-      signal.removeEventListener('abort', onAbort);
-      reject(signal.reason);
-    };
-    const timeout = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
 }
 
 async function sha256(value: string): Promise<string> {
