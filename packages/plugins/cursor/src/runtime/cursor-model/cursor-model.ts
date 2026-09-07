@@ -165,6 +165,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       maxMode: runtime.model.maxMode,
       state: runState,
     });
+    const requestId = logicalRequestId(options.providerOptions);
     const { stream, result } = runCursorTurn({
       transport: runtime.transport,
       accessToken: credential.accessToken,
@@ -177,7 +178,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       heartbeatMs: 5_000,
       ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
       diagnosticsContext: {
-        requestId: logicalRequestId(options.providerOptions),
+        requestId,
         modelId,
         ...(routing === undefined ? {} : { providerId: routing.routedProviderId }),
         resumeMode: isPendingResume ? 'tool-results' : priorState === undefined ? 'fresh' : 'checkpoint',
@@ -197,7 +198,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
           prompt: options.prompt,
           turn,
           ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
-          requestId: logicalRequestId(options.providerOptions),
+          requestId,
           modelId,
         });
       })

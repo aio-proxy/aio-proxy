@@ -335,6 +335,26 @@ test('a reused identity with a different name fails before emitting tools', () =
   ).toThrow(expect.objectContaining({ code: 'cursor_tool_identity_conflict' }));
 });
 
+test('a call-id-only early snapshot increments revision only when the snapshot changes', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(
+    update({
+      case: 'partialToolCall',
+      value: { callId: 'outer-b', argsTextDelta: '{"query":"be' },
+    }),
+    a,
+  );
+  expect(cursorToolState(a).revision).toBe(1);
+  mapInteractionUpdate(
+    update({
+      case: 'partialToolCall',
+      value: { callId: 'outer-b', argsTextDelta: '{"query":"be' },
+    }),
+    a,
+  );
+  expect(cursorToolState(a).revision).toBe(1);
+});
+
 test('a call-id-only early snapshot joins its later MCP identity', () => {
   const a = createCursorStreamAccumulator();
   mapInteractionUpdate(

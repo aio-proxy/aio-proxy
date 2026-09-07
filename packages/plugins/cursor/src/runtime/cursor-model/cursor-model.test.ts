@@ -175,6 +175,39 @@ test('model forwards logical request diagnostics without forwarding session or c
   expect(serialized).not.toContain('"accessToken"');
 });
 
+test('a missing logical request id is generated once for diagnostics and persist', async () => {
+  const rows: unknown[] = [];
+  const sink: Logger['debug'] = (a, b) => {
+    rows.push([a, b]);
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const sessionStore = new CursorSessionStore();
+  sessionStore.set = () => {
+    throw new Error('persist-fail');
+  };
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('composer-2', {
+    ...runtimeWith(transport, sessionStore),
+    logger,
+  });
+  const { stream } = await model.doStream({
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
+    providerOptions: {
+      aioProxy: { logicalRequest: { session: { key: 'sha256:abc', source: 'body-conversation' } } },
+    },
+  } as never);
+  await lastPartType(stream);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const requestIds = rows.flatMap((row) => {
+    if (!Array.isArray(row) || typeof row[1] !== 'object' || row[1] === null) return [];
+    const requestId = (row[1] as { requestId?: unknown }).requestId;
+    return typeof requestId === 'string' ? [requestId] : [];
+  });
+  expect(rows.some((row) => Array.isArray(row) && row[0] === 'Cursor session persist')).toBe(true);
+  expect(requestIds.length).toBeGreaterThan(1);
+  expect(new Set(requestIds).size).toBe(1);
+});
+
 test('function tools cross the local request-context handshake', async () => {
   const runs: Uint8Array[][] = [];
   const transport: CursorTransport = {

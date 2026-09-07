@@ -599,6 +599,48 @@ test('a late sibling revokes tool handoff until its own args are ready', async (
   expect((await h.result).toolCalls).toHaveLength(2);
 });
 
+test('a call-id-only sibling snapshot revokes tool handoff', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({ timing: { toolHandoffGraceMs: 100 } });
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(90);
+  h.send(
+    updateFrame({
+      case: 'partialToolCall',
+      value: { callId: 'outer-b', argsTextDelta: '{"query":"be' },
+    }),
+  );
+  await settleMicrotasks();
+  jest.advanceTimersByTime(20);
+  await settleMicrotasks();
+  expect(h.parts.some((p) => p.type === 'tool-call')).toBe(false);
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-b',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: { name: 'search', toolName: 'search', toolCallId: 'b', args: {} },
+            },
+          },
+        },
+      },
+    }),
+  );
+  h.send(execFrame('b', 'beta'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(100);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'tool-call')).toMatchObject([
+    { toolCallId: 'a', input: '{"query":"alpha"}' },
+    { toolCallId: 'outer-b', input: '{"query":"beta"}' },
+  ]);
+});
+
 test('consecutive MCP execs are handed off together', async () => {
   jest.useFakeTimers();
   const h = runHarness();

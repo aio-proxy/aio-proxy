@@ -97,7 +97,13 @@ export function updateMcp(
   let key = byOuter ?? byNested;
   if (key === undefined && args === undefined) {
     if (outer !== undefined && snapshot !== undefined) {
-      state.earlySnapshots.set(outer, appendMcpSnapshot(state.earlySnapshots.get(outer) ?? '', snapshot));
+      const previous = state.earlySnapshots.get(outer) ?? '';
+      const next = appendMcpSnapshot(previous, snapshot);
+      if (next !== previous) {
+        state.earlySnapshots.set(outer, next);
+        state.revision++;
+        state.progressRevision++;
+      }
     }
     return;
   }
