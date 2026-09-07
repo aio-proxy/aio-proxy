@@ -1,8 +1,8 @@
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
-import { AgentClientMessageSchema, AgentServerMessageSchema, type AgentRunRequest } from '../../gen/agent_pb';
-import type { ConnectFrame } from '../../wire/frame';
-import type { CursorTransport } from '../../wire/transport';
+import { AgentClientMessageSchema, AgentServerMessageSchema, type AgentRunRequest } from '../gen/agent_pb';
+import type { ConnectFrame } from '../wire/frame';
+import type { CursorTransport } from '../wire/transport';
 
 export type FixtureRootMessage = {
   role?: string;
