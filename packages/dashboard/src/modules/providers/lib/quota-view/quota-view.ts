@@ -45,16 +45,20 @@ const ON_TRACK_PERCENT = 2;
 /**
  * A steady-burn reference point for one window, or `undefined` when there is nothing worth marking.
  *
+ * `sampledAt` is when the reading was taken, not the current time, and is required for that reason:
+ * a cached snapshot holds its `remainingRatio` still while the wall clock keeps moving, so an
+ * expectation computed from "now" would drift away from the reading it is compared against.
+ *
  * Both ends of the window have to be known: `resetsAt` alone says when it ends, and only
- * `windowMinutes` says when it started. A reset already in the past, or one further out than a whole
- * window, means the reading is stale or the clocks disagree — either way the elapsed fraction would
- * be fiction, and a confidently-placed wrong marker is worse than no marker.
+ * `windowMinutes` says when it started. A reset already past at sample time, or one further out than
+ * a whole window, means the reading is stale or the clocks disagree — either way the elapsed fraction
+ * would be fiction, and a confidently-placed wrong marker is worse than no marker.
  */
-export const quotaPace = (item: ApplicableQuotaItem, now: number = Date.now()): QuotaPace | undefined => {
+export const quotaPace = (item: ApplicableQuotaItem, sampledAt: number): QuotaPace | undefined => {
   const { resetsAt, windowMinutes } = item;
   if (resetsAt === undefined || windowMinutes === undefined || windowMinutes <= 0) return undefined;
   const durationMs = windowMinutes * 60_000;
-  const remainingMs = resetsAt - now;
+  const remainingMs = resetsAt - sampledAt;
   if (remainingMs <= 0 || remainingMs > durationMs) return undefined;
   const expectedPercent = (remainingMs / durationMs) * 100;
   const margin = item.remainingRatio * 100 - expectedPercent;

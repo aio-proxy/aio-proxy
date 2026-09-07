@@ -9,15 +9,21 @@ import { QuotaPaceMarker } from './quota-pace-marker';
 
 interface ProviderQuotaItemProps {
   readonly item: ApplicableQuotaItem;
+  /**
+   * When the reading was taken upstream. The pace comparison has to use it rather than the wall
+   * clock: a cached snapshot keeps its `remainingRatio` for minutes while an expectation computed
+   * from "now" keeps sliding, which drifts the marker and can flip its colour with no new sample.
+   */
+  readonly sampledAt: number;
 }
 
-export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item }) => {
+export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item, sampledAt }) => {
   const percent = remainingPercent(item.remainingRatio);
   const tiny = item.remainingRatio > 0 && item.remainingRatio < 0.01;
   const remaining = tiny
     ? m['dashboard.providers.quota.less_than_one_percent']()
     : m['dashboard.providers.quota.remaining']({ percent });
-  const pace = quotaPace(item);
+  const pace = quotaPace(item, sampledAt);
   const paceLabel =
     pace === undefined
       ? undefined
