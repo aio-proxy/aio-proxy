@@ -271,6 +271,28 @@ const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
   realtimeCalls: state.realtimeCalls,
 });
 
+/**
+ * Serves the built dashboard, falling back to `index.html` so a client-side route survives a reload.
+ * A missing `static/` asset stays a real 404: answering it with the shell would hand a script tag an
+ * HTML body.
+ */
+const dashboardArtifactHandler = (dashboardAssets: DashboardAssets) => async (context: Context) => {
+  const assetKey =
+    context.req.path === '/dashboard' || context.req.path === '/dashboard/'
+      ? 'index.html'
+      : context.req.path.replace(/^\/dashboard\//u, '');
+  const asset = await dashboardAssets(assetKey);
+  if (asset !== null && asset !== undefined) {
+    if (assetKey.startsWith('static/')) {
+      asset.headers.set('cache-control', 'public, max-age=31536000, immutable');
+    }
+    return asset;
+  }
+  if (assetKey.startsWith('static/')) return context.notFound();
+  const index = await dashboardAssets('index.html');
+  return index ?? context.notFound();
+};
+
 const createRoutes = (
   state: ServerState,
   dashboardAssets?: DashboardAssets,
@@ -414,22 +436,7 @@ const createRoutes = (
     .route('/dashboard/api', dashboardRoutes);
 
   if (dashboardAssets !== undefined) {
-    const serveDashboardArtifact = async (context: Context) => {
-      const assetKey =
-        context.req.path === '/dashboard' || context.req.path === '/dashboard/'
-          ? 'index.html'
-          : context.req.path.replace(/^\/dashboard\//u, '');
-      const asset = await dashboardAssets(assetKey);
-      if (asset !== null && asset !== undefined) {
-        if (assetKey.startsWith('static/')) {
-          asset.headers.set('cache-control', 'public, max-age=31536000, immutable');
-        }
-        return asset;
-      }
-      if (assetKey.startsWith('static/')) return context.notFound();
-      const index = await dashboardAssets('index.html');
-      return index ?? context.notFound();
-    };
+    const serveDashboardArtifact = dashboardArtifactHandler(dashboardAssets);
     routes
       .get('/dashboard', serveDashboardArtifact)
       .get('/dashboard/', serveDashboardArtifact)
