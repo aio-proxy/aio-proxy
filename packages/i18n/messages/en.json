@@ -736,6 +736,8 @@
         "remaining": "{percent}% remaining",
         "less_than_one_percent": "Less than 1% remaining",
         "no_windows": "This upstream reports no remaining amounts",
+        "pace_on_track": "On pace: an even burn would leave {percent}%",
+        "pace_overspent": "Over pace: an even burn would leave {percent}%",
         "resets_at": "Resets {value}",
         "reset_credits": "{count} reset credits available",
         "reset": "Use a reset credit",

@@ -53,12 +53,15 @@ describe('GitHub Copilot quota', () => {
           displayName: { default: 'Premium requests', 'zh-Hans': '高级请求' },
           remainingRatio: 0.7,
           resetsAt: Date.parse('2026-10-01'),
+          // The window is the calendar month back from the reset — September, so 30 days.
+          windowMinutes: 30 * 24 * 60,
         },
         {
           id: 'chat',
           displayName: { default: 'Chat', 'zh-Hans': '聊天' },
           remainingRatio: 0.05,
           resetsAt: Date.parse('2026-10-01'),
+          windowMinutes: 30 * 24 * 60,
         },
       ],
       plan: 'Copilot Business',

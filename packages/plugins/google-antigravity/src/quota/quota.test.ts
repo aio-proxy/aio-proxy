@@ -89,17 +89,20 @@ test('maps grouped buckets to five-hour-then-weekly items with localized labels'
       displayName: { default: 'Gemini Models · 5-hour limit', 'zh-Hans': 'Gemini Models · 5 小时额度' },
       remainingRatio: 1,
       resetsAt: Date.parse('2026-09-03T20:00:00Z'),
+      windowMinutes: 300,
     },
     {
       id: 'gemini-models-5h-2',
       displayName: { default: 'Gemini Models · 5-hour limit', 'zh-Hans': 'Gemini Models · 5 小时额度' },
       remainingRatio: 0.5,
+      windowMinutes: 300,
     },
     {
       id: 'gemini-models-weekly',
       displayName: { default: 'Gemini Models · Weekly limit', 'zh-Hans': 'Gemini Models · 周额度' },
       remainingRatio: 0.42,
       resetsAt: Date.parse('2026-09-10T00:00:00Z'),
+      windowMinutes: 10_080,
     },
     {
       id: 'claude-and-gpt-models-weekly',
@@ -108,6 +111,7 @@ test('maps grouped buckets to five-hour-then-weekly items with localized labels'
         'zh-Hans': 'Claude and GPT models · 周额度',
       },
       remainingRatio: 0.55,
+      windowMinutes: 10_080,
     },
   ]);
 });
@@ -126,6 +130,7 @@ test('reports a fully unused account rather than suppressing it', async () => {
       id: 'gemini-models-5h',
       displayName: { default: 'Gemini Models · 5-hour limit', 'zh-Hans': 'Gemini Models · 5 小时额度' },
       remainingRatio: 1,
+      windowMinutes: 300,
     },
   ]);
 });
@@ -214,9 +219,11 @@ test('produces a snapshot the core quota validator accepts', async () => {
   expect(new Set(ids).size).toBe(ids.length);
   for (const item of snapshot.items) {
     expect(Object.getPrototypeOf(item)).toBe(Object.prototype);
-    expect(Object.keys(item).every((key) => ['id', 'displayName', 'remainingRatio', 'resetsAt'].includes(key))).toBe(
-      true,
-    );
+    expect(
+      Object.keys(item).every((key) =>
+        ['id', 'displayName', 'remainingRatio', 'resetsAt', 'windowMinutes'].includes(key),
+      ),
+    ).toBe(true);
     expect(item.remainingRatio).toBeGreaterThanOrEqual(0);
     expect(item.remainingRatio).toBeLessThanOrEqual(1);
     if (item.resetsAt !== undefined) expect(Number.isSafeInteger(item.resetsAt)).toBe(true);

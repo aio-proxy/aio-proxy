@@ -736,6 +736,8 @@
         "remaining": "剩余 {percent}%",
         "less_than_one_percent": "剩余 <1%",
         "no_windows": "该上游未提供任何剩余额度",
+        "pace_on_track": "用量正常：匀速消耗应剩余 {percent}%",
+        "pace_overspent": "用量偏快：匀速消耗应剩余 {percent}%",
         "resets_at": "{value} 重置",
         "reset_credits": "可用重置次数 {count}",
         "reset": "使用重置次数",

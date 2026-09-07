@@ -1,7 +1,7 @@
 import type { OAuthQuotaItem, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { isoTimestamp, remainingFromPercent } from './summary';
+import { isoTimestamp, remainingFromPercent, spanMinutes } from './summary';
 
 export const CURSOR_SAND_USAGE_URL = 'https://cursor.com/api/dashboard/get-sand-usage-status';
 // Enrichment only: a stalled dashboard route must not hold the monthly bars open.
@@ -37,7 +37,14 @@ export async function readGrokBotItem(
     const remainingRatio = remainingFromPercent(Reflect.get(payload, 'usagePercent'));
     if (remainingRatio === undefined) return undefined;
     const resetsAt = isoTimestamp(Reflect.get(payload, 'nextResetTimestampUtc'));
-    return { id: 'grok-bot', displayName: 'Grok Bot', remainingRatio, ...(resetsAt === undefined ? {} : { resetsAt }) };
+    const windowMinutes = spanMinutes(isoTimestamp(Reflect.get(payload, 'currentPeriodStart')), resetsAt);
+    return {
+      id: 'grok-bot',
+      displayName: 'Grok Bot',
+      remainingRatio,
+      ...(resetsAt === undefined ? {} : { resetsAt }),
+      ...(windowMinutes === undefined ? {} : { windowMinutes }),
+    };
   } catch {
     return undefined;
   }

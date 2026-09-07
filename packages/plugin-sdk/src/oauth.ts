@@ -132,6 +132,12 @@ export type OAuthQuotaItem = {
   readonly displayName: LocalizedText;
   readonly remainingRatio?: number;
   readonly resetsAt?: number;
+  /**
+   * How long the window lasts, in whole minutes. Together with `resetsAt` this is what lets the
+   * dashboard say where a steady burn should have left the quota by now; report it only when the
+   * upstream states the duration or both ends of the period, never as a guess from the label.
+   */
+  readonly windowMinutes?: number;
 };
 
 export type OAuthQuotaResetCredit = {

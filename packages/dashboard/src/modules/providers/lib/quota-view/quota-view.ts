@@ -27,3 +27,29 @@ export const remainingPercent = (ratio: number): number => {
   if (clamped === 0) return 0;
   return Math.max(1, Math.round(clamped * 100));
 };
+
+/** Where a perfectly even burn would have left the window by now, and whether the real one is worse. */
+export type QuotaPace = {
+  /** Remaining percent a steady burn would show, as a track position from 0 to 100. */
+  readonly expectedPercent: number;
+  /** The window is being spent faster than evenly, so it runs dry before it resets. */
+  readonly overspent: boolean;
+};
+
+/**
+ * A steady-burn reference point for one window, or `undefined` when the data cannot support one.
+ *
+ * Both ends of the window have to be known: `resetsAt` alone says when it ends, and only
+ * `windowMinutes` says when it started. A reset already in the past, or one further out than a whole
+ * window, means the reading is stale or the clocks disagree — either way the elapsed fraction would
+ * be fiction, and a confidently-placed wrong marker is worse than no marker.
+ */
+export const quotaPace = (item: ApplicableQuotaItem, now: number = Date.now()): QuotaPace | undefined => {
+  const { resetsAt, windowMinutes } = item;
+  if (resetsAt === undefined || windowMinutes === undefined || windowMinutes <= 0) return undefined;
+  const durationMs = windowMinutes * 60_000;
+  const remainingMs = resetsAt - now;
+  if (remainingMs <= 0 || remainingMs > durationMs) return undefined;
+  const expectedPercent = (remainingMs / durationMs) * 100;
+  return { expectedPercent, overspent: item.remainingRatio * 100 < expectedPercent };
+};

@@ -20,7 +20,12 @@ const resetTime = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-function item(value: unknown, id: string, displayName: OAuthQuotaItem['displayName']): OAuthQuotaItem | undefined {
+function item(
+  value: unknown,
+  id: string,
+  displayName: OAuthQuotaItem['displayName'],
+  windowMinutes?: number,
+): OAuthQuotaItem | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const limit = numberValue(Reflect.get(value, 'limit'));
   if (limit === undefined || limit <= 0) return undefined;
@@ -36,8 +41,22 @@ function item(value: unknown, id: string, displayName: OAuthQuotaItem['displayNa
     displayName,
     ...(ratio === undefined ? {} : { remainingRatio: Math.min(1, Math.max(0, ratio)) }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
+    ...(windowMinutes === undefined ? {} : { windowMinutes }),
   };
 }
+
+const WEEK_MINUTES = 7 * 24 * 60;
+
+/** `window.duration` is only a length once its unit is one we recognize; `window` alone is not. */
+const windowMinutes = (
+  duration: number | undefined,
+  unit: 'minute' | 'hour' | 'day' | 'window',
+): number | undefined => {
+  if (duration === undefined || duration <= 0 || unit === 'window') return undefined;
+  const perUnit = { minute: 1, hour: 60, day: 24 * 60 }[unit];
+  const minutes = Math.round(duration * perUnit);
+  return minutes > 0 ? minutes : undefined;
+};
 
 // Kimi ships tempo-marking tier names in its own UI; the API only returns the enum.
 const PLAN_BY_LEVEL: Record<string, string> = {
@@ -78,10 +97,15 @@ export async function readKimiQuota(
   const root: unknown = await response.json();
   if (typeof root !== 'object' || root === null) throw new Error('Kimi quota response is invalid');
 
-  const weekly = item(Reflect.get(root, 'usage'), 'weekly', {
-    default: 'Weekly quota',
-    'zh-Hans': '周配额',
-  });
+  const weekly = item(
+    Reflect.get(root, 'usage'),
+    'weekly',
+    {
+      default: 'Weekly quota',
+      'zh-Hans': '周配额',
+    },
+    WEEK_MINUTES,
+  );
   const rawLimits = Reflect.get(root, 'limits');
   const limits = Array.isArray(rawLimits) ? rawLimits : [];
   const windows = limits.flatMap((entry, index): OAuthQuotaItem[] => {
@@ -100,10 +124,15 @@ export async function readKimiQuota(
     else if (unit.includes('DAY')) shortUnit = 'day';
     const displayDuration = duration ?? index + 1;
     const chineseUnit = { day: '天', hour: '小时', minute: '分钟', window: '窗口' }[shortUnit];
-    const mapped = item(Reflect.get(entry, 'detail'), `${duration ?? index}-${normalizedUnit}`, {
-      default: `${displayDuration} ${shortUnit} quota`,
-      'zh-Hans': `${displayDuration} ${chineseUnit}配额`,
-    });
+    const mapped = item(
+      Reflect.get(entry, 'detail'),
+      `${duration ?? index}-${normalizedUnit}`,
+      {
+        default: `${displayDuration} ${shortUnit} quota`,
+        'zh-Hans': `${displayDuration} ${chineseUnit}配额`,
+      },
+      windowMinutes(duration, shortUnit),
+    );
     return mapped === undefined ? [] : [mapped];
   });
   const items = [...(weekly === undefined ? [] : [weekly]), ...windows];

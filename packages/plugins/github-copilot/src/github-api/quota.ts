@@ -146,12 +146,28 @@ function counterItems(
 }
 
 function quotaItem(id: string, remainingRatio: number, resetsAt: number | undefined): OAuthQuotaItem {
+  const windowMinutes = monthWindowMinutes(resetsAt);
   return {
     id,
     displayName: QUOTA_LABELS.get(id) ?? titleCase(id) ?? id,
     remainingRatio,
     ...(resetsAt === undefined ? {} : { resetsAt }),
+    ...(windowMinutes === undefined ? {} : { windowMinutes }),
   };
+}
+
+/**
+ * Copilot states only where the monthly allowance ends, never how long it ran. The window is a
+ * calendar month, so the start is one month back from the reset — not a flat 30 days, which would
+ * misplace the steady-burn marker by up to a day depending on the month.
+ */
+function monthWindowMinutes(resetsAt: number | undefined): number | undefined {
+  if (resetsAt === undefined) return undefined;
+  const end = new Date(resetsAt);
+  const start = new Date(resetsAt);
+  start.setUTCMonth(start.getUTCMonth() - 1);
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60_000);
+  return minutes > 0 ? minutes : undefined;
 }
 
 /** `copilot_plan` is an upstream enum (`copilot_business`, `free`); `unknown` is its "no answer". */

@@ -1,6 +1,6 @@
 import { expect, test } from '@rstest/core';
 
-import { applicableQuotaItems, remainingPercent, tightestQuotaItem } from './quota-view';
+import { applicableQuotaItems, quotaPace, remainingPercent, tightestQuotaItem } from './quota-view';
 
 test('keeps only the windows that report a remaining amount', () => {
   expect(
@@ -44,4 +44,23 @@ test('rounds toward the nearest percent but never rounds a non-empty quota to ze
   expect(remainingPercent(0.004)).toBe(1);
   expect(remainingPercent(0)).toBe(0);
   expect(remainingPercent(1)).toBe(100);
+});
+
+const HOUR = 60 * 60 * 1000;
+const now = Date.parse('2026-01-10T12:00:00Z');
+// A 5-hour window one hour in: an even burn would still show 80% remaining.
+const window = { id: 'five-hour', displayName: 'Five hour', resetsAt: now + 4 * HOUR, windowMinutes: 300 } as const;
+
+test('marks a window spent faster than evenly as overspent, and one spent slower as on track', () => {
+  expect(quotaPace({ ...window, remainingRatio: 0.8 }, now)).toEqual({ expectedPercent: 80, overspent: false });
+  expect(quotaPace({ ...window, remainingRatio: 0.5 }, now)).toEqual({ expectedPercent: 80, overspent: true });
+  expect(quotaPace({ ...window, remainingRatio: 0.95 }, now)).toEqual({ expectedPercent: 80, overspent: false });
+});
+
+test('has no pace without both ends of the window, or when the reset does not fit inside one', () => {
+  expect(quotaPace({ ...window, windowMinutes: undefined, remainingRatio: 0.8 }, now)).toBeUndefined();
+  expect(quotaPace({ ...window, resetsAt: undefined, remainingRatio: 0.8 }, now)).toBeUndefined();
+  // A reset already past, or further out than the whole window, means the reading cannot be placed.
+  expect(quotaPace({ ...window, resetsAt: now - HOUR, remainingRatio: 0.8 }, now)).toBeUndefined();
+  expect(quotaPace({ ...window, resetsAt: now + 6 * HOUR, remainingRatio: 0.8 }, now)).toBeUndefined();
 });

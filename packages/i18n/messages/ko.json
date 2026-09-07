@@ -736,6 +736,8 @@
         "remaining": "{percent}% 남음",
         "less_than_one_percent": "1% 미만 남음",
         "no_windows": "이 업스트림은 잔여량을 제공하지 않습니다",
+        "pace_on_track": "정상 속도: 균등 소비 시 {percent}% 남음",
+        "pace_overspent": "초과 속도: 균등 소비 시 {percent}% 남음",
         "resets_at": "{value}에 초기화",
         "reset_credits": "사용 가능한 초기화 횟수 {count}",
         "reset": "초기화 횟수 사용",

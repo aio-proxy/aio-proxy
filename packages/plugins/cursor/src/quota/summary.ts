@@ -52,20 +52,28 @@ export function summaryQuota(payload: Readonly<Record<string, unknown>>): Cursor
   const individual = record(Reflect.get(payload, 'individualUsage'));
   const plan = record(individual === undefined ? undefined : Reflect.get(individual, 'plan'));
   const resetsAt = isoTimestamp(Reflect.get(payload, 'billingCycleEnd'));
+  const windowMinutes = spanMinutes(isoTimestamp(Reflect.get(payload, 'billingCycleStart')), resetsAt);
 
   const auto = plan === undefined ? undefined : remainingFromPercent(Reflect.get(plan, 'autoPercentUsed'));
   const api = plan === undefined ? undefined : remainingFromPercent(Reflect.get(plan, 'apiPercentUsed'));
   const onDemand = ratioFromCents(individual === undefined ? undefined : Reflect.get(individual, 'onDemand'));
 
   const items = [
-    item('plan', PLAN_LABEL, planRatio(payload, plan, auto, api), resetsAt),
-    item('auto', AUTO_LABEL, auto, resetsAt),
-    item('api', API_LABEL, api, resetsAt),
-    item('on-demand', ON_DEMAND_LABEL, onDemand, resetsAt),
+    item('plan', PLAN_LABEL, planRatio(payload, plan, auto, api), resetsAt, windowMinutes),
+    item('auto', AUTO_LABEL, auto, resetsAt, windowMinutes),
+    item('api', API_LABEL, api, resetsAt, windowMinutes),
+    item('on-demand', ON_DEMAND_LABEL, onDemand, resetsAt, windowMinutes),
   ].filter((entry): entry is OAuthQuotaItem => entry !== undefined);
 
   const membership = membershipPlan(Reflect.get(payload, 'membershipType'));
   return { items, ...(membership === undefined ? {} : { plan: membership }) };
+}
+
+/** Window length from both ends of a billing period; a non-positive span is not a window. */
+export function spanMinutes(start: number | undefined, end: number | undefined): number | undefined {
+  if (start === undefined || end === undefined) return undefined;
+  const minutes = Math.round((end - start) / 60_000);
+  return minutes > 0 ? minutes : undefined;
 }
 
 /**
@@ -122,9 +130,16 @@ function item(
   displayName: LocalizedText,
   remainingRatio: number | undefined,
   resetsAt: number | undefined,
+  windowMinutes: number | undefined,
 ): OAuthQuotaItem | undefined {
   if (remainingRatio === undefined) return undefined;
-  return { id, displayName, remainingRatio, ...(resetsAt === undefined ? {} : { resetsAt }) };
+  return {
+    id,
+    displayName,
+    remainingRatio,
+    ...(resetsAt === undefined ? {} : { resetsAt }),
+    ...(windowMinutes === undefined ? {} : { windowMinutes }),
+  };
 }
 
 // `LocalizedTextSchema` rejects untrimmed strings, so an untrimmed enum would fail the whole snapshot.

@@ -149,13 +149,20 @@ function optionalTimestamp(value: unknown, path: Path): number | undefined {
   return value as number;
 }
 
+/** A window length only means something as a positive duration; zero would divide the pace math by 0. */
+function optionalWindowMinutes(value: unknown, path: Path): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) invalid(path);
+  return value as number;
+}
+
 function resetCount(value: unknown, path: Path): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) invalid(path);
   return value as number;
 }
 
 const SNAPSHOT_KEYS = new Set(['items', 'resetCredits', 'plan']);
-const ITEM_KEYS = new Set(['id', 'displayName', 'remainingRatio', 'resetsAt']);
+const ITEM_KEYS = new Set(['id', 'displayName', 'remainingRatio', 'resetsAt', 'windowMinutes']);
 const RESET_KEYS = new Set(['availableCount', 'items']);
 const CREDIT_KEYS = new Set(['id', 'expiresAt']);
 
@@ -167,17 +174,25 @@ export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
     const items = withDenseArray(snapshotItems, ['items'], ancestors, (inputItems) =>
       inputItems.map((input, index) =>
         withPlainRecord(input, ['items', index], ITEM_KEYS, ancestors, (item) => {
-          const { id: itemId, displayName, remainingRatio: inputRatio, resetsAt: inputResetsAt } = item;
+          const {
+            id: itemId,
+            displayName,
+            remainingRatio: inputRatio,
+            resetsAt: inputResetsAt,
+            windowMinutes: inputWindowMinutes,
+          } = item;
           const id = quotaId(itemId, ['items', index, 'id']);
           if (itemIds.has(id)) invalid(['items', index, 'id']);
           itemIds.add(id);
           const remainingRatio = optionalRatio(inputRatio, ['items', index, 'remainingRatio']);
           const resetsAt = optionalTimestamp(inputResetsAt, ['items', index, 'resetsAt']);
+          const windowMinutes = optionalWindowMinutes(inputWindowMinutes, ['items', index, 'windowMinutes']);
           return {
             id,
             displayName: localizedText(displayName, ['items', index, 'displayName']),
             ...(remainingRatio === undefined ? {} : { remainingRatio }),
             ...(resetsAt === undefined ? {} : { resetsAt }),
+            ...(windowMinutes === undefined ? {} : { windowMinutes }),
           };
         }),
       ),
