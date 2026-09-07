@@ -851,6 +851,22 @@ test('run diagnostics correlate phases without logging request content', async (
   expect(serialized).toContain('first-frame');
   expect(serialized).toContain('first-text');
   expect(serialized).toContain('query-reply');
+  const phases = rows.flatMap((row) => {
+    if (!Array.isArray(row) || typeof row[1] !== 'object' || row[1] === null) return [];
+    const phase = (row[1] as { phase?: unknown }).phase;
+    return typeof phase === 'string' ? [phase] : [];
+  });
+  expect(phases.indexOf('first-frame')).toBeGreaterThanOrEqual(0);
+  expect(phases.indexOf('first-text')).toBeGreaterThan(phases.indexOf('first-frame'));
+  expect(phases.indexOf('tool-ready')).toBeGreaterThan(phases.indexOf('first-frame'));
+  const firstText = rows.find(
+    (row) =>
+      Array.isArray(row) &&
+      typeof row[1] === 'object' &&
+      row[1] !== null &&
+      (row[1] as { phase?: unknown }).phase === 'first-text',
+  ) as [string, { frameCount?: number }] | undefined;
+  expect(firstText?.[1].frameCount).toBeGreaterThan(0);
   expect(serialized).toContain('settled');
   expect(serialized).not.toContain('SECRET_ACCESS_TOKEN');
   expect(serialized).not.toContain('SECRET_MODEL_TEXT');

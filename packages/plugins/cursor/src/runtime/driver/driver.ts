@@ -282,8 +282,8 @@ function dispatchServerMessage(
   }
   if (message.case === 'interactionQuery') {
     h2.write(encodeInteractionReply(message.value));
-    session.diagnostics('query-reply', { queryCase: message.value.query.case, queryId: message.value.id });
     noteDecodedFrame(session, true);
+    session.diagnostics('query-reply', { queryCase: message.value.query.case, queryId: message.value.id });
     return;
   }
   if (message.case === 'kvServerMessage') {
@@ -310,6 +310,7 @@ function handleInteractionUpdate(
 ): void {
   const before = cursorToolState(session.accumulator);
   for (const part of mapInteractionUpdate(update, session.accumulator)) enqueuePart(session, controller, part);
+  noteDecodedFrame(session, isInteractionProgress(update, before.progressRevision, session.accumulator));
   if (
     !session.logged.firstText &&
     update.message.case === 'textDelta' &&
@@ -319,7 +320,6 @@ function handleInteractionUpdate(
     session.diagnostics('first-text', session.lifecycle.snapshot());
   }
   logToolReadyIfIncreased(session, before.readyCount);
-  noteDecodedFrame(session, isInteractionProgress(update, before.progressRevision, session.accumulator));
   if (session.accumulator.sawTurnEnded) {
     if (!session.logged.turnEnded) {
       session.logged.turnEnded = true;
@@ -346,8 +346,8 @@ function handleExecMessage(
     }
     const before = cursorToolState(session.accumulator);
     for (const part of mapMcpExec(exec.message.value, session.accumulator)) enqueuePart(session, controller, part);
-    logToolReadyIfIncreased(session, before.readyCount);
     noteDecodedFrame(session, cursorToolState(session.accumulator).progressRevision > before.progressRevision);
+    logToolReadyIfIncreased(session, before.readyCount);
     armHandoff(session);
     return;
   }
