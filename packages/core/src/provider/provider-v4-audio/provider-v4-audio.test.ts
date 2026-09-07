@@ -99,6 +99,31 @@ describe('createProviderV4SpeechInvoke', () => {
     expect(result.mediaType).toBe('audio/wav');
   });
 
+  // Headerless output sniffs as nothing, so the SDK reports its `audio/mp3`
+  // fallback for it too. Answering raw PCM or ADTS AAC with `content-type:
+  // audio/mpeg` makes a client decode or save the bytes as MP3, so where sniffing
+  // gave up the requested format is what the bytes actually are.
+  test.each([
+    ['pcm', 'audio/pcm'],
+    ['aac', 'audio/aac'],
+  ] as const)('names unsniffable %p output by the requested format', async (outputFormat, expected) => {
+    const invoke = createProviderV4SpeechInvoke('stub', speechProvider(UNSNIFFABLE_BYTES) as never);
+
+    const result = await invoke({ text: 'hi', outputFormat }, { modelId: 'tts-1' });
+
+    expect(result.mediaType).toBe(expected);
+  });
+
+  // A successful sniff is the better authority than the requested format: a
+  // provider that ignored `pcm` and answered WAV must be reported as WAV.
+  test('lets a recognized media type win over the requested format', async () => {
+    const invoke = createProviderV4SpeechInvoke('stub', speechProvider(WAV_BYTES) as never);
+
+    const result = await invoke({ text: 'hi', outputFormat: 'pcm' }, { modelId: 'tts-1' });
+
+    expect(result.mediaType).toBe('audio/wav');
+  });
+
   test('forwards every speech option the invocation carries', async () => {
     const calls: SpeechCall[] = [];
     const controller = new AbortController();

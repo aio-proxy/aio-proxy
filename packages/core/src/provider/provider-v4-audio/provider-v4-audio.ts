@@ -19,13 +19,34 @@ type TranscribeCall = Parameters<typeof transcribe>[0];
 type TranscriptionModel = ReturnType<NonNullable<ProviderV4['transcriptionModel']>>;
 
 /**
- * `audio/mp3` is what the AI SDK falls back to when it cannot sniff the returned
- * bytes, and it is not a registered media type — speech egress writes this value
- * straight into the `content-type` response header, where a client that
- * content-sniffs sees an unknown type. Normalize to the IANA name once here
- * instead of at every egress site.
+ * The requested `response_format` mapped to the media type its bytes actually are,
+ * used only where the AI SDK could not sniff them. `opus`, `flac`, `wav`, and `mp3`
+ * are absent on purpose: all four carry a magic prefix the sniffer recognizes, so
+ * they never reach this table and the bytes stay the better authority.
  */
-const MP3_ALIASES: Readonly<Record<string, string>> = { 'audio/mp3': 'audio/mpeg', 'audio/x-mp3': 'audio/mpeg' };
+const SPEECH_FORMAT_MEDIA_TYPES: Readonly<Record<string, string>> = {
+  pcm: 'audio/pcm',
+  aac: 'audio/aac',
+};
+
+const SNIFF_FAILED_MEDIA_TYPES: ReadonlySet<string> = new Set(['audio/mp3', 'audio/x-mp3']);
+
+/**
+ * `audio/mp3` is not a registered media type and is never produced by the AI SDK's
+ * signature table — it is the documented fallback for bytes it could not sniff at
+ * all. Headerless output always lands there: raw `pcm` has no signature and ADTS
+ * `aac` is not in the table, so both would be advertised as MP3 by the `content-type`
+ * speech egress writes, and a client would decode or save them wrong. Where sniffing
+ * gave up the requested `response_format` is the authority, so it names the type;
+ * anything else — including the `mp3` default — normalizes to the IANA spelling once
+ * here instead of at every egress site.
+ */
+function speechMediaType(mediaType: string, outputFormat: string | undefined): string {
+  if (!SNIFF_FAILED_MEDIA_TYPES.has(mediaType.toLowerCase())) return mediaType;
+  return (
+    (outputFormat === undefined ? undefined : SPEECH_FORMAT_MEDIA_TYPES[outputFormat.toLowerCase()]) ?? 'audio/mpeg'
+  );
+}
 
 // `speechModel` and `transcriptionModel` are OPTIONAL ProviderV4 members:
 // @ai-sdk/openai implements both, @ai-sdk/openai-compatible implements neither.
@@ -61,7 +82,10 @@ export function createProviderV4SpeechInvoke(
           : { providerOptions: invocation.providerOptions as SpeechCall['providerOptions'] }),
         ...(options.signal === undefined ? {} : { abortSignal: options.signal }),
       });
-      return { audio: result.audio.uint8Array, mediaType: audioMediaType(result.audio.mediaType) };
+      return {
+        audio: result.audio.uint8Array,
+        mediaType: speechMediaType(result.audio.mediaType, invocation.outputFormat),
+      };
     } catch (error) {
       throw new AiSdkProviderError(providerId, error);
     }
@@ -228,8 +252,4 @@ function withMediaType(model: TranscriptionModel, mediaType: string): Transcript
     modelId: model.modelId,
     doGenerate: (callOptions) => model.doGenerate({ ...callOptions, mediaType }),
   };
-}
-
-function audioMediaType(mediaType: string): string {
-  return MP3_ALIASES[mediaType.toLowerCase()] ?? mediaType;
 }
