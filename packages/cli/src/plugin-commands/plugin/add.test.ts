@@ -20,6 +20,7 @@ describe('plugin add', () => {
     const deps = createDefaultPluginLifecycleDeps();
     try {
       expect(deps.builtIns?.map(({ packageName }) => packageName).sort()).toEqual([
+        '@aio-proxy/plugin-anthropic-claude',
         '@aio-proxy/plugin-cursor',
         '@aio-proxy/plugin-github-copilot',
         '@aio-proxy/plugin-google-antigravity',

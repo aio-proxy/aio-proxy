@@ -20,6 +20,7 @@
       "@aio-proxy/i18n",
       "@aio-proxy/infra",
       "@aio-proxy/logger",
+      "@aio-proxy/plugin-anthropic-claude",
       "@aio-proxy/plugin-cursor",
       "@aio-proxy/plugin-github-copilot",
       "@aio-proxy/plugin-google-antigravity",

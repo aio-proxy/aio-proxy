@@ -1,3 +1,4 @@
+import { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '@aio-proxy/plugin-anthropic-claude';
 import { createCursorPlugin, CURSOR_PLUGIN_VERSION } from '@aio-proxy/plugin-cursor';
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from '@aio-proxy/plugin-github-copilot';
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from '@aio-proxy/plugin-google-antigravity';
@@ -10,6 +11,7 @@ import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from '@aio-proxy/plugin-
 import type { BuiltInPluginDefinition } from './loader/index';
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
+  '@aio-proxy/plugin-anthropic-claude',
   '@aio-proxy/plugin-cursor',
   '@aio-proxy/plugin-github-copilot',
   '@aio-proxy/plugin-google-antigravity',
@@ -23,6 +25,19 @@ const localized = (english: string, chinese: string) => ({ default: english, 'zh
 
 export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
   return [
+    {
+      packageName: '@aio-proxy/plugin-anthropic-claude',
+      version: CLAUDE_PLUGIN_VERSION,
+      descriptor: createAnthropicClaudePlugin({
+        pluginLabel: localized('Claude Pro/Max', 'Claude Pro/Max'),
+        pluginDescription: localized(
+          'Use a Claude Pro or Max account to access models',
+          '使用 Claude Pro 或 Max 账号访问模型',
+        ),
+        adapterLabel: localized('Login with Claude', '使用 Claude 登录'),
+        waitingForAuthorization: localized('Waiting for Claude authorization', '正在等待 Claude 授权'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
     {
       packageName: '@aio-proxy/plugin-cursor',
       version: CURSOR_PLUGIN_VERSION,
