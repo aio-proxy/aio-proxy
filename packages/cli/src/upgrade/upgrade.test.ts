@@ -689,6 +689,40 @@ test('resolveUpgradeTargetFrom does not treat a standalone binary in a pnpm home
   });
 });
 
+test('resolveUpgradeTargetFrom maps a pnpm global/<n> shim that resolves into the package to pnpm', async () => {
+  const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-pnpm-ver-')), 'pnpm');
+  const pkg = join(pnpmHome, 'global', '5', 'node_modules', 'aio-proxy');
+  const pkgBin = join(pkg, 'bin', 'aio-proxy.js');
+  const bin = join(pnpmHome, 'aio-proxy');
+  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(pkgBin, bin);
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'pnpm',
+    command: join(pnpmHome, 'pnpm'),
+    bin,
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a pnpm v11 isolated shim that resolves into the package to pnpm', async () => {
+  const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-pnpm-v11-')), 'pnpm');
+  const pkg = join(pnpmHome, 'global', 'v11', 'abc123', 'node_modules', 'aio-proxy');
+  const pkgBin = join(pkg, 'bin', 'aio-proxy.js');
+  const bin = join(pnpmHome, 'aio-proxy');
+  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(pkgBin, bin);
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'pnpm',
+    command: join(pnpmHome, 'pnpm'),
+    bin,
+  });
+});
+
 test('resolveUpgradeTargetFrom maps a pnpm home shim that resolves into the package to pnpm', async () => {
   const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-pnpm-shim-')), 'pnpm');
   const pkg = join(pnpmHome, 'global', 'node_modules', 'aio-proxy');
