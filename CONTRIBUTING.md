@@ -51,6 +51,7 @@ When changing only part of the workspace, also run the tests for each affected p
 ## Commits and pull requests
 
 - Use Conventional Commits, such as `feat: ...`, `fix: ...`, or `docs: ...`.
+- Pull request titles use the same commitlint form as commits, e.g. `fix(core): restore session affinity fallback`.
 - Describe the problem, solution, and verification results in the pull request.
 - Keep each pull request focused on one clearly defined problem.
 - Confirm that formatting, lint, and relevant tests pass before submission.
