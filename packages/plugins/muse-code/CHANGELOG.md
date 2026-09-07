@@ -1,5 +1,15 @@
 # @aio-proxy/plugin-muse-code
 
+## 0.20.1
+
+### Patch Changes
+
+- [#314](https://github.com/aio-proxy/aio-proxy/pull/314) [`3c31f50`](https://github.com/aio-proxy/aio-proxy/commit/3c31f505c862b18a314e19cfac580d7a935d0d07) Thanks [@baranwang](https://github.com/baranwang)! - Muse Code quota bars now show the even-burn mark. The plugin read the window length from the
+  upstream response but never passed it on, so the dashboard knew when each window resets without
+  knowing how long it runs and had nothing to pace against.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.1
+
 ## 0.20.0
 
 ### Minor Changes

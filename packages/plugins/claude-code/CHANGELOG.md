@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-claude-code
 
+## 0.20.1
+
+### Patch Changes
+
+- [#311](https://github.com/aio-proxy/aio-proxy/pull/311) [`1018663`](https://github.com/aio-proxy/aio-proxy/commit/1018663bbc459485c25a995a2bfb81454738b3f1) Thanks [@baranwang](https://github.com/baranwang)! - Rename the built-in Claude Pro/Max plugin to `@aio-proxy/plugin-claude-code`
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.1
+
 ## 0.20.0
 
 ### Minor Changes

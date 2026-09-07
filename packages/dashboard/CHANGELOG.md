@@ -1,5 +1,20 @@
 # @aio-proxy/dashboard
 
+## 0.20.1
+
+### Patch Changes
+
+- [#312](https://github.com/aio-proxy/aio-proxy/pull/312) [`757c270`](https://github.com/aio-proxy/aio-proxy/commit/757c270f88a6a13e5bab6cf56ab6aad3f1a03280) Thanks [@baranwang](https://github.com/baranwang)! - The pace mark on a subscription quota bar now explains itself on hover instead of relying on a
+  browser tooltip, and its outline is thicker so the mark stays legible where it sits on top of the
+  filled part of the bar.
+- Updated dependencies []:
+  - @aio-proxy/server@0.20.1
+  - @aio-proxy/brand@0.20.1
+  - @aio-proxy/i18n@0.20.1
+  - @aio-proxy/plugin-sdk@0.20.1
+  - @aio-proxy/types@0.20.1
+  - @aio-proxy/ui@0.20.1
+
 ## 0.20.0
 
 ### Minor Changes
