@@ -1,4 +1,4 @@
-import { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '@aio-proxy/plugin-anthropic-claude';
+import { CLAUDE_CODE_PLUGIN_VERSION, createClaudeCodePlugin } from '@aio-proxy/plugin-claude-code';
 import { createCursorPlugin, CURSOR_PLUGIN_VERSION } from '@aio-proxy/plugin-cursor';
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from '@aio-proxy/plugin-github-copilot';
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from '@aio-proxy/plugin-google-antigravity';
@@ -12,7 +12,7 @@ import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from '@aio-proxy/plugin-
 import type { BuiltInPluginDefinition } from './loader/index';
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
-  '@aio-proxy/plugin-anthropic-claude',
+  '@aio-proxy/plugin-claude-code',
   '@aio-proxy/plugin-cursor',
   '@aio-proxy/plugin-github-copilot',
   '@aio-proxy/plugin-google-antigravity',
@@ -28,9 +28,9 @@ const localized = (english: string, chinese: string) => ({ default: english, 'zh
 export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
   return [
     {
-      packageName: '@aio-proxy/plugin-anthropic-claude',
-      version: CLAUDE_PLUGIN_VERSION,
-      descriptor: createAnthropicClaudePlugin({
+      packageName: '@aio-proxy/plugin-claude-code',
+      version: CLAUDE_CODE_PLUGIN_VERSION,
+      descriptor: createClaudeCodePlugin({
         pluginLabel: localized('Claude Pro/Max', 'Claude Pro/Max'),
         pluginDescription: localized(
           'Use a Claude Pro or Max account to access models',

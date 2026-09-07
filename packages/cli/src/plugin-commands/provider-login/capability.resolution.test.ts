@@ -15,7 +15,7 @@ describe('provider login capability resolution', () => {
     '@aio-proxy/plugin-muse-code',
     '@aio-proxy/plugin-cursor',
     '@aio-proxy/plugin-openrouter',
-    '@aio-proxy/plugin-anthropic-claude',
+    '@aio-proxy/plugin-claude-code',
   ] as const;
 
   test('resolves an unambiguous short capability ID', async () => {

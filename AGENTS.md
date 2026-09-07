@@ -19,6 +19,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - Bun workspace monorepo (`packages/*`) orchestrated by Turborepo.
 - `packages/dashboard/AGENTS.md` is the authority for dashboard/frontend rules.
 - Before considering a change complete, run `bun run preflight` (oxlint + oxfmt check + all unit tests), or at minimum `bun run check` plus the affected package's tests.
+- Pull request titles follow commitlint / Conventional Commits (`type(scope): subject`). Do not put that prefix on changeset bodies.
 
 ## Changesets
 
@@ -30,7 +31,7 @@ Releases are driven by Changesets. All workspace packages share one lockstep ver
 - Keep the product package's bump level equal to the internal package's (internal `minor` -> `aio-proxy` `minor`).
 - Use `bun changeset` to author them; commit the generated `.changeset/*.md` alongside the change. Do not run `changeset version`/`publish` by hand — CI owns both.
 - A pending note describes the shipped state, not the state when it was written. When a change reverses, replaces, or drops something an earlier unreleased note announced, grep `.changeset/` for that behavior and correct or delete the stale note in the same commit. Notes are authored per task and released in one batch, so an unrevisited note ships as a Release describing a feature the code does not have.
-- Keep a note short: one paragraph, at most 5 lines of body. It is a release note for users — say what changed for them, and for a fix what was wrong. Leave out implementation detail, file names, and the sequence of attempts.
+- Keep a note short: one paragraph, at most 5 lines of body. It is a release note for users — say what changed for them, and for a fix what was wrong. Leave out implementation detail, file names, and the sequence of attempts. Do not prefix the body with an area label (`core:`, `cli:`, plugin short name); the frontmatter already lists the packages.
 - Follow-up work on an unreleased change **rewrites** its existing note; it never appends a paragraph. A bug found and fixed before the feature ships never happened as far as the Release is concerned, so fold the corrected behavior into the original sentences and delete the intermediate story. A note that has grown past 5 lines is the signal to rewrite it.
 - Write a second changeset only when the work is genuinely independent of the first, not to get under the line budget.
 

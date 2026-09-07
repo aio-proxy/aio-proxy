@@ -149,7 +149,7 @@
         "@ai-sdk/xai": "catalog:",
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/logger": "workspace:*",
-        "@aio-proxy/plugin-anthropic-claude": "workspace:*",
+        "@aio-proxy/plugin-claude-code": "workspace:*",
         "@aio-proxy/plugin-cursor": "workspace:*",
         "@aio-proxy/plugin-github-copilot": "workspace:*",
         "@aio-proxy/plugin-google-antigravity": "workspace:*",
@@ -315,8 +315,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/plugins/anthropic-claude": {
-      "name": "@aio-proxy/plugin-anthropic-claude",
+    "packages/plugins/claude-code": {
+      "name": "@aio-proxy/plugin-claude-code",
       "version": "0.19.2",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
@@ -668,7 +668,7 @@
 
     "@aio-proxy/pi-provider": ["@aio-proxy/pi-provider@workspace:packages/agent-provider/pi"],
 
-    "@aio-proxy/plugin-anthropic-claude": ["@aio-proxy/plugin-anthropic-claude@workspace:packages/plugins/anthropic-claude"],
+    "@aio-proxy/plugin-claude-code": ["@aio-proxy/plugin-claude-code@workspace:packages/plugins/claude-code"],
 
     "@aio-proxy/plugin-cursor": ["@aio-proxy/plugin-cursor@workspace:packages/plugins/cursor"],
 

@@ -7,7 +7,7 @@ import { BUILT_IN_PLUGIN_PACKAGE_NAMES, createEmbeddedBuiltIns } from './builtin
 import { loadPluginRegistry } from './loader/index';
 
 const expectedBuiltIns = [
-  '@aio-proxy/plugin-anthropic-claude',
+  '@aio-proxy/plugin-claude-code',
   '@aio-proxy/plugin-cursor',
   '@aio-proxy/plugin-github-copilot',
   '@aio-proxy/plugin-google-antigravity',
@@ -133,8 +133,8 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   );
   expect(resolveLocalizedText(grok?.displayName ?? '', 'zh-Hans')).toBe('使用 xAI Grok 登录');
 
-  const claude = snapshot.registry.resolveOAuth('@aio-proxy/plugin-anthropic-claude', 'default');
-  const claudePlugin = snapshot.plugins.get('@aio-proxy/plugin-anthropic-claude');
+  const claude = snapshot.registry.resolveOAuth('@aio-proxy/plugin-claude-code', 'default');
+  const claudePlugin = snapshot.plugins.get('@aio-proxy/plugin-claude-code');
   expect(resolveLocalizedText(claudePlugin?.displayName ?? '', 'zh-Hans')).toBe('Claude Pro/Max');
   expect(resolveLocalizedText(claudePlugin?.description ?? '', 'zh-Hans')).toBe('使用 Claude Pro 或 Max 账号访问模型');
   expect(resolveLocalizedText(claude?.displayName ?? '', 'zh-Hans')).toBe('使用 Claude 登录');

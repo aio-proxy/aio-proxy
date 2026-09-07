@@ -51,6 +51,7 @@ When changing only part of the workspace, also run the tests for each affected p
 ## Commits and pull requests
 
 - Use Conventional Commits, such as `feat: ...`, `fix: ...`, or `docs: ...`.
+- Pull request titles use the same commitlint form as commits, e.g. `fix(core): restore session affinity fallback`.
 - Describe the problem, solution, and verification results in the pull request.
 - Keep each pull request focused on one clearly defined problem.
 - Confirm that formatting, lint, and relevant tests pass before submission.
@@ -64,7 +65,7 @@ bun changeset
 ```
 
 - Target only the public product packages — `aio-proxy` (the CLI/proxy launcher) or `@aio-proxy/plugin-sdk`. A CI guard rejects changesets that target private or platform-binary packages.
-- Put the affected internal area in the summary text, e.g. `core: fix provider fallback`. Every package is version-bumped in lockstep, but only the public products get a `CHANGELOG.md` and a GitHub Release, so the note must live on one of them.
+- Write a short user-facing sentence. Do not prefix it with an area label (`core:`, `cli:`, plugin short name). Every package is version-bumped in lockstep, but only the public products get a `CHANGELOG.md` and a GitHub Release, so the note must live on one of them.
 - Pick the bump level and write a short, user-facing summary. Commit the generated `.changeset/*.md` file with your change.
 - Purely internal changes (refactors, tests, tooling) need no changeset.
 
