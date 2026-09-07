@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.20.1
+
+### Patch Changes
+
+- [#311](https://github.com/aio-proxy/aio-proxy/pull/311) [`1018663`](https://github.com/aio-proxy/aio-proxy/commit/1018663bbc459485c25a995a2bfb81454738b3f1) Thanks [@baranwang](https://github.com/baranwang)! - Rename the built-in Claude Pro/Max plugin to `@aio-proxy/plugin-claude-code`
+
+- [#314](https://github.com/aio-proxy/aio-proxy/pull/314) [`3c31f50`](https://github.com/aio-proxy/aio-proxy/commit/3c31f505c862b18a314e19cfac580d7a935d0d07) Thanks [@baranwang](https://github.com/baranwang)! - Muse Code quota bars now show the even-burn mark. The plugin read the window length from the
+  upstream response but never passed it on, so the dashboard knew when each window resets without
+  knowing how long it runs and had nothing to pace against.
+
+- [#312](https://github.com/aio-proxy/aio-proxy/pull/312) [`757c270`](https://github.com/aio-proxy/aio-proxy/commit/757c270f88a6a13e5bab6cf56ab6aad3f1a03280) Thanks [@baranwang](https://github.com/baranwang)! - The pace mark on a subscription quota bar now explains itself on hover instead of relying on a
+  browser tooltip, and its outline is thicker so the mark stays legible where it sits on top of the
+  filled part of the bar.
+
 ## 0.20.0
 
 ### Minor Changes
