@@ -644,6 +644,68 @@ test('resolveUpgradeTargetFrom maps a node_modules/@aio-proxy/cli-linux-x64 bina
   });
 });
 
+test('resolveUpgradeTargetFrom does not treat a standalone binary in .bun/bin as bun-owned', async () => {
+  const bunHome = join(mkdtempSync(join(tmpdir(), 'aio-curl-bun-')), '.bun');
+  const bin = join(bunHome, 'bin', 'aio-proxy');
+  writeExecutable(join(bunHome, 'bin', 'bun'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  mkdirSync(join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy'), { recursive: true });
+  writeFileSync(
+    join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy', 'package.json'),
+    '{"name":"aio-proxy"}\n',
+  );
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a .bun/bin shim that resolves into the package to bun', async () => {
+  const bunHome = join(mkdtempSync(join(tmpdir(), 'aio-bun-shim-')), '.bun');
+  const pkg = join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy');
+  const pkgBin = join(pkg, 'bin', 'aio-proxy.js');
+  const bin = join(bunHome, 'bin', 'aio-proxy');
+  writeExecutable(join(bunHome, 'bin', 'bun'), '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  mkdirSync(join(bunHome, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(pkgBin, bin);
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'bun',
+    command: join(bunHome, 'bin', 'bun'),
+    bin,
+  });
+});
+
+test('resolveUpgradeTargetFrom does not treat a standalone binary in a pnpm home as pnpm-owned', async () => {
+  const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-curl-pnpm-')), 'pnpm');
+  const bin = join(pnpmHome, 'aio-proxy');
+  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  mkdirSync(join(pnpmHome, 'global', 'node_modules', 'aio-proxy'), { recursive: true });
+  writeFileSync(join(pnpmHome, 'global', 'node_modules', 'aio-proxy', 'package.json'), '{"name":"aio-proxy"}\n');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a pnpm home shim that resolves into the package to pnpm', async () => {
+  const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-pnpm-shim-')), 'pnpm');
+  const pkg = join(pnpmHome, 'global', 'node_modules', 'aio-proxy');
+  const pkgBin = join(pkg, 'bin', 'aio-proxy.js');
+  const bin = join(pnpmHome, 'aio-proxy');
+  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(pkgBin, bin);
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'pnpm',
+    command: join(pnpmHome, 'pnpm'),
+    bin,
+  });
+});
+
 test('resolveUpgradeTargetFrom maps a bun global cli-* binary to bun, not binary', async () => {
   const bunHome = mkdtempSync(join(tmpdir(), 'aio-bun-home-'));
   const native = join(bunHome, 'install', 'global', 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');

@@ -239,6 +239,35 @@ test('writeManagedUnit persists npm when ExecStart is the native cli-* binary an
   expect(contents).not.toContain(`<string>${shim}</string>`);
 });
 
+test('writeManagedUnit does not persist bun for a standalone binary in .bun/bin next to a leftover package', async () => {
+  const bunHome = join(tmpdir(), `aio-leftover-bun-${Date.now()}-${Math.random().toString(36).slice(2)}`, '.bun');
+  const bin = join(bunHome, 'bin', 'aio-proxy');
+  mkdirSync(join(bunHome, 'bin'), { recursive: true });
+  mkdirSync(join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy'), { recursive: true });
+  writeFileSync(join(bunHome, 'bin', 'bun'), '#!/bin/sh\n');
+  writeFileSync(bin, '#!/bin/sh\n');
+  writeFileSync(
+    join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy', 'package.json'),
+    '{"name":"aio-proxy"}\n',
+  );
+  chmodSync(join(bunHome, 'bin', 'bun'), 0o755);
+  chmodSync(bin, 0o755);
+
+  const plistPath = join(bunHome, 'LaunchAgents', 'com.aio-proxy.agent.plist');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = `${join(bunHome, 'bin')}:/usr/bin:/bin`;
+  try {
+    await writeManagedUnit('darwin', bin, plistPath);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain(`<string>${bin}</string>`);
+  expect(contents).not.toContain('AIO_PROXY_UPGRADE_METHOD');
+});
+
 test('writeManagedUnit does not persist npm for a standalone binary next to a leftover npm package dir', async () => {
   const prefix = join(tmpdir(), `aio-leftover-unit-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const bin = join(prefix, 'bin', 'aio-proxy');

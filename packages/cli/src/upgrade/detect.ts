@@ -102,13 +102,13 @@ const managerPrefixFromBin = (binPath: string): string => {
   return basename(binDir) === 'bin' ? dirname(binDir) : binDir;
 };
 
-// Sibling bun/npm/pnpm is not ownership. A leftover global package directory
-// is not enough either: the launcher must resolve into that package.
+// Path hints (/.bun/, /pnpm/, /lib/node_modules/) are not ownership. A
+// standalone binary can sit in those directories after replacing a shim.
 const nodeManagerOwnsLauncher = (binPath: string, name: NodeManager): boolean => {
-  if (layoutPreferredManager(binPath) === name) return true;
+  const prefixes = [managerPrefixFromBin(binPath)];
   const real = tryRealpath(binPath);
-  if (real !== undefined && real !== binPath && layoutPreferredManager(real) === name) return true;
-  return packageRootsFor(managerPrefixFromBin(binPath), name).some((dir) => packageOwnsLauncher(binPath, dir));
+  if (real !== undefined && real !== binPath) prefixes.push(managerPrefixFromBin(real));
+  return prefixes.some((prefix) => packageRootsFor(prefix, name).some((dir) => packageOwnsLauncher(binPath, dir)));
 };
 
 const siblingOwnedTarget = (binPath: string, name: NodeManager): UpgradeTarget | undefined => {
