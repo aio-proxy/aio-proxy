@@ -96,8 +96,10 @@ export function updateMcp(
   const byOuter = outer === undefined ? undefined : state.outerAliases.get(outer);
   const byNested = nested === undefined ? undefined : state.nestedAliases.get(nested);
   const conflict = () => new CursorProtocolError('cursor_tool_identity_conflict', 'Cursor MCP identity conflicts.');
-  if (byOuter !== undefined && byNested !== undefined && byOuter !== byNested) throw conflict();
-  let key = byOuter ?? byNested;
+  let key =
+    byOuter !== undefined && byNested !== undefined && byOuter !== byNested
+      ? mergeCompatibleMcpCalls(state, byOuter, byNested, outer!, nested!, name)
+      : (byOuter ?? byNested);
   if (key === undefined && args === undefined) {
     if (outer !== undefined && snapshot !== undefined) {
       const previous = state.earlySnapshots.get(outer) ?? '';
@@ -149,6 +151,45 @@ export function updateMcp(
     state.revision++;
     state.progressRevision++;
   }
+}
+
+function mergeCompatibleMcpCalls(
+  state: McpState,
+  outerKey: string,
+  nestedKey: string,
+  outer: string,
+  nested: string,
+  name: string | undefined,
+): string {
+  const left = state.calls.get(outerKey);
+  const right = state.calls.get(nestedKey);
+  const conflict = () => new CursorProtocolError('cursor_tool_identity_conflict', 'Cursor MCP identity conflicts.');
+  if (left === undefined || right === undefined) throw conflict();
+  if (left.nestedToolCallId && left.nestedToolCallId !== nested) throw conflict();
+  if (right.outerBound !== undefined && right.outerBound !== outer) throw conflict();
+  if (left.toolName !== right.toolName || (name !== undefined && left.toolName !== name)) throw conflict();
+  const keep = left.announceOrder <= right.announceOrder ? left : right;
+  const drop = keep === left ? right : left;
+  const keepKey = keep === left ? outerKey : nestedKey;
+  const dropKey = keep === left ? nestedKey : outerKey;
+  keep.outerBound = outer;
+  keep.outerCallId = outer;
+  keep.nestedToolCallId = nested;
+  keep.announceOrder = Math.min(keep.announceOrder, drop.announceOrder);
+  keep.buffer = appendMcpSnapshot(keep.buffer, drop.buffer);
+  keep.completion = mergeMcpObjects(keep.completion, drop.completion);
+  keep.exec = mergeMcpObjects(keep.exec, drop.exec);
+  keep.sawCompletion ||= drop.sawCompletion;
+  keep.sawExec ||= drop.sawExec;
+  keep.allowsEmpty ||= drop.allowsEmpty;
+  keep.input = undefined;
+  state.calls.delete(dropKey);
+  for (const aliases of [state.outerAliases, state.nestedAliases]) {
+    for (const [id, key] of aliases) if (key === dropKey) aliases.set(id, keepKey);
+  }
+  state.outerAliases.set(outer, keepKey);
+  state.nestedAliases.set(nested, keepKey);
+  return keepKey;
 }
 
 function applyMcpEvent(

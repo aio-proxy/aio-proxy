@@ -320,6 +320,41 @@ test('exec-first aliases upgrade to the observed outer id before commit', () => 
   expect(cursorCompletedTools(a)).toMatchObject([{ outerCallId: 'outer', nestedToolCallId: 'nested' }]);
 });
 
+test('half-bound outer and nested records merge when a later frame carries both ids', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(
+    mcpUpdate('toolCallStarted', create(McpArgsSchema, { name: 'search', toolName: 'search', args: {} })),
+    a,
+  );
+  mapMcpExec(mcp({ query: argValue('docs') }), a);
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp()), a);
+  expect(commitCursorTools(a).filter((part) => part.type === 'tool-call')).toHaveLength(1);
+  expect(cursorCompletedTools(a)).toMatchObject([{ outerCallId: 'outer', nestedToolCallId: 'nested' }]);
+});
+
+test('a linking frame cannot attach an outer to a different nested id', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(mcpUpdate('toolCallStarted', mcp()), a);
+  mapMcpExec(
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'other-nested',
+      args: { query: argValue('other') },
+    }),
+    a,
+  );
+  expect(() =>
+    mapInteractionUpdate(
+      mcpUpdate(
+        'toolCallCompleted',
+        create(McpArgsSchema, { name: 'search', toolName: 'search', toolCallId: 'other-nested', args: {} }),
+      ),
+      a,
+    ),
+  ).toThrow(expect.objectContaining({ code: 'cursor_tool_identity_conflict' }));
+});
+
 test('a reused identity with a different name fails before emitting tools', () => {
   const a = createCursorStreamAccumulator();
   mapMcpExec(mcp({ query: argValue('docs') }), a);
