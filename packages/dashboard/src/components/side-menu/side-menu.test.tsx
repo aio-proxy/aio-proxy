@@ -12,6 +12,10 @@ rs.mock('@tanstack/react-router', () => ({
 }));
 
 rs.mock('./sidebar-logout', () => ({ SidebarLogout: () => null }));
+rs.mock('./sidebar-update-card', () => ({ SidebarUpdateCard: () => null }));
+rs.mock('@/modules/settings/hooks/use-release-refresh', () => ({
+  useReleaseRefresh: () => undefined,
+}));
 
 test('groups Dashboard and Traces under Observability', () => {
   render(

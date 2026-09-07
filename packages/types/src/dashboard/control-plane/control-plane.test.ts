@@ -135,6 +135,16 @@ describe('dashboard settings control-plane contracts', () => {
     expect(view.safeParse({ ...settings, proxy: '{{env.HTTPS_PROXY}}' }).success).toBe(false);
   });
 
+  test('settings view and mutation have no autoUpdate field', () => {
+    const view = schema('DashboardSettingsViewSchema');
+    const mutation = schema('DashboardSettingsMutationSchema');
+
+    expect(view.parse(settings)).not.toHaveProperty('autoUpdate');
+    expect(view.safeParse({ ...settings, autoUpdate: true }).success).toBe(false);
+    expect(mutation.parse({})).not.toHaveProperty('autoUpdate');
+    expect(mutation.safeParse({ autoUpdate: true }).success).toBe(false);
+  });
+
   test('reports whether a successful settings write requires restart', () => {
     const response = schema('DashboardSettingsMutationResponseSchema');
 
@@ -147,6 +157,36 @@ describe('dashboard settings control-plane contracts', () => {
       ok: false,
       error: { code: 'reload_failed' },
     });
+  });
+});
+
+describe('dashboard release control-plane contracts', () => {
+  test('release view reports persisted latest and outdated without requiring them', () => {
+    const view = schema('DashboardReleaseViewSchema');
+    expect(
+      view.parse({ current: '1.2.0', outdated: false, managedService: false, update: { status: 'idle' } }),
+    ).toEqual({
+      current: '1.2.0',
+      outdated: false,
+      managedService: false,
+      update: { status: 'idle' },
+    });
+    expect(
+      view.parse({
+        current: '1.2.0',
+        latest: '1.10.0',
+        outdated: true,
+        managedService: false,
+        update: { status: 'idle' },
+      }),
+    ).toEqual({
+      current: '1.2.0',
+      latest: '1.10.0',
+      outdated: true,
+      managedService: false,
+      update: { status: 'idle' },
+    });
+    expect(view.safeParse({ current: '1.2.0', managedService: false, update: { status: 'idle' } }).success).toBe(false);
   });
 });
 

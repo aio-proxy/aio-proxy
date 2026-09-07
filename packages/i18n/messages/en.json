@@ -270,6 +270,11 @@
       "manual_restart_hint": "The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade",
       "restarting": "Restarting the daemon..."
     },
+    "update": {
+      "available": "aio-proxy {version} is available. Run aio-proxy upgrade or open the Dashboard.",
+      "notify_title": "aio-proxy {version} is available",
+      "notify_body": "Open the Dashboard or run aio-proxy upgrade."
+    },
     "agent": {
       "description": "Manage Agent integrations",
       "list": {
@@ -443,6 +448,9 @@
       "models": "Models",
       "settings": "Settings"
     },
+    "update": {
+      "available": "Update available"
+    },
     "navigation": {
       "back": "Back",
       "breadcrumbs": "Breadcrumbs"
@@ -520,6 +528,11 @@
       "version_up_to_date": "This is the latest published version.",
       "version_outdated": "Version {version} is available.",
       "version_check_failed": "Could not reach the registry. Try again.",
+      "version_update": "Update now",
+      "version_updating": "Updating…",
+      "version_update_failed": "The update could not be installed. Try again or run aio-proxy upgrade.",
+      "version_update_unavailable": "This process cannot install updates.",
+      "version_restart_required": "Restart aio-proxy to run the installed version.",
       "repository": "Source code",
       "repository_description": "Issues, releases, and source on GitHub.",
       "documentation": "Documentation",

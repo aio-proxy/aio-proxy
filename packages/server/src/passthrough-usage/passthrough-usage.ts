@@ -254,6 +254,7 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       return type === 'interaction.completed';
     }
     case ProviderProtocol.OpenAIImage:
+    case ProviderProtocol.OpenAIAudio:
       return false;
     default:
       return assertNever(protocol);

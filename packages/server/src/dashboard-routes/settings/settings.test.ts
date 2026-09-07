@@ -8,6 +8,7 @@ import { parseRuntimeConfig, Router } from '@aio-proxy/core';
 
 import { createServerState } from '#server-test-lifecycle';
 
+import type { AutoUpdateController } from '../../auto-update';
 import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
 import type { ServerState } from '../../server-state';
 import { createDashboardRoutes } from '../config';
@@ -43,7 +44,11 @@ async function withSettingsFixture(
     readonly routes: Routes;
     readonly state: ServerState;
   }) => Promise<void>,
-  options: { readonly configPath?: boolean; readonly rejectReload?: { value: boolean } } = {},
+  options: {
+    readonly configPath?: boolean;
+    readonly rejectReload?: { value: boolean };
+    readonly controller?: AutoUpdateController;
+  } = {},
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-settings-'));
   const configPath = join(directory, 'config.json');
@@ -79,7 +84,11 @@ async function withSettingsFixture(
   });
 
   try {
-    await run({ configPath, routes: createDashboardRoutes(state, disabledDashboardAuthentication), state });
+    await run({
+      configPath,
+      routes: createDashboardRoutes(state, disabledDashboardAuthentication, '0.0.0', options.controller),
+      state,
+    });
   } finally {
     state.close();
     rmSync(directory, { force: true, recursive: true });
@@ -111,6 +120,16 @@ async function apiKeysRevision(routes: Routes): Promise<string> {
 async function putKeys(routes: Routes, apiKeys: unknown): Promise<Response> {
   return put(routes, { apiKeys, apiKeysRevision: await apiKeysRevision(routes) });
 }
+
+test('PUT /settings leaves a leftover autoUpdate key on disk', async () => {
+  await withSettingsFixture(async ({ routes, configPath }) => {
+    const current = onDisk(configPath);
+    writeFileSync(configPath, JSON.stringify({ ...current, server: { ...current.server, autoUpdate: true } }, null, 2));
+    const response = await put(routes, { retryAfterCapMs: 5_000 });
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).server).toMatchObject({ autoUpdate: true, retry: { retryAfterCapMs: 5_000 } });
+  });
+});
 
 test('GET /settings returns only the redacted typed settings view', async () => {
   await withSettingsFixture(async ({ routes }) => {

@@ -5,16 +5,18 @@ export {
   supportsEmbedding,
   supportsImage,
   supportsLanguage,
+  supportsSpeech,
+  supportsTranscription,
 } from './capability-index';
 export type { CapabilityIndexInput } from './capability-index';
 export {
-  materializeProviders,
-  materializeRuntimeProvider,
-  type MaterializeProvidersOptions,
   effectiveProxy,
+  materializeProviders,
+  type MaterializeProvidersOptions,
+  materializeRuntimeProvider,
   providerDiff,
   type ProviderRuntime,
-  providerSummary,
   type ProviderRuntimeSummary,
+  providerSummary,
 } from './materialize';
 export type { ProviderProbe } from './probe';

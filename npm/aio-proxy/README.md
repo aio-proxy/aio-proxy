@@ -309,25 +309,28 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 
 ## API
 
-| Protocol or purpose       | Method and path                                     |
-| ------------------------- | --------------------------------------------------- |
-| Health check              | `GET /health`                                       |
-| Model list                | `GET /v1/models`                                    |
-| OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
-| OpenAI Responses          | `POST /v1/responses`                                |
-| OpenAI Completions        | `POST /v1/completions`                              |
-| OpenAI Responses compact  | `POST /v1/responses/compact`                        |
-| Anthropic Messages        | `POST /v1/messages`                                 |
-| Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
-| Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
-| Gemini streaming          | `POST /v1beta/models/{model}:streamGenerateContent` |
-| Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
-| Gemini Interactions       | `POST /v1beta/interactions`                         |
-| OpenAI Embeddings         | `POST /v1/embeddings`                               |
-| Gemini embed              | `POST /v1beta/models/{model}:embedContent`          |
-| Gemini batch embed        | `POST /v1beta/models/{model}:batchEmbedContents`    |
-| OpenAI Images generations | `POST /v1/images/generations`                       |
-| OpenAI Images edits       | `POST /v1/images/edits`                             |
+| Protocol or purpose         | Method and path                                     |
+| --------------------------- | --------------------------------------------------- |
+| Health check                | `GET /health`                                       |
+| Model list                  | `GET /v1/models`                                    |
+| OpenAI Chat Completions     | `POST /v1/chat/completions`                         |
+| OpenAI Responses            | `POST /v1/responses`                                |
+| OpenAI Completions          | `POST /v1/completions`                              |
+| OpenAI Responses compact    | `POST /v1/responses/compact`                        |
+| Anthropic Messages          | `POST /v1/messages`                                 |
+| Anthropic Token Counting    | `POST /v1/messages/count_tokens`                    |
+| Gemini                      | `POST /v1beta/models/{model}:generateContent`       |
+| Gemini streaming            | `POST /v1beta/models/{model}:streamGenerateContent` |
+| Gemini Token Counting       | `POST /v1beta/models/{model}:countTokens`           |
+| Gemini Interactions         | `POST /v1beta/interactions`                         |
+| OpenAI Embeddings           | `POST /v1/embeddings`                               |
+| Gemini embed                | `POST /v1beta/models/{model}:embedContent`          |
+| Gemini batch embed          | `POST /v1beta/models/{model}:batchEmbedContents`    |
+| OpenAI Images generations   | `POST /v1/images/generations`                       |
+| OpenAI Images edits         | `POST /v1/images/edits`                             |
+| OpenAI Audio speech         | `POST /v1/audio/speech`                             |
+| OpenAI Audio transcriptions | `POST /v1/audio/transcriptions`                     |
+| OpenAI Audio translations   | `POST /v1/audio/translations`                       |
 
 Images notes:
 
@@ -338,6 +341,15 @@ Images notes:
 - DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
 - Edits accept official-max envelopes (`357_564_416` JSON, `851_048_559` multipart). P1 has no lower default DoS cap; a future smaller ceiling is an explicit deployment extension.
 - Non-catalog Images Providers need a finite id set (`models` or preserved alias targets) including `gpt-image-2` for the blank-model default. A `router.models` metadata entry does not create a route.
+
+Audio notes:
+
+- Raw Audio needs an `openai-audio` endpoint (or primary protocol).
+- Omitted `model` defaults to `tts-1` for speech and `whisper-1` for transcriptions/translations, so a non-catalog Audio Provider must list those ids (in `models` or as preserved alias targets) for the default to route.
+- `POST /v1/audio/translations` is raw passthrough only. Convert returns `501 unsupported_feature` because the AI SDK transcription interface has no translation mode.
+- Convert also returns `501 unsupported_feature` for `stream_format`, `chunking_strategy`, `include`, and `stream`.
+- An `openai-audio` Provider is probed with `GET /v1/models`, because a speech-only or transcription-only model rejects the other direction's request and would probe FAIL. A green probe means reachable with an accepted key, not that the model supports the direction you will call; a `401` is FAIL, and a gateway serving only `/v1/audio/*` shows FAIL in the Dashboard even when it works.
+- Audio usage is recorded only when upstream reports it. Duration is never converted to tokens.
 
 Remaining official Responses resource operations (`GET /v1/responses/:id`, `DELETE /v1/responses/:id`, `POST /v1/responses/:id/cancel`, `GET /v1/responses/:id/input_items`) return a protocol-shaped 501.
 

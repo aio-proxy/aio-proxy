@@ -168,6 +168,44 @@ export class OpenAIImagesInvalidRequestError extends AioProxyError {
   }
 }
 
+/**
+ * The runtime list is the source of truth and the type is derived from it, so
+ * `protocol/errors.ts` can build its mapping set from this const. Hand-writing both
+ * let a new member reach the mapper as an unnamed `not_implemented` fallthrough.
+ */
+export const OPENAI_AUDIO_UNSUPPORTED_FEATURES = [
+  'stream',
+  'stream_format',
+  'chunking_strategy',
+  'include',
+  'translations',
+  'response_format',
+  'timestamp_granularities',
+] as const;
+
+export type OpenAIAudioUnsupportedFeature = (typeof OPENAI_AUDIO_UNSUPPORTED_FEATURES)[number];
+
+export class OpenAIAudioUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_OPENAI_AUDIO_FEATURE';
+  readonly status = 501;
+
+  constructor(readonly feature: OpenAIAudioUnsupportedFeature) {
+    super('OpenAIAudioUnsupportedFeatureError', `OpenAI Audio feature is not supported: ${feature}`);
+  }
+}
+
+export class OpenAIAudioInvalidRequestError extends AioProxyError {
+  readonly code = 'INVALID_OPENAI_AUDIO_REQUEST';
+  readonly status = 400;
+
+  // `file` is the only reachable parameter: `input` and `voice` are required by the
+  // speech schema, so a missing one is a ZodError already mapped to 400
+  // `invalid_request`, and `speed` is not validated here at all.
+  constructor(readonly param: 'file') {
+    super('OpenAIAudioInvalidRequestError', `Invalid OpenAI Audio request parameter: ${param}`);
+  }
+}
+
 export class OpenAICompletionsUnsupportedFeatureError extends AioProxyError {
   readonly code = 'UNSUPPORTED_OPENAI_COMPLETIONS_FEATURE';
   readonly status = 501;

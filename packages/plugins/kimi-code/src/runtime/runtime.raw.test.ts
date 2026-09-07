@@ -25,6 +25,14 @@ describe('Kimi Code runtime', () => {
     ).toBeDefined();
   });
 
+  test('declines audio: a chat endpoint cannot serve /v1/audio', async () => {
+    const runtime = await createKimiRuntime(context(validCredential(), catalog()));
+    for (const capability of ['speech', 'transcription'] as const) {
+      expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'openai-model', capability })).toBeUndefined();
+      expect(runtime.raw?.({ protocol: 'anthropic', modelId: 'anthropic-model', capability })).toBeUndefined();
+    }
+  });
+
   for (const scenario of [
     { protocol: 'openai-compatible', path: '/v1/chat/completions' },
     { protocol: 'anthropic', path: '/v1/messages' },

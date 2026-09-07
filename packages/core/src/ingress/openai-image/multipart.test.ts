@@ -2,16 +2,30 @@ import { expect, test } from 'bun:test';
 import { stat } from 'node:fs/promises';
 
 import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request';
+import { type MultipartStreamSpec, multipartSpoolPath, parseMultipartStream } from '../multipart';
+import { parseOpenAIImageEditsMultipart, releaseMultipartSpool } from './multipart';
 import {
-  assertEditsMultipartCounters,
+  EDITS_MULTIPART_AGGREGATE_LIMIT,
   EDITS_MULTIPART_ENCODED_LIMIT,
+  EDITS_MULTIPART_MAX_IMAGES,
   EDITS_MULTIPART_NON_FILE_LIMIT,
-  parseOpenAIImageEditsMultipart,
-  releaseMultipartSpool,
-} from './multipart';
-import { multipartSpoolPath } from './multipart-spool';
-import { parseMultipartStream } from './multipart-stream';
+  EDITS_MULTIPART_PER_FILE_LIMIT,
+} from './multipart-counters';
 import { CPA_DEFAULT_IMAGE_MODEL } from './openai-image';
+
+// Mirrors the module-private Images spec. The envelope tests below drive the reader
+// directly because an 851 MB body cannot be pushed through the disk spool in a test.
+const EDITS_SPEC: MultipartStreamSpec = {
+  fileFields: new Set(['image', 'mask']),
+  singletonFileFields: new Set(['mask']),
+  limits: {
+    perFile: EDITS_MULTIPART_PER_FILE_LIMIT - 1,
+    aggregate: EDITS_MULTIPART_AGGREGATE_LIMIT,
+    nonFile: EDITS_MULTIPART_NON_FILE_LIMIT,
+    maxFiles: EDITS_MULTIPART_MAX_IMAGES,
+  },
+  syntaxError: () => new SyntaxError('Invalid OpenAI Images multipart request'),
+};
 
 const PNG_1X1_RGBA = Uint8Array.from(
   Buffer.from(
@@ -155,29 +169,6 @@ test('413s a second mask', async () => {
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
-test('official file counters accept 49_999_999 and the aggregate ceiling', () => {
-  expect(() =>
-    assertEditsMultipartCounters({
-      imageCount: 16,
-      maskCount: 1,
-      fileByteLength: 49_999_999,
-      aggregateDecoded: 849_999_983,
-      nonFileFormBytes: 1_048_576,
-    }),
-  ).not.toThrow();
-});
-
-test.each([
-  ['per-file 50_000_000', { fileByteLength: 50_000_000 }],
-  ['per-file 50 MiB', { fileByteLength: 52_428_800 }],
-  ['aggregate over', { aggregateDecoded: 849_999_984 }],
-  ['non-file form over', { nonFileFormBytes: 1_048_577 }],
-  ['17 images', { imageCount: 17 }],
-  ['2 masks', { maskCount: 2 }],
-] as const)('official file counters 413 %s', (_name, counters) => {
-  expect(() => assertEditsMultipartCounters(counters)).toThrow(RequestBodyTooLargeError);
-});
-
 test('rejects multipart edits missing prompt or image', async () => {
   await expect(
     parseOpenAIImageEditsMultipart(editsMultipartRequest({ image: blobFrom(PNG_1X1_RGBA) })),
@@ -185,7 +176,7 @@ test('rejects multipart edits missing prompt or image', async () => {
   await expect(parseOpenAIImageEditsMultipart(editsMultipartRequest({ prompt: 'make it night' }))).rejects.toThrow();
 });
 
-test.each(['yes', '1', '', 'null'] as const)('rejects invalid multipart stream=%s', async (stream) => {
+test.each(['yes', '1', 'null'] as const)('rejects invalid multipart stream=%s', async (stream) => {
   await expect(
     parseOpenAIImageEditsMultipart(
       editsMultipartRequest({
@@ -200,6 +191,10 @@ test.each(['yes', '1', '', 'null'] as const)('rejects invalid multipart stream=%
 test.each([
   ['true', true],
   ['false', false],
+  // The shared coercion trims, so a whitespace-padded literal is a value here. It used
+  // to reach the schema unchanged and 400, which disagreed with the audio port.
+  [' true ', true],
+  [' false ', false],
 ] as const)('parses multipart stream=%s', async (value, expected) => {
   const parsed = await parseOpenAIImageEditsMultipart(
     editsMultipartRequest({
@@ -209,6 +204,19 @@ test.each([
     }),
   );
   expect(parsed.stream).toBe(expected);
+});
+
+// "Empty means absent" is the rule both multipart ports share: a blank part must not
+// become an explicit `false`, and must not 400 either.
+test.each(['', ' '] as const)('treats an empty multipart stream=%p as not sent', async (stream) => {
+  const parsed = await parseOpenAIImageEditsMultipart(
+    editsMultipartRequest({
+      prompt: 'make it night',
+      image: blobFrom(PNG_1X1_RGBA),
+      stream,
+    }),
+  );
+  expect(parsed.stream).toBeUndefined();
 });
 
 test('omits stream when the multipart field is absent', async () => {
@@ -331,6 +339,18 @@ test('consumes the inbound multipart body into a spool instead of leaving a tee 
   await expect(stat(path!)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+// The schema runs after the spool exists, so a rejected field must not leave a
+// retained WeakMap entry pointing at a file the `catch` has already unlinked.
+test('retains no spool when the field schema rejects the request', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: blobFrom(PNG_1X1_RGBA),
+    n: 'many',
+  });
+  await expect(parseOpenAIImageEditsMultipart(raw)).rejects.toThrow();
+  expect(multipartSpoolPath(raw)).toBeUndefined();
+});
+
 test('keeps preamble line-start context when a false boundary is split before its suffix', async () => {
   const boundary = 'bound';
   const rest = Buffer.concat([
@@ -430,7 +450,7 @@ test('413s an encoded epilogue that exceeds the official-max envelope', async ()
       controller.close();
     },
   });
-  await expect(parseMultipartStream(stream, boundary)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+  await expect(parseMultipartStream(stream, boundary, EDITS_SPEC)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
 test('413s a MIME epilogue that exceeds the 1 MiB non-file budget', async () => {
@@ -462,7 +482,7 @@ test('413s a MIME epilogue that exceeds the 1 MiB non-file budget', async () => 
       controller.close();
     },
   });
-  await expect(parseMultipartStream(stream, boundary)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+  await expect(parseMultipartStream(stream, boundary, EDITS_SPEC)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
 test('skips preamble text that contains a non-delimiter boundary prefix', async () => {

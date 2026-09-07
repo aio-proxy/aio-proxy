@@ -1,1 +1,1 @@
-export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './api-bridge';
+export { bridgeApiProviderToAiSdk, hasLanguageBridgeEndpoint, resolveOpenAIResponsesModel } from './api-bridge';

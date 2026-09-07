@@ -1,7 +1,22 @@
-import { abortError, decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
-import { EDITS_MULTIPART_ENCODED_LIMIT } from './multipart-counters';
-import { retainMultipartSpool, spoolMultipartBody, type MultipartSpool } from './multipart-spool';
-import { parseMultipartStream } from './multipart-stream';
+import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
+import {
+  acquireMultipartSlot,
+  multipartBoundary,
+  multipartFieldBoolean,
+  multipartFieldNumber,
+  type MultipartSpool,
+  type MultipartStreamSpec,
+  parseMultipartStream,
+  retainMultipartSpool,
+  spoolMultipartBody,
+} from '../multipart';
+import {
+  EDITS_MULTIPART_AGGREGATE_LIMIT,
+  EDITS_MULTIPART_ENCODED_LIMIT,
+  EDITS_MULTIPART_MAX_IMAGES,
+  EDITS_MULTIPART_NON_FILE_LIMIT,
+  EDITS_MULTIPART_PER_FILE_LIMIT,
+} from './multipart-counters';
 import { parseOpenAIImageGenerations, type OpenAIImageRequest } from './openai-image';
 
 const MULTIPART_DECODE_LIMITS = Object.freeze({
@@ -9,16 +24,28 @@ const MULTIPART_DECODE_LIMITS = Object.freeze({
   decoded: EDITS_MULTIPART_ENCODED_LIMIT,
 }) satisfies RequestBodyLimits;
 
-export { releaseMultipartSpool, replaySpooledMultipartRaw } from './multipart-spool';
+const EDITS_MULTIPART_SPEC: MultipartStreamSpec = {
+  fileFields: new Set(['image', 'mask']),
+  singletonFileFields: new Set(['mask']),
+  limits: {
+    // MultipartLimits are inclusive maxima; the official per-file cap is exclusive
+    // (OpenAI refuses a file of exactly 50 MB), so the largest accepted size is one less.
+    perFile: EDITS_MULTIPART_PER_FILE_LIMIT - 1,
+    aggregate: EDITS_MULTIPART_AGGREGATE_LIMIT,
+    nonFile: EDITS_MULTIPART_NON_FILE_LIMIT,
+    maxFiles: EDITS_MULTIPART_MAX_IMAGES,
+  },
+  syntaxError: () => new SyntaxError('Invalid OpenAI Images multipart request'),
+};
+
+export { releaseMultipartSpool, replaySpooledMultipartRaw } from '../multipart';
 
 export {
   EDITS_MULTIPART_AGGREGATE_LIMIT,
   EDITS_MULTIPART_ENCODED_LIMIT,
   EDITS_MULTIPART_MAX_IMAGES,
-  EDITS_MULTIPART_MAX_MASKS,
   EDITS_MULTIPART_NON_FILE_LIMIT,
   EDITS_MULTIPART_PER_FILE_LIMIT,
-  assertEditsMultipartCounters,
 } from './multipart-counters';
 
 const OPTIONAL_NUMBER_FIELDS = ['n', 'output_compression', 'partial_images'] as const;
@@ -40,10 +67,10 @@ export async function parseOpenAIImageEditsMultipart(
   const boundary = multipartBoundary(raw.headers.get('content-type') ?? '');
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
   const idleTimeoutMs = options?.idleTimeoutMs ?? MULTIPART_IDLE_TIMEOUT_MS;
-  await acquireMultipartSlot(raw.signal);
+  const releaseSlot = await acquireMultipartSlot(raw.signal);
   let spool: MultipartSpool | undefined;
   try {
-    spool = await spoolMultipartBody(raw, idleTimeoutMs);
+    spool = await spoolMultipartBody(raw, idleTimeoutMs, 'aio-proxy-images', EDITS_MULTIPART_ENCODED_LIMIT);
     const replay = new Request(raw.url, {
       method: raw.method,
       headers: raw.headers,
@@ -54,12 +81,24 @@ export async function parseOpenAIImageEditsMultipart(
       signal: raw.signal,
       idleTimeoutMs,
     });
-    const { fields, uploads, maskUpload } = await parseMultipartStream(body, boundary, raw.signal, idleTimeoutMs);
-    if (uploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
+    const { fields, uploads, namedUploads } = await parseMultipartStream(
+      body,
+      boundary,
+      EDITS_MULTIPART_SPEC,
+      raw.signal,
+      idleTimeoutMs,
+    );
+    const maskUpload = namedUploads['mask'];
+    const imageUploads = uploads.filter((upload) => upload !== maskUpload);
+    if (imageUploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
+    // Retain only after the schema has accepted the request: a rejected parse
+    // unlinks the spool in `catch`, and a WeakMap entry left pointing at the
+    // deleted file would hand raw replay a body that no longer exists.
+    const parsed = parseOpenAIImageGenerations(generationsInputFromFields(fields));
     retainMultipartSpool(raw, spool);
     return {
-      ...parseOpenAIImageGenerations(generationsInputFromFields(fields)),
-      uploads,
+      ...parsed,
+      uploads: imageUploads,
       ...(maskUpload === undefined ? {} : { maskUpload }),
       formFields: fields,
     };
@@ -68,52 +107,14 @@ export async function parseOpenAIImageEditsMultipart(
     void raw.body?.cancel(error).catch(() => undefined);
     throw error;
   } finally {
-    releaseMultipartSlot();
+    releaseSlot();
   }
 }
 
-// Process-protection cap on concurrent official-max edits parses. This is not a
-// compatibility ceiling and does not shrink the per-request encoded limit.
-const MAX_IN_FLIGHT_MULTIPART_PARSES = 2;
 const MULTIPART_IDLE_TIMEOUT_MS = 600_000;
-let inFlightMultipartParses = 0;
-const multipartWaiters: Array<() => void> = [];
-
-async function acquireMultipartSlot(signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) throw abortError(signal.reason);
-  if (inFlightMultipartParses < MAX_IN_FLIGHT_MULTIPART_PARSES) {
-    inFlightMultipartParses += 1;
-    return;
-  }
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const waiter = () => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener('abort', onAbort);
-      inFlightMultipartParses += 1;
-      resolve();
-    };
-    const onAbort = () => {
-      if (settled) return;
-      settled = true;
-      const index = multipartWaiters.indexOf(waiter);
-      if (index !== -1) multipartWaiters.splice(index, 1);
-      reject(abortError(signal?.reason));
-    };
-    multipartWaiters.push(waiter);
-    signal?.addEventListener('abort', onAbort, { once: true });
-    if (signal?.aborted) onAbort();
-  });
-}
-
-function releaseMultipartSlot(): void {
-  inFlightMultipartParses -= 1;
-  multipartWaiters.shift()?.();
-}
 
 function generationsInputFromFields(fields: Record<string, string>): Record<string, unknown> {
-  const stream = parseOptionalBoolean(fields['stream']);
+  const stream = multipartFieldBoolean(fields['stream']);
   const model = fields['model'];
   const input: Record<string, unknown> = {
     ...(model === undefined ? {} : { model }),
@@ -121,30 +122,11 @@ function generationsInputFromFields(fields: Record<string, string>): Record<stri
     ...(stream === undefined ? {} : { stream }),
   };
   for (const key of OPTIONAL_NUMBER_FIELDS) {
-    const value = parseOptionalNumber(fields[key]);
+    const value = multipartFieldNumber(fields[key]);
     if (value !== undefined) input[key] = value;
   }
   for (const key of OPTIONAL_STRING_FIELDS) {
     if (fields[key] !== undefined) input[key] = fields[key];
   }
   return input;
-}
-
-function parseOptionalNumber(value: string | undefined): number | undefined {
-  if (value === undefined || value === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
-}
-
-function parseOptionalBoolean(value: string | undefined): boolean | string | undefined {
-  if (value === undefined) return undefined;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return value;
-}
-
-function multipartBoundary(contentType: string): string | undefined {
-  const match = /(?:^|;\s*)boundary=(?:"([^"]+)"|([^;]+))/iu.exec(contentType);
-  const boundary = match?.[1] ?? match?.[2]?.trim();
-  return boundary === undefined || boundary === '' ? undefined : boundary;
 }

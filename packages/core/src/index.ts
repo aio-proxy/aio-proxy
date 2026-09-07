@@ -119,6 +119,16 @@ export {
   safeParseGeminiInteractions,
 } from './ingress/gemini-interactions/index';
 export {
+  AUDIO_MULTIPART_ENCODED_LIMIT,
+  AUDIO_MULTIPART_PER_FILE_LIMIT,
+  CPA_DEFAULT_SPEECH_MODEL,
+  CPA_DEFAULT_TRANSCRIPTION_MODEL,
+  type OpenAISpeechRequest,
+  type OpenAITranscriptionRequest,
+  parseOpenAISpeech,
+  parseOpenAITranscriptionMultipart,
+} from './ingress/openai-audio';
+export {
   type OpenAICompletionsRequest,
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
@@ -180,7 +190,15 @@ export {
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
 export { canonicalizeLoopbackHost } from './network/index';
-export { aioHome, configPath, dbPath, packagesDir } from './paths/index';
+export { aioHome, configPath, dbPath, packagesDir, updateCheckPath } from './paths/index';
+export {
+  mergeUpdateCheckState,
+  readUpdateCheckState,
+  withUpdateCheckLock,
+  writeUpdateCheckState,
+  type UpdateCheckIncoming,
+  type UpdateCheckState,
+} from './update-check';
 export * from './plugins';
 export * from './protocol';
 export {
@@ -208,7 +226,18 @@ export {
   createApiProvider,
   resolveApiKey,
 } from './provider/api/index';
-export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
+export {
+  bridgeApiProviderToAiSdk,
+  hasLanguageBridgeEndpoint,
+  resolveOpenAIResponsesModel,
+} from './provider/api-bridge/index';
+export {
+  type AudioInvokeOptions,
+  createProviderV4SpeechInvoke,
+  createProviderV4TranscribeInvoke,
+  providerV4SupportsSpeech,
+  providerV4SupportsTranscription,
+} from './provider/provider-v4-audio';
 export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export {
   assertConvertSupported,

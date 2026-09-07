@@ -53,7 +53,11 @@ export async function createKimiRuntime(
       imageModel: (modelId) => openai.imageModel(modelId),
     },
     raw(input) {
-      if (input.capability === 'embedding') return undefined;
+      // Chat-only upstream. Declining every non-language capability rather than
+      // naming embedding/speech/transcription keeps a capability added later out
+      // of a passthrough that cannot serve it; `undefined` still passes because
+      // image dispatch resolves without naming a capability.
+      if (input.capability !== undefined && input.capability !== 'language') return undefined;
       if (!modelIds.has(input.modelId)) return undefined;
       const protocol =
         input.protocol === 'anthropic' || input.protocol === 'openai-compatible' ? input.protocol : undefined;
