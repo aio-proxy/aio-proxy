@@ -137,17 +137,29 @@ function transcriptionProviderOptions(
 }
 
 /**
+ * Non-`audio/*` labels that still name a container OpenAI accepts for
+ * transcription. MP4 and WebM are audio/video dual-purpose containers, and a
+ * client uploading an `.mp4` or `.webm` recording routinely declares the video
+ * type — @ai-sdk/openai derives the upload filename from the subtype, so these
+ * arrive as `audio.mp4` / `audio.webm`, which are supported. Sniffing cannot
+ * recover either: MP4's `ftyp` box sits at offset 4, past where the SDK looks.
+ */
+const SUPPORTED_CONTAINER_MEDIA_TYPES: ReadonlySet<string> = new Set(['video/mp4', 'video/webm']);
+
+/**
  * A multipart part carries whatever `Content-Type` the client's HTTP library chose,
  * and a great many of them label every file upload `application/octet-stream`. That
  * is not information about the audio — overriding the SDK's byte sniffing with it
  * makes @ai-sdk/openai derive the filename `audio.octet-stream`, which OpenAI
- * rejects as an unsupported format even for a perfectly ordinary MP3. Only a
- * specific `audio/*` type is better information than sniffing; anything else falls
- * through so the SDK looks at the bytes.
+ * rejects as an unsupported format even for a perfectly ordinary MP3. A specific
+ * `audio/*` type, or one of the dual-purpose containers above, is better
+ * information than sniffing; anything else falls through so the SDK looks at the
+ * bytes.
  */
 function specificAudioMediaType(mediaType: string | undefined): string | undefined {
   if (mediaType === undefined) return undefined;
   const normalized = mediaType.toLowerCase();
+  if (SUPPORTED_CONTAINER_MEDIA_TYPES.has(normalized)) return normalized;
   return normalized.startsWith('audio/') && normalized !== 'audio/*' ? normalized : undefined;
 }
 

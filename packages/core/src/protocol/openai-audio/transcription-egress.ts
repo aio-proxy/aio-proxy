@@ -30,13 +30,20 @@ export function renderTranscription(
     case 'text':
       return new Response(result.text, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     case 'verbose_json':
-      // A `gpt-4o-transcribe` upstream is pinned to plain JSON by the SDK, so it
-      // answers with no segments and no duration. Rendering that as a
-      // verbose-looking envelope with `segments: []` would pass off a degraded
-      // body as a successful one, so refuse instead. `whisper-1` does return
-      // segments and renders normally. Only the result can tell the two apart —
-      // the model id is not a reliable signal across providers.
-      if (result.segments.length === 0) throw new OpenAIAudioUnsupportedFeatureError('response_format');
+      // A `gpt-4o-transcribe` upstream is pinned to plain JSON by the SDK, so its
+      // result carries neither segments nor a duration. Rendering that as a
+      // verbose-looking envelope would pass off a degraded body as a successful
+      // one, so refuse instead.
+      //
+      // `duration`, not segment count, is what separates the two: it is a
+      // verbose-only field in both the @ai-sdk/openai and @ai-sdk/groq response
+      // schemas, so its presence proves the upstream really answered in the
+      // verbose shape. Silent or zero-duration audio legitimately transcribes to
+      // `text: ''` with `segments: []` and still reports a duration, and that is a
+      // successful verbose response — segment count alone would 501 it.
+      if (result.segments.length === 0 && result.durationInSeconds === undefined) {
+        throw new OpenAIAudioUnsupportedFeatureError('response_format');
+      }
       return Response.json({
         task: 'transcribe',
         ...(result.language === undefined ? {} : { language: result.language }),

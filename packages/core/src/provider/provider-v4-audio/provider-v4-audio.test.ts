@@ -256,6 +256,22 @@ describe('createProviderV4TranscribeInvoke', () => {
     },
   );
 
+  // MP4 and WebM are audio/video dual-purpose containers, so a recording uploaded
+  // as `.mp4` routinely arrives declared `video/mp4`. Sniffing cannot recover it
+  // (the `ftyp` box sits past where the SDK looks), and both are supported
+  // transcription formats upstream, so the declared type must win here too.
+  test.each(['video/mp4', 'video/webm'] as const)('keeps the dual-purpose container type %p', async (mediaType) => {
+    const calls: TranscriptionCall[] = [];
+    const invoke = createProviderV4TranscribeInvoke(
+      'stub',
+      transcriptionProvider({}, (call) => calls.push(call)) as never,
+    );
+
+    await invoke({ audio: UNSNIFFABLE_BYTES, mediaType }, { modelId: 'whisper-1' });
+
+    expect(calls[0]?.mediaType).toBe(mediaType);
+  });
+
   test('forwards provider options and the abort signal', async () => {
     const calls: TranscriptionCall[] = [];
     const controller = new AbortController();

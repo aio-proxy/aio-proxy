@@ -48,11 +48,19 @@ describe('renderTranscription', () => {
   });
 
   // `gpt-4o-transcribe` is pinned to plain JSON inside the SDK, so it answers with
-  // no segments. Emitting `segments: []` would dress a degraded body up as a
-  // successful verbose one; the caller turns this throw into a 501 instead.
-  test('refuses verbose_json when the transport returned no segments', () => {
+  // neither segments nor a duration. Emitting `segments: []` would dress a degraded
+  // body up as a successful verbose one; the caller turns this throw into a 501.
+  test('refuses verbose_json when the transport answered in the plain shape', () => {
     expect(() => renderTranscription({ text: 'hello world', segments: [] }, 'verbose_json')).toThrow(
       'OpenAI Audio feature is not supported: response_format',
     );
+  });
+
+  // Silent audio really does transcribe to nothing, and a verbose upstream still
+  // reports the duration it measured. Segment count alone would 501 a correct
+  // answer, so the duration is what proves the verbose shape arrived.
+  test('renders a legitimately empty verbose transcript when the duration is present', async () => {
+    const response = renderTranscription({ text: '', segments: [], durationInSeconds: 0 }, 'verbose_json');
+    expect(await response.json()).toEqual({ task: 'transcribe', duration: 0, text: '', segments: [] });
   });
 });
