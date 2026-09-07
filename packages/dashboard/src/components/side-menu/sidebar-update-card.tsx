@@ -12,8 +12,8 @@ export const SidebarUpdateCard: React.FC = () => {
   const outdated = release.data?.outdated === true;
   const status = release.data?.update.status ?? 'idle';
   const latest = release.data?.latest;
-  const { apply, failed, inProgress, restartRequired } = useApplyRelease({ outdated });
-  const visible = outdated || inProgress || restartRequired || failed || status === 'failed';
+  const { apply, failed, inProgress, restartRequired, unavailable } = useApplyRelease({ outdated });
+  const visible = outdated || inProgress || restartRequired || failed || unavailable || status === 'failed';
 
   if (!visible) return null;
 
@@ -48,7 +48,9 @@ export const SidebarUpdateCard: React.FC = () => {
           {inProgress ? m['dashboard.settings.version_updating']() : m['dashboard.settings.version_update']()}
         </Button>
       )}
-      {failed ? (
+      {unavailable ? (
+        <p className="mt-2 text-muted-foreground">{m['dashboard.settings.version_update_unavailable']()}</p>
+      ) : failed ? (
         <p className="mt-2 text-destructive" role="alert">
           {m['dashboard.settings.version_update_failed']()}
         </p>

@@ -35,6 +35,8 @@ const restartRequired =
   /Restart aio-proxy to run the installed version|重启 aio-proxy 以运行已安装的版本|重新啟動 aio-proxy 以執行已安裝的版本|インストールしたバージョンを使うには aio-proxy を再起動してください|설치한 버전을 사용하려면 aio-proxy를 다시 시작하세요/u;
 const updateFailed =
   /The update could not be installed|无法安装更新|無法安裝更新|更新をインストールできませんでした|업데이트를 설치할 수 없습니다/u;
+const updateUnavailable =
+  /This process cannot install updates|当前进程无法安装更新|目前處理程序無法安裝更新|このプロセスでは更新をインストールできません|이 프로세스에서는 업데이트를 설치할 수 없습니다/u;
 
 const view = (extra: Partial<DashboardReleaseView> = {}): DashboardReleaseView => ({
   current: '1.4.2',
@@ -106,6 +108,17 @@ test('shows restart required without Update now and does not reload', async () =
   expect(screen.getByText(restartRequired)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
+});
+
+test('shows unavailable when apply cannot install updates', async () => {
+  prepare();
+  mocks.apply.mockRejectedValue(new Error('unavailable'));
+  await renderCard();
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+
+  await waitFor(() => expect(screen.getByText(updateUnavailable)).toBeInTheDocument());
+  expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
 });
 
 test('keeps the card and Update now after a failed install', async () => {
