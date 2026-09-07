@@ -32,7 +32,7 @@ export function incompleteSnapshotOmitsMappedFields(
     if (key === undefined) return true;
     i = skipJsonWhitespace(text, key.end);
     if (text[i] !== ':') return true;
-    if (!(key.value in known)) return true;
+    if (!Object.hasOwn(known, key.value)) return true;
     i = skipJsonWhitespace(text, i + 1);
     if (i >= text.length) return false;
     const started = text[i];
