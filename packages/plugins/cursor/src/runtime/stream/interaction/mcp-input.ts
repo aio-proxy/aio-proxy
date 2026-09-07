@@ -12,12 +12,35 @@ export function incompleteSnapshotOmitsMappedFields(
   mapped: Record<string, unknown> | undefined,
 ): boolean {
   const known = mapped ?? {};
-  for (const match of buffer.matchAll(/"((?:\\.|[^"\\])*)"\s*:/g)) {
-    const key = match[1];
-    if (key === undefined) continue;
-    if (!(key in known)) return true;
+  const text = buffer.trim();
+  if (!text.startsWith('{')) return true;
+  let i = 1;
+  let expectKey = true;
+  while (i < text.length) {
+    i = skipJsonWhitespace(text, i);
+    if (i >= text.length) return expectKey;
+    const ch = text[i];
+    if (ch === '}') return false;
+    if (!expectKey) {
+      if (ch !== ',') return true;
+      i = skipJsonWhitespace(text, i + 1);
+      if (i >= text.length) return true;
+      expectKey = true;
+      continue;
+    }
+    const key = readJsonString(text, i);
+    if (key === undefined) return true;
+    i = skipJsonWhitespace(text, key.end);
+    if (text[i] !== ':') return true;
+    if (!(key.value in known)) return true;
+    i = skipJsonWhitespace(text, i + 1);
+    if (i >= text.length) return false;
+    const valueEnd = skipJsonValue(text, i);
+    if (valueEnd === undefined) return false;
+    i = valueEnd;
+    expectKey = false;
   }
-  return false;
+  return expectKey;
 }
 
 export function parseMcpObject(text: string): Record<string, unknown> | undefined {
@@ -68,6 +91,101 @@ function decodeMcpArgValue(bytes: Uint8Array): unknown {
   } catch {
     return safeJson(new TextDecoder().decode(bytes));
   }
+}
+
+function skipJsonWhitespace(text: string, start: number): number {
+  let i = start;
+  while (i < text.length && (text[i] === ' ' || text[i] === '\n' || text[i] === '\r' || text[i] === '\t')) i++;
+  return i;
+}
+
+function readJsonString(text: string, start: number): { value: string; end: number } | undefined {
+  if (text[start] !== '"') return undefined;
+  let i = start + 1;
+  let escape = false;
+  while (i < text.length) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      i++;
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      try {
+        return { value: JSON.parse(text.slice(start, i + 1)) as string, end: i + 1 };
+      } catch {
+        return undefined;
+      }
+    }
+    i++;
+  }
+  return undefined;
+}
+
+function skipJsonValue(text: string, start: number): number | undefined {
+  const ch = text[start];
+  if (ch === '"') return readJsonString(text, start)?.end;
+  if (ch === '{' || ch === '[') return skipJsonContainer(text, start);
+  if (ch === 't' || ch === 'f' || ch === 'n') {
+    for (const literal of ['true', 'false', 'null'] as const) {
+      if (text.startsWith(literal, start)) return start + literal.length;
+      if (literal.startsWith(text.slice(start))) return undefined;
+    }
+    return undefined;
+  }
+  if (ch === '-' || (ch !== undefined && ch >= '0' && ch <= '9')) return skipJsonNumber(text, start);
+  return undefined;
+}
+
+function skipJsonContainer(text: string, start: number): number | undefined {
+  const open = text[start];
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return undefined;
+}
+
+function skipJsonNumber(text: string, start: number): number | undefined {
+  let i = start;
+  if (text[i] === '-') i++;
+  if (i >= text.length || text[i]! < '0' || text[i]! > '9') return undefined;
+  while (i < text.length && text[i]! >= '0' && text[i]! <= '9') i++;
+  if (text[i] === '.') {
+    i++;
+    if (i >= text.length || text[i]! < '0' || text[i]! > '9') return undefined;
+    while (i < text.length && text[i]! >= '0' && text[i]! <= '9') i++;
+  }
+  if (text[i] === 'e' || text[i] === 'E') {
+    i++;
+    if (text[i] === '+' || text[i] === '-') i++;
+    if (i >= text.length || text[i]! < '0' || text[i]! > '9') return undefined;
+    while (i < text.length && text[i]! >= '0' && text[i]! <= '9') i++;
+  }
+  return i;
 }
 
 function safeJson(text: string): unknown {

@@ -289,6 +289,17 @@ test('an incomplete snapshot stays pending when the completion map is only parti
   });
 });
 
+test.each(['{"query":"docs","cont', '{"query":"docs",'])(
+  'a snapshot truncated before the next field colon stays pending: %s',
+  (snapshot) => {
+    const a = createCursorStreamAccumulator();
+    mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), snapshot), a);
+    mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp({ query: argValue('docs') })), a);
+    expect(cursorToolState(a)).toMatchObject({ openCount: 1, readyCount: 0 });
+    expect(commitCursorTools(a)).toEqual([]);
+  },
+);
+
 test('a later complete snapshot readies a call that had a partial completion map', () => {
   const a = createCursorStreamAccumulator();
   mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), '{"query":"docs","content":"par'), a);
