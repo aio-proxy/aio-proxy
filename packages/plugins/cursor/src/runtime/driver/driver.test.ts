@@ -242,9 +242,19 @@ test('rejects when the stream ends before turnEnded', async () => {
     blobStore: new Map(),
     heartbeatMs: 0,
   });
-  // The stream errors AND `result` rejects; swallow the stream throw and assert on result.
-  await drainTypes(stream).catch(() => {});
-  await expect(result).rejects.toThrow(/before turnEnded/i);
+  void result.catch(() => {});
+  await expect(drainTypes(stream)).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+  await expect(result).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+});
+
+test('a non-zero grpc trailer fails the turn on stream and result', async () => {
+  const h = runHarness();
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof({ 'grpc-status': '13', 'grpc-message': 'boom' });
+  await expect(h.drained).rejects.toThrow(/gRPC status 13/);
+  await expect(h.result).rejects.toThrow(/gRPC status 13/);
+  expect(h.closeCount()).toBe(1);
 });
 
 test('a completed MCP call suspends without waiting for upstream turnEnded', async () => {
@@ -397,8 +407,8 @@ test.each([
     }
   };
 
-  await expect(drain()).rejects.toThrow(/incomplete MCP tool call/i);
-  await expect(result).rejects.toThrow(/incomplete MCP tool call/i);
+  await expect(drain()).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
+  await expect(result).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
   expect(parts.some((part) => part.type === 'tool-call')).toBe(false);
 });
 
@@ -625,4 +635,136 @@ test('duplicate exec does not extend the original handoff deadline', async () =>
   jest.advanceTimersByTime(10);
   await h.drained;
   expect(h.parts.filter((p) => p.type === 'tool-call')).toHaveLength(1);
+});
+
+test('successful Connect END_STREAM finishes before HTTP EOF', async () => {
+  const h = runHarness();
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained; // 故意不调用 eof()
+  await h.result;
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('an error envelope wins over a pending tool handoff', async () => {
+  jest.useFakeTimers();
+  const h = runHarness();
+  h.send(execFrame('a', 'docs'));
+  await settleMicrotasks();
+  h.send({ flags: 2, payload: new TextEncoder().encode('{"error":{"code":"internal","message":"upstream failed"}}') });
+  await expect(h.result).rejects.toThrow('upstream failed');
+  jest.advanceTimersByTime(1000);
+  expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('turnEnded grace closes a held-open text run once', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({ timing: { turnEndGraceMs: 500 } });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(499);
+  await settleMicrotasks();
+  expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
+  jest.advanceTimersByTime(1);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  h.fail(new Error('late socket close'));
+  await expect(h.result).resolves.toBeDefined();
+});
+
+test('a pending MCP input fails on successful protocol end', async () => {
+  const h = runHarness();
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: { name: 'search', toolName: 'search', toolCallId: 'nested', args: {} },
+            },
+          },
+        },
+      },
+    }),
+  );
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
+  await expect(h.drained).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
+  expect(h.parts.some((p) => p.type === 'tool-call')).toBe(false);
+});
+
+test('heartbeats prevent silence timeout but cannot prevent no-progress timeout', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({
+    timing: {
+      firstFrameTimeoutMs: 20,
+      frameSilenceTimeoutMs: 30,
+      noProgressTimeoutMs: 80,
+    },
+  });
+  h.send(updateFrame({ case: 'heartbeat', value: {} }));
+  await settleMicrotasks();
+  for (let i = 0; i < 3; i++) {
+    jest.advanceTimersByTime(25);
+    h.send(updateFrame({ case: 'heartbeat', value: {} }));
+    await settleMicrotasks();
+  }
+  jest.advanceTimersByTime(5);
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_no_progress_timeout' });
+  const writes = h.writes.length;
+  jest.advanceTimersByTime(300000);
+  expect(h.writes).toHaveLength(writes);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('silence and first-frame waits have distinct errors', async () => {
+  jest.useFakeTimers();
+  const a = runHarness({ timing: { firstFrameTimeoutMs: 20 } });
+  jest.advanceTimersByTime(20);
+  await expect(a.result).rejects.toMatchObject({ code: 'cursor_first_frame_timeout' });
+  const b = runHarness({ timing: { frameSilenceTimeoutMs: 30, noProgressTimeoutMs: 80 } });
+  b.send(updateFrame({ case: 'textDelta', value: { text: 'progress' } }));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(30);
+  await expect(b.result).rejects.toMatchObject({ code: 'cursor_frame_silence_timeout' });
+});
+
+test('cancel before protocol success preserves the cancellation reason', async () => {
+  const h = runHarness();
+  await settleMicrotasks();
+  const reason = new Error('user canceled');
+  await h.cancel(reason);
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await expect(h.result).rejects.toBe(reason);
+  expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('an abort after protocol success cannot replace success', async () => {
+  const signal = new AbortController();
+  const h = runHarness({ signal: signal.signal });
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  signal.abort(new Error('late cancel'));
+  await expect(h.result).resolves.toBeDefined();
+  expect(h.closeCount()).toBe(1);
+});
+
+test('a late openRun handle is closed without writing after cancellation', async () => {
+  const gate = Promise.withResolvers<void>();
+  const h = runHarness({}, gate.promise);
+  const reason = new Error('cancel before open');
+  await h.cancel(reason);
+  await expect(h.result).rejects.toBe(reason);
+  gate.resolve();
+  await settleMicrotasks();
+  expect(h.closeCount()).toBe(1);
+  expect(h.writes).toHaveLength(0);
 });

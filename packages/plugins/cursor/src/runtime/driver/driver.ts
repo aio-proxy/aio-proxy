@@ -5,14 +5,19 @@ import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
   ClientHeartbeatSchema,
+  type AgentServerMessage,
   type ConversationStateStructure,
+  type ExecServerMessage,
+  type InteractionUpdate,
   type McpToolDefinition,
 } from '../../gen/agent_pb';
+import type { ConnectFrame } from '../../wire/frame';
 import { CONNECT_END_STREAM_FLAG, frameConnectMessage, parseConnectEndStream } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { encodeExecResponse, encodeKvResponse, encodeMcpApprovalRejection } from '../client-messages';
 import { encodeInteractionReply } from '../interaction-query';
 import type { CursorCompletedToolCall } from '../mcp-call';
+import { CursorProtocolError } from '../protocol-error';
 import {
   commitCursorTools,
   createCursorStreamAccumulator,
@@ -23,6 +28,7 @@ import {
   mapMcpExec,
   type CursorStreamAccumulator,
 } from '../stream';
+import { createRunLifecycle } from './lifecycle';
 
 export type CursorRunTiming = {
   firstFrameTimeoutMs: number;
@@ -41,6 +47,37 @@ export type CursorTurnResult = {
   readonly blobStore: Map<string, Uint8Array>;
 };
 
+type CursorRunInput = Parameters<typeof runCursorTurn>[0];
+type RunLifecycle = ReturnType<typeof createRunLifecycle>;
+type StreamController = ReadableStreamDefaultController<LanguageModelV4StreamPart>;
+
+type CursorRunSession = {
+  accumulator: CursorStreamAccumulator;
+  activeRun: CursorH2Stream | undefined;
+  assistantText: string;
+  abortListener: (() => void) | undefined;
+  canceled: boolean;
+  conversationState: ConversationStateStructure;
+  handoffTimer: ReturnType<typeof setTimeout> | undefined;
+  heartbeat: ReturnType<typeof setInterval> | undefined;
+  input: CursorRunInput;
+  internalAbort: AbortController;
+  lastToolRevision: number;
+  lifecycle: RunLifecycle;
+  rejectResult: (error: unknown) => void;
+  sawCheckpoint: boolean;
+  settleResult: (result: CursorTurnResult) => void;
+  timing: CursorRunTiming;
+};
+
+const DEFAULT_TIMING: CursorRunTiming = {
+  firstFrameTimeoutMs: 120_000,
+  frameSilenceTimeoutMs: 120_000,
+  noProgressTimeoutMs: 240_000,
+  toolHandoffGraceMs: 100,
+  turnEndGraceMs: 500,
+};
+
 export function runCursorTurn(input: {
   readonly transport: CursorTransport;
   readonly accessToken: string;
@@ -53,219 +90,323 @@ export function runCursorTurn(input: {
   readonly heartbeatMs?: number;
   readonly timing?: Partial<CursorRunTiming>;
 }): { stream: ReadableStream<LanguageModelV4StreamPart>; result: Promise<CursorTurnResult> } {
-  const accumulator = createCursorStreamAccumulator(input.requestContextTools);
-  let conversationState = input.initialConversationState;
-  let sawCheckpoint = false;
-  let settle!: (result: CursorTurnResult) => void;
-  let fail!: (error: unknown) => void;
+  let resultLocked = false;
+  let settleResult!: (result: CursorTurnResult) => void;
+  let rejectResult!: (error: unknown) => void;
   const result = new Promise<CursorTurnResult>((resolve, reject) => {
-    settle = resolve;
-    fail = reject;
+    settleResult = (turn) => {
+      if (resultLocked) return;
+      resultLocked = true;
+      resolve(turn);
+    };
+    rejectResult = (error) => {
+      if (resultLocked) return;
+      resultLocked = true;
+      reject(error);
+    };
   });
-  let activeRun: CursorH2Stream | undefined;
-  let heartbeat: ReturnType<typeof setInterval> | undefined;
-  let canceled = false;
-  let cancelReason: unknown;
-  const stopHeartbeat = (): void => {
-    if (heartbeat === undefined) return;
-    clearInterval(heartbeat);
-    heartbeat = undefined;
-  };
-  const closeRun = (reason?: unknown): void => {
-    const run = activeRun;
-    activeRun = undefined;
-    run?.close(reason);
-  };
-  const handoff: ToolHandoff = {
-    accumulator,
+  const session: CursorRunSession = {
+    accumulator: createCursorStreamAccumulator(input.requestContextTools),
+    activeRun: undefined,
     assistantText: '',
-    blobStore: input.blobStore,
-    canceled: () => canceled,
-    closeRun,
-    fail: (error) => fail(error),
-    getActiveRun: () => activeRun,
-    getConversationState: () => conversationState,
-    graceMs: input.timing?.toolHandoffGraceMs ?? 100,
+    abortListener: undefined,
+    canceled: false,
+    conversationState: input.initialConversationState,
+    handoffTimer: undefined,
+    heartbeat: undefined,
+    input,
+    internalAbort: new AbortController(),
     lastToolRevision: 0,
-    settle: (turn) => settle(turn),
+    lifecycle: undefined as unknown as RunLifecycle,
+    rejectResult,
+    sawCheckpoint: false,
+    settleResult,
+    timing: { ...DEFAULT_TIMING, ...input.timing },
   };
-
   const stream = new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
-      handoff.controller = controller;
-      void (async () => {
-        try {
-          const h2 = await input.transport.openRun({
-            accessToken: input.accessToken,
-            ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl }),
-            ...(input.signal === undefined ? {} : { signal: input.signal }),
-          });
-          activeRun = h2;
-          if (canceled) {
-            closeRun(cancelReason);
-            return;
-          }
-          h2.write(frameConnectMessage(input.requestBytes));
-          if (input.heartbeatMs !== undefined && input.heartbeatMs > 0) {
-            heartbeat = setInterval(() => h2.write(heartbeatFrame()), input.heartbeatMs);
-          }
-          let endStreamError: string | undefined;
-          for await (const frame of h2.frames) {
-            if (handoff.terminated) break;
-            if ((frame.flags & CONNECT_END_STREAM_FLAG) !== 0) {
-              endStreamError = parseConnectEndStream(frame.payload).error?.message;
-              continue;
-            }
-            const message = fromBinary(AgentServerMessageSchema, frame.payload).message;
-            if (message.case === 'interactionUpdate') {
-              for (const part of mapInteractionUpdate(message.value, accumulator)) enqueuePart(handoff, part);
-              if (accumulator.sawTurnEnded && cursorToolState(accumulator).openCount > 0) {
-                throw new Error('Cursor turn ended with incomplete MCP tool call');
-              }
-            } else if (message.case === 'interactionQuery') {
-              h2.write(encodeInteractionReply(message.value));
-            } else if (message.case === 'kvServerMessage') {
-              const reply = encodeKvResponse(message.value, input.blobStore);
-              if (reply !== undefined) h2.write(reply);
-            } else if (message.case === 'execServerMessage') {
-              if (message.value.message.case === 'mcpArgs') {
-                if (message.value.message.value.smartModeApprovalOnly) {
-                  h2.write(encodeMcpApprovalRejection(message.value));
-                } else {
-                  for (const part of mapMcpExec(message.value.message.value, accumulator)) enqueuePart(handoff, part);
-                }
-              } else {
-                h2.write(encodeExecResponse(message.value, input.requestContextTools));
-              }
-            } else if (message.case === 'conversationCheckpointUpdate') {
-              conversationState = message.value;
-              sawCheckpoint = true;
-            }
-            updateHandoff(handoff);
-            if (handoff.terminated) break;
-          }
-          if (handoff.terminated) return;
-          const readyTools = cursorToolState(accumulator);
-          if (readyTools.openCount === 0 && readyTools.readyCount > 0) {
-            finishToolHandoff(handoff);
-            return;
-          }
-          const trailers = await h2.trailers;
-          if (endStreamError !== undefined) throw new Error(`Cursor stream error: ${endStreamError}`);
-          const grpcStatus = trailers['grpc-status'];
-          if (grpcStatus !== undefined && grpcStatus !== '0') {
-            throw new Error(`Cursor gRPC status ${grpcStatus}: ${trailers['grpc-message'] ?? ''}`);
-          }
-          if (cursorToolState(accumulator).openCount > 0) {
-            throw new Error('Cursor stream ended with incomplete MCP tool call');
-          }
-          if (!accumulator.sawTurnEnded) throw new Error('Cursor stream ended before turnEnded');
-          for (const part of finalizeCursorStream(accumulator)) enqueuePart(handoff, part);
-          controller.close();
-          settle({
-            conversationState,
-            checkpointUsable: sawCheckpoint && accumulator.toolCalls === 0,
-            pendingToolCalls: pendingToolCallsOf(accumulator),
-            toolCalls: cursorCompletedTools(accumulator),
-            assistantText: handoff.assistantText,
-            blobStore: input.blobStore,
-          });
-        } catch (error) {
-          if (handoff.terminated) return;
-          closeRun(error);
-          if (!canceled) controller.error(error);
-          fail(error);
-        } finally {
-          clearHandoff(handoff);
-          stopHeartbeat();
-          closeRun();
-        }
-      })();
+      bindRunLifecycle(session, controller);
+      listenForExternalAbort(session);
+      void pumpCursorRun(session, controller);
     },
     cancel(reason) {
-      canceled = true;
-      handoff.terminated = true;
-      cancelReason = reason === undefined ? new Error('Cursor stream canceled') : reason;
-      clearHandoff(handoff);
-      stopHeartbeat();
-      closeRun(cancelReason);
-      fail(cancelReason);
+      session.canceled = true;
+      session.lifecycle.fail(reason === undefined ? new Error('Cursor stream canceled') : reason);
     },
   });
   return { stream, result };
 }
 
-type ToolHandoff = {
-  accumulator: CursorStreamAccumulator;
-  assistantText: string;
-  blobStore: Map<string, Uint8Array>;
-  canceled: () => boolean;
-  closeRun: (reason?: unknown) => void;
-  controller?: ReadableStreamDefaultController<LanguageModelV4StreamPart>;
-  fail: (error: unknown) => void;
-  getActiveRun: () => CursorH2Stream | undefined;
-  getConversationState: () => ConversationStateStructure;
-  graceMs: number;
-  lastToolRevision: number;
-  settle: (result: CursorTurnResult) => void;
-  terminated?: boolean;
-  timer?: ReturnType<typeof setTimeout>;
-};
-
-function enqueuePart(handoff: ToolHandoff, part: LanguageModelV4StreamPart): void {
-  if (part.type === 'text-delta') handoff.assistantText += part.delta;
-  handoff.controller?.enqueue(part);
+function bindRunLifecycle(session: CursorRunSession, controller: StreamController): void {
+  session.lifecycle = createRunLifecycle({
+    limits: {
+      firstFrameTimeoutMs: session.timing.firstFrameTimeoutMs,
+      frameSilenceTimeoutMs: session.timing.frameSilenceTimeoutMs,
+      noProgressTimeoutMs: session.timing.noProgressTimeoutMs,
+      turnEndGraceMs: session.timing.turnEndGraceMs,
+    },
+    onFinish() {
+      finishCursorTurn(session, controller);
+    },
+    onFailure(error) {
+      safeCall(() => {
+        if (!session.canceled) controller.error(error);
+      });
+      session.rejectResult(error);
+    },
+    cleanup(error) {
+      clearHandoff(session);
+      stopHeartbeat(session);
+      const signal = session.input.signal;
+      if (signal !== undefined && session.abortListener !== undefined) {
+        signal.removeEventListener('abort', session.abortListener);
+        session.abortListener = undefined;
+      }
+      closeRun(session, error);
+      if (!session.internalAbort.signal.aborted) {
+        safeCall(() => session.internalAbort.abort(error));
+      }
+    },
+  });
 }
 
-function clearHandoff(handoff: ToolHandoff): void {
-  if (handoff.timer !== undefined) clearTimeout(handoff.timer);
-  handoff.timer = undefined;
+function listenForExternalAbort(session: CursorRunSession): void {
+  session.abortListener = () => {
+    session.lifecycle.fail(session.input.signal?.reason ?? new Error('Cursor stream canceled'));
+  };
+  const signal = session.input.signal;
+  if (signal === undefined) return;
+  if (signal.aborted) session.abortListener();
+  else signal.addEventListener('abort', session.abortListener);
 }
 
-function finishToolHandoff(handoff: ToolHandoff): void {
-  if (handoff.terminated) return;
-  handoff.terminated = true;
-  clearHandoff(handoff);
-  const calls = cursorCompletedTools(handoff.accumulator);
-  for (const part of commitCursorTools(handoff.accumulator)) enqueuePart(handoff, part);
-  for (const part of finalizeCursorStream(handoff.accumulator)) enqueuePart(handoff, part);
-  handoff.controller?.close();
-  handoff.settle({
-    conversationState: handoff.getConversationState(),
-    checkpointUsable: false,
+async function pumpCursorRun(session: CursorRunSession, controller: StreamController): Promise<void> {
+  try {
+    const h2 = await openCursorRun(session);
+    if (h2 === undefined) return;
+    for await (const frame of h2.frames) {
+      if (session.lifecycle.settled()) break;
+      if (handleConnectEnd(session, frame)) return;
+      dispatchServerMessage(session, controller, h2, fromBinary(AgentServerMessageSchema, frame.payload).message);
+      if (session.lifecycle.settled()) break;
+    }
+    if (session.lifecycle.settled()) return;
+    settleHttpEof(session, await h2.trailers);
+  } catch (error) {
+    if (session.lifecycle.settled()) return;
+    session.lifecycle.fail(error);
+  }
+}
+
+async function openCursorRun(session: CursorRunSession): Promise<CursorH2Stream | undefined> {
+  const input = session.input;
+  const signal =
+    input.signal === undefined
+      ? session.internalAbort.signal
+      : AbortSignal.any([session.internalAbort.signal, input.signal]);
+  const h2 = await input.transport.openRun({
+    accessToken: input.accessToken,
+    ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl }),
+    signal,
+  });
+  if (session.lifecycle.settled()) {
+    safeCall(() => h2.close());
+    return undefined;
+  }
+  session.activeRun = h2;
+  h2.write(frameConnectMessage(input.requestBytes));
+  startHeartbeat(session, h2);
+  return h2;
+}
+
+function handleConnectEnd(session: CursorRunSession, frame: ConnectFrame): boolean {
+  if ((frame.flags & CONNECT_END_STREAM_FLAG) === 0) return false;
+  const envelope = parseConnectEndStream(frame.payload);
+  if (envelope.error !== undefined) session.lifecycle.fail(new Error(envelope.error.message));
+  else session.lifecycle.finish('connect-end');
+  return true;
+}
+
+function settleHttpEof(session: CursorRunSession, trailers: Record<string, string>): void {
+  const grpcStatus = trailers['grpc-status'];
+  if (grpcStatus !== undefined && grpcStatus !== '0') {
+    session.lifecycle.fail(new Error(`Cursor gRPC status ${grpcStatus}: ${trailers['grpc-message'] ?? ''}`));
+    return;
+  }
+  const tools = cursorToolState(session.accumulator);
+  if (tools.openCount > 0) {
+    session.lifecycle.fail(
+      new CursorProtocolError('cursor_tool_input_incomplete', 'Cursor ended with incomplete MCP input.'),
+    );
+    return;
+  }
+  if (tools.readyCount > 0) {
+    session.lifecycle.finish('tool-handoff');
+    return;
+  }
+  if (session.accumulator.sawTurnEnded) {
+    session.lifecycle.finish('turn-ended');
+    return;
+  }
+  session.lifecycle.fail(new CursorProtocolError('cursor_stream_incomplete', 'Cursor stream ended before turnEnded'));
+}
+
+function dispatchServerMessage(
+  session: CursorRunSession,
+  controller: StreamController,
+  h2: CursorH2Stream,
+  message: AgentServerMessage['message'],
+): void {
+  if (message.case === 'interactionUpdate') {
+    handleInteractionUpdate(session, controller, message.value);
+    return;
+  }
+  if (message.case === 'interactionQuery') {
+    h2.write(encodeInteractionReply(message.value));
+    session.lifecycle.noteFrame(true);
+    return;
+  }
+  if (message.case === 'kvServerMessage') {
+    const reply = encodeKvResponse(message.value, session.input.blobStore);
+    if (reply !== undefined) h2.write(reply);
+    session.lifecycle.noteFrame(reply !== undefined);
+    return;
+  }
+  if (message.case === 'execServerMessage') {
+    handleExecMessage(session, controller, h2, message.value);
+    return;
+  }
+  if (message.case === 'conversationCheckpointUpdate') {
+    session.conversationState = message.value;
+    session.sawCheckpoint = true;
+  }
+  session.lifecycle.noteFrame(false);
+}
+
+function handleInteractionUpdate(
+  session: CursorRunSession,
+  controller: StreamController,
+  update: InteractionUpdate,
+): void {
+  const before = cursorToolState(session.accumulator).progressRevision;
+  for (const part of mapInteractionUpdate(update, session.accumulator)) enqueuePart(session, controller, part);
+  session.lifecycle.noteFrame(isInteractionProgress(update, before, session.accumulator));
+  if (session.accumulator.sawTurnEnded) {
+    clearHandoff(session);
+    session.lifecycle.turnEnded();
+    return;
+  }
+  armHandoff(session);
+}
+
+function handleExecMessage(
+  session: CursorRunSession,
+  controller: StreamController,
+  h2: CursorH2Stream,
+  exec: ExecServerMessage,
+): void {
+  if (exec.message.case === 'mcpArgs') {
+    if (exec.message.value.smartModeApprovalOnly) {
+      h2.write(encodeMcpApprovalRejection(exec));
+      session.lifecycle.noteFrame(true);
+      return;
+    }
+    const before = cursorToolState(session.accumulator).progressRevision;
+    for (const part of mapMcpExec(exec.message.value, session.accumulator)) enqueuePart(session, controller, part);
+    session.lifecycle.noteFrame(cursorToolState(session.accumulator).progressRevision > before);
+    armHandoff(session);
+    return;
+  }
+  h2.write(encodeExecResponse(exec, session.input.requestContextTools));
+  session.lifecycle.noteFrame(true);
+}
+
+function finishCursorTurn(session: CursorRunSession, controller: StreamController): void {
+  const current = cursorToolState(session.accumulator);
+  if (current.openCount > 0) {
+    throw new CursorProtocolError('cursor_tool_input_incomplete', 'Cursor ended with incomplete MCP input.');
+  }
+  const calls = cursorCompletedTools(session.accumulator);
+  for (const part of commitCursorTools(session.accumulator)) enqueuePart(session, controller, part);
+  for (const part of finalizeCursorStream(session.accumulator)) enqueuePart(session, controller, part);
+  controller.close();
+  session.settleResult({
+    conversationState: session.conversationState,
+    checkpointUsable: session.sawCheckpoint && calls.length === 0,
     pendingToolCalls: new Map(calls.map((call) => [call.outerCallId, call.nestedToolCallId])),
     toolCalls: calls,
-    assistantText: handoff.assistantText,
-    blobStore: handoff.blobStore,
+    assistantText: session.assistantText,
+    blobStore: session.input.blobStore,
   });
-  handoff.getActiveRun()?.end();
-  handoff.closeRun();
+  try {
+    session.activeRun?.end();
+  } catch {
+    /* success is already committed */
+  }
 }
 
-function updateHandoff(handoff: ToolHandoff): void {
-  const current = cursorToolState(handoff.accumulator);
-  if (current.revision === handoff.lastToolRevision) return;
-  handoff.lastToolRevision = current.revision;
-  clearHandoff(handoff);
+function armHandoff(session: CursorRunSession): void {
+  if (session.accumulator.sawTurnEnded || session.lifecycle.settled()) return;
+  const current = cursorToolState(session.accumulator);
+  if (current.revision === session.lastToolRevision) return;
+  session.lastToolRevision = current.revision;
+  clearHandoff(session);
   if (current.openCount > 0 || current.readyCount === 0) return;
-  handoff.timer = setTimeout(() => {
-    handoff.timer = undefined;
-    try {
-      const latest = cursorToolState(handoff.accumulator);
-      if (latest.openCount === 0 && latest.readyCount > 0) finishToolHandoff(handoff);
-    } catch (error) {
-      if (handoff.terminated) return;
-      handoff.terminated = true;
-      clearHandoff(handoff);
-      handoff.closeRun(error);
-      if (!handoff.canceled()) handoff.controller?.error(error);
-      handoff.fail(error);
-    }
-  }, handoff.graceMs);
+  session.handoffTimer = setTimeout(() => {
+    session.handoffTimer = undefined;
+    session.lifecycle.finish('tool-handoff');
+  }, session.timing.toolHandoffGraceMs);
 }
 
-function pendingToolCallsOf(accumulator: CursorStreamAccumulator): Map<string, string> {
-  return new Map(cursorCompletedTools(accumulator).map((call) => [call.outerCallId, call.nestedToolCallId]));
+function startHeartbeat(session: CursorRunSession, h2: CursorH2Stream): void {
+  const heartbeatMs = session.input.heartbeatMs;
+  if (heartbeatMs === undefined || heartbeatMs <= 0) return;
+  session.heartbeat = setInterval(() => {
+    try {
+      h2.write(heartbeatFrame());
+    } catch (error) {
+      session.lifecycle.fail(error);
+    }
+  }, heartbeatMs);
+}
+
+function stopHeartbeat(session: CursorRunSession): void {
+  if (session.heartbeat === undefined) return;
+  clearInterval(session.heartbeat);
+  session.heartbeat = undefined;
+}
+
+function clearHandoff(session: CursorRunSession): void {
+  if (session.handoffTimer === undefined) return;
+  clearTimeout(session.handoffTimer);
+  session.handoffTimer = undefined;
+}
+
+function closeRun(session: CursorRunSession, reason?: unknown): void {
+  const run = session.activeRun;
+  session.activeRun = undefined;
+  try {
+    run?.close(reason);
+  } catch {
+    /* cleanup must not throw */
+  }
+}
+
+function enqueuePart(session: CursorRunSession, controller: StreamController, part: LanguageModelV4StreamPart): void {
+  if (part.type === 'text-delta') session.assistantText += part.delta;
+  controller.enqueue(part);
+}
+
+function isInteractionProgress(
+  update: InteractionUpdate,
+  beforeRevision: number,
+  accumulator: CursorStreamAccumulator,
+): boolean {
+  const message = update.message;
+  if (message.case === 'textDelta') return (message.value.text?.length ?? 0) > 0;
+  if (message.case === 'thinkingDelta') return (message.value.text?.length ?? 0) > 0;
+  if (message.case === 'tokenDelta') return (message.value.tokens ?? 0) > 0;
+  return cursorToolState(accumulator).progressRevision > beforeRevision;
 }
 
 function heartbeatFrame(): Uint8Array {
@@ -273,4 +414,12 @@ function heartbeatFrame(): Uint8Array {
     message: { case: 'clientHeartbeat', value: create(ClientHeartbeatSchema, {}) },
   });
   return frameConnectMessage(toBinary(AgentClientMessageSchema, message));
+}
+
+function safeCall(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    /* terminal callbacks must not throw */
+  }
 }
