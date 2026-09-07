@@ -194,6 +194,25 @@ test('treats nonpositive window_duration_mins as a rolling window of unknown len
   });
 });
 
+// `validateOAuthQuotaSnapshot` rejects a non-positive or unsafe `windowMinutes` and throws away the
+// whole snapshot with it, so a duration that cannot round into that contract reports no length.
+test('keeps a window whose duration rounds outside the reportable range, without its length', async () => {
+  const snapshot = await readMuseCodeQuota(context(), {
+    fetch: async () =>
+      Response.json({
+        is_subs_active: true,
+        subs_usage: { window: { used_percent: 25, window_duration_mins: 0.2 } },
+      }),
+  });
+  expect(snapshot.items).toEqual([
+    {
+      id: '0m',
+      displayName: { default: '0.2 minutes', 'zh-Hans': '0.2 分钟' },
+      remainingRatio: 0.75,
+    },
+  ]);
+});
+
 function context() {
   const port: CredentialPort<MuseCodeCredential> = {
     read: async () => ({ revision: 1, value: credential }),

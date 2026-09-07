@@ -94,6 +94,11 @@ function usedPercent(value: unknown): number | undefined {
  * The reported duration names the window and also measures it, so it is carried through as
  * `windowMinutes`: without it the dashboard knows when the window ends but not when it started, and
  * cannot place the even-burn mark. An unusable duration leaves both the name and the length generic.
+ *
+ * The length is only reported when the rounded value survives as a positive safe integer, which is
+ * what `validateOAuthQuotaSnapshot` accepts. A sub-half-minute or absurdly large duration would
+ * otherwise round to something the validator rejects, and that failure discards the whole snapshot
+ * rather than the one field it cannot use.
  */
 function windowIdentity(minutes: unknown): {
   readonly id: string;
@@ -103,14 +108,15 @@ function windowIdentity(minutes: unknown): {
   if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
     return { id: 'window', displayName: ROLLING_WINDOW };
   }
-  const windowMinutes = Math.round(minutes);
-  const id = `${windowMinutes}m`;
+  const rounded = Math.round(minutes);
+  const length = Number.isSafeInteger(rounded) && rounded > 0 ? { windowMinutes: rounded } : {};
+  const id = `${rounded}m`;
   if (minutes >= 60) {
     const hours = minutes / 60;
     return {
       id,
       displayName: { default: hours === 1 ? `${hours} hour` : `${hours} hours`, 'zh-Hans': `${hours} 小时` },
-      windowMinutes,
+      ...length,
     };
   }
   return {
@@ -119,7 +125,7 @@ function windowIdentity(minutes: unknown): {
       default: minutes === 1 ? `${minutes} minute` : `${minutes} minutes`,
       'zh-Hans': `${minutes} 分钟`,
     },
-    windowMinutes,
+    ...length,
   };
 }
 
