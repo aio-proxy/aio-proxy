@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
-  type AioModelMessage,
-  type AioStreamPart,
   DashboardEventSchema,
   DashboardUsageOverviewResponseSchema,
   NonNegativeIntegerStringSchema,
@@ -151,8 +149,3 @@ test.each(['-1', '01'])('rejects non-canonical aggregate integer %s', (value) =>
 test('rejects numeric usage overview aggregates', () => {
   expect(NonNegativeIntegerStringSchema.safeParse(1).success).toBe(false);
 });
-
-const _message: AioModelMessage = { role: 'user', content: 'hello' };
-const _part: AioStreamPart = { type: 'text-delta', textDelta: 'hi' };
-void _message;
-void _part;

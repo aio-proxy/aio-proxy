@@ -1,4 +1,10 @@
-import type { LocalizedText, OAuthLoginContext, OAuthLoginResult, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import {
+  abortableSleep,
+  type LocalizedText,
+  type OAuthLoginContext,
+  type OAuthLoginResult,
+  type RuntimeFetch,
+} from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { cursorIdentity, cursorTokenExpiry } from '../jwt';
@@ -98,20 +104,4 @@ async function completeLogin(
     },
     expiresAt,
   };
-}
-
-function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timeout);
-      signal.removeEventListener('abort', onAbort);
-      reject(signal.reason);
-    };
-    const timeout = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
 }

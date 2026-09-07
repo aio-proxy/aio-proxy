@@ -1,11 +1,12 @@
-import type {
-  AccountContext,
-  LocalizedText,
-  OAuthQuotaItem,
-  OAuthQuotaResetCredit,
-  OAuthQuotaResetCredits,
-  OAuthQuotaSnapshot,
-  RuntimeFetch,
+import {
+  dedupeQuotaItemIds,
+  type AccountContext,
+  type LocalizedText,
+  type OAuthQuotaItem,
+  type OAuthQuotaResetCredit,
+  type OAuthQuotaResetCredits,
+  type OAuthQuotaSnapshot,
+  type RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -36,7 +37,7 @@ export async function readOpenAIChatGPTQuota(
   ]);
   context.signal.throwIfAborted();
 
-  const items = dedupeItemIds([...laneItems(usage), ...additionalItems(usage)]);
+  const items = dedupeQuotaItemIds([...laneItems(usage), ...additionalItems(usage)]);
   if (items.length === 0) throw new Error('ChatGPT usage response contains no rate limit windows');
   const plan = planText(Reflect.get(usage, 'plan_type'));
   return {
@@ -198,23 +199,6 @@ function planText(value: unknown): string | undefined {
     .filter((part) => part !== '')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-// The core validator rejects duplicate item ids outright, so two entries naming the same metered
-// feature must not both survive. Every id handed out is reserved, generated ones included.
-function dedupeItemIds(items: readonly OAuthQuotaItem[]): readonly OAuthQuotaItem[] {
-  const taken = new Set<string>();
-  return items.map((item) => {
-    if (!taken.has(item.id)) {
-      taken.add(item.id);
-      return item;
-    }
-    let count = 2;
-    while (taken.has(`${item.id}-${count}`)) count += 1;
-    const id = `${item.id}-${count}`;
-    taken.add(id);
-    return { ...item, id };
-  });
 }
 
 function slugify(value: string): string {

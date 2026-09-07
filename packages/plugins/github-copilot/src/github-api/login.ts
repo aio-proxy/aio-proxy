@@ -1,4 +1,4 @@
-import type { LocalizedText, OAuthLoginContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { abortableSleep, type LocalizedText, type OAuthLoginContext, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import {
   deviceCodeResponseSchema,
@@ -134,22 +134,6 @@ function appendDeviceCode(text: LocalizedText, code: string): LocalizedText {
   return Object.fromEntries(
     Object.entries(text).map(([locale, value]) => [locale, `${value} ${code}`]),
   ) as LocalizedText;
-}
-
-function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void> {
-  signal.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(done, milliseconds);
-    signal.addEventListener('abort', aborted, { once: true });
-    function done() {
-      signal.removeEventListener('abort', aborted);
-      resolve();
-    }
-    function aborted() {
-      clearTimeout(timer);
-      reject(signal.reason);
-    }
-  });
 }
 
 async function fetchGitHubPrimaryEmail(

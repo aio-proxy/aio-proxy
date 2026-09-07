@@ -87,10 +87,6 @@ export function restoreAliasRow(rows: readonly AliasRow[], id: string): readonly
   return rows.filter((row) => row.id !== id);
 }
 
-export function promoteInheritedRow(rows: readonly AliasRow[], id: string): readonly AliasRow[] {
-  return rows.map((row) => (row.id === id && row.origin === 'inherited' ? { ...row, origin: 'authored' } : row));
-}
-
 /** Persist must promote an inherited row the moment any field changes, or the filter that
  * drops `origin === 'inherited'` throws the edit away (preserve, variants, rename). */
 export function promoteEditedInheritedRows(
