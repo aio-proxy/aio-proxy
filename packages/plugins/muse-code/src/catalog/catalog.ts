@@ -63,16 +63,17 @@ export async function discoverMuseCodeModels(
   } catch {
     throw new MuseCodeCatalogError('Muse Code model discovery returned invalid JSON', true);
   }
-  const language: ModelCatalog['language'] = [];
+  const language: ModelCatalog['language'][number][] = [];
   const seen = new Set<string>();
   for (const value of readData(payload)) {
     if (!isPlainObject(value)) continue;
-    const rawId = value.id;
+    const rawId = value['id'];
     if (typeof rawId !== 'string') continue;
     const id = rawId.trim();
     if (!id.startsWith(SPARK_PREFIX) || seen.has(id)) continue;
     seen.add(id);
-    const displayName = curatedNames.get(id) ?? readDisplayName(value.name) ?? readDisplayName(value.display_name);
+    const displayName =
+      curatedNames.get(id) ?? readDisplayName(value['name']) ?? readDisplayName(value['display_name']);
     language.push({ id, ...(displayName === undefined ? {} : { displayName }), extra: MODEL_METADATA });
   }
   return emptyCatalog(language);
@@ -84,10 +85,10 @@ export function initialMuseCodeCatalogFallback(error: unknown): ModelCatalog | u
 }
 
 function readData(payload: unknown): readonly unknown[] {
-  if (!isPlainObject(payload) || !Array.isArray(payload.data)) {
+  if (!isPlainObject(payload) || !Array.isArray(payload['data'])) {
     throw new MuseCodeCatalogError('Muse Code model discovery returned invalid data', true);
   }
-  return payload.data;
+  return payload['data'];
 }
 
 function readDisplayName(value: unknown): string | undefined {
