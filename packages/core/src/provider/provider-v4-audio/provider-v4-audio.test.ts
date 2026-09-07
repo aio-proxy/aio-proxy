@@ -260,7 +260,10 @@ describe('createProviderV4TranscribeInvoke', () => {
   // as `.mp4` routinely arrives declared `video/mp4`. Sniffing cannot recover it
   // (the `ftyp` box sits past where the SDK looks), and both are supported
   // transcription formats upstream, so the declared type must win here too.
-  test.each(['video/mp4', 'video/webm'] as const)('keeps the dual-purpose container type %p', async (mediaType) => {
+  test.each([
+    ['video/mp4', 'audio/mp4'],
+    ['video/webm', 'audio/webm'],
+  ] as const)('keeps the dual-purpose container type %p', async (mediaType, expected) => {
     const calls: TranscriptionCall[] = [];
     const invoke = createProviderV4TranscribeInvoke(
       'stub',
@@ -269,7 +272,67 @@ describe('createProviderV4TranscribeInvoke', () => {
 
     await invoke({ audio: UNSNIFFABLE_BYTES, mediaType }, { modelId: 'whisper-1' });
 
-    expect(calls[0]?.mediaType).toBe(mediaType);
+    expect(calls[0]?.mediaType).toBe(expected);
+  });
+
+  // @ai-sdk/openai turns the media type into the upload's filename extension, and
+  // its table knows only a handful of subtypes — `audio/x-mp3` forwarded as
+  // written becomes `audio.x-mp3`, which OpenAI rejects. Each alias must reach
+  // the transport as the spelling that table maps correctly.
+  test.each([
+    ['audio/x-m4a', 'audio/mp4'],
+    ['audio/m4a', 'audio/mp4'],
+    ['audio/x-mp3', 'audio/mpeg'],
+    ['audio/mp3', 'audio/mpeg'],
+    ['audio/mpga', 'audio/mpeg'],
+    ['audio/wave', 'audio/wav'],
+    ['AUDIO/X-FLAC', 'audio/flac'],
+  ] as const)('normalizes the supported alias %p to %p', async (mediaType, expected) => {
+    const calls: TranscriptionCall[] = [];
+    const invoke = createProviderV4TranscribeInvoke(
+      'stub',
+      transcriptionProvider({}, (call) => calls.push(call)) as never,
+    );
+
+    await invoke({ audio: UNSNIFFABLE_BYTES, mediaType }, { modelId: 'whisper-1' });
+
+    expect(calls[0]?.mediaType).toBe(expected);
+  });
+
+  // An `audio/` prefix is not by itself evidence of a format OpenAI accepts, and
+  // honouring an unknown subtype names the upload `audio.aiff` / `audio.*`.
+  test.each(['audio/aiff', 'audio/*', 'audio/vnd.wave;codec=1'] as const)(
+    'ignores the unsupported audio subtype %p and lets the SDK sniff',
+    async (mediaType) => {
+      const calls: TranscriptionCall[] = [];
+      const invoke = createProviderV4TranscribeInvoke(
+        'stub',
+        transcriptionProvider({}, (call) => calls.push(call)) as never,
+      );
+
+      await invoke({ audio: WAV_BYTES, mediaType }, { modelId: 'whisper-1' });
+
+      expect(calls[0]?.mediaType).toBe('audio/wav');
+    },
+  );
+
+  // The declared type is consulted first, so an alias the table maps to a
+  // container must not shadow a filename that names the same one differently.
+  test('prefers the normalized declared alias over the filename', async () => {
+    const calls: TranscriptionCall[] = [];
+    const invoke = createProviderV4TranscribeInvoke(
+      'stub',
+      transcriptionProvider({}, (call) => calls.push(call)) as never,
+    );
+
+    await invoke(
+      { audio: UNSNIFFABLE_BYTES, mediaType: 'audio/x-m4a', filename: 'clip.webm' },
+      {
+        modelId: 'whisper-1',
+      },
+    );
+
+    expect(calls[0]?.mediaType).toBe('audio/mp4');
   });
 
   // A part with no `Content-Type`, or the generic one, still names the file. For

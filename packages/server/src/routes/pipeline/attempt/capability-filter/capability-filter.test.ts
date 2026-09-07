@@ -151,6 +151,32 @@ test('a cataloged audio id keeps its direction even when both transports are att
   expect(filterCandidatesByCapability([tts, stt], 'transcription', noPolicy)).toEqual([stt]);
 });
 
+test('a language id in an audio-aware catalog stays out of audio dispatch', () => {
+  // Transports are attached per PROVIDER, so an OAuth plugin cataloging one TTS
+  // model beside a language model gets a provider-level speech transport that says
+  // nothing about `gpt-4o`. A model-scoped fallback would read that transport as
+  // proof the language model speaks and dispatch `speechModel('gpt-4o')`. Once the
+  // catalog names audio for ANY id, it is the authority for every id.
+  const transports = {
+    speech: {
+      invoke() {
+        throw new Error('unused');
+      },
+    },
+    transcription: {
+      invoke() {
+        throw new Error('unused');
+      },
+    },
+  };
+  const index: ModelCapabilityIndex = { 'gpt-4o': new Set(['language']), 'tts-1': new Set(['speech']) };
+  const language = candidate('gpt-4o', index, 'weighted_random', transports);
+  const tts = candidate('tts-1', index, 'weighted_random', transports);
+
+  expect(filterCandidatesByCapability([language, tts], 'speech', noPolicy)).toEqual([tts]);
+  expect(filterCandidatesByCapability([language], 'transcription', noPolicy)).toEqual([]);
+});
+
 function candidate(
   modelId: string,
   capabilityIndex: ModelCapabilityIndex,
