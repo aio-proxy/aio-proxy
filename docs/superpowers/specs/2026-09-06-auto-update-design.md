@@ -1,12 +1,16 @@
 # Automatic aio-proxy updates
 
 Date: 2026-09-06
-Status: accepted
+Status: superseded
 
-This spec supersedes the "no background upgrade" non-goal in
+Superseded by `docs/superpowers/specs/2026-09-07-update-notify-design.md`.
+Background install without confirmation is not the product.
+
+This spec superseded the "no background upgrade" non-goal in
 `docs/superpowers/specs/2026-07-31-cli-upgrade-design.md`. Explicit
-`aio-proxy upgrade` remains the only installer. Automatic updates are an
-opt-in scheduler that calls that same command.
+`aio-proxy upgrade` remains the only installer. The installer, managed
+restart, and Cellar/pnpm ExecStart rules in Architecture still apply;
+only the scheduler-installs-on-tick product decision does not.
 
 ## Problem
 
