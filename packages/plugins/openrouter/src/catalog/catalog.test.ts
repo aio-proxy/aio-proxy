@@ -55,6 +55,11 @@ describe('OpenRouter model catalog', () => {
       extra: { protocol: 'openai-compatible' },
     });
     expect(initialOpenRouterCatalogFallback(new OpenRouterCatalogError('unauthorized', false, 401))).toBeUndefined();
+    expect(initialOpenRouterCatalogFallback(new DOMException('cancelled', 'AbortError'))).toBeUndefined();
+    const hostTimeout = Object.assign(new Error('OAUTH_CATALOG_DISCOVERY_TIMEOUT'), {
+      name: 'OAuthCatalogDiscoveryTimeoutError',
+    });
+    expect(initialOpenRouterCatalogFallback(hostTimeout)?.language).toEqual(fallback?.language);
   });
 
   test('treats a successful empty language catalog as authoritative', async () => {
