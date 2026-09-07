@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { processStarttime } from '../file-lock/process-identity';
 import { mergeUpdateCheckState, readUpdateCheckState, writeUpdateCheckState } from './update-check';
 import { withUpdateCheckLock } from './update-check-lock';
 
@@ -91,7 +92,7 @@ test('mergeUpdateCheckState uses the incoming check when nothing is on disk', ()
   });
 });
 
-test('withUpdateCheckLock serializes overlapping writers', async () => {
+test.serial('withUpdateCheckLock serializes overlapping writers', async () => {
   const dir = home();
   try {
     const order: number[] = [];
@@ -99,16 +100,20 @@ test('withUpdateCheckLock serializes overlapping writers', async () => {
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    let enteredFirst!: () => void;
+    const firstEntered = new Promise<void>((resolve) => {
+      enteredFirst = resolve;
+    });
     const first = withUpdateCheckLock(async () => {
+      enteredFirst();
       order.push(1);
       await firstGate;
       order.push(2);
     });
-    await Promise.resolve();
+    await firstEntered;
     const second = withUpdateCheckLock(async () => {
       order.push(3);
     });
-    await Promise.resolve();
     expect(order).toEqual([1]);
     releaseFirst();
     await Promise.all([first, second]);
@@ -118,7 +123,7 @@ test('withUpdateCheckLock serializes overlapping writers', async () => {
   }
 });
 
-test(
+test.serial(
   'withUpdateCheckLock does not steal a live-owner lock from mtime',
   async () => {
     const dir = home();
@@ -137,7 +142,7 @@ test(
   { timeout: 15_000 },
 );
 
-test(
+test.serial(
   'withUpdateCheckLock steals a lock whose owner pid is dead',
   async () => {
     const dir = home();
@@ -158,7 +163,46 @@ test(
   { timeout: 15_000 },
 );
 
-test('withUpdateCheckLock does not unlink a lock owned by another pid', async () => {
+test.serial(
+  'withUpdateCheckLock steals a live pid whose recorded starttime does not match',
+  async () => {
+    const dir = home();
+    const path = join(dir, 'update-check.json');
+    const lockPath = `${path}.lock`;
+    const child = Bun.spawn(['sleep', '30']);
+    try {
+      writeFileSync(lockPath, `${child.pid}\nSat Jan  1 00:00:00 2000\n`);
+      await expect(withUpdateCheckLock(async () => 'ok', path)).resolves.toBe('ok');
+      expect(existsSync(lockPath)).toBe(false);
+    } finally {
+      child.kill();
+      await child.exited;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test.serial(
+  'withUpdateCheckLock does not steal a live pid with a matching starttime',
+  async () => {
+    const dir = home();
+    const path = join(dir, 'update-check.json');
+    const lockPath = `${path}.lock`;
+    try {
+      const starttime = await processStarttime(process.pid);
+      expect(starttime).not.toBeNull();
+      writeFileSync(lockPath, `${process.pid}\n${starttime}\n`);
+      await expect(withUpdateCheckLock(async () => 'held', path)).rejects.toThrow();
+      expect(readFileSync(lockPath, 'utf8')).toBe(`${process.pid}\n${starttime}\n`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test.serial('withUpdateCheckLock does not unlink a lock owned by another pid', async () => {
   const dir = home();
   const path = join(dir, 'update-check.json');
   const lockPath = `${path}.lock`;

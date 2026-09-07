@@ -1,45 +1,60 @@
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { processIsAlive } from '../file-lock/process-identity';
+import { processIsAlive, processStarttime } from '../file-lock/process-identity';
 import { updateCheckPath } from '../paths';
 
 const RETRY_MS = 20;
 const MAX_WAIT_MS = 5_000;
 
-const readLockPid = (lockPath: string): number | undefined => {
+type LockIdentity = {
+  readonly pid: number;
+  readonly starttime?: string;
+};
+
+const readLockIdentity = (lockPath: string): LockIdentity | undefined => {
   try {
-    const pid = Number.parseInt(readFileSync(lockPath, 'utf8').trim(), 10);
-    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+    const raw = readFileSync(lockPath, 'utf8');
+    const firstNl = raw.indexOf('\n');
+    const pidLine = (firstNl === -1 ? raw : raw.slice(0, firstNl)).trim();
+    const pid = Number.parseInt(pidLine, 10);
+    if (!Number.isInteger(pid) || pid <= 0) return undefined;
+    const starttime = firstNl === -1 ? '' : raw.slice(firstNl + 1).trim();
+    return starttime === '' ? { pid } : { pid, starttime };
   } catch {
     return undefined;
   }
 };
 
-const tryUnlinkIf = (lockPath: string, reclaimEmpty: boolean): void => {
-  const pid = readLockPid(lockPath);
-  if (pid !== undefined) {
-    if (processIsAlive(pid)) return;
+const tryUnlinkIf = async (lockPath: string, reclaimEmpty: boolean, skipStarttime: boolean): Promise<boolean> => {
+  const identity = readLockIdentity(lockPath);
+  if (identity !== undefined) {
+    if (processIsAlive(identity.pid)) {
+      if (identity.starttime === undefined || skipStarttime) return true;
+      const live = await processStarttime(identity.pid);
+      if (live === null || live === identity.starttime) return true;
+    }
   } else if (!reclaimEmpty) {
-    return;
+    return false;
   }
   try {
     unlinkSync(lockPath);
   } catch {
     // Another waiter won the unlink race.
   }
+  return false;
 };
 
 export const withUpdateCheckLock = async <T>(fn: () => Promise<T>, path: string = updateCheckPath()): Promise<T> => {
   const lockPath = `${path}.lock`;
   mkdirSync(dirname(lockPath), { recursive: true });
   const started = Date.now();
-  const owner = `${process.pid}\n`;
   let fd: number | undefined;
+  let liveOwnerVerified = false;
   while (fd === undefined) {
     try {
       fd = openSync(lockPath, 'wx');
-      writeSync(fd, owner);
+      writeSync(fd, `${process.pid}\n`);
     } catch (error) {
       if (fd !== undefined) {
         closeSync(fd);
@@ -53,16 +68,19 @@ export const withUpdateCheckLock = async <T>(fn: () => Promise<T>, path: string 
       }
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const waited = Date.now() - started > MAX_WAIT_MS;
-      tryUnlinkIf(lockPath, waited);
+      liveOwnerVerified = (await tryUnlinkIf(lockPath, waited, liveOwnerVerified)) || liveOwnerVerified;
       if (Date.now() - started > MAX_WAIT_MS + 1_000) throw error;
       await Bun.sleep(RETRY_MS);
     }
   }
+  const starttime = (await processStarttime(process.pid)) ?? undefined;
+  if (starttime !== undefined) writeSync(fd, `${process.pid}\n${starttime}\n`, 0);
   try {
     return await fn();
   } finally {
     closeSync(fd);
-    if (readLockPid(lockPath) === process.pid) {
+    const current = readLockIdentity(lockPath);
+    if (current?.pid === process.pid && current.starttime === starttime) {
       try {
         unlinkSync(lockPath);
       } catch {
