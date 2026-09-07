@@ -37,7 +37,13 @@ export type QuotaPace = {
 };
 
 /**
- * A steady-burn reference point for one window, or `undefined` when the data cannot support one.
+ * How far off the even burn a window has to be before the marker is worth drawing. Inside this band
+ * the tick would sit on top of the fill edge and say nothing the bar does not already show.
+ */
+const ON_TRACK_PERCENT = 2;
+
+/**
+ * A steady-burn reference point for one window, or `undefined` when there is nothing worth marking.
  *
  * Both ends of the window have to be known: `resetsAt` alone says when it ends, and only
  * `windowMinutes` says when it started. A reset already in the past, or one further out than a whole
@@ -51,5 +57,7 @@ export const quotaPace = (item: ApplicableQuotaItem, now: number = Date.now()): 
   const remainingMs = resetsAt - now;
   if (remainingMs <= 0 || remainingMs > durationMs) return undefined;
   const expectedPercent = (remainingMs / durationMs) * 100;
-  return { expectedPercent, overspent: item.remainingRatio * 100 < expectedPercent };
+  const margin = item.remainingRatio * 100 - expectedPercent;
+  if (Math.abs(margin) <= ON_TRACK_PERCENT) return undefined;
+  return { expectedPercent, overspent: margin < 0 };
 };

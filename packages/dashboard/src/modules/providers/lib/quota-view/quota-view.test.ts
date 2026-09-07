@@ -52,9 +52,18 @@ const now = Date.parse('2026-01-10T12:00:00Z');
 const window = { id: 'five-hour', displayName: 'Five hour', resetsAt: now + 4 * HOUR, windowMinutes: 300 } as const;
 
 test('marks a window spent faster than evenly as overspent, and one spent slower as on track', () => {
-  expect(quotaPace({ ...window, remainingRatio: 0.8 }, now)).toEqual({ expectedPercent: 80, overspent: false });
   expect(quotaPace({ ...window, remainingRatio: 0.5 }, now)).toEqual({ expectedPercent: 80, overspent: true });
   expect(quotaPace({ ...window, remainingRatio: 0.95 }, now)).toEqual({ expectedPercent: 80, overspent: false });
+});
+
+// Within a couple of percent the tick would sit on the fill edge and restate what the bar shows.
+test('draws no marker for a window burning close enough to evenly', () => {
+  expect(quotaPace({ ...window, remainingRatio: 0.8 }, now)).toBeUndefined();
+  expect(quotaPace({ ...window, remainingRatio: 0.82 }, now)).toBeUndefined();
+  expect(quotaPace({ ...window, remainingRatio: 0.78 }, now)).toBeUndefined();
+  // Just outside the band the marker returns, so the suppression is a band and not a rounding rule.
+  expect(quotaPace({ ...window, remainingRatio: 0.77 }, now)?.overspent).toBe(true);
+  expect(quotaPace({ ...window, remainingRatio: 0.83 }, now)?.overspent).toBe(false);
 });
 
 test('has no pace without both ends of the window, or when the reset does not fit inside one', () => {

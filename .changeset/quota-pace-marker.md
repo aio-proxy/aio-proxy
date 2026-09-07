@@ -17,8 +17,10 @@ dashboard: mark the even-burn position on each subscription quota bar
 
 A quota bar whose window length is known now draws a 1px tick where a perfectly even burn would
 have left the allowance by now. The tick is outlined in the track color on both sides so it stays
-readable over the fill, and it turns red when the window is being spent faster than evenly. The
-reading is also spoken by the bar's accessible value text, so it is not a colour-only signal.
+readable over the fill, and it turns red when the window is being spent faster than evenly. A
+window burning within two percent of even draws no tick, since there the marker would sit on the
+fill edge and restate what the bar already shows. The reading is also spoken by the bar's
+accessible value text, so it is not a colour-only signal.
 
 plugin-sdk: `OAuthQuotaItem` gains an optional `windowMinutes`, the whole-minute length of the
 window a `resetsAt` closes. It is what makes the even-burn position computable; a plugin should
