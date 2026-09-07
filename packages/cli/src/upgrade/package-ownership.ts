@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -53,11 +53,46 @@ const packageBinTargets = (packageDir: string): readonly string[] => {
   }
 };
 
+// pnpm writes a regular shell launcher (cmd-shim). realpath is the shim
+// itself; ownership is an exec target that resolves inside the package.
+const MAX_SHIM_BYTES = 64 * 1024;
+
+const readLauncherShim = (binPath: string): string | undefined => {
+  try {
+    const raw = readFileSync(binPath);
+    if (raw.length === 0 || raw.length > MAX_SHIM_BYTES) return undefined;
+    if (raw[0] !== 0x23 || raw[1] !== 0x21) return undefined;
+    return raw.toString('utf8');
+  } catch {
+    return undefined;
+  }
+};
+
+const shimReferencesPackageBin = (binPath: string, packageDir: string): boolean => {
+  const text = readLauncherShim(binPath);
+  if (text === undefined) return false;
+  const launcherDir = dirname(binPath);
+  return packageBinTargets(packageDir).some((target) => {
+    const candidates = new Set<string>([resolve(target)]);
+    const real = tryRealpath(target);
+    if (real !== undefined) candidates.add(real);
+    for (const abs of candidates) {
+      if (text.includes(abs)) return true;
+      const rel = relative(launcherDir, abs).replaceAll('\\', '/');
+      if (rel !== '' && !rel.startsWith('/') && text.includes(rel)) return true;
+    }
+    return false;
+  });
+};
+
 export const packageOwnsLauncher = (binPath: string, packageDir: string): boolean => {
   if (!existsSync(join(packageDir, 'package.json'))) return false;
   if (isPathInDirectory(binPath, packageDir)) return true;
   const launcherReal = tryRealpath(binPath);
   if (launcherReal !== undefined && isPathInDirectory(launcherReal, packageDir)) return true;
   const resolved = launcherReal ?? resolve(binPath);
-  return packageBinTargets(packageDir).some((target) => (tryRealpath(target) ?? resolve(target)) === resolved);
+  if (packageBinTargets(packageDir).some((target) => (tryRealpath(target) ?? resolve(target)) === resolved)) {
+    return true;
+  }
+  return shimReferencesPackageBin(binPath, packageDir);
 };

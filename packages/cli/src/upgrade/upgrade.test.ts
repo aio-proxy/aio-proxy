@@ -740,6 +740,53 @@ test('resolveUpgradeTargetFrom maps a pnpm home shim that resolves into the pack
   });
 });
 
+const writePnpmCmdShim = (launcher: string, packageBinFromHome: string): void => {
+  writeExecutable(
+    launcher,
+    `#!/bin/sh
+basedir=$(dirname "$(echo "$0" | sed -e 's,\\\\,/,g')")
+if [ -x "$basedir/node" ]; then
+  exec "$basedir/node"  "$basedir/${packageBinFromHome}" "$@"
+else
+  exec node  "$basedir/${packageBinFromHome}" "$@"
+fi
+`,
+  );
+};
+
+test('resolveUpgradeTargetFrom maps a pnpm generated global cmd-shim to pnpm', async () => {
+  const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-pnpm-cmdshim-')), 'pnpm');
+  const storePkg = join(pnpmHome, 'global', '5', '.pnpm', 'aio-proxy@1.0.0', 'node_modules', 'aio-proxy');
+  const pkgBin = join(storePkg, 'bin', 'aio-proxy.js');
+  const bin = join(pnpmHome, 'aio-proxy');
+  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+  mkdirSync(join(storePkg, 'bin'), { recursive: true });
+  mkdirSync(join(pnpmHome, 'global', '5', 'node_modules'), { recursive: true });
+  writeFileSync(join(storePkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(storePkg, join(pnpmHome, 'global', '5', 'node_modules', 'aio-proxy'));
+  writePnpmCmdShim(bin, 'global/5/.pnpm/aio-proxy@1.0.0/node_modules/aio-proxy/bin/aio-proxy.js');
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'pnpm',
+    command: join(pnpmHome, 'pnpm'),
+    bin,
+  });
+});
+
+test('resolveUpgradeTargetFrom does not treat a leftover package bin field as cmd-shim ownership', async () => {
+  const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-curl-pnpm-bin-')), 'pnpm');
+  const pkg = join(pnpmHome, 'global', '5', 'node_modules', 'aio-proxy');
+  const bin = join(pnpmHome, 'aio-proxy');
+  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(join(pkg, 'bin', 'aio-proxy.js'), '#!/usr/bin/env node\n');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
+  });
+});
+
 test('resolveUpgradeTargetFrom maps a bun global cli-* binary to bun, not binary', async () => {
   const bunHome = mkdtempSync(join(tmpdir(), 'aio-bun-home-'));
   const native = join(bunHome, 'install', 'global', 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
