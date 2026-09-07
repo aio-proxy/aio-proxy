@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, jest, test } from 'bun:test';
 
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
@@ -15,6 +15,28 @@ import { frameConnectMessage } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { runCursorTurn } from './driver';
 import { runHarness, serverFrame, settleMicrotasks, updateFrame } from './test-support';
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+const execFrame = (id: string, query: string) =>
+  serverFrame({
+    case: 'execServerMessage',
+    value: {
+      id: id === 'a' ? 1 : 2,
+      execId: 'exec-' + id,
+      message: {
+        case: 'mcpArgs',
+        value: {
+          name: 'search',
+          toolName: 'search',
+          toolCallId: id,
+          args: { query: new TextEncoder().encode(JSON.stringify(query)) },
+        },
+      },
+    },
+  });
 
 function frameServer(value: Record<string, unknown>): Uint8Array {
   const message = create(AgentServerMessageSchema, { message: value } as never);
@@ -185,6 +207,8 @@ test('a text turn streams parts, frames the request, and resolves the turn resul
   const turn = await result;
   expect(types).toContain('text-delta');
   expect(types.at(-1)).toBe('finish');
+  expect(turn.assistantText).toBe('Hi');
+  expect(turn.toolCalls).toEqual([]);
   expect(turn.checkpointUsable).toBe(true);
   expect(writes[0]?.length).toBe(6);
   expect(closeReasons).toHaveLength(1);
@@ -224,6 +248,7 @@ test('rejects when the stream ends before turnEnded', async () => {
 });
 
 test('a completed MCP call suspends without waiting for upstream turnEnded', async () => {
+  jest.useFakeTimers();
   const mcpFrame = (event: 'toolCallStarted' | 'toolCallCompleted') =>
     frameServer({
       case: 'interactionUpdate',
@@ -262,14 +287,11 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
     heartbeatMs: 0,
   });
   void result.catch(() => {});
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const parts = await Promise.race([
-      drainParts(stream),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('tool stream did not suspend promptly')), 100);
-      }),
-    ]);
+    const drain = drainParts(stream);
+    await settleMicrotasks();
+    jest.advanceTimersByTime(100);
+    const parts = await drain;
     const turn = await result;
     const toolCall = parts.find((part) => part.type === 'tool-call') as { toolCallId: string } | undefined;
     const finish = parts.at(-1) as { type: string; finishReason: { unified: string } };
@@ -281,8 +303,8 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
     expect(writes).toHaveLength(1);
     expect(turn.checkpointUsable).toBe(false);
     expect([...turn.pendingToolCalls]).toEqual([['outer-call', 'nested-call']]);
+    expect(turn.toolCalls).toHaveLength(1);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
     release();
   }
 });
@@ -524,4 +546,83 @@ test('unknown queries fail instead of leaving upstream waiting', async () => {
   h.send(serverFrame({ case: 'interactionQuery', value: { id: 9 } }));
   await expect(h.result).rejects.toMatchObject({ code: 'cursor_interaction_unsupported' });
   expect(h.closeCount()).toBe(1);
+});
+
+test('a late sibling revokes tool handoff until its own args are ready', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({ timing: { toolHandoffGraceMs: 100 } });
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(90);
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-b',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: { name: 'search', toolName: 'search', toolCallId: 'b', args: {} },
+            },
+          },
+        },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  jest.advanceTimersByTime(20);
+  await settleMicrotasks();
+  expect(h.parts.some((p) => p.type === 'tool-call')).toBe(false);
+  h.send(execFrame('b', 'beta'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(100);
+  await h.drained;
+  const calls = h.parts.filter((p) => p.type === 'tool-call');
+  expect(calls).toMatchObject([
+    { toolCallId: 'a', input: '{"query":"alpha"}' },
+    { toolCallId: 'outer-b', input: '{"query":"beta"}' },
+  ]);
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  expect(h.writes.filter((m) => m.case === 'execClientMessage')).toHaveLength(0);
+  expect((await h.result).toolCalls).toHaveLength(2);
+});
+
+test('consecutive MCP execs are handed off together', async () => {
+  jest.useFakeTimers();
+  const h = runHarness();
+  h.send(execFrame('a', 'alpha'));
+  h.send(execFrame('b', 'beta'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(100);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'tool-call')).toMatchObject([
+    { toolCallId: 'a', input: '{"query":"alpha"}' },
+    { toolCallId: 'b', input: '{"query":"beta"}' },
+  ]);
+  const toolParts = h.parts.filter((p) => p.type.startsWith('tool-'));
+  expect(toolParts).toMatchObject([
+    { type: 'tool-input-start', id: 'a', toolName: 'search' },
+    { type: 'tool-input-delta', id: 'a', delta: '{"query":"alpha"}' },
+    { type: 'tool-input-end', id: 'a' },
+    { type: 'tool-call', toolCallId: 'a', input: '{"query":"alpha"}' },
+    { type: 'tool-input-start', id: 'b', toolName: 'search' },
+    { type: 'tool-input-delta', id: 'b', delta: '{"query":"beta"}' },
+    { type: 'tool-input-end', id: 'b' },
+    { type: 'tool-call', toolCallId: 'b', input: '{"query":"beta"}' },
+  ]);
+  expect(toolParts.filter((p) => p.type === 'tool-input-delta')).toHaveLength(2);
+});
+
+test('duplicate exec does not extend the original handoff deadline', async () => {
+  jest.useFakeTimers();
+  const h = runHarness();
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(90);
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(10);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'tool-call')).toHaveLength(1);
 });
