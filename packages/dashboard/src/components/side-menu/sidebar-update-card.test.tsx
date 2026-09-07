@@ -113,12 +113,12 @@ test('disables Update now while an install is in progress', async () => {
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
 });
 
-test('shows restart required without Update now and does not reload', async () => {
+test('keeps Updating while a restart is pending and does not ask to restart by hand', async () => {
   prepare(view({ update: { status: 'restart_required' } }));
   await renderCard();
 
-  expect(screen.getByText(restartRequired)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
 });
 

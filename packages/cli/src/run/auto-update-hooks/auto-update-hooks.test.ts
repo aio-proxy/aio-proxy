@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'bun:test';
 
+import { m } from '@aio-proxy/i18n';
+
 import { createCliAutoUpdateHooks, isManagedAutoUpdateProcess, migratePreMarkerManagedUnit } from './auto-update-hooks';
 
 const linuxSessionCgroup = '0::/user.slice/user-1000.slice/session.slice/session-3.scope\n';
@@ -54,12 +56,81 @@ test('applyUpdate pins the checked version and upgrades via the launched exec pa
     },
   );
   const hooks = createCliAutoUpdateHooks({
+    isManagedService: () => true,
     upgrade: upgrade as never,
     resolveExec: () => '/opt/aio-proxy',
     resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
   });
   expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
   expect(upgrade).toHaveBeenCalledTimes(1);
+});
+
+test('unmanaged applyUpdate relaunches this process after install', async () => {
+  let relaunched = 0;
+  const hooks = createCliAutoUpdateHooks({
+    isManagedService: () => false,
+    upgrade: mock(async () => 'installed' as const) as never,
+    resolveExec: () => '/opt/aio-proxy',
+    resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
+    relaunchUnmanaged: () => {
+      relaunched += 1;
+    },
+  });
+  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(relaunched).toBe(1);
+});
+
+test('managed applyUpdate leaves restart to the service manager', async () => {
+  let relaunched = 0;
+  const hooks = createCliAutoUpdateHooks({
+    isManagedService: () => true,
+    upgrade: mock(async () => 'installed' as const) as never,
+    resolveExec: () => '/opt/aio-proxy',
+    resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
+    relaunchUnmanaged: () => {
+      relaunched += 1;
+    },
+  });
+  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(relaunched).toBe(0);
+});
+
+test('unmanaged applyUpdate does not print the manual restart hint', async () => {
+  const printed: string[] = [];
+  const hooks = createCliAutoUpdateHooks({
+    isManagedService: () => false,
+    upgrade: mock(async (_options, print: (line: string) => void) => {
+      print(m['cli.upgrade.manual_restart_hint']());
+      print('installed 1.10.0');
+      return 'installed' as const;
+    }) as never,
+    resolveExec: () => '/opt/aio-proxy',
+    resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
+    relaunchUnmanaged: () => {},
+    print: (line) => {
+      printed.push(line);
+    },
+  });
+  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(printed).toEqual(['installed 1.10.0']);
+  expect(printed.join('\n')).not.toContain(
+    'The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade',
+  );
+});
+
+test('unchanged applyUpdate does not relaunch', async () => {
+  let relaunched = 0;
+  const hooks = createCliAutoUpdateHooks({
+    isManagedService: () => false,
+    upgrade: mock(async () => 'unchanged' as const) as never,
+    resolveExec: () => '/opt/aio-proxy',
+    resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
+    relaunchUnmanaged: () => {
+      relaunched += 1;
+    },
+  });
+  expect(await hooks.applyUpdate('1.10.0')).toBe('unchanged');
+  expect(relaunched).toBe(0);
 });
 
 test('pre-marker boot migration rewrites the unit with the stable launcher and does not restart', async () => {
