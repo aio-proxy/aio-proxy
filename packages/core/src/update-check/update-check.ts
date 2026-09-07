@@ -19,12 +19,20 @@ const isNewer = (left: string, right: string): boolean => {
   }
 };
 
-export const mergeUpdateCheckState = (
-  incoming: { readonly latest: string; readonly checkedAt: number },
-  existing?: UpdateCheckState,
-): UpdateCheckState => {
-  if (existing === undefined) return incoming;
-  if (isNewer(existing.latest, incoming.latest)) return existing;
+export type UpdateCheckIncoming = {
+  readonly latest: string;
+  readonly checkedAt: number;
+  readonly fetchStartedAt: number;
+};
+
+export const mergeUpdateCheckState = (incoming: UpdateCheckIncoming, existing?: UpdateCheckState): UpdateCheckState => {
+  if (existing === undefined) return { latest: incoming.latest, checkedAt: incoming.checkedAt };
+  // A slower overlapping fetch can finish after a newer check. Keep the on-disk
+  // latest only when that record was written after this fetch started.
+  // A later successful check (fetchStartedAt >= existing.checkedAt) is
+  // authoritative, including an npm `latest` rollback.
+  const staleOverlap = existing.checkedAt > incoming.fetchStartedAt && isNewer(existing.latest, incoming.latest);
+  if (staleOverlap) return existing;
   return {
     latest: incoming.latest,
     checkedAt: incoming.checkedAt,

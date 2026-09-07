@@ -184,7 +184,9 @@ export { aioHome, configPath, dbPath, packagesDir, updateCheckPath } from './pat
 export {
   mergeUpdateCheckState,
   readUpdateCheckState,
+  withUpdateCheckLock,
   writeUpdateCheckState,
+  type UpdateCheckIncoming,
   type UpdateCheckState,
 } from './update-check';
 export * from './plugins';

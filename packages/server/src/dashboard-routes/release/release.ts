@@ -2,6 +2,7 @@ import {
   fetchLatestNpmVersion,
   mergeUpdateCheckState,
   readUpdateCheckState,
+  withUpdateCheckLock,
   writeUpdateCheckState,
 } from '@aio-proxy/core';
 import { Hono } from 'hono';
@@ -20,8 +21,12 @@ const APPLY_HTTP = {
   check_failed: 502,
 } as const satisfies Record<AutoUpdateApplyResult['status'], 200 | 202 | 409 | 501 | 502>;
 
-const persistLatest = async (latest: string): Promise<void> => {
-  await writeUpdateCheckState(mergeUpdateCheckState({ latest, checkedAt: Date.now() }, readUpdateCheckState()));
+const persistLatest = async (latest: string, fetchStartedAt: number): Promise<void> => {
+  await withUpdateCheckLock(async () => {
+    await writeUpdateCheckState(
+      mergeUpdateCheckState({ latest, checkedAt: Date.now(), fetchStartedAt }, readUpdateCheckState()),
+    );
+  });
 };
 
 export const createDashboardReleaseRoute = (
@@ -48,9 +53,10 @@ export const createDashboardReleaseRoute = (
       }
       let latest: string;
       try {
+        const fetchStartedAt = Date.now();
         latest = await fetchLatest(PACKAGE);
         Bun.semver.order(latest, version);
-        await persistLatest(latest);
+        await persistLatest(latest, fetchStartedAt);
       } catch {
         return context.json({ error: { code: 'check_failed' } } as const, 502);
       }

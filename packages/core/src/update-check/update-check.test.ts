@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { mergeUpdateCheckState, readUpdateCheckState, writeUpdateCheckState } from './update-check';
+import { withUpdateCheckLock } from './update-check-lock';
 
 const original = process.env.AIO_PROXY_HOME;
 
@@ -47,27 +48,63 @@ test('missing, unreadable, or invalid files are no check', () => {
   }
 });
 
-test('mergeUpdateCheckState keeps a newer on-disk latest and its notifiedVersion', () => {
+test('mergeUpdateCheckState keeps a newer on-disk latest from an overlapping check', () => {
   expect(
     mergeUpdateCheckState(
-      { latest: '1.10.0', checkedAt: 20 },
+      { latest: '1.10.0', checkedAt: 20, fetchStartedAt: 1 },
       { latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' },
     ),
   ).toEqual({ latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' });
 });
 
+test('mergeUpdateCheckState records a later registry rollback', () => {
+  expect(
+    mergeUpdateCheckState(
+      { latest: '1.9.0', checkedAt: 20, fetchStartedAt: 15 },
+      { latest: '2.0.0', checkedAt: 1, notifiedVersion: '2.0.0' },
+    ),
+  ).toEqual({ latest: '1.9.0', checkedAt: 20, notifiedVersion: '2.0.0' });
+});
+
 test('mergeUpdateCheckState writes the incoming latest and keeps an existing notify marker', () => {
   expect(
     mergeUpdateCheckState(
-      { latest: '1.10.0', checkedAt: 20 },
+      { latest: '1.10.0', checkedAt: 20, fetchStartedAt: 20 },
       { latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.10.0' },
     ),
   ).toEqual({ latest: '1.10.0', checkedAt: 20, notifiedVersion: '1.10.0' });
 });
 
 test('mergeUpdateCheckState uses the incoming check when nothing is on disk', () => {
-  expect(mergeUpdateCheckState({ latest: '1.10.0', checkedAt: 20 })).toEqual({
+  expect(mergeUpdateCheckState({ latest: '1.10.0', checkedAt: 20, fetchStartedAt: 20 })).toEqual({
     latest: '1.10.0',
     checkedAt: 20,
   });
+});
+
+test('withUpdateCheckLock serializes overlapping writers', async () => {
+  const dir = home();
+  try {
+    const order: number[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = withUpdateCheckLock(async () => {
+      order.push(1);
+      await firstGate;
+      order.push(2);
+    });
+    await Promise.resolve();
+    const second = withUpdateCheckLock(async () => {
+      order.push(3);
+    });
+    await Promise.resolve();
+    expect(order).toEqual([1]);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual([1, 2, 3]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

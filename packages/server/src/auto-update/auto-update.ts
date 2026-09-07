@@ -1,6 +1,7 @@
 import {
   mergeUpdateCheckState,
   readUpdateCheckState,
+  withUpdateCheckLock,
   writeUpdateCheckState,
   type UpdateCheckState,
 } from '@aio-proxy/core';
@@ -33,6 +34,7 @@ export type AutoUpdateControllerOptions = {
   readonly fetchLatest: (pkg: string) => Promise<string>;
   readonly readState?: () => UpdateCheckState | undefined;
   readonly writeState?: (state: UpdateCheckState) => Promise<void>;
+  readonly withLock?: <T>(fn: () => Promise<T>) => Promise<T>;
   readonly now?: () => number;
   readonly intervalMs?: number;
   readonly setInterval?: (handler: () => void, ms: number) => unknown;
@@ -62,6 +64,9 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
   const unschedule = options.clearInterval ?? ((id: unknown) => clearInterval(id as ReturnType<typeof setInterval>));
   const readState = options.readState ?? readUpdateCheckState;
   const writeState = options.writeState ?? writeUpdateCheckState;
+  const withLock =
+    options.withLock ??
+    (options.writeState === undefined && options.readState === undefined ? withUpdateCheckLock : async (fn) => fn());
   const now = options.now ?? Date.now;
   let status: AutoUpdateSnapshot['status'] = 'idle';
   let locked = false;
@@ -106,22 +111,23 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     })();
   };
 
-  const persistCheck = async (latest: string): Promise<void> => {
-    const next = mergeUpdateCheckState({ latest, checkedAt: now() }, readState() ?? persisted);
-    await writeState(next);
-    const afterWrite = readState() ?? next;
-    if (!isOutdated(afterWrite.latest, options.currentVersion) || afterWrite.notifiedVersion === afterWrite.latest) {
-      persisted = afterWrite;
-      return;
-    }
-    try {
-      await options.notifyAvailable?.(afterWrite.latest);
-    } catch (error) {
-      options.onError?.(error);
-    }
-    const notified: UpdateCheckState = { ...afterWrite, notifiedVersion: afterWrite.latest };
-    await writeState(notified);
-    persisted = notified;
+  const persistCheck = async (latest: string, fetchStartedAt: number): Promise<void> => {
+    await withLock(async () => {
+      const next = mergeUpdateCheckState({ latest, checkedAt: now(), fetchStartedAt }, readState() ?? persisted);
+      await writeState(next);
+      if (!isOutdated(next.latest, options.currentVersion) || next.notifiedVersion === next.latest) {
+        persisted = next;
+        return;
+      }
+      const claimed: UpdateCheckState = { ...next, notifiedVersion: next.latest };
+      await writeState(claimed);
+      persisted = claimed;
+      try {
+        await options.notifyAvailable?.(claimed.latest);
+      } catch (error) {
+        options.onError?.(error);
+      }
+    });
   };
 
   const snapshotAsCheck = (): AutoUpdateCheckResult => {
@@ -131,11 +137,12 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
 
   const runCheck = async (reportFailure: boolean): Promise<AutoUpdateCheckResult> => {
     if (locked) return snapshotAsCheck();
+    const fetchStartedAt = now();
     let latest: string;
     try {
       latest = await options.fetchLatest(AUTO_UPDATE_PACKAGE);
       Bun.semver.order(latest, options.currentVersion);
-      await persistCheck(latest);
+      await persistCheck(latest, fetchStartedAt);
     } catch (error) {
       if (reportFailure) options.onError?.(error);
       return { status: 'check_failed' };

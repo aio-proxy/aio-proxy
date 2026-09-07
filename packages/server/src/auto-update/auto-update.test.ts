@@ -115,19 +115,53 @@ test('re-reads on-disk notifiedVersion so a sibling process does not notify twic
 });
 
 test('does not replace a newer on-disk latest with a slower stale fetch', async () => {
+  let t = 5;
   let disk: UpdateCheckState | undefined = { latest: '1.5.0', checkedAt: 1 };
   const controller = createAutoUpdateController({
     ...base,
-    fetchLatest: async () => '1.10.0',
+    now: () => t,
+    fetchLatest: async () => {
+      disk = { latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' };
+      t = 20;
+      return '1.10.0';
+    },
     notifyAvailable: () => {},
     readState: () => disk,
     writeState: async (next) => {
       disk = next;
     },
   });
-  disk = { latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' };
   expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
   expect(disk).toEqual({ latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' });
+});
+
+test('a later successful check records a registry rollback', async () => {
+  const store = memoryState({ latest: '2.0.0', checkedAt: 1, notifiedVersion: '2.0.0' });
+  const controller = createAutoUpdateController({
+    ...base,
+    currentVersion: '1.9.0',
+    fetchLatest: async () => '1.9.0',
+    now: () => 20,
+    notifyAvailable: () => {},
+    ...store,
+  });
+  expect(await controller.check()).toEqual({ current: '1.9.0', latest: '1.9.0', outdated: false });
+  expect(store.get()).toEqual({ latest: '1.9.0', checkedAt: 20, notifiedVersion: '2.0.0' });
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.9.0', outdated: false });
+});
+
+test('claims notifiedVersion before notifyAvailable runs', async () => {
+  const store = memoryState();
+  const notifyAvailable = mock(() => {
+    expect(store.get()?.notifiedVersion).toBe('1.10.0');
+  });
+  const controller = createAutoUpdateController({
+    ...base,
+    notifyAvailable,
+    ...store,
+  });
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(notifyAvailable).toHaveBeenCalledTimes(1);
 });
 
 test('a newer latest notifies once', async () => {
