@@ -1,19 +1,25 @@
+import { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '@aio-proxy/plugin-anthropic-claude';
 import { createCursorPlugin, CURSOR_PLUGIN_VERSION } from '@aio-proxy/plugin-cursor';
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from '@aio-proxy/plugin-github-copilot';
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from '@aio-proxy/plugin-google-antigravity';
 import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from '@aio-proxy/plugin-kimi-code';
+import { createMuseCodePlugin, MUSE_CODE_PLUGIN_VERSION } from '@aio-proxy/plugin-muse-code';
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '@aio-proxy/plugin-openai-chatgpt';
+import { createOpenRouterPlugin, OPENROUTER_PLUGIN_VERSION } from '@aio-proxy/plugin-openrouter';
 import type { PluginDescriptor } from '@aio-proxy/plugin-sdk';
 import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from '@aio-proxy/plugin-xai-grok';
 
 import type { BuiltInPluginDefinition } from './loader/index';
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
+  '@aio-proxy/plugin-anthropic-claude',
   '@aio-proxy/plugin-cursor',
   '@aio-proxy/plugin-github-copilot',
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
+  '@aio-proxy/plugin-muse-code',
   '@aio-proxy/plugin-openai-chatgpt',
+  '@aio-proxy/plugin-openrouter',
   '@aio-proxy/plugin-xai-grok',
 ] as const;
 
@@ -21,6 +27,19 @@ const localized = (english: string, chinese: string) => ({ default: english, 'zh
 
 export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
   return [
+    {
+      packageName: '@aio-proxy/plugin-anthropic-claude',
+      version: CLAUDE_PLUGIN_VERSION,
+      descriptor: createAnthropicClaudePlugin({
+        pluginLabel: localized('Claude Pro/Max', 'Claude Pro/Max'),
+        pluginDescription: localized(
+          'Use a Claude Pro or Max account to access models',
+          '使用 Claude Pro 或 Max 账号访问模型',
+        ),
+        adapterLabel: localized('Login with Claude', '使用 Claude 登录'),
+        waitingForAuthorization: localized('Waiting for Claude authorization', '正在等待 Claude 授权'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
     {
       packageName: '@aio-proxy/plugin-cursor',
       version: CURSOR_PLUGIN_VERSION,
@@ -83,6 +102,20 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
       }) as unknown as PluginDescriptor<unknown>,
     },
     {
+      packageName: '@aio-proxy/plugin-muse-code',
+      version: MUSE_CODE_PLUGIN_VERSION,
+      descriptor: createMuseCodePlugin({
+        pluginLabel: localized('Muse Code', 'Muse Code'),
+        pluginDescription: localized(
+          'Use a Muse Code subscription to access Meta models',
+          '使用 Muse Code 订阅访问 Meta 模型',
+        ),
+        adapterLabel: localized('Login with Muse Code', '使用 Muse Code 登录'),
+        deviceInstructions: localized('Enter code', '输入代码'),
+        waitingForAuthorization: localized('Waiting for Muse authorization', '正在等待 Muse 授权'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
       packageName: '@aio-proxy/plugin-openai-chatgpt',
       version: OPENAI_CHATGPT_PLUGIN_VERSION,
       descriptor: createOpenAIChatGPTPlugin({
@@ -92,6 +125,19 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
           '使用 ChatGPT Plus 或 Pro 账号访问模型',
         ),
         adapterLabel: localized('Login with ChatGPT (Plus/Pro)', '使用 ChatGPT（Plus/Pro）登录'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
+      packageName: '@aio-proxy/plugin-openrouter',
+      version: OPENROUTER_PLUGIN_VERSION,
+      descriptor: createOpenRouterPlugin({
+        pluginLabel: 'OpenRouter',
+        pluginDescription: localized(
+          'Sign in with OpenRouter to mint an API key',
+          '使用 OpenRouter 登录并签发 API key',
+        ),
+        adapterLabel: localized('Login with OpenRouter', '使用 OpenRouter 登录'),
+        waitingForAuthorization: localized('Waiting for OpenRouter authorization', '正在等待 OpenRouter 授权'),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

@@ -20,11 +20,14 @@ describe('plugin add', () => {
     const deps = createDefaultPluginLifecycleDeps();
     try {
       expect(deps.builtIns?.map(({ packageName }) => packageName).sort()).toEqual([
+        '@aio-proxy/plugin-anthropic-claude',
         '@aio-proxy/plugin-cursor',
         '@aio-proxy/plugin-github-copilot',
         '@aio-proxy/plugin-google-antigravity',
         '@aio-proxy/plugin-kimi-code',
+        '@aio-proxy/plugin-muse-code',
         '@aio-proxy/plugin-openai-chatgpt',
+        '@aio-proxy/plugin-openrouter',
         '@aio-proxy/plugin-xai-grok',
       ]);
     } finally {

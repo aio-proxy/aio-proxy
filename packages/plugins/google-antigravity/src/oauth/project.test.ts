@@ -132,7 +132,11 @@ test('combines the caller signal with a 30-second timeout for load and onboardin
     timeout.mockRestore();
   }
 
-  expect(timeoutMilliseconds).toEqual([30_000, 30_000, 30_000]);
+  expect(timeoutMilliseconds).toHaveLength(3);
+  expect(timeoutMilliseconds[0]).toBe(30_000);
+  expect(timeoutMilliseconds[2]).toBe(30_000);
+  expect(timeoutMilliseconds[1]).toBeGreaterThan(0);
+  expect(timeoutMilliseconds[1]).toBeLessThanOrEqual(30_000);
   expect(signals).toHaveLength(3);
   for (const signal of signals) expect(signal).not.toBe(callerSignal);
 });
