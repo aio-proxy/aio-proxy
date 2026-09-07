@@ -3,6 +3,7 @@ import { createCursorPlugin, CURSOR_PLUGIN_VERSION } from '@aio-proxy/plugin-cur
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from '@aio-proxy/plugin-github-copilot';
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from '@aio-proxy/plugin-google-antigravity';
 import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from '@aio-proxy/plugin-kimi-code';
+import { createMuseCodePlugin, MUSE_CODE_PLUGIN_VERSION } from '@aio-proxy/plugin-muse-code';
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '@aio-proxy/plugin-openai-chatgpt';
 import { createOpenRouterPlugin, OPENROUTER_PLUGIN_VERSION } from '@aio-proxy/plugin-openrouter';
 import type { PluginDescriptor } from '@aio-proxy/plugin-sdk';
@@ -16,6 +17,7 @@ export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
   '@aio-proxy/plugin-github-copilot',
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
+  '@aio-proxy/plugin-muse-code',
   '@aio-proxy/plugin-openai-chatgpt',
   '@aio-proxy/plugin-openrouter',
   '@aio-proxy/plugin-xai-grok',
@@ -97,6 +99,20 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         adapterLabel: localized('Login with Kimi Code', '使用 Kimi Code 登录'),
         deviceInstructions: localized('Enter code', '输入代码'),
         waitingForAuthorization: localized('Waiting for Kimi authorization', '正在等待 Kimi 授权'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
+      packageName: '@aio-proxy/plugin-muse-code',
+      version: MUSE_CODE_PLUGIN_VERSION,
+      descriptor: createMuseCodePlugin({
+        pluginLabel: localized('Muse Code', 'Muse Code'),
+        pluginDescription: localized(
+          'Use a Muse Code subscription to access Meta models',
+          '使用 Muse Code 订阅访问 Meta 模型',
+        ),
+        adapterLabel: localized('Login with Muse Code', '使用 Muse Code 登录'),
+        deviceInstructions: localized('Enter code', '输入代码'),
+        waitingForAuthorization: localized('Waiting for Muse authorization', '正在等待 Muse 授权'),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

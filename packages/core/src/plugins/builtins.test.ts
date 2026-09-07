@@ -12,6 +12,7 @@ const expectedBuiltIns = [
   '@aio-proxy/plugin-github-copilot',
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
+  '@aio-proxy/plugin-muse-code',
   '@aio-proxy/plugin-openai-chatgpt',
   '@aio-proxy/plugin-openrouter',
   '@aio-proxy/plugin-xai-grok',
@@ -54,12 +55,14 @@ test('reserved identities always load embedded descriptors without package looku
     true,
     true,
     true,
+    true,
   ]);
   expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(
     createEmbeddedBuiltIns().map(({ version }) => version),
   );
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-google-antigravity', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-kimi-code', 'default')).toBeDefined();
+  expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-muse-code', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-openrouter', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-xai-grok', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-cursor', 'default')).toBeDefined();
@@ -106,6 +109,13 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(kimiPlugin?.displayName ?? '', 'zh-Hans')).toBe('Kimi Code');
   expect(resolveLocalizedText(kimiPlugin?.description ?? '', 'zh-Hans')).toBe('使用 Kimi Code 账号访问模型');
   expect(resolveLocalizedText(kimi?.displayName ?? '', 'zh-Hans')).toBe('使用 Kimi Code 登录');
+
+  const muse = snapshot.registry.resolveOAuth('@aio-proxy/plugin-muse-code', 'default');
+  const musePlugin = snapshot.plugins.get('@aio-proxy/plugin-muse-code');
+  expect(resolveLocalizedText(musePlugin?.displayName ?? '', 'zh-Hans')).toBe('Muse Code');
+  expect(resolveLocalizedText(musePlugin?.description ?? '', 'zh-Hans')).toBe('使用 Muse Code 订阅访问 Meta 模型');
+  expect(resolveLocalizedText(muse?.displayName ?? '', 'zh-Hans')).toBe('使用 Muse Code 登录');
+  expect(muse?.refreshCredential).toBeUndefined();
 
   const openrouter = snapshot.registry.resolveOAuth('@aio-proxy/plugin-openrouter', 'default');
   const openrouterPlugin = snapshot.plugins.get('@aio-proxy/plugin-openrouter');

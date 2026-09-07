@@ -154,6 +154,7 @@
         "@aio-proxy/plugin-github-copilot": "workspace:*",
         "@aio-proxy/plugin-google-antigravity": "workspace:*",
         "@aio-proxy/plugin-kimi-code": "workspace:*",
+        "@aio-proxy/plugin-muse-code": "workspace:*",
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
         "@aio-proxy/plugin-openrouter": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -389,6 +390,21 @@
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "es-toolkit": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/plugins/muse-code": {
+      "name": "@aio-proxy/plugin-muse-code",
+      "version": "0.19.2",
+      "dependencies": {
+        "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "es-toolkit": "catalog:",
       },
@@ -661,6 +677,8 @@
     "@aio-proxy/plugin-google-antigravity": ["@aio-proxy/plugin-google-antigravity@workspace:packages/plugins/google-antigravity"],
 
     "@aio-proxy/plugin-kimi-code": ["@aio-proxy/plugin-kimi-code@workspace:packages/plugins/kimi-code"],
+
+    "@aio-proxy/plugin-muse-code": ["@aio-proxy/plugin-muse-code@workspace:packages/plugins/muse-code"],
 
     "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
 
