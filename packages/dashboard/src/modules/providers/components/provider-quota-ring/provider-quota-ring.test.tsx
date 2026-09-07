@@ -1,3 +1,4 @@
+import { TooltipProvider } from '@aio-proxy/ui/components/tooltip';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -144,7 +145,13 @@ const paced = (remainingRatio: number) => ({
 
 const openPacedDialog = (remainingRatio: number) => {
   queryMocks.data = paced(remainingRatio);
-  render(<ProviderQuotaRing provider={provider} />);
+  // The app mounts one `TooltipProvider` in the root layout; the marker's tooltip needs it to inherit
+  // the zero open delay, and without it a hover in this test would sit out the 600ms default.
+  render(
+    <TooltipProvider>
+      <ProviderQuotaRing provider={provider} />
+    </TooltipProvider>,
+  );
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 };
 
@@ -156,6 +163,19 @@ test('a window spent faster than evenly marks the even-burn position in the over
   expect(marker.className).toContain('bg-destructive');
   // Colour alone would not reach a screen reader, so the same reading rides on the bar's value text.
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', expect.stringMatching(/80%/u));
+});
+
+test('hovering the marker explains it, since the tick alone only shows a position', async () => {
+  openPacedDialog(0.5);
+
+  const marker = screen.getByTestId('provider-quota-pace-five-hour');
+  // The pace reading exists only as the bar's `aria-valuetext` until the tooltip opens.
+  expect(screen.queryByText(/80%/u)).not.toBeInTheDocument();
+
+  fireEvent.pointerEnter(marker, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(marker);
+
+  expect(await screen.findByText(/80%/u)).toHaveAttribute('data-slot', 'tooltip-content');
 });
 
 test('a window spent slower than evenly marks the same position in the fill colour', () => {
