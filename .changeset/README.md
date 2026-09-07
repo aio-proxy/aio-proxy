@@ -17,7 +17,7 @@ Pick the bump level and write a short, user-facing summary.
 - `aio-proxy` — the CLI launcher / proxy (its `@aio-proxy/cli-*` platform binaries ride along automatically).
 - `@aio-proxy/plugin-sdk` — the plugin SDK.
 
-When the change actually lives in an internal package (`@aio-proxy/core`, `server`, `cli`, the plugins), list that package **and** the product package, at the same bump level, and prefix the summary with the area:
+When the change actually lives in an internal package (`@aio-proxy/core`, `server`, `cli`, the plugins), list that package **and** the product package, at the same bump level. Write the body as a user-facing sentence — do not prefix it with an area label (`core:`, `cli:`, plugin short name). The frontmatter already names the packages:
 
 ```
 ---
@@ -25,7 +25,7 @@ When the change actually lives in an internal package (`@aio-proxy/core`, `serve
 'aio-proxy': minor
 ---
 
-core: fix provider fallback ordering under session affinity
+Fix provider fallback ordering under session affinity
 ```
 
 Do **not** target only an internal package: the `fixed` group would still bump `aio-proxy`, but its Release notes would be empty. See the Changesets section in the repo `AGENTS.md` for the full rule.
