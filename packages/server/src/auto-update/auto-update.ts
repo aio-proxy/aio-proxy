@@ -124,6 +124,10 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
         persisted = next;
         return;
       }
+      if (options.notifyAvailable === undefined) {
+        persisted = next;
+        return;
+      }
       const claimed: UpdateCheckState = { ...next, notifiedVersion: next.latest };
       await writeState(claimed);
       persisted = claimed;

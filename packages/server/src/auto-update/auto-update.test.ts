@@ -89,7 +89,6 @@ test('default persist writes the home captured at controller creation', async ()
     expect(readUpdateCheckState(join(homeA, 'update-check.json'))).toEqual({
       latest: '2.0.0',
       checkedAt: 1_700_000_000_000,
-      notifiedVersion: '2.0.0',
     });
   } finally {
     rmSync(homeA, { recursive: true, force: true });
@@ -110,9 +109,38 @@ test('tick persists an outdated latest and never calls applyUpdate', async () =>
   controller.start();
   await flush();
   expect(applyUpdate).not.toHaveBeenCalled();
-  expect(store.get()).toEqual({ latest: '1.10.0', checkedAt: 1_700_000_000_000, notifiedVersion: '1.10.0' });
+  expect(store.get()).toEqual({ latest: '1.10.0', checkedAt: 1_700_000_000_000 });
   expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.10.0', outdated: true });
   controller.stop();
+});
+
+test('an outdated check without notifyAvailable does not claim notifiedVersion', async () => {
+  const store = memoryState();
+  const controller = createAutoUpdateController({
+    ...base,
+    ...store,
+  });
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(store.get()).toEqual({ latest: '1.10.0', checkedAt: 1_700_000_000_000 });
+});
+
+test('a later check with notifyAvailable still notifies after a no-callback persist', async () => {
+  const store = memoryState();
+  const silent = createAutoUpdateController({
+    ...base,
+    ...store,
+  });
+  expect(await silent.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  const notifyAvailable = mock(() => {});
+  const notifier = createAutoUpdateController({
+    ...base,
+    notifyAvailable,
+    ...store,
+  });
+  expect(await notifier.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(notifyAvailable).toHaveBeenCalledTimes(1);
+  expect(notifyAvailable).toHaveBeenCalledWith('1.10.0');
+  expect(store.get()?.notifiedVersion).toBe('1.10.0');
 });
 
 test('second check of the same latest does not notify again', async () => {
