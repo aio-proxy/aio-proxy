@@ -127,6 +127,25 @@ describe('openAITranscriptionAdapter', () => {
     await releaseMultipartSpool(raw);
   });
 
+  // The parser strips any trailing `[]`, so `model[]` routed this request just as
+  // `model` would have — but upstream never promised to do the same, and a parser
+  // that only reads `model` would fall back to its own default. Replaying verbatim
+  // is only safe for the single canonical spelling.
+  test.each([
+    [undefined, [['model[]', 'whisper-1']]],
+    ['whisper-1', [['model[]', 'whisper-1']]],
+  ] as const)('rebuilds rather than replays when the model is spelled %p / %p', async (model, extra) => {
+    const raw = transcriptionRequest(model, extra);
+    const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+    const upstream = await openAITranscriptionAdapter.rawRequest(raw, request, 'whisper-1', new Set(), {
+      operation: 'transcriptions',
+    });
+    const form = await upstream.formData();
+    expect(form.getAll('model')).toEqual(['whisper-1']);
+    expect(form.getAll('model[]')).toEqual([]);
+    await releaseMultipartSpool(raw);
+  });
+
   test('rebuilds multipart keeping every client field when the model changes', async () => {
     const raw = transcriptionRequest('whisper-1', [['timestamp_granularities[]', 'word']]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
