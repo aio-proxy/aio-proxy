@@ -10,9 +10,5 @@ test('generates an S256 verifier and challenge pair', async () => {
   expect(first.verifier).not.toBe(first.challenge);
   expect(first.verifier).not.toBe(second.verifier);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(first.verifier));
-  const encoded = btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '');
-  expect(first.challenge).toBe(encoded);
+  expect(first.challenge).toBe(new Uint8Array(digest).toBase64({ alphabet: 'base64url', omitPadding: true }));
 });

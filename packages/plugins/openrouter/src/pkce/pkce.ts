@@ -10,6 +10,5 @@ export async function generatePKCE(): Promise<PKCE> {
 }
 
 function base64url(bytes: Uint8Array): string {
-  const encoded = btoa(String.fromCharCode(...bytes));
-  return encoded.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  return bytes.toBase64({ alphabet: 'base64url', omitPadding: true });
 }
