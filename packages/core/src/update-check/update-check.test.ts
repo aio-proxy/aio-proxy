@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import * as processIdentity from '../file-lock/process-identity';
 import { processStarttime } from '../file-lock/process-identity';
 import { mergeUpdateCheckState, readUpdateCheckState, writeUpdateCheckState } from './update-check';
 import { withUpdateCheckLock } from './update-check-lock';
@@ -196,6 +197,35 @@ test.serial(
       await expect(withUpdateCheckLock(async () => 'held', path)).rejects.toThrow();
       expect(readFileSync(lockPath, 'utf8')).toBe(`${process.pid}\n${starttime}\n`);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test.serial(
+  'withUpdateCheckLock does not unlink a replacement lock after observing a stale owner',
+  async () => {
+    const dir = home();
+    const path = join(dir, 'update-check.json');
+    const lockPath = `${path}.lock`;
+    const child = Bun.spawn(['sleep', '30']);
+    const starttime = await processStarttime(process.pid);
+    expect(starttime).not.toBeNull();
+    const live = `${process.pid}\n${starttime}\n`;
+    writeFileSync(lockPath, `${child.pid}\nSat Jan  1 00:00:00 2000\n`);
+    const realStarttime = processIdentity.processStarttime.bind(processIdentity);
+    const spy = spyOn(processIdentity, 'processStarttime').mockImplementation(async (pid: number) => {
+      if (pid === child.pid) writeFileSync(lockPath, live);
+      return realStarttime(pid);
+    });
+    try {
+      await expect(withUpdateCheckLock(async () => 'held', path)).rejects.toThrow();
+      expect(readFileSync(lockPath, 'utf8')).toBe(live);
+    } finally {
+      spy.mockRestore();
+      child.kill();
+      await child.exited;
       rmSync(dir, { recursive: true, force: true });
     }
   },
