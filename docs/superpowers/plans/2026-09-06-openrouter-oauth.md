@@ -635,6 +635,17 @@ describe('OpenRouter OAuth', () => {
     );
   });
 
+  test('reports HTTP status when the key exchange body is not JSON', async () => {
+    await expect(
+      loginOpenRouter(loginContext({
+        loopback: async () => ({ code: 'auth-code', redirectUri: REDIRECT }),
+      }), {
+        fetch: async () =>
+          new Response('<html>denied</html>', { status: 502, headers: { 'content-type': 'text/html' } }),
+      }),
+    ).rejects.toThrow(/HTTP 502/);
+  });
+
   test('fails closed when the key exchange omits key', async () => {
     await expect(
       loginOpenRouter(loginContext({
@@ -804,14 +815,14 @@ async function exchangeAuthorizationCode(
     if (options.signal.aborted) throw options.signal.reason;
     throw error;
   }
+  if (!response.ok) {
+    throw new Error(`OpenRouter OAuth key exchange failed (HTTP ${response.status})`);
+  }
   let body: unknown;
   try {
     body = await response.json();
   } catch {
     throw new Error('OpenRouter OAuth returned invalid JSON');
-  }
-  if (!response.ok) {
-    throw new Error(`OpenRouter OAuth key exchange failed (HTTP ${response.status})`);
   }
   if (!isPlainObject(body) || typeof body.key !== 'string' || body.key.trim() === '') {
     throw new Error('OpenRouter OAuth response carries no key');
@@ -924,6 +935,11 @@ describe('OpenRouter model catalog', () => {
       extra: { protocol: 'openai-compatible' },
     });
     expect(initialOpenRouterCatalogFallback(new OpenRouterCatalogError('unauthorized', false, 401))).toBeUndefined();
+    expect(initialOpenRouterCatalogFallback(new DOMException('cancelled', 'AbortError'))).toBeUndefined();
+    const hostTimeout = Object.assign(new Error('OAUTH_CATALOG_DISCOVERY_TIMEOUT'), {
+      name: 'OAuthCatalogDiscoveryTimeoutError',
+    });
+    expect(initialOpenRouterCatalogFallback(hostTimeout)?.language).toEqual(fallback?.language);
   });
 
   test('treats a successful empty language catalog as authoritative', async () => {
@@ -1047,13 +1063,18 @@ export async function discoverOpenRouterModels(
 }
 
 export function initialOpenRouterCatalogFallback(error: unknown): ModelCatalog | undefined {
-  return error instanceof OpenRouterCatalogError && error.retryable
-    ? emptyCatalog(
-        CURATED.map(([id, displayName]) => ({ id, displayName, extra: LANGUAGE_PROTOCOL })),
-        [],
-        [],
-      )
-    : undefined;
+  if (isHostCatalogTimeout(error) || (error instanceof OpenRouterCatalogError && error.retryable)) {
+    return emptyCatalog(
+      CURATED.map(([id, displayName]) => ({ id, displayName, extra: LANGUAGE_PROTOCOL })),
+      [],
+      [],
+    );
+  }
+  return undefined;
+}
+
+function isHostCatalogTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === 'OAuthCatalogDiscoveryTimeoutError';
 }
 
 function outputModalities(entry: { readonly architecture?: unknown }): readonly string[] {

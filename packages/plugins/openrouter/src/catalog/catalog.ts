@@ -83,13 +83,18 @@ export async function discoverOpenRouterModels(
 }
 
 export function initialOpenRouterCatalogFallback(error: unknown): ModelCatalog | undefined {
-  return error instanceof OpenRouterCatalogError && error.retryable
-    ? emptyCatalog(
-        CURATED.map(([id, displayName]) => ({ id, displayName, extra: LANGUAGE_PROTOCOL })),
-        [],
-        [],
-      )
-    : undefined;
+  if (isHostCatalogTimeout(error) || (error instanceof OpenRouterCatalogError && error.retryable)) {
+    return emptyCatalog(
+      CURATED.map(([id, displayName]) => ({ id, displayName, extra: LANGUAGE_PROTOCOL })),
+      [],
+      [],
+    );
+  }
+  return undefined;
+}
+
+function isHostCatalogTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === 'OAuthCatalogDiscoveryTimeoutError';
 }
 
 function outputModalities(entry: { readonly architecture?: unknown }): readonly string[] {
