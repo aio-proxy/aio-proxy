@@ -55,7 +55,7 @@ test('createCursorRuntime returns a v4 provider and rejects unsupported surfaces
   expect(result.provider.languageModel('claude-4.5-sonnet').provider).toBe('cursor-oauth');
 });
 
-test('credential refresh uses the runtime context fetch as control traffic', async () => {
+test('credential refresh and profile lookup use the runtime context fetch as control traffic', async () => {
   const stale = { ...credential, expiresAt: 0 };
   const refreshable: CredentialPort<CursorCredential> = {
     read: () => Promise.resolve({ value: stale, revision: 0 }),
@@ -74,15 +74,21 @@ test('credential refresh uses the runtime context fetch as control traffic', asy
         credentials: refreshable,
         options: {},
         catalog,
-        fetch: async (_input, init) => {
+        fetch: async (input, init) => {
           requests.push(init ?? {});
-          return Response.json({ accessToken: 'refreshed' });
+          return String(input) === 'https://cursor.com/api/auth/me'
+            ? Response.json({ sub: 'user-1', email: 'person@example.com' })
+            : Response.json({ accessToken: 'refreshed' });
         },
       },
       { transport },
     );
     await result.provider.languageModel('claude-4.5-sonnet').doStream({ prompt: [] });
-    expect(requests).toEqual([expect.objectContaining({ aioProxy: { traffic: 'control' } })]);
+    expect(requests).toEqual([
+      expect.objectContaining({ aioProxy: { traffic: 'control' } }),
+      expect.objectContaining({ aioProxy: { traffic: 'control' } }),
+    ]);
+    expect(new Headers(requests[1]?.headers).get('Cookie')).toBe('WorkosCursorSessionToken=user-1%3A%3Arefreshed');
   } finally {
     globalFetch.mockRestore();
   }

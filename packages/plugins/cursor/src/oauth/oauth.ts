@@ -3,6 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { cursorIdentity, cursorTokenExpiry } from '../jwt';
 import type { CursorCredential } from '../schema';
+import { readCursorAccountEmail } from './account-email';
 import {
   CURSOR_LOGIN_URL,
   CURSOR_POLL_BACKOFF,
@@ -54,14 +55,19 @@ export async function loginCursor(
       context.progress(presentation.waiting);
       continue;
     }
-    if (response.ok) return completeLogin(await response.json(), now());
+    if (response.ok) return completeLogin(await response.json(), now(), fetcher, context.signal);
     if (++consecutiveErrors >= 3) throw new Error(`Cursor authentication polling failed: ${response.status}`);
     context.progress(presentation.waiting);
   }
   throw new Error('Cursor authentication polling timed out');
 }
 
-function completeLogin(payload: unknown, now: number): OAuthLoginResult<CursorCredential> {
+async function completeLogin(
+  payload: unknown,
+  now: number,
+  fetcher: RuntimeFetch,
+  signal: AbortSignal,
+): Promise<OAuthLoginResult<CursorCredential>> {
   if (!isPlainObject(payload)) {
     throw new Error('Cursor authentication returned an invalid payload');
   }
@@ -77,16 +83,17 @@ function completeLogin(payload: unknown, now: number): OAuthLoginResult<CursorCr
     throw new Error('Cursor authentication returned an incomplete token');
   }
   const identity = cursorIdentity({ accessToken });
+  const email = identity.email ?? (await readCursorAccountEmail({ accessToken }, fetcher, signal));
   const expiresAt = cursorTokenExpiry(accessToken, now);
   return {
     fingerprint: identity.fingerprint,
     suggestedKey: identity.suggestedKey,
-    accountLabel: identity.label,
+    accountLabel: email ?? identity.label,
     credentials: {
       accessToken,
       refreshToken,
       expiresAt,
-      ...(identity.email === undefined ? {} : { email: identity.email }),
+      ...(email === undefined ? {} : { email }),
       ...(identity.subject === undefined ? {} : { subject: identity.subject }),
     },
     expiresAt,
