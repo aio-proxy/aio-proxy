@@ -111,6 +111,22 @@ test('classifies timeout and 5xx as retryable quota failures', async () => {
   ).rejects.toMatchObject({ name: MuseCodeQuotaError.name, retryable: false });
 });
 
+test('classifies a 401 before a stalled error body is read', async () => {
+  await expect(
+    readMuseCodeQuota(context(), {
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('The connection was reset.'));
+            },
+          }),
+          { status: 401, headers: { 'content-type': 'application/json' } },
+        ),
+    }),
+  ).rejects.toMatchObject({ name: MuseCodeQuotaError.name, retryable: false, status: 401 });
+});
+
 test('classifies a key body-read transport failure as retryable', async () => {
   await expect(
     readMuseCodeQuota(context(), {

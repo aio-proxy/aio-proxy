@@ -44,7 +44,6 @@ export async function requestMuseCodeKey(
     redirect: 'error',
     signal,
   });
-  const text = await museControlReadText(response, signal);
   if (!response.ok) {
     throw new MuseCodeHttpError(
       'Muse Code key exchange failed',
@@ -52,6 +51,7 @@ export async function requestMuseCodeKey(
       response.status,
     );
   }
+  const text = await museControlReadText(response, signal);
   let payload: unknown;
   try {
     payload = JSON.parse(text);
