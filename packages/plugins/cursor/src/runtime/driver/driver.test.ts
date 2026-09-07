@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
-import { create, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
   AgentServerMessageSchema,
@@ -14,6 +14,7 @@ import type { ConnectFrame } from '../../wire/frame';
 import { frameConnectMessage } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { runCursorTurn } from './driver';
+import { runHarness, serverFrame, settleMicrotasks, updateFrame } from './test-support';
 
 function frameServer(value: Record<string, unknown>): Uint8Array {
   const message = create(AgentServerMessageSchema, { message: value } as never);
@@ -397,4 +398,124 @@ test('reader cancellation stops heartbeats, closes the Run, and rejects the resu
   await expect(result).rejects.toBe(reason);
   expect(closeReasons).toEqual([reason]);
   expect(writes.length).toBe(writesAfterCancel);
+});
+
+test('replies to a hosted search query with its original id', async () => {
+  const h = runHarness();
+  h.send(
+    serverFrame({
+      case: 'interactionQuery',
+      value: {
+        id: 41,
+        query: { case: 'webSearchRequestQuery', value: {} },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  expect(h.writes).toContainEqual(
+    expect.objectContaining({
+      case: 'interactionResponse',
+      value: expect.objectContaining({
+        id: 41,
+        result: expect.objectContaining({ case: 'webSearchRequestResponse' }),
+      }),
+    }),
+  );
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+});
+
+test('an approval-only wire frame never becomes an executable call', async () => {
+  const base = toBinary(
+    McpArgsSchema,
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'probe',
+      args: { query: new TextEncoder().encode('"docs"') },
+    }),
+  );
+  const bytes = new Uint8Array([...base, 0x38, 0x01]);
+  const h = runHarness();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, bytes) },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  expect(h.parts.some((part) => part.type.startsWith('tool-'))).toBe(false);
+  expect(h.writes).toContainEqual(
+    expect.objectContaining({
+      case: 'execClientMessage',
+      value: expect.objectContaining({
+        id: 7,
+        execId: 'exec-7',
+        message: expect.objectContaining({
+          case: 'mcpResult',
+          value: expect.objectContaining({ result: expect.objectContaining({ case: 'rejected' }) }),
+        }),
+      }),
+    }),
+  );
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, base) },
+      },
+    }),
+  );
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(1);
+});
+
+test('an embedded approval-only interaction frame never becomes an executable call', async () => {
+  const probe = create(McpArgsSchema, {
+    name: 'search',
+    toolName: 'search',
+    toolCallId: 'probe',
+    args: { query: new TextEncoder().encode('"docs"') },
+    smartModeApprovalOnly: true,
+  });
+  const real = create(McpArgsSchema, {
+    name: 'search',
+    toolName: 'search',
+    toolCallId: 'probe',
+    args: { query: new TextEncoder().encode('"docs"') },
+  });
+  const display = (args: typeof probe) => ({
+    callId: 'outer-7',
+    toolCall: { tool: { case: 'mcpToolCall', value: { args } } },
+  });
+  const h = runHarness();
+  h.send(updateFrame({ case: 'toolCallStarted', value: display(probe) }));
+  h.send(updateFrame({ case: 'toolCallCompleted', value: display(probe) }));
+  await settleMicrotasks();
+  expect(h.parts.some((part) => part.type.startsWith('tool-'))).toBe(false);
+  h.send(updateFrame({ case: 'toolCallStarted', value: display(real) }));
+  h.send(updateFrame({ case: 'toolCallCompleted', value: display(real) }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(1);
+});
+
+test('unknown queries fail instead of leaving upstream waiting', async () => {
+  const h = runHarness();
+  h.send(serverFrame({ case: 'interactionQuery', value: { id: 9 } }));
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_interaction_unsupported' });
+  expect(h.closeCount()).toBe(1);
 });

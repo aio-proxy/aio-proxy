@@ -64,6 +64,7 @@ export function mapInteractionUpdate(
 }
 
 export function mapMcpExec(mcp: McpArgs, accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
+  if (mcp.smartModeApprovalOnly) return [];
   const nestedToolCallId = mcp.toolCallId || crypto.randomUUID();
   const outerCallId =
     [...accumulator.tools].find(([, tool]) => tool.nestedToolCallId === nestedToolCallId)?.[0] ?? nestedToolCallId;
@@ -129,7 +130,7 @@ function closeReasoning(accumulator: CursorStreamAccumulator): LanguageModelV4St
 function startMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
   const mcp = mcpArgsOf(value);
   const outerCallId = (value as { callId?: string } | undefined)?.callId;
-  if (mcp === undefined || !outerCallId) return [];
+  if (mcp === undefined || mcp.smartModeApprovalOnly || !outerCallId) return [];
   const parts: LanguageModelV4StreamPart[] = [...closeText(accumulator), ...closeReasoning(accumulator)];
   const toolName = fromWireName(mcp.name);
   accumulator.tools.set(outerCallId, { nestedToolCallId: mcp.toolCallId, toolName, buffer: '' });
@@ -154,6 +155,7 @@ function deltaMcpTool(
 }
 
 function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
+  if (mcpArgsOf(value)?.smartModeApprovalOnly) return [];
   const outerCallId = (value as { callId?: string } | undefined)?.callId;
   const tool = outerCallId === undefined ? undefined : accumulator.tools.get(outerCallId);
   if (tool === undefined || outerCallId === undefined) return [];
@@ -184,14 +186,26 @@ function resolveMcpInput(buffer: string, completion: Record<string, unknown> | u
   return JSON.stringify(merged);
 }
 
-function mcpArgsOf(
-  value: unknown,
-): { name: string; toolCallId: string; args?: Record<string, Uint8Array> } | undefined {
+function mcpArgsOf(value: unknown):
+  | {
+      name: string;
+      toolCallId: string;
+      args?: Record<string, Uint8Array>;
+      smartModeApprovalOnly?: boolean;
+    }
+  | undefined {
   const toolCall = (value as { toolCall?: { tool?: { case?: string; value?: unknown } } } | undefined)?.toolCall;
   if (toolCall?.tool?.case !== 'mcpToolCall') return undefined;
   const args = (
     toolCall.tool.value as
-      | { args?: { name?: string; toolCallId?: string; args?: Record<string, Uint8Array> } }
+      | {
+          args?: {
+            name?: string;
+            toolCallId?: string;
+            args?: Record<string, Uint8Array>;
+            smartModeApprovalOnly?: boolean;
+          };
+        }
       | undefined
   )?.args;
   if (!args) return undefined;
@@ -199,6 +213,7 @@ function mcpArgsOf(
     name: args.name ?? '',
     toolCallId: args.toolCallId && args.toolCallId.length > 0 ? args.toolCallId : crypto.randomUUID(),
     ...(args.args === undefined ? {} : { args: args.args }),
+    ...(args.smartModeApprovalOnly === true ? { smartModeApprovalOnly: true } : {}),
   };
 }
 

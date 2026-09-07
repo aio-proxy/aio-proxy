@@ -10,7 +10,8 @@ import {
 } from '../../gen/agent_pb';
 import { CONNECT_END_STREAM_FLAG, frameConnectMessage, parseConnectEndStream } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
-import { encodeExecResponse, encodeKvResponse } from '../client-messages';
+import { encodeExecResponse, encodeKvResponse, encodeMcpApprovalRejection } from '../client-messages';
+import { encodeInteractionReply } from '../interaction-query';
 import { createCursorStreamAccumulator, finalizeCursorStream, mapInteractionUpdate, mapMcpExec } from '../stream';
 
 export type CursorTurnResult = {
@@ -85,12 +86,18 @@ export function runCursorTurn(input: {
               if (accumulator.sawTurnEnded && accumulator.tools.size > 0) {
                 throw new Error('Cursor turn ended with incomplete MCP tool call');
               }
+            } else if (message.case === 'interactionQuery') {
+              h2.write(encodeInteractionReply(message.value));
             } else if (message.case === 'kvServerMessage') {
               const reply = encodeKvResponse(message.value, input.blobStore);
               if (reply !== undefined) h2.write(reply);
             } else if (message.case === 'execServerMessage') {
               if (message.value.message.case === 'mcpArgs') {
-                for (const part of mapMcpExec(message.value.message.value, accumulator)) controller.enqueue(part);
+                if (message.value.message.value.smartModeApprovalOnly) {
+                  h2.write(encodeMcpApprovalRejection(message.value));
+                } else {
+                  for (const part of mapMcpExec(message.value.message.value, accumulator)) controller.enqueue(part);
+                }
               } else {
                 h2.write(encodeExecResponse(message.value, input.requestContextTools));
               }
