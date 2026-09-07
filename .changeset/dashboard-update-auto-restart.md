@@ -4,4 +4,4 @@
 'aio-proxy': patch
 ---
 
-Dashboard updates no longer keep Check for updates visible while an install is running. After a successful install, aio-proxy restarts itself so the new version takes over, and the dashboard keeps waiting and reloads instead of asking you to restart by hand.
+The About card now uses the same row spacing as the other settings groups. Check for updates is hidden while an install runs. After a successful install, aio-proxy restarts itself and the dashboard reloads instead of asking you to restart by hand.
