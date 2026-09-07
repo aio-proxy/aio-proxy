@@ -5,8 +5,8 @@ import {
   LoopbackOAuthError,
   LoopbackStateMismatchError,
   runLoopbackAuthorization,
-} from './index';
-import { copy, createDeps, expectPortAvailable, request, resetInteractive, setInteractive } from './test-support';
+} from '../index';
+import { copy, createDeps, expectPortAvailable, request, resetInteractive, setInteractive } from '../test-support';
 
 afterEach(resetInteractive);
 

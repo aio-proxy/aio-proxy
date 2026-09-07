@@ -9,7 +9,7 @@ import {
   LoopbackOAuthError,
   LoopbackRequestInvalidError,
   LoopbackStateMismatchError,
-} from './errors';
+} from '../errors';
 
 type UntrustedLoopbackRequest = {
   readonly state?: unknown;

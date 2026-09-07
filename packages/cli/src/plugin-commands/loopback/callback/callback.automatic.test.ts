@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { LoopbackOAuthError, runLoopbackAuthorization } from './index';
-import { copy, createDeps, expectPortAvailable, request, resetInteractive, setInteractive } from './test-support';
+import { LoopbackOAuthError, runLoopbackAuthorization } from '../index';
+import { copy, createDeps, expectPortAvailable, request, resetInteractive, setInteractive } from '../test-support';
 
 afterEach(resetInteractive);
 
