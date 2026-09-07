@@ -7,7 +7,7 @@ import type {
   SharedV4Warning,
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
-import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
+import { type CredentialPort, type Logger, zod } from '@aio-proxy/plugin-sdk';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../../gen/agent_pb';
@@ -33,6 +33,7 @@ export type CursorModelRuntime = {
   };
   readonly baseUrl?: string;
   readonly now?: () => number;
+  readonly logger?: Logger;
 };
 
 // The AI SDK carries aio-proxy's logical-session key under providerOptions.aioProxy.
@@ -65,6 +66,13 @@ function logicalSessionKey(providerOptions: SharedV4ProviderOptions | undefined)
 function routingContinuity(providerOptions: SharedV4ProviderOptions | undefined): RoutingContinuity | undefined {
   const parsed = routingContinuitySchema.safeParse(providerOptions?.['aioProxy']?.['routingContinuity']);
   return parsed.success ? parsed.data : undefined;
+}
+
+function logicalRequestId(options: SharedV4ProviderOptions | undefined): string {
+  const parsed = zod.object({ requestId: zod.string().min(1).max(128) }).safeParse(options?.aioProxy?.logicalRequest);
+  return parsed.success && /^[a-zA-Z0-9_.:-]+$/.test(parsed.data.requestId)
+    ? parsed.data.requestId
+    : crypto.randomUUID();
 }
 
 function canReuseCheckpoint(prior: CursorSessionState, routing: RoutingContinuity): boolean {
@@ -165,6 +173,13 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       requestContextTools,
       blobStore,
       heartbeatMs: 5_000,
+      ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
+      diagnosticsContext: {
+        requestId: logicalRequestId(options.providerOptions),
+        modelId,
+        ...(routing === undefined ? {} : { providerId: routing.routedProviderId }),
+        resumeMode: isPendingResume ? 'tool-results' : priorState === undefined ? 'fresh' : 'checkpoint',
+      },
     });
     void result
       .then((turn) => {

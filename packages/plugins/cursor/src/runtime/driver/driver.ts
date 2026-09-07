@@ -1,4 +1,5 @@
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
+import type { Logger } from '@aio-proxy/plugin-sdk';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
@@ -28,6 +29,7 @@ import {
   mapMcpExec,
   type CursorStreamAccumulator,
 } from '../stream';
+import { createRunDiagnostics } from './diagnostics';
 import { createRunLifecycle } from './lifecycle';
 
 export type CursorRunTiming = {
@@ -58,12 +60,14 @@ type CursorRunSession = {
   abortListener: (() => void) | undefined;
   canceled: boolean;
   conversationState: ConversationStateStructure;
+  diagnostics: ReturnType<typeof createRunDiagnostics>;
   handoffTimer: ReturnType<typeof setTimeout> | undefined;
   heartbeat: ReturnType<typeof setInterval> | undefined;
   input: CursorRunInput;
   internalAbort: AbortController;
   lastToolRevision: number;
   lifecycle: RunLifecycle;
+  logged: { firstFrame: boolean; firstText: boolean; turnEnded: boolean };
   rejectResult: (error: unknown) => void;
   sawCheckpoint: boolean;
   settleResult: (result: CursorTurnResult) => void;
@@ -89,6 +93,13 @@ export function runCursorTurn(input: {
   readonly blobStore: Map<string, Uint8Array>;
   readonly heartbeatMs?: number;
   readonly timing?: Partial<CursorRunTiming>;
+  readonly logger?: Logger;
+  readonly diagnosticsContext?: {
+    requestId: string;
+    providerId?: string;
+    modelId: string;
+    resumeMode: 'fresh' | 'checkpoint' | 'tool-results';
+  };
 }): { stream: ReadableStream<LanguageModelV4StreamPart>; result: Promise<CursorTurnResult> } {
   let resultLocked = false;
   let settleResult!: (result: CursorTurnResult) => void;
@@ -112,12 +123,17 @@ export function runCursorTurn(input: {
     abortListener: undefined,
     canceled: false,
     conversationState: input.initialConversationState,
+    diagnostics: createRunDiagnostics(
+      input.logger,
+      input.diagnosticsContext ?? { requestId: crypto.randomUUID(), modelId: 'unknown', resumeMode: 'fresh' },
+    ),
     handoffTimer: undefined,
     heartbeat: undefined,
     input,
     internalAbort: new AbortController(),
     lastToolRevision: 0,
     lifecycle: undefined as unknown as RunLifecycle,
+    logged: { firstFrame: false, firstText: false, turnEnded: false },
     rejectResult,
     sawCheckpoint: false,
     settleResult,
@@ -145,13 +161,14 @@ function bindRunLifecycle(session: CursorRunSession, controller: StreamControlle
       noProgressTimeoutMs: session.timing.noProgressTimeoutMs,
       turnEndGraceMs: session.timing.turnEndGraceMs,
     },
-    onFinish() {
-      finishCursorTurn(session, controller);
-    },
+    onFinish: (reason) => finishCursorTurn(session, controller, reason),
     onFailure(error) {
-      safeCall(() => {
-        if (!session.canceled) controller.error(error);
-      });
+      logSettled(
+        session,
+        session.canceled ? 'canceled' : error instanceof CursorProtocolError ? error.code : 'transport-error',
+        !session.canceled,
+      );
+      safeCall(() => !session.canceled && controller.error(error));
       session.rejectResult(error);
     },
     cleanup(error) {
@@ -171,16 +188,15 @@ function bindRunLifecycle(session: CursorRunSession, controller: StreamControlle
 }
 
 function listenForExternalAbort(session: CursorRunSession): void {
-  session.abortListener = () => {
-    session.lifecycle.fail(session.input.signal?.reason ?? new Error('Cursor stream canceled'));
-  };
   const signal = session.input.signal;
+  session.abortListener = () => session.lifecycle.fail(signal?.reason ?? new Error('Cursor stream canceled'));
   if (signal === undefined) return;
   if (signal.aborted) session.abortListener();
   else signal.addEventListener('abort', session.abortListener);
 }
 
 async function pumpCursorRun(session: CursorRunSession, controller: StreamController): Promise<void> {
+  session.diagnostics('run-start', session.lifecycle.snapshot());
   try {
     const h2 = await openCursorRun(session);
     if (h2 === undefined) return;
@@ -191,6 +207,7 @@ async function pumpCursorRun(session: CursorRunSession, controller: StreamContro
       if (session.lifecycle.settled()) break;
     }
     if (session.lifecycle.settled()) return;
+    session.diagnostics('http-eof', session.lifecycle.snapshot());
     settleHttpEof(session, await h2.trailers);
   } catch (error) {
     if (session.lifecycle.settled()) return;
@@ -222,6 +239,7 @@ async function openCursorRun(session: CursorRunSession): Promise<CursorH2Stream 
 function handleConnectEnd(session: CursorRunSession, frame: ConnectFrame): boolean {
   if ((frame.flags & CONNECT_END_STREAM_FLAG) === 0) return false;
   const envelope = parseConnectEndStream(frame.payload);
+  session.diagnostics('connect-end', session.lifecycle.snapshot());
   if (envelope.error !== undefined) session.lifecycle.fail(new Error(envelope.error.message));
   else session.lifecycle.finish('connect-end');
   return true;
@@ -263,13 +281,14 @@ function dispatchServerMessage(
   }
   if (message.case === 'interactionQuery') {
     h2.write(encodeInteractionReply(message.value));
-    session.lifecycle.noteFrame(true);
+    session.diagnostics('query-reply', { queryCase: message.value.query.case, queryId: message.value.id });
+    noteDecodedFrame(session, true);
     return;
   }
   if (message.case === 'kvServerMessage') {
     const reply = encodeKvResponse(message.value, session.input.blobStore);
     if (reply !== undefined) h2.write(reply);
-    session.lifecycle.noteFrame(reply !== undefined);
+    noteDecodedFrame(session, reply !== undefined);
     return;
   }
   if (message.case === 'execServerMessage') {
@@ -280,7 +299,7 @@ function dispatchServerMessage(
     session.conversationState = message.value;
     session.sawCheckpoint = true;
   }
-  session.lifecycle.noteFrame(false);
+  noteDecodedFrame(session, false);
 }
 
 function handleInteractionUpdate(
@@ -288,10 +307,23 @@ function handleInteractionUpdate(
   controller: StreamController,
   update: InteractionUpdate,
 ): void {
-  const before = cursorToolState(session.accumulator).progressRevision;
+  const before = cursorToolState(session.accumulator);
   for (const part of mapInteractionUpdate(update, session.accumulator)) enqueuePart(session, controller, part);
-  session.lifecycle.noteFrame(isInteractionProgress(update, before, session.accumulator));
+  if (
+    !session.logged.firstText &&
+    update.message.case === 'textDelta' &&
+    (update.message.value.text?.length ?? 0) > 0
+  ) {
+    session.logged.firstText = true;
+    session.diagnostics('first-text', session.lifecycle.snapshot());
+  }
+  logToolReadyIfIncreased(session, before.readyCount);
+  noteDecodedFrame(session, isInteractionProgress(update, before.progressRevision, session.accumulator));
   if (session.accumulator.sawTurnEnded) {
+    if (!session.logged.turnEnded) {
+      session.logged.turnEnded = true;
+      session.diagnostics('turn-ended', session.lifecycle.snapshot());
+    }
     clearHandoff(session);
     session.lifecycle.turnEnded();
     return;
@@ -308,23 +340,31 @@ function handleExecMessage(
   if (exec.message.case === 'mcpArgs') {
     if (exec.message.value.smartModeApprovalOnly) {
       h2.write(encodeMcpApprovalRejection(exec));
-      session.lifecycle.noteFrame(true);
+      noteDecodedFrame(session, true);
       return;
     }
-    const before = cursorToolState(session.accumulator).progressRevision;
+    const before = cursorToolState(session.accumulator);
     for (const part of mapMcpExec(exec.message.value, session.accumulator)) enqueuePart(session, controller, part);
-    session.lifecycle.noteFrame(cursorToolState(session.accumulator).progressRevision > before);
+    logToolReadyIfIncreased(session, before.readyCount);
+    noteDecodedFrame(session, cursorToolState(session.accumulator).progressRevision > before.progressRevision);
     armHandoff(session);
     return;
   }
   h2.write(encodeExecResponse(exec, session.input.requestContextTools));
-  session.lifecycle.noteFrame(true);
+  noteDecodedFrame(session, true);
 }
 
-function finishCursorTurn(session: CursorRunSession, controller: StreamController): void {
+function finishCursorTurn(
+  session: CursorRunSession,
+  controller: StreamController,
+  reason: 'tool-handoff' | 'turn-ended' | 'connect-end',
+): void {
   const current = cursorToolState(session.accumulator);
   if (current.openCount > 0) {
     throw new CursorProtocolError('cursor_tool_input_incomplete', 'Cursor ended with incomplete MCP input.');
+  }
+  if (current.readyCount > 0) {
+    session.diagnostics('tool-handoff', { openToolCount: current.openCount, readyToolCount: current.readyCount });
   }
   const calls = cursorCompletedTools(session.accumulator);
   for (const part of commitCursorTools(session.accumulator)) enqueuePart(session, controller, part);
@@ -338,6 +378,7 @@ function finishCursorTurn(session: CursorRunSession, controller: StreamControlle
     assistantText: session.assistantText,
     blobStore: session.input.blobStore,
   });
+  logSettled(session, reason, false, current);
   try {
     session.activeRun?.end();
   } catch {
@@ -414,6 +455,36 @@ function heartbeatFrame(): Uint8Array {
     message: { case: 'clientHeartbeat', value: create(ClientHeartbeatSchema, {}) },
   });
   return frameConnectMessage(toBinary(AgentClientMessageSchema, message));
+}
+
+function noteDecodedFrame(session: CursorRunSession, progress: boolean): void {
+  session.lifecycle.noteFrame(progress);
+  if (session.logged.firstFrame) return;
+  session.logged.firstFrame = true;
+  session.diagnostics('first-frame', session.lifecycle.snapshot());
+}
+
+function logToolReadyIfIncreased(session: CursorRunSession, beforeReady: number): void {
+  const tools = cursorToolState(session.accumulator);
+  if (tools.readyCount <= beforeReady) return;
+  session.diagnostics('tool-ready', {
+    ...session.lifecycle.snapshot(),
+    openToolCount: tools.openCount,
+    readyToolCount: tools.readyCount,
+  });
+}
+
+function logSettled(
+  session: CursorRunSession,
+  termination: string,
+  failed: boolean,
+  tools = cursorToolState(session.accumulator),
+): void {
+  session.diagnostics(
+    'settled',
+    { termination, ...session.lifecycle.snapshot(), openToolCount: tools.openCount, readyToolCount: tools.readyCount },
+    failed,
+  );
 }
 
 function safeCall(fn: () => void): void {

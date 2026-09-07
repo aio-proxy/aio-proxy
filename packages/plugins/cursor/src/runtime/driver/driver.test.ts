@@ -1,6 +1,7 @@
 import { afterEach, expect, jest, test } from 'bun:test';
 
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
+import type { Logger } from '@aio-proxy/plugin-sdk';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
@@ -767,4 +768,88 @@ test('a late openRun handle is closed without writing after cancellation', async
   await settleMicrotasks();
   expect(h.closeCount()).toBe(1);
   expect(h.writes).toHaveLength(0);
+});
+
+test('run diagnostics correlate phases without logging request content', async () => {
+  const rows: unknown[] = [];
+  const sink: Logger['debug'] = (a, b) => {
+    rows.push([a, b]);
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const h = runHarness({
+    logger,
+    accessToken: 'SECRET_ACCESS_TOKEN',
+    diagnosticsContext: {
+      requestId: 'req-123',
+      providerId: 'cursor-1',
+      modelId: 'composer-2',
+      resumeMode: 'fresh',
+    },
+  });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'SECRET_MODEL_TEXT' } }));
+  h.send(execFrame('a', 'SECRET_TOOL_ARGS'));
+  h.send(
+    serverFrame({
+      case: 'interactionQuery',
+      value: {
+        id: 52,
+        query: {
+          case: 'webSearchRequestQuery',
+          value: { args: { searchTerm: 'https://secret.example/path/to/file' } },
+        },
+      },
+    }),
+  );
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await h.result;
+  const serialized = JSON.stringify(rows);
+  expect(serialized).toContain('req-123');
+  expect(serialized).toContain('cursor-1');
+  expect(serialized).toContain('first-frame');
+  expect(serialized).toContain('first-text');
+  expect(serialized).toContain('query-reply');
+  expect(serialized).toContain('settled');
+  expect(serialized).not.toContain('SECRET_ACCESS_TOKEN');
+  expect(serialized).not.toContain('SECRET_MODEL_TEXT');
+  expect(serialized).not.toContain('SECRET_TOOL_ARGS');
+  expect(serialized).not.toContain('https://secret.example/path/to/file');
+  const emailRows: unknown[] = [];
+  const emailSink: Logger['debug'] = (a, b) => {
+    emailRows.push([a, b]);
+  };
+  const emailLogger: Logger = {
+    debug: emailSink,
+    info: emailSink,
+    warn: emailSink,
+    error: emailSink,
+    child: () => emailLogger,
+  };
+  const emailRun = runHarness({
+    logger: emailLogger,
+    diagnosticsContext: {
+      requestId: 'req-456',
+      providerId: 'user@example.com',
+      modelId: 'composer-2',
+      resumeMode: 'fresh',
+    },
+  });
+  emailRun.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  emailRun.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await emailRun.drained;
+  await emailRun.result;
+  expect(JSON.stringify(emailRows)).not.toContain('user@example.com');
+});
+
+test('a throwing log sink cannot change the successful stream', async () => {
+  const sink: Logger['debug'] = () => {
+    throw new Error('broken sink');
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const h = runHarness({ logger });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await expect(h.result).resolves.toBeDefined();
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
 });

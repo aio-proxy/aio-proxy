@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Buffer } from 'node:buffer';
 
 import { InvalidArgumentError, type LanguageModelV4CallOptions } from '@ai-sdk/provider';
-import type { CredentialPort } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, Logger } from '@aio-proxy/plugin-sdk';
 import { create, fromBinary, toBinary, toJson } from '@bufbuild/protobuf';
 import { ValueSchema } from '@bufbuild/protobuf/wkt';
 
@@ -151,6 +151,27 @@ test('doStream returns a finishing stream and frames a runRequest', async () => 
   expect(runs[0]?.length).toBeGreaterThan(0);
   const first = fromBinary(AgentClientMessageSchema, runs[0]![0]!.subarray(5));
   expect(first.message.case).toBe('runRequest');
+});
+
+test('model forwards logical request diagnostics without forwarding session or credentials', async () => {
+  const rows: unknown[] = [];
+  const sink: Logger['debug'] = (a, b) => {
+    rows.push([a, b]);
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('composer-2', {
+    ...runtimeWith(transport, new CursorSessionStore()),
+    logger,
+  });
+  const options = callOptions();
+  const { stream } = await model.doStream(options);
+  await lastPartType(stream);
+  const serialized = JSON.stringify(rows);
+  expect(serialized).toContain('"requestId":"r1"');
+  expect(serialized).not.toContain('sha256:abc');
+  expect(serialized).not.toContain('"refreshToken"');
+  expect(serialized).not.toContain('"accessToken"');
 });
 
 test('function tools cross the local request-context handshake', async () => {
