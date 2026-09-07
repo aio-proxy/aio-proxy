@@ -251,6 +251,7 @@ export type CreateServerOptions = {
     readonly isManagedService: () => boolean;
     readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
     readonly notifyAvailable?: (latest: string) => void | Promise<void>;
+    readonly fetchLatest?: (pkg: string) => Promise<string>;
   };
 };
 
@@ -453,7 +454,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     applyUpdate: options.autoUpdate?.applyUpdate,
     notifyAvailable: options.autoUpdate?.notifyAvailable,
     currentVersion: options.version ?? '0.0.0',
-    fetchLatest: fetchLatestNpmVersion,
+    fetchLatest: options.autoUpdate?.fetchLatest ?? fetchLatestNpmVersion,
     onError: (error) => {
       logServerEvent(logger, {
         event: 'auto_update.failed',
