@@ -128,4 +128,43 @@ describe('Claude credential refresh', () => {
     expect(exchanges).toBe(1);
     expect(expired.accessToken).toBe('ported');
   });
+
+  test('rethrows abort while reading a successful refresh body', async () => {
+    const reason = new DOMException('cancelled', 'AbortError');
+    const controller = new AbortController();
+    await expect(
+      refreshClaudeCredential(stored, {
+        signal: controller.signal,
+        fetch: async () => {
+          controller.abort(reason);
+          return {
+            ok: true,
+            json: async () => {
+              throw reason;
+            },
+          } as Response;
+        },
+      }),
+    ).rejects.toBe(reason);
+  });
+
+  test('rethrows abort while reading a failed refresh body', async () => {
+    const reason = new DOMException('cancelled', 'AbortError');
+    const controller = new AbortController();
+    await expect(
+      refreshClaudeCredential(stored, {
+        signal: controller.signal,
+        fetch: async () => {
+          controller.abort(reason);
+          return {
+            ok: false,
+            status: 503,
+            json: async () => {
+              throw reason;
+            },
+          } as Response;
+        },
+      }),
+    ).rejects.toBe(reason);
+  });
 });

@@ -35,8 +35,8 @@ export async function refreshClaudeCredential(
     if (error instanceof Error && error.name === 'AbortError') throw error;
     throw refreshError(true, 'network');
   }
-  if (!response.ok) throw await classifyFailedResponse(response);
-  const token = await parseSuccessfulToken(response);
+  if (!response.ok) throw await classifyFailedResponse(response, options.signal);
+  const token = await parseSuccessfulToken(response, options.signal);
   const identity = await resolveRefreshIdentity(current, token.raw, fetcher, options.signal);
   return {
     accessToken: token.accessToken,
@@ -80,7 +80,10 @@ async function resolveRefreshIdentity(
   return await resolveClaudeIdentity(token, { fetch, signal, phase: 'refresh' });
 }
 
-async function parseSuccessfulToken(response: Response): Promise<{
+async function parseSuccessfulToken(
+  response: Response,
+  signal: AbortSignal | undefined,
+): Promise<{
   readonly accessToken: string;
   readonly refreshToken?: string;
   readonly expiresIn: number;
@@ -90,6 +93,7 @@ async function parseSuccessfulToken(response: Response): Promise<{
   try {
     raw = await response.json();
   } catch (error) {
+    throwIfAborted(signal, error);
     throw error instanceof SyntaxError ? refreshError(false, 'invalid') : refreshError(true, 'network');
   }
   if (!isPlainObject(raw)) throw refreshError(false, 'invalid');
@@ -100,8 +104,11 @@ async function parseSuccessfulToken(response: Response): Promise<{
   return { accessToken, ...(refreshToken === undefined ? {} : { refreshToken }), expiresIn, raw };
 }
 
-async function classifyFailedResponse(response: Response): Promise<CredentialRefreshError> {
-  const oauthError = await readOAuthError(response);
+async function classifyFailedResponse(
+  response: Response,
+  signal: AbortSignal | undefined,
+): Promise<CredentialRefreshError> {
+  const oauthError = await readOAuthError(response, signal);
   if (oauthError === 'invalid_grant') return refreshError(false, 'invalid_grant', response.status);
   if (response.status === 401 || response.status === 403 || oauthError === 'invalid_client') {
     return refreshError(false, 'rejected', response.status);
@@ -111,13 +118,19 @@ async function classifyFailedResponse(response: Response): Promise<CredentialRef
   return refreshError(false, 'http', response.status);
 }
 
-async function readOAuthError(response: Response): Promise<string | undefined> {
+async function readOAuthError(response: Response, signal: AbortSignal | undefined): Promise<string | undefined> {
   try {
     const value: unknown = await response.json();
     return isPlainObject(value) ? requiredTokenString(value['error']) : undefined;
-  } catch {
+  } catch (error) {
+    throwIfAborted(signal, error);
     return undefined;
   }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined, error: unknown): void {
+  if (signal?.aborted) throw signal.reason;
+  if (error instanceof Error && error.name === 'AbortError') throw error;
 }
 
 function refreshError(retryable: boolean, reason: string, status?: number): CredentialRefreshError {
