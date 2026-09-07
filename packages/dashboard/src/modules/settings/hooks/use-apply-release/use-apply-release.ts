@@ -123,7 +123,7 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
 
   const lastKnownInProgress =
     !timedOut && !pollTerminal && !freshPollIdle && (updateStatus === 'in_progress' || pollStatus === 'in_progress');
-  const inProgress = !timedOut && (apply.isPending || watching || lastKnownInProgress);
+  const inProgress = apply.isPending || (!timedOut && (watching || lastKnownInProgress));
   const restartRequired = updateStatus === 'restart_required' || pollStatus === 'restart_required';
   const failed = timedOut || applyMessage === 'failed' || updateStatus === 'failed' || pollStatus === 'failed';
   const unavailable = applyMessage === 'unavailable';

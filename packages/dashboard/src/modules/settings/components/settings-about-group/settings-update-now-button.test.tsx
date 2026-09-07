@@ -197,6 +197,42 @@ test('shows failed and re-enables Update now after 120s when GET is still in_pro
   expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
 });
 
+test('disables Update now while a retry apply is still pending after poll timeout', async () => {
+  rs.useFakeTimers();
+  prepare();
+  let finishRetry: (result: { ok: true; status: 'started' }) => void = () => {
+    /* assigned on the second apply */
+  };
+  mocks.apply.mockImplementation(() => {
+    if (mocks.apply.mock.calls.length <= 1) return Promise.resolve({ ok: true, status: 'started' as const });
+    return new Promise<{ ok: true; status: 'started' }>((resolve) => {
+      finishRetry = resolve;
+    });
+  });
+  mocks.releaseQueryFn.mockResolvedValue(withRelease('in_progress'));
+  await renderButton(true);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await rs.advanceTimersByTimeAsync(0);
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+
+  await rs.advanceTimersByTimeAsync(120_000);
+  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await rs.advanceTimersByTimeAsync(0);
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(mocks.apply).toHaveBeenCalledTimes(2);
+
+  fireEvent.click(screen.getByRole('button', { name: updatingName }));
+  expect(mocks.apply).toHaveBeenCalledTimes(2);
+
+  finishRetry({ ok: true, status: 'started' });
+  await rs.advanceTimersByTimeAsync(0);
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+});
+
 test('starts the poll when apply fails with a transport error', async () => {
   prepare();
   mocks.apply.mockRejectedValue(new Error('Failed to fetch'));
