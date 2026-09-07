@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
+import { m } from '@aio-proxy/i18n';
+
 import { managedUnitPath, resolveExec, writeManagedUnit } from '../../service/service';
 import { SYSTEMD_UNIT_NAME } from '../../service/unit-templates';
 import { notifyUpdateAvailable } from '../../update-notify';
@@ -59,6 +61,7 @@ export const createCliAutoUpdateHooks = (deps?: {
   readonly resolveExec?: typeof resolveExec;
   readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
   readonly relaunchUnmanaged?: () => void;
+  readonly print?: (line: string) => void;
 }) => ({
   isManagedService: deps?.isManagedService ?? isManagedAutoUpdateProcess,
   notifyAvailable: (latest: string) => notifyUpdateAvailable(latest),
@@ -66,11 +69,21 @@ export const createCliAutoUpdateHooks = (deps?: {
     const isManaged = deps?.isManagedService ?? isManagedAutoUpdateProcess;
     const exec = (deps?.resolveExec ?? resolveExec)();
     const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);
-    const result = await (deps?.upgrade ?? runUpgradeCommand)({ version }, (line) => console.log(line), {
-      resolveTarget,
-      fetchLatest: async () => version,
-      isServiceManaged: isManaged,
-    });
+    const print = deps?.print ?? ((line: string) => console.log(line));
+    const result = await (deps?.upgrade ?? runUpgradeCommand)(
+      { version },
+      (line) => {
+        // `runUpgradeCommand` still emits the unmanaged manual-restart hint.
+        // Dashboard apply then relaunches this process, so that line is stale.
+        if (line === m['cli.upgrade.manual_restart_hint']()) return;
+        print(line);
+      },
+      {
+        resolveTarget,
+        fetchLatest: async () => version,
+        isServiceManaged: isManaged,
+      },
+    );
     if (result === 'installed' && !isManaged()) {
       try {
         (deps?.relaunchUnmanaged ?? scheduleUnmanagedRelaunch)();
