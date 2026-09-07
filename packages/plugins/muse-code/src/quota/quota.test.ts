@@ -111,6 +111,22 @@ test('classifies timeout and 5xx as retryable quota failures', async () => {
   ).rejects.toMatchObject({ name: MuseCodeQuotaError.name, retryable: false });
 });
 
+test('classifies a key body-read transport failure as retryable', async () => {
+  await expect(
+    readMuseCodeQuota(context(), {
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('The connection was reset.'));
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    }),
+  ).rejects.toMatchObject({ name: MuseCodeQuotaError.name, retryable: true });
+});
+
 test('formats every window of at least 60 minutes in hours', async () => {
   const snapshot = await readMuseCodeQuota(context(), {
     fetch: async () =>

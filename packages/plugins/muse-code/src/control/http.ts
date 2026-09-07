@@ -29,6 +29,15 @@ export async function museControlFetch(fetcher: RuntimeFetch, input: string, ini
   }
 }
 
+export async function museControlReadText(response: Response, signal?: AbortSignal): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    if (signal?.aborted) throw signal.reason;
+    throw new MuseCodeHttpError('Muse Code request failed', true);
+  }
+}
+
 export function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }

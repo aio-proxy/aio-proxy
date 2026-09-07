@@ -1,7 +1,7 @@
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { MuseCodeHttpError, museControlFetch, museControlHeaders } from './http';
+import { MuseCodeHttpError, museControlFetch, museControlHeaders, museControlReadText } from './http';
 
 export const MUSE_KEY_URL = 'https://api.meta.ai/muse-code/key';
 export const MUSE_KEY_TIMEOUT_MS = 20_000;
@@ -44,7 +44,7 @@ export async function requestMuseCodeKey(
     redirect: 'error',
     signal,
   });
-  const text = await response.text();
+  const text = await museControlReadText(response, signal);
   if (!response.ok) {
     throw new MuseCodeHttpError(
       'Muse Code key exchange failed',
