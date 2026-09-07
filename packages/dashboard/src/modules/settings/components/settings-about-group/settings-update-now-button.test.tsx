@@ -135,17 +135,29 @@ test('shows unavailable when apply cannot install updates', async () => {
   expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
 });
 
-test('shows restart required, stops polling, and does not reload', async () => {
-  prepare(withRelease('in_progress'));
+test('keeps Updating through restart_required and reloads when current changes', async () => {
+  prepare(withRelease('restart_required'));
+  mocks.releaseQueryFn.mockResolvedValue(withRelease('idle', { current: '1.5.0' }));
+  await renderButton(true);
+
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+  await waitFor(() => expect(mocks.reloadDashboard).toHaveBeenCalledTimes(1));
+});
+
+test('shows restart required after 120s if the installed version never takes over', async () => {
+  rs.useFakeTimers();
+  prepare(withRelease('restart_required'));
   mocks.releaseQueryFn.mockResolvedValue(withRelease('restart_required'));
   await renderButton(true);
 
-  await waitFor(() => expect(screen.getByText(restartRequired)).toBeInTheDocument());
-  expect(screen.getByRole('button', { name: updateNowName })).toBeDisabled();
-  const calls = mocks.releaseQueryFn.mock.calls.length;
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
-  expect(mocks.reloadDashboard).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+
+  await rs.advanceTimersByTimeAsync(120_000);
+
+  expect(screen.getByText(restartRequired)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: updatingName })).not.toBeInTheDocument();
 });
 
 test('stops polling and returns to idle after apply started then GET idle', async () => {

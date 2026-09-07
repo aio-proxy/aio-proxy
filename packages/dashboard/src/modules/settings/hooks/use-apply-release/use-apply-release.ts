@@ -38,19 +38,16 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   const [pollStartedUpdatedAt, setPollStartedUpdatedAt] = useState(0);
 
   const updateStatus = release.data?.update.status;
+  const restartPending = updateStatus === 'restart_required';
   const pollQuery = useQuery({
     ...releaseQueryOptions(),
-    enabled: !timedOut && (polling || updateStatus === 'in_progress'),
+    enabled: !timedOut && (polling || updateStatus === 'in_progress' || restartPending),
     refetchInterval: (query) => {
       const view = query.state.data;
       if (view === undefined) return POLL_INTERVAL_MS;
       if (baselineCurrent !== undefined && view.current !== baselineCurrent) return false;
       if (query.state.dataUpdatedAt <= pollStartedUpdatedAt) return POLL_INTERVAL_MS;
-      if (
-        view.update.status === 'restart_required' ||
-        view.update.status === 'failed' ||
-        view.update.status === 'idle'
-      ) {
+      if (view.update.status === 'failed' || view.update.status === 'idle') {
         return false;
       }
       return POLL_INTERVAL_MS;
@@ -66,13 +63,17 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   if (freshPollIdle && polling) {
     setPolling(false);
   }
-  const pollTerminal =
-    pollQuery.dataUpdatedAt > pollStartedUpdatedAt && (pollStatus === 'restart_required' || pollStatus === 'failed');
-  if (pollTerminal && polling) {
+  const pollFailed = pollQuery.dataUpdatedAt > pollStartedUpdatedAt && pollStatus === 'failed';
+  if (pollFailed && polling) {
     setPolling(false);
   }
+  const awaitingRestart = restartPending || pollStatus === 'restart_required';
   const watching =
-    !timedOut && !pollTerminal && !versionChanged && !freshPollIdle && (polling || updateStatus === 'in_progress');
+    !timedOut &&
+    !pollFailed &&
+    !versionChanged &&
+    !freshPollIdle &&
+    (polling || updateStatus === 'in_progress' || awaitingRestart);
 
   useEffect(() => {
     if (!watching) return;
@@ -122,10 +123,11 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   });
 
   const lastKnownInProgress =
-    !timedOut && !pollTerminal && !freshPollIdle && (updateStatus === 'in_progress' || pollStatus === 'in_progress');
-  const inProgress = apply.isPending || (!timedOut && (watching || lastKnownInProgress));
-  const restartRequired = updateStatus === 'restart_required' || pollStatus === 'restart_required';
-  const failed = timedOut || applyMessage === 'failed' || updateStatus === 'failed' || pollStatus === 'failed';
+    !timedOut && !pollFailed && !freshPollIdle && (updateStatus === 'in_progress' || pollStatus === 'in_progress');
+  const inProgress = apply.isPending || (!timedOut && (watching || lastKnownInProgress || awaitingRestart));
+  const restartRequired = timedOut && awaitingRestart;
+  const failed =
+    (timedOut && !awaitingRestart) || applyMessage === 'failed' || updateStatus === 'failed' || pollStatus === 'failed';
   const unavailable = applyMessage === 'unavailable';
 
   return {

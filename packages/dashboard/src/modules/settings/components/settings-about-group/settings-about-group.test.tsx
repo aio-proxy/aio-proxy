@@ -48,6 +48,7 @@ const withRelease = (
 
 const updateNowName = /Update now|立即更新|今すぐ更新|지금 업데이트/u;
 const updatingName = /Updating…|正在更新…|更新中…|업데이트 중…/u;
+const checkName = /Check for updates|检查新版本|檢查新版本|更新を確認|업데이트 확인/u;
 const updateFailed =
   /The update could not be installed|无法安装更新|無法安裝更新|更新をインストールできませんでした|업데이트를 설치할 수 없습니다/u;
 const restartRequired =
@@ -79,10 +80,7 @@ const syncReleaseFromCheck = (result: { current: string; latest: string; outdate
   });
 };
 
-const clickCheck = () =>
-  fireEvent.click(
-    screen.getByRole('button', { name: /Check for updates|检查新版本|檢查新版本|更新を確認|업데이트 확인/u }),
-  );
+const clickCheck = () => fireEvent.click(screen.getByRole('button', { name: checkName }));
 
 const prepare = (release = idleRelease) => {
   mocks.apply.mockReset();
@@ -201,6 +199,7 @@ test('disables Update now and polls when GET already reports in_progress', async
   prepare(withRelease('in_progress'));
   await renderGroup();
 
+  expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
   await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
 });
@@ -231,18 +230,15 @@ test('shows a failed update without claiming the build is current', async () => 
   expect(screen.queryByText(upToDate)).toBeNull();
 });
 
-test('shows restart required, disables Update now, and does not reload', async () => {
-  prepare(withRelease('restart_required'));
-  syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
+test('hides Check for updates and keeps Updating while a restart is pending', async () => {
+  prepare(withRelease('restart_required', { latest: '1.10.0', outdated: true }));
   await renderGroup();
 
-  clickCheck();
-  await waitFor(() => expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument());
-
-  expect(screen.getByText(restartRequired)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: updateNowName })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
-  expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
+  await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
 });
 
 test('keeps Check for updates without an Automatic updates switch', async () => {
@@ -250,7 +246,5 @@ test('keeps Check for updates without an Automatic updates switch', async () => 
   await renderGroup();
 
   expect(screen.queryByRole('switch')).toBeNull();
-  expect(
-    screen.getByRole('button', { name: /Check for updates|检查新版本|檢查新版本|更新を確認|업데이트 확인/u }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: checkName })).toBeInTheDocument();
 });

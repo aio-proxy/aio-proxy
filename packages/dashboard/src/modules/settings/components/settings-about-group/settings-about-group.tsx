@@ -29,6 +29,8 @@ export const SettingsAboutGroup: React.FC = () => {
   const persistedOutdated = release.data?.outdated === true;
   const outdated = persistedOutdated;
   const latest = release.data?.latest;
+  const updateStatus = release.data?.update.status;
+  const hideCheck = updateStatus === 'in_progress' || updateStatus === 'restart_required';
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version. A failed install is the same — do not replace it with
@@ -66,9 +68,11 @@ export const SettingsAboutGroup: React.FC = () => {
               <ItemDescription>{versionDescription ?? <Skeleton className="h-4 w-40" />}</ItemDescription>
             </ItemContent>
             <ItemActions>
-              <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
-                {m['dashboard.settings.version_check']()}
-              </Button>
+              {hideCheck ? null : (
+                <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
+                  {m['dashboard.settings.version_check']()}
+                </Button>
+              )}
               <SettingsUpdateNowButton outdated={outdated} onUpToDate={() => check.reset()} />
               <SettingsExternalLink
                 href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}

@@ -5,6 +5,7 @@ import { SYSTEMD_UNIT_NAME } from '../../service/unit-templates';
 import { notifyUpdateAvailable } from '../../update-notify';
 import { resolveStableManagedExec, resolveUpgradeTargetFrom } from '../../upgrade/detect';
 import { runUpgradeCommand } from '../../upgrade/upgrade';
+import { scheduleUnmanagedRelaunch } from './unmanaged-relaunch';
 
 export type ManagedProcessIo = {
   readonly platform?: NodeJS.Platform;
@@ -57,17 +58,28 @@ export const createCliAutoUpdateHooks = (deps?: {
   readonly upgrade?: typeof runUpgradeCommand;
   readonly resolveExec?: typeof resolveExec;
   readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
+  readonly relaunchUnmanaged?: () => void;
 }) => ({
   isManagedService: deps?.isManagedService ?? isManagedAutoUpdateProcess,
   notifyAvailable: (latest: string) => notifyUpdateAvailable(latest),
   applyUpdate: async (version: string) => {
+    const isManaged = deps?.isManagedService ?? isManagedAutoUpdateProcess;
     const exec = (deps?.resolveExec ?? resolveExec)();
     const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);
-    return (deps?.upgrade ?? runUpgradeCommand)({ version }, (line) => console.log(line), {
+    const result = await (deps?.upgrade ?? runUpgradeCommand)({ version }, (line) => console.log(line), {
       resolveTarget,
       fetchLatest: async () => version,
-      isServiceManaged: deps?.isManagedService ?? isManagedAutoUpdateProcess,
+      isServiceManaged: isManaged,
     });
+    if (result === 'installed' && !isManaged()) {
+      try {
+        (deps?.relaunchUnmanaged ?? scheduleUnmanagedRelaunch)();
+      } catch {
+        // Install already succeeded. The dashboard stays on restart_required until
+        // this process is replaced, then falls back to the manual restart hint.
+      }
+    }
+    return result;
   },
 });
 
