@@ -157,22 +157,26 @@ export const runUpgradeCommand = async (
   if (deps.isEffectiveUserRoot()) print(m['cli.agent.upgrade.root_effective_user']());
   // Install failures are plain Errors (package-manager exit code, missing asset);
   // rethrow as CliExit so the user sees the actionable reason, not a generic message.
+  // Homebrew latest is the tap bottle, not npm latest. Report and hand off the
+  // version on the launcher so Agent post-upgrade does not reject a real install.
+  let installedVersion = latest;
   try {
     await deps.install(target, latest, options);
-    if (target.method === 'brew' && options.force !== true) {
+    if (target.method === 'brew') {
       const actual = await deps.readInstalledVersion(target.bin);
-      if (Bun.semver.order(actual, current) <= 0) {
+      if (options.force !== true && Bun.semver.order(actual, current) <= 0) {
         print(m['cli.upgrade.up_to_date']({ version: current }));
         return 'unchanged';
       }
+      installedVersion = actual;
     }
   } catch (err) {
     throw new CliExit(EXIT.transient, m['cli.upgrade.install_failed']({ reason: errorReason(err) }));
   }
-  print(m['cli.upgrade.success']({ version: latest }));
+  print(m['cli.upgrade.success']({ version: installedVersion }));
 
   try {
-    const binary = await deps.resolveNewBinary(target, latest);
+    const binary = await deps.resolveNewBinary(target, installedVersion);
     const results = await deps.invokeAgentPostUpgrade(binary, payload);
     for (const item of results) {
       if (item.status === 'warning') print(agentItemWarning(item));

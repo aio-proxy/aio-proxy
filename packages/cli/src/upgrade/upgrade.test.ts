@@ -969,6 +969,58 @@ test('runUpgradeCommand restarts npm installs with the native cli-* path, not th
   expect(restarted).not.toBe(shim);
 });
 
+test('brew --force hands off the installed tap version when it differs from npm latest', async () => {
+  const lines: string[] = [];
+  let handedOff: string | undefined;
+  const result = await runUpgradeCommand(
+    { version: '2.0.0', force: true },
+    (l) => lines.push(l),
+    makeDeps({
+      currentVersion: '2.0.0',
+      resolveTarget: async () => ({
+        method: 'brew',
+        command: '/opt/homebrew/bin/brew',
+        bin: '/opt/homebrew/bin/aio-proxy',
+      }),
+      readInstalledVersion: async () => '1.5.0',
+      resolveNewBinary: async (_target, version) => {
+        handedOff = version;
+        return '/opt/homebrew/bin/aio-proxy';
+      },
+    }),
+  );
+  expect(result).toBe('installed');
+  expect(handedOff).toBe('1.5.0');
+  expect(lines.join('\n')).toContain('Upgraded to v1.5.0');
+  expect(lines.join('\n')).not.toContain('Upgraded to v2.0.0');
+});
+
+test('Homebrew tap older than npm latest reports and hands off the installed version', async () => {
+  const lines: string[] = [];
+  let handedOff: string | undefined;
+  const result = await runUpgradeCommand(
+    { version: '2.0.0' },
+    (l) => lines.push(l),
+    makeDeps({
+      currentVersion: '1.0.0',
+      resolveTarget: async () => ({
+        method: 'brew',
+        command: '/opt/homebrew/bin/brew',
+        bin: '/opt/homebrew/bin/aio-proxy',
+      }),
+      readInstalledVersion: async () => '1.5.0',
+      resolveNewBinary: async (_target, version) => {
+        handedOff = version;
+        return '/opt/homebrew/bin/aio-proxy';
+      },
+    }),
+  );
+  expect(result).toBe('installed');
+  expect(handedOff).toBe('1.5.0');
+  expect(lines.join('\n')).toContain('Upgraded to v1.5.0');
+  expect(lines.join('\n')).not.toContain('Upgraded to v2.0.0');
+});
+
 test('successful brew upgrade restarts with the stable launcher', async () => {
   let restarted: string | undefined;
   const result = await runUpgradeCommand(
