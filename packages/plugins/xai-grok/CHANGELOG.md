@@ -1,5 +1,20 @@
 # @aio-proxy/plugin-xai-grok
 
+## 0.20.0
+
+### Minor Changes
+
+- [#308](https://github.com/aio-proxy/aio-proxy/pull/308) [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3) Thanks [@baranwang](https://github.com/baranwang)! - Subscription quota bars now mark where an even burn would have left the allowance by now, turning
+  red when the window is being spent faster than that and drawing nothing while it tracks even. The
+  marker appears wherever the provider reports how long the window lasts, which the bundled OAuth
+  plugins now do; plugins can opt in through the new optional `OAuthQuotaItem.windowMinutes`. The
+  reading is also spoken by the bar's accessible value text.
+
+### Patch Changes
+
+- Updated dependencies [[`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690), [`681b039`](https://github.com/aio-proxy/aio-proxy/commit/681b039164281d7ab28c09ce1a61aae064caa6a0), [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3)]:
+  - @aio-proxy/plugin-sdk@0.20.0
+
 ## 0.19.2
 
 ### Patch Changes

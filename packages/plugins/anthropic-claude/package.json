@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-anthropic-claude",
-  "version": "0.19.2",
+  "version": "0.20.0",
   "private": true,
   "files": [
     "dist"
