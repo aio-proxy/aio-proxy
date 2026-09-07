@@ -142,4 +142,18 @@ describe('GitHub Copilot runtime', () => {
     ).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-chat', capability: 'language' })).toBeDefined();
   });
+
+  test('declines audio: the Copilot chat endpoint cannot serve /v1/audio', async () => {
+    const credentials = credentialPort(validCredential('raw-token'));
+    const runtime = await createGitHubCopilotRuntime({
+      credentials: credentials.port,
+      options: { deploymentType: 'github.com' },
+      catalog: catalog(),
+      fetch: forwardFetch,
+    });
+
+    for (const capability of ['speech', 'transcription'] as const) {
+      expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-chat', capability })).toBeUndefined();
+    }
+  });
 });

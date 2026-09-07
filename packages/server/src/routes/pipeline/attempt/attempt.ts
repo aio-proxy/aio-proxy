@@ -1,4 +1,4 @@
-import type { AnyProtocolAdapter, ImageProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
+import type { AnyProtocolAdapter, AudioProtocolAdapter, ImageProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -9,10 +9,12 @@ import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runt
 import { prioritizeAffinity } from '../affinity';
 import { candidateRoutingTrace, candidateSelectionSource } from '../attempt-base';
 import { type AttemptLog, logProviderAttemptFailed } from '../logging';
+import { attemptAudioCandidate } from './audio';
 import type {
   AnyAttemptLoopContext,
   AttemptLoopContext,
   AttemptStep,
+  AudioAttemptLoopContext,
   CandidateSlot,
   EmbeddingAttemptLoopContext,
   ImageAttemptLoopContext,
@@ -29,7 +31,10 @@ import { requestPathProperty } from './request-path';
 import { warmProviderQuota } from './warm-quota';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
-  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
+  readonly adapter:
+    | AnyProtocolAdapter<TRequest, TContext>
+    | ImageProtocolAdapter<TRequest, TContext>
+    | AudioProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly config: Config | undefined;
@@ -100,6 +105,7 @@ function createAttemptLoopContext<TRequest, TContext>(
 type AttemptDispatch<TRequest, TContext> =
   | { readonly kind: 'embedding'; readonly ctx: EmbeddingAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'image'; readonly ctx: ImageAttemptLoopContext<TRequest, TContext> }
+  | { readonly kind: 'audio'; readonly ctx: AudioAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'language'; readonly ctx: AttemptLoopContext<TRequest, TContext> };
 
 // The inbound capability, not the provider kind, decides which transports a
@@ -107,13 +113,21 @@ type AttemptDispatch<TRequest, TContext> =
 // Narrows on the `capability` discriminant directly: the isEmbeddingProtocolAdapter
 // guard cannot eliminate union members here because its type parameters infer as
 // `unknown` against generic TRequest/TContext.
+//
+// Every branch tests positively and audio is the fallthrough. Audio is the one
+// member whose `capability` is a union (`'speech' | 'transcription'`) rather than a
+// single literal, so it is not a discriminant TypeScript can narrow *away* from:
+// excluding both of its values still leaves `AudioProtocolAdapter` in the union.
+// Testing `=== 'language'` narrows to the member that does carry a single literal,
+// which removes audio by elimination.
 function attemptDispatch<TRequest, TContext>(
   ctx: AnyAttemptLoopContext<TRequest, TContext>,
 ): AttemptDispatch<TRequest, TContext> {
   const { adapter } = ctx;
   if (adapter.capability === 'embedding') return { kind: 'embedding', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'image') return { kind: 'image', ctx: { ...ctx, adapter } };
-  return { kind: 'language', ctx: { ...ctx, adapter } };
+  if (adapter.capability === 'language') return { kind: 'language', ctx: { ...ctx, adapter } };
+  return { kind: 'audio', ctx: { ...ctx, adapter } };
 }
 
 // Same-protocol raw wins, then the AI SDK model transport, then nothing.
@@ -214,7 +228,9 @@ export async function attemptCandidates<TRequest, TContext>(
           ? await attemptEmbeddingCandidate(dispatch.ctx, slot)
           : dispatch.kind === 'image'
             ? await dispatchImageCandidate(dispatch.ctx, slot)
-            : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
+            : dispatch.kind === 'audio'
+              ? await attemptAudioCandidate(dispatch.ctx, slot)
+              : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') {
         return warmProviderQuota(options.source, provider, step.response);
       }

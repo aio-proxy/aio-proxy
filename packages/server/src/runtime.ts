@@ -7,6 +7,10 @@ import type {
   ImageTransportResult,
   PluginRegistrySnapshot,
   Router,
+  SpeechInvocation,
+  SpeechResultData,
+  TranscriptionInvocation,
+  TranscriptionResultData,
 } from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
@@ -47,7 +51,7 @@ export type RawTransport = {
 export type RawResolveInput = {
   readonly protocol: ProviderProtocol;
   readonly modelId: string;
-  readonly capability?: 'language' | 'embedding';
+  readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription';
   readonly requestPath?: string;
 };
 
@@ -73,7 +77,7 @@ export type ModelTransport = {
   readonly targetProtocol?: (modelId: string) => ProviderProtocol | undefined;
 };
 
-export type InboundCapability = 'language' | 'image' | 'embedding';
+export type InboundCapability = 'language' | 'image' | 'embedding' | 'speech' | 'transcription';
 export type ModelCapabilityIndex = Readonly<Record<string, ReadonlySet<InboundCapability>>>;
 
 export type ImageTransportInvokeRequest = {
@@ -85,6 +89,25 @@ export type ImageTransportInvokeRequest = {
 export type ImageTransport = {
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (request: ImageTransportInvokeRequest) => Promise<ImageTransportResult>;
+};
+
+export type AudioTransportInvokeOptions = {
+  readonly modelId: string;
+  readonly signal?: AbortSignal;
+  readonly logicalRequest: LogicalRequestContext;
+};
+
+export type SpeechTransport = {
+  readonly ensureAvailable?: (modelId: string) => Promise<void>;
+  readonly invoke: (invocation: SpeechInvocation, options: AudioTransportInvokeOptions) => Promise<SpeechResultData>;
+};
+
+export type TranscriptionTransport = {
+  readonly ensureAvailable?: (modelId: string) => Promise<void>;
+  readonly invoke: (
+    invocation: TranscriptionInvocation,
+    options: AudioTransportInvokeOptions,
+  ) => Promise<TranscriptionResultData>;
 };
 
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;
@@ -108,34 +131,32 @@ type RuntimeProviderBase = {
   readonly runtimeRevision?: number;
   readonly realtime?: RealtimeTransport;
 };
+/**
+ * Every transport a materialized runtime provider can expose. A provider must
+ * carry at least one; dispatch selects among them by inbound capability, never
+ * by provider kind.
+ */
+type RuntimeTransports = {
+  readonly raw: RuntimeRawCapability;
+  readonly model: ModelTransport;
+  readonly image: ImageTransport;
+  readonly embedding: EmbeddingTransport;
+  readonly speech: SpeechTransport;
+  readonly transcription: TranscriptionTransport;
+};
+
+// One union arm per transport, each requiring its own and leaving the rest
+// optional. Derived rather than hand-written: six arms times six keys is 36
+// lines that must stay in lockstep, and the count grows quadratically with
+// every capability added.
+type AtLeastOneRuntimeTransport = {
+  [K in keyof RuntimeTransports]: Required<Pick<RuntimeTransports, K>> & Partial<Omit<RuntimeTransports, K>>;
+}[keyof RuntimeTransports];
+
 export type RuntimeProviderInstance = RuntimeProviderBase & {
   readonly capabilityIndex: ModelCapabilityIndex;
-} & (
-    | {
-        readonly raw: RuntimeRawCapability;
-        readonly model?: ModelTransport;
-        readonly image?: ImageTransport;
-        readonly embedding?: EmbeddingTransport;
-      }
-    | {
-        readonly raw?: RuntimeRawCapability;
-        readonly model: ModelTransport;
-        readonly image?: ImageTransport;
-        readonly embedding?: EmbeddingTransport;
-      }
-    | {
-        readonly raw?: RuntimeRawCapability;
-        readonly model?: ModelTransport;
-        readonly image: ImageTransport;
-        readonly embedding?: EmbeddingTransport;
-      }
-    | {
-        readonly raw?: RuntimeRawCapability;
-        readonly model?: ModelTransport;
-        readonly image?: ImageTransport;
-        readonly embedding: EmbeddingTransport;
-      }
-  );
+} & AtLeastOneRuntimeTransport;
+
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 
 export type ProviderRouteSnapshot = {

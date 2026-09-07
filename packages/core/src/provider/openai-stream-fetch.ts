@@ -13,6 +13,7 @@ export function wrapOpenAIProtocolFetch(protocol: ProviderProtocol, fetcher: Pro
     case ProviderProtocol.Gemini:
     case ProviderProtocol.GeminiInteractions:
     case ProviderProtocol.OpenAIImage:
+    case ProviderProtocol.OpenAIAudio:
       return fetcher as OpenAIStreamFetch;
   }
 }

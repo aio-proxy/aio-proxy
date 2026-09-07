@@ -4,7 +4,13 @@ import type { LogicalRequestContext, RawResolver, RawTransportOptions } from '@a
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { oauthExposedModels } from '@aio-proxy/types';
 
-import { supportsEmbedding, supportsImage } from '../provider-runtime/capability-index';
+import {
+  supportsEmbedding,
+  supportsImage,
+  supportsLanguage,
+  supportsSpeech,
+  supportsTranscription,
+} from '../provider-runtime/capability-index';
 import { createRuntimeProvider, withAccountPin, withRoutingConfig } from './capabilities';
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
@@ -50,6 +56,7 @@ test('maps every internal provider protocol to the plugin SDK protocol', () => {
     [ProviderProtocol.Gemini]: 'gemini',
     [ProviderProtocol.GeminiInteractions]: 'gemini-interactions',
     [ProviderProtocol.OpenAIImage]: 'openai-image',
+    [ProviderProtocol.OpenAIAudio]: 'openai-audio',
   });
 });
 
@@ -623,6 +630,180 @@ test('cached routing still inherits a newly advertised plugin default alias', as
 
   expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
   expect(second.provider?.alias).toEqual({ fresh: { model: 'fresh', preserve: false } });
+});
+
+test('an audio-only plugin catalog exposes its ids and materializes audio transports', async () => {
+  // Without catalogModelIds covering the audio arrays, `models` is empty, the
+  // ids never reach the capability index, and the gate chain finds no transport
+  // to attach - an audio-capable plugin would materialize as invalid.
+  const audioCatalog = {
+    ...catalog,
+    language: [],
+    speech: [{ id: 'tts-1' }],
+    transcription: [{ id: 'whisper-1' }],
+  };
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    { catalog: audioCatalog, createRuntime: async () => ({ provider: providerV4() }) },
+  );
+
+  const result = await materializePluginProvider({
+    config: providerConfig,
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+  const provider = result.provider;
+
+  expect(provider?.models).toEqual(['tts-1', 'whisper-1']);
+  expect(provider?.speech).toBeDefined();
+  expect(provider?.transcription).toBeDefined();
+  expect(provider?.model).toBeUndefined();
+  expect(supportsSpeech(provider!.capabilityIndex, 'tts-1')).toBe(true);
+  expect(supportsTranscription(provider!.capabilityIndex, 'whisper-1')).toBe(true);
+  // An audio catalog id must never fall back into the language pool.
+  expect(supportsLanguage(provider!.capabilityIndex, 'tts-1')).toBe(false);
+  expect(supportsLanguage(provider!.capabilityIndex, 'whisper-1')).toBe(false);
+});
+
+test('a language plugin catalog that also lists audio models keeps both surfaces', async () => {
+  const mixedCatalog = {
+    ...catalog,
+    language: [{ id: 'chat' }],
+    speech: [{ id: 'tts-1' }],
+    transcription: [{ id: 'whisper-1' }],
+  };
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    { catalog: mixedCatalog, createRuntime: async () => ({ provider: providerV4() }) },
+  );
+
+  const result = await materializePluginProvider({
+    config: providerConfig,
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+  const provider = result.provider;
+
+  expect(provider?.models).toEqual(['chat', 'tts-1', 'whisper-1']);
+  expect(provider?.model).toBeDefined();
+  expect(provider?.speech).toBeDefined();
+  expect(provider?.transcription).toBeDefined();
+});
+
+test('forwards audio capability and the audio descriptor extra to the plugin raw resolver', async () => {
+  // Audio ids only reach `models` now that catalogModelIds covers the audio
+  // arrays, so the descriptor lookup must search the audio catalogs too -
+  // otherwise a plugin loses its own per-model routing hint on every /v1/audio
+  // request while keeping it on /v1/chat. `gpt-4o-audio` is catalogued in both
+  // directions with a different hint each, so the request's own capability, not
+  // a fixed modality order, has to pick the descriptor.
+  const observed: unknown[] = [];
+  const audioCatalog = {
+    ...catalog,
+    language: [{ id: 'chat' }],
+    speech: [
+      { id: 'tts-1', extra: { deployment: 'tts-eastus' } },
+      { id: 'gpt-4o-audio', extra: { deployment: 'speech-westus' } },
+    ],
+    transcription: [
+      { id: 'whisper-1', extra: { deployment: 'stt-eastus' } },
+      { id: 'gpt-4o-audio', extra: { deployment: 'transcribe-westus' } },
+    ],
+  };
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: audioCatalog,
+      createRuntime: async () =>
+        ({
+          provider: providerV4(),
+          raw(input: Parameters<RawResolver>[0]) {
+            observed.push(input);
+            return { invoke: async () => new Response('ok') };
+          },
+        }) as never,
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  const speech = result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.OpenAIAudio,
+    modelId: 'tts-1',
+    capability: 'speech',
+  });
+  const transcription = result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.OpenAIAudio,
+    modelId: 'whisper-1',
+    capability: 'transcription',
+  });
+  result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.OpenAIAudio,
+    modelId: 'gpt-4o-audio',
+    capability: 'transcription',
+  });
+
+  expect(speech).toBeDefined();
+  expect(transcription).toBeDefined();
+  expect(observed[0]).toEqual({
+    protocol: 'openai-audio',
+    modelId: 'tts-1',
+    extra: { deployment: 'tts-eastus' },
+    capability: 'speech',
+  });
+  expect(observed[1]).toEqual({
+    protocol: 'openai-audio',
+    modelId: 'whisper-1',
+    extra: { deployment: 'stt-eastus' },
+    capability: 'transcription',
+  });
+  expect(observed[2]).toEqual({
+    protocol: 'openai-audio',
+    modelId: 'gpt-4o-audio',
+    extra: { deployment: 'transcribe-westus' },
+    capability: 'transcription',
+  });
+});
+
+test('an openai-audio resolve with no capability prefers the audio descriptor over the language one', async () => {
+  // A caller that omits `capability` (a bare protocol probe, or any future
+  // resolve site that has not threaded it) must still get the audio routing hint
+  // for a dual-catalogued id: MODALITY_FALLBACK tries language first, so without
+  // the protocol-based inference `gpt-4o-audio` would hand the plugin its chat
+  // deployment for a /v1/audio request.
+  const observed: Parameters<RawResolver>[0][] = [];
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: {
+        ...catalog,
+        language: [{ id: 'gpt-4o-audio', extra: { deployment: 'chat-eu' } }],
+        speech: [{ id: 'gpt-4o-audio', extra: { deployment: 'tts-eu' } }],
+      },
+      createRuntime: async () =>
+        ({
+          provider: providerV4(),
+          raw(input: Parameters<RawResolver>[0]) {
+            observed.push(input);
+            return { invoke: async () => new Response('ok') };
+          },
+        }) as never,
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIAudio, modelId: 'gpt-4o-audio' });
+
+  expect(observed[0]).toEqual({
+    protocol: 'openai-audio',
+    modelId: 'gpt-4o-audio',
+    extra: { deployment: 'tts-eu' },
+  });
 });
 
 const realtimeTransport = {

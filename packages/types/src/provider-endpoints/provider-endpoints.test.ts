@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import {
+  ApiEndpointEntrySchema,
   ApiEndpointsInputSchema,
   apiProviderEndpoints,
   ProviderProtocol,
@@ -13,6 +14,14 @@ import {
 test('accepts openai-image as a provider protocol', () => {
   expect(ProviderProtocol.OpenAIImage).toBe('openai-image');
   expect(ProviderProtocolSchema.parse('openai-image')).toBe(ProviderProtocol.OpenAIImage);
+});
+
+test('openai-audio is a configurable api endpoint protocol', () => {
+  const parsed = ApiEndpointEntrySchema.parse({
+    protocol: 'openai-audio',
+    baseURL: 'https://api.openai.com',
+  });
+  expect(parsed.protocol).toBe(ProviderProtocol.OpenAIAudio);
 });
 
 const issuesOf = (provider: unknown): readonly string[] => {

@@ -26,6 +26,7 @@ import { createDashboardRoutes } from '../dashboard-routes/config';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
 import { createGeminiInteractionsRoutes } from '../routes/gemini-interactions';
+import { createOpenAIAudioRoutes } from '../routes/openai-audio';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
 import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
@@ -383,6 +384,7 @@ const createRoutes = (
   const openAIEmbeddingsRoutes = createOpenAIEmbeddingsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const openAIImagesRoutes = createOpenAIImagesRoutes(state);
+  const openAIAudioRoutes = createOpenAIAudioRoutes(state);
   // Mounted (below) only after `app.use('/v1/*', modelAuthentication)`: a realtime route
   // registered ahead of that middleware reads every caller as the anonymous principal,
   // and the create/attach ownership check would then admit anyone.
@@ -398,6 +400,7 @@ const createRoutes = (
     .route('/', openAIEmbeddingsRoutes)
     .route('/', openAIResponsesRoutes)
     .route('/', openAIImagesRoutes)
+    .route('/', openAIAudioRoutes)
     .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)
     .route('/dashboard/api', dashboardRoutes);

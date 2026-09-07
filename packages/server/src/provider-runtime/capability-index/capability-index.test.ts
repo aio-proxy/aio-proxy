@@ -8,19 +8,25 @@ import {
   supportsEmbedding,
   supportsImage,
   supportsLanguage,
+  supportsSpeech,
+  supportsTranscription,
 } from './capability-index';
 
 // Index membership rules:
 // | Source | Adds |
 // | catalog.language id | language |
 // | catalog.image id | image |
+// | catalog.speech id | speech |
+// | catalog.transcription id | transcription |
+// | catalog audio/image/embedding id absent from catalog.language | never language |
 // | same id in both | union |
 // | upstreamMetadata capabilities.modalities.output includes image | image |
 // | catalogMetadata (models.dev) output includes image AND upstream declares no output | image |
 // | modalities.output present and text-only | does not add image; does not remove catalog.image |
 // | primary protocol openai-image and id in finite non-catalog set (models, preserved alias targets, upstream metadata keys) | image |
 // | chat primary (openai-compatible, openai-response, anthropic, gemini) and id in finite non-catalog set | language |
-// | API/ai-sdk finite ids with no catalog and a non-openai-image primary | language |
+// | API/ai-sdk finite ids with no catalog and a chat primary | language + embedding |
+// | primary protocol absent from PROTOCOL_CAPABILITIES | nothing |
 // | V4 imageModel function exists | never |
 
 describe('buildModelCapabilityIndex', () => {
@@ -232,6 +238,125 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsImage(index, 'gpt-image-2')).toBe(true);
     expect(supportsImage(index, 'gpt-5')).toBe(false);
     expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+  });
+
+  test('primary openai-audio marks finite non-catalog ids as speech and transcription only', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIAudio,
+      models: ['tts-1', 'whisper-1'],
+      preservedAliasTargets: ['alias-target'],
+    });
+    // An audio endpoint declares no per-model direction, so both are granted and
+    // the upstream rejects the mismatched one. What must never happen is the
+    // audio-only provider becoming a language or embedding candidate.
+    for (const id of ['tts-1', 'whisper-1', 'alias-target']) {
+      expect(supportsSpeech(index, id)).toBe(true);
+      expect(supportsTranscription(index, id)).toBe(true);
+      expect(supportsLanguage(index, id)).toBe(false);
+      expect(supportsEmbedding(index, id)).toBe(false);
+      expect(supportsImage(index, id)).toBe(false);
+    }
+  });
+
+  test('audio-primary with a language extra endpoint keeps finite ids chat-capable', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIAudio,
+      extraProtocols: [ProviderProtocol.OpenAICompatible],
+      models: ['gpt-4o-audio-preview'],
+    });
+    expect(supportsLanguage(index, 'gpt-4o-audio-preview')).toBe(true);
+    expect(supportsSpeech(index, 'gpt-4o-audio-preview')).toBe(true);
+    expect(supportsTranscription(index, 'gpt-4o-audio-preview')).toBe(true);
+  });
+
+  test('chat-primary with an audio extra endpoint grants audio alongside language', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      extraProtocols: [ProviderProtocol.OpenAIAudio],
+      models: ['gpt-5'],
+    });
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+    expect(supportsSpeech(index, 'gpt-5')).toBe(true);
+    expect(supportsTranscription(index, 'gpt-5')).toBe(true);
+  });
+
+  test('a provider with no audio endpoint never grants speech or transcription', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      models: ['gpt-5'],
+    });
+    expect(supportsSpeech(index, 'gpt-5')).toBe(false);
+    expect(supportsTranscription(index, 'gpt-5')).toBe(false);
+  });
+
+  test('an audio catalog grants speech and transcription per descriptor, with no protocol', () => {
+    // A plugin catalog is the only audio signal an OAuth provider has: it speaks
+    // no configured wire protocol, so without catalog membership its audio models
+    // would be unroutable. Unlike a protocol grant, the catalog knows the
+    // direction of each id, so speech and transcription must NOT be unioned.
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [],
+        image: [],
+        embedding: [],
+        speech: [{ id: 'tts-1' }],
+        transcription: [{ id: 'whisper-1' }],
+        reranking: [],
+      },
+      models: ['tts-1', 'whisper-1'],
+    });
+    expect(supportsSpeech(index, 'tts-1')).toBe(true);
+    expect(supportsTranscription(index, 'tts-1')).toBe(false);
+    expect(supportsTranscription(index, 'whisper-1')).toBe(true);
+    expect(supportsSpeech(index, 'whisper-1')).toBe(false);
+  });
+
+  test('audio catalog ids stay out of the synthesized language and embedding pools', () => {
+    // `models` unions every catalog modality, so without an audio-only exclusion
+    // a TTS id becomes a chat candidate and a chat request is dispatched to a
+    // speech endpoint that cannot answer it.
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [{ id: 'gpt-5' }],
+        image: [],
+        embedding: [],
+        speech: [{ id: 'tts-1' }],
+        transcription: [{ id: 'whisper-1' }],
+        reranking: [],
+      },
+      models: ['gpt-5', 'tts-1', 'whisper-1'],
+    });
+    for (const id of ['tts-1', 'whisper-1']) {
+      expect(supportsLanguage(index, id)).toBe(false);
+      expect(supportsEmbedding(index, id)).toBe(false);
+      expect(supportsImage(index, id)).toBe(false);
+    }
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+  });
+
+  test('a protocol absent from the capability table grants nothing at all', () => {
+    // A protocol added to the enum but not to PROTOCOL_CAPABILITIES must leave
+    // its ids unroutable rather than silently joining the language/embedding
+    // pool, where a chat request would be dispatched to an endpoint that cannot
+    // answer it. Expectations are hard-coded rather than read back from the
+    // table so this fails if the table stops being the source of truth.
+    const unregistered = 'openai-video' as ProviderProtocol;
+    expect(buildModelCapabilityIndex({ primaryProtocol: unregistered, models: ['v1'] })).toEqual({});
+    expect(
+      buildModelCapabilityIndex({
+        extraProtocols: [unregistered],
+        models: ['v1'],
+        catalog: { language: [], image: [], embedding: [] },
+      }),
+    ).toEqual({});
+    // Nor may an unregistered extra endpoint revive language on a provider whose
+    // primary protocol serves none.
+    const withImagePrimary = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIImage,
+      extraProtocols: [unregistered],
+      models: ['v1'],
+    });
+    expect([...withImagePrimary['v1']!]).toEqual(['image']);
   });
 });
 

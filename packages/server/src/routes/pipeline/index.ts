@@ -1,6 +1,5 @@
 import {
-  type AnyProtocolAdapter,
-  type ImageProtocolAdapter,
+  type InboundCapability,
   RequestBodyTooLargeError,
   releaseMultipartSpool,
   RouterModelNotFoundError,
@@ -13,13 +12,13 @@ import { observeInboundRequest, withRequestLogContext } from '../../request-logg
 import { requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource } from '../../runtime';
-import { attemptCandidates } from './attempt';
+import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
-  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
+  readonly adapter: PipelineAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
@@ -159,7 +158,7 @@ type ParsedProtocolRequest<TRequest> =
   | { readonly request?: undefined; readonly response: Response };
 
 async function parseProtocolRequest<TRequest, TContext>(options: {
-  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
+  readonly adapter: PipelineAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
@@ -203,7 +202,7 @@ function rejectParsedRequest<TRequest, TContext>(
     session,
     source,
   }: {
-    readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
+    readonly adapter: PipelineAdapter<TRequest, TContext>;
     readonly context: TContext;
     readonly inboundProtocol: ProviderProtocol;
     readonly rawRequest: Request;
@@ -215,7 +214,7 @@ function rejectParsedRequest<TRequest, TContext>(
 }
 
 async function attemptResolvedRequest<TRequest, TContext>(options: {
-  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
+  readonly adapter: PipelineAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
@@ -259,7 +258,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         rawRequest,
         inboundProtocol,
         requestedModelId: requestedModel,
-        response: adapter.errors.unsupported(adapter.capability === 'image' ? 'images' : 'transform_dispatch'),
+        response: adapter.errors.unsupported(noCandidateFeature(adapter.capability)),
         errorCode: 'not_implemented',
         error,
       });
@@ -294,6 +293,15 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
   } finally {
     if (!deferred) lease.release();
   }
+}
+
+// The `unsupported` feature name for "no configured provider can serve this
+// inbound capability". Each protocol's error mapper turns its own sentinel into
+// the protocol-shaped 501; `transform_dispatch` is the language default.
+function noCandidateFeature(capability: InboundCapability): string {
+  if (capability === 'image') return 'images';
+  if (capability === 'speech' || capability === 'transcription') return 'audio';
+  return 'transform_dispatch';
 }
 
 function rejectRequest(options: {

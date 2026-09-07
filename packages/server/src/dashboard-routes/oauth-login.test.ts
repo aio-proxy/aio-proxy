@@ -12,13 +12,20 @@ import { createServerState } from '#server-test-lifecycle';
 import { disabledDashboardAuthentication } from '../dashboard-auth/test-support';
 import { createDashboardRoutes } from './config';
 
+// A wall-clock deadline, not an attempt count: each of these sessions runs a real
+// plugin login plus catalog discovery and a config write, so a fixed 100 x 5 ms
+// budget is a CPU-contention flake on a loaded CI runner rather than a real
+// timeout. The polling interval stays short so a fast pass is still fast.
+const WAIT_FOR_SESSION_TIMEOUT_MS = 15_000;
+
 const waitFor = async <T>(read: () => Promise<T>, accept: (value: T) => boolean): Promise<T> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  const deadline = Bun.nanoseconds() + WAIT_FOR_SESSION_TIMEOUT_MS * 1_000_000;
+  for (;;) {
     const value = await read();
     if (accept(value)) return value;
+    if (Bun.nanoseconds() >= deadline) throw new Error('timed out waiting for OAuth session');
     await Bun.sleep(5);
   }
-  throw new Error('timed out waiting for OAuth session');
 };
 const emptyOAuthInput = { publicValues: {}, secrets: {}, clearSecrets: [] } as const;
 const emptyModelCatalog = { image: [], embedding: [], speech: [], transcription: [], reranking: [] } as const;

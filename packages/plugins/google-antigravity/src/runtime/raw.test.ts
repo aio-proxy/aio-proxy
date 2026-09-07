@@ -21,6 +21,14 @@ describe('Gemini raw resolver', () => {
     expect(resolver({ protocol: 'gemini', modelId: 'gemini-3-flash-agent', capability: 'language' })).toBeDefined();
   });
 
+  test('declines audio: a Gemini generateContent endpoint cannot serve /v1/audio', () => {
+    const resolver = createGeminiRawResolver({ execute: async () => Response.json({ response: {} }) });
+
+    for (const capability of ['speech', 'transcription'] as const) {
+      expect(resolver({ protocol: 'gemini', modelId: 'gemini-3-flash-agent', capability })).toBeUndefined();
+    }
+  });
+
   test('wraps the rewritten Gemini request and unwraps CCA JSON', async () => {
     let upstream: Request | undefined;
     const resolver = createGeminiRawResolver(
