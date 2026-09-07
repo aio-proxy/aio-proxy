@@ -7,7 +7,7 @@ import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
 import { useReleaseQuery } from '@/modules/settings/hooks/use-release-query';
 
 export const SidebarUpdateCard: React.FC = () => {
-  const { state } = useSidebar();
+  const { isMobile, setOpen, setOpenMobile, state } = useSidebar();
   const release = useReleaseQuery();
   const outdated = release.data?.outdated === true;
   const status = release.data?.update.status ?? 'idle';
@@ -23,9 +23,9 @@ export const SidebarUpdateCard: React.FC = () => {
         <Button
           aria-label={m['dashboard.update.available']()}
           className="relative size-8"
-          disabled={inProgress || restartRequired}
           onClick={() => {
-            if (!restartRequired) apply();
+            setOpen(true);
+            if (isMobile) setOpenMobile(true);
           }}
           size="icon"
           variant="ghost"

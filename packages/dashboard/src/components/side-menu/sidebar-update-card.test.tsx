@@ -94,6 +94,18 @@ test('renders a collapsed upgrade control instead of the card', async () => {
   expect(screen.getByRole('button', { name: availableName })).toBeInTheDocument();
 });
 
+test('collapsed Update available expands the sidebar instead of applying', async () => {
+  prepare();
+  await renderCard(false);
+
+  fireEvent.click(screen.getByRole('button', { name: availableName }));
+
+  expect(mocks.apply).not.toHaveBeenCalled();
+  expect(screen.getByText('1.10.0')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
+});
+
 test('disables Update now while an install is in progress', async () => {
   prepare(view({ update: { status: 'in_progress' } }));
   await renderCard();
