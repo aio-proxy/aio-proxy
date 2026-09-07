@@ -1,0 +1,32 @@
+{
+  "name": "@aio-proxy/plugin-anthropic-claude",
+  "version": "0.19.2",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rslib",
+    "test": "bun run test:unit",
+    "test:unit": "bun test --preload=./test/setup.ts",
+    "test:artifact": "bun test ./oauth.smoke.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "es-toolkit": "catalog:"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
