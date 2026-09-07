@@ -5,8 +5,8 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle }
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useMutation } from '@tanstack/react-query';
 
-import { useReleaseQuery } from '../../hooks/use-release-query';
-import { checkLatestReleaseMutationFn } from '../../services/release-service';
+import { checkLatestReleaseMutationFn, useReleaseQuery } from '@/lib/release';
+
 import { SettingsExternalLink } from './settings-external-link';
 import { SettingsRowChevron } from './settings-row-chevron';
 import { SettingsUpdateNowButton } from './settings-update-now-button';
@@ -18,15 +18,22 @@ export const SettingsAboutGroup: React.FC = () => {
   const release = useReleaseQuery();
   const check = useMutation({ mutationFn: checkLatestReleaseMutationFn });
   const current = release.data?.current;
+  const persistedOutdated = release.data?.outdated === true;
+  const checkOutdated = check.data?.outdated;
+  const outdated = checkOutdated ?? persistedOutdated;
+  const latest = check.data?.latest ?? release.data?.latest;
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version. A failed install is the same — do not replace it with
-  // the last successful "up to date" check.
+  // the last successful "up to date" check. Mount-time GET /release already carries the
+  // last persisted check, so About can show that without waiting for a manual Check.
   const versionDescription = (() => {
     if (current === undefined) return undefined;
     if (check.isError) return m['dashboard.settings.version_check_failed']();
-    if (check.data === undefined) return m['dashboard.settings.version_description']({ version: current });
-    if (check.data.outdated) return m['dashboard.settings.version_outdated']({ version: check.data.latest });
+    if (check.data === undefined && !persistedOutdated) {
+      return m['dashboard.settings.version_description']({ version: current });
+    }
+    if (outdated && latest !== undefined) return m['dashboard.settings.version_outdated']({ version: latest });
     if (release.data?.update.status === 'failed') {
       return m['dashboard.settings.version_description']({ version: current });
     }
@@ -53,7 +60,7 @@ export const SettingsAboutGroup: React.FC = () => {
               <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
                 {m['dashboard.settings.version_check']()}
               </Button>
-              <SettingsUpdateNowButton outdated={check.data?.outdated === true} onUpToDate={() => check.reset()} />
+              <SettingsUpdateNowButton outdated={outdated} onUpToDate={() => check.reset()} />
               <SettingsExternalLink
                 href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
                 label={m['dashboard.settings.version']()}

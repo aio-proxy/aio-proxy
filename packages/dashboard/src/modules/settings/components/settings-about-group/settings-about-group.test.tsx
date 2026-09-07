@@ -13,11 +13,21 @@ const mocks = rs.hoisted(() => ({
   reloadDashboard: rs.fn(),
 }));
 
-rs.mock('../../hooks/use-release-query', () => ({
+rs.mock('@/lib/release', () => ({
+  applyReleaseMutationFn: mocks.apply,
+  checkLatestReleaseMutationFn: mocks.check,
+  releaseQueryOptions: () => ({
+    queryKey: ['release'],
+    queryFn: mocks.releaseQueryFn,
+  }),
   useReleaseQuery: () => mocks.release(),
 }));
 
-rs.mock('../../services/release-service', () => ({
+rs.mock('@/lib/release/use-release-query', () => ({
+  useReleaseQuery: () => mocks.release(),
+}));
+
+rs.mock('@/lib/release/release-service', () => ({
   applyReleaseMutationFn: mocks.apply,
   checkLatestReleaseMutationFn: mocks.check,
   releaseQueryOptions: () => ({
@@ -30,9 +40,21 @@ rs.mock('@/lib/reload-dashboard', () => ({ reloadDashboard: mocks.reloadDashboar
 
 const idleRelease: DashboardReleaseView = {
   current: '1.4.2',
+  outdated: false,
   managedService: false,
   update: { status: 'idle' },
 };
+
+const withRelease = (
+  update: DashboardReleaseView['update']['status'],
+  extra: Partial<DashboardReleaseView> = {},
+): DashboardReleaseView => ({
+  current: '1.4.2',
+  outdated: false,
+  managedService: false,
+  update: { status: update },
+  ...extra,
+});
 
 const updateNowName = /Update now|立即更新|今すぐ更新|지금 업데이트/u;
 const updatingName = /Updating…|正在更新…|更新中…|업데이트 중…/u;
@@ -143,8 +165,16 @@ test('enables Update now after an outdated check and posts apply', async () => {
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
 });
 
+test('enables Update now from a persisted outdated GET without clicking Check', async () => {
+  prepare(withRelease('idle', { latest: '1.10.0', outdated: true }));
+  await renderGroup();
+
+  expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
+});
+
 test('disables Update now and polls when GET already reports in_progress', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'in_progress' } });
+  prepare(withRelease('in_progress'));
   await renderGroup();
 
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
@@ -167,7 +197,7 @@ test('starts the same poll when apply reports in_progress', async () => {
 });
 
 test('shows a failed update without claiming the build is current', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'failed' } });
+  prepare(withRelease('failed'));
   mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.4.2', outdated: false });
   await renderGroup();
 
@@ -178,7 +208,7 @@ test('shows a failed update without claiming the build is current', async () => 
 });
 
 test('shows restart required, disables Update now, and does not reload', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'restart_required' } });
+  prepare(withRelease('restart_required'));
   mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
   await renderGroup();
 

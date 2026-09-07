@@ -12,11 +12,11 @@ const mocks = rs.hoisted(() => ({
   reloadDashboard: rs.fn(),
 }));
 
-rs.mock('../../hooks/use-release-query', () => ({
+rs.mock('@/lib/release/use-release-query', () => ({
   useReleaseQuery: () => mocks.release(),
 }));
 
-rs.mock('../../services/release-service', () => ({
+rs.mock('@/lib/release/release-service', () => ({
   applyReleaseMutationFn: mocks.apply,
   releaseQueryOptions: () => ({
     queryKey: ['release'],
@@ -28,9 +28,21 @@ rs.mock('@/lib/reload-dashboard', () => ({ reloadDashboard: mocks.reloadDashboar
 
 const idleRelease: DashboardReleaseView = {
   current: '1.4.2',
+  outdated: false,
   managedService: false,
   update: { status: 'idle' },
 };
+
+const withRelease = (
+  update: DashboardReleaseView['update']['status'],
+  extra: Partial<DashboardReleaseView> = {},
+): DashboardReleaseView => ({
+  current: '1.4.2',
+  outdated: false,
+  managedService: false,
+  update: { status: update },
+  ...extra,
+});
 
 const updateNowName = /Update now|立即更新|今すぐ更新|지금 업데이트/u;
 const updatingName = /Updating…|正在更新…|更新中…|업데이트 중…/u;
@@ -73,7 +85,7 @@ test('posts apply when Update now is clicked while outdated', async () => {
 });
 
 test('disables Update now and polls when GET already reports in_progress', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'in_progress' } });
+  prepare(withRelease('in_progress'));
   await renderButton(true);
 
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
@@ -92,19 +104,15 @@ test('starts the same poll when apply reports in_progress', async () => {
 });
 
 test('reloads the Dashboard when poll sees current change', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'in_progress' } });
-  mocks.releaseQueryFn.mockResolvedValue({
-    current: '1.5.0',
-    managedService: false,
-    update: { status: 'idle' },
-  });
+  prepare(withRelease('in_progress'));
+  mocks.releaseQueryFn.mockResolvedValue(withRelease('idle', { current: '1.5.0' }));
   await renderButton(true);
 
   await waitFor(() => expect(mocks.reloadDashboard).toHaveBeenCalledTimes(1));
 });
 
 test('shows a failed update from GET without reloading', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'failed' } });
+  prepare(withRelease('failed'));
   await renderButton(true);
 
   expect(screen.getByText(updateFailed)).toBeInTheDocument();
@@ -124,12 +132,8 @@ test('shows unavailable when apply cannot install updates', async () => {
 });
 
 test('shows restart required, stops polling, and does not reload', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'in_progress' } });
-  mocks.releaseQueryFn.mockResolvedValue({
-    current: '1.4.2',
-    managedService: false,
-    update: { status: 'restart_required' },
-  });
+  prepare(withRelease('in_progress'));
+  mocks.releaseQueryFn.mockResolvedValue(withRelease('restart_required'));
   await renderButton(true);
 
   await waitFor(() => expect(screen.getByText(restartRequired)).toBeInTheDocument());
@@ -158,7 +162,7 @@ test('stops polling and returns to idle after apply started then GET idle', asyn
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(screen.getByRole('button', { name: updatingName })).toBeDisabled());
 
-  finishPoll({ current: '1.4.2', managedService: false, update: { status: 'idle' } });
+  finishPoll(idleRelease);
 
   await waitFor(() => expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled());
   expect(screen.queryByRole('button', { name: updatingName })).not.toBeInTheDocument();
@@ -173,11 +177,7 @@ test('stops polling and returns to idle after apply started then GET idle', asyn
 test('keeps Updating and disabled after 120s when GET is still in_progress', async () => {
   rs.useFakeTimers();
   prepare();
-  mocks.releaseQueryFn.mockResolvedValue({
-    current: '1.4.2',
-    managedService: false,
-    update: { status: 'in_progress' },
-  });
+  mocks.releaseQueryFn.mockResolvedValue(withRelease('in_progress'));
   await renderButton(true);
 
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
@@ -219,12 +219,8 @@ test('apply up_to_date dismisses Update now and notifies the parent', async () =
 });
 
 test('retries polling after a previous failed apply', async () => {
-  prepare({ current: '1.4.2', managedService: false, update: { status: 'failed' } });
-  mocks.releaseQueryFn.mockResolvedValue({
-    current: '1.4.2',
-    managedService: false,
-    update: { status: 'in_progress' },
-  });
+  prepare(withRelease('failed'));
+  mocks.releaseQueryFn.mockResolvedValue(withRelease('in_progress'));
   await renderButton(true);
 
   expect(screen.getByText(updateFailed)).toBeInTheDocument();
