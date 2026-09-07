@@ -3,6 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { cursorIdentityEmail, cursorTokenExpiry } from '../jwt/index';
 import type { CursorCredential } from '../schema';
+import { readCursorAccountEmail } from './account-email';
 import { CURSOR_REFRESH_URL } from './constants';
 
 export type CursorOAuthDependencies = {
@@ -44,7 +45,10 @@ export async function refreshCursorCredential(
     );
   }
   const token = await parseToken(response);
-  const email = cursorIdentityEmail(token.accessToken) ?? current.email;
+  const email =
+    cursorIdentityEmail(token.accessToken) ??
+    (await readCursorAccountEmail({ ...current, accessToken: token.accessToken }, fetcher, options.signal)) ??
+    current.email;
   return {
     ...current,
     accessToken: token.accessToken,

@@ -15,7 +15,7 @@ The Dashboard already renders the stored OAuth `accountLabel`. The inconsistency
 | Plugin | Current label source | Email source already available |
 | --- | --- | --- |
 | OpenAI ChatGPT | ChatGPT account ID | OAuth `id_token` email, as used by CLIProxyAPI (CPA) |
-| Cursor | Constant `Cursor` | Access-token JWT `email` claim |
+| Cursor | Constant `Cursor` | Access-token JWT `email` claim, with `/api/auth/me` fallback |
 | Kimi Code | Constant `Kimi Code` | Access- or refresh-token JWT `email` claim |
 | GitHub Copilot | GitHub login | GitHub primary verified email API with an added OAuth scope |
 | Google Antigravity | Google userinfo email | Already used |
@@ -78,11 +78,11 @@ The CPA importer accepts its validated top-level `email`, then falls back to the
 
 ### Cursor
 
-Use the normalized JWT email already extracted by `cursorIdentity` as the label. `cursorIdentity.label` becomes `email ?? 'Cursor'`; its subject/email fingerprint calculation and generated key remain unchanged.
+Use the normalized JWT email already extracted by `cursorIdentity` as the label. When the claim is missing, query `GET https://cursor.com/api/auth/me` using the authenticated Cursor session cookie. The profile email affects only the label and stored email; the JWT-based fingerprint and generated key remain unchanged.
 
-Add refresh handling that extracts email from the new access token when present and otherwise retains the current credential email. Refresh metadata uses the resulting email. When neither the refreshed nor current credential contains one, it omits `accountLabel` so the host retains the existing label.
+Refresh extracts email from the new access token, then tries the profile endpoint, then retains the current credential email. Refresh metadata uses the resulting email, so existing accounts acquire an email label on a successful refresh. When no source contains an email, it omits `accountLabel` so the host retains the existing label.
 
-Cursor has no stable userinfo endpoint. The JWT claim remains the only email source.
+The profile lookup has a three-second timeout, rejects redirects, and tolerates HTTP, network, or malformed-response failures without invalidating usable credentials. Caller cancellation still propagates. This corrects the earlier assumption that Cursor had no usable userinfo endpoint: local tokens omit `email`, while `/api/auth/me` returns it.
 
 ### Kimi Code
 

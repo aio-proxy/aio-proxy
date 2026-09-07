@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { cursorSessionCookie, cursorUserId } from './cookie';
+import { cursorSessionCookie, cursorUserId } from './session-cookie';
 
 const token = (payload: object) => ['h', Buffer.from(JSON.stringify(payload)).toString('base64url'), 's'].join('.');
 

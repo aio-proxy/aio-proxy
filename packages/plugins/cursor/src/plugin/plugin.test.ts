@@ -94,29 +94,36 @@ test('createRuntime builds a v4 provider-only runtime', async () => {
   expect(runtime.raw).toBeUndefined();
 });
 
-test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
-  const jwt = (payload: object) => ['h', Buffer.from(JSON.stringify(payload)).toString('base64url'), 's'].join('.');
-  let exchanges = 0;
-  const adapter = await adapterFrom(
-    createCursorPlugin(englishPresentationText, {
-      now: () => 0,
-      fetch: async () => {
-        exchanges += 1;
-        return Response.json({ accessToken: jwt({ exp: 4_000, email: 'person@example.com' }) });
-      },
-    }),
-  );
+test.each(['jwt', 'profile'])(
+  'refreshCredential exchanges unexpired credentials and labels with the %s email',
+  async (source) => {
+    const jwt = (payload: object) => ['h', Buffer.from(JSON.stringify(payload)).toString('base64url'), 's'].join('.');
+    const accessToken = jwt({ exp: 4_000, sub: 'u1', ...(source === 'jwt' ? { email: 'person@example.com' } : {}) });
+    let exchanges = 0;
+    const adapter = await adapterFrom(
+      createCursorPlugin(englishPresentationText, {
+        now: () => 0,
+        fetch: async (input) => {
+          if (String(input) === 'https://cursor.com/api/auth/me') {
+            return Response.json({ sub: 'u1', email: 'person@example.com' });
+          }
+          exchanges += 1;
+          return Response.json({ accessToken });
+        },
+      }),
+    );
 
-  const result = await adapter.refreshCredential!({
-    credential: { accessToken: 'old', refreshToken: 'keep-me', expiresAt: Number.MAX_SAFE_INTEGER },
-    options: {},
-    signal: new AbortController().signal,
-  });
+    const result = await adapter.refreshCredential!({
+      credential: { accessToken: 'old', refreshToken: 'keep-me', expiresAt: Number.MAX_SAFE_INTEGER },
+      options: {},
+      signal: new AbortController().signal,
+    });
 
-  expect(exchanges).toBe(1);
-  expect(result.value.accessToken).toBe(jwt({ exp: 4_000, email: 'person@example.com' }));
-  expect(result.metadata).toEqual({ expiresAt: 4_000 * 1000 - 5 * 60_000, accountLabel: 'person@example.com' });
-});
+    expect(exchanges).toBe(1);
+    expect(result.value.accessToken).toBe(accessToken);
+    expect(result.metadata).toEqual({ expiresAt: 4_000 * 1000 - 5 * 60_000, accountLabel: 'person@example.com' });
+  },
+);
 
 // `hasQuota` on the dashboard card is `adapter.quota !== undefined`, and the reader has to
 // receive the plugin's injected fetch or the capability is dead on arrival.

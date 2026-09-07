@@ -1,5 +1,36 @@
 # @aio-proxy/cli
 
+## 0.20.0
+
+### Minor Changes
+
+- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks [@baranwang](https://github.com/baranwang)! - Serve the Codex Live / Realtime endpoint family as signaling passthrough. `POST /v1/live`,
+  `POST /v1/realtime` and `POST /v1/realtime/calls` forward an SDP offer to the ChatGPT Codex realtime
+  upstream and answer with its SDP; `GET /v1/live/:call_id`, `GET /v1/realtime/calls/:call_id` and
+  `GET /v1/realtime` relay the sideband WebSocket, with provider selection, per-model overrides and
+  failover matching ordinary routing. Plugins can serve realtime through a new optional `realtime`
+  runtime capability (`models`, `fetch`, `dial`). WebRTC media stays a direct client-to-upstream
+  connection, and endpoints the ChatGPT upstream has no equivalent for answer `501`. An embedder that
+  builds its own `Bun.serve` must now pass `@aio-proxy/server`'s exported `websocket` handler.
+
+- [#300](https://github.com/aio-proxy/aio-proxy/pull/300) [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a) Thanks [@baranwang](https://github.com/baranwang)! - A running process checks npm `latest` on start, every 24 hours, and when the Dashboard mounts. It persists the result, prompts once per new version (Dashboard sidebar, CLI stderr banner, OS notification), and installs only after Update now or `aio-proxy upgrade`. Leftover `server.autoUpdate` in an existing config is ignored.
+
+- [#303](https://github.com/aio-proxy/aio-proxy/pull/303) [`84b206c`](https://github.com/aio-proxy/aio-proxy/commit/84b206c1d2f296748d2b86cedf0ef97c2b65d8e2) Thanks [@baranwang](https://github.com/baranwang)! - Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback parse now requires callback `state` only when the opened authorize URL sent `state`, so OpenRouter (no state echo) can finish without weakening ChatGPT or Antigravity CSRF.
+
+### Patch Changes
+
+- Updated dependencies [[`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690), [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a), [`d036485`](https://github.com/aio-proxy/aio-proxy/commit/d0364851282aaf6aaa56c6dc6bfa515d7e0c3209), [`84b206c`](https://github.com/aio-proxy/aio-proxy/commit/84b206c1d2f296748d2b86cedf0ef97c2b65d8e2), [`681b039`](https://github.com/aio-proxy/aio-proxy/commit/681b039164281d7ab28c09ce1a61aae064caa6a0), [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3), [`b3b181a`](https://github.com/aio-proxy/aio-proxy/commit/b3b181aebd9a8c36de14dc05076c137e96a49332)]:
+  - @aio-proxy/plugin-sdk@0.20.0
+  - @aio-proxy/server@0.20.0
+  - @aio-proxy/types@0.20.0
+  - @aio-proxy/dashboard@0.20.0
+  - @aio-proxy/core@0.20.0
+  - @aio-proxy/i18n@0.20.0
+  - @aio-proxy/shared@0.20.0
+  - @aio-proxy/logger@0.20.0
+  - @aio-proxy/opencode-provider@0.20.0
+  - @aio-proxy/pi-provider@0.20.0
+
 ## 0.19.2
 
 ### Patch Changes
