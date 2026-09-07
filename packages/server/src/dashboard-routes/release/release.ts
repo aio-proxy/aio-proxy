@@ -50,10 +50,10 @@ export const createDashboardReleaseRoute = (
       try {
         latest = await fetchLatest(PACKAGE);
         Bun.semver.order(latest, version);
+        await persistLatest(latest);
       } catch {
         return context.json({ error: { code: 'check_failed' } } as const, 502);
       }
-      await persistLatest(latest);
       return context.json({ current: version, latest, outdated: Bun.semver.order(latest, version) > 0 });
     })
     .post('/apply', async (context) => {

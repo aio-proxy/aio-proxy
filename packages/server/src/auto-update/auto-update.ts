@@ -109,8 +109,10 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
       ...(previous?.notifiedVersion === undefined ? {} : { notifiedVersion: previous.notifiedVersion }),
     };
     await writeState(next);
-    persisted = next;
-    if (!isOutdated(latest, options.currentVersion) || previous?.notifiedVersion === latest) return;
+    if (!isOutdated(latest, options.currentVersion) || previous?.notifiedVersion === latest) {
+      persisted = next;
+      return;
+    }
     try {
       await options.notifyAvailable?.(latest);
     } catch (error) {
@@ -132,11 +134,11 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     try {
       latest = await options.fetchLatest(AUTO_UPDATE_PACKAGE);
       Bun.semver.order(latest, options.currentVersion);
+      await persistCheck(latest);
     } catch (error) {
       if (reportFailure) options.onError?.(error);
       return { status: 'check_failed' };
     }
-    await persistCheck(latest);
     return { current: options.currentVersion, latest, outdated: isOutdated(latest, options.currentVersion) };
   };
 

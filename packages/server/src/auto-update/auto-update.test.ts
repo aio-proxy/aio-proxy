@@ -111,6 +111,36 @@ test('a newer latest notifies once', async () => {
   expect(store.get()?.notifiedVersion).toBe('1.10.0');
 });
 
+test('persist failure is check_failed and leaves the previous snapshot', async () => {
+  const store = memoryState({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
+  const writeState = mock(async () => {
+    throw new Error('erofs');
+  });
+  const controller = createAutoUpdateController({
+    ...base,
+    readState: store.readState,
+    writeState,
+  });
+  expect(await controller.check()).toEqual({ status: 'check_failed' });
+  expect(store.get()).toEqual({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.5.0', outdated: true });
+});
+
+test('tick persist failure stays quiet and does not reject', async () => {
+  const writeState = mock(async () => {
+    throw new Error('erofs');
+  });
+  const controller = createAutoUpdateController({
+    ...base,
+    readState: () => ({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' }),
+    writeState,
+  });
+  controller.start();
+  await flush();
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.5.0', outdated: true });
+  controller.stop();
+});
+
 test('failed fetch leaves the previous file intact', async () => {
   const store = memoryState({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
   const controller = createAutoUpdateController({

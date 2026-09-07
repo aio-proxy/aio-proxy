@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,6 +19,7 @@ const isolateHome = () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-release-'));
   homes.push(home);
   process.env.AIO_PROXY_HOME = home;
+  return home;
 };
 
 const idleController = (overrides: Partial<AutoUpdateController> = {}): AutoUpdateController => ({
@@ -115,6 +116,18 @@ test('does not flag an older or equal published version', async () => {
   expect(await get('/latest', () => Promise.resolve('1.1.9')).then((result) => result.body)).toMatchObject({
     outdated: false,
   });
+});
+
+test('GET /latest persist failure is check_failed', async () => {
+  const home = isolateHome();
+  chmodSync(home, 0o555);
+  try {
+    const { body, status } = await get('/latest', () => Promise.resolve('1.10.0'));
+    expect(status).toBe(502);
+    expect(body).toEqual({ error: { code: 'check_failed' } });
+  } finally {
+    chmodSync(home, 0o755);
+  }
 });
 
 test('reports a failed registry lookup instead of claiming the build is current', async () => {
