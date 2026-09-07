@@ -124,6 +124,46 @@ test.each(resumeResults.flatMap((result) => [true, false].map((fullHistory) => (
   },
 );
 
+test('an incremental resume that includes the assistant tool-call keeps the cached user request', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
+  const system = { role: 'system', content: 'sys' } as const;
+  const user = { role: 'user', content: [{ type: 'text', text: 'search the docs' }] } as const;
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      system,
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+        ],
+      },
+    ],
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-partial-tool-history',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [jsonBlob(system), jsonBlob(user)],
+      }),
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+  const history = conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(history).toContainEqual(user);
+  const results = history.filter((message) => message.role === 'tool').flatMap((message) => message.content);
+  expect(results.map((part) => part.result)).toEqual(['FOUND']);
+});
+
 test('a trailing user message selects userMessageAction', () => {
   const prompt: LanguageModelV4Prompt = [
     { role: 'system', content: 'sys' },

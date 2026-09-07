@@ -95,6 +95,29 @@ test('root history preserves same-name calls with different arguments and result
   expect(calls.every((c) => /^[a-zA-Z0-9_-]+$/.test(c.toolCallId))).toBe(true);
 });
 
+test('appending a tool-call tail does not duplicate cached assistant calls', () => {
+  const store = new Map<string, Uint8Array>();
+  const base = buildRootPromptMessagesJson(pairedPrompt.slice(0, 2), [], store, -1);
+  const ids = appendCursorRootHistory({
+    rootPromptMessagesJson: base,
+    prompt: pairedPrompt.slice(1),
+    blobStore: store,
+  });
+  const messages = ids.map((id) => decodeJson(store, id));
+  expect(
+    messages
+      .filter((m) => m.role === 'assistant')
+      .flatMap((m) => m.content)
+      .filter((p) => p.type === 'tool-call'),
+  ).toHaveLength(2);
+  expect(
+    messages
+      .filter((m) => m.role === 'tool')
+      .flatMap((m) => m.content)
+      .map((p) => p.result),
+  ).toEqual(['RESULT_A', 'RESULT_B']);
+});
+
 test('incremental results pair with calls already in cached root history', () => {
   const store = new Map<string, Uint8Array>();
   const base = buildRootPromptMessagesJson(pairedPrompt.slice(0, 2), [], store, -1);

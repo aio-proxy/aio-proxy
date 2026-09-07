@@ -101,9 +101,7 @@ export function buildCursorRunRequestBytes(input: {
     : { turns: baseTurns, pendingToolCalls: new Map<string, string>() };
   // Cursor builds the model prompt from these JSON blobs, not the patched
   // display turns. A resumed tool result must reach this history as well.
-  const hasFullToolHistory =
-    promptTurns.length > 0 ||
-    prompt.some((message) => message.role === 'assistant' && message.content.some((part) => part.type === 'tool-call'));
+  const hasFullToolHistory = promptTurns.length > 0;
   const rootPromptMessagesJson =
     isPendingResume && reusableState !== undefined
       ? hasFullToolHistory

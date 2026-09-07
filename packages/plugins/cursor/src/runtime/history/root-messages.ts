@@ -13,6 +13,7 @@ function rootToolCallId(id: string): string {
 }
 
 function buildRootMessages(prompt: LanguageModelV4Prompt, knownCallIds: Set<string>): Record<string, unknown>[] {
+  const knownFromCache = new Set(knownCallIds);
   for (const message of prompt) {
     if (message.role !== 'assistant') continue;
     for (const part of message.content) {
@@ -64,14 +65,16 @@ function buildRootMessages(prompt: LanguageModelV4Prompt, knownCallIds: Set<stri
       };
       for (const part of message.content) {
         if (part.type === 'text' && part.text) content.push({ type: 'text', text: part.text });
-        else if (part.type === 'tool-call')
+        else if (part.type === 'tool-call') {
+          const id = rootToolCallId(part.toolCallId);
+          if (knownFromCache.has(id)) continue;
           content.push({
             type: 'tool-call',
-            toolCallId: rootToolCallId(part.toolCallId),
+            toolCallId: id,
             toolName: toWireName(part.toolName),
             args: part.input,
           });
-        else if (part.type === 'tool-result') {
+        } else if (part.type === 'tool-result') {
           flush();
           pushResult(part);
         }
