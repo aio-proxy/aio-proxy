@@ -20,10 +20,13 @@ const WAIT_FOR_SESSION_TIMEOUT_MS = 15_000;
 
 const waitFor = async <T>(read: () => Promise<T>, accept: (value: T) => boolean): Promise<T> => {
   const deadline = Bun.nanoseconds() + WAIT_FOR_SESSION_TIMEOUT_MS * 1_000_000;
+  let last: T | undefined;
   for (;;) {
-    const value = await read();
-    if (accept(value)) return value;
-    if (Bun.nanoseconds() >= deadline) throw new Error('timed out waiting for OAuth session');
+    last = await read();
+    if (accept(last)) return last;
+    if (Bun.nanoseconds() >= deadline) {
+      throw new Error(`timed out waiting for OAuth session: ${JSON.stringify(last)}`);
+    }
     await Bun.sleep(5);
   }
 };

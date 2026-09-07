@@ -1,4 +1,5 @@
 import type { LoopbackRequest } from '@aio-proxy/plugin-sdk';
+import { resolveOAuthLoopbackCallback } from '@aio-proxy/shared';
 
 import {
   AuthorizationUrlInvalidError,
@@ -8,7 +9,7 @@ import {
   LoopbackOAuthError,
   LoopbackRequestInvalidError,
   LoopbackStateMismatchError,
-} from './errors';
+} from '../errors';
 
 type UntrustedLoopbackRequest = {
   readonly state?: unknown;
@@ -89,28 +90,22 @@ export function parseCallback(
   raw: string,
   expectedRedirectUri: string,
   expectedState: string,
+  options: { readonly stateRequired?: boolean } = {},
 ): { readonly code: string } {
-  let callback: URL;
-  try {
-    callback = new URL(raw);
-  } catch {
-    throw new LoopbackCallbackInvalidError();
+  const resolved = resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, {
+    stateRequired: options.stateRequired ?? true,
+  });
+  if (resolved.ok) return { code: resolved.code };
+  switch (resolved.reason) {
+    case 'invalid':
+      throw new LoopbackCallbackInvalidError();
+    case 'mismatch':
+      throw new LoopbackCallbackMismatchError();
+    case 'state_mismatch':
+      throw new LoopbackStateMismatchError();
+    case 'denied':
+      throw new LoopbackOAuthError();
+    case 'code_missing':
+      throw new LoopbackCodeMissingError();
   }
-  const expected = new URL(expectedRedirectUri);
-  if (
-    callback.protocol !== expected.protocol ||
-    callback.hostname !== expected.hostname ||
-    callback.port !== expected.port ||
-    callback.pathname !== expected.pathname ||
-    callback.username !== '' ||
-    callback.password !== '' ||
-    callback.hash !== ''
-  ) {
-    throw new LoopbackCallbackMismatchError();
-  }
-  if (callback.searchParams.get('state') !== expectedState) throw new LoopbackStateMismatchError();
-  if (callback.searchParams.get('error') !== null) throw new LoopbackOAuthError();
-  const code = callback.searchParams.get('code');
-  if (code === null || code.length === 0) throw new LoopbackCodeMissingError();
-  return { code };
 }

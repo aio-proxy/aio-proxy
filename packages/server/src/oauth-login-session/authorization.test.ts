@@ -57,3 +57,32 @@ test('redirects a valid loopback callback to the Dashboard completion page', asy
   await expect(loopback).resolves.toEqual({ code: 'valid-code', redirectUri });
   auth.close();
 });
+
+test('accepts a loopback callback that has a code and no state', async () => {
+  const published: DashboardOAuthSession[] = [];
+  const auth = createDashboardAuthorization({
+    sessionId: '00000000-0000-4000-8000-000000000001',
+    signal: new AbortController().signal,
+    publish: (session) => published.push(session),
+    completeUrl: 'http://localhost:3000/dashboard/oauth/complete',
+  });
+  const loopback = auth.port.loopback({
+    state: 'host-only-state',
+    redirect: { hostname: '127.0.0.1', port: 'dynamic', path: '/callback' },
+    authorizationUrl: ({ redirectUri }) => {
+      const url = new URL('https://openrouter.ai/auth');
+      url.searchParams.set('callback_url', redirectUri);
+      return url.href;
+    },
+    allowManualCallbackUrl: true,
+  });
+  await Bun.sleep(10);
+  const session = published.find((item) => item.status === 'loopback');
+  if (session === undefined || session.status !== 'loopback') throw new Error('expected loopback session');
+  const redirectUri = new URL(session.authorizationUrl).searchParams.get('callback_url');
+  if (redirectUri === null) throw new Error('expected callback_url');
+  const response = await fetch(`${redirectUri}?code=openrouter-code`, { redirect: 'manual' });
+  expect(response.status).toBe(302);
+  await expect(loopback).resolves.toEqual({ code: 'openrouter-code', redirectUri });
+  auth.close();
+});

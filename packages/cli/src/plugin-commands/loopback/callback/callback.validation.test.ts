@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { LoopbackRequest } from '@aio-proxy/plugin-sdk';
 
-import { LoopbackRequestInvalidError, runLoopbackAuthorization } from './index';
-import { createDeps, request, resetInteractive } from './test-support';
+import { LoopbackRequestInvalidError, runLoopbackAuthorization } from '../index';
+import { createDeps, request, resetInteractive } from '../test-support';
 
 afterEach(resetInteractive);
 

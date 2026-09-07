@@ -65,7 +65,7 @@ export function request(overrides: Partial<LoopbackRequest> = {}): LoopbackReque
     state: 'expected-state',
     redirect: { hostname: 'localhost', port: 'dynamic', path: '/auth/callback' },
     authorizationUrl: ({ redirectUri }) =>
-      `https://identity.example/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+      `https://identity.example/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=expected-state`,
     allowManualCallbackUrl: false,
     ...overrides,
   };

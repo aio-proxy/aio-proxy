@@ -84,7 +84,8 @@ async function pollManualCallback(args: ManualCallbackArgs): Promise<void> {
       return;
     }
     try {
-      const { code } = parseCallback(raw, expectedRedirectUri, request.state);
+      const stateRequired = new URL(authorizationUrl).searchParams.has('state');
+      const { code } = parseCallback(raw, expectedRedirectUri, request.state, { stateRequired });
       settle({ ok: true, value: { code, redirectUri: expectedRedirectUri } });
       return;
     } catch (error) {
@@ -107,12 +108,13 @@ export async function runLoopbackAuthorization(
   let server: LoopbackServer | undefined;
   let expectedRedirectUri = '';
   let authorizationUrl = '';
+  let stateRequired = true;
   const { result, losingPath, settle, isSettled } = createSettlement();
 
   const handleCallback = (raw: string): Response => {
     if (isSettled()) return new Response(deps.copy.alreadyCompleted, { status: 409 });
     try {
-      const { code } = parseCallback(raw, expectedRedirectUri, request.state);
+      const { code } = parseCallback(raw, expectedRedirectUri, request.state, { stateRequired });
       if (!settle({ ok: true, value: { code, redirectUri: expectedRedirectUri } }, true)) {
         return new Response(deps.copy.alreadyCompleted, { status: 409 });
       }
@@ -155,6 +157,7 @@ export async function runLoopbackAuthorization(
 
     if (deps.signal.aborted) throw new LoopbackAbortedError();
     authorizationUrl = buildAuthorizationUrl(request, expectedRedirectUri);
+    stateRequired = new URL(authorizationUrl).searchParams.has('state');
     if (deps.signal.aborted) throw new LoopbackAbortedError();
     deps.print(authorizationUrl);
     let opened = false;
