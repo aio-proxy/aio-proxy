@@ -117,6 +117,33 @@ const layoutPreferredManager = (binPath: string): NodeManager | undefined => {
   return undefined;
 };
 
+const managerPrefixFromBin = (binPath: string): string => {
+  const binDir = dirname(binPath);
+  return basename(binDir) === 'bin' ? dirname(binDir) : binDir;
+};
+
+const packageDirExists = (root: string): boolean =>
+  existsSync(join(root, 'node_modules', PACKAGE)) || existsSync(join(root, 'lib', 'node_modules', PACKAGE));
+
+// Sibling bun/npm/pnpm is not ownership. A curl/standalone launcher often
+// shares /usr/local/bin with those tools; only a global package layout
+// (or a path that already names the manager) is enough to persist that method.
+const nodeManagerOwnsLauncher = (binPath: string, name: NodeManager): boolean => {
+  if (layoutPreferredManager(binPath) === name) return true;
+  const real = tryRealpath(binPath);
+  if (real !== undefined && real !== binPath && layoutPreferredManager(real) === name) return true;
+  const prefix = managerPrefixFromBin(binPath);
+  if (name === 'npm') return packageDirExists(prefix);
+  if (name === 'bun') return packageDirExists(join(prefix, 'install', 'global')) || packageDirExists(prefix);
+  return packageDirExists(join(prefix, 'global')) || packageDirExists(prefix);
+};
+
+const siblingOwnedTarget = (binPath: string, name: NodeManager): UpgradeTarget | undefined => {
+  const command = siblingCommand(binPath, name);
+  if (command === undefined || !nodeManagerOwnsLauncher(binPath, name)) return undefined;
+  return { method: name, command, bin: binPath };
+};
+
 const platformPackageTarget = (binPath: string, preferred?: PackageUpgradeMethod): UpgradeTarget | undefined => {
   if (!isPlatformCliBinary(binPath)) return undefined;
   const wanted: readonly NodeManager[] =
@@ -236,12 +263,12 @@ export const resolveUpgradeTargetFrom = async (
     const fromPath = pathLauncherTarget();
     if (fromPath !== undefined) return fromPath;
   }
-  const bun = siblingCommand(binPath, 'bun');
-  if (bun !== undefined) return { method: 'bun', command: bun, bin: binPath };
-  const npm = siblingCommand(binPath, 'npm');
-  if (npm !== undefined) return { method: 'npm', command: npm, bin: binPath };
-  const pnpm = siblingCommand(binPath, 'pnpm');
-  if (pnpm !== undefined) return { method: 'pnpm', command: pnpm, bin: binPath };
+  const bun = siblingOwnedTarget(binPath, 'bun');
+  if (bun !== undefined) return bun;
+  const npm = siblingOwnedTarget(binPath, 'npm');
+  if (npm !== undefined) return npm;
+  const pnpm = siblingOwnedTarget(binPath, 'pnpm');
+  if (pnpm !== undefined) return pnpm;
   const [brewDir, bunDir, npmDir, pnpmDir] = await Promise.all([
     brewBinDir(),
     runCapture(['bun', 'pm', 'bin', '-g']),
@@ -250,8 +277,11 @@ export const resolveUpgradeTargetFrom = async (
   ]);
   const method = resolveUpgradeMethod(binPath, compactDirs({ brew: brewDir, bun: bunDir, npm: npmDir, pnpm: pnpmDir }));
   // Prefix-dir containment is not Homebrew: npm's global prefix is often the
-  // same as Homebrew's. Only a Cellar path (checked above) is brew.
-  if (method === 'binary' || method === 'brew') return { method: 'binary', path: binPath };
+  // same as Homebrew's. Only a Cellar path (checked above) is brew. The same
+  // prefix is also not npm/bun/pnpm without a package layout.
+  if (method === 'binary' || method === 'brew' || !nodeManagerOwnsLauncher(binPath, method)) {
+    return { method: 'binary', path: binPath };
+  }
   return detectedPackageTarget(method, binPath);
 };
 

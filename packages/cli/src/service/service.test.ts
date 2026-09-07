@@ -239,6 +239,30 @@ test('writeManagedUnit persists npm when ExecStart is the native cli-* binary an
   expect(contents).not.toContain(`<string>${shim}</string>`);
 });
 
+test('writeManagedUnit does not persist npm for a standalone binary that only sits next to npm', async () => {
+  const prefix = join(tmpdir(), `aio-curl-unit-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  mkdirSync(join(prefix, 'bin'), { recursive: true });
+  writeFileSync(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  writeFileSync(bin, '#!/bin/sh\n');
+  chmodSync(join(prefix, 'bin', 'npm'), 0o755);
+  chmodSync(bin, 0o755);
+
+  const plistPath = join(prefix, 'LaunchAgents', 'com.aio-proxy.agent.plist');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = `${join(prefix, 'bin')}:/usr/bin:/bin`;
+  try {
+    await writeManagedUnit('darwin', bin, plistPath);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain(`<string>${bin}</string>`);
+  expect(contents).not.toContain('AIO_PROXY_UPGRADE_METHOD');
+});
+
 test('writeManagedUnit persists npm from the PATH shim when the native cli-* prefix has no manager', async () => {
   const nativeRoot = join(tmpdir(), `aio-native-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const pathRoot = join(tmpdir(), `aio-path-${Date.now()}-${Math.random().toString(36).slice(2)}`);

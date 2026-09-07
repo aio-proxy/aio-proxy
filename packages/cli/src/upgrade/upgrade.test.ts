@@ -474,16 +474,24 @@ test('resolveUpgradeTargetFrom maps a Homebrew prefix symlink to brew even when 
   });
 });
 
-test('resolveUpgradeTargetFrom maps a brew+npm sibling that is not a Cellar link to npm', async () => {
+test('resolveUpgradeTargetFrom maps a brew+npm sibling that is not a Cellar link to binary', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-npm-sibling-'));
   const bin = join(prefix, 'bin', 'aio-proxy');
   writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
   writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
   writeExecutable(bin, '#!/bin/sh\n');
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
-    method: 'npm',
-    command: join(prefix, 'bin', 'npm'),
-    bin,
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
+  });
+});
+
+test('resolveUpgradeTargetFrom does not treat a standalone binary next to npm as npm-owned', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-curl-npm-sibling-'));
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
   });
 });
 
@@ -532,11 +540,13 @@ test('resolveUpgradeTargetFrom treats a standalone binary as binary', async () =
   expect(await resolveUpgradeTargetFrom('/opt/aio-proxy', {})).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
 });
 
-test('resolveUpgradeTargetFrom maps an npm prefix path to npm command and bin', async () => {
+test('resolveUpgradeTargetFrom maps an npm prefix path to npm when the global package exists', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-prefix-'));
   const bin = join(prefix, 'bin', 'aio-proxy');
   writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
   writeExecutable(bin, '#!/bin/sh\n');
+  mkdirSync(join(prefix, 'lib', 'node_modules', 'aio-proxy'), { recursive: true });
+  writeFileSync(join(prefix, 'lib', 'node_modules', 'aio-proxy', 'package.json'), '{"name":"aio-proxy"}\n');
   expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
