@@ -175,8 +175,18 @@ function assertConvertibleTranscription(request: OpenAITranscriptionRequest): vo
   // and no provider metadata channel that carries one — so a forwarded `word`
   // granularity would reach upstream, be honoured, and then be dropped on the way
   // back, answering with segments the client did not ask for. `segment` alone is
-  // renderable and stays allowed. Raw passthrough still serves word granularity.
-  if (request.timestamp_granularities?.includes('word') === true) {
+  // renderable, but only into `verbose_json`: every other renderable format writes
+  // the transcript text and nothing else, so a granularity requested alongside them
+  // is honoured (and billed) upstream and then discarded here. OpenAI itself rejects
+  // that combination, so raw passthrough answers an error while the convert path
+  // would answer a plain `{ text }` body that looks like success. Refuse it instead.
+  // Raw passthrough still serves word granularity.
+  const granularities = request.timestamp_granularities;
+  if (
+    granularities !== undefined &&
+    granularities.length > 0 &&
+    (granularities.includes('word') || request.response_format !== 'verbose_json')
+  ) {
     throw new OpenAIAudioUnsupportedFeatureError('timestamp_granularities');
   }
   // 501 rather than 400: the convert path cannot tell a client misspelling from a

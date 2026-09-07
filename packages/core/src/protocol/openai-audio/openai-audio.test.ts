@@ -225,14 +225,39 @@ describe('openAITranscriptionAdapter', () => {
   );
 
   // `transcribe()` returns segment timings only, so a forwarded `word` granularity
-  // would be honoured upstream and then dropped on the way back. Raw passthrough
-  // still serves it; only the convert path refuses.
-  test('refuses word timestamp granularity on the convert path', async () => {
-    const raw = transcriptionRequest('whisper-1', [['timestamp_granularities[]', 'word']]);
+  // would be honoured upstream and then dropped on the way back. `segment` is
+  // renderable, but only by `verbose_json` — asked for alongside `json` or `text`
+  // the timings are billed upstream and then discarded, and OpenAI itself rejects
+  // that pairing, so raw passthrough errors where convert would answer `{ text }`.
+  // Raw passthrough still serves both; only the convert path refuses.
+  test.each([
+    ['word', undefined],
+    ['word', 'verbose_json'],
+    ['segment', undefined],
+    ['segment', 'json'],
+    ['segment', 'text'],
+  ] as const)(
+    'refuses %p timestamp granularity with response_format %p on the convert path',
+    async (granularity, format) => {
+      const raw = transcriptionRequest('whisper-1', [
+        ['timestamp_granularities[]', granularity],
+        ...(format === undefined ? [] : [['response_format', format] as const]),
+      ]);
+      const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+      expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).toThrow(
+        'OpenAI Audio feature is not supported: timestamp_granularities',
+      );
+      await releaseMultipartSpool(raw);
+    },
+  );
+
+  test('allows segment granularity when verbose_json can render it', async () => {
+    const raw = transcriptionRequest('whisper-1', [
+      ['timestamp_granularities[]', 'segment'],
+      ['response_format', 'verbose_json'],
+    ]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
-    expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).toThrow(
-      'OpenAI Audio feature is not supported: timestamp_granularities',
-    );
+    expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).not.toThrow();
     await releaseMultipartSpool(raw);
   });
 
@@ -244,6 +269,7 @@ describe('openAITranscriptionAdapter', () => {
       ['prompt', 'proper nouns'],
       ['temperature', '0.2'],
       ['timestamp_granularities[]', 'segment'],
+      ['response_format', 'verbose_json'],
     ]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
     const invocation = openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' });
