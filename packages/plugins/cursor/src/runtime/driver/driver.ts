@@ -13,7 +13,12 @@ import {
   type McpToolDefinition,
 } from '../../gen/agent_pb';
 import type { ConnectFrame } from '../../wire/frame';
-import { CONNECT_END_STREAM_FLAG, frameConnectMessage, parseConnectEndStream } from '../../wire/frame';
+import {
+  CONNECT_END_STREAM_FLAG,
+  connectEndStreamError,
+  frameConnectMessage,
+  parseConnectEndStream,
+} from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { encodeExecResponse, encodeKvResponse, encodeMcpApprovalRejection } from '../client-messages';
 import { encodeInteractionReply } from '../interaction-query';
@@ -241,7 +246,7 @@ function handleConnectEnd(session: CursorRunSession, frame: ConnectFrame): boole
   if ((frame.flags & CONNECT_END_STREAM_FLAG) === 0) return false;
   const envelope = parseConnectEndStream(frame.payload);
   session.diagnostics('connect-end', session.lifecycle.snapshot());
-  if (envelope.error !== undefined) session.lifecycle.fail(new Error(envelope.error.message));
+  if (envelope.error !== undefined) session.lifecycle.fail(connectEndStreamError(envelope.error));
   else session.lifecycle.finish('connect-end');
   return true;
 }

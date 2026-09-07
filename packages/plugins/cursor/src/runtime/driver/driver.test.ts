@@ -697,7 +697,10 @@ test('an error envelope wins over a pending tool handoff', async () => {
   h.send(execFrame('a', 'docs'));
   await settleMicrotasks();
   h.send({ flags: 2, payload: new TextEncoder().encode('{"error":{"code":"internal","message":"upstream failed"}}') });
-  await expect(h.result).rejects.toThrow('upstream failed');
+  await expect(h.result).rejects.toMatchObject({
+    message: 'internal: upstream failed',
+    code: 'internal',
+  });
   jest.advanceTimersByTime(1000);
   expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
   expect(h.closeCount()).toBe(1);

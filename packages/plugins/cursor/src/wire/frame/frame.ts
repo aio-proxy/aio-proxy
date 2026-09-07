@@ -33,6 +33,10 @@ export class ConnectFrameDecoder {
   }
 }
 
+export function connectEndStreamError(error: { code: string; message: string }): Error {
+  return Object.assign(new Error(`${error.code}: ${error.message}`), { code: error.code });
+}
+
 export function parseConnectEndStream(payload: Uint8Array): ConnectEndStream {
   let parsed: unknown;
   try {
