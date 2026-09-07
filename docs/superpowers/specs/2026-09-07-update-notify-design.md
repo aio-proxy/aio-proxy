@@ -3,15 +3,10 @@
 Date: 2026-09-07
 Status: accepted
 
-This spec supersedes `docs/superpowers/specs/2026-09-06-auto-update-design.md`.
 `aio-proxy upgrade` remains the only installer. The process checks for a
 newer npm `latest` in the background and tells the operator. It does
-not install until they confirm.
-
-Installer, managed-process detection, Cellar-only Homebrew, pnpm
-virtual-store ExecStart, and Darwin in-job restart stay as implemented
-on that earlier spec's Architecture section. This document replaces the
-product model: no `server.autoUpdate` toggle, no tick-time install.
+not install until they confirm. There is no `server.autoUpdate` toggle
+and no tick-time install.
 
 ## Problem
 
@@ -76,8 +71,44 @@ autoUpdate?: {
 };
 ```
 
-`applyUpdate` and managed-process / ExecStart / Darwin restart rules
-are unchanged from the 2026-09-06 Architecture section.
+`applyUpdate(version)` installs **that** version. It must not do a
+second npm `latest` lookup. Pin the version and return
+`'installed' | 'unchanged'`.
+
+### Installer and managed restart
+
+`isManagedService` means **this process** was launched by the managed
+unit, not that a unit file exists on disk.
+
+**Marker (primary):** service unit templates set `AIO_PROXY_MANAGED=1`.
+Foreground `run` never sets it.
+
+**Pre-marker units:** also accept manager-native evidence when the
+marker is missing:
+
+- Linux: a `/proc/self/cgroup` path segment equals `aio-proxy.service`.
+  Do not treat `INVOCATION_ID` plus a unit file as sufficient.
+- Darwin: `XPC_SERVICE_NAME` equals `com.aio-proxy.agent`.
+
+On `run` boot, if that fallback hits and the unit still lacks the
+marker, rewrite the unit. Do not treat a foreground `run` as managed
+just because a unit file exists.
+
+Homebrew is brew only when the path or its realpath is Cellar. A
+launcher sitting next to `brew` is not enough. `AIO_PROXY_UPGRADE_METHOD=brew`
+still accepts a sibling `brew`. After brew, if the launcher version did
+not move, return `'unchanged'` and do not restart. If it did move,
+report and hand off that installed version, not npm `latest`.
+
+After npm/pnpm/bun, restart rewrites ExecStart to the live native
+`cli-*` binary. Lookup order: hoisted `node_modules/@aio-proxy/cli-*`,
+then the nested optional dep under the installed `aio-proxy` package,
+then pnpm's `.pnpm/@aio-proxy+cli-<os>-<arch>@*` virtual store
+(`global/<n>` and pnpm v11 isolated groups). Never pass the JS shim.
+Skip pnpm's shared `store/` directory.
+
+Darwin in-job restart is a detached unload+load; the helper does not
+wait for this PID. systemd `systemctl --user restart` stays a replace.
 
 `notifyAvailable` is optional. The controller calls it only when a
 successful check finds `latest` newer than `current` and
