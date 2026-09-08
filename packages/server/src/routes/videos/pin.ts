@@ -1,4 +1,3 @@
-import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CallerPrincipal } from '../../caller-principal';
@@ -50,14 +49,12 @@ export async function pinSuccessfulVideoJob(
 export function pinnedVideoProvider(
   providers: readonly RuntimeProviderInstance[],
   record: VideoJobRecord,
-  modelId: string = record.model,
 ): RuntimeProviderInstance | undefined {
   const provider = providers.find((candidate) => candidate.id === record.providerId);
   if (provider === undefined || provider.enabled === false) return undefined;
   if (record.accountId !== undefined && provider.accountId !== record.accountId) return undefined;
   if (record.runtimeRevision !== undefined && provider.runtimeRevision !== record.runtimeRevision) return undefined;
-  const raw = provider.raw?.resolve({ protocol: ProviderProtocol.OpenAIVideo, modelId });
-  return raw === undefined ? undefined : provider;
+  return provider;
 }
 
 function logPinFailed(source: VideosRouteSource, providerId: string): void {

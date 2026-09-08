@@ -115,7 +115,7 @@ Pinned follow-up (not a generation loop)
   POST   /v1/videos/extensions (pin hit)
         |
         v
-  owner check --> raw.resolve({ protocol: openai-video, modelId }) on the pinned provider
+  owner check --> raw.resolve({ protocol: openai-video, modelId, requestPath }) on the pinned provider
         |
         +-- remix/edits/extensions 2xx --> pin the new video id
             (explicit follow-up model when set; otherwise the source job model)
@@ -177,7 +177,7 @@ Accepted content types: `application/json` and `multipart/form-data`. Anything e
 
 `prompt` is required on JSON and multipart. Missing / blank prompt is `400 invalid_request`.
 
-Other official fields (`seconds`, `size`, `input_reference`, plus unknown future keys) are forwarded on the raw path. Raw rewrite injects the **candidate resolved** model id when the client omitted/blanked `model` or routing changed it. A no-op explicit model keeps bytes. Strip hop headers on rewrite. Multipart replay copies every client field and replaces only `model` when a rewrite is required.
+Other official fields (`seconds`, `size`, `input_reference`, plus unknown future keys) are forwarded on the raw path. Raw rewrite injects the **candidate resolved** model id when the client omitted/blanked `model` or routing changed it. A no-op explicit model keeps bytes only when the form has exactly one canonical `model` field; repeated `model` or `model[]` is rebuilt (last spelling routes, same as Audio). Strip hop headers on rewrite. Multipart replay copies every client field and replaces only `model` / `model[]` when a rewrite is required.
 
 Body limits: default `REQUEST_BODY_LIMITS` (64 MiB). Create carries at most one optional image reference, not a 16-file edits envelope.
 
@@ -225,7 +225,7 @@ type VideoJobRecord = {
 - `close()` on server shutdown.
 - Owner check uses the same caller-principal equality as realtime (`kind` + `id`).
 
-Pinned raw resolves the live provider by `providerId` (and `withAccountPin` when `accountId` is present). If the provider is gone, disabled, or has no `openai-video` raw transport: `503` with `code: "video_upstream_unavailable"`. Do not walk other candidates.
+Pinned raw resolves the live provider by `providerId` (and `withAccountPin` when `accountId` is present), then calls `raw.resolve` once with the inbound pathname. If the provider is gone, disabled, or has no `openai-video` raw transport: `503` with `code: "video_upstream_unavailable"`. Do not walk other candidates.
 
 ## Pipeline changes
 
@@ -295,7 +295,7 @@ Videos rows: the seven shipped ports. Notes:
 
 Behavior, not literal restatement:
 
-- Adapter: omitted model looks up `sora-2` and raw injects the resolved id; explicit model that routing does not change keeps bytes; missing prompt is 400; convert-less provider is 501 `video_convert`.
+- Adapter: omitted model looks up `sora-2` and raw injects the resolved id; explicit model that routing does not change keeps bytes when the form has exactly one canonical `model`; repeated or bracketed `model` is rebuilt; missing prompt is 400; convert-less provider is 501 `video_convert`.
 - Job store: insert / lookup / owner mismatch / expiry / capacity / no replace.
 - Create 2xx pins; retrieve hits the pinned provider only; stolen id is 403 without upstream fetch; missing pin is 404; remix 2xx pins the new id.
 - Edits with a pin skip the generation loop; edits without a pin use the pipeline. A pinned edit with an explicit model resolves and pins that model; an omitted model keeps the source job's model.

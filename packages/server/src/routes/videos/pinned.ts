@@ -41,7 +41,7 @@ export async function invokePinnedVideo(
   const lease = source.acquireProviderSnapshot();
   const modelId = options.modelId ?? record.model;
   try {
-    const provider = pinnedVideoProvider(lease.snapshot.providers, record, modelId);
+    const provider = pinnedVideoProvider(lease.snapshot.providers, record);
     const raw = provider?.raw?.resolve({
       protocol: ProviderProtocol.OpenAIVideo,
       modelId,

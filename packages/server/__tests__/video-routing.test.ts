@@ -391,6 +391,23 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(unused.calls.raw).toBe(beforeUnused);
   });
 
+  test('pinned follow-ups resolve raw with the inbound request path', async () => {
+    const fixture = videoProvider('openai', { requireRequestPath: true });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody(),
+        })
+      ).status,
+    ).toBe(200);
+    const retrieved = await app.request('/v1/videos/video_abc');
+    expect(retrieved.status).toBe(200);
+    expect(fixture.resolves.some((input) => input.requestPath === '/v1/videos/video_abc')).toBe(true);
+  });
+
   test('content forwards the inbound variant query to the pinned provider', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
@@ -426,6 +443,7 @@ function videoProvider(
     readonly models?: readonly string[];
     readonly raw?: false;
     readonly rejectModelIds?: readonly string[];
+    readonly requireRequestPath?: boolean;
     readonly speech?: boolean;
   } = {},
 ): {
@@ -466,6 +484,7 @@ function videoProvider(
               resolve: (input: RawResolveInput) => {
                 resolves.push(input);
                 if (!rawAvailable || input.protocol !== ProviderProtocol.OpenAIVideo) return undefined;
+                if (options.requireRequestPath === true && input.requestPath === undefined) return undefined;
                 if (rejectModelIds.includes(input.modelId)) return undefined;
                 return {
                   invoke: async (request: Request) => {
