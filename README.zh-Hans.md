@@ -279,6 +279,20 @@ router:
 | OpenAI Audio speech         | `POST /v1/audio/speech`                             |
 | OpenAI Audio transcriptions | `POST /v1/audio/transcriptions`                     |
 | OpenAI Audio translations   | `POST /v1/audio/translations`                       |
+| Codex Live create           | `POST /v1/live`                                     |
+| Codex Realtime create       | `POST /v1/realtime`                                 |
+| Codex Realtime calls        | `POST /v1/realtime/calls`                           |
+| Codex Live sideband         | `GET /v1/live/:call_id`                             |
+| Codex Realtime sideband     | `GET /v1/realtime/calls/:call_id`                   |
+| Codex Realtime WS           | `GET /v1/realtime`                                  |
+| Codex Realtime hangup       | `POST /v1/realtime/calls/:call_id/hangup`           |
+| OpenAI Videos create        | `POST /v1/videos`                                   |
+| OpenAI Videos retrieve      | `GET /v1/videos/:video_id`                          |
+| OpenAI Videos content       | `GET /v1/videos/:video_id/content`                  |
+| OpenAI Videos delete        | `DELETE /v1/videos/:video_id`                       |
+| OpenAI Videos remix         | `POST /v1/videos/:video_id/remix`                   |
+| OpenAI Videos edits         | `POST /v1/videos/edits`                             |
+| OpenAI Videos extensions    | `POST /v1/videos/extensions`                        |
 
 Images 说明：
 
@@ -298,6 +312,21 @@ Audio 说明：
 - 转换路径对 `stream_format`、`chunking_strategy`、`include` 和 `stream` 同样返回 `501 unsupported_feature`。
 - `openai-audio` Provider 使用 `GET /v1/models` 探测，因为仅支持语音合成或仅支持转写的模型会拒绝另一方向的能力请求并误报 FAIL。探测通过只说明端点可达且密钥被接受，并不说明所配置的模型支持你将要调用的方向；`401` 仍是 FAIL，而只提供 `/v1/audio/*` 的网关即便可用，在 Dashboard 中也会显示 FAIL。
 - Audio 用量仅在上游上报时记录。时长永远不会换算成 token。
+
+Realtime 说明：
+
+- 仅 Codex ChatGPT OAuth。官方 `sessions`、`client_secrets`、转写会话、翻译和 SIP accept/reject/refer 返回 `501`。
+- 不中继 WebRTC 媒体；媒体仍由客户端直连上游。
+- 旁路与 hangup 依赖创建进程内的通话 pin；重启后会丢失。
+
+Videos 说明：
+
+- 原始透传 Videos 需要 `openai-video` 端点（或将其设为主协议），以及包含 `sora-2` 的有限 id 集合。
+- 省略 `model` 时默认 `sora-2`。
+- 转换路径未实现（`501 unsupported_feature`）。
+- 查询、内容、删除和 remix 依赖创建进程内的 pin；重启后会丢失。
+- `GET /v1/videos` 和 character 端口返回 `501`。`/v1/videos/generations` 不是代理端口。
+- 官方 Sora / Videos API 将于 2026-09-24 关闭；`/v1/videos` 线路仍供兼容网关使用。
 
 其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 

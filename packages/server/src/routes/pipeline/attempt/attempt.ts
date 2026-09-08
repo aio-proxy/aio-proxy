@@ -1,4 +1,10 @@
-import type { AnyProtocolAdapter, AudioProtocolAdapter, ImageProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
+import type {
+  AnyProtocolAdapter,
+  AudioProtocolAdapter,
+  ImageProtocolAdapter,
+  RouterCandidate,
+  VideoProtocolAdapter,
+} from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -19,11 +25,12 @@ import type {
   EmbeddingAttemptLoopContext,
   ImageAttemptLoopContext,
   InvocationHolder,
+  VideoAttemptLoopContext,
 } from './context';
 import { selectLiveCandidates } from './cooldown-write';
 import { attemptEmbeddingCandidate } from './embedding';
 import { createAttemptEmitter } from './emit';
-import { handleAttemptError, unsupportedDispatch } from './error';
+import { emitReject, handleAttemptError, unsupportedDispatch } from './error';
 import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
@@ -34,7 +41,8 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly adapter:
     | AnyProtocolAdapter<TRequest, TContext>
     | ImageProtocolAdapter<TRequest, TContext>
-    | AudioProtocolAdapter<TRequest, TContext>;
+    | AudioProtocolAdapter<TRequest, TContext>
+    | VideoProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly config: Config | undefined;
@@ -47,6 +55,11 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly deferRelease: () => void;
   readonly resolution: LogicalSessionResolution;
   readonly release: () => void;
+  readonly onSuccessfulAttempt?: (info: {
+    readonly provider: RuntimeProviderInstance;
+    readonly modelId: string;
+    readonly response: Response;
+  }) => void | Promise<void>;
 };
 
 function createAttemptLoopContext<TRequest, TContext>(
@@ -105,6 +118,7 @@ function createAttemptLoopContext<TRequest, TContext>(
 type AttemptDispatch<TRequest, TContext> =
   | { readonly kind: 'embedding'; readonly ctx: EmbeddingAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'image'; readonly ctx: ImageAttemptLoopContext<TRequest, TContext> }
+  | { readonly kind: 'video'; readonly ctx: VideoAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'audio'; readonly ctx: AudioAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'language'; readonly ctx: AttemptLoopContext<TRequest, TContext> };
 
@@ -126,8 +140,29 @@ function attemptDispatch<TRequest, TContext>(
   const { adapter } = ctx;
   if (adapter.capability === 'embedding') return { kind: 'embedding', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'image') return { kind: 'image', ctx: { ...ctx, adapter } };
+  if (adapter.capability === 'video') return { kind: 'video', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'language') return { kind: 'language', ctx: { ...ctx, adapter } };
   return { kind: 'audio', ctx: { ...ctx, adapter } };
+}
+
+async function attemptVideoCandidate<TRequest, TContext>(
+  ctx: VideoAttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+): Promise<AttemptStep> {
+  const raw = slot.candidate.provider.raw?.resolve({
+    protocol: ctx.adapter.protocol,
+    modelId: slot.candidate.modelId,
+    ...requestPathProperty(ctx.rawRequest),
+  });
+  if (raw !== undefined) {
+    slot.trace.transport = 'raw';
+    slot.trace.targetProtocol = ctx.adapter.protocol;
+    return await attemptRawCandidate(ctx, slot, raw);
+  }
+  slot.trace.transport = undefined;
+  slot.trace.targetProtocol = undefined;
+  const feature = ctx.adapter.convertSkipReason?.(ctx.request, slot.candidate.modelId) ?? 'video_convert';
+  return emitReject(ctx, slot, ctx.adapter.errors.unsupported(feature));
 }
 
 // Same-protocol raw wins, then the AI SDK model transport, then nothing.
@@ -228,10 +263,23 @@ export async function attemptCandidates<TRequest, TContext>(
           ? await attemptEmbeddingCandidate(dispatch.ctx, slot)
           : dispatch.kind === 'image'
             ? await dispatchImageCandidate(dispatch.ctx, slot)
-            : dispatch.kind === 'audio'
-              ? await attemptAudioCandidate(dispatch.ctx, slot)
-              : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
+            : dispatch.kind === 'video'
+              ? await attemptVideoCandidate(dispatch.ctx, slot)
+              : dispatch.kind === 'audio'
+                ? await attemptAudioCandidate(dispatch.ctx, slot)
+                : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') {
+        if (options.onSuccessfulAttempt !== undefined && step.response.ok) {
+          try {
+            await options.onSuccessfulAttempt({
+              provider,
+              modelId: candidate.modelId,
+              response: step.response,
+            });
+          } catch {
+            // Pin failure must not replace a 2xx; the hook logs video.job_pin_failed.
+          }
+        }
         return warmProviderQuota(options.source, provider, step.response);
       }
       if (step.kind === 'skip') {

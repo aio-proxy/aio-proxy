@@ -234,6 +234,11 @@ export type RealtimeSidebandOpenedLog = {
   readonly style: string;
 };
 
+export type VideoJobPinFailedLog = {
+  readonly event: 'video.job_pin_failed';
+  readonly providerId: string;
+};
+
 export type RealtimeSidebandClosedLog = {
   readonly event: 'realtime.sideband_closed';
   readonly callId: string;
@@ -266,7 +271,8 @@ export type ServerLog =
   | TracePersistenceFailedLog
   | UsageAccountingDroppedLog
   | RequestUpstreamResultLog
-  | RequestUpstreamSnapshotLog;
+  | RequestUpstreamSnapshotLog
+  | VideoJobPinFailedLog;
 
 export type ServerLogSink = (entry: ServerLog) => void;
 

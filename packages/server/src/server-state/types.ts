@@ -27,6 +27,7 @@ import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-co
 import type { OAuthQuotaCache, OAuthQuotaOperations } from '../plugin-quota';
 import type { CatalogJobDescriptor } from '../plugin-runtime';
 import type { RealtimeCallStore } from '../routes/realtime';
+import type { VideoJobStore } from '../routes/videos';
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
 import type { ConfigReloadLog, ServerLogSink } from '../server-log';
 
@@ -101,6 +102,7 @@ export type ServerState = ProviderRouteSource & {
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;
   readonly realtimeCalls: RealtimeCallStore;
+  readonly videoJobs: VideoJobStore;
   readonly traceStore: TraceStore;
 };
 

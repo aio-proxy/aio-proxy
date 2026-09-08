@@ -234,6 +234,19 @@ test('audio provider that rejects the api key probes FAIL', async () => {
   expect(await probeApi(provider, instance)).toBe('FAIL');
 });
 
+test('openai-video provider probes GET /v1/models and does not create a job', async () => {
+  const provider = {
+    apiKey: 'k',
+    baseURL: 'https://video.example.com/v1',
+    enabled: true,
+    id: 'sora',
+    kind: ProviderKind.Api,
+    models: ['sora-2'],
+    protocol: ProviderProtocol.OpenAIVideo,
+  } as const;
+  expect(providerProbeRequest(provider, 'sora-2')).toEqual({ method: 'GET', path: '/v1/models' });
+});
+
 test('speech audio provider probes the same capability-agnostic endpoint', async () => {
   let requested: string | undefined;
   let method: string | undefined;

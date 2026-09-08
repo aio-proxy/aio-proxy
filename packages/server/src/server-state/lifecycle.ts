@@ -144,6 +144,7 @@ export type ServerStateParts = Pick<
   | 'providerSummaries'
   | 'quotaCache'
   | 'realtimeCalls'
+  | 'videoJobs'
   | 'reload'
   | 'traceStore'
   | 'requestRecorder'
@@ -176,6 +177,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
         parts.closeRecovery,
         () => parts.oauthLoginSessions.close(),
         () => parts.realtimeCalls.close(),
+        () => parts.videoJobs.close(),
         () => events.close(),
         () => dbHandle.close(),
         parts.databaseOwnership.release,
@@ -206,6 +208,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     refreshProviderCatalog: (providerId) => runtime.scheduler.refreshNow(providerId),
     quotaCache: parts.quotaCache,
     realtimeCalls: parts.realtimeCalls,
+    videoJobs: parts.videoJobs,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,
     traceStore: parts.traceStore,

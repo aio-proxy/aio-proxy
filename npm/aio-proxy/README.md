@@ -331,6 +331,20 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 | OpenAI Audio speech         | `POST /v1/audio/speech`                             |
 | OpenAI Audio transcriptions | `POST /v1/audio/transcriptions`                     |
 | OpenAI Audio translations   | `POST /v1/audio/translations`                       |
+| Codex Live create           | `POST /v1/live`                                     |
+| Codex Realtime create       | `POST /v1/realtime`                                 |
+| Codex Realtime calls        | `POST /v1/realtime/calls`                           |
+| Codex Live sideband         | `GET /v1/live/:call_id`                             |
+| Codex Realtime sideband     | `GET /v1/realtime/calls/:call_id`                   |
+| Codex Realtime WS           | `GET /v1/realtime`                                  |
+| Codex Realtime hangup       | `POST /v1/realtime/calls/:call_id/hangup`           |
+| OpenAI Videos create        | `POST /v1/videos`                                   |
+| OpenAI Videos retrieve      | `GET /v1/videos/:video_id`                          |
+| OpenAI Videos content       | `GET /v1/videos/:video_id/content`                  |
+| OpenAI Videos delete        | `DELETE /v1/videos/:video_id`                       |
+| OpenAI Videos remix         | `POST /v1/videos/:video_id/remix`                   |
+| OpenAI Videos edits         | `POST /v1/videos/edits`                             |
+| OpenAI Videos extensions    | `POST /v1/videos/extensions`                        |
 
 Images notes:
 
@@ -350,6 +364,21 @@ Audio notes:
 - Convert also returns `501 unsupported_feature` for `stream_format`, `chunking_strategy`, `include`, and `stream`.
 - An `openai-audio` Provider is probed with `GET /v1/models`, because a speech-only or transcription-only model rejects the other direction's request and would probe FAIL. A green probe means reachable with an accepted key, not that the model supports the direction you will call; a `401` is FAIL, and a gateway serving only `/v1/audio/*` shows FAIL in the Dashboard even when it works.
 - Audio usage is recorded only when upstream reports it. Duration is never converted to tokens.
+
+Realtime notes:
+
+- Codex ChatGPT OAuth only. Official `sessions`, `client_secrets`, transcription sessions, translations, and SIP accept/reject/refer answer `501`.
+- WebRTC media is not relayed; media stays client-to-upstream.
+- Sideband and hangup require the creating process's call pin; a restart forgets live calls.
+
+Videos notes:
+
+- Raw Videos needs an `openai-video` endpoint (or primary protocol) and a finite id set including `sora-2`.
+- Omitted `model` defaults to `sora-2`.
+- Convert is not implemented (`501 unsupported_feature`).
+- Retrieve, content, delete, and remix require the creating process's pin; a restart forgets pins.
+- `GET /v1/videos` and the character ports answer `501`. `/v1/videos/generations` is not a proxy port.
+- Official Sora / Videos API shutdown is 2026-09-24; the `/v1/videos` wire remains for compatible gateways.
 
 Remaining official Responses resource operations (`GET /v1/responses/:id`, `DELETE /v1/responses/:id`, `POST /v1/responses/:id/cancel`, `GET /v1/responses/:id/input_items`) return a protocol-shaped 501.
 

@@ -9,7 +9,7 @@ export type EmptyProtocolContext = Readonly<Record<never, never>>;
 export type ModelEventStream = ReadableStream<TextStreamPart<ToolSet>>;
 export type ModelSseStream = ReadableStream<Uint8Array> & { readonly completion: Promise<void> };
 
-export type InboundCapability = 'language' | 'image' | 'embedding' | 'speech' | 'transcription';
+export type InboundCapability = 'language' | 'image' | 'embedding' | 'speech' | 'transcription' | 'video';
 
 export type ModelInvocationDiagnostic =
   | Readonly<{

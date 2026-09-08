@@ -100,6 +100,9 @@ export function providerProbeRequest(
       // either direction would be rejected by the other kind of model and report a
       // false FAIL.
       return { method: 'GET', path: '/v1/models' };
+    case ProviderProtocol.OpenAIVideo:
+      // A create request bills a real job, so probe connectivity with models list.
+      return { method: 'GET', path: '/v1/models' };
     default:
       return assertNever(primary.protocol);
   }

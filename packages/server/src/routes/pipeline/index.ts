@@ -11,7 +11,7 @@ import { context } from '@opentelemetry/api';
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
 import { requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
-import type { ProviderRouteSource } from '../../runtime';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
@@ -22,6 +22,11 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
+  readonly onSuccessfulAttempt?: (info: {
+    readonly provider: RuntimeProviderInstance;
+    readonly modelId: string;
+    readonly response: Response;
+  }) => void | Promise<void>;
 };
 
 export async function handleProtocolRequest<TRequest, TContext>(
@@ -128,6 +133,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       session,
       source,
       streamRequested,
+      ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
     });
   } catch (error) {
     const cancelled = isInboundAbort(error, rawRequest.signal);
@@ -224,6 +230,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
   readonly streamRequested: boolean;
+  readonly onSuccessfulAttempt?: HandleProtocolRequestOptions<TRequest, TContext>['onSuccessfulAttempt'];
 }): Promise<Response> {
   const {
     adapter,
@@ -277,6 +284,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
       session,
       source,
       streamRequested,
+      ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
     });
   } catch (error) {
     if (!(error instanceof RouterModelNotFoundError)) throw error;
@@ -301,6 +309,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
 function noCandidateFeature(capability: InboundCapability): string {
   if (capability === 'image') return 'images';
   if (capability === 'speech' || capability === 'transcription') return 'audio';
+  if (capability === 'video') return 'video';
   return 'transform_dispatch';
 }
 

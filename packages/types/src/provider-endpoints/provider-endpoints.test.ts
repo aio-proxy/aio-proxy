@@ -24,6 +24,14 @@ test('openai-audio is a configurable api endpoint protocol', () => {
   expect(parsed.protocol).toBe(ProviderProtocol.OpenAIAudio);
 });
 
+test('openai-video is a configurable api endpoint protocol', () => {
+  const parsed = ApiEndpointEntrySchema.parse({
+    protocol: 'openai-video',
+    baseURL: 'https://api.openai.com',
+  });
+  expect(parsed.protocol).toBe(ProviderProtocol.OpenAIVideo);
+});
+
 const issuesOf = (provider: unknown): readonly string[] => {
   const collected: string[] = [];
   const ctx = {

@@ -11,6 +11,7 @@ import { resolveApiKey } from '../api/index';
 const NON_LANGUAGE_PROTOCOLS: ReadonlySet<ProviderProtocol> = new Set([
   ProviderProtocol.OpenAIImage,
   ProviderProtocol.OpenAIAudio,
+  ProviderProtocol.OpenAIVideo,
 ]);
 
 /**
@@ -95,6 +96,7 @@ function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, pr
       return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
+    case ProviderProtocol.OpenAIVideo:
       throw new Error(`Unsupported provider protocol: ${primary.protocol}`);
     default:
       return assertNever(primary.protocol);

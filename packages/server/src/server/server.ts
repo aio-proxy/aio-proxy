@@ -33,6 +33,7 @@ import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
 import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
+import { createOpenAIVideosRoutes, type VideosRouteSource } from '../routes/videos';
 import type { RuntimeProviderInput } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
@@ -272,6 +273,8 @@ const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
   realtimeCalls: state.realtimeCalls,
 });
 
+const videoRouteSource = (state: ServerState): VideosRouteSource => state;
+
 const createRoutes = (
   state: ServerState,
   dashboardAssets?: DashboardAssets,
@@ -398,6 +401,7 @@ const createRoutes = (
   // registered ahead of that middleware reads every caller as the anonymous principal,
   // and the create/attach ownership check would then admit anyone.
   const realtimeRoutes = createRealtimeRoutes(realtimeRouteSource(state));
+  const videoRoutes = createOpenAIVideosRoutes(videoRouteSource(state));
   const routes = app
     .route('/oauth', agentOAuthRoutes)
     .route('/dashboard/api/agent-authorizations', agentApprovalRoutes)
@@ -410,6 +414,7 @@ const createRoutes = (
     .route('/', openAIResponsesRoutes)
     .route('/', openAIImagesRoutes)
     .route('/', openAIAudioRoutes)
+    .route('/', videoRoutes)
     .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)
     .route('/dashboard/api', dashboardRoutes);

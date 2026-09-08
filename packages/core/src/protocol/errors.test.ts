@@ -11,6 +11,8 @@ import {
   type OpenAIAudioUnsupportedFeature,
   OpenAIAudioUnsupportedFeatureError,
   OpenAICompletionsUnsupportedFeatureError,
+  OpenAIVideosInvalidRequestError,
+  OpenAIVideosUnsupportedFeatureError,
 } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
@@ -24,6 +26,7 @@ import {
   openAIImagesErrors,
   openAIResponsesErrors,
 } from './errors';
+import { openAIVideosErrors } from './openai-video';
 import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const cases = [
@@ -117,6 +120,20 @@ const cases = [
     },
     {
       error: { code: 'invalid_request', message: 'Invalid OpenAI Audio request', type: 'invalid_request_error' },
+    },
+  ],
+  [
+    'OpenAI Videos',
+    openAIVideosErrors,
+    {
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    },
+    {
+      error: { code: 'invalid_request', message: 'Invalid OpenAI Videos request', type: 'invalid_request_error' },
     },
   ],
 ] as const satisfies readonly (readonly [string, ProtocolErrorMapper, unknown, unknown])[];
@@ -235,6 +252,17 @@ test.each([
       },
     },
   ],
+  [
+    'OpenAI Videos',
+    openAIVideosErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
 ] as const)('maps ambiguous previous responses for %s', async (_name, mapper, expected) => {
   const conflict = (mapper as ProtocolErrorMapper & { previousResponseConflict?: () => Response })
     .previousResponseConflict;
@@ -311,6 +339,31 @@ test('maps an unnamed Audio dispatch gap to 501 not_implemented', async () => {
       type: 'invalid_request_error',
     },
   });
+});
+
+test('maps Videos convert and no-candidate to distinct 501 bodies', async () => {
+  const convert = openAIVideosErrors.unsupported('video_convert');
+  expect(convert.status).toBe(501);
+  expect(await convert.json()).toEqual({
+    error: {
+      code: 'unsupported_feature',
+      message: 'OpenAI Videos feature is not supported: video_convert',
+      type: 'invalid_request_error',
+    },
+  });
+  const missing = openAIVideosErrors.unsupported('video');
+  expect(missing.status).toBe(501);
+  expect(await missing.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'No configured provider can generate videos for this model',
+      type: 'invalid_request_error',
+    },
+  });
+  const requestError = openAIVideosErrors.requestError(new OpenAIVideosUnsupportedFeatureError('video_convert'));
+  expect(requestError?.status).toBe(501);
+  const invalid = openAIVideosErrors.requestError(new OpenAIVideosInvalidRequestError('prompt'));
+  expect(invalid?.status).toBe(400);
 });
 
 test('maps an invalid Audio file parameter to 400 invalid_request', async () => {
