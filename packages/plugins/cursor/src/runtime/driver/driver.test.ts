@@ -1,7 +1,8 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, jest, test } from 'bun:test';
 
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
-import { create, toBinary } from '@bufbuild/protobuf';
+import type { Logger } from '@aio-proxy/plugin-sdk';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
   AgentServerMessageSchema,
@@ -14,6 +15,29 @@ import type { ConnectFrame } from '../../wire/frame';
 import { frameConnectMessage } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { runCursorTurn } from './driver';
+import { runHarness, serverFrame, settleMicrotasks, updateFrame } from './test-support';
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+const execFrame = (id: string, query: string) =>
+  serverFrame({
+    case: 'execServerMessage',
+    value: {
+      id: id === 'a' ? 1 : 2,
+      execId: 'exec-' + id,
+      message: {
+        case: 'mcpArgs',
+        value: {
+          name: 'search',
+          toolName: 'search',
+          toolCallId: id,
+          args: { query: new TextEncoder().encode(JSON.stringify(query)) },
+        },
+      },
+    },
+  });
 
 function frameServer(value: Record<string, unknown>): Uint8Array {
   const message = create(AgentServerMessageSchema, { message: value } as never);
@@ -184,6 +208,8 @@ test('a text turn streams parts, frames the request, and resolves the turn resul
   const turn = await result;
   expect(types).toContain('text-delta');
   expect(types.at(-1)).toBe('finish');
+  expect(turn.assistantText).toBe('Hi');
+  expect(turn.toolCalls).toEqual([]);
   expect(turn.checkpointUsable).toBe(true);
   expect(writes[0]?.length).toBe(6);
   expect(closeReasons).toHaveLength(1);
@@ -217,12 +243,23 @@ test('rejects when the stream ends before turnEnded', async () => {
     blobStore: new Map(),
     heartbeatMs: 0,
   });
-  // The stream errors AND `result` rejects; swallow the stream throw and assert on result.
-  await drainTypes(stream).catch(() => {});
-  await expect(result).rejects.toThrow(/before turnEnded/i);
+  void result.catch(() => {});
+  await expect(drainTypes(stream)).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+  await expect(result).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+});
+
+test('a non-zero grpc trailer fails the turn on stream and result', async () => {
+  const h = runHarness();
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof({ 'grpc-status': '13', 'grpc-message': 'boom' });
+  await expect(h.drained).rejects.toThrow(/gRPC status 13/);
+  await expect(h.result).rejects.toThrow(/gRPC status 13/);
+  expect(h.closeCount()).toBe(1);
 });
 
 test('a completed MCP call suspends without waiting for upstream turnEnded', async () => {
+  jest.useFakeTimers();
   const mcpFrame = (event: 'toolCallStarted' | 'toolCallCompleted') =>
     frameServer({
       case: 'interactionUpdate',
@@ -234,7 +271,13 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
             toolCall: {
               tool: {
                 case: 'mcpToolCall',
-                value: { args: { name: 'search', toolCallId: 'nested-call', args: {} } },
+                value: {
+                  args: {
+                    name: 'search',
+                    toolCallId: 'nested-call',
+                    args: event === 'toolCallCompleted' ? { query: new TextEncoder().encode('"docs"') } : {},
+                  },
+                },
               },
             },
           },
@@ -255,14 +298,11 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
     heartbeatMs: 0,
   });
   void result.catch(() => {});
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const parts = await Promise.race([
-      drainParts(stream),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('tool stream did not suspend promptly')), 100);
-      }),
-    ]);
+    const drain = drainParts(stream);
+    await settleMicrotasks();
+    jest.advanceTimersByTime(100);
+    const parts = await drain;
     const turn = await result;
     const toolCall = parts.find((part) => part.type === 'tool-call') as { toolCallId: string } | undefined;
     const finish = parts.at(-1) as { type: string; finishReason: { unified: string } };
@@ -274,8 +314,8 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
     expect(writes).toHaveLength(1);
     expect(turn.checkpointUsable).toBe(false);
     expect([...turn.pendingToolCalls]).toEqual([['outer-call', 'nested-call']]);
+    expect(turn.toolCalls).toHaveLength(1);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
     release();
   }
 });
@@ -314,6 +354,12 @@ test('an mcpArgs exec suspends instead of acknowledging the caller tool', async 
     toolName: 'search',
     input: '{"query":"docs"}',
   });
+  expect(
+    parts
+      .filter((part) => part.type === 'tool-input-delta' && part.id === 'nested-call')
+      .map((part) => (part as { delta: string }).delta)
+      .join(''),
+  ).toBe('{"query":"docs"}');
   expect(parts.at(-1)).toMatchObject({ type: 'finish', finishReason: { unified: 'tool-calls' } });
   expect(writes).toHaveLength(1);
   expect([...turn.pendingToolCalls]).toEqual([['nested-call', 'nested-call']]);
@@ -362,8 +408,8 @@ test.each([
     }
   };
 
-  await expect(drain()).rejects.toThrow(/incomplete MCP tool call/i);
-  await expect(result).rejects.toThrow(/incomplete MCP tool call/i);
+  await expect(drain()).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
+  await expect(result).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
   expect(parts.some((part) => part.type === 'tool-call')).toBe(false);
 });
 
@@ -391,4 +437,673 @@ test('reader cancellation stops heartbeats, closes the Run, and rejects the resu
   await expect(result).rejects.toBe(reason);
   expect(closeReasons).toEqual([reason]);
   expect(writes.length).toBe(writesAfterCancel);
+});
+
+test('replies to a hosted search query with its original id', async () => {
+  const h = runHarness();
+  h.send(
+    serverFrame({
+      case: 'interactionQuery',
+      value: {
+        id: 41,
+        query: { case: 'webSearchRequestQuery', value: {} },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  expect(h.writes).toContainEqual(
+    expect.objectContaining({
+      case: 'interactionResponse',
+      value: expect.objectContaining({
+        id: 41,
+        result: expect.objectContaining({ case: 'webSearchRequestResponse' }),
+      }),
+    }),
+  );
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+});
+
+test('an approval-only wire frame never becomes an executable call', async () => {
+  const base = toBinary(
+    McpArgsSchema,
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'probe',
+      args: { query: new TextEncoder().encode('"docs"') },
+    }),
+  );
+  const bytes = new Uint8Array([...base, 0x38, 0x01]);
+  const h = runHarness();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, bytes) },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  expect(h.parts.some((part) => part.type.startsWith('tool-'))).toBe(false);
+  expect(h.writes).toContainEqual(
+    expect.objectContaining({
+      case: 'execClientMessage',
+      value: expect.objectContaining({
+        id: 7,
+        execId: 'exec-7',
+        message: expect.objectContaining({
+          case: 'mcpResult',
+          value: expect.objectContaining({ result: expect.objectContaining({ case: 'rejected' }) }),
+        }),
+      }),
+    }),
+  );
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, base) },
+      },
+    }),
+  );
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(1);
+});
+
+test('an embedded approval-only interaction frame never becomes an executable call', async () => {
+  const probe = create(McpArgsSchema, {
+    name: 'search',
+    toolName: 'search',
+    toolCallId: 'probe',
+    args: { query: new TextEncoder().encode('"docs"') },
+    smartModeApprovalOnly: true,
+  });
+  const real = create(McpArgsSchema, {
+    name: 'search',
+    toolName: 'search',
+    toolCallId: 'probe',
+    args: { query: new TextEncoder().encode('"docs"') },
+  });
+  const display = (args: typeof probe) => ({
+    callId: 'outer-7',
+    toolCall: { tool: { case: 'mcpToolCall', value: { args } } },
+  });
+  const h = runHarness();
+  h.send(updateFrame({ case: 'toolCallStarted', value: display(probe) }));
+  h.send(updateFrame({ case: 'toolCallCompleted', value: display(probe) }));
+  await settleMicrotasks();
+  expect(h.parts.some((part) => part.type.startsWith('tool-'))).toBe(false);
+  h.send(updateFrame({ case: 'toolCallStarted', value: display(real) }));
+  h.send(updateFrame({ case: 'toolCallCompleted', value: display(real) }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(1);
+});
+
+test('a later approval-only exec revokes a ready provisional tool', async () => {
+  jest.useFakeTimers();
+  const base = toBinary(
+    McpArgsSchema,
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'probe',
+      args: { query: new TextEncoder().encode('"docs"') },
+    }),
+  );
+  const h = runHarness({ timing: { toolHandoffGraceMs: 100 } });
+  h.send(
+    updateFrame({
+      case: 'toolCallCompleted',
+      value: {
+        callId: 'outer-7',
+        toolCall: { tool: { case: 'mcpToolCall', value: { args: fromBinary(McpArgsSchema, base) } } },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, new Uint8Array([...base, 0x38, 0x01])) },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  jest.advanceTimersByTime(1000);
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(0);
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+});
+
+test('an approval-only exec clears an incomplete provisional record', async () => {
+  const base = toBinary(
+    McpArgsSchema,
+    create(McpArgsSchema, {
+      name: 'search',
+      toolName: 'search',
+      toolCallId: 'probe',
+    }),
+  );
+  const h = runHarness();
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-7',
+        toolCall: { tool: { case: 'mcpToolCall', value: { args: fromBinary(McpArgsSchema, base) } } },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 7,
+        execId: 'exec-7',
+        message: { case: 'mcpArgs', value: fromBinary(McpArgsSchema, new Uint8Array([...base, 0x38, 0x01])) },
+      },
+    }),
+  );
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await h.result;
+  expect(h.parts.filter((part) => part.type === 'tool-call')).toHaveLength(0);
+});
+
+test('unknown queries fail instead of leaving upstream waiting', async () => {
+  const h = runHarness();
+  h.send(serverFrame({ case: 'interactionQuery', value: { id: 9 } }));
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_interaction_unsupported' });
+  expect(h.closeCount()).toBe(1);
+});
+
+test('a late sibling revokes tool handoff until its own args are ready', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({ timing: { toolHandoffGraceMs: 100 } });
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(90);
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-b',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: { name: 'search', toolName: 'search', toolCallId: 'b', args: {} },
+            },
+          },
+        },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  jest.advanceTimersByTime(20);
+  await settleMicrotasks();
+  expect(h.parts.some((p) => p.type === 'tool-call')).toBe(false);
+  h.send(execFrame('b', 'beta'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(100);
+  await h.drained;
+  const calls = h.parts.filter((p) => p.type === 'tool-call');
+  expect(calls).toMatchObject([
+    { toolCallId: 'a', input: '{"query":"alpha"}' },
+    { toolCallId: 'outer-b', input: '{"query":"beta"}' },
+  ]);
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  expect(h.writes.filter((m) => m.case === 'execClientMessage')).toHaveLength(0);
+  expect((await h.result).toolCalls).toHaveLength(2);
+});
+
+test('a call-id-only sibling snapshot revokes tool handoff', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({ timing: { toolHandoffGraceMs: 100 } });
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(90);
+  h.send(
+    updateFrame({
+      case: 'partialToolCall',
+      value: { callId: 'outer-b', argsTextDelta: '{"query":"be' },
+    }),
+  );
+  await settleMicrotasks();
+  jest.advanceTimersByTime(20);
+  await settleMicrotasks();
+  expect(h.parts.some((p) => p.type === 'tool-call')).toBe(false);
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-b',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: { name: 'search', toolName: 'search', toolCallId: 'b', args: {} },
+            },
+          },
+        },
+      },
+    }),
+  );
+  h.send(execFrame('b', 'beta'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(100);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'tool-call')).toMatchObject([
+    { toolCallId: 'a', input: '{"query":"alpha"}' },
+    { toolCallId: 'outer-b', input: '{"query":"beta"}' },
+  ]);
+});
+
+test('consecutive MCP execs are handed off together', async () => {
+  jest.useFakeTimers();
+  const h = runHarness();
+  h.send(execFrame('a', 'alpha'));
+  h.send(execFrame('b', 'beta'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(100);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'tool-call')).toMatchObject([
+    { toolCallId: 'a', input: '{"query":"alpha"}' },
+    { toolCallId: 'b', input: '{"query":"beta"}' },
+  ]);
+  const toolParts = h.parts.filter((p) => p.type.startsWith('tool-'));
+  expect(toolParts).toMatchObject([
+    { type: 'tool-input-start', id: 'a', toolName: 'search' },
+    { type: 'tool-input-delta', id: 'a', delta: '{"query":"alpha"}' },
+    { type: 'tool-input-end', id: 'a' },
+    { type: 'tool-call', toolCallId: 'a', input: '{"query":"alpha"}' },
+    { type: 'tool-input-start', id: 'b', toolName: 'search' },
+    { type: 'tool-input-delta', id: 'b', delta: '{"query":"beta"}' },
+    { type: 'tool-input-end', id: 'b' },
+    { type: 'tool-call', toolCallId: 'b', input: '{"query":"beta"}' },
+  ]);
+  expect(toolParts.filter((p) => p.type === 'tool-input-delta')).toHaveLength(2);
+});
+
+test('duplicate exec does not extend the original handoff deadline', async () => {
+  jest.useFakeTimers();
+  const h = runHarness();
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(90);
+  h.send(execFrame('a', 'alpha'));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(10);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'tool-call')).toHaveLength(1);
+});
+
+test('successful Connect END_STREAM finishes before HTTP EOF', async () => {
+  const h = runHarness();
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained; // 故意不调用 eof()
+  await h.result;
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('an error envelope wins over a pending tool handoff', async () => {
+  jest.useFakeTimers();
+  const h = runHarness();
+  h.send(execFrame('a', 'docs'));
+  await settleMicrotasks();
+  h.send({ flags: 2, payload: new TextEncoder().encode('{"error":{"code":"internal","message":"upstream failed"}}') });
+  await expect(h.result).rejects.toMatchObject({
+    message: 'internal: upstream failed',
+    code: 'internal',
+  });
+  jest.advanceTimersByTime(1000);
+  expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('turnEnded grace closes a held-open text run once', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({ timing: { turnEndGraceMs: 500 } });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(499);
+  await settleMicrotasks();
+  expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
+  jest.advanceTimersByTime(1);
+  await h.drained;
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  h.fail(new Error('late socket close'));
+  await expect(h.result).resolves.toBeDefined();
+});
+
+test('a pending MCP input fails on successful protocol end', async () => {
+  const h = runHarness();
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: { name: 'search', toolName: 'search', toolCallId: 'nested', args: {} },
+            },
+          },
+        },
+      },
+    }),
+  );
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
+  await expect(h.drained).rejects.toMatchObject({ code: 'cursor_tool_input_incomplete' });
+  expect(h.parts.some((p) => p.type === 'tool-call')).toBe(false);
+});
+
+test('heartbeats prevent silence timeout but cannot prevent no-progress timeout', async () => {
+  jest.useFakeTimers();
+  const h = runHarness({
+    timing: {
+      firstFrameTimeoutMs: 20,
+      frameSilenceTimeoutMs: 30,
+      noProgressTimeoutMs: 80,
+    },
+  });
+  h.send(updateFrame({ case: 'heartbeat', value: {} }));
+  await settleMicrotasks();
+  for (let i = 0; i < 3; i++) {
+    jest.advanceTimersByTime(25);
+    h.send(updateFrame({ case: 'heartbeat', value: {} }));
+    await settleMicrotasks();
+  }
+  jest.advanceTimersByTime(5);
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_no_progress_timeout' });
+  const writes = h.writes.length;
+  jest.advanceTimersByTime(300000);
+  expect(h.writes).toHaveLength(writes);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('silence and first-frame waits have distinct errors', async () => {
+  jest.useFakeTimers();
+  const a = runHarness({ timing: { firstFrameTimeoutMs: 20 } });
+  jest.advanceTimersByTime(20);
+  await expect(a.result).rejects.toMatchObject({ code: 'cursor_first_frame_timeout' });
+  const b = runHarness({ timing: { frameSilenceTimeoutMs: 30, noProgressTimeoutMs: 80 } });
+  b.send(updateFrame({ case: 'textDelta', value: { text: 'progress' } }));
+  await settleMicrotasks();
+  jest.advanceTimersByTime(30);
+  await expect(b.result).rejects.toMatchObject({ code: 'cursor_frame_silence_timeout' });
+});
+
+test('cancel before protocol success preserves the cancellation reason', async () => {
+  const h = runHarness();
+  await settleMicrotasks();
+  const reason = new Error('user canceled');
+  await h.cancel(reason);
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await expect(h.result).rejects.toBe(reason);
+  expect(h.parts.some((p) => p.type === 'finish')).toBe(false);
+  expect(h.closeCount()).toBe(1);
+});
+
+test('an abort after protocol success cannot replace success', async () => {
+  const signal = new AbortController();
+  const h = runHarness({ signal: signal.signal });
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  signal.abort(new Error('late cancel'));
+  await expect(h.result).resolves.toBeDefined();
+  expect(h.closeCount()).toBe(1);
+});
+
+test('a late openRun handle is closed without writing after cancellation', async () => {
+  const gate = Promise.withResolvers<void>();
+  const h = runHarness({}, gate.promise);
+  const reason = new Error('cancel before open');
+  await h.cancel(reason);
+  await expect(h.result).rejects.toBe(reason);
+  gate.resolve();
+  await settleMicrotasks();
+  expect(h.closeCount()).toBe(1);
+  expect(h.writes).toHaveLength(0);
+});
+
+test('run diagnostics correlate phases without logging request content', async () => {
+  const rows: unknown[] = [];
+  const sink: Logger['debug'] = (a, b) => {
+    rows.push([a, b]);
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const h = runHarness({
+    logger,
+    accessToken: 'SECRET_ACCESS_TOKEN',
+    diagnosticsContext: {
+      requestId: 'req-123',
+      providerId: 'cursor-1',
+      modelId: 'composer-2',
+      resumeMode: 'fresh',
+    },
+  });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'SECRET_MODEL_TEXT' } }));
+  h.send(execFrame('a', 'SECRET_TOOL_ARGS'));
+  h.send(
+    serverFrame({
+      case: 'interactionQuery',
+      value: {
+        id: 52,
+        query: {
+          case: 'webSearchRequestQuery',
+          value: { args: { searchTerm: 'https://secret.example/path/to/file' } },
+        },
+      },
+    }),
+  );
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await h.result;
+  const serialized = JSON.stringify(rows);
+  expect(serialized).toContain('req-123');
+  expect(serialized).toContain('cursor-1');
+  expect(serialized).toContain('first-frame');
+  expect(serialized).toContain('first-text');
+  expect(serialized).toContain('query-reply');
+  const phases = rows.flatMap((row) => {
+    if (!Array.isArray(row) || typeof row[1] !== 'object' || row[1] === null) return [];
+    const phase = (row[1] as { phase?: unknown }).phase;
+    return typeof phase === 'string' ? [phase] : [];
+  });
+  expect(phases.indexOf('first-frame')).toBeGreaterThanOrEqual(0);
+  expect(phases.indexOf('first-text')).toBeGreaterThan(phases.indexOf('first-frame'));
+  expect(phases.indexOf('tool-ready')).toBeGreaterThan(phases.indexOf('first-frame'));
+  const firstText = rows.find(
+    (row) =>
+      Array.isArray(row) &&
+      typeof row[1] === 'object' &&
+      row[1] !== null &&
+      (row[1] as { phase?: unknown }).phase === 'first-text',
+  ) as [string, { frameCount?: number }] | undefined;
+  expect(firstText?.[1].frameCount).toBeGreaterThan(0);
+  expect(phases.indexOf('connect-end')).toBeGreaterThan(phases.indexOf('first-frame'));
+  const connectEnd = rows.find(
+    (row) =>
+      Array.isArray(row) &&
+      typeof row[1] === 'object' &&
+      row[1] !== null &&
+      (row[1] as { phase?: unknown }).phase === 'connect-end',
+  ) as [string, { frameCount?: number }] | undefined;
+  expect(connectEnd?.[1].frameCount).toBeGreaterThan(0);
+  expect(serialized).toContain('settled');
+  expect(serialized).not.toContain('SECRET_ACCESS_TOKEN');
+  expect(serialized).not.toContain('SECRET_MODEL_TEXT');
+  expect(serialized).not.toContain('SECRET_TOOL_ARGS');
+  expect(serialized).not.toContain('https://secret.example/path/to/file');
+  const emailRows: unknown[] = [];
+  const emailSink: Logger['debug'] = (a, b) => {
+    emailRows.push([a, b]);
+  };
+  const emailLogger: Logger = {
+    debug: emailSink,
+    info: emailSink,
+    warn: emailSink,
+    error: emailSink,
+    child: () => emailLogger,
+  };
+  const emailRun = runHarness({
+    logger: emailLogger,
+    diagnosticsContext: {
+      requestId: 'req-456',
+      providerId: 'user@example.com',
+      modelId: 'composer-2',
+      resumeMode: 'fresh',
+    },
+  });
+  emailRun.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  emailRun.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await emailRun.drained;
+  await emailRun.result;
+  expect(JSON.stringify(emailRows)).not.toContain('user@example.com');
+});
+
+test('a throwing log sink cannot change the successful stream', async () => {
+  const sink: Logger['debug'] = () => {
+    throw new Error('broken sink');
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const h = runHarness({ logger });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'OK' } }));
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await expect(h.result).resolves.toBeDefined();
+  expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+});
+
+function capturingLogger(): { logger: Logger; rows: Array<{ level: string; fields: Record<string, unknown> }> } {
+  const rows: Array<{ level: string; fields: Record<string, unknown> }> = [];
+  const record =
+    (level: string): Logger['debug'] =>
+    (_message, fields) => {
+      rows.push({ level, fields: fields as Record<string, unknown> });
+    };
+  const logger: Logger = {
+    debug: record('debug'),
+    info: record('info'),
+    warn: record('warn'),
+    error: record('error'),
+    child: () => logger,
+  };
+  return { logger, rows };
+}
+
+function settledLog(rows: Array<{ level: string; fields: Record<string, unknown> }>) {
+  return rows.find((row) => row.fields.phase === 'settled');
+}
+
+test('abort signal cancel is logged as canceled at debug', async () => {
+  const { logger, rows } = capturingLogger();
+  const abort = new AbortController();
+  const reason = new Error('client abort');
+  const h = runHarness({
+    logger,
+    signal: abort.signal,
+    diagnosticsContext: { requestId: 'req-abort', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  await settleMicrotasks();
+  abort.abort(reason);
+  await expect(h.result).rejects.toBe(reason);
+  await expect(h.drained).rejects.toBe(reason);
+  const settled = settledLog(rows);
+  expect(settled?.level).toBe('debug');
+  expect(settled?.fields).toMatchObject({ phase: 'settled', termination: 'canceled', requestId: 'req-abort' });
+  expect(rows.some((row) => row.level === 'warn')).toBe(false);
+});
+
+test('a Connect terminal counts as the first decoded frame', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-end', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await h.result;
+  const phases = rows.map((row) => row.fields.phase);
+  expect(phases.indexOf('first-frame')).toBeGreaterThanOrEqual(0);
+  expect(phases.indexOf('connect-end')).toBeGreaterThan(phases.indexOf('first-frame'));
+  expect(rows.find((row) => row.fields.phase === 'connect-end')?.fields.frameCount).toBeGreaterThan(0);
+  expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
+});
+
+test('an identity conflict counts as a decoded frame', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-identity', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer',
+        toolCall: { tool: { case: 'mcpToolCall', value: { args: { name: '', toolName: '', toolCallId: 'nested' } } } },
+      },
+    }),
+  );
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_tool_identity_conflict' });
+  expect(rows.some((row) => row.fields.phase === 'first-frame')).toBe(true);
+  expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
+});
+
+test('an unsupported query counts as a decoded frame', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-query', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send(serverFrame({ case: 'interactionQuery', value: { id: 9 } }));
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_interaction_unsupported' });
+  expect(rows.some((row) => row.fields.phase === 'first-frame')).toBe(true);
+  expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
+});
+
+test('protocol error is logged as warn with the error code', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-proto', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'Hi' } }));
+  h.eof();
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+  await expect(h.drained).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+  const settled = settledLog(rows);
+  expect(settled?.level).toBe('warn');
+  expect(settled?.fields).toMatchObject({
+    phase: 'settled',
+    termination: 'cursor_stream_incomplete',
+    requestId: 'req-proto',
+  });
 });

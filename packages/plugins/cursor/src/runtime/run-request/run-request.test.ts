@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
+import type { LanguageModelV4Prompt, LanguageModelV4ToolResultPart } from '@ai-sdk/provider';
 import { create, fromBinary } from '@bufbuild/protobuf';
 
 import { AgentClientMessageSchema, ConversationStateStructureSchema } from '../../gen/agent_pb';
@@ -22,6 +22,147 @@ const build = (prompt: LanguageModelV4Prompt) =>
     maxMode: false,
     state: { conversationId: 'conv-files', blobStore: new Map() },
   });
+
+const resumeResults: Array<{
+  label: string;
+  output: LanguageModelV4ToolResultPart['output'];
+  text: string;
+  result: unknown;
+  isError?: true;
+}> = [
+  { label: 'text', output: { type: 'text', value: 'FOUND' }, text: '[Tool Result]\nFOUND', result: 'FOUND' },
+  {
+    label: 'empty text',
+    output: { type: 'text', value: '' },
+    text: '[Tool Result]\n(no output)',
+    result: '(no output)',
+  },
+  {
+    label: 'whitespace text',
+    output: { type: 'text', value: ' \n ' },
+    text: '[Tool Result]\n(no output)',
+    result: '(no output)',
+  },
+  {
+    label: 'empty content',
+    output: { type: 'content', value: [] },
+    text: '[Tool Result]\n(no output)',
+    result: '(no output)',
+  },
+  {
+    label: 'execution denied with reason',
+    output: { type: 'execution-denied', reason: 'User declined access to the repository.' },
+    text: '[Tool Execution Denied]\nUser declined access to the repository.',
+    result: '[Tool Execution Denied]\nUser declined access to the repository.',
+    isError: true,
+  },
+  {
+    label: 'execution denied without reason',
+    output: { type: 'execution-denied' },
+    text: '[Tool Execution Denied]\nTool execution was denied.',
+    result: '[Tool Execution Denied]\nTool execution was denied.',
+    isError: true,
+  },
+];
+
+test.each(resumeResults.flatMap((result) => [true, false].map((fullHistory) => ({ ...result, fullHistory }))))(
+  'a pending tool resume includes $label in the model prompt (full history: $fullHistory)',
+  ({ fullHistory, output, text, result, isError }) => {
+    const blobStore = new Map<string, Uint8Array>();
+    const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
+    const system = { role: 'system', content: 'sys' } as const;
+    const user = { role: 'user', content: [{ type: 'text', text: 'search the docs' }] } as const;
+    const prompt: LanguageModelV4Prompt = [
+      system,
+      ...(fullHistory
+        ? ([
+            { role: 'user', content: [{ type: 'text', text: 'search the docs' }] },
+            {
+              role: 'assistant',
+              content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+            },
+          ] as LanguageModelV4Prompt)
+        : []),
+      {
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 'outer', toolName: 'search', output }],
+      },
+    ];
+    const { conversationState } = buildCursorRunRequestBytes({
+      prompt,
+      wireModelId: 'composer-2.5',
+      displayModelId: 'composer-2.5',
+      displayName: 'Composer',
+      maxMode: false,
+      state: {
+        conversationId: 'conv-resume',
+        blobStore,
+        conversationState: create(ConversationStateStructureSchema, {
+          rootPromptMessagesJson: [jsonBlob(system), ...(fullHistory ? [] : [jsonBlob(user)])],
+        }),
+        pendingToolCalls: new Map([['outer', 'nested']]),
+      },
+    });
+    const history = conversationState.rootPromptMessagesJson.map((id) =>
+      JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+    );
+
+    expect(history).toContainEqual(user);
+    if (fullHistory) {
+      const results = history.filter((message) => message.role === 'tool').flatMap((message) => message.content);
+      expect(results.map((part) => part.result)).toEqual([result]);
+      expect(results[0]?.isError).toBe(isError);
+      const calls = history
+        .filter((message) => message.role === 'assistant')
+        .flatMap((message) => message.content)
+        .filter((part) => part.type === 'tool-call');
+      expect(calls.map((call) => call.args)).toEqual([{ query: 'docs' }]);
+      expect(results.map((part) => part.toolCallId)).toEqual(calls.map((call) => call.toolCallId));
+    } else {
+      expect(history).toContainEqual({ role: 'user', content: [{ type: 'text', text }] });
+    }
+  },
+);
+
+test('an incremental resume that includes the assistant tool-call keeps the cached user request', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
+  const system = { role: 'system', content: 'sys' } as const;
+  const user = { role: 'user', content: [{ type: 'text', text: 'search the docs' }] } as const;
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      system,
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+        ],
+      },
+    ],
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-partial-tool-history',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [jsonBlob(system), jsonBlob(user)],
+      }),
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+  const history = conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(history).toContainEqual(user);
+  const results = history.filter((message) => message.role === 'tool').flatMap((message) => message.content);
+  expect(results.map((part) => part.result)).toEqual(['FOUND']);
+});
 
 test('a trailing user message selects userMessageAction', () => {
   const prompt: LanguageModelV4Prompt = [

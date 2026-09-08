@@ -1,25 +1,22 @@
 import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart, LanguageModelV4Usage } from '@ai-sdk/provider';
-import { fromBinary, toJson } from '@bufbuild/protobuf';
-import { ValueSchema } from '@bufbuild/protobuf/wkt';
 
-import type { InteractionUpdate, McpArgs } from '../../../gen/agent_pb';
-import { fromWireName } from '../../../tool-names';
+import type { InteractionUpdate, McpArgs, McpToolDefinition, ToolCall } from '../../../gen/agent_pb';
+import type { CursorCompletedToolCall } from '../../mcp-call';
+import { createMcpState, readMcpState, readReadyMcpCalls, updateMcp, type McpState } from './mcp-state';
 
 export type CursorStreamAccumulator = {
   textId?: string | undefined;
   reasoningId?: string | undefined;
-  tools: Map<string, { nestedToolCallId: string; toolName: string; buffer: string }>;
-  completedToolCalls: Map<string, string>;
+  mcp: McpState;
   outputTokens: number;
   sawTokenDelta: boolean;
   sawTurnEnded: boolean;
   toolCalls: number;
 };
 
-export function createCursorStreamAccumulator(): CursorStreamAccumulator {
+export function createCursorStreamAccumulator(tools: readonly McpToolDefinition[] = []): CursorStreamAccumulator {
   return {
-    tools: new Map(),
-    completedToolCalls: new Map(),
+    mcp: createMcpState(tools),
     outputTokens: 0,
     sawTokenDelta: false,
     sawTurnEnded: false,
@@ -27,10 +24,35 @@ export function createCursorStreamAccumulator(): CursorStreamAccumulator {
   };
 }
 
+export function cursorToolState(a: CursorStreamAccumulator) {
+  return readMcpState(a.mcp);
+}
+
+export function cursorCompletedTools(a: CursorStreamAccumulator): readonly CursorCompletedToolCall[] {
+  return readReadyMcpCalls(a.mcp);
+}
+
+export function commitCursorTools(a: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
+  const state = cursorToolState(a);
+  if (a.mcp.committed || state.openCount > 0 || state.readyCount === 0) return [];
+  a.mcp.committed = true;
+  const parts: LanguageModelV4StreamPart[] = [...closeText(a), ...closeReasoning(a)];
+  for (const call of cursorCompletedTools(a)) {
+    parts.push(
+      { type: 'tool-input-start', id: call.outerCallId, toolName: call.toolName },
+      { type: 'tool-input-delta', id: call.outerCallId, delta: call.input },
+      { type: 'tool-input-end', id: call.outerCallId },
+      { type: 'tool-call', toolCallId: call.outerCallId, toolName: call.toolName, input: call.input },
+    );
+    a.toolCalls++;
+  }
+  return parts;
+}
+
 // Pure mapping of ONE interactionUpdate payload into ordered V4 parts; mutates
 // the accumulator. Native/todo tool starts are dropped (surfaced as A-class
-// exec, not model output). Exactly one V4 tool-call is emitted per completed
-// MCP call, with fromWireName applied to un-escape reserved tool names.
+// exec, not model output). MCP mapping only collects identity/args; tool parts
+// are produced later by commitCursorTools.
 export function mapInteractionUpdate(
   update: InteractionUpdate,
   accumulator: CursorStreamAccumulator,
@@ -44,12 +66,22 @@ export function mapInteractionUpdate(
     case 'thinkingCompleted':
       return closeReasoning(accumulator);
     case 'toolCallStarted':
-      return startMcpTool(accumulator, message.value);
+      updateMcp(accumulator.mcp, 'start', message.value.callId, mcpArgsOf(message.value.toolCall));
+      return [];
     case 'partialToolCall':
+      updateMcp(
+        accumulator.mcp,
+        'partial',
+        message.value.callId,
+        mcpArgsOf(message.value.toolCall),
+        message.value.argsTextDelta,
+      );
+      return [];
     case 'toolCallDelta':
-      return deltaMcpTool(accumulator, message.value);
+      return [];
     case 'toolCallCompleted':
-      return completeMcpTool(accumulator, message.value);
+      updateMcp(accumulator.mcp, 'complete', message.value.callId, mcpArgsOf(message.value.toolCall));
+      return [];
     case 'tokenDelta':
       accumulator.outputTokens += message.value.tokens ?? 0;
       accumulator.sawTokenDelta = true;
@@ -63,22 +95,8 @@ export function mapInteractionUpdate(
 }
 
 export function mapMcpExec(mcp: McpArgs, accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
-  const nestedToolCallId = mcp.toolCallId || crypto.randomUUID();
-  const outerCallId =
-    [...accumulator.tools].find(([, tool]) => tool.nestedToolCallId === nestedToolCallId)?.[0] ?? nestedToolCallId;
-  const value = {
-    callId: outerCallId,
-    toolCall: {
-      tool: {
-        case: 'mcpToolCall',
-        value: { args: { ...mcp, name: mcp.name || mcp.toolName, toolCallId: nestedToolCallId } },
-      },
-    },
-  };
-  return [
-    ...(accumulator.tools.has(outerCallId) ? [] : startMcpTool(accumulator, value)),
-    ...completeMcpTool(accumulator, value),
-  ];
+  updateMcp(accumulator.mcp, 'exec', undefined, mcp);
+  return [];
 }
 
 export function finalizeCursorStream(accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
@@ -87,6 +105,12 @@ export function finalizeCursorStream(accumulator: CursorStreamAccumulator): Lang
   parts.push(...closeReasoning(accumulator));
   parts.push({ type: 'finish', usage: usageOf(accumulator), finishReason: finishReasonOf(accumulator) });
   return parts;
+}
+
+function mcpArgsOf(toolCall: ToolCall | undefined): McpArgs | undefined {
+  const tool = toolCall?.tool;
+  if (tool?.case !== 'mcpToolCall') return undefined;
+  return tool.value.args;
 }
 
 function openAndDeltaText(accumulator: CursorStreamAccumulator, delta: string): LanguageModelV4StreamPart[] {
@@ -123,90 +147,6 @@ function closeReasoning(accumulator: CursorStreamAccumulator): LanguageModelV4St
   const id = accumulator.reasoningId;
   accumulator.reasoningId = undefined;
   return [{ type: 'reasoning-end', id }];
-}
-
-function startMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
-  const mcp = mcpArgsOf(value);
-  const outerCallId = (value as { callId?: string } | undefined)?.callId;
-  if (mcp === undefined || !outerCallId) return [];
-  const parts: LanguageModelV4StreamPart[] = [...closeText(accumulator), ...closeReasoning(accumulator)];
-  const toolName = fromWireName(mcp.name);
-  accumulator.tools.set(outerCallId, { nestedToolCallId: mcp.toolCallId, toolName, buffer: '' });
-  return [...parts, { type: 'tool-input-start', id: outerCallId, toolName }];
-}
-
-function deltaMcpTool(
-  accumulator: CursorStreamAccumulator,
-  value: { argsTextDelta?: string; callId?: string },
-): LanguageModelV4StreamPart[] {
-  const outerCallId = value.callId;
-  if (outerCallId === undefined) return [];
-  const tool = accumulator.tools.get(outerCallId);
-  if (tool === undefined) return [];
-  const snapshot = value.argsTextDelta ?? '';
-  const chunk = snapshot.startsWith(tool.buffer) ? snapshot.slice(tool.buffer.length) : snapshot;
-  if (chunk.length === 0) return [];
-  tool.buffer += chunk;
-  return [{ type: 'tool-input-delta', id: outerCallId, delta: chunk }];
-}
-
-function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
-  const outerCallId = (value as { callId?: string } | undefined)?.callId;
-  const tool = outerCallId === undefined ? undefined : accumulator.tools.get(outerCallId);
-  if (tool === undefined || outerCallId === undefined) return [];
-  const mcp = mcpArgsOf(value);
-  const decoded = mcp ? decodeMcpArgsMap(mcp.args) : undefined;
-  const input = decoded !== undefined ? JSON.stringify(decoded) : tool.buffer.length > 0 ? tool.buffer : '{}';
-  accumulator.tools.delete(outerCallId);
-  accumulator.completedToolCalls.set(outerCallId, tool.nestedToolCallId);
-  accumulator.toolCalls += 1;
-  return [
-    { type: 'tool-input-end', id: outerCallId },
-    { type: 'tool-call', toolCallId: outerCallId, toolName: tool.toolName, input },
-  ];
-}
-
-function mcpArgsOf(
-  value: unknown,
-): { name: string; toolCallId: string; args?: Record<string, Uint8Array> } | undefined {
-  const toolCall = (value as { toolCall?: { tool?: { case?: string; value?: unknown } } } | undefined)?.toolCall;
-  if (toolCall?.tool?.case !== 'mcpToolCall') return undefined;
-  const args = (
-    toolCall.tool.value as
-      | { args?: { name?: string; toolCallId?: string; args?: Record<string, Uint8Array> } }
-      | undefined
-  )?.args;
-  if (!args) return undefined;
-  return {
-    name: args.name ?? '',
-    toolCallId: args.toolCallId && args.toolCallId.length > 0 ? args.toolCallId : crypto.randomUUID(),
-    ...(args.args === undefined ? {} : { args: args.args }),
-  };
-}
-
-function decodeMcpArgsMap(args: Record<string, Uint8Array> | undefined): Record<string, unknown> | undefined {
-  if (!args || Object.keys(args).length === 0) return undefined;
-  const decoded: Record<string, unknown> = {};
-  for (const [key, bytes] of Object.entries(args)) decoded[key] = decodeMcpArgValue(bytes);
-  return decoded;
-}
-
-function decodeMcpArgValue(bytes: Uint8Array): unknown {
-  try {
-    const json = toJson(ValueSchema, fromBinary(ValueSchema, bytes));
-    if (typeof json === 'string') return safeJson(json);
-    return json;
-  } catch {
-    return safeJson(new TextDecoder().decode(bytes));
-  }
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
 }
 
 function usageOf(accumulator: CursorStreamAccumulator): LanguageModelV4Usage {

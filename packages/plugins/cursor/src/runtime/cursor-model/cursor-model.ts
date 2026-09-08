@@ -6,8 +6,8 @@ import type {
   SharedV4Warning,
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
-import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
-import { fromBinary, toBinary } from '@bufbuild/protobuf';
+import { type CredentialPort, type Logger, zod } from '@aio-proxy/plugin-sdk';
+import { fromBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../../gen/agent_pb';
 import { currentCursorCredential, type CursorOAuthDependencies } from '../../oauth';
@@ -18,6 +18,7 @@ import { runCursorTurn } from '../driver';
 import { hasMatchingPendingToolResult } from '../history';
 import { buildMcpToolDefinitions } from '../mcp-tools';
 import { buildCursorRunRequestBytes, type CursorRunState } from '../run-request';
+import { persistCursorSession } from './persist-session';
 
 export type CursorModelRuntime = {
   readonly transport: CursorTransport;
@@ -32,6 +33,7 @@ export type CursorModelRuntime = {
   };
   readonly baseUrl?: string;
   readonly now?: () => number;
+  readonly logger?: Logger;
 };
 
 // The AI SDK carries aio-proxy's logical-session key under providerOptions.aioProxy.
@@ -64,6 +66,15 @@ function logicalSessionKey(providerOptions: SharedV4ProviderOptions | undefined)
 function routingContinuity(providerOptions: SharedV4ProviderOptions | undefined): RoutingContinuity | undefined {
   const parsed = routingContinuitySchema.safeParse(providerOptions?.['aioProxy']?.['routingContinuity']);
   return parsed.success ? parsed.data : undefined;
+}
+
+function logicalRequestId(options: SharedV4ProviderOptions | undefined): string {
+  const parsed = zod
+    .object({ requestId: zod.string().min(1).max(128) })
+    .safeParse(options?.['aioProxy']?.['logicalRequest']);
+  return parsed.success && /^[a-zA-Z0-9_.:-]+$/.test(parsed.data.requestId)
+    ? parsed.data.requestId
+    : crypto.randomUUID();
 }
 
 function canReuseCheckpoint(prior: CursorSessionState, routing: RoutingContinuity): boolean {
@@ -154,6 +165,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       maxMode: runtime.model.maxMode,
       state: runState,
     });
+    const requestId = logicalRequestId(options.providerOptions);
     const { stream, result } = runCursorTurn({
       transport: runtime.transport,
       accessToken: credential.accessToken,
@@ -164,33 +176,31 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       requestContextTools,
       blobStore,
       heartbeatMs: 5_000,
+      ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
+      diagnosticsContext: {
+        requestId,
+        modelId,
+        ...(routing === undefined ? {} : { providerId: routing.routedProviderId }),
+        resumeMode: isPendingResume ? 'tool-results' : priorState === undefined ? 'fresh' : 'checkpoint',
+      },
     });
     void result
       .then((turn) => {
         if (storeKey === undefined) return;
-        const nextPendingToolCalls = new Map(pendingToolCalls);
-        for (const [outerCallId, nestedToolCallId] of turn.pendingToolCalls) {
-          nextPendingToolCalls.set(outerCallId, nestedToolCallId);
-        }
-        const next: CursorSessionState = {
+        persistCursorSession({
+          sessionStore: runtime.sessionStore,
+          storeKey,
+          prior,
           conversationId,
-          conversationState: toBinary(ConversationStateStructureSchema, turn.conversationState),
-          blobs: turn.blobStore,
-          checkpointUsable: turn.checkpointUsable && nextPendingToolCalls.size === 0,
-          ...(routing?.updatesAffinity === true
-            ? {
-                expectedAffinity: {
-                  providerId: routing.routedProviderId,
-                  revision: (routing.observedAffinity?.revision ?? 0) + 1,
-                },
-              }
-            : prior?.expectedAffinity === undefined
-              ? {}
-              : { expectedAffinity: prior.expectedAffinity }),
-          pendingToolCalls: nextPendingToolCalls,
-        };
-        if (runtime.sessionStore.get(storeKey) !== prior) return;
-        runtime.sessionStore.set(storeKey, next);
+          requestPendingToolCalls: pendingToolCalls,
+          conversationState,
+          ...(routing === undefined ? {} : { routing }),
+          prompt: options.prompt,
+          turn,
+          ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
+          requestId,
+          modelId,
+        });
       })
       .catch(() => {});
     return {

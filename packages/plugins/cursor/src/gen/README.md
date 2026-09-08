@@ -81,6 +81,17 @@ re-attach to the next field.
 `AvailableModel.variants = 30` from the cursor-agent `2026.08.11-e8db854`
 client metadata. No field numbers were invented.
 
+Two further verified patches from oh-my-pi commit
+`3e181fe0cb73f8fbc8b5654335dee08177e2417b`
+(`packages/ai/src/providers/cursor/proto/agent.proto`), not a wholesale
+rebase onto that commit:
+
+- `McpArgs.smart_mode_approval_only = 7`. Field 6 (`SmartModeApproval`)
+  stays undeclared so unknown-field compatibility is preserved.
+- `InteractionQuery` / `InteractionResponse` field 9
+  (`web_fetch_request_query` / `web_fetch_request_response`) plus the
+  nested `WebFetchRequestQuery` / `WebFetchRequestResponse` messages.
+
 ## Regeneration
 
 Regenerate from the vendored `.proto` files with protobuf-es v2:

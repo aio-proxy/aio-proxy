@@ -22,13 +22,14 @@ import {
 } from '../../gen/agent_pb';
 import { readCursorBlob, storeCursorBlob } from '../../store/blobs/index';
 import { toWireName } from '../../tool-names/index';
+import { appendCursorRootHistory as appendRootHistory, buildCursorRootMessages } from './root-messages';
+import { toolResultText } from './tool-result';
 import { createCursorUserMessage, extractV4UserText, v4UserHasImages } from './user-message/index';
 
-// The active (latest) user message is excluded from history; it rides in the
-// run action (Task 13). Assistant tool-call parts flatten to nothing and
-// tool-result parts flatten to "[Tool Result]\n<text>" / "[Tool Error]\n<text>"
-// assistant-side text for ordinary reconstructed history. Pending MCP results
-// use applyMcpToolResults so their IDs and structured result remain intact.
+// The active (latest) user message is excluded from root/turns; it rides in the
+// run action. Root history keeps structured assistant tool-calls and paired
+// results. Turns still flatten assistant/tool text for protobuf display steps.
+// Pending MCP results use applyMcpToolResults so nested IDs stay intact.
 
 export function findActiveUserMessageIndex(prompt: LanguageModelV4Prompt): number {
   for (let index = prompt.length - 1; index >= 0; index -= 1) {
@@ -54,42 +55,15 @@ export function buildRootPromptMessagesJson(
   blobStore: Map<string, Uint8Array>,
   activeUserMessageIndex = findActiveUserMessageIndex(prompt),
 ): Uint8Array[] {
-  const entries: Uint8Array[] = [...systemPromptIds];
-  const pushJson = (value: unknown) =>
-    entries.push(storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value))));
-  for (let index = 0; index < prompt.length; index += 1) {
-    if (index === activeUserMessageIndex) break;
-    const message = prompt[index]!;
-    if (message.role === 'user') {
-      const text = extractV4UserText(message.content);
-      const content: unknown[] = text.length > 0 ? [{ type: 'text', text }] : [];
-      for (const part of message.content) {
-        if (
-          part.type !== 'file' ||
-          (part.mediaType !== 'image' && !part.mediaType.startsWith('image/')) ||
-          part.data.type !== 'data'
-        ) {
-          continue;
-        }
-        const data =
-          part.data.data instanceof Uint8Array
-            ? Buffer.from(part.data.data).toString('base64')
-            : Buffer.from(part.data.data, 'base64').toString('base64');
-        content.push({ type: 'file', mediaType: part.mediaType, data: { type: 'data', data } });
-      }
-      if (content.length > 0) pushJson({ role: 'user', content });
-    } else if (message.role === 'assistant') {
-      const text = assistantText(message.content);
-      if (text.length > 0) pushJson({ role: 'assistant', content: [{ type: 'text', text }] });
-    } else if (message.role === 'tool') {
-      for (const part of message.content) {
-        if (part.type !== 'tool-result') continue;
-        const text = toolResultText(part);
-        if (text.length > 0) pushJson({ role: 'user', content: [{ type: 'text', text }] });
-      }
-    }
-  }
-  return entries;
+  return buildCursorRootMessages(prompt, systemPromptIds, blobStore, activeUserMessageIndex);
+}
+
+export function appendCursorRootHistory(input: {
+  rootPromptMessagesJson: readonly Uint8Array[];
+  prompt: LanguageModelV4Prompt;
+  blobStore: Map<string, Uint8Array>;
+}): Uint8Array[] {
+  return appendRootHistory(input);
 }
 
 export function buildConversationTurns(
@@ -343,20 +317,4 @@ function toolMessageText(message: LanguageModelV4Message): string {
     .map(toolResultText)
     .filter((text) => text.length > 0)
     .join('\n');
-}
-
-function toolResultText(part: LanguageModelV4ToolResultPart): string {
-  const output = part.output;
-  const body =
-    output.type === 'text' || output.type === 'error-text'
-      ? output.value
-      : output.type === 'json' || output.type === 'error-json'
-        ? JSON.stringify(output.value)
-        : output.type === 'content'
-          ? output.value.map((entry) => (entry.type === 'text' ? entry.text : `[${entry.type}]`)).join('\n')
-          : '';
-  const trimmed = body.trim();
-  if (trimmed.length === 0) return '';
-  const prefix = output.type === 'error-text' || output.type === 'error-json' ? '[Tool Error]' : '[Tool Result]';
-  return `${prefix}\n${trimmed}`;
 }

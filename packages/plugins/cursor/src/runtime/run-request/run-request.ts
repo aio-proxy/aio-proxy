@@ -16,6 +16,7 @@ import {
 } from '../../gen/agent_pb';
 import { storeCursorBlob } from '../../store/blobs';
 import {
+  appendCursorRootHistory,
   applyMcpToolResults,
   buildConversationTurns,
   buildCursorSystemPromptJsons,
@@ -98,7 +99,19 @@ export function buildCursorRunRequestBytes(input: {
   const patched = isPendingResume
     ? applyMcpToolResults({ prompt, turns: baseTurns, pendingToolCalls, blobStore })
     : { turns: baseTurns, pendingToolCalls: new Map<string, string>() };
-  const rootPromptMessagesJson = reusableState?.rootPromptMessagesJson ?? promptRootMessages;
+  // Cursor builds the model prompt from these JSON blobs, not the patched
+  // display turns. A resumed tool result must reach this history as well.
+  const hasFullToolHistory = promptTurns.length > 0;
+  const rootPromptMessagesJson =
+    isPendingResume && reusableState !== undefined
+      ? hasFullToolHistory
+        ? promptRootMessages
+        : appendCursorRootHistory({
+            rootPromptMessagesJson: reusableState.rootPromptMessagesJson,
+            prompt,
+            blobStore,
+          })
+      : (reusableState?.rootPromptMessagesJson ?? promptRootMessages);
 
   const conversationState = create(ConversationStateStructureSchema, {
     ...baseState,

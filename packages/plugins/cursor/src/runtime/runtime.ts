@@ -1,4 +1,4 @@
-import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import type { JsonValue, Logger, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CursorOAuthDependencies } from '../oauth';
@@ -10,6 +10,7 @@ import { createCursorProviderV4, type CursorModelDescriptor } from './provider/i
 export type CursorRuntimeDependencies = CursorOAuthDependencies & {
   readonly transport?: CursorTransport;
   readonly sessionStore?: CursorSessionStore;
+  readonly logger?: Logger;
 };
 
 // One transport + one session store per runtime (per account), never per request
@@ -19,7 +20,12 @@ export function createCursorRuntime(
   context: RuntimeContext<CursorCredential, Record<string, never>>,
   dependencies: CursorRuntimeDependencies = {},
 ): Promise<OAuthRuntimeResult> {
-  const { transport: injectedTransport, sessionStore: injectedStore, ...injectedCredentialOptions } = dependencies;
+  const {
+    transport: injectedTransport,
+    sessionStore: injectedStore,
+    logger,
+    ...injectedCredentialOptions
+  } = dependencies;
   const credentialOptions: CursorOAuthDependencies = {
     ...injectedCredentialOptions,
     ...(injectedCredentialOptions.fetch === undefined ? { fetch: context.fetch } : {}),
@@ -47,6 +53,7 @@ export function createCursorRuntime(
     credentialOptions,
     baseUrl: CURSOR_API_URL,
     modelById,
+    ...(logger === undefined ? {} : { logger }),
   });
   return Promise.resolve({ provider });
 }

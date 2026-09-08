@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Buffer } from 'node:buffer';
 
 import { InvalidArgumentError, type LanguageModelV4CallOptions } from '@ai-sdk/provider';
-import type { CredentialPort } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, Logger } from '@aio-proxy/plugin-sdk';
 import { create, fromBinary, toBinary, toJson } from '@bufbuild/protobuf';
 import { ValueSchema } from '@bufbuild/protobuf/wkt';
 
@@ -26,7 +26,9 @@ import { storeCursorBlob } from '../../store/blobs';
 import { CursorSessionStore, sessionKey } from '../../store/session-store';
 import type { ConnectFrame } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
+import { createProtocolFixture, protocolServerFrame, protocolUpdateFrame } from '../protocol-fixture.test-support';
 import { createCursorLanguageModel, type CursorModelRuntime } from './cursor-model';
+import { persistCursorSession } from './persist-session';
 
 const server = (value: Record<string, unknown>): ConnectFrame => {
   const message = create(AgentServerMessageSchema, { message: value } as never);
@@ -150,6 +152,60 @@ test('doStream returns a finishing stream and frames a runRequest', async () => 
   expect(runs[0]?.length).toBeGreaterThan(0);
   const first = fromBinary(AgentClientMessageSchema, runs[0]![0]!.subarray(5));
   expect(first.message.case).toBe('runRequest');
+});
+
+test('model forwards logical request diagnostics without forwarding session or credentials', async () => {
+  const rows: unknown[] = [];
+  const sink: Logger['debug'] = (a, b) => {
+    rows.push([a, b]);
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('composer-2', {
+    ...runtimeWith(transport, new CursorSessionStore()),
+    logger,
+  });
+  const options = callOptions();
+  const { stream } = await model.doStream(options);
+  await lastPartType(stream);
+  const serialized = JSON.stringify(rows);
+  expect(serialized).toContain('"requestId":"r1"');
+  expect(serialized).not.toContain('sha256:abc');
+  expect(serialized).not.toContain('"refreshToken"');
+  expect(serialized).not.toContain('"accessToken"');
+});
+
+test('a missing logical request id is generated once for diagnostics and persist', async () => {
+  const rows: unknown[] = [];
+  const sink: Logger['debug'] = (a, b) => {
+    rows.push([a, b]);
+  };
+  const logger: Logger = { debug: sink, info: sink, warn: sink, error: sink, child: () => logger };
+  const sessionStore = new CursorSessionStore();
+  sessionStore.set = () => {
+    throw new Error('persist-fail');
+  };
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('composer-2', {
+    ...runtimeWith(transport, sessionStore),
+    logger,
+  });
+  const { stream } = await model.doStream({
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
+    providerOptions: {
+      aioProxy: { logicalRequest: { session: { key: 'sha256:abc', source: 'body-conversation' } } },
+    },
+  } as never);
+  await lastPartType(stream);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const requestIds = rows.flatMap((row) => {
+    if (!Array.isArray(row) || typeof row[1] !== 'object' || row[1] === null) return [];
+    const requestId = (row[1] as { requestId?: unknown }).requestId;
+    return typeof requestId === 'string' ? [requestId] : [];
+  });
+  expect(rows.some((row) => Array.isArray(row) && row[0] === 'Cursor session persist')).toBe(true);
+  expect(requestIds.length).toBeGreaterThan(1);
+  expect(new Set(requestIds).size).toBe(1);
 });
 
 test('function tools cross the local request-context handshake', async () => {
@@ -674,4 +730,177 @@ test('concurrent successful turns preserve the first committed checkpoint', asyn
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(sessionStore.get(logicalStoreKey)).toBe(winningState);
+});
+
+test('a result-only second turn reads the actual tool history without a checkpoint', async () => {
+  const f = createProtocolFixture([
+    [
+      protocolUpdateFrame({
+        case: 'toolCallStarted',
+        value: {
+          callId: 'outer|a',
+          toolCall: {
+            tool: {
+              case: 'mcpToolCall',
+              value: {
+                args: { name: 'search', toolName: 'search', toolCallId: 'nested-a', args: {} },
+              },
+            },
+          },
+        },
+      }),
+      protocolServerFrame({
+        case: 'execServerMessage',
+        value: {
+          id: 1,
+          execId: 'exec-a',
+          message: {
+            case: 'mcpArgs',
+            value: {
+              name: 'search',
+              toolName: 'search',
+              toolCallId: 'nested-a',
+              args: { query: new TextEncoder().encode('"docs"') },
+            },
+          },
+        },
+      }),
+    ],
+    [
+      protocolUpdateFrame({ case: 'textDelta', value: { text: 'done' } }),
+      { flags: 2, payload: new TextEncoder().encode('{}') },
+    ],
+  ]);
+  const model = createCursorLanguageModel('composer-2', runtimeWith(f.transport, new CursorSessionStore()));
+  const first = await model.doGenerate({
+    ...callOptions(),
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'search the docs' }] }],
+    tools: [
+      {
+        type: 'function',
+        name: 'search',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+    ],
+  });
+  expect(first.content.find((p) => p.type === 'tool-call')).toMatchObject({
+    toolCallId: 'outer|a',
+    input: '{"query":"docs"}',
+  });
+  await model.doGenerate({
+    ...callOptions(),
+    prompt: [
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'outer|a',
+            toolName: 'search',
+            output: { type: 'text', value: 'FOUND' },
+          },
+        ],
+      },
+    ],
+  });
+  const root = f.roots[1]!;
+  const contents = root.flatMap((m) => (Array.isArray(m.content) ? m.content : []));
+  const call = contents.find((p) => p.type === 'tool-call')!;
+  const result = contents.find((p) => p.type === 'tool-result')!;
+  expect(call.args).toEqual({ query: 'docs' });
+  expect(result.result).toBe('FOUND');
+  expect(result.toolCallId).toBe(call.toolCallId);
+  expect(call.toolCallId).toMatch(/^[a-zA-Z0-9_-]+$/);
+  expect(root.filter((m) => m.role === 'user' && JSON.stringify(m.content).includes('search the docs'))).toHaveLength(
+    1,
+  );
+  expect(f.runs[1]?.action?.action.case).toBe('resumeAction');
+  expect(f.closes).toEqual([1, 1]);
+});
+
+test('an unparsable tool input still persists pending IDs and remaining structured calls', () => {
+  const sessionStore = new CursorSessionStore();
+  const blobs = new Map<string, Uint8Array>();
+  const conversationState = create(ConversationStateStructureSchema, {
+    rootPromptMessagesJson: [
+      storeCursorBlob(blobs, new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' }))),
+    ],
+  });
+  const warnRows: unknown[] = [];
+  const logger: Logger = {
+    debug: () => {},
+    info: () => {},
+    warn: (message, props) => {
+      warnRows.push([message, props]);
+    },
+    error: () => {},
+    child: () => logger,
+  };
+
+  persistCursorSession({
+    sessionStore,
+    storeKey: logicalStoreKey,
+    prior: undefined,
+    conversationId: 'conv-persist',
+    requestPendingToolCalls: new Map(),
+    conversationState,
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'search the docs' }] }],
+    turn: {
+      conversationState,
+      checkpointUsable: false,
+      pendingToolCalls: new Map([
+        ['outer-good', 'nested-good'],
+        ['outer-bad', 'nested-bad'],
+      ]),
+      toolCalls: [
+        {
+          outerCallId: 'outer-good',
+          nestedToolCallId: 'nested-good',
+          toolName: 'search',
+          input: '{"query":"docs"}',
+        },
+        {
+          outerCallId: 'outer-bad',
+          nestedToolCallId: 'nested-bad',
+          toolName: 'search',
+          input: '{not-json',
+        },
+      ],
+      assistantText: '',
+      blobStore: blobs,
+    },
+    logger,
+    requestId: 'r1',
+    modelId: 'composer-2',
+  });
+
+  const stored = sessionStore.get(logicalStoreKey);
+  expect(stored).toBeDefined();
+  expect([...stored!.pendingToolCalls]).toEqual([
+    ['outer-good', 'nested-good'],
+    ['outer-bad', 'nested-bad'],
+  ]);
+
+  const state = fromBinary(ConversationStateStructureSchema, stored!.conversationState!);
+  const messages = state.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(stored!.blobs.get(Buffer.from(id).toString('hex'))!)),
+  );
+  const calls = messages
+    .filter((message: { role?: string }) => message.role === 'assistant')
+    .flatMap((message: { content?: Array<{ type?: string; args?: unknown }> }) => message.content ?? [])
+    .filter((part) => part.type === 'tool-call');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatchObject({ args: { query: 'docs' } });
+
+  const serialized = JSON.stringify(warnRows);
+  expect(warnRows.length).toBeGreaterThan(0);
+  expect(serialized).toContain('"skippedCount":1');
+  expect(serialized).toContain('"pendingCount":2');
+  expect(serialized).not.toContain('{not-json');
+  expect(serialized).not.toContain('outer-bad');
+  expect(serialized).not.toContain('search the docs');
 });

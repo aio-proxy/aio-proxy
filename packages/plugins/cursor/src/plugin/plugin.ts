@@ -70,9 +70,17 @@ export function createCursorPlugin(
     createRuntime: (context) => createCursorRuntime(context, dependencies),
     quota: { read: (context) => readCursorQuota(context, dependencies) },
   };
-  return definePlugin((api) => api.oauth.register(adapter), {
-    displayName: presentationText.pluginLabel ?? 'Cursor',
-    description: presentationText.pluginDescription ?? 'Use a Cursor account to access models',
-    icon: 'cursor',
-  });
+  return definePlugin(
+    (api) => {
+      api.oauth.register({
+        ...adapter,
+        createRuntime: (context) => createCursorRuntime(context, { ...dependencies, logger: api.logger }),
+      });
+    },
+    {
+      displayName: presentationText.pluginLabel ?? 'Cursor',
+      description: presentationText.pluginDescription ?? 'Use a Cursor account to access models',
+      icon: 'cursor',
+    },
+  );
 }

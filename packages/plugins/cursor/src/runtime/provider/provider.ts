@@ -1,5 +1,5 @@
 import type { ProviderV4 } from '@ai-sdk/provider';
-import type { CredentialPort } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, Logger } from '@aio-proxy/plugin-sdk';
 
 import type { CursorOAuthDependencies } from '../../oauth';
 import type { CursorCredential } from '../../schema';
@@ -20,6 +20,7 @@ export type CursorProviderRuntime = {
   readonly sessionStore: CursorSessionStore;
   readonly credentialOptions?: CursorOAuthDependencies;
   readonly baseUrl?: string;
+  readonly logger?: Logger;
   readonly modelById: ReadonlyMap<string, CursorModelDescriptor>;
 };
 
@@ -35,6 +36,7 @@ export function createCursorProviderV4(runtime: CursorProviderRuntime): Provider
         sessionStore: runtime.sessionStore,
         ...(runtime.credentialOptions === undefined ? {} : { credentialOptions: runtime.credentialOptions }),
         ...(runtime.baseUrl === undefined ? {} : { baseUrl: runtime.baseUrl }),
+        ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
         model,
       });
     },

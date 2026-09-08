@@ -8,6 +8,8 @@ import {
   GetBlobResultSchema,
   KvClientMessageSchema,
   type KvServerMessage,
+  McpRejectedSchema,
+  McpResultSchema,
   type McpToolDefinition,
   SetBlobResultSchema,
 } from '../../gen/agent_pb';
@@ -56,6 +58,27 @@ export function encodeExecResponse(exec: ExecServerMessage, requestContextTools:
     message: { case: response.messageCase, value: response.value } as never,
   });
   return frame({ case: 'execClientMessage', value: execClient });
+}
+
+export function encodeMcpApprovalRejection(exec: ExecServerMessage): Uint8Array {
+  return frame({
+    case: 'execClientMessage',
+    value: create(ExecClientMessageSchema, {
+      id: exec.id,
+      execId: exec.execId,
+      message: {
+        case: 'mcpResult',
+        value: create(McpResultSchema, {
+          result: {
+            case: 'rejected',
+            value: create(McpRejectedSchema, {
+              reason: 'Tool approval is owned by the external client.',
+            }),
+          },
+        }),
+      },
+    }),
+  });
 }
 
 function frame(message: AgentClientMessage['message']): Uint8Array {

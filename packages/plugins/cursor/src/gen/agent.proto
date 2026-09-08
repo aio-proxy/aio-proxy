@@ -866,6 +866,7 @@ message InteractionQuery {
       ExaFetchRequestQuery exa_fetch_request_query = 6;
       CreatePlanRequestQuery create_plan_request_query = 7;
       SetupVmEnvironmentArgs setup_vm_environment_args = 8;
+      WebFetchRequestQuery web_fetch_request_query = 9;
    }
 }
 
@@ -879,8 +880,19 @@ message InteractionResponse {
       ExaFetchRequestResponse exa_fetch_request_response = 6;
       CreatePlanRequestResponse create_plan_request_response = 7;
       SetupVmEnvironmentResult setup_vm_environment_result = 8;
+      WebFetchRequestResponse web_fetch_request_response = 9;
    }
 }
+
+message WebFetchRequestQuery { FetchArgs args = 1; }
+message WebFetchRequestResponse {
+  oneof result {
+    WebFetchRequestResponse_Approved approved = 1;
+    WebFetchRequestResponse_Rejected rejected = 2;
+  }
+}
+message WebFetchRequestResponse_Approved {}
+message WebFetchRequestResponse_Rejected { string reason = 1; }
 
 message AskQuestionInteractionQuery {
    AskQuestionArgs args = 1;
@@ -2013,6 +2025,7 @@ message McpArgs {
    string tool_call_id = 3;
    string provider_identifier = 4;
    string tool_name = 5;
+   bool smart_mode_approval_only = 7;
 }
 
 message McpResult {
