@@ -37,8 +37,15 @@ jobs:
       # lefthook's postinstall no-ops when CI=true unless LEFTHOOK is set; without
       # installed hooks the release commit skips oxfmt/commitlint (e.g. CHANGELOG.md).
       LEFTHOOK: 'true'
-      RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-assets
     steps:
+      # Job-level env cannot use the runner context — GitHub rejects the workflow
+      # at parse time with "Unrecognized named-value: 'runner'". Export via
+      # $GITHUB_ENV so publish (scripts/release.ts) and the upload step share one path.
+      - name: Set release assets directory
+        run: |
+          echo "RELEASE_ASSETS_DIR=$RUNNER_TEMP/release-assets" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/release-assets"
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history so the action can build the Version PR / changelog
