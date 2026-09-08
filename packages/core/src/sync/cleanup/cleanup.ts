@@ -255,12 +255,17 @@ async function ensureAccountActiveFence(
   const key = accountKey(objectId);
   for (;;) {
     signal.throwIfAborted();
+    const beforeHead = await readHeadOrThrow(store, objectId, signal);
+    assertActiveFenceHead(beforeHead.head, epoch);
     const current = await store.session.read(key, signal);
     if (current.kind === 'present') {
       const identity = accountIdentity(current.value);
-      if (identity?.objectId === objectId && identity.epoch >= epoch && sameBytes(current.value, bytes)) return;
+      if (identity?.objectId === objectId && identity.epoch === epoch) return;
       if (identity?.objectId === objectId && identity.epoch > epoch) return;
     }
+    const checkedHead = await readHeadOrThrow(store, objectId, signal);
+    assertActiveFenceHead(checkedHead.head, epoch);
+    if (checkedHead.version !== beforeHead.version) continue;
     try {
       const result = await store.session.compareAndSwap(
         key,
@@ -268,12 +273,25 @@ async function ensureAccountActiveFence(
         bytes,
         signal,
       );
-      if (result.kind === 'written') return;
+      if (result.kind === 'written') {
+        const afterHead = await readHeadOrThrow(store, objectId, signal);
+        assertActiveFenceHead(afterHead.head, epoch);
+        return;
+      }
     } catch (error) {
-      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') continue;
+      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') {
+        const afterHead = await readHeadOrThrow(store, objectId, signal);
+        assertActiveFenceHead(afterHead.head, epoch);
+        continue;
+      }
       throw error;
     }
   }
+}
+
+function assertActiveFenceHead(head: EntityHead, epoch: number): void {
+  if (head.epoch !== epoch) throw new SyncProtocolError('epoch-mismatch', 'epoch-mismatch');
+  if (head.state !== 'active') throw new SyncProtocolError('deleted', 'deleted');
 }
 
 export function frozenRevisionIds(head: EntityHead): string[] {

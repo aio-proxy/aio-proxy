@@ -389,6 +389,130 @@ test('restore requires completed deletion and publishes in a new epoch', async (
   expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1, current: restored.operationId });
 });
 
+test('restore preserves a recovered same-epoch account payload', async () => {
+  const backend = createMemorySyncBackend();
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old');
+  const signal = new AbortController().signal;
+  const seed = createSyncObjectStore(backend.connect());
+  await publishEntity(seed, item, signal);
+  await deleteEntity(seed, item.objectId, 0, signal);
+
+  const headCas = backend.gateAfterNext('compareAndSwap');
+  const restore = restoreEntity(
+    createSyncObjectStore(backend.connect()),
+    item.objectId,
+    item.body,
+    crypto.randomUUID(),
+    signal,
+  );
+  await headCas.entered;
+  const account = backend.readAll().get(accountKey(item.objectId));
+  if (account?.kind !== 'present') throw new Error('missing account tombstone');
+  const recovered = encode({
+    protocol: 1,
+    phase: 'ready',
+    objectId: item.objectId,
+    epoch: 1,
+    generation: 7,
+    credential: 'recovered-secret',
+  });
+  const write = await backend.connect().compareAndSwap(accountKey(item.objectId), account.version, recovered, signal);
+  expect(write.kind).toBe('written');
+  headCas.release();
+
+  await restore;
+  const value = backend.readAll().get(accountKey(item.objectId));
+  expect(value?.kind).toBe('present');
+  expect(new TextDecoder().decode(value!.value)).toContain('recovered-secret');
+  expect(new TextDecoder().decode(value!.value)).toContain('"generation":7');
+});
+
+test('restore cannot write an active account fence after concurrent deletion', async () => {
+  const backend = createMemorySyncBackend();
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old');
+  const signal = new AbortController().signal;
+  const seed = createSyncObjectStore(backend.connect());
+  await publishEntity(seed, item, signal);
+  await deleteEntity(seed, item.objectId, 0, signal);
+
+  let entered!: () => void;
+  let release!: () => void;
+  const enteredPromise = new Promise<void>((resolve) => (entered = resolve));
+  const waiting = new Promise<void>((resolve) => (release = resolve));
+  const base = backend.connect();
+  let paused = false;
+  const restoreSession: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expected, value, compareSignal) {
+      if (!paused && key === accountKey(item.objectId)) {
+        paused = true;
+        entered();
+        await waiting;
+      }
+      return base.compareAndSwap(key, expected, value, compareSignal);
+    },
+  };
+  const restore = restoreEntity(
+    createSyncObjectStore(restoreSession),
+    item.objectId,
+    item.body,
+    crypto.randomUUID(),
+    signal,
+  );
+  await enteredPromise;
+  await deleteEntity(createSyncObjectStore(backend.connect()), item.objectId, 1, signal);
+  release();
+
+  await expect(restore).rejects.toMatchObject({ code: 'deleted' });
+  const value = backend.readAll().get(accountKey(item.objectId));
+  expect(value?.kind).toBe('present');
+  expect(new TextDecoder().decode(value!.value)).toContain('"phase":"deleted"');
+  expect(head(backend, item.objectId)).toMatchObject({ state: 'deleted', epoch: 1 });
+});
+
+test('restore cannot write an active account fence after concurrent purge', async () => {
+  const backend = createMemorySyncBackend();
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old');
+  const signal = new AbortController().signal;
+  const seed = createSyncObjectStore(backend.connect());
+  await publishEntity(seed, item, signal);
+  await deleteEntity(seed, item.objectId, 0, signal);
+
+  let entered!: () => void;
+  let release!: () => void;
+  const enteredPromise = new Promise<void>((resolve) => (entered = resolve));
+  const waiting = new Promise<void>((resolve) => (release = resolve));
+  const base = backend.connect();
+  let paused = false;
+  const restoreSession: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expected, value, compareSignal) {
+      if (!paused && key === accountKey(item.objectId)) {
+        paused = true;
+        entered();
+        await waiting;
+      }
+      return base.compareAndSwap(key, expected, value, compareSignal);
+    },
+  };
+  const restore = restoreEntity(
+    createSyncObjectStore(restoreSession),
+    item.objectId,
+    item.body,
+    crypto.randomUUID(),
+    signal,
+  );
+  await enteredPromise;
+  await purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal);
+  release();
+
+  await expect(restore).rejects.toMatchObject({ code: 'deleted' });
+  const value = backend.readAll().get(accountKey(item.objectId));
+  expect(value?.kind).toBe('present');
+  expect(new TextDecoder().decode(value!.value)).toContain('"phase":"deleted"');
+  expect(head(backend, item.objectId)).toMatchObject({ state: 'purged', epoch: 1 });
+});
+
 test('restore retains the prior current in history so retention can expire it', async () => {
   const backend = createMemorySyncBackend();
   const store = createSyncObjectStore(backend.connect());
