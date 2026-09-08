@@ -36,6 +36,9 @@ const aioProxySchema = zod
   .object({
     logicalRequest: logicalRequestSchema,
     thinking: thinkingSchema.optional(),
+    // The host's canonical reasoning effort, already clamped to what this wire
+    // advertises. It can exceed the AI SDK's `reasoning` union (e.g. `max`).
+    effort: zod.string().min(1).optional(),
     providerTools: zod.array(providerToolSchema).optional(),
   })
   .loose();
@@ -47,6 +50,7 @@ export function takeAioProxyOptions(providerOptions: SharedV4ProviderOptions | u
   const privateOptions = {
     logicalRequest: parsed.logicalRequest,
     ...(parsed.thinking === undefined ? {} : { thinking: parsed.thinking }),
+    ...(parsed.effort === undefined ? {} : { effort: parsed.effort }),
     ...(providerTools === undefined ? {} : { providerTools }),
   };
   return { context: parsed.logicalRequest, privateOptions, providerOptions: rest };
