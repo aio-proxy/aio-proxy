@@ -6,6 +6,7 @@ import { OAuthPluginProviderSchema, ProviderSchema } from '../provider';
 import {
   AliasConfigSchema,
   canonicalEffort,
+  effortRank,
   flattenAliasVariants,
   foldEffortSpelling,
   matchAliasRows,
@@ -341,5 +342,79 @@ describe('resolveAliasTarget', () => {
       model: 'model-default',
       preserve: true,
     });
+  });
+});
+
+describe('matchAliasRows effort ceiling', () => {
+  const rows: AliasSelectRow[] = [
+    { when: { effort: 'low' }, model: 'wire-low', preserve: false },
+    { when: { effort: 'medium' }, model: 'wire-medium', preserve: false },
+    { when: { effort: 'high' }, model: 'wire-high', preserve: false },
+  ];
+  const fallback = { model: 'wire-base', preserve: true };
+
+  test('an effort above every row reuses the highest effort row', () => {
+    expect(matchAliasRows(rows, { effort: 'xhigh' }, fallback)).toEqual({ model: 'wire-high', preserve: false });
+    expect(matchAliasRows(rows, { effort: 'max' }, fallback)).toEqual({ model: 'wire-high', preserve: false });
+  });
+
+  test('folds alias spellings before comparing against the ceiling', () => {
+    expect(matchAliasRows(rows, { effort: 'X-High' }, fallback)).toEqual({ model: 'wire-high', preserve: false });
+  });
+
+  test('an off-ladder effort still falls back', () => {
+    expect(matchAliasRows(rows, { effort: 'lowx' }, fallback)).toEqual(fallback);
+  });
+
+  test('an effort inside a gap still falls back to the alias default', () => {
+    // Deliberate: a higher row exists, so this is a gap, not a ceiling.
+    const gapped: AliasSelectRow[] = [
+      { when: { effort: 'low' }, model: 'wire-low', preserve: false },
+      { when: { effort: 'high' }, model: 'wire-high', preserve: false },
+    ];
+    expect(matchAliasRows(gapped, { effort: 'medium' }, fallback)).toEqual(fallback);
+  });
+
+  test('a ceiling below medium never captures the request', () => {
+    // The alias base is conventionally the medium tier, so reusing a `low`
+    // wire would downgrade below the base rather than approximate it.
+    const lowOnly: AliasSelectRow[] = [{ when: { effort: 'low' }, model: 'wire-low', preserve: false }];
+    expect(matchAliasRows(lowOnly, { effort: 'medium' }, fallback)).toEqual(fallback);
+    expect(matchAliasRows(lowOnly, { effort: 'max' }, fallback)).toEqual(fallback);
+    const mediumOnly: AliasSelectRow[] = [{ when: { effort: 'medium' }, model: 'wire-medium', preserve: false }];
+    expect(matchAliasRows(mediumOnly, { effort: 'max' }, fallback)).toEqual({
+      model: 'wire-medium',
+      preserve: false,
+    });
+  });
+
+  test('the ceiling row must agree with the request on thinking and speed', () => {
+    const mixed: AliasSelectRow[] = [
+      { when: { effort: 'high', thinking: true }, model: 'wire-thinking-high', preserve: false },
+      { when: { effort: 'medium' }, model: 'wire-medium', preserve: false },
+    ];
+    // thinking is absent from the request, so the thinking:true row is not eligible.
+    expect(matchAliasRows(mixed, { effort: 'xhigh' }, fallback)).toEqual({ model: 'wire-medium', preserve: false });
+    expect(matchAliasRows(mixed, { effort: 'xhigh', thinking: true }, fallback)).toEqual({
+      model: 'wire-thinking-high',
+      preserve: false,
+    });
+  });
+
+  test('rows without an effort constraint never act as the ceiling', () => {
+    const thinkingOnly: AliasSelectRow[] = [{ when: { thinking: true }, model: 'wire-thinking', preserve: false }];
+    expect(matchAliasRows(thinkingOnly, { effort: 'max' }, fallback)).toEqual(fallback);
+  });
+});
+
+describe('effortRank', () => {
+  test('ranks the ladder ascending and folds spellings', () => {
+    expect(effortRank('none')).toBe(0);
+    expect(effortRank('max')).toBe(6);
+    expect(effortRank('X_HIGH')).toBe(5);
+  });
+
+  test('returns -1 for an off-ladder effort', () => {
+    expect(effortRank('ultra')).toBe(-1);
   });
 });

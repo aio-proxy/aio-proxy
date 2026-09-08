@@ -18,6 +18,14 @@ export function canonicalEffort(value: string): string {
   return foldEffortSpelling(value.trim().toLowerCase());
 }
 
+/** Ascending reasoning-effort ladder shared by alias routing and wire-path clamping. Index = rank. */
+export const EFFORT_LADDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** Rank of an effort on EFFORT_LADDER after spelling folding, or -1 when off-ladder. */
+export function effortRank(effort: string): number {
+  return EFFORT_LADDER.indexOf(canonicalEffort(effort) as (typeof EFFORT_LADDER)[number]);
+}
+
 export type AliasSpeed = 'flex' | 'standard' | 'fast';
 export type AliasWhen = {
   readonly effort?: string;
@@ -205,7 +213,7 @@ export function matchAliasRows(
 ): AliasTarget {
   const bag = canonicalizeDimensions(dimensions);
   const matches = rows.filter((row) => rowMatches(row.when, bag));
-  if (matches.length === 0) return fallback;
+  if (matches.length === 0) return effortCeiling(rows, bag) ?? fallback;
   const maximal = matches.filter(
     (row) => !matches.some((other) => other !== row && isStrictSubset(row.when, other.when)),
   );
@@ -214,6 +222,31 @@ export function matchAliasRows(
     if (whenRank(row.when) > whenRank(winner.when)) winner = row;
   }
   return { model: winner.model, preserve: winner.preserve };
+}
+
+// A request asking above every effort row this alias declares must reuse the
+// alias's top effort row, not drop to the base model (which is typically a lower
+// tier). Two cases deliberately fall back instead: an effort inside a gap between
+// rows (a higher row exists), and a ceiling below `medium` (the alias base is
+// conventionally the medium tier, so a `low` wire would downgrade below it).
+const CEILING_FLOOR_RANK = EFFORT_LADDER.indexOf('medium');
+
+function effortCeiling(rows: readonly AliasSelectRow[], bag: AliasDimensions): AliasTarget | undefined {
+  const wanted = bag.effort === undefined ? -1 : effortRank(bag.effort);
+  if (wanted === -1) return undefined;
+  let best: { readonly row: AliasSelectRow; readonly rank: number } | undefined;
+  for (const row of rows) {
+    if (row.when.effort === undefined) continue;
+    // Every non-effort constraint must still hold, so a thinking-only variant
+    // never captures a non-thinking request.
+    if (!rowMatches({ ...row.when, effort: undefined }, bag)) continue;
+    const rank = effortRank(row.when.effort);
+    if (rank === -1 || rank >= wanted) return undefined;
+    if (best === undefined || rank > best.rank || (rank === best.rank && whenRank(row.when) > whenRank(best.row.when)))
+      best = { row, rank };
+  }
+  if (best === undefined || best.rank < CEILING_FLOOR_RANK) return undefined;
+  return { model: best.row.model, preserve: best.row.preserve };
 }
 
 export function resolveAliasTarget(config: AliasConfig, dimensions: AliasDimensions = {}): AliasTarget {
