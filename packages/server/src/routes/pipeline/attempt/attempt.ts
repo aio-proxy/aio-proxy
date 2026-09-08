@@ -134,6 +134,27 @@ type AttemptDispatch<TRequest, TContext> =
 // excluding both of its values still leaves `AudioProtocolAdapter` in the union.
 // Testing `=== 'language'` narrows to the member that does carry a single literal,
 // which removes audio by elimination.
+async function dispatchCandidate<TRequest, TContext>(
+  dispatch: AttemptDispatch<TRequest, TContext>,
+  slot: CandidateSlot,
+  holder: InvocationHolder,
+): Promise<AttemptStep> {
+  switch (dispatch.kind) {
+    case 'embedding':
+      return await attemptEmbeddingCandidate(dispatch.ctx, slot);
+    case 'image':
+      return await dispatchImageCandidate(dispatch.ctx, slot);
+    case 'video':
+      return await attemptVideoCandidate(dispatch.ctx, slot);
+    case 'audio':
+      return await attemptAudioCandidate(dispatch.ctx, slot);
+    case 'language':
+      return await attemptLanguageCandidate(dispatch.ctx, slot, holder);
+    default:
+      return assertNever(dispatch);
+  }
+}
+
 function attemptDispatch<TRequest, TContext>(
   ctx: AnyAttemptLoopContext<TRequest, TContext>,
 ): AttemptDispatch<TRequest, TContext> {
@@ -258,16 +279,7 @@ export async function attemptCandidates<TRequest, TContext>(
       spanRef: { current: undefined },
     };
     try {
-      const step =
-        dispatch.kind === 'embedding'
-          ? await attemptEmbeddingCandidate(dispatch.ctx, slot)
-          : dispatch.kind === 'image'
-            ? await dispatchImageCandidate(dispatch.ctx, slot)
-            : dispatch.kind === 'video'
-              ? await attemptVideoCandidate(dispatch.ctx, slot)
-              : dispatch.kind === 'audio'
-                ? await attemptAudioCandidate(dispatch.ctx, slot)
-                : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
+      const step = await dispatchCandidate(dispatch, slot, holder);
       if (step.kind === 'return') {
         if (options.onSuccessfulAttempt !== undefined && step.response.ok) {
           try {
@@ -304,4 +316,8 @@ export async function attemptCandidates<TRequest, TContext>(
     lastFailure ?? adapter.errors.unsupported(lastSkipReason === undefined ? 'transform_dispatch' : lastSkipReason);
   session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
   return response;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported attempt dispatch: ${JSON.stringify(value)}`);
 }

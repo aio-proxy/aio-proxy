@@ -307,10 +307,24 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
 // inbound capability". Each protocol's error mapper turns its own sentinel into
 // the protocol-shaped 501; `transform_dispatch` is the language default.
 function noCandidateFeature(capability: InboundCapability): string {
-  if (capability === 'image') return 'images';
-  if (capability === 'speech' || capability === 'transcription') return 'audio';
-  if (capability === 'video') return 'video';
-  return 'transform_dispatch';
+  switch (capability) {
+    case 'image':
+      return 'images';
+    case 'speech':
+    case 'transcription':
+      return 'audio';
+    case 'video':
+      return 'video';
+    case 'language':
+    case 'embedding':
+      return 'transform_dispatch';
+    default:
+      return assertNever(capability);
+  }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported inbound capability: ${JSON.stringify(value)}`);
 }
 
 function rejectRequest(options: {
