@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import type { SyncSession } from '@aio-proxy/plugin-sdk';
+
 import {
   accountKey,
   beginPurge,
@@ -33,6 +35,31 @@ function head(backend: ReturnType<typeof createMemorySyncBackend>, objectId: str
   return decodeHead(value.value);
 }
 
+function pauseEntityCas(backend: ReturnType<typeof createMemorySyncBackend>, objectId: string) {
+  const base = backend.connect();
+  let enter!: () => void;
+  let release!: () => void;
+  let paused = false;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const session: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expected, value, signal) {
+      if (!paused && key === entityKey(objectId)) {
+        paused = true;
+        enter();
+        await waiting;
+      }
+      return base.compareAndSwap(key, expected, value, signal);
+    },
+  };
+  return { entered, release, store: createSyncObjectStore(session) };
+}
+
 test('purge fills an absent reserved key so a paused uploader cannot recreate secrets', async () => {
   const backend = createMemorySyncBackend();
   const session = backend.connect();
@@ -56,21 +83,39 @@ test('purge fills an absent reserved key so a paused uploader cannot recreate se
   expect(head(backend, item.objectId).state).toBe('purged');
 });
 
-test('purge erases a payload uploaded by a paused writer before publication', async () => {
+test('purge fences a writer paused immediately before publication', async () => {
   const backend = createMemorySyncBackend();
-  const seed = createSyncObjectStore(backend.connect());
   const item = operation(crypto.randomUUID());
   const signal = new AbortController().signal;
-  await seed.session.compareAndSwap(entityKey(item.objectId), null, encode(newHead(item.objectId, item.body)), signal);
-  const afterPayload = backend.gateAfterNext('compareAndSwap');
-  const writer = publishEntity(createSyncObjectStore(backend.connect()), item, signal);
-  await afterPayload.entered;
-  const cleanup = purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal);
-  afterPayload.release();
+  const seed = backend.connect();
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, 0);
+  await seed.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+  await seed.compareAndSwap(
+    revisionKey(item.objectId, item.operationId),
+    null,
+    encode({
+      protocol: 1,
+      state: 'payload',
+      objectId: item.objectId,
+      epoch: 0,
+      operationId: item.operationId,
+      body: item.body,
+      publishedSequence: null,
+      writtenAt: null,
+    }),
+    signal,
+  );
+  const paused = pauseEntityCas(backend, item.objectId);
+  const writer = publishEntity(paused.store, item, signal);
+  await paused.entered;
+  await purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal);
+  paused.release();
   await expect(writer).rejects.toMatchObject({ code: 'deleted' });
-  await cleanup;
   const revision = decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
   expect(revision).toMatchObject({ state: 'erased', reason: 'purged' });
+  expect(
+    new TextDecoder().decode(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value),
+  ).not.toContain('secret');
 });
 
 test('purge waits for account scrubbing after the purging marker is stored', async () => {
@@ -123,6 +168,12 @@ test('ordinary deletion retains current history while scrubbing the account', as
   const deleted = head(backend, first.objectId);
   expect(deleted).toMatchObject({ state: 'deleted', cleanupComplete: true, current: second.operationId });
   expect(deleted.history).toContain(first.operationId);
+  expect(
+    new TextDecoder().decode(backend.readAll().get(revisionKey(first.objectId, first.operationId))!.value),
+  ).toContain('first');
+  expect(
+    new TextDecoder().decode(backend.readAll().get(revisionKey(first.objectId, second.operationId))!.value),
+  ).toContain('second');
   const accountValue = backend.readAll().get(accountKey(first.objectId));
   expect(accountValue?.kind).toBe('present');
   expect(new TextDecoder().decode(accountValue!.value)).not.toContain('token');
@@ -161,12 +212,15 @@ test('history keeps revisions younger than 30 days and current revisions at any 
   await collectHistory(store, first.objectId, 31 * 24 * 60 * 60 * 1000, signal);
   expect(head(backend, first.objectId).history).toEqual([]);
 
+  const currentBackend = createMemorySyncBackend();
+  const currentStore = createSyncObjectStore(currentBackend.connect());
   const current = operation(crypto.randomUUID(), crypto.randomUUID(), 'current');
-  await publishEntity(store, current, signal);
-  await collectHistory(store, current.objectId, 31 * 24 * 60 * 60 * 1000, signal);
-  expect(head(backend, current.objectId).current).toBe(current.operationId);
+  await publishEntity(currentStore, current, signal);
+  currentBackend.advance(31 * 24 * 60 * 60 * 1000);
+  await collectHistory(currentStore, current.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  expect(head(currentBackend, current.objectId).current).toBe(current.operationId);
   expect(
-    new TextDecoder().decode(backend.readAll().get(revisionKey(current.objectId, current.operationId))!.value),
+    new TextDecoder().decode(currentBackend.readAll().get(revisionKey(current.objectId, current.operationId))!.value),
   ).toContain('current');
 });
 

@@ -78,7 +78,9 @@ function assertRevision(record: RevisionRecord, operation: OutboxOperation): voi
       throw new SyncProtocolError('invalid-data', 'revision payload mismatch');
     return;
   }
-  if (record.publishedSequence === null) throw new SyncProtocolError('invalid-data', 'operation has been abandoned');
+  if (record.publishedSequence === null) {
+    throw new SyncProtocolError('deleted', `operation has been ${record.reason}`);
+  }
 }
 
 function assertSize(store: SyncObjectStore, bytes: Uint8Array): void {

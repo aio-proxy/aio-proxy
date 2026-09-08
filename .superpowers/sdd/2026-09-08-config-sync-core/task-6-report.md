@@ -21,6 +21,7 @@ Implemented history retention, ordinary deletion, purge fencing, restore, and se
 - History cleanup finalizes publication receipts before using their original payload `writtenAt`, cancels abandoned reservations, excludes current and pending references, expires only confirmed history older than 30 days, removes expired references and head receipts, and retains permanent revision markers for retry fencing.
 - Restore requires a completed deleted or purged head, increments the epoch, moves the prior current operation into retained history, and publishes a new explicit operation in the new epoch. Purge uses each retained revision's own object/epoch identity when writing markers across a restore boundary.
 - Cleanup receipt finalization retries outcome-unknown writes by rereading the same revision and operation.
+- Publication retries that encounter an erased abandoned or purged marker now surface the protocol's `deleted` fence error, preserving the reason in the diagnostic while preventing republish.
 - Server time comes from the confirmed `modifiedAt` of a non-secret maintenance nonce stored at `s/v1/default/space`; it is not used for merge ordering or locking.
 
 ## Verification
