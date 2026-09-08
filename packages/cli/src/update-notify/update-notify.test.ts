@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -80,3 +80,30 @@ test('desktop notifications are deduplicated across homes, concurrent callers, a
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+for (const failure of ['lock', 'state'] as const) {
+  test(`still sends a desktop notification when shared ${failure} persistence fails`, async () => {
+    if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+    const home = mkdtempSync(join(tmpdir(), 'aio-notify-unwritable-'));
+    const path = join(home, 'shared', 'notifications.json');
+    const calls: string[][] = [];
+    try {
+      process.env.AIO_PROXY_HOME = join(home, 'instance');
+      await writeUpdateCheckState({ latest: '2.0.0', checkedAt: 1 });
+      // File collisions fail deterministically even when tests run as root.
+      if (failure === 'lock') writeFileSync(join(home, 'shared'), '');
+      else mkdirSync(path, { recursive: true });
+      await notifyUpdateAvailable(
+        '2.0.0',
+        async (command) => {
+          calls.push([...command]);
+        },
+        path,
+      );
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.join(' ')).toContain('2.0.0');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+}

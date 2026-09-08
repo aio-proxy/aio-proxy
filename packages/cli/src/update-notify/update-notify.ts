@@ -50,7 +50,11 @@ export const notifyUpdateAvailable = async (
     if (previous !== undefined && Bun.semver.order(latest, previous.latest) <= 0) return false;
     await writeUpdateCheckState({ latest, checkedAt: Date.now() }, notificationPath);
     return true;
-  }, notificationPath);
+  }, notificationPath).catch(() => {
+    // Shared deduplication is optional; an unavailable home must not suppress
+    // the best-effort desktop notification.
+    return true;
+  });
   if (!claimed) return;
   const title = m['cli.update.notify_title']({ version: latest });
   const body = m['cli.update.notify_body']();
