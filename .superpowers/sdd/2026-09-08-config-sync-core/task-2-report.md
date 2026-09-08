@@ -29,7 +29,7 @@ Implemented and committed the versioned sync head/revision protocol and pure tra
 - Purge preserves current/history/reserved/cancelling IDs and blocks publication through the deleted-state guard.
 - Cancelling operations are fenced from publication, and deleted tombstones can transition into purging while retaining their fences.
 - Duplicate reservation/publication is idempotent, and publication sequence is the ordering source.
-- Encoding rejects non-finite numbers, non-plain objects, custom `toJSON`, unsupported values, and cycles; stringify failures are normalized to protocol errors.
+- Encoding rejects non-finite numbers, non-plain objects/arrays, custom `toJSON`, unsupported values, and cycles; stringify failures are normalized to protocol errors.
 - The core sync barrel contains exports only.
 
 ## Concerns

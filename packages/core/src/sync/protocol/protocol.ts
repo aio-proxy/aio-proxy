@@ -123,6 +123,9 @@ function assertJsonValue(value: unknown, seen: Set<object>): asserts value is Js
   if (seen.has(value)) throw new SyncProtocolError('invalid-data', 'value contains a cycle');
   seen.add(value);
   if (Array.isArray(value)) {
+    if (Object.prototype.hasOwnProperty.call(value, 'toJSON')) {
+      throw new SyncProtocolError('invalid-data', 'value is not a plain JSON array');
+    }
     for (const item of value) assertJsonValue(item, seen);
   } else {
     if (!isPlainObject(value) || Object.prototype.hasOwnProperty.call(value, 'toJSON')) {
