@@ -29,6 +29,18 @@ const geminiFamily: AntigravityFamily = {
   ],
 };
 
+const tieredGeminiFamily: AntigravityFamily = {
+  logicalId: 'gemini-3-pro',
+  kind: 'tiered',
+  thinking: { mode: 'gemini' },
+  base: 'gemini-3-pro-tiered',
+  variants: [
+    { effort: 'low', model: 'gemini-3-pro-tiered' },
+    { effort: 'medium', model: 'gemini-3-pro-tiered' },
+    { effort: 'high', model: 'gemini-3-pro-tiered' },
+  ],
+};
+
 function effortValues(descriptors: readonly ModelDescriptor[], id: string): readonly (string | null)[] | undefined {
   const option = descriptors
     .find((descriptor) => descriptor.id === id)
@@ -41,9 +53,14 @@ test('a claude wire advertises the adaptive budget ladder including max', () => 
   expect(effortValues(result, 'claude-opus-4-6-thinking')).toEqual(['low', 'medium', 'high', 'max']);
 });
 
-test('a gemini wire advertises the gemini ladder without xhigh or max', () => {
+test('a split gemini wire advertises only the effort its own variant accepts', () => {
   const result = withEffortMetadata([{ id: 'gemini-3.5-flash-low' }], [geminiFamily]);
-  expect(effortValues(result, 'gemini-3.5-flash-low')).toEqual(['none', 'low', 'medium', 'high']);
+  expect(effortValues(result, 'gemini-3.5-flash-low')).toEqual(['none', 'medium']);
+});
+
+test('a tiered gemini wire advertises the whole ladder without xhigh or max', () => {
+  const result = withEffortMetadata([{ id: 'gemini-3-pro-tiered' }], [tieredGeminiFamily]);
+  expect(effortValues(result, 'gemini-3-pro-tiered')).toEqual(['none', 'low', 'medium', 'high']);
 });
 
 test('only an extra-low gemini wire with a positive budget advertises minimal', () => {
@@ -59,14 +76,10 @@ test('only an extra-low gemini wire with a positive budget advertises minimal', 
     'none',
     'minimal',
     'low',
-    'medium',
-    'high',
   ]);
   expect(effortValues(withEffortMetadata([withoutBudget], [geminiFamily]), 'gemini-3.5-flash-extra-low')).toEqual([
     'none',
     'low',
-    'medium',
-    'high',
   ]);
 });
 

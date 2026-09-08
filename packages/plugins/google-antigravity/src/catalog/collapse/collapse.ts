@@ -22,6 +22,13 @@ type FamilyKind = AntigravityFamily['kind'];
 
 type BuiltFamily = AntigravityFamily & { readonly firstPickerIndex: number };
 
+// A split family hands each effort its own wire, so a wire only accepts the effort(s)
+// its own variant declares. Both the thinking mapper (which throws on anything else)
+// and the published effort capabilities read this, so they cannot drift apart.
+export function splitVariantEfforts(family: AntigravityFamily, modelId: string): readonly Effort[] {
+  return family.variants.filter((variant) => variant.model === modelId).map((variant) => variant.effort);
+}
+
 export function pickerModelIds(input: {
   readonly languageIds: ReadonlySet<string>;
   readonly tieredModelIds?: { readonly flash?: readonly string[] };

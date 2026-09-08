@@ -3,6 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { type ThinkingMode, classifyProvider } from '../catalog/classify';
 import type { AntigravityFamily, Effort } from '../catalog/collapse';
+import { splitVariantEfforts } from '../catalog/collapse';
 
 export type CcaThinkingConfig = {
   readonly thinkingBudget: number;
@@ -150,7 +151,7 @@ function geminiMinimal(wire: ResolvedWire): CcaThinkingConfig {
 }
 
 function splitVariantMatches(family: AntigravityFamily, modelId: string, effort: string): boolean {
-  return family.variants.some((variant) => variant.effort === effort && variant.model === modelId);
+  return splitVariantEfforts(family, modelId).some((accepted) => accepted === effort);
 }
 
 function geminiBudgetOrLevel(wire: ResolvedWire, effort: string): Readonly<Record<string, unknown>> {
