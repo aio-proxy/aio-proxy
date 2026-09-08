@@ -76,4 +76,10 @@ test('encoding rejects non JSON values', () => {
   expect(() => encode({ toJSON: () => 'value' })).toThrow(/plain JSON object/);
   const customArray = Object.assign([], { toJSON: () => 'value' });
   expect(() => encode(customArray)).toThrow(/plain JSON array/);
+  class CustomArray extends Array<string> {
+    toJSON() {
+      return 'value';
+    }
+  }
+  expect(() => encode(new CustomArray('value'))).toThrow(/plain JSON array/);
 });

@@ -30,6 +30,7 @@ Implemented and committed the versioned sync head/revision protocol and pure tra
 - Cancelling operations are fenced from publication, and deleted tombstones can transition into purging while retaining their fences.
 - Duplicate reservation/publication is idempotent, and publication sequence is the ordering source.
 - Encoding rejects non-finite numbers, non-plain objects/arrays, custom `toJSON`, unsupported values, and cycles; stringify failures are normalized to protocol errors.
+- Array validation also rejects inherited `toJSON` methods from array subclasses.
 - The core sync barrel contains exports only.
 
 ## Concerns
