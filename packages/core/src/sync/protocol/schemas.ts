@@ -1,0 +1,67 @@
+import { z } from 'zod';
+
+const JsonValueSchema: z.ZodType = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.boolean(),
+    z.number().finite(),
+    z.string(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+);
+
+const DependencySchema = z.object({ objectId: z.string(), packageName: z.string(), version: z.string() });
+const EntityBodySchema = z.object({
+  kind: z.enum(['provider', 'model-rule', 'plugin-business', 'service-access', 'routing-defaults']),
+  logicalKey: z.string(),
+  value: JsonValueSchema,
+  dependencies: z.array(DependencySchema),
+});
+
+export const EntityHeadSchema = z.object({
+  protocol: z.literal(1),
+  objectId: z.string(),
+  kind: z.enum(['provider', 'model-rule', 'plugin-business', 'service-access', 'routing-defaults']),
+  logicalKey: z.string(),
+  epoch: z.number().int().nonnegative(),
+  sequence: z.number().int().nonnegative(),
+  state: z.enum(['active', 'deleted', 'purging', 'purged']),
+  current: z.string().nullable(),
+  history: z.array(z.string()),
+  reserved: z.array(z.string()),
+  cancelling: z.array(z.string()),
+  receipts: z.record(z.string(), z.number().int().positive()),
+  cleanupComplete: z.boolean(),
+});
+
+const PayloadRevisionSchema = z.object({
+  protocol: z.literal(1),
+  state: z.literal('payload'),
+  objectId: z.string(),
+  epoch: z.number().int().nonnegative(),
+  operationId: z.string(),
+  body: EntityBodySchema,
+  publishedSequence: z.number().int().positive().nullable(),
+  writtenAt: z.number().int().nonnegative().nullable(),
+});
+
+const ErasedRevisionSchema = z.object({
+  protocol: z.literal(1),
+  state: z.literal('erased'),
+  objectId: z.string(),
+  epoch: z.number().int().nonnegative(),
+  operationId: z.string(),
+  publishedSequence: z.number().int().positive().nullable(),
+  reason: z.enum(['expired', 'purged', 'abandoned']),
+});
+
+export const RevisionRecordSchema = z.discriminatedUnion('state', [PayloadRevisionSchema, ErasedRevisionSchema]);
+
+export function parseHead(value: unknown) {
+  return EntityHeadSchema.parse(value);
+}
+
+export function parseRevision(value: unknown) {
+  return RevisionRecordSchema.parse(value);
+}

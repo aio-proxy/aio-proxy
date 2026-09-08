@@ -177,6 +177,7 @@ export {
 } from './models-dev/index';
 export type { ResolvedModelsDevEntry } from './models-dev/index';
 export { modelEffortValues, normalizeEffort } from './protocol/reasoning-effort/index';
+export * from './sync';
 export {
   fetchLatestNpmVersion,
   findInstalledNpmPackage,
