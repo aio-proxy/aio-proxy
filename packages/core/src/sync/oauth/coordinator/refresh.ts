@@ -138,13 +138,13 @@ function resolvedByRemote(account: LiveAccount, journal: OAuthJournalRow): boole
   );
 }
 
-async function completeJournal(context: CoordinatorContext, journal: OAuthJournalRow): Promise<void> {
-  try {
-    context.repo.writeOAuthJournal(context.binding.id, { ...journal, phase: 'complete' });
-    context.repo.clearOAuthJournal(context.binding.id, journal.operationId);
-  } catch {
-    // Publication is already durable. A complete journal is intentionally retained for restart recovery.
-  }
+export function confirmJournal(context: CoordinatorContext, objectId: string, operationId: string): void {
+  const journal = context.repo.oauthJournals(context.binding.id).find((row) => row.operationId === operationId);
+  if (journal === undefined) return;
+  if (journal.objectId !== objectId) throw new SyncOAuthError('upgrade-required', 'OAuth journal identity mismatch');
+  if (journal.phase === 'started') throw new SyncOAuthError('result-uncertain', 'OAuth result is not durable yet');
+  context.repo.writeOAuthJournal(context.binding.id, { ...journal, phase: 'complete' });
+  context.repo.clearOAuthJournal(context.binding.id, operationId);
 }
 
 export async function publishResult<C>(
@@ -158,11 +158,13 @@ export async function publishResult<C>(
   if (current.objectId !== journal.objectId || current.epoch !== journal.epoch) {
     throw new SyncOAuthError('login-required', 'The shared OAuth account was replaced');
   }
+  if (current.phase === 'login-required' && current.claim?.operationId === journal.operationId) {
+    throw new SyncOAuthError('unverified', 'The journaled OAuth result is quarantined');
+  }
   if (resolvedByRemote(current, journal)) {
     if (current.phase !== 'ready')
       throw new SyncOAuthError('result-uncertain', 'The shared OAuth result is unresolved');
     const value = await validate(current.payload.credential);
-    await completeJournal(context, journal);
     return { account: current, value, status: 'superseded' };
   }
   if (
@@ -173,7 +175,6 @@ export async function publishResult<C>(
   ) {
     if (current.phase === 'ready' && current.generation > journal.baseGeneration) {
       const value = await validate(current.payload.credential);
-      await completeJournal(context, journal);
       return { account: current, value, status: 'superseded' };
     }
     throw new SyncOAuthError('refresh-deferred', 'Another device owns the shared OAuth refresh');
@@ -221,7 +222,6 @@ export async function publishResult<C>(
       if (resolvedByRemote(reread.account as LiveAccount, journal)) {
         const remote = reread.account as LiveAccount;
         const remoteValue = await validate(remote.payload.credential);
-        await completeJournal(context, journal);
         return { account: remote, value: remoteValue, status: 'superseded' };
       }
       throw new SyncOAuthError('refresh-deferred', 'The shared OAuth result lost its account CAS');
@@ -234,12 +234,10 @@ export async function publishResult<C>(
     const reread = await readCurrent(context, current.objectId, signal);
     if (reread.account.phase === 'ready' && resolvedByRemote(reread.account, journal)) {
       const remoteValue = await validate(reread.account.payload.credential);
-      await completeJournal(context, journal);
       return { account: reread.account, value: remoteValue, status: 'superseded' };
     }
     throw new SyncOAuthError('result-uncertain', 'The OAuth publication outcome is unknown');
   }
-  await completeJournal(context, journal);
   return { account: next, value, status: 'updated' };
 }
 
@@ -264,12 +262,7 @@ export async function refreshAccount<C>(
   const original = await input.validate(current.account.payload.credential);
   const claimed = await claimReady(context, current.account, current.version, signal);
   if (claimed === null) {
-    const reread = await readCurrent(context, input.objectId, signal);
-    if (reread.account.phase === 'ready' && reread.account.generation > input.generation) {
-      const value = await input.validate(reread.account.payload.credential);
-      return { status: 'superseded', account: reread.account, value };
-    }
-    throw new SyncOAuthError('refresh-deferred', 'Another device claimed the shared OAuth account');
+    return refreshAfterReread(context, input, signal);
   }
   await input.validate(claimed.account.payload.credential);
   const journal: OAuthJournalRow = {
@@ -332,4 +325,24 @@ export async function refreshAccount<C>(
     signal,
   );
   return { status: published.status, account: published.account, value: published.value };
+}
+
+export async function refreshAfterReread<C>(
+  context: CoordinatorContext,
+  input: SharedRefreshInput<C>,
+  signal: AbortSignal,
+): Promise<SharedRefreshResult<C>> {
+  const reread = await readCurrent(context, input.objectId, signal);
+  if (reread.account.phase === 'deleted') throw new SyncOAuthError('deleted', 'The shared OAuth account was deleted');
+  if (reread.account.epoch !== input.epoch) {
+    throw new SyncOAuthError('login-required', 'The OAuth account epoch changed');
+  }
+  if (reread.account.generation > input.generation && reread.account.phase === 'ready') {
+    const value = await input.validate(reread.account.payload.credential);
+    return { status: 'superseded', account: reread.account, value };
+  }
+  if (reread.account.phase === 'ready' && reread.account.generation === input.generation) {
+    return refreshAccount(context, input, signal);
+  }
+  throw new SyncOAuthError('refresh-deferred', 'Another device owns the shared OAuth refresh');
 }

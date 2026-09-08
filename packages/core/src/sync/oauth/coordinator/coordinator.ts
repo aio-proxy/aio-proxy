@@ -4,7 +4,7 @@ import type { SyncObjectStore } from '../../publication';
 import type { LocalBinding, OAuthJournalRow, SyncRepository } from '../../repository';
 import type { LiveAccount } from '../protocol';
 import { recoverAccount } from './recovery';
-import { refreshAccount, type CoordinatorContext } from './refresh';
+import { confirmJournal, refreshAccount, type CoordinatorContext } from './refresh';
 
 export type ExchangeResult<C> = {
   value: C;
@@ -28,6 +28,8 @@ export type SharedRefreshResult<C> = {
 export interface SharedOAuthCoordinator {
   refresh<C>(input: SharedRefreshInput<C>, signal: AbortSignal): Promise<SharedRefreshResult<C>>;
   recover(objectId: string, signal: AbortSignal): Promise<LiveAccount | null>;
+  /** Confirm that the caller has applied the returned credential locally. */
+  confirm(objectId: string, operationId: string): void;
 }
 
 export type SharedOAuthCoordinatorInput = {
@@ -49,6 +51,9 @@ export function createSharedOAuthCoordinator(input: SharedOAuthCoordinatorInput)
     },
     recover(objectId, signal) {
       return recoverAccount(context, objectId, signal);
+    },
+    confirm(objectId, operationId) {
+      confirmJournal(context, objectId, operationId);
     },
   };
 }

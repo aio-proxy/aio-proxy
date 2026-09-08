@@ -68,6 +68,7 @@ export type SharedOAuthDevices = {
   readonly backend: MemorySyncBackend;
   readonly repoA: SyncRepository;
   readonly repoB: SyncRepository;
+  readonly restartA: () => SharedOAuthCoordinator;
   readonly injectAfterExchange: (callback: () => void) => void;
 };
 
@@ -124,6 +125,7 @@ export async function withSharedOAuthDevices(run: (fixture: SharedOAuthDevices) 
         );
       },
       recover: coordinator.recover,
+      confirm: coordinator.confirm,
     }));
     const fixture: SharedOAuthDevices = {
       a: coordinators[0]!,
@@ -134,6 +136,13 @@ export async function withSharedOAuthDevices(run: (fixture: SharedOAuthDevices) 
       backend,
       repoA: repositories[0]!,
       repoB: repositories[1]!,
+      restartA() {
+        return createSharedOAuthCoordinator({
+          binding: bindings[0]!,
+          store: createSyncObjectStore(sessions[0]!),
+          repo: repositories[0]!,
+        });
+      },
       injectAfterExchange(callback) {
         afterExchange = callback;
       },
