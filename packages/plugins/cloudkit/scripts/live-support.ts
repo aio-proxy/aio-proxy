@@ -89,14 +89,28 @@ export async function connectInstalledPair(): Promise<InstalledPair> {
       throw new LiveSetupError(error instanceof Error ? error.message : 'second native session could not connect');
     }
     if (a === b) throw new Error('live sessions must be backed by distinct native processes');
-    let cleaned = false;
+    let cleanupPromise: Promise<void> | undefined;
     return {
       a,
       b,
       async cleanup() {
-        if (cleaned) return;
-        cleaned = true;
-        await Promise.allSettled([a.dispose(), b.dispose()]);
+        if (cleanupPromise !== undefined) return cleanupPromise;
+        cleanupPromise = (async () => {
+          const errors: unknown[] = [];
+          for (const session of [a, b]) {
+            let disposed = false;
+            for (let attempt = 0; attempt < 2 && !disposed; attempt += 1) {
+              try {
+                await session.dispose();
+                disposed = true;
+              } catch (error) {
+                if (attempt === 1) errors.push(error);
+              }
+            }
+          }
+          if (errors.length > 0) throw new AggregateError(errors, 'native session cleanup failed');
+        })();
+        return cleanupPromise;
       },
     };
   } catch (error) {

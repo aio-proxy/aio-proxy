@@ -84,3 +84,12 @@ All deterministic checks passed, the direct live run exited 1 with nine
 blocked cases, and the release gate remains NO-GO. Swift emitted existing
 Swift-concurrency locking warnings; repository lint emitted existing
 dashboard/logger warnings.
+
+## Review fix round 3
+
+Cleanup now treats a remove conflict as unresolved, rereads the current
+version, and retries until the record is actually removed or cleanup fails.
+Native session disposal is likewise retried and surfaced through an idempotent
+cleanup promise; primary conformance errors remain preserved alongside any
+cleanup error. The nine unavailable live/distribution gates remain blocked and
+CloudKit remains a release NO-GO.

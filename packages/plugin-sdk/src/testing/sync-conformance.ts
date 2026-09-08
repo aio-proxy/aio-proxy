@@ -102,7 +102,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
         if (current.kind === 'absent') removed = true;
         else {
           const result = await pair.b.remove(cleanupKey, current.version, signal);
-          removed = result.kind === 'removed' || result.kind === 'conflict';
+          removed = result.kind === 'removed';
         }
       } catch (error) {
         if (attempt === 1) cleanupErrors.push(error);
