@@ -1,45 +1,33 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { expect, test } from 'bun:test';
 
 import { buildHomebrewChecksums } from './homebrew-checksums';
 
-const directories: string[] = [];
-afterEach(async () => {
-  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
-});
+const packages = ['cli-darwin-arm64', 'cli-darwin-x64', 'cli-linux-arm64', 'cli-linux-x64'];
+const version = '9.8.7';
+const checksums = Object.fromEntries(
+  packages.map((pkg) => [pkg, new Bun.CryptoHasher('sha256').update(pkg).digest('hex')]),
+);
+const manifest = packages.map((pkg) => `${checksums[pkg]}  ${pkg}-${version}.tgz\n`).join('');
 
-async function fixture() {
-  const directory = await mkdtemp(join(tmpdir(), 'homebrew-checksums-'));
-  directories.push(directory);
-  return directory;
-}
-
-test('hashes the original local tarballs without consulting npm', async () => {
-  const directory = await fixture();
-  const packages = ['cli-darwin-arm64', 'cli-darwin-x64', 'cli-linux-arm64', 'cli-linux-x64'];
-  for (const pkg of packages) await Bun.write(join(directory, `${pkg}-9.8.7.tgz`), `packed-${pkg}`);
-  const result = await buildHomebrewChecksums({ directory, packages, version: '9.8.7' });
-  expect(result).toEqual({
-    version: '9.8.7',
+test('uses the published manifest checksums for all four Formula URLs', () => {
+  expect(buildHomebrewChecksums({ packages, version, manifest })).toEqual({
+    version,
     source: 'github-release',
-    checksums: Object.fromEntries(
-      packages.map((pkg) => [pkg, new Bun.CryptoHasher('sha256').update(`packed-${pkg}`).digest('hex')]),
-    ),
+    checksums,
   });
 });
 
-test('rejects incomplete artifacts instead of notifying with partial checksums', async () => {
-  const directory = await fixture();
-  await Bun.write(join(directory, 'cli-darwin-arm64-9.8.6.tgz'), 'old version');
-  await expect(
-    buildHomebrewChecksums({ directory, packages: ['cli-darwin-arm64'], version: '9.8.7' }),
-  ).rejects.toThrow();
+test('rejects missing, corrupt, duplicate, or wrong-version checksums', () => {
+  for (const invalid of [
+    '',
+    manifest.replace(checksums[packages[0]!]!, 'invalid'),
+    manifest + manifest,
+    manifest.replaceAll(version, '9.8.6'),
+  ]) {
+    expect(() => buildHomebrewChecksums({ packages, version, manifest: invalid })).toThrow();
+  }
 });
 
-test('rejects an empty platform set', async () => {
-  await expect(buildHomebrewChecksums({ directory: await fixture(), packages: [], version: '9.8.7' })).rejects.toThrow(
-    'nothing to pin',
-  );
+test('rejects an empty platform set', () => {
+  expect(() => buildHomebrewChecksums({ packages: [], version, manifest })).toThrow('nothing to pin');
 });

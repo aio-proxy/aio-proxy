@@ -1,28 +1,32 @@
-import { join } from 'node:path';
-
 export type ChecksumPayload = {
   version: string;
   source: 'github-release';
   checksums: Record<string, string>;
 };
 
-/** Hash the saved pack output; never wait for npm to serve a just-published version. */
-export async function buildHomebrewChecksums({
+/** Read the published SHA256SUMS, so notification retries use the released bytes. */
+export function buildHomebrewChecksums({
   packages,
   version,
-  directory,
+  manifest,
 }: {
   packages: readonly string[];
   version: string;
-  directory: string;
-}): Promise<ChecksumPayload> {
+  manifest: string;
+}): ChecksumPayload {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`Invalid release version: ${version}`);
   if (packages.length === 0) throw new Error('No platform packages given; the Homebrew tap would have nothing to pin');
+  const files = new Map<string, string>();
+  for (const line of manifest.trim().split('\n')) {
+    const match = /^([a-f0-9]{64})  (.+)$/.exec(line);
+    if (!match || files.has(match[2]!)) throw new Error('Invalid or duplicate SHA256SUMS entry');
+    files.set(match[2]!, match[1]!);
+  }
   const checksums: Record<string, string> = {};
   for (const pkg of packages) {
-    if (!/^cli-(darwin|linux)-(arm64|x64)$/.test(pkg)) throw new Error(`Invalid platform package: ${pkg}`);
-    const bytes = await Bun.file(join(directory, `${pkg}-${version}.tgz`)).bytes();
-    checksums[pkg] = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+    const checksum = files.get(`${pkg}-${version}.tgz`);
+    if (!checksum) throw new Error(`Missing checksum for ${pkg}@${version}`);
+    checksums[pkg] = checksum;
   }
   return { version, source: 'github-release', checksums };
 }

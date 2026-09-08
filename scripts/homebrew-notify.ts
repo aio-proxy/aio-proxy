@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
-// Notify only after the independent job has uploaded and verified every Release asset.
+// The Release manifest is uploaded after all four platform tarballs.
+
+import { $ } from 'bun';
 
 import { buildHomebrewChecksums } from './homebrew-checksums';
 
 const version = process.argv[2];
 if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
-  throw new Error(
-    `usage: bun run scripts/homebrew-notify.ts <version> <asset-directory>  (got ${version ?? 'nothing'})`,
-  );
+  throw new Error(`usage: bun run scripts/homebrew-notify.ts <version>  (got ${version ?? 'nothing'})`);
 }
 
 // The tap's formula pins exactly the launcher's optionalDependencies, so read
@@ -23,9 +23,10 @@ if (dispatch && !token) {
   throw new Error('HOMEBREW_TAP_TOKEN is not set (pass HOMEBREW_TAP_DISPATCH=false to only print the payload)');
 }
 
-const directory = process.argv[3];
-if (!directory) throw new Error('Missing asset directory');
-const payload = await buildHomebrewChecksums({ packages, version, directory });
+const manifest = (
+  await $`gh release download ${`v${version}`} --repo aio-proxy/aio-proxy --pattern SHA256SUMS --output -`.quiet()
+).text();
+const payload = buildHomebrewChecksums({ packages, version, manifest });
 
 if (!dispatch) {
   console.log(`\n[no-dispatch] payload:\n${JSON.stringify(payload, null, 2)}`);

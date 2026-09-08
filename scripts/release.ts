@@ -185,17 +185,22 @@ if (DRY_RUN) {
   process.exit(0);
 }
 
-// Preserve the exact pack output for the independent GitHub asset/notification job.
+// Stage the same pack output for upload after Changesets creates the GitHub Release.
 // Only local I/O here: npm availability must never delay tagging or Release creation.
 const assetDirectory = process.env['RELEASE_ASSETS_DIR'];
 if (assetDirectory) {
+  const checksums: string[] = [];
   for (const name of Object.keys(
     allPackages.find(({ json }) => json.name === 'aio-proxy')!.json.optionalDependencies ?? {},
   )) {
     const tarball = tarballs.get(name);
     if (!tarball) throw new Error(`Missing platform tarball: ${name}`);
-    await Bun.write(join(assetDirectory, `${name.replace('@aio-proxy/', '')}-${version}.tgz`), Bun.file(tarball));
+    const filename = `${name.replace('@aio-proxy/', '')}-${version}.tgz`;
+    const bytes = await Bun.file(tarball).bytes();
+    await Bun.write(join(assetDirectory, filename), bytes);
+    checksums.push(`${new Bun.CryptoHasher('sha256').update(bytes).digest('hex')}  ${filename}\n`);
   }
+  await Bun.write(join(assetDirectory, 'SHA256SUMS'), checksums.join(''));
 }
 
 // --- publish; skip versions already on the registry so a rerun resumes cleanly-
