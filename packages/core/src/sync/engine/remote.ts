@@ -27,6 +27,12 @@ function pendingFromError(error: unknown): PendingReason | undefined {
   return undefined;
 }
 
+function decodeHeadForKey(value: Uint8Array, objectId: string): EntityHead {
+  const head = decodeHead(value);
+  if (head.objectId !== objectId) throw new SyncProtocolError('invalid-data', 'head object identity mismatch');
+  return head;
+}
+
 function upsertEntity(
   input: RemoteReconcileInput,
   existing: LocalEntity | undefined,
@@ -94,7 +100,7 @@ export async function reconcileRemote(
       const value = await input.session.read(entityKey(objectId), signal);
       if (value.kind === 'absent') continue;
       try {
-        const head = decodeHead(value.value);
+        const head = decodeHeadForKey(value.value, objectId);
         if (head.state === 'active' && head.current !== null) {
           const identity = `${head.kind}\0${head.logicalKey}`;
           const members = identities.get(identity) ?? new Set<string>();
@@ -126,7 +132,7 @@ export async function reconcileRemote(
       try {
         const value = await input.session.read(entityKey(objectId), signal);
         if (value.kind === 'absent') continue;
-        head = decodeHead(value.value);
+        head = decodeHeadForKey(value.value, objectId);
       } catch (error) {
         if (error instanceof SyncBackendError) throw error;
         const existing = known.get(objectId);

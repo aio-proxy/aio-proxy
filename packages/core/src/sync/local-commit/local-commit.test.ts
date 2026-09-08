@@ -1,7 +1,9 @@
 import { expect, spyOn, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import * as fsPromises from 'node:fs/promises';
 
 import { AtomicConfigFile, AtomicConfigLockReleaseError } from '../../plugins/config-file';
+import { encodeCandidate } from '../../plugins/config-file/serialization';
 import type { SyncRepository } from '../repository';
 import { withSyncCommitFixture } from '../test-support';
 import { confirmLocalCommit, prepareLocalCommit, recoverLocalCommits } from './local-commit';
@@ -52,6 +54,84 @@ test('a verified candidate becomes one stable outgoing operation', async () => {
     const operationId = first[0]?.operationId;
     await recoverLocalCommits(f.repo, f.bindingId, f.port);
     expect(f.repo.outbox(f.bindingId)[0]?.operationId).toBe(operationId);
+  });
+});
+
+test('removing a previously published authored entity creates an explicit delete operation', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    f.repo.putEntity(f.bindingId, {
+      objectId: 'provider-work',
+      logicalKey: 'work',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 3,
+      desired: {
+        kind: 'provider',
+        logicalKey: 'work',
+        value: { kind: 'api', baseUrl: 'https://example.test' },
+        dependencies: [],
+      },
+      baseline: 'published-operation',
+      overrides: [],
+      pendingReason: null,
+    });
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    const before = (await file.read()) as Record<string, unknown>;
+    const after = { providers: {} } as Record<string, unknown>;
+    const digest = (value: Record<string, unknown>) =>
+      createHash('sha256').update(encodeCandidate(value, f.configPath)).digest('hex');
+    const deletion = {
+      ...f.intent,
+      commitId: 'authored-delete',
+      beforeDigest: digest(before),
+      afterDigest: digest(after),
+      rawAfter: after,
+    };
+    prepareLocalCommit(f.repo, f.bindingId, deletion);
+    await file.replace(() => after);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toContainEqual({
+      operationId: expect.any(String),
+      objectId: 'provider-work',
+      epoch: 3,
+      kind: 'delete',
+      body: null,
+      commitId: 'authored-delete',
+    });
+  });
+});
+
+test('dependency filtered authored entities remain pending instead of becoming deletes', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    f.repo.putEntity(f.bindingId, {
+      objectId: 'provider-work',
+      logicalKey: 'work',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 3,
+      desired: null,
+      baseline: 'published-operation',
+      overrides: [],
+      pendingReason: null,
+    });
+    const before = (await file.read()) as Record<string, unknown>;
+    const after = { providers: { work: { kind: 'oauth', plugin: '@missing' } } } as Record<string, unknown>;
+    const digest = (value: Record<string, unknown>) =>
+      createHash('sha256').update(encodeCandidate(value, f.configPath)).digest('hex');
+    const pending = {
+      ...f.intent,
+      commitId: 'filtered-authored',
+      beforeDigest: digest(before),
+      afterDigest: digest(after),
+      rawAfter: after,
+    };
+    prepareLocalCommit(f.repo, f.bindingId, pending);
+    await file.replace(() => after);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.outbox(f.bindingId)).toEqual([]);
   });
 });
 

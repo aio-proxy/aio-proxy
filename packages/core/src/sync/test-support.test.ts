@@ -15,6 +15,11 @@ test('memory sync backend satisfies the public conformance exercise', async () =
   await exerciseSyncBackend(async () => ({
     a,
     b,
+    faults: {
+      outcomeUnknownOnce() {
+        backend.failNext('compareAndSwap', 'after');
+      },
+    },
     async cleanup() {
       await Promise.allSettled([a.dispose(), b.dispose()]);
     },

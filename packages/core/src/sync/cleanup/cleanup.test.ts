@@ -153,6 +153,61 @@ test('purge resumes a purging head after a transient backend failure', async () 
   expect(head(backend, item.objectId).state).toBe('purged');
 });
 
+test('a stale purge cannot overwrite a restored account after resuming', async () => {
+  const backend = createMemorySyncBackend();
+  const seed = backend.connect();
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old-account-secret');
+  const signal = new AbortController().signal;
+  await publishEntity(createSyncObjectStore(seed), item, signal);
+  await deleteEntity(createSyncObjectStore(seed), item.objectId, item.epoch, signal);
+  await purgeEntity(createSyncObjectStore(seed), item.objectId, signal);
+  const oldAccount = backend.readAll().get(accountKey(item.objectId));
+  if (oldAccount?.kind !== 'present') throw new Error('missing account tombstone');
+  await seed.compareAndSwap(
+    accountKey(item.objectId),
+    oldAccount.version,
+    encode({
+      protocol: 1,
+      phase: 'ready',
+      objectId: item.objectId,
+      epoch: 0,
+      generation: 1,
+      credential: 'old-account-secret',
+    }),
+    signal,
+  );
+
+  const base = backend.connect();
+  let paused = false;
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => (enter = resolve));
+  const waiting = new Promise<void>((resolve) => (release = resolve));
+  const staleSession: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expected, value, compareSignal) {
+      if (!paused && key === accountKey(item.objectId)) {
+        paused = true;
+        enter();
+        await waiting;
+      }
+      return base.compareAndSwap(key, expected, value, compareSignal);
+    },
+  };
+  const stalePurge = purgeEntity(createSyncObjectStore(staleSession), item.objectId, signal);
+  await entered;
+  await restoreEntity(createSyncObjectStore(backend.connect()), item.objectId, item.body, 'restore-operation', signal);
+  release();
+  await stalePurge;
+
+  const account = backend.readAll().get(accountKey(item.objectId));
+  expect(account?.kind).toBe('present');
+  const accountText = new TextDecoder().decode(account!.value);
+  expect(accountText).toContain('"epoch":1');
+  expect(accountText).not.toContain('old-account-secret');
+  expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1 });
+});
+
 test('ordinary deletion retains current history while scrubbing the account', async () => {
   const backend = createMemorySyncBackend();
   const store = createSyncObjectStore(backend.connect());

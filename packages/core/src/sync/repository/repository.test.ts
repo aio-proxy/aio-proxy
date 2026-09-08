@@ -83,6 +83,27 @@ test('binding switches preserve old rows while exposing one active binding', () 
   db.close();
 });
 
+test('binding identity changes under the same ID are rejected without losing old rows', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  repo.writeBinding(binding('same'));
+  repo.writeOAuthJournal('same', {
+    operationId: 'oauth-same',
+    objectId: 'account-same',
+    epoch: 0,
+    baseGeneration: 1,
+    phase: 'complete',
+    payload: { token: 'retained' },
+  });
+  expect(() => repo.writeBinding({ ...binding('same'), capability: 'other' })).toThrow();
+  expect(repo.readBinding()).toEqual(binding('same'));
+  expect(repo.oauthJournals('same')).toHaveLength(1);
+  repo.writeBinding({ ...binding('same'), sessionGeneration: 2, options: { changed: true } });
+  expect(repo.readBinding()).toMatchObject({ sessionGeneration: 2, options: { changed: true } });
+  db.close();
+});
+
 test('local confirmation persists operations, source revisions, and remote baselines atomically', () => {
   const db = new Database(':memory:');
   migrateSyncTestDb(db);
@@ -192,6 +213,27 @@ test('OAuth journal writes are idempotent and enforce identity, phase, and resul
   expect(() => repo.writeOAuthJournal('b', { ...result, objectId: 'account-2' })).toThrow();
   repo.writeOAuthJournal('b', { ...result, phase: 'complete' });
   expect(repo.oauthJournals('b')).toEqual([{ ...result, phase: 'complete' }]);
+  db.close();
+});
+
+test('completed OAuth journal results can be cleared without retaining credentials', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  const completed = {
+    operationId: 'oauth-clear',
+    objectId: 'account-clear',
+    epoch: 1,
+    baseGeneration: 2,
+    phase: 'complete' as const,
+    payload: { accessToken: 'secret-to-clear' },
+  };
+  repo.writeOAuthJournal('b', completed);
+  repo.clearOAuthJournal('b', completed.operationId);
+  expect(repo.oauthJournals('b')).toEqual([]);
+  expect(db.query('SELECT * FROM sync_oauth_journal').all()).toEqual([]);
+  repo.writeOAuthJournal('b', { ...completed, phase: 'started', payload: null });
+  expect(repo.oauthJournals('b')).toEqual([{ ...completed, phase: 'started', payload: null }]);
   db.close();
 });
 

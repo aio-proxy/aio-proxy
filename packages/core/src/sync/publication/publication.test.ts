@@ -333,6 +333,25 @@ test('publication rejects a wrong logical identity without changing the existing
   expect(decodeHead(backend.readAll().get(entityKey(original.objectId))!.value).logicalKey).toBe('work');
 });
 
+test('object-store head reads reject a head stored under another object key', async () => {
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const signal = new AbortController().signal;
+  const storedObjectId = 'stored-object';
+  const requestedObjectId = 'requested-object';
+  const body = makeOperation({ objectId: storedObjectId }).body;
+  const result = await session.compareAndSwap(
+    entityKey(requestedObjectId),
+    null,
+    encode(newHead(storedObjectId, body)),
+    signal,
+  );
+  expect(result.kind).toBe('written');
+  await expect(createSyncObjectStore(session).readHead(requestedObjectId, signal)).rejects.toMatchObject({
+    code: 'invalid-data',
+  });
+});
+
 test('publication rejects a stale epoch before creating a revision', async () => {
   const backend = createMemorySyncBackend();
   const session = backend.connect();

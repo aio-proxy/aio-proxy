@@ -37,7 +37,9 @@ export function createSyncObjectStore(session: SyncSession): SyncObjectStore {
     async readHead(objectId, signal) {
       const value = await session.read(entityKey(objectId), signal);
       if (value.kind === 'absent') return null;
-      return { head: decodeHead(value.value), version: value.version, modifiedAt: value.modifiedAt };
+      const head = decodeHead(value.value);
+      if (head.objectId !== objectId) throw new SyncProtocolError('invalid-data', 'head object identity mismatch');
+      return { head, version: value.version, modifiedAt: value.modifiedAt };
     },
   };
 }

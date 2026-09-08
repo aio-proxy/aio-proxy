@@ -201,8 +201,66 @@ export async function ensureAccountTombstone(
   const key = accountKey(objectId);
   for (;;) {
     signal.throwIfAborted();
+    const head = await store.readHead(objectId, signal);
+    if (head === null) throw new SyncProtocolError('invalid-data', 'missing head');
+    if (head.head.epoch > epoch || (head.head.epoch === epoch && head.head.state === 'active')) return;
+    if (head.head.epoch < epoch) throw new SyncProtocolError('epoch-mismatch', 'epoch-mismatch');
     const current = await store.session.read(key, signal);
     if (current.kind === 'present' && sameBytes(current.value, bytes)) return;
+    if (current.kind === 'present') {
+      const identity = accountIdentity(current.value);
+      if (identity !== undefined) {
+        if (identity.objectId !== objectId) {
+          throw new SyncProtocolError('invalid-data', 'account object identity mismatch');
+        }
+        if (identity.epoch > epoch) return;
+      }
+    }
+    try {
+      const result = await store.session.compareAndSwap(
+        key,
+        current.kind === 'absent' ? null : current.version,
+        bytes,
+        signal,
+      );
+      if (result.kind === 'written') return;
+    } catch (error) {
+      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') continue;
+      throw error;
+    }
+  }
+}
+
+function accountIdentity(bytes: Uint8Array): { objectId: string; epoch: number } | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null) return undefined;
+  const objectId = 'objectId' in value && typeof value.objectId === 'string' ? value.objectId : undefined;
+  const epoch = 'epoch' in value && typeof value.epoch === 'number' ? value.epoch : undefined;
+  return objectId !== undefined && epoch !== undefined ? { objectId, epoch } : undefined;
+}
+
+async function ensureAccountActiveFence(
+  store: SyncObjectStore,
+  objectId: string,
+  epoch: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const bytes = encode({ protocol: 1, phase: 'ready', objectId, epoch, generation: 0 });
+  assertSize(store, bytes);
+  const key = accountKey(objectId);
+  for (;;) {
+    signal.throwIfAborted();
+    const current = await store.session.read(key, signal);
+    if (current.kind === 'present') {
+      const identity = accountIdentity(current.value);
+      if (identity?.objectId === objectId && identity.epoch >= epoch && sameBytes(current.value, bytes)) return;
+      if (identity?.objectId === objectId && identity.epoch > epoch) return;
+    }
     try {
       const result = await store.session.compareAndSwap(
         key,
@@ -386,6 +444,7 @@ export async function restoreEntity(
       },
       signal,
     );
+    await ensureAccountActiveFence(store, objectId, restored.head.epoch, signal);
     const operation: OutboxOperation = {
       operationId,
       objectId,

@@ -3,14 +3,8 @@ import { Database } from 'bun:sqlite';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
 import type { EntityBody, EntityKind } from '../protocol';
-import {
-  parseCommitRow,
-  parseEntityRow,
-  parseJsonValue,
-  parseOAuthJournalRow,
-  parseOutboxRow,
-  stringifyJson,
-} from './rows';
+import { createOAuthJournalRepository } from './oauth-journal';
+import { parseCommitRow, parseEntityRow, parseJsonValue, parseOutboxRow, stringifyJson } from './rows';
 
 export interface LocalBinding {
   id: string;
@@ -90,6 +84,7 @@ export interface SyncRepository {
   outbox(bindingId: string): OutboxOperation[];
   acknowledge(bindingId: string, operationId: string): void;
   writeOAuthJournal(bindingId: string, row: OAuthJournalRow): void;
+  clearOAuthJournal(bindingId: string, operationId: string): void;
   oauthJournals(bindingId: string): OAuthJournalRow[];
 }
 
@@ -139,15 +134,6 @@ type OutboxRow = {
   commit_id: string;
 };
 
-type OAuthRow = {
-  operation_id: string;
-  object_id: string;
-  epoch: number;
-  base_generation: number;
-  phase: string;
-  payload_json: unknown;
-};
-
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -176,20 +162,11 @@ function sameOutboxOperation(left: OutboxOperation, right: OutboxOperation): boo
   );
 }
 
-function phaseOrder(phase: OAuthJournalRow['phase']): number {
-  return phase === 'started' ? 0 : phase === 'result' ? 1 : 2;
-}
-
-function ensureFullSynchronous(sqlite: Database): void {
-  sqlite.run('PRAGMA synchronous = FULL');
-  const value = Object.values(sqlite.query('PRAGMA synchronous').get() ?? {}).at(0);
-  if (value !== 2) throw new Error('SQLite synchronous=FULL could not be established for the OAuth journal');
-}
-
 // The repository methods are deliberately kept together so every mutation uses the same transaction wrapper.
 // eslint-disable-next-line max-lines-per-function
 export function createSyncRepository(sqlite: Database): SyncRepository {
   const transaction = <T>(callback: () => T): T => sqlite.transaction(callback)();
+  const oauthJournal = createOAuthJournalRepository(sqlite, transaction);
 
   function readCommitRow(bindingId: string, commitId: string): CommitRow | null {
     return (
@@ -232,6 +209,22 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
 
     writeBinding(binding) {
       transaction(() => {
+        const existing = sqlite
+          .query<BindingRow, [string]>(
+            `SELECT id, plugin, capability, plugin_version, identity_id, space_id, device_id,
+                    session_generation, options_json, active
+               FROM sync_binding WHERE id = ?`,
+          )
+          .get(binding.id);
+        if (
+          existing !== null &&
+          (existing.plugin !== binding.plugin ||
+            existing.capability !== binding.capability ||
+            existing.identity_id !== binding.identityId ||
+            existing.space_id !== binding.spaceId)
+        ) {
+          throw new Error(`Conflicting sync binding identity: ${binding.id}`);
+        }
         sqlite.run('UPDATE sync_binding SET active = 0 WHERE active = 1');
         sqlite
           .query(
@@ -464,70 +457,8 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
       });
     },
 
-    writeOAuthJournal(bindingId, row) {
-      ensureFullSynchronous(sqlite);
-      transaction(() => {
-        const existing = sqlite
-          .query<OAuthRow, [string, string]>(
-            `SELECT operation_id, object_id, epoch, base_generation, phase, payload_json
-               FROM sync_oauth_journal WHERE binding_id = ? AND operation_id = ?`,
-          )
-          .get(bindingId, row.operationId);
-        if (existing !== null) {
-          const stored = parseOAuthJournalRow(existing);
-          if (
-            stored.objectId !== row.objectId ||
-            stored.epoch !== row.epoch ||
-            stored.baseGeneration !== row.baseGeneration
-          ) {
-            throw new Error(`Conflicting sync OAuth journal identity: ${row.operationId}`);
-          }
-          const currentOrder = phaseOrder(stored.phase);
-          const nextOrder = phaseOrder(row.phase);
-          if (nextOrder < currentOrder) throw new Error(`Stale sync OAuth journal phase: ${row.operationId}`);
-          if (nextOrder === currentOrder) {
-            if (!sameJson(stored.payload, row.payload)) {
-              throw new Error(`Conflicting sync OAuth journal result: ${row.operationId}`);
-            }
-            return;
-          }
-          if (stored.phase === 'result' && !sameJson(stored.payload, row.payload)) {
-            throw new Error(`Conflicting sync OAuth journal result: ${row.operationId}`);
-          }
-          sqlite
-            .query(
-              `UPDATE sync_oauth_journal SET phase = ?, payload_json = ?
-                 WHERE binding_id = ? AND operation_id = ?`,
-            )
-            .run(row.phase, row.payload === null ? null : stringifyJson(row.payload), bindingId, row.operationId);
-          return;
-        }
-        sqlite
-          .query(
-            `INSERT INTO sync_oauth_journal
-             (binding_id, operation_id, object_id, epoch, base_generation, phase, payload_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            bindingId,
-            row.operationId,
-            row.objectId,
-            row.epoch,
-            row.baseGeneration,
-            row.phase,
-            row.payload === null ? null : stringifyJson(row.payload),
-          );
-      });
-    },
-
-    oauthJournals(bindingId) {
-      return sqlite
-        .query<OAuthRow, [string]>(
-          `SELECT operation_id, object_id, epoch, base_generation, phase, payload_json
-             FROM sync_oauth_journal WHERE binding_id = ? ORDER BY rowid`,
-        )
-        .all(bindingId)
-        .map(parseOAuthJournalRow);
-    },
+    writeOAuthJournal: oauthJournal.writeOAuthJournal,
+    clearOAuthJournal: oauthJournal.clearOAuthJournal,
+    oauthJournals: oauthJournal.oauthJournals,
   };
 }

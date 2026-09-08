@@ -1,6 +1,11 @@
-import type { SyncSession } from '../sync';
+import { SyncBackendError, type SyncSession } from '../sync';
 
-type SyncPair = { readonly a: SyncSession; readonly b: SyncSession; readonly cleanup: () => Promise<void> };
+export type SyncConformancePair = {
+  readonly a: SyncSession;
+  readonly b: SyncSession;
+  readonly cleanup: () => Promise<void>;
+  readonly faults?: { readonly outcomeUnknownOnce: (session: SyncSession) => void };
+};
 
 function assertion(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Sync backend conformance failed: ${message}`);
@@ -10,7 +15,7 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-export async function exerciseSyncBackend(factory: () => Promise<SyncPair>): Promise<void> {
+export async function exerciseSyncBackend(factory: () => Promise<SyncConformancePair>): Promise<void> {
   const pair = await factory();
   const prefix = `aio-proxy-conformance/${crypto.randomUUID()}/`;
   const key = `${prefix}value`;
@@ -32,6 +37,20 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncPair>): Pro
     assertion(stale.kind === 'written', 'current version writes');
     const staleAgain = await pair.a.compareAndSwap(key, read.version, value, signal);
     assertion(staleAgain.kind === 'conflict', 'stale version conflicts');
+
+    if (pair.faults !== undefined) {
+      const uncertainKey = `${prefix}outcome-unknown`;
+      pair.faults.outcomeUnknownOnce(pair.a);
+      let uncertain = false;
+      try {
+        await pair.a.compareAndSwap(uncertainKey, null, value, signal);
+      } catch (error) {
+        uncertain = error instanceof SyncBackendError && error.code === 'outcome-unknown';
+      }
+      assertion(uncertain, 'unknown write outcomes are surfaced');
+      const recovered = await pair.a.read(uncertainKey, signal);
+      assertion(recovered.kind === 'present' && sameBytes(recovered.value, value), 'unknown writes are recoverable');
+    }
 
     const listA = `${prefix}list-a`;
     const listKeys = [listA, `${prefix}list-b`];

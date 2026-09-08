@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { CommittedSource } from '../projection';
 import { projectCommitted } from '../projection';
+import type { LocalEntity } from '../repository';
 import type { CommitIntent, OutboxOperation, SyncRepository } from '../repository';
 
 export interface LocalCommitPort {
@@ -27,6 +28,35 @@ function operationId(commitId: string, objectId: string): string {
   return createHash('sha256').update(`${commitId}\0${objectId}`).digest('hex');
 }
 
+function hasRecord(value: unknown, key: string): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.hasOwn(value, key);
+}
+
+function authoredEntity(source: CommittedSource, entity: LocalEntity): boolean {
+  switch (entity.kind) {
+    case 'provider':
+      return hasRecord(source.raw['providers'], entity.logicalKey);
+    case 'model-rule': {
+      const router = source.raw['router'];
+      return hasRecord(
+        hasRecord(router, 'models') ? (router as Record<string, unknown>)['models'] : undefined,
+        entity.logicalKey,
+      );
+    }
+    case 'plugin-business': {
+      const plugins = source.raw['plugins'];
+      return (
+        Array.isArray(plugins) &&
+        plugins.some((entry) => entry === entity.logicalKey || (Array.isArray(entry) && entry[0] === entity.logicalKey))
+      );
+    }
+    case 'service-access':
+      return hasRecord(source.raw, 'server');
+    case 'routing-defaults':
+      return hasRecord(source.raw, 'server') || hasRecord(source.raw, 'router');
+  }
+}
+
 function committedOperations(
   commitId: string,
   source: CommittedSource,
@@ -35,7 +65,7 @@ function committedOperations(
 ): OutboxOperation[] {
   const entities = repo.entities(bindingId);
   const projection = projectCommitted(source, entities);
-  return [...projection.entities].map(([objectId, body]) => ({
+  const puts = [...projection.entities].map(([objectId, body]) => ({
     operationId: operationId(commitId, objectId),
     objectId,
     epoch: entities.find((entity) => entity.objectId === objectId)?.epoch ?? 0,
@@ -43,6 +73,18 @@ function committedOperations(
     body,
     commitId,
   }));
+  const deletes = entities
+    .filter((entity) => entity.mode === 'included' && entity.baseline !== null && !authoredEntity(source, entity))
+    .filter((entity) => !projection.entities.has(entity.objectId))
+    .map((entity) => ({
+      operationId: operationId(commitId, entity.objectId),
+      objectId: entity.objectId,
+      epoch: entity.epoch,
+      kind: 'delete' as const,
+      body: null,
+      commitId,
+    }));
+  return [...puts, ...deletes];
 }
 
 async function confirmLocalCommitUnderFence(

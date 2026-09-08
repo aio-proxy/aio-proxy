@@ -94,7 +94,9 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
   async function readHead(objectId: string, signal: AbortSignal): Promise<EntityHead | null> {
     const value = await input.session.read(entityKey(objectId), signal);
     if (value.kind === 'absent') return null;
-    return decodeHead(value.value);
+    const head = decodeHead(value.value);
+    if (head.objectId !== objectId) throw new SyncProtocolError('invalid-data', 'head object identity mismatch');
+    return head;
   }
 
   async function drainOutbox(generation: number, signal: AbortSignal): Promise<void> {

@@ -1,1 +1,1 @@
-export { exerciseSyncBackend } from './sync-conformance';
+export { exerciseSyncBackend, type SyncConformancePair } from './sync-conformance';

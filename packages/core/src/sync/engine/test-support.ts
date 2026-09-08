@@ -65,6 +65,7 @@ export type TwoDevice = {
   readonly engine: SyncEngine;
   readonly signal: AbortSignal;
   readonly commitProvider: (id: string, body: JsonValue, included: boolean) => Promise<void>;
+  readonly removeProvider: (id: string) => Promise<void>;
   readonly queueDelete: (objectId: string, epoch: number) => void;
   readonly setPendingActivation: (reason: PendingReason | undefined) => void;
   readonly remoteApplyCalls: () => readonly { objectId: string; operationId: string; body: JsonValue | null }[];
@@ -292,6 +293,26 @@ export async function withTwoSyncDevices(
             pendingReason: null,
           });
           const commitId = `${deviceId}-commit-${++commitNumber}`;
+          prepareLocalCommit(repo, binding.id, {
+            commitId,
+            origin: 'local',
+            beforeDigest: digestConfig(before, configPaths[index]!),
+            afterDigest: digestConfig(next, configPaths[index]!),
+            rawAfter: next,
+            accountOperationIds: [],
+          });
+          await config.replace(async () => next, {
+            afterCommit: async () => confirmLocalCommit(repo, binding.id, commitId, local),
+          });
+        },
+        async removeProvider(id) {
+          const before = (await config.read()) as Record<string, JsonValue>;
+          const next = JSON.parse(JSON.stringify(before)) as Record<string, JsonValue>;
+          const providers = next['providers'];
+          if (providers !== null && typeof providers === 'object' && !Array.isArray(providers)) {
+            delete (providers as Record<string, JsonValue>)[id];
+          }
+          const commitId = `${deviceId}-remove-${++commitNumber}`;
           prepareLocalCommit(repo, binding.id, {
             commitId,
             origin: 'local',

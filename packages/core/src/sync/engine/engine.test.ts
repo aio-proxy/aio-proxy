@@ -239,6 +239,40 @@ test('a current revision with mismatched identity never becomes a baseline', asy
   });
 });
 
+test('a head stored under a different object key remains read-only during remote listing', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    b.repo.putEntity(b.binding.id, {
+      objectId: 'provider-keyed',
+      logicalKey: 'keyed',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: null,
+      baseline: null,
+      overrides: [],
+      pendingReason: null,
+    });
+    await b.session.compareAndSwap(
+      entityKey('provider-keyed'),
+      null,
+      encode(
+        newHead('other-object', {
+          kind: 'provider',
+          logicalKey: 'keyed',
+          value: { kind: 'api' },
+          dependencies: [],
+        }),
+      ),
+      b.signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-keyed')).toMatchObject({
+      baseline: null,
+      pendingReason: 'invalid-config',
+    });
+  });
+});
+
 test('excluded identities receive cloud deletion signals', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await b.commitProvider('work', { kind: 'api', apiKey: 'local' }, false);
@@ -272,6 +306,20 @@ test('a local delete outbox operation is published and acknowledged', async () =
     await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
     await a.engine.reconcile(a.signal);
     a.queueDelete('provider-work', 0);
+    await a.engine.reconcile(a.signal);
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    expect((await createSyncObjectStore(a.session).readHead('provider-work', a.signal))?.head.state).toBe('deleted');
+  });
+});
+
+test('removing a published provider from authored config captures and publishes a delete', async () => {
+  await withTwoSyncDevices(async ({ a }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    await a.removeProvider('work');
+    expect(a.repo.outbox(a.binding.id)).toContainEqual(
+      expect.objectContaining({ objectId: 'provider-work', kind: 'delete', body: null }),
+    );
     await a.engine.reconcile(a.signal);
     expect(a.repo.outbox(a.binding.id)).toEqual([]);
     expect((await createSyncObjectStore(a.session).readHead('provider-work', a.signal))?.head.state).toBe('deleted');
