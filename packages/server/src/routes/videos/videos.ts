@@ -16,7 +16,7 @@ import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pi
 import { videoCapabilityNotSupported, videoForbidden, videoInvalidRequest, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
 import { pinSuccessfulVideoJob } from './pin';
-import { handlePinnedVideoRequest, invokePinnedVideo, sourceVideoIdFromBody } from './pinned';
+import { handlePinnedVideoRequest, invokePinnedVideo, resolveOwnedPinnedVideo, sourceVideoIdFromBody } from './pinned';
 import type { VideosRouteSource } from './source';
 
 export const UNSUPPORTED_VIDEO_ROUTES = [
@@ -94,7 +94,9 @@ async function handleRemix(context: Context<CallerPrincipalEnv>, source: VideosR
   if (parsed.kind !== 'json') return videosRequestError(new OpenAIVideosInvalidRequestError('content_type'));
   const remix = videosParseError(() => parseOpenAIVideoRemix(parsed.body));
   if (remix !== undefined) return remix;
-  return await withCapacity(source, () => handlePinnedVideoRequest(context, source, { pinNewJob: true }));
+  const resolved = resolveOwnedPinnedVideo(context, source);
+  if ('response' in resolved) return resolved.response;
+  return await withCapacity(source, () => invokePinnedVideo(context, source, resolved.record, { pinNewJob: true }));
 }
 
 async function withCapacity(source: VideosRouteSource, run: () => Promise<Response>): Promise<Response> {

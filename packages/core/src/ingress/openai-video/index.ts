@@ -10,6 +10,7 @@ export {
   parseOpenAIVideoRemix,
   releaseMultipartSpool,
   replaySpooledMultipartRaw,
+  replaySpooledVideoFormData,
   VIDEO_ID_PATTERN,
   type OpenAIVideoOperation,
   type OpenAIVideoRequest,

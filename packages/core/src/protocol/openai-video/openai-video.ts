@@ -8,6 +8,7 @@ import {
   parseOpenAIVideoCreateMultipart,
   parseOpenAIVideoEdit,
   replaySpooledMultipartRaw,
+  replaySpooledVideoFormData,
   type OpenAIVideoOperation,
   type OpenAIVideoRequest,
 } from '../../ingress/openai-video';
@@ -56,8 +57,7 @@ async function rewriteMultipartRawRequest(
   request: OpenAIVideoRequest,
   resolvedModel: string,
 ): Promise<Request> {
-  const replay = await replaySpooledMultipartRaw(raw);
-  const form = await replay.formData();
+  const form = await replaySpooledVideoFormData(raw);
   const next = new FormData();
   for (const [name, value] of form.entries()) {
     if (name === 'model') continue;

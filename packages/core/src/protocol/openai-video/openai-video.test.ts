@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { releaseMultipartSpool } from '../../ingress/openai-video';
 import { openAIVideosAdapter } from './openai-video';
 
 describe('openAIVideosAdapter', () => {
@@ -52,5 +53,29 @@ describe('openAIVideosAdapter', () => {
       await openAIVideosAdapter.parse(raw(), { operation: 'create' }).catch((error: unknown) => error),
     );
     expect(response?.status).toBe(400);
+  });
+
+  test('multipart omitted model injects sora-2 on rewrite', async () => {
+    const form = new FormData();
+    form.set('prompt', 'a cat');
+    const raw = new Request('http://x/v1/videos', { method: 'POST', body: form });
+    const request = await openAIVideosAdapter.parse(raw, { operation: 'create' });
+    const rewritten = await openAIVideosAdapter.rawRequest(raw, request, 'sora-2', new Set(), { operation: 'create' });
+    const forwarded = await rewritten.formData();
+    expect(forwarded.get('prompt')).toBe('a cat');
+    expect(forwarded.get('model')).toBe('sora-2');
+    await releaseMultipartSpool(raw);
+  });
+
+  test('malformed multipart is 400, not an unmapped 500', async () => {
+    const raw = new Request('http://x/v1/videos', {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=----boundary' },
+      body: 'not-a-multipart-body',
+    });
+    const error = await openAIVideosAdapter.parse(raw, { operation: 'create' }).catch((caught: unknown) => caught);
+    const response = openAIVideosAdapter.errors.requestError(error);
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toMatchObject({ error: { code: 'invalid_request' } });
   });
 });

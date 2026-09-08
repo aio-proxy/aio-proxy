@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
+import { multipartSpoolPath } from '../multipart';
 import {
   OFFICIAL_DEFAULT_VIDEO_MODEL,
   parseOpenAIVideoCreate,
+  parseOpenAIVideoCreateMultipart,
   parseOpenAIVideoEdit,
   parseOpenAIVideoRemix,
+  releaseMultipartSpool,
 } from './openai-video';
 
 describe('parseOpenAIVideoCreate', () => {
@@ -53,5 +56,36 @@ describe('parseOpenAIVideoEdit', () => {
 describe('parseOpenAIVideoRemix', () => {
   test('blank prompt is rejected', () => {
     expect(() => parseOpenAIVideoRemix({ prompt: '  ' })).toThrow(OpenAIVideosInvalidRequestError);
+  });
+});
+
+describe('parseOpenAIVideoCreateMultipart', () => {
+  test('parses a valid multipart create and retains the spool', async () => {
+    const form = new FormData();
+    form.set('prompt', 'a cat');
+    const raw = new Request('http://x/v1/videos', { method: 'POST', body: form });
+    const parsed = await parseOpenAIVideoCreateMultipart(raw);
+    expect(parsed).toMatchObject({ model: 'sora-2', modelDefaulted: true, prompt: 'a cat' });
+    expect(multipartSpoolPath(raw)).toBeDefined();
+    await releaseMultipartSpool(raw);
+    expect(multipartSpoolPath(raw)).toBeUndefined();
+  });
+
+  test('malformed bytes are a client error and do not retain a spool', async () => {
+    const raw = new Request('http://x/v1/videos', {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=----boundary' },
+      body: 'not-a-multipart-body',
+    });
+    await expect(parseOpenAIVideoCreateMultipart(raw)).rejects.toThrow(SyntaxError);
+    expect(multipartSpoolPath(raw)).toBeUndefined();
+  });
+
+  test('a missing prompt unlinks the spool', async () => {
+    const form = new FormData();
+    form.set('model', 'sora-2');
+    const raw = new Request('http://x/v1/videos', { method: 'POST', body: form });
+    await expect(parseOpenAIVideoCreateMultipart(raw)).rejects.toThrow(OpenAIVideosInvalidRequestError);
+    expect(multipartSpoolPath(raw)).toBeUndefined();
   });
 });

@@ -4,6 +4,7 @@ import { OpenAIVideosInvalidRequestError } from '../../error';
 import {
   acquireMultipartSlot,
   multipartBoundary,
+  multipartSpoolPath,
   releaseMultipartSpool,
   replaySpooledMultipartRaw,
   retainMultipartSpool,
@@ -74,31 +75,28 @@ export async function parseOpenAIVideoCreateMultipart(raw: Request): Promise<Ope
     throw new OpenAIVideosInvalidRequestError('content_type');
   }
   const releaseSlot = await acquireMultipartSlot(raw.signal);
+  let spool: Awaited<ReturnType<typeof spoolMultipartBody>> | undefined;
   try {
-    const spool = await spoolMultipartBody(raw, 30_000, 'aio-proxy-videos', 64 * 1_024 * 1_024);
-    retainMultipartSpool(raw, spool);
-    const replay = new Request(raw.url, {
-      method: raw.method,
-      headers: raw.headers,
-      body: Bun.file(spool.path),
-      signal: raw.signal,
-    });
-    const form = await replay.formData();
+    spool = await spoolMultipartBody(raw, 30_000, 'aio-proxy-videos', 64 * 1_024 * 1_024);
+    const form = await formDataFromSpoolPath(raw, spool.path);
     const fields: Record<string, string> = {};
     for (const [name, value] of form.entries()) {
       if (typeof value === 'string') fields[name] = value;
     }
     const prompt = fields['prompt'];
     if (prompt === undefined || prompt.trim() === '') throw new OpenAIVideosInvalidRequestError('prompt');
-    return {
-      ...toVideoRequest({
-        model: fields['model'],
-        prompt,
-        ...(fields['seconds'] === undefined ? {} : { seconds: fields['seconds'] }),
-        ...(fields['size'] === undefined ? {} : { size: fields['size'] }),
-      }),
-      formFields: fields,
-    };
+    const parsed = toVideoRequest({
+      model: fields['model'],
+      prompt,
+      ...(fields['seconds'] === undefined ? {} : { seconds: fields['seconds'] }),
+      ...(fields['size'] === undefined ? {} : { size: fields['size'] }),
+    });
+    retainMultipartSpool(raw, spool);
+    return { ...parsed, formFields: fields };
+  } catch (error) {
+    await spool?.unlink();
+    void raw.body?.cancel(error).catch(() => undefined);
+    throw error;
   } finally {
     releaseSlot();
   }
@@ -138,4 +136,24 @@ export function isMultipartRequest(raw: Request): boolean {
 export function isJsonRequest(raw: Request): boolean {
   const type = raw.headers.get('content-type')?.toLowerCase() ?? '';
   return type === '' || type.includes('application/json') || type.includes('text/json');
+}
+
+export async function replaySpooledVideoFormData(raw: Request): Promise<FormData> {
+  const path = multipartSpoolPath(raw);
+  if (path === undefined) throw new SyntaxError('Invalid OpenAI Videos multipart request');
+  return await formDataFromSpoolPath(raw, path);
+}
+
+async function formDataFromSpoolPath(raw: Request, path: string): Promise<FormData> {
+  const replay = new Request(raw.url, {
+    method: raw.method,
+    headers: raw.headers,
+    body: await Bun.file(path).bytes(),
+    signal: raw.signal,
+  });
+  try {
+    return await replay.formData();
+  } catch {
+    throw new SyntaxError('Invalid OpenAI Videos multipart request');
+  }
 }

@@ -10,17 +10,26 @@ import { isValidVideoId, sameVideoOwner, type VideoJobRecord } from './job-store
 import { pinnedVideoProvider, pinSuccessfulVideoJob } from './pin';
 import type { VideosRouteSource } from './source';
 
+export function resolveOwnedPinnedVideo(
+  context: Context<CallerPrincipalEnv>,
+  source: VideosRouteSource,
+): { readonly record: VideoJobRecord } | { readonly response: Response } {
+  const videoId = context.req.param('video_id');
+  if (!isValidVideoId(videoId)) return { response: videoInvalidRequest('Invalid video id') };
+  const record = source.videoJobs.lookup(videoId);
+  if (record === undefined) return { response: videoNotFound() };
+  if (!sameVideoOwner(record.owner, callerPrincipal(context))) return { response: videoForbidden() };
+  return { record };
+}
+
 export async function handlePinnedVideoRequest(
   context: Context<CallerPrincipalEnv>,
   source: VideosRouteSource,
   options: { readonly pinNewJob?: boolean } = {},
 ): Promise<Response> {
-  const videoId = context.req.param('video_id');
-  if (!isValidVideoId(videoId)) return videoInvalidRequest('Invalid video id');
-  const record = source.videoJobs.lookup(videoId);
-  if (record === undefined) return videoNotFound();
-  if (!sameVideoOwner(record.owner, callerPrincipal(context))) return videoForbidden();
-  return await invokePinnedVideo(context, source, record, options);
+  const resolved = resolveOwnedPinnedVideo(context, source);
+  if ('response' in resolved) return resolved.response;
+  return await invokePinnedVideo(context, source, resolved.record, options);
 }
 
 export async function invokePinnedVideo(

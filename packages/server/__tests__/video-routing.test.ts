@@ -199,6 +199,24 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.calls.raw).toBe(before);
   });
 
+  test('remix pin checks run before store capacity', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const illegal = await app.request('/v1/videos/not.valid/remix', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light' }),
+    });
+    expect(illegal.status).toBe(400);
+    const missing = await app.request('/v1/videos/video_missing/remix', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light' }),
+    });
+    expect(missing.status).toBe(404);
+    expect(fixture.calls.raw).toBe(0);
+  });
+
   test('remix rejects a missing prompt and an oversized body before the pinned invoke', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
