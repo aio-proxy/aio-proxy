@@ -218,7 +218,12 @@ export function matchAliasRows(
   // effort-blind rows such as Antigravity's `{ thinking: true }` catch-all — the winner would
   // be picked with the request's effort ignored, so the ceiling gets to answer first.
   if (matches.every((row) => row.when.effort === undefined)) {
-    const ceiling = effortCeiling(rows, bag);
+    // A matched row that pinned `speed` already granted the request its service tier. Speed is
+    // orthogonal to the reasoning ladder, so no effort row implies anything about it: answering
+    // with a tier-blind row would silently move the request off the tier it asked for. Require
+    // the ceiling to keep that tier instead.
+    const needsSpeed = matches.some((row) => row.when.speed !== undefined);
+    const ceiling = effortCeiling(rows, bag, needsSpeed);
     if (ceiling !== undefined) return ceiling;
   }
   if (matches.length === 0) return fallback;
@@ -239,15 +244,21 @@ export function matchAliasRows(
 // conventionally the medium tier, so a `low` wire would downgrade below it).
 const CEILING_FLOOR_RANK = EFFORT_LADDER.indexOf('medium');
 
-function effortCeiling(rows: readonly AliasSelectRow[], bag: AliasDimensions): AliasTarget | undefined {
+function effortCeiling(
+  rows: readonly AliasSelectRow[],
+  bag: AliasDimensions,
+  needsSpeed: boolean,
+): AliasTarget | undefined {
   const wanted = bag.effort === undefined ? -1 : effortRank(bag.effort);
   if (wanted === -1) return undefined;
   let best: { readonly row: AliasSelectRow; readonly rank: number } | undefined;
   for (const row of rows) {
     if (row.when.effort === undefined) continue;
-    // Every non-effort constraint must still hold, so a thinking-only variant
-    // never captures a non-thinking request.
+    // Every non-effort constraint the row declares must still hold against the request, so a
+    // thinking-only variant never captures a non-thinking request. This is one-directional: a
+    // row that stays silent on a dimension is still eligible, which is why `needsSpeed` exists.
     if (!rowMatches({ ...row.when, effort: undefined }, bag)) continue;
+    if (needsSpeed && row.when.speed === undefined) continue;
     const rank = effortRank(row.when.effort);
     // An off-ladder row is a sentinel addressed by exact name (Antigravity emits
     // `hidden:<wire id>` for suppressed wires); it is not part of the ladder this

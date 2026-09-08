@@ -484,6 +484,44 @@ describe('matchAliasRows effort ceiling on generated alias rows', () => {
   });
 });
 
+// Shapes copied from what cursor's own alias generator emits
+// (packages/plugins/cursor/src/catalog/default-aliases/peel.ts): peeling a wire id yields a
+// BARE axis row — `zeta-fast` becomes `{ speed: 'fast' }` with no effort — alongside the
+// effort rows peeled from its `-low`/`-medium`/`-high` siblings.
+describe('matchAliasRows effort ceiling against a bare speed row', () => {
+  const fallback = { model: 'zeta', preserve: false };
+  const rows: AliasSelectRow[] = [
+    { when: { speed: 'fast' }, model: 'zeta-fast', preserve: false },
+    { when: { effort: 'low' }, model: 'zeta-low', preserve: false },
+    { when: { effort: 'medium' }, model: 'zeta-medium', preserve: false },
+    { when: { effort: 'high' }, model: 'zeta-high', preserve: false },
+  ];
+
+  test('an above-ceiling request keeps the service tier the matched row granted', () => {
+    // Speed is orthogonal to the reasoning ladder: no effort row implies anything about the
+    // tier, so answering with `zeta-high` would silently move the request off `fast`.
+    expect(matchAliasRows(rows, { effort: 'max', speed: 'fast' }, fallback)).toEqual({
+      model: 'zeta-fast',
+      preserve: false,
+    });
+  });
+
+  test('the ceiling still upgrades within the tier when a fast effort row exists', () => {
+    const withFastHigh: AliasSelectRow[] = [
+      ...rows,
+      { when: { effort: 'high', speed: 'fast' }, model: 'zeta-high-fast', preserve: false },
+    ];
+    expect(matchAliasRows(withFastHigh, { effort: 'max', speed: 'fast' }, fallback)).toEqual({
+      model: 'zeta-high-fast',
+      preserve: false,
+    });
+  });
+
+  test('a request without a speed is unaffected by the bare speed row', () => {
+    expect(matchAliasRows(rows, { effort: 'max' }, fallback)).toEqual({ model: 'zeta-high', preserve: false });
+  });
+});
+
 describe('effortRank', () => {
   test('ranks the ladder ascending and folds spellings', () => {
     expect(effortRank('none')).toBe(0);

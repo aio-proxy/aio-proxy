@@ -172,6 +172,19 @@ test('peels each axis right to left and leaves family words alone', () => {
   ]);
 });
 
+// A family whose `-fast` wire peels to a BARE `{ speed: 'fast' }` row, alongside the effort
+// rows peeled from its siblings. An above-ceiling request must not trade the requested tier
+// for a higher effort wire that never declared one.
+test('an above-ceiling request keeps the fast tier the bare speed row granted', () => {
+  const slugs = ['zeta', 'zeta-fast', 'zeta-low', 'zeta-medium', 'zeta-high'];
+  const aliases = defaultCursorAliases(catalog(slugs, [{ name: 'zeta', variants: slugs.map((slug) => ({ slug })) }]));
+  const config = asAliasConfig(aliases['zeta']!);
+  expect(config.variants).toContainEqual({ when: { speed: 'fast' }, model: 'zeta-fast', preserve: false });
+  expect(resolveAliasTarget(config, { effort: 'max', speed: 'fast' }).model).toBe('zeta-fast');
+  // Without a speed the same ceiling still reaches the top effort wire.
+  expect(resolveAliasTarget(config, { effort: 'max' }).model).toBe('zeta-high');
+});
+
 test('drops a slug that peels away entirely', () => {
   const aliases = defaultCursorAliases(
     catalog(['high', 'thinking'], [{ name: 'ghost', variants: [{ slug: 'high' }, { slug: 'thinking' }] }]),
