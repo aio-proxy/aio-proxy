@@ -151,6 +151,7 @@ export function createServerSyncFixture(input: {
     async close() {
       await lifecycle.close();
       db.close();
+      events.push('database-closed');
       rmSync(directory, { recursive: true, force: true });
     },
   };

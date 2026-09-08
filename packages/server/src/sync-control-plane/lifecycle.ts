@@ -74,6 +74,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         repo: input.repo,
         accounts: input.accounts,
         bindingId: binding.id,
+        bindingGeneration: binding.sessionGeneration,
         enqueue: input.enqueue,
         registry: input.registry,
         applyCandidate: input.applyCandidate,

@@ -55,6 +55,7 @@ export type ConfigStore = {
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
+// eslint-disable-next-line max-lines-per-function -- mutation sequencing stays together with the config fence
 export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const path = options.getConfigPath();
   const file = options.file ?? (path === undefined ? undefined : new AtomicConfigFile(path));
@@ -74,6 +75,16 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         : createSyncCommitHooks({ path: path ?? 'config.jsonc', ...options.syncCommit });
   const confirm = async (commitId: string | undefined): Promise<void> => {
     if (syncCapture !== undefined && commitId !== undefined) await syncCapture.confirm(commitId);
+  };
+  const finalizeAccountOperations = (
+    operations: readonly PendingAccountOperation[],
+    retired: RetiredProviderSnapshot | undefined,
+    commitId: string | undefined,
+  ): void => {
+    void accountRemovals
+      .finalizeAfterDrain(operations, retired)
+      .then(() => confirm(commitId))
+      .catch(() => {});
   };
 
   async function verifyCandidate(
@@ -123,7 +134,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     } catch (error) {
       if (error instanceof AtomicConfigCommitUncertainError) {
         if (verificationCompleted) {
-          void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+          finalizeAccountOperations(staged, retired, commitId);
         } else {
           accountRemovals.scheduleRecovery(staged);
           try {
@@ -136,7 +147,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
       throw error;
     }
 
-    void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+    finalizeAccountOperations(staged, retired, commitId);
     return commitId;
   }
 

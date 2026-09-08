@@ -25,6 +25,14 @@
 - OAuth login/import completion and successful external reloads can prepare and confirm durable local sync commits, while remote-origin commits continue to avoid outbox echoes.
 - Backend startup rechecks binding identity and session generation after connection, disposes stale sessions, and rejects stale commit callbacks. Startup cleanup and `closeAsync()` use `finally` so database ownership is released even when sync disposal fails; startup fixtures await disposal before removing their database.
 
+## Review round 2 fixes
+
+- Legacy synchronous server close now waits for sync disposal before closing the database whenever sync is configured, while retaining the immediate no-sync path.
+- Remote activation rechecks binding generation after prerequisite awaits and inside the queued mutation before writing config or entity state.
+- OAuth activation validates stored plugin/capability identity, credential-sync format and plugin versions, ready phase, and multi-device evidence before applying a shared copy.
+- Account-removal commits are reconfirmed after account finalization settles, ensuring durable delete operations are emitted.
+- Lifecycle fixtures now await disposal and assert the sync-disposed-before-database-closed ordering.
+
 ## Review scope and remaining risk
 
 Please run a targeted review of commit `3600adf39`, focusing on the close/closeAsync state machine, FIFO fence composition, and startup recovery ordering. The later control-plane task still owns public sync settings/preview operations and richer activation identity/OAuth coordination; plugin-secret/account-specific capture hooks remain integration follow-up work beyond this commit.

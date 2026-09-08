@@ -58,3 +58,18 @@ test('lifecycle reuses one backend session and closes it once', async () => {
     await fixture.close();
   }
 });
+
+test('the async fixture closes sync before its database', async () => {
+  const fixture = createServerSyncFixture({
+    accounts: repository,
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+  });
+  await fixture.lifecycle.start();
+  await fixture.close();
+  expect(fixture.events()).toEqual(['connected', 'disposed', 'database-closed']);
+});

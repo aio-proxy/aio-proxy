@@ -25,6 +25,7 @@ export type LocalPortInput = {
   readonly repo: SyncRepository;
   readonly accounts: PluginRepository;
   readonly bindingId: string;
+  readonly bindingGeneration?: number;
   readonly enqueue: FifoQueue;
   readonly registry: () => PluginRegistry;
   readonly applyCandidate: (raw: Record<string, JsonValue>, origin: 'local' | 'remote') => Promise<void>;
@@ -176,11 +177,17 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
     },
     assertCurrent() {
       const binding = input.repo.readBinding();
-      if (binding === null || binding.id !== input.bindingId) throw new Error('The synchronization binding is stale');
+      if (
+        binding === null ||
+        binding.id !== input.bindingId ||
+        (input.bindingGeneration !== undefined && binding.sessionGeneration !== input.bindingGeneration)
+      )
+        throw new Error('The synchronization binding is stale');
     },
     async applyRemote(objectId, body) {
       return withFence(async () => {
         const current = (await input.configFile.read()) as Record<string, JsonValue>;
+        input.assertCurrent?.();
         const currentEntities = entities();
         const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
         const shared =
@@ -189,6 +196,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
             : applyBody(current, body);
         const projection = projectCommitted(source(input, shared), currentEntities);
         const candidate = overlayLocal(shared, projection.local, currentEntities);
+        input.assertCurrent?.();
         try {
           if (candidate !== current) await input.applyCandidate(candidate, 'remote');
         } catch {

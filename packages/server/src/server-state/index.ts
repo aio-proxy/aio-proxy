@@ -111,6 +111,17 @@ function createSyncIntegration(
     );
   const checkActivation = async (raw: Record<string, JsonValue>, body: import('@aio-proxy/core').EntityBody) => {
     let credentialValid = true;
+    let oauthEvidence:
+      | {
+          readonly plugin: string;
+          readonly capability: string;
+          readonly pluginVersion: string;
+          readonly formatVersion: number;
+          readonly phase: 'ready' | 'refreshing' | 'uncertain' | 'login-required';
+          readonly multiDeviceEvidenceId?: string;
+          readonly expectedFormatVersion?: number;
+        }
+      | undefined;
     const value = body.value;
     if (
       body.kind === 'provider' &&
@@ -126,8 +137,27 @@ function createSyncIntegration(
           ? undefined
           : (manager.current() as Snapshot).plugins.registry.resolveOAuth(plugin, capability);
       const account = repository.readAccount(body.logicalKey);
-      if (adapter === undefined || account === null) credentialValid = false;
-      else credentialValid = (await parsePluginSchema(adapter.credentials, account.credential)).ok;
+      if (plugin === undefined || capability === undefined || adapter === undefined || account === null)
+        credentialValid = false;
+      else {
+        credentialValid = (await parsePluginSchema(adapter.credentials, account.credential)).ok;
+        const ownership = syncRepository
+          .entities(syncBinding.id)
+          .find((entity) => entity.logicalKey === body.logicalKey)?.oauth;
+        oauthEvidence = {
+          plugin,
+          capability,
+          pluginVersion: ownership?.pluginVersion ?? pluginVersions().get(plugin) ?? '',
+          formatVersion: ownership?.formatVersion ?? adapter.credentialSync?.formatVersion ?? 0,
+          phase: 'ready',
+          ...(adapter.credentialSync?.multiDevice === undefined
+            ? {}
+            : { multiDeviceEvidenceId: adapter.credentialSync.multiDevice.evidenceId }),
+          ...(adapter.credentialSync === undefined
+            ? {}
+            : { expectedFormatVersion: adapter.credentialSync.formatVersion }),
+        };
+      }
     }
     return checkPrerequisites({
       raw,
@@ -138,6 +168,7 @@ function createSyncIntegration(
         missingEnv: [],
         oauthVerified: credentialValid,
         credentialValid,
+        ...(oauthEvidence === undefined ? {} : { oauthEvidence }),
       },
     });
   };
@@ -147,6 +178,7 @@ function createSyncIntegration(
     repo: syncRepository,
     accounts: repository,
     bindingId: syncBinding.id,
+    bindingGeneration: syncBinding.sessionGeneration,
     enqueue: queue,
     registry: () => (manager.current() as Snapshot).plugins.registry,
     applyCandidate: syncApplyCandidate,

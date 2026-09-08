@@ -211,9 +211,17 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      parts.sync?.abort();
-      closePromise = parts.sync?.close().catch(() => {}) ?? Promise.resolve();
-      closeRemainingResources();
+      if (parts.sync === undefined) {
+        closeRemainingResources();
+        closePromise = Promise.resolve();
+        return;
+      }
+      parts.sync.abort();
+      closePromise = parts.sync
+        .close()
+        .catch(() => {})
+        .then(() => closeRemainingResources());
+      void closePromise.catch(() => {});
     },
     closeAsync,
     configPath: options.configPath,

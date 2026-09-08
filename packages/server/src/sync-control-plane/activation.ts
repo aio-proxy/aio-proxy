@@ -9,6 +9,15 @@ export type ActivationInput = {
     readonly missingEnv: readonly string[];
     readonly oauthVerified: boolean;
     readonly credentialValid: boolean;
+    readonly oauthEvidence?: {
+      readonly plugin: string;
+      readonly capability: string;
+      readonly pluginVersion: string;
+      readonly formatVersion: number;
+      readonly phase: 'ready' | 'refreshing' | 'uncertain' | 'login-required';
+      readonly multiDeviceEvidenceId?: string;
+      readonly expectedFormatVersion?: number;
+    };
   };
 };
 
@@ -31,12 +40,27 @@ export async function checkPrerequisites(input: ActivationInput): Promise<Pendin
   }
   if (input.dependencies.missingEnv.length > 0) return 'missing-env';
   if (!input.dependencies.credentialValid) return 'invalid-credential';
-  if (
-    input.body.kind === 'provider' &&
-    bodyValue(input.body)?.['kind'] === 'oauth' &&
-    !input.dependencies.oauthVerified
-  ) {
-    return 'oauth-unverified';
+  if (input.body.kind === 'provider' && bodyValue(input.body)?.['kind'] === 'oauth') {
+    const value = bodyValue(input.body)!;
+    const evidence = input.dependencies.oauthEvidence;
+    if (!input.dependencies.oauthVerified) return 'oauth-unverified';
+    if (evidence === undefined) return undefined;
+    if (evidence.plugin !== value['plugin'] || evidence.capability !== value['capability']) {
+      return 'invalid-credential';
+    }
+    const dependencyVersion = input.body.dependencies.find(
+      (dependency) => dependency.packageName === evidence.plugin,
+    )?.version;
+    if (dependencyVersion !== undefined && evidence.pluginVersion !== dependencyVersion) {
+      return 'incompatible-version';
+    }
+    if (
+      input.dependencies.oauthEvidence?.expectedFormatVersion !== undefined &&
+      evidence.formatVersion !== input.dependencies.oauthEvidence.expectedFormatVersion
+    ) {
+      return 'incompatible-version';
+    }
+    if (evidence.phase !== 'ready' || evidence.multiDeviceEvidenceId === undefined) return 'oauth-unverified';
   }
   return undefined;
 }

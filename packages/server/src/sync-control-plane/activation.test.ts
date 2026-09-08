@@ -52,3 +52,42 @@ test('activation forwards remote origin only after all prerequisites pass', asyn
   expect(result).toEqual({ applied: true });
   expect(origins).toEqual(['remote']);
 });
+
+test('activation rejects OAuth evidence with the wrong account identity or sync format', async () => {
+  await expect(
+    checkPrerequisites({
+      raw: {},
+      body: provider,
+      apply: async () => {},
+      dependencies: {
+        ...ready,
+        oauthEvidence: {
+          plugin: '@other/oauth',
+          capability: 'main',
+          pluginVersion: '1.0.0',
+          formatVersion: 1,
+          phase: 'ready',
+          multiDeviceEvidenceId: 'evidence',
+          expectedFormatVersion: 2,
+        },
+      },
+    }),
+  ).resolves.toBe('invalid-credential');
+  await expect(
+    checkPrerequisites({
+      raw: {},
+      body: provider,
+      apply: async () => {},
+      dependencies: {
+        ...ready,
+        oauthEvidence: {
+          plugin: '@example/oauth',
+          capability: 'main',
+          pluginVersion: '1.0.0',
+          formatVersion: 1,
+          phase: 'ready',
+        },
+      },
+    }),
+  ).resolves.toBe('oauth-unverified');
+});
