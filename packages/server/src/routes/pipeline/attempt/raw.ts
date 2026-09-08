@@ -27,6 +27,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
   const supportedEfforts = await resolveSupportedEffortsForDimensions(
     adapter.dimensions(request, context),
     slot.candidate.modelId,
+    slot.candidate.provider.upstreamMetadata?.[slot.candidate.modelId],
   );
   const upstream = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
   return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan, options);

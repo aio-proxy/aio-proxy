@@ -70,6 +70,7 @@ export async function attemptRawCount<TRequest, TContext>({
     const supportedEfforts = await resolveSupportedEffortsForDimensions(
       adapter.dimensions(request, context),
       candidate.modelId,
+      candidate.provider.upstreamMetadata?.[candidate.modelId],
     );
     const upstream = await adapter.rawRequest(
       rawRequest.clone(),

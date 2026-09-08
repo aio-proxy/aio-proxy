@@ -66,6 +66,7 @@ export async function prepareModelInvocation<TRequest, TContext>(
   const supportedEfforts = await resolveSupportedEffortsForDimensions(
     ctx.adapter.dimensions(ctx.request, ctx.context),
     slot.candidate.modelId,
+    slot.candidate.provider.upstreamMetadata?.[slot.candidate.modelId],
   );
   return resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol, supportedEfforts);
 }
