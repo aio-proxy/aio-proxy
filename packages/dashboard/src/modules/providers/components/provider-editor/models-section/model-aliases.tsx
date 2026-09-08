@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Checkbox } from '@aio-proxy/ui/components/checkbox';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 
 import type { AliasEditorIssue, AliasRow } from '../../../lib/alias-editor';
@@ -50,19 +50,19 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({
         </div>
       </div>
       {onInheritPluginAliasesChange === undefined ? null : (
-        <div className="flex items-start gap-2 text-sm" data-testid="inherit-plugin-aliases">
-          <Checkbox
-            id="inherit-plugin-aliases"
-            data-testid="inherit-plugin-aliases-checkbox"
-            checked={inheritPluginAliases !== false}
-            onCheckedChange={(checked) => onInheritPluginAliasesChange(checked === true)}
-          />
-          <label htmlFor="inherit-plugin-aliases">
+        <div className="flex items-start justify-between gap-3 text-sm" data-testid="inherit-plugin-aliases">
+          <label htmlFor="inherit-plugin-aliases" className="min-w-0">
             <span className="font-medium">{m['dashboard.providers.form.inherit_plugin_aliases']()}</span>
             <span className="block text-xs text-muted-foreground">
               {m['dashboard.providers.form.inherit_plugin_aliases_description']()}
             </span>
           </label>
+          <Switch
+            id="inherit-plugin-aliases"
+            data-testid="inherit-plugin-aliases-switch"
+            checked={inheritPluginAliases !== false}
+            onCheckedChange={(checked) => onInheritPluginAliasesChange(checked === true)}
+          />
         </div>
       )}
       {hasRows ? (

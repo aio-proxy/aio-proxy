@@ -532,7 +532,7 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   expect(screen.getByText(/Authorize this account to unlock/u)).toBeTruthy();
   // Base UI's checkbox is a `span`, so `fieldset disabled` does not set `disabled` on it. The lock
   // is the fieldset itself — the same wrapper that greys out sections 3–5 until authorize lands.
-  expect(screen.getByTestId('inherit-plugin-aliases-checkbox').closest('fieldset')).toBeDisabled();
+  expect(screen.getByTestId('inherit-plugin-aliases-switch').closest('fieldset')).toBeDisabled();
   // X9: an unauthorized oauth draft has nothing to persist, so it is `attention` and the footer primary
   // is gated. The Connection section's own authorize button is the entry that works — the same shape the
   // prototype has, where Save is likewise disabled until the round trip lands. The footer never renames
@@ -573,7 +573,7 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   expect(mocks.navigate).not.toHaveBeenCalledWith(expect.objectContaining({ to: '/providers' }));
   expect(screen.getByText(/model catalog is not available/u)).toBeTruthy();
   expect(saveButton()).toBeEnabled();
-  expect(screen.getByTestId('inherit-plugin-aliases-checkbox').closest('fieldset')).toBeNull();
+  expect(screen.getByTestId('inherit-plugin-aliases-switch').closest('fieldset')).toBeNull();
 });
 
 test('oauth empty whitelist lists discovered catalog ids on the exposure rail', () => {

@@ -128,6 +128,6 @@ test('the inherit toggle reports the current draft inherit state', () => {
   );
 
   expect(screen.getByTestId('inherit-plugin-aliases')).toBeInTheDocument();
-  fireEvent.click(screen.getByTestId('inherit-plugin-aliases-checkbox'));
+  fireEvent.click(screen.getByTestId('inherit-plugin-aliases-switch'));
   expect(onInherit).toHaveBeenCalled();
 });
