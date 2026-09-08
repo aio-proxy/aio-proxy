@@ -213,7 +213,15 @@ export function matchAliasRows(
 ): AliasTarget {
   const bag = canonicalizeDimensions(dimensions);
   const matches = rows.filter((row) => rowMatches(row.when, bag));
-  if (matches.length === 0) return effortCeiling(rows, bag) ?? fallback;
+  // A row that constrains `effort` is direct evidence for the requested level, so it wins
+  // outright. When nothing that matched constrains effort — no match at all, or only
+  // effort-blind rows such as Antigravity's `{ thinking: true }` catch-all — the winner would
+  // be picked with the request's effort ignored, so the ceiling gets to answer first.
+  if (matches.every((row) => row.when.effort === undefined)) {
+    const ceiling = effortCeiling(rows, bag);
+    if (ceiling !== undefined) return ceiling;
+  }
+  if (matches.length === 0) return fallback;
   const maximal = matches.filter(
     (row) => !matches.some((other) => other !== row && isStrictSubset(row.when, other.when)),
   );
@@ -241,7 +249,11 @@ function effortCeiling(rows: readonly AliasSelectRow[], bag: AliasDimensions): A
     // never captures a non-thinking request.
     if (!rowMatches({ ...row.when, effort: undefined }, bag)) continue;
     const rank = effortRank(row.when.effort);
-    if (rank === -1 || rank >= wanted) return undefined;
+    // An off-ladder row is a sentinel addressed by exact name (Antigravity emits
+    // `hidden:<wire id>` for suppressed wires); it is not part of the ladder this
+    // request is measured against, so it must not abort the search.
+    if (rank === -1) continue;
+    if (rank >= wanted) return undefined;
     if (best === undefined || rank > best.rank || (rank === best.rank && whenRank(row.when) > whenRank(best.row.when)))
       best = { row, rank };
   }

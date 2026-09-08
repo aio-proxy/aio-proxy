@@ -407,6 +407,83 @@ describe('matchAliasRows effort ceiling', () => {
   });
 });
 
+// Shapes copied from what google-antigravity's own alias generator emits
+// (packages/plugins/google-antigravity/src/catalog/aliases.ts): effort rows for the split
+// variants, an `xhigh` row, a `hidden:<wire id>` sentinel for a suppressed non-thinking wire,
+// and a `{ thinking: true }` catch-all for a suppressed `-thinking` wire.
+describe('matchAliasRows effort ceiling on generated alias rows', () => {
+  const fallback = { model: 'gemini-3.5-flash-low', preserve: false };
+  const effortRows: AliasSelectRow[] = [
+    { when: { effort: 'low' }, model: 'gemini-3.5-flash-low', preserve: false },
+    { when: { effort: 'medium' }, model: 'gemini-3.5-flash-medium', preserve: false },
+    { when: { effort: 'high' }, model: 'gemini-3-flash-agent', preserve: false },
+  ];
+  const hidden: AliasSelectRow = {
+    when: { effort: 'hidden:flash-internal-7' },
+    model: 'flash-internal-7',
+    preserve: false,
+  };
+  const thinkingCatchAll: AliasSelectRow = {
+    when: { thinking: true },
+    model: 'gemini-3.5-flash-thinking',
+    preserve: false,
+  };
+
+  test('a hidden sentinel row does not abort the ceiling search', () => {
+    expect(matchAliasRows([...effortRows, hidden], { effort: 'max' }, fallback)).toEqual({
+      model: 'gemini-3-flash-agent',
+      preserve: false,
+    });
+  });
+
+  test('a hidden sentinel is still reachable by its exact name', () => {
+    expect(matchAliasRows([...effortRows, hidden], { effort: 'hidden:flash-internal-7' }, fallback)).toEqual({
+      model: 'flash-internal-7',
+      preserve: false,
+    });
+  });
+
+  test('an effort-blind catch-all does not swallow an above-ceiling request', () => {
+    // Anthropic ingress sends { effort, thinking } for adaptive thinking; the catch-all
+    // matches on thinking alone, so without the ceiling the request would ignore its effort.
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { effort: 'max', thinking: true }, fallback)).toEqual({
+      model: 'gemini-3-flash-agent',
+      preserve: false,
+    });
+  });
+
+  test('the catch-all still wins when the request carries no effort', () => {
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { thinking: true }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-thinking',
+      preserve: false,
+    });
+  });
+
+  test('a row matching on effort beats the ceiling', () => {
+    expect(matchAliasRows([...effortRows, hidden], { effort: 'medium' }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-medium',
+      preserve: false,
+    });
+  });
+
+  test('the thinking catch-all keeps outranking a bare effort row', () => {
+    // whenRank precedence, unchanged: an effort row matched, so the ceiling never runs,
+    // and the higher-ranked thinking row wins the way it did before the ceiling existed.
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { effort: 'medium', thinking: true }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-thinking',
+      preserve: false,
+    });
+  });
+
+  test('an effort inside a gap still reaches the catch-all rather than the ceiling', () => {
+    // minimal sits below the `low` row, so a higher row exists: a gap, not a ceiling.
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { effort: 'minimal', thinking: true }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-thinking',
+      preserve: false,
+    });
+  });
+});
+
 describe('effortRank', () => {
   test('ranks the ladder ascending and folds spellings', () => {
     expect(effortRank('none')).toBe(0);
