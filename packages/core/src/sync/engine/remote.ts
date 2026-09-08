@@ -52,6 +52,7 @@ function upsertEntity(
     baseline,
     overrides: existing?.overrides ?? [],
     pendingReason,
+    oauth: existing?.oauth,
   });
 }
 

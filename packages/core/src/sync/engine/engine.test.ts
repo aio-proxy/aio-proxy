@@ -16,6 +16,65 @@ test('a cloud Provider joins the other device and import has no outgoing echo', 
   });
 });
 
+test('remote updates, pending states, and deletion preserve OAuth ownership', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    const ownership = {
+      mode: 'shared' as const,
+      epoch: 0,
+      generation: 2,
+      localRevision: 4,
+      pluginVersion: '1.0.0',
+      formatVersion: 1,
+    };
+    b.repo.putEntity(b.binding.id, {
+      objectId: 'provider-work',
+      logicalKey: 'work',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: null,
+      baseline: null,
+      overrides: [],
+      pendingReason: null,
+      oauth: ownership,
+    });
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')?.oauth).toEqual(
+      ownership,
+    );
+
+    await a.commitProvider('work', { kind: 'api', apiKey: 'second' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')?.oauth).toEqual(
+      ownership,
+    );
+
+    b.setPendingActivation('missing-plugin');
+    await a.commitProvider('work', { kind: 'api', apiKey: 'third' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')).toMatchObject({
+      pendingReason: 'missing-plugin',
+      oauth: ownership,
+    });
+
+    b.setPendingActivation(undefined);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'fourth' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    await deleteEntity(createSyncObjectStore(a.session), 'provider-work', 0, a.signal);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')).toMatchObject({
+      baseline: expect.stringMatching(/^deleted:/),
+      oauth: ownership,
+    });
+  });
+});
+
 test('a locally excluded Provider stays excluded when discovered from the cloud', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await b.commitProvider('work', { kind: 'api', apiKey: 'local' }, false);
