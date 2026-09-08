@@ -1,6 +1,6 @@
 import { SyncBackendError, type SyncSession } from '@aio-proxy/plugin-sdk';
 
-import { collectHistory, deleteEntity, purgeEntity, readServerTime } from '../cleanup';
+import { collectHistory, deleteEntity, purgeEntity, readServerTime, restoreEntity } from '../cleanup';
 import { recoverLocalCommits, type LocalCommitPort } from '../local-commit';
 import {
   decodeHead,
@@ -120,7 +120,20 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     if (operationId === undefined) return null;
     const value = await input.session.read(revisionKey(head.objectId, operationId), signal);
     if (value.kind === 'absent') throw new SyncProtocolError('invalid-data', 'current revision is missing');
-    return decodeRevision(value.value);
+    const record = decodeRevision(value.value);
+    if (
+      record.protocol !== 1 ||
+      record.objectId !== head.objectId ||
+      record.operationId !== operationId ||
+      record.epoch !== head.epoch ||
+      record.state !== 'payload'
+    ) {
+      throw new SyncProtocolError('invalid-data', 'current revision identity mismatch');
+    }
+    if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey) {
+      throw new SyncProtocolError('invalid-data', 'current revision logical identity mismatch');
+    }
+    return record;
   }
 
   function upsertEntity(
@@ -145,8 +158,39 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     });
   }
 
+  // eslint-disable-next-line max-lines-per-function
   async function reconcileRemote(generation: number, signal: AbortSignal): Promise<void> {
     const bindingId = input.binding.id;
+    const conflictObjects = new Set<string>();
+    const identities = new Map<string, Set<string>>();
+    let discoveryCursor: string | undefined;
+    do {
+      const page = await input.session.list(
+        { prefix: 's/v1/default/entity/', ...(discoveryCursor === undefined ? {} : { cursor: discoveryCursor }) },
+        signal,
+      );
+      for (const key of page.keys) {
+        const objectId = key.slice('s/v1/default/entity/'.length);
+        if (objectId.length === 0) continue;
+        const value = await input.session.read(entityKey(objectId), signal);
+        if (value.kind === 'absent') continue;
+        try {
+          const head = decodeHead(value.value);
+          if (head.state === 'active' && head.current !== null) {
+            const identity = `${head.kind}\0${head.logicalKey}`;
+            const members = identities.get(identity) ?? new Set<string>();
+            members.add(objectId);
+            identities.set(identity, members);
+          }
+        } catch {
+          // The main pass preserves malformed/unknown records as read-only.
+        }
+      }
+      discoveryCursor = page.nextCursor;
+    } while (discoveryCursor !== undefined);
+    for (const members of identities.values()) {
+      if (members.size > 1) for (const objectId of members) conflictObjects.add(objectId);
+    }
     let cursor: string | undefined;
     const known = new Map(input.repo.entities(bindingId).map((entity) => [entity.objectId, entity]));
     do {
@@ -167,6 +211,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
           if (error instanceof SyncBackendError) throw error;
           const existing = known.get(objectId);
           if (existing !== undefined) {
+            assertGeneration(generation);
             upsertEntity(
               bindingId,
               existing,
@@ -198,7 +243,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
           (candidate) =>
             candidate.objectId !== objectId && candidate.kind === head.kind && candidate.logicalKey === head.logicalKey,
         );
-        if (head.state !== 'active' || head.current === null) {
+        if (head.state !== 'active') {
           if (existing !== undefined) {
             assertGeneration(generation);
             await input.local.applyRemote(objectId, null, `deleted:${head.epoch}`);
@@ -220,20 +265,43 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
           });
           continue;
         }
+        if (head.current === null) continue;
         let record: RevisionRecord | null;
         try {
           record = await readCurrent(head, signal);
         } catch (error) {
           if (error instanceof SyncBackendError) throw error;
           const reason = pendingFromError(error);
-          if (existing !== undefined && reason !== undefined)
+          if (existing !== undefined && reason !== undefined) {
+            assertGeneration(generation);
             upsertEntity(bindingId, existing, head, existing.desired, existing.mode, reason, existing.baseline);
+          }
           continue;
         }
         if (record === null || record.state !== 'payload') continue;
         const body = record.body;
-        if (body.kind !== head.kind || body.logicalKey !== head.logicalKey) continue;
-        if (conflicting !== undefined) {
+        if (conflictObjects.has(objectId) || conflicting !== undefined) {
+          const candidates = [...known.values(), ...(existing === undefined ? [] : [existing])].filter(
+            (candidate, index, all) =>
+              candidate.kind === head.kind &&
+              candidate.logicalKey === head.logicalKey &&
+              all.findIndex((item) => item.objectId === candidate.objectId) === index,
+          );
+          for (const candidate of candidates) {
+            if (candidate.mode === 'included') {
+              assertGeneration(generation);
+              await input.local.applyRemote(candidate.objectId, null, `conflict:${head.epoch}`);
+              assertGeneration(generation);
+            }
+            assertGeneration(generation);
+            input.repo.putEntity(bindingId, {
+              ...candidate,
+              mode: 'excluded',
+              pendingReason: 'provider-id-conflict',
+            });
+            known.set(candidate.objectId, { ...candidate, mode: 'excluded', pendingReason: 'provider-id-conflict' });
+          }
+          assertGeneration(generation);
           upsertEntity(bindingId, existing, head, body, 'excluded', 'provider-id-conflict', existing?.baseline ?? null);
           known.set(objectId, {
             ...existing,
@@ -251,6 +319,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         }
         const mode = existing?.mode ?? 'included';
         if (mode === 'excluded') {
+          assertGeneration(generation);
           upsertEntity(bindingId, existing, head, body, mode, null, record.operationId);
           known.set(objectId, {
             ...existing,
@@ -275,6 +344,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         } catch (error) {
           const reason = pendingFromError(error);
           if (reason === undefined) throw error;
+          assertGeneration(generation);
           activation = { applied: false, pending: reason };
         }
         const pending = activation.applied ? null : (activation.pending ?? 'invalid-config');
@@ -309,8 +379,20 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
       signal.throwIfAborted();
       assertGeneration(generation);
       if (operation.kind === 'put' && operation.body !== null) {
-        await publishEntity(store, operation, signal);
+        const head = await store.readHead(operation.objectId, signal);
+        assertGeneration(generation);
+        if (head !== null && head.head.state !== 'active') {
+          await restoreEntity(store, operation.objectId, operation.body, operation.operationId, signal);
+        } else {
+          await publishEntity(store, operation, signal);
+        }
       } else {
+        const head = await store.readHead(operation.objectId, signal);
+        assertGeneration(generation);
+        if (head === null || head.head.state === 'deleted' || head.head.state === 'purged') {
+          input.repo.acknowledge(input.binding.id, operation.operationId);
+          continue;
+        }
         await deleteEntity(store, operation.objectId, operation.epoch, signal);
       }
       assertGeneration(generation);
@@ -321,7 +403,13 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
   async function maintenance(signal: AbortSignal): Promise<void> {
     const now = await readServerTime(store, signal);
     for (const entity of input.repo.entities(input.binding.id)) {
-      const head = await readHead(entity.objectId, signal);
+      let head: EntityHead | null;
+      try {
+        head = await readHead(entity.objectId, signal);
+      } catch (error) {
+        if (error instanceof SyncProtocolError) continue;
+        throw error;
+      }
       if (head === null) continue;
       if (head.state === 'purging') await purgeEntity(store, entity.objectId, signal);
       else await collectHistory(store, entity.objectId, now, signal);
@@ -406,7 +494,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         .then(async () => {
           if (disposed) return;
           disposed = true;
-          await input.session.dispose();
+          await input.session.dispose().catch(() => undefined);
           status('stopped');
         });
       return stopPromise;

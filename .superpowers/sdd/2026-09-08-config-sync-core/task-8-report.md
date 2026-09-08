@@ -7,11 +7,13 @@
 - Added `packages/core/src/sync/engine/scheduler.ts` with polling/backoff constants and bounded jitter.
 - Added `packages/core/src/sync/engine/index.ts` and exported the engine from `packages/core/src/sync/index.ts`.
 - Added `packages/core/src/sync/engine/engine.test.ts` covering two-device publication/import, selective exclusion, and no-watch lifecycle use.
-- Extended `packages/core/src/sync/test-support.ts` with deterministic two-device SQLite repositories, local commit capture, remote-origin application, and a shared in-memory backend whose logical space is `default`.
+- Added `packages/core/src/sync/engine/test-support.ts` with deterministic two-device SQLite repositories, real `AtomicConfigFile` local commit capture, remote-origin application, lifecycle gates, and a shared in-memory backend whose logical space is `default`; the core test-support barrel re-exports it.
 
 ## Lifecycle and reconciliation behavior
 
 The engine verifies the active binding, identity, space, and session generation before work and again before local application or outbox acknowledgement. It recovers prepared local commits, drains the durable outbox using publication/deletion recovery, paginates cloud entity heads, validates current revisions, persists desired state and exclusions, and applies included compatible entities through `LocalSyncPort.applyRemote`. Remote application never creates an outgoing commit.
+
+Active heads with no current revision are treated as transient publication state and left untouched. Current revisions are checked against the head object ID, operation ID, epoch, protocol, state, and logical identity before they can become a baseline. Conflicting object IDs are discovered before activation and all involved identities are excluded and disabled deterministically. Local puts targeting deleted heads use the explicit restore path and advance the remote epoch.
 
 Newly discovered entities are included by default, while an existing local exclusion is retained. A same logical identity with another object ID is kept excluded with `provider-id-conflict`; pending activation keeps desired data and retries on later reconciliation. Unknown or unsupported records remain read-only with `upgrade-required` where an existing local identity can be retained. Deletion and purge heads deliver a null remote application, including excluded identities so the local OAuth coordinator can observe account deletion signals.
 
@@ -19,8 +21,9 @@ Newly discovered entities are included by default, while an existing local exclu
 
 ## Tests and verification
 
-- `bun test packages/core/src/sync`: 83 passed.
-- `bun run --filter @aio-proxy/plugin-sdk test`: 92 passed; TypeScript test declarations passed.
+- `bun test packages/core/src/sync`: 95 passed.
+- `bun run --filter @aio-proxy/core test`: passed.
+- `bun run --filter @aio-proxy/plugin-sdk test`: passed (92 tests); TypeScript test declarations passed.
 - `bun run check`: passed (repository warnings only).
 - `bun run --filter @aio-proxy/core build`: passed, including declaration generation.
 

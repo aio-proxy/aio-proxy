@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
+import { deleteEntity } from '../cleanup';
+import { encode, newHead, entityKey, revisionKey, type EntityBody } from '../protocol';
+import { createSyncObjectStore, publishEntity } from '../publication';
 import { withTwoSyncDevices } from '../test-support';
+import { MAX_BACKOFF_MS, nextBackoffMs } from './scheduler';
 
 test('a cloud Provider joins the other device and import has no outgoing echo', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
@@ -26,16 +30,259 @@ test('a locally excluded Provider stays excluded when discovered from the cloud'
   });
 });
 
-test('start polls when the backend has no watch callback', async () => {
+test('start polls and applies a cloud change without a manual reconcile', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    b.engine.start();
+    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+    await a.engine.reconcile(a.signal);
+    await new Promise((resolve) => setTimeout(resolve, 35));
+    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
+  });
+});
+
+test('an active head without a current revision remains transient during reconciliation', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    const body: EntityBody = {
+      kind: 'provider',
+      logicalKey: 'transient',
+      value: { kind: 'api' },
+      dependencies: [],
+    };
+    await a.session.compareAndSwap(
+      entityKey('provider-transient'),
+      null,
+      encode(newHead('provider-transient', body)),
+      a.signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id)).toEqual([]);
+  });
+});
+
+test('conflicting cloud object IDs are all excluded before any provider is applied', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    const signal = a.signal;
+    const store = createSyncObjectStore(a.session);
+    await publishEntity(
+      store,
+      {
+        operationId: 'conflict-a-op',
+        objectId: 'provider-conflict-a',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'conflict', value: { kind: 'api', key: 'a' }, dependencies: [] },
+        commitId: 'fixture-a',
+      },
+      signal,
+    );
+    await publishEntity(
+      store,
+      {
+        operationId: 'conflict-b-op',
+        objectId: 'provider-conflict-b',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'conflict', value: { kind: 'api', key: 'b' }, dependencies: [] },
+        commitId: 'fixture-b',
+      },
+      signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id)).toEqual([
+      expect.objectContaining({
+        objectId: 'provider-conflict-a',
+        mode: 'excluded',
+        pendingReason: 'provider-id-conflict',
+      }),
+      expect.objectContaining({
+        objectId: 'provider-conflict-b',
+        mode: 'excluded',
+        pendingReason: 'provider-id-conflict',
+      }),
+    ]);
+  });
+});
+
+test('watch hints coalesce while one remote application is in flight', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    const gate = b.pauseRemoteApplication();
+    b.engine.start();
+    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+    await a.engine.reconcile(a.signal);
+    await gate.entered;
+    await a.commitProvider('other', { kind: 'api', apiKey: 'other' }, true);
+    await a.engine.reconcile(a.signal);
+    gate.release();
+    await new Promise((resolve) => setTimeout(resolve, 35));
+    expect(b.remoteApplyCalls().filter((call) => call.objectId === 'provider-work')).toHaveLength(1);
+  });
+});
+
+test('a pending dependency is retried and activates after the dependency becomes available', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
     await a.engine.reconcile(a.signal);
-    const polling = b.engine;
-    // The fixture uses the production default timer; an explicit reconcile remains the
-    // deterministic assertion while start/stop exercises the no-watch lifecycle.
-    polling.start();
-    await polling.reconcile(b.signal);
-    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
-    await polling.stop();
+    b.setPendingActivation('missing-plugin');
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')).toMatchObject({
+      pendingReason: 'missing-plugin',
+      baseline: null,
+    });
+    b.setPendingActivation(undefined);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')).toMatchObject({
+      pendingReason: null,
+      baseline: expect.any(String),
+    });
   });
+});
+
+test('unknown protocol data remains read-only and marks an existing identity upgrade-required', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    b.repo.putEntity(b.binding.id, {
+      objectId: 'provider-unknown',
+      logicalKey: 'unknown',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: null,
+      baseline: null,
+      overrides: [],
+      pendingReason: null,
+    });
+    await b.session.compareAndSwap(
+      entityKey('provider-unknown'),
+      null,
+      new Uint8Array([123, 34, 112, 114, 111, 116, 111, 99, 111, 108, 34, 58, 50, 125]),
+      b.signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-unknown')).toMatchObject({
+      pendingReason: 'upgrade-required',
+      baseline: null,
+    });
+  });
+});
+
+test('a current revision with mismatched identity never becomes a baseline', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    const body: EntityBody = {
+      kind: 'provider',
+      logicalKey: 'mismatch',
+      value: { kind: 'api' },
+      dependencies: [],
+    };
+    b.repo.putEntity(b.binding.id, {
+      objectId: 'provider-mismatch',
+      logicalKey: 'mismatch',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: null,
+      baseline: null,
+      overrides: [],
+      pendingReason: null,
+    });
+    await b.session.compareAndSwap(
+      entityKey('provider-mismatch'),
+      null,
+      encode({ ...newHead('provider-mismatch', body), current: 'wrong-operation', sequence: 1 }),
+      b.signal,
+    );
+    await b.session.compareAndSwap(
+      revisionKey('provider-mismatch', 'wrong-operation'),
+      null,
+      encode({
+        protocol: 1,
+        state: 'payload',
+        objectId: 'other-object',
+        epoch: 0,
+        operationId: 'wrong-operation',
+        body,
+        publishedSequence: 1,
+        writtenAt: 1,
+      }),
+      b.signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-mismatch')).toMatchObject({
+      baseline: null,
+      pendingReason: 'invalid-config',
+    });
+  });
+});
+
+test('excluded identities receive cloud deletion signals', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await b.commitProvider('work', { kind: 'api', apiKey: 'local' }, false);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    await deleteEntity(createSyncObjectStore(a.session), 'provider-work', 0, a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.remoteApplyCalls().some((call) => call.objectId === 'provider-work' && call.body === null)).toBe(true);
+    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.desired).toBeNull();
+  });
+});
+
+test('local publication is acknowledged and re-add restores a remotely deleted head', async () => {
+  await withTwoSyncDevices(async ({ a }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    await deleteEntity(createSyncObjectStore(a.session), 'provider-work', 0, a.signal);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'restored' }, true);
+    await a.engine.reconcile(a.signal);
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    const head = await createSyncObjectStore(a.session).readHead('provider-work', a.signal);
+    expect(head?.head.state).toBe('active');
+    expect(head?.head.epoch).toBe(1);
+  });
+});
+
+test('a local delete outbox operation is published and acknowledged', async () => {
+  await withTwoSyncDevices(async ({ a }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    a.queueDelete('provider-work', 0);
+    await a.engine.reconcile(a.signal);
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    expect((await createSyncObjectStore(a.session).readHead('provider-work', a.signal))?.head.state).toBe('deleted');
+  });
+});
+
+test('stale callbacks cannot persist state after the binding generation switches', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+    await a.engine.reconcile(a.signal);
+    const gate = b.pauseRemoteApplication();
+    const pending = b.engine.reconcile(b.signal);
+    await gate.entered;
+    b.repo.writeBinding({ ...b.binding, sessionGeneration: 2 });
+    gate.release();
+    await pending;
+    expect(b.repo.entities(b.binding.id)).toEqual([]);
+  });
+});
+
+test('stop aborts in-flight work, disposes once, and is repeatable', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+    await a.engine.reconcile(a.signal);
+    const gate = b.gateNext('read');
+    const pending = b.engine.reconcile(b.signal);
+    await gate.entered;
+    const firstStop = b.engine.stop();
+    const secondStop = b.engine.stop();
+    gate.release();
+    await Promise.all([pending, firstStop, secondStop]);
+    await b.engine.stop();
+  });
+});
+
+test('backoff remains bounded', () => {
+  let delay = 5;
+  for (let index = 0; index < 20; index++) delay = nextBackoffMs(delay, 5);
+  expect(delay).toBeLessThanOrEqual(MAX_BACKOFF_MS);
+  expect(delay).toBeGreaterThanOrEqual(5);
 });
