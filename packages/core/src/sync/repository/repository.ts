@@ -148,6 +148,44 @@ type OAuthRow = {
   payload_json: unknown;
 };
 
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameCommitIntent(left: CommitIntent, right: CommitIntent): boolean {
+  return (
+    left.commitId === right.commitId &&
+    left.origin === right.origin &&
+    left.beforeDigest === right.beforeDigest &&
+    left.afterDigest === right.afterDigest &&
+    sameJson(left.rawAfter, right.rawAfter) &&
+    sameJson(left.accountOperationIds, right.accountOperationIds) &&
+    sameJson(left.remoteOperations, right.remoteOperations) &&
+    sameJson(left.sourceRevisions, right.sourceRevisions)
+  );
+}
+
+function sameOutboxOperation(left: OutboxOperation, right: OutboxOperation): boolean {
+  return (
+    left.operationId === right.operationId &&
+    left.objectId === right.objectId &&
+    left.epoch === right.epoch &&
+    left.kind === right.kind &&
+    sameJson(left.body, right.body) &&
+    left.commitId === right.commitId
+  );
+}
+
+function phaseOrder(phase: OAuthJournalRow['phase']): number {
+  return phase === 'started' ? 0 : phase === 'result' ? 1 : 2;
+}
+
+function ensureFullSynchronous(sqlite: Database): void {
+  sqlite.run('PRAGMA synchronous = FULL');
+  const value = Object.values(sqlite.query('PRAGMA synchronous').get() ?? {}).at(0);
+  if (value !== 2) throw new Error('SQLite synchronous=FULL could not be established for the OAuth journal');
+}
+
 // The repository methods are deliberately kept together so every mutation uses the same transaction wrapper.
 // eslint-disable-next-line max-lines-per-function
 export function createSyncRepository(sqlite: Database): SyncRepository {
@@ -271,6 +309,12 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
     prepare(bindingId, intent) {
       if (intent.phase !== 'prepared') throw new TypeError('Sync intents must be prepared before confirmation');
       transaction(() => {
+        const existing = readCommitRow(bindingId, intent.commitId);
+        if (existing !== null) {
+          const stored = parseCommitRow(existing);
+          if (!sameCommitIntent(stored, intent)) throw new Error(`Conflicting sync commit: ${intent.commitId}`);
+          return;
+        }
         sqlite
           .query(
             `INSERT INTO sync_commit
@@ -338,11 +382,23 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
           if ((operation.kind === 'put') !== (operation.body !== null)) {
             throw new Error('Put operations require a body and delete operations require null body');
           }
+          const existing = sqlite
+            .query<OutboxRow, [string, string]>(
+              `SELECT operation_id, object_id, epoch, kind, body_json, commit_id
+                 FROM sync_outbox WHERE binding_id = ? AND operation_id = ?`,
+            )
+            .get(bindingId, operation.operationId);
+          if (existing !== null) {
+            if (!sameOutboxOperation(parseOutboxRow(existing), operation)) {
+              throw new Error(`Conflicting sync outbox operation: ${operation.operationId}`);
+            }
+            continue;
+          }
           sqlite
             .query(
               `INSERT INTO sync_outbox (binding_id, operation_id, object_id, epoch, kind, body_json, commit_id)
              VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(binding_id, operation_id) DO NOTHING`,
+             `,
             )
             .run(
               bindingId,
@@ -409,18 +465,48 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
     },
 
     writeOAuthJournal(bindingId, row) {
+      ensureFullSynchronous(sqlite);
       transaction(() => {
+        const existing = sqlite
+          .query<OAuthRow, [string, string]>(
+            `SELECT operation_id, object_id, epoch, base_generation, phase, payload_json
+               FROM sync_oauth_journal WHERE binding_id = ? AND operation_id = ?`,
+          )
+          .get(bindingId, row.operationId);
+        if (existing !== null) {
+          const stored = parseOAuthJournalRow(existing);
+          if (
+            stored.objectId !== row.objectId ||
+            stored.epoch !== row.epoch ||
+            stored.baseGeneration !== row.baseGeneration
+          ) {
+            throw new Error(`Conflicting sync OAuth journal identity: ${row.operationId}`);
+          }
+          const currentOrder = phaseOrder(stored.phase);
+          const nextOrder = phaseOrder(row.phase);
+          if (nextOrder < currentOrder) throw new Error(`Stale sync OAuth journal phase: ${row.operationId}`);
+          if (nextOrder === currentOrder) {
+            if (!sameJson(stored.payload, row.payload)) {
+              throw new Error(`Conflicting sync OAuth journal result: ${row.operationId}`);
+            }
+            return;
+          }
+          if (stored.phase === 'result' && !sameJson(stored.payload, row.payload)) {
+            throw new Error(`Conflicting sync OAuth journal result: ${row.operationId}`);
+          }
+          sqlite
+            .query(
+              `UPDATE sync_oauth_journal SET phase = ?, payload_json = ?
+                 WHERE binding_id = ? AND operation_id = ?`,
+            )
+            .run(row.phase, row.payload === null ? null : stringifyJson(row.payload), bindingId, row.operationId);
+          return;
+        }
         sqlite
           .query(
             `INSERT INTO sync_oauth_journal
              (binding_id, operation_id, object_id, epoch, base_generation, phase, payload_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(binding_id, operation_id) DO UPDATE SET
-             object_id = excluded.object_id,
-             epoch = excluded.epoch,
-             base_generation = excluded.base_generation,
-             phase = excluded.phase,
-             payload_json = excluded.payload_json`,
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             bindingId,

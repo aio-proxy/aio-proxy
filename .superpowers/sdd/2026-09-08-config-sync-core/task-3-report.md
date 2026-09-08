@@ -23,6 +23,13 @@ Commit confirmation runs in one SQLite transaction. It preserves remote origin r
 - `rtk proxy bun test packages/core` — 1,851 passed and 2 failed in pre-existing npm/file-lock recovery timing tests (`npm-lock.race.test.ts` and `recovery-fence.test.ts`); the new sync tests passed.
 - Full `bun run lint:types` remains blocked by two pre-existing dashboard type errors in `use-oauth-editor-session.ts`; the core package build passed with the new implementation.
 
+## Review fix round
+
+- OAuth journal writes now preserve immutable operation identity, enforce `started -> result -> complete`, reject stale phases and conflicting payloads, and switch the SQLite connection to `PRAGMA synchronous=FULL` before the journal transaction.
+- Prepare now rejects conflicting data for an existing commit ID. Outbox confirmation compares an existing operation's object, epoch, kind, body, and commit ID and rejects mismatches instead of ignoring them.
+- The on-disk reopen test now verifies a confirmed commit and its outbox operation, and migration test support rejects a newer `user_version` with `DatabaseSchemaTooNewError`.
+- `rtk proxy bun test packages/core/src/sync/repository/repository.test.ts packages/core/src/sync/test-support.test.ts` — 13 passed, 0 failed after the review fixes.
+
 ## Migration verification
 
 Drizzle generated migration `0008_config_sync.sql` from the schema and the repository migration manifest generator registered it as runtime version 9 (migration filename ordinal 0008). Migration hash/journal consistency and fresh database application passed in `migrations.test.ts`.

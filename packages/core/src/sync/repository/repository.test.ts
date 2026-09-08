@@ -133,6 +133,68 @@ test('remote confirmation rejects outbox operations and leaves the intent pendin
   db.close();
 });
 
+test('outbox operation ID conflicts are rejected instead of being ignored', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  repo.prepare('b', intent());
+  repo.confirm('b', 'local-commit', [
+    { operationId: 'operation-1', objectId: 'object-1', epoch: 1, kind: 'put', body, commitId: 'local-commit' },
+  ]);
+  repo.prepare('b', { ...intent(), commitId: 'second-commit', afterDigest: 'second' });
+  expect(() =>
+    repo.confirm('b', 'second-commit', [
+      {
+        operationId: 'operation-1',
+        objectId: 'object-2',
+        epoch: 2,
+        kind: 'delete',
+        body: null,
+        commitId: 'second-commit',
+      },
+    ]),
+  ).toThrow();
+  expect(repo.readCommit('b', 'second-commit')?.phase).toBe('prepared');
+  expect(repo.outbox('b')).toHaveLength(1);
+  db.close();
+});
+
+test('repeated prepare with conflicting intent data is rejected', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  repo.prepare('b', intent());
+  expect(() => repo.prepare('b', { ...intent(), afterDigest: 'different' })).toThrow();
+  expect(repo.readCommit('b', 'local-commit')?.afterDigest).toBe('after');
+  db.close();
+});
+
+test('OAuth journal writes are idempotent and enforce identity, phase, and result monotonicity', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  const started = {
+    operationId: 'oauth-1',
+    objectId: 'account-1',
+    epoch: 1,
+    baseGeneration: 3,
+    phase: 'started' as const,
+    payload: null,
+  };
+  repo.writeOAuthJournal('b', started);
+  repo.writeOAuthJournal('b', started);
+  expect(Number(db.query('PRAGMA synchronous').get()?.synchronous)).toBe(2);
+  const result = { ...started, phase: 'result' as const, payload: { token: 'new' } };
+  repo.writeOAuthJournal('b', result);
+  repo.writeOAuthJournal('b', result);
+  expect(() => repo.writeOAuthJournal('b', started)).toThrow();
+  expect(() => repo.writeOAuthJournal('b', { ...result, payload: { token: 'other' } })).toThrow();
+  expect(() => repo.writeOAuthJournal('b', { ...result, objectId: 'account-2' })).toThrow();
+  repo.writeOAuthJournal('b', { ...result, phase: 'complete' });
+  expect(repo.oauthJournals('b')).toEqual([{ ...result, phase: 'complete' }]);
+  db.close();
+});
+
 test('a failed confirm rolls back earlier outbox inserts', () => {
   const db = new Database(':memory:');
   migrateSyncTestDb(db);
@@ -175,6 +237,10 @@ test('repository state survives reopening an on-disk database', () => {
       phase: 'started',
       payload: null,
     });
+    repo.prepare('persisted', intent());
+    repo.confirm('persisted', 'local-commit', [
+      { operationId: 'operation-1', objectId: 'object-1', epoch: 2, kind: 'put', body, commitId: 'local-commit' },
+    ]);
     first.close();
 
     const second = new Database(path);
@@ -182,6 +248,8 @@ test('repository state survives reopening an on-disk database', () => {
     expect(reopened.readBinding()).toEqual(binding('persisted'));
     expect(reopened.entities('persisted')).toEqual([entity('object-1')]);
     expect(reopened.oauthJournals('persisted')).toHaveLength(1);
+    expect(reopened.latestConfirmedCommit('persisted')?.commitId).toBe('local-commit');
+    expect(reopened.outbox('persisted')).toHaveLength(1);
     second.close();
   } finally {
     rmSync(home, { recursive: true, force: true });

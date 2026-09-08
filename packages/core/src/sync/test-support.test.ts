@@ -1,8 +1,11 @@
+import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 
 import { exerciseSyncBackend } from '@aio-proxy/plugin-sdk/testing';
 
-import { createMemorySyncBackend } from './test-support';
+import { MIGRATIONS } from '../db/migrations.manifest';
+import { DatabaseSchemaTooNewError } from '../error';
+import { createMemorySyncBackend, migrateSyncTestDb } from './test-support';
 
 test('memory sync backend satisfies the public conformance exercise', async () => {
   const backend = createMemorySyncBackend();
@@ -55,4 +58,11 @@ test('disposing a gated session cancels its in-flight read and CAS without affec
   await expect(other.compareAndSwap('other-key', null, new Uint8Array([2]), signal)).resolves.toMatchObject({
     kind: 'written',
   });
+});
+
+test('migration test support rejects a database newer than the compiled schema', () => {
+  const db = new Database(':memory:');
+  db.run(`PRAGMA user_version = ${(MIGRATIONS.at(-1)?.version ?? 0) + 1}`);
+  expect(() => migrateSyncTestDb(db)).toThrow(DatabaseSchemaTooNewError);
+  db.close();
 });
