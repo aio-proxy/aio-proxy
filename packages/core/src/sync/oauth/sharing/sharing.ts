@@ -55,13 +55,19 @@ function markPending(input: OAuthSharingServiceInput, providerId: string, reason
     });
 }
 
-function journal(input: OAuthSharingServiceInput, objectId: string, payload: AccountWrite): string {
+function journal(
+  input: OAuthSharingServiceInput,
+  objectId: string,
+  epoch: number,
+  generation: number,
+  payload: AccountWrite,
+): string {
   const operationId = crypto.randomUUID();
   input.repo.writeOAuthJournal(input.binding.id, {
     operationId,
     objectId,
-    epoch: 0,
-    baseGeneration: 0,
+    epoch,
+    baseGeneration: generation,
     phase: 'started',
     payload: payload as never,
   });
@@ -93,7 +99,7 @@ function liveAccount(
 
 // eslint-disable-next-line max-lines-per-function
 export function createOAuthSharingService(input: OAuthSharingServiceInput): OAuthSharingService {
-  const pending = new Map<string, { candidate: AccountWrite; generation: number }>();
+  const pending = new Map<string, { candidate: AccountWrite; generation: number; operationId?: string }>();
   return {
     async share(providerId, signal) {
       return input.withProviderGate(providerId, async () => {
@@ -131,8 +137,9 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
           ownership(input, providerId, sharedOwnership(remote.account, local.revision));
           return 'shared';
         }
-        const operationId = journal(input, account.objectId, candidate);
+        const operationId = journal(input, account.objectId, 0, 0, candidate);
         let result;
+        let confirmed = account;
         try {
           result = await input.store.session.compareAndSwap(
             accountKey(account.objectId),
@@ -143,20 +150,33 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         } catch (error) {
           if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
           const observed = await readRemote(input.store, account.objectId, signal);
-          if (observed === null || 'unknown' in observed) return 'pending';
+          if (
+            observed === null ||
+            'unknown' in observed ||
+            observed.account.objectId !== account.objectId ||
+            observed.account.epoch !== account.epoch ||
+            observed.account.plugin !== account.plugin ||
+            observed.account.capability !== account.capability ||
+            observed.account.pluginVersion !== account.pluginVersion ||
+            observed.account.formatVersion !== account.formatVersion ||
+            observed.account.phase !== 'ready' ||
+            JSON.stringify(observed.account.payload) !== JSON.stringify(account.payload)
+          )
+            return 'pending';
+          confirmed = observed.account;
           result = { kind: 'written' as const, version: '', modifiedAt: 0 };
         }
         if (result.kind !== 'written') return 'pending';
         input.repo.writeOAuthJournal(input.binding.id, {
           operationId,
           objectId: account.objectId,
-          epoch: 0,
-          baseGeneration: 0,
+          epoch: confirmed.epoch,
+          baseGeneration: confirmed.generation,
           phase: 'complete',
           payload: candidate as never,
         });
         input.repo.clearOAuthJournal(input.binding.id, operationId);
-        ownership(input, providerId, sharedOwnership(account, local.revision));
+        ownership(input, providerId, sharedOwnership(confirmed, local.revision));
         return 'shared';
       });
     },
@@ -213,7 +233,14 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         if (remote === null || 'unknown' in remote) return 'pending';
         const token = pending.get(providerId);
         if (token === undefined) return 'pending';
-        const operationId = journal(input, remote.account.objectId, candidate);
+        const operationId = journal(
+          input,
+          remote.account.objectId,
+          remote.account.epoch,
+          remote.account.generation,
+          candidate,
+        );
+        pending.set(providerId, { ...token, operationId });
         markPending(input, providerId, 'detach-pending', true);
         const resolved = input.resolveAdapter(providerId);
         if (!(await verifyDetach(resolved.adapter, remote.account.payload.credential, candidate, signal))) {
@@ -258,7 +285,27 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
 
     cancelDetach(providerId) {
       const current = pending.get(providerId);
-      if (current !== undefined) pending.set(providerId, { ...current, generation: current.generation + 1 });
+      if (current !== undefined) {
+        const entity = entityFor(input.repo, input.binding, providerId);
+        if (current.operationId !== undefined && entity?.oauth !== undefined) {
+          input.repo.writeOAuthJournal(input.binding.id, {
+            operationId: current.operationId,
+            objectId: entity.objectId,
+            epoch: entity.oauth.epoch,
+            baseGeneration: entity.oauth.generation,
+            phase: 'complete',
+            payload: null,
+          });
+          input.repo.clearOAuthJournal(input.binding.id, current.operationId);
+        }
+        if (entity?.oauth?.mode === 'detach-pending')
+          input.repo.putEntity(input.binding.id, {
+            ...entity,
+            pendingReason: null,
+            oauth: { ...entity.oauth, mode: 'shared' },
+          });
+        pending.set(providerId, { ...current, generation: current.generation + 1, operationId: undefined });
+      }
     },
   };
 }
