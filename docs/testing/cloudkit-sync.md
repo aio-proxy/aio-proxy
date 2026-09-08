@@ -136,3 +136,10 @@ same-machine pair, two-Mac run, launchd service, network and identity changes,
 restart recovery, quota rejection, Production schema/index availability, and
 installed entitlement/access checks. Unrun cases remain `blocked`, even when
 the local pair passes.
+
+The deterministic checks preceding live execution are:
+
+```sh
+rtk proxy bun run --filter @aio-proxy/plugin-cloudkit test
+rtk proxy swift test --package-path packages/plugins/cloudkit/native
+```

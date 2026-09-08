@@ -1,10 +1,10 @@
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { connectNative } from '../src/native-session';
-import { directoryDigest, validateManifest, type ArtifactManifest } from './artifact';
+import { directoryDigest, executablePathForApp, validateManifest, type ArtifactManifest } from './artifact';
 import { verifyBundle } from './probe-installed';
 
 export class LiveSetupError extends Error {
@@ -34,9 +34,10 @@ export async function installedArtifactDigest(): Promise<string | undefined> {
   const manifestPath = join(packageRoot, 'dist', 'native', 'manifest.json');
   if (!(await Bun.file(manifestPath).exists())) return undefined;
   const manifest = (await Bun.file(manifestPath).json()) as ArtifactManifest;
-  const appPath = join(cacheRoot(), manifest.artifactVersion, 'AIOProxyCloudKit.app');
+  const appPath = join(cacheRoot(), manifest.artifactVersion, basename(manifest.appRelativePath));
   if (!(await Bun.file(join(appPath, 'Contents', 'Info.plist')).exists())) return undefined;
-  return directoryDigest(appPath);
+  const digest = await directoryDigest(appPath);
+  return digest === manifest.appSha256 ? digest : undefined;
 }
 
 export async function connectInstalledPair(): Promise<InstalledPair> {
@@ -65,15 +66,8 @@ export async function connectInstalledPair(): Promise<InstalledPair> {
   if (nativeManifest.bundleIdentifier !== bundleId || nativeManifest.signatureStatus !== 'verified')
     throw new LiveSetupError('installed native artifact is not a verified signed bundle');
 
-  const executable = join(
-    cacheRoot(),
-    nativeManifest.artifactVersion,
-    'AIOProxyCloudKit.app',
-    'Contents',
-    'MacOS',
-    'AIOProxyCloudKit',
-  );
-  const appPath = join(cacheRoot(), nativeManifest.artifactVersion, 'AIOProxyCloudKit.app');
+  const appPath = join(cacheRoot(), nativeManifest.artifactVersion, basename(nativeManifest.appRelativePath));
+  const executable = executablePathForApp(nativeManifest, appPath);
   if (!(await Bun.file(executable).exists())) throw new LiveSetupError('verified native artifact is not installed');
   try {
     await verifyBundle(appPath, nativeManifest, true);
@@ -81,9 +75,19 @@ export async function connectInstalledPair(): Promise<InstalledPair> {
     throw new LiveSetupError(error instanceof Error ? error.message : 'installed artifact verification failed');
   }
   const signal = new AbortController().signal;
-  const a = await connectNative({ executable, containerId, signal });
+  let a: SyncSession;
   try {
-    const b = await connectNative({ executable, containerId, signal });
+    a = await connectNative({ executable, containerId, signal });
+  } catch (error) {
+    throw new LiveSetupError(error instanceof Error ? error.message : 'native session could not connect');
+  }
+  try {
+    let b: SyncSession;
+    try {
+      b = await connectNative({ executable, containerId, signal });
+    } catch (error) {
+      throw new LiveSetupError(error instanceof Error ? error.message : 'second native session could not connect');
+    }
     if (a === b) throw new Error('live sessions must be backed by distinct native processes');
     let cleaned = false;
     return {
@@ -96,7 +100,9 @@ export async function connectInstalledPair(): Promise<InstalledPair> {
       },
     };
   } catch (error) {
-    await a.dispose();
-    throw error;
+    await a.dispose().catch(() => undefined);
+    throw error instanceof LiveSetupError
+      ? error
+      : new LiveSetupError(error instanceof Error ? error.message : 'native sessions could not connect');
   }
 }

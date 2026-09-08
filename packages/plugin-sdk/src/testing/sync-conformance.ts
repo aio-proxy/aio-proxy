@@ -23,7 +23,9 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
   const value = new TextEncoder().encode('value');
   const createdKeys = new Set<string>();
 
+  let primaryError: unknown;
   try {
+    createdKeys.add(key);
     const created = await Promise.all([
       pair.a.compareAndSwap(key, null, value, signal),
       pair.b.compareAndSwap(key, null, value, signal),
@@ -42,6 +44,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
 
     if (pair.faults !== undefined) {
       const uncertainKey = `${prefix}outcome-unknown`;
+      createdKeys.add(uncertainKey);
       pair.faults.outcomeUnknownOnce(pair.a);
       let uncertain = false;
       try {
@@ -52,15 +55,14 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
       assertion(uncertain, 'unknown write outcomes are surfaced');
       const recovered = await pair.a.read(uncertainKey, signal);
       assertion(recovered.kind === 'present' && sameBytes(recovered.value, value), 'unknown writes are recoverable');
-      createdKeys.add(uncertainKey);
     }
 
     const listA = `${prefix}list-a`;
     const listKeys = [listA, `${prefix}list-b`];
     for (const listKey of listKeys) {
+      createdKeys.add(listKey);
       const result = await pair.b.compareAndSwap(listKey, null, value, signal);
       assertion(result.kind === 'written', 'list fixture creates');
-      createdKeys.add(listKey);
     }
     const discovered = new Set<string>();
     let cursor: string | undefined;
@@ -88,11 +90,35 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
     }
     assertion(disposedRejected, 'disposed session rejects new work');
     assertion((await pair.b.read(listA, signal)).kind === 'present', 'disposing one session preserves another');
-  } finally {
-    for (const cleanupKey of createdKeys) {
-      const current = await pair.b.read(cleanupKey, signal).catch(() => ({ kind: 'absent' as const }));
-      if (current.kind === 'present') await pair.b.remove(cleanupKey, current.version, signal).catch(() => undefined);
-    }
-    await pair.cleanup();
+  } catch (error) {
+    primaryError = error;
   }
+  const cleanupErrors: unknown[] = [];
+  for (const cleanupKey of createdKeys) {
+    let removed = false;
+    for (let attempt = 0; attempt < 2 && !removed; attempt += 1) {
+      try {
+        const current = await pair.b.read(cleanupKey, signal);
+        if (current.kind === 'absent') removed = true;
+        else {
+          const result = await pair.b.remove(cleanupKey, current.version, signal);
+          removed = result.kind === 'removed' || result.kind === 'conflict';
+        }
+      } catch (error) {
+        if (attempt === 1) cleanupErrors.push(error);
+      }
+    }
+    if (!removed && cleanupErrors.length === 0) cleanupErrors.push(new Error('sync fixture cleanup did not complete'));
+  }
+  try {
+    await pair.cleanup();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  if (cleanupErrors.length > 0) {
+    const cleanupError = new AggregateError(cleanupErrors, 'sync backend fixture cleanup failed');
+    if (primaryError !== undefined) throw new AggregateError([primaryError, cleanupError], 'sync conformance failed');
+    throw cleanupError;
+  }
+  if (primaryError !== undefined) throw primaryError;
 }

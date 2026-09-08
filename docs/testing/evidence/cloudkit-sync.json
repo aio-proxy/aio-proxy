@@ -5,7 +5,7 @@
     "architecture": "arm64"
   },
   "artifact": {
-    "installedManifestSha256": "unavailable"
+    "installedAppSha256": "unavailable"
   },
   "containerId": "unavailable",
   "cases": [
@@ -48,5 +48,5 @@
     }
   ],
   "productionGate": "blocked",
-  "recordedAt": "2026-09-08T20:40:59.106Z"
+  "recordedAt": "2026-09-08T20:51:53.285Z"
 }

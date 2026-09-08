@@ -37,8 +37,12 @@ async function osVersion(): Promise<string> {
 
 async function writeEvidence(cases: readonly CaseResult[]): Promise<void> {
   const output = {
-    host: { os: process.platform, osVersion: await osVersion(), architecture: process.arch },
-    artifact: { installedManifestSha256: (await installedArtifactDigest()) ?? 'unavailable' },
+    host: {
+      os: process.platform,
+      osVersion: await osVersion().catch(() => 'unavailable'),
+      architecture: process.arch,
+    },
+    artifact: { installedAppSha256: (await installedArtifactDigest()) ?? 'unavailable' },
     containerId: process.env.CLOUDKIT_CONTAINER_ID === undefined ? 'unavailable' : '<configured>',
     cases,
     productionGate: cases.some((entry) => entry.status !== 'pass') ? 'blocked' : 'unverified',
@@ -67,7 +71,11 @@ try {
     errorCode: errorCode(error),
   };
 } finally {
-  await writeEvidence(cases);
+  try {
+    await writeEvidence(cases);
+  } catch {
+    process.exitCode = 1;
+  }
 }
 
 if (cases.some((entry) => entry.status !== 'pass')) process.exitCode = 1;
