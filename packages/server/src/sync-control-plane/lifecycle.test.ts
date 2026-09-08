@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+
+import { encodeCandidate } from '@aio-proxy/core';
 
 import { createServerSyncFixture } from './test-support';
 
@@ -41,6 +44,10 @@ test('lifecycle reuses one backend session and closes it once', async () => {
     }),
   });
   try {
+    const raw = { providers: {} };
+    expect(await fixture.port.rawDigest()).toBe(
+      createHash('sha256').update(encodeCandidate(raw, fixture.configPath)).digest('hex'),
+    );
     await fixture.lifecycle.start();
     await fixture.lifecycle.start();
     expect(fixture.connectCount()).toBe(1);

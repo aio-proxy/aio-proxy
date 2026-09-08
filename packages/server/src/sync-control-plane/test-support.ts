@@ -83,6 +83,7 @@ function memoryBackend(events: string[]): SyncBackendDefinition<Record<string, n
 export type ServerSyncFixture = {
   readonly configPath: string;
   readonly repo: SyncRepository;
+  readonly port: ReturnType<typeof createLocalSyncPort>;
   readonly accounts: PluginRepository;
   readonly events: () => readonly string[];
   readonly connectCount: () => number;
@@ -142,6 +143,7 @@ export function createServerSyncFixture(input: {
   return {
     configPath,
     repo,
+    port,
     accounts: input.accounts,
     lifecycle,
     events: () => events,

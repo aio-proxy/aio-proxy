@@ -7,6 +7,7 @@ import {
   type PluginRegistry,
   type PluginRepository,
   type SyncRepository,
+  encodeCandidate,
   overlayLocal,
   projectCommitted,
 } from '@aio-proxy/core';
@@ -30,25 +31,8 @@ export type LocalPortInput = {
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
 };
 
-function stable(value: unknown, seen = new Set<object>()): unknown {
-  if (value === null || typeof value !== 'object') return value;
-  if (seen.has(value)) throw new Error('Cannot digest cyclic configuration');
-  seen.add(value);
-  const result = Array.isArray(value)
-    ? value.map((item) => stable(item, seen))
-    : Object.fromEntries(
-        Object.entries(value as Record<string, unknown>)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, item]) => [key, stable(item, seen)]),
-      );
-  seen.delete(value);
-  return result;
-}
-
-function digest(raw: unknown): string {
-  return createHash('sha256')
-    .update(JSON.stringify(stable(raw)))
-    .digest('hex');
+function digest(raw: Record<string, JsonValue>, path: string): string {
+  return createHash('sha256').update(encodeCandidate(raw, path)).digest('hex');
 }
 
 function record(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -126,7 +110,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
   return {
     withFence,
     async rawDigest() {
-      return digest(await input.configFile.read());
+      return digest((await input.configFile.read()) as Record<string, JsonValue>, input.configPath);
     },
     accountOperationsSettled(ids) {
       const pending = new Set(input.accounts.listPendingAccountOperations().map((operation) => operation.operationId));
@@ -140,25 +124,27 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
       if (binding === null || binding.id !== input.bindingId) throw new Error('The synchronization binding is stale');
     },
     async applyRemote(objectId, body) {
-      const current = (await input.configFile.read()) as Record<string, JsonValue>;
-      const currentEntities = entities();
-      const shared = applyBody(current, body);
-      const projection = projectCommitted(source(input, shared), currentEntities);
-      const candidate = overlayLocal(shared, projection.local, currentEntities);
-      await input.applyCandidate(candidate, 'remote');
-      input.repo.putEntity(input.bindingId, {
-        objectId,
-        logicalKey:
-          body?.logicalKey ?? currentEntities.find((entity) => entity.objectId === objectId)?.logicalKey ?? objectId,
-        kind: body?.kind ?? currentEntities.find((entity) => entity.objectId === objectId)?.kind ?? 'provider',
-        mode: currentEntities.find((entity) => entity.objectId === objectId)?.mode ?? 'included',
-        epoch: currentEntities.find((entity) => entity.objectId === objectId)?.epoch ?? 0,
-        desired: body,
-        baseline: null,
-        overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
-        pendingReason: null,
+      return withFence(async () => {
+        const current = (await input.configFile.read()) as Record<string, JsonValue>;
+        const currentEntities = entities();
+        const shared = applyBody(current, body);
+        const projection = projectCommitted(source(input, shared), currentEntities);
+        const candidate = overlayLocal(shared, projection.local, currentEntities);
+        await input.applyCandidate(candidate, 'remote');
+        input.repo.putEntity(input.bindingId, {
+          objectId,
+          logicalKey:
+            body?.logicalKey ?? currentEntities.find((entity) => entity.objectId === objectId)?.logicalKey ?? objectId,
+          kind: body?.kind ?? currentEntities.find((entity) => entity.objectId === objectId)?.kind ?? 'provider',
+          mode: currentEntities.find((entity) => entity.objectId === objectId)?.mode ?? 'included',
+          epoch: currentEntities.find((entity) => entity.objectId === objectId)?.epoch ?? 0,
+          desired: body,
+          baseline: null,
+          overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
+          pendingReason: null,
+        });
+        return { applied: true };
       });
-      return { applied: true };
     },
   };
 }
