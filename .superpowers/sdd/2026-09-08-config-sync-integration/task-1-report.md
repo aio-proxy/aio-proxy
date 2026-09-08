@@ -33,6 +33,17 @@
 - Account-removal commits are reconfirmed after account finalization settles, ensuring durable delete operations are emitted.
 - Lifecycle fixtures now await disposal and assert the sync-disposed-before-database-closed ordering.
 
+## Review round 3 fixes
+
+- Remote application now fences the binding again after asynchronous config application, before account deletion or entity persistence; a generation-race regression proves stale writes are skipped.
+- OAuth activation now checks the current account's plugin/capability identity and exact plugin/credential-sync versions, phase, and verified multi-device evidence. Missing or stale evidence remains pending instead of being synthesized as ready.
+- Startup unwinding now has a bound-backend fixture that blocks asynchronous disposal and verifies `createServerState()` waits for disposal before releasing database ownership.
+
+## Review round 3 validation
+
+- `rtk bun test packages/server/src/sync-control-plane packages/server/src/server-state/database-ownership.test.ts packages/server/src/config-store/sync-commit.test.ts packages/core/src/sync` — 137 passed.
+- Scoped `oxfmt --check` and `oxlint` — passed.
+
 ## Review scope and remaining risk
 
 Please run a targeted review of commit `3600adf39`, focusing on the close/closeAsync state machine, FIFO fence composition, and startup recovery ordering. The later control-plane task still owns public sync settings/preview operations and richer activation identity/OAuth coordination; plugin-secret/account-specific capture hooks remain integration follow-up work beyond this commit.

@@ -158,6 +158,16 @@ function source(input: LocalPortInput, raw: Record<string, JsonValue>): Committe
 export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
   const withFence = <T>(run: () => Promise<T>): Promise<T> => input.enqueue(run);
   const entities = () => input.entities?.() ?? input.repo.entities(input.bindingId);
+  const assertCurrent = (): void => {
+    const binding = input.repo.readBinding();
+    if (
+      binding === null ||
+      binding.id !== input.bindingId ||
+      (input.bindingGeneration !== undefined && binding.sessionGeneration !== input.bindingGeneration)
+    ) {
+      throw new Error('The synchronization binding is stale');
+    }
+  };
 
   return {
     withFence,
@@ -175,19 +185,11 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
     async committedSource() {
       return source(input, (await input.configFile.read()) as Record<string, JsonValue>);
     },
-    assertCurrent() {
-      const binding = input.repo.readBinding();
-      if (
-        binding === null ||
-        binding.id !== input.bindingId ||
-        (input.bindingGeneration !== undefined && binding.sessionGeneration !== input.bindingGeneration)
-      )
-        throw new Error('The synchronization binding is stale');
-    },
+    assertCurrent,
     async applyRemote(objectId, body) {
       return withFence(async () => {
         const current = (await input.configFile.read()) as Record<string, JsonValue>;
-        input.assertCurrent?.();
+        assertCurrent();
         const currentEntities = entities();
         const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
         const shared =
@@ -196,12 +198,13 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
             : applyBody(current, body);
         const projection = projectCommitted(source(input, shared), currentEntities);
         const candidate = overlayLocal(shared, projection.local, currentEntities);
-        input.assertCurrent?.();
+        assertCurrent();
         try {
           if (candidate !== current) await input.applyCandidate(candidate, 'remote');
         } catch {
           return { applied: false, pending: 'invalid-config' as const };
         }
+        assertCurrent();
         if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider') {
           input.accounts.deleteAccount(currentEntity.logicalKey);
         }

@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DatabaseOwnershipError, resolveDbPath } from '@aio-proxy/core/db';
+import { createSyncRepository } from '@aio-proxy/core';
+import { DatabaseOwnershipError, openDb, resolveDbPath } from '@aio-proxy/core/db';
+import { definePlugin, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema } from '@aio-proxy/types';
 
 import { createServerState } from './index';
@@ -85,3 +87,80 @@ test.each(['scheduler', 'recovery', 'login_sessions', 'watcher'] as const)(
     restarted.close();
   },
 );
+
+test('startup unwinding awaits disposal of a bound backend', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-server-sync-unwind-'));
+  const configPath = join(home, 'config.json');
+  const config = ConfigSchema.parse({ plugins: ['@example/sync'], providers: {} });
+  writeFileSync(configPath, JSON.stringify(config));
+  const database = openDb({ home });
+  createSyncRepository(database.sqlite).writeBinding({
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default',
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  });
+  database.close();
+
+  const events: string[] = [];
+  let signalDisposeStarted!: () => void;
+  const disposeStarted = new Promise<void>((resolve) => {
+    signalDisposeStarted = resolve;
+  });
+  let releaseDispose!: () => void;
+  const disposeGate = new Promise<void>((resolve) => {
+    releaseDispose = resolve;
+  });
+  const descriptor = definePlugin((api) => {
+    api.sync.register({
+      id: 'memory',
+      displayName: 'Memory',
+      options: { schema: zod.object({}), form: [] },
+      async connect() {
+        events.push('connected');
+        return {
+          identityId: 'identity',
+          spaceId: 'default' as const,
+          maxValueBytes: 1_000_000,
+          async read() {
+            return { kind: 'absent' as const };
+          },
+          async compareAndSwap() {
+            return { kind: 'conflict' as const };
+          },
+          async list() {
+            return { keys: [] };
+          },
+          async remove() {
+            return { kind: 'conflict' as const };
+          },
+          async dispose() {
+            events.push('dispose-started');
+            signalDisposeStarted();
+            await disposeGate;
+            events.push('disposed');
+          },
+        };
+      },
+    });
+  });
+
+  const attempt = createServerState({
+    config,
+    configPath,
+    dbHome: home,
+    builtIns: [{ packageName: '@example/sync', version: '1.0.0', descriptor }],
+    __test: { failStartupAfter: 'login_sessions' },
+  } satisfies InternalServerStateOptions);
+  await disposeStarted;
+  expect(events).toEqual(['connected', 'dispose-started']);
+  releaseDispose();
+  await expect(attempt).rejects.toThrow('injected startup failure: login_sessions');
+  expect(events).toEqual(['connected', 'dispose-started', 'disposed']);
+  expect(existsSync(`${resolveDbPath({ home })}.server.lock`)).toBe(false);
+});

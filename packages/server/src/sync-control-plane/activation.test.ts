@@ -16,6 +16,16 @@ const ready = {
   missingEnv: [],
   oauthVerified: true,
   credentialValid: true,
+  oauthEvidence: {
+    plugin: '@example/oauth',
+    capability: 'main',
+    pluginVersion: '1.0.0',
+    formatVersion: 1,
+    phase: 'ready' as const,
+    multiDeviceEvidenceId: 'evidence-1',
+    expectedFormatVersion: 1,
+    expectedMultiDeviceEvidenceId: 'evidence-1',
+  },
 };
 
 test('activation keeps an OAuth copy pending when evidence is unavailable', async () => {
@@ -69,6 +79,7 @@ test('activation rejects OAuth evidence with the wrong account identity or sync 
           phase: 'ready',
           multiDeviceEvidenceId: 'evidence',
           expectedFormatVersion: 2,
+          expectedMultiDeviceEvidenceId: 'evidence',
         },
       },
     }),
@@ -86,8 +97,44 @@ test('activation rejects OAuth evidence with the wrong account identity or sync 
           pluginVersion: '1.0.0',
           formatVersion: 1,
           phase: 'ready',
+          multiDeviceEvidenceId: 'evidence',
+          expectedFormatVersion: 1,
+          expectedMultiDeviceEvidenceId: 'other-evidence',
         },
       },
     }),
   ).resolves.toBe('oauth-unverified');
+});
+
+test('activation keeps missing or stale account evidence pending', async () => {
+  await expect(
+    checkPrerequisites({
+      raw: {},
+      body: provider,
+      apply: async () => {},
+      dependencies: { ...ready, oauthEvidence: undefined },
+    }),
+  ).resolves.toBe('oauth-unverified');
+  await expect(
+    checkPrerequisites({
+      raw: {},
+      body: provider,
+      apply: async () => {},
+      dependencies: {
+        ...ready,
+        oauthEvidence: { ...ready.oauthEvidence, phase: 'refreshing' },
+      },
+    }),
+  ).resolves.toBe('oauth-unverified');
+  await expect(
+    checkPrerequisites({
+      raw: {},
+      body: provider,
+      apply: async () => {},
+      dependencies: {
+        ...ready,
+        oauthEvidence: { ...ready.oauthEvidence, pluginVersion: '2.0.0' },
+      },
+    }),
+  ).resolves.toBe('incompatible-version');
 });

@@ -44,7 +44,13 @@ import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import { createRealtimeCallStore } from '../routes/realtime';
-import { checkPrerequisites, createLocalSyncPort, createServerSyncLifecycle } from '../sync-control-plane';
+import {
+  checkPrerequisites,
+  createLocalSyncPort,
+  createServerSyncLifecycle,
+  readOAuthActivationEvidence,
+  type OAuthActivationEvidence,
+} from '../sync-control-plane';
 import { createSyncCommitHooks } from '../sync-control-plane/commit';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
@@ -111,17 +117,7 @@ function createSyncIntegration(
     );
   const checkActivation = async (raw: Record<string, JsonValue>, body: import('@aio-proxy/core').EntityBody) => {
     let credentialValid = true;
-    let oauthEvidence:
-      | {
-          readonly plugin: string;
-          readonly capability: string;
-          readonly pluginVersion: string;
-          readonly formatVersion: number;
-          readonly phase: 'ready' | 'refreshing' | 'uncertain' | 'login-required';
-          readonly multiDeviceEvidenceId?: string;
-          readonly expectedFormatVersion?: number;
-        }
-      | undefined;
+    let oauthEvidence: OAuthActivationEvidence | undefined;
     const value = body.value;
     if (
       body.kind === 'provider' &&
@@ -137,26 +133,22 @@ function createSyncIntegration(
           ? undefined
           : (manager.current() as Snapshot).plugins.registry.resolveOAuth(plugin, capability);
       const account = repository.readAccount(body.logicalKey);
-      if (plugin === undefined || capability === undefined || adapter === undefined || account === null)
+      if (
+        plugin === undefined ||
+        capability === undefined ||
+        adapter === undefined ||
+        account === null ||
+        account.plugin !== plugin ||
+        account.capability !== capability
+      )
         credentialValid = false;
       else {
         credentialValid = (await parsePluginSchema(adapter.credentials, account.credential)).ok;
-        const ownership = syncRepository
-          .entities(syncBinding.id)
-          .find((entity) => entity.logicalKey === body.logicalKey)?.oauth;
-        oauthEvidence = {
-          plugin,
-          capability,
-          pluginVersion: ownership?.pluginVersion ?? pluginVersions().get(plugin) ?? '',
-          formatVersion: ownership?.formatVersion ?? adapter.credentialSync?.formatVersion ?? 0,
-          phase: 'ready',
-          ...(adapter.credentialSync?.multiDevice === undefined
-            ? {}
-            : { multiDeviceEvidenceId: adapter.credentialSync.multiDevice.evidenceId }),
-          ...(adapter.credentialSync === undefined
-            ? {}
-            : { expectedFormatVersion: adapter.credentialSync.formatVersion }),
-        };
+        oauthEvidence = readOAuthActivationEvidence(
+          account,
+          adapter.credentialSync?.formatVersion,
+          adapter.credentialSync?.multiDevice?.evidenceId,
+        );
       }
     }
     return checkPrerequisites({
