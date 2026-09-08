@@ -18,25 +18,13 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
   restartRequired,
   unavailable,
 }) => {
-  const status = restartRequired
-    ? m['dashboard.settings.version_restart_required']()
-    : unavailable
-      ? m['dashboard.settings.version_update_unavailable']()
-      : failed
-        ? m['dashboard.settings.version_update_failed']()
-        : undefined;
+  // Nothing to install and nothing to retry: a permanently greyed-out button next to
+  // "Check for updates" is noise, not an affordance. Outcomes are reported by toast.
+  if (!releaseAvailable && !inProgress && !restartRequired && !failed && !unavailable) return null;
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={!releaseAvailable || inProgress || restartRequired}
-        onClick={() => apply()}
-      >
-        {inProgress ? m['dashboard.settings.version_updating']() : m['dashboard.settings.version_update']()}
-      </Button>
-      {status === undefined ? null : <p className="max-w-56 text-right text-xs text-muted-foreground">{status}</p>}
-    </div>
+    <Button variant="ghost" size="sm" disabled={!releaseAvailable || inProgress || restartRequired} onClick={apply}>
+      {inProgress ? m['dashboard.settings.version_updating']() : m['dashboard.settings.version_update']()}
+    </Button>
   );
 };

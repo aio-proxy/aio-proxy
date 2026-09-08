@@ -11,6 +11,12 @@ const mocks = rs.hoisted(() => ({
   release: rs.fn(),
   releaseQueryFn: rs.fn(),
   reloadDashboard: rs.fn(),
+  toastAdd: rs.fn(),
+  toastClose: rs.fn(),
+}));
+
+rs.mock('@aio-proxy/ui/components/toast', () => ({
+  toast: { add: mocks.toastAdd, close: mocks.toastClose },
 }));
 
 rs.mock('@/modules/settings/hooks/use-release-query', () => ({
@@ -80,6 +86,11 @@ const syncReleaseFromCheck = (result: { current: string; latest: string; outdate
   });
 };
 
+const toastedWith = (pattern: RegExp) =>
+  (mocks.toastAdd.mock.calls as readonly (readonly [{ readonly title: string }])[]).some(([call]) =>
+    pattern.test(call.title),
+  );
+
 const clickCheck = () => fireEvent.click(screen.getByRole('button', { name: checkName }));
 
 const prepare = (release = idleRelease) => {
@@ -88,6 +99,8 @@ const prepare = (release = idleRelease) => {
   mocks.release.mockReset();
   mocks.releaseQueryFn.mockReset();
   mocks.reloadDashboard.mockReset();
+  mocks.toastAdd.mockReset();
+  mocks.toastClose.mockReset();
   mocks.release.mockReturnValue({ data: release });
   mocks.apply.mockResolvedValue({ ok: true, status: 'started' });
   mocks.releaseQueryFn.mockResolvedValue(release);
@@ -164,12 +177,12 @@ test('apply up_to_date clears a stale outdated Check so Update now is not stuck 
   await renderGroup();
 
   clickCheck();
-  const update = screen.getByRole('button', { name: updateNowName });
+  const update = await screen.findByRole('button', { name: updateNowName });
   await waitFor(() => expect(update).toBeEnabled());
 
   fireEvent.click(update);
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
-  await waitFor(() => expect(update).toBeDisabled());
+  await waitFor(() => expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument());
 });
 
 test('enables Update now after an outdated check and posts apply', async () => {
@@ -177,14 +190,22 @@ test('enables Update now after an outdated check and posts apply', async () => {
   syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
   await renderGroup();
 
-  const update = screen.getByRole('button', { name: updateNowName });
-  expect(update).toBeDisabled();
+  expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
 
   clickCheck();
+  const update = await screen.findByRole('button', { name: updateNowName });
   await waitFor(() => expect(update).toBeEnabled());
 
   fireEvent.click(update);
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
+});
+
+test('offers only Check for updates while the build is current', async () => {
+  prepare();
+  await renderGroup();
+
+  expect(screen.getByRole('button', { name: checkName })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
 });
 
 test('enables Update now from a persisted outdated GET without clicking Check', async () => {
@@ -219,14 +240,14 @@ test('starts the same poll when apply reports in_progress', async () => {
   await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
 });
 
-test('shows a failed update without claiming the build is current', async () => {
+test('reports a failed update by toast without claiming the build is current', async () => {
   prepare(withRelease('failed'));
   syncReleaseFromCheck({ current: '1.4.2', latest: '1.4.2', outdated: false });
   await renderGroup();
 
   clickCheck();
 
-  await waitFor(() => expect(screen.getByText(updateFailed)).toBeInTheDocument());
+  await waitFor(() => expect(toastedWith(updateFailed)).toBe(true));
   expect(screen.queryByText(upToDate)).toBeNull();
 });
 
@@ -254,7 +275,7 @@ test('hides Check for updates and keeps Updating while a restart is pending', as
 
   expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
-  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+  expect(toastedWith(restartRequired)).toBe(false);
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
   await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
 });
