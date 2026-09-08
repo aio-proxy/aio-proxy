@@ -154,6 +154,20 @@ test('toasts unavailable when apply cannot install updates', async () => {
   expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
 });
 
+test('re-toasts when a retry fails the same way as the first attempt', async () => {
+  prepare();
+  mocks.apply.mockRejectedValue(new Error('unavailable'));
+  await renderButton(true);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await waitFor(() => expect(mocks.toastAdd).toHaveBeenCalledTimes(1));
+
+  // The outcome is unchanged, so a retry must not go silent once the first toast is gone.
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(mocks.toastAdd).toHaveBeenCalledTimes(2));
+});
+
 test('keeps Updating through restart_required and reloads when current changes', async () => {
   prepare(withRelease('restart_required'));
   mocks.releaseQueryFn.mockResolvedValue(withRelease('idle', { current: '1.5.0' }));

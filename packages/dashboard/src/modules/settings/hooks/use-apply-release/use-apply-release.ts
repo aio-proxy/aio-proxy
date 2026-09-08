@@ -61,6 +61,10 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   const [polling, setPolling] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [applyMessage, setApplyMessage] = useState<'failed' | 'unavailable'>();
+  // A retry that fails the same way leaves `applyMessage` untouched, so the outcome alone
+  // cannot tell the toast effect that a second attempt just came back. Count the attempts
+  // that ended in a message so an identical repeat still reports.
+  const [applyAttempt, setApplyAttempt] = useState(0);
   const [pollStartedUpdatedAt, setPollStartedUpdatedAt] = useState(0);
 
   const updateStatus = release.data?.update.status;
@@ -147,10 +151,12 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
       }
       if (code === 'unavailable') {
         setApplyMessage('unavailable');
+        setApplyAttempt((attempt) => attempt + 1);
         return;
       }
       if (code === 'check_failed') {
         setApplyMessage('failed');
+        setApplyAttempt((attempt) => attempt + 1);
         return;
       }
       // Transport / unknown errors are ambiguous: the server may already be applying.
@@ -171,7 +177,7 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
     if (outcome === undefined) return;
     const { id, type, title, timeout } = OUTCOME_TOASTS[outcome];
     toast.add({ id, type, title: title(), timeout });
-  }, [outcome]);
+  }, [outcome, applyAttempt]);
 
   return {
     apply: () => apply.mutate(),
