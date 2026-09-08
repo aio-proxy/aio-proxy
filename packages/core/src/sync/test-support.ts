@@ -48,11 +48,18 @@ export function storedAccount(providerId: string, token: string): StoredAccount 
 }
 
 export type SyncCommitFixture = {
-  readonly configPath: string;
-  readonly repo: SyncRepository;
+  configPath: string;
+  repo: SyncRepository;
   readonly bindingId: string;
   readonly intent: Omit<CommitIntent, 'phase'>;
   readonly port: LocalCommitPort;
+  readonly control: {
+    readonly fenceCalls: () => number;
+    readonly setFence: (fence: LocalCommitPort['withFence']) => void;
+    readonly setAccountOperationsSettled: (settled: boolean) => void;
+    readonly setSourceRevisions: (revisions: Readonly<Record<string, number>> | undefined) => void;
+    readonly reopen: () => SyncRepository;
+  };
 };
 
 function digestConfig(value: Record<string, JsonValue>, path: string): string {
@@ -67,9 +74,9 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
     providers: { work: { kind: 'api', baseUrl: 'https://example.test' } },
   } satisfies Record<string, JsonValue>;
   writeFileSync(configPath, encodeCandidate(before, configPath), { mode: 0o640 });
-  const db = openDb({ home: dir });
+  let db = openDb({ home: dir });
   try {
-    const repo = createSyncRepository(db.sqlite);
+    let repo = createSyncRepository(db.sqlite);
     const bindingId = 'binding-local-commit';
     repo.writeBinding({
       id: bindingId,
@@ -94,6 +101,28 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
       pendingReason: null,
     });
     const file = new AtomicConfigFile(configPath);
+    let fenceCalls = 0;
+    let fence: LocalCommitPort['withFence'] = async <T>(action: () => Promise<T>) => action();
+    let accountOperationsSettled = true;
+    let sourceRevisions: Readonly<Record<string, number>> | undefined;
+    const control = {
+      fenceCalls: () => fenceCalls,
+      setFence(next: LocalCommitPort['withFence']) {
+        fence = next;
+      },
+      setAccountOperationsSettled(settled: boolean) {
+        accountOperationsSettled = settled;
+      },
+      setSourceRevisions(revisions: Readonly<Record<string, number>> | undefined) {
+        sourceRevisions = revisions;
+      },
+      reopen() {
+        db.close();
+        db = openDb({ home: dir });
+        repo = createSyncRepository(db.sqlite);
+        return repo;
+      },
+    };
     const intent = {
       commitId: 'local-commit',
       origin: 'local' as const,
@@ -103,12 +132,15 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
       accountOperationIds: [],
     } satisfies Omit<CommitIntent, 'phase'>;
     const port: LocalCommitPort = {
-      withFence: async <T>(action: () => Promise<T>) => action(),
+      async withFence<T>(action: () => Promise<T>) {
+        fenceCalls++;
+        return fence(action);
+      },
       async rawDigest() {
         return digestConfig((await file.read()) as Record<string, JsonValue>, configPath);
       },
-      accountOperationsSettled() {
-        return true;
+      accountOperationsSettled(ids) {
+        return ids.length === 0 || accountOperationsSettled;
       },
       async committedSource(): Promise<CommittedSource> {
         return {
@@ -116,10 +148,11 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
           accounts: new Map(),
           pluginSecrets: new Map(),
           pluginVersions: new Map(),
+          ...(sourceRevisions === undefined ? {} : { sourceRevisions }),
         };
       },
     };
-    await run({ configPath, repo, bindingId, intent, port });
+    await run({ configPath, repo, bindingId, intent, port, control });
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

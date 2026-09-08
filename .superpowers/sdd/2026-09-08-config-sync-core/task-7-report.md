@@ -8,11 +8,11 @@ Implemented logical local commit preparation, confirmation, and restart recovery
 
 - `packages/core/src/sync/local-commit/local-commit.ts`: `LocalCommitPort`, preparation, fenced confirmation, recovery decisions, deterministic operation IDs, projection, source-revision checks, and remote-origin no-echo handling.
 - `packages/core/src/sync/local-commit/index.ts`: export-only local commit barrel.
-- `packages/core/src/sync/local-commit/local-commit.test.ts`: real `AtomicConfigFile` rollback, successful capture, after-commit uncertainty, remote baseline confirmation, and account-only source-revision coverage.
-- `packages/core/src/sync/test-support.ts`: real temporary config/database commit fixture with canonical config digests and a committed-source port.
+- `packages/core/src/sync/local-commit/local-commit.test.ts`: real `AtomicConfigFile` rollback, direct before/after/unknown recovery, controlled fence and account-settlement outcomes, source-revision mismatch recovery, direct confirmation fencing, stable retry IDs, after-commit uncertainty, remote baseline confirmation, account-only changes, watcher no-ops, and close/reopen recovery.
+- `packages/core/src/sync/test-support.ts`: real temporary config/database commit fixture with canonical config digests, a reopenable repository, and controllable fence, account-settlement, and source-revision state.
 - `packages/core/src/plugins/config-file/config-file.ts`: moved `AtomicConfigFile` implementation.
 - `packages/core/src/plugins/config-file/index.ts`: export-only config-file barrel.
-- `packages/core/src/plugins/config-file/transaction.test.ts`: verifies the existing `afterCommit` hook runs after verification against the committed candidate.
+- `packages/core/src/plugins/config-file/transaction.test.ts`: verifies the existing `afterCommit` hook ordering, failure propagation, and reopened reads of the committed candidate.
 - `packages/core/src/sync/index.ts`: exports the local commit API.
 
 ## Recovery decisions
@@ -25,8 +25,9 @@ Implemented logical local commit preparation, confirmation, and restart recovery
 
 ## Verification
 
-- `rtk proxy bun test packages/core/src/sync/local-commit/local-commit.test.ts packages/core/src/plugins/config-file/transaction.test.ts` — 14 passed, 0 failed.
-- `rtk proxy bun test packages/core/src/sync` — 70 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync/local-commit/local-commit.test.ts packages/core/src/plugins/config-file/transaction.test.ts` — 23 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync` — 78 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/plugins/config-file` — 35 passed, 0 failed.
 - `rtk proxy bunx tsc -p packages/core/tsconfig.json --noEmit` — passed.
 - `rtk proxy bunx oxlint packages/core/src/sync packages/core/src/plugins/config-file` — passed.
 - `rtk proxy bunx oxfmt --check packages/core/src/sync packages/core/src/plugins/config-file` — passed.

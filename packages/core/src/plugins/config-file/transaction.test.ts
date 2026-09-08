@@ -100,6 +100,18 @@ describe('AtomicConfigFile', () => {
     expect(events).toEqual(['verify:2', 'afterCommit:2']);
   });
 
+  test('afterCommit failure propagates while a reopened reader sees the committed candidate', async () => {
+    const { path } = fixture('{"one":1}\n');
+    await expect(
+      new AtomicConfigFile(path).replace((current) => ({ ...current, two: 2 }), {
+        afterCommit: async () => {
+          throw new Error('finalization failed');
+        },
+      }),
+    ).rejects.toThrow('finalization failed');
+    expect(await new AtomicConfigFile(path).read()).toEqual({ one: 1, two: 2 });
+  });
+
   test('returning the exact current object performs a locked read without rewrite or verification', async () => {
     const { path } = fixture('{"one":1}\n');
     const before = statSync(path).mtimeMs;

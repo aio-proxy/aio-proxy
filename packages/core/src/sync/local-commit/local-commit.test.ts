@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { AtomicConfigFile } from '../../plugins/config-file';
 import { withSyncCommitFixture } from '../test-support';
-import { prepareLocalCommit, recoverLocalCommits } from './local-commit';
+import { confirmLocalCommit, prepareLocalCommit, recoverLocalCommits } from './local-commit';
 
 test('a candidate rejected by verify never becomes an outgoing commit', async () => {
   await withSyncCommitFixture(async (f) => {
@@ -32,6 +32,87 @@ test('a verified candidate becomes one stable outgoing operation', async () => {
     expect(first[0]).toMatchObject({ objectId: 'provider-work', kind: 'put', commitId: f.intent.commitId });
     expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
     expect(f.repo.latestConfirmedCommit(f.bindingId)?.commitId).toBe(f.intent.commitId);
+    const operationId = first[0]?.operationId;
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)[0]?.operationId).toBe(operationId);
+  });
+});
+
+test('a before-digest recovery discards the prepared intent', async () => {
+  await withSyncCommitFixture(async (f) => {
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.outbox(f.bindingId)).toEqual([]);
+  });
+});
+
+test('an unknown raw digest remains pending for a later recovery', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => ({ providers: { other: { kind: 'api', baseUrl: 'https://other.test' } } }));
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toHaveLength(1);
+    expect(f.repo.outbox(f.bindingId)).toEqual([]);
+  });
+});
+
+test('an unsettled account operation remains pending until settlement', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    const intent = { ...f.intent, accountOperationIds: ['account-operation'] };
+    prepareLocalCommit(f.repo, f.bindingId, intent);
+    f.control.setAccountOperationsSettled(false);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toHaveLength(1);
+    f.control.setAccountOperationsSettled(true);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.outbox(f.bindingId)).toHaveLength(1);
+  });
+});
+
+test('public confirmation acquires the fence exactly once', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await confirmLocalCommit(f.repo, f.bindingId, f.intent.commitId, f.port);
+    expect(f.control.fenceCalls()).toBe(1);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+  });
+});
+
+test('a fence failure leaves recovery pending until the fence is available', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    f.control.setFence(async () => {
+      throw new Error('fence unavailable');
+    });
+    await expect(recoverLocalCommits(f.repo, f.bindingId, f.port)).rejects.toThrow('fence unavailable');
+    expect(f.repo.pendingCommits(f.bindingId)).toHaveLength(1);
+    f.control.setFence(async (action) => action());
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+  });
+});
+
+test('a source-revision mismatch remains pending and recovers after the revision catches up', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    const intent = { ...f.intent, sourceRevisions: { account: 2 } };
+    prepareLocalCommit(f.repo, f.bindingId, intent);
+    f.control.setSourceRevisions({ account: 1 });
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toHaveLength(1);
+    f.control.setSourceRevisions({ account: 2 });
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
   });
 });
 
@@ -80,16 +161,40 @@ test('an account-only commit with a settled source revision is confirmed', async
       accountOperationIds: ['account-operation'],
       sourceRevisions,
     };
-    const port = {
-      ...f.port,
-      async committedSource() {
-        const source = await f.port.committedSource();
-        return { ...source, sourceRevisions };
-      },
-    };
+    f.control.setSourceRevisions(sourceRevisions);
+    f.control.setAccountOperationsSettled(true);
     prepareLocalCommit(f.repo, f.bindingId, intent);
-    await recoverLocalCommits(f.repo, f.bindingId, port);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
     expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
     expect(f.repo.latestConfirmedCommit(f.bindingId)?.sourceRevisions).toEqual(sourceRevisions);
+  });
+});
+
+test('watcher reload with the same digest and revisions is a restart-safe no-op', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    const originalOutbox = f.repo.outbox(f.bindingId);
+
+    const reload = { ...f.intent, commitId: 'watcher-reload' };
+    prepareLocalCommit(f.repo, f.bindingId, reload);
+    const reopened = f.control.reopen();
+    await recoverLocalCommits(reopened, f.bindingId, f.port);
+    expect(reopened.pendingCommits(f.bindingId)).toEqual([]);
+    expect(reopened.outbox(f.bindingId)).toEqual(originalOutbox);
+  });
+});
+
+test('a prepared commit survives close and reopen between file commit and recovery', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    const reopened = f.control.reopen();
+    await recoverLocalCommits(reopened, f.bindingId, f.port);
+    expect(reopened.pendingCommits(f.bindingId)).toEqual([]);
+    expect(reopened.outbox(f.bindingId)).toHaveLength(1);
   });
 });
