@@ -18,6 +18,11 @@ function geminiRequestWithSignal(body: unknown, signal: AbortSignal): Request {
   });
 }
 
+function effortOf(settings: unknown): string | undefined {
+  return (settings as { providerOptions?: { aioProxy?: { effort?: string } } } | undefined)?.providerOptions?.aioProxy
+    ?.effort;
+}
+
 describe('geminiGenerateContentAdapter.rawRequest', () => {
   test('clamps thinkingLevel in the raw body against the supported set', async () => {
     const body = {
@@ -120,6 +125,43 @@ describe('geminiGenerateContentAdapter.rawRequest', () => {
   });
 });
 
+describe('geminiGenerateContentAdapter.modelInvocation', () => {
+  function invocationFor(thinkingLevel: string) {
+    const parsed = parseGeminiGenerateContent({
+      model: 'src',
+      contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+      generationConfig: { thinkingConfig: { thinkingLevel } },
+    });
+    return geminiGenerateContentAdapter.modelInvocation(parsed, { model: 'src', stream: false });
+  }
+
+  test('carries a MAX thinkingLevel so per-candidate clamping still sees the request', () => {
+    // The AI SDK reasoning union stops at `xhigh`. If `MAX` only travelled there it
+    // would be dropped entirely, clampSdkReasoning would see no request, and a wire
+    // that really supports `max` would receive no thinking configuration at all.
+    const invocation = invocationFor('MAX');
+    expect(effortOf(invocation.settings)).toBe('max');
+    expect(invocation.settings?.reasoning).toBe('xhigh');
+
+    const clamped = geminiGenerateContentAdapter.modelInvocationForTarget(
+      invocation,
+      undefined,
+      new Set(['low', 'medium', 'high', 'xhigh', 'max']),
+    );
+    expect(effortOf(clamped.settings)).toBe('max');
+  });
+
+  test('folds an uppercase wire level onto the canonical ladder value', () => {
+    expect(effortOf(invocationFor('HIGH').settings)).toBe('high');
+  });
+
+  test('drops a level neither representation knows so the provider defaults', () => {
+    const invocation = invocationFor('turbo');
+    expect(effortOf(invocation.settings)).toBeUndefined();
+    expect(invocation.settings?.reasoning).toBeUndefined();
+  });
+});
+
 describe('geminiGenerateContentAdapter.modelInvocationForTarget', () => {
   test('clamps settings.reasoning against the supported set', () => {
     const invocation = { messages: [], settings: { reasoning: 'xhigh' as const } };
@@ -139,8 +181,6 @@ describe('geminiGenerateContentAdapter.modelInvocationForTarget', () => {
       new Set(['low', 'medium', 'high']),
     );
     expect(result.settings?.reasoning).toBe('medium');
-    expect(
-      (result.settings as { providerOptions?: { aioProxy?: { effort?: string } } }).providerOptions?.aioProxy?.effort,
-    ).toBe('medium');
+    expect(effortOf(result.settings)).toBe('medium');
   });
 });

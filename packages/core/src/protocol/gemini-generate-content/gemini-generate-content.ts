@@ -17,7 +17,7 @@ import {
 } from '../../transform/gemini-generate-content/index';
 import { defineProtocolAdapter } from '../adapter';
 import { geminiGenerateContentErrors } from '../errors';
-import { clampSdkReasoning, normalizeEffort } from '../reasoning-effort/index';
+import { clampSdkReasoning, normalizeEffort, reasoningSettings } from '../reasoning-effort/index';
 import { readJsonRequest, readRequestText } from '../request';
 import type { SessionCandidate } from '../session';
 import { functionToolSet } from '../tools';
@@ -41,7 +41,6 @@ const aiSdkGenerationConfigSchema = z
   })
   .strip();
 const jsonValueSchema = z.json();
-const reasoningSchema = z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 
 export type GeminiRouteContext = {
   readonly model: string;
@@ -158,18 +157,10 @@ function isCandidate(value: SessionCandidate | undefined): value is SessionCandi
 }
 
 function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {
-  const reasoning = geminiReasoning(settings);
-  const base = {
-    ...aiSdkProviderOptions(settings),
-    ...(reasoning === undefined ? {} : { reasoning }),
-  } satisfies GeminiAiSdkSettings;
+  const base = aiSdkProviderOptions(settings);
   const parsed = aiSdkGenerationConfigSchema.safeParse(settings.generationConfig ?? {});
-  if (!parsed.success) {
-    return base;
-  }
-
-  const config = parsed.data;
-  return {
+  const config = parsed.success ? parsed.data : {};
+  const merged = {
     ...base,
     ...(config.maxOutputTokens === undefined ? {} : { maxOutputTokens: config.maxOutputTokens }),
     ...(config.temperature === undefined ? {} : { temperature: config.temperature }),
@@ -177,16 +168,12 @@ function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSett
     ...(config.topK === undefined ? {} : { topK: config.topK }),
     ...(config.stopSequences === undefined ? {} : { stopSequences: config.stopSequences }),
     ...(config.seed === undefined ? {} : { seed: config.seed }),
-  };
-}
-
-function geminiReasoning(settings: GeminiGenerateContentSettings): AiSdkCallSettings['reasoning'] {
-  const level = settings.generationConfig?.thinkingConfig?.thinkingLevel;
-  if (level === undefined) {
-    return undefined;
-  }
-  const parsed = reasoningSchema.safeParse(normalizeVariantKey(level));
-  return parsed.success ? parsed.data : undefined;
+  } satisfies GeminiAiSdkSettings;
+  // `thinkingLevel` is a free-form wire string, so hand it to reasoningSettings rather
+  // than an enum stopping at the AI SDK's ceiling: `MAX` must reach the canonical
+  // carrier, or per-candidate clamping sees no request at all and the chosen wire
+  // gets no thinking configuration. A level neither representation knows is dropped.
+  return reasoningSettings(merged, settings.generationConfig?.thinkingConfig?.thinkingLevel);
 }
 
 function aiSdkProviderOptions(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {
