@@ -105,7 +105,7 @@ const version = [...versions][0]!;
 
 console.log(
   `Publishing ${publishable.length} package(s) at v${version}${DRY_RUN ? '  [dry-run]' : ''}:\n${publishable
-    .map((p) => `  ${p.json.name}${platformProvided.has(p.json.name) ? '  (platform binary; npm only)' : ''}`)
+    .map((p) => `  ${p.json.name}${platformProvided.has(p.json.name) ? '  (platform binary)' : ''}`)
     .join('\n')}\n`,
 );
 
@@ -185,6 +185,19 @@ if (DRY_RUN) {
   process.exit(0);
 }
 
+// Preserve the exact pack output for the independent GitHub asset/notification job.
+// Only local I/O here: npm availability must never delay tagging or Release creation.
+const assetDirectory = process.env['RELEASE_ASSETS_DIR'];
+if (assetDirectory) {
+  for (const name of Object.keys(
+    allPackages.find(({ json }) => json.name === 'aio-proxy')!.json.optionalDependencies ?? {},
+  )) {
+    const tarball = tarballs.get(name);
+    if (!tarball) throw new Error(`Missing platform tarball: ${name}`);
+    await Bun.write(join(assetDirectory, `${name.replace('@aio-proxy/', '')}-${version}.tgz`), Bun.file(tarball));
+  }
+}
+
 // --- publish; skip versions already on the registry so a rerun resumes cleanly-
 const outputPath = process.env['CHANGESETS_OUTPUT'];
 // changesets/action reads this file UNCONDITIONALLY after the publish script exits
@@ -220,7 +233,7 @@ console.log(`\nReleased v${version}`);
 // `aio-proxy` without an entry, and the action throws on a missing entry). If
 // neither has an entry — which the changeset convention in AGENTS.md prevents —
 // emit nothing so the action makes no contentless Release. The tag name is also
-// what the Homebrew notify step reads (`gh release view` -> tagName -> strip `v`).
+// used by the GitHub asset upload and Homebrew notification job.
 if (outputPath) {
   let releaseOf: string | undefined;
   for (const name of ['aio-proxy', '@aio-proxy/plugin-sdk']) {
