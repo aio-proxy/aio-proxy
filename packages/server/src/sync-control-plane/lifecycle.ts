@@ -5,6 +5,8 @@ import {
   confirmLocalCommit,
   createSyncEngine,
   recoverLocalCommits,
+  createSharedOAuthCoordinator,
+  createSyncObjectStore,
   type JsonValue,
   type PluginRegistry,
   type PluginRepository,
@@ -33,6 +35,7 @@ export type ServerSyncLifecycleInput = {
   readonly applyCandidate: (raw: Record<string, JsonValue>, origin: 'local' | 'remote') => Promise<void>;
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
   readonly localPort?: ReturnType<typeof createLocalSyncPort>;
+  readonly onCoordinator?: (coordinator: import('@aio-proxy/core').SharedOAuthCoordinator | undefined) => void;
 };
 
 export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): ServerSyncLifecycle {
@@ -98,6 +101,9 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         return;
       }
       session = connected;
+      input.onCoordinator?.(
+        createSharedOAuthCoordinator({ binding, store: createSyncObjectStore(connected), repo: input.repo }),
+      );
       engine = createSyncEngine({
         binding,
         session,
@@ -114,6 +120,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         await connected.dispose().catch(() => {});
       }
       session = undefined;
+      input.onCoordinator?.(undefined);
       throw error;
     }
   }
@@ -136,6 +143,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       await engine?.stop();
       engine = undefined;
       session = undefined;
+      input.onCoordinator?.(undefined);
       port = undefined;
     })();
     return closePromise;

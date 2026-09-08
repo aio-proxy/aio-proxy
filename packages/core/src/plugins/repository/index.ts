@@ -9,6 +9,9 @@ export * from './types';
 
 export function createPluginRepository(sqlite: Database): PluginRepository {
   return {
+    withAccountTransaction<T>(run: () => T): T {
+      return sqlite.transaction(run)();
+    },
     ...createPluginStateRepository(sqlite),
     ...createAccountRepository(sqlite),
     ...createPendingOperationsRepository(sqlite),

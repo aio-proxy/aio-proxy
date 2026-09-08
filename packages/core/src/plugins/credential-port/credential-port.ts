@@ -7,14 +7,15 @@ import {
 import { providerLoginCommand } from '@aio-proxy/types';
 import { delay } from 'es-toolkit/promise';
 
+import { SyncOAuthError } from '../../sync/oauth/protocol';
 import {
   collectSecretStrings,
   type DiagnosticFactory,
   type PluginLogSink,
   redactPluginError,
-} from './diagnostic/index';
-import type { PluginRepository, StoredAccount } from './repository/index';
-import { parsePluginSchema } from './schema';
+} from '../diagnostic/index';
+import type { PluginRepository, StoredAccount } from '../repository/index';
+import { parsePluginSchema } from '../schema';
 
 const REFRESH_LEASE_MS = 45_000;
 const REFRESH_RENEW_MS = 15_000;
@@ -35,6 +36,7 @@ type CredentialPortBaseOptions<Credential> = {
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
   readonly onCredentialChanged: () => void;
+  readonly resolveShared?: () => CredentialPort<Credential> | undefined;
 };
 
 export type CreateCredentialPortOptions<Credential> = CredentialPortBaseOptions<Credential> &
@@ -221,6 +223,7 @@ function recordRefreshFailure<Credential>(
   });
   if (mode === 'control-plane') return;
   if (error instanceof CredentialRefreshError && error.retryable) return;
+  if (error instanceof SyncOAuthError && ['refresh-deferred', 'result-uncertain'].includes(error.code)) return;
   const diagnostic = options.diagnostics('CREDENTIAL_REFRESH_FAILED', {
     providerId: options.providerId,
     retryable: false,
@@ -237,9 +240,18 @@ export function createCredentialPort<Credential>(
   const mode = options.mode ?? 'runtime';
   return {
     async read() {
+      const shared = options.resolveShared?.();
+      if (shared !== undefined) return shared.read();
       return (await readValidated(options.providerId, options.schema, options.repository)).snapshot;
     },
     refresh(expectedRevision, exchange) {
+      const shared = options.resolveShared?.();
+      if (shared !== undefined) {
+        return shared.refresh(expectedRevision, exchange).catch((error: unknown) => {
+          recordRefreshFailure(options, mode, error, []);
+          throw error;
+        });
+      }
       return singleFlight(options.repository, options.providerId, mode, async () => {
         const owner = `${process.pid}:${crypto.randomUUID()}`;
         let secretValues: readonly string[] = [];

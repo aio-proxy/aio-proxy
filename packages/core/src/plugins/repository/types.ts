@@ -64,7 +64,7 @@ export type AccountWrite = {
   readonly expiresAt?: number;
   readonly catalog:
     | { readonly kind: 'replace'; readonly value: CatalogWrite }
-    | { readonly kind: 'preserve'; readonly diagnostic: Diagnostic }
+    | { readonly kind: 'preserve'; readonly diagnostic?: Diagnostic }
     | { readonly kind: 'missing'; readonly diagnostic: Diagnostic };
 };
 
@@ -94,6 +94,7 @@ export class PendingAccountOperationConflictError extends Error {
 }
 
 export type PluginRepository = {
+  readonly withAccountTransaction: <T>(run: () => T) => T;
   readonly readPluginSecret: (plugin: string) => PluginSecretSnapshot | null;
   readonly writePluginSecret: (plugin: string, expectedRevision: number | null, value: unknown) => PluginSecretSnapshot;
   readonly deletePluginSecret: (plugin: string, expectedRevision: number) => boolean;

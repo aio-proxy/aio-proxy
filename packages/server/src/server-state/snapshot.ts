@@ -7,6 +7,7 @@ import {
   type PluginRegistrySnapshot,
   type PluginRepository,
 } from '@aio-proxy/core';
+import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import {
   type Config,
   type DashboardProviderSummary,
@@ -65,6 +66,7 @@ export async function buildSnapshot(
   logger: PluginLogSink,
   onDiagnosticChanged: () => void,
   createRouter: CreateRouter,
+  resolveShared?: (providerId: string, schema: ZodType<unknown>) => CredentialPort<unknown> | undefined,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
@@ -111,6 +113,7 @@ export async function buildSnapshot(
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),
         ...(previousEntry === undefined ? {} : { previous: previousEntry }),
+        ...(resolveShared === undefined ? {} : { resolveShared }),
       });
     }),
   );

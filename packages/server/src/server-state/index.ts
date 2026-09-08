@@ -10,12 +10,14 @@ import {
   parseRuntimeConfig,
   parsePluginSchema,
   type DiagnosticFactory,
+  type PluginRepository,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
   type JsonValue,
 } from '@aio-proxy/core';
+import type { SharedOAuthCoordinator } from '@aio-proxy/core';
 import {
   acquireDatabaseOwnershipLock,
   assertSafeOwnedDatabaseFile,
@@ -66,8 +68,10 @@ import {
 import { defaultLogger, defaultPluginLogger } from './logging';
 import { createProviderSummaries } from './probe';
 import { createQuotaIdentityTracker } from './quota-invalidation';
-import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
+import { defaultRecoveryScheduler } from './recovery';
+import { createSharedCredentialResolver } from './shared-credential-resolver';
 import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
+import { recoverBeforeInitialSnapshot } from './startup-recovery';
 import type {
   ConfigReloadResult,
   InternalServerStateOptions,
@@ -88,8 +92,9 @@ function createSyncIntegration(
   configFile: AtomicConfigFile | undefined,
   options: ServerStateOptions,
   queue: ReturnType<typeof createFifoQueue>,
+  syncRepository = createSyncRepository(dbHandle.sqlite),
+  onCoordinator?: (coordinator: SharedOAuthCoordinator | undefined) => void,
 ) {
-  const syncRepository = createSyncRepository(dbHandle.sqlite);
   const syncBinding = syncRepository.readBinding();
   if (syncBinding === null || configFile === undefined || options.configPath === undefined) {
     return {
@@ -124,10 +129,11 @@ function createSyncIntegration(
       value !== null &&
       typeof value === 'object' &&
       !Array.isArray(value) &&
-      value['kind'] === 'oauth'
+      (value as Record<string, JsonValue>)['kind'] === 'oauth'
     ) {
-      const plugin = typeof value['plugin'] === 'string' ? value['plugin'] : undefined;
-      const capability = typeof value['capability'] === 'string' ? value['capability'] : undefined;
+      const valueRecord = value as Record<string, JsonValue>;
+      const plugin = typeof valueRecord['plugin'] === 'string' ? valueRecord['plugin'] : undefined;
+      const capability = typeof valueRecord['capability'] === 'string' ? valueRecord['capability'] : undefined;
       const adapter =
         plugin === undefined || capability === undefined
           ? undefined
@@ -187,6 +193,7 @@ function createSyncIntegration(
     applyCandidate: syncApplyCandidate,
     pluginVersions,
     localPort: syncPort,
+    onCoordinator,
   });
   return { syncRepository, syncBinding, syncPort, syncApplyCandidate, lifecycle, configPath: options.configPath };
 }
@@ -286,6 +293,9 @@ async function initializeServerState(
   const events = createDashboardEventHub(options.eventLimits);
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
+  const syncRepository = createSyncRepository(dbHandle.sqlite);
+  let sharedCoordinator: SharedOAuthCoordinator | undefined;
+  const resolveSharedCredential = createSharedCredentialResolver(syncRepository, repository, () => sharedCoordinator);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
   const logger = options.logger ?? defaultLogger;
@@ -317,6 +327,7 @@ async function initializeServerState(
     configFile,
     sync: undefined,
     syncCommit: undefined,
+    resolveSharedCredential,
   };
 
   await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
@@ -332,6 +343,7 @@ async function initializeServerState(
           pluginLogger,
           () => queueRebuild(runtime),
           createRouter,
+          resolveSharedCredential,
         )
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
   runtime.manager = createSnapshotManager(initial);
@@ -369,7 +381,20 @@ async function initializeServerState(
     onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
   });
 
-  const syncIntegration = createSyncIntegration(runtime, dbHandle, repository, manager, configFile, options, queue);
+  const syncIntegration = createSyncIntegration(
+    runtime,
+    dbHandle,
+    repository,
+    manager,
+    configFile,
+    options,
+    queue,
+    syncRepository,
+    (coordinator) => {
+      sharedCoordinator = coordinator;
+      if (runtime.managerReady) void queueRebuild(runtime);
+    },
+  );
   const syncCommit = syncCommitOption(syncIntegration);
   runtime.syncCommit = syncCommit;
 
@@ -455,6 +480,7 @@ function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
     diagnostics: runtime.diagnostics,
     logger: runtime.pluginLogger,
     onDiagnosticChanged: () => queueRebuild(runtime),
+    resolveShared: runtime.resolveSharedCredential,
   };
   const oauthQuota = createOAuthQuotaOperations(dependencies);
   const oauthCredentialRefresh = createOAuthCredentialRefresher(dependencies);
@@ -474,22 +500,6 @@ function createStatePluginControlPlane(runtime: ServerRuntime, configStore: Conf
     importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
     repository,
     ...runtime.internalOptions.__test?.pluginControlPlane,
-  });
-}
-
-function recoverBeforeInitialSnapshot(
-  runtime: ServerRuntime,
-  recoverAccounts: typeof recoverPendingAccountOperations,
-  scheduler: ReturnType<typeof defaultRecoveryScheduler>,
-) {
-  return recoverBeforeSnapshot({
-    configFile: runtime.configFile,
-    repository: runtime.repository,
-    diagnostics: runtime.diagnostics,
-    logger: runtime.pluginLogger,
-    recoverAccounts,
-    scheduler,
-    enqueue: runtime.queue,
   });
 }
 

@@ -16,3 +16,4 @@ export {
   type SharedRefreshInput,
   type SharedRefreshResult,
 } from './coordinator';
+export { applySyncedAccount } from './account-import';

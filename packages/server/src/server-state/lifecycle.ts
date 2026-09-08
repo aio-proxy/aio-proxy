@@ -7,6 +7,7 @@ import type {
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
+import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import type { Config } from '@aio-proxy/types';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
@@ -63,6 +64,10 @@ export type ServerRuntime = {
   configFile: AtomicConfigFile | undefined;
   sync: ServerSyncLifecycle | undefined;
   syncCommit: SyncCommitHooks | undefined;
+  readonly resolveSharedCredential: (
+    providerId: string,
+    schema: ZodType<unknown>,
+  ) => CredentialPort<unknown> | undefined;
 };
 
 /**
@@ -104,6 +109,7 @@ export async function commitConfig(
     runtime.pluginLogger,
     () => queueRebuild(runtime),
     runtime.createRouter,
+    runtime.resolveSharedCredential,
   );
   const before = (runtime.manager.current() as Snapshot).summaries;
   const retired = runtime.manager.swap(candidate);

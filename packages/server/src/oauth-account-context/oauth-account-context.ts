@@ -6,7 +6,7 @@ import {
   type PluginRepository,
   withAbort,
 } from '@aio-proxy/core';
-import type { AccountContext, CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import type { AccountContext, CredentialPort, OAuthAdapter, ZodType } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind } from '@aio-proxy/types';
 
 import { prepareOAuthPluginAccount } from '../plugin-account';
@@ -27,6 +27,7 @@ export type OAuthAccountContextDependencies = {
    * summaries are still stale awaits it.
    */
   readonly onDiagnosticChanged: () => void | Promise<void>;
+  readonly resolveShared?: (providerId: string, schema: ZodType<unknown>) => CredentialPort<unknown> | undefined;
 };
 
 export type PreparedOAuthAccountContext = {
@@ -89,6 +90,8 @@ async function prepareContext<Capability>(
     if (provider?.kind !== ProviderKind.OAuth) {
       throw new OAuthAccountUnavailableError(true);
     }
+    const adapter = lease.snapshot.plugins.registry.resolveOAuth(provider.plugin, provider.capability);
+    if (adapter === undefined) throw new OAuthAccountUnavailableError(true);
     const pluginSecretValues = collectSecretStrings(dependencies.repository.readPluginSecret(provider.plugin)?.value);
     const prepared = await prepareOAuthPluginAccount({
       config: provider,
@@ -98,6 +101,9 @@ async function prepareContext<Capability>(
       logger: dependencies.logger,
       credentialMode: 'control-plane',
       onDiagnosticChanged: dependencies.onDiagnosticChanged,
+      ...(dependencies.resolveShared === undefined
+        ? {}
+        : { resolveShared: () => dependencies.resolveShared!(providerId, adapter.credentials) }),
       pluginSecretValues,
     });
     const capability = request.select(prepared.adapter);
