@@ -1,4 +1,5 @@
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import { SyncBackendError } from '@aio-proxy/plugin-sdk';
 
 import type { AccountWrite, PluginRepository } from '../../../plugins/repository';
 import { accountKey } from '../../protocol';
@@ -44,6 +45,29 @@ function accountFor(input: OAuthSharingServiceInput, providerId: string): Return
   return input.accounts.readAccount(providerId);
 }
 
+function markPending(input: OAuthSharingServiceInput, providerId: string, reason: string, detach = false): void {
+  const entity = entityFor(input.repo, input.binding, providerId);
+  if (entity !== undefined)
+    input.repo.putEntity(input.binding.id, {
+      ...entity,
+      pendingReason: reason,
+      ...(detach && entity.oauth !== undefined ? { oauth: { ...entity.oauth, mode: 'detach-pending' as const } } : {}),
+    });
+}
+
+function journal(input: OAuthSharingServiceInput, objectId: string, payload: AccountWrite): string {
+  const operationId = crypto.randomUUID();
+  input.repo.writeOAuthJournal(input.binding.id, {
+    operationId,
+    objectId,
+    epoch: 0,
+    baseGeneration: 0,
+    phase: 'started',
+    payload: payload as never,
+  });
+  return operationId;
+}
+
 function liveAccount(
   input: OAuthSharingServiceInput,
   providerId: string,
@@ -67,8 +91,9 @@ function liveAccount(
   };
 }
 
+// eslint-disable-next-line max-lines-per-function
 export function createOAuthSharingService(input: OAuthSharingServiceInput): OAuthSharingService {
-  const pending = new Map<string, AccountWrite>();
+  const pending = new Map<string, { candidate: AccountWrite; generation: number }>();
   return {
     async share(providerId, signal) {
       return input.withProviderGate(providerId, async () => {
@@ -76,7 +101,13 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         const entity = entityFor(input.repo, input.binding, providerId);
         if (local === null || entity === undefined) return 'pending';
         const resolved = input.resolveAdapter(providerId);
-        if (resolved.adapter.credentialSync?.formatVersion !== 1) return 'pending';
+        if (
+          resolved.adapter.credentialSync?.formatVersion !== 1 ||
+          (resolved.adapter.credentialSync.multiDevice?.evidenceId.length ?? 0) === 0
+        ) {
+          markPending(input, providerId, 'pending-plugin-update');
+          return 'pending';
+        }
         const candidate = {
           providerId,
           plugin: local.plugin,
@@ -91,18 +122,40 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         } satisfies AccountWrite;
         const account = liveAccount(input, providerId, candidate, 0);
         const remote = await readRemote(input.store, account.objectId, signal);
+        if (remote !== null && 'unknown' in remote) {
+          markPending(input, providerId, 'upgrade-required');
+          return 'pending';
+        }
         if (remote !== null) {
           if (JSON.stringify(remote.account.payload) !== JSON.stringify(account.payload)) return 'pending';
           ownership(input, providerId, sharedOwnership(remote.account, local.revision));
           return 'shared';
         }
-        const result = await input.store.session.compareAndSwap(
-          accountKey(account.objectId),
-          null,
-          accountBytes(account),
-          signal,
-        );
+        const operationId = journal(input, account.objectId, candidate);
+        let result;
+        try {
+          result = await input.store.session.compareAndSwap(
+            accountKey(account.objectId),
+            null,
+            accountBytes(account),
+            signal,
+          );
+        } catch (error) {
+          if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
+          const observed = await readRemote(input.store, account.objectId, signal);
+          if (observed === null || 'unknown' in observed) return 'pending';
+          result = { kind: 'written' as const, version: '', modifiedAt: 0 };
+        }
         if (result.kind !== 'written') return 'pending';
+        input.repo.writeOAuthJournal(input.binding.id, {
+          operationId,
+          objectId: account.objectId,
+          epoch: 0,
+          baseGeneration: 0,
+          phase: 'complete',
+          payload: candidate as never,
+        });
+        input.repo.clearOAuthJournal(input.binding.id, operationId);
         ownership(input, providerId, sharedOwnership(account, local.revision));
         return 'shared';
       });
@@ -112,10 +165,21 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       return input.withProviderGate(providerId, async () => {
         const entity = entityFor(input.repo, input.binding, providerId);
         const remote = entity === undefined ? null : await readRemote(input.store, entity.objectId, signal);
-        if (remote === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+        if (remote === null || 'unknown' in remote) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+        const resolved = input.resolveAdapter(providerId);
+        if (
+          resolved.adapter.credentialSync?.formatVersion !== 1 ||
+          (resolved.adapter.credentialSync.multiDevice?.evidenceId.length ?? 0) === 0
+        )
+          throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
         const next = {
           ...liveAccount(input, providerId, candidate, remote.account.generation + 1),
           objectId: remote.account.objectId,
+          epoch: remote.account.epoch,
+          plugin: remote.account.plugin,
+          capability: remote.account.capability,
+          pluginVersion: remote.account.pluginVersion,
+          formatVersion: remote.account.formatVersion,
         };
         const result = await input.store.session.compareAndSwap(
           accountKey(next.objectId),
@@ -141,14 +205,22 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
     },
 
     async detach(providerId, candidate, signal) {
-      pending.set(providerId, candidate);
+      const generation = (pending.get(providerId)?.generation ?? 0) + 1;
+      pending.set(providerId, { candidate, generation });
       return input.withProviderGate(providerId, async () => {
         const entity = entityFor(input.repo, input.binding, providerId);
         const remote = entity === undefined ? null : await readRemote(input.store, entity.objectId, signal);
-        if (remote === null) return 'pending';
+        if (remote === null || 'unknown' in remote) return 'pending';
+        const token = pending.get(providerId);
+        if (token === undefined) return 'pending';
+        const operationId = journal(input, remote.account.objectId, candidate);
+        markPending(input, providerId, 'detach-pending', true);
         const resolved = input.resolveAdapter(providerId);
-        if (!(await verifyDetach(resolved.adapter, remote.account.payload.credential, candidate, signal)))
+        if (!(await verifyDetach(resolved.adapter, remote.account.payload.credential, candidate, signal))) {
+          markPending(input, providerId, 'detach-pending', true);
           return 'pending';
+        }
+        if (pending.get(providerId)?.generation !== token.generation) return 'pending';
         const local = accountFor(input, providerId);
         if (local === null) return 'pending';
         input.accounts.withAccountTransaction(() => {
@@ -165,17 +237,28 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
             if (current !== undefined)
               input.repo.putEntity(input.binding.id, {
                 ...current,
+                pendingReason: null,
                 oauth: independentOwnership(remote.account, updated.revision),
               });
           }
         });
+        input.repo.writeOAuthJournal(input.binding.id, {
+          operationId,
+          objectId: remote.account.objectId,
+          epoch: remote.account.epoch,
+          baseGeneration: remote.account.generation,
+          phase: 'complete',
+          payload: candidate as never,
+        });
+        input.repo.clearOAuthJournal(input.binding.id, operationId);
         pending.delete(providerId);
         return 'independent';
       });
     },
 
     cancelDetach(providerId) {
-      pending.delete(providerId);
+      const current = pending.get(providerId);
+      if (current !== undefined) pending.set(providerId, { ...current, generation: current.generation + 1 });
     },
   };
 }

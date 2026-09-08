@@ -25,10 +25,15 @@ export async function readRemote(
   store: SyncObjectStore,
   objectId: string,
   signal: AbortSignal,
-): Promise<{ account: LiveAccount; version: string } | null> {
+): Promise<{ account: LiveAccount; version: string } | { unknown: true } | null> {
   const value = await store.session.read(accountKey(objectId), signal);
   if (value.kind === 'absent') return null;
-  const account = decodeAccount(value.value);
+  let account: ReturnType<typeof decodeAccount>;
+  try {
+    account = decodeAccount(value.value);
+  } catch {
+    return { unknown: true };
+  }
   if (account.phase === 'deleted' || account.objectId !== objectId) return null;
   return { account, version: value.version };
 }

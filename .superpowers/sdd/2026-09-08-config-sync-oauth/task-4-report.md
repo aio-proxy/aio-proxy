@@ -20,3 +20,9 @@ Implemented the OAuth sharing service surface for first share, shared replacemen
 
 - The current task branch does not contain the task brief's `withOAuthSharingFixture`; focused behavioral coverage for the new service could not be added without duplicating the repository fixture and backend harness.
 - The service currently keeps a pending detach candidate in process memory. Durable pending-journal recovery and server lifecycle wiring remain to be completed by the coordinating agent.
+
+## Fix round 1
+
+Added durable OAuth journal entries around first-share and detach, persisted `detach-pending` ownership before asynchronous verification, cancellation generation fencing, evidence validation, unknown remote record handling, and replacement epoch/plugin metadata preservation.
+
+Verification: `bunx tsc --noEmit -p packages/core/tsconfig.json` — exit 0 (no diagnostics).
