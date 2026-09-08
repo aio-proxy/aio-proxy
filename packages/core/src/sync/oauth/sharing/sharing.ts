@@ -99,7 +99,10 @@ function liveAccount(
 
 // eslint-disable-next-line max-lines-per-function
 export function createOAuthSharingService(input: OAuthSharingServiceInput): OAuthSharingService {
-  const pending = new Map<string, { candidate: AccountWrite; generation: number; operationId?: string }>();
+  const pending = new Map<
+    string,
+    { candidate: AccountWrite; generation: number; operationId?: string; epoch?: number; baseGeneration?: number }
+  >();
   return {
     async share(providerId, signal) {
       return input.withProviderGate(providerId, async () => {
@@ -160,6 +163,9 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
             observed.account.pluginVersion !== account.pluginVersion ||
             observed.account.formatVersion !== account.formatVersion ||
             observed.account.phase !== 'ready' ||
+            observed.account.generation !== 0 ||
+            observed.account.claim !== null ||
+            observed.account.lastCompletedOperationId !== null ||
             JSON.stringify(observed.account.payload) !== JSON.stringify(account.payload)
           )
             return 'pending';
@@ -240,7 +246,12 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
           remote.account.generation,
           candidate,
         );
-        pending.set(providerId, { ...token, operationId });
+        pending.set(providerId, {
+          ...token,
+          operationId,
+          epoch: remote.account.epoch,
+          baseGeneration: remote.account.generation,
+        });
         markPending(input, providerId, 'detach-pending', true);
         const resolved = input.resolveAdapter(providerId);
         if (!(await verifyDetach(resolved.adapter, remote.account.payload.credential, candidate, signal))) {
@@ -291,8 +302,8 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
           input.repo.writeOAuthJournal(input.binding.id, {
             operationId: current.operationId,
             objectId: entity.objectId,
-            epoch: entity.oauth.epoch,
-            baseGeneration: entity.oauth.generation,
+            epoch: current.epoch ?? entity.oauth.epoch,
+            baseGeneration: current.baseGeneration ?? entity.oauth.generation,
             phase: 'complete',
             payload: null,
           });
