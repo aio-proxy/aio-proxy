@@ -9,7 +9,7 @@ Implemented recoverable publication of reserved entity revisions with conditiona
 - `packages/core/src/sync/publication/publication.ts`: backend-neutral object-store adapter, head creation and identity checks, reservation, immutable payload staging, publication CAS loop, duplicate receipt resolution, quota checks, and outcome-unknown recovery boundaries.
 - `packages/core/src/sync/publication/receipts.ts`: idempotent receipt finalization that preserves the body and original storage-assigned payload timestamp.
 - `packages/core/src/sync/publication/index.ts`: export-only publication barrel.
-- `packages/core/src/sync/publication/publication.test.ts`: unknown CAS acknowledgement recovery, concurrent full-entity replacement, retained erased receipts, tombstones, timestamps, quota/offline failures, unresolved dependencies, and cleanup cancellation fencing.
+- `packages/core/src/sync/publication/publication.test.ts`: unknown CAS acknowledgement recovery at every publication write, independent and same-entity ordering, paused older writers, out-of-order acknowledgements, retained erased receipts, tombstones, identity/epoch/state fencing, advanced-clock timestamps, quota/offline failures, unresolved dependencies, cleanup completion races, and namespace isolation.
 - `packages/core/src/sync/index.ts`: exports the publication API.
 
 ## State-machine behavior
@@ -22,8 +22,8 @@ Reservations listed as cancelling are rejected by the protocol reducer, and a de
 
 ## Verification
 
-- `rtk proxy bun test packages/core/src/sync/publication/publication.test.ts` — 8 passed, 0 failed.
-- `rtk proxy bun test packages/core/src/sync` — 39 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync/publication/publication.test.ts` — 16 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync` — 47 passed, 0 failed.
 - `rtk proxy bunx tsc -p packages/core/tsconfig.json --noEmit` — passed.
 - `rtk proxy bunx oxlint packages/core/src/sync/publication packages/core/src/sync/index.ts` — passed.
 - `rtk proxy bunx oxfmt --check packages/core/src/sync/publication packages/core/src/sync/index.ts` — passed.
