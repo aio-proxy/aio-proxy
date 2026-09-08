@@ -3,6 +3,24 @@ import { z } from 'zod';
 
 import { type DeletedAccount, SyncProtocolError } from '../protocol';
 
+export class SyncOAuthError extends Error {
+  override readonly name = 'SyncOAuthError';
+
+  constructor(
+    readonly code:
+      | 'refresh-deferred'
+      | 'result-uncertain'
+      | 'login-required'
+      | 'deleted'
+      | 'upgrade-required'
+      | 'unverified'
+      | 'detach-pending',
+    message: string = code,
+  ) {
+    super(message);
+  }
+}
+
 export interface AccountPayload {
   credential: JsonValue;
   options: JsonValue;

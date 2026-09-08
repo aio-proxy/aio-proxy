@@ -276,8 +276,8 @@ test('repository state survives reopening an on-disk database', () => {
       objectId: 'account-1',
       epoch: 0,
       baseGeneration: 1,
-      phase: 'started',
-      payload: null,
+      phase: 'result',
+      payload: { value: { accessToken: 'current-only' }, metadata: { expiresAt: 42 } },
     });
     repo.prepare('persisted', intent());
     repo.confirm('persisted', 'local-commit', [
@@ -289,7 +289,16 @@ test('repository state survives reopening an on-disk database', () => {
     const reopened = createSyncRepository(second);
     expect(reopened.readBinding()).toEqual(binding('persisted'));
     expect(reopened.entities('persisted')).toEqual([entity('object-1')]);
-    expect(reopened.oauthJournals('persisted')).toHaveLength(1);
+    expect(reopened.oauthJournals('persisted')).toEqual([
+      {
+        operationId: 'oauth-1',
+        objectId: 'account-1',
+        epoch: 0,
+        baseGeneration: 1,
+        phase: 'result',
+        payload: { value: { accessToken: 'current-only' }, metadata: { expiresAt: 42 } },
+      },
+    ]);
     expect(reopened.latestConfirmedCommit('persisted')?.commitId).toBe('local-commit');
     expect(reopened.outbox('persisted')).toHaveLength(1);
     second.close();

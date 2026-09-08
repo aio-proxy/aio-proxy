@@ -1,14 +1,4 @@
 export {
-  canActivateSyncedAccount,
-  decodeAccount,
-  type AccountPayload,
-  type AccountRecord,
-  type LiveAccount,
-  type OAuthOwnership,
-  type RefreshClaim,
-  SyncOAuthError,
-} from './protocol';
-export {
   createSharedOAuthCoordinator,
   type ExchangeResult,
   type SharedOAuthCoordinator,
@@ -16,3 +6,4 @@ export {
   type SharedRefreshInput,
   type SharedRefreshResult,
 } from './coordinator';
+export { toJsonExchangeResult } from './refresh';
