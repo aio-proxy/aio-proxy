@@ -1,5 +1,26 @@
 # @aio-proxy/core
 
+## 0.20.3
+
+### Patch Changes
+
+- [#323](https://github.com/aio-proxy/aio-proxy/pull/323) [`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8) Thanks [@baranwang](https://github.com/baranwang)! - The overview homepage stacks model trend as bars, shows Provider health as a table without filter or column controls, and ranks models by cost or Token.
+- Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8), [`7877705`](https://github.com/aio-proxy/aio-proxy/commit/7877705e72bacd55ef197117e71b683888026789)]:
+  - @aio-proxy/types@0.20.3
+  - @aio-proxy/i18n@0.20.3
+  - @aio-proxy/plugin-cursor@0.20.3
+  - @aio-proxy/plugin-sdk@0.20.3
+  - @aio-proxy/plugin-openai-chatgpt@0.20.3
+  - @aio-proxy/logger@0.20.3
+  - @aio-proxy/plugin-claude-code@0.20.3
+  - @aio-proxy/plugin-github-copilot@0.20.3
+  - @aio-proxy/plugin-google-antigravity@0.20.3
+  - @aio-proxy/plugin-kimi-code@0.20.3
+  - @aio-proxy/plugin-muse-code@0.20.3
+  - @aio-proxy/plugin-openrouter@0.20.3
+  - @aio-proxy/plugin-xai-grok@0.20.3
+  - @aio-proxy/shared@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes
