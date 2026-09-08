@@ -1,5 +1,17 @@
 # @aio-proxy/server
 
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [[`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da)]:
+  - @aio-proxy/types@0.20.2
+  - @aio-proxy/plugin-sdk@0.20.2
+  - @aio-proxy/core@0.20.2
+  - @aio-proxy/logger@0.20.2
+  - @aio-proxy/i18n@0.20.2
+  - @aio-proxy/shared@0.20.2
+
 ## 0.20.1
 
 ### Patch Changes
