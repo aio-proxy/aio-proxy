@@ -53,6 +53,10 @@ for await (const chunk of input) {
       const key = String(request.input.key);
       values.set(key, { valueBase64: String(request.input.valueBase64), version: 'v1' });
       if (mode === 'exit-after-write') process.exit(0);
+      if (mode === 'malformed') {
+        Bun.stdout.write('not-json\n');
+        continue;
+      }
       emit({ id: request.id, ok: true, result: { kind: 'written', version: 'v1', modifiedAt: 1 } });
       continue;
     }

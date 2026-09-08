@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "rslib",
+    "build": "rslib && bun scripts/clean-dist.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test ./src"
   },

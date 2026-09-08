@@ -223,7 +223,7 @@ class NativeSession implements SyncSession {
       }
       this.#failAll(false, 'native output ended');
     } catch {
-      this.#failAllWithCode('invalid-data', 'native output was invalid');
+      this.#fenceProtocol('native output was invalid');
     }
   }
 
@@ -277,6 +277,15 @@ class NativeSession implements SyncSession {
       this.#pending.delete(id);
       pending.reject(new NativeSessionError(code, message));
     }
+  }
+
+  #fenceProtocol(message: string): void {
+    this.#protocolFailed = true;
+    for (const [id, pending] of this.#pending) {
+      this.#pending.delete(id);
+      pending.reject(new NativeSessionError(pending.mutation ? 'outcome-unknown' : 'invalid-data', message));
+    }
+    this.#child.kill('SIGTERM');
   }
 
   async #waitForExit(timeout: number): Promise<boolean> {

@@ -6,6 +6,7 @@ export type FakeNativeMode =
   | 'duplicate'
   | 'unexpected'
   | 'hold'
+  | 'malformed'
   | 'ok';
 
 export async function withFakeNative(mode: FakeNativeMode, run: (executable: string) => Promise<void>): Promise<void> {

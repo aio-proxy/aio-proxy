@@ -78,3 +78,14 @@ test('duplicate and unexpected replies fail pending work', async () => {
     });
   }
 });
+
+test('malformed native output during CAS preserves outcome unknown', async () => {
+  await withFakeNative('malformed', async (executable) => {
+    const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
+    await expect(
+      session.compareAndSwap('k', null, new Uint8Array([1]), new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'outcome-unknown' });
+    await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'invalid-data' });
+    await session.dispose();
+  });
+});

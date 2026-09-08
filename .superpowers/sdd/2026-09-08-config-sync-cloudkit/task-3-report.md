@@ -77,3 +77,31 @@ Build complete; exit 0.
 ```
 
 The Swift command verifies compilation and package test discovery on this host. No live CloudKit account/container is available, and there is no direct integration test for forced SIGTERM/SIGKILL escalation; normal native disposal is covered by the transport test suite.
+
+## Round 2 review fixes
+
+- Parser failures, partial EOF, and frame-limit failures now fence the session, terminate the child, and classify pending CAS/remove operations as `outcome-unknown`; pending reads/control operations receive `invalid-data`. Future requests are rejected after fencing.
+- Added a malformed-output-during-CAS regression test.
+- Package build now removes the test executable helper from `dist/static/assets` after Rslib output.
+
+Fresh verification:
+
+```text
+bunx oxfmt packages/plugins/cloudkit/src/native-session packages/plugins/cloudkit/scripts/clean-dist.ts packages/plugins/cloudkit/package.json
+exit 0
+
+bunx oxlint packages/plugins/cloudkit/src
+exit 0
+
+bunx tsc --noEmit -p packages/plugins/cloudkit/tsconfig.json
+exit 0
+
+bun test packages/plugins/cloudkit/src/native-session/native-session.test.ts
+9 pass
+0 fail
+11 expect() calls
+
+bun run --cwd packages/plugins/cloudkit build
+Rslib built successfully; 6 files generated in dist.
+fake_asset_absent:0
+```
