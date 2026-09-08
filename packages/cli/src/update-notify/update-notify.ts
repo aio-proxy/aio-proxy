@@ -1,4 +1,7 @@
-import { readUpdateCheckState } from '@aio-proxy/core';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
 export const shouldPrintUpdateBanner = (command: string, argv: readonly string[]): boolean => {
@@ -34,7 +37,21 @@ const defaultSpawn: NotifySpawn = async (command) => {
   }
 };
 
-export const notifyUpdateAvailable = async (latest: string, spawn: NotifySpawn = defaultSpawn): Promise<void> => {
+export const notifyUpdateAvailable = async (
+  latest: string,
+  spawn: NotifySpawn = defaultSpawn,
+  notificationPath: string = join(homedir(), '.aio-proxy', 'update-notify.json'),
+): Promise<void> => {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+  // Desktop notifications belong to the OS user, even when instances use
+  // different AIO_PROXY_HOME directories. Claim before sending across processes.
+  const claimed = await withUpdateCheckLock(async () => {
+    const previous = readUpdateCheckState(notificationPath);
+    if (previous !== undefined && Bun.semver.order(latest, previous.latest) <= 0) return false;
+    await writeUpdateCheckState({ latest, checkedAt: Date.now() }, notificationPath);
+    return true;
+  }, notificationPath);
+  if (!claimed) return;
   const title = m['cli.update.notify_title']({ version: latest });
   const body = m['cli.update.notify_body']();
   if (process.platform === 'darwin') {

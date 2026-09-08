@@ -43,9 +43,40 @@ test('prints a banner only when the persisted latest is newer', async () => {
 test('notify-send receives the version on Linux', async () => {
   if (process.platform !== 'linux') return;
   const calls: string[][] = [];
-  await notifyUpdateAvailable('2.0.0', async (command) => {
-    calls.push([...command]);
-  });
+  const home = mkdtempSync(join(tmpdir(), 'aio-notify-linux-'));
+  try {
+    await notifyUpdateAvailable(
+      '2.0.0',
+      async (command) => {
+        calls.push([...command]);
+      },
+      join(home, 'notifications.json'),
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
   expect(calls[0]?.[0]).toBe('notify-send');
   expect(calls[0]?.join(' ')).toContain('2.0.0');
+});
+
+test('desktop notifications are deduplicated across homes, concurrent callers, and restarts', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-notify-'));
+  const path = join(home, 'notifications.json');
+  const calls: string[][] = [];
+  const spawn = async (command: readonly string[]) => {
+    calls.push([...command]);
+  };
+  try {
+    process.env.AIO_PROXY_HOME = join(home, 'instance-a');
+    await Promise.all([notifyUpdateAvailable('2.0.0', spawn, path), notifyUpdateAvailable('2.0.0', spawn, path)]);
+    process.env.AIO_PROXY_HOME = join(home, 'instance-b');
+    await notifyUpdateAvailable('2.0.0', spawn, path);
+    await notifyUpdateAvailable('1.9.0', spawn, path);
+    await notifyUpdateAvailable('2.0.0', spawn, path);
+    expect(calls).toHaveLength(process.platform === 'darwin' || process.platform === 'linux' ? 1 : 0);
+    await notifyUpdateAvailable('2.1.0', spawn, path);
+    expect(calls).toHaveLength(process.platform === 'darwin' || process.platform === 'linux' ? 2 : 0);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
