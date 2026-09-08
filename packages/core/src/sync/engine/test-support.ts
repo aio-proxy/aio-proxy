@@ -62,10 +62,14 @@ export type TwoDevice = {
   readonly queueDelete: (objectId: string, epoch: number) => void;
   readonly setPendingActivation: (reason: PendingReason | undefined) => void;
   readonly remoteApplyCalls: () => readonly { objectId: string; operationId: string; body: JsonValue | null }[];
+  readonly waitForRemoteApply: (objectId: string) => Promise<void>;
   readonly gateNext: (method: Method) => { readonly entered: Promise<void>; readonly release: () => void };
   readonly pauseRemoteApplication: () => { readonly entered: Promise<void>; readonly release: () => void };
+  readonly pauseLocalDigest: () => { readonly entered: Promise<void>; readonly release: () => void };
+  readonly preparePendingProvider: (id: string, body: JsonValue) => Promise<void>;
 };
 
+// eslint-disable-next-line max-lines-per-function
 export async function withTwoSyncDevices(
   run: (devices: { a: TwoDevice; b: TwoDevice }) => Promise<void>,
 ): Promise<void> {
@@ -87,12 +91,16 @@ export async function withTwoSyncDevices(
       let commitNumber = 0;
       let pendingActivation: PendingReason | undefined;
       let remoteGate: Gate | undefined;
+      let digestGate: Gate | undefined;
       const remoteCalls: { objectId: string; operationId: string; body: JsonValue | null }[] = [];
+      const remoteApplyCounts = new Map<string, number>();
+      const remoteApplyWaiters = new Map<string, Set<() => void>>();
       const local: LocalSyncPort = {
         async withFence<T>(action: () => Promise<T>) {
           return action();
         },
         async rawDigest() {
+          if (digestGate !== undefined) await digestGate.wait();
           return digestConfig((await config.read()) as Record<string, JsonValue>, configPaths[index]!);
         },
         accountOperationsSettled(ids) {
@@ -134,6 +142,10 @@ export async function withTwoSyncDevices(
           await config.replace(async () => next, {
             afterCommit: async () => confirmLocalCommit(repo, binding.id, commitId, local),
           });
+          const nextCount = (remoteApplyCounts.get(objectId) ?? 0) + 1;
+          remoteApplyCounts.set(objectId, nextCount);
+          for (const resolve of remoteApplyWaiters.get(objectId) ?? []) resolve();
+          remoteApplyWaiters.delete(objectId);
           return { applied: true };
         },
       };
@@ -150,6 +162,19 @@ export async function withTwoSyncDevices(
         remoteApplyCalls() {
           return remoteCalls;
         },
+        waitForRemoteApply(objectId) {
+          const count = remoteApplyCounts.get(objectId) ?? 0;
+          return new Promise<void>((resolve) => {
+            const waiters = remoteApplyWaiters.get(objectId) ?? new Set<() => void>();
+            remoteApplyWaiters.set(objectId, waiters);
+            if ((remoteApplyCounts.get(objectId) ?? 0) > count) {
+              waiters.delete(resolve);
+              resolve();
+            } else {
+              waiters.add(resolve);
+            }
+          });
+        },
         gateNext(method) {
           return backend.gateNext(method);
         },
@@ -157,6 +182,40 @@ export async function withTwoSyncDevices(
           const gate = createGate();
           remoteGate = gate;
           return { entered: gate.entered, release: gate.release };
+        },
+        pauseLocalDigest() {
+          const gate = createGate();
+          digestGate = gate;
+          return { entered: gate.entered, release: gate.release };
+        },
+        async preparePendingProvider(id, body) {
+          const before = (await config.read()) as Record<string, JsonValue>;
+          const next = JSON.parse(JSON.stringify(before)) as Record<string, JsonValue>;
+          const providers = next['providers'];
+          if (providers === null || typeof providers !== 'object' || Array.isArray(providers)) next['providers'] = {};
+          (next['providers'] as Record<string, JsonValue>)[id] = body;
+          const objectId = `provider-${id}`;
+          repo.putEntity(binding.id, {
+            objectId,
+            logicalKey: id,
+            kind: 'provider',
+            mode: 'included',
+            epoch: 0,
+            desired: null,
+            baseline: null,
+            overrides: [],
+            pendingReason: null,
+          });
+          const commitId = `${deviceId}-pending-${++commitNumber}`;
+          prepareLocalCommit(repo, binding.id, {
+            commitId,
+            origin: 'local',
+            beforeDigest: digestConfig(before, configPaths[index]!),
+            afterDigest: digestConfig(next, configPaths[index]!),
+            rawAfter: next,
+            accountOperationIds: [],
+          });
+          await config.replace(async () => next);
         },
         async commitProvider(id, body, included) {
           const before = (await config.read()) as Record<string, JsonValue>;

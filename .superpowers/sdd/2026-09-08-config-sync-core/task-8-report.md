@@ -3,6 +3,7 @@
 ## Files
 
 - Added `packages/core/src/sync/engine/engine.ts` with the backend-neutral reconciliation loop and lifecycle.
+- Added `packages/core/src/sync/engine/remote.ts` to isolate remote discovery, revision validation, conflict handling, and local activation from lifecycle and outbox orchestration.
 - Added `packages/core/src/sync/engine/incoming.ts` with activation and pending-state contracts.
 - Added `packages/core/src/sync/engine/scheduler.ts` with polling/backoff constants and bounded jitter.
 - Added `packages/core/src/sync/engine/index.ts` and exported the engine from `packages/core/src/sync/index.ts`.
@@ -11,7 +12,7 @@
 
 ## Lifecycle and reconciliation behavior
 
-The engine verifies the active binding, identity, space, and session generation before work and again before local application or outbox acknowledgement. It recovers prepared local commits, drains the durable outbox using publication/deletion recovery, paginates cloud entity heads, validates current revisions, persists desired state and exclusions, and applies included compatible entities through `LocalSyncPort.applyRemote`. Remote application never creates an outgoing commit.
+The engine verifies the active binding, identity, space, and session generation before work and again before local application or outbox acknowledgement. Local commit recovery also checks the binding fence after every awaited local read and before repository mutations, preventing a generation switch from discarding or confirming stale work. It recovers prepared local commits, drains the durable outbox using publication/deletion recovery, paginates cloud entity heads, validates current revisions, persists desired state and exclusions, and applies included compatible entities through `LocalSyncPort.applyRemote`. Remote application never creates an outgoing commit.
 
 Active heads with no current revision are treated as transient publication state and left untouched. Current revisions are checked against the head object ID, operation ID, epoch, protocol, state, and logical identity before they can become a baseline. Conflicting object IDs are discovered before activation and all involved identities are excluded and disabled deterministically. Local puts targeting deleted heads use the explicit restore path and advance the remote epoch.
 
@@ -21,7 +22,7 @@ Newly discovered entities are included by default, while an existing local exclu
 
 ## Tests and verification
 
-- `bun test packages/core/src/sync`: 95 passed.
+- `bun test packages/core/src/sync`: 97 passed.
 - `bun run --filter @aio-proxy/core test`: passed.
 - `bun run --filter @aio-proxy/plugin-sdk test`: passed (92 tests); TypeScript test declarations passed.
 - `bun run check`: passed (repository warnings only).
@@ -31,4 +32,4 @@ The repository-wide type-aware lint command still reports two pre-existing dashb
 
 ## Concerns
 
-The core engine intentionally delegates prerequisite and credential validation to the host-provided `LocalSyncPort`; it does not refresh OAuth or make runtime/plugin decisions. Unknown cloud data with no existing local identity is preserved remotely and left undiscovered locally until a compatible protocol decoder is available.
+The core engine intentionally delegates prerequisite and credential validation to the host-provided `LocalSyncPort`; it does not refresh OAuth or make runtime/plugin decisions. Unknown cloud data with no existing local identity is preserved remotely and left undiscovered locally until a compatible protocol decoder is available. The polling/backoff integration is exercised through the deterministic in-memory backend and lifecycle fixture; native CloudKit and live OAuth gates remain outside the backend-neutral core task.

@@ -33,9 +33,11 @@ test('a locally excluded Provider stays excluded when discovered from the cloud'
 test('start polls and applies a cloud change without a manual reconcile', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     b.engine.start();
+    const applied = b.waitForRemoteApply('provider-work');
     await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
     await a.engine.reconcile(a.signal);
-    await new Promise((resolve) => setTimeout(resolve, 35));
+    await applied;
+    await Promise.resolve();
     expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
   });
 });
@@ -110,10 +112,11 @@ test('watch hints coalesce while one remote application is in flight', async () 
     await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
     await a.engine.reconcile(a.signal);
     await gate.entered;
+    const otherApplied = b.waitForRemoteApply('provider-other');
     await a.commitProvider('other', { kind: 'api', apiKey: 'other' }, true);
     await a.engine.reconcile(a.signal);
     gate.release();
-    await new Promise((resolve) => setTimeout(resolve, 35));
+    await otherApplied;
     expect(b.remoteApplyCalls().filter((call) => call.objectId === 'provider-work')).toHaveLength(1);
   });
 });
@@ -265,6 +268,20 @@ test('stale callbacks cannot persist state after the binding generation switches
   });
 });
 
+test('binding generation switches during local commit recovery leave the pending intent untouched', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    await b.preparePendingProvider('work', { kind: 'api', apiKey: 'k' });
+    const gate = b.pauseLocalDigest();
+    const pending = b.engine.reconcile(b.signal);
+    await gate.entered;
+    b.repo.writeBinding({ ...b.binding, sessionGeneration: 2 });
+    gate.release();
+    await pending;
+    expect(b.repo.pendingCommits(b.binding.id)).toHaveLength(1);
+    expect(b.repo.outbox(b.binding.id)).toEqual([]);
+  });
+});
+
 test('stop aborts in-flight work, disposes once, and is repeatable', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
@@ -277,6 +294,15 @@ test('stop aborts in-flight work, disposes once, and is repeatable', async () =>
     gate.release();
     await Promise.all([pending, firstStop, secondStop]);
     await b.engine.stop();
+  });
+});
+
+test('stop remains successful when session disposal fails', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    b.session.dispose = async () => {
+      throw new Error('dispose failed');
+    };
+    await expect(b.engine.stop()).resolves.toBeUndefined();
   });
 });
 

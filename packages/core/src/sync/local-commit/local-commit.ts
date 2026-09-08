@@ -6,6 +6,8 @@ import type { CommitIntent, OutboxOperation, SyncRepository } from '../repositor
 
 export interface LocalCommitPort {
   withFence<T>(run: () => Promise<T>): Promise<T>;
+  /** Optional binding fence checked after each awaited local read and before repository writes. */
+  assertCurrent?(): void;
   rawDigest(): Promise<string>;
   accountOperationsSettled(ids: readonly string[]): boolean;
   committedSource(): Promise<CommittedSource>;
@@ -53,6 +55,7 @@ async function confirmLocalCommitUnderFence(
   if (intent === null || intent.phase === 'confirmed') return;
   if (!port.accountOperationsSettled(intent.accountOperationIds)) return;
   if ((await port.rawDigest()) !== intent.afterDigest) return;
+  port.assertCurrent?.();
   if (
     intent.beforeDigest === intent.afterDigest &&
     intent.accountOperationIds.length === 0 &&
@@ -63,6 +66,7 @@ async function confirmLocalCommitUnderFence(
   }
 
   const source = await port.committedSource();
+  port.assertCurrent?.();
   if (intent.sourceRevisions !== undefined && !sameSourceRevisions(intent.sourceRevisions, source.sourceRevisions)) {
     return;
   }
@@ -81,6 +85,7 @@ async function confirmLocalCommitUnderFence(
     latest.afterDigest === intent.afterDigest &&
     sameSourceRevisions(latest.sourceRevisions, sourceRevisions)
   ) {
+    port.assertCurrent?.();
     repo.discard(bindingId, commitId);
     return;
   }
@@ -102,6 +107,7 @@ export async function recoverLocalCommits(
     for (const intent of repo.pendingCommits(bindingId)) {
       if (!port.accountOperationsSettled(intent.accountOperationIds)) continue;
       const digest = await port.rawDigest();
+      port.assertCurrent?.();
       if (digest === intent.beforeDigest && intent.beforeDigest !== intent.afterDigest) {
         repo.discard(bindingId, intent.commitId);
       } else if (digest === intent.afterDigest) {
