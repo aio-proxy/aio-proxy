@@ -145,6 +145,87 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect((await app.request('/v1/videos/video_extend')).status).toBe(200);
   });
 
+  test('a pinned edit with an explicit model resolves and pins that model', async () => {
+    const fixture = videoProvider('openai', { models: ['sora-2', 'sora-2-pro'] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody(),
+        })
+      ).status,
+    ).toBe(200);
+    const afterCreate = fixture.resolves.length;
+    const edits = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'sora-2-pro', prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(edits.status).toBe(200);
+    expect(fixture.resolves.slice(afterCreate)[0]).toMatchObject({
+      protocol: ProviderProtocol.OpenAIVideo,
+      modelId: 'sora-2-pro',
+    });
+    expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
+    expect(fixture.resolves.at(-1)).toMatchObject({ modelId: 'sora-2-pro' });
+  });
+
+  test('a pinned edit without a model keeps the source job model', async () => {
+    const fixture = videoProvider('openai', { models: ['sora-2', 'sora-2-pro'] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody({ model: 'sora-2-pro' }),
+        })
+      ).status,
+    ).toBe(200);
+    const afterCreate = fixture.resolves.length;
+    const edits = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(edits.status).toBe(200);
+    expect(fixture.resolves.slice(afterCreate)[0]).toMatchObject({ modelId: 'sora-2-pro' });
+    expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
+    expect(fixture.resolves.at(-1)).toMatchObject({ modelId: 'sora-2-pro' });
+  });
+
+  test('a pinned edit whose explicit model the provider cannot resolve is 503', async () => {
+    const pinned = videoProvider('openai', {
+      models: ['sora-2', 'sora-2-pro'],
+      rejectModelIds: ['sora-2-pro'],
+    });
+    const other = videoProvider('backup', { models: ['sora-2-pro'] });
+    const app = await createServer({
+      config: { providers: {} },
+      providerInstances: [pinned.value, other.value],
+    });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody(),
+        })
+      ).status,
+    ).toBe(200);
+    expect(pinned.calls.raw).toBe(1);
+    const edits = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'sora-2-pro', prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(edits.status).toBe(503);
+    expect(await edits.json()).toMatchObject({ error: { code: 'video_upstream_unavailable' } });
+    expect(other.calls.raw).toBe(0);
+  });
+
   test('a language-only catalog cannot serve Videos', async () => {
     const fixture = videoProvider('chat', { capabilities: ['language'] });
     const response = await request(CREATE, [fixture.value], createBody({ model: 'sora-2' }));
@@ -342,7 +423,9 @@ function videoProvider(
   id: string,
   options: {
     readonly capabilities?: readonly InboundCapability[];
+    readonly models?: readonly string[];
     readonly raw?: false;
+    readonly rejectModelIds?: readonly string[];
     readonly speech?: boolean;
   } = {},
 ): {
@@ -357,6 +440,8 @@ function videoProvider(
   const resolves: RawResolveInput[] = [];
   const bodies: unknown[] = [];
   const urls: string[] = [];
+  const modelIds = options.models ?? ['sora-2'];
+  const rejectModelIds = [...(options.rejectModelIds ?? [])];
   let rawAvailable = options.raw !== false;
   const granted = new Set(options.capabilities ?? (['video'] as const));
   return {
@@ -368,11 +453,11 @@ function videoProvider(
     resolves,
     urls,
     value: {
-      capabilityIndex: { 'sora-2': granted },
+      capabilityIndex: Object.fromEntries(modelIds.map((modelId) => [modelId, granted])),
       enabled: true,
       id,
       kind: ProviderKind.Api,
-      models: ['sora-2'],
+      models: [...modelIds],
       model: { invoke: () => ((calls.model += 1), new ReadableStream()) },
       raw:
         options.raw === false
@@ -381,6 +466,7 @@ function videoProvider(
               resolve: (input: RawResolveInput) => {
                 resolves.push(input);
                 if (!rawAvailable || input.protocol !== ProviderProtocol.OpenAIVideo) return undefined;
+                if (rejectModelIds.includes(input.modelId)) return undefined;
                 return {
                   invoke: async (request: Request) => {
                     calls.raw += 1;

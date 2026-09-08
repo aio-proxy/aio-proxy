@@ -36,14 +36,15 @@ export async function invokePinnedVideo(
   context: Context<CallerPrincipalEnv>,
   source: VideosRouteSource,
   record: VideoJobRecord,
-  options: { readonly pinNewJob?: boolean } = {},
+  options: { readonly pinNewJob?: boolean; readonly modelId?: string } = {},
 ): Promise<Response> {
   const lease = source.acquireProviderSnapshot();
+  const modelId = options.modelId ?? record.model;
   try {
-    const provider = pinnedVideoProvider(lease.snapshot.providers, record);
+    const provider = pinnedVideoProvider(lease.snapshot.providers, record, modelId);
     const raw = provider?.raw?.resolve({
       protocol: ProviderProtocol.OpenAIVideo,
-      modelId: record.model,
+      modelId,
       requestPath: new URL(context.req.raw.url).pathname,
     });
     if (provider === undefined || raw === undefined) return videoUpstreamUnavailable();
@@ -52,7 +53,7 @@ export async function invokePinnedVideo(
     if (options.pinNewJob === true && response.ok) {
       await pinSuccessfulVideoJob(source, callerPrincipal(context), {
         provider,
-        modelId: record.model,
+        modelId,
         response,
       });
     }

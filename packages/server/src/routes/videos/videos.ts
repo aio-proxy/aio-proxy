@@ -71,9 +71,14 @@ async function handleFollowUpCreate(
       const record = source.videoJobs.lookup(sourceId);
       if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
       if (record !== undefined) {
-        const parsed = videosParseError(() => parseOpenAIVideoEdit(peek.body));
-        if (parsed !== undefined) return parsed;
-        return await withCapacity(source, () => invokePinnedVideo(context, source, record, { pinNewJob: true }));
+        const parsed = videosTryParse(() => parseOpenAIVideoEdit(peek.body));
+        if (!parsed.ok) return parsed.response;
+        return await withCapacity(source, () =>
+          invokePinnedVideo(context, source, record, {
+            pinNewJob: true,
+            modelId: parsed.value.modelDefaulted ? record.model : parsed.value.model,
+          }),
+        );
       }
     }
   }
@@ -92,8 +97,8 @@ async function handleRemix(context: Context<CallerPrincipalEnv>, source: VideosR
   const parsed = await peekFollowUpBody(context.req.raw);
   if (parsed.kind === 'reject') return parsed.response;
   if (parsed.kind !== 'json') return videosRequestError(new OpenAIVideosInvalidRequestError('content_type'));
-  const remix = videosParseError(() => parseOpenAIVideoRemix(parsed.body));
-  if (remix !== undefined) return remix;
+  const remix = videosTryParse(() => parseOpenAIVideoRemix(parsed.body));
+  if (!remix.ok) return remix.response;
   const resolved = resolveOwnedPinnedVideo(context, source);
   if ('response' in resolved) return resolved.response;
   return await withCapacity(source, () => invokePinnedVideo(context, source, resolved.record, { pinNewJob: true }));
@@ -129,12 +134,13 @@ async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
   }
 }
 
-function videosParseError(parse: () => unknown): Response | undefined {
+function videosTryParse<T>(
+  parse: () => T,
+): { readonly ok: true; readonly value: T } | { readonly ok: false; readonly response: Response } {
   try {
-    parse();
-    return undefined;
+    return { ok: true, value: parse() };
   } catch (error) {
-    return videosRequestError(error);
+    return { ok: false, response: videosRequestError(error) };
   }
 }
 
