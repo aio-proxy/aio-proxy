@@ -33,6 +33,18 @@ test('memory backend persists a write before an outcome-unknown failure', async 
   expect(await session.read('key', signal)).toMatchObject({ kind: 'present', value: new Uint8Array([1]) });
 });
 
+test('memory backend can pause after a CAS has persisted its value', async () => {
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const signal = new AbortController().signal;
+  const gate = backend.gateAfterNext('compareAndSwap');
+  const pending = session.compareAndSwap('key', null, new Uint8Array([1]), signal);
+  await gate.entered;
+  expect(await session.read('key', signal)).toMatchObject({ kind: 'present', value: new Uint8Array([1]) });
+  gate.release();
+  await expect(pending).resolves.toMatchObject({ kind: 'written' });
+});
+
 test('disposing a gated session cancels its in-flight read and CAS without affecting other sessions', async () => {
   const backend = createMemorySyncBackend();
   const session = backend.connect();

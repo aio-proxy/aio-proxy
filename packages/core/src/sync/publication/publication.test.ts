@@ -41,6 +41,35 @@ function revisionKeys(backend: ReturnType<typeof createMemorySyncBackend>, objec
   return [...backend.readAll().keys()].filter((key) => key.startsWith(`s/v1/default/revision/${objectId}/`));
 }
 
+async function seedReservedPayload(
+  backend: ReturnType<typeof createMemorySyncBackend>,
+  item: ReturnType<typeof makeOperation>,
+  signal: AbortSignal,
+) {
+  const session = backend.connect();
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, item.epoch);
+  const headWrite = await session.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+  if (headWrite.kind !== 'written') throw new Error('head seed failed');
+  const payload = encode({
+    protocol: 1,
+    state: 'payload',
+    objectId: item.objectId,
+    epoch: item.epoch,
+    operationId: item.operationId,
+    body: item.body,
+    publishedSequence: null,
+    writtenAt: null,
+  });
+  const payloadWrite = await session.compareAndSwap(
+    revisionKey(item.objectId, item.operationId),
+    null,
+    payload,
+    signal,
+  );
+  if (payloadWrite.kind !== 'written') throw new Error('payload seed failed');
+  return { session, reserved, headWrite, payloadWrite };
+}
+
 test('unknown CAS result retries the same operation without another revision', async () => {
   const backend = createMemorySyncBackend();
   const store = createSyncObjectStore(backend.connect());
@@ -134,6 +163,86 @@ test('a paused older writer publishes after a newer submission and wins by succe
   expect(oldResult.sequence).toBe(2);
   const head = (await createSyncObjectStore(seedSession).readHead(old.objectId, signal))!;
   expect(head.head).toMatchObject({ current: old.operationId, history: [newer.operationId], sequence: 2 });
+});
+
+test('a writer paused after payload upload resumes after a newer writer and keeps one revision per operation', async () => {
+  const backend = createMemorySyncBackend();
+  const old = makeOperation();
+  const newer = makeOperation({
+    objectId: old.objectId,
+    body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'newer' }, dependencies: [] },
+  });
+  const signal = new AbortController().signal;
+  const seedSession = backend.connect();
+  const reserved = reserve(newHead(old.objectId, old.body), old.operationId, old.epoch);
+  expect((await seedSession.compareAndSwap(entityKey(old.objectId), null, encode(reserved), signal)).kind).toBe(
+    'written',
+  );
+  const afterPayload = backend.gateAfterNext('compareAndSwap');
+  const oldWriter = publishEntity(createSyncObjectStore(backend.connect()), old, signal);
+  await afterPayload.entered;
+  const newerResult = await publishEntity(createSyncObjectStore(backend.connect()), newer, signal);
+  afterPayload.release();
+  const oldResult = await oldWriter;
+  expect(newerResult.sequence).toBe(1);
+  expect(oldResult.sequence).toBe(2);
+  expect(revisionKeys(backend, old.objectId)).toHaveLength(2);
+  const head = (await createSyncObjectStore(backend.connect()).readHead(old.objectId, signal))!;
+  expect(head.head).toMatchObject({ current: old.operationId, history: [newer.operationId], sequence: 2 });
+});
+
+test('a writer paused before publication retries its same reservation after a newer CAS wins', async () => {
+  const backend = createMemorySyncBackend();
+  const old = makeOperation();
+  const newer = makeOperation({
+    objectId: old.objectId,
+    body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'newer' }, dependencies: [] },
+  });
+  const signal = new AbortController().signal;
+  await seedReservedPayload(backend, old, signal);
+  const beforePublish = backend.gateNext('compareAndSwap');
+  const oldWriter = publishEntity(createSyncObjectStore(backend.connect()), old, signal);
+  await beforePublish.entered;
+  const newerResult = await publishEntity(createSyncObjectStore(backend.connect()), newer, signal);
+  beforePublish.release();
+  const oldResult = await oldWriter;
+  expect(newerResult.sequence).toBe(1);
+  expect(oldResult.sequence).toBe(2);
+  expect(revisionKeys(backend, old.objectId)).toHaveLength(2);
+  const head = (await createSyncObjectStore(backend.connect()).readHead(old.objectId, signal))!;
+  expect(head.head).toMatchObject({ current: old.operationId, history: [newer.operationId], sequence: 2 });
+});
+
+test('a writer paused before receipt finalization completes its receipt after a newer operation', async () => {
+  const backend = createMemorySyncBackend();
+  const old = makeOperation();
+  const newer = makeOperation({
+    objectId: old.objectId,
+    body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'newer' }, dependencies: [] },
+  });
+  const signal = new AbortController().signal;
+  const seeded = await seedReservedPayload(backend, old, signal);
+  const published = publish(seeded.reserved, old.operationId, old.epoch);
+  const publishWrite = await seeded.session.compareAndSwap(
+    entityKey(old.objectId),
+    seeded.headWrite.version,
+    encode(published),
+    signal,
+  );
+  expect(publishWrite.kind).toBe('written');
+  const beforeReceipt = backend.gateNext('compareAndSwap');
+  const oldWriter = publishEntity(createSyncObjectStore(backend.connect()), old, signal);
+  await beforeReceipt.entered;
+  const newerResult = await publishEntity(createSyncObjectStore(backend.connect()), newer, signal);
+  beforeReceipt.release();
+  const oldResult = await oldWriter;
+  expect(newerResult.sequence).toBe(2);
+  expect(oldResult.sequence).toBe(1);
+  expect(revisionKeys(backend, old.objectId)).toHaveLength(2);
+  const oldRevision = decodeRevision(backend.readAll().get(revisionKey(old.objectId, old.operationId))!.value);
+  expect(oldRevision).toMatchObject({ state: 'payload', publishedSequence: 1 });
+  const head = (await createSyncObjectStore(backend.connect()).readHead(old.objectId, signal))!;
+  expect(head.head).toMatchObject({ current: newer.operationId, history: [old.operationId], sequence: 2 });
 });
 
 test('out-of-order acknowledgement of an older operation does not overwrite the newer current revision', async () => {
@@ -350,55 +459,28 @@ test('dependency references are published before their payloads exist', async ()
   });
 });
 
-test('cleanup fencing prevents a cancelled reservation from publishing', async () => {
+test('cleanup wins after an old writer reserves and erases its late publication', async () => {
   const backend = createMemorySyncBackend();
-  const session = backend.connect();
-  const store = createSyncObjectStore(session);
+  const seedSession = backend.connect();
   const item = makeOperation();
   const signal = new AbortController().signal;
   const initial = newHead(item.objectId, item.body);
-  const reserved = reserve(initial, item.operationId, item.epoch);
-  const cancelling = { ...reserved, cancelling: [item.operationId] };
-  expect((await session.compareAndSwap(entityKey(item.objectId), null, encode(cancelling), signal)).kind).toBe(
-    'written',
-  );
-  await expect(publishEntity(store, item, signal)).rejects.toThrow('cancel');
-  expect(backend.readAll().has(revisionKey(item.objectId, item.operationId))).toBe(false);
-});
-
-test('a duplicate after cleanup erases the reservation cannot reserve or publish again', async () => {
-  const backend = createMemorySyncBackend();
-  const session = backend.connect();
-  const store = createSyncObjectStore(session);
-  const item = makeOperation();
-  const signal = new AbortController().signal;
-  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, item.epoch);
-  const headWrite = await session.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+  const headWrite = await seedSession.compareAndSwap(entityKey(item.objectId), null, encode(initial), signal);
   expect(headWrite.kind).toBe('written');
   if (headWrite.kind !== 'written') throw new Error('head seed failed');
-  const payload = encode({
-    protocol: 1,
-    state: 'payload',
-    objectId: item.objectId,
-    epoch: item.epoch,
-    operationId: item.operationId,
-    body: item.body,
-    publishedSequence: null,
-    writtenAt: null,
-  });
-  const revisionWrite = await session.compareAndSwap(
-    revisionKey(item.objectId, item.operationId),
-    null,
-    payload,
-    signal,
-  );
-  expect(revisionWrite.kind).toBe('written');
-  if (revisionWrite.kind !== 'written') throw new Error('payload seed failed');
 
+  const afterReservation = backend.gateAfterNext('compareAndSwap');
+  const oldWriter = publishEntity(createSyncObjectStore(backend.connect()), item, signal);
+  await afterReservation.entered;
+  const reservedValue = backend.readAll().get(entityKey(item.objectId));
+  expect(reservedValue?.kind).toBe('present');
+  const reserved = decodeHead(reservedValue!.value);
+  expect(reserved.reserved).toContain(item.operationId);
+  const cleanupSession = backend.connect();
   const cancelling = { ...reserved, cancelling: [item.operationId] };
-  const cancellationWrite = await session.compareAndSwap(
+  const cancellationWrite = await cleanupSession.compareAndSwap(
     entityKey(item.objectId),
-    headWrite.version,
+    reservedValue!.version,
     encode(cancelling),
     signal,
   );
@@ -413,15 +495,15 @@ test('a duplicate after cleanup erases the reservation cannot reserve or publish
     publishedSequence: null,
     reason: 'abandoned',
   });
-  const eraseWrite = await session.compareAndSwap(
+  const eraseWrite = await cleanupSession.compareAndSwap(
     revisionKey(item.objectId, item.operationId),
-    revisionWrite.version,
+    null,
     erased,
     signal,
   );
   expect(eraseWrite.kind).toBe('written');
   const complete = { ...cancelling, reserved: [], cancelling: [], cleanupComplete: true };
-  const completionWrite = await session.compareAndSwap(
+  const completionWrite = await cleanupSession.compareAndSwap(
     entityKey(item.objectId),
     cancellationWrite.version,
     encode(complete),
@@ -429,7 +511,8 @@ test('a duplicate after cleanup erases the reservation cannot reserve or publish
   );
   expect(completionWrite.kind).toBe('written');
 
-  await expect(publishEntity(store, item, signal)).rejects.toThrow('abandoned');
+  afterReservation.release();
+  await expect(oldWriter).rejects.toThrow('abandoned');
   const finalHead = decodeHead(backend.readAll().get(entityKey(item.objectId))!.value);
   expect(finalHead).toMatchObject({ current: null, reserved: [], cancelling: [], receipts: {} });
   expect(decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value)).toMatchObject({

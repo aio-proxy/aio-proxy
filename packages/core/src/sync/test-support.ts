@@ -63,6 +63,7 @@ export type MemorySyncBackend = {
   readonly advance: (ms: number) => void;
   readonly failNext: (method: Method, mode: FaultMode) => void;
   readonly gateNext: (method: Method) => { readonly entered: Promise<void>; readonly release: () => void };
+  readonly gateAfterNext: (method: Method) => { readonly entered: Promise<void>; readonly release: () => void };
 };
 
 function createGate(): Gate {
@@ -128,6 +129,7 @@ export function createMemorySyncBackend(): MemorySyncBackend {
   const values = new Map<string, Extract<SyncRead, { kind: 'present' }>>();
   const faults = new Map<Method, FaultMode>();
   const gates = new Map<Method, Gate>();
+  const afterGates = new Map<Method, Gate>();
   let clock = 0;
   let version = 0;
 
@@ -173,6 +175,10 @@ export function createMemorySyncBackend(): MemorySyncBackend {
         const current = values.get(key);
         const result: SyncRead =
           current === undefined ? { kind: 'absent' } : { ...current, value: current.value.slice() };
+        const afterGate = afterGates.get('read');
+        afterGates.delete('read');
+        if (afterGate !== undefined) await waitForGate(afterGate, sessionController.signal);
+        assertOpen();
         if (fault === 'after') throw new SyncBackendError('outcome-unknown', 'Sync read outcome is unknown');
         return result;
       },
@@ -181,6 +187,10 @@ export function createMemorySyncBackend(): MemorySyncBackend {
         const fault = await before('compareAndSwap', signal, sessionController.signal);
         assertOpen();
         const result = casMemory(values, key, expected, value, nextVersion, clock);
+        const afterGate = afterGates.get('compareAndSwap');
+        afterGates.delete('compareAndSwap');
+        if (afterGate !== undefined) await waitForGate(afterGate, sessionController.signal);
+        assertOpen();
         if (fault === 'after') throw new SyncBackendError('outcome-unknown', 'Sync write outcome is unknown');
         return result;
       },
@@ -229,6 +239,11 @@ export function createMemorySyncBackend(): MemorySyncBackend {
     gateNext(method) {
       const gate = createGate();
       gates.set(method, gate);
+      return { entered: gate.entered, release: gate.release };
+    },
+    gateAfterNext(method) {
+      const gate = createGate();
+      afterGates.set(method, gate);
       return { entered: gate.entered, release: gate.release };
     },
   };
