@@ -106,6 +106,7 @@ private func runProbe() async {
     }
 }
 
+AssetStore.removeAbandonedFiles()
 if CommandLine.arguments.contains("--probe") {
     await runProbe()
 }
