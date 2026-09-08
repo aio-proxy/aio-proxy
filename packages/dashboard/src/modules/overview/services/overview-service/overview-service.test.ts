@@ -50,6 +50,7 @@ const wireOverview = {
 const wireDiagnostics = {
   providerHealth: [{ providerId: 'first', successRate: 1, p95LatencyMs: 25, totalTokens: '9007199254740993' }],
   topModelCosts: [{ modelId: 'model-a', estimatedCostNanoUsd: '600' }],
+  topModelTokens: [{ modelId: 'model-b', totalTokens: '9007199254740993' }],
 };
 
 const wireActivity = {
@@ -76,6 +77,7 @@ describe('overview service', () => {
     expect(overview.modelTrendByMetric.tokens.buckets[0]?.values).toEqual({ a: 2n });
     expect(overview.modelTrendByMetric.cost.buckets[0]?.values).toEqual({ a: 3n });
     expect(diagnostics.topModelCosts[0]?.estimatedCostNanoUsd).toBe(600n);
+    expect(diagnostics.topModelTokens[0]?.totalTokens).toBe(9007199254740993n);
     expect(diagnostics.providerHealth).toEqual([
       { providerId: 'first', successRate: 1, p95LatencyMs: 25, totalTokens: 9007199254740993n },
     ]);

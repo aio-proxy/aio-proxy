@@ -152,6 +152,7 @@ export const DashboardOverviewDiagnosticsResponseSchema = z.object({
     )
     .nullable(),
   topModelCosts: z.array(z.object({ modelId: IdSchema, estimatedCostNanoUsd: NonNegativeIntegerStringSchema })),
+  topModelTokens: z.array(z.object({ modelId: IdSchema, totalTokens: NonNegativeIntegerStringSchema })),
 });
 
 export const DashboardOverviewActivityResponseSchema = z.object({
