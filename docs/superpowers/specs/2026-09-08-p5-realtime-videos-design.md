@@ -177,7 +177,7 @@ Accepted content types: `application/json` and `multipart/form-data`. Anything e
 
 `prompt` is required on JSON and multipart. Missing / blank prompt is `400 invalid_request`.
 
-Other official fields (`seconds`, `size`, `input_reference`, plus unknown future keys) are forwarded on the raw path. Raw rewrite injects the **candidate resolved** model id when the client omitted/blanked `model` or routing changed it. A no-op explicit model keeps bytes only when the form has exactly one canonical `model` field; repeated `model` or `model[]` is rebuilt (last spelling routes, same as Audio). Strip hop headers on rewrite. Multipart replay copies every client field and replaces only `model` / `model[]` when a rewrite is required.
+Other official fields (`seconds`, `size`, `input_reference`, plus unknown future keys) are forwarded on the raw path. Raw rewrite injects the **candidate resolved** model id when the client omitted/blanked `model` or routing changed it. A no-op explicit model keeps bytes only when the form has exactly one canonical `model` field; repeated `model` or `model[]` is rebuilt (last spelling routes, same as Audio). Strip hop headers on rewrite. Multipart parse decodes a supported `Content-Encoding` (gzip and the other request codecs) before `formData()`; unsupported encodings are `415`. Verbatim raw replay keeps the original encoded spool bytes. Multipart replay copies every client field and replaces only `model` / `model[]` when a rewrite is required.
 
 Body limits: default `REQUEST_BODY_LIMITS` (64 MiB). Create carries at most one optional image reference, not a 16-file edits envelope.
 
@@ -225,7 +225,7 @@ type VideoJobRecord = {
 - `close()` on server shutdown.
 - Owner check uses the same caller-principal equality as realtime (`kind` + `id`).
 
-Pinned raw resolves the live provider by `providerId` (and `withAccountPin` when `accountId` is present), then calls `raw.resolve` once with the inbound pathname. If the provider is gone, disabled, or has no `openai-video` raw transport: `503` with `code: "video_upstream_unavailable"`. Do not walk other candidates.
+Pinned raw resolves the live provider by `providerId` (and `withAccountPin` when `accountId` is present), then calls `raw.resolve` once with the inbound pathname. The pinned invoke strips caller credential headers and query (`withoutCallerCredentials` + `withoutCallerCredentialQuery`) so a keyless proxy does not forward `Authorization` / `x-api-key` / `x-goog-api-key` or `?key=` / `?auth_token=` to a plugin raw transport. If the provider is gone, disabled, or has no `openai-video` raw transport: `503` with `code: "video_upstream_unavailable"`. Do not walk other candidates.
 
 ## Pipeline changes
 

@@ -408,6 +408,34 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.resolves.some((input) => input.requestPath === '/v1/videos/video_abc')).toBe(true);
   });
 
+  test('a keyless pinned follow-up does not forward caller credentials', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody(),
+        })
+      ).status,
+    ).toBe(200);
+    const sentinel = 'caller-secret-credential';
+    const retrieved = await app.request('/v1/videos/video_abc', {
+      headers: {
+        authorization: `Bearer ${sentinel}`,
+        'x-api-key': sentinel,
+        'x-goog-api-key': sentinel,
+      },
+    });
+    expect(retrieved.status).toBe(200);
+    const forwarded = fixture.headerBags.at(-1);
+    expect(forwarded?.get('authorization')).toBeNull();
+    expect(forwarded?.get('x-api-key')).toBeNull();
+    expect(forwarded?.get('x-goog-api-key')).toBeNull();
+    expect([...(forwarded?.values() ?? [])].join('\n')).not.toContain(sentinel);
+  });
+
   test('content forwards the inbound variant query to the pinned provider', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
@@ -450,6 +478,7 @@ function videoProvider(
   readonly bodies: unknown[];
   readonly calls: VideoCalls;
   readonly disableRaw: () => void;
+  readonly headerBags: Headers[];
   readonly resolves: RawResolveInput[];
   readonly urls: string[];
   readonly value: RuntimeProviderInstance;
@@ -457,6 +486,7 @@ function videoProvider(
   const calls: VideoCalls = { model: 0, raw: 0, speech: 0 };
   const resolves: RawResolveInput[] = [];
   const bodies: unknown[] = [];
+  const headerBags: Headers[] = [];
   const urls: string[] = [];
   const modelIds = options.models ?? ['sora-2'];
   const rejectModelIds = [...(options.rejectModelIds ?? [])];
@@ -468,6 +498,7 @@ function videoProvider(
     disableRaw() {
       rawAvailable = false;
     },
+    headerBags,
     resolves,
     urls,
     value: {
@@ -489,6 +520,7 @@ function videoProvider(
                 return {
                   invoke: async (request: Request) => {
                     calls.raw += 1;
+                    headerBags.push(new Headers(request.headers));
                     urls.push(request.url);
                     const path = new URL(request.url).pathname;
                     try {
