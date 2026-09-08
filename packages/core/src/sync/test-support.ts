@@ -1,13 +1,22 @@
 import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { SyncBackendError, type SyncCAS, type SyncRead, type SyncSession } from '@aio-proxy/plugin-sdk';
 
+import { openDb } from '../db';
 import { MIGRATIONS } from '../db/migrations.manifest';
 import { DatabaseSchemaTooNewError } from '../error';
+import { AtomicConfigFile } from '../plugins/config-file';
+import { encodeCandidate } from '../plugins/config-file/serialization';
 import type { StoredAccount } from '../plugins/repository';
+import type { LocalCommitPort } from './local-commit';
+import type { CommittedSource } from './projection';
 import type { EntityKind } from './protocol';
-import type { LocalEntity } from './repository';
+import type { JsonValue } from './protocol';
+import { createSyncRepository, type CommitIntent, type LocalEntity, type SyncRepository } from './repository';
 
 export function includedEntity(objectId: string, kind: EntityKind, logicalKey: string): LocalEntity {
   return {
@@ -36,6 +45,85 @@ export function storedAccount(providerId: string, token: string): StoredAccount 
     runtimeRevision: 1,
     updatedAt: 0,
   };
+}
+
+export type SyncCommitFixture = {
+  readonly configPath: string;
+  readonly repo: SyncRepository;
+  readonly bindingId: string;
+  readonly intent: Omit<CommitIntent, 'phase'>;
+  readonly port: LocalCommitPort;
+};
+
+function digestConfig(value: Record<string, JsonValue>, path: string): string {
+  return createHash('sha256').update(encodeCandidate(value, path)).digest('hex');
+}
+
+export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) => Promise<void>): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-commit-'));
+  const configPath = join(dir, 'config.jsonc');
+  const before = { providers: {} } satisfies Record<string, JsonValue>;
+  const rawAfter = {
+    providers: { work: { kind: 'api', baseUrl: 'https://example.test' } },
+  } satisfies Record<string, JsonValue>;
+  writeFileSync(configPath, encodeCandidate(before, configPath), { mode: 0o640 });
+  const db = openDb({ home: dir });
+  try {
+    const repo = createSyncRepository(db.sqlite);
+    const bindingId = 'binding-local-commit';
+    repo.writeBinding({
+      id: bindingId,
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1.0.0',
+      identityId: 'identity-local-commit',
+      spaceId: 'default',
+      deviceId: 'device-local-commit',
+      sessionGeneration: 1,
+      options: {},
+    });
+    repo.putEntity(bindingId, {
+      objectId: 'provider-work',
+      logicalKey: 'work',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: null,
+      baseline: null,
+      overrides: [],
+      pendingReason: null,
+    });
+    const file = new AtomicConfigFile(configPath);
+    const intent = {
+      commitId: 'local-commit',
+      origin: 'local' as const,
+      beforeDigest: digestConfig(before, configPath),
+      afterDigest: digestConfig(rawAfter, configPath),
+      rawAfter,
+      accountOperationIds: [],
+    } satisfies Omit<CommitIntent, 'phase'>;
+    const port: LocalCommitPort = {
+      withFence: async <T>(action: () => Promise<T>) => action(),
+      async rawDigest() {
+        return digestConfig((await file.read()) as Record<string, JsonValue>, configPath);
+      },
+      accountOperationsSettled() {
+        return true;
+      },
+      async committedSource(): Promise<CommittedSource> {
+        return {
+          raw: (await file.read()) as Record<string, JsonValue>,
+          accounts: new Map(),
+          pluginSecrets: new Map(),
+          pluginVersions: new Map(),
+        };
+      },
+    };
+    await run({ configPath, repo, bindingId, intent, port });
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 export function migrateSyncTestDb(sqlite: Database): void {

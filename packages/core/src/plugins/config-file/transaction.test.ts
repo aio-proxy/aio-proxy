@@ -84,6 +84,22 @@ describe('AtomicConfigFile', () => {
     expect(statSync(path).mode & 0o777).toBe(0o604);
   });
 
+  test('runs afterCommit after verification while the candidate is committed', async () => {
+    const { path } = fixture('{"one":1}\n');
+    const events: string[] = [];
+    await new AtomicConfigFile(path).replace((current) => ({ ...current, two: 2 }), {
+      async verify(candidate) {
+        events.push(`verify:${String(candidate['two'])}`);
+        expect(JSON.parse(readFileSync(path, 'utf8')).two).toBe(2);
+      },
+      async afterCommit(candidate) {
+        events.push(`afterCommit:${String(candidate['two'])}`);
+        expect(JSON.parse(readFileSync(path, 'utf8')).two).toBe(2);
+      },
+    });
+    expect(events).toEqual(['verify:2', 'afterCommit:2']);
+  });
+
   test('returning the exact current object performs a locked read without rewrite or verification', async () => {
     const { path } = fixture('{"one":1}\n');
     const before = statSync(path).mtimeMs;
