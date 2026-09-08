@@ -1,4 +1,22 @@
+import { Database } from 'bun:sqlite';
+import { createHash } from 'node:crypto';
+
 import { SyncBackendError, type SyncCAS, type SyncRead, type SyncSession } from '@aio-proxy/plugin-sdk';
+
+import { MIGRATIONS } from '../db/migrations.manifest';
+
+export function migrateSyncTestDb(sqlite: Database): void {
+  const currentVersion = Number(Object.values(sqlite.query('PRAGMA user_version').get() ?? {}).at(0) ?? 0);
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= currentVersion) continue;
+    const actualSha256 = createHash('sha256').update(migration.sql).digest('hex');
+    if (actualSha256 !== migration.sha256) throw new Error(`Migration hash mismatch: ${migration.file}`);
+    sqlite.transaction(() => {
+      sqlite.run(migration.sql);
+      sqlite.run(`PRAGMA user_version = ${migration.version}`);
+    })();
+  }
+}
 
 type Method = 'read' | 'compareAndSwap';
 type FaultMode = 'before' | 'after';
