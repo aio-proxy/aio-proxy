@@ -5,11 +5,13 @@ import {
   type Logger,
   type OAuthAdapter,
   type PluginApi,
+  type SyncBackendDefinition,
 } from '@aio-proxy/plugin-sdk';
 import { isRecord } from '@aio-proxy/shared';
 import { CapabilityIdSchema } from '@aio-proxy/types';
 
 import { validateConfigSpec } from './config-spec';
+import { validateSyncBackend } from './registry/sync';
 import { isPluginZodSchema } from './schema';
 
 export type PluginRegistry = {
@@ -19,9 +21,16 @@ export type PluginRegistry = {
     readonly capability: string;
     readonly adapter: OAuthAdapter;
   }[];
+  readonly resolveSync: (plugin: string, capability: string) => SyncBackendDefinition<unknown> | undefined;
+  readonly syncCapabilities: () => readonly {
+    readonly plugin: string;
+    readonly capability: string;
+    readonly backend: SyncBackendDefinition<unknown>;
+  }[];
 };
 
 type OAuthCapability = ReturnType<PluginRegistry['oauthCapabilities']>[number];
+type SyncCapability = ReturnType<PluginRegistry['syncCapabilities']>[number];
 
 function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | undefined {
   if (value === undefined) return undefined;
@@ -173,6 +182,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
   readonly stage: (plugin: string, options?: PluginStagingOptions) => PluginStagingRegistry;
 } {
   const committed = new Map<string, OAuthCapability>();
+  const committedSync = new Map<string, SyncCapability>();
   const committedCpaTypes = new Map<string, string>();
   const registry: PluginRegistry = {
     resolveOAuth(plugin, capability) {
@@ -181,12 +191,19 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
     oauthCapabilities() {
       return [...committed.values()];
     },
+    resolveSync(plugin, capability) {
+      return committedSync.get(`${plugin}\0${capability}`)?.backend;
+    },
+    syncCapabilities() {
+      return [...committedSync.values()];
+    },
   };
 
   return {
     registry,
     stage(plugin, options = {}) {
       const staged = new Map<string, OAuthCapability>();
+      const stagedSync = new Map<string, SyncCapability>();
       const stagedCpaTypes = new Set<string>();
       let sealed = false;
       return {
@@ -206,6 +223,14 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
               staged.set(id, { plugin, capability: id, adapter });
             },
           },
+          sync: {
+            register(value) {
+              if (sealed) throw new Error('Plugin staging registry is sealed');
+              const { id, backend } = validateSyncBackend(value);
+              if (stagedSync.has(id)) throw new Error('Duplicate sync capability');
+              stagedSync.set(id, { plugin, capability: id, backend });
+            },
+          },
         },
         seal() {
           sealed = true;
@@ -217,6 +242,9 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
             for (const type of capability.adapter.credentialImports?.cpa?.types ?? []) {
               committedCpaTypes.set(type, `${plugin}#${capability.capability}`);
             }
+          }
+          for (const capability of stagedSync.values()) {
+            committedSync.set(`${plugin}\0${capability.capability}`, capability);
           }
         },
       };

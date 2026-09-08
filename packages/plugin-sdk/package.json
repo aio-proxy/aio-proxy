@@ -18,6 +18,10 @@
     "./openai-stream": {
       "types": "./dist/openai-stream/index.d.ts",
       "default": "./dist/openai-stream/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
     }
   },
   "publishConfig": {

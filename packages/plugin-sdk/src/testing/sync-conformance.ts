@@ -1,0 +1,71 @@
+import type { SyncSession } from '../sync';
+
+type SyncPair = { readonly a: SyncSession; readonly b: SyncSession; readonly cleanup: () => Promise<void> };
+
+function assertion(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(`Sync backend conformance failed: ${message}`);
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+export async function exerciseSyncBackend(factory: () => Promise<SyncPair>): Promise<void> {
+  const pair = await factory();
+  const prefix = `aio-proxy-conformance/${crypto.randomUUID()}/`;
+  const key = `${prefix}value`;
+  const signal = new AbortController().signal;
+  const value = new TextEncoder().encode('value');
+
+  try {
+    const created = await Promise.all([
+      pair.a.compareAndSwap(key, null, value, signal),
+      pair.b.compareAndSwap(key, null, value, signal),
+    ]);
+    assertion(created.filter((result) => result.kind === 'written').length === 1, 'only one create succeeds');
+    assertion(created.filter((result) => result.kind === 'conflict').length === 1, 'one competing create conflicts');
+
+    const read = await pair.a.read(key, signal);
+    assertion(read.kind === 'present', 'a created value can be read');
+    assertion(sameBytes(read.value, value), 'read returns the written bytes');
+    const stale = await pair.b.compareAndSwap(key, read.version, new TextEncoder().encode('replacement'), signal);
+    assertion(stale.kind === 'written', 'current version writes');
+    const staleAgain = await pair.a.compareAndSwap(key, read.version, value, signal);
+    assertion(staleAgain.kind === 'conflict', 'stale version conflicts');
+
+    const listA = `${prefix}list-a`;
+    const listKeys = [listA, `${prefix}list-b`];
+    for (const listKey of listKeys) {
+      const result = await pair.b.compareAndSwap(listKey, null, value, signal);
+      assertion(result.kind === 'written', 'list fixture creates');
+    }
+    const discovered = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await pair.a.list({ prefix, ...(cursor === undefined ? {} : { cursor }) }, signal);
+      for (const listedKey of page.keys) discovered.add(listedKey);
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
+    for (const expectedKey of [key, ...listKeys]) assertion(discovered.has(expectedKey), 'pagination finds every key');
+
+    const current = await pair.a.read(key, signal);
+    assertion(current.kind === 'present', 'value exists before remove');
+    const conflict = await pair.b.remove(key, read.version, signal);
+    assertion(conflict.kind === 'conflict', 'stale remove conflicts');
+    const removed = await pair.b.remove(key, current.version, signal);
+    assertion(removed.kind === 'removed', 'current remove succeeds');
+    assertion((await pair.a.read(key, signal)).kind === 'absent', 'removed key is absent');
+
+    await pair.a.dispose();
+    let disposedRejected = false;
+    try {
+      await pair.a.read(key, signal);
+    } catch {
+      disposedRejected = true;
+    }
+    assertion(disposedRejected, 'disposed session rejects new work');
+    assertion((await pair.b.read(listA, signal)).kind === 'present', 'disposing one session preserves another');
+  } finally {
+    await pair.cleanup();
+  }
+}
