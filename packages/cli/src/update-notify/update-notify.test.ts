@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { writeUpdateCheckState } from '@aio-proxy/core';
+import { readUpdateCheckState, writeUpdateCheckState } from '@aio-proxy/core';
 
 import { notifyUpdateAvailable, printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 
@@ -102,6 +102,43 @@ for (const failure of ['lock', 'state'] as const) {
       );
       expect(calls).toHaveLength(1);
       expect(calls[0]?.join(' ')).toContain('2.0.0');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const failure of ['missing', 'nonzero'] as const) {
+  test(`a ${failure} notification command does not suppress a later instance`, async () => {
+    if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+    const home = mkdtempSync(join(tmpdir(), 'aio-notify-delivery-'));
+    const path = join(home, 'notifications.json');
+    try {
+      if (failure === 'nonzero') {
+        writeFileSync(join(home, process.platform === 'darwin' ? 'osascript' : 'notify-send'), '#!/bin/sh\nexit 1\n', {
+          mode: 0o755,
+        });
+      }
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '--eval',
+          `import { notifyUpdateAvailable } from ${JSON.stringify(new URL('./update-notify.ts', import.meta.url).pathname)}; await notifyUpdateAvailable('2.0.0', undefined, ${JSON.stringify(path)});`,
+        ],
+        { env: { ...process.env, PATH: home }, stdout: 'ignore', stderr: 'pipe' },
+      );
+      expect(await child.exited).toBe(0);
+      expect(readUpdateCheckState(path)).toBeUndefined();
+      let calls = 0;
+      await notifyUpdateAvailable(
+        '2.0.0',
+        async () => {
+          calls += 1;
+        },
+        path,
+      );
+      expect(calls).toBe(1);
+      expect(readUpdateCheckState(path)?.latest).toBe('2.0.0');
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
