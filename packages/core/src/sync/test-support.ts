@@ -176,13 +176,17 @@ export function migrateSyncTestDb(sqlite: Database): void {
 
 type Method = 'read' | 'compareAndSwap';
 type FaultMode = 'before' | 'after';
+type FailureCode = 'offline' | 'quota';
 type Gate = { readonly entered: Promise<void>; readonly release: () => void; readonly wait: () => Promise<void> };
 
 export type MemorySyncBackend = {
   readonly connect: () => SyncSession;
   readonly readAll: () => ReadonlyMap<string, SyncRead>;
   readonly advance: (ms: number) => void;
-  readonly failNext: (method: Method, mode: FaultMode) => void;
+  readonly failNext: (method: Method, mode: FaultMode, code?: FailureCode) => void;
+  readonly connectionCount: () => number;
+  readonly activeWatchCount: () => number;
+  readonly disposeCount: () => number;
   readonly gateNext: (method: Method) => { readonly entered: Promise<void>; readonly release: () => void };
   readonly gateAfterNext: (method: Method) => { readonly entered: Promise<void>; readonly release: () => void };
 };
@@ -249,11 +253,12 @@ function casMemory(
 export function createMemorySyncBackend(): MemorySyncBackend {
   const values = new Map<string, Extract<SyncRead, { kind: 'present' }>>();
   const watchers = new Set<() => void>();
-  const faults = new Map<Method, FaultMode>();
+  const faults = new Map<Method, { mode: FaultMode; code: FailureCode }>();
   const gates = new Map<Method, Gate>();
   const afterGates = new Map<Method, Gate>();
   let clock = 0;
   let version = 0;
+  let disposals = 0;
 
   function nextVersion(): string {
     version++;
@@ -264,7 +269,7 @@ export function createMemorySyncBackend(): MemorySyncBackend {
     method: Method,
     signal: AbortSignal,
     sessionSignal: AbortSignal,
-  ): Promise<FaultMode | undefined> {
+  ): Promise<{ mode: FaultMode; code: FailureCode } | undefined> {
     if (signal.aborted || sessionSignal.aborted)
       throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
     const gate = gates.get(method);
@@ -274,12 +279,16 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
     const fault = faults.get(method);
     faults.delete(method);
-    if (fault === 'before') throw new SyncBackendError('offline', 'Sync backend is unavailable');
+    if (fault?.mode === 'before') throw new SyncBackendError(fault.code, `Sync backend is ${fault.code}`);
     return fault;
   }
 
+  let connections = 0;
+
   function connect(): SyncSession {
+    connections++;
     let disposed = false;
+    const sessionWatchers = new Set<() => void>();
     const sessionController = new AbortController();
     function assertOpen() {
       if (disposed || sessionController.signal.aborted) {
@@ -301,7 +310,7 @@ export function createMemorySyncBackend(): MemorySyncBackend {
         afterGates.delete('read');
         if (afterGate !== undefined) await waitForGate(afterGate, sessionController.signal);
         assertOpen();
-        if (fault === 'after') throw new SyncBackendError('outcome-unknown', 'Sync read outcome is unknown');
+        if (fault?.mode === 'after') throw new SyncBackendError('outcome-unknown', 'Sync read outcome is unknown');
         return result;
       },
       async compareAndSwap(key, expected, value, signal) {
@@ -314,7 +323,7 @@ export function createMemorySyncBackend(): MemorySyncBackend {
         afterGates.delete('compareAndSwap');
         if (afterGate !== undefined) await waitForGate(afterGate, sessionController.signal);
         assertOpen();
-        if (fault === 'after') throw new SyncBackendError('outcome-unknown', 'Sync write outcome is unknown');
+        if (fault?.mode === 'after') throw new SyncBackendError('outcome-unknown', 'Sync write outcome is unknown');
         return result;
       },
       async list(input, signal) {
@@ -344,11 +353,18 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       },
       watch(onHint) {
         watchers.add(onHint);
-        return () => watchers.delete(onHint);
+        sessionWatchers.add(onHint);
+        return () => {
+          watchers.delete(onHint);
+          sessionWatchers.delete(onHint);
+        };
       },
       async dispose() {
+        disposals++;
         disposed = true;
         sessionController.abort();
+        for (const watcher of sessionWatchers) watchers.delete(watcher);
+        sessionWatchers.clear();
       },
     };
   }
@@ -361,8 +377,17 @@ export function createMemorySyncBackend(): MemorySyncBackend {
     advance(ms) {
       clock += ms;
     },
-    failNext(method, mode) {
-      faults.set(method, mode);
+    failNext(method, mode, code = 'offline') {
+      faults.set(method, { mode, code });
+    },
+    connectionCount() {
+      return connections;
+    },
+    activeWatchCount() {
+      return watchers.size;
+    },
+    disposeCount() {
+      return disposals;
     },
     gateNext(method) {
       const gate = createGate();

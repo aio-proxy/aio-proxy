@@ -31,15 +31,39 @@ test('a locally excluded Provider stays excluded when discovered from the cloud'
 });
 
 test('start polls and applies a cloud change without a manual reconcile', async () => {
-  await withTwoSyncDevices(async ({ a, b }) => {
-    b.engine.start();
-    const applied = b.waitForRemoteApply('provider-work');
-    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
-    await a.engine.reconcile(a.signal);
-    await applied;
-    await Promise.resolve();
-    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
-  });
+  await withTwoSyncDevices(
+    async ({ a, b }) => {
+      b.engine.start();
+      const applied = b.waitForRemoteApply('provider-work');
+      await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+      await a.engine.reconcile(a.signal);
+      await applied;
+      await Promise.resolve();
+      expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
+    },
+    { watch: false },
+  );
+});
+
+test('polling retries after offline and quota failures without watch hints', async () => {
+  for (const code of ['offline', 'quota'] as const) {
+    await withTwoSyncDevices(
+      async ({ a, b }) => {
+        await a.commitProvider('work', { kind: 'api', apiKey: code }, true);
+        await a.engine.reconcile(a.signal);
+        b.failNext('read', 'before', code);
+        const failed = b.waitForStatus(code);
+        b.engine.start();
+        await failed;
+        const applied = b.waitForRemoteApply('provider-work');
+        const online = b.waitForStatus('online');
+        await Promise.all([applied, online]);
+        await Promise.resolve();
+        expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
+      },
+      { watch: false },
+    );
+  }
 });
 
 test('an active head without a current revision remains transient during reconciliation', async () => {
@@ -303,6 +327,35 @@ test('stop remains successful when session disposal fails', async () => {
       throw new Error('dispose failed');
     };
     await expect(b.engine.stop()).resolves.toBeUndefined();
+  });
+});
+
+test('failed watch initialization disposes the session and repeated stop is safe', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    const watch = b.session.watch!;
+    b.session.watch = (onHint) => {
+      watch(onHint);
+      throw new Error('watch initialization failed');
+    };
+    expect(() => b.engine.start()).toThrow('watch initialization failed');
+    await b.engine.stop();
+    await b.engine.stop();
+    expect(b.activeWatchCount()).toBe(0);
+    expect(b.disposeCount()).toBe(1);
+  });
+});
+
+test('a recreated engine recovers persisted local work without duplicating the session', async () => {
+  await withTwoSyncDevices(async ({ b }) => {
+    await b.preparePendingProvider('work', { kind: 'api', apiKey: 'restart' });
+    expect(b.connectionCount()).toBe(2);
+    await b.restartEngine();
+    expect(b.connectionCount()).toBe(3);
+    expect(b.disposeCount()).toBe(1);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.pendingCommits(b.binding.id)).toEqual([]);
+    expect(b.repo.outbox(b.binding.id)).toEqual([]);
+    expect((await createSyncObjectStore(b.session).readHead('provider-work', b.signal))?.head.state).toBe('active');
   });
 });
 

@@ -22,14 +22,15 @@ Newly discovered entities are included by default, while an existing local exclu
 
 ## Tests and verification
 
-- `bun test packages/core/src/sync`: 97 passed.
-- `bun run --filter @aio-proxy/core test`: passed.
+- `bun test packages/core/src/sync`: 100 passed.
+- `bun run --filter @aio-proxy/core test`: passed (1,939 tests).
 - `bun run --filter @aio-proxy/plugin-sdk test`: passed (92 tests); TypeScript test declarations passed.
 - `bun run check`: passed (repository warnings only).
 - `bun run --filter @aio-proxy/core build`: passed, including declaration generation.
+- Engine coverage also verifies actual polling recovery after offline and quota failures, polling without watch hints, failed watch initialization cleanup, and recreated-engine recovery over persisted local work.
 
 The repository-wide type-aware lint command still reports two pre-existing dashboard TypeScript errors in `use-oauth-editor-session.ts`; they are outside this task. Native CloudKit and live OAuth gates remain outside the backend-neutral core task.
 
 ## Concerns
 
-The core engine intentionally delegates prerequisite and credential validation to the host-provided `LocalSyncPort`; it does not refresh OAuth or make runtime/plugin decisions. Unknown cloud data with no existing local identity is preserved remotely and left undiscovered locally until a compatible protocol decoder is available. The polling/backoff integration is exercised through the deterministic in-memory backend and lifecycle fixture; native CloudKit and live OAuth gates remain outside the backend-neutral core task.
+The core engine intentionally delegates prerequisite and credential validation to the host-provided `LocalSyncPort`; it does not refresh OAuth or make runtime/plugin decisions. Unknown cloud data with no existing local identity is preserved remotely and left undiscovered locally until a compatible protocol decoder is available. Plugin snapshot rebuilding and host session reuse remain integration-task coverage; this task includes an engine-level recreated-session assertion only. Native CloudKit and live OAuth gates remain outside the backend-neutral core task.

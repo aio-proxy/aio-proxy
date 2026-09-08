@@ -22,6 +22,12 @@ function digestConfig(value: Record<string, JsonValue>, path: string): string {
 
 type Method = 'read' | 'compareAndSwap';
 type Gate = { readonly entered: Promise<void>; readonly release: () => void; readonly wait: () => Promise<void> };
+type FaultMode = 'before' | 'after';
+type FailureCode = 'offline' | 'quota';
+
+type TwoDeviceOptions = {
+  readonly watch?: boolean;
+};
 
 function createGate(): Gate {
   let enter!: () => void;
@@ -67,11 +73,18 @@ export type TwoDevice = {
   readonly pauseRemoteApplication: () => { readonly entered: Promise<void>; readonly release: () => void };
   readonly pauseLocalDigest: () => { readonly entered: Promise<void>; readonly release: () => void };
   readonly preparePendingProvider: (id: string, body: JsonValue) => Promise<void>;
+  readonly waitForStatus: (status: string) => Promise<void>;
+  readonly failNext: (method: Method, mode: FaultMode, code?: FailureCode) => void;
+  readonly restartEngine: () => Promise<void>;
+  readonly connectionCount: () => number;
+  readonly activeWatchCount: () => number;
+  readonly disposeCount: () => number;
 };
 
 // eslint-disable-next-line max-lines-per-function
 export async function withTwoSyncDevices(
   run: (devices: { a: TwoDevice; b: TwoDevice }) => Promise<void>,
+  options: TwoDeviceOptions = {},
 ): Promise<void> {
   const backend: MemorySyncBackend = createMemorySyncBackend();
   const homes = [mkdtempSync(join(tmpdir(), 'aio-proxy-sync-a-')), mkdtempSync(join(tmpdir(), 'aio-proxy-sync-b-'))];
@@ -95,6 +108,9 @@ export async function withTwoSyncDevices(
       const remoteCalls: { objectId: string; operationId: string; body: JsonValue | null }[] = [];
       const remoteApplyCounts = new Map<string, number>();
       const remoteApplyWaiters = new Map<string, Set<() => void>>();
+      const statusWaiters = new Map<string, Set<() => void>>();
+      let session = sessions[index]!;
+      let engine: SyncEngine;
       const local: LocalSyncPort = {
         async withFence<T>(action: () => Promise<T>) {
           return action();
@@ -149,12 +165,28 @@ export async function withTwoSyncDevices(
           return { applied: true };
         },
       };
-      const engine = createSyncEngine({ binding, session: sessions[index]!, repo, local, onStatus() {}, pollMs: 5 });
-      devices.push({
+      const makeEngine = (): SyncEngine =>
+        createSyncEngine({
+          binding,
+          session: options.watch === false ? { ...session, watch: undefined } : session,
+          repo,
+          local,
+          onStatus(status) {
+            for (const resolve of statusWaiters.get(status) ?? []) resolve();
+            statusWaiters.delete(status);
+          },
+          pollMs: 5,
+        });
+      engine = makeEngine();
+      const device = {
         repo,
         binding,
-        session: sessions[index]!,
-        engine,
+        get session() {
+          return session;
+        },
+        get engine() {
+          return engine;
+        },
         signal,
         setPendingActivation(reason) {
           pendingActivation = reason;
@@ -187,6 +219,30 @@ export async function withTwoSyncDevices(
           const gate = createGate();
           digestGate = gate;
           return { entered: gate.entered, release: gate.release };
+        },
+        waitForStatus(status: string) {
+          return new Promise<void>((resolve) => {
+            const waiters = statusWaiters.get(status) ?? new Set<() => void>();
+            statusWaiters.set(status, waiters);
+            waiters.add(resolve);
+          });
+        },
+        failNext(method: Method, mode: FaultMode, code?: FailureCode) {
+          backend.failNext(method, mode, code);
+        },
+        connectionCount() {
+          return backend.connectionCount();
+        },
+        activeWatchCount() {
+          return backend.activeWatchCount();
+        },
+        disposeCount() {
+          return backend.disposeCount();
+        },
+        async restartEngine() {
+          await engine.stop();
+          session = backend.connect();
+          engine = makeEngine();
         },
         async preparePendingProvider(id, body) {
           const before = (await config.read()) as Record<string, JsonValue>;
@@ -262,7 +318,8 @@ export async function withTwoSyncDevices(
             { operationId: `${commitId}-operation`, objectId, epoch, kind: 'delete', body: null, commitId },
           ]);
         },
-      });
+      } satisfies TwoDevice;
+      devices.push(device);
     }
     await run({ a: devices[0]!, b: devices[1]! });
   } finally {

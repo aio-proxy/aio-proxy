@@ -182,6 +182,12 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     }, delay);
   }
 
+  function disposeSession(): Promise<void> {
+    if (disposed) return Promise.resolve();
+    disposed = true;
+    return input.session.dispose().catch(() => undefined);
+  }
+
   function coalescedReconcile(signal: AbortSignal): Promise<void> {
     if (stopped) return Promise.resolve();
     if (running !== undefined) return running;
@@ -210,12 +216,23 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     start() {
       if (stopped || started) return;
       started = true;
-      if (input.session.watch !== undefined) {
-        unsubscribe = input.session.watch(() => {
-          void coalescedReconcile(ownedController.signal).catch(() => undefined);
-        });
+      try {
+        if (input.session.watch !== undefined) {
+          unsubscribe = input.session.watch(() => {
+            void coalescedReconcile(ownedController.signal).catch(() => undefined);
+          });
+        }
+        schedule(pollMs);
+      } catch (error) {
+        stopped = true;
+        ownedController.abort();
+        if (timer !== undefined) clearTimeout(timer);
+        timer = undefined;
+        unsubscribe?.();
+        unsubscribe = undefined;
+        stopPromise = disposeSession().then(() => status('stopped'));
+        throw error;
       }
-      schedule(pollMs);
     },
     stop() {
       if (stopPromise !== undefined) return stopPromise;
@@ -228,9 +245,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
       stopPromise = (running ?? Promise.resolve())
         .catch(() => undefined)
         .then(async () => {
-          if (disposed) return;
-          disposed = true;
-          await input.session.dispose().catch(() => undefined);
+          await disposeSession();
           status('stopped');
         });
       return stopPromise;
