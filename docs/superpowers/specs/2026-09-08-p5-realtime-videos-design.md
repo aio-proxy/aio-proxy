@@ -115,9 +115,10 @@ Pinned follow-up (not a generation loop)
   POST   /v1/videos/extensions (pin hit)
         |
         v
-  owner check --> raw.resolve({ protocol: openai-video }) on the pinned provider
+  owner check --> raw.resolve({ protocol: openai-video, modelId }) on the pinned provider
         |
         +-- remix/edits/extensions 2xx --> pin the new video id
+            (explicit follow-up model when set; otherwise the source job model)
 ```
 
 ### Units
@@ -186,7 +187,7 @@ Body limits: default `REQUEST_BODY_LIMITS` (64 MiB). Create carries at most one 
 
 JSON body only (`415` on multipart, including the official SDK form). `prompt` required. Source video id is `video.id` (official) and must match `[A-Za-z0-9_-]{1,128}`; anything else is `400` and does not enter the pipeline. Optional `model` uses the same default as create. Optional `seconds` on extensions is forwarded, not validated against the official enum (upstream rejects an illegal value). The pin peek uses the same `REQUEST_BODY_LIMITS` reader as create; an oversized body is `413` before store lookup. A pinned follow-up still runs the operation parse (prompt / content type / id) before the pinned raw invoke.
 
-If a pin exists for that source id and the caller owns it, do **not** enter the generation loop: pinned raw to that provider, then pin the new job on 2xx.
+If a pin exists for that source id and the caller owns it, do **not** enter the generation loop: keep the Provider ID pin. When the client **explicitly** sets `model`, resolve and pin that id on the same provider. When `model` is omitted, keep the source job's model — do not overwrite a `sora-2-pro` pin with the omitted-model default `sora-2`. If the pinned provider's `raw.resolve` returns undefined for the follow-up model, `503 video_upstream_unavailable` (do not enter the candidate loop). Pin the new job on 2xx.
 
 If no pin: `handleProtocolRequest` with lookup model `sora-2` (or the explicit model), then pin the new job on 2xx. A source video that does not exist on the chosen upstream is an upstream 404; failover may try the next video-capable candidate.
 
@@ -271,7 +272,7 @@ Do not log SDP-equivalent secrets: no video bytes, no `input_reference` data URL
 ## Probe, usage, dashboard
 
 - Probe an `openai-video` primary with `GET /v1/models`, same reason as Audio: a create request bills a real job and is the wrong health check. Green means reachable + accepted key, not that `sora-2` still exists upstream.
-- Usage: record only when a JSON create/remix/edits/extensions body reports it. Never estimate from `seconds` or file size. Content bytes carry no usage. Add `OpenAIVideo` to the passthrough-usage switches next to Image/Audio (empty observation is fine).
+- Usage: record only when a JSON create/remix/edits/extensions body reports a `usage` object (`input_tokens` / `output_tokens` / `total_tokens`, same token parse as Audio). Official OpenAI Videos omits `usage`; empty observation is then correct. Never estimate from `seconds` or file size. Content bytes carry no usage. Pinned remix/edits/extensions do not enter `handleProtocolRequest`, so they do not grow a second `usageCapture` path.
 - Dashboard `PROTOCOL_LABELS` must include `openai-video` (exhaustive render). `PROTOCOL_ORDER` does **not** offer it, matching Image/Audio.
 
 ## README
@@ -297,7 +298,7 @@ Behavior, not literal restatement:
 - Adapter: omitted model looks up `sora-2` and raw injects the resolved id; explicit model that routing does not change keeps bytes; missing prompt is 400; convert-less provider is 501 `video_convert`.
 - Job store: insert / lookup / owner mismatch / expiry / capacity / no replace.
 - Create 2xx pins; retrieve hits the pinned provider only; stolen id is 403 without upstream fetch; missing pin is 404; remix 2xx pins the new id.
-- Edits with a pin skip the generation loop; edits without a pin use the pipeline.
+- Edits with a pin skip the generation loop; edits without a pin use the pipeline. A pinned edit with an explicit model resolves and pins that model; an omitted model keeps the source job's model.
 - `GET /v1/videos` and character ports are 501; `/v1/videos/generations` is 404.
 - Capability filter: language-only catalog cannot serve Videos; `openai-video` finite ids can; dummy V4 methods never grant video.
 - `attemptDispatch` video arm is not audio (a raw-less video provider must 501 `video_convert`, not invoke speech).
