@@ -137,6 +137,10 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
     onSuccess: (result) => {
       if (result.status === 'up_to_date') {
         setDismissedAsCurrent(true);
+        // An earlier attempt's failure or timeout must not outlive the news that there is
+        // nothing to install, or `failed` stays true and keeps a dead button on screen.
+        setApplyMessage(undefined);
+        setTimedOut(false);
         onUpToDate?.();
         void queryClient.invalidateQueries({ queryKey: queryKeys.release });
         return;

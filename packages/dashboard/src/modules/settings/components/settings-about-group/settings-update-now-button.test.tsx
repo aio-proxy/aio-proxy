@@ -168,6 +168,21 @@ test('re-toasts when a retry fails the same way as the first attempt', async () 
   await waitFor(() => expect(mocks.toastAdd).toHaveBeenCalledTimes(2));
 });
 
+test('hides Update now when a retry after a failure reports up_to_date', async () => {
+  prepare();
+  mocks.apply.mockRejectedValueOnce(new Error('check_failed'));
+  mocks.apply.mockResolvedValue({ ok: true, status: 'up_to_date' });
+  await renderButton(true);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await waitFor(() => expect(toastedWith(updateFailed)).toBe(true));
+
+  // The stale failure must not keep a permanently disabled button on screen.
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument());
+});
+
 test('keeps Updating through restart_required and reloads when current changes', async () => {
   prepare(withRelease('restart_required'));
   mocks.releaseQueryFn.mockResolvedValue(withRelease('idle', { current: '1.5.0' }));
