@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readdir, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, readdir, readFile, stat } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const CLOUDKIT_BUNDLE_ID = 'dev.aioproxy';
 export const CLOUDKIT_SIGNING_STEPS = [
@@ -21,7 +21,7 @@ export type ArtifactManifest = {
   readonly executableRelativePath: string;
   readonly architectures: readonly string[];
   readonly executableSha256: string;
-  readonly appSha256?: string;
+  readonly appSha256: string;
   readonly archiveRelativePath?: string;
   readonly archiveSha256?: string;
   readonly signatureStatus?: string;
@@ -117,8 +117,12 @@ export function validateEffectiveEntitlements(
 }
 
 export function validateManifest(manifest: ArtifactManifest): void {
+  if (!/^\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?$/u.test(manifest.artifactVersion)) {
+    throw new Error('Native manifest artifact version is unsafe');
+  }
   if (manifest.bundleIdentifier !== CLOUDKIT_BUNDLE_ID) throw new Error('Native manifest bundle identifier is invalid');
   if (
+    !Array.isArray(manifest.architectures) ||
     manifest.architectures.length !== 2 ||
     !manifest.architectures.includes('arm64') ||
     !manifest.architectures.includes('x86_64')
@@ -127,12 +131,85 @@ export function validateManifest(manifest: ArtifactManifest): void {
   }
   if (!/^[a-f0-9]{64}$/u.test(manifest.executableSha256))
     throw new Error('Native manifest executable digest is invalid');
-  if (manifest.appSha256 !== undefined && !/^[a-f0-9]{64}$/u.test(manifest.appSha256)) {
+  if (!/^[a-f0-9]{64}$/u.test(manifest.appSha256)) {
     throw new Error('Native manifest app digest is invalid');
   }
   if (manifest.archiveSha256 !== undefined && !/^[a-f0-9]{64}$/u.test(manifest.archiveSha256)) {
     throw new Error('Native manifest archive digest is invalid');
   }
+  validateRelativePath(manifest.appRelativePath, 'app');
+  validateRelativePath(manifest.executableRelativePath, 'executable');
+  const executableFromApp = relative(resolve(manifest.appRelativePath), resolve(manifest.executableRelativePath));
+  if (
+    executableFromApp === '' ||
+    executableFromApp === '.' ||
+    executableFromApp.startsWith('..') ||
+    isAbsolute(executableFromApp)
+  ) {
+    throw new Error('Native manifest executable is outside the app bundle');
+  }
+  if (manifest.archiveRelativePath !== undefined) validateRelativePath(manifest.archiveRelativePath, 'archive');
+  const final = manifest.signatureStatus === 'verified' || manifest.signing !== undefined;
+  if (
+    final &&
+    (manifest.archiveRelativePath === undefined ||
+      manifest.archiveSha256 === undefined ||
+      manifest.signing === undefined)
+  ) {
+    throw new Error('Signed native manifest is missing final artifact binding');
+  }
+  if (final) {
+    if (
+      manifest.signatureStatus !== 'verified' ||
+      manifest.notarizationStatus !== 'accepted' ||
+      manifest.signing.signatureStatus !== 'verified' ||
+      manifest.signing.notarizationStatus !== 'accepted' ||
+      manifest.signing.bundleIdentifier !== CLOUDKIT_BUNDLE_ID
+    ) {
+      throw new Error('Signed native manifest has invalid signing status');
+    }
+  }
+}
+
+export function validateRelativePath(value: string, label: string): void {
+  if (
+    typeof value !== 'string' ||
+    value === '' ||
+    value.includes('\0') ||
+    isAbsolute(value) ||
+    /^[A-Za-z]:[\\/]/u.test(value) ||
+    value.split(/[\\/]/u).some((part) => part === '..')
+  ) {
+    throw new Error(`Native manifest ${label} path is unsafe`);
+  }
+}
+
+export function assertPathInside(root: string, target: string, label: string): void {
+  const rootPath = resolve(root);
+  const relativePath = relative(rootPath, resolve(target));
+  if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    throw new Error(`Native ${label} path escapes its root`);
+  }
+}
+
+export async function assertNoSymlinkEscape(root: string, target: string, label: string): Promise<void> {
+  assertPathInside(root, target, label);
+  const rootPath = resolve(root);
+  const targetPath = resolve(target);
+  const rootEntry = await lstat(rootPath);
+  if (rootEntry.isSymbolicLink()) throw new Error(`Native ${label} path contains a symlink`);
+  let current = rootPath;
+  const relativePath = relative(rootPath, targetPath);
+  for (const part of relativePath.split(sep).filter(Boolean)) {
+    current = join(current, part);
+    const entry = await lstat(current);
+    if (entry.isSymbolicLink()) throw new Error(`Native ${label} path contains a symlink`);
+  }
+}
+
+export function executablePathForApp(manifest: ArtifactManifest, appRoot: string): string {
+  const executableFromApp = relative(resolve(manifest.appRelativePath), resolve(manifest.executableRelativePath));
+  return join(appRoot, executableFromApp);
 }
 
 export function sha256(data: Uint8Array): string {

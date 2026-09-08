@@ -40,10 +40,12 @@ rtk proxy bun packages/plugins/cloudkit/scripts/build-native.ts
 ```
 
 The result is `packages/plugins/cloudkit/dist/native/AIOProxyCloudKit.app` and
-`manifest.json`. The manifest records the bundle version, architectures and
-unsigned status plus the unsigned executable and app digests. The build checks
-the host's `sw_vers` result and stops before invoking Swift on macOS older than
-14 or on another platform.
+`manifest.json`. The manifest records the bundle version, relative app and
+executable paths, architectures and unsigned status plus the unsigned
+executable and app digests. Manifest paths must stay relative to the package,
+the executable must remain inside the app bundle, and validation rejects
+symlinked artifact paths. The build checks the host's `sw_vers` result and
+stops before invoking Swift on macOS older than 14 or on another platform.
 
 With the real private inputs available, sign and distribute the bundle:
 
@@ -72,18 +74,20 @@ The probe stages the bundle without removing the previous version, verifies
 the manifest-bound app/executable/archive digests, universal architectures,
 `Info.plist` identity and (when signed) its codesign team, effective
 entitlements, embedded distribution profile, stapled ticket and Gatekeeper
-assessment. It launches the staged inner executable with one bounded JSON
-request on stdin before changing the active cache entry. Only after those
-checks pass does it swap the versioned cache entry; a failed check restores
-the previous working entry. The native
+assessment. Package, cache, version and staging paths are checked for root
+escapes and symlink traversal. It launches the staged inner executable with
+one bounded JSON request on stdin before changing the active cache entry. Only
+after those checks pass does it swap the versioned cache entry; a failed check
+restores the previous working entry. The native
 response contains only `available`, an opaque SHA-256 identity binding and the
 bundle identifier. It never emits an email, account payload or raw CloudKit
 record identifier.
 
 Set `CLOUDKIT_EVIDENCE_PATH` to write the same redacted JSON to a file. The
-evidence includes host OS/architecture, bundle version, team ID, bundle ID,
-container ID, environment, signature/notarization status, direct launch
-result, service launch status and timestamp. It contains no credentials,
+evidence includes the actual `sw_vers -productVersion` host OS version and
+architecture, bundle version, team ID, bundle ID, container ID, environment,
+signature/notarization status, direct launch result, service launch status and
+timestamp. It contains no credentials,
 private keys, profile bytes or raw account IDs. The team ID, bundle ID and
 container ID are intentional non-secret artifact identifiers; the account
 identity is recorded only as the native component's SHA-256 opaque binding.

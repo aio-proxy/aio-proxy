@@ -4,7 +4,9 @@ import { join, resolve } from 'node:path';
 
 import {
   CLOUDKIT_BUNDLE_ID,
+  assertNoSymlinkEscape,
   directoryDigest,
+  executablePathForApp,
   sha256File,
   validateEffectiveEntitlements,
   validateManifest,
@@ -150,7 +152,9 @@ async function main(): Promise<void> {
   }
   validateManifest(manifest);
   const appPath = resolve(packageRoot, manifest.appRelativePath);
-  const executablePath = join(appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
+  const executablePath = executablePathForApp(manifest, appPath);
+  await assertNoSymlinkEscape(packageRoot, appPath, 'app');
+  await assertNoSymlinkEscape(appPath, executablePath, 'executable');
   const infoPath = join(appPath, 'Contents', 'Info.plist');
   if (!(await Bun.file(executablePath).exists()) || !(await Bun.file(infoPath).exists())) {
     throw new Error('Native app bundle is incomplete');

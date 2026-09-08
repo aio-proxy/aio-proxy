@@ -31,3 +31,23 @@ The live signing, notarization, CloudKit account, installed launchd service,
 macOS 14/current two-host and production-container gates remain unverified.
 No signing credentials, profile bytes, raw account IDs or fabricated success
 were used.
+
+## Round 2 follow-up
+
+The manifest now requires the app digest and validates release-safe relative
+paths, executable containment, final signed archive binding and signing status.
+Signing and installed probing resolve the executable from the manifest and
+reject source, archive, cache, version and staging symlink escapes. Installed
+validation binds executable/app/archive digests, deployment floor, universal
+architectures, effective entitlements, embedded profile, stapled ticket and
+Gatekeeper assessment before the atomic swap. Evidence records the actual
+`sw_vers -productVersion` value.
+
+Additional deterministic coverage checks unsafe manifest paths, final archive
+requirements, symlinked roots and rollback behavior. Verification performed:
+
+- 11 CloudKit Bun tests passed.
+- CloudKit oxlint and oxfmt checks passed.
+- Native universal build and Swift package tests passed.
+- Unsigned installed probe recorded `osVersion: 26.6`, direct `unsupported`,
+  `productionGate: blocked`, and `serviceLaunch: unverified`.

@@ -1,10 +1,13 @@
-import { cp, mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import {
   CLOUDKIT_BUNDLE_ID,
+  assertNoSymlinkEscape,
+  assertPathInside,
   directoryDigest,
+  executablePathForApp,
   sha256File,
   validateEffectiveEntitlements,
   validateManifest,
@@ -128,8 +131,9 @@ async function decodePlist(path: string, tempRoot: string): Promise<Record<strin
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-async function verifyBundle(appPath: string, manifest: NativeManifest, signed: boolean): Promise<void> {
+export async function verifyBundle(appPath: string, manifest: NativeManifest, signed: boolean): Promise<void> {
   validateManifest(manifest);
+  await assertNoSymlinkEscape(dirname(appPath), appPath, 'installed app');
   const infoPath = join(appPath, 'Contents', 'Info.plist');
   if (!(await Bun.file(infoPath).exists())) throw new Error('Installed native bundle is missing Info.plist');
   const infoProcess = Bun.spawn(['plutil', '-convert', 'json', '-o', '-', '--', infoPath], {
@@ -152,10 +156,11 @@ async function verifyBundle(appPath: string, manifest: NativeManifest, signed: b
   const minimumSystem = Number.parseFloat(String(info.LSMinimumSystemVersion ?? '0'));
   if (!Number.isFinite(minimumSystem) || minimumSystem < 14)
     throw new Error('Installed bundle has an invalid macOS deployment floor');
-  const executable = join(appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
+  const executable = executablePathForApp(manifest, appPath);
+  await assertNoSymlinkEscape(appPath, executable, 'installed executable');
   if ((await sha256File(executable)) !== manifest.executableSha256)
     throw new Error('Installed executable digest does not match manifest');
-  if (manifest.appSha256 !== undefined && (await directoryDigest(appPath)) !== manifest.appSha256) {
+  if ((await directoryDigest(appPath)) !== manifest.appSha256) {
     throw new Error('Installed app digest does not match manifest');
   }
   const architectureOutput = await run('lipo', ['-archs', executable]);
@@ -175,8 +180,7 @@ async function verifyBundle(appPath: string, manifest: NativeManifest, signed: b
     throw new Error('Signed manifest has invalid notarization or bundle status');
   }
   const archivePath = resolve(packageRoot, manifest.archiveRelativePath);
-  if (!archivePath.startsWith(`${packageRoot}/`))
-    throw new Error('Signed manifest archive points outside the plugin package');
+  await assertNoSymlinkEscape(packageRoot, archivePath, 'archive');
   if ((await sha256File(archivePath)) !== manifest.archiveSha256)
     throw new Error('Signed archive digest does not match manifest');
   const codeSignature = await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
@@ -230,11 +234,22 @@ async function stageBundle(
   const versionRoot = join(cacheRoot, manifest.artifactVersion);
   const stagingRoot = join(cacheRoot, `.staging-${manifest.artifactVersion}-${crypto.randomUUID()}`);
   const sourceApp = resolve(packageRoot, manifest.appRelativePath);
-  if (!sourceApp.startsWith(`${packageRoot}/`)) throw new Error('Native manifest points outside the plugin package');
+  assertPathInside(packageRoot, sourceApp, 'source app');
+  await assertNoSymlinkEscape(packageRoot, sourceApp, 'source app');
   await mkdir(cacheRoot, { recursive: true });
+  await assertNoSymlinkEscape(dirname(cacheRoot), cacheRoot, 'cache root');
+  assertPathInside(cacheRoot, versionRoot, 'version root');
+  assertPathInside(cacheRoot, stagingRoot, 'staging root');
+  try {
+    await lstat(versionRoot);
+    await assertNoSymlinkEscape(cacheRoot, versionRoot, 'version root');
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+  }
   await cp(sourceApp, join(stagingRoot, 'AIOProxyCloudKit.app'), {
     recursive: true,
   });
+  await assertNoSymlinkEscape(cacheRoot, stagingRoot, 'staging root');
   return { appPath: join(stagingRoot, 'AIOProxyCloudKit.app'), stagingRoot, versionRoot };
 }
 
@@ -269,10 +284,11 @@ function evidence(
   containerId: string,
   direct: ProbeResult | { readonly status: string },
   signatureStatus: string,
+  osVersion: string,
   directExitCode?: number,
 ) {
   return {
-    host: { os: process.platform, architecture: process.arch },
+    host: { os: process.platform, osVersion, architecture: process.arch },
     bundleVersion: manifest.artifactVersion,
     teamId: manifest.signing?.teamId ?? 'unverified',
     bundleId: expectedBundleId,
@@ -290,6 +306,8 @@ function evidence(
 
 async function main(): Promise<void> {
   if (process.platform !== 'darwin') throw new Error('Installed CloudKit probing requires macOS');
+  const osVersion = (await run('sw_vers', ['-productVersion'])).stdout.trim();
+  if (!/^\d+(?:\.\d+){1,2}$/u.test(osVersion)) throw new Error('macOS version evidence is invalid');
   const containerId = process.env.CLOUDKIT_CONTAINER_ID;
   if (containerId === undefined || containerId.trim() === '')
     throw new Error('Missing probe input: CLOUDKIT_CONTAINER_ID');
@@ -306,7 +324,7 @@ async function main(): Promise<void> {
   let direct: { readonly result: ProbeResult; readonly exitCode: number };
   try {
     await verifyBundle(staged.appPath, manifest, signed);
-    const stagedExecutable = join(staged.appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
+    const stagedExecutable = executablePathForApp(manifest, staged.appPath);
     direct = await runProbe(stagedExecutable, containerId);
     if (signed && !direct.result.ok) throw new Error('Signed staged native probe did not return an available account');
   } catch (error) {
@@ -320,7 +338,7 @@ async function main(): Promise<void> {
     throw error;
   }
   const output = JSON.stringify(
-    evidence(manifest, containerId, direct.result, signed ? 'verified' : 'unsigned', direct.exitCode),
+    evidence(manifest, containerId, direct.result, signed ? 'verified' : 'unsigned', osVersion, direct.exitCode),
     null,
     2,
   );
