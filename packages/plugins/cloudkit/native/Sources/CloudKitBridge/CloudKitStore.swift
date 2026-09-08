@@ -27,15 +27,16 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
     static let logicalKeyField = "logicalKey"
     static let removedField = "removed"
     static let payloadField = "payload"
-    private static let modifiedAtField = "_modifiedAt"
+    #if DEBUG
+    static let expectedVersionField = "_expectedVersion"
+    #endif
 
     private let driver: any CloudKitDriver
     private let identityLock = NSLock()
     private var knownIdentity: AccountIdentity?
 
-    init(driver: any CloudKitDriver, pageSize: Int = 100) {
+    init(driver: any CloudKitDriver) {
         self.driver = driver
-        _ = pageSize
     }
 
     func read(key: String) async throws -> StoreRead {
@@ -65,6 +66,9 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         } else {
             record = existing ?? CKRecord(recordType: Self.recordType, recordID: id)
         }
+        #if DEBUG
+        if let expected { record[Self.expectedVersionField] = expected as CKRecordValue }
+        #endif
         let (asset, url) = try AssetStore.makeAsset(value)
         defer { try? FileManager.default.removeItem(at: url) }
         record[Self.logicalKeyField] = key as CKRecordValue
@@ -87,7 +91,13 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
 
     func list(prefix: String, cursor: String?) async throws -> StorePage {
         try await verifyIdentity()
-        let input = cursor.flatMap { Data(base64Encoded: $0) }
+        let input: Data?
+        if let cursor {
+            guard let decoded = Data(base64Encoded: cursor) else { throw StoreError.invalidData }
+            input = decoded
+        } else {
+            input = nil
+        }
         let page = try await driver.query(prefix: prefix, cursor: input)
         var keys: [String] = []
         for record in page.records {
@@ -107,6 +117,9 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         guard (record[Self.removedField] as? Int64 ?? 0) == 0,
               try RecordVersion(record: record).encoded == expected else { return false }
         guard try RecordVersion(version: expected).record().recordID == id else { throw StoreError.invalidData }
+        #if DEBUG
+        record[Self.expectedVersionField] = expected as CKRecordValue
+        #endif
         record[Self.removedField] = Int64(1) as CKRecordValue
         record[Self.payloadField] = nil
         do {
@@ -152,7 +165,6 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
 
     private func modifiedAt(from record: CKRecord) throws -> Int64 {
         if let date = record.modificationDate { return Int64(date.timeIntervalSince1970) }
-        if let value = record[Self.modifiedAtField] as? Int64 { return value }
         throw StoreError.outcomeUnknown
     }
 }

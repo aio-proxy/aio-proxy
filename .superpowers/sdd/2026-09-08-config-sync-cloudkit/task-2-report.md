@@ -21,3 +21,21 @@ Build complete! (1.41s)
 ```
 
 The local toolchain compiled the executable and test bundle successfully. It skipped XCTest execution because XCTest is unavailable in this environment. A live CloudKit gate remains pending: production schema/index deployment, credentials, and a configured CloudKit container are required to verify the account, query, and server conflict behavior against CloudKit.
+
+## Review fix report
+
+The review follow-up now uses secure keyed archiving for CloudKit system fields, requires `CKRecord.modificationDate` for successful timestamps, creates asset files with mode `0600`, and removes them after the operation and at native startup. The fake driver now models server change tokens so replacement CAS and conditional tombstone updates are deterministic. Tests also cover hidden tombstones during pagination, malformed cursors, missing accounts, and payload/frame bounds, with awaited values captured before XCTest assertions.
+
+Verification command:
+
+```sh
+rtk proxy swift test --package-path packages/plugins/cloudkit/native
+```
+
+Verification output:
+
+```text
+Build complete! (0.32s)
+```
+
+The command compiled the executable and test bundle successfully. XCTest execution remains unavailable in this host toolchain, and no live CloudKit gate is claimed; credentials and deployed schema/indexes are still required for that validation.

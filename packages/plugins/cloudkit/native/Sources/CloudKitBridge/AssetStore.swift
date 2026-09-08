@@ -11,7 +11,10 @@ enum AssetStore {
             .appendingPathComponent("aio-proxy-cloudkit", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(UUID().uuidString)
-        try data.write(to: url, options: .completeFileProtection)
+        guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw StoreError.invalidData
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         return (CKAsset(fileURL: url), url)
     }
 
