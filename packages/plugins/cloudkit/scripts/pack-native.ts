@@ -4,6 +4,10 @@ import { basename, join, resolve } from 'node:path';
 
 const packageRoot = resolve(import.meta.dir, '..');
 
+export function nativeArchivePath(outputName: string): string {
+  return `dist/native/${outputName}`;
+}
+
 async function main(): Promise<void> {
   const archive = process.env.CLOUDKIT_SIGNED_ARCHIVE;
   if (archive === undefined || archive.trim() === '') {
@@ -26,7 +30,7 @@ async function main(): Promise<void> {
     bundleId: 'dev.aioproxy' as const,
     teamId,
     minimumMacOS: '14.0' as const,
-    archive: `native/${outputName}`,
+    archive: nativeArchivePath(outputName),
     sha256: createHash('sha256').update(bytes).digest('hex'),
   };
   await writeFile(join(outputRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

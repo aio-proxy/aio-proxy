@@ -27,9 +27,19 @@ export const NativeManifestSchema = zod.object({
 }) satisfies zod.ZodType<NativeManifest>;
 
 export class NativeArtifactError extends Error {
-  readonly code = 'invalid-data' as const;
+  readonly code: 'invalid-data' | 'unsupported';
   readonly retryable = true as const;
+
+  constructor(message: string, code: 'invalid-data' | 'unsupported' = 'invalid-data') {
+    super(message);
+    this.code = code;
+  }
 }
+
+export type NativeArtifactHooks = {
+  readonly verifyBundle?: (appPath: string, manifest: NativeManifest, executable: string) => Promise<void>;
+  readonly extractArchive?: (archivePath: string, stagingRoot: string) => Promise<void>;
+};
 
 function inside(root: string, target: string): boolean {
   const child = relative(resolve(root), resolve(target));
@@ -81,22 +91,25 @@ async function rejectSymlinkPath(root: string, target: string): Promise<void> {
 }
 
 async function verifyBundle(appPath: string, manifest: NativeManifest, executable: string): Promise<void> {
+  if (process.platform !== 'darwin') {
+    throw new NativeArtifactError('CloudKit native artifacts require macOS 14 or later', 'unsupported');
+  }
   const executableStat = await stat(executable).catch(() => null);
   if (executableStat === null || !executableStat.isFile())
     throw new NativeArtifactError('Native executable is missing');
-  if (process.platform === 'darwin') {
-    const info = await run('plutil', ['-convert', 'json', '-o', '-', '--', join(appPath, 'Contents', 'Info.plist')]);
-    const parsed = JSON.parse(info) as Record<string, unknown>;
-    if (parsed.CFBundleIdentifier !== manifest.bundleId)
-      throw new NativeArtifactError('Native bundle identifier is invalid');
-    if (Number.parseFloat(String(parsed.LSMinimumSystemVersion ?? '0')) < 14)
-      throw new NativeArtifactError('Native bundle requires an unsupported macOS version');
-    const signature = await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
-    void signature;
-    const details = await run('codesign', ['--display', '--verbose=4', appPath]);
-    if (!details.includes(`TeamIdentifier=${manifest.teamId}`))
-      throw new NativeArtifactError('Native signing team is invalid');
-  }
+  const info = await run('plutil', ['-convert', 'json', '-o', '-', '--', join(appPath, 'Contents', 'Info.plist')]);
+  const parsed = JSON.parse(info) as Record<string, unknown>;
+  if (parsed.CFBundleIdentifier !== manifest.bundleId)
+    throw new NativeArtifactError('Native bundle identifier is invalid');
+  if (parsed.CFBundleVersion !== manifest.nativeVersion)
+    throw new NativeArtifactError('Native bundle version is older than the manifest');
+  if (Number.parseFloat(String(parsed.LSMinimumSystemVersion ?? '0')) < 14)
+    throw new NativeArtifactError('Native bundle requires an unsupported macOS version');
+  await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
+  const details = await run('codesign', ['--display', '--verbose=4', appPath]);
+  if (!details.includes(`TeamIdentifier=${manifest.teamId}`))
+    throw new NativeArtifactError('Native signing team is invalid');
+  await run('spctl', ['--assess', '--type', 'execute', '--verbose=4', appPath]);
 }
 
 export async function ensureNativeArtifact(input: {
@@ -104,6 +117,7 @@ export async function ensureNativeArtifact(input: {
   cacheRoot: string;
   manifest: NativeManifest;
   signal: AbortSignal;
+  hooks?: NativeArtifactHooks;
 }): Promise<{ executable: string }> {
   input.signal.throwIfAborted();
   const manifest = NativeManifestSchema.parse(input.manifest);
@@ -124,11 +138,14 @@ export async function ensureNativeArtifact(input: {
     return { executable: existing };
   }
   const stagingRoot = await mkdtemp(join(input.cacheRoot, '.staging-'));
+  let previousRoot: string | undefined;
+  let previousMoved = false;
   try {
     const entries = (await run('unzip', ['-Z1', archivePath])).split(/\r?\n/u).filter(Boolean);
     for (const entry of entries) safeArchiveEntry(entry);
     input.signal.throwIfAborted();
-    await run('unzip', ['-q', archivePath, '-d', stagingRoot]);
+    if (input.hooks?.extractArchive) await input.hooks.extractArchive(archivePath, stagingRoot);
+    else await run('unzip', ['-q', archivePath, '-d', stagingRoot]);
     await rejectSymlinks(stagingRoot);
     const apps: string[] = [];
     const findApps = async (root: string): Promise<void> => {
@@ -142,26 +159,28 @@ export async function ensureNativeArtifact(input: {
     if (apps.length !== 1) throw new NativeArtifactError('Native archive must contain exactly one app bundle');
     const appPath = apps[0]!;
     const executable = join(appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
-    await verifyBundle(appPath, manifest, executable);
+    await (input.hooks?.verifyBundle ?? verifyBundle)(appPath, manifest, executable);
     input.signal.throwIfAborted();
-    const previousRoot = `${installRoot}.previous-${crypto.randomUUID()}`;
+    previousRoot = `${installRoot}.previous-${crypto.randomUUID()}`;
     const hadPrevious = await stat(installRoot)
       .then(() => true)
       .catch(() => false);
-    if (hadPrevious) await rename(installRoot, previousRoot);
+    if (hadPrevious) {
+      await rename(installRoot, previousRoot);
+      previousMoved = true;
+    }
     if (dirname(appPath) !== stagingRoot) {
       await rename(appPath, join(stagingRoot, 'AIOProxyCloudKit.app'));
     }
-    try {
-      await rename(stagingRoot, installRoot);
-    } catch (error) {
-      if (hadPrevious) await rename(previousRoot, installRoot).catch(() => undefined);
-      throw error;
-    }
-    if (hadPrevious) await rm(previousRoot, { force: true, recursive: true });
+    await rename(stagingRoot, installRoot);
+    if (previousMoved) await rm(previousRoot, { force: true, recursive: true });
     return { executable: join(installRoot, 'AIOProxyCloudKit.app', 'Contents', 'MacOS', 'AIOProxyCloudKit') };
   } catch (error) {
     await rm(stagingRoot, { force: true, recursive: true });
+    if (previousMoved && previousRoot !== undefined) {
+      await rm(installRoot, { force: true, recursive: true }).catch(() => undefined);
+      await rename(previousRoot, installRoot).catch(() => undefined);
+    }
     if (error instanceof NativeArtifactError) throw error;
     throw new NativeArtifactError(error instanceof Error ? error.message : 'Native artifact installation failed');
   }
