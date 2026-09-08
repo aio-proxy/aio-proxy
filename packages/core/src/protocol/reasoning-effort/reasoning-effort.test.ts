@@ -118,10 +118,13 @@ describe('reasoningSettings', () => {
     expect(reasoningSettings(settings, undefined)).toBe(settings);
   });
 
-  test('carries an off-ladder effort canonically even when the SDK cannot express it', () => {
-    const result = reasoningSettings({}, 'ultra');
-    expect((result as { reasoning?: string }).reasoning).toBeUndefined();
-    expect(carriedEffort(result)).toBe('ultra');
+  test('drops an off-ladder or padded effort entirely so the provider defaults', () => {
+    // Ingress accepts any string, so typos are expected input. Carrying one would make
+    // clamping read it back and escalate to the candidate's top level (normalizeEffort
+    // treats off-ladder as "above everything"), silently raising latency and cost.
+    const settings = { temperature: 0.5 };
+    expect(reasoningSettings(settings, 'ultra')).toBe(settings);
+    expect(reasoningSettings(settings, ' low ')).toBe(settings);
   });
 
   test('preserves sibling providerOptions namespaces and aioProxy keys', () => {
@@ -169,5 +172,19 @@ describe('clampSdkReasoning canonical effort', () => {
   test('passes through untouched when the supported set is empty', () => {
     const invocation = withEffort('xhigh', 'max');
     expect(clampSdkReasoning(invocation, new Set())).toBe(invocation);
+  });
+
+  test('does not escalate an off-ladder or padded effort found on the channel', () => {
+    // Downgrade-only: an unknown level must fall through to the provider default, not
+    // become the candidate's top tier.
+    for (const off of ['ultra', ' low ']) {
+      const requested = { messages: [], settings: reasoningSettings({}, off) } as ModelInvocation;
+      const invocation = clampSdkReasoning(requested, new Set(['low', 'medium', 'high', 'max']));
+      expect(invocation.settings?.reasoning).toBeUndefined();
+      expect(carriedEffort(invocation.settings)).toBeUndefined();
+    }
+    // Even if an off-ladder value reaches the channel some other way, it is ignored.
+    const smuggled = withEffort('provider-default', 'ultra');
+    expect(clampSdkReasoning(smuggled, new Set(['low', 'medium', 'high', 'max']))).toBe(smuggled);
   });
 });
