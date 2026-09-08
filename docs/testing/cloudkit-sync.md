@@ -41,7 +41,9 @@ rtk proxy bun packages/plugins/cloudkit/scripts/build-native.ts
 
 The result is `packages/plugins/cloudkit/dist/native/AIOProxyCloudKit.app` and
 `manifest.json`. The manifest records the bundle version, architectures and
-unsigned status. On a non-macOS host, the script stops before invoking Swift.
+unsigned status plus the unsigned executable and app digests. The build checks
+the host's `sw_vers` result and stops before invoking Swift on macOS older than
+14 or on another platform.
 
 With the real private inputs available, sign and distribute the bundle:
 
@@ -50,21 +52,30 @@ rtk proxy bun packages/plugins/cloudkit/scripts/sign-native.ts
 ```
 
 This command fails closed when an input is absent, the profile does not match
-the team/application/container, codesign verification fails, notarization is
-not `Accepted`, stapling fails, or Gatekeeper assessment fails. A successful
-command updates the local native manifest with redacted team/container and
-signature status; it does not claim installed service access.
+the Developer ID team/application/container, the profile is not a macOS
+distribution profile, effective entitlements differ from the profile,
+codesign verification fails, notarization is not `Accepted`, stapling fails,
+or Gatekeeper assessment fails. The manifest is updated only after stapling;
+its executable, app and final post-staple archive digests bind the installed
+artifact to the recorded release. A successful command updates the local
+native manifest with redacted team/container and signature status; it does not
+claim installed service access.
 
 Probe the versioned installed cache path with a container identifier:
 
 ```sh
-CLOUDKIT_CONTAINER_ID='iCloud.dev.aioproxy' \
-  rtk proxy bun packages/plugins/cloudkit/scripts/probe-installed.ts
+rtk proxy env CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
+  bun packages/plugins/cloudkit/scripts/probe-installed.ts
 ```
 
-The probe copies the bundle into the versioned plugin cache, verifies its
-`Info.plist` identity and (when signed) its codesign signature, then launches
-the inner executable with one bounded JSON request on stdin. The native
+The probe stages the bundle without removing the previous version, verifies
+the manifest-bound app/executable/archive digests, universal architectures,
+`Info.plist` identity and (when signed) its codesign team, effective
+entitlements, embedded distribution profile, stapled ticket and Gatekeeper
+assessment. It launches the staged inner executable with one bounded JSON
+request on stdin before changing the active cache entry. Only after those
+checks pass does it swap the versioned cache entry; a failed check restores
+the previous working entry. The native
 response contains only `available`, an opaque SHA-256 identity binding and the
 bundle identifier. It never emits an email, account payload or raw CloudKit
 record identifier.
@@ -73,7 +84,9 @@ Set `CLOUDKIT_EVIDENCE_PATH` to write the same redacted JSON to a file. The
 evidence includes host OS/architecture, bundle version, team ID, bundle ID,
 container ID, environment, signature/notarization status, direct launch
 result, service launch status and timestamp. It contains no credentials,
-private keys, profile bytes or raw account IDs.
+private keys, profile bytes or raw account IDs. The team ID, bundle ID and
+container ID are intentional non-secret artifact identifiers; the account
+identity is recorded only as the native component's SHA-256 opaque binding.
 
 ## Expected failure and release gate
 

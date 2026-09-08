@@ -2,6 +2,16 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import {
+  CLOUDKIT_BUNDLE_ID,
+  directoryDigest,
+  sha256File,
+  validateEffectiveEntitlements,
+  validateManifest,
+  validateProfileMetadata,
+  type ArtifactManifest,
+} from './artifact';
+
 const packageRoot = resolve(import.meta.dir, '..');
 const nativeDist = join(packageRoot, 'dist', 'native');
 const requiredInputs = [
@@ -33,10 +43,6 @@ function requiredValue(name: (typeof requiredInputs)[number]): string {
 
 function stringValue(value: PlistValue | undefined): string | undefined {
   return typeof value === 'string' ? value : undefined;
-}
-
-function stringArray(value: PlistValue | undefined): readonly string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function objectValue(value: PlistValue | undefined): { readonly [key: string]: PlistValue } {
@@ -80,27 +86,42 @@ async function validateProfile(
   const decodedPath = join(tempRoot, 'profile.plist');
   await run('security', ['cms', '-D', '-i', profilePath, '-o', decodedPath]);
   const profile = await decodePlist(decodedPath, tempRoot);
-  const entitlements = objectValue(profile.Entitlements);
-  const profileTeam = stringValue(profile.TeamIdentifier) ?? stringArray(profile.TeamIdentifier)[0];
-  const entitlementTeam = stringValue(entitlements['com.apple.developer.team-identifier']);
-  const applicationIdentifier = stringValue(entitlements['application-identifier']);
-  const expectedApplicationIdentifier = `${teamId}.dev.aioproxy`;
-  if (profileTeam !== undefined && profileTeam !== teamId)
-    throw new Error('Signing profile team does not match CLOUDKIT_TEAM_ID');
-  if (entitlementTeam !== teamId || applicationIdentifier !== expectedApplicationIdentifier) {
-    throw new Error('Signing profile application identity does not match dev.aioproxy');
+  return validateProfileMetadata(profile, { teamId, containerId, bundleId: CLOUDKIT_BUNDLE_ID });
+}
+
+async function validateDeveloperIdIdentity(identity: string, teamId: string): Promise<void> {
+  const identities = await run('security', ['find-identity', '-v', '-p', 'codesigning']);
+  const match = identities.stdout
+    .split(/\r?\n/u)
+    .find((line) => line.includes(identity) && line.includes('Developer ID Application:'));
+  if (match === undefined || !match.includes(`(${teamId})`)) {
+    throw new Error('CLOUDKIT_SIGN_IDENTITY is not a Developer ID Application identity for CLOUDKIT_TEAM_ID');
   }
-  if (!stringArray(entitlements['com.apple.developer.icloud-container-identifiers']).includes(containerId)) {
-    throw new Error('Signing profile does not permit CLOUDKIT_CONTAINER_ID');
+}
+
+async function validateEffectiveSigning(
+  appPath: string,
+  teamId: string,
+  containerId: string,
+  environment: string,
+  tempRoot: string,
+): Promise<void> {
+  const display = await run('codesign', ['--display', '--entitlements', ':-', appPath]);
+  const entitlementsXml = display.stdout.includes('<plist') ? display.stdout : display.stderr;
+  if (!entitlementsXml.includes('<plist')) throw new Error('Signed bundle did not expose effective entitlements');
+  const entitlementsPath = join(tempRoot, 'effective-entitlements.plist');
+  await writeFile(entitlementsPath, entitlementsXml);
+  const entitlements = objectValue(await decodePlist(entitlementsPath, tempRoot));
+  validateEffectiveEntitlements(entitlements, {
+    teamId,
+    containerId,
+    bundleId: CLOUDKIT_BUNDLE_ID,
+    environment,
+  });
+  const details = await run('codesign', ['--display', '--verbose=4', appPath]);
+  if (!details.stderr.includes(`TeamIdentifier=${teamId}`) && !details.stdout.includes(`TeamIdentifier=${teamId}`)) {
+    throw new Error('Signed bundle team identifier does not match CLOUDKIT_TEAM_ID');
   }
-  if (!stringArray(entitlements['com.apple.developer.icloud-services']).includes('CloudKit')) {
-    throw new Error('Signing profile does not permit CloudKit');
-  }
-  const environment = stringValue(entitlements['com.apple.developer.icloud-container-environment']);
-  if (environment !== 'Development' && environment !== 'Production') {
-    throw new Error('Signing profile has no supported CloudKit environment');
-  }
-  return { environment };
 }
 
 async function main(): Promise<void> {
@@ -114,22 +135,20 @@ async function main(): Promise<void> {
   const containerId = requiredValue('CLOUDKIT_CONTAINER_ID');
   const notaryProfile = requiredValue('CLOUDKIT_NOTARY_PROFILE');
   if (!containerId.startsWith('iCloud.')) throw new Error('CLOUDKIT_CONTAINER_ID must start with iCloud.');
+  await validateDeveloperIdIdentity(signingIdentity, teamId);
 
   const manifestPath = join(nativeDist, 'manifest.json');
   if (!(await Bun.file(manifestPath).exists()))
     throw new Error('Native build manifest is missing; run build-native.ts first');
-  const manifest = (await Bun.file(manifestPath).json()) as {
-    readonly artifactVersion?: unknown;
-    readonly appRelativePath?: unknown;
-    readonly bundleIdentifier?: unknown;
-  };
+  const manifest = (await Bun.file(manifestPath).json()) as ArtifactManifest;
   if (
-    manifest.artifactVersion === undefined ||
+    typeof manifest.artifactVersion !== 'string' ||
     typeof manifest.appRelativePath !== 'string' ||
-    manifest.bundleIdentifier !== 'dev.aioproxy'
+    manifest.bundleIdentifier !== CLOUDKIT_BUNDLE_ID
   ) {
     throw new Error('Native build manifest is invalid');
   }
+  validateManifest(manifest);
   const appPath = resolve(packageRoot, manifest.appRelativePath);
   const executablePath = join(appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
   const infoPath = join(appPath, 'Contents', 'Info.plist');
@@ -141,13 +160,13 @@ async function main(): Promise<void> {
   try {
     const { environment } = await validateProfile(profilePath, teamId, containerId, tempRoot);
     const info = await decodePlist(infoPath, tempRoot);
-    if (stringValue(info.CFBundleIdentifier) !== 'dev.aioproxy')
+    if (stringValue(info.CFBundleIdentifier) !== CLOUDKIT_BUNDLE_ID)
       throw new Error('Native bundle identifier is not dev.aioproxy');
     const entitlementsPath = join(tempRoot, 'cloudkit.entitlements');
     await writeFile(
       entitlementsPath,
       entitlementsXml({
-        applicationIdentifier: `${teamId}.dev.aioproxy`,
+        applicationIdentifier: `${teamId}.${CLOUDKIT_BUNDLE_ID}`,
         teamId,
         containerId,
         environment,
@@ -177,14 +196,17 @@ async function main(): Promise<void> {
       appPath,
     ]);
     await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
-    await run('codesign', ['--display', '--entitlements', ':-', appPath]);
+    await validateEffectiveSigning(appPath, teamId, containerId, environment, tempRoot);
 
-    const archivePath = join(nativeDist, `AIOProxyCloudKit-${String(manifest.artifactVersion)}.app.zip`);
-    await run('ditto', ['-c', '-k', '--keepParent', appPath, archivePath]);
+    const submissionArchivePath = join(
+      nativeDist,
+      `AIOProxyCloudKit-${String(manifest.artifactVersion)}.submission.zip`,
+    );
+    await run('ditto', ['-c', '-k', '--keepParent', appPath, submissionArchivePath]);
     const notary = await run('xcrun', [
       'notarytool',
       'submit',
-      archivePath,
+      submissionArchivePath,
       '--keychain-profile',
       notaryProfile,
       '--wait',
@@ -199,20 +221,29 @@ async function main(): Promise<void> {
     }
     if (status !== 'Accepted') throw new Error('CloudKit notarization did not reach Accepted');
     await run('xcrun', ['stapler', 'staple', appPath]);
+    await run('xcrun', ['stapler', 'validate', appPath]);
     await run('spctl', ['--assess', '--type', 'execute', '--verbose=4', appPath]);
+    const archivePath = join(nativeDist, `AIOProxyCloudKit-${String(manifest.artifactVersion)}.app.zip`);
+    await run('ditto', ['-c', '-k', '--keepParent', appPath, archivePath]);
 
     const signedManifest = {
       ...manifest,
+      executableSha256: await sha256File(executablePath),
+      appSha256: await directoryDigest(appPath),
+      archiveRelativePath: archivePath.slice(packageRoot.length + 1),
+      archiveSha256: await sha256File(archivePath),
+      signatureStatus: 'verified',
+      notarizationStatus: 'accepted',
       signing: {
         teamId,
-        bundleIdentifier: 'dev.aioproxy',
+        bundleIdentifier: CLOUDKIT_BUNDLE_ID,
         containerId,
         environment,
         signatureStatus: 'verified',
         notarizationStatus: 'accepted',
       },
-      archiveRelativePath: archivePath.slice(packageRoot.length + 1),
-    };
+    } satisfies ArtifactManifest;
+    validateManifest(signedManifest);
     await writeFile(manifestPath, `${JSON.stringify(signedManifest, null, 2)}\n`);
   } finally {
     await rm(tempRoot, { force: true, recursive: true });

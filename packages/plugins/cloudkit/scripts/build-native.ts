@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
+
+import { CLOUDKIT_BUNDLE_ID, directoryDigest, sha256File, validateManifest, type ArtifactManifest } from './artifact';
 
 const packageRoot = resolve(import.meta.dir, '..');
 const nativeRoot = join(packageRoot, 'native');
@@ -40,14 +41,14 @@ async function loadReleaseVersion(): Promise<string> {
   throw new Error('CloudKit plugin release manifest is missing');
 }
 
-async function fileDigest(path: string): Promise<string> {
-  return createHash('sha256')
-    .update(await readFile(path))
-    .digest('hex');
-}
-
 function assertTool(name: string): void {
   if (Bun.which(name) === null) throw new Error(`Required native build tool is missing: ${name}`);
+}
+
+async function assertMacOS14(): Promise<void> {
+  const result = await run('sw_vers', ['-productVersion']);
+  const major = Number.parseInt(result.stdout.trim().split('.', 1)[0] ?? '', 10);
+  if (!Number.isInteger(major) || major < 14) throw new Error('CloudKit native artifacts require macOS 14 or later');
 }
 
 async function buildArchitecture(architecture: 'arm64' | 'x86_64'): Promise<string> {
@@ -82,7 +83,8 @@ async function main(): Promise<void> {
   if (process.platform !== 'darwin') {
     throw new Error('CloudKit native artifacts can only be built on macOS 14 or later');
   }
-  for (const tool of ['swift', 'lipo']) assertTool(tool);
+  for (const tool of ['swift', 'lipo', 'sw_vers']) assertTool(tool);
+  await assertMacOS14();
 
   const version = await loadReleaseVersion();
   const template = await readFile(join(nativeRoot, 'Resources', 'Info.plist'), 'utf8');
@@ -99,16 +101,18 @@ async function main(): Promise<void> {
   await chmod(universalExecutable, 0o755);
   await writeFile(join(contents, 'Info.plist'), infoPlist(template, version));
 
-  const manifest = {
+  const manifest: ArtifactManifest = {
     artifactVersion: version,
-    bundleIdentifier: 'dev.aioproxy',
+    bundleIdentifier: CLOUDKIT_BUNDLE_ID,
     appRelativePath: relative(packageRoot, appRoot),
     executableRelativePath: relative(packageRoot, universalExecutable),
     architectures: ['arm64', 'x86_64'],
-    executableSha256: await fileDigest(universalExecutable),
+    executableSha256: await sha256File(universalExecutable),
+    appSha256: await directoryDigest(appRoot),
     signatureStatus: 'unsigned',
     notarizationStatus: 'unverified',
-  } as const;
+  };
+  validateManifest(manifest);
   await writeFile(join(nativeDist, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 

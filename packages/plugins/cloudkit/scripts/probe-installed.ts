@@ -1,10 +1,20 @@
-import { cp, mkdir, rename, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import {
+  CLOUDKIT_BUNDLE_ID,
+  directoryDigest,
+  sha256File,
+  validateEffectiveEntitlements,
+  validateManifest,
+  validateProfileMetadata,
+  type ArtifactManifest,
+} from './artifact';
+
 const packageRoot = resolve(import.meta.dir, '..');
 const nativeDist = join(packageRoot, 'dist', 'native');
-const expectedBundleId = 'dev.aioproxy';
+const expectedBundleId = CLOUDKIT_BUNDLE_ID;
 const failureCodes = new Set([
   'offline',
   'quota',
@@ -25,21 +35,15 @@ type ProbeSuccess = {
 type ProbeFailure = { readonly ok: false; readonly error: { readonly code: string } };
 export type ProbeResult = ProbeSuccess | ProbeFailure;
 
-type NativeManifest = {
-  readonly artifactVersion: string;
-  readonly bundleIdentifier: string;
-  readonly appRelativePath: string;
-  readonly executableRelativePath?: string;
-  readonly signatureStatus?: string;
-  readonly notarizationStatus?: string;
-  readonly signing?: {
-    readonly teamId?: string;
-    readonly containerId?: string;
-    readonly environment?: string;
-    readonly signatureStatus?: string;
-    readonly notarizationStatus?: string;
-  };
-};
+type NativeManifest = ArtifactManifest;
+type CommandResult = { readonly stdout: string; readonly stderr: string };
+
+async function run(command: string, args: readonly string[]): Promise<CommandResult> {
+  const child = Bun.spawn([command, ...args], { stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  if ((await child.exited) !== 0) throw new Error(`${command} failed; inspect local artifact diagnostics`);
+  return { stdout, stderr };
+}
 
 export function parseProbeResult(output: string): ProbeResult {
   let value: unknown;
@@ -56,7 +60,7 @@ export function parseProbeResult(output: string): ProbeResult {
     if (
       record.account !== 'available' ||
       typeof record.identityId !== 'string' ||
-      !record.identityId.startsWith('sha256:') ||
+      !/^sha256:[a-f0-9]{64}$/u.test(record.identityId) ||
       record.bundleId !== expectedBundleId
     ) {
       throw new Error('Native probe success response is invalid');
@@ -117,7 +121,15 @@ async function runProbe(
   return { result: parseProbeResult(stdout), exitCode };
 }
 
-async function verifyBundle(appPath: string, signed: boolean): Promise<void> {
+async function decodePlist(path: string, tempRoot: string): Promise<Record<string, unknown>> {
+  const jsonPath = join(tempRoot, `${crypto.randomUUID()}.json`);
+  await run('plutil', ['-convert', 'json', '-o', jsonPath, '--', path]);
+  const value = (await Bun.file(jsonPath).json()) as unknown;
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+async function verifyBundle(appPath: string, manifest: NativeManifest, signed: boolean): Promise<void> {
+  validateManifest(manifest);
   const infoPath = join(appPath, 'Contents', 'Info.plist');
   if (!(await Bun.file(infoPath).exists())) throw new Error('Installed native bundle is missing Info.plist');
   const infoProcess = Bun.spawn(['plutil', '-convert', 'json', '-o', '-', '--', infoPath], {
@@ -132,33 +144,124 @@ async function verifyBundle(appPath: string, signed: boolean): Promise<void> {
     void infoError;
     throw new Error('Installed native bundle Info.plist cannot be decoded');
   }
-  const info = JSON.parse(infoOutput) as { readonly CFBundleIdentifier?: unknown };
+  const info = JSON.parse(infoOutput) as {
+    readonly CFBundleIdentifier?: unknown;
+    readonly LSMinimumSystemVersion?: unknown;
+  };
   if (info.CFBundleIdentifier !== expectedBundleId) throw new Error('Installed native bundle identifier is invalid');
+  const minimumSystem = Number.parseFloat(String(info.LSMinimumSystemVersion ?? '0'));
+  if (!Number.isFinite(minimumSystem) || minimumSystem < 14)
+    throw new Error('Installed bundle has an invalid macOS deployment floor');
+  const executable = join(appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
+  if ((await sha256File(executable)) !== manifest.executableSha256)
+    throw new Error('Installed executable digest does not match manifest');
+  if (manifest.appSha256 !== undefined && (await directoryDigest(appPath)) !== manifest.appSha256) {
+    throw new Error('Installed app digest does not match manifest');
+  }
+  const architectureOutput = await run('lipo', ['-archs', executable]);
+  const architectures = architectureOutput.stdout.trim().split(/\s+/u).filter(Boolean).sort();
+  if (architectures.join(',') !== [...manifest.architectures].sort().join(',')) {
+    throw new Error('Installed executable architectures do not match manifest');
+  }
   if (!signed) return;
-  const child = Bun.spawn(['codesign', '--verify', '--strict', '--verbose=2', appPath], {
-    stdout: 'ignore',
-    stderr: 'pipe',
-  });
-  const stderr = await new Response(child.stderr).text();
-  if ((await child.exited) !== 0) {
-    void stderr;
-    throw new Error('Installed native bundle signature verification failed');
+  if (
+    manifest.archiveRelativePath === undefined ||
+    manifest.archiveSha256 === undefined ||
+    manifest.signing === undefined
+  ) {
+    throw new Error('Signed manifest is missing final artifact binding');
+  }
+  if (manifest.signing.bundleIdentifier !== expectedBundleId || manifest.notarizationStatus !== 'accepted') {
+    throw new Error('Signed manifest has invalid notarization or bundle status');
+  }
+  const archivePath = resolve(packageRoot, manifest.archiveRelativePath);
+  if (!archivePath.startsWith(`${packageRoot}/`))
+    throw new Error('Signed manifest archive points outside the plugin package');
+  if ((await sha256File(archivePath)) !== manifest.archiveSha256)
+    throw new Error('Signed archive digest does not match manifest');
+  const codeSignature = await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
+  void codeSignature;
+  const details = await run('codesign', ['--display', '--verbose=4', appPath]);
+  if (
+    !details.stderr.includes(`TeamIdentifier=${manifest.signing.teamId}`) &&
+    !details.stdout.includes(`TeamIdentifier=${manifest.signing.teamId}`)
+  ) {
+    throw new Error('Installed bundle team does not match manifest');
+  }
+  const tempRoot = await mkdtemp(join(homedir(), 'aio-cloudkit-verify-'));
+  try {
+    const effective = await run('codesign', ['--display', '--entitlements', ':-', appPath]);
+    const entitlementsPath = join(tempRoot, 'effective.entitlements');
+    await writeFile(entitlementsPath, effective.stdout.includes('<plist') ? effective.stdout : effective.stderr);
+    const entitlements = await decodePlist(entitlementsPath, tempRoot);
+    validateEffectiveEntitlements(entitlements, {
+      teamId: manifest.signing.teamId,
+      containerId: manifest.signing.containerId,
+      bundleId: expectedBundleId,
+      environment: manifest.signing.environment,
+    });
+    const embeddedProfile = join(appPath, 'Contents', 'embedded.provisionprofile');
+    if (!(await Bun.file(embeddedProfile).exists()))
+      throw new Error('Signed bundle is missing embedded provisioning profile');
+    const decodedProfile = join(tempRoot, 'profile.plist');
+    await run('security', ['cms', '-D', '-i', embeddedProfile, '-o', decodedProfile]);
+    const profile = await decodePlist(decodedProfile, tempRoot);
+    const profileResult = validateProfileMetadata(profile, {
+      teamId: manifest.signing.teamId,
+      containerId: manifest.signing.containerId,
+      bundleId: expectedBundleId,
+    });
+    if (profileResult.environment !== manifest.signing.environment) {
+      throw new Error('Embedded provisioning profile environment does not match manifest');
+    }
+    await run('xcrun', ['stapler', 'validate', appPath]);
+    await run('spctl', ['--assess', '--type', 'execute', '--verbose=4', appPath]);
+  } finally {
+    await rm(tempRoot, { force: true, recursive: true });
   }
 }
 
-async function stageBundle(manifest: NativeManifest): Promise<string> {
+async function stageBundle(
+  manifest: NativeManifest,
+): Promise<{ readonly appPath: string; readonly stagingRoot: string; readonly versionRoot: string }> {
   const dataRoot = process.env.AIO_PROXY_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'aio-proxy');
   const cacheRoot =
     process.env.AIO_PROXY_CLOUDKIT_CACHE_DIR ?? join(dataRoot, 'plugins', '@aio-proxy/plugin-cloudkit', 'native');
   const versionRoot = join(cacheRoot, manifest.artifactVersion);
   const stagingRoot = join(cacheRoot, `.staging-${manifest.artifactVersion}-${crypto.randomUUID()}`);
+  const sourceApp = resolve(packageRoot, manifest.appRelativePath);
+  if (!sourceApp.startsWith(`${packageRoot}/`)) throw new Error('Native manifest points outside the plugin package');
   await mkdir(cacheRoot, { recursive: true });
-  await cp(resolve(packageRoot, manifest.appRelativePath), join(stagingRoot, 'AIOProxyCloudKit.app'), {
+  await cp(sourceApp, join(stagingRoot, 'AIOProxyCloudKit.app'), {
     recursive: true,
   });
-  await rm(versionRoot, { force: true, recursive: true });
-  await rename(stagingRoot, versionRoot);
-  return join(versionRoot, 'AIOProxyCloudKit.app');
+  return { appPath: join(stagingRoot, 'AIOProxyCloudKit.app'), stagingRoot, versionRoot };
+}
+
+export async function swapInstallation(
+  stagingRoot: string,
+  versionRoot: string,
+  renameFn: typeof rename = rename,
+): Promise<void> {
+  let existing = true;
+  try {
+    await stat(versionRoot);
+  } catch {
+    existing = false;
+  }
+  if (!existing) {
+    await renameFn(stagingRoot, versionRoot);
+    return;
+  }
+  const backupRoot = `${versionRoot}.previous-${crypto.randomUUID()}`;
+  await renameFn(versionRoot, backupRoot);
+  try {
+    await renameFn(stagingRoot, versionRoot);
+  } catch (error) {
+    await renameFn(backupRoot, versionRoot);
+    throw error;
+  }
+  await rm(backupRoot, { force: true, recursive: true });
 }
 
 function evidence(
@@ -197,11 +300,25 @@ async function main(): Promise<void> {
   if (manifest.bundleIdentifier !== expectedBundleId || typeof manifest.artifactVersion !== 'string') {
     throw new Error('Native build manifest is invalid');
   }
+  validateManifest(manifest);
   const signed = manifest.signing?.signatureStatus === 'verified' || manifest.signatureStatus === 'verified';
-  const installedApp = await stageBundle(manifest);
-  await verifyBundle(installedApp, signed);
-  const executable = join(installedApp, 'Contents', 'MacOS', 'AIOProxyCloudKit');
-  const direct = await runProbe(executable, containerId);
+  const staged = await stageBundle(manifest);
+  let direct: { readonly result: ProbeResult; readonly exitCode: number };
+  try {
+    await verifyBundle(staged.appPath, manifest, signed);
+    const stagedExecutable = join(staged.appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
+    direct = await runProbe(stagedExecutable, containerId);
+    if (signed && !direct.result.ok) throw new Error('Signed staged native probe did not return an available account');
+  } catch (error) {
+    await rm(staged.stagingRoot, { force: true, recursive: true });
+    throw error;
+  }
+  try {
+    await swapInstallation(staged.stagingRoot, staged.versionRoot);
+  } catch (error) {
+    await rm(staged.stagingRoot, { force: true, recursive: true });
+    throw error;
+  }
   const output = JSON.stringify(
     evidence(manifest, containerId, direct.result, signed ? 'verified' : 'unsigned', direct.exitCode),
     null,
