@@ -5,6 +5,38 @@ import { SyncBackendError, type SyncCAS, type SyncRead, type SyncSession } from 
 
 import { MIGRATIONS } from '../db/migrations.manifest';
 import { DatabaseSchemaTooNewError } from '../error';
+import type { StoredAccount } from '../plugins/repository';
+import type { EntityKind } from './protocol';
+import type { LocalEntity } from './repository';
+
+export function includedEntity(objectId: string, kind: EntityKind, logicalKey: string): LocalEntity {
+  return {
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'included',
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+}
+
+export function storedAccount(providerId: string, token: string): StoredAccount {
+  return {
+    providerId,
+    plugin: '@example/business',
+    capability: 'first',
+    fingerprint: providerId,
+    options: {},
+    secrets: {},
+    credential: { token },
+    revision: 1,
+    runtimeRevision: 1,
+    updatedAt: 0,
+  };
+}
 
 export function migrateSyncTestDb(sqlite: Database): void {
   const currentVersion = Number(Object.values(sqlite.query('PRAGMA user_version').get() ?? {}).at(0) ?? 0);
