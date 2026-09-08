@@ -132,6 +132,18 @@ describe('PluginRegistry staging', () => {
       }),
     ],
     ['non-function credential refresh', fakeAdapter('refresh-invalid', { refreshCredential: 'invalid' })],
+    [
+      'non-positive credential format version',
+      fakeAdapter('sync-version-invalid', { credentialSync: { formatVersion: 0 } }),
+    ],
+    [
+      'blank credential evidence id',
+      fakeAdapter('sync-evidence-invalid', { credentialSync: { formatVersion: 1, multiDevice: { evidenceId: '' } } }),
+    ],
+    [
+      'non-function credential detachment check',
+      fakeAdapter('sync-detach-invalid', { credentialSync: { formatVersion: 1, canDetach: 'invalid' } }),
+    ],
   ])('rejects %s atomically', async (_name, adapter) => {
     const snapshot = await loadPluginRegistry({
       ...base,
@@ -194,5 +206,37 @@ describe('PluginRegistry staging', () => {
 
     const resolved = snapshot.registry.resolveOAuth(packageName, 'default');
     await expect(resolved?.refreshCredential?.({} as never)).resolves.toEqual({ value: { token: 'rotated-token' } });
+  });
+
+  test('preserves credential sync metadata and binds detachment checks', async () => {
+    const packageName = '@example/credential-sync';
+    const adapter = fakeAdapter('default', {
+      privateToken: 'shared',
+      credentialSync: {
+        formatVersion: 1,
+        multiDevice: { evidenceId: 'fixture-evidence' },
+        async canDetach(this: { privateToken: string }, input: { candidate: { token: string } }) {
+          return input.candidate.token === this.privateToken;
+        },
+      },
+    });
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [{ packageName, version: '1.0.0', descriptor: definePlugin((api) => api.oauth.register(adapter)) }],
+      enablements: [{ packageName }],
+      importPackage: async () => {
+        throw new Error('must not import');
+      },
+    });
+    const resolved = snapshot.registry.resolveOAuth(packageName, 'default');
+    expect(resolved?.credentialSync?.formatVersion).toBe(1);
+    expect(resolved?.credentialSync?.multiDevice?.evidenceId).toBe('fixture-evidence');
+    await expect(
+      resolved?.credentialSync?.canDetach?.({
+        shared: { token: 'x' },
+        candidate: { token: 'shared' },
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toBe(true);
   });
 });

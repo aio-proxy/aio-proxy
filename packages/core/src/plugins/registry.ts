@@ -75,6 +75,37 @@ function validateCredentialImports(value: unknown): OAuthAdapter['credentialImpo
   };
 }
 
+function validateCredentialSync(
+  value: unknown,
+  receiver: object = value as object,
+): OAuthAdapter['credentialSync'] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
+  const { formatVersion, multiDevice, canDetach } = value;
+  if (typeof formatVersion !== 'number' || !Number.isInteger(formatVersion) || formatVersion <= 0) {
+    throw new Error('Invalid OAuth adapter');
+  }
+  if (multiDevice !== undefined) {
+    if (
+      !isRecord(multiDevice) ||
+      typeof multiDevice['evidenceId'] !== 'string' ||
+      multiDevice['evidenceId'].length === 0
+    ) {
+      throw new Error('Invalid OAuth adapter');
+    }
+  }
+  if (canDetach !== undefined && typeof canDetach !== 'function') throw new Error('Invalid OAuth adapter');
+  return {
+    formatVersion,
+    ...(multiDevice === undefined ? {} : { multiDevice: { evidenceId: multiDevice['evidenceId'] as string } }),
+    ...(canDetach === undefined
+      ? {}
+      : {
+          canDetach: canDetach.bind(receiver) as NonNullable<OAuthAdapter['credentialSync']>['canDetach'],
+        }),
+  };
+}
+
 function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
   const {
@@ -90,6 +121,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
     quota,
     credentialImports,
     refreshCredential,
+    credentialSync,
   } = value;
   const id = CapabilityIdSchema.parse(rawId);
   const validatedDisplayName = LocalizedTextSchema.safeParse(displayName);
@@ -108,6 +140,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
   }
   const validatedQuota = validateQuota(quota);
   const validatedCredentialImports = validateCredentialImports(credentialImports);
+  const validatedCredentialSync = validateCredentialSync(credentialSync, value);
   if (!isRecord(catalog)) throw new Error('Invalid OAuth adapter');
   const { discover, policy, initialFallback, defaultAliases } = catalog;
   if (
@@ -158,6 +191,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       ...(refreshCredential === undefined
         ? {}
         : { refreshCredential: refreshCredential.bind(value) as NonNullable<OAuthAdapter['refreshCredential']> }),
+      ...(validatedCredentialSync === undefined ? {} : { credentialSync: validatedCredentialSync }),
     },
   };
 }

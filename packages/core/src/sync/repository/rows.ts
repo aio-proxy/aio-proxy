@@ -1,6 +1,7 @@
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { z } from 'zod';
 
+import type { OAuthOwnership } from '../oauth';
 import type { EntityBody, EntityKind } from '../protocol';
 import type { CommitIntent, LocalEntity, LocalOverride, OAuthJournalRow, OutboxOperation } from './repository';
 
@@ -26,6 +27,14 @@ const entityBodySchema = z.object({
 const overrideSchema = z.object({ path: z.array(z.string()), value: jsonValueSchema.optional() });
 const remoteOperationSchema = z.object({ objectId: z.string(), operationId: z.string() });
 const sourceRevisionsSchema = z.record(z.string(), z.number().int().nonnegative());
+const oauthOwnershipSchema: z.ZodType<OAuthOwnership> = z.object({
+  mode: z.enum(['shared', 'detach-pending', 'independent']),
+  epoch: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  localRevision: z.number().int().nonnegative(),
+  pluginVersion: z.string(),
+  formatVersion: z.number().int().positive(),
+});
 
 export function stringifyJson(value: JsonValue): string {
   const encoded = JSON.stringify(value);
@@ -88,6 +97,7 @@ export function parseEntityRow(row: {
   baseline: string | null;
   overrides_json: unknown;
   pending_reason: string | null;
+  oauth_json?: unknown;
 }): LocalEntity {
   return {
     objectId: row.object_id,
@@ -99,6 +109,9 @@ export function parseEntityRow(row: {
     baseline: row.baseline,
     overrides: parseOverrides(row.overrides_json),
     pendingReason: row.pending_reason,
+    ...(row.oauth_json === undefined || row.oauth_json === null
+      ? {}
+      : { oauth: parseJson(row.oauth_json, oauthOwnershipSchema) }),
   };
 }
 

@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
+import type { OAuthOwnership } from '../oauth';
 import type { EntityBody, EntityKind } from '../protocol';
 import { createOAuthJournalRepository } from './oauth-journal';
 import { parseCommitRow, parseEntityRow, parseJsonValue, parseOutboxRow, stringifyJson } from './rows';
@@ -33,6 +34,7 @@ export interface LocalEntity {
   baseline: string | null;
   overrides: LocalOverride[];
   pendingReason: string | null;
+  oauth?: OAuthOwnership;
 }
 
 export interface OutboxOperation {
@@ -260,7 +262,7 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
     entities(bindingId) {
       return sqlite
         .query<EntityRow, [string]>(
-          `SELECT object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason
+          `SELECT object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason, oauth_json
              FROM sync_entity WHERE binding_id = ? ORDER BY rowid`,
         )
         .all(bindingId)
@@ -272,8 +274,8 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
         sqlite
           .query(
             `INSERT INTO sync_entity
-             (binding_id, object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             (binding_id, object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason, oauth_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(binding_id, object_id) DO UPDATE SET
              logical_key = excluded.logical_key,
              kind = excluded.kind,
@@ -282,7 +284,8 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
              desired_json = excluded.desired_json,
              baseline = excluded.baseline,
              overrides_json = excluded.overrides_json,
-             pending_reason = excluded.pending_reason`,
+             pending_reason = excluded.pending_reason,
+             oauth_json = excluded.oauth_json`,
           )
           .run(
             bindingId,
@@ -295,6 +298,7 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
             entity.baseline,
             stringifyJson(entity.overrides as unknown as JsonValue),
             entity.pendingReason,
+            entity.oauth === undefined ? null : stringifyJson(entity.oauth as unknown as JsonValue),
           );
       });
     },

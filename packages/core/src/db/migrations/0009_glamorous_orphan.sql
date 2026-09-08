@@ -1,0 +1,1 @@
+ALTER TABLE `sync_entity` ADD `oauth_json` text;

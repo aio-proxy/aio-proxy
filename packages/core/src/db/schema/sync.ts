@@ -38,6 +38,7 @@ export const syncEntity = sqliteTable(
     baseline: text('baseline'),
     overrides: text('overrides_json', { mode: 'json' }).$type<unknown>().notNull(),
     pendingReason: text('pending_reason'),
+    oauth: text('oauth_json', { mode: 'json' }).$type<unknown>(),
   },
   (table) => [
     primaryKey({ columns: [table.bindingId, table.objectId] }),
