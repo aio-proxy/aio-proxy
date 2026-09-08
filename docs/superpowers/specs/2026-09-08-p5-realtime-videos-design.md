@@ -184,7 +184,7 @@ Body limits: default `REQUEST_BODY_LIMITS` (64 MiB). Create carries at most one 
 
 ### Edits / extensions (model-first when unpinned)
 
-JSON body. `prompt` required. Source video id is `video.id` (official). Optional `model` uses the same default as create. Optional `seconds` on extensions is forwarded, not validated against the official enum (upstream rejects an illegal value).
+JSON body only (`415` on multipart, including the official SDK form). `prompt` required. Source video id is `video.id` (official). Optional `model` uses the same default as create. Optional `seconds` on extensions is forwarded, not validated against the official enum (upstream rejects an illegal value). The pin peek uses the same `REQUEST_BODY_LIMITS` reader as create; an oversized body is `413` before store lookup.
 
 If a pin exists for that source id and the caller owns it, do **not** enter the generation loop: pinned raw to that provider, then pin the new job on 2xx.
 
@@ -264,6 +264,7 @@ OpenAI-shaped `{ error: { message, type, code } }` like Images / Audio (not the 
 | Convert path (no raw) | 501 | `unsupported_feature` (`video_convert`) |
 | Registered no-ship Videos ports | 501 | `video_capability_not_supported` |
 | Pinned provider missing / raw gone | 503 | `video_upstream_unavailable` |
+| In-process job store at capacity | 503 | `video_store_full` |
 
 Do not log SDP-equivalent secrets: no video bytes, no `input_reference` data URLs, no `Authorization`.
 

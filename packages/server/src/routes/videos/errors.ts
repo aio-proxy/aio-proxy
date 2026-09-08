@@ -23,5 +23,5 @@ export function videoUpstreamUnavailable(): Response {
 }
 
 export function videoStoreFull(): Response {
-  return openAIVideoError(503, 'video_upstream_unavailable', 'Videos job store is full');
+  return openAIVideoError(503, 'video_store_full', 'Videos job store is full');
 }

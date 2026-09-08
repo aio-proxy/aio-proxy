@@ -325,6 +325,7 @@ Videos 说明：
 - 省略 `model` 时默认 `sora-2`。
 - 转换路径未实现（`501 unsupported_feature`）。
 - 查询、内容、删除和 remix 依赖创建进程内的 pin；重启后会丢失。
+- edits / extensions 只接受 JSON（`video.id`）；官方 SDK 的 multipart 返回 `415`。
 - `GET /v1/videos` 和 character 端口返回 `501`。`/v1/videos/generations` 不是代理端口。
 - 官方 Sora / Videos API 将于 2026-09-24 关闭；`/v1/videos` 线路仍供兼容网关使用。
 

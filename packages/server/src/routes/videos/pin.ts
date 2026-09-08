@@ -12,35 +12,39 @@ export async function pinSuccessfulVideoJob(
   owner: CallerPrincipal,
   info: { readonly provider: RuntimeProviderInstance; readonly modelId: string; readonly response: Response },
 ): Promise<void> {
-  if (!info.response.ok) return;
-  let body: unknown;
   try {
-    body = await info.response.clone().json();
+    if (!info.response.ok) return;
+    let body: unknown;
+    try {
+      body = await info.response.clone().json();
+    } catch {
+      logPinFailed(source, info.provider.id);
+      return;
+    }
+    if (!isPlainObject(body)) {
+      logPinFailed(source, info.provider.id);
+      return;
+    }
+    const videoId = body['id'];
+    if (!isValidVideoId(typeof videoId === 'string' ? videoId : undefined)) {
+      logPinFailed(source, info.provider.id);
+      return;
+    }
+    const createdAt = Date.now();
+    const record: VideoJobRecord = {
+      videoId,
+      providerId: info.provider.id,
+      ...(info.provider.accountId === undefined ? {} : { accountId: info.provider.accountId }),
+      ...(info.provider.runtimeRevision === undefined ? {} : { runtimeRevision: info.provider.runtimeRevision }),
+      model: info.modelId,
+      owner,
+      createdAt,
+      expiresAt: expiresAtFromUpstream(body['expires_at'], createdAt),
+    };
+    if (!source.videoJobs.insert(record)) logPinFailed(source, info.provider.id);
   } catch {
     logPinFailed(source, info.provider.id);
-    return;
   }
-  if (!isPlainObject(body)) {
-    logPinFailed(source, info.provider.id);
-    return;
-  }
-  const videoId = body['id'];
-  if (!isValidVideoId(typeof videoId === 'string' ? videoId : undefined)) {
-    logPinFailed(source, info.provider.id);
-    return;
-  }
-  const createdAt = Date.now();
-  const record: VideoJobRecord = {
-    videoId,
-    providerId: info.provider.id,
-    ...(info.provider.accountId === undefined ? {} : { accountId: info.provider.accountId }),
-    ...(info.provider.runtimeRevision === undefined ? {} : { runtimeRevision: info.provider.runtimeRevision }),
-    model: info.modelId,
-    owner,
-    createdAt,
-    expiresAt: expiresAtFromUpstream(body['expires_at'], createdAt),
-  };
-  if (!source.videoJobs.insert(record)) logPinFailed(source, info.provider.id);
 }
 
 export function pinnedVideoProvider(

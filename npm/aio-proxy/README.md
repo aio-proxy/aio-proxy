@@ -377,6 +377,7 @@ Videos notes:
 - Omitted `model` defaults to `sora-2`.
 - Convert is not implemented (`501 unsupported_feature`).
 - Retrieve, content, delete, and remix require the creating process's pin; a restart forgets pins.
+- Edits and extensions accept JSON (`video.id`); official SDK multipart is `415`.
 - `GET /v1/videos` and the character ports answer `501`. `/v1/videos/generations` is not a proxy port.
 - Official Sora / Videos API shutdown is 2026-09-24; the `/v1/videos` wire remains for compatible gateways.
 

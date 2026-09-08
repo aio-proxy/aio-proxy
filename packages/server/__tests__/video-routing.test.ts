@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createServer } from '#server-test-lifecycle';
@@ -86,6 +87,13 @@ describe('OpenAI Videos HTTP dispatch', () => {
     const stolen = await app.request('/v1/videos/video_abc', { headers: { authorization: 'Bearer key-other' } });
     expect(stolen.status).toBe(403);
     expect(await stolen.json()).toMatchObject({ error: { code: 'video_forbidden' } });
+    const stolenEdit = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { authorization: 'Bearer key-other', 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(stolenEdit.status).toBe(403);
+    expect(await stolenEdit.json()).toMatchObject({ error: { code: 'video_forbidden' } });
     expect(fixture.calls.raw).toBe(before);
   });
 
@@ -126,6 +134,15 @@ describe('OpenAI Videos HTTP dispatch', () => {
     });
     expect(unpinned.status).toBe(200);
     expect(fixture.bodies.at(-1)).toMatchObject({ model: 'sora-2', prompt: 'warmer light' });
+
+    const extensions = await app.request('/v1/videos/extensions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'two more seconds', video: { id: 'video_abc' } }),
+    });
+    expect(extensions.status).toBe(200);
+    expect(await extensions.json()).toEqual({ id: 'video_extend', object: 'video', status: 'queued' });
+    expect((await app.request('/v1/videos/video_extend')).status).toBe(200);
   });
 
   test('a language-only catalog cannot serve Videos', async () => {
@@ -147,6 +164,85 @@ describe('OpenAI Videos HTTP dispatch', () => {
     const response = await request(CREATE, [fixture.value], createBody({ model: 'sora-2' }));
     expect(response.status).toBe(501);
     expect(fixture.calls).toEqual({ model: 0, raw: 0, speech: 0 });
+  });
+
+  test('multipart edits is 415 and never pin-firsts', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: createBody(),
+    });
+    const before = fixture.calls.raw;
+    const form = new FormData();
+    form.set('prompt', 'warmer light');
+    form.set('video', JSON.stringify({ id: 'video_abc' }));
+    const multipart = await app.request('/v1/videos/edits', { method: 'POST', body: form });
+    expect(multipart.status).toBe(415);
+    expect(await multipart.json()).toMatchObject({ error: { code: 'invalid_request' } });
+    expect(fixture.calls.raw).toBe(before);
+  });
+
+  test('an oversized edits peek is 413 before store lookup', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: createBody(),
+    });
+    const before = fixture.calls.raw;
+    const oversized = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(REQUEST_BODY_LIMITS.encoded + 1),
+      },
+      body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toMatchObject({ error: { code: 'request_too_large' } });
+    expect(fixture.calls.raw).toBe(before);
+  });
+
+  test('a missing pinned raw is 503 and does not walk other video candidates', async () => {
+    const pinned = videoProvider('openai');
+    const other = videoProvider('backup');
+    const app = await createServer({
+      config: { providers: {} },
+      providerInstances: [pinned.value, other.value],
+    });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody(),
+        })
+      ).status,
+    ).toBe(200);
+    const createdBy = pinned.calls.raw === 1 ? pinned : other;
+    const unused = createdBy === pinned ? other : pinned;
+    createdBy.disableRaw();
+    const beforeUnused = unused.calls.raw;
+    const retrieved = await app.request('/v1/videos/video_abc');
+    expect(retrieved.status).toBe(503);
+    expect(await retrieved.json()).toMatchObject({ error: { code: 'video_upstream_unavailable' } });
+    expect(unused.calls.raw).toBe(beforeUnused);
+  });
+
+  test('content forwards the inbound variant query to the pinned provider', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: createBody(),
+    });
+    const content = await app.request('/v1/videos/video_abc/content?variant=thumbnail');
+    expect(content.status).toBe(200);
+    expect(fixture.urls.at(-1)).toContain('variant=thumbnail');
   });
 
   test('delete on 2xx drops the pin', async () => {
@@ -174,17 +270,25 @@ function videoProvider(
 ): {
   readonly bodies: unknown[];
   readonly calls: VideoCalls;
+  readonly disableRaw: () => void;
   readonly resolves: RawResolveInput[];
+  readonly urls: string[];
   readonly value: RuntimeProviderInstance;
 } {
   const calls: VideoCalls = { model: 0, raw: 0, speech: 0 };
   const resolves: RawResolveInput[] = [];
   const bodies: unknown[] = [];
+  const urls: string[] = [];
+  let rawAvailable = options.raw !== false;
   const granted = new Set(options.capabilities ?? (['video'] as const));
   return {
     bodies,
     calls,
+    disableRaw() {
+      rawAvailable = false;
+    },
     resolves,
+    urls,
     value: {
       capabilityIndex: { 'sora-2': granted },
       enabled: true,
@@ -198,22 +302,25 @@ function videoProvider(
           : {
               resolve: (input: RawResolveInput) => {
                 resolves.push(input);
-                if (input.protocol !== ProviderProtocol.OpenAIVideo) return undefined;
+                if (!rawAvailable || input.protocol !== ProviderProtocol.OpenAIVideo) return undefined;
                 return {
                   invoke: async (request: Request) => {
                     calls.raw += 1;
+                    urls.push(request.url);
                     const path = new URL(request.url).pathname;
                     try {
                       bodies.push(await request.clone().json());
                     } catch {
                       bodies.push(undefined);
                     }
-                    const id = path.endsWith('/remix')
+                    const videoId = path.endsWith('/remix')
                       ? 'video_remix'
                       : path.includes('/edits')
                         ? 'video_edit'
-                        : 'video_abc';
-                    return Response.json({ id, object: 'video', status: 'queued' });
+                        : path.includes('/extensions')
+                          ? 'video_extend'
+                          : 'video_abc';
+                    return Response.json({ id: videoId, object: 'video', status: 'queued' });
                   },
                 };
               },

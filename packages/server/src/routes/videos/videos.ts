@@ -1,8 +1,8 @@
-import { openAIVideosAdapter } from '@aio-proxy/core';
+import { openAIVideosAdapter, readJsonRequest, REQUEST_BODY_LIMITS, RequestBodyTooLargeError } from '@aio-proxy/core';
 import { type Context, Hono } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
-import { handleProtocolRequest } from '../pipeline';
+import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pipeline';
 import { videoCapabilityNotSupported, videoForbidden, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
 import { pinSuccessfulVideoJob } from './pin';
@@ -54,12 +54,8 @@ async function handleFollowUpCreate(
   operation: 'edits' | 'extensions',
 ) {
   const owner = callerPrincipal(context);
-  let sourceId: string | undefined;
-  try {
-    sourceId = sourceVideoIdFromBody(await context.req.raw.clone().json());
-  } catch {
-    sourceId = undefined;
-  }
+  const sourceId = await peekFollowUpSourceVideoId(context.req.raw);
+  if (sourceId instanceof Response) return sourceId;
   if (isValidVideoId(sourceId)) {
     const record = source.videoJobs.lookup(sourceId);
     if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
@@ -85,5 +81,17 @@ async function withCapacity(source: VideosRouteSource, run: () => Promise<Respon
     return await run();
   } finally {
     slot.release();
+  }
+}
+
+async function peekFollowUpSourceVideoId(raw: Request): Promise<string | undefined | Response> {
+  if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
+    return openAIVideosAdapter.errors.tooLarge();
+  }
+  try {
+    return sourceVideoIdFromBody(await readJsonRequest(raw.clone(), REQUEST_BODY_LIMITS));
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return openAIVideosAdapter.errors.tooLarge();
+    return undefined;
   }
 }
