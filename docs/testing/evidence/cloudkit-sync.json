@@ -1,0 +1,20 @@
+{
+  "host": {
+    "os": "darwin",
+    "osVersion": "26.6",
+    "architecture": "arm64"
+  },
+  "artifact": {
+    "manifestSha256": "unavailable"
+  },
+  "containerId": "unavailable",
+  "cases": [
+    {
+      "name": "installed two-process sync conformance",
+      "status": "blocked",
+      "errorCode": "invalid-data"
+    }
+  ],
+  "productionGate": "blocked",
+  "recordedAt": "2026-09-08T20:30:25.792Z"
+}

@@ -113,3 +113,22 @@ available. Record the service result only from that execution context.
 Being signed, notarized, or runnable from Xcode is not enough. Until the
 installed path and launchd path both return a confirmed account result, keep
 the CloudKit capability unavailable for release.
+
+## Installed two-process conformance
+
+Run the live wrapper only with an explicit `--live` flag and a dedicated
+`CLOUDKIT_CONTAINER_ID` configured for the test account:
+
+```sh
+CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
+  bun packages/plugins/cloudkit/scripts/conformance-live.ts --live
+```
+
+The wrapper requires the package and native manifests to agree, requires a
+verified signed bundle in the versioned installed cache, and starts two
+separate native processes. The conformance harness places all records beneath
+a fresh UUID prefix and removes only those test records. It never targets the
+default user configuration space. Output is limited to case status and
+documented error codes; redacted host, artifact digest, and result are written
+to `docs/testing/evidence/cloudkit-sync.json` (or `CLOUDKIT_EVIDENCE_PATH`).
+A blocked result remains a release NO-GO.
