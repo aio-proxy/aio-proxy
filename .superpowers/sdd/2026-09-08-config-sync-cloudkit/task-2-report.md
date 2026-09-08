@@ -53,7 +53,25 @@ rtk proxy swift test --package-path packages/plugins/cloudkit/native
 Verification output:
 
 ```text
-Build complete! (0.15s)
+Build complete! (0.28s)
 ```
 
 The native executable and test bundle compile successfully. XCTest execution is unavailable on this host, so no live XCTest result or CloudKit gate is claimed.
+
+## Concurrent tombstone recreation fix report
+
+Expected-nil replacement of a tombstone now compares the incoming backing record’s current fake change token inside the actor. This preserves one-winner conditional semantics even when concurrent recreations both fetched the tombstone before either save. A deterministic concurrent recreation XCTest case covers one written result and one conflict.
+
+Verification command:
+
+```sh
+rtk proxy swift test --package-path packages/plugins/cloudkit/native
+```
+
+Verification output:
+
+```text
+Build complete! (0.15s)
+```
+
+The executable and test bundle compile successfully. XCTest execution and live CloudKit validation remain unavailable in this environment.

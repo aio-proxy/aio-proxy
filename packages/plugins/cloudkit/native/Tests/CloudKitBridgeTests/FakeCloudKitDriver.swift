@@ -12,7 +12,10 @@ actor FakeCloudKitDriver: CloudKitDriver {
     func setAccountAvailable(_ available: Bool) { accountAvailable = available }
     func changeIdentity() { identity = AccountIdentity(identifier: UUID().uuidString) }
 
-    func fetch(id: CKRecord.ID) async throws -> CKRecord? { records[id] }
+    func fetch(id: CKRecord.ID) async throws -> CKRecord? {
+        guard let record = records[id] else { return nil }
+        return copy(record)
+    }
 
     func saveConditionally(record: CKRecord) async throws -> CKRecord {
         if let current = records[record.recordID] {
@@ -20,11 +23,13 @@ actor FakeCloudKitDriver: CloudKitDriver {
             let currentVersion = current["_fakeVersion"] as? String
             let expectedToken = expected.flatMap { try? RecordVersion(version: $0).changeToken } ?? nil
             let isTombstone = (current[CloudKitStore.removedField] as? Int64 ?? 0) != 0
-            if (expected == nil && !isTombstone) || (expected != nil && expectedToken != currentVersion) {
+            let incomingToken = record["_fakeVersion"] as? String
+            if (expected == nil && (!isTombstone || incomingToken != currentVersion)) ||
+                (expected != nil && expectedToken != currentVersion) {
                 throw CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: current])
             }
         }
-        let saved = record
+        let saved = copy(record)
         saved["_fakeVersion"] = UUID().uuidString as CKRecordValue
         records[record.recordID] = saved
         if failNextSaveAfterPersist {
@@ -32,6 +37,15 @@ actor FakeCloudKitDriver: CloudKitDriver {
             throw CKError(.networkFailure)
         }
         return saved
+    }
+
+    private func copy(_ record: CKRecord) -> CKRecord {
+        let result = CKRecord(recordType: record.recordType, recordID: record.recordID)
+        result[CloudKitStore.logicalKeyField] = record[CloudKitStore.logicalKeyField]
+        result[CloudKitStore.removedField] = record[CloudKitStore.removedField]
+        result[CloudKitStore.payloadField] = record[CloudKitStore.payloadField]
+        result["_fakeVersion"] = record["_fakeVersion"]
+        return result
     }
 
     func query(prefix: String, cursor: Data?) async throws -> CloudKitQueryPage {

@@ -53,6 +53,23 @@ final class CloudKitStoreTests: XCTestCase {
         XCTAssertEqual(value.bytes, Data("new".utf8))
     }
 
+    func testOnlyOneConcurrentTombstoneRecreationWins() async throws {
+        let driver = FakeCloudKitDriver()
+        let seed = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await seed.compareAndSwap(key: "k", expected: nil, value: Data("old".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        let removed = try await seed.remove(key: "k", expected: version)
+        XCTAssertTrue(removed)
+        let a = CloudKitStore(driver: driver)
+        let b = CloudKitStore(driver: driver)
+        async let left = a.compareAndSwap(key: "k", expected: nil, value: Data("a".utf8))
+        async let right = b.compareAndSwap(key: "k", expected: nil, value: Data("b".utf8))
+        let results = try await [left, right]
+        XCTAssertEqual(results.filter { if case .written = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(results.filter { if case .conflict = $0 { return true }; return false }.count, 1)
+    }
+
     func testPostSaveTransportLossRecoversByRead() async throws {
         let driver = FakeCloudKitDriver()
         await driver.armPostSaveTransportLoss()
