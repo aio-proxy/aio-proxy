@@ -6,6 +6,7 @@ import type {
   PluginRepository,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
+import type { LocalCommitPort } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
@@ -26,6 +27,7 @@ import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
+import type { ServerSyncLifecycle } from '../sync-control-plane';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
 import type { QuotaIdentityTracker } from './quota-invalidation';
 import { createRecovery } from './recovery';
@@ -59,6 +61,7 @@ export type ServerRuntime = {
   quotaIdentity: QuotaIdentityTracker | undefined;
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
+  sync: ServerSyncLifecycle | undefined;
 };
 
 /**
@@ -158,10 +161,44 @@ export type ServerStateParts = Pick<
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
   readonly databaseOwnership: DatabaseOwnershipLock;
+  readonly sync?: ServerSyncLifecycle;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
   const { events, repository, options, logger } = runtime;
+  let resourcesClosed = false;
+  let closePromise: Promise<void> | undefined;
+  const closeRemainingResources = (): void => {
+    if (resourcesClosed) return;
+    resourcesClosed = true;
+    const failures: unknown[] = [];
+    for (const close of [
+      () => parts.watcher?.close(),
+      () => runtime.scheduler.close(),
+      parts.closeRecovery,
+      () => parts.oauthLoginSessions.close(),
+      () => parts.realtimeCalls.close(),
+      () => events.close(),
+      () => dbHandle.close(),
+      parts.databaseOwnership.release,
+    ]) {
+      try {
+        close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures[0] !== undefined) throw failures[0];
+  };
+  const closeAsync = async (): Promise<void> => {
+    if (closePromise !== undefined) return closePromise;
+    runtime.closed = true;
+    closePromise = (async () => {
+      await parts.sync?.close();
+      closeRemainingResources();
+    })();
+    return closePromise;
+  };
   return {
     agentIdentity: parts.agentIdentity,
     acquireProviderSnapshot: manager.acquire,
@@ -169,25 +206,11 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      const failures: unknown[] = [];
-      for (const close of [
-        () => parts.watcher?.close(),
-        () => runtime.scheduler.close(),
-        parts.closeRecovery,
-        () => parts.oauthLoginSessions.close(),
-        () => parts.realtimeCalls.close(),
-        () => events.close(),
-        () => dbHandle.close(),
-        parts.databaseOwnership.release,
-      ]) {
-        try {
-          close();
-        } catch (error) {
-          failures.push(error);
-        }
-      }
-      if (failures[0] !== undefined) throw failures[0];
+      parts.sync?.abort();
+      closePromise = parts.sync?.close().catch(() => {}) ?? Promise.resolve();
+      closeRemainingResources();
     },
+    closeAsync,
     configPath: options.configPath,
     configStore: parts.configStore,
     currentProviderSnapshot: manager.current,
@@ -228,6 +251,11 @@ export async function startRecovery(
     readonly recoverAccounts: Parameters<typeof createRecovery>[0]['recoverAccounts'];
     readonly recoveryScheduler: Parameters<typeof createRecovery>[0]['scheduler'];
     readonly reconciliationRetryMs: number;
+    readonly syncCommit?: {
+      readonly repo: import('@aio-proxy/core').SyncRepository;
+      readonly bindingId: string;
+      readonly port: LocalCommitPort;
+    };
   },
   registerStartupCleanup: (cleanup: () => void) => void,
 ): Promise<ConfigStore> {
@@ -253,6 +281,7 @@ export async function startRecovery(
     enqueue: runtime.queue,
     onReconciliationNeeded: recovery.scheduleReconciliation,
     repository: runtime.repository,
+    ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
     verify: (candidate) => commitConfig(runtime, parseRuntimeConfig(candidate), 'config-store'),
   });
 }

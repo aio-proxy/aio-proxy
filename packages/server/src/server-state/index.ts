@@ -6,11 +6,14 @@ import {
   createEmbeddedBuiltIns,
   createPluginDiagnosticFactory,
   createPluginRepository,
+  createSyncRepository,
+  parseRuntimeConfig,
   type DiagnosticFactory,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
+  type JsonValue,
 } from '@aio-proxy/core';
 import {
   acquireDatabaseOwnershipLock,
@@ -40,6 +43,7 @@ import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import { createRealtimeCallStore } from '../routes/realtime';
+import { createLocalSyncPort, createServerSyncLifecycle } from '../sync-control-plane';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -66,6 +70,88 @@ import type {
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
+}
+
+function createSyncIntegration(
+  runtime: ServerRuntime,
+  dbHandle: OpenDbHandle,
+  repository: PluginRepository,
+  manager: SnapshotManager,
+  configFile: AtomicConfigFile | undefined,
+  options: ServerStateOptions,
+  queue: ReturnType<typeof createFifoQueue>,
+) {
+  const syncRepository = createSyncRepository(dbHandle.sqlite);
+  const syncBinding = syncRepository.readBinding();
+  if (syncBinding === null || configFile === undefined || options.configPath === undefined) {
+    return {
+      syncRepository,
+      syncBinding,
+      syncPort: undefined,
+      syncApplyCandidate: async () => {},
+      lifecycle: undefined,
+    };
+  }
+  const syncApplyCandidate = async (raw: Record<string, JsonValue>, origin: 'local' | 'remote'): Promise<void> => {
+    await configFile.replace(() => raw, {
+      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+      verify: async (candidate) => {
+        await commitConfig(runtime, parseRuntimeConfig(candidate), origin === 'remote' ? 'sync-remote' : 'sync-local');
+      },
+    });
+  };
+  const pluginVersions = () =>
+    new Map(
+      [...(manager.current() as Snapshot).plugins.plugins]
+        .filter(([, plugin]) => plugin.version !== undefined)
+        .map(([name, plugin]) => [name, plugin.version!] as const),
+    );
+  const syncPort = createLocalSyncPort({
+    configPath: options.configPath,
+    configFile,
+    repo: syncRepository,
+    accounts: repository,
+    bindingId: syncBinding.id,
+    enqueue: queue,
+    registry: () => (manager.current() as Snapshot).plugins.registry,
+    applyCandidate: syncApplyCandidate,
+    pluginVersions,
+  });
+  const lifecycle = createServerSyncLifecycle({
+    configPath: options.configPath,
+    configFile,
+    repo: syncRepository,
+    accounts: repository,
+    registry: () => (manager.current() as Snapshot).plugins.registry,
+    enqueue: queue,
+    applyCandidate: syncApplyCandidate,
+    pluginVersions,
+    localPort: syncPort,
+  });
+  return { syncRepository, syncBinding, syncPort, syncApplyCandidate, lifecycle };
+}
+
+function syncCommitOption(integration: ReturnType<typeof createSyncIntegration>) {
+  return integration.syncBinding === null || integration.syncPort === undefined
+    ? {}
+    : {
+        syncCommit: {
+          repo: integration.syncRepository,
+          bindingId: integration.syncBinding.id,
+          port: integration.syncPort,
+        },
+      };
+}
+
+async function startSyncIntegration(
+  runtime: ServerRuntime,
+  integration: ReturnType<typeof createSyncIntegration>,
+  registerStartupCleanup: (cleanup: () => void) => void,
+): Promise<void> {
+  if (integration.lifecycle === undefined) return;
+  runtime.sync = integration.lifecycle;
+  registerStartupCleanup(() => integration.lifecycle?.abort());
+  await integration.lifecycle.start();
 }
 
 function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
@@ -116,6 +202,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- startup ordering is intentionally kept together
 async function initializeServerState(
   options: ServerStateOptions,
   dbHandle: OpenDbHandle,
@@ -165,6 +252,7 @@ async function initializeServerState(
     quotaIdentity: undefined,
     recovery: undefined,
     configFile,
+    sync: undefined,
   };
 
   await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
@@ -217,12 +305,15 @@ async function initializeServerState(
     onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
   });
 
+  const syncIntegration = createSyncIntegration(runtime, dbHandle, repository, manager, configFile, options, queue);
+
   const configStore = await startRecovery(
     runtime,
     {
       recoverAccounts,
       recoveryScheduler,
       reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
+      ...syncCommitOption(syncIntegration),
     },
     registerStartupCleanup,
   );
@@ -256,6 +347,7 @@ async function initializeServerState(
       : undefined;
   if (watcher !== undefined) registerStartupCleanup(() => watcher.close());
   failAfter('watcher');
+  await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
   return assembleServerState(runtime, {
     agentIdentity,
     manager,
@@ -279,6 +371,7 @@ async function initializeServerState(
     usageCapture,
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
+    sync: runtime.sync,
   });
 }
 

@@ -1,15 +1,22 @@
+import { createHash } from 'node:crypto';
+
 import {
   AtomicConfigCommitUncertainError,
   AtomicConfigFile,
+  confirmLocalCommit,
+  encodeCandidate,
   parseRuntimeConfig,
+  prepareLocalCommit,
   type PendingAccountOperation,
   type PluginRepository,
+  type LocalCommitPort,
+  type SyncRepository,
 } from '@aio-proxy/core';
 
-import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from './account-removal';
-import type { FifoQueue } from './fifo-queue';
-import { createFifoQueue } from './fifo-queue';
-import type { RetiredProviderSnapshot } from './runtime';
+import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from '../account-removal';
+import type { FifoQueue } from '../fifo-queue';
+import { createFifoQueue } from '../fifo-queue';
+import type { RetiredProviderSnapshot } from '../runtime';
 
 export class ConfigPathMissingError extends Error {
   constructor() {
@@ -33,6 +40,11 @@ export type ConfigStoreOptions = {
   readonly accountRemovals?: AccountRemovalCoordinator;
   readonly enqueue?: FifoQueue;
   readonly onReconciliationNeeded?: (operations: readonly PendingAccountOperation[]) => void;
+  readonly syncCommit?: {
+    readonly repo: SyncRepository;
+    readonly bindingId: string;
+    readonly port: LocalCommitPort;
+  };
 };
 
 export type ConfigStore = {
@@ -50,6 +62,48 @@ export type ConfigStore = {
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
+type SyncCommitOptions = NonNullable<ConfigStoreOptions['syncCommit']>;
+
+function createSyncCapture(path: string | undefined, syncHooks: SyncCommitOptions | undefined) {
+  if (syncHooks === undefined) {
+    return {
+      confirm: async (_commitId: string | undefined): Promise<void> => {},
+      prepare: (
+        _before: Record<string, unknown> | undefined,
+        _candidate: Record<string, unknown>,
+        _accountOperationIds: readonly string[] = [],
+      ): string | undefined => undefined,
+    };
+  }
+  const digest = (raw: Record<string, unknown>): string =>
+    createHash('sha256')
+      .update(encodeCandidate(raw, path ?? 'config.jsonc'))
+      .digest('hex');
+  return {
+    async confirm(commitId: string | undefined): Promise<void> {
+      if (commitId === undefined) return;
+      await confirmLocalCommit(syncHooks.repo, syncHooks.bindingId, commitId, syncHooks.port);
+    },
+    prepare(
+      before: Record<string, unknown> | undefined,
+      candidate: Record<string, unknown>,
+      accountOperationIds: readonly string[] = [],
+    ): string | undefined {
+      if (before === undefined) return undefined;
+      const commitId = crypto.randomUUID();
+      prepareLocalCommit(syncHooks.repo, syncHooks.bindingId, {
+        commitId,
+        origin: 'local',
+        beforeDigest: digest(before),
+        afterDigest: digest(candidate),
+        rawAfter: candidate as never,
+        accountOperationIds: [...accountOperationIds],
+      });
+      return commitId;
+    },
+  };
+}
+
 export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const path = options.getConfigPath();
   const file = options.file ?? (path === undefined ? undefined : new AtomicConfigFile(path));
@@ -61,6 +115,8 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     return enqueue(operation);
   }
 
+  const syncCapture = createSyncCapture(path, options.syncCommit);
+
   async function verifyCandidate(
     candidate: Readonly<Record<string, unknown>>,
   ): Promise<RetiredProviderSnapshot | undefined> {
@@ -71,14 +127,19 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     }
   }
 
-  async function mutateProvidersNow(fn: (record: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
+  async function mutateProvidersNow(
+    fn: (record: Record<string, unknown>) => Record<string, unknown>,
+  ): Promise<string | undefined> {
     if (file === undefined) throw new ConfigPathMissingError();
     const staged: PendingAccountOperation[] = [];
+    let before: Record<string, unknown> | undefined;
+    let commitId: string | undefined;
     let retired: RetiredProviderSnapshot | undefined;
     let verificationCompleted = false;
     try {
       await file.transaction(
         async (current) => {
+          before = current;
           const providers = asProviderRecord(current['providers']);
           const nextProviders = fn(providers);
           if (nextProviders === providers) return { next: current, result: undefined };
@@ -89,6 +150,13 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
           verify: async (candidate) => {
             retired = await verifyCandidate(candidate);
             verificationCompleted = true;
+          },
+          beforeCommit: async (candidate) => {
+            commitId = syncCapture.prepare(
+              before,
+              candidate,
+              staged.map((operation) => operation.operationId),
+            );
           },
         },
       );
@@ -109,53 +177,86 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     }
 
     void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+    return commitId;
   }
 
   async function mutateConfigNow(
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     if (file === undefined) throw new ConfigPathMissingError();
-    await file.replace(fn, {
-      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
-      verify: async (candidate) => void (await verifyCandidate(candidate)),
-    });
+    let before: Record<string, unknown> | undefined;
+    let commitId: string | undefined;
+    await file.replace(
+      async (current) => {
+        before = current;
+        return fn(current);
+      },
+      {
+        validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+        verify: async (candidate) => void (await verifyCandidate(candidate)),
+        beforeCommit: async (candidate) => {
+          commitId = syncCapture.prepare(before, candidate);
+        },
+      },
+    );
+    return commitId;
   }
 
   async function mutateConfigWithProviderMutationNow<T>(
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
     beforeOperation: (assertConfigOwnership: () => Promise<void>) => Promise<void>,
     operation: () => Promise<T>,
-  ): Promise<T> {
+  ): Promise<{ readonly value: T; readonly commitId?: string }> {
     if (file === undefined) throw new ConfigPathMissingError();
     let operationResult: { readonly value: T } | undefined;
-    await file.replace(fn, {
-      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
-      verify: async (candidate) => void (await verifyCandidate(candidate)),
-      beforeCommit: async (_candidate, assertConfigOwnership) => {
-        await beforeOperation(assertConfigOwnership);
+    let before: Record<string, unknown> | undefined;
+    let commitId: string | undefined;
+    await file.replace(
+      async (current) => {
+        before = current;
+        return fn(current);
       },
-      afterCommit: async () => {
-        operationResult = { value: await operation() };
+      {
+        validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+        verify: async (candidate) => void (await verifyCandidate(candidate)),
+        beforeCommit: async (candidate, assertConfigOwnership) => {
+          commitId = syncCapture.prepare(before, candidate);
+          await beforeOperation(assertConfigOwnership);
+        },
+        afterCommit: async () => {
+          operationResult = { value: await operation() };
+        },
       },
-    });
+    );
     if (operationResult === undefined) throw new Error('Provider mutation operation did not run');
-    return operationResult.value;
-  }
-
-  async function deleteProviderNow(providerId: string): Promise<void> {
-    await mutateProvidersNow((providers) => {
-      const { [providerId]: _removed, ...remaining } = providers;
-      return remaining;
-    });
+    return { ...operationResult, ...(commitId === undefined ? {} : { commitId }) };
   }
 
   return {
     coordinateProviderMutation: enqueueProviderMutation,
-    deleteProvider: (providerId) => enqueueProviderMutation(() => deleteProviderNow(providerId)),
+    deleteProvider: (providerId) =>
+      enqueue(async () => {
+        const commitId = await mutateProvidersNow((providers) => {
+          const { [providerId]: _removed, ...remaining } = providers;
+          return remaining;
+        });
+        return commitId;
+      }).then(async (commitId) => {
+        await syncCapture.confirm(commitId);
+      }),
     file,
-    mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),
+    mutateConfig: (fn) =>
+      enqueue(() => mutateConfigNow(fn)).then(async (commitId) => {
+        await syncCapture.confirm(commitId);
+      }),
     mutateConfigWithProviderMutation: (fn, beforeOperation, operation) =>
-      enqueueProviderMutation(() => mutateConfigWithProviderMutationNow(fn, beforeOperation, operation)),
-    mutateProviders: (fn) => enqueueProviderMutation(() => mutateProvidersNow(fn)),
+      enqueue(() => mutateConfigWithProviderMutationNow(fn, beforeOperation, operation)).then(async (result) => {
+        await syncCapture.confirm(result.commitId);
+        return result.value;
+      }),
+    mutateProviders: (fn) =>
+      enqueue(() => mutateProvidersNow(fn)).then(async (commitId) => {
+        await syncCapture.confirm(commitId);
+      }),
   };
 }

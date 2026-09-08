@@ -84,6 +84,7 @@ export type ConfigReloadResult = { readonly ok: true; readonly diff: ConfigChang
 export type ServerState = ProviderRouteSource & {
   readonly agentIdentity: AgentIdentityService;
   readonly close: () => void;
+  readonly closeAsync: () => Promise<void>;
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;

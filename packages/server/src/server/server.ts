@@ -423,7 +423,9 @@ const createRoutes = (
 
 export type AppType = ReturnType<typeof createRoutes>;
 
-export const createServer = async (options: CreateServerOptions): Promise<AppType & { readonly close: () => void }> => {
+export const createServer = async (
+  options: CreateServerOptions,
+): Promise<AppType & { readonly close: () => void; readonly closeAsync: () => Promise<void> }> => {
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
   let dashboardAuthAvailable = !prepared.dashboardUnavailable;
   if (prepared.error !== undefined) {
@@ -484,13 +486,19 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
         controller.stop();
         state.close();
       },
+      async closeAsync() {
+        if (closed) return;
+        closed = true;
+        controller.stop();
+        await state.closeAsync();
+      },
     });
   } catch (error) {
     try {
       controller.stop();
     } catch {}
     try {
-      state.close();
+      await state.closeAsync();
     } catch {}
     throw error;
   }

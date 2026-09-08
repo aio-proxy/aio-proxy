@@ -5,4 +5,4 @@ export {
   type AtomicConfigTransactionOptions,
 } from './config-file';
 export { CONFIG_LOCK_HEARTBEAT_MS, CONFIG_LOCK_STALE_MS, CONFIG_LOCK_WAIT_MS } from './lock';
-export { digestProviderEntry } from './serialization';
+export { digestProviderEntry, encodeCandidate } from './serialization';
