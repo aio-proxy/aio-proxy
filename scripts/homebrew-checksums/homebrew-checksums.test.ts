@@ -12,7 +12,6 @@ const manifest = packages.map((pkg) => `${checksums[pkg]}  ${pkg}-${version}.tgz
 test('uses the published manifest checksums for all four Formula URLs', () => {
   expect(buildHomebrewChecksums({ packages, version, manifest })).toEqual({
     version,
-    source: 'github-release',
     checksums,
   });
 });

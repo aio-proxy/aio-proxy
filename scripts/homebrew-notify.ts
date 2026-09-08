@@ -33,7 +33,6 @@ if (!dispatch) {
   process.exit(0);
 }
 
-// The source distinguishes Release attachments from older npm-backed notifications.
 const response = await fetch('https://api.github.com/repos/aio-proxy/homebrew-tap/dispatches', {
   method: 'POST',
   signal: AbortSignal.timeout(30_000),

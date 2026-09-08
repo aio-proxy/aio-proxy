@@ -1,6 +1,5 @@
 export type ChecksumPayload = {
   version: string;
-  source: 'github-release';
   checksums: Record<string, string>;
 };
 
@@ -28,5 +27,5 @@ export function buildHomebrewChecksums({
     if (!checksum) throw new Error(`Missing checksum for ${pkg}@${version}`);
     checksums[pkg] = checksum;
   }
-  return { version, source: 'github-release', checksums };
+  return { version, checksums };
 }
