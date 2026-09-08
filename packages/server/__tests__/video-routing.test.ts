@@ -365,6 +365,28 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.calls.raw).toBe(before);
   });
 
+  test('an unsupported follow-up Content-Encoding is 415 before store lookup', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const encoded = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-encoding': 'compress',
+      },
+      body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(encoded.status).toBe(415);
+    expect(await encoded.json()).toEqual({
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    });
+    expect(fixture.calls.raw).toBe(0);
+  });
+
   test('a missing pinned raw is 503 and does not walk other video candidates', async () => {
     const pinned = videoProvider('openai');
     const other = videoProvider('backup');

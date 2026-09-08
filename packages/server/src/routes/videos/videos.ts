@@ -8,6 +8,7 @@ import {
   readJsonRequest,
   REQUEST_BODY_LIMITS,
   RequestBodyTooLargeError,
+  UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import { type Context, Hono } from 'hono';
 
@@ -129,6 +130,9 @@ async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
       return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
+    }
+    if (error instanceof UnsupportedContentEncodingError) {
+      return { kind: 'reject', response: openAIVideosAdapter.errors.unsupportedContentEncoding() };
     }
     return { kind: 'reject', response: videosRequestError(error) };
   }
