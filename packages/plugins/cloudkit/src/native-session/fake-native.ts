@@ -32,11 +32,21 @@ for await (const chunk of input) {
         result: { identityId: 'fake', spaceId: 'default', maxValueBytes: 1024, protocol: 1, version: 'fake' },
       });
       if (mode === 'identity-change') emit({ event: 'identity-changed' });
+      if (mode === 'duplicate')
+        emit({
+          id: request.id,
+          ok: true,
+          result: { identityId: 'fake', spaceId: 'default', maxValueBytes: 1024, protocol: 1, version: 'fake' },
+        });
+      if (mode === 'unexpected') emit({ id: 'unexpected', ok: true, result: null });
       if (mode === 'oversized') {
         Bun.stdout.write(`${'x'.repeat(16 * 1024 * 1024 + 1)}\n`);
         process.exit(0);
       }
-      if (mode === 'partial-frame') Bun.stdout.write('{"id":"partial"');
+      if (mode === 'partial-frame') {
+        Bun.stdout.write('{"id":"partial"');
+        process.exit(0);
+      }
       continue;
     }
     if (request.op === 'cas') {
@@ -67,4 +77,5 @@ for await (const chunk of input) {
       });
     }
   }
+  if (mode === 'hold') continue;
 }

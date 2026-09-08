@@ -34,7 +34,7 @@ final class StdioServer: @unchecked Sendable {
             return
         }
         if request.op == "dispose" {
-            emit(.success(id: request.id, result: .null)); stopAll(); return
+            emit(.success(id: request.id, result: .null)); stopAll(); terminateAfterReply(); return
         }
         taskLock.lock(); if stopped { taskLock.unlock(); return }
         let task = Task { [weak self] in
@@ -82,6 +82,9 @@ final class StdioServer: @unchecked Sendable {
     private func emit(_ reply: NativeReply) { guard let data = try? JSONEncoder().encode(reply) else { return }; outputLock.lock(); defer { outputLock.unlock() }; FileHandle.standardOutput.write(data); FileHandle.standardOutput.write(Data([10])) }
     private func accountChanged() { emit(.event("identity-changed")); stopAll() }
     private func stopAll() { taskLock.lock(); stopped = true; let current = tasks.values; tasks.removeAll(); taskLock.unlock(); current.forEach { $0.cancel() } }
+    private func terminateAfterReply() {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.01) { Foundation.exit(EXIT_SUCCESS) }
+    }
     private func failureCode(for error: Error) -> String {
         if let error = error as? StoreError { switch error { case .identityChanged: return "identity-changed"; case .outcomeUnknown: return "outcome-unknown"; case .invalidData: return "invalid-data" } }
         guard let error = error as? CKError else { return "unsupported" }

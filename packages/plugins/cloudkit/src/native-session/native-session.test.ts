@@ -48,3 +48,33 @@ test('disposal is idempotent', async () => {
     await Promise.all([session.dispose(), session.dispose()]);
   });
 });
+
+test('abort cancels a read without claiming a mutation outcome', async () => {
+  await withFakeNative('hold', async (executable) => {
+    const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
+    const controller = new AbortController();
+    const pending = session.read('k', controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+    await session.dispose();
+  });
+});
+
+test('partial native frames fail the session as invalid data', async () => {
+  await withFakeNative('partial-frame', async (executable) => {
+    const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
+    await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'invalid-data' });
+    await session.dispose();
+  });
+});
+
+test('duplicate and unexpected replies fail pending work', async () => {
+  for (const mode of ['duplicate', 'unexpected'] as const) {
+    await withFakeNative(mode, async (executable) => {
+      const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'invalid-data' });
+      await session.dispose();
+    });
+  }
+});

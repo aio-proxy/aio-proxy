@@ -1,6 +1,16 @@
 import type { SyncFailureCode, SyncSession } from '@aio-proxy/plugin-sdk';
 
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024;
+const FAILURE_CODES = new Set<SyncFailureCode>([
+  'offline',
+  'quota',
+  'identity-changed',
+  'cancelled',
+  'unauthorized',
+  'unsupported',
+  'outcome-unknown',
+  'invalid-data',
+]);
 
 export type NativeRequest = {
   readonly id: string;
@@ -37,7 +47,10 @@ export function parseNativeReply(text: string): NativeReply {
   if (!error || typeof error !== 'object' || typeof (error as Record<string, unknown>).code !== 'string') {
     throw new Error('invalid native error reply');
   }
-  return { id: object.id, ok: false, error: { code: (error as Record<string, unknown>).code as SyncFailureCode } };
+  const code = (error as Record<string, unknown>).code;
+  if (typeof code !== 'string' || !FAILURE_CODES.has(code as SyncFailureCode))
+    throw new Error('invalid native error code');
+  return { id: object.id, ok: false, error: { code: code as SyncFailureCode } };
 }
 
 export function assertConnectResult(result: unknown): NativeConnectResult {

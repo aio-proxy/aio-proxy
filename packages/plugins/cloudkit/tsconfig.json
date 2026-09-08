@@ -7,5 +7,5 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test-support.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-support.ts", "src/**/fake-native.ts"]
 }

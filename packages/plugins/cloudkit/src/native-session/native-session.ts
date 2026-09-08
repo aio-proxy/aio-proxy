@@ -66,6 +66,7 @@ class NativeSession implements SyncSession {
   #disposed = false;
   #disposePromise: Promise<void> | undefined;
   #stop: (() => void) | undefined;
+  #protocolFailed = false;
 
   constructor(child: NativeChild) {
     this.#child = child;
@@ -73,6 +74,7 @@ class NativeSession implements SyncSession {
 
   start(): void {
     void this.#readLoop();
+    void this.#stderrLoop();
     void this.#child.exited.then(() => this.#failAll(false, 'native process exited'));
   }
 
@@ -156,6 +158,8 @@ class NativeSession implements SyncSession {
     mutation: boolean,
   ): Promise<unknown> {
     if (this.#disposed) return Promise.reject(new NativeSessionError('cancelled', 'native session is disposed'));
+    if (this.#protocolFailed)
+      return Promise.reject(new NativeSessionError('invalid-data', 'native session protocol failed'));
     const id = `${this.#generation}-${++this.#sequence}`;
     const request: NativeRequest = { id, op, input };
     return new Promise((resolve, reject) => {
@@ -219,7 +223,20 @@ class NativeSession implements SyncSession {
       }
       this.#failAll(false, 'native output ended');
     } catch {
-      this.#failAll(false, 'native output was invalid');
+      this.#failAllWithCode('invalid-data', 'native output was invalid');
+    }
+  }
+
+  async #stderrLoop(): Promise<void> {
+    const reader = this.#child.stderr.getReader();
+    try {
+      while (true) {
+        const next = await reader.read();
+        if (next.done) return;
+        // Native diagnostics are intentionally consumed and never exposed verbatim.
+      }
+    } finally {
+      reader.releaseLock();
     }
   }
 
@@ -234,7 +251,12 @@ class NativeSession implements SyncSession {
       return;
     }
     const pending = this.#pending.get(reply.id);
-    if (!pending) return;
+    if (!pending) {
+      this.#protocolFailed = true;
+      this.#failAllWithCode('invalid-data', 'unexpected or duplicate native reply');
+      this.#child.kill('SIGTERM');
+      return;
+    }
     this.#pending.delete(reply.id);
     if (reply.ok) pending.resolve(reply.result);
     else pending.reject(new NativeSessionError(reply.error.code));
@@ -246,6 +268,14 @@ class NativeSession implements SyncSession {
       pending.reject(
         new NativeSessionError(code ?? (mutationUnknown || pending.mutation ? 'outcome-unknown' : 'offline'), message),
       );
+    }
+  }
+
+  #failAllWithCode(code: 'offline' | 'invalid-data', message: string): void {
+    if (this.#protocolFailed && code !== 'invalid-data') return;
+    for (const [id, pending] of this.#pending) {
+      this.#pending.delete(id);
+      pending.reject(new NativeSessionError(code, message));
     }
   }
 

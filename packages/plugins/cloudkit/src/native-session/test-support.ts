@@ -1,4 +1,12 @@
-export type FakeNativeMode = 'exit-after-write' | 'partial-frame' | 'identity-change' | 'oversized' | 'ok';
+export type FakeNativeMode =
+  | 'exit-after-write'
+  | 'partial-frame'
+  | 'identity-change'
+  | 'oversized'
+  | 'duplicate'
+  | 'unexpected'
+  | 'hold'
+  | 'ok';
 
 export async function withFakeNative(mode: FakeNativeMode, run: (executable: string) => Promise<void>): Promise<void> {
   const root = await Bun.$`mktemp -d /tmp/aio-cloudkit-native-XXXXXX`.text();
