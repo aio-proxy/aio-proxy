@@ -131,9 +131,14 @@ function mapGeminiEffort(wire: ResolvedWire, rawEffort: string): Readonly<Record
   return geminiBudgetOrLevel(wire, effort);
 }
 
+// `high` is the top level any Gemini wire accepts. The host normally clamps first, but its
+// capability set is empty whenever the persisted catalog predates this plugin version, so the
+// plugin folds the levels above `high` itself rather than hard-failing the request.
+const GEMINI_ABOVE_TOP = new Set(['xhigh', 'max']);
+
 function normalizeGeminiEffort(rawEffort: string): string {
   const effort = rawEffort.trim().toLowerCase();
-  if (effort === 'xhigh') return 'high';
+  if (GEMINI_ABOVE_TOP.has(effort)) return 'high';
   if (!GEMINI_EFFORTS.has(effort)) {
     throw new AntigravityThinkingError(`Unsupported thinking effort ${rawEffort}`);
   }

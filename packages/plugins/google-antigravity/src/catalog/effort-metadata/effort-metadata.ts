@@ -6,7 +6,7 @@ import { type AntigravityFamily, splitVariantEfforts } from '../collapse';
 
 // Effort levels each thinking mode actually accepts, mirroring src/protocol/thinking.ts:
 // claude wires resolve an adaptive budget from CLAUDE_ADAPTIVE, gemini wires go through
-// normalizeGeminiEffort (which folds xhigh down to high and rejects everything above),
+// normalizeGeminiEffort (which folds everything above high back down to high),
 // and a gemini wire inside a split family additionally only accepts the efforts its own
 // variant declares. Publishing these lets the host clamp before the plugin has to throw.
 //
