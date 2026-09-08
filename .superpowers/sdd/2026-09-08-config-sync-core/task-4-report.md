@@ -10,7 +10,7 @@ Implemented pure, backend-neutral projection of committed authored configuration
 - `packages/core/src/sync/projection/projection.ts`: committed source projection, provider/account selection, plugin dependency and secret projection, service access, routing defaults, and local raw fragments.
 - `packages/core/src/sync/projection/model-overlays.ts`: model policy filtering and preservation of excluded structured provider references.
 - `packages/core/src/sync/projection/local-overrides.ts`: JSON validation/cloning, raw object merging, and nested local override application/removal.
-- `packages/core/src/sync/projection/projection.test.ts`: regression coverage for selected secrets/accounts, excluded proxies, model references, service/routing values, environment templates, API provider keys, nested overrides, local-only providers, AI SDK package secrets, and invalid secret values.
+- `packages/core/src/sync/projection/projection.test.ts`: regression coverage for selected secrets/accounts, excluded proxies, model references, service/routing values, environment templates, API provider keys, nested overrides, authored plugin string/tuple/array options, missing OAuth accounts/dependencies, local-only providers, AI SDK package secrets, and invalid secret values.
 - `packages/core/src/sync/index.ts`: exports the projection interfaces and functions.
 - `packages/core/src/sync/test-support.ts`: adds the requested `includedEntity` and `storedAccount` fixtures.
 
@@ -22,10 +22,11 @@ Implemented pure, backend-neutral projection of committed authored configuration
 - Plugin dependencies use persisted plugin-business identities and installed versions. Explicit business plugin configuration and selected OAuth plugin secrets are carried at package granularity. AI SDK executable package dependencies do not receive a plugin secret unless the package is explicitly enabled as a business plugin.
 - JSON-bound unknown values are validated before projection. Missing dependency identity/version causes the dependent entity to be omitted, leaving pending-state handling to the sync coordinator rather than allocating an unstable ID.
 - Local JSON-pointer overrides support nested replacement, array replacement, and explicit `undefined` deletion during local import. Filtering a provider/model/plugin does not create a cloud deletion.
+- Plugin overrides operate on the normalized `{ packageName, options }` view and are written back as the original authored string or tuple representation. Selected OAuth providers without a committed account row are omitted together with their account payload, leaving activation pending instead of creating a runnable credential-less provider.
 
 ## Verification
 
-- `bun test packages/core/src/sync` — 26 passed, 0 failed.
+- `bun test packages/core/src/sync` — 30 passed, 0 failed.
 - `bunx tsc -p packages/core/tsconfig.json --noEmit` — passed.
 - `bunx oxlint packages/core/src/sync/projection packages/core/src/sync/index.ts packages/core/src/sync/test-support.ts` — passed.
 - `bunx oxfmt --check packages/core/src/sync/projection packages/core/src/sync/index.ts packages/core/src/sync/test-support.ts` — passed.
@@ -34,4 +35,4 @@ Implemented pure, backend-neutral projection of committed authored configuration
 
 ## Concerns
 
-The projection API has no pending-condition result field. When a persisted dependency identity or package version is missing, it deliberately omits the dependent entity; the later sync coordinator must translate that absence into its explicit pending activation state.
+The projection API has no pending-condition result field. When a persisted dependency identity/package version or selected OAuth account is missing, it deliberately omits the dependent entity; the later sync coordinator must translate that absence into its explicit pending activation state.

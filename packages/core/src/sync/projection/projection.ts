@@ -4,7 +4,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import type { StoredAccount } from '../../plugins/repository';
 import type { EntityBody, Dependency } from '../protocol';
 import type { LocalEntity } from '../repository';
-import { applyEntityOverrides, cloneJson, mergeRaw, overlayEntityOverrides } from './local-overrides';
+import { applyEntityOverrides, applyOverrides, cloneJson, mergeRaw, overlayEntityOverrides } from './local-overrides';
 import { localModelPolicy, selectedModelPolicy } from './model-overlays';
 
 type JsonRecord = Record<string, JsonValue>;
@@ -99,6 +99,30 @@ function pluginEntries(raw: JsonValue | undefined): Map<string, { packageName: s
     const entry = pluginEntry(item);
     if (entry !== undefined) result.set(entry.packageName, entry);
   }
+  return result;
+}
+
+function overlayPluginOverrides(
+  plugins: JsonValue | undefined,
+  packageName: string,
+  overrides: LocalEntity['overrides'],
+): JsonValue | undefined {
+  if (!Array.isArray(plugins)) return plugins;
+  const result = cloneJson(plugins) as JsonValue[];
+  const index = result.findIndex((entry) => pluginEntry(entry)?.packageName === packageName);
+  if (index < 0) return result;
+  const candidate = result[index];
+  if (candidate === undefined) return result;
+  const entry = pluginEntry(candidate);
+  if (entry === undefined) return result;
+  const value: JsonValue = {
+    packageName,
+    ...(entry.options === undefined ? {} : { options: cloneJson(entry.options) }),
+  };
+  const updated = asRecord(applyOverrides(value, overrides));
+  if (updated === undefined) return result;
+  const options = updated['options'];
+  result[index] = options === undefined ? packageName : [packageName, cloneJson(options)];
   return result;
 }
 
@@ -241,14 +265,13 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
     if (entity.kind === 'provider') {
       const provider = asRecord(rawProviders[entity.logicalKey]);
       if (provider === undefined) continue;
+      const account = provider['kind'] === 'oauth' ? source.accounts.get(entity.logicalKey) : undefined;
+      if (provider['kind'] === 'oauth' && account === undefined) continue;
       const dependency = providerDependency(provider, index, source.pluginVersions);
       if (dependency === undefined) continue;
       value = sharedProvider(provider);
       dependencies = dependency === null ? [] : [dependency];
-      if (provider['kind'] === 'oauth') {
-        const account = source.accounts.get(entity.logicalKey);
-        if (account !== undefined) accountsOut.set(entity.objectId, accountCopy(account));
-      }
+      if (account !== undefined) accountsOut.set(entity.objectId, accountCopy(account));
     } else if (entity.kind === 'model-rule') {
       const model = rawModels[entity.logicalKey];
       if (model === undefined) continue;
@@ -321,6 +344,13 @@ export function overlayLocal(
       entry.options === undefined ? entry.packageName : [entry.packageName, cloneJson(entry.options)],
     );
   }
-  for (const entity of entities) overlayEntityOverrides(result, entityPath(entity), entity.overrides);
+  for (const entity of entities) {
+    if (entity.kind === 'plugin-business') {
+      const plugins = overlayPluginOverrides(result['plugins'], entity.logicalKey, entity.overrides);
+      if (plugins !== undefined) result['plugins'] = plugins;
+    } else {
+      overlayEntityOverrides(result, entityPath(entity), entity.overrides);
+    }
+  }
   return result;
 }

@@ -192,3 +192,102 @@ test('rejects non JSON plugin secrets before projection', () => {
     ),
   ).toThrow();
 });
+
+test('overlays plugin options without changing the authored plugins representation', () => {
+  const plugin = {
+    ...includedEntity('plugin-demo', 'plugin-business', '@example/business'),
+    overrides: [
+      { path: ['options', 'local'], value: 'machine' },
+      { path: ['options', 'nested', 'array'], value: ['local-a', 'local-b'] },
+      { path: ['options', 'remove'], value: undefined },
+    ],
+  };
+  expect(
+    overlayLocal(
+      {
+        plugins: [['@example/business', { nested: { array: ['cloud'], keep: true }, remove: 'cloud-only' }]],
+      },
+      {},
+      [plugin],
+    ),
+  ).toEqual({
+    plugins: [['@example/business', { nested: { array: ['local-a', 'local-b'], keep: true }, local: 'machine' }]],
+  });
+
+  expect(
+    overlayLocal({ plugins: ['@example/business'] }, {}, [
+      { ...plugin, overrides: [{ path: ['options', 'local'], value: 'machine' }] },
+    ]),
+  ).toEqual({ plugins: [['@example/business', { local: 'machine' }]] });
+
+  expect(
+    overlayLocal({ plugins: [['@example/business', { remove: 'cloud-only' }]] }, {}, [
+      { ...plugin, overrides: [{ path: ['options'], value: undefined }] },
+    ]),
+  ).toEqual({ plugins: ['@example/business'] });
+});
+
+test('omits a selected OAuth provider when its dedicated account is absent', () => {
+  const provider = includedEntity('p-work', 'provider', 'work');
+  const plugin = includedEntity('plugin-demo', 'plugin-business', '@example/business');
+  const result = projectCommitted(
+    {
+      raw: {
+        providers: { work: { kind: 'oauth', plugin: '@example/business', capability: 'first' } },
+      },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map([['@example/business', '1.0.0']]),
+    },
+    [provider, plugin],
+  );
+  expect(result.entities.has('p-work')).toBe(false);
+  expect(result.accounts.has('p-work')).toBe(false);
+  expect(result.entities.has('plugin-demo')).toBe(true);
+});
+
+test('keeps missing dependency projection pending without allocating an identity', () => {
+  const provider = includedEntity('p-sdk', 'provider', 'sdk');
+  const source = {
+    raw: { providers: { sdk: { kind: 'ai-sdk', packageName: '@ai-sdk/missing' } } },
+    accounts: new Map(),
+    pluginSecrets: new Map(),
+    pluginVersions: new Map(),
+  };
+  const result = projectCommitted(source, [provider]);
+  expect([...result.entities.keys()]).toEqual([]);
+  expect([...result.accounts.keys()]).toEqual([]);
+  expect([...result.entities.keys(), ...result.accounts.keys()]).not.toContain('generated');
+
+  const plugin = includedEntity('plugin-sdk', 'plugin-business', '@ai-sdk/missing');
+  const missingVersion = projectCommitted(
+    {
+      ...source,
+      accounts: new Map(),
+    },
+    [provider, plugin],
+  );
+  expect([...missingVersion.entities.keys()]).toEqual([]);
+  expect([...missingVersion.entities.keys(), ...missingVersion.accounts.keys()]).not.toContain('generated');
+});
+
+test('keeps a local-only provider authored and never turns filtering into cloud deletion', () => {
+  const shared = includedEntity('p-work', 'provider', 'work');
+  const result = projectCommitted(
+    {
+      raw: {
+        providers: {
+          work: { kind: 'api', apiKey: 'shared-key' },
+          personal: { kind: 'api', apiKey: 'local-key' },
+        },
+      },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    },
+    [shared],
+  );
+  expect(result.entities.has('p-work')).toBe(true);
+  expect(result.entities.size).toBe(1);
+  expect(result.local.providers).toEqual({ personal: { kind: 'api', apiKey: 'local-key' } });
+});
