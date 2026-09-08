@@ -1,6 +1,7 @@
 export {
   isDefaultedVideoModel,
   isJsonRequest,
+  isModelField,
   isMultipartRequest,
   lookupVideoModel,
   OFFICIAL_DEFAULT_VIDEO_MODEL,

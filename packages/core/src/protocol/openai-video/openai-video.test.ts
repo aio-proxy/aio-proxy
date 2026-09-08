@@ -55,6 +55,41 @@ describe('openAIVideosAdapter', () => {
     expect(response?.status).toBe(400);
   });
 
+  test('rebuilds rather than replays when the client sent repeated model fields', async () => {
+    const raw = videoMultipart([
+      ['model', 'sora-2'],
+      ['model', 'sora-2-pro'],
+      ['prompt', 'a cat'],
+    ]);
+    const request = await openAIVideosAdapter.parse(raw, { operation: 'create' });
+    expect(request.model).toBe('sora-2-pro');
+    const rewritten = await openAIVideosAdapter.rawRequest(raw, request, 'sora-2-pro', new Set(), {
+      operation: 'create',
+    });
+    const form = await rewritten.formData();
+    expect(form.getAll('model')).toEqual(['sora-2-pro']);
+    await releaseMultipartSpool(raw);
+  });
+
+  test.each([
+    [undefined, [['model[]', 'sora-2-pro']]],
+    ['sora-2-pro', [['model[]', 'sora-2-pro']]],
+  ] as const)('rebuilds rather than replays when the model is spelled %p / %p', async (model, extra) => {
+    const raw = videoMultipart([
+      ...(model === undefined ? [] : [['model', model] as const]),
+      ...extra,
+      ['prompt', 'a cat'],
+    ]);
+    const request = await openAIVideosAdapter.parse(raw, { operation: 'create' });
+    const rewritten = await openAIVideosAdapter.rawRequest(raw, request, 'sora-2-pro', new Set(), {
+      operation: 'create',
+    });
+    const form = await rewritten.formData();
+    expect(form.getAll('model')).toEqual(['sora-2-pro']);
+    expect(form.getAll('model[]')).toEqual([]);
+    await releaseMultipartSpool(raw);
+  });
+
   test('multipart omitted model injects sora-2 on rewrite', async () => {
     const form = new FormData();
     form.set('prompt', 'a cat');
@@ -79,3 +114,15 @@ describe('openAIVideosAdapter', () => {
     expect(await response?.json()).toMatchObject({ error: { code: 'invalid_request' } });
   });
 });
+
+function videoMultipart(fields: readonly (readonly [string, string])[]): Request {
+  const boundary = 'VIDEOB';
+  const text = `${fields
+    .map(([name, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`)
+    .join('')}--${boundary}--\r\n`;
+  return new Request('http://x/v1/videos', {
+    method: 'POST',
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    body: new TextEncoder().encode(text),
+  });
+}

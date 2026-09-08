@@ -81,6 +81,24 @@ describe('parseOpenAIVideoCreateMultipart', () => {
     expect(multipartSpoolPath(raw)).toBeUndefined();
   });
 
+  test('a bracketed model field routes as model and keeps the last spelling', async () => {
+    const boundary = 'VIDEOB';
+    const text = [
+      `--${boundary}\r\nContent-Disposition: form-data; name="model[]"\r\n\r\nsora-2\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="model[]"\r\n\r\nsora-2-pro\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\na cat\r\n`,
+      `--${boundary}--\r\n`,
+    ].join('');
+    const raw = new Request('http://x/v1/videos', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body: new TextEncoder().encode(text),
+    });
+    const parsed = await parseOpenAIVideoCreateMultipart(raw);
+    expect(parsed).toMatchObject({ model: 'sora-2-pro', modelDefaulted: false, clientModel: 'sora-2-pro' });
+    await releaseMultipartSpool(raw);
+  });
+
   test('a missing prompt unlinks the spool', async () => {
     const form = new FormData();
     form.set('model', 'sora-2');

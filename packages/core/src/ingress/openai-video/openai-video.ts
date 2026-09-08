@@ -80,13 +80,16 @@ export async function parseOpenAIVideoCreateMultipart(raw: Request): Promise<Ope
     spool = await spoolMultipartBody(raw, 30_000, 'aio-proxy-videos', 64 * 1_024 * 1_024);
     const form = await formDataFromSpoolPath(raw, spool.path);
     const fields: Record<string, string> = {};
+    let model: string | undefined;
     for (const [name, value] of form.entries()) {
-      if (typeof value === 'string') fields[name] = value;
+      if (typeof value !== 'string') continue;
+      fields[name] = value;
+      if (isModelField(name)) model = value;
     }
     const prompt = fields['prompt'];
     if (prompt === undefined || prompt.trim() === '') throw new OpenAIVideosInvalidRequestError('prompt');
     const parsed = toVideoRequest({
-      model: fields['model'],
+      model,
       prompt,
       ...(fields['seconds'] === undefined ? {} : { seconds: fields['seconds'] }),
       ...(fields['size'] === undefined ? {} : { size: fields['size'] }),
@@ -127,6 +130,10 @@ export function lookupVideoModel(model: string | null | undefined): string {
 
 export function isDefaultedVideoModel(model: string | null | undefined): boolean {
   return model === undefined || model === null || model.trim() === '';
+}
+
+export function isModelField(name: string): boolean {
+  return name === 'model' || name === 'model[]';
 }
 
 export function isMultipartRequest(raw: Request): boolean {

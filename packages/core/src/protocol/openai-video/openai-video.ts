@@ -3,6 +3,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { OpenAIVideosInvalidRequestError } from '../../error';
 import {
   isJsonRequest,
+  isModelField,
   isMultipartRequest,
   parseOpenAIVideoCreate,
   parseOpenAIVideoCreateMultipart,
@@ -38,8 +39,12 @@ export const openAIVideosAdapter = defineVideoProtocolAdapter<OpenAIVideoRequest
   async rawRequest(raw, request, resolvedModel) {
     const rewrite = request.modelDefaulted || request.clientModel !== resolvedModel;
     if (isMultipartRequest(raw)) {
-      if (!rewrite) return replaySpooledMultipartRaw(raw);
-      return rewriteMultipartRawRequest(raw, request, resolvedModel);
+      const form = await replaySpooledVideoFormData(raw);
+      // Parsing keeps the LAST `model`/`model[]` spelling. An upstream parser may
+      // keep the first repeat or ignore the bracketed name, so verbatim replay is
+      // only safe for exactly one canonical `model` field.
+      if (!rewrite && !hasAmbiguousModelField(form)) return replaySpooledMultipartRaw(raw);
+      return rewriteMultipartRawRequest(raw, form, resolvedModel);
     }
     if (!rewrite) return raw.clone();
     const bodyText = await readRequestText(raw, REQUEST_BODY_LIMITS);
@@ -52,21 +57,21 @@ export const openAIVideosAdapter = defineVideoProtocolAdapter<OpenAIVideoRequest
   errors: openAIVideosErrors,
 });
 
-async function rewriteMultipartRawRequest(
-  raw: Request,
-  request: OpenAIVideoRequest,
-  resolvedModel: string,
-): Promise<Request> {
-  const form = await replaySpooledVideoFormData(raw);
+function rewriteMultipartRawRequest(raw: Request, form: FormData, resolvedModel: string): Request {
   const next = new FormData();
   for (const [name, value] of form.entries()) {
-    if (name === 'model') continue;
+    if (isModelField(name)) continue;
     next.append(name, value);
   }
   next.append('model', resolvedModel);
   const headers = stripHopHeaders(raw.headers);
   headers.delete('content-type');
   return new Request(raw.url, { method: raw.method, body: next, headers, signal: raw.signal });
+}
+
+function hasAmbiguousModelField(form: FormData): boolean {
+  const spellings = [...form.entries()].filter(([name]) => isModelField(name));
+  return spellings.length > 1 || spellings.some(([name]) => name !== 'model');
 }
 
 export type { OpenAIVideoOperation, OpenAIVideoRequest };
