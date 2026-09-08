@@ -8,7 +8,7 @@ Added `NativeManifest`/`NativeManifestSchema`, artifact installer tests, package
 
 ## Verification
 
-- `rtk proxy bun run --filter @aio-proxy/plugin-cloudkit test` — 16 passed across 3 files, including archive tampering, package path traversal, source symlink escape, verifier identity failure, interrupted extraction/preservation, unsupported OS, previous-version rollback, and native protocol mismatch cases.
+- `rtk proxy bun run --filter @aio-proxy/plugin-cloudkit test` — 16 passed across 3 files, including archive tampering, package path traversal, source symlink escape, verifier identity failure, interrupted extraction/preservation, unsupported OS, previous-installation rollback after the target directory was moved aside and activation was injected to fail, and native protocol mismatch cases.
 - `rtk proxy bun run --filter @aio-proxy/plugin-cloudkit build` — passed; 10 files generated.
 - `rtk proxy bun test packages/plugins/cloudkit/build/artifact.test.ts` — 1 passed.
 - `rtk bunx oxlint ...` on changed files — passed.

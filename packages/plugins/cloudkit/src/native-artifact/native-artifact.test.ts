@@ -75,7 +75,7 @@ test('installs a verified staged bundle and preserves it when extraction is inte
   });
 });
 
-test('keeps the previous version when activation fails', async () => {
+test('keeps the previous installation when activation fails', async () => {
   await withArtifactFixture(async (fixture) => {
     const previousExecutable = join(
       fixture.cacheRoot,
@@ -83,24 +83,25 @@ test('keeps the previous version when activation fails', async () => {
       'AIOProxyCloudKit.app',
       'Contents',
       'MacOS',
-      'AIOProxyCloudKit',
+      'previous-helper',
     );
     await mkdir(join(fixture.cacheRoot, '1.0.0', 'AIOProxyCloudKit.app', 'Contents', 'MacOS'), { recursive: true });
     await writeFile(previousExecutable, 'previous');
-    const controller = new AbortController();
     await expect(
       ensureNativeArtifact({
         ...fixture,
-        manifest: { ...fixture.manifest, nativeVersion: '2.0.0' },
-        signal: controller.signal,
+        signal: new AbortController().signal,
         hooks: {
           verifyBundle: async () => undefined,
-          extractArchive: async () => {
-            throw new Error('interrupted extraction');
+          extractArchive: async (archivePath: string, stagingRoot: string) => {
+            await Bun.$`unzip -q ${archivePath} -d ${stagingRoot}`;
+          },
+          activate: async () => {
+            throw new Error('interrupted activation');
           },
         },
       }),
-    ).rejects.toThrow('interrupted extraction');
+    ).rejects.toThrow('interrupted activation');
     expect(await Bun.file(previousExecutable).text()).toBe('previous');
   });
 });

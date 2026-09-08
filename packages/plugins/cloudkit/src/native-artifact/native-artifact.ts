@@ -39,6 +39,7 @@ export class NativeArtifactError extends Error {
 export type NativeArtifactHooks = {
   readonly verifyBundle?: (appPath: string, manifest: NativeManifest, executable: string) => Promise<void>;
   readonly extractArchive?: (archivePath: string, stagingRoot: string) => Promise<void>;
+  readonly activate?: (stagingRoot: string, installRoot: string) => Promise<void>;
 };
 
 function inside(root: string, target: string): boolean {
@@ -172,7 +173,8 @@ export async function ensureNativeArtifact(input: {
     if (dirname(appPath) !== stagingRoot) {
       await rename(appPath, join(stagingRoot, 'AIOProxyCloudKit.app'));
     }
-    await rename(stagingRoot, installRoot);
+    if (input.hooks?.activate) await input.hooks.activate(stagingRoot, installRoot);
+    else await rename(stagingRoot, installRoot);
     if (previousMoved) await rm(previousRoot, { force: true, recursive: true });
     return { executable: join(installRoot, 'AIOProxyCloudKit.app', 'Contents', 'MacOS', 'AIOProxyCloudKit') };
   } catch (error) {
