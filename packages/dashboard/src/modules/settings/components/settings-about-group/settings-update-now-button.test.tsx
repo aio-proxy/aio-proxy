@@ -20,7 +20,10 @@ const mocks = rs.hoisted(() => ({
   release: rs.fn(),
   releaseQueryFn: rs.fn(),
   reloadDashboard: rs.fn(),
+  toastAdd: rs.fn(),
 }));
+
+rs.mock('@aio-proxy/ui/components/toast', () => ({ toast: { add: mocks.toastAdd } }));
 
 rs.mock('@/modules/settings/hooks/use-release-query', () => ({
   useReleaseQuery: () => mocks.release(),
@@ -85,10 +88,16 @@ const prepare = (release = idleRelease) => {
   mocks.release.mockReset();
   mocks.releaseQueryFn.mockReset();
   mocks.reloadDashboard.mockReset();
+  mocks.toastAdd.mockReset();
   mocks.release.mockReturnValue({ data: release });
   mocks.apply.mockResolvedValue({ ok: true, status: 'started' });
   mocks.releaseQueryFn.mockResolvedValue(release);
 };
+
+const toastTitles = () =>
+  (mocks.toastAdd.mock.calls as readonly (readonly [{ readonly title: string }])[]).map(([call]) => call.title);
+
+const toastedWith = (pattern: RegExp) => toastTitles().some((title) => pattern.test(title));
 
 test('posts apply when Update now is clicked while outdated', async () => {
   prepare();
@@ -125,23 +134,23 @@ test('reloads the Dashboard when poll sees current change', async () => {
   await waitFor(() => expect(mocks.reloadDashboard).toHaveBeenCalledTimes(1));
 });
 
-test('shows a failed update from GET without reloading', async () => {
+test('toasts a failed update from GET without reloading', async () => {
   prepare(withRelease('failed'));
   await renderButton(true);
 
-  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  await waitFor(() => expect(toastedWith(updateFailed)).toBe(true));
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
   expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
 });
 
-test('shows unavailable when apply cannot install updates', async () => {
+test('toasts unavailable when apply cannot install updates', async () => {
   prepare();
   mocks.apply.mockRejectedValue(new Error('unavailable'));
   await renderButton(true);
 
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
 
-  await waitFor(() => expect(screen.getByText(updateUnavailable)).toBeInTheDocument());
+  await waitFor(() => expect(toastedWith(updateUnavailable)).toBe(true));
   expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
 });
 
@@ -151,11 +160,11 @@ test('keeps Updating through restart_required and reloads when current changes',
   await renderButton(true);
 
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
-  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+  expect(toastedWith(restartRequired)).toBe(false);
   await waitFor(() => expect(mocks.reloadDashboard).toHaveBeenCalledTimes(1));
 });
 
-test('shows restart required after 120s if polls fail after apply started', async () => {
+test('toasts restart required after 120s if polls fail after apply started', async () => {
   rs.useFakeTimers();
   prepare();
   mocks.releaseQueryFn.mockRejectedValue(new Error('Failed to fetch'));
@@ -166,23 +175,27 @@ test('shows restart required after 120s if polls fail after apply started', asyn
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
 
   await rs.advanceTimersByTimeAsync(120_000);
+  await rs.advanceTimersByTimeAsync(0);
 
-  expect(screen.getByText(restartRequired)).toBeInTheDocument();
-  expect(screen.queryByText(updateFailed)).not.toBeInTheDocument();
+  expect(toastedWith(restartRequired)).toBe(true);
+  expect(toastedWith(updateFailed)).toBe(false);
 });
 
-test('shows restart required after 120s if the installed version never takes over', async () => {
+test('toasts restart required after 120s if the installed version never takes over', async () => {
   rs.useFakeTimers();
   prepare(withRelease('restart_required'));
   mocks.releaseQueryFn.mockResolvedValue(withRelease('restart_required'));
   await renderButton(true);
 
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
-  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+  expect(toastedWith(restartRequired)).toBe(false);
 
   await rs.advanceTimersByTimeAsync(120_000);
+  await rs.advanceTimersByTimeAsync(0);
 
-  expect(screen.getByText(restartRequired)).toBeInTheDocument();
+  expect(toastedWith(restartRequired)).toBe(true);
+  // A restart the user must perform cannot auto-dismiss.
+  expect(mocks.toastAdd).toHaveBeenCalledWith(expect.objectContaining({ timeout: 0 }));
   expect(screen.queryByRole('button', { name: updatingName })).not.toBeInTheDocument();
 });
 
@@ -208,15 +221,15 @@ test('stops polling and returns to idle after apply started then GET idle', asyn
 
   await waitFor(() => expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled());
   expect(screen.queryByRole('button', { name: updatingName })).not.toBeInTheDocument();
-  expect(screen.queryByText(updateFailed)).not.toBeInTheDocument();
-  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+  expect(toastedWith(updateFailed)).toBe(false);
+  expect(toastedWith(restartRequired)).toBe(false);
 
   const calls = mocks.releaseQueryFn.mock.calls.length;
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
 });
 
-test('shows failed and re-enables Update now after 120s when GET is still in_progress', async () => {
+test('toasts failed and re-enables Update now after 120s when GET is still in_progress', async () => {
   rs.useFakeTimers();
   prepare();
   mocks.releaseQueryFn.mockResolvedValue(withRelease('in_progress'));
@@ -227,8 +240,9 @@ test('shows failed and re-enables Update now after 120s when GET is still in_pro
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
 
   await rs.advanceTimersByTimeAsync(120_000);
+  await rs.advanceTimersByTimeAsync(0);
 
-  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  expect(toastedWith(updateFailed)).toBe(true);
   expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
   const calls = mocks.releaseQueryFn.mock.calls.length;
   await rs.advanceTimersByTimeAsync(4_000);
@@ -255,7 +269,8 @@ test('disables Update now while a retry apply is still pending after poll timeou
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
 
   await rs.advanceTimersByTimeAsync(120_000);
-  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  await rs.advanceTimersByTimeAsync(0);
+  expect(toastedWith(updateFailed)).toBe(true);
   expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
 
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
@@ -280,10 +295,10 @@ test('starts the poll when apply fails with a transport error', async () => {
 
   await waitFor(() => expect(screen.getByRole('button', { name: updatingName })).toBeDisabled());
   await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
-  expect(screen.queryByText(updateFailed)).not.toBeInTheDocument();
+  expect(toastedWith(updateFailed)).toBe(false);
 });
 
-test('apply up_to_date dismisses Update now and notifies the parent', async () => {
+test('apply up_to_date hides Update now and notifies the parent', async () => {
   prepare();
   mocks.apply.mockResolvedValue({ ok: true, status: 'up_to_date' });
   const onUpToDate = rs.fn();
@@ -293,7 +308,7 @@ test('apply up_to_date dismisses Update now and notifies the parent', async () =
 
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(onUpToDate).toHaveBeenCalledTimes(1));
-  expect(screen.getByRole('button', { name: updateNowName })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
   expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['release'] });
 });
 
@@ -302,7 +317,7 @@ test('retries polling after a previous failed apply', async () => {
   mocks.releaseQueryFn.mockResolvedValue(withRelease('in_progress'));
   await renderButton(true);
 
-  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  await waitFor(() => expect(toastedWith(updateFailed)).toBe(true));
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
 
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));

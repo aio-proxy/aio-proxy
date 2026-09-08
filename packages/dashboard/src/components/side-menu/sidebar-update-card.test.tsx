@@ -12,7 +12,10 @@ const mocks = rs.hoisted(() => ({
   release: rs.fn(),
   releaseQueryFn: rs.fn(),
   reloadDashboard: rs.fn(),
+  toastAdd: rs.fn(),
 }));
+
+rs.mock('@aio-proxy/ui/components/toast', () => ({ toast: { add: mocks.toastAdd } }));
 
 rs.mock('@/modules/settings/hooks/use-release-query', () => ({
   useReleaseQuery: () => mocks.release(),
@@ -58,11 +61,17 @@ const renderCard = async (open = true) => {
   return render(createElement(SidebarUpdateCard), { wrapper });
 };
 
+const toastedWith = (pattern: RegExp) =>
+  (mocks.toastAdd.mock.calls as readonly (readonly [{ readonly title: string }])[]).some(([call]) =>
+    pattern.test(call.title),
+  );
+
 const prepare = (release = view()) => {
   mocks.apply.mockReset();
   mocks.release.mockReset();
   mocks.releaseQueryFn.mockReset();
   mocks.reloadDashboard.mockReset();
+  mocks.toastAdd.mockReset();
   mocks.release.mockReturnValue({ data: release });
   mocks.apply.mockResolvedValue({ ok: true, status: 'started' });
   mocks.releaseQueryFn.mockResolvedValue(release);
@@ -118,25 +127,25 @@ test('keeps Updating while a restart is pending and does not ask to restart by h
   await renderCard();
 
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
-  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+  expect(toastedWith(restartRequired)).toBe(false);
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
 });
 
-test('shows unavailable when apply cannot install updates', async () => {
+test('toasts unavailable instead of wrapping it inside the narrow card', async () => {
   prepare();
   mocks.apply.mockRejectedValue(new Error('unavailable'));
   await renderCard();
 
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
 
-  await waitFor(() => expect(screen.getByText(updateUnavailable)).toBeInTheDocument());
+  await waitFor(() => expect(toastedWith(updateUnavailable)).toBe(true));
   expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
 });
 
-test('keeps the card and Update now after a failed install', async () => {
+test('keeps the card and Update now after a failed install, reporting it by toast', async () => {
   prepare(view({ update: { status: 'failed' } }));
   await renderCard();
 
-  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  await waitFor(() => expect(toastedWith(updateFailed)).toBe(true));
   expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
 });

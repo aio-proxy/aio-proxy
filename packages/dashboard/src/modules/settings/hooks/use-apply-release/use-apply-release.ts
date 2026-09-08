@@ -1,3 +1,5 @@
+import { m } from '@aio-proxy/i18n';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -9,6 +11,30 @@ import { useReleaseQuery } from '../use-release-query';
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 120_000;
+
+// Keyed so the sidebar card and the About row — both of which mount this hook — update one
+// toast instead of stacking two copies of the same outcome.
+const OUTCOME_TOASTS = {
+  failed: {
+    id: 'release-update-failed',
+    type: 'error',
+    title: m['dashboard.settings.version_update_failed'],
+    timeout: undefined,
+  },
+  restart: {
+    id: 'release-update-restart',
+    type: 'info',
+    title: m['dashboard.settings.version_restart_required'],
+    // Restarting is the user's move, so this must not disappear before they read it.
+    timeout: 0,
+  },
+  unavailable: {
+    id: 'release-update-unavailable',
+    type: 'warning',
+    title: m['dashboard.settings.version_update_unavailable'],
+    timeout: undefined,
+  },
+} as const;
 
 export type UseApplyReleaseOptions = {
   readonly outdated: boolean;
@@ -139,6 +165,13 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   const failed =
     (timedOut && !awaitingRestart) || applyMessage === 'failed' || updateStatus === 'failed' || pollStatus === 'failed';
   const unavailable = applyMessage === 'unavailable';
+
+  const outcome = restartRequired ? 'restart' : unavailable ? 'unavailable' : failed ? 'failed' : undefined;
+  useEffect(() => {
+    if (outcome === undefined) return;
+    const { id, type, title, timeout } = OUTCOME_TOASTS[outcome];
+    toast.add({ id, type, title: title(), timeout });
+  }, [outcome]);
 
   return {
     apply: () => apply.mutate(),
