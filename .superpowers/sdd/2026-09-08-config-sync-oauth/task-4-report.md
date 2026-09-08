@@ -26,3 +26,9 @@ Implemented the OAuth sharing service surface for first share, shared replacemen
 Added durable OAuth journal entries around first-share and detach, persisted `detach-pending` ownership before asynchronous verification, cancellation generation fencing, evidence validation, unknown remote record handling, and replacement epoch/plugin metadata preservation.
 
 Verification: `bunx tsc --noEmit -p packages/core/tsconfig.json` — exit 0 (no diagnostics).
+
+## Fix round 2
+
+Corrected OAuth journal identity to use the remote epoch and generation for detach, fenced unknown first-share outcomes against exact object/plugin/capability/version/format/phase/payload identity before recording ownership, and retained cancellation generation fencing while clearing the detach marker and journal on cancellation.
+
+Verification: `bunx tsc --noEmit -p packages/core/tsconfig.json` — exit 0; pre-commit `oxfmt`, `oxlint`, and `commitlint` — all passed.
