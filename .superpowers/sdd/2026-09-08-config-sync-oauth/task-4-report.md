@@ -32,3 +32,9 @@ Verification: `bunx tsc --noEmit -p packages/core/tsconfig.json` — exit 0 (no 
 Corrected OAuth journal identity to use the remote epoch and generation for detach, fenced unknown first-share outcomes against exact object/plugin/capability/version/format/phase/payload identity before recording ownership, and retained cancellation generation fencing while clearing the detach marker and journal on cancellation.
 
 Verification: `bunx tsc --noEmit -p packages/core/tsconfig.json` — exit 0; pre-commit `oxfmt`, `oxlint`, and `commitlint` — all passed.
+
+## Fix round 3
+
+Stored the original detach journal epoch and generation in the pending token so cancellation cleanup remains valid even if local ownership changes while verification is suspended. Unknown first-share outcomes now also require generation zero, no claim, and no completed operation before reconciliation.
+
+Verification: `bunx tsc --noEmit -p packages/core/tsconfig.json` — exit 0; pre-commit `oxfmt`, `oxlint`, and `commitlint` — all passed.
