@@ -6,9 +6,9 @@
 // ONLY the publish step: it packs and publishes whatever version the merged
 // Version PR already wrote into each package.json. It does NOT decide versions,
 // write changelogs, or commit. changesets/action (publish-script mode) never
-// creates git tags — it only PUSHES a tag we create locally and then builds the
-// GitHub Release from the NDJSON git-tag event we emit — so this script tags the
-// release commit itself (see the tag block near the end).
+// creates git tags — it only PUSHES a tag we create locally from the NDJSON
+// git-tag event. The workflow then creates the GitHub Release with its assets
+// and staged notes (see the tag block near the end).
 //
 // Why this is still hand-rolled rather than `changeset publish`:
 //   - `bun publish` cannot do npm OIDC trusted publishing (oven-sh/bun#22423),
@@ -227,7 +227,7 @@ for (const { json } of publishable) {
 
 console.log(`\nReleased v${version}`);
 
-// --- one lockstep tag + GitHub Release for the whole release --------------------
+// --- one lockstep tag + staged notes for the whole release ---------------------
 // Every package shares one version (`fixed`), so this repo cuts a single
 // `v<version>` tag (matching the historical v0.1.0 / v0.0.1), NOT changesets'
 // monorepo default of one `<pkg>@<version>` tag per published package. In
