@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.20.3
+
+### Patch Changes
+
+- [#323](https://github.com/aio-proxy/aio-proxy/pull/323) [`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8) Thanks [@baranwang](https://github.com/baranwang)! - The overview homepage stacks model trend as bars, shows Provider health as a table without filter or column controls, and ranks models by cost or Token.
+- Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8)]:
+  - @aio-proxy/types@0.20.3
+  - @aio-proxy/i18n@0.20.3
+  - @aio-proxy/server@0.20.3
+  - @aio-proxy/plugin-sdk@0.20.3
+  - @aio-proxy/brand@0.20.3
+  - @aio-proxy/ui@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes

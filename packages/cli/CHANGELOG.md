@@ -1,5 +1,22 @@
 # @aio-proxy/cli
 
+## 0.20.3
+
+### Patch Changes
+
+- [#321](https://github.com/aio-proxy/aio-proxy/pull/321) [`8e5ee08`](https://github.com/aio-proxy/aio-proxy/commit/8e5ee083ad9ac96fb70b8394d93501342c8ca905) Thanks [@baranwang](https://github.com/baranwang)! - Prevent duplicate desktop upgrade notifications when multiple instances use different data directories. Only a successfully sent notification suppresses repeat reminders for the same OS user when shared storage is available; failed delivery can be retried by another instance, and notifications still work if that storage cannot be written.
+- Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8)]:
+  - @aio-proxy/core@0.20.3
+  - @aio-proxy/types@0.20.3
+  - @aio-proxy/dashboard@0.20.3
+  - @aio-proxy/i18n@0.20.3
+  - @aio-proxy/server@0.20.3
+  - @aio-proxy/opencode-provider@0.20.3
+  - @aio-proxy/pi-provider@0.20.3
+  - @aio-proxy/plugin-sdk@0.20.3
+  - @aio-proxy/logger@0.20.3
+  - @aio-proxy/shared@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes
