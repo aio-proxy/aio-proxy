@@ -23,7 +23,7 @@ function sameJson(left: unknown, right: unknown): boolean {
 }
 
 function ensureFullSynchronous(sqlite: Database): void {
-  sqlite.run('PRAGMA synchronous = FULL');
+  if (!sqlite.inTransaction) sqlite.run('PRAGMA synchronous = FULL');
   const value = Object.values(sqlite.query('PRAGMA synchronous').get() ?? {}).at(0);
   if (value !== 2) throw new Error('SQLite synchronous=FULL could not be established for the OAuth journal');
 }

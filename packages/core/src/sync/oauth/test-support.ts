@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 
 import { openDb } from '../../db';
+import { createPluginRepository, type AccountWrite, type PluginRepository } from '../../plugins/repository';
 import { accountKey, encode } from '../protocol';
 import { createSyncObjectStore } from '../publication';
 import { createSyncRepository, type LocalBinding, type SyncRepository } from '../repository';
@@ -16,6 +17,7 @@ import {
   type SharedRefreshResult,
 } from './coordinator';
 import type { LiveAccount } from './protocol';
+import { createOAuthProviderGate, createOAuthSharingService, type OAuthSharingService } from './sharing';
 
 const catalog = { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] } as const;
 
@@ -153,5 +155,134 @@ export async function withSharedOAuthDevices(run: (fixture: SharedOAuthDevices) 
     await Promise.all(sessions.map((session) => session.dispose()));
     for (const database of databases) database.close();
     for (const home of homes) rmSync(home, { recursive: true, force: true });
+  }
+}
+
+export type OAuthSharingFixture = {
+  readonly providerId: string;
+  readonly objectId: string;
+  readonly accountWrite: AccountWrite;
+  readonly adapter: OAuthAdapter;
+  readonly sharing: OAuthSharingService;
+  readonly accounts: PluginRepository;
+  readonly repo: SyncRepository;
+  readonly backend: MemorySyncBackend;
+  readonly signal: AbortSignal;
+  readonly ownership: () => ReturnType<SyncRepository['entities']>[number]['oauth'];
+  readonly currentCredential: () => unknown;
+  readonly remote: () => LiveAccount | null;
+  readonly replaceAdapter: (adapter: OAuthAdapter) => void;
+  readonly restart: () => OAuthSharingService;
+};
+
+export async function withOAuthSharingFixture(
+  run: (fixture: OAuthSharingFixture) => Promise<void>,
+  options: { readonly shared?: boolean } = {},
+): Promise<void> {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-oauth-sharing-'));
+  const database = openDb({ home });
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const controller = new AbortController();
+  const providerId = 'provider-1';
+  const objectId = liveAccountFixture().objectId;
+  const localBinding = binding('sharing');
+  const repo = createSyncRepository(database.sqlite);
+  const accounts = createPluginRepository(database.sqlite);
+  const accountWrite: AccountWrite = {
+    providerId,
+    plugin: '@fixture/oauth',
+    capability: 'test-capability',
+    fingerprint: 'fixture',
+    options: {},
+    secrets: {},
+    credential: { token: 'shared-token' },
+    catalog: { kind: 'replace', value: { catalog, refreshedAt: 0 } },
+  };
+  const pending = accounts.stageAccountOperation({ kind: 'create', targetDigest: 'fixture', account: accountWrite });
+  accounts.completeAccountOperation(pending.operationId);
+  repo.writeBinding(localBinding);
+  repo.putEntity(localBinding.id, {
+    objectId,
+    logicalKey: providerId,
+    kind: 'provider',
+    mode: 'included',
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+    ...(options.shared
+      ? {
+          oauth: {
+            mode: 'shared' as const,
+            epoch: 0,
+            generation: 0,
+            localRevision: 1,
+            pluginVersion: '1.0.0',
+            formatVersion: 1,
+          },
+        }
+      : {}),
+  });
+  if (options.shared) {
+    await session.compareAndSwap(
+      accountKey(objectId),
+      null,
+      encode(
+        liveAccountFixture({
+          objectId,
+          payload: { credential: { token: 'shared-token' }, options: {}, secrets: {}, fingerprint: 'fixture' },
+        }),
+      ),
+      controller.signal,
+    );
+  }
+  let adapter = oauthAdapterFixture({
+    credentialSync: {
+      formatVersion: 1,
+      multiDevice: { evidenceId: 'fixture-evidence' },
+      canDetach: async () => false,
+    },
+  });
+  const gate = createOAuthProviderGate();
+  const store = createSyncObjectStore(session);
+  const create = () =>
+    createOAuthSharingService({
+      binding: localBinding,
+      repo,
+      accounts,
+      store,
+      resolveAdapter: () => ({ adapter, pluginVersion: '1.0.0' }),
+      withProviderGate: gate.run,
+    });
+  const sharing = create();
+  try {
+    await run({
+      providerId,
+      objectId,
+      accountWrite,
+      adapter,
+      sharing,
+      accounts,
+      repo,
+      backend,
+      signal: controller.signal,
+      ownership: () => repo.entities(localBinding.id).find((entity) => entity.logicalKey === providerId)?.oauth,
+      currentCredential: () => accounts.readAccount(providerId)?.credential,
+      remote: () => {
+        const value = backend.readAll().get(accountKey(objectId));
+        return value?.kind === 'present' ? (JSON.parse(new TextDecoder().decode(value.value)) as LiveAccount) : null;
+      },
+      replaceAdapter(next) {
+        adapter = next;
+      },
+      restart: create,
+    });
+  } finally {
+    controller.abort();
+    await session.dispose();
+    database.close();
+    rmSync(home, { recursive: true, force: true });
   }
 }

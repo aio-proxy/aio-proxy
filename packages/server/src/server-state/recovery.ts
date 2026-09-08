@@ -32,6 +32,7 @@ export async function recoverBeforeSnapshot(options: {
   readonly recoverAccounts: RecoverAccounts;
   readonly scheduler: RecoveryScheduler;
   readonly enqueue: FifoQueue;
+  readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 }): Promise<void> {
   if (options.configFile === undefined) return;
   await options.enqueue(() =>
@@ -43,6 +44,7 @@ export async function recoverBeforeSnapshot(options: {
         canDeleteAccount: () => true,
         deleteMarkerOnProviderPresent: 'retain',
         now: options.scheduler.now,
+        withProviderGate: options.withProviderGate,
       },
       { factory: options.diagnostics, logger: options.logger },
     ),
@@ -59,6 +61,7 @@ export function createRecovery(options: {
   readonly reconciliationRetryMs: number;
   readonly enqueue: FifoQueue;
   readonly canDeleteAccount: (providerId: string) => boolean;
+  readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
   readonly reloadNow: (operations?: readonly PendingAccountOperation[]) => Promise<ConfigReloadResult>;
 }) {
   let timer: RecoveryTimer | undefined;
@@ -103,6 +106,7 @@ export function createRecovery(options: {
           canDeleteAccount: options.canDeleteAccount,
           deleteMarkerOnProviderPresent: 'retain',
           now: options.scheduler.now,
+          withProviderGate: options.withProviderGate,
         },
         { factory: options.diagnostics, logger: options.logger },
       );
@@ -150,6 +154,7 @@ export function createRecovery(options: {
             canDeleteAccount: options.canDeleteAccount,
             deleteMarkerOnProviderPresent: 'retain',
             now: options.scheduler.now,
+            withProviderGate: options.withProviderGate,
           },
           { factory: options.diagnostics, logger: options.logger },
         ),

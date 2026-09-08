@@ -1,9 +1,11 @@
 import {
   type AtomicConfigFile,
+  type AccountWrite,
   type DiagnosticFactory,
   type LoginOAuthAccountOptions,
   loginOAuthAccount,
   type OAuthProviderPatch,
+  type OAuthSharingService,
   type PluginLogSink,
   type PluginRegistry,
   type PluginRepository,
@@ -35,6 +37,8 @@ type LoginSessionDeps = {
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
   readonly validateProviderCommit: ProviderCommitValidator;
   readonly syncCommit?: SyncCommitHooks;
+  readonly sharing?: () => OAuthSharingService | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
@@ -66,41 +70,69 @@ const runLoginSession = async (
   });
   session.authorization = authorization;
   try {
-    const result = await loginOAuthAccount({
-      ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
-      ...(input.capability === undefined ? {} : { capability: input.capability }),
-      ...(input.providerPatch === undefined
-        ? {}
-        : {
-            providerPatch: {
-              name: input.providerPatch.name,
-              enabled: input.providerPatch.enabled,
-              priority: input.providerPatch.priority,
-              weight: input.providerPatch.weight,
-              proxy: input.providerPatch.proxy,
-              alias: input.providerPatch.alias,
-              excludedModels: input.providerPatch.excludedModels,
-              transforms: input.providerPatch.transforms,
-            } satisfies OAuthProviderPatch,
-          }),
-      registry: lease.registry,
-      repository: deps.repository,
-      config: deps.configFile,
-      renderAccountOptions: async ({ currentSecrets }) => {
-        const secrets: Record<string, unknown> = { ...currentSecrets, ...input.secrets };
-        for (const key of input.clearSecrets) delete secrets[key];
-        return { publicValues: input.publicValues, secrets };
-      },
-      createAuthorization: () => authorization.port,
-      ...(deps.createFetch === undefined ? {} : { fetch: deps.createFetch(input) }),
-      diagnostics: deps.diagnostics,
-      logger: deps.logger,
-      coordinateProviderCommit: deps.coordinateProviderCommit,
-      validateProviderCommit: deps.validateProviderCommit,
-      ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
-      onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
-      signal: session.controller.signal,
-    });
+    const login = () =>
+      loginOAuthAccount({
+        ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
+        ...(input.capability === undefined ? {} : { capability: input.capability }),
+        ...(input.providerPatch === undefined
+          ? {}
+          : {
+              providerPatch: {
+                name: input.providerPatch.name,
+                enabled: input.providerPatch.enabled,
+                priority: input.providerPatch.priority,
+                weight: input.providerPatch.weight,
+                proxy: input.providerPatch.proxy,
+                alias: input.providerPatch.alias,
+                excludedModels: input.providerPatch.excludedModels,
+                transforms: input.providerPatch.transforms,
+              } satisfies OAuthProviderPatch,
+            }),
+        registry: lease.registry,
+        repository: deps.repository,
+        config: deps.configFile,
+        renderAccountOptions: async ({ currentSecrets }) => {
+          const secrets: Record<string, unknown> = { ...currentSecrets, ...input.secrets };
+          for (const key of input.clearSecrets) delete secrets[key];
+          return { publicValues: input.publicValues, secrets };
+        },
+        createAuthorization: () => authorization.port,
+        ...(deps.createFetch === undefined ? {} : { fetch: deps.createFetch(input) }),
+        diagnostics: deps.diagnostics,
+        logger: deps.logger,
+        coordinateProviderCommit: deps.coordinateProviderCommit,
+        validateProviderCommit: deps.validateProviderCommit,
+        ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
+        ...(deps.sharing === undefined
+          ? {}
+          : {
+              beforeAccountOperationComplete: async (operation, signal) => {
+                const sharing = deps.sharing?.();
+                if (sharing === undefined) return;
+                const account = deps.repository.readAccount(operation.providerId);
+                if (account === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+                const candidate: AccountWrite = {
+                  providerId: account.providerId,
+                  plugin: account.plugin,
+                  capability: account.capability,
+                  fingerprint: account.fingerprint,
+                  options: account.options,
+                  secrets: account.secrets,
+                  credential: account.credential,
+                  ...(account.label === undefined ? {} : { label: account.label }),
+                  ...(account.expiresAt === undefined ? {} : { expiresAt: account.expiresAt }),
+                  catalog: { kind: 'preserve' },
+                };
+                await sharing.synchronizeLogin(operation.providerId, candidate, signal);
+              },
+            }),
+        onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
+        signal: session.controller.signal,
+      });
+    const result =
+      input.targetProviderId === undefined || deps.withProviderGate === undefined
+        ? await login()
+        : await deps.withProviderGate(input.targetProviderId, login);
     await deps.reload();
     const warning = deps.repository
       .readDiagnostics(result.providerId)
@@ -137,6 +169,8 @@ export const createOAuthLoginSessionManager = (options: {
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
   readonly validateProviderCommit: ProviderCommitValidator;
   readonly syncCommit?: SyncCommitHooks;
+  readonly sharing?: () => OAuthSharingService | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly now?: () => number;
@@ -193,6 +227,8 @@ export const createOAuthLoginSessionManager = (options: {
         coordinateProviderCommit: options.coordinateProviderCommit,
         validateProviderCommit: options.validateProviderCommit,
         ...(options.syncCommit === undefined ? {} : { syncCommit: options.syncCommit }),
+        ...(options.sharing === undefined ? {} : { sharing: options.sharing }),
+        ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
         reload: options.reload,
         ...(options.createFetch === undefined ? {} : { createFetch: options.createFetch }),
         ...(options.completeUrl === undefined ? {} : { completeUrl: options.completeUrl }),

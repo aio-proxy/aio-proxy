@@ -42,6 +42,7 @@ type CredentialPortBaseOptions<Credential> = {
   readonly onDiagnosticChanged: () => void;
   readonly onCredentialChanged: () => void;
   readonly resolveShared?: (callbacks?: CredentialPortCallbacks) => CredentialPort<Credential> | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
 export type CreateCredentialPortOptions<Credential> = CredentialPortBaseOptions<Credential> &
@@ -247,6 +248,8 @@ export function createCredentialPort<Credential>(
   options: CreateCredentialPortOptions<Credential>,
 ): CredentialPort<Credential> {
   const mode = options.mode ?? 'runtime';
+  const withGate = <T>(run: () => Promise<T>) =>
+    options.withProviderGate === undefined ? run() : options.withProviderGate(options.providerId, run);
   return {
     async read() {
       const shared = options.resolveShared?.({
@@ -257,78 +260,80 @@ export function createCredentialPort<Credential>(
       return (await readValidated(options.providerId, options.schema, options.repository)).snapshot;
     },
     refresh(expectedRevision, exchange) {
-      const shared = options.resolveShared?.({
-        onDiagnosticChanged: options.onDiagnosticChanged,
-        onCredentialChanged: options.onCredentialChanged,
-      });
-      if (shared !== undefined) {
-        return shared.refresh(expectedRevision, exchange).catch((error: unknown) => {
-          recordRefreshFailure(options, mode, error, []);
-          throw error;
+      return withGate(async () => {
+        const shared = options.resolveShared?.({
+          onDiagnosticChanged: options.onDiagnosticChanged,
+          onCredentialChanged: options.onCredentialChanged,
         });
-      }
-      return singleFlight(options.repository, options.providerId, mode, async () => {
-        const owner = `${process.pid}:${crypto.randomUUID()}`;
-        let secretValues: readonly string[] = [];
-        try {
-          const lease = await waitForLease(options, owner, expectedRevision);
-          if (!lease.acquired) return { status: 'superseded', snapshot: lease.snapshot };
-          const guard = createRefreshLeaseGuard(() =>
-            options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS),
-          );
-          try {
-            const current = await guard.race(readValidated(options.providerId, options.schema, options.repository));
-            secretValues = [
-              ...collectSecretStrings(current.snapshot.value),
-              ...collectSecretStrings(current.account.secrets),
-              ...(options.mode === 'control-plane'
-                ? (options.additionalSecretValues ?? [])
-                : collectSecretStrings(options.pluginSecrets)),
-            ];
-            if (current.snapshot.revision !== expectedRevision) {
-              return { status: 'superseded', snapshot: current.snapshot };
-            }
-            const exchanged = await guard.exchange((signal) => exchange(current.snapshot, signal));
-            secretValues = [...secretValues, ...collectSecretStrings(exchanged.value)];
-            const validated = await guard.race(parsePluginSchema(options.schema, exchanged.value));
-            if (!validated.ok) throw new CredentialValidationError(validated.issues);
-            const updated = options.repository.compareAndSwapCredential(
-              options.providerId,
-              expectedRevision,
-              owner,
-              validated.value,
-              {
-                ...(exchanged.metadata?.accountLabel === undefined ? {} : { label: exchanged.metadata.accountLabel }),
-                ...(exchanged.metadata?.expiresAt === undefined ? {} : { expiresAt: exchanged.metadata.expiresAt }),
-              },
-            );
-            if (updated === null) {
-              const latest = await guard.race(readValidated(options.providerId, options.schema, options.repository));
-              if (latest.snapshot.revision === expectedRevision) throw new CredentialRefreshLeaseLostError();
-              return { status: 'superseded', snapshot: latest.snapshot };
-            }
-            if (mode !== 'control-plane') {
-              if (options.repository.clearDiagnostic(options.providerId, 'CREDENTIAL_REFRESH_FAILED')) {
-                options.onDiagnosticChanged();
-              }
-              if (
-                (exchanged.metadata?.accountLabel !== undefined &&
-                  exchanged.metadata.accountLabel !== current.account.label) ||
-                (exchanged.metadata?.expiresAt !== undefined &&
-                  exchanged.metadata.expiresAt !== current.account.expiresAt)
-              ) {
-                options.onCredentialChanged();
-              }
-            }
-            return { status: 'updated', snapshot: { value: validated.value, revision: updated.revision } };
-          } finally {
-            guard.close();
-            options.repository.releaseRefreshLease(options.providerId, owner);
-          }
-        } catch (error) {
-          recordRefreshFailure(options, mode, error, secretValues);
-          throw error;
+        if (shared !== undefined) {
+          return shared.refresh(expectedRevision, exchange).catch((error: unknown) => {
+            recordRefreshFailure(options, mode, error, []);
+            throw error;
+          });
         }
+        return singleFlight(options.repository, options.providerId, mode, async () => {
+          const owner = `${process.pid}:${crypto.randomUUID()}`;
+          let secretValues: readonly string[] = [];
+          try {
+            const lease = await waitForLease(options, owner, expectedRevision);
+            if (!lease.acquired) return { status: 'superseded', snapshot: lease.snapshot };
+            const guard = createRefreshLeaseGuard(() =>
+              options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS),
+            );
+            try {
+              const current = await guard.race(readValidated(options.providerId, options.schema, options.repository));
+              secretValues = [
+                ...collectSecretStrings(current.snapshot.value),
+                ...collectSecretStrings(current.account.secrets),
+                ...(options.mode === 'control-plane'
+                  ? (options.additionalSecretValues ?? [])
+                  : collectSecretStrings(options.pluginSecrets)),
+              ];
+              if (current.snapshot.revision !== expectedRevision) {
+                return { status: 'superseded', snapshot: current.snapshot };
+              }
+              const exchanged = await guard.exchange((signal) => exchange(current.snapshot, signal));
+              secretValues = [...secretValues, ...collectSecretStrings(exchanged.value)];
+              const validated = await guard.race(parsePluginSchema(options.schema, exchanged.value));
+              if (!validated.ok) throw new CredentialValidationError(validated.issues);
+              const updated = options.repository.compareAndSwapCredential(
+                options.providerId,
+                expectedRevision,
+                owner,
+                validated.value,
+                {
+                  ...(exchanged.metadata?.accountLabel === undefined ? {} : { label: exchanged.metadata.accountLabel }),
+                  ...(exchanged.metadata?.expiresAt === undefined ? {} : { expiresAt: exchanged.metadata.expiresAt }),
+                },
+              );
+              if (updated === null) {
+                const latest = await guard.race(readValidated(options.providerId, options.schema, options.repository));
+                if (latest.snapshot.revision === expectedRevision) throw new CredentialRefreshLeaseLostError();
+                return { status: 'superseded', snapshot: latest.snapshot };
+              }
+              if (mode !== 'control-plane') {
+                if (options.repository.clearDiagnostic(options.providerId, 'CREDENTIAL_REFRESH_FAILED')) {
+                  options.onDiagnosticChanged();
+                }
+                if (
+                  (exchanged.metadata?.accountLabel !== undefined &&
+                    exchanged.metadata.accountLabel !== current.account.label) ||
+                  (exchanged.metadata?.expiresAt !== undefined &&
+                    exchanged.metadata.expiresAt !== current.account.expiresAt)
+                ) {
+                  options.onCredentialChanged();
+                }
+              }
+              return { status: 'updated', snapshot: { value: validated.value, revision: updated.revision } };
+            } finally {
+              guard.close();
+              options.repository.releaseRefreshLease(options.providerId, owner);
+            }
+          } catch (error) {
+            recordRefreshFailure(options, mode, error, secretValues);
+            throw error;
+          }
+        });
       });
     },
   };

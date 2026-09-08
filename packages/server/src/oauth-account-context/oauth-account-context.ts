@@ -33,6 +33,7 @@ export type OAuthAccountContextDependencies = {
     schema: ZodType<unknown>,
     callbacks?: CredentialPortCallbacks,
   ) => CredentialPort<unknown> | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
 export type PreparedOAuthAccountContext = {
@@ -112,6 +113,7 @@ async function prepareContext<Capability>(
             resolveShared: (callbacks) => dependencies.resolveShared!(providerId, adapter.credentials, callbacks),
           }),
       pluginSecretValues,
+      ...(dependencies.withProviderGate === undefined ? {} : { withProviderGate: dependencies.withProviderGate }),
     });
     const capability = request.select(prepared.adapter);
     if (capability === undefined) {

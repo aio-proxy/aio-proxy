@@ -68,6 +68,7 @@ export type ServerRuntime = {
     providerId: string,
     schema: ZodType<unknown>,
   ) => CredentialPort<unknown> | undefined;
+  readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
 /**
@@ -110,6 +111,7 @@ export async function commitConfig(
     () => queueRebuild(runtime),
     runtime.createRouter,
     runtime.resolveSharedCredential,
+    runtime.withProviderGate,
   );
   const before = (runtime.manager.current() as Snapshot).summaries;
   const retired = runtime.manager.swap(candidate);
@@ -284,6 +286,7 @@ export async function startRecovery(
     reconciliationRetryMs: deps.reconciliationRetryMs,
     enqueue: runtime.queue,
     canDeleteAccount: runtime.manager.canDeleteAccount,
+    withProviderGate: runtime.withProviderGate,
     reloadNow: (operations) => reloadNow(runtime, operations),
   });
   runtime.recovery = recovery;
@@ -306,6 +309,7 @@ export function startLoginSessions(
   configStore: ConfigStore,
   reload: () => Promise<ConfigReloadResult>,
   syncCommit?: SyncCommitHooks,
+  sharing?: () => import('@aio-proxy/core').OAuthSharingService | undefined,
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
   const testHooks = internalOptions.__test;
@@ -335,6 +339,8 @@ export function startLoginSessions(
         return commit();
       }),
     ...(syncCommit === undefined ? {} : { syncCommit }),
+    ...(sharing === undefined ? {} : { sharing }),
+    withProviderGate: runtime.withProviderGate,
     validateProviderCommit: (capability, current) => {
       const plugins = (manager.current() as Snapshot).plugins;
       const builtIn = plugins.plugins.get(capability.plugin)?.builtIn === true;

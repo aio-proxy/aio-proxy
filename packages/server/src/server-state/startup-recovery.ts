@@ -5,7 +5,10 @@ import { recoverBeforeSnapshot } from './recovery';
 import type { RecoveryScheduler } from './types';
 
 export function recoverBeforeInitialSnapshot(
-  runtime: Pick<ServerRuntime, 'configFile' | 'repository' | 'diagnostics' | 'pluginLogger' | 'queue'>,
+  runtime: Pick<
+    ServerRuntime,
+    'configFile' | 'repository' | 'diagnostics' | 'pluginLogger' | 'queue' | 'withProviderGate'
+  >,
   recoverAccounts: typeof recoverPendingAccountOperations,
   scheduler: RecoveryScheduler,
 ) {
@@ -17,5 +20,6 @@ export function recoverBeforeInitialSnapshot(
     recoverAccounts,
     scheduler,
     enqueue: runtime.queue,
+    withProviderGate: runtime.withProviderGate,
   });
 }

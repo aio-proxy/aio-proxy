@@ -64,6 +64,7 @@ async function prepareRuntimeAccount(options: MaterializePluginProviderOptions):
     credentialMode: 'runtime',
     ...(options.pluginSecrets === undefined ? {} : { pluginSecrets: options.pluginSecrets }),
     ...(sharedResolver(options) === undefined ? {} : { resolveShared: sharedResolver(options) }),
+    ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
   });
 }
 

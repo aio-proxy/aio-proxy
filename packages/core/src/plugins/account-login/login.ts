@@ -67,6 +67,7 @@ export type OAuthAccountWriteOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
+  readonly beforeAccountOperationComplete?: (operation: PendingAccountOperation, signal: AbortSignal) => Promise<void>;
   readonly validateProviderCommit?: (
     capability: OAuthCapabilityReference,
     current: Readonly<Record<string, unknown>>,
@@ -275,6 +276,7 @@ async function persistOAuthAccount(input: {
     }
     throw error;
   }
+  await options.beforeAccountOperationComplete?.(staged, deadline.signal);
   options.repository.completeAccountOperation(staged.operationId);
   if (options.syncCommit !== undefined && commitId !== undefined) await options.syncCommit.confirm(commitId);
   return { providerId: staged.providerId };

@@ -6,6 +6,7 @@ import {
   createSyncEngine,
   recoverLocalCommits,
   createSharedOAuthCoordinator,
+  createOAuthSharingService,
   createSyncObjectStore,
   type JsonValue,
   type PluginRegistry,
@@ -36,6 +37,8 @@ export type ServerSyncLifecycleInput = {
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
   readonly localPort?: ReturnType<typeof createLocalSyncPort>;
   readonly onCoordinator?: (coordinator: import('@aio-proxy/core').SharedOAuthCoordinator | undefined) => void;
+  readonly onSharing?: (sharing: import('@aio-proxy/core').OAuthSharingService | undefined) => void;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
 export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): ServerSyncLifecycle {
@@ -101,9 +104,25 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         return;
       }
       session = connected;
-      input.onCoordinator?.(
-        createSharedOAuthCoordinator({ binding, store: createSyncObjectStore(connected), repo: input.repo }),
-      );
+      const store = createSyncObjectStore(connected);
+      input.onCoordinator?.(createSharedOAuthCoordinator({ binding, store, repo: input.repo }));
+      const sharing = createOAuthSharingService({
+        binding,
+        repo: input.repo,
+        accounts: input.accounts,
+        store,
+        resolveAdapter(providerId) {
+          const account = input.accounts.readAccount(providerId);
+          if (account === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+          const adapter = input.registry().resolveOAuth(account.plugin, account.capability);
+          const pluginVersion = input.pluginVersions?.().get(account.plugin);
+          if (adapter === undefined || pluginVersion === undefined) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
+          return { adapter, pluginVersion };
+        },
+        withProviderGate: input.withProviderGate ?? (async (_providerId, run) => run()),
+      });
+      input.onSharing?.(sharing);
+      await sharing.recover(controller.signal);
       engine = createSyncEngine({
         binding,
         session,
@@ -121,6 +140,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       }
       session = undefined;
       input.onCoordinator?.(undefined);
+      input.onSharing?.(undefined);
       throw error;
     }
   }
@@ -144,6 +164,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       engine = undefined;
       session = undefined;
       input.onCoordinator?.(undefined);
+      input.onSharing?.(undefined);
       port = undefined;
     })();
     return closePromise;

@@ -9,6 +9,7 @@ import type { Diagnostic } from '@aio-proxy/types';
 import { openDb } from '../../db';
 import type { SharedOAuthCoordinator } from '../../sync/oauth/coordinator';
 import type { LiveAccount } from '../../sync/oauth/protocol';
+import { createOAuthProviderGate } from '../../sync/oauth/sharing';
 import { createSyncRepository, type LocalBinding, type SyncRepository } from '../../sync/repository';
 import type { PluginRepository } from '../repository';
 import { createPluginRepository } from '../repository';
@@ -326,6 +327,39 @@ test('local refresh still acquires the local lease when ownership is absent', as
     const port = createCredentialPort(options);
     await port.refresh(1, async () => ({ value: { token: 'new' } }));
     expect(localLeaseCalls).toBe(1);
+  } finally {
+    scope.cleanup();
+  }
+});
+
+test('local and shared refresh paths wait for the common Provider gate', async () => {
+  const scope = createFixtureScope();
+  const { repository } = scope.open();
+  try {
+    const gate = createOAuthProviderGate();
+    const blocked = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const blocker = gate.run('provider-1', async () => {
+      entered.resolve();
+      await blocked.promise;
+    });
+    await entered.promise;
+    let exchanges = 0;
+    const port = createCredentialPort(
+      credentialPortOptions<{ token: string }>(repository, {
+        withProviderGate: gate.run,
+      }),
+    );
+    const refresh = port.refresh(1, async () => {
+      exchanges++;
+      return { value: { token: 'new' } };
+    });
+    await Promise.resolve();
+    expect(exchanges).toBe(0);
+    blocked.resolve();
+    await blocker;
+    await refresh;
+    expect(exchanges).toBe(1);
   } finally {
     scope.cleanup();
   }

@@ -17,4 +17,10 @@ export {
   type SharedRefreshResult,
 } from './coordinator';
 export { applySyncedAccount } from './account-import';
-export { createOAuthSharingService, type OAuthSharingService, type OAuthSharingServiceInput } from './sharing';
+export {
+  createOAuthProviderGate,
+  type OAuthProviderGate,
+  createOAuthSharingService,
+  type OAuthSharingService,
+  type OAuthSharingServiceInput,
+} from './sharing';

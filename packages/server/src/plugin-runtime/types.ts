@@ -80,4 +80,5 @@ export type MaterializePluginProviderOptions = {
     schema: ZodType<unknown>,
     callbacks?: CredentialPortCallbacks,
   ) => CredentialPort<unknown> | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };

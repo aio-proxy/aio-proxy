@@ -4,6 +4,7 @@ import {
   AtomicConfigFile,
   createAgentIdentityService,
   createEmbeddedBuiltIns,
+  createOAuthProviderGate,
   createPluginDiagnosticFactory,
   createPluginRepository,
   createSyncRepository,
@@ -17,7 +18,7 @@ import {
   recoverPendingAccountOperations,
   type JsonValue,
 } from '@aio-proxy/core';
-import type { SharedOAuthCoordinator } from '@aio-proxy/core';
+import type { OAuthSharingService, SharedOAuthCoordinator } from '@aio-proxy/core';
 import {
   acquireDatabaseOwnershipLock,
   assertSafeOwnedDatabaseFile,
@@ -94,6 +95,7 @@ function createSyncIntegration(
   queue: ReturnType<typeof createFifoQueue>,
   syncRepository = createSyncRepository(dbHandle.sqlite),
   onCoordinator?: (coordinator: SharedOAuthCoordinator | undefined) => void,
+  onSharing?: (sharing: OAuthSharingService | undefined) => void,
 ) {
   const syncBinding = syncRepository.readBinding();
   if (syncBinding === null || configFile === undefined || options.configPath === undefined) {
@@ -194,6 +196,8 @@ function createSyncIntegration(
     pluginVersions,
     localPort: syncPort,
     onCoordinator,
+    onSharing,
+    withProviderGate: runtime.withProviderGate,
   });
   return { syncRepository, syncBinding, syncPort, syncApplyCandidate, lifecycle, configPath: options.configPath };
 }
@@ -294,7 +298,9 @@ async function initializeServerState(
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
   const syncRepository = createSyncRepository(dbHandle.sqlite);
+  const providerGate = createOAuthProviderGate();
   let sharedCoordinator: SharedOAuthCoordinator | undefined;
+  let oauthSharing: OAuthSharingService | undefined;
   const resolveSharedCredential = createSharedCredentialResolver(syncRepository, repository, () => sharedCoordinator);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
@@ -328,6 +334,7 @@ async function initializeServerState(
     sync: undefined,
     syncCommit: undefined,
     resolveSharedCredential,
+    withProviderGate: providerGate.run,
   };
 
   await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
@@ -344,6 +351,7 @@ async function initializeServerState(
           () => queueRebuild(runtime),
           createRouter,
           resolveSharedCredential,
+          providerGate.run,
         )
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
   runtime.manager = createSnapshotManager(initial);
@@ -355,6 +363,7 @@ async function initializeServerState(
     repository,
     enqueue: queue,
     canDeleteAccount: manager.canDeleteAccount,
+    withProviderGate: runtime.withProviderGate,
     onRecoveryNeeded: (nextRunAt) => runtime.recovery?.schedule(nextRunAt),
   });
   runtime.scheduler = new CatalogScheduler({
@@ -394,6 +403,9 @@ async function initializeServerState(
       sharedCoordinator = coordinator;
       if (runtime.managerReady) void queueRebuild(runtime);
     },
+    (sharing) => {
+      oauthSharing = sharing;
+    },
   );
   const syncCommit = syncCommitOption(syncIntegration);
   runtime.syncCommit = syncCommit;
@@ -426,14 +438,12 @@ async function initializeServerState(
     },
   });
 
-  // Recover durable sync state before starting any watcher or login session that can enqueue a
-  // competing config mutation. The lifecycle also rechecks the binding before opening the backend.
   await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
 
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
-  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload, syncCommit);
+  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload, syncCommit, () => oauthSharing);
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');
   const watcher =
@@ -469,10 +479,7 @@ async function initializeServerState(
   });
 }
 
-// The cache is published onto the runtime so `commitConfig` can invalidate the entries of Providers
-// whose configuration changed; everything in it is keyed by Provider ID alone.
-// Called exactly once per server: the refresher's per-Provider-ID serialization lives in a closure,
-// so a second instance would mean a second queue and two clicks could race the same credential.
+// Called once per server so cache invalidation and per-Provider serialization share one state owner.
 function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
   const dependencies = {
     acquireSnapshot: manager.acquire,
@@ -481,6 +488,7 @@ function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
     logger: runtime.pluginLogger,
     onDiagnosticChanged: () => queueRebuild(runtime),
     resolveShared: runtime.resolveSharedCredential,
+    withProviderGate: runtime.withProviderGate,
   };
   const oauthQuota = createOAuthQuotaOperations(dependencies);
   const oauthCredentialRefresh = createOAuthCredentialRefresher(dependencies);

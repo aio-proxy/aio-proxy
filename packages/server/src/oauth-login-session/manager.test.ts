@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { AtomicConfigFile, createPluginRegistryHost, createPluginRepository } from '@aio-proxy/core';
+import {
+  AtomicConfigFile,
+  createPluginRegistryHost,
+  createPluginRepository,
+  type OAuthSharingService,
+} from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 import { zod } from '@aio-proxy/plugin-sdk';
 
@@ -152,3 +157,113 @@ test('a proxy-unsupported adapter fails a Dashboard session with the stable code
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('re-login holds the Provider gate through shared replacement before reporting success', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-oauth-session-shared-'));
+  const configPath = join(dir, 'config.json');
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      plugins: [],
+      providers: {
+        person: {
+          kind: 'oauth',
+          plugin: '@example/oauth',
+          capability: 'default',
+          enabled: true,
+          options: {},
+        },
+      },
+    }),
+  );
+  const database = openDb({ home: dir });
+  const repository = createPluginRepository(database.sqlite);
+  const operation = repository.stageAccountOperation({
+    kind: 'create',
+    targetDigest: 'fixture',
+    account: {
+      providerId: 'person',
+      plugin: '@example/oauth',
+      capability: 'default',
+      fingerprint: 'person@example.com',
+      options: {},
+      secrets: {},
+      credential: { token: 'old' },
+      catalog: { kind: 'replace', value: { catalog: emptyCatalog(), refreshedAt: 0 } },
+    },
+  });
+  repository.completeAccountOperation(operation.operationId);
+  const host = createPluginRegistryHost();
+  const staging = host.stage('@example/oauth');
+  staging.api.oauth.register({
+    id: 'default',
+    displayName: 'Example OAuth',
+    account: { options: { schema: zod.object({}), form: [] } },
+    credentials: zod.object({ token: zod.string() }),
+    async login() {
+      return { fingerprint: 'person@example.com', suggestedKey: 'person', credentials: { token: 'replacement' } };
+    },
+    catalog: { policy: { kind: 'static' }, discover: async () => emptyCatalog() },
+    async createRuntime() {
+      throw new Error('not used');
+    },
+  });
+  staging.seal();
+  staging.commit();
+  let gatedProvider: string | undefined;
+  let synchronized = false;
+  const sharing: OAuthSharingService = {
+    share: async () => 'pending',
+    replaceShared: async () => {},
+    detach: async () => 'pending',
+    cancelDetach() {},
+    recover: async () => {},
+    async synchronizeLogin(providerId, candidate) {
+      expect(providerId).toBe('person');
+      expect(candidate.credential).toEqual({ token: 'replacement' });
+      synchronized = true;
+    },
+  };
+  const finished = Promise.withResolvers<void>();
+  const manager = createOAuthLoginSessionManager({
+    configFile: new AtomicConfigFile(configPath),
+    repository,
+    acquireRegistry: () => ({ registry: host.registry, release: () => finished.resolve() }),
+    diagnostics: (code, options) => ({
+      code,
+      summary: code,
+      retryable: options.retryable,
+      occurredAt: new Date(0).toISOString(),
+    }),
+    logger: () => {},
+    coordinateProviderCommit: (_capability, commit) => commit(),
+    validateProviderCommit: () => {},
+    sharing: () => sharing,
+    withProviderGate: async (providerId, run) => {
+      gatedProvider = providerId;
+      return run();
+    },
+    reload: async () => {
+      expect(synchronized).toBe(true);
+    },
+  });
+  try {
+    const session = manager.start({
+      targetProviderId: 'person',
+      publicValues: {},
+      secrets: {},
+      clearSecrets: [],
+    });
+    await finished.promise;
+    expect(manager.get(session.id)).toMatchObject({ status: 'succeeded', providerId: 'person' });
+    expect(gatedProvider).toBe('person');
+  } finally {
+    manager.close();
+    database.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function emptyCatalog() {
+  return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+}

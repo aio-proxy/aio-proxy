@@ -32,6 +32,7 @@ export type RecoverPendingAccountOperationsOptions =
       readonly mode: 'server';
       readonly canDeleteAccount: (providerId: string) => boolean;
       readonly deleteMarkerOnProviderPresent?: 'complete' | 'retain';
+      readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
       readonly now?: () => number;
     };
 
@@ -108,6 +109,10 @@ export async function recoverPendingAccountOperations(
 ): Promise<{ readonly nextRunAt?: number }> {
   const now = (options.now ?? Date.now)();
   let nextRunAt: number | undefined;
+  const withGate = <T>(providerId: string, run: () => Promise<T>) =>
+    options.mode === 'server' && options.withProviderGate !== undefined
+      ? options.withProviderGate(providerId, run)
+      : run();
   await config.transaction(async (current) => {
     const rawProviders = current['providers'];
     if (rawProviders !== undefined && !isPlainObject(rawProviders)) {
@@ -134,17 +139,21 @@ export async function recoverPendingAccountOperations(
             nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
             continue;
           }
-          repository.finalizeDeleteOperation(operation.operationId);
+          await withGate(operation.providerId, async () => repository.finalizeDeleteOperation(operation.operationId));
         } else {
-          repository.completeAccountOperation(operation.operationId);
+          await withGate(operation.providerId, async () => repository.completeAccountOperation(operation.operationId));
         }
       } else if (operation.kind === 'delete') {
         if (options.mode === 'server' && options.deleteMarkerOnProviderPresent === 'retain') {
           nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
         } else {
-          repository.completeAccountOperation(operation.operationId);
+          await withGate(operation.providerId, async () => repository.completeAccountOperation(operation.operationId));
         }
-      } else if (repository.compensateAccountOperation(operation.operationId) === 'superseded') {
+      } else if (
+        (await withGate(operation.providerId, async () =>
+          repository.compensateAccountOperation(operation.operationId),
+        )) === 'superseded'
+      ) {
         safeSupersededDiagnostic(operation.providerId, repository, diagnostics?.factory, diagnostics?.logger, now);
       }
     }
@@ -163,7 +172,7 @@ export async function recoverPendingAccountOperations(
         nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
         continue;
       }
-      repository.deleteAccount(account.providerId);
+      await withGate(account.providerId, async () => repository.deleteAccount(account.providerId));
     }
     return { next: current, result: undefined };
   });

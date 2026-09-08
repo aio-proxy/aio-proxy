@@ -72,6 +72,7 @@ export async function buildSnapshot(
     schema: ZodType<unknown>,
     callbacks?: CredentialPortCallbacks,
   ) => CredentialPort<unknown> | undefined,
+  withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
@@ -119,6 +120,7 @@ export async function buildSnapshot(
           : { pluginSecrets: pluginOptionInput.secret }),
         ...(previousEntry === undefined ? {} : { previous: previousEntry }),
         ...(resolveShared === undefined ? {} : { resolveShared }),
+        ...(withProviderGate === undefined ? {} : { withProviderGate }),
       });
     }),
   );
