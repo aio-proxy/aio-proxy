@@ -1,5 +1,18 @@
 # @aio-proxy/plugin-google-antigravity
 
+## 0.20.5
+
+### Patch Changes
+
+- [#337](https://github.com/aio-proxy/aio-proxy/pull/337) [`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854) Thanks [@baranwang](https://github.com/baranwang)! - Reasoning effort now clamps to what the chosen provider actually supports, read from the provider's
+  own catalog first and models.dev only as a fallback, so a `max` request reaches a provider that
+  supports `max` instead of arriving as `high`. Google Antigravity's variants, including its split
+  Low/Medium/High Gemini wires, clamp down instead of failing the request, and an alias asked for more
+  effort than its highest variant declares routes to that variant instead of the alias base.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.5
+  - @aio-proxy/shared@0.20.5
+
 ## 0.20.4
 
 ### Patch Changes
