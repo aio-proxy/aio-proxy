@@ -184,7 +184,7 @@ Body limits: default `REQUEST_BODY_LIMITS` (64 MiB). Create carries at most one 
 
 ### Edits / extensions (model-first when unpinned)
 
-JSON body only (`415` on multipart, including the official SDK form). `prompt` required. Source video id is `video.id` (official). Optional `model` uses the same default as create. Optional `seconds` on extensions is forwarded, not validated against the official enum (upstream rejects an illegal value). The pin peek uses the same `REQUEST_BODY_LIMITS` reader as create; an oversized body is `413` before store lookup.
+JSON body only (`415` on multipart, including the official SDK form). `prompt` required. Source video id is `video.id` (official) and must match `[A-Za-z0-9_-]{1,128}`; anything else is `400` and does not enter the pipeline. Optional `model` uses the same default as create. Optional `seconds` on extensions is forwarded, not validated against the official enum (upstream rejects an illegal value). The pin peek uses the same `REQUEST_BODY_LIMITS` reader as create; an oversized body is `413` before store lookup. A pinned follow-up still runs the operation parse (prompt / content type / id) before the pinned raw invoke.
 
 If a pin exists for that source id and the caller owns it, do **not** enter the generation loop: pinned raw to that provider, then pin the new job on 2xx.
 
@@ -192,7 +192,7 @@ If no pin: `handleProtocolRequest` with lookup model `sora-2` (or the explicit m
 
 ### Remix
 
-`POST /v1/videos/:video_id/remix` with JSON `{ prompt }`. No model on the official wire. Always pin-first: missing pin is `404` with a video-shaped not-found (do not invent a model-first remix). 2xx pins the new job.
+`POST /v1/videos/:video_id/remix` with JSON `{ prompt }`. No model on the official wire. Always pin-first: missing pin is `404` with a video-shaped not-found (do not invent a model-first remix). Parse the JSON body with the same body limit and required prompt as edits before the pinned invoke. 2xx pins the new job.
 
 ### Retrieve / content / delete
 

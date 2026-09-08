@@ -166,6 +166,66 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.calls).toEqual({ model: 0, raw: 0, speech: 0 });
   });
 
+  test('an illegal edits video.id is 400 and does not enter the pipeline', async () => {
+    const fixture = videoProvider('openai');
+    const response = await request(
+      '/v1/videos/edits',
+      [fixture.value],
+      JSON.stringify({
+        prompt: 'warmer light',
+        video: { id: 'not.valid' },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
+    expect(fixture.calls.raw).toBe(0);
+  });
+
+  test('a pinned edit with a blank prompt is 400 without upstream fetch', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: createBody(),
+    });
+    const before = fixture.calls.raw;
+    const blank = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: '  ', video: { id: 'video_abc' } }),
+    });
+    expect(blank.status).toBe(400);
+    expect(fixture.calls.raw).toBe(before);
+  });
+
+  test('remix rejects a missing prompt and an oversized body before the pinned invoke', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: createBody(),
+    });
+    const before = fixture.calls.raw;
+    const missing = await app.request('/v1/videos/video_abc/remix', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(missing.status).toBe(400);
+    const oversized = await app.request('/v1/videos/video_abc/remix', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(REQUEST_BODY_LIMITS.encoded + 1),
+      },
+      body: JSON.stringify({ prompt: 'warmer light' }),
+    });
+    expect(oversized.status).toBe(413);
+    expect(fixture.calls.raw).toBe(before);
+  });
+
   test('multipart edits is 415 and never pin-firsts', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });

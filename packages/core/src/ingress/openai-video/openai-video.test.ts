@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
-import { OFFICIAL_DEFAULT_VIDEO_MODEL, parseOpenAIVideoCreate, parseOpenAIVideoEdit } from './openai-video';
+import {
+  OFFICIAL_DEFAULT_VIDEO_MODEL,
+  parseOpenAIVideoCreate,
+  parseOpenAIVideoEdit,
+  parseOpenAIVideoRemix,
+} from './openai-video';
 
 describe('parseOpenAIVideoCreate', () => {
   test('omitted model looks up sora-2', () => {
@@ -37,5 +42,16 @@ describe('parseOpenAIVideoEdit', () => {
       sourceVideoId: 'video_abc',
       prompt: 'warmer light',
     });
+  });
+
+  test('rejects a dotted or overlong source video id', () => {
+    expect(() => parseOpenAIVideoEdit({ prompt: 'warmer light', video: { id: 'not.valid' } })).toThrow();
+    expect(() => parseOpenAIVideoEdit({ prompt: 'warmer light', video: { id: 'a'.repeat(129) } })).toThrow();
+  });
+});
+
+describe('parseOpenAIVideoRemix', () => {
+  test('blank prompt is rejected', () => {
+    expect(() => parseOpenAIVideoRemix({ prompt: '  ' })).toThrow(OpenAIVideosInvalidRequestError);
   });
 });

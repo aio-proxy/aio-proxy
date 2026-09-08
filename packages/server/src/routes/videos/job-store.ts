@@ -1,6 +1,8 @@
+import { VIDEO_ID_PATTERN } from '@aio-proxy/core';
+
 export const VIDEO_JOB_CAPACITY = 1024;
 export const VIDEO_JOB_TTL_MS = 24 * 60 * 60 * 1000;
-export const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
+export { VIDEO_ID_PATTERN };
 
 export type VideoJobOwner = { readonly kind: string; readonly id?: string };
 

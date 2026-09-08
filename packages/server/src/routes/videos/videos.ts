@@ -1,9 +1,19 @@
-import { openAIVideosAdapter, readJsonRequest, REQUEST_BODY_LIMITS, RequestBodyTooLargeError } from '@aio-proxy/core';
+import {
+  isJsonRequest,
+  isMultipartRequest,
+  openAIVideosAdapter,
+  OpenAIVideosInvalidRequestError,
+  parseOpenAIVideoEdit,
+  parseOpenAIVideoRemix,
+  readJsonRequest,
+  REQUEST_BODY_LIMITS,
+  RequestBodyTooLargeError,
+} from '@aio-proxy/core';
 import { type Context, Hono } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pipeline';
-import { videoCapabilityNotSupported, videoForbidden, videoStoreFull } from './errors';
+import { videoCapabilityNotSupported, videoForbidden, videoInvalidRequest, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
 import { pinSuccessfulVideoJob } from './pin';
 import { handlePinnedVideoRequest, invokePinnedVideo, sourceVideoIdFromBody } from './pinned';
@@ -26,9 +36,7 @@ export function createOpenAIVideosRoutes(source: VideosRouteSource) {
   app.post('/v1/videos/extensions', (context) => handleFollowUpCreate(context, source, 'extensions'));
   app.post('/v1/videos', (context) => handleVideoCreate(context, source));
 
-  app.post('/v1/videos/:video_id/remix', (context) =>
-    withCapacity(source, () => handlePinnedVideoRequest(context, source, { pinNewJob: true })),
-  );
+  app.post('/v1/videos/:video_id/remix', (context) => handleRemix(context, source));
   app.get('/v1/videos/:video_id/content', (context) => handlePinnedVideoRequest(context, source));
   app.get('/v1/videos/:video_id', (context) => handlePinnedVideoRequest(context, source));
   app.delete('/v1/videos/:video_id', (context) => handlePinnedVideoRequest(context, source));
@@ -54,13 +62,19 @@ async function handleFollowUpCreate(
   operation: 'edits' | 'extensions',
 ) {
   const owner = callerPrincipal(context);
-  const sourceId = await peekFollowUpSourceVideoId(context.req.raw);
-  if (sourceId instanceof Response) return sourceId;
-  if (isValidVideoId(sourceId)) {
-    const record = source.videoJobs.lookup(sourceId);
-    if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
-    if (record !== undefined) {
-      return await withCapacity(source, () => invokePinnedVideo(context, source, record, { pinNewJob: true }));
+  const peek = await peekFollowUpBody(context.req.raw);
+  if (peek.kind === 'reject') return peek.response;
+  if (peek.kind === 'json') {
+    const sourceId = sourceVideoIdFromBody(peek.body);
+    if (sourceId !== undefined && !isValidVideoId(sourceId)) return videoInvalidRequest('Invalid video id');
+    if (isValidVideoId(sourceId)) {
+      const record = source.videoJobs.lookup(sourceId);
+      if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
+      if (record !== undefined) {
+        const parsed = videosParseError(() => parseOpenAIVideoEdit(peek.body));
+        if (parsed !== undefined) return parsed;
+        return await withCapacity(source, () => invokePinnedVideo(context, source, record, { pinNewJob: true }));
+      }
     }
   }
   return await withCapacity(source, () =>
@@ -74,6 +88,15 @@ async function handleFollowUpCreate(
   );
 }
 
+async function handleRemix(context: Context<CallerPrincipalEnv>, source: VideosRouteSource) {
+  const parsed = await peekFollowUpBody(context.req.raw);
+  if (parsed.kind === 'reject') return parsed.response;
+  if (parsed.kind !== 'json') return videosRequestError(new OpenAIVideosInvalidRequestError('content_type'));
+  const remix = videosParseError(() => parseOpenAIVideoRemix(parsed.body));
+  if (remix !== undefined) return remix;
+  return await withCapacity(source, () => handlePinnedVideoRequest(context, source, { pinNewJob: true }));
+}
+
 async function withCapacity(source: VideosRouteSource, run: () => Promise<Response>): Promise<Response> {
   const slot = source.videoJobs.reserveCapacity();
   if (slot === undefined) return videoStoreFull();
@@ -84,14 +107,35 @@ async function withCapacity(source: VideosRouteSource, run: () => Promise<Respon
   }
 }
 
-async function peekFollowUpSourceVideoId(raw: Request): Promise<string | undefined | Response> {
+type FollowUpPeek =
+  | { readonly kind: 'json'; readonly body: unknown }
+  | { readonly kind: 'reject'; readonly response: Response }
+  | { readonly kind: 'unparsed' };
+
+async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
   if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
-    return openAIVideosAdapter.errors.tooLarge();
+    return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
   }
+  if (isMultipartRequest(raw) || !isJsonRequest(raw)) return { kind: 'unparsed' };
   try {
-    return sourceVideoIdFromBody(await readJsonRequest(raw.clone(), REQUEST_BODY_LIMITS));
+    return { kind: 'json', body: await readJsonRequest(raw.clone(), REQUEST_BODY_LIMITS) };
   } catch (error) {
-    if (error instanceof RequestBodyTooLargeError) return openAIVideosAdapter.errors.tooLarge();
-    return undefined;
+    if (error instanceof RequestBodyTooLargeError) {
+      return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
+    }
+    return { kind: 'reject', response: videosRequestError(error) };
   }
+}
+
+function videosParseError(parse: () => unknown): Response | undefined {
+  try {
+    parse();
+    return undefined;
+  } catch (error) {
+    return videosRequestError(error);
+  }
+}
+
+function videosRequestError(error: unknown): Response {
+  return openAIVideosAdapter.errors.requestError(error) ?? videoInvalidRequest('Invalid OpenAI Videos request');
 }

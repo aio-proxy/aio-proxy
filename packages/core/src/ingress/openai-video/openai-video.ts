@@ -11,10 +11,11 @@ import {
 } from '../multipart';
 
 export const OFFICIAL_DEFAULT_VIDEO_MODEL = 'sora-2';
+export const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
 
 export { releaseMultipartSpool, replaySpooledMultipartRaw };
 
-const videoIdObject = z.object({ id: z.string().min(1) });
+const videoIdObject = z.object({ id: z.string().regex(VIDEO_ID_PATTERN) });
 
 const OpenAIVideoCreateInputSchema = z.compile(
   z.object({
@@ -38,6 +39,8 @@ const OpenAIVideoEditInputSchema = z.compile(
   }),
 );
 
+const OpenAIVideoRemixInputSchema = z.compile(z.object({ prompt: z.string() }));
+
 export type OpenAIVideoOperation = 'create' | 'edits' | 'extensions';
 
 export type OpenAIVideoRequest = {
@@ -58,6 +61,12 @@ export function parseOpenAIVideoCreate(input: unknown): OpenAIVideoRequest {
 export function parseOpenAIVideoEdit(input: unknown): OpenAIVideoRequest {
   const value = OpenAIVideoEditInputSchema.parse(input);
   return { ...toVideoRequest(value), sourceVideoId: value.video.id };
+}
+
+export function parseOpenAIVideoRemix(input: unknown): { readonly prompt: string } {
+  const value = OpenAIVideoRemixInputSchema.parse(input);
+  if (value.prompt.trim() === '') throw new OpenAIVideosInvalidRequestError('prompt');
+  return { prompt: value.prompt };
 }
 
 export async function parseOpenAIVideoCreateMultipart(raw: Request): Promise<OpenAIVideoRequest> {

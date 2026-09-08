@@ -7,8 +7,10 @@ export {
   parseOpenAIVideoCreate,
   parseOpenAIVideoCreateMultipart,
   parseOpenAIVideoEdit,
+  parseOpenAIVideoRemix,
   releaseMultipartSpool,
   replaySpooledMultipartRaw,
+  VIDEO_ID_PATTERN,
   type OpenAIVideoOperation,
   type OpenAIVideoRequest,
 } from './openai-video';

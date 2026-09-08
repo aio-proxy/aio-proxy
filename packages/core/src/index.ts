@@ -71,6 +71,7 @@ export {
   OpenAIImagesInvalidRequestError,
   OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesUnsupportedFeatureError,
+  OpenAIVideosInvalidRequestError,
   ProviderNotInstalledError,
   RouterModelCollisionError,
   RouterModelNotFoundError,
