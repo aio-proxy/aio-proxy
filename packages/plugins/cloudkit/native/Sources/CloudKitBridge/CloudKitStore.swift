@@ -39,6 +39,12 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         self.driver = driver
     }
 
+    func accountIdentity() async throws -> AccountIdentity {
+        let identity = try await driver.accountIdentity()
+        try acceptIdentity(identity)
+        return identity
+    }
+
     func read(key: String) async throws -> StoreRead {
         try await verifyIdentity()
         guard let record = try await driver.fetch(id: Self.recordID(for: key)) else { return .absent }
@@ -137,8 +143,7 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
     }
 
     private func verifyIdentity() async throws {
-        let identity = try await driver.accountIdentity()
-        try acceptIdentity(identity)
+        _ = try await accountIdentity()
     }
 
     private func acceptIdentity(_ identity: AccountIdentity) throws {

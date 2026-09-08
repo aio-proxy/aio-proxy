@@ -109,4 +109,9 @@ private func runProbe() async {
 AssetStore.removeAbandonedFiles()
 if CommandLine.arguments.contains("--probe") {
     await runProbe()
+} else if CommandLine.arguments.contains("--stdio") {
+    let arguments = CommandLine.arguments
+    if let index = arguments.firstIndex(of: "--container"), arguments.indices.contains(index + 1) {
+        await StdioServer(containerId: arguments[index + 1]).run()
+    }
 }
