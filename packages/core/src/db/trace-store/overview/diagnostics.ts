@@ -17,6 +17,12 @@ type RawHealthRow = {
 };
 
 type RawCostRow = { readonly modelId: string; readonly estimatedCostNanoUsd: string };
+type RawTokenRow = {
+  readonly modelId: string;
+  readonly inputTokens: string;
+  readonly outputTokens: string;
+  readonly totalTokens: string | null;
+};
 
 export function overviewDashboardDiagnostics(
   db: BunSQLiteDatabase,
@@ -26,6 +32,7 @@ export function overviewDashboardDiagnostics(
   return {
     providerHealth: query.range === '90d' ? null : providerHealth(db, range),
     topModelCosts: topModelCosts(db, range),
+    topModelTokens: topModelTokens(db, range),
   };
 }
 
@@ -96,15 +103,57 @@ function topModelCosts(
   for (const row of rows) {
     totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.estimatedCostNanoUsd));
   }
+  return rankTopModels(totals).map(({ modelId, value }) => ({
+    modelId,
+    estimatedCostNanoUsd: value.toString(),
+  }));
+}
+
+function topModelTokens(
+  db: BunSQLiteDatabase,
+  range: ResolvedRange,
+): DashboardOverviewDiagnosticsResponse['topModelTokens'] {
+  const totals = new Map<string, bigint>();
+  if (range.bucketUnit === 'day') {
+    for (const row of iterate<Pick<RawTokenRow, 'modelId' | 'totalTokens'>>(
+      db,
+      `select model_dimension as modelId, cast(total_tokens as text) as totalTokens
+      from usage_daily where local_day >= ? and local_day <= ?`,
+      [localDate(range.start), localDate(range.end)],
+    )) {
+      totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.totalTokens ?? '0'));
+    }
+  } else {
+    for (const row of iterate<RawTokenRow>(
+      db,
+      `select coalesce(requested_model_id, final_model_id, 'unknown') as modelId,
+        cast(coalesce(input_tokens, 0) as text) as inputTokens,
+        cast(coalesce(output_tokens, 0) as text) as outputTokens,
+        cast(total_tokens as text) as totalTokens
+      from trace_span where parent_span_id is null and ended_at >= ? and ended_at <= ?`,
+      [range.start.getTime(), range.end.getTime()],
+    )) {
+      const tokens =
+        row.totalTokens === null
+          ? parseSqliteInteger(row.inputTokens) + parseSqliteInteger(row.outputTokens)
+          : parseSqliteInteger(row.totalTokens);
+      totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + tokens);
+    }
+  }
+  return rankTopModels(totals, true).map(({ modelId, value }) => ({ modelId, totalTokens: value.toString() }));
+}
+
+function rankTopModels(
+  totals: Map<string, bigint>,
+  omitZero = false,
+): ReadonlyArray<{ modelId: string; value: bigint }> {
   return [...totals]
-    .map(([modelId, estimatedCostNanoUsd]) => ({ modelId, estimatedCostNanoUsd }))
+    .map(([modelId, value]) => ({ modelId, value }))
+    .filter(({ value }) => !omitZero || value > 0n)
     .sort(
-      (left, right) =>
-        compareBigIntDescending(left.estimatedCostNanoUsd, right.estimatedCostNanoUsd) ||
-        left.modelId.localeCompare(right.modelId),
+      (left, right) => compareBigIntDescending(left.value, right.value) || left.modelId.localeCompare(right.modelId),
     )
-    .slice(0, 5)
-    .map((row) => ({ ...row, estimatedCostNanoUsd: row.estimatedCostNanoUsd.toString() }));
+    .slice(0, 5);
 }
 
 function all<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQueryBindings[]): T[] {

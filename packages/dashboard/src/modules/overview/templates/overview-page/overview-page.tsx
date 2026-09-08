@@ -12,7 +12,7 @@ import { OverviewKpiGrid } from '../../components/overview-kpi-grid';
 import { getOverviewRangeLabel, OverviewTimeWindow } from '../../components/overview-time-window';
 import { ProviderHealthTable } from '../../components/provider-health-table';
 import { TokenActivityHeatmap } from '../../components/token-activity-heatmap';
-import { TopModelCosts } from '../../components/top-model-costs';
+import { TopModelRanking } from '../../components/top-model-ranking';
 import {
   useOverviewActivityQuery,
   useOverviewDiagnosticsQuery,
@@ -113,7 +113,7 @@ export const OverviewPage: React.FC = () => {
         )}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <ProviderHealthTable rows={diagnostics.data.providerHealth} />
-          <TopModelCosts models={diagnostics.data.topModelCosts} />
+          <TopModelRanking costs={diagnostics.data.topModelCosts} tokens={diagnostics.data.topModelTokens} />
         </div>
         <TokenActivityHeatmap activity={activity.data} />
       </>

@@ -11,7 +11,7 @@ import {
 } from '@aio-proxy/ui/components/chart';
 import { Tabs, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useId } from 'react';
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { createUsageValueFormatter } from '@/lib/nano-usd';
 
@@ -84,7 +84,7 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
-          <AreaChart data={chartData} margin={{ left: 8, right: 8 }} aria-labelledby={titleId}>
+          <BarChart data={chartData} margin={{ left: 8, right: 8 }} aria-labelledby={titleId}>
             <CartesianGrid vertical={false} />
             <XAxis
               dataKey="bucket"
@@ -109,18 +109,16 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
             />
             <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
             {modelSeries.map((series, index) => (
-              <Area
+              <Bar
                 key={series.key}
                 dataKey={series.key}
                 fill={seriesColor(series, index)}
-                fillOpacity={0.32}
                 name={seriesLabel(series)}
+                radius={index === modelSeries.length - 1 ? [4, 4, 0, 0] : 0}
                 stackId="models"
-                stroke={seriesColor(series, index)}
-                type="monotone"
               />
             ))}
-          </AreaChart>
+          </BarChart>
         </ChartContainer>
       </CardContent>
     </Card>

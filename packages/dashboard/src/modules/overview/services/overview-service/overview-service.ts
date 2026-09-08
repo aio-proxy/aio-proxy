@@ -59,6 +59,10 @@ export const decodeOverviewDiagnostics = (wire: DashboardOverviewDiagnosticsWire
     ...model,
     estimatedCostNanoUsd: BigInt(model.estimatedCostNanoUsd),
   })),
+  topModelTokens: wire.topModelTokens.map((model) => ({
+    ...model,
+    totalTokens: BigInt(model.totalTokens),
+  })),
 });
 
 export const decodeOverviewActivity = (wire: DashboardOverviewActivityWireResponse) => ({
