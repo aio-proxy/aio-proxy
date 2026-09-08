@@ -69,8 +69,14 @@ async function confirmLocalCommitUnderFence(
 
   const latest = repo.latestConfirmedCommit(bindingId);
   const sourceRevisions = source.sourceRevisions ?? intent.sourceRevisions;
+  const canDeduplicate =
+    intent.accountOperationIds.length === 0 ||
+    (intent.sourceRevisions !== undefined &&
+      Object.keys(intent.sourceRevisions).length > 0 &&
+      source.sourceRevisions !== undefined);
   if (
     intent.origin === 'local' &&
+    canDeduplicate &&
     latest !== null &&
     latest.afterDigest === intent.afterDigest &&
     sameSourceRevisions(latest.sourceRevisions, sourceRevisions)

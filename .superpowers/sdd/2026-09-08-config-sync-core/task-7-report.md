@@ -6,9 +6,9 @@ Implemented logical local commit preparation, confirmation, and restart recovery
 
 ## Files
 
-- `packages/core/src/sync/local-commit/local-commit.ts`: `LocalCommitPort`, preparation, fenced confirmation, recovery decisions, deterministic operation IDs, projection, source-revision checks, and remote-origin no-echo handling.
+- `packages/core/src/sync/local-commit/local-commit.ts`: `LocalCommitPort`, preparation, fenced confirmation, recovery decisions, deterministic operation IDs, projection, source-revision checks, and remote-origin no-echo handling. Watcher no-op deduplication requires empty account operations or a non-empty matching source-revision set.
 - `packages/core/src/sync/local-commit/index.ts`: export-only local commit barrel.
-- `packages/core/src/sync/local-commit/local-commit.test.ts`: real `AtomicConfigFile` rollback, direct before/after/unknown recovery, controlled fence and account-settlement outcomes, source-revision mismatch recovery, direct confirmation fencing, stable retry IDs, after-commit uncertainty, remote baseline confirmation, account-only changes, watcher no-ops, and close/reopen recovery.
+- `packages/core/src/sync/local-commit/local-commit.test.ts`: real `AtomicConfigFile` rollback, direct before/after/unknown recovery, controlled fence and account-settlement outcomes, source-revision mismatch recovery, direct confirmation fencing, genuine retry-boundary stable IDs, account changes without revisions, after-commit uncertainty, remote baseline confirmation, account-only changes, watcher no-ops, and close/reopen recovery including lock-release uncertainty.
 - `packages/core/src/sync/test-support.ts`: real temporary config/database commit fixture with canonical config digests, a reopenable repository, and controllable fence, account-settlement, and source-revision state.
 - `packages/core/src/plugins/config-file/config-file.ts`: moved `AtomicConfigFile` implementation.
 - `packages/core/src/plugins/config-file/index.ts`: export-only config-file barrel.
@@ -22,11 +22,12 @@ Implemented logical local commit preparation, confirmation, and restart recovery
 - Confirmation reads the fenced committed source, checks supplied source revisions, and projects only then. Local operations use a deterministic SHA-256 commit/object operation ID so retries cannot allocate a second operation.
 - Remote-origin intents confirm with an empty outbox and preserve the repository’s atomic baseline advancement through `remoteOperations`.
 - A local candidate matching the latest confirmed raw digest and source revisions is discarded as a watcher reload no-op, including after restart.
+- An intent with account operations and no source revisions is never discarded by the raw-digest watcher shortcut; it remains a real capture.
 
 ## Verification
 
-- `rtk proxy bun test packages/core/src/sync/local-commit/local-commit.test.ts packages/core/src/plugins/config-file/transaction.test.ts` — 23 passed, 0 failed.
-- `rtk proxy bun test packages/core/src/sync` — 78 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync/local-commit/local-commit.test.ts packages/core/src/plugins/config-file/transaction.test.ts` — 25 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync` — 80 passed, 0 failed.
 - `rtk proxy bun test packages/core/src/plugins/config-file` — 35 passed, 0 failed.
 - `rtk proxy bunx tsc -p packages/core/tsconfig.json --noEmit` — passed.
 - `rtk proxy bunx oxlint packages/core/src/sync packages/core/src/plugins/config-file` — passed.

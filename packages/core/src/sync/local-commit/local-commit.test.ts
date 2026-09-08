@@ -1,6 +1,8 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
+import * as fsPromises from 'node:fs/promises';
 
-import { AtomicConfigFile } from '../../plugins/config-file';
+import { AtomicConfigFile, AtomicConfigLockReleaseError } from '../../plugins/config-file';
+import type { SyncRepository } from '../repository';
 import { withSyncCommitFixture } from '../test-support';
 import { confirmLocalCommit, prepareLocalCommit, recoverLocalCommits } from './local-commit';
 
@@ -26,7 +28,22 @@ test('a verified candidate becomes one stable outgoing operation', async () => {
     const file = new AtomicConfigFile(f.configPath);
     prepareLocalCommit(f.repo, f.bindingId, f.intent);
     await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
-    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    let failConfirm = true;
+    const retryingRepo: SyncRepository = {
+      ...f.repo,
+      confirm(...args) {
+        if (failConfirm) {
+          failConfirm = false;
+          throw new Error('outbox transaction interrupted');
+        }
+        f.repo.confirm(...args);
+      },
+    };
+    await expect(recoverLocalCommits(retryingRepo, f.bindingId, f.port)).rejects.toThrow(
+      'outbox transaction interrupted',
+    );
+    expect(retryingRepo.pendingCommits(f.bindingId)).toHaveLength(1);
+    await recoverLocalCommits(retryingRepo, f.bindingId, f.port);
     const first = f.repo.outbox(f.bindingId);
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({ objectId: 'provider-work', kind: 'put', commitId: f.intent.commitId });
@@ -35,6 +52,28 @@ test('a verified candidate becomes one stable outgoing operation', async () => {
     const operationId = first[0]?.operationId;
     await recoverLocalCommits(f.repo, f.bindingId, f.port);
     expect(f.repo.outbox(f.bindingId)[0]?.operationId).toBe(operationId);
+  });
+});
+
+test('account operations without source revisions are never hidden by a watcher no-op', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+
+    const accountChange = {
+      ...f.intent,
+      commitId: 'account-change-without-revision',
+      beforeDigest: f.intent.afterDigest,
+      afterDigest: f.intent.afterDigest,
+      accountOperationIds: ['account-operation'],
+    };
+    prepareLocalCommit(f.repo, f.bindingId, accountChange);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.outbox(f.bindingId)).toHaveLength(2);
+    expect(f.repo.outbox(f.bindingId)[1]?.commitId).toBe(accountChange.commitId);
   });
 });
 
@@ -196,5 +235,33 @@ test('a prepared commit survives close and reopen between file commit and recove
     await recoverLocalCommits(reopened, f.bindingId, f.port);
     expect(reopened.pendingCommits(f.bindingId)).toEqual([]);
     expect(reopened.outbox(f.bindingId)).toHaveLength(1);
+  });
+});
+
+test('lock-release uncertainty survives close and reopen before local recovery', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    const lockPath = `${f.configPath}.lock`;
+    const realUnlink = fsPromises.unlink.bind(fsPromises);
+    let failed = false;
+    const unlink = spyOn(fsPromises, 'unlink').mockImplementation(async (target) => {
+      if (target === lockPath && !failed) {
+        failed = true;
+        throw new Error('release failed');
+      }
+      return realUnlink(target);
+    });
+    try {
+      prepareLocalCommit(f.repo, f.bindingId, f.intent);
+      await expect(file.replace(() => f.intent.rawAfter as Record<string, unknown>)).rejects.toBeInstanceOf(
+        AtomicConfigLockReleaseError,
+      );
+      const reopened = f.control.reopen();
+      await recoverLocalCommits(reopened, f.bindingId, f.port);
+      expect(reopened.pendingCommits(f.bindingId)).toEqual([]);
+      expect(reopened.outbox(f.bindingId)).toHaveLength(1);
+    } finally {
+      unlink.mockRestore();
+    }
   });
 });
