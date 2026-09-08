@@ -266,7 +266,15 @@ export async function reconcileRemote(
       let activation;
       try {
         input.assertGeneration(generation);
-        activation = await input.local.applyRemote(objectId, body, record.operationId);
+        if (input.local.checkRemote === undefined) {
+          activation = await input.local.applyRemote(objectId, body, record.operationId);
+        } else {
+          const pending = await input.local.checkRemote(body);
+          activation =
+            pending === undefined
+              ? await input.local.applyRemote(objectId, body, record.operationId)
+              : { applied: false, pending };
+        }
         input.assertGeneration(generation);
       } catch (error) {
         const reason = pendingFromError(error);

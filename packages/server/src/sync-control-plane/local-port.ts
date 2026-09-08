@@ -4,6 +4,7 @@ import {
   type CommittedSource,
   type EntityBody,
   type LocalSyncPort,
+  type PendingReason,
   type PluginRegistry,
   type PluginRepository,
   type SyncRepository,
@@ -27,6 +28,7 @@ export type LocalPortInput = {
   readonly enqueue: FifoQueue;
   readonly registry: () => PluginRegistry;
   readonly applyCandidate: (raw: Record<string, JsonValue>, origin: 'local' | 'remote') => Promise<void>;
+  readonly checkActivation?: (raw: Record<string, JsonValue>, body: EntityBody) => Promise<PendingReason | undefined>;
   readonly entities?: () => ReturnType<SyncRepository['entities']>;
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
 };
@@ -82,6 +84,55 @@ function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Rec
   return next;
 }
 
+function removeBody(
+  raw: Record<string, JsonValue>,
+  entity: ReturnType<SyncRepository['entities']>[number],
+): Record<string, JsonValue> {
+  const next = copyRaw(raw);
+  switch (entity.kind) {
+    case 'provider': {
+      const providers = record(next['providers']);
+      delete providers[entity.logicalKey];
+      next['providers'] = providers;
+      break;
+    }
+    case 'model-rule': {
+      const router = record(next['router']);
+      const models = record(router['models']);
+      delete models[entity.logicalKey];
+      router['models'] = models;
+      next['router'] = router;
+      break;
+    }
+    case 'plugin-business': {
+      if (Array.isArray(next['plugins'])) {
+        next['plugins'] = next['plugins'].filter((entry) => {
+          const name = typeof entry === 'string' ? entry : Array.isArray(entry) ? entry[0] : undefined;
+          return name !== entity.logicalKey;
+        });
+      }
+      break;
+    }
+    case 'service-access': {
+      const server = record(next['server']);
+      delete server['apiKeys'];
+      delete server['password'];
+      next['server'] = server;
+      break;
+    }
+    case 'routing-defaults': {
+      const server = record(next['server']);
+      delete server['retry'];
+      const router = record(next['router']);
+      delete router['modelContextAggregation'];
+      next['server'] = server;
+      next['router'] = router;
+      break;
+    }
+  }
+  return next;
+}
+
 function source(input: LocalPortInput, raw: Record<string, JsonValue>): CommittedSource {
   const accounts = new Map(
     Object.keys(record(raw['providers']))
@@ -116,6 +167,10 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
       const pending = new Set(input.accounts.listPendingAccountOperations().map((operation) => operation.operationId));
       return ids.every((id) => !pending.has(id));
     },
+    async checkRemote(body) {
+      if (input.checkActivation === undefined) return undefined;
+      return input.checkActivation((await input.configFile.read()) as Record<string, JsonValue>, body);
+    },
     async committedSource() {
       return source(input, (await input.configFile.read()) as Record<string, JsonValue>);
     },
@@ -127,10 +182,21 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
       return withFence(async () => {
         const current = (await input.configFile.read()) as Record<string, JsonValue>;
         const currentEntities = entities();
-        const shared = applyBody(current, body);
+        const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
+        const shared =
+          body === null && currentEntity?.mode === 'included'
+            ? removeBody(current, currentEntity)
+            : applyBody(current, body);
         const projection = projectCommitted(source(input, shared), currentEntities);
         const candidate = overlayLocal(shared, projection.local, currentEntities);
-        await input.applyCandidate(candidate, 'remote');
+        try {
+          if (candidate !== current) await input.applyCandidate(candidate, 'remote');
+        } catch {
+          return { applied: false, pending: 'invalid-config' as const };
+        }
+        if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider') {
+          input.accounts.deleteAccount(currentEntity.logicalKey);
+        }
         input.repo.putEntity(input.bindingId, {
           objectId,
           logicalKey:

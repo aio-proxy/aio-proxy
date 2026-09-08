@@ -8,6 +8,7 @@ import {
   createPluginRepository,
   createSyncRepository,
   parseRuntimeConfig,
+  parsePluginSchema,
   type DiagnosticFactory,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
@@ -43,7 +44,8 @@ import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import { createRealtimeCallStore } from '../routes/realtime';
-import { createLocalSyncPort, createServerSyncLifecycle } from '../sync-control-plane';
+import { checkPrerequisites, createLocalSyncPort, createServerSyncLifecycle } from '../sync-control-plane';
+import { createSyncCommitHooks } from '../sync-control-plane/commit';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -90,6 +92,7 @@ function createSyncIntegration(
       syncPort: undefined,
       syncApplyCandidate: async () => {},
       lifecycle: undefined,
+      configPath: options.configPath,
     };
   }
   const syncApplyCandidate = async (raw: Record<string, JsonValue>, origin: 'local' | 'remote'): Promise<void> => {
@@ -106,6 +109,38 @@ function createSyncIntegration(
         .filter(([, plugin]) => plugin.version !== undefined)
         .map(([name, plugin]) => [name, plugin.version!] as const),
     );
+  const checkActivation = async (raw: Record<string, JsonValue>, body: import('@aio-proxy/core').EntityBody) => {
+    let credentialValid = true;
+    const value = body.value;
+    if (
+      body.kind === 'provider' &&
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      value['kind'] === 'oauth'
+    ) {
+      const plugin = typeof value['plugin'] === 'string' ? value['plugin'] : undefined;
+      const capability = typeof value['capability'] === 'string' ? value['capability'] : undefined;
+      const adapter =
+        plugin === undefined || capability === undefined
+          ? undefined
+          : (manager.current() as Snapshot).plugins.registry.resolveOAuth(plugin, capability);
+      const account = repository.readAccount(body.logicalKey);
+      if (adapter === undefined || account === null) credentialValid = false;
+      else credentialValid = (await parsePluginSchema(adapter.credentials, account.credential)).ok;
+    }
+    return checkPrerequisites({
+      raw,
+      body,
+      apply: async () => {},
+      dependencies: {
+        installedPackages: pluginVersions(),
+        missingEnv: [],
+        oauthVerified: credentialValid,
+        credentialValid,
+      },
+    });
+  };
   const syncPort = createLocalSyncPort({
     configPath: options.configPath,
     configFile,
@@ -115,6 +150,7 @@ function createSyncIntegration(
     enqueue: queue,
     registry: () => (manager.current() as Snapshot).plugins.registry,
     applyCandidate: syncApplyCandidate,
+    checkActivation,
     pluginVersions,
   });
   const lifecycle = createServerSyncLifecycle({
@@ -128,30 +164,34 @@ function createSyncIntegration(
     pluginVersions,
     localPort: syncPort,
   });
-  return { syncRepository, syncBinding, syncPort, syncApplyCandidate, lifecycle };
+  return { syncRepository, syncBinding, syncPort, syncApplyCandidate, lifecycle, configPath: options.configPath };
 }
 
 function syncCommitOption(integration: ReturnType<typeof createSyncIntegration>) {
   return integration.syncBinding === null || integration.syncPort === undefined
-    ? {}
-    : {
-        syncCommit: {
-          repo: integration.syncRepository,
-          bindingId: integration.syncBinding.id,
-          port: integration.syncPort,
-        },
-      };
+    ? undefined
+    : createSyncCommitHooks({
+        path: integration.configPath,
+        repo: integration.syncRepository,
+        bindingId: integration.syncBinding.id,
+        port: integration.syncPort,
+      });
 }
 
 async function startSyncIntegration(
   runtime: ServerRuntime,
   integration: ReturnType<typeof createSyncIntegration>,
-  registerStartupCleanup: (cleanup: () => void) => void,
+  registerStartupCleanup: (cleanup: () => void | Promise<void>) => void,
 ): Promise<void> {
   if (integration.lifecycle === undefined) return;
   runtime.sync = integration.lifecycle;
-  registerStartupCleanup(() => integration.lifecycle?.abort());
-  await integration.lifecycle.start();
+  registerStartupCleanup(() => integration.lifecycle?.close());
+  try {
+    await integration.lifecycle.start();
+  } catch (error) {
+    await integration.lifecycle.close().catch(() => {});
+    throw error;
+  }
 }
 
 function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
@@ -160,21 +200,20 @@ function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
 }
 
 function createStartupCleanup() {
-  const cleanups: Array<() => void> = [];
+  const cleanups: Array<() => void | Promise<void>> = [];
   let armed = true;
   return {
-    add(cleanup: () => void) {
+    add(cleanup: () => void | Promise<void>) {
       if (!armed) throw new Error('startup cleanup is already disarmed');
       cleanups.push(cleanup);
     },
-    unwind() {
+    async unwind() {
       if (!armed) return;
       armed = false;
-      for (const cleanup of cleanups.reverse()) {
-        try {
-          cleanup();
-        } catch {}
-      }
+      for (const cleanup of cleanups.reverse())
+        await Promise.resolve()
+          .then(cleanup)
+          .catch(() => {});
       cleanups.length = 0;
     },
     disarm() {
@@ -197,7 +236,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     startup.disarm();
     return state;
   } catch (error) {
-    startup.unwind();
+    await startup.unwind();
     throw error;
   }
 }
@@ -207,7 +246,7 @@ async function initializeServerState(
   options: ServerStateOptions,
   dbHandle: OpenDbHandle,
   databaseOwnership: DatabaseOwnershipLock,
-  registerStartupCleanup: (cleanup: () => void) => void,
+  registerStartupCleanup: (cleanup: () => void | Promise<void>) => void,
 ): Promise<ServerState> {
   const internalOptions = options as InternalServerStateOptions;
   const testHooks = internalOptions.__test;
@@ -253,6 +292,7 @@ async function initializeServerState(
     recovery: undefined,
     configFile,
     sync: undefined,
+    syncCommit: undefined,
   };
 
   await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
@@ -306,6 +346,8 @@ async function initializeServerState(
   });
 
   const syncIntegration = createSyncIntegration(runtime, dbHandle, repository, manager, configFile, options, queue);
+  const syncCommit = syncCommitOption(syncIntegration);
+  runtime.syncCommit = syncCommit;
 
   const configStore = await startRecovery(
     runtime,
@@ -313,7 +355,7 @@ async function initializeServerState(
       recoverAccounts,
       recoveryScheduler,
       reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
-      ...syncCommitOption(syncIntegration),
+      ...(syncCommit === undefined ? {} : { syncCommit }),
     },
     registerStartupCleanup,
   );
@@ -335,10 +377,14 @@ async function initializeServerState(
     },
   });
 
+  // Recover durable sync state before starting any watcher or login session that can enqueue a
+  // competing config mutation. The lifecycle also rechecks the binding before opening the backend.
+  await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
+
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
-  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload);
+  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload, syncCommit);
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');
   const watcher =
@@ -347,7 +393,6 @@ async function initializeServerState(
       : undefined;
   if (watcher !== undefined) registerStartupCleanup(() => watcher.close());
   failAfter('watcher');
-  await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
   return assembleServerState(runtime, {
     agentIdentity,
     manager,

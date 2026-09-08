@@ -40,6 +40,8 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
   let engine: ReturnType<typeof createSyncEngine> | undefined;
   let session: SyncSession | undefined;
   let port: ReturnType<typeof createLocalSyncPort> | undefined;
+  let bindingId: string | undefined;
+  let bindingGeneration: number | undefined;
   let started = false;
   let closed = false;
   let closePromise: Promise<void> | undefined;
@@ -55,6 +57,8 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     started = true;
     const binding = input.repo.readBinding();
     if (binding === null) return;
+    bindingId = binding.id;
+    bindingGeneration = binding.sessionGeneration;
     const backend = input.registry().resolveSync(binding.plugin, binding.capability);
     if (backend === undefined) return;
     const configFile = input.configFile;
@@ -76,25 +80,50 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         pluginVersions: input.pluginVersions,
       });
     await recoverLocalCommits(input.repo, binding.id, port);
-    session = await backend.connect(binding.options, { signal: controller.signal, dataDirectory });
-    if (session.identityId !== binding.identityId || session.spaceId !== binding.spaceId) {
-      await session.dispose();
+    let connected: SyncSession | undefined;
+    try {
+      connected = await backend.connect(binding.options, { signal: controller.signal, dataDirectory });
+      const current = input.repo.readBinding();
+      if (
+        closed ||
+        current === null ||
+        current.id !== binding.id ||
+        current.sessionGeneration !== binding.sessionGeneration ||
+        connected.identityId !== binding.identityId ||
+        connected.spaceId !== binding.spaceId
+      ) {
+        await connected.dispose().catch(() => {});
+        connected = undefined;
+        return;
+      }
+      session = connected;
+      engine = createSyncEngine({
+        binding,
+        session,
+        repo: input.repo,
+        local: port,
+        onStatus: () => {},
+      });
+      engine.start();
+    } catch (error) {
+      if (engine !== undefined) {
+        await engine.stop().catch(() => {});
+        engine = undefined;
+      } else if (connected !== undefined) {
+        await connected.dispose().catch(() => {});
+      }
       session = undefined;
-      throw new Error('Sync backend identity does not match its local binding');
+      throw error;
     }
-    engine = createSyncEngine({
-      binding,
-      session,
-      repo: input.repo,
-      local: port,
-      onStatus: () => {},
-    });
-    engine.start();
   }
 
   async function onCommitted(commit: { commitId: string; origin: 'local' | 'remote' }): Promise<void> {
     if (port === undefined || closed) return;
-    await confirmLocalCommit(input.repo, input.repo.readBinding()?.id ?? '', commit.commitId, port);
+    const current = input.repo.readBinding();
+    if (current === null || current.id !== bindingId || current.sessionGeneration !== bindingGeneration) {
+      throw new Error('The synchronization binding is stale');
+    }
+    await confirmLocalCommit(input.repo, current.id, commit.commitId, port);
     if (commit.origin === 'local') await engine?.reconcile(controller.signal);
   }
 

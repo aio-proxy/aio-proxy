@@ -55,6 +55,6 @@ test('lifecycle reuses one backend session and closes it once', async () => {
     await fixture.lifecycle.close();
     expect(fixture.events()).toEqual(['connected', 'disposed']);
   } finally {
-    fixture.close();
+    await fixture.close();
   }
 });

@@ -6,7 +6,6 @@ import type {
   PluginRepository,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
-import type { LocalCommitPort } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
@@ -28,6 +27,7 @@ import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import type { ServerSyncLifecycle } from '../sync-control-plane';
+import type { SyncCommitHooks } from '../sync-control-plane/commit';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
 import type { QuotaIdentityTracker } from './quota-invalidation';
 import { createRecovery } from './recovery';
@@ -62,6 +62,7 @@ export type ServerRuntime = {
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
   sync: ServerSyncLifecycle | undefined;
+  syncCommit: SyncCommitHooks | undefined;
 };
 
 /**
@@ -130,6 +131,7 @@ export function reloadNow(
       ? {}
       : { onDashboardAuthHealthChanged: runtime.internalOptions.__dashboardAuthHealthChanged }),
     retainedOperations,
+    ...(runtime.syncCommit === undefined ? {} : { syncCommit: runtime.syncCommit }),
   });
 }
 
@@ -194,8 +196,11 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     if (closePromise !== undefined) return closePromise;
     runtime.closed = true;
     closePromise = (async () => {
-      await parts.sync?.close();
-      closeRemainingResources();
+      try {
+        await parts.sync?.close();
+      } finally {
+        closeRemainingResources();
+      }
     })();
     return closePromise;
   };
@@ -251,11 +256,7 @@ export async function startRecovery(
     readonly recoverAccounts: Parameters<typeof createRecovery>[0]['recoverAccounts'];
     readonly recoveryScheduler: Parameters<typeof createRecovery>[0]['scheduler'];
     readonly reconciliationRetryMs: number;
-    readonly syncCommit?: {
-      readonly repo: import('@aio-proxy/core').SyncRepository;
-      readonly bindingId: string;
-      readonly port: LocalCommitPort;
-    };
+    readonly syncCommit?: SyncCommitHooks;
   },
   registerStartupCleanup: (cleanup: () => void) => void,
 ): Promise<ConfigStore> {
@@ -290,6 +291,7 @@ export function startLoginSessions(
   runtime: ServerRuntime,
   configStore: ConfigStore,
   reload: () => Promise<ConfigReloadResult>,
+  syncCommit?: SyncCommitHooks,
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
   const testHooks = internalOptions.__test;
@@ -318,6 +320,7 @@ export function startLoginSessions(
         }
         return commit();
       }),
+    ...(syncCommit === undefined ? {} : { syncCommit }),
     validateProviderCommit: (capability, current) => {
       const plugins = (manager.current() as Snapshot).plugins;
       const builtIn = plugins.plugins.get(capability.plugin)?.builtIn === true;

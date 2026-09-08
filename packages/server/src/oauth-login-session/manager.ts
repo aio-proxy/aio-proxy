@@ -18,6 +18,7 @@ import { OAuthCallbackError } from './callback';
 type RegistryLease = { readonly registry: PluginRegistry; readonly release: () => void };
 type ProviderCommitCoordinator = NonNullable<LoginOAuthAccountOptions['coordinateProviderCommit']>;
 type ProviderCommitValidator = NonNullable<LoginOAuthAccountOptions['validateProviderCommit']>;
+type SyncCommitHooks = NonNullable<LoginOAuthAccountOptions['syncCommit']>;
 type InternalSession = {
   snapshot: DashboardOAuthSession;
   readonly controller: AbortController;
@@ -33,6 +34,7 @@ type LoginSessionDeps = {
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
   readonly validateProviderCommit: ProviderCommitValidator;
+  readonly syncCommit?: SyncCommitHooks;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
@@ -95,6 +97,7 @@ const runLoginSession = async (
       logger: deps.logger,
       coordinateProviderCommit: deps.coordinateProviderCommit,
       validateProviderCommit: deps.validateProviderCommit,
+      ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
       onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
       signal: session.controller.signal,
     });
@@ -133,6 +136,7 @@ export const createOAuthLoginSessionManager = (options: {
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
   readonly validateProviderCommit: ProviderCommitValidator;
+  readonly syncCommit?: SyncCommitHooks;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly now?: () => number;
@@ -188,6 +192,7 @@ export const createOAuthLoginSessionManager = (options: {
         logger: options.logger,
         coordinateProviderCommit: options.coordinateProviderCommit,
         validateProviderCommit: options.validateProviderCommit,
+        ...(options.syncCommit === undefined ? {} : { syncCommit: options.syncCommit }),
         reload: options.reload,
         ...(options.createFetch === undefined ? {} : { createFetch: options.createFetch }),
         ...(options.completeUrl === undefined ? {} : { completeUrl: options.completeUrl }),

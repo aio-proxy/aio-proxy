@@ -1,22 +1,17 @@
-import { createHash } from 'node:crypto';
-
 import {
   AtomicConfigCommitUncertainError,
   AtomicConfigFile,
-  confirmLocalCommit,
-  encodeCandidate,
   parseRuntimeConfig,
-  prepareLocalCommit,
   type PendingAccountOperation,
   type PluginRepository,
-  type LocalCommitPort,
-  type SyncRepository,
 } from '@aio-proxy/core';
+import type { LocalCommitPort, SyncRepository } from '@aio-proxy/core';
 
 import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from '../account-removal';
 import type { FifoQueue } from '../fifo-queue';
 import { createFifoQueue } from '../fifo-queue';
 import type { RetiredProviderSnapshot } from '../runtime';
+import { createSyncCommitHooks, type SyncCommitHooks } from '../sync-control-plane/commit';
 
 export class ConfigPathMissingError extends Error {
   constructor() {
@@ -40,11 +35,9 @@ export type ConfigStoreOptions = {
   readonly accountRemovals?: AccountRemovalCoordinator;
   readonly enqueue?: FifoQueue;
   readonly onReconciliationNeeded?: (operations: readonly PendingAccountOperation[]) => void;
-  readonly syncCommit?: {
-    readonly repo: SyncRepository;
-    readonly bindingId: string;
-    readonly port: LocalCommitPort;
-  };
+  readonly syncCommit?:
+    | SyncCommitHooks
+    | { readonly repo: SyncRepository; readonly bindingId: string; readonly port: LocalCommitPort };
 };
 
 export type ConfigStore = {
@@ -62,48 +55,6 @@ export type ConfigStore = {
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
-type SyncCommitOptions = NonNullable<ConfigStoreOptions['syncCommit']>;
-
-function createSyncCapture(path: string | undefined, syncHooks: SyncCommitOptions | undefined) {
-  if (syncHooks === undefined) {
-    return {
-      confirm: async (_commitId: string | undefined): Promise<void> => {},
-      prepare: (
-        _before: Record<string, unknown> | undefined,
-        _candidate: Record<string, unknown>,
-        _accountOperationIds: readonly string[] = [],
-      ): string | undefined => undefined,
-    };
-  }
-  const digest = (raw: Record<string, unknown>): string =>
-    createHash('sha256')
-      .update(encodeCandidate(raw, path ?? 'config.jsonc'))
-      .digest('hex');
-  return {
-    async confirm(commitId: string | undefined): Promise<void> {
-      if (commitId === undefined) return;
-      await confirmLocalCommit(syncHooks.repo, syncHooks.bindingId, commitId, syncHooks.port);
-    },
-    prepare(
-      before: Record<string, unknown> | undefined,
-      candidate: Record<string, unknown>,
-      accountOperationIds: readonly string[] = [],
-    ): string | undefined {
-      if (before === undefined) return undefined;
-      const commitId = crypto.randomUUID();
-      prepareLocalCommit(syncHooks.repo, syncHooks.bindingId, {
-        commitId,
-        origin: 'local',
-        beforeDigest: digest(before),
-        afterDigest: digest(candidate),
-        rawAfter: candidate as never,
-        accountOperationIds: [...accountOperationIds],
-      });
-      return commitId;
-    },
-  };
-}
-
 export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const path = options.getConfigPath();
   const file = options.file ?? (path === undefined ? undefined : new AtomicConfigFile(path));
@@ -115,7 +66,15 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     return enqueue(operation);
   }
 
-  const syncCapture = createSyncCapture(path, options.syncCommit);
+  const syncCapture =
+    options.syncCommit === undefined
+      ? undefined
+      : 'prepare' in options.syncCommit
+        ? options.syncCommit
+        : createSyncCommitHooks({ path: path ?? 'config.jsonc', ...options.syncCommit });
+  const confirm = async (commitId: string | undefined): Promise<void> => {
+    if (syncCapture !== undefined && commitId !== undefined) await syncCapture.confirm(commitId);
+  };
 
   async function verifyCandidate(
     candidate: Readonly<Record<string, unknown>>,
@@ -152,11 +111,12 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
             verificationCompleted = true;
           },
           beforeCommit: async (candidate) => {
-            commitId = syncCapture.prepare(
-              before,
-              candidate,
-              staged.map((operation) => operation.operationId),
-            );
+            if (syncCapture !== undefined && before !== undefined)
+              commitId = syncCapture.prepare(
+                before,
+                candidate,
+                staged.map((operation) => operation.operationId),
+              );
           },
         },
       );
@@ -195,7 +155,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
         verify: async (candidate) => void (await verifyCandidate(candidate)),
         beforeCommit: async (candidate) => {
-          commitId = syncCapture.prepare(before, candidate);
+          if (syncCapture !== undefined && before !== undefined) commitId = syncCapture.prepare(before, candidate);
         },
       },
     );
@@ -220,7 +180,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
         verify: async (candidate) => void (await verifyCandidate(candidate)),
         beforeCommit: async (candidate, assertConfigOwnership) => {
-          commitId = syncCapture.prepare(before, candidate);
+          if (syncCapture !== undefined && before !== undefined) commitId = syncCapture.prepare(before, candidate);
           await beforeOperation(assertConfigOwnership);
         },
         afterCommit: async () => {
@@ -242,21 +202,21 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         });
         return commitId;
       }).then(async (commitId) => {
-        await syncCapture.confirm(commitId);
+        await confirm(commitId);
       }),
     file,
     mutateConfig: (fn) =>
       enqueue(() => mutateConfigNow(fn)).then(async (commitId) => {
-        await syncCapture.confirm(commitId);
+        await confirm(commitId);
       }),
     mutateConfigWithProviderMutation: (fn, beforeOperation, operation) =>
       enqueue(() => mutateConfigWithProviderMutationNow(fn, beforeOperation, operation)).then(async (result) => {
-        await syncCapture.confirm(result.commitId);
+        await confirm(result.commitId);
         return result.value;
       }),
     mutateProviders: (fn) =>
       enqueue(() => mutateProvidersNow(fn)).then(async (commitId) => {
-        await syncCapture.confirm(commitId);
+        await confirm(commitId);
       }),
   };
 }

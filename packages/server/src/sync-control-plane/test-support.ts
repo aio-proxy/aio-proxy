@@ -88,7 +88,7 @@ export type ServerSyncFixture = {
   readonly events: () => readonly string[];
   readonly connectCount: () => number;
   readonly lifecycle: ReturnType<typeof createServerSyncLifecycle>;
-  readonly close: () => void;
+  readonly close: () => Promise<void>;
 };
 
 /** A small deterministic lifecycle fixture for tests that do not need the full server snapshot. */
@@ -148,8 +148,8 @@ export function createServerSyncFixture(input: {
     lifecycle,
     events: () => events,
     connectCount: backend.connectCount,
-    close() {
-      void lifecycle.close();
+    async close() {
+      await lifecycle.close();
       db.close();
       rmSync(directory, { recursive: true, force: true });
     },
