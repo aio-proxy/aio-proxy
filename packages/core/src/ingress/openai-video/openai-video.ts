@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
+import { decodedRequestStream, REQUEST_BODY_LIMITS } from '../../protocol/request';
 import {
   acquireMultipartSlot,
   multipartBoundary,
@@ -158,8 +159,19 @@ async function formDataFromSpoolPath(raw: Request, path: string): Promise<FormDa
     body: await Bun.file(path).bytes(),
     signal: raw.signal,
   });
+  const stream = await decodedRequestStream(replay, REQUEST_BODY_LIMITS, { signal: raw.signal });
+  const bytes = stream === null ? new Uint8Array() : new Uint8Array(await new Response(stream).arrayBuffer());
+  const headers = new Headers(raw.headers);
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  const parsed = new Request(raw.url, {
+    method: raw.method,
+    headers,
+    body: bytes,
+    signal: raw.signal,
+  });
   try {
-    return await replay.formData();
+    return await parsed.formData();
   } catch {
     throw new SyntaxError('Invalid OpenAI Videos multipart request');
   }

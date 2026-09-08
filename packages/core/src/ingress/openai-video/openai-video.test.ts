@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
+import { UnsupportedContentEncodingError } from '../../protocol/request';
 import { multipartSpoolPath } from '../multipart';
 import {
   OFFICIAL_DEFAULT_VIDEO_MODEL,
@@ -97,6 +98,31 @@ describe('parseOpenAIVideoCreateMultipart', () => {
     const parsed = await parseOpenAIVideoCreateMultipart(raw);
     expect(parsed).toMatchObject({ model: 'sora-2-pro', modelDefaulted: false, clientModel: 'sora-2-pro' });
     await releaseMultipartSpool(raw);
+  });
+
+  test('decodes gzip multipart before formData', async () => {
+    const form = new FormData();
+    form.set('prompt', 'a cat');
+    form.set('model', 'sora-2-pro');
+    const raw = new Request('http://x/v1/videos', { method: 'POST', body: form });
+    const gzipped = new Request(raw.url, {
+      method: 'POST',
+      headers: { 'content-type': raw.headers.get('content-type') ?? '', 'content-encoding': 'gzip' },
+      body: Bun.gzipSync(new Uint8Array(await raw.arrayBuffer())),
+    });
+    const parsed = await parseOpenAIVideoCreateMultipart(gzipped);
+    expect(parsed).toMatchObject({ model: 'sora-2-pro', modelDefaulted: false, prompt: 'a cat' });
+    await releaseMultipartSpool(gzipped);
+  });
+
+  test('rejects an unsupported multipart content encoding before parsing', async () => {
+    const raw = new Request('http://x/v1/videos', {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-encoding': 'compress' },
+      body: '--x--',
+    });
+    await expect(parseOpenAIVideoCreateMultipart(raw)).rejects.toBeInstanceOf(UnsupportedContentEncodingError);
+    expect(multipartSpoolPath(raw)).toBeUndefined();
   });
 
   test('a missing prompt unlinks the spool', async () => {
