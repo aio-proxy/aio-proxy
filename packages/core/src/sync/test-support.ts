@@ -31,6 +31,31 @@ function createGate(): Gate {
   };
 }
 
+async function waitForGate(gate: Gate, signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      cleanup();
+      reject(new SyncBackendError('cancelled', 'Sync operation was cancelled'));
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    void gate.wait().then(
+      () => {
+        cleanup();
+        resolve();
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
 function casMemory(
   values: Map<string, Extract<SyncRead, { kind: 'present' }>>,
   key: string,
@@ -58,12 +83,18 @@ export function createMemorySyncBackend(): MemorySyncBackend {
     return `v${version}`;
   }
 
-  async function before(method: Method, signal: AbortSignal): Promise<FaultMode | undefined> {
-    if (signal.aborted) throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
+  async function before(
+    method: Method,
+    signal: AbortSignal,
+    sessionSignal: AbortSignal,
+  ): Promise<FaultMode | undefined> {
+    if (signal.aborted || sessionSignal.aborted)
+      throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
     const gate = gates.get(method);
     gates.delete(method);
-    await gate?.wait();
-    if (signal.aborted) throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
+    if (gate !== undefined) await waitForGate(gate, sessionSignal);
+    if (signal.aborted || sessionSignal.aborted)
+      throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
     const fault = faults.get(method);
     faults.delete(method);
     if (fault === 'before') throw new SyncBackendError('offline', 'Sync backend is unavailable');
@@ -72,8 +103,11 @@ export function createMemorySyncBackend(): MemorySyncBackend {
 
   function connect(): SyncSession {
     let disposed = false;
+    const sessionController = new AbortController();
     function assertOpen() {
-      if (disposed) throw new SyncBackendError('cancelled', 'Sync session is disposed');
+      if (disposed || sessionController.signal.aborted) {
+        throw new SyncBackendError('cancelled', 'Sync session is disposed');
+      }
     }
     return {
       identityId: 'memory-identity',
@@ -81,7 +115,8 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       maxValueBytes: Number.MAX_SAFE_INTEGER,
       async read(key, signal) {
         assertOpen();
-        const fault = await before('read', signal);
+        const fault = await before('read', signal, sessionController.signal);
+        assertOpen();
         const current = values.get(key);
         const result: SyncRead =
           current === undefined ? { kind: 'absent' } : { ...current, value: current.value.slice() };
@@ -90,14 +125,17 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       },
       async compareAndSwap(key, expected, value, signal) {
         assertOpen();
-        const fault = await before('compareAndSwap', signal);
+        const fault = await before('compareAndSwap', signal, sessionController.signal);
+        assertOpen();
         const result = casMemory(values, key, expected, value, nextVersion, clock);
         if (fault === 'after') throw new SyncBackendError('outcome-unknown', 'Sync write outcome is unknown');
         return result;
       },
       async list(input, signal) {
         assertOpen();
-        if (signal.aborted) throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
+        if (signal.aborted || sessionController.signal.aborted) {
+          throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
+        }
         const keys = [...values.keys()].filter((key) => key.startsWith(input.prefix)).sort();
         const offset = input.cursor === undefined ? 0 : Number(input.cursor);
         if (!Number.isInteger(offset) || offset < 0)
@@ -109,7 +147,9 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       },
       async remove(key, expected, signal) {
         assertOpen();
-        if (signal.aborted) throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
+        if (signal.aborted || sessionController.signal.aborted) {
+          throw new SyncBackendError('cancelled', 'Sync operation was cancelled');
+        }
         const current = values.get(key);
         if (current === undefined || current.version !== expected) return { kind: 'conflict' };
         values.delete(key);
@@ -117,6 +157,7 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       },
       async dispose() {
         disposed = true;
+        sessionController.abort();
       },
     };
   }
