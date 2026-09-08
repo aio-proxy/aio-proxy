@@ -4,6 +4,7 @@ import {
   type DiagnosticFactory,
   type PluginLogSink,
   type PluginRepository,
+  type CredentialPortCallbacks,
   withAbort,
 } from '@aio-proxy/core';
 import type { AccountContext, CredentialPort, OAuthAdapter, ZodType } from '@aio-proxy/plugin-sdk';
@@ -27,7 +28,11 @@ export type OAuthAccountContextDependencies = {
    * summaries are still stale awaits it.
    */
   readonly onDiagnosticChanged: () => void | Promise<void>;
-  readonly resolveShared?: (providerId: string, schema: ZodType<unknown>) => CredentialPort<unknown> | undefined;
+  readonly resolveShared?: (
+    providerId: string,
+    schema: ZodType<unknown>,
+    callbacks?: CredentialPortCallbacks,
+  ) => CredentialPort<unknown> | undefined;
 };
 
 export type PreparedOAuthAccountContext = {
@@ -103,7 +108,9 @@ async function prepareContext<Capability>(
       onDiagnosticChanged: dependencies.onDiagnosticChanged,
       ...(dependencies.resolveShared === undefined
         ? {}
-        : { resolveShared: () => dependencies.resolveShared!(providerId, adapter.credentials) }),
+        : {
+            resolveShared: (callbacks) => dependencies.resolveShared!(providerId, adapter.credentials, callbacks),
+          }),
       pluginSecretValues,
     });
     const capability = request.select(prepared.adapter);

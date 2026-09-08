@@ -7,6 +7,7 @@ import {
   type PluginRegistrySnapshot,
   type PluginRepository,
 } from '@aio-proxy/core';
+import type { CredentialPortCallbacks } from '@aio-proxy/core';
 import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import {
   type Config,
@@ -66,7 +67,11 @@ export async function buildSnapshot(
   logger: PluginLogSink,
   onDiagnosticChanged: () => void,
   createRouter: CreateRouter,
-  resolveShared?: (providerId: string, schema: ZodType<unknown>) => CredentialPort<unknown> | undefined,
+  resolveShared?: (
+    providerId: string,
+    schema: ZodType<unknown>,
+    callbacks?: CredentialPortCallbacks,
+  ) => CredentialPort<unknown> | undefined,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(

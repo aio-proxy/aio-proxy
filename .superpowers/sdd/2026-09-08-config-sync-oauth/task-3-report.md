@@ -24,10 +24,14 @@ Implemented the shared credential caller routing described by Task 3.
 
 - The first server test run used a stale `@aio-proxy/core/dist` after the credential-port move. I rebuilt the core package after cleaning its generated `dist` directory so the explicit `credential-port/index` export is available to server tests.
 - No built-in adapter transport retry loop was found on the rotating credential exchange paths; the coordinator-owned exchange remains the only refresh attempt path.
+- Shared credential reads now reject `detach-pending` before coordinator access, preserve `login-required`, and refuse purged or incompatible local snapshots without attempting an exchange.
+- Remote imports compare epoch, ownership metadata, account metadata, and payload fields, so replacements with unchanged credential bytes still advance the local snapshot. Successful imports clear stale refresh diagnostics and notify rebuild callbacks; coordinator confirmation failures are recoverable after the local import is durable.
+- Resolver callbacks now flow through runtime materialization and OAuth control-plane contexts so shared imports rebuild summaries and catalog jobs with the updated local revision.
 
 ## Concerns
 
 - A shared account whose sync binding exists but whose coordinator is disconnected is intentionally blocked and cannot fall back to a stale local credential. A provider with no OAuth ownership metadata or positively independent ownership continues using the legacy local path.
+- The full monorepo `bun run test` reaches the existing core artifact smoke failure because generated declaration imports such as `sync/repository/index.d.ts: ./repository.js` match that test's unresolved moved-directory pattern; focused core/server suites and `bun run check` pass.
 
 ## Final fix note
 

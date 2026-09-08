@@ -8,7 +8,12 @@ import type { PluginRepository, StoredAccount } from '../repository';
 import { parsePluginSchema } from '../schema';
 import { CredentialAccountMissingError, CredentialValidationError } from './credential-port';
 
-type SharedCredentialInput<C> = {
+export type SharedCredentialCallbacks = {
+  readonly onDiagnosticChanged?: () => void;
+  readonly onCredentialChanged?: () => void;
+};
+
+type SharedCredentialInput<C> = SharedCredentialCallbacks & {
   readonly providerId: string;
   readonly objectId: string;
   readonly binding: LocalBinding;
@@ -20,7 +25,7 @@ type SharedCredentialInput<C> = {
 
 function entityFor(input: Pick<SharedCredentialInput<unknown>, 'binding' | 'repo' | 'objectId'>): LocalEntity {
   const entity = input.repo.entities(input.binding.id).find((candidate) => candidate.objectId === input.objectId);
-  if (entity === undefined || entity.oauth === undefined || entity.oauth.mode === 'independent') {
+  if (entity === undefined || entity.oauth === undefined || entity.oauth.mode !== 'shared') {
     throw new SyncOAuthError('detach-pending', 'The shared OAuth ownership is unresolved');
   }
   return entity;
@@ -32,7 +37,7 @@ function validateOwnership(
   account: StoredAccount,
 ): OAuthOwnership {
   const ownership = entity.oauth;
-  if (ownership === undefined || ownership.mode === 'independent') {
+  if (ownership === undefined || ownership.mode !== 'shared') {
     throw new SyncOAuthError('detach-pending', 'The shared OAuth ownership is unresolved');
   }
   if (account.revision !== ownership.localRevision) {
@@ -49,6 +54,28 @@ async function validated<C>(schema: ZodType<C>, value: unknown): Promise<C> {
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function applyCallbacks<C>(input: SharedCredentialInput<C>, hadRefreshDiagnostic: boolean): void {
+  if (hadRefreshDiagnostic) input.onDiagnosticChanged?.();
+  input.onCredentialChanged?.();
+}
+
+function needsImport(ownership: OAuthOwnership, local: StoredAccount, remote: LiveAccount): boolean {
+  return (
+    ownership.epoch !== remote.epoch ||
+    ownership.generation !== remote.generation ||
+    ownership.pluginVersion !== remote.pluginVersion ||
+    ownership.formatVersion !== remote.formatVersion ||
+    local.plugin !== remote.plugin ||
+    local.capability !== remote.capability ||
+    !sameJson(local.fingerprint, remote.payload.fingerprint) ||
+    !sameJson(local.options, remote.payload.options) ||
+    !sameJson(local.secrets, remote.payload.secrets) ||
+    !sameJson(local.credential, remote.payload.credential) ||
+    !sameJson(local.label, remote.payload.label) ||
+    !sameJson(local.expiresAt, remote.payload.expiresAt)
+  );
 }
 
 export function applySyncedAccount(input: {
@@ -112,10 +139,16 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
     const recovered = await input.coordinator.recover(input.objectId, new AbortController().signal);
     if (recovered === null) throw new CredentialAccountMissingError();
     if (recovered.phase !== 'ready') {
+      if (recovered.phase === 'login-required') {
+        throw new SyncOAuthError('login-required', 'The shared OAuth account requires login');
+      }
       throw new SyncOAuthError('refresh-deferred', 'The shared OAuth account is not ready');
     }
     const value = await validated(input.schema, recovered.payload.credential);
-    if (ownership.generation !== recovered.generation || !sameJson(local.credential, value)) {
+    if (needsImport(ownership, local, recovered)) {
+      const hadRefreshDiagnostic = input.accounts
+        .readDiagnostics(input.providerId)
+        .some((diagnostic) => diagnostic.code === 'CREDENTIAL_REFRESH_FAILED');
       const applied = applySyncedAccount({
         binding: input.binding,
         account: recovered,
@@ -123,6 +156,7 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
         repo: input.repo,
         accounts: input.accounts,
       });
+      applyCallbacks(input, hadRefreshDiagnostic);
       return { value, revision: applied.revision };
     }
     return { value, revision: local.revision };
@@ -148,6 +182,9 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
         new AbortController().signal,
       );
       const value = await validated(input.schema, result.value);
+      const hadRefreshDiagnostic = input.accounts
+        .readDiagnostics(input.providerId)
+        .some((diagnostic) => diagnostic.code === 'CREDENTIAL_REFRESH_FAILED');
       const applied = applySyncedAccount({
         binding: input.binding,
         account: result.account,
@@ -155,8 +192,13 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
         repo: input.repo,
         accounts: input.accounts,
       });
+      applyCallbacks(input, hadRefreshDiagnostic);
       if (result.account.lastCompletedOperationId !== null) {
-        input.coordinator.confirm(input.objectId, result.account.lastCompletedOperationId);
+        try {
+          input.coordinator.confirm(input.objectId, result.account.lastCompletedOperationId);
+        } catch {
+          // The local import is durable. A later recovery pass can clear a stale journal.
+        }
       }
       return {
         status: result.status,

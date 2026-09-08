@@ -48,7 +48,8 @@ function runtimeDeadline<T>(task: Promise<T>): Promise<T> {
 function sharedResolver(options: MaterializePluginProviderOptions): PrepareOAuthPluginAccountOptions['resolveShared'] {
   if (options.resolveShared === undefined) return undefined;
   const adapter = options.plugins.registry.resolveOAuth(options.config.plugin, options.config.capability);
-  return () => (adapter === undefined ? undefined : options.resolveShared!(options.config.id, adapter.credentials));
+  return (callbacks) =>
+    adapter === undefined ? undefined : options.resolveShared!(options.config.id, adapter.credentials, callbacks);
 }
 
 async function prepareRuntimeAccount(options: MaterializePluginProviderOptions): Promise<PreparedOAuthPluginAccount> {

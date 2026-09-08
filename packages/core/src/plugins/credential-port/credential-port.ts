@@ -28,6 +28,11 @@ type RefreshResult<Credential> = Awaited<ReturnType<CredentialPort<Credential>['
 
 export type CredentialPortMode = 'runtime' | 'control-plane';
 
+export type CredentialPortCallbacks = {
+  readonly onDiagnosticChanged: () => void;
+  readonly onCredentialChanged: () => void;
+};
+
 type CredentialPortBaseOptions<Credential> = {
   readonly providerId: string;
   readonly schema: ZodType<Credential>;
@@ -36,7 +41,7 @@ type CredentialPortBaseOptions<Credential> = {
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
   readonly onCredentialChanged: () => void;
-  readonly resolveShared?: () => CredentialPort<Credential> | undefined;
+  readonly resolveShared?: (callbacks?: CredentialPortCallbacks) => CredentialPort<Credential> | undefined;
 };
 
 export type CreateCredentialPortOptions<Credential> = CredentialPortBaseOptions<Credential> &
@@ -223,7 +228,11 @@ function recordRefreshFailure<Credential>(
   });
   if (mode === 'control-plane') return;
   if (error instanceof CredentialRefreshError && error.retryable) return;
-  if (error instanceof SyncOAuthError && ['refresh-deferred', 'result-uncertain'].includes(error.code)) return;
+  if (
+    error instanceof SyncOAuthError &&
+    ['detach-pending', 'refresh-deferred', 'result-uncertain'].includes(error.code)
+  )
+    return;
   const diagnostic = options.diagnostics('CREDENTIAL_REFRESH_FAILED', {
     providerId: options.providerId,
     retryable: false,
@@ -240,12 +249,18 @@ export function createCredentialPort<Credential>(
   const mode = options.mode ?? 'runtime';
   return {
     async read() {
-      const shared = options.resolveShared?.();
+      const shared = options.resolveShared?.({
+        onDiagnosticChanged: options.onDiagnosticChanged,
+        onCredentialChanged: options.onCredentialChanged,
+      });
       if (shared !== undefined) return shared.read();
       return (await readValidated(options.providerId, options.schema, options.repository)).snapshot;
     },
     refresh(expectedRevision, exchange) {
-      const shared = options.resolveShared?.();
+      const shared = options.resolveShared?.({
+        onDiagnosticChanged: options.onDiagnosticChanged,
+        onCredentialChanged: options.onCredentialChanged,
+      });
       if (shared !== undefined) {
         return shared.refresh(expectedRevision, exchange).catch((error: unknown) => {
           recordRefreshFailure(options, mode, error, []);

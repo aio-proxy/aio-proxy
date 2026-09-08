@@ -1,2 +1,2 @@
 export * from './credential-port';
-export { createSharedCredentialPort, applySyncedAccount } from './shared';
+export { applySyncedAccount, createSharedCredentialPort, type SharedCredentialCallbacks } from './shared';
