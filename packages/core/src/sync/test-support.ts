@@ -12,7 +12,9 @@ import { DatabaseSchemaTooNewError } from '../error';
 import { AtomicConfigFile } from '../plugins/config-file';
 import { encodeCandidate } from '../plugins/config-file/serialization';
 import type { StoredAccount } from '../plugins/repository';
+import { createSyncEngine, type LocalSyncPort, type SyncEngine } from './engine';
 import type { LocalCommitPort } from './local-commit';
+import { confirmLocalCommit, prepareLocalCommit } from './local-commit';
 import type { CommittedSource } from './projection';
 import type { EntityKind } from './protocol';
 import type { JsonValue } from './protocol';
@@ -287,7 +289,7 @@ export function createMemorySyncBackend(): MemorySyncBackend {
     }
     return {
       identityId: 'memory-identity',
-      spaceId: 'memory-space',
+      spaceId: 'default',
       maxValueBytes: Number.MAX_SAFE_INTEGER,
       async read(key, signal) {
         assertOpen();
@@ -368,4 +370,116 @@ export function createMemorySyncBackend(): MemorySyncBackend {
       return { entered: gate.entered, release: gate.release };
     },
   };
+}
+
+type TwoDevice = {
+  readonly repo: SyncRepository;
+  readonly binding: ReturnType<typeof twoDeviceBinding>;
+  readonly engine: SyncEngine;
+  readonly signal: AbortSignal;
+  readonly commitProvider: (id: string, body: JsonValue, included: boolean) => Promise<void>;
+};
+
+function twoDeviceBinding(deviceId: string) {
+  return {
+    id: `binding-${deviceId}`,
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'memory-identity',
+    spaceId: 'default' as const,
+    deviceId,
+    sessionGeneration: 1,
+    options: {},
+  };
+}
+
+/** A deterministic two-device fixture used by the backend-neutral engine tests. */
+export async function withTwoSyncDevices(
+  run: (devices: { a: TwoDevice; b: TwoDevice }) => Promise<void>,
+): Promise<void> {
+  const backend = createMemorySyncBackend();
+  const homes = [mkdtempSync(join(tmpdir(), 'aio-proxy-sync-a-')), mkdtempSync(join(tmpdir(), 'aio-proxy-sync-b-'))];
+  const databases = homes.map((home) => openDb({ home }));
+  const sessions = [backend.connect(), backend.connect()];
+  const devices: TwoDevice[] = [];
+  try {
+    for (const [index, database] of databases.entries()) {
+      const deviceId = index === 0 ? 'device-a' : 'device-b';
+      const binding = twoDeviceBinding(deviceId);
+      const repo = createSyncRepository(database.sqlite);
+      repo.writeBinding(binding);
+      const raw: Record<string, JsonValue> = { providers: {} };
+      const signal = new AbortController().signal;
+      let commitNumber = 0;
+      const local: LocalSyncPort = {
+        async withFence<T>(action: () => Promise<T>) {
+          return action();
+        },
+        async rawDigest() {
+          return digestConfig(raw, join(homes[index]!, 'config.jsonc'));
+        },
+        accountOperationsSettled(ids) {
+          return ids.length === 0;
+        },
+        async committedSource() {
+          return { raw, accounts: new Map(), pluginSecrets: new Map(), pluginVersions: new Map() };
+        },
+        async applyRemote(objectId, body) {
+          if (body === null) {
+            const providers = raw['providers'];
+            if (providers !== null && typeof providers === 'object' && !Array.isArray(providers)) {
+              delete (providers as Record<string, JsonValue>)[objectId.replace(/^provider-/, '')];
+            }
+            return { applied: true };
+          }
+          if (body.kind !== 'provider') return { applied: false, pending: 'invalid-config' };
+          const providers = raw['providers'];
+          if (providers === null || typeof providers !== 'object' || Array.isArray(providers)) {
+            raw['providers'] = {};
+          }
+          (raw['providers'] as Record<string, JsonValue>)[body.logicalKey] = body.value;
+          return { applied: true };
+        },
+      };
+      const engine = createSyncEngine({ binding, session: sessions[index]!, repo, local, onStatus() {} });
+      devices.push({
+        repo,
+        binding,
+        engine,
+        signal,
+        async commitProvider(id, body, included) {
+          const before = JSON.parse(JSON.stringify(raw)) as Record<string, JsonValue>;
+          (raw['providers'] as Record<string, JsonValue>)[id] = body;
+          const objectId = `provider-${id}`;
+          repo.putEntity(binding.id, {
+            objectId,
+            logicalKey: id,
+            kind: 'provider',
+            mode: included ? 'included' : 'excluded',
+            epoch: 0,
+            desired: null,
+            baseline: null,
+            overrides: [],
+            pendingReason: null,
+          });
+          const commitId = `${deviceId}-commit-${++commitNumber}`;
+          prepareLocalCommit(repo, binding.id, {
+            commitId,
+            origin: 'local',
+            beforeDigest: digestConfig(before, join(homes[index]!, 'config.jsonc')),
+            afterDigest: digestConfig(raw, join(homes[index]!, 'config.jsonc')),
+            rawAfter: raw,
+            accountOperationIds: [],
+          });
+          await confirmLocalCommit(repo, binding.id, commitId, local);
+        },
+      });
+    }
+    await run({ a: devices[0]!, b: devices[1]! });
+  } finally {
+    await Promise.allSettled(devices.map((device) => device.engine.stop()));
+    for (const database of databases) database.close();
+    for (const home of homes) rmSync(home, { recursive: true, force: true });
+  }
 }
