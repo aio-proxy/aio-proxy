@@ -10,7 +10,7 @@ import {
   KvServerMessageSchema,
   SetBlobArgsSchema,
 } from '../../gen/agent_pb';
-import { encodeExecResponse, encodeKvResponse } from './client-messages';
+import { buildExecResponses, encodeClientMessage, encodeKvResponse } from './client-messages';
 
 const unframe = (framed: Uint8Array) => fromBinary(AgentClientMessageSchema, framed.subarray(5));
 const blobKeyHex = (id: Uint8Array) => Buffer.from(id).toString('hex');
@@ -43,21 +43,8 @@ test('requestContextArgs is answered with a requestContextResult exec', () => {
     execId: 'e',
     message: { case: 'requestContextArgs', value: {} },
   } as never);
-  const client = unframe(encodeExecResponse(exec, []));
+  const client = unframe(encodeClientMessage(buildExecResponses(exec, [])[0]!));
   expect(client.message.case).toBe('execClientMessage');
   if (client.message.case !== 'execClientMessage') throw new Error('unreachable');
   expect(client.message.value.message.case).toBe('requestContextResult');
-});
-
-test('an unknown exec case sends a bare ack (id + execId, no typed result)', () => {
-  const exec = create(ExecServerMessageSchema, {
-    id: 2,
-    execId: 'z',
-    message: { case: 'someFutureArgs', value: {} },
-  } as never);
-  const client = unframe(encodeExecResponse(exec, []));
-  if (client.message.case !== 'execClientMessage') throw new Error('unreachable');
-  expect(client.message.value.id).toBe(2);
-  expect(client.message.value.execId).toBe('z');
-  expect(client.message.value.message.case).toBeUndefined();
 });

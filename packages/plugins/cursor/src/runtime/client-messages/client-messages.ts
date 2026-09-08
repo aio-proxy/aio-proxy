@@ -3,6 +3,9 @@ import { create, toBinary } from '@bufbuild/protobuf';
 import {
   type AgentClientMessage,
   AgentClientMessageSchema,
+  ExecClientControlMessageSchema,
+  ExecClientStreamCloseSchema,
+  ExecClientThrowSchema,
   ExecClientMessageSchema,
   type ExecServerMessage,
   GetBlobResultSchema,
@@ -12,10 +15,12 @@ import {
   McpResultSchema,
   type McpToolDefinition,
   SetBlobResultSchema,
+  ShellStreamSchema,
 } from '../../gen/agent_pb';
 import { blobKey } from '../../store/blobs';
 import { frameConnectMessage } from '../../wire/frame';
 import { buildRequestContextResult, respondToExec } from '../exec-policy';
+import { NOT_AVAILABLE } from '../exec-results';
 
 // Turns the shared blob store into KV responses Cursor can read back. Returns
 // framed AgentClientMessage bytes, or undefined for an unknown KV case.
@@ -29,7 +34,7 @@ export function encodeKvResponse(kv: KvServerMessage, blobStore: Map<string, Uin
         value: create(GetBlobResultSchema, data ? { blobData: data } : {}),
       },
     });
-    return frame({ case: 'kvClientMessage', value: response });
+    return encodeClientMessage({ case: 'kvClientMessage', value: response });
   }
   if (kv.message.case === 'setBlobArgs') {
     blobStore.set(blobKey(kv.message.value.blobId), kv.message.value.blobData);
@@ -37,31 +42,73 @@ export function encodeKvResponse(kv: KvServerMessage, blobStore: Map<string, Uin
       id: kv.id,
       message: { case: 'setBlobResult', value: create(SetBlobResultSchema, {}) },
     });
-    return frame({ case: 'kvClientMessage', value: response });
+    return encodeClientMessage({ case: 'kvClientMessage', value: response });
   }
   return undefined;
 }
 
-// Where Task 9's pure ExecClientResponse becomes wire bytes. requestContext is
-// answered with the caller's advertised B-class tools; every other exec case
-// follows respondToExec, and an unknown case sends a bare id+execId ack.
-export function encodeExecResponse(exec: ExecServerMessage, requestContextTools: McpToolDefinition[]): Uint8Array {
+// Native execs may need multiple replies. Control messages close one exec id,
+// leaving the enclosing Run available for the model to recover from rejection.
+export function buildExecResponses(
+  exec: ExecServerMessage,
+  requestContextTools: McpToolDefinition[],
+): AgentClientMessage['message'][] {
   const response =
     exec.message.case === 'requestContextArgs' ? buildRequestContextResult(requestContextTools) : respondToExec(exec);
-  if ('ack' in response) {
-    const ack = create(ExecClientMessageSchema, { id: exec.id, execId: exec.execId });
-    return frame({ case: 'execClientMessage', value: ack });
+  if ('error' in response) {
+    return [
+      {
+        case: 'execClientControlMessage',
+        value: create(ExecClientControlMessageSchema, {
+          message: { case: 'throw', value: create(ExecClientThrowSchema, { id: exec.id, error: response.error }) },
+        }),
+      },
+      execStreamClose(exec.id),
+    ];
   }
-  const execClient = create(ExecClientMessageSchema, {
-    id: exec.id,
-    execId: exec.execId,
-    message: { case: response.messageCase, value: response.value } as never,
-  });
-  return frame({ case: 'execClientMessage', value: execClient });
+  const reply: AgentClientMessage['message'] = {
+    case: 'execClientMessage',
+    value: create(ExecClientMessageSchema, {
+      id: exec.id,
+      execId: exec.execId,
+      message: { case: response.messageCase, value: response.value } as never,
+    }),
+  };
+  if (exec.message.case !== 'shellStreamArgs') return [reply];
+  // An exit event alone does not complete a streamed exec. Match the native
+  // executor's result + streamClose handshake even when no command was run.
+  const events = [
+    create(ShellStreamSchema, { event: { case: 'start', value: {} } }),
+    create(ShellStreamSchema, { event: { case: 'stderr', value: { data: NOT_AVAILABLE } } }),
+    create(ShellStreamSchema, {
+      event: { case: 'exit', value: { code: 1, cwd: exec.message.value.workingDirectory, aborted: true } },
+    }),
+  ];
+  return [
+    ...events.map((value): AgentClientMessage['message'] => ({
+      case: 'execClientMessage',
+      value: create(ExecClientMessageSchema, {
+        id: exec.id,
+        execId: exec.execId,
+        message: { case: 'shellStream', value },
+      }),
+    })),
+    reply,
+    execStreamClose(exec.id),
+  ];
+}
+
+function execStreamClose(id: number): AgentClientMessage['message'] {
+  return {
+    case: 'execClientControlMessage',
+    value: create(ExecClientControlMessageSchema, {
+      message: { case: 'streamClose', value: create(ExecClientStreamCloseSchema, { id }) },
+    }),
+  };
 }
 
 export function encodeMcpApprovalRejection(exec: ExecServerMessage): Uint8Array {
-  return frame({
+  return encodeClientMessage({
     case: 'execClientMessage',
     value: create(ExecClientMessageSchema, {
       id: exec.id,
@@ -81,7 +128,7 @@ export function encodeMcpApprovalRejection(exec: ExecServerMessage): Uint8Array 
   });
 }
 
-function frame(message: AgentClientMessage['message']): Uint8Array {
+export function encodeClientMessage(message: AgentClientMessage['message']): Uint8Array {
   const client = create(AgentClientMessageSchema, { message } as never);
   return frameConnectMessage(toBinary(AgentClientMessageSchema, client));
 }

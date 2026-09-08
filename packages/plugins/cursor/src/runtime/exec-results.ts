@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 
 import {
   BackgroundShellSpawnResultSchema,
+  ComputerUseErrorSchema,
   ComputerUseResultSchema,
   DeleteRejectedSchema,
   DeleteResultSchema,
@@ -12,23 +13,26 @@ import {
   GrepErrorSchema,
   GrepResultSchema,
   ListMcpResourcesExecResultSchema,
+  ListMcpResourcesErrorSchema,
   LsRejectedSchema,
   LsResultSchema,
   ReadMcpResourceExecResultSchema,
+  ReadMcpResourceErrorSchema,
   ReadRejectedSchema,
   ReadResultSchema,
   RecordScreenResultSchema,
+  RecordScreenFailureSchema,
   ShellRejectedSchema,
   ShellResultSchema,
-  ShellStreamExitSchema,
-  ShellStreamSchema,
   WriteRejectedSchema,
   WriteResultSchema,
   WriteShellStdinErrorSchema,
   WriteShellStdinResultSchema,
 } from '../gen/agent_pb';
 
-export type ExecClientResponse = { readonly messageCase: string; readonly value?: unknown } | { readonly ack: true };
+export type ExecClientResponse =
+  | { readonly messageCase: string; readonly value?: unknown }
+  | { readonly error: string };
 
 export const NOT_IMPLEMENTED = 'Not implemented';
 export const NOT_AVAILABLE = 'Tool not available';
@@ -89,13 +93,6 @@ export function shellRejected(fields: ShellReject): ExecClientResponse {
   };
 }
 
-export function shellStreamExit(code: number): ExecClientResponse {
-  return {
-    messageCase: 'shellStream',
-    value: create(ShellStreamSchema, { event: { case: 'exit', value: create(ShellStreamExitSchema, { code }) } }),
-  };
-}
-
 export function backgroundShellRejected(fields: ShellReject): ExecClientResponse {
   return {
     messageCase: 'backgroundShellSpawnResult',
@@ -121,17 +118,38 @@ export function fetchError(url: string, error: string): ExecClientResponse {
   };
 }
 
-export function emptyResult(
+export function unsupportedResult(
   messageCase: 'listMcpResourcesExecResult' | 'readMcpResourceExecResult' | 'recordScreenResult' | 'computerUseResult',
+  uri = '',
 ): ExecClientResponse {
   switch (messageCase) {
     case 'listMcpResourcesExecResult':
-      return { messageCase, value: create(ListMcpResourcesExecResultSchema, {}) };
+      return {
+        messageCase,
+        value: create(ListMcpResourcesExecResultSchema, {
+          result: { case: 'error', value: create(ListMcpResourcesErrorSchema, { error: NOT_AVAILABLE }) },
+        }),
+      };
     case 'readMcpResourceExecResult':
-      return { messageCase, value: create(ReadMcpResourceExecResultSchema, {}) };
+      return {
+        messageCase,
+        value: create(ReadMcpResourceExecResultSchema, {
+          result: { case: 'error', value: create(ReadMcpResourceErrorSchema, { uri, error: NOT_AVAILABLE }) },
+        }),
+      };
     case 'recordScreenResult':
-      return { messageCase, value: create(RecordScreenResultSchema, {}) };
+      return {
+        messageCase,
+        value: create(RecordScreenResultSchema, {
+          result: { case: 'failure', value: create(RecordScreenFailureSchema, { error: NOT_IMPLEMENTED }) },
+        }),
+      };
     case 'computerUseResult':
-      return { messageCase, value: create(ComputerUseResultSchema, {}) };
+      return {
+        messageCase,
+        value: create(ComputerUseResultSchema, {
+          result: { case: 'error', value: create(ComputerUseErrorSchema, { error: NOT_IMPLEMENTED }) },
+        }),
+      };
   }
 }
