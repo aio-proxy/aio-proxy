@@ -1,4 +1,5 @@
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { parseHead, parseRevision } from './schemas';
 
@@ -76,10 +77,15 @@ export function accountKey(objectId: string): string {
 }
 
 export function encode(value: unknown): Uint8Array {
-  assertJsonValue(value, new Set());
-  const encoded = JSON.stringify(value);
-  if (encoded === undefined) throw new SyncProtocolError('invalid-data', 'value is not JSON');
-  return new TextEncoder().encode(encoded);
+  try {
+    assertJsonValue(value, new Set());
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) throw new SyncProtocolError('invalid-data', 'value is not JSON');
+    return new TextEncoder().encode(encoded);
+  } catch (error) {
+    if (error instanceof SyncProtocolError) throw error;
+    throw new SyncProtocolError('invalid-data', 'value is not JSON');
+  }
 }
 
 export function decodeHead(bytes: Uint8Array): EntityHead {
@@ -119,6 +125,9 @@ function assertJsonValue(value: unknown, seen: Set<object>): asserts value is Js
   if (Array.isArray(value)) {
     for (const item of value) assertJsonValue(item, seen);
   } else {
+    if (!isPlainObject(value) || Object.prototype.hasOwnProperty.call(value, 'toJSON')) {
+      throw new SyncProtocolError('invalid-data', 'value is not a plain JSON object');
+    }
     for (const item of Object.values(value)) assertJsonValue(item, seen);
   }
   seen.delete(value);

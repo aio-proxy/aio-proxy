@@ -16,7 +16,7 @@ Implemented and committed the versioned sync head/revision protocol and pure tra
 
 ## Verification
 
-- `rtk proxy bun test packages/core/src/sync`: 8 passed, 0 failed.
+- `rtk proxy bun test packages/core/src/sync`: 10 passed, 0 failed.
 - `rtk proxy bunx tsc -p packages/core/tsconfig.json --noEmit`: passed.
 - `rtk proxy bunx oxlint packages/core/src/sync packages/core/src/index.ts`: passed.
 - `rtk proxy bunx oxfmt --check packages/core/src/sync packages/core/src/index.ts`: passed.
@@ -27,8 +27,9 @@ Implemented and committed the versioned sync head/revision protocol and pure tra
 - Namespace keys match the protocol-1 `s/v1/default/{entity|revision|account}` contract.
 - Unknown protocol versions fail with `upgrade-required` before schema parsing; decoding never mutates the input bytes.
 - Purge preserves current/history/reserved/cancelling IDs and blocks publication through the deleted-state guard.
+- Cancelling operations are fenced from publication, and deleted tombstones can transition into purging while retaining their fences.
 - Duplicate reservation/publication is idempotent, and publication sequence is the ordering source.
-- Encoding rejects non-finite numbers, non-JSON values, and cycles; no clock participates in reducers.
+- Encoding rejects non-finite numbers, non-plain objects, custom `toJSON`, unsupported values, and cycles; stringify failures are normalized to protocol errors.
 - The core sync barrel contains exports only.
 
 ## Concerns

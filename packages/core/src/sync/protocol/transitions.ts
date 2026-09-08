@@ -35,6 +35,8 @@ export function reserve(head: EntityHead, operationId: string, epoch: number): E
 
 export function publish(head: EntityHead, operationId: string, epoch: number): EntityHead {
   assertActiveAndEpoch(head, epoch);
+  if (head.cancelling.includes(operationId))
+    throw new SyncProtocolError('invalid-data', 'operation is being cancelled');
   if (head.current === operationId || head.history.includes(operationId)) return head;
   if (!head.reserved.includes(operationId)) throw new SyncProtocolError('invalid-data', 'operation was not reserved');
   const sequence = head.sequence + 1;
@@ -50,6 +52,5 @@ export function publish(head: EntityHead, operationId: string, epoch: number): E
 
 export function beginPurge(head: EntityHead): EntityHead {
   if (head.state === 'purging' || head.state === 'purged') return head;
-  if (head.state === 'deleted') throw new SyncProtocolError('deleted', 'deleted');
   return { ...head, state: 'purging', cleanupComplete: false };
 }
