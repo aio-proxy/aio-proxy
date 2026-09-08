@@ -1,7 +1,9 @@
 {
   "name": "@aio-proxy/plugin-cloudkit",
   "version": "0.20.2",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "files": [
     "dist"
@@ -14,6 +16,7 @@
   },
   "scripts": {
     "build": "rslib && bun scripts/clean-dist.ts",
+    "pack-native": "bun scripts/pack-native.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test ./src"
   },
