@@ -20,20 +20,25 @@ export async function pinSuccessfulVideoJob(
     logPinFailed(source, info.provider.id);
     return;
   }
-  if (!isPlainObject(body) || !isValidVideoId(typeof body.id === 'string' ? body.id : undefined)) {
+  if (!isPlainObject(body)) {
+    logPinFailed(source, info.provider.id);
+    return;
+  }
+  const videoId = body['id'];
+  if (!isValidVideoId(typeof videoId === 'string' ? videoId : undefined)) {
     logPinFailed(source, info.provider.id);
     return;
   }
   const createdAt = Date.now();
   const record: VideoJobRecord = {
-    videoId: body.id,
+    videoId,
     providerId: info.provider.id,
     ...(info.provider.accountId === undefined ? {} : { accountId: info.provider.accountId }),
     ...(info.provider.runtimeRevision === undefined ? {} : { runtimeRevision: info.provider.runtimeRevision }),
     model: info.modelId,
     owner,
     createdAt,
-    expiresAt: expiresAtFromUpstream(body.expires_at, createdAt),
+    expiresAt: expiresAtFromUpstream(body['expires_at'], createdAt),
   };
   if (!source.videoJobs.insert(record)) logPinFailed(source, info.provider.id);
 }

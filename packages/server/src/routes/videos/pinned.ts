@@ -58,7 +58,7 @@ export async function invokePinnedVideo(
 
 export function sourceVideoIdFromBody(value: unknown): string | undefined {
   if (!isPlainObject(value)) return undefined;
-  const video = value.video;
-  if (!isPlainObject(video) || typeof video.id !== 'string') return undefined;
-  return video.id;
+  const video = value['video'];
+  if (!isPlainObject(video) || typeof video['id'] !== 'string') return undefined;
+  return video['id'];
 }
