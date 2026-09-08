@@ -26,7 +26,7 @@ import {
   openAIImagesErrors,
   openAIResponsesErrors,
 } from './errors';
-import { openAIVideosErrors } from './openai-video';
+import { openAIVideosErrors } from './openai-video/errors';
 import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const cases = [

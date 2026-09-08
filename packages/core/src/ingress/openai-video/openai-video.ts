@@ -79,14 +79,14 @@ export async function parseOpenAIVideoCreateMultipart(raw: Request): Promise<Ope
     for (const [name, value] of form.entries()) {
       if (typeof value === 'string') fields[name] = value;
     }
-    const prompt = fields.prompt;
+    const prompt = fields['prompt'];
     if (prompt === undefined || prompt.trim() === '') throw new OpenAIVideosInvalidRequestError('prompt');
     return {
       ...toVideoRequest({
-        model: fields.model,
+        model: fields['model'],
         prompt,
-        ...(fields.seconds === undefined ? {} : { seconds: fields.seconds }),
-        ...(fields.size === undefined ? {} : { size: fields.size }),
+        ...(fields['seconds'] === undefined ? {} : { seconds: fields['seconds'] }),
+        ...(fields['size'] === undefined ? {} : { size: fields['size'] }),
       }),
       formFields: fields,
     };
