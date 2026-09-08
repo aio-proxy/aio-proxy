@@ -53,6 +53,43 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
   });
 });
 
+test('counts against the canonical max budget the AI SDK reasoning union cannot express', async () => {
+  const seen: Request[] = [];
+  const catalog = {
+    language: [{ id: 'claude-sonnet-4-6', extra: { antigravity: { apiProvider: 'anthropic' } } }],
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+  };
+  const transport = new AntigravityTransport({
+    credentials: credentialSource('project-1'),
+    descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
+    familyByWireId: () => undefined,
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      return Response.json({ totalTokens: 11 });
+    },
+  });
+
+  await createAntigravityTokenCount(transport, undefined, catalog).countTokens(
+    countInput({
+      invocation: {
+        messages: [{ role: 'user', content: 'hello' }],
+        // `xhigh` is the union ceiling and folds to the `high` budget (16_384); only the
+        // canonical `aioProxy.effort` can reach `max` (32_768).
+        settings: { reasoning: 'xhigh', providerOptions: { aioProxy: { effort: 'max' } } },
+      },
+    }),
+  );
+
+  const envelope = await seen[0]?.clone().json();
+  expect(envelope).toMatchObject({
+    request: { generationConfig: { thinkingConfig: { thinkingBudget: 32_768, includeThoughts: true } } },
+  });
+});
+
 test('uses the Google codec and count endpoint for the CCA token count', async () => {
   const seen: Request[] = [];
   const catalog = {
