@@ -19,8 +19,9 @@ actor FakeCloudKitDriver: CloudKitDriver {
             let expected = record[CloudKitStore.expectedVersionField] as? String
             let currentVersion = current["_fakeVersion"] as? String
             let expectedToken = expected.flatMap { try? RecordVersion(version: $0).changeToken } ?? nil
-            if expected == nil || expectedToken != currentVersion {
-            throw CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: current])
+            let isTombstone = (current[CloudKitStore.removedField] as? Int64 ?? 0) != 0
+            if (expected == nil && !isTombstone) || (expected != nil && expectedToken != currentVersion) {
+                throw CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: current])
             }
         }
         let saved = record
@@ -37,7 +38,6 @@ actor FakeCloudKitDriver: CloudKitDriver {
         let start = Int(String(data: cursor ?? Data("0".utf8), encoding: .utf8) ?? "0") ?? 0
         let values = records.values
             .filter { ($0[CloudKitStore.logicalKeyField] as? String)?.hasPrefix(prefix) == true }
-            .filter { ($0[CloudKitStore.removedField] as? Int64 ?? 0) == 0 }
             .sorted { ($0[CloudKitStore.logicalKeyField] as? String ?? "") < ($1[CloudKitStore.logicalKeyField] as? String ?? "") }
         let page = Array(values.dropFirst(start).prefix(2))
         let next = start + page.count < values.count ? Data(String(start + page.count).utf8) : nil

@@ -39,3 +39,21 @@ Build complete! (0.32s)
 ```
 
 The command compiled the executable and test bundle successfully. XCTest execution remains unavailable in this host toolchain, and no live CloudKit gate is claimed; credentials and deployed schema/indexes are still required for that validation.
+
+## Scoped re-review fix report
+
+The fake driver now permits expected-null recreation only when the existing backing record is a tombstone; live records still return a create conflict. Fake queries retain tombstones while paginating, matching CloudKit cursor advancement, and `CloudKitStore.list` continues to hide tombstone keys. The pagination test now verifies that a tombstone consumes cursor space without skipping the following live record.
+
+Verification command:
+
+```sh
+rtk proxy swift test --package-path packages/plugins/cloudkit/native
+```
+
+Verification output:
+
+```text
+Build complete! (0.15s)
+```
+
+The native executable and test bundle compile successfully. XCTest execution is unavailable on this host, so no live XCTest result or CloudKit gate is claimed.

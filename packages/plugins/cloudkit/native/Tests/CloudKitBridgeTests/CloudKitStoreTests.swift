@@ -87,9 +87,9 @@ final class CloudKitStoreTests: XCTestCase {
         let removed = try await store.remove(key: "a/2", expected: version)
         XCTAssertTrue(removed)
         let first = try await store.list(prefix: "a/", cursor: nil)
-        XCTAssertEqual(first.keys, ["a/1", "a/3"])
+        XCTAssertEqual(first.keys, ["a/1"])
         let second = try await store.list(prefix: "a/", cursor: first.nextCursor)
-        XCTAssertEqual(second.keys, ["a/4", "a/5"])
+        XCTAssertEqual(second.keys, ["a/3", "a/4"])
     }
 
     func testMissingAccountIsPropagated() async throws {
