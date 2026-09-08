@@ -17,7 +17,7 @@ import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pi
 import { videoCapabilityNotSupported, videoForbidden, videoInvalidRequest, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
 import { pinSuccessfulVideoJob } from './pin';
-import { handlePinnedVideoRequest, invokePinnedVideo, resolveOwnedPinnedVideo, sourceVideoIdFromBody } from './pinned';
+import { handlePinnedVideoRequest, invokePinnedVideo, resolveOwnedPinnedVideo } from './pinned';
 import type { VideosRouteSource } from './source';
 
 export const UNSUPPORTED_VIDEO_ROUTES = [
@@ -65,23 +65,20 @@ async function handleFollowUpCreate(
   const owner = callerPrincipal(context);
   const peek = await peekFollowUpBody(context.req.raw);
   if (peek.kind === 'reject') return peek.response;
-  if (peek.kind === 'json') {
-    const sourceId = sourceVideoIdFromBody(peek.body);
-    if (sourceId !== undefined && !isValidVideoId(sourceId)) return videoInvalidRequest('Invalid video id');
-    if (isValidVideoId(sourceId)) {
-      const record = source.videoJobs.lookup(sourceId);
-      if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
-      if (record !== undefined) {
-        const parsed = videosTryParse(() => parseOpenAIVideoEdit(peek.body));
-        if (!parsed.ok) return parsed.response;
-        return await withCapacity(source, () =>
-          invokePinnedVideo(context, source, record, {
-            pinNewJob: true,
-            modelId: parsed.value.modelDefaulted ? record.model : parsed.value.model,
-          }),
-        );
-      }
-    }
+  if (peek.kind !== 'json') return videosRequestError(new OpenAIVideosInvalidRequestError('content_type'));
+  const parsed = videosTryParse(() => parseOpenAIVideoEdit(peek.body));
+  if (!parsed.ok) return parsed.response;
+  const sourceId = parsed.value.sourceVideoId;
+  if (!isValidVideoId(sourceId)) return videoInvalidRequest('Invalid video id');
+  const record = source.videoJobs.lookup(sourceId);
+  if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
+  if (record !== undefined) {
+    return await withCapacity(source, () =>
+      invokePinnedVideo(context, source, record, {
+        pinNewJob: true,
+        modelId: parsed.value.modelDefaulted ? record.model : parsed.value.model,
+      }),
+    );
   }
   return await withCapacity(source, () =>
     handleProtocolRequest({

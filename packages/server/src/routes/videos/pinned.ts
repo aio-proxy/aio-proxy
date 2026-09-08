@@ -1,5 +1,4 @@
 import { ProviderProtocol } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
 import type { Context } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
@@ -72,11 +71,4 @@ export async function invokePinnedVideo(
   } finally {
     lease.release();
   }
-}
-
-export function sourceVideoIdFromBody(value: unknown): string | undefined {
-  if (!isPlainObject(value)) return undefined;
-  const video = value['video'];
-  if (!isPlainObject(video) || typeof video['id'] !== 'string') return undefined;
-  return video['id'];
 }
