@@ -102,6 +102,21 @@ function pluginEntries(raw: JsonValue | undefined): Map<string, { packageName: s
   return result;
 }
 
+function authoredPluginValue(packageName: string, value: JsonValue): JsonValue {
+  if (typeof value === 'string') return packageName;
+  if (Array.isArray(value)) {
+    const entry = pluginEntry(value);
+    return entry?.options === undefined ? packageName : [packageName, cloneJson(entry.options)];
+  }
+  const record = asRecord(value);
+  if (record !== undefined) {
+    if (Object.hasOwn(record, 'packageName') && !Object.hasOwn(record, 'options')) return packageName;
+    const options = Object.hasOwn(record, 'options') ? record['options'] : record;
+    return options === undefined ? packageName : [packageName, cloneJson(options)];
+  }
+  return [packageName, cloneJson(value)];
+}
+
 function overlayPluginOverrides(
   plugins: JsonValue | undefined,
   packageName: string,
@@ -119,10 +134,19 @@ function overlayPluginOverrides(
     packageName,
     ...(entry.options === undefined ? {} : { options: cloneJson(entry.options) }),
   };
-  const updated = asRecord(applyOverrides(value, overrides));
-  if (updated === undefined) return result;
-  const options = updated['options'];
-  result[index] = options === undefined ? packageName : [packageName, cloneJson(options)];
+  let updated: JsonValue = value;
+  for (const override of overrides) {
+    if (override.path.length === 0) {
+      if (override.value === undefined) {
+        result.splice(index, 1);
+        return result;
+      }
+      updated = cloneJson(override.value);
+    } else {
+      updated = applyOverrides(updated, [override]);
+    }
+  }
+  result[index] = authoredPluginValue(packageName, updated);
   return result;
 }
 

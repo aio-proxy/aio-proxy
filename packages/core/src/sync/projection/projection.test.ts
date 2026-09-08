@@ -227,6 +227,24 @@ test('overlays plugin options without changing the authored plugins representati
   ).toEqual({ plugins: ['@example/business'] });
 });
 
+test('supports root plugin replacement and deletion overrides', () => {
+  const plugin = includedEntity('plugin-demo', 'plugin-business', '@example/business');
+  expect(
+    overlayLocal({ plugins: [['@example/business', { cloud: true }], '@example/other'] }, {}, [
+      {
+        ...plugin,
+        overrides: [{ path: [], value: { options: { local: true } } }],
+      },
+    ]),
+  ).toEqual({ plugins: [['@example/business', { local: true }], '@example/other'] });
+
+  expect(
+    overlayLocal({ plugins: [['@example/business', { cloud: true }], '@example/other'] }, {}, [
+      { ...plugin, overrides: [{ path: [], value: undefined }] },
+    ]),
+  ).toEqual({ plugins: ['@example/other'] });
+});
+
 test('omits a selected OAuth provider when its dedicated account is absent', () => {
   const provider = includedEntity('p-work', 'provider', 'work');
   const plugin = includedEntity('plugin-demo', 'plugin-business', '@example/business');
