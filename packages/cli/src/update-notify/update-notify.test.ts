@@ -144,3 +144,53 @@ for (const failure of ['missing', 'nonzero'] as const) {
     }
   });
 }
+
+test('a waiter timing out does not bypass an in-flight notification', async () => {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+  const home = mkdtempSync(join(tmpdir(), 'aio-notify-busy-'));
+  const path = join(home, 'notifications.json');
+  let started!: () => void;
+  const sending = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let release!: () => void;
+  const delivery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let duplicates = 0;
+  const first = notifyUpdateAvailable(
+    '2.0.0',
+    async () => {
+      started();
+      await delivery;
+    },
+    path,
+  );
+  try {
+    await sending;
+    await notifyUpdateAvailable(
+      '2.0.0',
+      async () => {
+        duplicates += 1;
+      },
+      path,
+    );
+    expect(duplicates).toBe(0);
+    expect(readUpdateCheckState(path)).toBeUndefined();
+    release();
+    await first;
+    await notifyUpdateAvailable(
+      '2.0.0',
+      async () => {
+        duplicates += 1;
+      },
+      path,
+    );
+    expect(duplicates).toBe(0);
+    expect(readUpdateCheckState(path)?.latest).toBe('2.0.0');
+  } finally {
+    release();
+    await first;
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 15_000);

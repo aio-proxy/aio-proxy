@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
+import { isRecord } from '@aio-proxy/shared';
 
 export const shouldPrintUpdateBanner = (command: string, argv: readonly string[]): boolean => {
   if (command === 'upgrade' || command === 'update') return false;
@@ -56,7 +57,16 @@ export const notifyUpdateAvailable = async (
       await spawn(command);
       await writeUpdateCheckState({ latest, checkedAt: Date.now() }, notificationPath);
     }, notificationPath);
-  } catch {
+  } catch (error) {
+    // The lock helper rethrows open's EEXIST after waiting for an owner.
+    // A busy lock is not unavailable storage; never send outside that lock.
+    if (
+      isRecord(error) &&
+      error['code'] === 'EEXIST' &&
+      error['syscall'] === 'open' &&
+      error['path'] === `${notificationPath}.lock`
+    )
+      return;
     // Storage is optional. Do not retry a delivery already attempted, including
     // when persisting its successful result failed.
     if (handled) return;
