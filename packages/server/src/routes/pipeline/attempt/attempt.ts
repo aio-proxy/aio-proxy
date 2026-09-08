@@ -181,7 +181,7 @@ async function attemptVideoCandidate<TRequest, TContext>(
   slot.trace.transport = undefined;
   slot.trace.targetProtocol = undefined;
   const feature = ctx.adapter.convertSkipReason?.(ctx.request, slot.candidate.modelId) ?? 'video_convert';
-  return emitReject(ctx, slot, ctx.adapter.errors.unsupported(feature));
+  return emitReject(ctx, slot, ctx.adapter.errors.unsupported(feature), 'unsupported_feature');
 }
 
 // Same-protocol raw wins, then the AI SDK model transport, then nothing.
