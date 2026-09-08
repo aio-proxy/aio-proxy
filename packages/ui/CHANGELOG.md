@@ -1,5 +1,9 @@
 # @aio-proxy/ui
 
+## 0.20.5
+
+No changes in this release.
+
 ## 0.20.4
 
 No changes in this release.

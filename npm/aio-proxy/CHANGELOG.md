@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.20.5
+
+### Patch Changes
+
+- [#337](https://github.com/aio-proxy/aio-proxy/pull/337) [`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854) Thanks [@baranwang](https://github.com/baranwang)! - Reasoning effort now clamps to what the chosen provider actually supports, read from the provider's
+  own catalog first and models.dev only as a fallback, so a `max` request reaches a provider that
+  supports `max` instead of arriving as `high`. Google Antigravity's variants, including its split
+  Low/Medium/High Gemini wires, clamp down instead of failing the request, and an alias asked for more
+  effort than its highest variant declares routes to that variant instead of the alias base.
+
+- [#336](https://github.com/aio-proxy/aio-proxy/pull/336) [`9817de6`](https://github.com/aio-proxy/aio-proxy/commit/9817de664952238e234e000d81daccb8a0b39d8c) Thanks [@baranwang](https://github.com/baranwang)! - Update status is now reported by toast instead of wrapped text inside the sidebar card and the About row. The "Update now" button no longer sits permanently disabled next to "Check for updates" — it appears only when a newer release is available, an install is running, a restart is pending, or an install failed. The restart notice stays until dismissed.
+
+- [#335](https://github.com/aio-proxy/aio-proxy/pull/335) [`f4f4d7d`](https://github.com/aio-proxy/aio-proxy/commit/f4f4d7d76d07d0b6ceafba73df5fc6f4f4a8d870) Thanks [@baranwang](https://github.com/baranwang)! - OAuth provider model aliases now use a switch for "inherit plugin aliases" instead of a checkbox, matching other boolean settings on the provider editor.
+
 ## 0.20.4
 
 ### Patch Changes

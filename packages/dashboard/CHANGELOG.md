@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.20.5
+
+### Patch Changes
+
+- [#336](https://github.com/aio-proxy/aio-proxy/pull/336) [`9817de6`](https://github.com/aio-proxy/aio-proxy/commit/9817de664952238e234e000d81daccb8a0b39d8c) Thanks [@baranwang](https://github.com/baranwang)! - Update status is now reported by toast instead of wrapped text inside the sidebar card and the About row. The "Update now" button no longer sits permanently disabled next to "Check for updates" — it appears only when a newer release is available, an install is running, a restart is pending, or an install failed. The restart notice stays until dismissed.
+- Updated dependencies [[`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854)]:
+  - @aio-proxy/types@0.20.5
+  - @aio-proxy/server@0.20.5
+  - @aio-proxy/plugin-sdk@0.20.5
+  - @aio-proxy/brand@0.20.5
+  - @aio-proxy/i18n@0.20.5
+  - @aio-proxy/ui@0.20.5
+
 ## 0.20.4
 
 ### Patch Changes
