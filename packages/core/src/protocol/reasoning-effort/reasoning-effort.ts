@@ -1,10 +1,7 @@
-import { foldEffortSpelling } from '@aio-proxy/types';
+import { EFFORT_LADDER as LADDER, foldEffortSpelling } from '@aio-proxy/types';
 
 import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
 import type { ModelInvocation } from '../adapter';
-
-// Ascending reasoning-effort ladder. Index = rank; higher index = more effort.
-const LADDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 // Fold common spellings to the canonical ladder value before clamping. Unlike
 // the alias matcher's canonicalEffort, this wire-path clamp must NOT trim:
@@ -59,18 +56,82 @@ export function modelEffortValues(model: unknown): ReadonlySet<string> {
   return new Set(values.filter((value): value is string => typeof value === 'string'));
 }
 
-// Clamp the AI-SDK reasoning effort (settings.reasoning) shared by the
-// OpenAI Responses/Completions and Gemini model paths. Identity when reasoning
-// is absent or already at a supported level. The result is always constrained
-// back to a level the AI SDK understands (an out-of-union input like a raw
-// `max` was already folded to `xhigh` by reasoningSetting before it got here).
+// Neither LanguageModelCallOptions (ai@7.0.8 dist/index.d.ts:524-586) nor the
+// transform-level settings shapes declare providerOptions, so reach it through a
+// local carrier — the same idiom as SettingsWithThinking in
+// protocol/anthropic-messages/effort.ts.
+type ProviderOptionsCarrier = {
+  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+};
+
+function providerOptionsOf(settings: unknown): ProviderOptionsCarrier['providerOptions'] {
+  return (settings as ProviderOptionsCarrier | undefined)?.providerOptions;
+}
+
+// Only an actual ladder level may ride the canonical channel. The ingress effort
+// schemas accept any string so a future level is not rejected, which makes typos and
+// padded spellings expected input — and normalizeEffort treats an off-ladder request as
+// "above everything supported" and escalates it to the highest supported level, the
+// opposite of this module's downgrade-only contract. Keeping such a value off the
+// channel restores "unknown effort is dropped, the provider applies its own default".
+// (The raw-passthrough path in protocol/openai-responses.ts calls normalizeEffort with
+// the client's string directly and still escalates; that asymmetry is pre-existing.)
+function ladderEffort(effort: string): string | undefined {
+  const wanted = canonical(effort);
+  return LADDER.includes(wanted as (typeof LADDER)[number]) ? wanted : undefined;
+}
+
+// The canonical (full-ladder) effort travels in providerOptions.aioProxy.effort because
+// the AI SDK's `reasoning` union stops at `xhigh` — folding `max` into `xhigh` at ingress
+// would make per-candidate clamping pick `high` for a provider that really supports `max`.
+function canonicalRequestedEffort(settings: ModelInvocation['settings']): string | undefined {
+  const carried = providerOptionsOf(settings)?.['aioProxy']?.['effort'];
+  const fromCarrier = typeof carried === 'string' ? ladderEffort(carried) : undefined;
+  if (fromCarrier !== undefined) return fromCarrier;
+  // settings.reasoning may hold an SDK-only level such as `provider-default`, which is
+  // not a ladder rank; clamping it would escalate rather than downgrade.
+  return typeof settings?.reasoning === 'string' ? ladderEffort(settings.reasoning) : undefined;
+}
+
+function mergeEffort<T>(settings: T, sdk: AiSdkReasoning | undefined, effort: string | undefined): T {
+  const providerOptions = providerOptionsOf(settings);
+  return {
+    ...settings,
+    ...(sdk === undefined ? {} : { reasoning: sdk }),
+    ...(effort === undefined
+      ? {}
+      : { providerOptions: { ...providerOptions, aioProxy: { ...providerOptions?.['aioProxy'], effort } } }),
+  } as T;
+}
+
+// Merge both effort representations into a settings object: the canonical value for
+// providers that can express more than the SDK union, and the SDK value for the AI SDK
+// model path. Sibling providerOptions namespaces and other aioProxy keys are preserved.
+// A level neither representation can express is dropped, so the provider defaults.
+// T is only loosely constrained because callers pass transform-level settings shapes
+// whose extra keys (stream, responseFormat) are not in LanguageModelCallOptions.
+export function reasoningSettings<T extends object>(settings: T, effort: string | undefined): T {
+  if (effort === undefined) return settings;
+  const sdk = toAiSdkReasoning(effort);
+  const ladder = ladderEffort(effort);
+  if (sdk === undefined && ladder === undefined) return settings;
+  return mergeEffort(settings, sdk, ladder);
+}
+
+// Clamp the requested effort shared by the OpenAI Responses/Completions and Gemini model
+// paths down to what this candidate advertises. Identity when nothing is requested, the
+// supported set is empty, or the request is already supported. Both representations are
+// rewritten together so a provider reading either one sees the same decision.
 export function clampSdkReasoning(invocation: ModelInvocation, supported: ReadonlySet<string>): ModelInvocation {
-  const reasoning = invocation.settings?.reasoning;
-  if (typeof reasoning !== 'string') return invocation;
-  const clamped = toAiSdkReasoning(normalizeEffort(reasoning, supported));
-  if (clamped === reasoning) return invocation;
+  const requested = canonicalRequestedEffort(invocation.settings);
+  if (requested === undefined || supported.size === 0) return invocation;
+  const clamped = normalizeEffort(requested, supported);
+  const sdk = toAiSdkReasoning(clamped);
   const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
-  return { ...invocation, settings: { ...settings, reasoning: clamped } };
+  if (clamped === providerOptionsOf(settings)?.['aioProxy']?.['effort'] && sdk === settings.reasoning) {
+    return invocation;
+  }
+  return { ...invocation, settings: mergeEffort(settings, sdk, clamped) };
 }
 
 export type AiSdkReasoning = NonNullable<AiSdkCallSettings['reasoning']>;
@@ -86,9 +147,10 @@ const AI_SDK_REASONING: ReadonlySet<AiSdkReasoning> = new Set([
 
 // Fold an arbitrary effort string to the level the AI SDK model path can carry.
 // Aliases canonicalize (`x-high` -> `xhigh`); a ladder level above the SDK's
-// ceiling (`max`) maps to the highest expressible level (`xhigh`) so it still
-// participates in per-candidate downgrading rather than being dropped; a level
-// the SDK does not know at all yields undefined (provider default applies).
+// ceiling (`max`) maps to the highest expressible level (`xhigh`) so the model
+// path still gets a usable value while the canonical level rides alongside in
+// providerOptions.aioProxy.effort; a level the SDK does not know at all yields
+// undefined (provider default applies).
 function toAiSdkReasoning(effort: string): AiSdkReasoning | undefined {
   const wanted = canonical(effort);
   if (AI_SDK_REASONING.has(wanted as AiSdkReasoning)) return wanted as AiSdkReasoning;
@@ -96,13 +158,4 @@ function toAiSdkReasoning(effort: string): AiSdkReasoning | undefined {
   const wantedRank = LADDER.indexOf(wanted as (typeof LADDER)[number]);
   const xhighRank = LADDER.indexOf('xhigh');
   return wantedRank > xhighRank ? 'xhigh' : undefined;
-}
-
-// Ingress accepts any effort string (so a future/alias level is not rejected).
-// Keep a level the model path can carry so per-candidate capability clamping can
-// still downgrade it; drop a genuinely unknown level so the provider defaults.
-export function reasoningSetting(effort: string | undefined): { readonly reasoning?: AiSdkReasoning } {
-  if (effort === undefined) return {};
-  const known = toAiSdkReasoning(effort);
-  return known === undefined ? {} : { reasoning: known };
 }

@@ -14,7 +14,7 @@ import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/to
 import { defineProtocolAdapter } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
-import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
+import { clampSdkReasoning, normalizeEffort, reasoningSettings } from './reasoning-effort/index';
 import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
@@ -76,7 +76,7 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
     const { reasoning, ...settings } = transformed.settings;
     return {
       messages: transformed.messages,
-      settings: { ...settings, ...reasoningSetting(reasoning) },
+      settings: reasoningSettings(settings, reasoning),
       ...(tools === undefined ? {} : { tools }),
       ...(transformed.diagnostics.length === 0 ? {} : { diagnostics: transformed.diagnostics }),
     };

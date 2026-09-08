@@ -27,7 +27,7 @@ describe('openAIResponsesAdapter', () => {
     const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
     expect(Object.keys(invocation.tools ?? {})).toEqual(['weather']);
     expect(invocation.settings).toEqual({
-      providerOptions: { openai: { store: false } },
+      providerOptions: { openai: { store: false }, aioProxy: { effort: 'high' } },
       reasoning: 'high',
     });
     expect(

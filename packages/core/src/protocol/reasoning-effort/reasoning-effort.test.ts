@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { clampSdkReasoning, modelEffortValues, normalizeEffort, reasoningSetting } from './index';
+import type { ModelInvocation } from '../adapter';
+import { clampSdkReasoning, modelEffortValues, normalizeEffort, reasoningSettings } from './index';
 
 describe('normalizeEffort', () => {
   test('passes effort through unchanged when supported set is empty', () => {
@@ -74,46 +75,116 @@ describe('clampSdkReasoning', () => {
     expect(clampSdkReasoning(invocation, new Set(['low']))).toBe(invocation);
   });
 
-  test('returns the same invocation when reasoning already supported', () => {
-    const invocation = { messages: [], settings: { reasoning: 'high' } };
-    expect(clampSdkReasoning(invocation, new Set(['low', 'medium', 'high']))).toBe(invocation);
+  test('keeps a supported reasoning level and backfills the canonical effort', () => {
+    const invocation = { messages: [], settings: { reasoning: 'high' as const } };
+    const result = clampSdkReasoning(invocation, new Set(['low', 'medium', 'high']));
+    expect(result.settings?.reasoning).toBe('high');
+    expect(carriedEffort(result.settings)).toBe('high');
   });
 
   test('passes reasoning through when the supported set is empty', () => {
     const invocation = { messages: [], settings: { reasoning: 'xhigh' } };
     expect(clampSdkReasoning(invocation, new Set()).settings?.reasoning).toBe('xhigh');
   });
+});
 
-  test('downgrades an out-of-union max (carried as xhigh) to a supported level', () => {
-    // `max` is folded to `xhigh` by reasoningSetting before the model path, so
-    // per-candidate clamping can still bring it down to what the model advertises.
-    const invocation = { messages: [], settings: { reasoning: 'xhigh' } };
-    expect(clampSdkReasoning(invocation, new Set(['low', 'medium', 'high'])).settings?.reasoning).toBe('high');
+// `reasoningSettings` returns `T` unchanged, so the new key is not statically visible
+// on the caller's type. Read it back through one narrow local helper rather than
+// sprinkling casts through every assertion.
+function carriedEffort(value: unknown): string | undefined {
+  const providerOptions = (value as { providerOptions?: { aioProxy?: { effort?: string } } }).providerOptions;
+  return providerOptions?.aioProxy?.effort;
+}
+
+function aioProxyBag(value: unknown): Record<string, unknown> | undefined {
+  return (value as { providerOptions?: { aioProxy?: Record<string, unknown> } }).providerOptions?.aioProxy;
+}
+
+describe('reasoningSettings', () => {
+  test('carries the canonical effort alongside the SDK representation', () => {
+    const result = reasoningSettings({}, 'max');
+    expect((result as { reasoning?: string }).reasoning).toBe('xhigh');
+    expect(carriedEffort(result)).toBe('max');
+  });
+
+  test('folds spellings into both representations', () => {
+    const result = reasoningSettings({}, 'X-High');
+    expect((result as { reasoning?: string }).reasoning).toBe('xhigh');
+    expect(carriedEffort(result)).toBe('xhigh');
+  });
+
+  test('returns the settings untouched when there is no effort', () => {
+    const settings = { temperature: 0.5 };
+    expect(reasoningSettings(settings, undefined)).toBe(settings);
+  });
+
+  test('drops an off-ladder or padded effort entirely so the provider defaults', () => {
+    // Ingress accepts any string, so typos are expected input. Carrying one would make
+    // clamping read it back and escalate to the candidate's top level (normalizeEffort
+    // treats off-ladder as "above everything"), silently raising latency and cost.
+    const settings = { temperature: 0.5 };
+    expect(reasoningSettings(settings, 'ultra')).toBe(settings);
+    expect(reasoningSettings(settings, ' low ')).toBe(settings);
+  });
+
+  test('preserves sibling providerOptions namespaces and aioProxy keys', () => {
+    const result = reasoningSettings(
+      { providerOptions: { openai: { store: false }, aioProxy: { thinking: { mode: 'disabled' } } } },
+      'high',
+    );
+    expect(result.providerOptions.openai).toEqual({ store: false });
+    expect(aioProxyBag(result)).toEqual({ thinking: { mode: 'disabled' }, effort: 'high' });
   });
 });
 
-describe('reasoningSetting', () => {
-  test('keeps a level the AI SDK understands', () => {
-    expect(reasoningSetting('high')).toEqual({ reasoning: 'high' });
-    expect(reasoningSetting('xhigh')).toEqual({ reasoning: 'xhigh' });
+describe('clampSdkReasoning canonical effort', () => {
+  // ModelInvocation['settings'] is AiSdkCallSettings, which declares no providerOptions;
+  // the canonical key rides along at runtime, so build these fixtures through a cast.
+  const withEffort = (reasoning: string, effort: string): ModelInvocation =>
+    ({
+      messages: [],
+      settings: { reasoning, providerOptions: { aioProxy: { effort } } },
+    }) as unknown as ModelInvocation;
+
+  test('keeps max for a candidate that advertises max', () => {
+    const result = clampSdkReasoning(withEffort('xhigh', 'max'), new Set(['low', 'medium', 'high', 'max']));
+    expect(carriedEffort(result.settings)).toBe('max');
+    // The SDK union has no `max`; its highest expressible level stands in.
+    expect(result.settings?.reasoning).toBe('xhigh');
   });
 
-  test('folds aliases to their canonical AI SDK level instead of dropping them', () => {
-    expect(reasoningSetting('x-high')).toEqual({ reasoning: 'xhigh' });
-    expect(reasoningSetting('X_HIGH')).toEqual({ reasoning: 'xhigh' });
-    expect(reasoningSetting('extrahigh')).toEqual({ reasoning: 'xhigh' });
+  test('clamps max down for a candidate that stops at high', () => {
+    const result = clampSdkReasoning(withEffort('xhigh', 'max'), new Set(['low', 'medium', 'high']));
+    expect(carriedEffort(result.settings)).toBe('high');
+    expect(result.settings?.reasoning).toBe('high');
   });
 
-  test('expresses an above-ceiling ladder level (max) as xhigh so it can be clamped', () => {
-    expect(reasoningSetting('max')).toEqual({ reasoning: 'xhigh' });
+  test('falls back to settings.reasoning when no canonical effort is present', () => {
+    const invocation = { messages: [], settings: { reasoning: 'xhigh' as const } };
+    expect(clampSdkReasoning(invocation, new Set(['low', 'medium', 'high'])).settings?.reasoning).toBe('high');
   });
 
-  test('drops a genuinely unknown level and an absent value', () => {
-    expect(reasoningSetting('ultra')).toEqual({});
-    expect(reasoningSetting(undefined)).toEqual({});
+  test('is identity when the canonical effort is already supported', () => {
+    const invocation = withEffort('high', 'high');
+    expect(clampSdkReasoning(invocation, new Set(['low', 'medium', 'high']))).toBe(invocation);
   });
 
-  test('does not trim padded low into a known AI SDK level', () => {
-    expect(reasoningSetting(' low ')).toEqual({});
+  test('passes through untouched when the supported set is empty', () => {
+    const invocation = withEffort('xhigh', 'max');
+    expect(clampSdkReasoning(invocation, new Set())).toBe(invocation);
+  });
+
+  test('does not escalate an off-ladder or padded effort found on the channel', () => {
+    // Downgrade-only: an unknown level must fall through to the provider default, not
+    // become the candidate's top tier.
+    for (const off of ['ultra', ' low ']) {
+      const requested = { messages: [], settings: reasoningSettings({}, off) } as ModelInvocation;
+      const invocation = clampSdkReasoning(requested, new Set(['low', 'medium', 'high', 'max']));
+      expect(invocation.settings?.reasoning).toBeUndefined();
+      expect(carriedEffort(invocation.settings)).toBeUndefined();
+    }
+    // Even if an off-ladder value reaches the channel some other way, it is ignored.
+    const smuggled = withEffort('provider-default', 'ultra');
+    expect(clampSdkReasoning(smuggled, new Set(['low', 'medium', 'high', 'max']))).toBe(smuggled);
   });
 });

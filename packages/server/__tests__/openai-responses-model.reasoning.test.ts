@@ -50,7 +50,7 @@ describe('OpenAI Responses routes', () => {
     expect(response.status).toBe(200);
     expect(modelSeen).toBe('gpt-high');
     expect(settingsSeen).toEqual({
-      providerOptions: { openai: { store: false } },
+      providerOptions: { aioProxy: { effort: 'high' }, openai: { store: false } },
       reasoning: 'high',
       stream: true,
     });

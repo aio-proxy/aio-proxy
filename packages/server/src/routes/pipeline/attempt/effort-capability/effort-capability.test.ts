@@ -77,3 +77,62 @@ describe('resolveSupportedEffortsForDimensions', () => {
     expect([...result].sort()).toEqual(['high', 'low', 'medium']);
   });
 });
+
+describe('runtime provider metadata precedence', () => {
+  test('prefers the runtime provider capabilities over models.dev', async () => {
+    await seedModelsDevCatalog({
+      'claude-opus-4-6-thinking': modelsDevModel('claude-opus-4-6-thinking', 'Opus', {
+        reasoning: true,
+        reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high', 'xhigh'] }],
+      }),
+    });
+    const result = await resolveSupportedEfforts('claude-opus-4-6-thinking', {
+      capabilities: { reasoningOptions: [{ type: 'effort', values: ['low', 'medium', 'high', 'max'] }] },
+    });
+    expect([...result].sort()).toEqual(['high', 'low', 'max', 'medium']);
+  });
+
+  test('falls back to models.dev when the runtime metadata advertises no effort option', async () => {
+    await seedModelsDevCatalog({
+      'gpt-effort': modelsDevModel('gpt-effort', 'GPT Effort', {
+        reasoning: true,
+        reasoning_options: [{ type: 'effort', values: ['low', 'high'] }],
+      }),
+    });
+    expect([...(await resolveSupportedEfforts('gpt-effort', { capabilities: { reasoning: true } }))].sort()).toEqual([
+      'high',
+      'low',
+    ]);
+    expect([...(await resolveSupportedEfforts('gpt-effort', undefined))].sort()).toEqual(['high', 'low']);
+  });
+
+  test('drops null and default placeholders from advertised values', async () => {
+    await seedEmptyModelsDevCatalog();
+    const result = await resolveSupportedEfforts('wire-model', {
+      capabilities: { reasoningOptions: [{ type: 'effort', values: [null, 'default', 'low', 'high'] }] },
+    });
+    expect([...result].sort()).toEqual(['high', 'low']);
+  });
+
+  test('an empty runtime effort list falls back rather than disabling clamping', async () => {
+    await seedModelsDevCatalog({
+      'gpt-effort': modelsDevModel('gpt-effort', 'GPT Effort', {
+        reasoning: true,
+        reasoning_options: [{ type: 'effort', values: ['low'] }],
+      }),
+    });
+    const result = await resolveSupportedEfforts('gpt-effort', {
+      capabilities: { reasoningOptions: [{ type: 'effort', values: [] }] },
+    });
+    expect([...result]).toEqual(['low']);
+  });
+
+  test('forDimensions passes runtime metadata through and still skips when effort is absent', async () => {
+    await seedEmptyModelsDevCatalog();
+    const metadata = { capabilities: { reasoningOptions: [{ type: 'effort' as const, values: ['low', 'high'] }] } };
+    expect((await resolveSupportedEffortsForDimensions({}, 'wire-model', metadata)).size).toBe(0);
+    expect([...(await resolveSupportedEffortsForDimensions({ effort: 'max' }, 'wire-model', metadata))].sort()).toEqual(
+      ['high', 'low'],
+    );
+  });
+});

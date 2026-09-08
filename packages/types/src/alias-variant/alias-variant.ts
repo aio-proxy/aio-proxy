@@ -18,6 +18,14 @@ export function canonicalEffort(value: string): string {
   return foldEffortSpelling(value.trim().toLowerCase());
 }
 
+/** Ascending reasoning-effort ladder shared by alias routing and wire-path clamping. Index = rank. */
+export const EFFORT_LADDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** Rank of an effort on EFFORT_LADDER after spelling folding, or -1 when off-ladder. */
+export function effortRank(effort: string): number {
+  return EFFORT_LADDER.indexOf(canonicalEffort(effort) as (typeof EFFORT_LADDER)[number]);
+}
+
 export type AliasSpeed = 'flex' | 'standard' | 'fast';
 export type AliasWhen = {
   readonly effort?: string;
@@ -205,6 +213,19 @@ export function matchAliasRows(
 ): AliasTarget {
   const bag = canonicalizeDimensions(dimensions);
   const matches = rows.filter((row) => rowMatches(row.when, bag));
+  // A row that constrains `effort` is direct evidence for the requested level, so it wins
+  // outright. When nothing that matched constrains effort — no match at all, or only
+  // effort-blind rows such as Antigravity's `{ thinking: true }` catch-all — the winner would
+  // be picked with the request's effort ignored, so the ceiling gets to answer first.
+  if (matches.every((row) => row.when.effort === undefined)) {
+    // A matched row that pinned `speed` already granted the request its service tier. Speed is
+    // orthogonal to the reasoning ladder, so no effort row implies anything about it: answering
+    // with a tier-blind row would silently move the request off the tier it asked for. Require
+    // the ceiling to keep that tier instead.
+    const needsSpeed = matches.some((row) => row.when.speed !== undefined);
+    const ceiling = effortCeiling(rows, bag, needsSpeed);
+    if (ceiling !== undefined) return ceiling;
+  }
   if (matches.length === 0) return fallback;
   const maximal = matches.filter(
     (row) => !matches.some((other) => other !== row && isStrictSubset(row.when, other.when)),
@@ -214,6 +235,41 @@ export function matchAliasRows(
     if (whenRank(row.when) > whenRank(winner.when)) winner = row;
   }
   return { model: winner.model, preserve: winner.preserve };
+}
+
+// A request asking above every effort row this alias declares must reuse the
+// alias's top effort row, not drop to the base model (which is typically a lower
+// tier). Two cases deliberately fall back instead: an effort inside a gap between
+// rows (a higher row exists), and a ceiling below `medium` (the alias base is
+// conventionally the medium tier, so a `low` wire would downgrade below it).
+const CEILING_FLOOR_RANK = EFFORT_LADDER.indexOf('medium');
+
+function effortCeiling(
+  rows: readonly AliasSelectRow[],
+  bag: AliasDimensions,
+  needsSpeed: boolean,
+): AliasTarget | undefined {
+  const wanted = bag.effort === undefined ? -1 : effortRank(bag.effort);
+  if (wanted === -1) return undefined;
+  let best: { readonly row: AliasSelectRow; readonly rank: number } | undefined;
+  for (const row of rows) {
+    if (row.when.effort === undefined) continue;
+    // Every non-effort constraint the row declares must still hold against the request, so a
+    // thinking-only variant never captures a non-thinking request. This is one-directional: a
+    // row that stays silent on a dimension is still eligible, which is why `needsSpeed` exists.
+    if (!rowMatches({ ...row.when, effort: undefined }, bag)) continue;
+    if (needsSpeed && row.when.speed === undefined) continue;
+    const rank = effortRank(row.when.effort);
+    // An off-ladder row is a sentinel addressed by exact name (Antigravity emits
+    // `hidden:<wire id>` for suppressed wires); it is not part of the ladder this
+    // request is measured against, so it must not abort the search.
+    if (rank === -1) continue;
+    if (rank >= wanted) return undefined;
+    if (best === undefined || rank > best.rank || (rank === best.rank && whenRank(row.when) > whenRank(best.row.when)))
+      best = { row, rank };
+  }
+  if (best === undefined || best.rank < CEILING_FLOOR_RANK) return undefined;
+  return { model: best.row.model, preserve: best.row.preserve };
 }
 
 export function resolveAliasTarget(config: AliasConfig, dimensions: AliasDimensions = {}): AliasTarget {

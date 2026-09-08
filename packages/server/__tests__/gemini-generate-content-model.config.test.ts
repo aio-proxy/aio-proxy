@@ -51,7 +51,7 @@ describe('POST /v1beta/models/:model::generateContent', () => {
     // Then
     expect(response.status).toBe(200);
     expect(modelSeen).toBe('gemini-high');
-    expect(settingsSeen).toEqual({ reasoning: 'high' });
+    expect(settingsSeen).toEqual({ providerOptions: { aioProxy: { effort: 'high' } }, reasoning: 'high' });
   });
 
   test('Given tools and safetySettings When generateContent is posted Then provider receives them', async () => {

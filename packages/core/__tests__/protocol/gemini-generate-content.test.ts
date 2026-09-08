@@ -72,7 +72,7 @@ describe('geminiGenerateContentAdapter', () => {
     expect(geminiGenerateContentAdapter.wantsStream(parsed, context)).toBe(true);
     expect(geminiGenerateContentAdapter.wantsStream(parsed, { ...context, stream: false })).toBe(false);
     expect(invocation.settings).toEqual({
-      providerOptions: { google: { safetySettings } },
+      providerOptions: { google: { safetySettings }, aioProxy: { effort: 'high' } },
       reasoning: 'high',
       maxOutputTokens: 128,
       temperature: 0.25,

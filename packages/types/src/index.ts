@@ -1,6 +1,8 @@
 export * from './agent-integration/index';
 export {
   canonicalEffort,
+  EFFORT_LADDER,
+  effortRank,
   flattenAliasVariants,
   foldEffortSpelling,
   isAliasVariantSelect,

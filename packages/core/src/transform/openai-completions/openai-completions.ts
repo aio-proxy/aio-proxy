@@ -4,7 +4,7 @@ import type { ModelMessage } from '../../ai-sdk-bridge';
 import { OpenAICompletionsTransformError } from '../../error';
 import { imageFilePart, type ImageFilePart } from '../../image-input';
 import type { OpenAICompletionsRequest } from '../../ingress/openai-completions';
-import { type AiSdkReasoning, reasoningSetting } from '../../protocol/reasoning-effort/index';
+import { type AiSdkReasoning, reasoningSettings } from '../../protocol/reasoning-effort/index';
 
 type AssistantMessage = Extract<ModelMessage, { role: 'assistant' }>;
 type AssistantPart = Exclude<AssistantMessage['content'], string>[number];
@@ -101,14 +101,18 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
           })),
         }
       : {}),
-    settings: {
-      ...(req.stream !== undefined ? { stream: req.stream } : {}),
-      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-      ...(req.max_completion_tokens !== undefined ? { maxTokens: req.max_completion_tokens } : {}),
-      ...(req.max_completion_tokens === undefined && req.max_tokens !== undefined ? { maxTokens: req.max_tokens } : {}),
-      ...(req.response_format !== undefined ? { responseFormat: req.response_format } : {}),
-      ...reasoningSetting(req.reasoning_effort),
-    },
+    settings: reasoningSettings(
+      {
+        ...(req.stream !== undefined ? { stream: req.stream } : {}),
+        ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+        ...(req.max_completion_tokens !== undefined ? { maxTokens: req.max_completion_tokens } : {}),
+        ...(req.max_completion_tokens === undefined && req.max_tokens !== undefined
+          ? { maxTokens: req.max_tokens }
+          : {}),
+        ...(req.response_format !== undefined ? { responseFormat: req.response_format } : {}),
+      },
+      req.reasoning_effort,
+    ),
   };
 }
 

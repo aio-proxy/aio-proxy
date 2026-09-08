@@ -12,8 +12,11 @@ export const generateRequest = {
 export const jsonHeaders = { 'content-type': 'application/json' } as const;
 export type ProviderSeenSettings = CallSettings & {
   readonly providerOptions?: {
-    readonly google: {
+    readonly google?: {
       readonly safetySettings: JSONValue;
+    };
+    readonly aioProxy?: {
+      readonly effort: string;
     };
   };
 };

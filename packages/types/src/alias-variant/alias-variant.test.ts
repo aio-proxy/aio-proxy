@@ -6,6 +6,7 @@ import { OAuthPluginProviderSchema, ProviderSchema } from '../provider';
 import {
   AliasConfigSchema,
   canonicalEffort,
+  effortRank,
   flattenAliasVariants,
   foldEffortSpelling,
   matchAliasRows,
@@ -341,5 +342,194 @@ describe('resolveAliasTarget', () => {
       model: 'model-default',
       preserve: true,
     });
+  });
+});
+
+describe('matchAliasRows effort ceiling', () => {
+  const rows: AliasSelectRow[] = [
+    { when: { effort: 'low' }, model: 'wire-low', preserve: false },
+    { when: { effort: 'medium' }, model: 'wire-medium', preserve: false },
+    { when: { effort: 'high' }, model: 'wire-high', preserve: false },
+  ];
+  const fallback = { model: 'wire-base', preserve: true };
+
+  test('an effort above every row reuses the highest effort row', () => {
+    expect(matchAliasRows(rows, { effort: 'xhigh' }, fallback)).toEqual({ model: 'wire-high', preserve: false });
+    expect(matchAliasRows(rows, { effort: 'max' }, fallback)).toEqual({ model: 'wire-high', preserve: false });
+  });
+
+  test('folds alias spellings before comparing against the ceiling', () => {
+    expect(matchAliasRows(rows, { effort: 'X-High' }, fallback)).toEqual({ model: 'wire-high', preserve: false });
+  });
+
+  test('an off-ladder effort still falls back', () => {
+    expect(matchAliasRows(rows, { effort: 'lowx' }, fallback)).toEqual(fallback);
+  });
+
+  test('an effort inside a gap still falls back to the alias default', () => {
+    // Deliberate: a higher row exists, so this is a gap, not a ceiling.
+    const gapped: AliasSelectRow[] = [
+      { when: { effort: 'low' }, model: 'wire-low', preserve: false },
+      { when: { effort: 'high' }, model: 'wire-high', preserve: false },
+    ];
+    expect(matchAliasRows(gapped, { effort: 'medium' }, fallback)).toEqual(fallback);
+  });
+
+  test('a ceiling below medium never captures the request', () => {
+    // The alias base is conventionally the medium tier, so reusing a `low`
+    // wire would downgrade below the base rather than approximate it.
+    const lowOnly: AliasSelectRow[] = [{ when: { effort: 'low' }, model: 'wire-low', preserve: false }];
+    expect(matchAliasRows(lowOnly, { effort: 'medium' }, fallback)).toEqual(fallback);
+    expect(matchAliasRows(lowOnly, { effort: 'max' }, fallback)).toEqual(fallback);
+    const mediumOnly: AliasSelectRow[] = [{ when: { effort: 'medium' }, model: 'wire-medium', preserve: false }];
+    expect(matchAliasRows(mediumOnly, { effort: 'max' }, fallback)).toEqual({
+      model: 'wire-medium',
+      preserve: false,
+    });
+  });
+
+  test('the ceiling row must agree with the request on thinking and speed', () => {
+    const mixed: AliasSelectRow[] = [
+      { when: { effort: 'high', thinking: true }, model: 'wire-thinking-high', preserve: false },
+      { when: { effort: 'medium' }, model: 'wire-medium', preserve: false },
+    ];
+    // thinking is absent from the request, so the thinking:true row is not eligible.
+    expect(matchAliasRows(mixed, { effort: 'xhigh' }, fallback)).toEqual({ model: 'wire-medium', preserve: false });
+    expect(matchAliasRows(mixed, { effort: 'xhigh', thinking: true }, fallback)).toEqual({
+      model: 'wire-thinking-high',
+      preserve: false,
+    });
+  });
+
+  test('rows without an effort constraint never act as the ceiling', () => {
+    const thinkingOnly: AliasSelectRow[] = [{ when: { thinking: true }, model: 'wire-thinking', preserve: false }];
+    expect(matchAliasRows(thinkingOnly, { effort: 'max' }, fallback)).toEqual(fallback);
+  });
+});
+
+// Shapes copied from what google-antigravity's own alias generator emits
+// (packages/plugins/google-antigravity/src/catalog/aliases.ts): effort rows for the split
+// variants, an `xhigh` row, a `hidden:<wire id>` sentinel for a suppressed non-thinking wire,
+// and a `{ thinking: true }` catch-all for a suppressed `-thinking` wire.
+describe('matchAliasRows effort ceiling on generated alias rows', () => {
+  const fallback = { model: 'gemini-3.5-flash-low', preserve: false };
+  const effortRows: AliasSelectRow[] = [
+    { when: { effort: 'low' }, model: 'gemini-3.5-flash-low', preserve: false },
+    { when: { effort: 'medium' }, model: 'gemini-3.5-flash-medium', preserve: false },
+    { when: { effort: 'high' }, model: 'gemini-3-flash-agent', preserve: false },
+  ];
+  const hidden: AliasSelectRow = {
+    when: { effort: 'hidden:flash-internal-7' },
+    model: 'flash-internal-7',
+    preserve: false,
+  };
+  const thinkingCatchAll: AliasSelectRow = {
+    when: { thinking: true },
+    model: 'gemini-3.5-flash-thinking',
+    preserve: false,
+  };
+
+  test('a hidden sentinel row does not abort the ceiling search', () => {
+    expect(matchAliasRows([...effortRows, hidden], { effort: 'max' }, fallback)).toEqual({
+      model: 'gemini-3-flash-agent',
+      preserve: false,
+    });
+  });
+
+  test('a hidden sentinel is still reachable by its exact name', () => {
+    expect(matchAliasRows([...effortRows, hidden], { effort: 'hidden:flash-internal-7' }, fallback)).toEqual({
+      model: 'flash-internal-7',
+      preserve: false,
+    });
+  });
+
+  test('an effort-blind catch-all does not swallow an above-ceiling request', () => {
+    // Anthropic ingress sends { effort, thinking } for adaptive thinking; the catch-all
+    // matches on thinking alone, so without the ceiling the request would ignore its effort.
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { effort: 'max', thinking: true }, fallback)).toEqual({
+      model: 'gemini-3-flash-agent',
+      preserve: false,
+    });
+  });
+
+  test('the catch-all still wins when the request carries no effort', () => {
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { thinking: true }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-thinking',
+      preserve: false,
+    });
+  });
+
+  test('a row matching on effort beats the ceiling', () => {
+    expect(matchAliasRows([...effortRows, hidden], { effort: 'medium' }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-medium',
+      preserve: false,
+    });
+  });
+
+  test('the thinking catch-all keeps outranking a bare effort row', () => {
+    // whenRank precedence, unchanged: an effort row matched, so the ceiling never runs,
+    // and the higher-ranked thinking row wins the way it did before the ceiling existed.
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { effort: 'medium', thinking: true }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-thinking',
+      preserve: false,
+    });
+  });
+
+  test('an effort inside a gap still reaches the catch-all rather than the ceiling', () => {
+    // minimal sits below the `low` row, so a higher row exists: a gap, not a ceiling.
+    expect(matchAliasRows([...effortRows, thinkingCatchAll], { effort: 'minimal', thinking: true }, fallback)).toEqual({
+      model: 'gemini-3.5-flash-thinking',
+      preserve: false,
+    });
+  });
+});
+
+// Shapes copied from what cursor's own alias generator emits
+// (packages/plugins/cursor/src/catalog/default-aliases/peel.ts): peeling a wire id yields a
+// BARE axis row — `zeta-fast` becomes `{ speed: 'fast' }` with no effort — alongside the
+// effort rows peeled from its `-low`/`-medium`/`-high` siblings.
+describe('matchAliasRows effort ceiling against a bare speed row', () => {
+  const fallback = { model: 'zeta', preserve: false };
+  const rows: AliasSelectRow[] = [
+    { when: { speed: 'fast' }, model: 'zeta-fast', preserve: false },
+    { when: { effort: 'low' }, model: 'zeta-low', preserve: false },
+    { when: { effort: 'medium' }, model: 'zeta-medium', preserve: false },
+    { when: { effort: 'high' }, model: 'zeta-high', preserve: false },
+  ];
+
+  test('an above-ceiling request keeps the service tier the matched row granted', () => {
+    // Speed is orthogonal to the reasoning ladder: no effort row implies anything about the
+    // tier, so answering with `zeta-high` would silently move the request off `fast`.
+    expect(matchAliasRows(rows, { effort: 'max', speed: 'fast' }, fallback)).toEqual({
+      model: 'zeta-fast',
+      preserve: false,
+    });
+  });
+
+  test('the ceiling still upgrades within the tier when a fast effort row exists', () => {
+    const withFastHigh: AliasSelectRow[] = [
+      ...rows,
+      { when: { effort: 'high', speed: 'fast' }, model: 'zeta-high-fast', preserve: false },
+    ];
+    expect(matchAliasRows(withFastHigh, { effort: 'max', speed: 'fast' }, fallback)).toEqual({
+      model: 'zeta-high-fast',
+      preserve: false,
+    });
+  });
+
+  test('a request without a speed is unaffected by the bare speed row', () => {
+    expect(matchAliasRows(rows, { effort: 'max' }, fallback)).toEqual({ model: 'zeta-high', preserve: false });
+  });
+});
+
+describe('effortRank', () => {
+  test('ranks the ladder ascending and folds spellings', () => {
+    expect(effortRank('none')).toBe(0);
+    expect(effortRank('max')).toBe(6);
+    expect(effortRank('X_HIGH')).toBe(5);
+  });
+
+  test('returns -1 for an off-ladder effort', () => {
+    expect(effortRank('ultra')).toBe(-1);
   });
 });
