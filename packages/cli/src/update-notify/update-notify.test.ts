@@ -145,52 +145,55 @@ for (const failure of ['missing', 'nonzero'] as const) {
   });
 }
 
-test('a waiter timing out does not bypass an in-flight notification', async () => {
-  if (process.platform !== 'darwin' && process.platform !== 'linux') return;
-  const home = mkdtempSync(join(tmpdir(), 'aio-notify-busy-'));
-  const path = join(home, 'notifications.json');
-  let started!: () => void;
-  const sending = new Promise<void>((resolve) => {
-    started = resolve;
-  });
-  let release!: () => void;
-  const delivery = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  let duplicates = 0;
-  const first = notifyUpdateAvailable(
-    '2.0.0',
-    async () => {
-      started();
-      await delivery;
-    },
-    path,
-  );
-  try {
-    await sending;
-    await notifyUpdateAvailable(
+for (const succeeds of [true, false]) {
+  test(`a waiter survives lock timeout when the first delivery ${succeeds ? 'succeeds' : 'fails'}`, async () => {
+    if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+    const home = mkdtempSync(join(tmpdir(), 'aio-notify-busy-'));
+    const path = join(home, 'notifications.json');
+    let started!: () => void;
+    const sending = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let retries = 0;
+    let settled = false;
+    const first = notifyUpdateAvailable(
       '2.0.0',
       async () => {
-        duplicates += 1;
+        started();
+        await delivery;
+        if (!succeeds) throw new Error('No graphical session');
       },
       path,
     );
-    expect(duplicates).toBe(0);
-    expect(readUpdateCheckState(path)).toBeUndefined();
-    release();
-    await first;
-    await notifyUpdateAvailable(
-      '2.0.0',
-      async () => {
-        duplicates += 1;
-      },
-      path,
-    );
-    expect(duplicates).toBe(0);
-    expect(readUpdateCheckState(path)?.latest).toBe('2.0.0');
-  } finally {
-    release();
-    await first;
-    rmSync(home, { recursive: true, force: true });
-  }
-}, 15_000);
+    let second: Promise<void> | undefined;
+    try {
+      await sending;
+      second = notifyUpdateAvailable(
+        '2.0.0',
+        async () => {
+          retries += 1;
+        },
+        path,
+      ).then(() => {
+        settled = true;
+      });
+      // Keep delivery pending beyond the lock helper's six-second timeout.
+      await Bun.sleep(6_500);
+      expect(retries).toBe(0);
+      expect(settled).toBe(false);
+      expect(readUpdateCheckState(path)).toBeUndefined();
+      release();
+      await Promise.all([first, second]);
+      expect(retries).toBe(succeeds ? 0 : 1);
+      expect(readUpdateCheckState(path)?.latest).toBe('2.0.0');
+    } finally {
+      release();
+      await Promise.all([first, second]);
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 20_000);
+}

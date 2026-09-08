@@ -46,34 +46,39 @@ export const notifyUpdateAvailable = async (
     process.platform === 'darwin'
       ? ['osascript', '-e', `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`]
       : ['notify-send', title, body];
-  let handled = false;
-  try {
-    // Hold the shared lock through delivery; only successful commands consume
-    // the version, so a headless instance cannot suppress a later GUI instance.
-    await withUpdateCheckLock(async () => {
-      handled = true;
-      const previous = readUpdateCheckState(notificationPath);
-      if (previous !== undefined && Bun.semver.order(latest, previous.latest) <= 0) return;
-      await spawn(command);
-      await writeUpdateCheckState({ latest, checkedAt: Date.now() }, notificationPath);
-    }, notificationPath);
-  } catch (error) {
-    // The lock helper rethrows open's EEXIST after waiting for an owner.
-    // A busy lock is not unavailable storage; never send outside that lock.
-    if (
-      isRecord(error) &&
-      error['code'] === 'EEXIST' &&
-      error['syscall'] === 'open' &&
-      error['path'] === `${notificationPath}.lock`
-    )
-      return;
-    // Storage is optional. Do not retry a delivery already attempted, including
-    // when persisting its successful result failed.
-    if (handled) return;
+  while (true) {
+    let handled = false;
     try {
-      await spawn(command);
-    } catch {
-      // Missing commands or graphical sessions must not fail the update check.
+      // Hold the shared lock through delivery; only successful commands consume
+      // the version, so a headless instance cannot suppress a later GUI instance.
+      await withUpdateCheckLock(async () => {
+        handled = true;
+        const previous = readUpdateCheckState(notificationPath);
+        if (previous !== undefined && Bun.semver.order(latest, previous.latest) <= 0) return;
+        await spawn(command);
+        await writeUpdateCheckState({ latest, checkedAt: Date.now() }, notificationPath);
+      }, notificationPath);
+    } catch (error) {
+      // The lock helper rethrows open's EEXIST after waiting for an owner.
+      // Keep waiting and recheck after acquiring it: returning here would lose
+      // this instance's retry because the server already claimed its local state.
+      if (
+        !handled &&
+        isRecord(error) &&
+        error['code'] === 'EEXIST' &&
+        error['syscall'] === 'open' &&
+        error['path'] === `${notificationPath}.lock`
+      )
+        continue;
+      // Storage is optional. Do not retry a delivery already attempted, including
+      // when persisting its successful result failed.
+      if (handled) return;
+      try {
+        await spawn(command);
+      } catch {
+        // Missing commands or graphical sessions must not fail the update check.
+      }
     }
+    return;
   }
 };
