@@ -1,16 +1,12 @@
 #!/usr/bin/env bun
-// Hand the Homebrew tap the sha256 of each platform tarball this release published.
-//
-// Runs as its own workflow job, after publish/tag/Release/docker, because it has
-// to wait on npm's CDN (see scripts/homebrew-checksums) and nothing downstream of
-// a release should be able to break by waiting. Reads the version from argv so
-// the job passes whatever `published-packages` reported, and dispatches the
-// payload to aio-proxy/homebrew-tap itself.
+// The Release manifest is uploaded after all four platform tarballs.
+
+import { $ } from 'bun';
 
 import { buildHomebrewChecksums } from './homebrew-checksums';
 
 const version = process.argv[2];
-if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
+if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   throw new Error(`usage: bun run scripts/homebrew-notify.ts <version>  (got ${version ?? 'nothing'})`);
 }
 
@@ -23,22 +19,23 @@ const packages = Object.keys(launcher.optionalDependencies ?? {}).map((name) => 
 
 const dispatch = process.env['HOMEBREW_TAP_DISPATCH'] !== 'false';
 const token = process.env['HOMEBREW_TAP_TOKEN'];
-// Checked before the wait, not after: discovering a missing secret is worth
-// seconds, not the quarter hour the CDN poll can take.
 if (dispatch && !token) {
   throw new Error('HOMEBREW_TAP_TOKEN is not set (pass HOMEBREW_TAP_DISPATCH=false to only print the payload)');
 }
 
-const payload = await buildHomebrewChecksums({ packages, version });
+const manifest = (
+  await $`gh release download ${`v${version}`} --repo aio-proxy/aio-proxy --pattern SHA256SUMS --output -`.quiet()
+).text();
+const payload = buildHomebrewChecksums({ packages, version, manifest });
 
 if (!dispatch) {
   console.log(`\n[no-dispatch] payload:\n${JSON.stringify(payload, null, 2)}`);
   process.exit(0);
 }
 
-// client_payload caps top-level properties at 10; version + checksums = 2.
 const response = await fetch('https://api.github.com/repos/aio-proxy/homebrew-tap/dispatches', {
   method: 'POST',
+  signal: AbortSignal.timeout(30_000),
   headers: {
     accept: 'application/vnd.github+json',
     authorization: `Bearer ${token}`,
