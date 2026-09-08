@@ -1,6 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Checkbox } from '@aio-proxy/ui/components/checkbox';
+import { Field, FieldContent, FieldDescription } from '@aio-proxy/ui/components/field';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 
 import type { AliasEditorIssue, AliasRow } from '../../../lib/alias-editor';
@@ -50,20 +52,21 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({
         </div>
       </div>
       {onInheritPluginAliasesChange === undefined ? null : (
-        <div className="flex items-start gap-2 text-sm" data-testid="inherit-plugin-aliases">
-          <Checkbox
+        <Field orientation="horizontal" data-testid="inherit-plugin-aliases">
+          <FieldContent>
+            <Label htmlFor="inherit-plugin-aliases">{m['dashboard.providers.form.inherit_plugin_aliases']()}</Label>
+            <FieldDescription id="inherit-plugin-aliases-description">
+              {m['dashboard.providers.form.inherit_plugin_aliases_description']()}
+            </FieldDescription>
+          </FieldContent>
+          <Switch
             id="inherit-plugin-aliases"
-            data-testid="inherit-plugin-aliases-checkbox"
+            data-testid="inherit-plugin-aliases-switch"
+            aria-describedby="inherit-plugin-aliases-description"
             checked={inheritPluginAliases !== false}
             onCheckedChange={(checked) => onInheritPluginAliasesChange(checked === true)}
           />
-          <label htmlFor="inherit-plugin-aliases">
-            <span className="font-medium">{m['dashboard.providers.form.inherit_plugin_aliases']()}</span>
-            <span className="block text-xs text-muted-foreground">
-              {m['dashboard.providers.form.inherit_plugin_aliases_description']()}
-            </span>
-          </label>
-        </div>
+        </Field>
       )}
       {hasRows ? (
         <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 text-xs text-muted-foreground sm:grid">
