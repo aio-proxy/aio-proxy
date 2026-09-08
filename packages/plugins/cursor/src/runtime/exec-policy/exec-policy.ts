@@ -11,7 +11,6 @@ import {
   backgroundShellRejected,
   deleteRejected,
   diagnosticsRejected,
-  emptyResult,
   type ExecClientResponse,
   fetchError,
   grepError,
@@ -20,7 +19,7 @@ import {
   NOT_IMPLEMENTED,
   readRejected,
   shellRejected,
-  shellStreamExit,
+  unsupportedResult,
   writeRejected,
   writeShellStdinError,
 } from '../exec-results';
@@ -54,12 +53,13 @@ export function buildRequestContextResult(tools: McpToolDefinition[]): {
 type ExecArgs = {
   path?: string;
   url?: string;
+  uri?: string;
   command?: string;
   workingDirectory?: string;
 };
 
-// Pure per-case mapping to the protocol-legal reply for a proxy with NO
-// filesystem/shell. Heterogeneous by oneof case: rejected / error / empty / ack.
+// Every unavailable operation has an explicit failure. An unset result oneof
+// leaves the upstream executor without a terminal answer.
 export function respondToExec(exec: ExecServerMessage): ExecClientResponse {
   const args = (exec.message.value ?? undefined) as ExecArgs | undefined;
   const path = args?.path ?? '';
@@ -78,9 +78,8 @@ export function respondToExec(exec: ExecServerMessage): ExecClientResponse {
     case 'diagnosticsArgs':
       return diagnosticsRejected({ path, reason: NOT_AVAILABLE });
     case 'shellArgs':
-      return shellRejected({ ...shell, reason: NOT_AVAILABLE });
     case 'shellStreamArgs':
-      return shellStreamExit(1);
+      return shellRejected({ ...shell, reason: NOT_AVAILABLE });
     case 'backgroundShellSpawnArgs':
       return backgroundShellRejected({ ...shell, reason: NOT_IMPLEMENTED });
     case 'writeShellStdinArgs':
@@ -88,14 +87,14 @@ export function respondToExec(exec: ExecServerMessage): ExecClientResponse {
     case 'fetchArgs':
       return fetchError(args?.url ?? '', NOT_IMPLEMENTED);
     case 'listMcpResourcesExecArgs':
-      return emptyResult('listMcpResourcesExecResult');
+      return unsupportedResult('listMcpResourcesExecResult');
     case 'readMcpResourceExecArgs':
-      return emptyResult('readMcpResourceExecResult');
+      return unsupportedResult('readMcpResourceExecResult', args?.uri);
     case 'recordScreenArgs':
-      return emptyResult('recordScreenResult');
+      return unsupportedResult('recordScreenResult');
     case 'computerUseArgs':
-      return emptyResult('computerUseResult');
+      return unsupportedResult('computerUseResult');
     default:
-      return { ack: true };
+      return { error: 'Unknown exec message variant; this client does not implement it.' };
   }
 }

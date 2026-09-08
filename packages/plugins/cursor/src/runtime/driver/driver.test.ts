@@ -21,6 +21,125 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+test('an unknown native exec receives throw and streamClose without terminating the Run', async () => {
+  const base = toBinary(ExecServerMessageSchema, create(ExecServerMessageSchema, { id: 42, execId: 'native-42' }));
+  // Unknown length-delimited field 1000 survives the actual protobuf decoder.
+  const exec = fromBinary(ExecServerMessageSchema, new Uint8Array([...base, 0xc2, 0x3e, 0x00]));
+  const h = runHarness();
+  h.send(serverFrame({ case: 'execServerMessage', value: exec }));
+  await settleMicrotasks();
+  const replies = h.writes.slice(1);
+  const closedBeforeCompletion = h.closeCount();
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'continued' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  expect((await h.result).assistantText).toBe('continued');
+  expect(closedBeforeCompletion).toBe(0);
+  expect(replies).toMatchObject([
+    {
+      case: 'execClientControlMessage',
+      value: { message: { case: 'throw', value: { id: 42, error: expect.any(String) } } },
+    },
+    { case: 'execClientControlMessage', value: { message: { case: 'streamClose', value: { id: 42 } } } },
+  ]);
+  expect(h.parts.some((part) => part.type.startsWith('tool-'))).toBe(false);
+});
+
+test('a rejected native shell stream sends a structured result and closes its exec before the Run continues', async () => {
+  const h = runHarness();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 43,
+        execId: 'native-43',
+        message: {
+          case: 'shellStreamArgs',
+          value: { command: 'echo private-command', workingDirectory: '/private-cwd' },
+        },
+      },
+    }),
+  );
+  await settleMicrotasks();
+  const replies = h.writes.slice(1);
+  const closedBeforeCompletion = h.closeCount();
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'continued after rejection' } }));
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  expect((await h.result).assistantText).toBe('continued after rejection');
+  expect(closedBeforeCompletion).toBe(0);
+  expect(replies).toMatchObject([
+    {
+      case: 'execClientMessage',
+      value: { id: 43, execId: 'native-43', message: { case: 'shellStream', value: { event: { case: 'start' } } } },
+    },
+    {
+      case: 'execClientMessage',
+      value: { id: 43, execId: 'native-43', message: { case: 'shellStream', value: { event: { case: 'stderr' } } } },
+    },
+    {
+      case: 'execClientMessage',
+      value: {
+        id: 43,
+        execId: 'native-43',
+        message: {
+          case: 'shellStream',
+          value: { event: { case: 'exit', value: { code: 1, cwd: '/private-cwd', aborted: true } } },
+        },
+      },
+    },
+    {
+      case: 'execClientMessage',
+      value: {
+        id: 43,
+        execId: 'native-43',
+        message: {
+          case: 'shellResult',
+          value: {
+            result: {
+              case: 'rejected',
+              value: { command: 'echo private-command', workingDirectory: '/private-cwd', reason: expect.any(String) },
+            },
+          },
+        },
+      },
+    },
+    { case: 'execClientControlMessage', value: { message: { case: 'streamClose', value: { id: 43 } } } },
+  ]);
+  expect(h.parts.some((part) => part.type.startsWith('tool-'))).toBe(false);
+});
+
+test.each([
+  ['listMcpResourcesExecArgs', 'listMcpResourcesExecResult', 'error'],
+  ['readMcpResourceExecArgs', 'readMcpResourceExecResult', 'error'],
+  ['recordScreenArgs', 'recordScreenResult', 'failure'],
+  ['computerUseArgs', 'computerUseResult', 'error'],
+] as const)('unsupported %s receives an explicit failure result', async (execCase, resultCase, outcome) => {
+  const h = runHarness();
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: { id: 44, execId: 'native-44', message: { case: execCase, value: {} } },
+    }),
+  );
+  h.send(updateFrame({ case: 'turnEnded', value: {} }));
+  h.eof();
+  await h.drained;
+  await h.result;
+  expect(h.writes.slice(1)).toMatchObject([
+    {
+      case: 'execClientMessage',
+      value: {
+        id: 44,
+        execId: 'native-44',
+        message: { case: resultCase, value: { result: { case: outcome, value: { error: expect.any(String) } } } },
+      },
+    },
+  ]);
+});
+
 const execFrame = (id: string, query: string) =>
   serverFrame({
     case: 'execServerMessage',
@@ -1021,6 +1140,74 @@ function capturingLogger(): { logger: Logger; rows: Array<{ level: string; field
 function settledLog(rows: Array<{ level: string; fields: Record<string, unknown> }>) {
   return rows.find((row) => row.fields.phase === 'settled');
 }
+
+test('a stalled Run reports bounded protocol metadata and exec replies without recording payloads', async () => {
+  jest.useFakeTimers();
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    accessToken: 'SECRET_ACCESS_TOKEN',
+    timing: { noProgressTimeoutMs: 100, frameSilenceTimeoutMs: 1000 },
+  });
+  for (let i = 0; i < 50; i++) h.send(updateFrame({ case: 'textDelta', value: { text: 'SECRET_MODEL_TEXT' } }));
+  h.send(
+    serverFrame({
+      case: 'execServerMessage',
+      value: {
+        id: 43,
+        execId: 'SECRET_EXEC_ID',
+        message: { case: 'shellStreamArgs', value: { command: 'SECRET_COMMAND', workingDirectory: '/SECRET_PATH' } },
+      },
+    }),
+  );
+  const base = toBinary(ExecServerMessageSchema, create(ExecServerMessageSchema, { id: 42 }));
+  const secret = new TextEncoder().encode('SECRET_UNKNOWN_PAYLOAD');
+  const exec = fromBinary(ExecServerMessageSchema, new Uint8Array([...base, 0xc2, 0x3e, secret.length, ...secret]));
+  h.send(serverFrame({ case: 'execServerMessage', value: exec }));
+  for (let i = 0; i < 100; i++) h.send(updateFrame({ case: 'heartbeat', value: {} }));
+  // Drain all queued frames before advancing the clock into the stalled period.
+  for (let i = 0; i < 10; i++) await settleMicrotasks();
+  jest.advanceTimersByTime(101);
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_no_progress_timeout' });
+  await expect(h.drained).rejects.toMatchObject({ code: 'cursor_no_progress_timeout' });
+  const fields = settledLog(rows)?.fields;
+  expect(fields?.heartbeatCount).toBe(100);
+  expect(fields?.protocolEventsDropped).toBeGreaterThan(0);
+  const events = fields?.recentProtocolEvents as Array<Record<string, unknown>>;
+  expect(events).toBeArray();
+  expect(events.length).toBeLessThanOrEqual(32);
+  expect(events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        direction: 'inbound',
+        messageCase: 'execServerMessage',
+        detailCase: 'unknown',
+        id: 42,
+        unknownFieldNumbers: [1000],
+      }),
+      expect.objectContaining({
+        direction: 'outbound',
+        messageCase: 'execClientControlMessage',
+        detailCase: 'throw',
+        id: 42,
+      }),
+      expect.objectContaining({
+        direction: 'outbound',
+        messageCase: 'execClientControlMessage',
+        detailCase: 'streamClose',
+        id: 42,
+      }),
+      expect.objectContaining({
+        direction: 'outbound',
+        messageCase: 'execClientMessage',
+        detailCase: 'shellResult',
+        resultCase: 'rejected',
+        id: 43,
+      }),
+    ]),
+  );
+  expect(JSON.stringify(rows)).not.toContain('SECRET');
+});
 
 test('abort signal cancel is logged as canceled at debug', async () => {
   const { logger, rows } = capturingLogger();
