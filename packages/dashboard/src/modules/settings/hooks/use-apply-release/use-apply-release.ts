@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 import { reloadDashboard } from '@/lib/reload-dashboard';
@@ -177,10 +177,15 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   const unavailable = applyMessage === 'unavailable';
 
   const outcome = restartRequired ? 'restart' : unavailable ? 'unavailable' : failed ? 'failed' : undefined;
+  const shownToast = useRef<string>(undefined);
   useEffect(() => {
-    if (outcome === undefined) return;
-    const { id, type, title, timeout } = OUTCOME_TOASTS[outcome];
-    toast.add({ id, type, title: title(), timeout });
+    const next = outcome === undefined ? undefined : OUTCOME_TOASTS[outcome];
+    // A retry that starts installing, succeeds, or ends differently has to take the previous
+    // notice with it, or the old toast keeps claiming the install failed.
+    if (shownToast.current !== undefined && shownToast.current !== next?.id) toast.close(shownToast.current);
+    shownToast.current = next?.id;
+    if (next === undefined) return;
+    toast.add({ id: next.id, type: next.type, title: next.title(), timeout: next.timeout });
   }, [outcome, applyAttempt]);
 
   return {

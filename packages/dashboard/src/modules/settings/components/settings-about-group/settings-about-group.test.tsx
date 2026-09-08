@@ -12,9 +12,12 @@ const mocks = rs.hoisted(() => ({
   releaseQueryFn: rs.fn(),
   reloadDashboard: rs.fn(),
   toastAdd: rs.fn(),
+  toastClose: rs.fn(),
 }));
 
-rs.mock('@aio-proxy/ui/components/toast', () => ({ toast: { add: mocks.toastAdd } }));
+rs.mock('@aio-proxy/ui/components/toast', () => ({
+  toast: { add: mocks.toastAdd, close: mocks.toastClose },
+}));
 
 rs.mock('@/modules/settings/hooks/use-release-query', () => ({
   useReleaseQuery: () => mocks.release(),
@@ -97,6 +100,7 @@ const prepare = (release = idleRelease) => {
   mocks.releaseQueryFn.mockReset();
   mocks.reloadDashboard.mockReset();
   mocks.toastAdd.mockReset();
+  mocks.toastClose.mockReset();
   mocks.release.mockReturnValue({ data: release });
   mocks.apply.mockResolvedValue({ ok: true, status: 'started' });
   mocks.releaseQueryFn.mockResolvedValue(release);
