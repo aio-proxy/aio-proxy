@@ -244,14 +244,14 @@ export async function publishEntity(
     const current = await store.readHead(operation.objectId, signal);
     if (current === null) throw new SyncProtocolError('invalid-data', 'missing head');
     assertHeadIdentity(current.head, operation);
-    const revision = await readRevision(store, operation, signal);
-    const previousPublication = storedPublication(revision, operation.operationId);
-    if (previousPublication !== undefined) return previousPublication;
     const receipt = await existingReceipt(store, current.head, operation, signal);
     if (receipt !== undefined) {
       await finalizeReceipt(store, current.head, operation.operationId, signal);
       return receipt;
     }
+    const revision = await readRevision(store, operation, signal);
+    const previousPublication = storedPublication(revision, operation.operationId);
+    if (previousPublication !== undefined) return previousPublication;
     await casHead(
       store,
       operation.objectId,
