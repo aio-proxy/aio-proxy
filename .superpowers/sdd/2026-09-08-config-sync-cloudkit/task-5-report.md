@@ -4,26 +4,29 @@
 
 Added `packages/plugins/cloudkit/scripts/conformance-live.ts` and
 `live-support.ts`. The wrapper requires `--live`, records redacted case
-evidence, and exits unsuccessfully when the gate is blocked or fails. The
+evidence for every required gate, and exits unsuccessfully when any gate is
+blocked or fails. The
 support module validates the package/native manifest version, container ID,
-verified signing status, and versioned installed cache path before starting
-two separate native processes. Cleanup disposes both sessions. The shared
-conformance harness supplies a fresh UUID key prefix and exercises concurrent
-create, stale CAS, direct reads, pagination, and conditional removal.
+signed artifact metadata, cached bundle/executable digests, codesign,
+notarization, entitlements, and versioned installed cache path before starting
+two separate native processes. Cleanup disposes both sessions and removes the
+UUID-scoped fixtures. The shared conformance harness supplies a fresh UUID key
+prefix and exercises concurrent create, stale CAS, direct reads, pagination,
+and conditional removal.
 
 Updated `docs/testing/cloudkit-sync.md` with the invocation, namespace and
 installed-artifact requirements. The generated evidence is at
 `docs/testing/evidence/cloudkit-sync.json`; it contains no credentials or
-account identifiers.
+account identifiers. Stdout is restricted to aggregate counts and error codes.
 
 ## Deterministic checks
 
-| Check                                                        | Result                                           |
-| ------------------------------------------------------------ | ------------------------------------------------ |
-| `bun run --filter @aio-proxy/plugin-cloudkit test`           | PASS (16 tests)                                  |
-| `swift test --package-path packages/plugins/cloudkit/native` | PASS (build and native test target; no failures) |
-| `oxfmt --check` on new scripts                               | PASS                                             |
-| `oxlint` on new scripts                                      | PASS                                             |
+| Check                                                        | Result                                                 |
+| ------------------------------------------------------------ | ------------------------------------------------------ |
+| `bun run --filter @aio-proxy/plugin-cloudkit test`           | PASS (16 tests; one transient rerun failure recovered) |
+| `swift test --package-path packages/plugins/cloudkit/native` | PASS (build and native test target; no failures)       |
+| `oxfmt --check` on new scripts                               | PASS                                                   |
+| `oxlint` on new scripts                                      | PASS                                                   |
 
 ## Live gate outcome
 
@@ -37,3 +40,22 @@ failure exercises, and Production schema/index verification remain blocked
 until the signed installed artifact and controlled test account are supplied.
 
 CloudKit remains a release NO-GO under the task brief.
+
+## Review fix round 1
+
+The review identified that a passing local pair could leave the release gate
+looking ready and that setup errors were classified as failures. The wrapper
+now initializes every required distribution/live gate to `blocked`, marks only
+the local pair after execution, and keeps setup errors blocked. It also checks
+the installed app through the existing bundle verifier, including digest,
+signature, notarization, entitlement, archive, and container metadata checks.
+The evidence artifact digest now comes from the installed cached app. The
+remaining gates are intentionally blocked because this host has no signed
+artifact, controlled CloudKit account/schema, second Mac, or launchd test
+environment.
+
+Focused wrapper tests were not added because importing the executable wrapper
+intentionally requires `--live` and performs filesystem/process setup at module
+scope. Existing installed-probe tests cover the shared bundle verifier and
+redacted output contract; the live wrapper was exercised directly and emitted
+nine blocked cases with aggregate-only stdout.

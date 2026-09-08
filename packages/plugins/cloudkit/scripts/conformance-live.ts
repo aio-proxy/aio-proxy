@@ -3,9 +3,20 @@ import { join } from 'node:path';
 
 import { exerciseSyncBackend } from '@aio-proxy/plugin-sdk/testing';
 
-import { connectInstalledPair, installedArtifactDigest } from './live-support';
+import { connectInstalledPair, installedArtifactDigest, LiveSetupError } from './live-support';
 
 type CaseResult = { readonly name: string; readonly status: 'pass' | 'fail' | 'blocked'; readonly errorCode?: string };
+const requiredGates = [
+  'installed two-process sync conformance',
+  'two-Mac cross-device conformance',
+  'launchd service with Dashboard closed',
+  'network interruption and reconnect recovery',
+  'iCloud identity switch handling',
+  'native/process restart pending-CAS recovery',
+  'controlled quota rejection',
+  'Production schema and index availability',
+  'installed-path entitlement and direct access',
+] as const;
 const evidencePath =
   process.env.CLOUDKIT_EVIDENCE_PATH ??
   join(import.meta.dir, '..', '..', '..', '..', 'docs', 'testing', 'evidence', 'cloudkit-sync.json');
@@ -27,29 +38,34 @@ async function osVersion(): Promise<string> {
 async function writeEvidence(cases: readonly CaseResult[]): Promise<void> {
   const output = {
     host: { os: process.platform, osVersion: await osVersion(), architecture: process.arch },
-    artifact: { manifestSha256: (await installedArtifactDigest()) ?? 'unavailable' },
+    artifact: { installedManifestSha256: (await installedArtifactDigest()) ?? 'unavailable' },
     containerId: process.env.CLOUDKIT_CONTAINER_ID === undefined ? 'unavailable' : '<configured>',
     cases,
     productionGate: cases.some((entry) => entry.status !== 'pass') ? 'blocked' : 'unverified',
     recordedAt: new Date().toISOString(),
   };
   await Bun.write(evidencePath, `${JSON.stringify(output, null, 2)}\n`);
-  console.log(
-    JSON.stringify({
-      cases: cases.map(({ name, status, errorCode: code }) => ({ name, status, ...(code ? { errorCode: code } : {}) })),
-    }),
-  );
+  const counts = cases.reduce((result, entry) => ({ ...result, [entry.status]: result[entry.status] + 1 }), {
+    pass: 0,
+    fail: 0,
+    blocked: 0,
+  });
+  const errorCodes = cases.flatMap((entry) => (entry.errorCode === undefined ? [] : [entry.errorCode]));
+  console.log(JSON.stringify({ counts, errorCodes }));
 }
 
 if (!process.argv.includes('--live')) throw new Error('Use --live for the dedicated test namespace');
 
-const cases: CaseResult[] = [];
+const cases: CaseResult[] = requiredGates.map((name) => ({ name, status: 'blocked' }));
 try {
   await exerciseSyncBackend(connectInstalledPair);
-  cases.push({ name: 'installed two-process sync conformance', status: 'pass' });
+  cases[0] = { name: requiredGates[0], status: 'pass' };
 } catch (error) {
-  const status = process.platform === 'darwin' && process.env.CLOUDKIT_CONTAINER_ID ? 'fail' : 'blocked';
-  cases.push({ name: 'installed two-process sync conformance', status, errorCode: errorCode(error) });
+  cases[0] = {
+    name: requiredGates[0],
+    status: error instanceof LiveSetupError ? 'blocked' : 'fail',
+    errorCode: errorCode(error),
+  };
 } finally {
   await writeEvidence(cases);
 }

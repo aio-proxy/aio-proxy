@@ -5,7 +5,7 @@
     "architecture": "arm64"
   },
   "artifact": {
-    "manifestSha256": "unavailable"
+    "installedManifestSha256": "unavailable"
   },
   "containerId": "unavailable",
   "cases": [
@@ -13,8 +13,40 @@
       "name": "installed two-process sync conformance",
       "status": "blocked",
       "errorCode": "invalid-data"
+    },
+    {
+      "name": "two-Mac cross-device conformance",
+      "status": "blocked"
+    },
+    {
+      "name": "launchd service with Dashboard closed",
+      "status": "blocked"
+    },
+    {
+      "name": "network interruption and reconnect recovery",
+      "status": "blocked"
+    },
+    {
+      "name": "iCloud identity switch handling",
+      "status": "blocked"
+    },
+    {
+      "name": "native/process restart pending-CAS recovery",
+      "status": "blocked"
+    },
+    {
+      "name": "controlled quota rejection",
+      "status": "blocked"
+    },
+    {
+      "name": "Production schema and index availability",
+      "status": "blocked"
+    },
+    {
+      "name": "installed-path entitlement and direct access",
+      "status": "blocked"
     }
   ],
   "productionGate": "blocked",
-  "recordedAt": "2026-09-08T20:30:25.792Z"
+  "recordedAt": "2026-09-08T20:40:59.106Z"
 }

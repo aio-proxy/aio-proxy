@@ -21,6 +21,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
   const key = `${prefix}value`;
   const signal = new AbortController().signal;
   const value = new TextEncoder().encode('value');
+  const createdKeys = new Set<string>();
 
   try {
     const created = await Promise.all([
@@ -33,6 +34,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
     const read = await pair.a.read(key, signal);
     assertion(read.kind === 'present', 'a created value can be read');
     assertion(sameBytes(read.value, value), 'read returns the written bytes');
+    createdKeys.add(key);
     const stale = await pair.b.compareAndSwap(key, read.version, new TextEncoder().encode('replacement'), signal);
     assertion(stale.kind === 'written', 'current version writes');
     const staleAgain = await pair.a.compareAndSwap(key, read.version, value, signal);
@@ -50,6 +52,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
       assertion(uncertain, 'unknown write outcomes are surfaced');
       const recovered = await pair.a.read(uncertainKey, signal);
       assertion(recovered.kind === 'present' && sameBytes(recovered.value, value), 'unknown writes are recoverable');
+      createdKeys.add(uncertainKey);
     }
 
     const listA = `${prefix}list-a`;
@@ -57,6 +60,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
     for (const listKey of listKeys) {
       const result = await pair.b.compareAndSwap(listKey, null, value, signal);
       assertion(result.kind === 'written', 'list fixture creates');
+      createdKeys.add(listKey);
     }
     const discovered = new Set<string>();
     let cursor: string | undefined;
@@ -85,6 +89,10 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
     assertion(disposedRejected, 'disposed session rejects new work');
     assertion((await pair.b.read(listA, signal)).kind === 'present', 'disposing one session preserves another');
   } finally {
+    for (const cleanupKey of createdKeys) {
+      const current = await pair.b.read(cleanupKey, signal).catch(() => ({ kind: 'absent' as const }));
+      if (current.kind === 'present') await pair.b.remove(cleanupKey, current.version, signal).catch(() => undefined);
+    }
     await pair.cleanup();
   }
 }

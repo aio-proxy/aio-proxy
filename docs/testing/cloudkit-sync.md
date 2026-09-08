@@ -121,7 +121,7 @@ Run the live wrapper only with an explicit `--live` flag and a dedicated
 
 ```sh
 CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
-  bun packages/plugins/cloudkit/scripts/conformance-live.ts --live
+  rtk proxy bun packages/plugins/cloudkit/scripts/conformance-live.ts --live
 ```
 
 The wrapper requires the package and native manifests to agree, requires a
@@ -131,4 +131,8 @@ a fresh UUID prefix and removes only those test records. It never targets the
 default user configuration space. Output is limited to case status and
 documented error codes; redacted host, artifact digest, and result are written
 to `docs/testing/evidence/cloudkit-sync.json` (or `CLOUDKIT_EVIDENCE_PATH`).
-A blocked result remains a release NO-GO.
+A blocked result remains a release NO-GO. The evidence always enumerates the
+same-machine pair, two-Mac run, launchd service, network and identity changes,
+restart recovery, quota rejection, Production schema/index availability, and
+installed entitlement/access checks. Unrun cases remain `blocked`, even when
+the local pair passes.
