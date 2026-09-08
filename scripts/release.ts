@@ -41,6 +41,8 @@ import { join } from 'node:path';
 
 import { $ } from 'bun';
 
+import { releaseNotes } from './release-notes';
+
 const DRY_RUN = process.argv.includes('--dry-run');
 
 type PackageJson = {
@@ -185,7 +187,7 @@ if (DRY_RUN) {
   process.exit(0);
 }
 
-// Stage the same pack output for upload after Changesets creates the GitHub Release.
+// Stage the same pack output for the workflow to attach when creating the GitHub Release.
 // Only local I/O here: npm availability must never delay tagging or Release creation.
 const assetDirectory = process.env['RELEASE_ASSETS_DIR'];
 if (assetDirectory) {
@@ -230,20 +232,24 @@ console.log(`\nReleased v${version}`);
 // `v<version>` tag (matching the historical v0.1.0 / v0.0.1), NOT changesets'
 // monorepo default of one `<pkg>@<version>` tag per published package. In
 // publish-script mode changesets/action never creates tags — it only pushes a tag
-// we create here and then builds a GitHub Release whose body is the emitted
-// package's CHANGELOG entry. So create `v<version>` locally and emit ONE event.
+// we create here. Emit ONE event for the tag and stage the product's release
+// notes; the workflow creates the Release with assets before it becomes immutable.
 //
 // The Release body must come from a product package that has notes this cycle:
 // prefer the CLI launcher `aio-proxy`, else the SDK (an SDK-only cycle leaves
-// `aio-proxy` without an entry, and the action throws on a missing entry). If
+// `aio-proxy` without an entry). If
 // neither has an entry — which the changeset convention in AGENTS.md prevents —
-// emit nothing so the action makes no contentless Release. The tag name is also
+// emit nothing so the workflow makes no contentless Release. The tag name is also
 // used by the GitHub asset upload and Homebrew notification job.
 if (outputPath) {
   let releaseOf: string | undefined;
   for (const name of ['aio-proxy', '@aio-proxy/plugin-sdk']) {
     const dir = publishable.find((p) => p.json.name === name)?.path.replace(/\/package\.json$/, '');
-    if (dir && (await hasChangelogEntry(dir, version))) {
+    if (!dir) continue;
+    const changelog = Bun.file(join(dir, 'CHANGELOG.md'));
+    const notes = (await changelog.exists()) ? releaseNotes(await changelog.text(), version) : undefined;
+    if (notes) {
+      if (assetDirectory) await Bun.write(join(assetDirectory, 'RELEASE_NOTES.md'), notes);
       releaseOf = name;
       break;
     }
@@ -256,22 +262,4 @@ if (outputPath) {
     if (!tagged) await $`git tag ${tag}`;
     appendFileSync(outputPath, `${JSON.stringify({ type: 'git-tag', tag, packageName: releaseOf })}\n`);
   }
-}
-
-// Return true when CHANGELOG.md has a non-empty entry for `version`. Mirrors the
-// depth-2 heading slice that changesets/action uses to build the Release body, so
-// we only tag a product when the Release it produces would actually have content.
-async function hasChangelogEntry(dir: string, ver: string): Promise<boolean> {
-  const file = Bun.file(join(dir, 'CHANGELOG.md'));
-  if (!(await file.exists())) return false; // no CHANGELOG (e.g. platform binaries)
-
-  const lines = (await file.text()).split('\n');
-  const start = lines.findIndex((line) => line.trimEnd() === `## ${ver}`);
-  if (start < 0) return false;
-
-  // The entry runs from its heading to the next depth-2 heading (or EOF).
-  const after = lines.slice(start + 1);
-  const nextSection = after.findIndex((line) => /^##\s/.test(line));
-  const entry = nextSection < 0 ? after : after.slice(0, nextSection);
-  return entry.some((line) => line.trim() !== ''); // any non-blank line = real notes
 }

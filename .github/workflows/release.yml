@@ -72,10 +72,11 @@ jobs:
         with:
           # This action uses kebab-case inputs and HARD-FAILS if given any legacy
           # name (publish/version/commit/title/setupGitUser/createGithubReleases/…).
-          # Defaults we rely on: version-script=`changeset version`,
-          # create-github-releases=true, push-git-tags=true, setup-git-user=true —
-          # so we only set the publish script and the commit/PR title.
+          # Keep Changesets versioning and tag pushes, but create the Release with
+          # its assets below: publishing an empty immutable Release locks uploads.
           publish-script: bun run scripts/release.ts
+          create-github-releases: false
+          push-git-tags: true
           commit-message: 'chore: release'
           pr-title: 'chore: release'
         env:
@@ -91,16 +92,17 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Changesets has already published npm, pushed the tag and created the Release.
-      # No --clobber: a released attachment must never be silently replaced.
-      - name: Upload platform tarballs and SHA256SUMS
+      # gh creates a draft, uploads all supplied assets, then publishes the Release.
+      # This ordering is required for immutable releases; no existing assets are replaced.
+      - name: Create GitHub Release with platform tarballs and SHA256SUMS
         if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ fromJSON(steps.changesets.outputs['published-packages'])[0].version }}
         run: |
-          gh release upload "v$VERSION" "$RELEASE_ASSETS_DIR/"*.tgz --repo aio-proxy/aio-proxy
-          gh release upload "v$VERSION" "$RELEASE_ASSETS_DIR/SHA256SUMS" --repo aio-proxy/aio-proxy
+          gh release create "v$VERSION" "$RELEASE_ASSETS_DIR/"*.tgz "$RELEASE_ASSETS_DIR/SHA256SUMS" \
+            --repo aio-proxy/aio-proxy --verify-tag --title "v$VERSION" \
+            --notes-file "$RELEASE_ASSETS_DIR/RELEASE_NOTES.md"
 
   docker:
     needs: release
