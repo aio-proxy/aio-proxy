@@ -131,13 +131,16 @@ describe('geminiGenerateContentAdapter.modelInvocationForTarget', () => {
     expect(result.settings?.reasoning).toBe('high');
   });
 
-  test('is identity when reasoning is already supported', () => {
+  test('keeps a supported reasoning level and backfills the canonical effort', () => {
     const invocation = { messages: [], settings: { reasoning: 'medium' as const } };
     const result = geminiGenerateContentAdapter.modelInvocationForTarget(
       invocation,
       undefined,
       new Set(['low', 'medium', 'high']),
     );
-    expect(result).toBe(invocation);
+    expect(result.settings?.reasoning).toBe('medium');
+    expect(
+      (result.settings as { providerOptions?: { aioProxy?: { effort?: string } } }).providerOptions?.aioProxy?.effort,
+    ).toBe('medium');
   });
 });

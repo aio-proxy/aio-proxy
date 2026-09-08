@@ -22,7 +22,7 @@ describe('openAICompletionsAdapter', () => {
     expect(openAICompletionsAdapter.dimensions(parsed, {})).toEqual({ effort: 'high' });
     const invocation = openAICompletionsAdapter.modelInvocation(parsed, {});
     expect(Object.keys(invocation.tools ?? {})).toEqual(['weather']);
-    expect(invocation.settings).toEqual({ reasoning: 'high' });
+    expect(invocation.settings).toEqual({ reasoning: 'high', providerOptions: { aioProxy: { effort: 'high' } } });
     expect(
       await (await openAICompletionsAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).json(),
     ).toMatchObject({
