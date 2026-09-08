@@ -94,12 +94,29 @@ export async function finalizeRevisionReceiptIfPresent(
   const record = decodeRevision(value.value);
   assertRevisionIdentity(record, { objectId: head.objectId, operationId, epoch: record.epoch });
   if (head.receipts[operationId] !== undefined && record.state === 'payload') {
-    await finalizeReceipt(store, head, operationId, signal);
+    await finalizeReceiptRecoverable(store, head, operationId, signal);
     const refreshed = await store.session.read(revisionKey(head.objectId, operationId), signal);
     if (refreshed.kind === 'absent') throw new SyncProtocolError('invalid-data', 'publication receipt has no revision');
     return decodeRevision(refreshed.value);
   }
   return record;
+}
+
+async function finalizeReceiptRecoverable(
+  store: SyncObjectStore,
+  head: EntityHead,
+  operationId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  for (;;) {
+    try {
+      await finalizeReceipt(store, head, operationId, signal);
+      return;
+    } catch (error) {
+      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') continue;
+      throw error;
+    }
+  }
 }
 
 function markerFor(
@@ -361,6 +378,7 @@ export async function restoreEntity(
           epoch: head.epoch + 1,
           state: 'active',
           current: null,
+          history: head.current === null ? head.history : [...new Set([...head.history, head.current])],
           reserved: [],
           cancelling: [],
           cleanupComplete: true,

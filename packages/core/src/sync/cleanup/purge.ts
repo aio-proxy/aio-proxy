@@ -16,10 +16,11 @@ async function eraseFrozenRevisions(store: SyncObjectStore, head: EntityHead, si
   for (const operationId of frozenRevisionIds(head)) {
     const record = await finalizeRevisionReceiptIfPresent(store, head, operationId, signal);
     const sequence = head.receipts[operationId] ?? record?.publishedSequence ?? undefined;
+    const epoch = record?.epoch ?? head.epoch;
     await eraseRevision(
       store,
       revisionKey(head.objectId, operationId),
-      revisionMarker(head.objectId, operationId, head.epoch, sequence, 'purged'),
+      revisionMarker(head.objectId, operationId, epoch, sequence, 'purged'),
       signal,
     );
   }

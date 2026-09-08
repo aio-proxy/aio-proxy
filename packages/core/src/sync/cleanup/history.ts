@@ -1,6 +1,6 @@
 import { SyncProtocolError } from '../protocol';
 import { decodeRevision, revisionKey } from '../protocol';
-import { finalizeReceipt, type SyncObjectStore } from '../publication';
+import { type SyncObjectStore } from '../publication';
 import {
   HISTORY_RETENTION_MS,
   eraseRevision,
@@ -18,7 +18,11 @@ async function cancelReservations(store: SyncObjectStore, objectId: string, sign
       await updateHead(
         store,
         objectId,
-        (head) => ({ ...head, cancelling: [...new Set([...head.cancelling, ...head.reserved])] }),
+        (head) => ({
+          ...head,
+          reserved: [],
+          cancelling: [...new Set([...head.cancelling, ...head.reserved])],
+        }),
         signal,
       );
       continue;
@@ -57,7 +61,7 @@ async function confirmReceipts(store: SyncObjectStore, objectId: string, signal:
     const value = await store.session.read(revisionKey(objectId, operationId), signal);
     if (value.kind === 'absent') throw new SyncProtocolError('invalid-data', 'publication receipt has no revision');
     const record = decodeRevision(value.value);
-    if (record.state === 'payload') await finalizeReceipt(store, head.head, operationId, signal);
+    if (record.state === 'payload') await finalizeRevisionReceiptIfPresent(store, head.head, operationId, signal);
   }
 }
 

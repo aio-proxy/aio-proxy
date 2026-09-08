@@ -1,6 +1,17 @@
 import { expect, test } from 'bun:test';
 
-import { accountKey, decodeHead, decodeRevision, encode, entityKey, newHead, reserve, revisionKey } from '../protocol';
+import {
+  accountKey,
+  beginPurge,
+  decodeHead,
+  decodeRevision,
+  encode,
+  entityKey,
+  newHead,
+  publish,
+  reserve,
+  revisionKey,
+} from '../protocol';
 import { createSyncObjectStore, publishEntity } from '../publication';
 import { createMemorySyncBackend } from '../test-support';
 import { collectHistory, deleteEntity, purgeEntity, readServerTime, restoreEntity } from './index';
@@ -62,6 +73,41 @@ test('purge erases a payload uploaded by a paused writer before publication', as
   expect(revision).toMatchObject({ state: 'erased', reason: 'purged' });
 });
 
+test('purge waits for account scrubbing after the purging marker is stored', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'account-secret');
+  const signal = new AbortController().signal;
+  await publishEntity(store, item, signal);
+  await store.session.compareAndSwap(accountKey(item.objectId), null, encode({ token: 'account-secret' }), signal);
+  const markerGate = backend.gateAfterNext('compareAndSwap');
+  const purge = purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal);
+  await markerGate.entered;
+  expect(head(backend, item.objectId).state).toBe('purging');
+  expect(new TextDecoder().decode(backend.readAll().get(accountKey(item.objectId))!.value)).toContain('account-secret');
+  markerGate.release();
+  await purge;
+  expect(new TextDecoder().decode(backend.readAll().get(accountKey(item.objectId))!.value)).not.toContain(
+    'account-secret',
+  );
+});
+
+test('purge resumes a purging head after a transient backend failure', async () => {
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'restart-secret');
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, 0);
+  const purging = beginPurge(reserved);
+  await session.compareAndSwap(entityKey(item.objectId), null, encode(purging), signal);
+  backend.failNext('compareAndSwap', 'before');
+  await expect(purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal)).rejects.toMatchObject({
+    code: 'offline',
+  });
+  await purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal);
+  expect(head(backend, item.objectId).state).toBe('purged');
+});
+
 test('ordinary deletion retains current history while scrubbing the account', async () => {
   const backend = createMemorySyncBackend();
   const store = createSyncObjectStore(backend.connect());
@@ -119,6 +165,71 @@ test('history keeps revisions younger than 30 days and current revisions at any 
   await publishEntity(store, current, signal);
   await collectHistory(store, current.objectId, 31 * 24 * 60 * 60 * 1000, signal);
   expect(head(backend, current.objectId).current).toBe(current.operationId);
+  expect(
+    new TextDecoder().decode(backend.readAll().get(revisionKey(current.objectId, current.operationId))!.value),
+  ).toContain('current');
+});
+
+test('history cancels pending reservations and leaves no secret payload behind', async () => {
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'pending-secret');
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, 0);
+  await session.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+  await session.compareAndSwap(
+    revisionKey(item.objectId, item.operationId),
+    null,
+    encode({
+      protocol: 1,
+      state: 'payload',
+      objectId: item.objectId,
+      epoch: 0,
+      operationId: item.operationId,
+      body: item.body,
+      publishedSequence: null,
+      writtenAt: null,
+    }),
+    signal,
+  );
+  await collectHistory(createSyncObjectStore(session), item.objectId, 0, signal);
+  expect(head(backend, item.objectId)).toMatchObject({ reserved: [], cancelling: [] });
+  const marker = decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
+  expect(marker).toMatchObject({ state: 'erased', reason: 'abandoned' });
+  expect(
+    new TextDecoder().decode(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value),
+  ).not.toContain('pending-secret');
+});
+
+test('receipt finalization retries an unknown cleanup write', async () => {
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'receipt-secret');
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, 0);
+  const headWrite = await session.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+  if (headWrite.kind !== 'written') throw new Error('head seed failed');
+  await session.compareAndSwap(
+    revisionKey(item.objectId, item.operationId),
+    null,
+    encode({
+      protocol: 1,
+      state: 'payload',
+      objectId: item.objectId,
+      epoch: 0,
+      operationId: item.operationId,
+      body: item.body,
+      publishedSequence: null,
+      writtenAt: null,
+    }),
+    signal,
+  );
+  const publishedHead = publish(reserved, item.operationId, 0);
+  await session.compareAndSwap(entityKey(item.objectId), headWrite.version, encode(publishedHead), signal);
+  backend.failNext('compareAndSwap', 'after');
+  await collectHistory(createSyncObjectStore(session), item.objectId, 0, signal);
+  const revision = decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
+  expect(revision).toMatchObject({ state: 'payload', publishedSequence: 1, writtenAt: 0 });
 });
 
 test('an expired operation keeps its permanent publication receipt for retries', async () => {
@@ -167,6 +278,48 @@ test('restore requires completed deletion and publishes in a new epoch', async (
   const restored = await restoreEntity(store, item.objectId, item.body, crypto.randomUUID(), signal);
   expect(restored.sequence).toBe(2);
   expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1, current: restored.operationId });
+});
+
+test('restore retains the prior current in history so retention can expire it', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old-secret');
+  const signal = new AbortController().signal;
+  await publishEntity(store, item, signal);
+  await deleteEntity(store, item.objectId, 0, signal);
+  const restored = await restoreEntity(store, item.objectId, item.body, crypto.randomUUID(), signal);
+  expect(head(backend, item.objectId).history).toContain(item.operationId);
+  await collectHistory(store, item.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  expect(head(backend, item.objectId).history).not.toContain(item.operationId);
+  const old = new TextDecoder().decode(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
+  expect(old).toMatch(/"state":"erased"/);
+  expect(old).not.toContain('old-secret');
+  expect(head(backend, item.objectId).current).toBe(restored.operationId);
+});
+
+test('purge after restore erases retained revisions from both epochs', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old-secret');
+  const signal = new AbortController().signal;
+  await publishEntity(store, item, signal);
+  await deleteEntity(store, item.objectId, 0, signal);
+  const restored = await restoreEntity(
+    store,
+    item.objectId,
+    { ...item.body, value: { apiKey: 'new-secret' } },
+    crypto.randomUUID(),
+    signal,
+  );
+  await purgeEntity(store, item.objectId, signal);
+  expect(head(backend, item.objectId).state).toBe('purged');
+  const records = [...backend.readAll().entries()]
+    .filter(([key]) => key.startsWith(`s/v1/default/revision/${item.objectId}/`))
+    .map(([, value]) => (value.kind === 'present' ? new TextDecoder().decode(value.value) : ''))
+    .join('\n');
+  expect(records).not.toContain('old-secret');
+  expect(records).not.toContain('new-secret');
+  expect(records).toContain(`"operationId":"${restored.operationId}"`);
 });
 
 test('server time uses the confirmed storage timestamp and recovers an unknown write', async () => {
