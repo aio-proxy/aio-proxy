@@ -16,6 +16,8 @@ import {
 import type { OutboxOperation } from '../repository';
 import { finalizeReceipt } from './receipts';
 
+export { finalizeReceipt };
+
 export interface PublishedRevision {
   operationId: string;
   sequence: number;
