@@ -150,8 +150,6 @@ async function dispatchCandidate<TRequest, TContext>(
       return await attemptAudioCandidate(dispatch.ctx, slot);
     case 'language':
       return await attemptLanguageCandidate(dispatch.ctx, slot, holder);
-    default:
-      return assertNever(dispatch);
   }
 }
 
@@ -316,8 +314,4 @@ export async function attemptCandidates<TRequest, TContext>(
     lastFailure ?? adapter.errors.unsupported(lastSkipReason === undefined ? 'transform_dispatch' : lastSkipReason);
   session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
   return response;
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unsupported attempt dispatch: ${JSON.stringify(value)}`);
 }

@@ -318,13 +318,7 @@ function noCandidateFeature(capability: InboundCapability): string {
     case 'language':
     case 'embedding':
       return 'transform_dispatch';
-    default:
-      return assertNever(capability);
   }
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unsupported inbound capability: ${JSON.stringify(value)}`);
 }
 
 function rejectRequest(options: {
