@@ -93,3 +93,13 @@ Native session disposal is likewise retried and surfaced through an idempotent
 cleanup promise; primary conformance errors remain preserved alongside any
 cleanup error. The nine unavailable live/distribution gates remain blocked and
 CloudKit remains a release NO-GO.
+
+## Review fix round 4
+
+Cleanup now tracks terminal errors per fixture key, so an unresolved key still
+gets surfaced after an earlier key failed cleanup. A regression test covers a
+read failure followed by a separate remove conflict and verifies both cleanup
+errors are retained. Plugin SDK tests and type checks pass (93 tests), CloudKit
+package tests pass (16 tests), and `bun run check` passes with existing lint
+warnings. The live and distribution gates remain blocked, so CloudKit remains
+a release NO-GO.

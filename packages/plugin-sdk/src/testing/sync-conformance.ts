@@ -96,6 +96,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
   const cleanupErrors: unknown[] = [];
   for (const cleanupKey of createdKeys) {
     let removed = false;
+    let cleanupErrorRecorded = false;
     for (let attempt = 0; attempt < 2 && !removed; attempt += 1) {
       try {
         const current = await pair.b.read(cleanupKey, signal);
@@ -105,10 +106,13 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
           removed = result.kind === 'removed';
         }
       } catch (error) {
-        if (attempt === 1) cleanupErrors.push(error);
+        if (attempt === 1) {
+          cleanupErrors.push(error);
+          cleanupErrorRecorded = true;
+        }
       }
     }
-    if (!removed && cleanupErrors.length === 0) cleanupErrors.push(new Error('sync fixture cleanup did not complete'));
+    if (!removed && !cleanupErrorRecorded) cleanupErrors.push(new Error('sync fixture cleanup did not complete'));
   }
   try {
     await pair.cleanup();
