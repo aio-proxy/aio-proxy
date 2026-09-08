@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.20.4
+
+### Patch Changes
+
+- [#333](https://github.com/aio-proxy/aio-proxy/pull/333) [`3ae608c`](https://github.com/aio-proxy/aio-proxy/commit/3ae608cd6a24999dcf92f31a7e8269cdb04d4e03) Thanks [@baranwang](https://github.com/baranwang)! - Republish platform downloads to restore GitHub Release assets and Homebrew updates.
+
 ## 0.20.3
 
 ### Patch Changes
