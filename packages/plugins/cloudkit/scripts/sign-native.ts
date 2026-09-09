@@ -48,7 +48,9 @@ function stringValue(value: PlistValue | undefined): string | undefined {
 }
 
 function objectValue(value: PlistValue | undefined): { readonly [key: string]: PlistValue } {
-  return value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return value !== undefined && typeof value === 'object' && !Array.isArray(value)
+    ? (value as { readonly [key: string]: PlistValue })
+    : {};
 }
 
 async function decodePlist(path: string, tempRoot: string): Promise<{ readonly [key: string]: PlistValue }> {

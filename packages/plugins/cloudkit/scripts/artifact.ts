@@ -149,22 +149,18 @@ export function validateManifest(manifest: ArtifactManifest): void {
     throw new Error('Native manifest executable is outside the app bundle');
   }
   if (manifest.archiveRelativePath !== undefined) validateRelativePath(manifest.archiveRelativePath, 'archive');
-  const final = manifest.signatureStatus === 'verified' || manifest.signing !== undefined;
-  if (
-    final &&
-    (manifest.archiveRelativePath === undefined ||
-      manifest.archiveSha256 === undefined ||
-      manifest.signing === undefined)
-  ) {
-    throw new Error('Signed native manifest is missing final artifact binding');
-  }
+  const signing = manifest.signing;
+  const final = manifest.signatureStatus === 'verified' || signing !== undefined;
   if (final) {
+    if (manifest.archiveRelativePath === undefined || manifest.archiveSha256 === undefined || signing === undefined) {
+      throw new Error('Signed native manifest is missing final artifact binding');
+    }
     if (
       manifest.signatureStatus !== 'verified' ||
       manifest.notarizationStatus !== 'accepted' ||
-      manifest.signing.signatureStatus !== 'verified' ||
-      manifest.signing.notarizationStatus !== 'accepted' ||
-      manifest.signing.bundleIdentifier !== CLOUDKIT_BUNDLE_ID
+      signing.signatureStatus !== 'verified' ||
+      signing.notarizationStatus !== 'accepted' ||
+      signing.bundleIdentifier !== CLOUDKIT_BUNDLE_ID
     ) {
       throw new Error('Signed native manifest has invalid signing status');
     }
