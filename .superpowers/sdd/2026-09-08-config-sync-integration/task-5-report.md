@@ -80,3 +80,25 @@ Review-round verification:
 - `bun run check`: passed with the existing lint warnings.
 - `bun run lint:types`: still reports only the existing Dashboard OAuth editor
   and CloudKit script diagnostics; the touched sync files are clean.
+
+## Review round 2
+
+- Sync endpoint resolution now canonicalizes wildcard binds for local access but
+  preserves configured remote hosts when Dashboard password authentication is
+  enabled. The existing loopback and same-origin policy remains the server's
+  authorization boundary; no unauthenticated remote path was added.
+- Backend connection is now a reviewed service operation. Applying a connect
+  preview validates options, creates the local backend data directory, opens the
+  candidate session, persists a new binding, carries local entities forward,
+  swaps the lifecycle, and activates the single server-owned engine. Backend
+  options stay in the service/backend path and never enter preview output.
+- Extracted state option construction into a private server collaborator;
+  `server.ts` is now below the 500-line implementation limit.
+
+Review-round 2 verification:
+
+- Focused CLI/server sync suite: **102 passed, 0 failed**.
+- `bun run i18n:compile`: passed.
+- `bun run check`: passed with the existing lint warnings.
+- `bun run lint:types`: touched files remain clean; only the existing Dashboard
+  OAuth editor and CloudKit diagnostics remain.

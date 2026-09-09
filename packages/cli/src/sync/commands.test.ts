@@ -333,6 +333,53 @@ test('sync endpoint canonicalizes wildcard config hosts for requests and Origin'
   }
 });
 
+test('sync endpoint preserves an authenticated remote config host and same-host Origin', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-sync-remote-host-'));
+  const previousHome = process.env.AIO_PROXY_HOME;
+  process.env.AIO_PROXY_HOME = home;
+  writeFileSync(
+    join(home, 'config.jsonc'),
+    '{ "server": { "host": "192.0.2.10", "port": 9317, "password": "dashboard-secret" }, "providers": {} }\n',
+  );
+  const calls: Array<{ url: string; origin: string | null }> = [];
+  try {
+    const deps = createDefaultSyncCliDeps({
+      fetch: async (input, init) => {
+        const url = String(input);
+        const headers = new Headers(init?.headers);
+        calls.push({ url, origin: headers.get('Origin') });
+        if (url.endsWith('/dashboard/api/auth/session')) return Response.json({ status: 'unauthenticated' });
+        if (url.endsWith('/dashboard/api/auth/login')) return Response.json({ token: 'memory-token' });
+        return Response.json({
+          state: 'idle',
+          backend: null,
+          providers: [],
+          pendingOperations: 0,
+          lastSuccessAt: null,
+        });
+      },
+      passwordStdin: true,
+      readPasswordStdin: async () => 'dashboard-secret\n',
+    });
+    await createSyncClient(deps).status();
+    expect(calls).toEqual([
+      {
+        url: 'http://192.0.2.10:9317/dashboard/api/auth/session',
+        origin: 'http://192.0.2.10:9317',
+      },
+      {
+        url: 'http://192.0.2.10:9317/dashboard/api/auth/login',
+        origin: 'http://192.0.2.10:9317',
+      },
+      { url: 'http://192.0.2.10:9317/dashboard/api/sync', origin: 'http://192.0.2.10:9317' },
+    ]);
+  } finally {
+    if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('JSON status is one machine-readable result', async () => {
   const output: string[] = [];
   const program = new Command();
@@ -423,6 +470,7 @@ test('configured service exposes the real sync control plane to CLI mutations', 
   });
   db.close();
   const backend = createMemorySyncBackend();
+  const connectedOptions: unknown[] = [];
   const builtIns = [
     {
       packageName: '@example/sync',
@@ -431,8 +479,11 @@ test('configured service exposes the real sync control plane to CLI mutations', 
         api.sync.register({
           id: 'memory',
           displayName: 'Memory',
-          options: { schema: z.object({}), form: [] },
-          connect: async () => backend.connect(),
+          options: { schema: z.object({ token: z.string().optional() }), form: [] },
+          connect: async (options) => {
+            connectedOptions.push(options);
+            return backend.connect();
+          },
         }),
       ),
     },
@@ -475,6 +526,48 @@ test('configured service exposes the real sync control plane to CLI mutations', 
     ]);
     expect(calls[2]).toMatchObject({ origin: 'http://127.0.0.1:9317' });
     expect(calls[2]?.authorization).toMatch(/^Bearer .+$/u);
+
+    const optionsPath = join(home, 'sync-options.json');
+    const decisionsPath = join(home, 'sync-decisions.json');
+    writeFileSync(optionsPath, JSON.stringify({ token: 'backend-secret' }));
+    writeFileSync(decisionsPath, '[]');
+    await program.parseAsync([
+      'node',
+      'aio-proxy',
+      'sync',
+      'connect',
+      '--plugin',
+      '@example/sync',
+      '--capability',
+      'memory',
+      '--options-file',
+      optionsPath,
+      '--json',
+    ]);
+    const preview = JSON.parse(output[1]!);
+    expect(preview.kind).toBe('connect');
+    expect(JSON.stringify(preview)).not.toContain('backend-secret');
+    await program.parseAsync([
+      'node',
+      'aio-proxy',
+      'sync',
+      'apply',
+      preview.previewId,
+      '--decisions-file',
+      decisionsPath,
+      '--json',
+    ]);
+    expect(JSON.parse(output[2]!)).toMatchObject({
+      backend: { plugin: '@example/sync', capability: 'memory' },
+    });
+    expect(connectedOptions).toContainEqual({ token: 'backend-secret' });
+    expect(calls.map(({ url }) => new URL(url).pathname)).toEqual([
+      '/dashboard/api/auth/session',
+      '/dashboard/api/auth/login',
+      '/dashboard/api/sync/range',
+      '/dashboard/api/sync/preview',
+      '/dashboard/api/sync/apply',
+    ]);
   } finally {
     await app.closeAsync();
     if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;

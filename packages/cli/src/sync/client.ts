@@ -250,7 +250,7 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
   const resolveEndpoint = async (): Promise<string> => {
     if (endpoint !== undefined) return endpoint;
     const address = await resolveControlAddress({});
-    endpoint = controlBaseUrl(connectHost(address.host), address.port);
+    endpoint = controlBaseUrl(connectHost(address.host, { allowRemote: true }), address.port);
     return endpoint;
   };
   const readStdin = options.readPasswordStdin ?? (async () => stripFinalLineEnding(await Bun.stdin.text()));

@@ -1,3 +1,6 @@
+import { chmod, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
 import {
   AtomicConfigFile,
   createSyncRepository,
@@ -9,10 +12,12 @@ import {
   type OAuthSharingService,
   type SharedOAuthCoordinator,
   type EntityBody,
+  type LocalBinding,
   type LocalOverride,
   type LocalEntity,
 } from '@aio-proxy/core';
 import type { OpenDbHandle } from '@aio-proxy/core/db';
+import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
 import type { createFifoQueue } from '../fifo-queue';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
@@ -29,6 +34,7 @@ import { createSyncCommitHooks } from '../sync-control-plane/commit';
 import { commitConfig, type ServerRuntime } from './lifecycle';
 import type { ServerStateOptions } from './types';
 
+// eslint-disable-next-line max-lines-per-function -- lifecycle replacement keeps one integration owner
 export function createSyncIntegration(
   runtime: ServerRuntime,
   dbHandle: OpenDbHandle,
@@ -41,16 +47,18 @@ export function createSyncIntegration(
   onCoordinator?: (coordinator: SharedOAuthCoordinator | undefined) => void,
   onSharing?: (sharing: OAuthSharingService | undefined) => void,
 ) {
-  const syncBinding = syncRepository.readBinding();
-  if (syncBinding === null || configFile === undefined || options.configPath === undefined) {
+  if (configFile === undefined || options.configPath === undefined) {
     return {
       syncRepository,
-      syncBinding,
+      syncBinding: null,
       syncPort: undefined,
       syncApplyCandidate: async () => {},
       lifecycle: undefined,
       sharing: () => undefined,
       configPath: options.configPath,
+      connectBackend: async () => {
+        throw new SyncOperationError('backend-unavailable');
+      },
     };
   }
   const syncApplyCandidate = async (raw: Record<string, JsonValue>, origin: 'local' | 'remote'): Promise<void> => {
@@ -70,6 +78,7 @@ export function createSyncIntegration(
   const checkActivation = async (raw: Record<string, JsonValue>, body: import('@aio-proxy/core').EntityBody) => {
     let credentialValid = true;
     let oauthEvidence: OAuthActivationEvidence | undefined;
+    const currentBinding = syncRepository.readBinding();
     const value = body.value;
     if (
       body.kind === 'provider' &&
@@ -101,7 +110,9 @@ export function createSyncIntegration(
           account,
           adapter.credentialSync?.formatVersion,
           adapter.credentialSync?.multiDevice?.evidenceId,
-          syncRepository.entities(syncBinding.id).find((entity) => entity.logicalKey === body.logicalKey),
+          currentBinding === null
+            ? undefined
+            : syncRepository.entities(currentBinding.id).find((entity) => entity.logicalKey === body.logicalKey),
         );
       }
     }
@@ -118,48 +129,131 @@ export function createSyncIntegration(
       },
     });
   };
-  const syncPort = createLocalSyncPort({
-    configPath: options.configPath,
-    configFile,
-    repo: syncRepository,
-    accounts: repository,
-    bindingId: syncBinding.id,
-    bindingGeneration: syncBinding.sessionGeneration,
-    enqueue: queue,
-    registry: () => plugins().registry,
-    applyCandidate: syncApplyCandidate,
-    checkActivation,
-    pluginVersions,
-  });
   let sharing: OAuthSharingService | undefined;
+  let syncPort: ReturnType<typeof createLocalSyncPort> | undefined;
+  let lifecycle: ReturnType<typeof createServerSyncLifecycle> | undefined;
+  let refreshCommitHooks: () => void = () => {};
   const onSharingChange = (next: OAuthSharingService | undefined): void => {
     sharing = next;
     onSharing?.(next);
   };
-  const lifecycleWithSharing = createServerSyncLifecycle({
-    configPath: options.configPath,
-    configFile,
-    repo: syncRepository,
-    accounts: repository,
-    registry: () => plugins().registry,
-    enqueue: queue,
-    applyCandidate: syncApplyCandidate,
-    pluginVersions,
-    localPort: syncPort,
-    onCoordinator,
-    onSharing: onSharingChange,
-    withProviderGate: runtime.withProviderGate,
-    deferEngine: true,
-  });
-  return {
+
+  const createLifecycle = (binding: LocalBinding | null, preconnectedSession?: SyncSession) => {
+    const port =
+      binding === null
+        ? undefined
+        : createLocalSyncPort({
+            configPath: options.configPath!,
+            configFile,
+            repo: syncRepository,
+            accounts: repository,
+            bindingId: binding.id,
+            bindingGeneration: binding.sessionGeneration,
+            enqueue: queue,
+            registry: () => plugins().registry,
+            applyCandidate: syncApplyCandidate,
+            checkActivation,
+            pluginVersions,
+          });
+    const nextLifecycle = createServerSyncLifecycle({
+      configPath: options.configPath!,
+      configFile,
+      repo: syncRepository,
+      accounts: repository,
+      registry: () => plugins().registry,
+      enqueue: queue,
+      applyCandidate: syncApplyCandidate,
+      pluginVersions,
+      localPort: port,
+      onCoordinator,
+      onSharing: onSharingChange,
+      withProviderGate: runtime.withProviderGate,
+      deferEngine: true,
+      ...(preconnectedSession === undefined ? {} : { preconnectedSession }),
+    });
+    return { port, lifecycle: nextLifecycle };
+  };
+
+  const initial = createLifecycle(syncRepository.readBinding());
+  syncPort = initial.port;
+  lifecycle = initial.lifecycle;
+
+  const replaceBackend = async (binding: LocalBinding, preconnectedSession: SyncSession): Promise<void> => {
+    const previousBinding = syncRepository.readBinding();
+    const previousEntities = previousBinding === null ? [] : syncRepository.entities(previousBinding.id);
+    await lifecycle?.close();
+    syncRepository.writeBinding(binding);
+    if (syncRepository.putEntities !== undefined) syncRepository.putEntities(binding.id, previousEntities);
+    else for (const entity of previousEntities) syncRepository.putEntity(binding.id, entity);
+    const next = createLifecycle(binding, preconnectedSession);
+    syncPort = next.port;
+    lifecycle = next.lifecycle;
+    runtime.sync = lifecycle;
+    try {
+      await lifecycle.start();
+      lifecycle.activate();
+    } catch (error) {
+      await lifecycle.close().catch(() => {});
+      throw error;
+    }
+  };
+
+  const connectBackend = async (input: { plugin: string; capability: string; options: JsonValue }): Promise<void> => {
+    const backend = plugins().registry.resolveSync(input.plugin, input.capability);
+    if (backend === undefined || !backend.options.schema.safeParse(input.options).success)
+      throw new SyncOperationError('backend-unavailable');
+    const bindingId = `sync-${crypto.randomUUID()}`;
+    const dataDirectory = join(dirname(options.configPath!), '.sync', bindingId);
+    await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+    await chmod(dataDirectory, 0o700);
+    let session: SyncSession | undefined;
+    try {
+      session = await backend.connect(input.options, { signal: new AbortController().signal, dataDirectory });
+      if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
+      const current = syncRepository.readBinding();
+      await replaceBackend(
+        {
+          id: bindingId,
+          plugin: input.plugin,
+          capability: input.capability,
+          pluginVersion: plugins().plugins.get(input.plugin)?.version ?? 'unknown',
+          identityId: session.identityId,
+          spaceId: 'default',
+          deviceId: current?.deviceId ?? crypto.randomUUID(),
+          sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
+          options: input.options,
+        },
+        session,
+      );
+      session = undefined;
+      refreshCommitHooks();
+    } catch (error) {
+      await session?.dispose().catch(() => {});
+      if (error instanceof SyncOperationError) throw error;
+      throw new SyncOperationError('backend-unavailable');
+    }
+  };
+
+  const integration = {
     syncRepository,
-    syncBinding,
-    syncPort,
+    get syncBinding() {
+      return syncRepository.readBinding();
+    },
+    get syncPort() {
+      return syncPort;
+    },
     syncApplyCandidate,
-    lifecycle: lifecycleWithSharing,
+    get lifecycle() {
+      return lifecycle;
+    },
     sharing: () => sharing,
     configPath: options.configPath,
+    connectBackend,
   };
+  refreshCommitHooks = () => {
+    runtime.syncCommit = syncCommitOption(integration);
+  };
+  return integration;
 }
 
 function localOverrideValue(body: EntityBody | null | undefined, path: readonly string[]): JsonValue | undefined {
@@ -191,15 +285,7 @@ export function createSyncControlPlaneIntegration(
   integration: ReturnType<typeof createSyncIntegration>,
   oauthLoginSessions: OAuthLoginSessionManager,
 ) {
-  if (
-    integration.lifecycle === undefined ||
-    integration.syncPort === undefined ||
-    integration.syncBinding === null ||
-    integration.configPath === undefined
-  )
-    return undefined;
-  const lifecycle = integration.lifecycle;
-  const syncPort = integration.syncPort;
+  if (integration.configPath === undefined) return undefined;
   return createSyncControlPlane({
     repo: integration.syncRepository,
     registry: () => (runtime.manager.current() as import('./snapshot').Snapshot).plugins.registry,
@@ -213,9 +299,14 @@ export function createSyncControlPlaneIntegration(
       const binding = integration.syncRepository.readBinding();
       return binding === null ? [] : integration.syncRepository.entities(binding.id);
     },
-    session: lifecycle.session,
-    lifecycle,
+    session: () => integration.lifecycle?.session(),
+    lifecycle: {
+      activate: () => integration.lifecycle?.activate(),
+      close: async () => integration.lifecycle?.close(),
+    },
     applyLocal: async (candidate, _current, objectId) => {
+      const syncPort = integration.syncPort;
+      if (syncPort === undefined) throw new SyncOperationError('not-connected');
       const result = await syncPort.applyRemote(objectId, candidate, `control:${crypto.randomUUID()}`);
       if (!result.applied) throw new SyncOperationError('operation-pending');
     },
@@ -233,9 +324,7 @@ export function createSyncControlPlaneIntegration(
       ];
       integration.syncRepository.putEntity(binding.id, { ...current, overrides });
     },
-    connect: async () => {
-      throw new SyncOperationError('backend-unavailable');
-    },
+    connect: integration.connectBackend,
     detach: async (providerId, loginSessionId) => {
       const session = oauthLoginSessions.get(loginSessionId);
       if (session?.status !== 'succeeded' || session.providerId !== providerId)
@@ -260,14 +349,31 @@ export function createSyncControlPlaneIntegration(
 }
 
 export function syncCommitOption(integration: ReturnType<typeof createSyncIntegration>) {
-  return integration.syncBinding === null || integration.syncPort === undefined
-    ? undefined
-    : createSyncCommitHooks({
-        path: integration.configPath,
+  if (integration.configPath === undefined) return undefined;
+  return {
+    prepare: (...args: Parameters<ReturnType<typeof createSyncCommitHooks>['prepare']>) => {
+      const binding = integration.syncBinding;
+      const port = integration.syncPort;
+      if (binding === null || port === undefined) return `sync-disabled:${crypto.randomUUID()}`;
+      return createSyncCommitHooks({
+        path: integration.configPath!,
         repo: integration.syncRepository,
-        bindingId: integration.syncBinding.id,
-        port: integration.syncPort,
-      });
+        bindingId: binding.id,
+        port,
+      }).prepare(...args);
+    },
+    confirm: (commitId: string) => {
+      const binding = integration.syncBinding;
+      const port = integration.syncPort;
+      if (binding === null || port === undefined) return Promise.resolve();
+      return createSyncCommitHooks({
+        path: integration.configPath!,
+        repo: integration.syncRepository,
+        bindingId: binding.id,
+        port,
+      }).confirm(commitId);
+    },
+  };
 }
 
 export async function startSyncIntegration(
@@ -277,7 +383,7 @@ export async function startSyncIntegration(
 ): Promise<void> {
   if (integration.lifecycle === undefined) return;
   runtime.sync = integration.lifecycle;
-  registerStartupCleanup(() => integration.lifecycle?.close());
+  registerStartupCleanup(() => runtime.sync?.close());
   try {
     await integration.lifecycle.start();
   } catch (error) {

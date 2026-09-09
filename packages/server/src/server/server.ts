@@ -1,9 +1,4 @@
-import {
-  canonicalizeLoopbackHost,
-  fetchLatestNpmVersion,
-  parseRuntimeConfig,
-  type BuiltInPluginDefinition,
-} from '@aio-proxy/core';
+import { canonicalizeLoopbackHost, fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
@@ -27,7 +22,6 @@ import {
   prepareDashboardConfig,
   requireDashboardAuthentication,
 } from '../dashboard-auth';
-import type { DashboardEventLimits } from '../dashboard-events';
 import { createDashboardRoutes } from '../dashboard-routes/config';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
@@ -38,16 +32,15 @@ import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
 import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
-import type { RuntimeProviderInput } from '../runtime';
-import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
-import type { InternalServerStateOptions, ServerStateTestHooks } from '../server-state/types';
+import type { ServerStateTestHooks } from '../server-state/types';
 import { requireModelAuthentication, type AgentEnv } from './agent-auth';
 import { authenticationError } from './api-key-auth/api-key-auth';
 import { createDashboardArtifactRoutes } from './dashboard-artifacts';
 import { agentCatalog, codexClientModels, listModels } from './list-models/index';
+import { createServerStateOptions, type ServerOptionsBase } from './server-options';
 
 /** The Bun WebSocket handler the realtime routes' `upgradeWebSocket` needs at the
  *  `Bun.serve` call site. `createServer` returns `Object.assign(routes, { close })`, so this
@@ -248,26 +241,8 @@ const listModelsHandler =
     return context.json(await listModels(state));
   };
 
-export type CreateServerOptions = {
+export type CreateServerOptions = ServerOptionsBase & {
   readonly __test?: ServerStateTestHooks & { readonly createRoutes?: typeof createRoutes };
-  readonly config: unknown;
-  readonly configPath?: string;
-  readonly dbHome?: string;
-  readonly eventLimits?: DashboardEventLimits;
-  readonly providerInstances?: readonly RuntimeProviderInput[];
-  readonly port?: number;
-  readonly host?: string;
-  readonly dashboardAssets?: DashboardAssets;
-  readonly logger?: ServerLogSink;
-  readonly watchConfig?: boolean;
-  readonly builtIns?: readonly BuiltInPluginDefinition[];
-  readonly version?: string;
-  readonly autoUpdate?: {
-    readonly isManagedService: () => boolean;
-    readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
-    readonly notifyAvailable?: (latest: string) => void | Promise<void>;
-    readonly fetchLatest?: (pkg: string) => Promise<string>;
-  };
 };
 
 /** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
@@ -444,20 +419,20 @@ export const createServer = async (
   }
   const config = parseRuntimeConfig(prepared.config);
   warnLeftoverOAuthModels(prepared.config, options.logger ?? defaultLogger);
-  const stateOptions: InternalServerStateOptions = {
+  const stateOptions = createServerStateOptions({
     config,
-    __dashboardAuthHealthChanged: (available) => {
+    configPath: options.configPath,
+    dbHome: options.dbHome,
+    eventLimits: options.eventLimits,
+    providerInstances: options.providerInstances,
+    logger: options.logger,
+    watchConfig: options.watchConfig,
+    builtIns: options.builtIns,
+    testHooks: options.__test,
+    dashboardAuthHealthChanged: (available) => {
       dashboardAuthAvailable = available;
     },
-    ...(options.__test === undefined ? {} : { __test: options.__test }),
-    ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
-    ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
-    ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
-    ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
-    ...(options.logger === undefined ? {} : { logger: options.logger }),
-    ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
-    ...(options.builtIns === undefined ? {} : { builtIns: options.builtIns }),
-  };
+  });
   const state = await createServerState(stateOptions);
   const logger = options.logger ?? defaultLogger;
   const controller = createAutoUpdateController({

@@ -54,3 +54,8 @@ test.each([
 ] as const)('maps accepted host %s to %s', (host, expected) => {
   expect(connectHost(host)).toBe(expected);
 });
+
+test('preserves configured remote hosts when explicitly allowed', () => {
+  expect(connectHost('192.0.2.10', { allowRemote: true })).toBe('192.0.2.10');
+  expect(connectHost('[2001:db8::10]', { allowRemote: true })).toBe('2001:db8::10');
+});

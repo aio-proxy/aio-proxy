@@ -176,7 +176,6 @@ export type ServerStateParts = Pick<
   readonly closeRecovery: () => void;
   readonly databaseOwnership: DatabaseOwnershipLock;
   readonly sync?: SyncControlPlane;
-  readonly syncLifecycle?: ServerSyncLifecycle;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
@@ -210,7 +209,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     runtime.closed = true;
     closePromise = (async () => {
       try {
-        await parts.syncLifecycle?.close();
+        await runtime.sync?.close();
       } finally {
         closeRemainingResources();
       }
@@ -224,13 +223,13 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      if (parts.syncLifecycle === undefined) {
+      if (runtime.sync === undefined) {
         closeRemainingResources();
         closePromise = Promise.resolve();
         return;
       }
-      parts.syncLifecycle.abort();
-      closePromise = parts.syncLifecycle
+      runtime.sync.abort();
+      closePromise = runtime.sync
         .close()
         .catch(() => {})
         .then(() => closeRemainingResources());

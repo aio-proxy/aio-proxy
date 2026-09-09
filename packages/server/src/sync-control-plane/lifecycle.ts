@@ -30,6 +30,7 @@ export interface ServerSyncLifecycle {
 
 export type ServerSyncLifecycleInput = {
   readonly deferEngine?: boolean;
+  readonly preconnectedSession?: SyncSession;
   readonly configPath: string;
   readonly configFile?: NonNullable<LocalPortInput['configFile']>;
   readonly repo: SyncRepository;
@@ -90,9 +91,9 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         pluginVersions: input.pluginVersions,
       });
     await recoverLocalCommits(input.repo, binding.id, port);
-    let connected: SyncSession | undefined;
+    let connected: SyncSession | undefined = input.preconnectedSession;
     try {
-      connected = await backend.connect(binding.options, { signal: controller.signal, dataDirectory });
+      connected ??= await backend.connect(binding.options, { signal: controller.signal, dataDirectory });
       const current = input.repo.readBinding();
       if (
         closed ||

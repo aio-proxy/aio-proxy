@@ -382,7 +382,6 @@ async function initializeServerState(
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
     sync: runtime.syncControl,
-    syncLifecycle: runtime.sync,
   });
 }
 
