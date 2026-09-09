@@ -20,6 +20,7 @@ import { createDashboardProviderWriteRoutes } from './provider-write-routes';
 import { createDashboardReleaseRoute } from './release';
 import { createDashboardRoutingRoutes } from './routing';
 import { createDashboardSettingsRoute } from './settings';
+import { createSyncRoutes } from './sync';
 import { createDashboardTraceRoutes } from './traces';
 
 export { redactSecrets } from './provider-secrets';
@@ -69,6 +70,7 @@ export const createDashboardRoutes = (
     .route('/release', createDashboardReleaseRoute(version, undefined, controller))
     .route('/settings', createDashboardSettingsRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
+    .route('/sync', createSyncRoutes(state.sync, state.events))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {
       const result = await state.reload();
