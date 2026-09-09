@@ -27,6 +27,7 @@ export type {
 } from './ai-sdk-bridge';
 export { jsonSchema } from './ai-sdk-bridge';
 export { fileCacheStorage } from './cache/index';
+export { acquireProcessFileLock, observeProcessFileLock, type ProcessFileLock } from './file-lock/lease';
 export { parseRuntimeConfig, resolveConfigTemplates } from './config/index';
 export {
   type AnthropicMessageResponse,

@@ -14,6 +14,7 @@
     "start": "bun src/main.ts run"
   },
   "dependencies": {
+    "@aio-proxy/agent-provider-runtime": "workspace:*",
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/dashboard": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",

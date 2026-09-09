@@ -16,6 +16,7 @@ import type {
   ConfigRemoval,
   OwnedField,
 } from '../contracts';
+import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
 import {
   clearJournal,
   fingerprint,
@@ -55,6 +56,15 @@ const runExclusive = async <T>(key: string, operation: () => Promise<T>): Promis
     release();
     if (operations.get(key) === current) operations.delete(key);
   }
+};
+
+const withInstallationLease = <T>(
+  location: CodexLocation,
+  lease: CodexLease | undefined,
+  operation: (owned: CodexLease) => Promise<T>,
+): Promise<T> => {
+  if (lease !== undefined) return lease.withOwnership(async () => operation(lease));
+  return withCodexInstallation(location, AbortSignal.timeout(15_000), operation);
 };
 
 const equalSlot = (left: ValueSlot, right: ValueSlot): boolean => {
@@ -155,18 +165,21 @@ async function recoverPending(location: CodexLocation): Promise<void> {
 export async function recoverCodexConfigOperation(
   location: CodexLocation,
   confirmRecovery?: () => Promise<boolean>,
+  lease?: CodexLease,
 ): Promise<'none' | 'recovered' | 'declined'> {
-  return runExclusive(location.markerPath, async () => {
-    await assertNoSymlinkParents(location.home);
-    if ((await inspectDirectory(location.managedRoot)) === undefined) return 'none';
-    const pending = await readJournal(location);
-    if (pending === undefined) return 'none';
-    if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
-    if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
-    await ensureManagedRoot(location);
-    await recoverPending(location);
-    return 'recovered';
-  });
+  return withInstallationLease(location, lease, async () =>
+    runExclusive(location.markerPath, async () => {
+      await assertNoSymlinkParents(location.home);
+      if ((await inspectDirectory(location.managedRoot)) === undefined) return 'none';
+      const pending = await readJournal(location);
+      if (pending === undefined) return 'none';
+      if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
+      if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
+      await ensureManagedRoot(location);
+      await recoverPending(location);
+      return 'recovered';
+    }),
+  );
 }
 
 async function checkCodexInstalled(): Promise<void> {
@@ -304,153 +317,161 @@ export async function inspectCodexConfig(location: CodexLocation): Promise<Confi
   };
 }
 
-export async function configureCodexConfig(input: {
-  readonly location: CodexLocation;
-  readonly providerId: string;
-  readonly baseUrl: string;
-  readonly auth: CodexAuthConfig;
-}): Promise<ConfigCommit> {
+export async function configureCodexConfig(
+  input: {
+    readonly location: CodexLocation;
+    readonly providerId: string;
+    readonly baseUrl: string;
+    readonly auth: CodexAuthConfig;
+  },
+  lease?: CodexLease,
+): Promise<ConfigCommit> {
   await checkCodexInstalled();
-  return runExclusive(input.location.markerPath, async () => {
-    const { location, providerId, baseUrl, auth } = input;
-    await recoverPending(location);
-    const current = await readText(location);
-    const text = current?.text ?? '';
-    const document =
-      current === undefined ? { activeProviderId: '', providerIds: [] as string[] } : readCodexDocument(text);
-    const marker = await readMarker(location);
-    const authConflict = findAuthenticationConflict(
-      text,
-      providerId,
-      marker?.providerId === providerId && marker.format === 2 && marker.authMode === 'command',
-    );
-    if (authConflict !== undefined)
-      throw new Error(`Codex provider contains user authentication field: ${authConflict}`);
-    if (marker !== undefined && marker.providerId !== providerId) {
-      if (document.providerIds.includes(providerId)) {
-        throw new Error(`Codex provider ${providerId} is occupied and is not managed by aio-proxy`);
-      }
-      const oldAuthConflict = findAuthenticationConflict(
+  return withInstallationLease(input.location, lease, async () =>
+    runExclusive(input.location.markerPath, async () => {
+      const { location, providerId, baseUrl, auth } = input;
+      await recoverPending(location);
+      const current = await readText(location);
+      const text = current?.text ?? '';
+      const document =
+        current === undefined ? { activeProviderId: '', providerIds: [] as string[] } : readCodexDocument(text);
+      const marker = await readMarker(location);
+      const authConflict = findAuthenticationConflict(
         text,
-        marker.providerId,
-        marker.format === 2 && marker.authMode === 'command',
+        providerId,
+        marker?.providerId === providerId && marker.format === 2 && marker.authMode === 'command',
       );
-      if (oldAuthConflict !== undefined)
-        throw new Error(`Codex provider contains user authentication field: ${oldAuthConflict}`);
-    }
-    let workingText = text;
-    let createdTables: readonly (readonly string[])[] = [];
-    if (marker !== undefined && marker.providerId !== providerId) {
-      const drift = changedFields(marker, text);
-      if (drift.length > 0)
-        throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
-      const cleanup = marker.fields.map((field) => ({ path: field.path, next: field.before }));
-      workingText = restoreOwnedFields(text, marker, cleanup);
-    } else if (marker === undefined && document.providerIds.includes(providerId)) {
-      throw new Error(`Codex provider ${providerId} is not managed by aio-proxy`);
-    } else if (marker !== undefined) {
-      const drift = changedFields(marker, text);
-      if (drift.length > 0)
-        throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
-    }
-    const edits = codexProviderEdits(providerId, baseUrl, auth);
-    const editedText = editCodexDocument(workingText, edits);
-    const nextText = marker?.providerId === providerId ? removeCreatedTables(editedText, marker) : editedText;
-    const fields = makeFields(text, providerId, edits, marker?.providerId === providerId ? marker : undefined);
-    if (marker?.providerId === providerId) createdTables = marker.createdTables;
-    else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
-    const authPath = ['model_providers', providerId, 'auth'] as const;
-    const hadAuthTable = hasCodexTable(text, authPath) || readManagedField(text, authPath).present;
-    if (
-      auth.mode === 'command' &&
-      !hadAuthTable &&
-      !createdTables.some((path) => path.join('\u0000') === authPath.join('\u0000'))
-    )
-      createdTables = [...createdTables, authPath];
-    const nextMarker = markerFor(location, providerId, fields, createdTables, auth);
-    validateMarker(nextMarker, location);
-    if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
+      if (authConflict !== undefined)
+        throw new Error(`Codex provider contains user authentication field: ${authConflict}`);
+      if (marker !== undefined && marker.providerId !== providerId) {
+        if (document.providerIds.includes(providerId)) {
+          throw new Error(`Codex provider ${providerId} is occupied and is not managed by aio-proxy`);
+        }
+        const oldAuthConflict = findAuthenticationConflict(
+          text,
+          marker.providerId,
+          marker.format === 2 && marker.authMode === 'command',
+        );
+        if (oldAuthConflict !== undefined)
+          throw new Error(`Codex provider contains user authentication field: ${oldAuthConflict}`);
+      }
+      let workingText = text;
+      let createdTables: readonly (readonly string[])[] = [];
+      if (marker !== undefined && marker.providerId !== providerId) {
+        const drift = changedFields(marker, text);
+        if (drift.length > 0)
+          throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
+        const cleanup = marker.fields.map((field) => ({ path: field.path, next: field.before }));
+        workingText = restoreOwnedFields(text, marker, cleanup);
+      } else if (marker === undefined && document.providerIds.includes(providerId)) {
+        throw new Error(`Codex provider ${providerId} is not managed by aio-proxy`);
+      } else if (marker !== undefined) {
+        const drift = changedFields(marker, text);
+        if (drift.length > 0)
+          throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
+      }
+      const edits = codexProviderEdits(providerId, baseUrl, auth);
+      const editedText = editCodexDocument(workingText, edits);
+      const nextText = marker?.providerId === providerId ? removeCreatedTables(editedText, marker) : editedText;
+      const fields = makeFields(text, providerId, edits, marker?.providerId === providerId ? marker : undefined);
+      if (marker?.providerId === providerId) createdTables = marker.createdTables;
+      else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
+      const authPath = ['model_providers', providerId, 'auth'] as const;
+      const hadAuthTable = hasCodexTable(text, authPath) || readManagedField(text, authPath).present;
+      if (
+        auth.mode === 'command' &&
+        !hadAuthTable &&
+        !createdTables.some((path) => path.join('\u0000') === authPath.join('\u0000'))
+      )
+        createdTables = [...createdTables, authPath];
+      const nextMarker = markerFor(location, providerId, fields, createdTables, auth);
+      validateMarker(nextMarker, location);
+      if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
+        await chmodChecked(location.configPath, 0o600);
+        await chmodChecked(location.markerPath, 0o600);
+        return { status: 'unchanged', providerId };
+      }
+      await completeOperation(
+        location,
+        {
+          operation: 'configure',
+          originalExists: current !== undefined,
+          beforeFingerprint: current === undefined ? undefined : fingerprint(text),
+          afterFingerprint: fingerprint(nextText),
+          oldMarker: marker,
+          targetMarker: nextMarker,
+          stage: 'prepared',
+        },
+        current,
+        nextText,
+        nextMarker,
+      );
       await chmodChecked(location.configPath, 0o600);
-      await chmodChecked(location.markerPath, 0o600);
-      return { status: 'unchanged', providerId };
-    }
-    await completeOperation(
-      location,
-      {
-        operation: 'configure',
-        originalExists: current !== undefined,
-        beforeFingerprint: current === undefined ? undefined : fingerprint(text),
-        afterFingerprint: fingerprint(nextText),
-        oldMarker: marker,
-        targetMarker: nextMarker,
-        stage: 'prepared',
-      },
-      current,
-      nextText,
-      nextMarker,
-    );
-    await chmodChecked(location.configPath, 0o600);
-    return { status: 'configured', providerId };
-  });
+      return { status: 'configured', providerId };
+    }),
+  );
 }
 
-export async function removeCodexConfig(location: CodexLocation): Promise<ConfigRemoval> {
-  return runExclusive(location.markerPath, async () => {
-    await recoverPending(location);
-    const marker = await readMarker(location);
-    if (marker === undefined) return { status: 'absent', preservedPaths: [] };
-    const current = await readText(location);
-    if (current === undefined) {
-      const ownedJournal = await startJournal(location, {
-        operation: 'remove',
-        originalExists: false,
-        afterFingerprint: undefined,
-        oldMarker: marker,
-        stage: 'prepared',
-      });
-      try {
-        await deleteMarker(location);
-        await updateJournal(location, {
+export async function removeCodexConfig(location: CodexLocation, lease?: CodexLease): Promise<ConfigRemoval> {
+  return withInstallationLease(location, lease, async () =>
+    runExclusive(location.markerPath, async () => {
+      await recoverPending(location);
+      const marker = await readMarker(location);
+      if (marker === undefined) return { status: 'absent', preservedPaths: [] };
+      const current = await readText(location);
+      if (current === undefined) {
+        const ownedJournal = await startJournal(location, {
           operation: 'remove',
           originalExists: false,
           afterFingerprint: undefined,
           oldMarker: marker,
-          owner: ownedJournal.owner,
-          stage: 'marker-written',
+          stage: 'prepared',
         });
-        await clearJournal(location);
-      } catch (error) {
-        await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
-        throw error;
+        try {
+          await deleteMarker(location);
+          await updateJournal(location, {
+            operation: 'remove',
+            originalExists: false,
+            afterFingerprint: undefined,
+            oldMarker: marker,
+            owner: ownedJournal.owner,
+            stage: 'marker-written',
+          });
+          await clearJournal(location);
+        } catch (error) {
+          await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
+          throw error;
+        }
+        return { status: 'absent', preservedPaths: [] };
       }
-      return { status: 'absent', preservedPaths: [] };
-    }
-    const restoreEdits: FieldEdit[] = [];
-    const preservedPaths: readonly (readonly string[])[] = marker.fields.flatMap((field) => {
-      const now = readManagedField(current.text, field.path);
-      if (equalSlot(now, field.applied)) {
-        restoreEdits.push({ path: field.path, next: field.before });
-        return [];
-      }
-      return [field.path];
-    });
-    const nextText = restoreEdits.length === 0 ? current.text : restoreOwnedFields(current.text, marker, restoreEdits);
-    await completeOperation(
-      location,
-      {
-        operation: 'remove',
-        originalExists: true,
-        beforeFingerprint: fingerprint(current.text),
-        afterFingerprint: fingerprint(nextText),
-        oldMarker: marker,
-        stage: 'prepared',
-      },
-      current,
-      nextText,
-      undefined,
-    );
-    return { status: preservedPaths.length === 0 ? 'removed' : 'partial', preservedPaths };
-  });
+      const restoreEdits: FieldEdit[] = [];
+      const preservedPaths: readonly (readonly string[])[] = marker.fields.flatMap((field) => {
+        const now = readManagedField(current.text, field.path);
+        if (equalSlot(now, field.applied)) {
+          restoreEdits.push({ path: field.path, next: field.before });
+          return [];
+        }
+        return [field.path];
+      });
+      const nextText =
+        restoreEdits.length === 0 ? current.text : restoreOwnedFields(current.text, marker, restoreEdits);
+      await completeOperation(
+        location,
+        {
+          operation: 'remove',
+          originalExists: true,
+          beforeFingerprint: fingerprint(current.text),
+          afterFingerprint: fingerprint(nextText),
+          oldMarker: marker,
+          stage: 'prepared',
+        },
+        current,
+        nextText,
+        undefined,
+      );
+      return { status: preservedPaths.length === 0 ? 'removed' : 'partial', preservedPaths };
+    }),
+  );
 }
 
 export { markerFields, ownedPaths };
