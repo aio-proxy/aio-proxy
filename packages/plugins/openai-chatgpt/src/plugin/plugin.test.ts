@@ -40,7 +40,7 @@ function staticCredentialPort(): CredentialPort<ChatGPTCredential> {
   };
 }
 
-test('discovery exposes gpt-image-2 as an image model alongside the language catalog', async () => {
+test('discovery exposes ChatGPT image models alongside the language catalog', async () => {
   const adapter = await adapterFrom(openAIChatGPTPlugin);
   const catalog = await adapter.catalog.discover({
     credentials: staticCredentialPort(),
@@ -61,9 +61,11 @@ test('discovery exposes gpt-image-2 as an image model alongside the language cat
   // because `input` reaches users as /v1/models `capabilities.image_input`.
   // Deliberately not a whole-object `toEqual`: that also pinned `displayName` and
   // the absence of `extra`, neither of which has a contract to protect.
-  expect(catalog.image.map(({ id }) => id)).toEqual(['gpt-image-2']);
-  expect(catalog.image[0]?.modelMetadata?.capabilities?.modalities).toEqual({
-    input: ['text', 'image'],
-    output: ['image'],
-  });
+  expect(catalog.image.map(({ id }) => id)).toEqual(['gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare']);
+  for (const model of catalog.image) {
+    expect(model.modelMetadata?.capabilities?.modalities).toEqual({
+      input: ['text', 'image'],
+      output: ['image'],
+    });
+  }
 });

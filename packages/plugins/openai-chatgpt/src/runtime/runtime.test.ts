@@ -262,6 +262,23 @@ test('routes image generations and edits to the Codex image endpoints', async ()
   expect(requiredCall(calls, 0).headers.get('ChatGPT-Account-Id')).toBe('acct-123');
 });
 
+test.each(['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare'] as const)(
+  'forwards the requested %s image model on generations and edits',
+  async (model) => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+    const body = JSON.stringify({ model, prompt: 'blue circle', quality: 'low' });
+
+    await dynamicFetch('https://proxy.local/v1/images/generations', { method: 'POST', body });
+    await dynamicFetch('https://proxy.local/v1/images/edits', { method: 'POST', body });
+
+    expect(requiredCall(calls, 0).url).toBe('https://chatgpt.com/backend-api/codex/images/generations');
+    expect(requiredCall(calls, 1).url).toBe('https://chatgpt.com/backend-api/codex/images/edits');
+    expect(JSON.parse(requiredCall(calls, 0).body)).toMatchObject({ model, quality: 'low' });
+    expect(JSON.parse(requiredCall(calls, 1).body)).toMatchObject({ model, quality: 'low' });
+  },
+);
+
 function credential(overrides: Partial<ChatGPTCredential> = {}): ChatGPTCredential {
   return {
     accessToken: 'access-token',
