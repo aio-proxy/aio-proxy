@@ -70,6 +70,8 @@ const defaultOfflineCheck = async (
 const checkOffline = (location: CodexLocation): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> =>
   testDeps.offlineCheck !== undefined ? testDeps.offlineCheck() : defaultOfflineCheck(location);
 
+export const checkCodexOffline = checkOffline;
+
 async function managedProvider(location: CodexLocation): Promise<string> {
   let marker: unknown;
   try {
@@ -84,7 +86,7 @@ async function managedProvider(location: CodexLocation): Promise<string> {
     value.managedBy !== 'aio-proxy' ||
     value.configPath !== location.configPath ||
     typeof value.providerId !== 'string' ||
-    value.providerId.length === 0
+    !/^[A-Za-z0-9._:-]{1,128}$/.test(value.providerId)
   )
     throw new Error('managed_marker_invalid');
   let config: unknown;

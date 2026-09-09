@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { CodexLocation } from '../contracts';
@@ -45,6 +45,8 @@ const journalPath = (location: CodexLocation, operationId: string): string =>
   join(operationPath(location, operationId), 'journal.json');
 const lockPath = (location: CodexLocation): string => join(migrationRoot(location), '.lock');
 const ownerPath = (location: CodexLocation): string => join(lockPath(location), 'owner.json');
+const quarantinePath = (location: CodexLocation, token: string): string =>
+  join(migrationRoot(location), `.lock-reclaim-${token}`);
 
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 const parseOwner = (value: unknown): LeaseOwner | undefined => {
@@ -107,6 +109,38 @@ async function writeLease(location: CodexLocation, owner: LeaseOwner): Promise<v
   await syncParent(ownerPath(location));
 }
 
+async function reclaimExpiredLock(
+  location: CodexLocation,
+  observed: LeaseOwner,
+  contenderToken: string,
+): Promise<boolean> {
+  const quarantine = quarantinePath(location, contenderToken);
+  try {
+    await rename(lockPath(location), quarantine);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return false;
+    throw error;
+  }
+  let owner: LeaseOwner | undefined;
+  try {
+    owner = parseOwner(JSON.parse(await readFile(join(quarantine, 'owner.json'), 'utf8')));
+  } catch {
+    return false;
+  }
+  if (
+    owner === undefined ||
+    owner.token !== observed.token ||
+    owner.pid !== observed.pid ||
+    owner.expiresAt !== observed.expiresAt ||
+    owner.expiresAt > Date.now() ||
+    processAlive(owner.pid)
+  )
+    return false;
+  await rm(quarantine, { recursive: true, force: true });
+  await syncParent(quarantine);
+  return true;
+}
+
 export async function acquireSessionLock(location: CodexLocation): Promise<SessionLock> {
   await assertNoSymlinkParents(migrationRoot(location));
   await mkdir(migrationRoot(location), { recursive: true, mode: 0o700 });
@@ -121,13 +155,9 @@ export async function acquireSessionLock(location: CodexLocation): Promise<Sessi
     } catch (error) {
       if (!isFsCode(error, 'EEXIST')) throw error;
       const current = await readLease(location);
-      const stale =
-        current === undefined
-          ? Date.now() - (await lstat(lockPath(location))).mtimeMs > leaseDurationMs
-          : current.expiresAt <= Date.now() || !processAlive(current.pid);
-      if (!stale) throw new Error('another Codex session migration is in progress');
-      await rm(lockPath(location), { recursive: true, force: true });
-      await syncParent(lockPath(location));
+      if (current === undefined || (current.expiresAt > Date.now() && processAlive(current.pid)))
+        throw new Error('another Codex session migration is in progress');
+      await reclaimExpiredLock(location, current, token);
     }
   }
   const renew = async (): Promise<void> => {

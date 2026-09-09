@@ -24,6 +24,8 @@ export type IndexBlocked = { readonly id: string; readonly reason: string };
 export type StateSnapshot = { readonly sessions: readonly IndexedSession[]; readonly blocked: readonly IndexBlocked[] };
 
 const databaseNames = ['state_5.sqlite'] as const;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const provider = /^[A-Za-z0-9._:-]{1,128}$/;
 const roots = async (location: CodexLocation): Promise<string[]> => {
   const candidates = [location.sqliteHome, location.home].filter((value): value is string => value !== undefined);
   const result: string[] = [];
@@ -112,7 +114,7 @@ async function scanLegacy(allowedRoots: readonly string[]): Promise<StateSnapsho
     for (const entry of entries) {
       const path = join(directory, entry.name);
       if (entry.isSymbolicLink()) {
-        blocked.push({ id: entry.name, reason: 'symbolic_link_storage_entry' });
+        blocked.push({ id: 'legacy-rollout', reason: 'symbolic_link_storage_entry' });
         continue;
       }
       if (entry.isDirectory()) {
@@ -123,6 +125,7 @@ async function scanLegacy(allowedRoots: readonly string[]): Promise<StateSnapsho
       const bytes = new Uint8Array(await readFile(path));
       try {
         const meta = inspectLegacyMetadata(bytes);
+        if (!providerPattern(meta.providerId)) throw new Error('invalid provider metadata');
         const canonical = await safeFile(path, [root]);
         sessions.push({
           id: meta.id,
@@ -132,8 +135,8 @@ async function scanLegacy(allowedRoots: readonly string[]): Promise<StateSnapsho
           revision: fingerprintBytes(bytes),
           rolloutPath: canonical,
         });
-      } catch (error) {
-        blocked.push({ id: entry.name, reason: error instanceof Error ? error.message : 'invalid_legacy_rollout' });
+      } catch {
+        blocked.push({ id: 'legacy-rollout', reason: 'invalid_legacy_rollout' });
       }
     }
   }
@@ -187,16 +190,17 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
     const sessions: IndexedSession[] = [];
     const blocked: IndexBlocked[] = [];
     for (const row of rows) {
-      const id = optionalString(row, 'id') ?? 'unknown';
+      const rawId = optionalString(row, 'id');
+      const id = rawId !== undefined && uuid.test(rawId) ? rawId : 'session';
       const mode = optionalString(row, 'history_mode');
       const provider = optionalString(row, 'model_provider');
       const rollout = optionalString(row, 'rollout_path');
-      if (provider === undefined || mode === undefined || rollout === undefined) {
+      if (provider === undefined || !providerPattern(provider) || mode === undefined || rollout === undefined) {
         blocked.push({ id, reason: 'thread metadata is incomplete' });
         continue;
       }
       if (mode !== 'legacy' && mode !== 'paginated') {
-        blocked.push({ id, reason: `history_mode ${mode} is not verified` });
+        blocked.push({ id, reason: 'unknown_history_mode' });
         continue;
       }
       if (mode === 'paginated') {
@@ -222,8 +226,8 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
           parentThreadId: optionalString(row, 'parent_thread_id'),
           createdAt: typeof row['created_at'] === 'number' ? row['created_at'] : undefined,
         });
-      } catch (error) {
-        blocked.push({ id, reason: error instanceof Error ? error.message : 'invalid rollout' });
+      } catch {
+        blocked.push({ id, reason: 'index_rollout_mismatch' });
       }
     }
     return rejectDuplicates(sessions, blocked);
@@ -232,7 +236,6 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
   }
 }
 
-export async function resolveStateDatabase(location: CodexLocation): Promise<string | undefined> {
-  const allowedRoots = await roots(location);
-  return findDatabase(allowedRoots);
+function providerPattern(value: string): boolean {
+  return provider.test(value);
 }

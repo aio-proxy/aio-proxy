@@ -4,7 +4,7 @@ import { lstat, open, readFile, realpath, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
 import type { CodexLocation, MigrationResult } from '../contracts';
-import { inspectRegularFile, syncParent } from '../managed-config/storage';
+import { assertNoSymlinkParents, inspectRegularFile, syncParent } from '../managed-config/storage';
 import {
   acquireSessionLock,
   operationPath,
@@ -14,6 +14,7 @@ import {
   updateJournal,
 } from './journal';
 import { fingerprintBytes, inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
+import { checkCodexOffline } from './sessions';
 
 const blocked = (): MigrationResult => ({ status: 'blocked', migrated: 0, skipped: 0, conflicts: 1 });
 const recoveryPathFor = (operationId: string): string => `migrations/${operationId}`;
@@ -27,13 +28,27 @@ async function assertJournalPaths(location: CodexLocation, journal: SessionMigra
     if (root === undefined) continue;
     roots.push(await realpath(root));
   }
-  const operationRoot = await realpath(operationPath(location, journal.operationId));
+  const operationPathValue = operationPath(location, journal.operationId);
+  await assertNoSymlinkParents(dirname(operationPathValue));
+  const operationStat = await lstat(operationPathValue);
+  if (operationStat.isSymbolicLink() || !operationStat.isDirectory()) throw new Error('migration operation is unsafe');
+  const operationRoot = await realpath(operationPathValue);
   const managedRoot = await realpath(location.managedRoot);
   if (!isUnder(managedRoot, operationRoot)) throw new Error('migration journal escapes managed storage');
+  const backupDirectory = join(operationPathValue, 'backups');
+  await assertNoSymlinkParents(backupDirectory);
+  const backupDirectoryStat = await lstat(backupDirectory);
+  if (backupDirectoryStat.isSymbolicLink() || !backupDirectoryStat.isDirectory())
+    throw new Error('migration backup is unsafe');
   for (const entry of journal.entries) {
+    await assertNoSymlinkParents(dirname(entry.path));
+    await assertNoSymlinkParents(dirname(entry.backup));
     const fileStat = await lstat(entry.path);
     if (fileStat.isSymbolicLink() || !fileStat.isFile())
       throw new Error('migration journal contains unsafe rollout path');
+    const backupStat = await lstat(entry.backup);
+    if (backupStat.isSymbolicLink() || !backupStat.isFile())
+      throw new Error('migration journal contains unsafe backup');
     const canonical = await realpath(entry.path);
     const backup = await realpath(entry.backup);
     if (!roots.some((root) => isUnder(root, canonical))) throw new Error('migration journal rollout escapes storage');
@@ -41,6 +56,9 @@ async function assertJournalPaths(location: CodexLocation, journal: SessionMigra
   }
   if (journal.databasePath !== undefined) {
     if (location.sqliteHome === undefined) throw new Error('migration journal database root is not configured');
+    await assertNoSymlinkParents(dirname(journal.databasePath));
+    const dbStat = await lstat(journal.databasePath);
+    if (dbStat.isSymbolicLink() || !dbStat.isFile()) throw new Error('migration journal database is unsafe');
     const databasePath = await realpath(journal.databasePath);
     if (!isUnder(await realpath(location.sqliteHome), databasePath) || basename(databasePath) !== 'state_5.sqlite')
       throw new Error('migration journal database is not the verified state index');
@@ -133,6 +151,7 @@ async function rollbackFiles(plans: readonly RestoreFilePlan[]): Promise<void> {
 export async function restoreCodexMigration(location: CodexLocation, operationId: string): Promise<MigrationResult> {
   const lock = await acquireSessionLock(location);
   try {
+    if ((await checkCodexOffline(location)) !== 'ok') return blocked();
     let journal: SessionMigrationJournal | undefined;
     try {
       journal = await readJournal(location, operationId);
@@ -156,19 +175,23 @@ export async function restoreCodexMigration(location: CodexLocation, operationId
     let conflicts = filePlan.conflicts;
     const dbActions = new Set<string>();
     if (journal.databasePath !== undefined) {
-      const db = new Database(journal.databasePath, { readonly: true, strict: true });
       try {
-        const select = db.query<{ model_provider: string }, [string]>(
-          'SELECT model_provider FROM threads WHERE id = ?',
-        );
-        for (const entry of journal.entries) {
-          const current = select.get(entry.id);
-          if (current == null) conflicts += 1;
-          else if (current.model_provider === entry.targetProviderId) dbActions.add(entry.id);
-          else if (current.model_provider !== entry.sourceProviderId) conflicts += 1;
+        const db = new Database(journal.databasePath, { readonly: true, strict: true });
+        try {
+          const select = db.query<{ model_provider: string }, [string]>(
+            'SELECT model_provider FROM threads WHERE id = ?',
+          );
+          for (const entry of journal.entries) {
+            const current = select.get(entry.id);
+            if (current == null) conflicts += 1;
+            else if (current.model_provider === entry.targetProviderId) dbActions.add(entry.id);
+            else if (current.model_provider !== entry.sourceProviderId) conflicts += 1;
+          }
+        } finally {
+          db.close();
         }
-      } finally {
-        db.close();
+      } catch {
+        return blocked();
       }
     }
     if (conflicts > 0)
@@ -180,7 +203,12 @@ export async function restoreCodexMigration(location: CodexLocation, operationId
         operationId,
         recoveryPath: recoveryPathFor(operationId),
       };
-    const db = journal.databasePath === undefined ? undefined : new Database(journal.databasePath, { strict: true });
+    let db: Database | undefined;
+    try {
+      db = journal.databasePath === undefined ? undefined : new Database(journal.databasePath, { strict: true });
+    } catch {
+      return blocked();
+    }
     let committed = false;
     try {
       db?.exec('BEGIN IMMEDIATE');

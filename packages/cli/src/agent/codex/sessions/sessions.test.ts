@@ -39,6 +39,15 @@ test('changes only session Provider metadata, never matching conversation text',
   expect(JSON.parse(special.split('\n')[0]!).payload.model_provider).toBe('$&-provider');
 });
 
+test('accepts the Task 1 legacy rollout fixture shape and preserves opaque records', async () => {
+  const bytes = new Uint8Array(
+    await Bun.file(new URL('./fixtures/legacy-session.jsonl', import.meta.url)).arrayBuffer(),
+  );
+  const result = new TextDecoder().decode(rewriteLegacyProvider(bytes, id, 'source-proxy', 'aio-proxy'));
+  expect(result).toContain('"model_provider":"aio-proxy"');
+  expect(result).toContain('"type":"function_call_output"');
+});
+
 test('previews, migrates, and explicitly restores a legacy session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-'));
   try {
@@ -82,8 +91,12 @@ test('previews, migrates, and explicitly restores a legacy session', async () =>
     expect(new TextDecoder().decode(new Uint8Array(await readFile(rolloutPath)))).toContain(
       '"model_provider":"aio-proxy"',
     );
+    const repeated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    expect(repeated.migrated).toBe(0);
+    expect(repeated.operationId).toBeUndefined();
     const restored = await restoreCodexMigration(location, migrated.operationId!);
     expect(restored.status).toBe('completed');
+    expect((await restoreCodexMigration(location, migrated.operationId!)).status).toBe('completed');
     expect(new TextDecoder().decode(new Uint8Array(await readFile(rolloutPath)))).toContain('"text":"keep"');
     expect(new TextDecoder().decode(new Uint8Array(await readFile(rolloutPath)))).toContain(
       '"model_provider":"source-proxy"',
@@ -206,9 +219,14 @@ test('recovers a stale migration lease and blocks when the offline check is unav
       join(location.managedRoot, 'migrations', '.lock', 'owner.json'),
       JSON.stringify({ pid: 9999999, token: '00000000-0000-4000-8000-000000000000', expiresAt: 1 }),
     );
-    const lock = await acquireSessionLock(location);
-    expect(lock.token).not.toBe('00000000-0000-4000-8000-000000000000');
-    await lock.release();
+    const outcomes = await Promise.allSettled([acquireSessionLock(location), acquireSessionLock(location)]);
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+    const lock = outcomes.find((outcome) => outcome.status === 'fulfilled')!;
+    if (lock.status === 'fulfilled') {
+      expect(lock.value.token).not.toBe('00000000-0000-4000-8000-000000000000');
+      await lock.value.release();
+    }
     await prepareMarker(location);
     setSessionTestDeps({ offlineCheck: async () => 'offline_check_unavailable' });
     const result = await migrateCodexSessions({
@@ -241,6 +259,10 @@ test('does not commit an index restore when the rollout has a third provider', a
     const preview = await inspectCodexSessions(location);
     const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
     await writeFile(rolloutPath, (await readFile(rolloutPath, 'utf8')).replace('aio-proxy', 'third-party'));
+    setSessionTestDeps({ offlineCheck: async () => 'codex_active' });
+    const activeWriter = await restoreCodexMigration(location, migrated.operationId!);
+    expect(activeWriter.status).toBe('blocked');
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
     const restored = await restoreCodexMigration(location, migrated.operationId!);
     expect(restored.status).toBe('partial');
     db = new Database(join(root, 'state_5.sqlite'));
@@ -277,6 +299,35 @@ test('journals the pre-log interruption without writing session data', async () 
     const result = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
     expect(result.status).toBe('blocked');
     expect(await readFile(rolloutPath, 'utf8')).toContain('source-proxy');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('blocks missing verified schema and rollout paths outside configured storage', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-schema-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await prepareMarker(location);
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec('CREATE TABLE threads (id TEXT)');
+    db.close();
+    const drift = await inspectCodexSessions(location);
+    expect(drift.blocked).toEqual([{ id: 'storage', reason: 'state database schema is not verified' }]);
+    await rm(join(root, 'state_5.sqlite'));
+    const rolloutPath = join(root, 'outside.jsonl');
+    await writeFile(rolloutPath, rollout('source-proxy'));
+    const next = new Database(join(root, 'state_5.sqlite'));
+    next.exec(
+      'CREATE TABLE threads (id TEXT, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    next
+      .query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)')
+      .run(id, 'source-proxy', 'legacy', 0, '/outside/history.jsonl');
+    next.close();
+    const escaped = await inspectCodexSessions(location);
+    expect(escaped.blocked).toContainEqual({ id, reason: 'index_rollout_mismatch' });
+    expect(JSON.stringify(escaped)).not.toContain(root);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
