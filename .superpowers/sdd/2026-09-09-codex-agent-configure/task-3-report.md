@@ -34,6 +34,30 @@ rtk bunx oxfmt --check packages/cli/src/agent/codex/location packages/cli/src/ag
 All matched files use the correct format.
 ```
 
+## Final cancellation fix
+
+`recoverCodexConfigOperation` now checks the configured home and managed-root path read-only before looking for a journal. It creates or chmods the managed root only after a pending operation is found and recovery is accepted. Absent roots return `none` without filesystem writes; declined and aborted recovery leave the pending journal untouched.
+
+Exact verification:
+
+```text
+rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config ./packages/cli/src/agent/codex/config-document/config-document.test.ts
+33 pass
+0 fail
+100 expect() calls
+
+rtk bun run check
+exit 0
+oxlint completed with existing warnings only; oxfmt --check completed with:
+All matched files use the correct format.
+
+rtk bunx tsc --noEmit -p packages/cli/tsconfig.json 2>&1 | rtk rg 'packages/cli/src/agent/codex/(location|managed-config|contracts)' | head -100
+(no diagnostics for changed Codex implementation files)
+
+rtk git diff --check
+(no output)
+```
+
 ## Implementation notes
 
 - Configure and remove record operation type, fingerprints, file existence, old/target marker, and stage in a private `config-operation.json` journal before replacing TOML.

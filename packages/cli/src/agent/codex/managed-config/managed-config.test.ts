@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveCodexLocation } from '../location';
-import { configureCodexConfig, inspectCodexConfig, removeCodexConfig } from './index';
+import { configureCodexConfig, inspectCodexConfig, recoverCodexConfigOperation, removeCodexConfig } from './index';
 import { startJournal } from './journal';
 import { readRegularFile, writeTomlAtomically } from './storage';
 
@@ -332,5 +332,43 @@ test('rejects switching to an occupied provider before changing the old configur
     expect(await Bun.file(join(f.location.managedRoot, 'config-operation.json')).exists()).toBe(false);
   } finally {
     await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('recovery cancellation leaves an absent managed root untouched', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-config-'));
+  const location = resolveCodexLocation(root, {});
+  try {
+    let prompted = false;
+    await expect(
+      recoverCodexConfigOperation(location, async () => {
+        prompted = true;
+        return false;
+      }),
+    ).resolves.toBe('none');
+    expect(prompted).toBe(false);
+    expect(await Bun.file(location.markerPath).exists()).toBe(false);
+    expect(await Bun.file(join(location.managedRoot, 'config-operation.json')).exists()).toBe(false);
+    await expect(Bun.file(location.managedRoot).exists()).resolves.toBe(false);
+
+    await mkdir(location.managedRoot, { recursive: true });
+    await Bun.write(
+      join(location.managedRoot, 'config-operation.json'),
+      `${JSON.stringify({
+        operation: 'remove',
+        originalExists: false,
+        stage: 'prepared',
+        owner: { pid: 999999999, token: 'cancelled-owner', leaseUntil: Date.now() - 1 },
+      })}\n`,
+    );
+    await expect(recoverCodexConfigOperation(location, async () => false)).resolves.toBe('declined');
+    await expect(
+      recoverCodexConfigOperation(location, async () => {
+        throw new Error('aborted');
+      }),
+    ).rejects.toThrow('aborted');
+    expect(await Bun.file(join(location.managedRoot, 'config-operation.json')).exists()).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

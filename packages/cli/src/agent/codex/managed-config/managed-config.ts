@@ -24,7 +24,15 @@ import {
   updateJournal,
 } from './journal';
 import { deleteMarker, readMarker, validateMarker, writeMarker } from './marker';
-import { chmodChecked, ensureManagedRoot, readRegularFile, syncParent, writeTomlAtomically } from './storage';
+import {
+  assertNoSymlinkParents,
+  chmodChecked,
+  ensureManagedRoot,
+  inspectDirectory,
+  readRegularFile,
+  syncParent,
+  writeTomlAtomically,
+} from './storage';
 
 const providerFields = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'] as const;
 const authenticationFields = new Set(['env_key', 'auth', 'aws', 'headers', 'header', 'api_key']);
@@ -116,11 +124,13 @@ export async function recoverCodexConfigOperation(
   confirmRecovery?: () => Promise<boolean>,
 ): Promise<'none' | 'recovered' | 'declined'> {
   return runExclusive(location.markerPath, async () => {
-    await ensureManagedRoot(location);
+    await assertNoSymlinkParents(location.home);
+    if ((await inspectDirectory(location.managedRoot)) === undefined) return 'none';
     const pending = await readJournal(location);
     if (pending === undefined) return 'none';
     if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
     if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
+    await ensureManagedRoot(location);
     await recoverPending(location);
     return 'recovered';
   });

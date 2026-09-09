@@ -46,6 +46,19 @@ export async function inspectRegularFile(path: string): Promise<Awaited<ReturnTy
   }
 }
 
+export async function inspectDirectory(path: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  await assertNoSymlinkParents(dirname(path));
+  try {
+    const stat = await lstat(path);
+    if (stat.isSymbolicLink()) throw new Error(`Refusing symbolic link: ${path}`);
+    if (!stat.isDirectory()) throw new Error(`Expected a directory: ${path}`);
+    return stat;
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return undefined;
+    throw error;
+  }
+}
+
 export async function chmodChecked(path: string, mode: number): Promise<void> {
   const expected = await lstat(path);
   if (expected.isSymbolicLink()) throw new Error(`Refusing symbolic link: ${path}`);
