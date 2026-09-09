@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { ProviderProtocol } from '@aio-proxy/types';
+
 import { createObservedFetch, observeInboundRequest } from '.';
 import {
   createAttemptResponseObservation,
@@ -7,7 +9,7 @@ import {
   withAttemptResponseObservation,
 } from '../../response-observation';
 import type { ServerLog } from '../../server-log';
-import { withRequestLogContext } from '../context';
+import { withAttemptLogContext, withRequestLogContext } from '../context';
 import { captureFetch, type FetchCall, inDebugAttempt, reconstructed, terminals } from '../test-support';
 
 test('non-debug fetch preserves the original input and init', async () => {
@@ -153,6 +155,61 @@ test('non-debug inbound observation preserves Request identity', () => {
       observeInboundRequest(request, 'openai-response'),
     ),
   ).toBe(request);
+});
+
+test('debug inbound observation does not tap openai-video bodies', async () => {
+  const logs: ServerLog[] = [];
+  const sentinel = 'data:image/png;base64,VIDEO_DATA_URL_SENTINEL';
+  const request = new Request('https://proxy.test/v1/videos', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ prompt: 'a cat', input_reference: { image_url: sentinel } }),
+  });
+
+  const observed = withRequestLogContext(
+    { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
+    () => observeInboundRequest(request, 'openai-video'),
+  );
+
+  expect(observed).toBe(request);
+  expect(await observed.text()).toContain(sentinel);
+  expect(JSON.stringify(logs)).not.toContain(sentinel);
+  expect(logs).toContainEqual(
+    expect.objectContaining({ event: 'request.inbound_snapshot', inboundProtocol: 'openai-video' }),
+  );
+});
+
+test('debug fetch does not tap openai-video request bodies', async () => {
+  const logs: ServerLog[] = [];
+  const sentinel = 'data:image/png;base64,VIDEO_DATA_URL_SENTINEL';
+  const fetcher = createObservedFetch((async (input) => {
+    if (!(input instanceof Request)) throw new TypeError('expected Request');
+    expect(await input.text()).toContain(sentinel);
+    return Response.json({ id: 'video_abc' });
+  }) as typeof globalThis.fetch);
+
+  await withRequestLogContext({ requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) }, () =>
+    withAttemptLogContext(
+      {
+        attemptIndex: 0,
+        providerId: 'openai',
+        modelId: 'sora-2',
+        requestedModelId: 'sora-2',
+        sourceProtocol: ProviderProtocol.OpenAIVideo,
+      },
+      () =>
+        fetcher(
+          new Request('https://upstream.test/v1/videos', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ prompt: 'a cat', input_reference: { image_url: sentinel } }),
+          }),
+        ),
+    ),
+  );
+
+  expect(JSON.stringify(logs)).not.toContain(sentinel);
+  expect(reconstructed(logs, 'upstream_request')).toBe('');
 });
 
 test('debug inbound observation logs complete consumed input', async () => {

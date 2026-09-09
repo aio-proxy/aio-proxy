@@ -50,7 +50,7 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect((await app.request('/v1/videos/video_abc')).status).toBe(200);
   });
 
-  test('multipart create still reaches the provider when debug observation wraps the request', async () => {
+  test('multipart create still reaches the provider when debug logging is on', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({
       config: { providers: {}, server: { logging: { level: 'debug' } } },
