@@ -220,12 +220,14 @@ export async function applyPreview(
     if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
     try {
       if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
-        const operationId =
-          decision.choice === 'restore'
-            ? record.input.kind === 'restore'
-              ? record.input.operationId
-              : `restore:${candidate.row.objectId}`
-            : `restore:${record.input.operationId}:${randomUUID()}`;
+        let operationId: string;
+        if (decision.choice === 'restore') {
+          operationId =
+            record.input.kind === 'restore' ? record.input.operationId : `restore:${candidate.row.objectId}`;
+        } else {
+          if (record.input.kind !== 'restore') throw new SyncOperationError('upgrade-required');
+          operationId = `restore:${record.input.operationId}:${randomUUID()}`;
+        }
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
       } else if (decision.choice === 'cloud') {
         await input.applyLocal(selectedBody, current, candidate.row.objectId);
