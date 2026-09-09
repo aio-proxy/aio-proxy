@@ -69,13 +69,14 @@ export async function discoverOpenAIChatGPTModels(
 /**
  * Hardcoded, and permanently so. The Codex models endpoint describes language
  * models only — its `ModelInfo` carries `input_modalities` but no output
- * modality — so it structurally cannot report an image model, and `gpt-image-2`
- * appears in neither the endpoint nor the published `models.json`. codex itself
- * hardcodes the id (`IMAGE_MODEL`), as does every reference proxy. Meanwhile
- * `/backend-api/codex/images/generations` serves it for the same account.
+ * modality — so it structurally cannot report an image model. These ids appear
+ * in neither the endpoint nor the published `models.json`. Codex and every
+ * reference proxy hardcode them. Meanwhile `/backend-api/codex/images/*`
+ * accepts them for the same account.
  *
- * The upstream `model` field is decorative: every value tested returned the same
- * gpt-image 2.0 output. The id exists so users have something to route to.
+ * Blank inbound `model` still defaults to `gpt-image-2`. The 2.5 ids exist so
+ * clients can select Sunburst or Flare explicitly; the runtime forwards the
+ * requested id verbatim.
  *
  * No `extra.protocol`. The host does hand this descriptor's `extra` to the raw
  * resolver — for an inbound `openai-image` it resolves the descriptor from the
@@ -84,12 +85,18 @@ export async function discoverOpenAIChatGPTModels(
  * `extra` and matches on the inbound protocol, so a `protocol` here would reach
  * it and be dropped. Omitted rather than carried as a decorative field.
  */
-export const CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[] = [
-  {
-    id: 'gpt-image-2',
-    displayName: 'GPT Image 2',
+function chatgptImageModel(id: string, displayName: string): ModelDescriptor {
+  return {
+    id,
+    displayName,
     modelMetadata: {
       capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
     },
-  },
+  };
+}
+
+export const CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[] = [
+  chatgptImageModel('gpt-image-2', 'GPT Image 2'),
+  chatgptImageModel('gpt-image-2.5-sunburst', 'GPT Image 2.5 Sunburst'),
+  chatgptImageModel('gpt-image-2.5-flare', 'GPT Image 2.5 Flare'),
 ];

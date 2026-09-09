@@ -110,7 +110,11 @@ describe('OpenAI ChatGPT plugin', () => {
 
     expect(catalog).toEqual({
       language: [{ id: 'gpt-test', displayName: 'GPT Test', extra: { protocol: 'openai-response' } }],
-      image: [expect.objectContaining({ id: 'gpt-image-2' })],
+      image: [
+        expect.objectContaining({ id: 'gpt-image-2' }),
+        expect.objectContaining({ id: 'gpt-image-2.5-sunburst' }),
+        expect.objectContaining({ id: 'gpt-image-2.5-flare' }),
+      ],
       embedding: [],
       speech: [],
       transcription: [],
