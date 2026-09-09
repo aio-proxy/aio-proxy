@@ -17,11 +17,18 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
     ? expandHome(configured, userHome)
     : expandHome(home.trim(), userHome) || join(userHome, '.codex');
   const actualHome = normalize(isAbsolute(candidate) ? candidate : resolve(userHome, candidate));
+  const configuredSqliteHome = env['CODEX_SQLITE_HOME']?.trim();
+  const sqliteCandidate = configuredSqliteHome ? expandHome(configuredSqliteHome, userHome) : undefined;
+  const sqliteHome =
+    sqliteCandidate === undefined
+      ? undefined
+      : normalize(isAbsolute(sqliteCandidate) ? sqliteCandidate : resolve(userHome, sqliteCandidate));
   const managedRoot = join(actualHome, '.aio-proxy');
   return {
     home: actualHome,
     configPath: join(actualHome, 'config.toml'),
     managedRoot,
     markerPath: join(managedRoot, 'codex-config.json'),
+    sqliteHome,
   };
 }

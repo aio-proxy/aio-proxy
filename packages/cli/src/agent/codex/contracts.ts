@@ -7,6 +7,33 @@ export type CodexLocation = {
   readonly configPath: string;
   readonly managedRoot: string;
   readonly markerPath: string;
+  /** Optional separately configured CODEX_SQLITE_HOME. */
+  readonly sqliteHome?: string;
+};
+
+export type SessionGroup = { readonly providerId: string; readonly active: number; readonly archived: number };
+
+export type MigrationTarget = {
+  readonly id: string;
+  readonly sourceProviderId: string;
+  readonly archived: boolean;
+  readonly storage: 'legacy' | 'native';
+  readonly revision: string;
+};
+
+export type MigrationPreview = {
+  readonly groups: readonly SessionGroup[];
+  readonly targets: readonly MigrationTarget[];
+  readonly blocked: readonly { readonly id: string; readonly reason: string }[];
+};
+
+export type MigrationResult = {
+  readonly status: 'completed' | 'partial' | 'blocked';
+  readonly migrated: number;
+  readonly skipped: number;
+  readonly conflicts: number;
+  readonly operationId?: string;
+  readonly recoveryPath?: string;
 };
 
 export type OwnedField = {
