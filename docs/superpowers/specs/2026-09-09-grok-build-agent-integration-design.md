@@ -1,7 +1,7 @@
 # Grok Build Agent Integration 设计
 
 - 日期：2026-09-09
-- 状态：已实现，但验收有缺口（见第 10 节）。Task 11 增加了 Grok 兼容 harness、`docs/agent-grok.md` 与 minor changeset；本 runner **未**把兼容性标为通过。
+- 状态：待审阅；鉴权方向已在讨论中确认，本文为完整设计提案
 - 对应 issue：[#329](https://github.com/aio-proxy/aio-proxy/issues/329)
 - 基线：Grok Build `1.0.24 (68e414c661e3)`；aio-proxy `989e5ebb`
 
@@ -11,7 +11,7 @@
 
 不重新实现 token 签发、轮换、重放保护或撤销。Grok 拥有独立 installation ID 和 token family，不使用 OpenCode / Pi / OMP 的实际凭据，也不复制上游 Provider 凭据或 `server.apiKeys`。
 
-本设计补充 [Agent Provider Integrations 设计](2026-08-18-agent-provider-integrations-design.md)，保持已有三个插件目标的行为不变。#329 原来安排在 Codex / Claude Code 之后，是基于共享静态配置机制的交付顺序。实测证明 Grok 存在鉴权命令接口，本增量采用该原生接口，不依赖 #327 / #328 的完整交付，也不在本期定义面向所有静态目标的通用框架。TOML 文本编辑复用 Codex 已提交的代码，通过 CLI 内共享模块服务两者；这不引入 Codex 的登录、Provider 选择或会话迁移流程。配置字段归属规则可以供后续目标参考。
+本设计补充 [Agent Provider Integrations 设计](2026-08-18-agent-provider-integrations-design.md)，保持已有三个插件目标的行为不变。#329 原来安排在 Codex / Claude Code 之后，是基于共享静态配置机制的交付顺序。实测证明 Grok 存在鉴权命令接口，本增量采用该原生接口，不依赖 #327 / #328 的实现，也不在本期定义面向所有静态目标的通用框架。配置字段归属规则可以供后续目标参考。
 
 交付：`agent configure grok`、`agent list` 中的 Grok 状态、`agent remove grok`、`agent auth grok`，以及真实宿主兼容测试。只管理一个用户全局 Grok 配置根和一个本机 aio-proxy endpoint。
 
@@ -60,10 +60,10 @@ aio-proxy agent revoke <installation-id>
 增加面向宿主的命令：
 
 ```text
-aio-proxy agent auth grok --installation-id <uuid>
+aio-proxy agent auth grok --grok-home <absolute-path> --installation-id <uuid>
 ```
 
-installation ID 参数由 configure 生成，绑定具体受管安装；旧配置中残留的命令不能自动授权新安装。该参数不携带 secret。endpoint 从有效 marker 读取，不接受任意 URL 参数。helper 的认证请求只访问该 origin，拒绝跨 origin 重定向，并沿用 runtime 的设备码 URL 校验。独立执行该命令遵守相同 stdout/stderr 和登录规则。
+这两个参数由 configure 生成，绑定具体受管安装；旧配置中残留的命令不能自动授权新安装。它们不携带 secret。endpoint 从有效 marker 读取，不接受任意 URL 参数。helper 的认证请求只访问该 origin，拒绝跨 origin 重定向，并沿用 runtime 的设备码 URL 校验。独立执行该命令遵守相同 stdout/stderr 和登录规则。
 
 `agent auth` 的 stdout 只允许一行 JSON；启动日志、更新提示、设备码和错误必须在 stderr。成功格式为：
 
@@ -71,11 +71,11 @@ installation ID 参数由 configure 生成，绑定具体受管安装；旧配�
 {"access_token":"...","expires_in":900}
 ```
 
-`expires_in` 是输出时的实际剩余秒数，向下取整，必须大于 0；复用缓存时不能重新报告完整 900 秒。输出前失败stdout为空、退出码非零；stdout写入或完成标记失败可能已有输出，仍非零退出，调用方不得将其当成功结果。RT 不输出；使用相同字段集合返回登录与刷新结果。
+`expires_in` 是输出时的实际剩余秒数，向下取整，必须大于 0；复用缓存时不能重新报告完整 900 秒。失败 stdout 为空，退出码非零。RT 不输出；使用相同字段集合返回登录与刷新结果。
 
 ## 4. 路径与受管文件
 
-全局根 `G` 采用 Grok 原生的 `GROK_HOME`，未设置时为 `~/.grok`。支持绝对路径和明确展开的 `~/`；拒绝其他相对路径。覆盖根仍是用户级配置，不搜索项目 `.grok`。helper 继承 Grok 进程的 `GROK_HOME`，按相同默认规则定位根目录，不另外传递路径参数。解析后仍校验 marker 的 installation ID；环境或目录不匹配时失败，不尝试查找或授权其他安装。
+全局根 `G` 采用 Grok 原生的 `GROK_HOME`，未设置时为 `~/.grok`。支持绝对路径和明确展开的 `~/`；拒绝其他相对路径。覆盖根仍是用户级配置，不搜索项目 `.grok`。生成命令固化 `G`，不依赖 Grok 以后启动时的 cwd 或 shell 环境重新解析路径。
 
 ```text
 G/config.toml                        # 用户与宿主共享
@@ -111,7 +111,7 @@ G/.aio-proxy.lock                    # installation 生命周期与凭据操作�
 
 这是将当前 Grok 全局模型/登录接到一个 aio-proxy 的模式。现有显式指向其他服务的 `[model.*]` / `[model_providers.*]` 自定义 endpoint 会与全局凭据形成额外用途；本期将其报告为路由冲突并拒绝自动接管，不删除、改写这些模型。原生内置模型使用本节全局端点。已有非路由配置，如界面、权限、MCP、hooks、skills，保持不变。
 
-configure以及每次auth都检查当前进程可见的相关环境覆盖和组织级配置限制；若它们令这些受管值不生效，返回具体字段冲突。不能修改组织策略、用户 shell 配置或清空 API Key。auth在安装锁内恢复事务后、读取凭据或调用OAuth前，重新读取完整config与可见policy，复用相同路由冲突检查；即使七个受管字段未变，后来新增的远端model/provider或环境覆盖仍拒绝。网络操作后和输出AT前再复核一次；失败不输出token，已保存的新RT保留以供配置修复后重试。所有读取和policy子进程计入helper总期限。该检查不阻止不合作的外部写者在最终检查后改配置。检查仅代表当前可见环境，list 不声称能证明所有未来 Grok 进程的环境。发布兼容测试需要从实际请求证明，没有 aio-proxy AT/RT 被发送到非受管 origin；涉及 relay、独立远端模型等额外功能不在本期支持范围。
+configure 检查当前进程可见的相关环境覆盖和组织级配置限制；若它们令这些受管值不生效，返回具体字段冲突。不能修改组织策略、用户 shell 配置或清空 API Key。检查仅代表当前可见环境，list 不声称能证明所有未来 Grok 进程的环境。发布兼容测试需要从实际请求证明，没有 aio-proxy AT/RT 被发送到非受管 origin；涉及 relay、独立远端模型等额外功能不在本期支持范围。
 
 ## 6. 合并、幂等与还原
 
@@ -135,11 +135,11 @@ ownership 中记录待提交操作和逐字段 before/after，再写 config，�
 
 ## 7. 凭据状态机与并发
 
-CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refreshToken`、`accessExpiresAt`、`status`、可选`deliveredBy`（最近成功输出该revision的安装锁owner UUID）。RT 到期、撤销等最终状态以服务端为准，不伪造服务端未返回的到期信息。损坏、安装绑定不匹配或未知版本的状态不得用于请求。
+CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refreshToken`、`accessExpiresAt`、`status`。RT 到期、撤销等最终状态以服务端为准，不伪造服务端未返回的到期信息。损坏、安装绑定不匹配或未知版本的状态不得用于请求。
 
 ### 普通调用
 
-在同一安装锁内读取并验证 marker/config/credential。有 RT 时调用公共 `refreshAgentCredential()`，不因缓存 AT 尚未过期就绕过服务端校验；这样用户撤销后再次执行 `grok login` 能进入重新授权，不会反复拿到已撤销的缓存 AT。只有观察到新revision、同revision的新交付owner，或本次观察到的锁持有者正是当前交付owner时，才允许并发复用。该规则同时覆盖token保存后和完成标记保存后、释放锁前两个窗口。缺少凭据或服务端确认 `invalid_grant` 后，允许交互调用开始现有 device flow。设备码 URL 和状态在 stderr；超时、取消或拒绝不输出 token。
+在同一安装锁内读取并验证 marker/config/credential。有 RT 时调用公共 `refreshAgentCredential()`，不因缓存 AT 尚未过期就绕过服务端校验；这样用户撤销后再次执行 `grok login` 能进入重新授权，不会反复拿到已撤销的缓存 AT。只有等待同一轮刷新且观察到新 revision 的并发调用可复用新结果。缺少凭据或服务端确认 `invalid_grant` 后，允许交互调用开始现有 device flow。设备码 URL 和状态在 stderr；超时、取消或拒绝不输出 token。
 
 从无凭据进入授权时使用公共 `requestDeviceAuthorization()` 和 `pollDeviceAuthorization()`。总交互期限不超过 240 秒，并受服务端 device-code 到期限制，留在 Grok 已验证的 300 秒交互调用期限内。refresh 的临时网络失败不自动变成新的 device flow。
 
@@ -153,9 +153,9 @@ CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refresh
 
 configure、auth、remove 共用安装锁。复用或小范围提取仓库已有的文件锁进程身份、陈旧持有者恢复和 fencing 机制；不以进程内 single-flight 代替跨进程互斥，也不直接拿 server 数据库 ownership lock 管理 CLI 文件。
 
-普通交互授权期间保留安装锁，设置 heartbeat；其他静默调用在自己的 5 秒预算内失败即可，不发起第二个登录。拿锁后必须重读状态，不能使用等待前缓存的 RT。对并发调用，先只读观察当前存活的安装锁owner，再读绑定安装的revision/deliveredBy元数据，不取用AT/RT；即使随后锁释放，也保留已经观察到的owner。拿锁并复核路由后读取完整凭据。若revision增加，或同revision的deliveredBy相对快照改变，或deliveredBy等于观察到的lockOwner，且AT仍有效至少1秒，则复用；否则刷新。锁不存在的独立调用没有owner匹配且交付元数据不变，仍经服务端校验。死亡或身份不可验证的持有者不能提供复用依据；不能只凭任意锁文件存在就放行。
+普通交互授权期间保留安装锁，设置 heartbeat；其他静默调用在自己的 5 秒预算内失败即可，不发起第二个登录。拿锁后必须重读状态，不能使用等待前缓存的 RT。对并发静默调用，记录等待前 revision：若拿锁后发现另一调用已轮换并持久化新的有效 AT，复用这个新 revision，不再次轮换；否则执行一次刷新。
 
-refresh/login成功后先原子持久化新AT/RT/revision，不带deliveredBy；在同一安装锁内复核路由并等待stdout写入完成，再将deliveredBy设为本次锁owner原子保存，最后释放锁。每次成功交付（包括复用）更新该owner，不增加token revision。因此完成标记已写但锁未释放时启动的B也有重叠依据；若其他等待者先取得锁并完成复用，交付owner变化仍让B识别新交付，无需公平排队或无界历史。输出或完成标记写失败时非零退出，保留新RT；二者不是原子事务，不能承诺失败调用的部分stdout可用。保存后输出前崩溃且未见完成转变，后继helper刷新已保存的新RT；正常输出后未来独立轮换/撤销仍遵循现有family失效语义。网络请求前记录可恢复的 refresh-in-flight 状态；进程中断或响应丢失后，仅在服务端现有短重放窗口内重试同一 RT，超过窗口转为需要重新登录，避免无限重放旧 RT。复用现有协议的窗口规则，不调整服务端防重放语义来适配客户端。
+refresh/login 成功后，先原子持久化完整的新 AT/RT/revision，再输出 AT。输出失败不回滚已经保存的新凭据。网络请求前记录可恢复的 refresh-in-flight 状态；进程中断或响应丢失后，仅在服务端现有短重放窗口内重试同一 RT，超过窗口转为需要重新登录，避免无限重放旧 RT。复用现有协议的窗口规则，不调整服务端防重放语义来适配客户端。
 
 Grok 对刚签发 token 的保护属于宿主行为，不通过伪造时间或循环重签绕开。测试必须覆盖并发轮换后其他 Grok 进程的恢复；若最终被宿主拒绝，呈现原生重新登录/重试路径，不能承诺所有 401 都无感恢复。
 
@@ -163,7 +163,7 @@ Grok 对刚签发 token 的保护属于宿主行为，不通过伪造时间或�
 
 给 `AgentTargetSchema` 增加 `grok`，对应 client ID 为 `aio-proxy-grok`。同时更新请求 schema、服务端 client/target 校验、repository 的 target 解码和 admin 展示；不能只扩展 TypeScript union。现有数据库 target 列为 text，没有需要为了此枚举值新增的表结构。保持 token TTL、family rotation 和撤销规则不变。
 
-Grok 使用普通 OpenAI-compatible `GET /v1/models`，不假装消费插件专用的中立 Agent catalog schema。现有 models handler 对任何没有目录协商参数的 Agent grant 都返回 400，因此实现必须新增已认证 `grant.target === 'grok'` 的普通目录分支；它位于插件协商处理之后、通用 Agent 拒绝和 `client_version` 分流之前。插件目标仍必须协商目录，畸形协商参数仍拒绝，过期或撤销 token 仍由前置认证拦截。由现有 AT 认证保护请求，响应保持现有普通模型目录结构；本期不添加 Grok 私有目录协议、后台刷新 timer 或 CLI 的 LKG。模型到协议的映射遵从宿主，默认 Chat Completions；代理继续通过现有 pipeline 完成跨协议转换和 failover。
+Grok 使用普通 OpenAI-compatible `GET /v1/models`，不假装消费插件专用的中立 Agent catalog schema。由现有 AT 认证保护请求，响应保持现有普通模型目录结构；本期不添加 Grok 私有目录协议、后台刷新 timer 或 CLI 的 LKG。模型到协议的映射遵从宿主，默认 Chat Completions；代理继续通过现有 pipeline 完成跨协议转换和 failover。
 
 remove 按顺序执行：
 
@@ -186,15 +186,14 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 
 | 模块 | 职责 |
 | --- | --- |
-| `packages/cli/src/agent/toml-document/` | Codex/Grok 共用的纯 TOML 文本编辑、源码范围定位及最终语法验证，不包含宿主字段或生命周期规则 |
-| `packages/cli/src/agent/grok/` | Grok configure/inspect/remove、七字段与别名、TOML 字段归属和事务；调用共享文本接口 |
+| `packages/cli/src/agent/grok/` | Grok configure/inspect/remove、TOML 字段归属和事务 |
 | `packages/cli/src/agent/grok-auth/` | 薄命令适配、凭据状态和跨进程刷新协调 |
 | `packages/agent-provider/runtime/` | 复用现有 device-code、token 请求与错误分类；必要时补充可复用 deadline 支持 |
 | `packages/types/src/agent-integration/` | target/client ID 与兼容的结果类型 |
 | `packages/core/src/agent-identity/`、server auth | 接受新增身份；保持既有鉴权语义 |
 | CLI 命令输出和 i18n | 原生登录提示、配置漂移和只读诊断 |
 
-私有模块保持在对应目录内，`index.ts` 只导出公共入口。新增 CLI 对公共 runtime 的使用要声明直接 workspace 依赖。共享文本模块沿用 Codex 的 `toml-eslint-parser` 源码范围解析与 `Bun.TOML.parse()` 最终验证组合，具体接口、版本选项和迁移步骤见实现计划。Bun 的 stringify 可用于新建实验配置，不能用于整份重写用户配置。parser 只在共享模块导入，Grok 不导入 Codex 的私有编辑器；共享模块必须满足第 6 节契约，归属、别名、撤销和事务仍由各宿主模块管理。
+私有模块保持在对应目录内，`index.ts` 只导出公共入口。新增 CLI 对公共 runtime 的使用要声明直接 workspace 依赖。TOML parser 的具体库选择留给实现计划的依赖评估；必须满足第 6 节可检验的编辑契约，不由 spec 预造通用工具框架。
 
 ## 10. 验收与发布
 
@@ -205,31 +204,14 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 - 普通 AT 和 RT 的签发、client mismatch、轮换、重放与 installation 撤销；重启 server 后身份可继续使用；未知 target 仍被拒绝。
 - 同一 Grok 进程跨过期继续推理，较早签发的 401 恢复，以及刚签发 401 的宿主限制；至少两个 helper 进程并发，旧 revision 不覆盖新 RT。
 - 刷新响应丢失、写凭据前崩溃、保存后 stdout 中断、陈旧锁持有者恢复、remove 与登录/刷新竞争。
-- TOML 无文件、已有用户设置、注释、别名、dotted/quoted key、inline table、非法 TOML、配置漂移、用户新增字段、重复 configure、endpoint 改变、未知格式、路径链接、默认/自定义 `GROK_HOME` 继承与安装 ID 不匹配、每个提交阶段崩溃与可检测的外部改写。
+- TOML 无文件、已有用户设置、注释、别名、dotted/quoted key、inline table、非法 TOML、配置漂移、用户新增字段、重复 configure、endpoint 改变、未知格式、路径链接、每个提交阶段崩溃与可检测的外部改写。
 - remove 只撤销本安装，只还原未变的受管字段；用户修改保留；离线撤销失败保留可恢复记录；不触碰 Grok auth 文件。
 - helper token 的实际目的地包括模型发现、推理和辅助请求。正常本地使用不把 aio-proxy token 送往外部 origin，辅助 404 不触发云端鉴权替代；显式外部模型与受管覆盖冲突可解释且不损坏原配置。
 - OpenCode/Pi/OMP 的已有 tests 与 artifact/compatibility 验证继续通过，plugin 更新流程不尝试给 Grok 安装脚本。
 
-单元测试按模块 colocate，只保护上述行为与回归。真实 Grok 二进制是兼容验证依赖，不成为 aio-proxy 的构建或运行时依赖。常规实现完成门槛为 `bun run preflight` 与受影响 Agent artifact/compatibility 测试通过。
+单元测试按模块 colocate，只保护上述行为与回归。真实 Grok 二进制是兼容验证依赖，不成为 aio-proxy 的构建或运行时依赖。常规实现完成门槛为 `bun run preflight` 与受影响 Agent artifact/compatibility 测试通过；本次仅提交设计文档，不宣称这些实现验收已经通过。
 
 实现发布使用一条简短 changeset，产品包 `aio-proxy` 与实际修改的内部包使用一致 minor bump；不为本设计文档单独添加功能发布说明。不改变 plugin-sdk 公共 API 时不把它作为无关发布目标。
-
-### Task 11 验收状态（2026-09-11 Linux runner）
-
-Harness：`packages/cli/src/agent/grok-compat/`。入口 `bun run --filter @aio-proxy/cli test:compat:grok -- --grok-bin … --cli-bin … --expected-version 1.0.24 --report <path>`。无 binary 或版本不符时非零退出，不静默 skip 并声称通过。普通 `bun test` 只覆盖 harness 失败传播、脱敏、旅程顺序（configure → login/helper → Dashboard approve）和 helper stdout `JSON.parse` 契约，不下载或启动用户 Grok。
-
-本 runner 已实现的能力（仍 **不是** 真实宿主兼容通过）：隔离 env 从 PATH/locale/tmp allowlist 起步（不继承 `XAI_API_KEY` / `GROK_*` overlay）；fixture 在 loopback 启动假上游与 aio-proxy，启动失败则非零；基本旅程为 compiled `agent configure grok` → 真实 `grok login`/helper → 解析 helper **stderr** 中的 device URL → 真实 Dashboard login/CSRF/approve → `grok models` + fixture 模型上流式文本与一次工具调用（上游第一次 tool call、第二次文本）；helper stdout 在内存 `JSON.parse`，`Object.keys` 必须恰为 `access_token`/`expires_in`；未实现辅助 URL 探测真实 404 且不得云端 fallback；loopback HTTP recorder 记录路径/origin/token 指纹。`sandbox-exec` 缺失时报告 `macos-sandbox-egress` 为显式 `not_run: egress isolation not available`，不假装 egress 通过。未执行的 host-only/长周期/plugin-compat 门槛记为 `not_run:` 细节，不把它们当成已失败的 implemented case，以免未来真实宿主跑通旅程时 `test:compat:grok` 仍无法 exit 0。
-
-本 runner **未通过**、不得当作兼容证据的项：
-
-- 真实 Grok `1.0.24` 不在本机（无 `/Users/bytedance/.grok/bin/grok`，未安装或更新用户 Grok）。Runner 已实现真实宿主 *可以* 走完的旅程，但本 Linux 环境没有真实 Grok，**不得声称兼容通过**。
-- 非 macOS：无 `sandbox-exec`，无等价网络隔离，因此 **token 目的地 / egress 验收未通过**（报告为 named `not_run`，不是 canned always-fail）
-- 未等待 15 分钟自然 AT 过期（不降低生产 TTL）；host-only 时间戳改写不能当作自然过期证据
-- 未编译或对照 `darwin-arm64` 发布产物；本平台为 Linux。compiled CLI + 真实 Grok host **未在本 runner 上执行**
-- `fresh401`、双 Grok 进程共享 installation 轮换、身份服务重启后的真实 grok login、silent 自批：**未跑真实宿主**
-- OpenCode / Pi / OMP `test:compat`：harness 不执行；artifact 若在本任务另行运行，按其真实结果记录，未跑的不能标为通过
-
-已有证据：`bun test packages/cli/src/agent/grok-compat/grok-compat.test.ts` 覆盖错误版本拒绝且不调用 login、子进程非零则 case failed 且脚本非零、报告不含 AT/RT/`user_code`、缺 binary 失败闭合、configure 先于 login、Dashboard approve 函数被调用、helper stdout 契约不是 `agent auth grok --installation-id missing`、proxy 启动失败非零、allowlist env。无脱敏宿主 baseline/current JSON 可链接，因为真实宿主未运行。用户文档见 [docs/agent-grok.md](../../agent-grok.md)。
 
 ## 11. 备选方案与结论
 
@@ -239,4 +221,4 @@ Harness：`packages/cli/src/agent/grok-compat/`。入口 `bun run --filter @aio-
 - 复制 Pi/OpenCode 的 OAuth 实现到 CLI：已有公共 runtime，拒绝。
 - 无条件恢复整个 config/auth 快照：会覆盖用户和宿主的后续修改，拒绝。
 
-产品方向已确定；本设计列出的文件格式、生命周期和宿主限制均给出具体处理规则。实现计划见 [Grok Build Agent Integration Implementation Plan](../plans/2026-09-09-grok-build-agent-integration.md)；后续按计划完成实现和验证，不需要先完成 Codex 或 Claude Code 接入。
+产品方向已确定；本设计列出的文件格式、生命周期和宿主限制均给出具体处理规则。剩余工作是本文审阅，以及按验收要求完成实现计划和验证，不需要先完成 Codex 或 Claude Code 接入。

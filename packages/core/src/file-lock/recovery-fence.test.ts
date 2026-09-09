@@ -97,29 +97,6 @@ test.serial('action errors are not translated after the acquisition deadline', a
   }
 });
 
-test.serial('an already-aborted timeout signal maps to timeoutError', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-recovery-fence-'));
-  const signal = AbortSignal.timeout(1);
-  await Bun.sleep(20);
-  try {
-    await expect(
-      runWithRecoveryFence(
-        {
-          lockPath: join(dir, 'config.lock'),
-          staleMs: 60_000,
-          heartbeatMs: 10_000,
-          deadline: Date.now() - 1,
-          signal,
-          timeoutError: () => new Error('acquisition timed out'),
-        },
-        async () => 'acquired',
-      ),
-    ).rejects.toThrow('acquisition timed out');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test.serial(
   'concurrent recovery acquisitions serialize without timing out',
   async () => {

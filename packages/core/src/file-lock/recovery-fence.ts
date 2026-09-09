@@ -25,11 +25,6 @@ const STARTTIME_UNAVAILABLE = 'unavailable';
 const abandonedRecoveryMarkers = new Set<string>();
 const RECOVERY_TIMEOUT = Symbol('recovery-timeout');
 
-function isFenceDeadlineAbort(error: unknown): boolean {
-  if (error === RECOVERY_TIMEOUT) return true;
-  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'TimeoutError';
-}
-
 function parseMarker(text: string): RecoveryMarker | null {
   try {
     const value: unknown = JSON.parse(text);
@@ -252,7 +247,7 @@ export async function runWithRecoveryFence<T>(
     input.signal?.throwIfAborted();
     fence = await acquireRecoveryFence({ ...input, signal: controller.signal });
   } catch (error) {
-    if (isFenceDeadlineAbort(error)) throw input.timeoutError();
+    if (error === RECOVERY_TIMEOUT) throw input.timeoutError();
     throw error;
   } finally {
     clearTimeout(timeout);
