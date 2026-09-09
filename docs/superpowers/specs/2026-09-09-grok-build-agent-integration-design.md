@@ -60,10 +60,10 @@ aio-proxy agent revoke <installation-id>
 增加面向宿主的命令：
 
 ```text
-aio-proxy agent auth grok --grok-home <absolute-path> --installation-id <uuid>
+aio-proxy agent auth grok --installation-id <uuid>
 ```
 
-这两个参数由 configure 生成，绑定具体受管安装；旧配置中残留的命令不能自动授权新安装。它们不携带 secret。endpoint 从有效 marker 读取，不接受任意 URL 参数。helper 的认证请求只访问该 origin，拒绝跨 origin 重定向，并沿用 runtime 的设备码 URL 校验。独立执行该命令遵守相同 stdout/stderr 和登录规则。
+installation ID 参数由 configure 生成，绑定具体受管安装；旧配置中残留的命令不能自动授权新安装。该参数不携带 secret。endpoint 从有效 marker 读取，不接受任意 URL 参数。helper 的认证请求只访问该 origin，拒绝跨 origin 重定向，并沿用 runtime 的设备码 URL 校验。独立执行该命令遵守相同 stdout/stderr 和登录规则。
 
 `agent auth` 的 stdout 只允许一行 JSON；启动日志、更新提示、设备码和错误必须在 stderr。成功格式为：
 
@@ -75,7 +75,7 @@ aio-proxy agent auth grok --grok-home <absolute-path> --installation-id <uuid>
 
 ## 4. 路径与受管文件
 
-全局根 `G` 采用 Grok 原生的 `GROK_HOME`，未设置时为 `~/.grok`。支持绝对路径和明确展开的 `~/`；拒绝其他相对路径。覆盖根仍是用户级配置，不搜索项目 `.grok`。生成命令固化 `G`，不依赖 Grok 以后启动时的 cwd 或 shell 环境重新解析路径。
+全局根 `G` 采用 Grok 原生的 `GROK_HOME`，未设置时为 `~/.grok`。支持绝对路径和明确展开的 `~/`；拒绝其他相对路径。覆盖根仍是用户级配置，不搜索项目 `.grok`。helper 继承 Grok 进程的 `GROK_HOME`，按相同默认规则定位根目录，不另外传递路径参数。解析后仍校验 marker 的 installation ID；环境或目录不匹配时失败，不尝试查找或授权其他安装。
 
 ```text
 G/config.toml                        # 用户与宿主共享
@@ -204,7 +204,7 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 - 普通 AT 和 RT 的签发、client mismatch、轮换、重放与 installation 撤销；重启 server 后身份可继续使用；未知 target 仍被拒绝。
 - 同一 Grok 进程跨过期继续推理，较早签发的 401 恢复，以及刚签发 401 的宿主限制；至少两个 helper 进程并发，旧 revision 不覆盖新 RT。
 - 刷新响应丢失、写凭据前崩溃、保存后 stdout 中断、陈旧锁持有者恢复、remove 与登录/刷新竞争。
-- TOML 无文件、已有用户设置、注释、别名、dotted/quoted key、inline table、非法 TOML、配置漂移、用户新增字段、重复 configure、endpoint 改变、未知格式、路径链接、每个提交阶段崩溃与可检测的外部改写。
+- TOML 无文件、已有用户设置、注释、别名、dotted/quoted key、inline table、非法 TOML、配置漂移、用户新增字段、重复 configure、endpoint 改变、未知格式、路径链接、默认/自定义 `GROK_HOME` 继承与安装 ID 不匹配、每个提交阶段崩溃与可检测的外部改写。
 - remove 只撤销本安装，只还原未变的受管字段；用户修改保留；离线撤销失败保留可恢复记录；不触碰 Grok auth 文件。
 - helper token 的实际目的地包括模型发现、推理和辅助请求。正常本地使用不把 aio-proxy token 送往外部 origin，辅助 404 不触发云端鉴权替代；显式外部模型与受管覆盖冲突可解释且不损坏原配置。
 - OpenCode/Pi/OMP 的已有 tests 与 artifact/compatibility 验证继续通过，plugin 更新流程不尝试给 Grok 安装脚本。
