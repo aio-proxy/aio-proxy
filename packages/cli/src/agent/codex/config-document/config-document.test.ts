@@ -139,3 +139,50 @@ test('reads absent and present managed fields', () => {
   expect(readManagedField('', ['model_provider'])).toEqual({ present: false });
   expect(readCodexDocument('model_provider = "proxy.team"\n').activeProviderId).toBe('proxy.team');
 });
+
+test('discovers providers from standard, root-table, inline, and dotted assignments', () => {
+  expect(readCodexDocument('[model_providers.proxy]\nname = "x"\n').providerIds).toEqual(['proxy']);
+  expect(readCodexDocument('model_providers = { proxy = { name = "x" } }\n').providerIds).toEqual(['proxy']);
+  expect(readCodexDocument('[model_providers]\nproxy = { name = "x" }\n').providerIds).toEqual(['proxy']);
+  expect(readCodexDocument('model_providers.proxy = { name = "x" }\n').providerIds).toEqual(['proxy']);
+});
+
+test('deletes standard provider scalar fields while preserving unrelated fields and tables', () => {
+  const original =
+    '# keep\n[model_providers.proxy]\n' +
+    'name = "aio-proxy" # first\n' +
+    'base_url = "url"\n' +
+    'wire_api = "responses" # middle\n' +
+    'requires_openai_auth = true\n' +
+    'experimental_bearer_token = "token" # last\n' +
+    'custom = "keep"\n\n' +
+    '[mcp_servers.local]\ncommand = "mcp"\n';
+  for (const path of ['name', 'wire_api', 'experimental_bearer_token']) {
+    const actual = editCodexDocument(original, [
+      { path: ['model_providers', 'proxy', path], next: { present: false } },
+    ]);
+    const parsed = Bun.TOML.parse(actual);
+    expect(parsed.model_providers.proxy.custom).toBe('keep');
+    expect(actual).toContain('[mcp_servers.local]\ncommand = "mcp"');
+    expect(actual).not.toContain(`${path} =`);
+  }
+});
+
+test('removes an explicitly managed provider table after deleting all managed fields', () => {
+  const original =
+    '# before\n[model_providers.proxy]\n' +
+    'name = "aio-proxy"\nbase_url = "url"\nwire_api = "responses"\n' +
+    'requires_openai_auth = true\nexperimental_bearer_token = "token"\n\n' +
+    '[mcp_servers.local]\ncommand = "mcp"\n';
+  const edits = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'].map((key) => ({
+    path: ['model_providers', 'proxy', key],
+    next: { present: false as const },
+  }));
+  const actual = editCodexDocument(original, edits);
+  expect(actual).toBe('# before\n\n[mcp_servers.local]\ncommand = "mcp"\n');
+  expect(readCodexDocument(actual).providerIds).toEqual([]);
+});
+
+test('rejects a provider ID containing a control character before trimming', () => {
+  expect(() => validateCodexProviderId('proxy\n')).toThrow(/control/i);
+});

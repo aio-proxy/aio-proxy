@@ -198,6 +198,15 @@ export function readCodexDocument(text: string): CodexDocument {
       if (parts.length === 1) providerIds.add(parts[0]!);
     }
   }
+  for (const value of document.values) {
+    if (
+      value.path.length === 2 &&
+      value.path[0] === 'model_providers' &&
+      value.keyValue.value.type === 'TOMLInlineTable'
+    ) {
+      providerIds.add(value.path[1]!);
+    }
+  }
   return { text, activeProviderId, providerIds: [...providerIds] };
 }
 
@@ -213,6 +222,37 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
     AST.TOMLInlineTable,
     { readonly providerId: string; readonly fields: [string, ManagedValue][] }
   >();
+  const deletedPaths = new Set(edits.filter((edit) => !edit.next.present).map((edit) => edit.path.join('\u0000')));
+  const managedProviderFields = new Set([
+    'name',
+    'base_url',
+    'wire_api',
+    'requires_openai_auth',
+    'experimental_bearer_token',
+  ]);
+  const providerTableCleanup = new Set(
+    document.tables.filter((table) => {
+      const tablePath = table.resolvedKey.map(String);
+      if (tablePath.length !== 2 || tablePath[0] !== 'model_providers') return false;
+      if (table.body.length === 0) return deletedPaths.has(tablePath.join('\u0000'));
+      const allFieldsManaged = table.body.every((field) => {
+        const fieldPath = [...tablePath, ...keyParts(field.key)];
+        return fieldPath.length === 3 && managedProviderFields.has(fieldPath[2]!);
+      });
+      if (!allFieldsManaged) return false;
+      return (
+        deletedPaths.has(tablePath.join('\u0000')) ||
+        table.body.every((field) => {
+          const fieldPath = [...tablePath, ...keyParts(field.key)];
+          return (
+            fieldPath.length === 3 &&
+            managedProviderFields.has(fieldPath[2]!) &&
+            deletedPaths.has(fieldPath.join('\u0000'))
+          );
+        })
+      );
+    }),
+  );
 
   const addInlineOperation = (container: AST.TOMLInlineTable, operation: InlineOperation): void => {
     const existing = inlineOperations.get(container) ?? [];
@@ -232,10 +272,13 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       if (!edit.next.present) {
         if (existing.container.type === 'TOMLInlineTable') {
           addInlineOperation(existing.container, inlineMemberDelete(text, existing.container.body, existing.keyValue));
+        } else if (existing.container.type === 'TOMLTable' && edit.path.length === 3) {
+          if (!providerTableCleanup.has(existing.container))
+            sourceEdits.push(lineDelete(text, existing.keyValue.range));
         } else if (edit.path.length === 1 || edit.path[0] !== 'model_providers') {
           sourceEdits.push(lineDelete(text, existing.keyValue.range));
         } else {
-          throw new Error('Managed provider table cannot be deleted by a field edit');
+          throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
         }
       } else {
         const oldValue = managedValue(existing);
@@ -252,7 +295,15 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       }
       continue;
     }
-    if (!edit.next.present) continue;
+    if (!edit.next.present) {
+      if (edit.path.length === 2 && edit.path[0] === 'model_providers') {
+        const providerTable = findTable(document, edit.path);
+        if (providerTable !== undefined && !providerTableCleanup.has(providerTable)) {
+          throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
+        }
+      }
+      continue;
+    }
     const key = edit.path.at(-1)!;
     const parentPath = edit.path.slice(0, -1);
     const parentInline = findInlineContainer(document, parentPath);
@@ -302,6 +353,14 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
   }
   for (const [table, fields] of tableFields) sourceEdits.push(standardTableBlock(text, document.tables, table, fields));
   for (const [providerId, fields] of newProviders) sourceEdits.push(newProviderTable(text, providerId, fields));
+  for (const table of providerTableCleanup) {
+    const last = table.body.at(-1);
+    sourceEdits.push({
+      start: lineStart(text, table.range[0]),
+      end: textAfterLine(text, last?.range[1] ?? table.range[1]),
+      text: '',
+    });
+  }
   for (const [container, { providerId, fields }] of newInlineProviders) {
     addInlineOperation(container, newInlineProvider(container, providerId, fields));
   }
@@ -332,13 +391,13 @@ export function codexProviderEdits(providerId: string, baseUrl: string, token: s
 }
 
 export function validateCodexProviderId(value: string): string {
-  const id = value.trim();
-  if (id.length === 0) throw new Error('Codex provider ID cannot be empty');
-  const hasControlCharacter = [...id].some((character) => {
+  const hasControlCharacter = [...value].some((character) => {
     const codePoint = character.codePointAt(0)!;
     return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
   });
   if (hasControlCharacter) throw new Error('Codex provider ID cannot contain control characters');
+  const id = value.trim();
+  if (id.length === 0) throw new Error('Codex provider ID cannot be empty');
   if (new Set(['openai', 'ollama', 'lmstudio', 'amazon-bedrock']).has(id)) {
     throw new Error(`Codex provider ID is reserved: ${id}`);
   }
