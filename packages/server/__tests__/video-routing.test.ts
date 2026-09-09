@@ -37,6 +37,19 @@ describe('OpenAI Videos HTTP dispatch', () => {
     });
   });
 
+  test('POST /v1/videos multipart create pins retrieve after a second parse of the spool', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const created = await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=VIDEOB' },
+      body: ['--VIDEOB\r\nContent-Disposition: form-data; name="prompt"\r\n\r\na cat\r\n', '--VIDEOB--\r\n'].join(''),
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toEqual({ id: 'video_abc', object: 'video', status: 'queued' });
+    expect((await app.request('/v1/videos/video_abc')).status).toBe(200);
+  });
+
   test('a raw-less video provider is 501 video_convert, not a speech invoke', async () => {
     const fixture = videoProvider('sdk', { raw: false, speech: true });
     const response = await request(CREATE, [fixture.value], createBody());

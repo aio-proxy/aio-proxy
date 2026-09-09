@@ -5,6 +5,68 @@ import { ANONYMOUS_CALLER } from '../../caller-principal';
 import { createVideoJobStore } from './job-store';
 import { createOpenAIVideosRoutes } from './videos';
 
+describe('OpenAI Videos create capacity', () => {
+  test('a malformed or incomplete create is not 503 when the job store is full', async () => {
+    const app = videosApp(0);
+    const cases: ReadonlyArray<{ readonly init: RequestInit; readonly status: number; readonly code: string }> = [
+      {
+        init: { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' },
+        status: 400,
+        code: 'invalid_request',
+      },
+      {
+        init: { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) },
+        status: 400,
+        code: 'invalid_request',
+      },
+      {
+        init: { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'a cat' },
+        status: 415,
+        code: 'invalid_request',
+      },
+      {
+        init: {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'content-encoding': 'compress' },
+          body: '{}',
+        },
+        status: 415,
+        code: 'unsupported_content_encoding',
+      },
+      {
+        init: { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': '999999999' } },
+        status: 413,
+        code: 'request_too_large',
+      },
+    ];
+    for (const { init, status, code } of cases) {
+      const response = await app.request('/v1/videos', init);
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error: { code } });
+    }
+  });
+
+  test('a multipart create without a prompt is 400 when the job store is full', async () => {
+    const response = await videosApp(0).request('/v1/videos', {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=VIDEOB' },
+      body: '--VIDEOB\r\nContent-Disposition: form-data; name="model"\r\n\r\nsora-2\r\n--VIDEOB--\r\n',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
+  });
+
+  test('a valid create is 503 when the job store is full', async () => {
+    const response = await videosApp(0).request('/v1/videos', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'a cat' }),
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: 'video_store_full' } });
+  });
+});
+
 describe('OpenAI Videos follow-up capacity', () => {
   test('a missing or non-string edits video.id is 400 when the job store is full', async () => {
     const app = videosApp(0);

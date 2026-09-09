@@ -75,28 +75,15 @@ export async function parseOpenAIVideoCreateMultipart(raw: Request): Promise<Ope
   if (multipartBoundary(raw.headers.get('content-type') ?? '') === undefined) {
     throw new OpenAIVideosInvalidRequestError('content_type');
   }
+  const existing = multipartSpoolPath(raw);
+  if (existing !== undefined) return videoRequestFromMultipartForm(await formDataFromSpoolPath(raw, existing));
   const releaseSlot = await acquireMultipartSlot(raw.signal);
   let spool: Awaited<ReturnType<typeof spoolMultipartBody>> | undefined;
   try {
     spool = await spoolMultipartBody(raw, 30_000, 'aio-proxy-videos', 64 * 1_024 * 1_024);
-    const form = await formDataFromSpoolPath(raw, spool.path);
-    const fields: Record<string, string> = {};
-    let model: string | undefined;
-    for (const [name, value] of form.entries()) {
-      if (typeof value !== 'string') continue;
-      fields[name] = value;
-      if (isModelField(name)) model = value;
-    }
-    const prompt = fields['prompt'];
-    if (prompt === undefined || prompt.trim() === '') throw new OpenAIVideosInvalidRequestError('prompt');
-    const parsed = toVideoRequest({
-      model,
-      prompt,
-      ...(fields['seconds'] === undefined ? {} : { seconds: fields['seconds'] }),
-      ...(fields['size'] === undefined ? {} : { size: fields['size'] }),
-    });
+    const parsed = videoRequestFromMultipartForm(await formDataFromSpoolPath(raw, spool.path));
     retainMultipartSpool(raw, spool);
-    return { ...parsed, formFields: fields };
+    return parsed;
   } catch (error) {
     await spool?.unlink();
     void raw.body?.cancel(error).catch(() => undefined);
@@ -104,6 +91,27 @@ export async function parseOpenAIVideoCreateMultipart(raw: Request): Promise<Ope
   } finally {
     releaseSlot();
   }
+}
+
+function videoRequestFromMultipartForm(form: FormData): OpenAIVideoRequest {
+  const fields: Record<string, string> = {};
+  let model: string | undefined;
+  for (const [name, value] of form.entries()) {
+    if (typeof value !== 'string') continue;
+    fields[name] = value;
+    if (isModelField(name)) model = value;
+  }
+  const prompt = fields['prompt'];
+  if (prompt === undefined || prompt.trim() === '') throw new OpenAIVideosInvalidRequestError('prompt');
+  return {
+    ...toVideoRequest({
+      model,
+      prompt,
+      ...(fields['seconds'] === undefined ? {} : { seconds: fields['seconds'] }),
+      ...(fields['size'] === undefined ? {} : { size: fields['size'] }),
+    }),
+    formFields: fields,
+  };
 }
 
 function toVideoRequest(value: {

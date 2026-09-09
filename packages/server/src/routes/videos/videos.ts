@@ -6,6 +6,7 @@ import {
   parseOpenAIVideoEdit,
   parseOpenAIVideoRemix,
   readJsonRequest,
+  releaseMultipartSpool,
   REQUEST_BODY_LIMITS,
   RequestBodyTooLargeError,
   stripHopHeaders,
@@ -49,11 +50,17 @@ export function createOpenAIVideosRoutes(source: VideosRouteSource) {
 }
 
 async function handleVideoCreate(context: Context<CallerPrincipalEnv>, source: VideosRouteSource) {
-  return await withCapacity(source, context.req.raw, () =>
+  const raw = context.req.raw;
+  if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
+    return await rejectFollowUp(raw, openAIVideosAdapter.errors.tooLarge());
+  }
+  const parsed = await videosTryParseAsync(() => openAIVideosAdapter.parse(raw, { operation: 'create' }));
+  if (!parsed.ok) return await rejectFollowUp(raw, parsed.response);
+  return await withCapacity(source, raw, () =>
     handleProtocolRequest({
       adapter: openAIVideosAdapter,
       context: { operation: 'create' },
-      rawRequest: context.req.raw,
+      rawRequest: raw,
       source,
       onSuccessfulAttempt: (info) => pinSuccessfulVideoJob(source, callerPrincipal(context), info),
     }),
@@ -165,11 +172,28 @@ function videosTryParse<T>(
   }
 }
 
+async function videosTryParseAsync<T>(
+  parse: () => Promise<T>,
+): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false; readonly response: Response }> {
+  try {
+    return { ok: true, value: await parse() };
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return { ok: false, response: openAIVideosAdapter.errors.tooLarge() };
+    }
+    if (error instanceof UnsupportedContentEncodingError) {
+      return { ok: false, response: openAIVideosAdapter.errors.unsupportedContentEncoding() };
+    }
+    return { ok: false, response: videosRequestError(error) };
+  }
+}
+
 function videosRequestError(error: unknown): Response {
   return openAIVideosAdapter.errors.requestError(error) ?? videoInvalidRequest('Invalid OpenAI Videos request');
 }
 
 async function rejectFollowUp(raw: Request, response: Response): Promise<Response> {
+  await releaseMultipartSpool(raw);
   await cancelRetainedRequestBody(raw, 'videos follow-up rejected');
   return response;
 }

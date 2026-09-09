@@ -68,6 +68,7 @@ describe('parseOpenAIVideoCreateMultipart', () => {
     const parsed = await parseOpenAIVideoCreateMultipart(raw);
     expect(parsed).toMatchObject({ model: 'sora-2', modelDefaulted: true, prompt: 'a cat' });
     expect(multipartSpoolPath(raw)).toBeDefined();
+    expect(await parseOpenAIVideoCreateMultipart(raw)).toMatchObject(parsed);
     await releaseMultipartSpool(raw);
     expect(multipartSpoolPath(raw)).toBeUndefined();
   });

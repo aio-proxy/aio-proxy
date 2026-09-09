@@ -218,7 +218,7 @@ type VideoJobRecord = {
 };
 ```
 
-- Capacity `1024`. `reserveCapacity` before a create attempt, matching realtime: a predicate cannot hold the bound across the upstream yield.
+- Capacity `1024`. Validate the create/follow-up body before `reserveCapacity`, then hold the slot across the upstream yield so a full store cannot mask 400/413/415.
 - Default TTL `24h` from insert. If the create JSON carries a numeric `expires_at` (unix seconds), use `min(expires_at * 1000, createdAt + 24h)` so a shorter official expiry wins and a missing/invalid one does not live forever.
 - `insert` never replaces. A colliding id is a failed pin; the create response is still returned (upstream already accepted the job) and a later retrieve without a pin is `404`. Log `video.job_pin_failed` at error. Do not put the video id, body, or credentials in the log.
 - Restart drops the store. Follow-up routes then `404`. Document this next to the realtime restart limitation.
