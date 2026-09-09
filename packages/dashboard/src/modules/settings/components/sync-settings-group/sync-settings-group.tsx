@@ -302,17 +302,24 @@ export const SyncSettingsGroup: React.FC = () => {
         }}
         onApplied={() => setPreview(null)}
         onRetry={async () => {
-          if (lastPreviewInput === undefined) return;
+          if (lastPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
           const next = await previewMutation.mutateAsync(lastPreviewInput);
           setPreview(next);
+          return next;
         }}
-        onPreviewOverrides={async (paths) => {
-          const objectId = preview?.rows[0]?.objectId;
-          if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
-          const input: SyncPreviewInput = { kind: 'overrides', objectId, paths: paths.map((path) => [...path]) };
-          setLastPreviewInput(input);
-          setPreview(await previewMutation.mutateAsync(input));
-        }}
+        onPreviewOverrides={
+          preview?.kind === 'purge'
+            ? undefined
+            : async (paths) => {
+                const objectId = preview?.rows[0]?.objectId;
+                if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
+                const input: SyncPreviewInput = { kind: 'overrides', objectId, paths: paths.map((path) => [...path]) };
+                setLastPreviewInput(input);
+                const next = await previewMutation.mutateAsync(input);
+                setPreview(next);
+                return next;
+              }
+        }
       />
       <SyncHistoryDialog
         objectId={historyObjectId}

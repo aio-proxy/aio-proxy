@@ -13,7 +13,7 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
 import { X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { SyncRequestError, useApplySync } from '@/lib/sync';
@@ -68,8 +68,8 @@ export interface SyncPreviewDialogProps {
   readonly preview: SyncPreview | null;
   onOpenChange(open: boolean): void;
   onApplied?(): void;
-  onRetry?(): Promise<void>;
-  onPreviewOverrides?(paths: readonly string[][]): Promise<void>;
+  onRetry?(): Promise<SyncPreview>;
+  onPreviewOverrides?(paths: readonly string[][]): Promise<SyncPreview>;
 }
 
 const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
@@ -86,6 +86,15 @@ const choiceLabel = (choice: SyncPreviewRow['choices'][number]): string => {
   return m['dashboard.sync.preview_choice_local']();
 };
 
+const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): value is SyncPreview =>
+  value !== null &&
+  typeof value === 'object' &&
+  'kind' in value &&
+  value.kind === kind &&
+  'previewId' in value &&
+  typeof value.previewId === 'string' &&
+  value.previewId.trim().length > 0;
+
 export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   open,
   preview,
@@ -100,13 +109,16 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const [overrideError, setOverrideError] = useState<'invalid' | 'refresh' | undefined>();
   const [retryError, setRetryError] = useState(false);
   const [isRefreshingOverrides, setIsRefreshingOverrides] = useState(false);
+  const [overridePaths, setOverridePaths] = useState<readonly string[][]>([]);
+  const overridesRef = useRef<readonly string[][]>([]);
   const form = useForm({ defaultValues: initialValues(preview), validators: { onChange: previewFormSchema } });
 
   useEffect(() => {
-    const existingOverrides = form.getFieldValue('overrides');
+    const existingOverrides = preview === null ? [] : overridesRef.current;
+    setOverridePaths(existingOverrides);
     form.reset({
       ...initialValues(preview),
-      overrides: preview === null ? [] : existingOverrides,
+      overrides: existingOverrides,
     });
   }, [form, preview]);
 
@@ -116,6 +128,25 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const submitDisabled = pending || preview === null || rows.length === 0 || needsFreshPreview;
 
   const options = new Set(rows.flatMap((row) => row.choices));
+
+  const requestOverridesPreview = async (paths: readonly string[][]) => {
+    setNeedsFreshPreview(true);
+    setOverrideError(undefined);
+    if (onPreviewOverrides === undefined) {
+      setOverrideError('refresh');
+      return;
+    }
+    setIsRefreshingOverrides(true);
+    const replacement = await Promise.resolve()
+      .then(() => onPreviewOverrides(paths))
+      .catch(() => undefined);
+    if (replacement !== undefined && isValidReplacementPreview(replacement, 'overrides')) {
+      setNeedsFreshPreview(false);
+    } else {
+      setOverrideError('refresh');
+    }
+    setIsRefreshingOverrides(false);
+  };
 
   const apply = () => {
     if (preview === null || submitDisabled) return;
@@ -163,11 +194,16 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
               className="mt-2"
               onClick={async () => {
                 setRetryError(false);
-                try {
-                  await onRetry?.();
+                const replacement =
+                  onRetry === undefined
+                    ? undefined
+                    : await Promise.resolve()
+                        .then(() => onRetry())
+                        .catch(() => undefined);
+                if (replacement !== undefined && isValidReplacementPreview(replacement, preview?.kind ?? 'join')) {
                   applyMutation.reset();
                   setNeedsFreshPreview(false);
-                } catch {
+                } else {
                   setRetryError(true);
                 }
               }}
@@ -274,88 +310,82 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
             {rows.some((row) => row.dependencies.length > 0 || row.secretChange !== 'none') ? (
               <p className="rounded-lg border p-3 text-sm">{m['dashboard.sync.required_plugin_data']()}</p>
             ) : null}
-            <form.Field name="overrides">
-              {(field) => (
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">{m['dashboard.sync.override_title']()}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {field.state.value.map((path) => (
-                      <Button
-                        key={path.join('.')}
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => {
-                          const next = field.state.value.filter((current) => current.join('.') !== path.join('.'));
-                          field.handleChange(next);
-                          setNeedsFreshPreview(true);
-                          setOverrideError(undefined);
-                        }}
-                        aria-label={`${m['dashboard.sync.override_remove']()} ${path.join('.')}`}
-                      >
-                        {path.join('.')}
-                        <X aria-hidden="true" />
-                      </Button>
-                    ))}
-                  </div>
-                  <form.Field name="newOverride">
-                    {(pathField) => (
-                      <div className="mt-3 flex gap-2">
-                        <Input
-                          aria-label={m['dashboard.sync.override_path']()}
-                          value={pathField.state.value}
-                          placeholder={m['dashboard.sync.override_path']()}
-                          onChange={(event) => pathField.handleChange(event.target.value)}
-                        />
+            {preview.kind === 'purge' ? null : (
+              <form.Field name="overrides">
+                {(field) => (
+                  <div className="rounded-lg border p-3">
+                    <p className="font-medium">{m['dashboard.sync.override_title']()}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {overridePaths.map((path) => (
                         <Button
+                          key={path.join('.')}
                           type="button"
+                          size="xs"
                           variant="outline"
-                          disabled={pending || pathField.state.value.trim() === ''}
+                          disabled={pending}
                           onClick={async () => {
-                            const parsedPath = overridePathSchema.safeParse(pathField.state.value);
-                            if (!parsedPath.success) {
-                              setOverrideError('invalid');
-                              return;
-                            }
-                            const path = parsedPath.data.split('.');
-                            const next = [...field.state.value, path];
+                            const next = overridePaths.filter((current) => current.join('.') !== path.join('.'));
+                            overridesRef.current = next;
+                            setOverridePaths(next);
                             field.handleChange(next);
-                            pathField.handleChange('');
-                            setNeedsFreshPreview(true);
-                            setOverrideError(undefined);
-                            if (onPreviewOverrides === undefined) return;
-                            setIsRefreshingOverrides(true);
-                            try {
-                              await onPreviewOverrides(next);
-                              setNeedsFreshPreview(false);
-                              setIsRefreshingOverrides(false);
-                            } catch {
-                              setOverrideError('refresh');
-                              setIsRefreshingOverrides(false);
-                            }
+                            await requestOverridesPreview(next);
                           }}
+                          aria-label={`${m['dashboard.sync.override_remove']()} ${path.join('.')}`}
                         >
-                          {m['dashboard.sync.override_add']()}
+                          {path.join('.')}
+                          <X aria-hidden="true" />
                         </Button>
-                      </div>
-                    )}
-                  </form.Field>
-                  {overrideError !== undefined ? (
-                    <p role="alert" className="mt-2 text-xs text-destructive">
-                      {overrideError === 'invalid'
-                        ? m['dashboard.sync.override_invalid']()
-                        : m['dashboard.sync.override_preview_failed']()}
-                    </p>
-                  ) : null}
-                  {needsFreshPreview ? (
-                    <p role="status" className="mt-2 text-xs text-muted-foreground">
-                      {m['dashboard.sync.override_preview_required']()}
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </form.Field>
+                      ))}
+                    </div>
+                    <form.Field name="newOverride">
+                      {(pathField) => (
+                        <div className="mt-3 flex gap-2">
+                          <Input
+                            aria-label={m['dashboard.sync.override_path']()}
+                            value={pathField.state.value}
+                            placeholder={m['dashboard.sync.override_path']()}
+                            onChange={(event) => pathField.handleChange(event.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={pending || pathField.state.value.trim() === ''}
+                            onClick={async () => {
+                              const parsedPath = overridePathSchema.safeParse(pathField.state.value);
+                              if (!parsedPath.success) {
+                                setOverrideError('invalid');
+                                return;
+                              }
+                              const path = parsedPath.data.split('.');
+                              const next = [...overridePaths, path];
+                              overridesRef.current = next;
+                              setOverridePaths(next);
+                              field.handleChange(next);
+                              pathField.handleChange('');
+                              await requestOverridesPreview(next);
+                            }}
+                          >
+                            {m['dashboard.sync.override_add']()}
+                          </Button>
+                        </div>
+                      )}
+                    </form.Field>
+                    {overrideError !== undefined ? (
+                      <p role="alert" className="mt-2 text-xs text-destructive">
+                        {overrideError === 'invalid'
+                          ? m['dashboard.sync.override_invalid']()
+                          : m['dashboard.sync.override_preview_failed']()}
+                      </p>
+                    ) : null}
+                    {needsFreshPreview ? (
+                      <p role="status" className="mt-2 text-xs text-muted-foreground">
+                        {m['dashboard.sync.override_preview_required']()}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </form.Field>
+            )}
             <p className="text-xs text-muted-foreground">{m['dashboard.sync.preview_no_secrets']()}</p>
           </div>
         )}

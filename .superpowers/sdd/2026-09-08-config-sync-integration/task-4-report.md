@@ -33,3 +33,14 @@ Generated `route-tree.gen.ts` was not edited.
 - Root `rtk proxy bun run test` reached 50 successful tasks; the repository run remains blocked by the existing `@aio-proxy/core` artifact smoke failure for unresolved `./repository.js` imports in `sync/repository` declaration/output files.
 - `rtk proxy bun run lint:types` remains blocked by unrelated existing diagnostics in the OAuth editor and CloudKit scripts.
 - Fresh `rtk proxy bun run lint:types` — failed only on the known baseline diagnostics: `use-oauth-editor-session.ts` TS2322/TS2589 and CloudKit `sign-native.ts` TS2322 plus `artifact.ts` TS18048 (three occurrences).
+
+## Fix round 2
+
+- Purge previews stay purge-only: Settings no longer supplies the override-preview callback for purge operations, and the preview dialog hides local override controls for purge previews.
+- Override pin changes now request replacement previews for both additions and removals with the exact current path set. The dialog preserves the path set across replacement renders, validates that replacement previews have the expected kind and ID, and keeps Apply disabled while refresh is pending or invalid.
+- `bunx rstest run` focused sync suite — 11 passed across the preview and Settings sync tests.
+- `rtk proxy bun run --filter @aio-proxy/dashboard test` — 985 passed, 1 skipped, 0 failed across 163 files.
+- `rtk proxy bun run --filter @aio-proxy/dashboard build` — passed.
+- `rtk proxy bun run i18n:compile` — passed.
+- `rtk proxy bun run check` — passed; existing oxlint warnings only, formatting clean.
+- Fresh `rtk proxy bun run lint:types` — remains blocked only by the baseline OAuth editor TS2322/TS2589 and CloudKit script TS2322/TS18048 diagnostics.

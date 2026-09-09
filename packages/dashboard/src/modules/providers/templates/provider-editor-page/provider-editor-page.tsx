@@ -87,18 +87,20 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     persistedId === undefined
       ? undefined
       : syncStatus.data?.providers.find((entry) => entry.providerId === persistedId);
-  const previewInput = async (input: ProviderSyncPreviewInput) => {
+  const previewInput = async (input: ProviderSyncPreviewInput): Promise<SyncPreview> => {
     setLastSyncPreviewInput(input);
-    setSyncPreview(await previewMutation.mutateAsync(input));
+    const next = await previewMutation.mutateAsync(input);
+    setSyncPreview(next);
+    return next;
   };
   const openSyncPreview = async () => {
     if (persistedId === undefined) return;
     await previewInput({ kind: 'join', providerId: persistedId });
   };
-  const previewOverrides = async (paths: readonly string[][]) => {
+  const previewOverrides = async (paths: readonly string[][]): Promise<SyncPreview> => {
     const objectId = syncPreview?.rows[0]?.objectId;
     if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
-    await previewInput({ kind: 'overrides', objectId, paths: paths.map((path) => [...path]) });
+    return previewInput({ kind: 'overrides', objectId, paths: paths.map((path) => [...path]) });
   };
 
   const identitySection = <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />;
@@ -283,8 +285,8 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         }}
         onApplied={() => setSyncPreview(null)}
         onRetry={async () => {
-          if (lastSyncPreviewInput === undefined) return;
-          await previewInput(lastSyncPreviewInput);
+          if (lastSyncPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
+          return previewInput(lastSyncPreviewInput);
         }}
         onPreviewOverrides={previewOverrides}
       />

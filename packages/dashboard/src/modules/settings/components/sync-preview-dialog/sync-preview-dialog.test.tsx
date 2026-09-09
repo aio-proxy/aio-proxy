@@ -69,7 +69,12 @@ test('removing a local override requires a fresh preview before submit', () => {
 });
 
 test('requests a new overrides preview when pinning a local option', async () => {
-  const onPreviewOverrides = rs.fn().mockResolvedValue(undefined);
+  const replacement: SyncPreview = {
+    ...preview,
+    previewId: 'preview-overrides',
+    kind: 'overrides',
+  };
+  const onPreviewOverrides = rs.fn().mockResolvedValue(replacement);
   render(
     <QueryClientProvider client={new QueryClient()}>
       <SyncPreviewDialog open preview={preview} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
