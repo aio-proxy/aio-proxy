@@ -41,6 +41,9 @@ export async function invokePinnedVideo(
   const lease = source.acquireProviderSnapshot();
   const modelId = options.modelId ?? record.model;
   const inbound = options.request ?? context.req.raw;
+  // Sanitize before invoke so a keyless copy owns the body stream. Cancel that
+  // object on failure: inbound.body is locked once the stream is transferred.
+  const upstream = withoutCallerCredentialsOnRequest(inbound);
   try {
     const provider = pinnedVideoProvider(lease.snapshot.providers, record);
     const raw = provider?.raw?.resolve({
@@ -49,10 +52,10 @@ export async function invokePinnedVideo(
       requestPath: new URL(context.req.raw.url).pathname,
     });
     if (provider === undefined || raw === undefined) {
-      await cancelRetainedRequestBody(inbound, 'videos pinned upstream unavailable');
+      await cancelRetainedRequestBody(upstream, 'videos pinned upstream unavailable');
       return videoUpstreamUnavailable();
     }
-    const response = await raw.invoke(withoutCallerCredentialsOnRequest(inbound));
+    const response = await raw.invoke(upstream);
     if (context.req.method === 'DELETE' && response.ok) source.videoJobs.remove(record.videoId, record);
     if (options.pinNewJob === true && response.ok) {
       await pinSuccessfulVideoJob(source, callerPrincipal(context), {
@@ -64,7 +67,7 @@ export async function invokePinnedVideo(
     return response;
   } catch (error) {
     if (isInboundAbort(error, context.req.raw.signal)) return new Response(null, { status: 499 });
-    await cancelRetainedRequestBody(inbound, 'videos pinned upstream unavailable');
+    await cancelRetainedRequestBody(upstream, 'videos pinned upstream unavailable');
     return videoUpstreamUnavailable();
   } finally {
     lease.release();

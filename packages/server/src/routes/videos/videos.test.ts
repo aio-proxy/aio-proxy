@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+
 import { defineProviderRouteSource } from '../../../__tests__/pipeline-helpers';
 import { ANONYMOUS_CALLER } from '../../caller-principal';
 import { createVideoJobStore } from './job-store';
@@ -129,6 +131,57 @@ describe('OpenAI Videos follow-up capacity', () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ error: { code: 'video_upstream_unavailable' } });
     expect(request.bodyUsed).toBe(true);
+  });
+
+  test('a throwing pinned invoke cancels the credential-sanitized body', async () => {
+    const videoJobs = createVideoJobStore({ capacity: 2 });
+    videoJobs.insert({
+      videoId: 'video_abc',
+      providerId: 'openai',
+      model: 'sora-2',
+      owner: ANONYMOUS_CALLER,
+      createdAt: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+    let forwarded: Request | undefined;
+    const route = defineProviderRouteSource([
+      {
+        calls: { ensure: 0, model: [], raw: [] },
+        provider: {
+          capabilityIndex: { 'sora-2': new Set(['video']) },
+          enabled: true,
+          id: 'openai',
+          kind: ProviderKind.Api,
+          models: ['sora-2'],
+          raw: {
+            resolve: ({ protocol }) =>
+              protocol === ProviderProtocol.OpenAIVideo
+                ? {
+                    invoke: async (request) => {
+                      forwarded = request;
+                      throw new Error('upstream down');
+                    },
+                  }
+                : undefined,
+          },
+        },
+      },
+    ]);
+    const app = createOpenAIVideosRoutes({ ...route.source, videoJobs });
+    const request = new Request('http://proxy.test/v1/videos/edits', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer caller-secret-credential',
+      },
+      body: JSON.stringify({ model: 'sora-2', prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    const response = await app.request(request);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: 'video_upstream_unavailable' } });
+    expect(forwarded).toBeDefined();
+    expect(forwarded).not.toBe(request);
+    expect(forwarded?.bodyUsed).toBe(true);
   });
 });
 
