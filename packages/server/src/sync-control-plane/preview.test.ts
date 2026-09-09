@@ -27,7 +27,26 @@ test('overrides apply nested values, delete missing fields, copy arrays, and rej
   expect(() => applyOverrides(local, cloud, [['password']])).toThrow();
   expect(() => applyOverrides(local, cloud, [['plugin']])).toThrow();
   expect(() => applyOverrides(local, cloud, [['dependencies']])).toThrow();
-  for (const metadata of ['package', 'dependency', 'identity', 'provider', 'packageName', 'providerId', 'accountId'])
+  for (const metadata of [
+    'package',
+    'dependency',
+    'identity',
+    'provider',
+    'packageName',
+    'providerId',
+    'providerID',
+    'provider_id',
+    'provider-id',
+    'providerRef',
+    'provider_reference_id',
+    'accountId',
+    'accountProviderId',
+    'accountProviderID',
+    'account_provider_id',
+    'account-provider-id',
+    'accountProviderRef',
+    'account-provider-reference-id',
+  ])
     expect(() => applyOverrides(local, cloud, [[metadata]])).toThrow();
 });
 
@@ -410,4 +429,90 @@ test('same-id resolution persists the new provider ID and rewires model referenc
   }>;
   expect(rows.find((row) => row.logicalKey === 'work-renamed')).toBeDefined();
   expect(rows.find((row) => row.desired?.value.providers?.['work-renamed'] !== undefined)).toBeDefined();
+});
+
+test('same-id resolution falls back to repository bulk persistence when no integration hook is provided', async () => {
+  const provider = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  const model = {
+    objectId: 'model-rule',
+    logicalKey: 'gpt',
+    kind: 'model-rule' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: {
+      kind: 'model-rule' as const,
+      logicalKey: 'gpt',
+      value: { providers: { work: { enabled: true } } },
+      dependencies: [],
+    },
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  let persisted: readonly (typeof provider | typeof model)[] = [];
+  const repo = {
+    readBinding: () => null,
+    entities: () => [provider, model],
+    putEntities: (_binding: string, entities: readonly (typeof provider | typeof model)[]) => {
+      persisted = entities;
+    },
+    outbox: () => [],
+    pendingCommits: () => [],
+    oauthJournals: () => [],
+  } as never;
+  const control = createSyncControlPlane({
+    repo,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [provider, model],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {},
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: (row.choices.includes('local') ? 'local' : 'cloud') as 'local' | 'cloud',
+      newProviderId: 'work-renamed',
+    })),
+  });
+  expect(persisted.find((row) => row.logicalKey === 'work-renamed')).toBeDefined();
+  expect(
+    persisted.find(
+      (row) => row.desired?.value && 'providers' in row.desired.value && 'work-renamed' in row.desired.value.providers,
+    ),
+  ).toBeDefined();
 });

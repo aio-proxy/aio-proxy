@@ -97,6 +97,26 @@ export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntit
 const FORBIDDEN_OVERRIDE =
   /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
 
+const FORBIDDEN_PROVIDER_REFERENCE = new Set([
+  'providerid',
+  'providerref',
+  'providerrefid',
+  'providerreference',
+  'providerreferenceid',
+  'accountproviderid',
+  'accountproviderref',
+  'accountproviderrefid',
+  'accountproviderreference',
+  'accountproviderreferenceid',
+]);
+
+function forbiddenOverrideSegment(segment: string): boolean {
+  return (
+    FORBIDDEN_OVERRIDE.test(segment) ||
+    FORBIDDEN_PROVIDER_REFERENCE.has(segment.replaceAll(/[^a-z0-9]/giu, '').toLowerCase())
+  );
+}
+
 function valueAt(
   value: JsonValue,
   path: readonly string[],
@@ -118,7 +138,7 @@ export function applyOverrides(local: EntityBody, cloud: EntityBody | null, path
   const result = copyValue(cloud?.value ?? local.value);
   if (result === null || Array.isArray(result) || !isPlainObject(result)) throw new SyncPreviewError('invalid-request');
   for (const path of paths) {
-    if (path.length === 0 || path.some((segment) => segment === '' || FORBIDDEN_OVERRIDE.test(segment)))
+    if (path.length === 0 || path.some((segment) => segment === '' || forbiddenOverrideSegment(segment)))
       throw new SyncPreviewError('invalid-request');
     const localLookup = valueAt(local.value, path);
     if (localLookup.traversedArray) throw new SyncPreviewError('invalid-request');

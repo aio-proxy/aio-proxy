@@ -172,3 +172,26 @@ No matching errors.
 ```
 
 Round 3 scope note: OAuth verifier files modified by the concurrent Task 5 work remain unstaged and were not edited.
+
+## Fix round 4
+
+Same-ID provider resolution now falls back to the repository's existing atomic `putEntities` persistence when the parent integration hook is absent. A legacy repository with only `putEntity` is accepted for a provider-only change; multi-row provider/reference rewrites fail closed before remote mutation when no atomic bulk operation is available. Result-uncertain recovery uses the same fallback after a remote mutation failure. Override paths now reject provider-reference metadata aliases, including `accountProviderId` and separator/case/reference variants.
+
+Round 4 verification:
+
+```text
+rtk proxy bun test --preload=./__tests__/setup.ts src/sync-control-plane
+17 pass, 0 fail
+
+rtk proxy bun test packages/core/src/sync/publication/publication.test.ts packages/core/src/sync/cleanup/cleanup.test.ts packages/core/src/sync/repository/repository.test.ts
+51 pass, 0 fail
+
+rtk proxy bun test packages/types/src/sync/sync.test.ts
+1 pass, 0 fail
+
+rtk proxy bunx oxlint packages/server/src/sync-control-plane/operations.ts packages/server/src/sync-control-plane/preview.ts packages/server/src/sync-control-plane/preview.test.ts
+0 errors
+
+rtk proxy bunx oxfmt --check packages/server/src/sync-control-plane/operations.ts packages/server/src/sync-control-plane/preview.ts packages/server/src/sync-control-plane/preview.test.ts
+All matched files use the correct format.
+```

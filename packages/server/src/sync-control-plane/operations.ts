@@ -60,6 +60,10 @@ type ProviderIdentityRows = {
   readonly entities: readonly LocalEntity[];
 };
 
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
   if (Array.isArray(value)) return value.map((entry) => rewireProviderReferences(entry, oldProviderId, newProviderId));
   if (!isPlainObject(value)) return value;
@@ -110,27 +114,45 @@ function providerIdentityRows(
     )
   )
     throw new SyncOperationError('upgrade-required');
+  const mapped = entities.map((entity) => {
+    if (entity.objectId === current.objectId)
+      return { ...entity, logicalKey: newProviderId, desired: { ...selected, logicalKey: newProviderId } };
+    if (entity.desired?.kind !== 'model-rule') return entity;
+    return {
+      ...entity,
+      desired: {
+        ...entity.desired,
+        value: rewireProviderReferences(entity.desired.value, current.logicalKey, newProviderId),
+      },
+    };
+  });
   return {
     oldProviderId: current.logicalKey,
     newProviderId,
-    entities: entities.map((entity) => {
-      if (entity.objectId === current.objectId)
-        return { ...entity, logicalKey: newProviderId, desired: { ...selected, logicalKey: newProviderId } };
-      if (entity.desired?.kind !== 'model-rule') return entity;
-      return {
-        ...entity,
-        desired: {
-          ...entity.desired,
-          value: rewireProviderReferences(entity.desired.value, current.logicalKey, newProviderId),
-        },
-      };
-    }),
+    // Persist only rows whose provider identity or structured references changed. This lets a
+    // repository that predates bulk persistence handle a provider-only rename atomically while
+    // still refusing a multi-row mapping that it cannot write as one transaction.
+    entities: mapped.filter((entity, index) => !sameJson(entity, entities[index])),
   };
 }
 
 async function persistProviderIdentity(input: OperationInput, rows: ProviderIdentityRows): Promise<void> {
-  if (input.persistProviderIdentity === undefined) throw new SyncOperationError('upgrade-required');
-  await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
+  if (input.persistProviderIdentity !== undefined) {
+    await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
+    return;
+  }
+  const binding = input.binding();
+  if (binding === null) throw new SyncPreviewError('not-connected');
+  const repository = input.repo as SyncRepository & {
+    readonly putEntities?: (bindingId: string, entities: readonly LocalEntity[]) => void;
+  };
+  if (typeof repository.putEntities === 'function') {
+    repository.putEntities(binding.id, rows.entities);
+    return;
+  }
+  if (rows.entities.length !== 1 || typeof input.repo.putEntity !== 'function')
+    throw new SyncOperationError('upgrade-required');
+  input.repo.putEntity(binding.id, rows.entities[0]!);
 }
 
 export async function assertFresh(input: OperationInput, expected: PreviewFence): Promise<void> {
@@ -201,12 +223,11 @@ export async function applyPreview(
         await input.applyCloud(selectedBody, current, remote?.version ?? null);
       }
     } catch (error) {
-      if (identityRows !== undefined && input.persistProviderIdentity !== undefined) {
-        await input.persistProviderIdentity(
-          identityRows.oldProviderId,
-          identityRows.newProviderId,
-          identityRows.entities.map((entity) => ({ ...entity, pendingReason: 'result-uncertain' })),
-        );
+      if (identityRows !== undefined) {
+        await persistProviderIdentity(input, {
+          ...identityRows,
+          entities: identityRows.entities.map((entity) => ({ ...entity, pendingReason: 'result-uncertain' })),
+        });
       }
       throw error;
     }
