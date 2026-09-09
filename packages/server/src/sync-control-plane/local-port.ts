@@ -155,6 +155,12 @@ function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function secretMatches(snapshot: ReturnType<PluginRepository['readPluginSecret']>, expected: JsonValue | undefined) {
+  return expected === undefined
+    ? snapshot === null
+    : snapshot !== null && sameJson(snapshot.value as JsonValue, expected);
+}
+
 function restorePluginSecret(
   accounts: PluginRepository,
   plugin: string,
@@ -216,6 +222,89 @@ function source(input: LocalPortInput, raw: Record<string, JsonValue>): Committe
   return { raw, accounts, pluginSecrets, pluginVersions: versions };
 }
 
+type RemoteApplyState = {
+  readonly candidate: Record<string, JsonValue>;
+  readonly secretChange: PluginSecretChange | undefined;
+  readonly previousSecret: ReturnType<PluginRepository['readPluginSecret']>;
+  readonly configNeedsApply: boolean;
+  readonly shouldMutateSecret: boolean;
+};
+
+function resolvePreparedRemoteState(
+  input: LocalPortInput,
+  currentDigest: string,
+  existingCommit: NonNullable<ReturnType<SyncRepository['readCommit']>>,
+): RemoteApplyState | { readonly applied: false; readonly pending: 'secret-conflict' | 'invalid-config' } {
+  const storedSecret = existingCommit.pluginSecrets?.[0];
+  let secretChange: PluginSecretChange | undefined;
+  let previousSecret: ReturnType<PluginRepository['readPluginSecret']> = null;
+  let shouldMutateSecret = false;
+  if (storedSecret !== undefined) {
+    secretChange = { plugin: storedSecret.plugin, value: storedSecret.after };
+    previousSecret = input.accounts.readPluginSecret(storedSecret.plugin);
+    const beforeMatches = secretMatches(previousSecret, storedSecret.before);
+    const afterMatches = secretMatches(previousSecret, storedSecret.after);
+    if (!beforeMatches && !afterMatches) return { applied: false, pending: 'secret-conflict' };
+    shouldMutateSecret = beforeMatches && !afterMatches;
+  }
+  if (currentDigest !== existingCommit.beforeDigest && currentDigest !== existingCommit.afterDigest)
+    return { applied: false, pending: 'invalid-config' };
+  return {
+    candidate: record(existingCommit.rawAfter),
+    secretChange,
+    previousSecret,
+    configNeedsApply:
+      currentDigest === existingCommit.beforeDigest && existingCommit.beforeDigest !== existingCommit.afterDigest,
+    shouldMutateSecret,
+  };
+}
+
+function prepareNewRemoteState(
+  input: LocalPortInput,
+  current: Record<string, JsonValue>,
+  currentEntities: ReturnType<SyncRepository['entities']>,
+  currentEntity: ReturnType<SyncRepository['entities']>[number] | undefined,
+  body: EntityBody | null,
+  objectId: string,
+  operationId: string,
+  beforeDigest: string,
+): RemoteApplyState {
+  const secretChange = pluginSecretChange(body, currentEntity);
+  const previousSecret = secretChange === undefined ? null : input.accounts.readPluginSecret(secretChange.plugin);
+  const shared =
+    body === null && currentEntity?.mode === 'included' ? removeBody(current, currentEntity) : applyBody(current, body);
+  const projection = projectCommitted(source(input, shared), currentEntities);
+  const candidate = overlayLocal(shared, projection.local, currentEntities);
+  const afterDigest = digest(candidate, input.configPath);
+  prepareLocalCommit(input.repo, input.bindingId, {
+    commitId: `remote:${objectId}:${operationId}`,
+    origin: 'remote',
+    beforeDigest,
+    afterDigest,
+    rawAfter: candidate,
+    accountOperationIds: [],
+    remoteOperations: [{ objectId, operationId }],
+    ...(secretChange === undefined
+      ? {}
+      : {
+          pluginSecrets: [
+            {
+              plugin: secretChange.plugin,
+              ...(previousSecret === null ? {} : { before: previousSecret.value as JsonValue }),
+              ...(secretChange.value === undefined ? {} : { after: secretChange.value }),
+            } satisfies PluginSecretCommit,
+          ],
+        }),
+  });
+  return {
+    candidate,
+    secretChange,
+    previousSecret,
+    configNeedsApply: true,
+    shouldMutateSecret: true,
+  };
+}
+
 export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
   const withFence = <T>(run: () => Promise<T>): Promise<T> => input.enqueue(run);
   const entities = () => input.entities?.() ?? input.repo.entities(input.bindingId);
@@ -253,46 +342,35 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
         assertCurrent();
         const currentEntities = entities();
         const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
-        const secretChange = pluginSecretChange(body, currentEntity);
-        const previousSecret = secretChange === undefined ? null : input.accounts.readPluginSecret(secretChange.plugin);
-        const shared =
-          body === null && currentEntity?.mode === 'included'
-            ? removeBody(current, currentEntity)
-            : applyBody(current, body);
-        const projection = projectCommitted(source(input, shared), currentEntities);
-        const candidate = overlayLocal(shared, projection.local, currentEntities);
-        assertCurrent();
         const remoteCommitId = `remote:${objectId}:${operationId}`;
-        const beforeDigest = digest(current, input.configPath);
-        const afterDigest = digest(candidate, input.configPath);
         const existingCommit = input.repo.readCommit(input.bindingId, remoteCommitId);
-        if (
-          existingCommit?.phase === 'prepared' &&
-          (existingCommit.beforeDigest !== beforeDigest || existingCommit.afterDigest !== afterDigest)
-        )
-          input.repo.discard(input.bindingId, remoteCommitId);
-        const shouldMutateSecret = existingCommit?.phase !== 'confirmed';
-        if (existingCommit?.phase !== 'confirmed')
-          prepareLocalCommit(input.repo, input.bindingId, {
-            commitId: remoteCommitId,
-            origin: 'remote',
-            beforeDigest,
-            afterDigest,
-            rawAfter: candidate,
-            accountOperationIds: [],
-            remoteOperations: [{ objectId, operationId }],
-            ...(secretChange === undefined
-              ? {}
-              : {
-                  pluginSecrets: [
-                    {
-                      plugin: secretChange.plugin,
-                      ...(previousSecret === null ? {} : { before: previousSecret.value as JsonValue }),
-                      ...(secretChange.value === undefined ? {} : { after: secretChange.value }),
-                    } satisfies PluginSecretCommit,
-                  ],
-                }),
-          });
+        if (existingCommit?.phase === 'confirmed') return { applied: true };
+
+        const currentDigest = digest(current, input.configPath);
+        let candidate: Record<string, JsonValue>;
+        let secretChange: PluginSecretChange | undefined;
+        let previousSecret: ReturnType<PluginRepository['readPluginSecret']> = null;
+        let configNeedsApply: boolean;
+        let shouldMutateSecret: boolean;
+
+        if (existingCommit?.phase === 'prepared') {
+          const prepared = resolvePreparedRemoteState(input, currentDigest, existingCommit);
+          if ('pending' in prepared) return prepared;
+          ({ candidate, secretChange, previousSecret, configNeedsApply, shouldMutateSecret } = prepared);
+        } else {
+          const prepared = prepareNewRemoteState(
+            input,
+            current,
+            currentEntities,
+            currentEntity,
+            body,
+            objectId,
+            operationId,
+            currentDigest,
+          );
+          assertCurrent();
+          ({ candidate, secretChange, previousSecret, configNeedsApply, shouldMutateSecret } = prepared);
+        }
         let secretChanged = false;
         try {
           if (shouldMutateSecret && secretChange !== undefined) {
@@ -312,13 +390,13 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
               secretChanged = true;
             }
           }
-          if (candidate !== current || secretChanged)
+          if (configNeedsApply || secretChanged)
             await input.applyCandidate(
               candidate,
               'remote',
               operationId,
               shouldMutateSecret ? secretChange : undefined,
-              beforeDigest,
+              currentDigest,
             );
         } catch (error) {
           if (error instanceof AtomicConfigCommitUncertainError)
@@ -329,7 +407,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
             !restorePluginSecret(input.accounts, secretChange.plugin, previousSecret)
           )
             return { applied: false, pending: 'secret-conflict' as const };
-          input.repo.discard(input.bindingId, remoteCommitId);
+          if (existingCommit?.phase !== 'prepared') input.repo.discard(input.bindingId, remoteCommitId);
           return { applied: false, pending: 'invalid-config' as const };
         }
         assertCurrent();

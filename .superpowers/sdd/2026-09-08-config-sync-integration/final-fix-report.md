@@ -39,3 +39,9 @@ Live CloudKit signing, installed-path/launchd, two-Mac, and provider OAuth gates
 - Focused core/config/local-commit/repository/engine tests: 62 passed, 0 failed.
 - Focused server sync-control-plane/server-state/acceptance tests: 20 passed, 0 failed; the watcher lock-release acceptance and stale-digest integration regressions passed.
 - `bun run check`, touched-file type-aware oxlint, core build, and `git diff --check` passed. Repository-wide type diagnostics remain the documented baseline outside touched files.
+
+## Residual prepared-remote retry ruling
+
+The prepared journal for `remote:${objectId}:${operationId}` is authoritative across retries. A retry now uses its stored raw config and plugin-secret before/after intent instead of recomputing or discarding the journal from live state. A current raw digest or secret outside the stored before/after pair returns a stable pending result, preserving the external edit, entity baseline, and prepared journal. A before-state side is retried with the stored target and the current CAS revision; an after-state side is skipped, and confirmation occurs only after both sides match the stored after-state.
+
+Regression evidence: the same-operation retry after an external plugin-secret edit resolves to `secret-conflict` without throwing or overwriting the secret; a config-changing retry resolves to `invalid-config` (and then `secret-conflict` when the secret also changes) while preserving the external config, unknown secret, and durable journal. The focused server/core suite passed 47 tests, `bun run check` passed with existing warnings only, and `git diff --check` passed.

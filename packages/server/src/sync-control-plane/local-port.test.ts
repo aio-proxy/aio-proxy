@@ -398,6 +398,135 @@ test('a plugin-secret-only remote commit recovers after reopen before remote con
     expect(realRepo.pendingCommits(binding.id)).toHaveLength(1);
     expect(realRepo.entities(binding.id)[0]?.baseline).toBeNull();
     expect(accounts.readPluginSecret(plugin)?.value).toEqual({ token: 'external-secret' });
+
+    await expect(
+      createPort(realRepo).applyRemote(
+        'plugin-object',
+        { kind: 'plugin-business', logicalKey: plugin, value: { secret: { token: 'new-secret' } }, dependencies: [] },
+        'remote-plugin-secret-only',
+      ),
+    ).resolves.toEqual({ applied: false, pending: 'secret-conflict' });
+    expect(realRepo.pendingCommits(binding.id)).toHaveLength(1);
+    expect(realRepo.readCommit(binding.id, 'remote:plugin-object:remote-plugin-secret-only')?.pluginSecrets).toEqual([
+      { plugin, after: { token: 'new-secret' }, before: { token: 'old-secret' } },
+    ]);
+    expect(accounts.readPluginSecret(plugin)?.value).toEqual({ token: 'external-secret' });
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a config-changing retry preserves an uncertain remote journal and an unknown secret', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-config-retry-'));
+  const configPath = join(directory, 'config.jsonc');
+  const plugin = '@example/business';
+  const initialConfig = { plugins: [[plugin, { endpoint: 'https://old.example.test' }]], providers: {} };
+  writeFileSync(configPath, encodeCandidate(initialConfig, configPath));
+  const database = openDb({ home: directory });
+  const accounts = createPluginRepository(database.sqlite);
+  accounts.writePluginSecret(plugin, null, { token: 'old-secret' });
+  const realRepo = createSyncRepository(database.sqlite);
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  realRepo.writeBinding(binding);
+  realRepo.putEntity(binding.id, {
+    objectId: 'plugin-object',
+    logicalKey: plugin,
+    kind: 'plugin-business',
+    mode: 'included',
+    epoch: 0,
+    desired: { kind: 'plugin-business', logicalKey: plugin, value: {}, dependencies: [] },
+    baseline: 'old',
+    overrides: [],
+    pendingReason: null,
+  });
+  const file = new AtomicConfigFile(configPath);
+  let failConfirm = true;
+  const body: EntityBody = {
+    kind: 'plugin-business',
+    logicalKey: plugin,
+    value: { options: { endpoint: 'https://new.example.test' }, secret: { token: 'new-secret' } },
+    dependencies: [],
+  };
+  const createPort = (repo: typeof realRepo) =>
+    createLocalSyncPort({
+      configPath,
+      configFile: file,
+      repo,
+      accounts,
+      bindingId: binding.id,
+      bindingGeneration: binding.sessionGeneration,
+      enqueue: createFifoQueue(),
+      registry: () => ({
+        resolveOAuth: () => undefined,
+        oauthCapabilities: () => [],
+        resolveSync: () => undefined,
+        syncCapabilities: () => [],
+      }),
+      applyCandidate: async (candidate) => {
+        await file.replace(() => candidate);
+      },
+    });
+  const repo = {
+    ...realRepo,
+    confirm: (...args: Parameters<typeof realRepo.confirm>) => {
+      if (failConfirm) {
+        failConfirm = false;
+        throw new Error('simulated crash before remote confirmation');
+      }
+      realRepo.confirm(...args);
+    },
+  } as typeof realRepo;
+
+  try {
+    await expect(createPort(repo).applyRemote('plugin-object', body, 'remote-plugin-config-retry')).rejects.toThrow(
+      'simulated crash before remote confirmation',
+    );
+    const prepared = realRepo.readCommit(binding.id, 'remote:plugin-object:remote-plugin-config-retry');
+    expect(prepared?.phase).toBe('prepared');
+    expect(await file.read()).toEqual({ plugins: [[plugin, { endpoint: 'https://new.example.test' }]], providers: {} });
+
+    await file.replace(() => ({ plugins: [[plugin, { endpoint: 'https://external.example.test' }]], providers: {} }));
+    await expect(
+      createPort(realRepo).applyRemote('plugin-object', body, 'remote-plugin-config-retry'),
+    ).resolves.toEqual({
+      applied: false,
+      pending: 'invalid-config',
+    });
+    expect(realRepo.pendingCommits(binding.id)).toHaveLength(1);
+    expect(realRepo.readCommit(binding.id, 'remote:plugin-object:remote-plugin-config-retry')).toEqual(prepared);
+    expect(await file.read()).toEqual({
+      plugins: [[plugin, { endpoint: 'https://external.example.test' }]],
+      providers: {},
+    });
+
+    const changedSecret = accounts.readPluginSecret(plugin);
+    expect(changedSecret).not.toBeNull();
+    accounts.writePluginSecret(plugin, changedSecret!.revision, { token: 'external-secret' });
+
+    await expect(
+      createPort(realRepo).applyRemote('plugin-object', body, 'remote-plugin-config-retry'),
+    ).resolves.toEqual({
+      applied: false,
+      pending: 'secret-conflict',
+    });
+    expect(realRepo.pendingCommits(binding.id)).toHaveLength(1);
+    expect(realRepo.readCommit(binding.id, 'remote:plugin-object:remote-plugin-config-retry')).toEqual(prepared);
+    expect(await file.read()).toEqual({
+      plugins: [[plugin, { endpoint: 'https://external.example.test' }]],
+      providers: {},
+    });
+    expect(accounts.readPluginSecret(plugin)?.value).toEqual({ token: 'external-secret' });
   } finally {
     database.close();
     rmSync(directory, { recursive: true, force: true });
