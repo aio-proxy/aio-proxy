@@ -381,7 +381,7 @@ function schemaMethods(schema: Record<string, unknown>): string[] {
         expectedTypes.every((value) => type.includes(value)))
     );
   };
-  const hasAnyOfRef = (properties: Record<string, unknown>, name: string, reference: string): boolean => {
+  const hasNullableAnyOfRef = (properties: Record<string, unknown>, name: string, reference: string): boolean => {
     const property = properties[name];
     if (typeof property !== 'object' || property === null) return false;
     const anyOf = (property as { anyOf?: unknown }).anyOf;
@@ -389,8 +389,17 @@ function schemaMethods(schema: Record<string, unknown>): string[] {
       Array.isArray(anyOf) &&
       anyOf.some(
         (entry) => typeof entry === 'object' && entry !== null && (entry as { $ref?: unknown })['$ref'] === reference,
+      ) &&
+      anyOf.some(
+        (entry) => typeof entry === 'object' && entry !== null && (entry as { type?: unknown }).type === 'null',
       )
     );
+  };
+  const hasArrayItemsType = (properties: Record<string, unknown>, name: string, itemType: string): boolean => {
+    const property = properties[name];
+    if (typeof property !== 'object' || property === null) return false;
+    const items = (property as { items?: unknown }).items;
+    return typeof items === 'object' && items !== null && (items as { type?: unknown }).type === itemType;
   };
   const valid: string[] = [];
   for (const [name, fields] of Object.entries(expected)) {
@@ -411,15 +420,16 @@ function schemaMethods(schema: Record<string, unknown>): string[] {
     const shapeValid =
       name === 'ThreadStartParams'
         ? hasType(properties, 'modelProvider', ['string', 'null']) &&
-          hasAnyOfRef(properties, 'historyMode', '#/definitions/ThreadHistoryMode')
+          hasNullableAnyOfRef(properties, 'historyMode', '#/definitions/ThreadHistoryMode')
         : name === 'ThreadResumeParams'
           ? hasType(properties, 'threadId', ['string']) && hasType(properties, 'modelProvider', ['string', 'null'])
           : name === 'ThreadListParams'
             ? hasType(properties, 'modelProviders', ['array', 'null']) &&
+              hasArrayItemsType(properties, 'modelProviders', 'string') &&
               hasType(properties, 'useStateDbOnly', ['boolean'])
             : hasType(properties, 'threadId', ['string']) &&
               hasType(properties, 'isPinned', ['boolean', 'null']) &&
-              hasAnyOfRef(properties, 'gitInfo', '#/definitions/ThreadMetadataGitInfoUpdateParams') &&
+              hasNullableAnyOfRef(properties, 'gitInfo', '#/definitions/ThreadMetadataGitInfoUpdateParams') &&
               !Object.hasOwn(properties, 'modelProvider');
     if (shapeValid)
       valid.push(`${name}[required=${fields.required.join('|') || '(none)'};optional=${fields.optional.join('|')}]`);
@@ -433,6 +443,7 @@ async function main(): Promise<void> {
   const schemaDir = join(root, 'schema');
   const env = isolatedEnv(root, codexHome);
   const results: ProbeResult[] = [];
+  let schemaContractValid = false;
   try {
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
     await mkdir(join(root, 'tmp'), { recursive: true, mode: 0o700 });
@@ -454,7 +465,10 @@ async function main(): Promise<void> {
     if (schema.code === 0) {
       const schemaPath = join(schemaDir, 'codex_app_server_protocol.v2.schemas.json');
       const parsed = JSON.parse(await readFile(schemaPath, 'utf8')) as Record<string, unknown>;
-      console.log(`verified v2 schema fields: ${schemaMethods(parsed).join(', ') || '(none)'}`);
+      const verifiedFields = schemaMethods(parsed);
+      schemaContractValid = verifiedFields.length === 4;
+      console.log(`verified v2 schema fields: ${verifiedFields.join(', ') || '(none)'}`);
+      if (!schemaContractValid) console.error('FAIL: required app-server schema contract is missing or invalid');
     }
     for (const loggedIn of [false, true]) {
       for (const proxyKey of ['test-proxy-key', 'aio-proxy-local']) {
@@ -476,6 +490,7 @@ async function main(): Promise<void> {
       help.code !== 0 ||
       loginHelp.code !== 0 ||
       schema.code !== 0 ||
+      !schemaContractValid ||
       results.some((result) => result.status === 'FAIL' || result.status === 'BLOCKED')
     )
       process.exitCode = 1;

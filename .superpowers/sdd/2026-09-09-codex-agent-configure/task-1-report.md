@@ -198,3 +198,35 @@ probe-exit=1
 ```
 
 The nonzero exit is intentional and machine-visible: a required migration result marked `BLOCKED` cannot be mistaken for a passing contract probe.
+
+## Fix round 3 review response
+
+The schema gate now treats the four validated entries as required: if any definition, property shape, nullable branch, required/optional set, or metadata-provider omission is invalid, it prints `FAIL: required app-server schema contract is missing or invalid` and sets a nonzero exit. It verifies `modelProviders` is nullable array with string items, `useStateDbOnly` is boolean, nullable `historyMode`/`gitInfo` retain their referenced definitions, and `ThreadMetadataUpdateParams` has no `modelProvider` property. The sanitized schema summary remains committed.
+
+Exact fix-round 3 commands/results:
+
+```text
+rtk bunx oxfmt packages/cli/scripts/verify-codex-contract.ts packages/cli/scripts/codex-storage.ts
+Finished in 33ms on 2 files using 12 threads.
+
+rtk bunx oxlint packages/cli/scripts/verify-codex-contract.ts packages/cli/scripts/codex-storage.ts
+exit 0
+
+rtk bun run packages/cli/scripts/verify-codex-contract.ts /opt/homebrew/bin/codex
+executable: codex-cli 0.146.0
+version command exit: 0
+app-server help exit: 0
+isolated login help exit: 0
+isolated login help first line: Manage login
+schema command exit: 0
+verified v2 schema fields: ThreadStartParams[required=(none);optional=modelProvider|historyMode], ThreadResumeParams[required=threadId;optional=modelProvider], ThreadListParams[required=(none);optional=modelProviders|useStateDbOnly], ThreadMetadataUpdateParams[required=threadId;optional=isPinned|gitInfo]
+PASS: logged-out / test-proxy-key: model request used the configured proxy bearer
+PASS: logged-out / aio-proxy-local: model request used the configured proxy bearer
+PASS: logged-in / test-proxy-key: model request used the configured proxy bearer
+PASS: logged-in / aio-proxy-local: model request used the configured proxy bearer
+BLOCKED: native provider migration persistence: resume override=source-proxy, after restart=source-proxy, list source/target=1/0, restart source/target=1/0, repaired source=1; rounds=accepted/accepted, fork=accepted, archive=accepted; configured sqlite_home/state_5.sqlite inspected with two source-proxy legacy rows, one archived row, zero spawn edges; rollout summaries recorded; metadata/update has no provider field, so no native migration write was attempted
+migration: BLOCKED — this probe does not claim persistence without a restart/list/resume proof
+probe-exit=1
+```
+
+The four auth cases passed because every observed upstream request, including `/v1/models`, matched the configured test bearer; raw headers remain unprinted. The expected probe exit remains nonzero solely because native migration is blocked.
