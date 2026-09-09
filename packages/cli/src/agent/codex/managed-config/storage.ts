@@ -97,6 +97,7 @@ export async function ensureManagedRoot(location: CodexLocation): Promise<void> 
 export async function durableWrite(path: string, text: string, mode: number, expected?: FileSnapshot): Promise<void> {
   await assertNoSymlinkParents(dirname(path));
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await assertNoSymlinkParents(dirname(path));
   const temporary = join(dirname(path), `.${path.split('/').at(-1)}.${crypto.randomUUID()}.tmp`);
   const handle = await open(temporary, 'wx', mode);
   try {
@@ -160,6 +161,7 @@ export async function writeTomlAtomically(
 ): Promise<void> {
   await assertNoSymlinkParents(location.home);
   await mkdir(location.home, { recursive: true, mode: 0o700 });
+  await assertNoSymlinkParents(location.home);
   const temporary = join(location.home, `.config.toml.${crypto.randomUUID()}.tmp`);
   const handle = await open(temporary, 'wx', 0o600);
   try {

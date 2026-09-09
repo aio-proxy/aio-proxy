@@ -70,6 +70,40 @@ rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/co
 
 Concerns remain limited to the existing repository-wide TypeScript baseline diagnostics; the changed implementation has no focused lint diagnostics and all 26 focused tests pass.
 
+## Fix round 1 re-review regression fix
+
+An occupied target provider is now rejected before old-provider cleanup, journal creation, or TOML replacement. Marker validation also runs before the journaled operation begins, so a marker schema failure cannot leave a post-TOML `config-written` journal. Journal reads use no-follow identity-checked reads; operation failures expire and release the in-process owner; and parent creation is rechecked after mkdir.
+
+Added tests for occupied-target no-write behavior and refusing a symlinked operation journal. Exact verification:
+
+```text
+rtk bunx oxfmt packages/cli/src/agent/codex/managed-config
+Finished in 35ms on 6 files using 12 threads.
+
+rtk bunx oxlint packages/cli/src/agent/codex/managed-config
+(no diagnostics)
+
+rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config ./packages/cli/src/agent/codex/config-document/config-document.test.ts
+28 pass
+0 fail
+84 expect() calls
+```
+
+The final destination-symlink regression was added and verified:
+
+```text
+rtk bunx oxfmt packages/cli/src/agent/codex/managed-config
+Finished in 59ms on 6 files using 12 threads.
+
+rtk bunx oxlint packages/cli/src/agent/codex/managed-config
+(no diagnostics)
+
+rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config ./packages/cli/src/agent/codex/config-document/config-document.test.ts
+29 pass
+0 fail
+86 expect() calls
+```
+
 ## Fix round 1 verification
 
 The review fix round was committed after a fresh verification run:

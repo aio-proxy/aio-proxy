@@ -218,3 +218,61 @@ test('rejects an existing symlinked parent before creating managed files', async
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('refuses a symlinked operation journal without following its target', async () => {
+  const f = await fixture();
+  const journalTarget = join(f.root, 'foreign-journal');
+  const journal = join(f.location.managedRoot, 'config-operation.json');
+  try {
+    await mkdir(f.location.managedRoot, { recursive: true });
+    await Bun.write(journalTarget, '{}\n');
+    await symlink(journalTarget, journal);
+    await expect(removeCodexConfig(f.location)).rejects.toThrow('symbolic link');
+    expect(await Bun.file(journalTarget).text()).toBe('{}\n');
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('refuses a symlinked TOML destination before any replacement', async () => {
+  const f = await fixture();
+  const foreign = join(f.root, 'foreign-config.toml');
+  try {
+    await Bun.write(foreign, 'model = "foreign"\n');
+    await rm(f.location.configPath);
+    await symlink(foreign, f.location.configPath);
+    await expect(
+      configureCodexConfig({ location: f.location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', token: 'key' }),
+    ).rejects.toThrow('symbolic link');
+    expect(await Bun.file(foreign).text()).toBe('model = "foreign"\n');
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects switching to an occupied provider before changing the old configuration', async () => {
+  const f = await fixture();
+  try {
+    await configureCodexConfig({
+      location: f.location,
+      providerId: 'old-proxy',
+      baseUrl: 'http://old/v1',
+      token: 'old-key',
+    });
+    const before = await Bun.file(f.location.configPath).text();
+    await Bun.write(f.location.configPath, `${before}\n[model_providers.existing]\nname = "user-owned"\n`);
+    const occupied = await Bun.file(f.location.configPath).text();
+    await expect(
+      configureCodexConfig({
+        location: f.location,
+        providerId: 'existing',
+        baseUrl: 'http://new/v1',
+        token: 'new-key',
+      }),
+    ).rejects.toThrow('occupied');
+    expect(await Bun.file(f.location.configPath).text()).toBe(occupied);
+    expect(await Bun.file(join(f.location.managedRoot, 'config-operation.json')).exists()).toBe(false);
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});

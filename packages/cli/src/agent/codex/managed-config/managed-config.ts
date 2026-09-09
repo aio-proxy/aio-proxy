@@ -14,8 +14,16 @@ import type {
   ConfigRemoval,
   OwnedField,
 } from '../contracts';
-import { clearJournal, fingerprint, isLiveJournal, readJournal, startJournal, updateJournal } from './journal';
-import { deleteMarker, readMarker, writeMarker } from './marker';
+import {
+  clearJournal,
+  fingerprint,
+  isLiveJournal,
+  readJournal,
+  releaseJournalOwner,
+  startJournal,
+  updateJournal,
+} from './journal';
+import { deleteMarker, readMarker, validateMarker, writeMarker } from './marker';
 import { chmodChecked, readRegularFile, syncParent, writeTomlAtomically } from './storage';
 
 const providerFields = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'] as const;
@@ -147,13 +155,18 @@ async function completeOperation(
   marker: CodexMarker | undefined,
 ): Promise<void> {
   const ownedJournal = await startJournal(location, journal);
-  await writeTomlAtomically(location, original, nextText);
-  await updateJournal(location, { ...ownedJournal, stage: 'config-written' });
-  if (marker === undefined) await deleteMarker(location);
-  else await writeMarker(location, marker);
-  await updateJournal(location, { ...ownedJournal, stage: 'marker-written' });
-  await clearJournal(location);
-  await syncParent(location.markerPath);
+  try {
+    await writeTomlAtomically(location, original, nextText);
+    await updateJournal(location, { ...ownedJournal, stage: 'config-written' });
+    if (marker === undefined) await deleteMarker(location);
+    else await writeMarker(location, marker);
+    await updateJournal(location, { ...ownedJournal, stage: 'marker-written' });
+    await clearJournal(location);
+    await syncParent(location.markerPath);
+  } catch (error) {
+    await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
+    throw error;
+  }
 }
 
 function changedFields(marker: CodexMarker, text: string): readonly (readonly string[])[] {
@@ -213,6 +226,9 @@ export async function configureCodexConfig(input: {
     if (authConflict !== undefined)
       throw new Error(`Codex provider contains user authentication field: ${authConflict}`);
     if (marker !== undefined && marker.providerId !== providerId) {
+      if (document.providerIds.includes(providerId)) {
+        throw new Error(`Codex provider ${providerId} is occupied and is not managed by aio-proxy`);
+      }
       const oldAuthConflict = findAuthenticationConflict(text, marker.providerId);
       if (oldAuthConflict !== undefined)
         throw new Error(`Codex provider contains user authentication field: ${oldAuthConflict}`);
@@ -238,6 +254,7 @@ export async function configureCodexConfig(input: {
     if (marker?.providerId === providerId) createdTables = marker.createdTables;
     else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
     const nextMarker = markerFor(location, providerId, fields, createdTables);
+    validateMarker(nextMarker, location);
     if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
       await chmodChecked(location.configPath, 0o600);
       await chmodChecked(location.markerPath, 0o600);
@@ -277,16 +294,21 @@ export async function removeCodexConfig(location: CodexLocation): Promise<Config
         oldMarker: marker,
         stage: 'prepared',
       });
-      await deleteMarker(location);
-      await updateJournal(location, {
-        operation: 'remove',
-        originalExists: false,
-        afterFingerprint: undefined,
-        oldMarker: marker,
-        owner: ownedJournal.owner,
-        stage: 'marker-written',
-      });
-      await clearJournal(location);
+      try {
+        await deleteMarker(location);
+        await updateJournal(location, {
+          operation: 'remove',
+          originalExists: false,
+          afterFingerprint: undefined,
+          oldMarker: marker,
+          owner: ownedJournal.owner,
+          stage: 'marker-written',
+        });
+        await clearJournal(location);
+      } catch (error) {
+        await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
+        throw error;
+      }
       return { status: 'absent', preservedPaths: [] };
     }
     const restoreEdits: FieldEdit[] = [];
