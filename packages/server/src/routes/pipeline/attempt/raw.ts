@@ -86,7 +86,11 @@ export async function completeRawAttempt<TRequest, TContext>(
     invoke: invokeRaw,
   });
 
-  const fallback = hasNext && shouldFallbackStatus(response.status);
+  // Video source-not-found is candidate-specific: the next video-capable
+  // provider may own that id. Language/image 404s stay terminal.
+  const fallback =
+    hasNext &&
+    (shouldFallbackStatus(response.status) || (ctx.adapter.capability === 'video' && response.status === 404));
   if (fallback || response.status < 200 || response.status >= 400) {
     const cooldownMs = cooldownTtlMs(response.status, response.headers.get('retry-after'), ctx.retryAfterCapMs);
     if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
