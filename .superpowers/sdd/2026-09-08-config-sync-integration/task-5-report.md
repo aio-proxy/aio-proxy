@@ -129,3 +129,17 @@ Review-round 3 verification:
 - `bun run lint:types`: only the existing Dashboard OAuth editor and CloudKit
   diagnostics remain.
 - `git diff --check`: passed.
+
+## Review round 4
+
+- Candidate lifecycle startup now owns the preconnected session through filesystem setup, local commit recovery, backend validation, and activation; every startup failure disposes it once before rollback.
+- Backend connect applies are serialized in FIFO order at the service boundary. The existing mutation queue still fences candidate recovery and the transactional binding/lifecycle swap, so concurrent replacements cannot orphan engines or watchers.
+- Configured-service coverage repeats an early filesystem setup failure and applies two connect previews concurrently, asserting session disposal, binding rollback, and exactly one active watcher.
+
+Review-round verification:
+
+- Focused CLI/server/lifecycle suite: **26 passed, 0 failed**.
+- `bun run i18n:compile`: passed.
+- `bun run check`: passed with the existing lint warnings; format check passed.
+- `bun run lint:types`: still reports only the existing Dashboard OAuth route and CloudKit artifact diagnostics; no touched-file errors.
+- `git diff --check`: passed.

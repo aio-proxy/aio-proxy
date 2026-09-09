@@ -19,7 +19,7 @@ import {
 import type { OpenDbHandle } from '@aio-proxy/core/db';
 import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
-import type { createFifoQueue } from '../fifo-queue';
+import { createFifoQueue, type FifoQueue } from '../fifo-queue';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import {
   checkPrerequisites,
@@ -42,7 +42,7 @@ export function createSyncIntegration(
   plugins: () => PluginRegistrySnapshot,
   configFile: AtomicConfigFile | undefined,
   options: ServerStateOptions,
-  queue: ReturnType<typeof createFifoQueue>,
+  queue: FifoQueue,
   syncRepository = createSyncRepository(dbHandle.sqlite),
   onCoordinator?: (coordinator: SharedOAuthCoordinator | undefined) => void,
   onSharing?: (sharing: OAuthSharingService | undefined) => void,
@@ -196,74 +196,87 @@ export function createSyncIntegration(
   lifecycle = initial.lifecycle;
 
   const replaceBackend = async (binding: LocalBinding, preconnectedSession: SyncSession): Promise<void> => {
-    const previousBinding = syncRepository.readBinding();
-    const previousEntities = previousBinding === null ? [] : syncRepository.entities(previousBinding.id);
-    const previousLifecycle = lifecycle;
-    const previousPort = syncPort;
-    const previousRuntimeSync = runtime.sync;
-    const next = createLifecycle(binding, preconnectedSession, true);
+    let next: ReturnType<typeof createLifecycle> | undefined;
     try {
+      next = createLifecycle(binding, preconnectedSession, true);
       await next.lifecycle.start();
-      syncRepository.writeBinding(binding);
-      if (syncRepository.putEntities !== undefined) syncRepository.putEntities(binding.id, previousEntities);
-      else for (const entity of previousEntities) syncRepository.putEntity(binding.id, entity);
-      next.lifecycle.activate();
-      syncPort = next.port;
-      lifecycle = next.lifecycle;
-      runtime.sync = lifecycle;
-      next.publish();
-      await previousLifecycle?.close().catch(() => {});
+      await queue(async () => {
+        const previousBinding = syncRepository.readBinding();
+        const previousEntities = previousBinding === null ? [] : syncRepository.entities(previousBinding.id);
+        const previousLifecycle = lifecycle;
+        const previousPort = syncPort;
+        const previousRuntimeSync = runtime.sync;
+        try {
+          syncRepository.writeBinding(binding);
+          if (syncRepository.putEntities !== undefined) syncRepository.putEntities(binding.id, previousEntities);
+          else for (const entity of previousEntities) syncRepository.putEntity(binding.id, entity);
+          next!.lifecycle.activate();
+          syncPort = next!.port;
+          lifecycle = next!.lifecycle;
+          runtime.sync = lifecycle;
+          next!.publish();
+          await previousLifecycle?.close().catch(() => {});
+        } catch (error) {
+          syncPort = previousPort;
+          lifecycle = previousLifecycle;
+          runtime.sync = previousRuntimeSync;
+          if (syncRepository.readBinding()?.id === binding.id) {
+            if (previousBinding === null) syncRepository.clearBinding?.();
+            else syncRepository.writeBinding(previousBinding);
+          }
+          await next!.lifecycle.close().catch(() => {});
+          throw error;
+        }
+      });
     } catch (error) {
-      await next.lifecycle.close().catch(() => {});
-      syncPort = previousPort;
-      lifecycle = previousLifecycle;
-      runtime.sync = previousRuntimeSync;
-      if (syncRepository.readBinding()?.id === binding.id) {
-        if (previousBinding === null) syncRepository.clearBinding?.();
-        else syncRepository.writeBinding(previousBinding);
-      }
+      if (next === undefined) await preconnectedSession.dispose().catch(() => {});
+      else await next.lifecycle.close().catch(() => {});
       throw error;
     }
   };
 
-  const connectBackend = async (input: { plugin: string; capability: string; options: JsonValue }): Promise<void> => {
-    const backend = plugins().registry.resolveSync(input.plugin, input.capability);
-    const parsed = backend?.options.schema.safeParse(input.options);
-    if (backend === undefined || parsed === undefined || !parsed.success)
-      throw new SyncOperationError('backend-unavailable');
-    const normalizedOptions = parsed.data as JsonValue;
-    const bindingId = `sync-${crypto.randomUUID()}`;
-    const dataDirectory = join(dirname(options.configPath!), '.sync', bindingId);
-    await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
-    await chmod(dataDirectory, 0o700);
-    let session: SyncSession | undefined;
-    try {
-      session = await backend.connect(normalizedOptions, { signal: new AbortController().signal, dataDirectory });
-      if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
-      const current = syncRepository.readBinding();
-      const candidateSession = session;
-      session = undefined;
-      await replaceBackend(
-        {
-          id: bindingId,
-          plugin: input.plugin,
-          capability: input.capability,
-          pluginVersion: plugins().plugins.get(input.plugin)?.version ?? 'unknown',
-          identityId: candidateSession.identityId,
-          spaceId: 'default',
-          deviceId: current?.deviceId ?? crypto.randomUUID(),
-          sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
-          options: normalizedOptions,
-        },
-        candidateSession,
-      );
-      refreshCommitHooks();
-    } catch (error) {
-      await session?.dispose().catch(() => {});
-      if (error instanceof SyncOperationError) throw error;
-      throw new SyncOperationError('backend-unavailable');
-    }
-  };
+  // Candidate startup uses the mutation queue for local recovery, so serialize whole connect operations here and
+  // keep the existing queue available for the recovery and transactional swap steps.
+  const connectQueue = createFifoQueue();
+  const connectBackend = (input: { plugin: string; capability: string; options: JsonValue }): Promise<void> =>
+    connectQueue(async () => {
+      const backend = plugins().registry.resolveSync(input.plugin, input.capability);
+      const parsed = backend?.options.schema.safeParse(input.options);
+      if (backend === undefined || parsed === undefined || !parsed.success)
+        throw new SyncOperationError('backend-unavailable');
+      const normalizedOptions = parsed.data as JsonValue;
+      const bindingId = `sync-${crypto.randomUUID()}`;
+      const dataDirectory = join(dirname(options.configPath!), '.sync', bindingId);
+      await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+      await chmod(dataDirectory, 0o700);
+      let session: SyncSession | undefined;
+      try {
+        session = await backend.connect(normalizedOptions, { signal: new AbortController().signal, dataDirectory });
+        if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
+        const current = syncRepository.readBinding();
+        const candidateSession = session;
+        session = undefined;
+        await replaceBackend(
+          {
+            id: bindingId,
+            plugin: input.plugin,
+            capability: input.capability,
+            pluginVersion: plugins().plugins.get(input.plugin)?.version ?? 'unknown',
+            identityId: candidateSession.identityId,
+            spaceId: 'default',
+            deviceId: current?.deviceId ?? crypto.randomUUID(),
+            sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
+            options: normalizedOptions,
+          },
+          candidateSession,
+        );
+        refreshCommitHooks();
+      } catch (error) {
+        await session?.dispose().catch(() => {});
+        if (error instanceof SyncOperationError) throw error;
+        throw new SyncOperationError('backend-unavailable');
+      }
+    });
 
   const integration = {
     syncRepository,

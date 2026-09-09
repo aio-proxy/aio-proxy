@@ -47,11 +47,6 @@ export type ServerSyncLifecycleInput = {
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
-async function candidateStartFailure(input: ServerSyncLifecycleInput, message: string): Promise<never> {
-  await input.preconnectedSession?.dispose().catch(() => {});
-  throw new Error(message);
-}
-
 export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): ServerSyncLifecycle {
   const controller = new AbortController();
   let engine: ReturnType<typeof createSyncEngine> | undefined;
@@ -72,51 +67,48 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
   async function start(): Promise<void> {
     if (started || closed) return;
     started = true;
-    const binding = input.initialBinding ?? input.repo.readBinding();
-    if (binding === null) {
-      if (input.initialBinding !== undefined) return candidateStartFailure(input, 'Synchronization binding is missing');
-      return;
-    }
-    bindingId = binding.id;
-    bindingGeneration = binding.sessionGeneration;
-    const backend = input.registry().resolveSync(binding.plugin, binding.capability);
-    if (backend === undefined) {
-      if (input.initialBinding !== undefined)
-        return candidateStartFailure(input, 'Synchronization backend is unavailable');
-      return;
-    }
-    const configFile = input.configFile;
-    if (configFile === undefined) {
-      if (input.initialBinding !== undefined)
-        return candidateStartFailure(input, 'Synchronization config is unavailable');
-      return;
-    }
-    const parsedOptions = backend.options.schema.safeParse(binding.options);
-    if (!parsedOptions.success) {
-      if (input.initialBinding !== undefined)
-        return candidateStartFailure(input, 'Invalid synchronization backend options');
-      return;
-    }
-    const dataDirectory = join(dirname(input.configPath), '.sync', binding.id);
-    await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
-    await chmod(dataDirectory, 0o700);
-    port =
-      input.localPort ??
-      createLocalSyncPort({
-        configPath: input.configPath,
-        configFile,
-        repo: input.repo,
-        accounts: input.accounts,
-        bindingId: binding.id,
-        bindingGeneration: binding.sessionGeneration,
-        enqueue: input.enqueue,
-        registry: input.registry,
-        applyCandidate: input.applyCandidate,
-        pluginVersions: input.pluginVersions,
-      });
-    await recoverLocalCommits(input.repo, binding.id, port);
     let connected: SyncSession | undefined = input.preconnectedSession;
     try {
+      const binding = input.initialBinding ?? input.repo.readBinding();
+      if (binding === null) {
+        if (input.initialBinding !== undefined) throw new Error('Synchronization binding is missing');
+        return;
+      }
+      bindingId = binding.id;
+      bindingGeneration = binding.sessionGeneration;
+      const backend = input.registry().resolveSync(binding.plugin, binding.capability);
+      if (backend === undefined) {
+        if (input.initialBinding !== undefined) throw new Error('Synchronization backend is unavailable');
+        return;
+      }
+      const configFile = input.configFile;
+      if (configFile === undefined) {
+        if (input.initialBinding !== undefined) throw new Error('Synchronization config is unavailable');
+        return;
+      }
+      const parsedOptions = backend.options.schema.safeParse(binding.options);
+      if (!parsedOptions.success) {
+        if (input.initialBinding !== undefined) throw new Error('Invalid synchronization backend options');
+        return;
+      }
+      const dataDirectory = join(dirname(input.configPath), '.sync', binding.id);
+      await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+      await chmod(dataDirectory, 0o700);
+      port =
+        input.localPort ??
+        createLocalSyncPort({
+          configPath: input.configPath,
+          configFile,
+          repo: input.repo,
+          accounts: input.accounts,
+          bindingId: binding.id,
+          bindingGeneration: binding.sessionGeneration,
+          enqueue: input.enqueue,
+          registry: input.registry,
+          applyCandidate: input.applyCandidate,
+          pluginVersions: input.pluginVersions,
+        });
+      await recoverLocalCommits(input.repo, binding.id, port);
       connected ??= await backend.connect(parsedOptions.data, { signal: controller.signal, dataDirectory });
       const current = input.repo.readBinding();
       const currentBindingMismatch =
@@ -164,6 +156,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         engine = undefined;
       } else if (connected !== undefined) {
         await connected.dispose().catch(() => {});
+        connected = undefined;
       }
       session = undefined;
       input.onCoordinator?.(undefined);

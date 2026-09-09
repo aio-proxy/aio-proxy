@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -487,8 +487,12 @@ test('configured service exposes the real sync control plane to CLI mutations', 
           id: 'memory',
           displayName: 'Memory',
           options: { schema: backendOptions, form: [] },
-          connect: async (options) => {
+          connect: async (options, { dataDirectory }) => {
             connectedOptions.push(options);
+            if (options.token.startsWith('early-failure')) {
+              rmSync(dataDirectory, { recursive: true, force: true });
+              writeFileSync(dataDirectory, 'blocked');
+            }
             return backend.connect();
           },
         }),
@@ -589,6 +593,102 @@ test('configured service exposes the real sync control plane to CLI mutations', 
       state: 'idle',
       backend: { plugin: '@example/sync', capability: 'memory' },
     });
+
+    const login = await app.request(
+      '/dashboard/api/auth/login',
+      {
+        body: JSON.stringify({ password: 'dashboard-secret' }),
+        headers: { 'content-type': 'application/json', host: '127.0.0.1:9317', origin: 'http://127.0.0.1:9317' },
+        method: 'POST',
+      },
+      loopbackServer,
+    );
+    const loginBody = (await login.json()) as { readonly token: string };
+    const syncRequest = (path: string, init: RequestInit = {}) => {
+      const headers = new Headers(init.headers);
+      headers.set('Host', '127.0.0.1:9317');
+      headers.set('Origin', 'http://127.0.0.1:9317');
+      headers.set('Authorization', `Bearer ${loginBody.token}`);
+      return app.request(path, { ...init, headers }, loopbackServer);
+    };
+    const concurrentInput = (token: string) =>
+      JSON.stringify({ kind: 'connect', plugin: '@example/sync', capability: 'memory', options: { token } });
+    const [concurrentPreviewA, concurrentPreviewB] = await Promise.all([
+      syncRequest('/dashboard/api/sync/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: concurrentInput('concurrent-a'),
+      }),
+      syncRequest('/dashboard/api/sync/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: concurrentInput('concurrent-b'),
+      }),
+    ]);
+    expect(concurrentPreviewA.status).toBe(200);
+    expect(concurrentPreviewB.status).toBe(200);
+    const concurrentPreviewBodyA = (await concurrentPreviewA.json()) as { readonly previewId: string };
+    const concurrentPreviewBodyB = (await concurrentPreviewB.json()) as { readonly previewId: string };
+    const [concurrentApplyA, concurrentApplyB] = await Promise.all([
+      syncRequest('/dashboard/api/sync/apply', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ previewId: concurrentPreviewBodyA.previewId, decisions: [] }),
+      }),
+      syncRequest('/dashboard/api/sync/apply', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ previewId: concurrentPreviewBodyB.previewId, decisions: [] }),
+      }),
+    ]);
+    expect(concurrentApplyA.status).toBe(200);
+    expect(concurrentApplyB.status).toBe(200);
+    expect(backend.connectionCount()).toBe(4);
+    expect(backend.disposeCount()).toBe(3);
+    expect(backend.activeWatchCount()).toBe(1);
+    const concurrentDb = openDb({ home });
+    try {
+      const concurrentBinding = createSyncRepository(concurrentDb.sqlite).readBinding();
+      expect(concurrentBinding?.id).not.toBe('configured-binding');
+      expect(concurrentBinding?.options).toMatchObject({
+        token: expect.stringMatching(/^concurrent-[ab]$/u),
+        containerId: 'default-container',
+      });
+    } finally {
+      concurrentDb.close();
+    }
+
+    const beforeEarlyFailureDb = openDb({ home });
+    const beforeEarlyFailure = createSyncRepository(beforeEarlyFailureDb.sqlite).readBinding();
+    beforeEarlyFailureDb.close();
+    const beforeEarlyFailureConnections = backend.connectionCount();
+    const beforeEarlyFailureDisposals = backend.disposeCount();
+    rmSync(join(home, '.sync'), { recursive: true, force: true });
+    mkdirSync(join(home, '.sync'));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const earlyPreviewResponse = await syncRequest('/dashboard/api/sync/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: concurrentInput(`early-failure-${attempt}`),
+      });
+      expect(earlyPreviewResponse.status).toBe(200);
+      const earlyPreview = (await earlyPreviewResponse.json()) as { readonly previewId: string };
+      const earlyApplyResponse = await syncRequest('/dashboard/api/sync/apply', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ previewId: earlyPreview.previewId, decisions: [] }),
+      });
+      expect(earlyApplyResponse.status).toBe(503);
+    }
+    expect(backend.connectionCount()).toBe(beforeEarlyFailureConnections + 2);
+    expect(backend.disposeCount()).toBe(beforeEarlyFailureDisposals + 2);
+    expect(backend.activeWatchCount()).toBe(1);
+    const afterEarlyFailureDb = openDb({ home });
+    try {
+      expect(createSyncRepository(afterEarlyFailureDb.sqlite).readBinding()).toEqual(beforeEarlyFailure);
+    } finally {
+      afterEarlyFailureDb.close();
+    }
 
     const beforeFailureDb = openDb({ home });
     const beforeFailure = createSyncRepository(beforeFailureDb.sqlite).readBinding();
