@@ -27,6 +27,8 @@ test('overrides apply nested values, delete missing fields, copy arrays, and rej
   expect(() => applyOverrides(local, cloud, [['password']])).toThrow();
   expect(() => applyOverrides(local, cloud, [['plugin']])).toThrow();
   expect(() => applyOverrides(local, cloud, [['dependencies']])).toThrow();
+  for (const metadata of ['package', 'dependency', 'identity', 'provider', 'packageName', 'providerId', 'accountId'])
+    expect(() => applyOverrides(local, cloud, [[metadata]])).toThrow();
 });
 
 test('purge previews include transitive cloud dependents and omit local-only rows', () => {
@@ -39,6 +41,17 @@ test('purge previews include transitive cloud dependents and omit local-only row
   const built = buildPreview({
     request: { kind: 'purge', scope: 'plugin', objectId: '@example/plugin' },
     local: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        mode: 'included',
+        epoch: 1,
+        desired: body('plugin-business', '@example/plugin', ['stale-local-reference']),
+        baseline: 'a',
+        overrides: [],
+        pendingReason: null,
+      },
       {
         objectId: 'local-only',
         logicalKey: 'local',
@@ -154,6 +167,45 @@ test('rejoin preview is one-use, expires, and redacts candidate values', async (
   await expect(control.apply({ previewId: fresh.previewId, decisions: [] })).rejects.toMatchObject({
     code: 'preview-stale',
   });
+});
+
+test('preview rejects a local commit that lands during snapshot capture', async () => {
+  let commitId = 'before';
+  let localReads = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      latestConfirmedCommit: () => ({ commitId }) as never,
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => {
+      localReads += 1;
+      if (localReads === 1) commitId = 'after';
+      return [];
+    },
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {},
+  });
+  await expect(control.preview({ kind: 'join', providerId: 'work' })).rejects.toMatchObject({ code: 'preview-stale' });
 });
 
 test('preview redacts account option fields whose names do not reveal that they are secrets', async () => {
@@ -339,6 +391,7 @@ test('same-id resolution persists the new provider ID and rewires model referenc
     applyCloud: async () => {},
     restore: async () => {},
     persistOverrides: async () => {},
+    persistProviderIdentity: async (_old, _new, entities) => persisted.push(entities),
     purge: async () => {},
     connect: async () => {},
   });

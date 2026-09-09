@@ -37,6 +37,7 @@ import {
   latestCommitId,
   listRemoteEntities,
   snapshotRemoteEntities,
+  snapshotLocalEntities,
   SyncPreviewError,
   type PreviewFence,
   type PreviewRecord,
@@ -197,16 +198,35 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     accounts: options.accounts,
   });
 
-  const currentFence = async (snapshot?: readonly RemoteEntity[]): Promise<PreviewFence> => {
-    const current = binding();
+  const currentFence = async (
+    snapshot?: readonly RemoteEntity[],
+    localCommitId?: string,
+    bindingSnapshot?: LocalBinding | null,
+  ): Promise<PreviewFence> => {
+    const current = bindingSnapshot === undefined ? binding() : bindingSnapshot;
     const remote = snapshot ?? (await remoteEntities());
     return {
       bindingId: current?.id ?? '',
       sessionGeneration: current?.sessionGeneration ?? 0,
-      localCommitId: current === null ? '' : latestCommitId(options.repo, current),
+      localCommitId: current === null ? '' : (localCommitId ?? latestCommitId(options.repo, current)),
       rangeRevision,
       remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
     };
+  };
+
+  const captureLocal = (): {
+    readonly binding: LocalBinding | null;
+    readonly entities: readonly LocalEntity[];
+    readonly localCommitId: string;
+  } => {
+    const capturedBinding = binding();
+    if (capturedBinding === null) return { binding: null, entities: [], localCommitId: '' };
+    const before = latestCommitId(options.repo, capturedBinding);
+    const entities = snapshotLocalEntities(localEntities());
+    const afterBinding = binding();
+    const after = afterBinding?.id === capturedBinding.id ? latestCommitId(options.repo, capturedBinding) : '';
+    if (afterBinding?.id !== capturedBinding.id || before !== after) throw new SyncPreviewError('preview-stale');
+    return { binding: capturedBinding, entities, localCommitId: after };
   };
 
   const operationInput = (): OperationInput => ({
@@ -238,10 +258,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           throw new SyncOperationError('backend-unavailable');
         const previewId = createPreviewToken(24, options.randomBytes);
         const expiresAt = now() + 10 * 60_000;
-        const fence = await currentFence([]);
+        const local = captureLocal();
+        const fence = await currentFence([], local.localCommitId, local.binding);
         const built = buildPreview({
           request: input,
-          local: localEntities(),
+          local: local.entities,
           remote: [],
           fence,
           previewId,
@@ -251,15 +272,16 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         previews.set(previewId, built.record);
         return built.preview;
       }
-      if (binding() === null) throw new SyncPreviewError('not-connected');
+      const local = captureLocal();
+      if (local.binding === null) throw new SyncPreviewError('not-connected');
       const previewId = createPreviewToken(24, options.randomBytes);
       const expiresAt = now() + 10 * 60_000;
       const remote = snapshotRemoteEntities(await remoteEntities());
       const built = buildPreview({
         request: input,
-        local: localEntities(),
+        local: local.entities,
         remote,
-        fence: await currentFence(remote),
+        fence: await currentFence(remote, local.localCommitId, local.binding),
         previewId,
         expiresAt,
         registry: options.registry?.(),

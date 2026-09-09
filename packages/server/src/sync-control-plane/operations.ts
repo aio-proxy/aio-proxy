@@ -65,7 +65,8 @@ function rewireProviderReferences(value: JsonValue, oldProviderId: string, newPr
   if (!isPlainObject(value)) return value;
   const result: Record<string, JsonValue> = {};
   for (const [key, child] of Object.entries(value)) {
-    if ((key === 'providers' || key === 'accounts') && isPlainObject(child)) {
+    if (key === 'providers' || key === 'accounts') {
+      if (!isPlainObject(child)) throw new SyncOperationError('upgrade-required');
       const references = { ...(child as Record<string, JsonValue>) };
       if (Object.hasOwn(references, oldProviderId)) {
         if (Object.hasOwn(references, newProviderId)) throw new SyncOperationError('upgrade-required');
@@ -80,16 +81,28 @@ function rewireProviderReferences(value: JsonValue, oldProviderId: string, newPr
   return result;
 }
 
+function validateStructuredReferenceMaps(value: JsonValue): void {
+  if (Array.isArray(value)) {
+    for (const entry of value) validateStructuredReferenceMaps(entry);
+    return;
+  }
+  if (!isPlainObject(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    if ((key === 'providers' || key === 'accounts') && !isPlainObject(child))
+      throw new SyncOperationError('upgrade-required');
+    validateStructuredReferenceMaps(child);
+  }
+}
+
 function providerIdentityRows(
-  input: OperationInput,
-  binding: LocalBinding,
   current: LocalEntity,
   selected: EntityBody,
   newProviderId: string,
+  entities: readonly LocalEntity[],
 ): ProviderIdentityRows {
   if (current.kind !== 'provider' || selected.kind !== 'provider' || newProviderId === '')
     throw new SyncOperationError('upgrade-required');
-  const entities = input.repo.entities(binding.id);
+  validateStructuredReferenceMaps(selected.value);
   if (
     entities.some(
       (entity) =>
@@ -115,19 +128,9 @@ function providerIdentityRows(
   };
 }
 
-async function persistProviderIdentity(
-  input: OperationInput,
-  binding: LocalBinding,
-  rows: ProviderIdentityRows,
-): Promise<void> {
-  if (input.persistProviderIdentity !== undefined) {
-    await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
-    return;
-  }
-  const bulk = (input.repo as SyncRepository & { putEntities?: (id: string, entities: readonly LocalEntity[]) => void })
-    .putEntities;
-  if (typeof bulk === 'function') bulk.call(input.repo, binding.id, rows.entities);
-  else for (const entity of rows.entities) input.repo.putEntity(binding.id, entity);
+async function persistProviderIdentity(input: OperationInput, rows: ProviderIdentityRows): Promise<void> {
+  if (input.persistProviderIdentity === undefined) throw new SyncOperationError('upgrade-required');
+  await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
 }
 
 export async function assertFresh(input: OperationInput, expected: PreviewFence): Promise<void> {
@@ -145,7 +148,7 @@ export async function applyPreview(
   if (input.now?.() !== undefined && input.now!() >= record.expiresAt) throw new SyncPreviewError('preview-stale');
   await assertFresh(input, record.fence);
   const selected = new Map(decisions.map((decision) => [decision.objectId, decision]));
-  const localByObject = new Map(input.localEntities().map((entity) => [entity.objectId, entity]));
+  const localByObject = new Map(record.local.map((entity) => [entity.objectId, entity]));
   const remoteByObject = new Map(record.remote.map((entity) => [entity.objectId, entity]));
   if (record.input.kind === 'purge') {
     if (record.dependencyError) throw new SyncOperationError('dependency-in-use');
@@ -183,20 +186,31 @@ export async function applyPreview(
     if (decision.newProviderId !== undefined && selectedBody !== null) {
       selectedBody = { ...selectedBody, logicalKey: decision.newProviderId };
       if (current !== undefined)
-        identityRows = providerIdentityRows(input, binding, current, selectedBody, decision.newProviderId);
+        identityRows = providerIdentityRows(current, selectedBody, decision.newProviderId, record.local);
     }
     const remote = remoteByObject.get(candidate.row.objectId);
-    if (decision.choice === 'restore' && selectedBody !== null) {
-      const operationId =
-        record.input.kind === 'restore' ? record.input.operationId : `restore:${candidate.row.objectId}`;
-      await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
-    } else if (decision.choice === 'cloud') {
-      await input.applyLocal(selectedBody, current);
-    } else {
-      await input.applyCloud(selectedBody, current, remote?.version ?? null);
+    if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
+    try {
+      if (decision.choice === 'restore' && selectedBody !== null) {
+        const operationId =
+          record.input.kind === 'restore' ? record.input.operationId : `restore:${candidate.row.objectId}`;
+        await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
+      } else if (decision.choice === 'cloud') {
+        await input.applyLocal(selectedBody, current);
+      } else {
+        await input.applyCloud(selectedBody, current, remote?.version ?? null);
+      }
+    } catch (error) {
+      if (identityRows !== undefined && input.persistProviderIdentity !== undefined) {
+        await input.persistProviderIdentity(
+          identityRows.oldProviderId,
+          identityRows.newProviderId,
+          identityRows.entities.map((entity) => ({ ...entity, pendingReason: 'result-uncertain' })),
+        );
+      }
+      throw error;
     }
-    if (identityRows !== undefined) await persistProviderIdentity(input, binding, identityRows);
-    else if (current !== undefined && typeof input.repo.putEntity === 'function') {
+    if (identityRows === undefined && current !== undefined && typeof input.repo.putEntity === 'function') {
       input.repo.putEntity(binding.id, {
         ...current,
         mode: 'included',

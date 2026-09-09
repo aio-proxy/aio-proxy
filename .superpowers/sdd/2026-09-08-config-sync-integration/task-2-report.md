@@ -145,3 +145,30 @@ All matched files use the correct format.
 ```
 
 Round 2 self-review: the core conditional APIs protect the first mutating head CAS and return a conflict before stale publication, restore, delete, or purge work proceeds. The apply path still performs a freshness reread to detect changed bindings or remote heads, while all mutation bodies and expected versions come from the frozen preview record. Repository bulk persistence is transactional; the optional provider-identity hook allows the parent integration to include its account repository in the same coordination boundary. OAuth verifier files remain untouched.
+
+## Fix round 3
+
+Preview capture now snapshots local entities together with the confirmed local commit fence. Capture checks the commit before and after reading local entities, and apply uses the stored local snapshot instead of rereading current rows. A deterministic interleaving test proves that a local commit landing during capture returns `preview-stale`.
+
+Override validation covers provider, plugin, package, capability, identity, dependency, account, version, and related metadata spellings. Same-ID apply requires the parent persistence hook so provider and account key coordination cannot silently fall back to entity-only writes; malformed structured `providers` and `accounts` maps are rejected, and a remote mutation failure marks the staged mapping `result-uncertain` for recovery. Purge dependency checks use only the frozen cloud body dependencies, local-only stale references do not block cloud purge, and purge rows do not expose ignored identity conflict decisions.
+
+Round 3 verification:
+
+```text
+rtk proxy bun test --preload=./__tests__/setup.ts src/sync-control-plane
+16 pass, 0 fail
+
+rtk proxy bun test packages/core/src/sync/publication/publication.test.ts packages/core/src/sync/cleanup/cleanup.test.ts packages/core/src/sync/repository/repository.test.ts
+51 pass, 0 fail
+
+rtk proxy bun test packages/types/src/sync/sync.test.ts
+1 pass, 0 fail
+
+rtk proxy bunx tsc --noEmit -p packages/core/tsconfig.json
+passed
+
+rtk proxy bunx tsc --noEmit -p tsconfig.json 2>&1 | rg 'src/sync-control-plane|server-state/types'
+No matching errors.
+```
+
+Round 3 scope note: OAuth verifier files modified by the concurrent Task 5 work remain unstaged and were not edited.

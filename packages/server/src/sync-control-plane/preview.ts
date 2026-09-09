@@ -38,6 +38,7 @@ export type PreviewFence = {
 export type PreviewRecord = {
   readonly fence: PreviewFence;
   readonly input: SyncPreviewInput;
+  readonly local: readonly LocalEntity[];
   readonly remote: readonly RemoteEntity[];
   readonly rows: readonly PreviewCandidate[];
   readonly expiresAt: number;
@@ -81,8 +82,20 @@ export function snapshotRemoteEntities(remote: readonly RemoteEntity[]): RemoteE
   }));
 }
 
+export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntity[] {
+  return local.map((entity) => ({
+    ...entity,
+    desired: snapshotBody(entity.desired) ?? null,
+    overrides: entity.overrides.map((override) => ({
+      ...override,
+      ...(override.value === undefined ? {} : { value: clone(override.value) }),
+    })),
+    oauth: entity.oauth === undefined ? undefined : { ...entity.oauth },
+  }));
+}
+
 const FORBIDDEN_OVERRIDE =
-  /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets|plugin|capability|packageName|version|objectId|logicalKey|kind|epoch|dependencies|providerId|accountId)$/iu;
+  /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
 
 function valueAt(
   value: JsonValue,
@@ -319,6 +332,7 @@ export async function listRemoteEntities(session: SyncSession | undefined): Prom
   return result;
 }
 
+// eslint-disable-next-line max-lines-per-function -- preview assembly keeps one immutable snapshot for the fence
 export function buildPreview(input: {
   readonly request: SyncPreviewInput;
   readonly local: readonly LocalEntity[];
@@ -329,19 +343,20 @@ export function buildPreview(input: {
   readonly registry?: PluginRegistry;
   readonly accounts?: PluginRepository;
 }): { readonly preview: SyncPreview; readonly record: PreviewRecord } {
+  const localSnapshot = snapshotLocalEntities(input.local);
   const remoteSnapshot = snapshotRemoteEntities(input.remote);
-  const localByObject = new Map(input.local.map((entity) => [entity.objectId, entity]));
+  const localByObject = new Map(localSnapshot.map((entity) => [entity.objectId, entity]));
   const remoteByObject = new Map(remoteSnapshot.map((entity) => [entity.objectId, entity]));
   const ids = new Set<string>();
   if (input.request.kind === 'join') {
-    for (const entity of input.local) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
+    for (const entity of localSnapshot) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
     for (const entity of remoteSnapshot) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
   } else if (input.request.kind === 'restore' || input.request.kind === 'overrides') ids.add(input.request.objectId);
   else if (input.request.kind === 'purge') {
     const purge = input.request;
     const remoteIds = new Set(remoteSnapshot.map((entity) => entity.objectId));
     const all = [
-      ...input.local.map((entity) => ({
+      ...localSnapshot.map((entity) => ({
         objectId: entity.objectId,
         logicalKey: entity.logicalKey,
         kind: entity.kind,
@@ -380,7 +395,7 @@ export function buildPreview(input: {
     for (const objectId of targets) if (remoteIds.has(objectId)) ids.add(objectId);
   } else for (const id of [...localByObject.keys(), ...remoteByObject.keys()]) ids.add(id);
   const identityGroups = new Map<string, Set<string>>();
-  for (const entity of [...input.local, ...remoteSnapshot]) {
+  for (const entity of [...localSnapshot, ...remoteSnapshot]) {
     const groupKey = `${entity.kind}\0${entity.logicalKey}`;
     const idsForKey = identityGroups.get(groupKey) ?? new Set<string>();
     idsForKey.add(entity.objectId);
@@ -427,6 +442,7 @@ export function buildPreview(input: {
       })(),
     )
     .map((candidate) => {
+      if (input.request.kind === 'purge') return candidate;
       if (!identityConflictKeys.has(`${candidate.row.kind}\0${candidate.row.logicalKey}`)) return candidate;
       return {
         ...candidate,
@@ -442,18 +458,23 @@ export function buildPreview(input: {
     input.request.kind === 'purge'
       ? [
           ...new Set(
-            input.local
+            localSnapshot
               .filter((entity) => entity.kind === 'plugin-business' && !ids.has(entity.objectId))
               .map((entity) => entity.logicalKey),
           ),
         ]
       : [];
   const allRemoteIds = new Set(remoteSnapshot.map((entity) => entity.objectId));
-  const allLocalIds = new Set(input.local.map((entity) => entity.objectId));
+  const allLocalIds = new Set(localSnapshot.map((entity) => entity.objectId));
   const dependencyError =
     input.request.kind === 'purge' &&
-    candidates.some((candidate) =>
-      candidate.row.dependencies.some((dependency) => !allRemoteIds.has(dependency) && !allLocalIds.has(dependency)),
+    candidates.some(
+      (candidate) =>
+        remoteByObject
+          .get(candidate.row.objectId)
+          ?.body?.dependencies.some(
+            (dependency) => !allRemoteIds.has(dependency.objectId) && !allLocalIds.has(dependency.objectId),
+          ) ?? false,
     );
   const preview: SyncPreview = {
     previewId: input.previewId,
@@ -467,6 +488,7 @@ export function buildPreview(input: {
     record: {
       fence: input.fence,
       input: input.request,
+      local: localSnapshot,
       remote: remoteSnapshot,
       rows: candidates,
       expiresAt: input.expiresAt,
