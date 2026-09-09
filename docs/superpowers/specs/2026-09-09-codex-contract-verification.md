@@ -2,6 +2,30 @@
 
 This document records the isolated Task 1 experiment. It used the explicit executable `/opt/homebrew/bin/codex`, a temporary `HOME` and `CODEX_HOME`, synthetic credentials, and a loopback synthetic upstream. No host Codex session, keychain, API key, or user history was read.
 
+## Native command-auth experiment (Task 1)
+
+The new `packages/cli/scripts/verify-codex-command-auth.ts` probe ran the explicit executable `codex-cli 0.146.0` on `darwin/arm64`. It creates a temporary home, a helper under a path containing spaces, and a loopback upstream. The helper is invoked through an argument array with empty stdin; raw token, JSON, empty output, non-zero exit, and over-5-second timeout inputs are exercised. Only token equality and sanitized failure descriptions are observed. The probe never reads or writes the real Codex files.
+
+The machine-readable result was:
+
+```json
+{
+  "version": "codex-cli 0.146.0",
+  "platform": "darwin/arm64",
+  "rawTokenAccepted": false,
+  "incompatibleConfigRejected": true,
+  "refreshAfter401": false,
+  "proactiveRefresh": false,
+  "staticAccountType": null,
+  "commandAccountType": null,
+  "authFilesUnchanged": true
+}
+```
+
+The incompatible configuration was rejected as expected. The command-auth and static app-server sessions both timed out during `initialize`, before `account/read` or a model request could run. Therefore the raw bearer, 401 retry, proactive refresh, and account-type contracts remain unverified for this executable. The five isolated helper inputs produced sanitized observations: `json` exited 0, `empty` exited 0, `nonzero` exited 7, and `timeout` exceeded the 5-second limit; no output or header value was recorded.
+
+The assertion gate in the probe intentionally fails when these required positive conditions are absent. This is host evidence only: it does not establish a minimum supported version, does not authorize command-auth product wiring, and does not claim Computer Use, plugin, or real AIO Proxy compatibility. The existing static experiment below remains a separate result.
+
 ## Verified executable and schema
 
 The executable reported `codex-cli 0.146.0`. The exported experimental v2 schema has the title `CodexAppServerProtocolV2` and contains these request parameter definitions:
