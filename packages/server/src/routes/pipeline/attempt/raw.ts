@@ -98,10 +98,13 @@ export async function completeRawAttempt<TRequest, TContext>(
   } catch (error) {
     // Video credential-strip (and any other rewrite) may own the body on
     // `upstream`, not `rawRequest`. Cancel the object we invoked.
-    await cancelRetainedRequestBody(upstream, error);
-    if (retrySource !== undefined) await cancelRetainedRequestBody(retrySource, error);
+    await releaseInvokedRawBodies(upstream, retrySource, error);
     throw error;
   }
+  // A plugin can return 4xx/5xx or a cached 2xx without reading. Parse already
+  // cloned, so this copy can hold a full tee branch until GC — including across
+  // fallback, which clones from the original again.
+  await releaseInvokedRawBodies(upstream, retrySource, 'raw request body no longer needed');
 
   // Unpinned edits/extensions 404 is source-not-found: the next video-capable
   // provider may own that id. Create and language/image 404s stay terminal.
@@ -173,6 +176,15 @@ export async function completeRawAttempt<TRequest, TContext>(
   );
   deferRelease();
   return { kind: 'return', response: captured.value };
+}
+
+async function releaseInvokedRawBodies(
+  upstream: Request,
+  retrySource: Request | undefined,
+  reason: unknown,
+): Promise<void> {
+  await cancelRetainedRequestBody(upstream, reason);
+  if (retrySource !== undefined) await cancelRetainedRequestBody(retrySource, reason);
 }
 
 function shouldFallbackVideoSource404<TRequest, TContext>(

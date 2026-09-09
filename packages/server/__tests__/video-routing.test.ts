@@ -285,6 +285,8 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(await edits.json()).toEqual({ id: 'video_edit', object: 'video', status: 'queued' });
     expect(missing.calls.raw).toBe(1);
     expect(owner.calls.raw).toBe(1);
+    expect(missing.invoked[0]?.bodyUsed).toBe(true);
+    expect(owner.invoked[0]?.bodyUsed).toBe(true);
     expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
   });
 
@@ -303,6 +305,7 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(created.status).toBe(404);
     expect(missing.calls.raw).toBe(1);
     expect(owner.calls.raw).toBe(0);
+    expect(missing.invoked[0]?.bodyUsed).toBe(true);
   });
 
   test('a pinned edit whose explicit model the provider cannot resolve is 503', async () => {
@@ -537,6 +540,21 @@ describe('OpenAI Videos HTTP dispatch', () => {
     const retrieved = await app.request('/v1/videos/video_abc');
     expect(retrieved.status).toBe(200);
     expect(fixture.resolves.some((input) => input.requestPath === '/v1/videos/video_abc')).toBe(true);
+  });
+
+  test('a non-consuming unpinned create 404 cancels the credential-sanitized body', async () => {
+    const fixture = videoProvider('openai', { notFoundOnCreate: true });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const created = await app.request(CREATE, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer caller-secret-credential',
+      },
+      body: createBody({ model: 'sora-2' }),
+    });
+    expect(created.status).toBe(404);
+    expect(fixture.invoked.at(-1)?.bodyUsed).toBe(true);
   });
 
   test('a throwing unpinned create cancels the credential-sanitized body', async () => {
