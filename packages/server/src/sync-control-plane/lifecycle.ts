@@ -23,6 +23,7 @@ import { createLocalSyncPort } from './local-port';
 export interface ServerSyncLifecycle {
   start(): Promise<void>;
   activate(): void;
+  reconcile(): Promise<void>;
   abort(): void;
   close(): Promise<void>;
   onCommitted(input: { commitId: string; origin: 'local' | 'remote' }): Promise<void>;
@@ -195,11 +196,17 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     return closePromise;
   }
 
+  async function reconcile(): Promise<void> {
+    if (engine === undefined || closed) return;
+    await engine.reconcile(controller.signal);
+  }
+
   return {
     start,
     activate: () => {
       if (!closed) engine?.start();
     },
+    reconcile,
     abort,
     close,
     onCommitted,

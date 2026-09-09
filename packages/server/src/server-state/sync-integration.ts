@@ -346,6 +346,7 @@ export function createSyncControlPlaneIntegration(
     session: () => integration.lifecycle?.session(),
     lifecycle: {
       activate: () => integration.lifecycle?.activate(),
+      reconcile: () => integration.lifecycle?.reconcile() ?? Promise.resolve(),
       close: async () => integration.lifecycle?.close(),
     },
     applyLocal: async (candidate, _current, objectId) => {

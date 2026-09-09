@@ -5,14 +5,22 @@ import { join } from 'node:path';
 
 import {
   AtomicConfigFile,
+  createPluginRepository,
   createSyncRepository,
   encodeCandidate,
+  type BuiltInPluginDefinition,
+  type EntityKind,
+  type LocalBinding,
+  type LocalEntity,
   type PluginRegistry,
   type PluginRepository,
   type SyncRepository,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
-import type { SyncBackendDefinition, SyncSession } from '@aio-proxy/plugin-sdk';
+import { definePlugin, zod, type SyncBackendDefinition, type SyncRead, type SyncSession } from '@aio-proxy/plugin-sdk';
+import { ConfigSchema } from '@aio-proxy/types';
+
+import { createServerState } from '#server-test-lifecycle';
 
 import { createFifoQueue, type FifoQueue } from '../fifo-queue';
 import { createServerSyncLifecycle } from './lifecycle';
@@ -160,3 +168,234 @@ export function createServerSyncFixture(input: {
 export function configDigest(raw: Record<string, unknown>, configPath: string): string {
   return createHash('sha256').update(encodeCandidate(raw, configPath)).digest('hex');
 }
+
+type AcceptanceMemoryValue = Extract<SyncRead, { kind: 'present' }>;
+
+/**
+ * A deterministic backend used by the product acceptance fixture. It is deliberately
+ * small, but implements the same session boundary as a real plugin backend: each
+ * server receives a separate session, while values and watch hints are shared.
+ */
+type AcceptanceMemoryBackend = {
+  readonly definition: SyncBackendDefinition<Record<string, never>>;
+  readonly readAll: () => ReadonlyMap<string, AcceptanceMemoryValue>;
+  readonly poke: () => void;
+};
+
+function createAcceptanceMemoryBackend(): AcceptanceMemoryBackend {
+  const values = new Map<string, AcceptanceMemoryValue>();
+  let version = 0;
+  const definition: SyncBackendDefinition<Record<string, never>> = {
+    id: 'memory',
+    displayName: 'Acceptance memory',
+    options: { schema: zod.object({}), form: [] },
+    async connect() {
+      const session: SyncSession = {
+        identityId: 'acceptance-memory-identity',
+        spaceId: 'default',
+        maxValueBytes: 1_000_000,
+        async read(key, signal) {
+          signal.throwIfAborted();
+          const current = values.get(key);
+          return current === undefined ? { kind: 'absent' as const } : { ...current, value: current.value.slice() };
+        },
+        async compareAndSwap(key, expected, value, signal) {
+          signal.throwIfAborted();
+          const current = values.get(key);
+          if ((current?.version ?? null) !== expected) return { kind: 'conflict' as const };
+          const next: AcceptanceMemoryValue = {
+            kind: 'present',
+            value: value.slice(),
+            version: String(++version),
+            modifiedAt: version,
+          };
+          values.set(key, next);
+          return { kind: 'written' as const, version: next.version, modifiedAt: next.modifiedAt };
+        },
+        async list({ prefix }, signal) {
+          signal.throwIfAborted();
+          return { keys: [...values.keys()].filter((key) => key.startsWith(prefix)) };
+        },
+        async remove(key, expected, signal) {
+          signal.throwIfAborted();
+          if (values.get(key)?.version !== expected) return { kind: 'conflict' as const };
+          values.delete(key);
+          return { kind: 'removed' as const };
+        },
+        async dispose() {},
+      };
+      return session;
+    },
+  };
+  return { definition, readAll: () => values, poke: () => {} };
+}
+
+const ACCEPTANCE_PLUGIN = '@example/sync-acceptance';
+const ACCEPTANCE_BINDING_PLUGIN_VERSION = '1.0.0';
+
+function acceptanceDescriptor(backend: SyncBackendDefinition<Record<string, never>>): BuiltInPluginDefinition {
+  return {
+    packageName: ACCEPTANCE_PLUGIN,
+    version: ACCEPTANCE_BINDING_PLUGIN_VERSION,
+    descriptor: definePlugin(
+      (api) => {
+        api.sync.register(backend);
+      },
+      {
+        options: {
+          schema: zod.object({ endpoint: zod.url().optional(), token: zod.string().optional() }),
+          form: [
+            { type: 'text', key: 'endpoint', label: 'Endpoint' },
+            { type: 'secret', key: 'token', label: 'Token' },
+          ],
+        },
+      },
+    ),
+  };
+}
+
+function acceptanceEntity(objectId: string, kind: EntityKind, logicalKey: string): LocalEntity {
+  return {
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'included',
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+}
+
+type AcceptanceServer = {
+  readonly configPath: string;
+  readonly home: string;
+  readonly providerMarker: string;
+  readonly pluginMarker: string;
+  readonly state: ReturnType<typeof createServerState> extends Promise<infer T> ? T : never;
+  readonly reconcile: () => Promise<void>;
+};
+
+export type TwoServerSyncFixture = {
+  readonly backend: AcceptanceMemoryBackend;
+  readonly a: AcceptanceServer;
+  readonly b: AcceptanceServer;
+  readonly restart: (device: 'a' | 'b') => Promise<void>;
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Open two real ServerState instances with independent homes and one shared
+ * backend. Actions in acceptance tests go through ConfigStore, PluginControlPlane,
+ * and SyncControlPlane; the repository is touched only while preparing durable
+ * fixture state before a server starts.
+ */
+export async function withTwoServerSyncFixtures(run: (fixture: TwoServerSyncFixture) => Promise<void>): Promise<void> {
+  const backend = createAcceptanceMemoryBackend();
+  const descriptor = acceptanceDescriptor(backend.definition);
+  const initialRaw = {
+    plugins: [[ACCEPTANCE_PLUGIN, { endpoint: 'https://plugin.example.test' }]],
+    providers: {},
+  } satisfies Record<string, unknown>;
+  const homes: string[] = [];
+  const devices = new Map<'a' | 'b', AcceptanceServer>();
+
+  const createDevice = async (device: 'a' | 'b', markers?: { provider: string; plugin: string }) => {
+    const home = mkdtempSync(join(tmpdir(), `aio-proxy-sync-acceptance-${device}-`));
+    homes.push(home);
+    const configPath = join(home, 'config.jsonc');
+    writeFileSync(configPath, encodeCandidate(initialRaw, configPath), { mode: 0o600 });
+    const database = openDb({ home });
+    const pluginRepository = createPluginRepository(database.sqlite);
+    const repository = createSyncRepository(database.sqlite);
+    const binding: LocalBinding = {
+      id: `acceptance-binding-${device}`,
+      plugin: ACCEPTANCE_PLUGIN,
+      capability: 'memory',
+      pluginVersion: ACCEPTANCE_BINDING_PLUGIN_VERSION,
+      identityId: 'acceptance-memory-identity',
+      spaceId: 'default',
+      deviceId: `acceptance-device-${device}`,
+      sessionGeneration: 1,
+      options: {},
+    };
+    repository.writeBinding(binding);
+    repository.putEntity(binding.id, acceptanceEntity('provider-work', 'provider', 'work'));
+    repository.putEntity(binding.id, acceptanceEntity('plugin-shared', 'plugin-business', ACCEPTANCE_PLUGIN));
+    if (markers !== undefined) pluginRepository.writePluginSecret(ACCEPTANCE_PLUGIN, null, { token: markers.plugin });
+    database.close();
+    const providerMarker = markers?.provider ?? `provider-marker-${crypto.randomUUID()}`;
+    const pluginMarker = markers?.plugin ?? `plugin-marker-${crypto.randomUUID()}`;
+    const raw = (await new AtomicConfigFile(configPath).read()) as Record<string, unknown>;
+    const state = await createServerState({
+      config: ConfigSchema.parse(raw),
+      configPath,
+      dbHome: home,
+      watchConfig: false,
+      builtIns: [descriptor],
+    });
+    const server = {
+      configPath,
+      home,
+      providerMarker,
+      pluginMarker,
+      state,
+      async reconcile() {
+        backend.poke();
+        await state.sync?.retry();
+      },
+    } as AcceptanceServer;
+    devices.set(device, server);
+    return server;
+  };
+
+  const markers = {
+    provider: `provider-marker-${crypto.randomUUID()}`,
+    plugin: `plugin-marker-${crypto.randomUUID()}`,
+  };
+  await createDevice('a', markers);
+  await createDevice('b', markers);
+  const fixture = {
+    backend,
+    get a() {
+      return devices.get('a')!;
+    },
+    get b() {
+      return devices.get('b')!;
+    },
+    async restart(device: 'a' | 'b') {
+      const current = devices.get(device);
+      if (current === undefined) throw new Error(`unknown acceptance device: ${device}`);
+      await current.state.closeAsync();
+      const raw = (await new AtomicConfigFile(current.configPath).read()) as Record<string, unknown>;
+      const state = await createServerState({
+        config: ConfigSchema.parse(raw),
+        configPath: current.configPath,
+        dbHome: current.home,
+        watchConfig: false,
+        builtIns: [descriptor],
+      });
+      devices.set(device, {
+        ...current,
+        state,
+        async reconcile() {
+          backend.poke();
+          await state.sync?.retry();
+        },
+      });
+    },
+    async close() {
+      for (const server of [...devices.values()].reverse()) await server.state.closeAsync();
+      for (const home of homes.reverse()) rmSync(home, { recursive: true, force: true });
+    },
+  } satisfies TwoServerSyncFixture;
+
+  try {
+    await run(fixture);
+  } finally {
+    await fixture.close();
+  }
+}
+
+export const twoServerSyncAcceptancePlugin = ACCEPTANCE_PLUGIN;

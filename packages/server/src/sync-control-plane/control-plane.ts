@@ -57,7 +57,7 @@ export type SyncControlPlaneOptions = {
   readonly localEntities?: () => readonly LocalEntity[];
   readonly session?: () => SyncSession | undefined;
   readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
-  readonly lifecycle?: Pick<ServerSyncLifecycle, 'activate' | 'close'>;
+  readonly lifecycle?: Pick<ServerSyncLifecycle, 'activate' | 'reconcile' | 'close'>;
   readonly applyLocal: OperationInput['applyLocal'];
   readonly applyCloud?: (
     candidate: EntityBody | null,
@@ -356,6 +356,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     async retry() {
       state = 'syncing';
       options.lifecycle?.activate();
+      await options.lifecycle?.reconcile?.();
       state = 'idle';
       lastSuccessAt = now();
       return status();
