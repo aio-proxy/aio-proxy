@@ -8,7 +8,7 @@ import { resolveCodexLocation } from '../location';
 import { acquireSessionLock } from './journal';
 import { inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
 import { restoreCodexMigration } from './restore';
-import { inspectCodexSessions, migrateCodexSessions, setSessionTestDeps } from './sessions';
+import { inspectCodexSessions, isCodexWriterProcess, migrateCodexSessions, setSessionTestDeps } from './sessions';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const rollout = (provider: string, extra = '') =>
@@ -283,6 +283,14 @@ test('recovers a stale migration lease and blocks when the offline check is unav
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('does not treat the current configure command as a Codex writer', () => {
+  expect(isCodexWriterProcess(process.pid, '/usr/local/bin/aio-proxy agent configure codex')).toBe(false);
+  expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/aio-proxy agent configure codex')).toBe(false);
+  expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex')).toBe(true);
+  expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex-cli')).toBe(true);
+  expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex app-server')).toBe(true);
 });
 
 test('does not reclaim an expired lease held by a live process', async () => {

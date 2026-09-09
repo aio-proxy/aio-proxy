@@ -32,34 +32,52 @@ export function setSessionTestDeps(deps: SessionTestDeps): void {
   testDeps = deps;
 }
 
+type ProcessRow = { readonly pid: number; readonly command: string };
+const processRows = (output: string): ProcessRow[] =>
+  output.split('\n').flatMap((line) => {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line);
+    return match === null ? [] : [{ pid: Number(match[1]), command: match[2]! }];
+  });
+
 const defaultOfflineCheck = async (
   location: CodexLocation,
 ): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> => {
   try {
-    const result = Bun.spawnSync(['ps', '-axo', 'command=']);
+    const result = Bun.spawnSync(['ps', '-axo', 'pid=,command=']);
     if (result.exitCode !== 0) return 'offline_check_unavailable';
     const output = new TextDecoder().decode(result.stdout);
-    if (output.split('\n').some((line) => /(?:^|[\s/])codex(?:-cli)?(?:$|[\s/])|\bcodex\s+app-server\b/i.test(line)))
-      return 'codex_active';
+    const processes = processRows(output);
+    if (processes.some((process) => isCodexWriterProcess(process.pid, process.command))) return 'codex_active';
     const lsof = Bun.spawnSync(['lsof', '+D', location.home, '-n', '-P']);
     if (lsof.exitCode !== 127) {
       if (lsof.exitCode !== 0 && lsof.exitCode !== 1) return 'offline_check_unavailable';
       const handles = new TextDecoder().decode(lsof.stdout);
-      if (handles.split('\n').some((line) => /codex(?:-cli)?|codex\s+app-server/i.test(line))) return 'codex_active';
+      for (const line of handles.split('\n')) {
+        const match = /^\S+\s+(\d+)\s+/.exec(line);
+        if (match !== null && isCodexWriterProcess(Number(match[1]), line)) return 'codex_active';
+      }
       return 'ok';
     }
     const fuser = Bun.spawnSync(['fuser', '-m', location.home]);
     if (fuser.exitCode !== 127) {
       if (fuser.exitCode !== 0 && fuser.exitCode !== 1) return 'offline_check_unavailable';
-      if (fuser.exitCode === 0 && /codex(?:-cli)?|codex\s+app-server/i.test(new TextDecoder().decode(fuser.stdout)))
-        return 'codex_active';
+      if (fuser.exitCode === 0) {
+        for (const match of new TextDecoder().decode(fuser.stdout).matchAll(/\b(\d+)\b/g)) {
+          const pid = Number(match[1]);
+          if (pid === process.pid) continue;
+          const processInfo = processes.find((row) => row.pid === pid);
+          if (processInfo === undefined) return 'offline_check_unavailable';
+          if (isCodexWriterProcess(processInfo.pid, processInfo.command)) return 'codex_active';
+        }
+      }
     }
     const proc = await readdir('/proc', { withFileTypes: true }).catch(() => undefined);
     if (proc === undefined) return 'offline_check_unavailable';
     for (const entry of proc) {
       if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
+      if (Number(entry.name) === process.pid) continue;
       const command = await readFile(`/proc/${entry.name}/cmdline`).catch(() => undefined);
-      if (command !== undefined && /codex(?:-cli)?|codex\s+app-server/i.test(command.toString('utf8')))
+      if (command !== undefined && isCodexWriterProcess(Number(entry.name), command.toString('utf8')))
         return 'codex_active';
     }
     return 'ok';
@@ -72,6 +90,12 @@ const checkOffline = (location: CodexLocation): Promise<'ok' | 'codex_active' | 
   testDeps.offlineCheck !== undefined ? testDeps.offlineCheck() : defaultOfflineCheck(location);
 
 export const checkCodexOffline = checkOffline;
+
+const codexProcessPattern = /^(?:\S*\/)?codex(?:-cli)?(?:\s|$)/i;
+
+export function isCodexWriterProcess(pid: number, command: string): boolean {
+  return pid !== process.pid && codexProcessPattern.test(command);
+}
 
 async function managedProvider(location: CodexLocation): Promise<string> {
   let marker: unknown;
