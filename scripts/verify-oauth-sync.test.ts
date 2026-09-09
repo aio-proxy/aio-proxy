@@ -1,7 +1,14 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import {
+  classifyInterruptedRefresh,
+  classifyRotationResults,
+  isProtectedOAuthSyncHome,
+  matchesOAuthAdapter,
+} from './verify-oauth-sync-live';
 
 const script = join(import.meta.dir, 'verify-oauth-sync.ts');
 
@@ -34,6 +41,11 @@ test('blocks without an explicit isolated test home even when the account flag i
   expect(result.output).toContain('"failureCode":"setup-test-home-required"');
   expect(result.artifact['failureCode']).toBe('setup-test-home-required');
   expect(result.artifact['productionGate']).toBe('blocked');
+  expect(result.artifact['evidence']).toMatchObject({
+    deviceBinding: 'blocked',
+    independentDetach: 'blocked',
+    loginEffects: 'blocked',
+  });
 });
 
 test('rejects the production home before reading credentials', async () => {
@@ -50,4 +62,69 @@ test('rejects the production home before reading credentials', async () => {
     isolatedConfigurations: 0,
   });
   expect(JSON.stringify(result.artifact)).not.toContain('production database');
+});
+
+test('rejects a symlink alias and descendants of the production home', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-proxy-oauth-home-test-'));
+  const production = join(root, 'production');
+  const alias = join(root, 'alias');
+  mkdirSync(production);
+  symlinkSync(production, alias, 'dir');
+  try {
+    expect(isProtectedOAuthSyncHome(alias, [production])).toBe(true);
+    expect(isProtectedOAuthSyncHome(join(production, 'nested'), [production])).toBe(true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('requires every device rotation to succeed', () => {
+  expect(
+    classifyRotationResults([
+      { status: 'fulfilled', value: undefined },
+      { status: 'rejected', reason: new Error('one device failed') },
+    ]),
+  ).toBe('fail');
+  expect(
+    classifyRotationResults([
+      { status: 'fulfilled', value: undefined },
+      { status: 'fulfilled', value: undefined },
+    ]),
+  ).toBe('pass');
+});
+
+test('does not treat an ignored fulfilled interruption as uncertain recovery', () => {
+  expect(
+    classifyInterruptedRefresh({
+      result: 'fulfilled',
+      exchangeCompleted: true,
+      uncertainStateObserved: true,
+      recovered: true,
+    }),
+  ).toBe('fail');
+  expect(
+    classifyInterruptedRefresh({
+      result: 'rejected',
+      exchangeCompleted: true,
+      uncertainStateObserved: true,
+      recovered: true,
+    }),
+  ).toBe('pass');
+  expect(
+    classifyInterruptedRefresh({
+      result: 'rejected',
+      exchangeCompleted: false,
+      uncertainStateObserved: false,
+      recovered: false,
+    }),
+  ).toBe('blocked');
+});
+
+test('validates the source account against the selected adapter', () => {
+  expect(matchesOAuthAdapter({ plugin: '@example/plugin', capability: 'default' }, '@example/plugin', 'default')).toBe(
+    true,
+  );
+  expect(matchesOAuthAdapter({ plugin: '@example/other', capability: 'default' }, '@example/plugin', 'default')).toBe(
+    false,
+  );
 });

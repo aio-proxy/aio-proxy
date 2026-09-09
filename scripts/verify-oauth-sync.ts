@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { createPluginRegistryHost } from '../packages/core/src/plugins/registry';
 import { evaluateOAuthEvidence, type OAuthSyncEvidence } from '../packages/core/src/sync/oauth/adapter-conformance';
 import type { PluginDescriptor } from '../packages/plugin-sdk/src';
-import { runOAuthSyncLive, type LiveFailureCode } from './verify-oauth-sync-live';
+import { isProtectedOAuthSyncHome, runOAuthSyncLive, type LiveFailureCode } from './verify-oauth-sync-live';
 
 type PluginSpec = { readonly directory: string; readonly entry: string };
 const plugins: Readonly<Record<string, PluginSpec>> = {
@@ -70,6 +70,7 @@ const safeCodes = new Set<string>([
   'setup-sync-binding-required',
   'setup-backend-required',
   'setup-backend-unavailable',
+  'setup-source-account-invalid',
   'setup-remote-object-missing',
   'setup-remote-object-invalid',
   'assertion-copied-use-failed',
@@ -85,8 +86,8 @@ function homeInput(): string {
   if (raw === undefined || raw.trim() === '') throw new Error('setup-test-home-required');
   const home = resolve(raw);
   const production = resolve(join(homedir(), '.aio-proxy'));
-  if (home === production || home === resolve(process.env['AIO_PROXY_HOME'] ?? production))
-    throw new Error('setup-production-home');
+  const configuredProduction = resolve(process.env['AIO_PROXY_HOME'] ?? production);
+  if (isProtectedOAuthSyncHome(home, [production, configuredProduction])) throw new Error('setup-production-home');
   return home;
 }
 
