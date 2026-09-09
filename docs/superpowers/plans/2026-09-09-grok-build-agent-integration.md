@@ -4,7 +4,7 @@
 
 **Goal:** 让用户通过 `aio-proxy agent configure grok` 和原生 `grok login` 使用 AIO Proxy 的 installation 身份、模型和自动刷新，并能安全撤销、移除配置。
 
-**Architecture:** Grok 使用原生 external auth command；CLI 调用已有 Agent runtime 的 device/refresh API，持久化轮换结果后只输出 AT。Grok 专属模块负责共享 TOML 的逐字段归属和事务，configure/auth/remove 共用从现有 config-file lock 提取的文件锁。公共身份支持四个目标，插件资产和升级路径继续只支持三个插件目标。
+**Architecture:** Grok 使用原生 external auth command；CLI 调用已有 Agent runtime 的 device/refresh API，持久化轮换结果后只输出 AT。Codex 与 Grok 共用 CLI 内的 TOML 文本编辑模块，Grok 专属模块只负责七字段、别名及逐字段归属和事务，configure/auth/remove 共用从现有 config-file lock 提取的文件锁。公共身份支持四个目标，插件资产和升级路径继续只支持三个插件目标。
 
 **Tech Stack:** Bun >=1.4.2、TypeScript、Commander、Zod、`@aio-proxy/agent-provider-runtime`、`toml-eslint-parser@1.0.3`、现有 SQLite Agent identity service、Bun test、编译 CLI 和真实 Grok Build。
 
@@ -26,7 +26,8 @@
 - 不读取、备份、修改 `G/auth.json`，不调用 `grok logout`；不递归删除未知文件。
 - remove 必须在线撤销原 endpoint 后才能清凭据和还原配置；失败保留可重试状态。endpoint 变化先 remove 再 configure。
 - `integrationKind: auth-command`；`configuration: current|modified|missing|recovery_required`；catalog `host_managed`；schema `not_applicable`。
-- 不依赖 Codex #327 / Claude Code #328，不新增通用静态 Agent 框架或 adapter SDK。
+- 不依赖 Codex #327 / Claude Code #328 整体交付；复用 Codex 已提交的 TOML 编辑代码，只提取纯文本能力，不新增通用静态 Agent 框架或 adapter SDK。
+- `toml-eslint-parser` 只在 CLI 共享 TOML 模块导入；Bun负责最终解析验证和新建实验配置序列化。禁止对整份用户文档执行parse后stringify。
 - 新实现单文件 <500 行，接近 400 行先按职责拆分。测试 colocate；`index.ts` 只导出。代码步骤遵循 TDD；不增加只复述配置字面量的测试。
 - shell 命令一律以 `rtk` 开头；本文命令默认在仓库根执行。每次提交附 `Co-authored-by: Codex <noreply@openai.com>`。
 - 最终门槛：`rtk bun run preflight`、受影响 artifact/compatibility 测试和真实宿主验收；缺真实宿主不能把兼容性标成通过。
@@ -35,11 +36,17 @@
 
 ## 实施边界和已核实的依据
 
-这是一个完整 Grok 接入计划。身份、文件事务和 helper 是同一用户旅程的依赖，不拆成独立产品项目。按 Task 1→11 执行，不并行编辑这些相互依赖的模块；选择 subagent 工作流时仍逐任务提交和 review。
+这是一个完整 Grok 接入计划。身份、文件事务和 helper 是同一用户旅程的依赖，不拆成独立产品项目。按 Task 1→2→3A→3B→4→5→6→7→8→9→10→11 执行（12个可独立审查的任务），不并行编辑这些相互依赖的模块；选择 subagent 工作流时仍逐任务提交和 review。
 
 已检查当前源码：OAuth 请求函数已经接受 `fetch`、`signal`、`now`、`sleep` 注入；无需复制协议。现有 `packages/core/src/plugins/config-file/lock.ts` 已有 heartbeat、process-start identity、stale recovery、ownership fence，提取这个实现，不使用 DB ownership lock 或 npm install lock。`packages/cli/src/service/service.ts` 的 `resolveExec()` 已解决 stable Homebrew 路径与 Bun 开发启动器识别，提取复用并补足 npm/pnpm 入口约束。
 
-TOML 依赖选择 `toml-eslint-parser@1.0.3`，只加 CLI runtime dependency。已从 npm 发布 tarball 在临时目录用 Bun 验证 `parseTOML/parseForESLint`、`range`、`getStaticTOMLValue`；table、quoted/dotted keys 和 inline table 均可定位。它仅有 `eslint-visitor-keys` runtime dependency，不引入 ESLint 执行。其声明引用 ESLint 类型：Task 3 用仓库实际 type-check 检查；如果解析器声明需要补类型，仅添加 `@types/eslint` 为 CLI dev dependency，不安装 ESLint runtime，不用 `any` 掩盖。固定 TOML `1.0` 语法，避免写出 Grok 未验证的 TOML 1.1。
+TOML采用Codex已经使用的组合：`toml-eslint-parser@1.0.3`提供AST/source ranges，`Bun.TOML.parse()`验证编辑后的文档。Bun原生parse/stringify不提供保留原注释的文本编辑接口；因此保留一个parser依赖，不分别建设两个编辑器。parser仍仅CLI一个workspace package使用，无需因为两个模块调用它就加入root catalog。声明所需的ESLint类型按现有CLI依赖处理，不引入ESLint runtime。
+
+复用来源是任务 **Add Codex configure target**（`01a084fa-0d23-7503-9fc9-3518b1660b51`）的已提交代码，核对到 `6c30e00ca0c22014fe75f54a2f910cf255c3b0bd`：`packages/cli/src/agent/codex/config-document/{config-document.ts,ast-edits.ts,index.ts,config-document.test.ts}`。该编辑器仍包含 `model_providers`、Provider字段集合和清理判断；不能让Grok直接调用 `editCodexDocument()`。Task3A将纯文本部分提取到同包 `agent/toml-document/`，并迁移Codex调用方；Task3B再接入Grok。
+
+本工作树当前没有Codex目录。执行Task3A前把上述四个已提交文件和对应parser依赖作为最小源码基线整合进执行分支；不复制另一个任务的未提交修改，不合入向导/会话迁移等整个#327功能。随后同一任务内完成提取、删除Codex私有重复实现并验证两种路径。若执行时Codex已合入，直接基于执行分支的最新接口提取，保留更新后的回归测试；记录实际来源commit，不覆盖较新代码。本轮仅写计划，不改变另一个任务的工作树或发送消息。
+
+共享模块通过显式 `tomlVersion` 选项保留两种宿主契约：Codex `1.1`，Grok `1.0`。这个选项限制源文档和最终文本，不因抽共享模块而悄悄扩大Grok支持范围。
 
 参考：[parser API](https://github.com/ota-meshi/toml-eslint-parser)、[npm 1.0.3](https://www.npmjs.com/package/toml-eslint-parser/v/1.0.3)。宿主文档在 `$GROK_HOME/docs/user-guide/{02-authentication,11-custom-models,26-config-reference}.md`。前期黑盒证据为 `/Users/bytedance/.codex/visualizations/2026/09/09/01a0850c-aa51-7ea3-9e39-37f5becef548/grok-auth-research/REPORT.md` 和 `probe.py`；实现时将可重复的验证逻辑迁入仓库测试，不让测试依赖这个个人路径。
 
@@ -59,7 +66,10 @@ TOML 依赖选择 `toml-eslint-parser@1.0.3`，只加 CLI runtime dependency。�
 | `packages/cli/src/service/{service.ts,service.test.ts}` | 调用提取后的 resolver，保留服务行为测试 |
 | `packages/cli/src/agent/hosts/{hosts.ts,hosts.test.ts}` | 四目标版本发现；Grok 根解析；插件 location 类型收窄 |
 | `packages/cli/src/agent/grok/{index.ts,types.ts,grok.ts,grok.test.ts}` | 公共 configure/inspect/remove 和 helper 的受锁安装入口；集成行为测试 |
-| `packages/cli/src/agent/grok/{toml.ts,toml.test.ts}` | AST 路径索引、range patches、别名、受管叶子恢复 |
+| `packages/cli/src/agent/toml-document/{index.ts,toml-document.ts,toml-document.test.ts}` | 唯一公开TOML文本接口、版本选择、Bun最终验证及通用行为测试 |
+| `packages/cli/src/agent/toml-document/{ast-edits.ts,path-edits.ts}` | 从Codex移入的私有range patch、AST路径定位、inline/table插入删除；不导出到宿主 |
+| `packages/cli/src/agent/codex/config-document/{index.ts,config-document.ts,config-document.test.ts}` | 迁移调用共享模块；保留Provider规则和原公开接口；删除旧私有ast-edits.ts |
+| `packages/cli/src/agent/grok/{toml.ts,toml.test.ts}` | 调用共享文本接口，管理七字段、别名、原值/最近值及三方恢复；不实现AST/range逻辑 |
 | `packages/cli/src/agent/grok/{policy.ts,policy.test.ts}` | 可见环境/requirements/managed config/MDM 的只读冲突检查 |
 | `packages/cli/src/agent/grok/{files.ts,files.test.ts}` | Grok 路径归属、原子持久化、inode/内容重查、精确清理 |
 | `packages/cli/src/agent/grok/{ownership.ts,ownership.test.ts}` | write-ahead field transaction、崩溃归并、三方还原 |
@@ -219,11 +229,161 @@ config wrapper：`acquireConfigLock(path, signal)` 转调 `acquireFileLock(path,
 - [ ] `rtk bun test packages/core/src/file-lock packages/core/src/plugins/config-file` 预期通过。Task 10 另验收跨进程 kill/recovery。
 - [ ] `rtk git add packages/core/src/file-lock packages/core/src/plugins/config-file packages/core/src/index.ts`；`rtk git commit -m "refactor(core): reuse fenced file locks with deadlines" -m "Co-authored-by: Codex <noreply@openai.com>"`。
 
-## Task 3: 按语法范围编辑 TOML，保存逐字段归属
+## Task 3A: 提取共享 TOML 文本编辑器并迁移 Codex 调用方
 
-**Files:** CLI package/bun.lock；新建 `grok/{types.ts,toml.ts,toml.test.ts}`。
+**Files:**
 
-**Interfaces:** Consumes parser AST；Produces 下列纯函数（从 grok 内部使用，不跨目录 export）：
+- Create: `packages/cli/src/agent/toml-document/index.ts`、`toml-document.ts`、`toml-document.test.ts`、`ast-edits.ts`、`path-edits.ts`。
+- Modify: `packages/cli/src/agent/codex/config-document/config-document.ts`、`index.ts`、`config-document.test.ts`（当前执行分支不存在时，先整合下面指定的已提交四文件基线）。
+- Remove after moving: `packages/cli/src/agent/codex/config-document/ast-edits.ts`。
+- Modify: `packages/cli/package.json`、`bun.lock`，保持一个 `toml-eslint-parser@1.0.3` runtime dependency。
+
+**Interfaces:** Consumes已提交的Codex `applySourceEdits`、`applyInlineOperations`、`walkKeyValues`、table/inline定位与插入逻辑，和parser AST。Produces下列唯一公共文本接口；从 `toml-document/index.ts` 导出，内部不认识Codex/Grok/Provider/installation：
+
+```ts
+export type TomlPath = readonly string[];
+export type TomlScalar = string | boolean;
+export type TomlSyntax = { readonly tomlVersion: '1.0' | '1.1' };
+export type TomlSlot = { readonly present: false } | {
+  readonly present: true; readonly value: TomlScalar; readonly raw: string;
+};
+export type TomlFieldEdit = {
+  readonly path: TomlPath;
+  readonly next: { readonly present: false } | {
+    readonly present: true; readonly value: TomlScalar; readonly raw?: string;
+  };
+};
+export type TomlEditOptions = TomlSyntax & { readonly removeEmptyTables?: readonly TomlPath[] };
+export type TomlEditResult = { readonly text: string; readonly createdTables: readonly TomlPath[] };
+export function readTomlField(text: string, path: TomlPath, syntax: TomlSyntax): TomlSlot;
+export function inspectTomlPaths(text: string, syntax: TomlSyntax): {
+  readonly fieldPaths: readonly TomlPath[]; readonly tablePaths: readonly TomlPath[];
+};
+export function editTomlFields(text: string, edits: readonly TomlFieldEdit[], options: TomlEditOptions): TomlEditResult;
+```
+
+`TomlScalar`只覆盖两个已知调用方使用的string/boolean。其它合法TOML值原文透传，但读取它们作为受管scalar时明确报类型错误；不为假想第三宿主扩充复杂值序列化。显式 `next.present=false` 删除精确path对应的节点；删除table subtree需要调用方明确请求该path，shared不会推断归属。`removeEmptyTables`只修剪所列的、编辑后确实为空且无子表的表头，不扫描删除用户空表。`createdTables`只记录此次新增的显式标准表头；inline容器的叶子删除不引入整表归属。
+
+- [ ] **Step 1：建立固定来源基线，不覆盖另一个任务的工作。** 执行分支无Codex config-document目录时，先确认当前路径无本地变更，再从已提交对象恢复这四个文件；不得恢复整个Codex目录或运行中的工作树快照：
+
+```sh
+rtk git status --short -- packages/cli/src/agent/codex/config-document
+rtk git cat-file -e 6c30e00ca0c22014fe75f54a2f910cf255c3b0bd:packages/cli/src/agent/codex/config-document/config-document.ts
+rtk git restore --source=6c30e00ca0c22014fe75f54a2f910cf255c3b0bd --worktree -- packages/cli/src/agent/codex/config-document/config-document.ts packages/cli/src/agent/codex/config-document/ast-edits.ts packages/cli/src/agent/codex/config-document/index.ts packages/cli/src/agent/codex/config-document/config-document.test.ts
+```
+
+目录已存在则跳过restore，以本分支现有版本为基线。仅当CLI尚未声明parser依赖时运行 `rtk bun add --cwd packages/cli --exact toml-eslint-parser@1.0.3`；否则保留已有同版本声明。记录来源revision，执行 `rtk bun test packages/cli/src/agent/codex/config-document` 确认原行为基线，不把基线失败当新功能RED。
+- [ ] **Step 2：写能同时覆盖两种宿主形状的共享接口失败测试。** 测试不mockparser，不只比较静态常量：
+
+```ts
+import { expect, test } from 'bun:test';
+import { editTomlFields, readTomlField } from './index';
+
+test.each([
+  { source: '# keep\n[auth]\nauth_provider_label = \'Cloud\' # tail\n[ui]\ntheme="dark"\n',
+    path: ['auth', 'auth_provider_label'], value: 'AIO Proxy', preserved: '[ui]\ntheme="dark"\n',
+    tomlVersion: '1.0' as const },
+  { source: '# keep\n[model_providers."proxy.team"]\nname = \'Cloud\' # tail\n[mcp_servers.local]\ncommand="mcp"\n',
+    path: ['model_providers', 'proxy.team', 'name'], value: 'aio-proxy',
+    preserved: '[mcp_servers.local]\ncommand="mcp"\n', tomlVersion: '1.1' as const },
+])('edits $path while preserving surrounding bytes', ({source, path, value, preserved, tomlVersion}) => {
+  const syntax = { tomlVersion };
+  const original = readTomlField(source, path, syntax);
+  const changed = editTomlFields(source, [{ path, next: { present: true, value } }], syntax);
+  expect(changed.text).toContain('# keep\n');
+  expect(changed.text).toContain('# tail\n');
+  expect(changed.text).toContain(preserved);
+  expect(readTomlField(changed.text, path, syntax)).toMatchObject({ present: true, value });
+  const restored = editTomlFields(changed.text, [{ path, next: original }], syntax);
+  expect(restored.text).toBe(source);
+});
+
+test('inserts multiple leaves into one inline table without losing unrelated members', () => {
+  const source = 'endpoints = { other = "keep,comma" } # tail\n';
+  const result = editTomlFields(source, [
+    { path: ['endpoints','models_base_url'], next: { present: true, value: 'http://127.0.0.1:9317/v1' } },
+    { path: ['endpoints','models_list_url'], next: { present: true, value: 'http://127.0.0.1:9317/v1/models' } },
+  ], { tomlVersion: '1.0' });
+  expect(result.text).toContain('other = "keep,comma"');
+  expect(result.text).toContain('# tail\n');
+  expect(Bun.TOML.parse(result.text).endpoints.models_list_url.endsWith('/v1/models')).toBe(true);
+});
+```
+
+- [ ] **Step 3：运行新测试确认RED。** `rtk bun test packages/cli/src/agent/toml-document/toml-document.test.ts`，预期共享模块/导出尚不存在；保留Step1原Codex测试通过的证据。
+- [ ] **Step 4：移动底层操作，建立唯一AST入口。** 从Codex移入 `ast-edits.ts`，保留同offset插入合并、降序patch、inline局部合并。将 `walkKeyValues`、`inspectDocument`、`findValue/findTable/findInlineContainer` 和一般表/inline插入移入 `path-edits.ts`，移除其中 `model_providers` 字面量与Provider字段集合。共享入口负责parse/version/read/edit/最终验证；不能在Codex和Grok各自保留副本。
+
+```ts
+// toml-document.ts 私有入口；AST不对宿主export。
+function parseDocument(text: string, syntax: TomlSyntax): AST.TOMLProgram {
+  try { return parseTOML(text, { tomlVersion: syntax.tomlVersion }); }
+  catch { throw new Error('Invalid TOML document'); }
+}
+function validateFinalDocument(text: string, syntax: TomlSyntax): void {
+  parseDocument(text, syntax);
+  try { Bun.TOML.parse(text); }
+  catch { throw new Error('Edited TOML document is invalid'); }
+}
+```
+
+parser异常可能带原文，不能附到公共错误里。`inspectTomlPaths`在walk时收集解码的key segments、显式表/inline容器以及dotted隐式父路径；所有path比较逐segment或JSON.stringify，不使用点号连接来标识。
+- [ ] **Step 5：保留Codex已验证的patch实现并补输入边界。** 在原 `applySourceEdits(source,edits)` 入口检查整数与范围，继续使用已有同offset合并/降序应用，不另写Grok applyPatches：
+
+```ts
+for (const edit of edits) {
+  if (!Number.isSafeInteger(edit.start) || !Number.isSafeInteger(edit.end) ||
+      edit.start < 0 || edit.end < edit.start || edit.end > source.length) {
+    throw new Error('Invalid TOML edit range');
+  }
+}
+```
+
+多个inline成员删除可能产生交叉逗号范围：先按同一parent AST member列表把相邻删除归并，再生成互不重叠patch；不单独拼几次inlineMemberDelete后假定它们不交叉。patch测试必须覆盖一次删除前两个/后两个/全部成员，而非只有每次删一个。
+- [ ] **Step 6：将path编辑泛化到已知的两类字段深度。** 已有节点仅改value.range；缺失叶子找到最近已存在父table或inline容器，按其原语法插入；没有父table时创建quoted dotted表头并记录createdTables。祖先是scalar/array或array-table歧义时明确失败。所有新增节点通过解码path和AST容器定位；不使用正则猜TOML结构。普通与inline操作统一输出SourceEdit，由原applySourceEdits应用。
+
+精确恢复时 `next.raw` 是已保存的单值字面量：用 `readTomlField('value = '+raw,['value'],syntax)` 验证其parsed value与next.value一致，并检查该临时文档只有一个scalar赋值、raw无额外语句/注释，才允许原样替换。没有raw且parsed value未变化时保持现有字面量，不重写引号。编码新string/boolean沿用移入的encoder并通过最终双重解析验证。
+- [ ] **Step 7：把空表清理限制为调用方提供的路径。** 先应用leaf edits，再解析新文本确认removeEmptyTables各path确实没有KV/子表；仅删表头对应范围，保留周围注释/空行。新增用户字段后该表不能被删。返回createdTables供Grok记录，共享层不读取ownership文件。
+- [ ] **Step 8：迁移Codex适配层，保持其公共接口。** `codexProviderEdits`、`validateCodexProviderId`、`readCodexDocument`的Provider发现规则与清理许可仍留Codex。底层 `readManagedField` 转为共享读取并去掉raw，保证调用方原返回shape不变：
+
+```ts
+export function readManagedField(text: string, path: readonly string[]): ValueSlot {
+  const slot = readTomlField(text, path, { tomlVersion: '1.1' });
+  return slot.present ? { present: true, value: slot.value } : { present: false };
+}
+export function editCodexDocument(text: string, edits: readonly FieldEdit[]): string {
+  const removeEmptyTables = codexCleanupPaths(text, edits);
+  return editTomlFields(text, edits, { tomlVersion: '1.1', removeEmptyTables }).text;
+}
+```
+
+`codexCleanupPaths(text:string,edits:readonly FieldEdit[]):readonly TomlPath[]` 是从现有providerTableCleanup判定提取的Codex私有函数：只考虑`['model_providers',id]`，显式整表删除或该表原来仅含五个已知受管字段且本轮全部删除时允许修剪；存在用户custom字段不加入列表。用 `inspectTomlPaths` 和共享read API实现判定，不再次parseAST；已有module的错误分类/Provider发现顺序继续测试。明确删除整个inline Provider的existing API仍由精确path edit处理，不扩大Grok管理范围。
+- [ ] **Step 9：补语法差异与两个调用方回归。** 原Codex用例全部保留；共享测试补quoted/dotted keys、LF/CRLF、嵌套inline表、同一inline父容器下同时新增两个不同子表、连续成员删除、原raw恢复、非法raw注入、重复keys、array歧义、空表白名单和外部用户字段。Grok语法1.0拒绝TOML1.1新增语法，Codex1.1保留接受；新测试都检查用户可见结果而非配置常量。
+
+```ts
+test('prunes only caller-owned empty tables', () => {
+  const source = '[auth]\nlabel="managed"\n\n[user_empty]\n';
+  const result = editTomlFields(source, [{path:['auth','label'],next:{present:false}}], {
+    tomlVersion: '1.0', removeEmptyTables: [['auth']],
+  });
+  expect(result.text).not.toContain('[auth]');
+  expect(result.text).toContain('[user_empty]');
+});
+```
+
+- [ ] **Step 10：运行共享与Codex测试及类型检查。** `rtk bun test packages/cli/src/agent/toml-document packages/cli/src/agent/codex/config-document`、`rtk bun run lint:types`，预期通过。执行 `rtk rg -n 'toml-eslint-parser|applySourceEdits|applyInlineOperations' packages/cli/src/agent`，确认production parser/patch实现只在共享模块，宿主不导入其私有文件。禁止通过直接引用另一工作树文件让测试通过。
+- [ ] **Step 11：提交一个完整可review的提取。** 仅包含共享模块、Codex最小调用方迁移和依赖；删除旧Codex ast-edits（git add -A该路径纳入删除）。
+
+```sh
+rtk git add packages/cli/src/agent/toml-document packages/cli/package.json bun.lock
+rtk git add -A packages/cli/src/agent/codex/config-document
+rtk git commit -m "refactor(cli): share source-preserving TOML editing" -m "Co-authored-by: Codex <noreply@openai.com>"
+```
+
+## Task 3B: 使用共享编辑器管理 Grok 字段归属
+
+**Files:** 新建 `packages/cli/src/agent/grok/{types.ts,toml.ts,toml.test.ts}`；CLI package/bun.lock仅补runtime直接依赖，parser已由Task3A声明。
+
+**Interfaces:** Consumes Task3A的 `readTomlField()`、`editTomlFields()`、`inspectTomlPaths()`，全部经 `../toml-document` 导入并显式传 `{tomlVersion:'1.0'}`；不导入parser或Codex私有模块。Produces下列Grok领域纯函数（Grok内部使用）：
 
 ```ts
 export type GrokPath = readonly string[];
@@ -248,7 +408,7 @@ export function equalGrokLeaf(a: LeafValue, b: LeafValue): boolean;
 
 `LeafValue` 只支持受管字段的 string 或 absence；受管位置是 number/array/table 时明确 `unsupported_managed_value`，不做有损转换。snapshot 的 raw 只含这个叶子值，不能存整个 table/config。比较使用 parsed string，恢复时使用原 raw；JSON 的 `undefined` 不表示 absence。
 
-- [ ] 先加 `toml-eslint-parser: "1.0.3"` 到 CLI dependencies，`@aio-proxy/agent-provider-runtime: "workspace:*"` 同时加入，为后续 helper 声明直接依赖；`rtk bun install` 更新锁。不把一次使用的 parser 填 root catalog。
+- [ ] CLI dependencies补 `@aio-proxy/agent-provider-runtime: "workspace:*"`，`rtk bun install`；保留Task3A已有parser依赖，不再添加另一个TOML库。
 - [ ] 写保留字节、三方还原和漂移测试：
 
 ```ts
@@ -270,29 +430,28 @@ test('rejects ambiguous catalog aliases before producing a patch', () => {
 });
 ```
 
-- [ ] `rtk bun test packages/cli/src/agent/grok/toml.test.ts` 预期未实现的 exports 失败。
-- [ ] 实现 AST 遍历和 paths 索引：key 使用 `getStaticTOMLValue(node.key)`；table 使用 `resolvedKey`；inline 递归追加 path；array-table 落在受管路径时拒绝。私有 `indexGrokToml(text): Map<string, AST.TOMLKeyValue>` 用 `JSON.stringify(path)` 作 key，避免 quoted key 内含 `.` 时冲突。仅索引 key-value 及表范围，不调用全量 serializer。底层 patch 核心：
+- [ ] `rtk bun test packages/cli/src/agent/grok/toml.test.ts` 预期Grok领域exports缺失失败；Task3A共享与Codex测试应仍通过。
+- [ ] 用共享读取接口构造Grok snapshot；保留原raw值，不重新做AST遍历：
 
 ```ts
-type Patch = { readonly start: number; readonly end: number; readonly text: string };
-function applyPatches(source: string, patches: readonly Patch[]): string {
-  let result = source;
-  let boundary = source.length;
-  for (const patch of [...patches].sort((a, b) => b.start - a.start)) {
-    if (patch.start < 0 || patch.end > boundary || patch.end < patch.start) {
-      throw new Error('overlapping TOML edits');
-    }
-    result = result.slice(0, patch.start) + patch.text + result.slice(patch.end);
-    boundary = patch.start;
-  }
-  parseTOML(result, { tomlVersion: '1.0' });
-  return result;
+import { readTomlField, editTomlFields, inspectTomlPaths, type TomlFieldEdit } from '../toml-document';
+
+function readGrokLeaf(text: string, path: GrokPath): LeafValue {
+  const slot = readTomlField(text, path, { tomlVersion: '1.0' });
+  if (!slot.present) return { present: false };
+  if (typeof slot.value !== 'string') throw new Error(`unsupported_managed_value: ${path.join('.')}`);
+  return { present: true, value: slot.value, raw: slot.raw };
 }
 function equalGrokLeaf(a: LeafValue, b: LeafValue): boolean {
   return a.present === b.present && (!a.present || (b.present && a.value === b.value));
 }
+function applyGrokChanges(text: string, changes: readonly FieldChange[], emptyTables: readonly GrokPath[]) {
+  const edits: TomlFieldEdit[] = changes.map(change => ({ path: change.path, next: change.after }));
+  return editTomlFields(text, edits, { tomlVersion: '1.0', removeEmptyTables: emptyTables });
+}
 ```
 
+`configureGrokToml`先用desired值生成不带raw的TomlFieldEdit并调用editTomlFields，再从结果读取written及其raw，构造完整FieldChange，把createdTables并入ownership。`applyGrokChanges`用于已有before/after快照的事务重试和还原，不能在新值尚未编码前虚构raw。`restoreGrokToml`传入原ownership的createdTables作为唯一允许清空表头的列表；不自行拼接/扫描文本。`inspectTomlPaths`返回解码的segment数组用于auth表/别名存在性，带点quoted key不得拆分。
 - [ ] 实现七字段值表（E是canonical origin，command已shell-quoted）：
 
 ```ts
@@ -306,11 +465,11 @@ const desired = {
 };
 ```
 
-- [ ] 实现 alias 选择。alias 冲突按同语义叶子检测；只出现 `[grok_com_config]` 时 command/label 写在那里，否则 `[auth]`。catalog alias 单独存在则原地使用。同语义两条同时存在直接失败。写入值为 spec 七项，`JSON.stringify(string)` 作基本字符串后必须经 parser round-trip 验证（含控制字符，不接受不合法 TOML escape）。
-- [ ] 对 existing value 只替换 `node.value.range`。对缺失 key：已有普通 table 在它的最后一个 KV 行后插入；dotted parent 在 root table 区追加 quoted dotted key；缺失普通 table 在 EOF 新增并记录 `createdTables`。如果 parent 是 inline table，使用 token 中的 `{`/`}`/`,` 范围插入/删除成员，按右逗号优先、无右逗号时左逗号的规则删除；保留邻居字节。多处同 offset 插入先合成一次 patch。parser 拒绝的新文本绝不返回。
+- [ ] 实现 alias 选择。alias 冲突按同语义叶子检测；只出现 `[grok_com_config]` 时 command/label 写在那里，否则 `[auth]`。catalog alias 单独存在则原地使用。同语义两条同时存在直接失败。写入值为spec七项，交给共享编辑器编码和验证；Grok不再有第二套字符串encoder。新写值的raw从最终文本用readGrokLeaf读取；restore传original.raw，保留原有引号写法。
+- [ ] 将Grok插入/替换/删除全部交给Task3A的 `editTomlFields`。本任务仅负责判定哪个实际alias path归本安装、生成FieldChange和记录createdTables；不新增 `Patch`、`applyPatches`、`indexGrokToml`、inline逗号处理等重复实现。
 - [ ] 实现 restore：逐字段只在 current==written 时还原 original，original absent 则删当前 KV；不同或被删的值原样保留并列入 skipped。只删除 `createdTables` 中现在没有 KV/子表的表头，保留附着的用户注释，不删除 config 文件。reconfigure 所有叶子先比 current==written；任一漂移则整体拒绝，不重设 original。
 - [ ] 扩展同一文件参数化行为案例：无文件视作空串；LF/CRLF；quoted/dotted key；`endpoints={models_base_url="old",other=1}`；单独 alias；两 auth 表各占不同受管字段；非法 TOML；数组和非 string 受管值；user field 新增；`[models].default` 全程逐字不变。每例检查无关原始片段和 reparse 的最终有效值，不能仅 snapshot 七常量。
-- [ ] `rtk bun test packages/cli/src/agent/grok/toml.test.ts` 和 `rtk bun run lint:types` 预期通过；声明类型依赖问题按本计划的依赖说明解决。
+- [ ] `rtk bun test packages/cli/src/agent/toml-document packages/cli/src/agent/codex/config-document packages/cli/src/agent/grok/toml.test.ts` 和 `rtk bun run lint:types` 预期通过；声明类型依赖问题按本计划的依赖说明解决。
 - [ ] `rtk git add packages/cli/package.json bun.lock packages/cli/src/agent/grok`；`rtk git commit -m "feat(agent): preserve Grok TOML field ownership" -m "Co-authored-by: Codex <noreply@openai.com>"`。
 
 ## Task 4: 定位 Grok 根和稳定入口，拒绝可见路由冲突
@@ -793,7 +952,7 @@ async function loginGrokToken(context: GrokContext, previous: GrokCredential | u
 
 **Files:** `grok/{grok.ts,grok.test.ts,ownership.ts,ownership.test.ts,files.ts,files.test.ts,index.ts}`。
 
-**Interfaces:** Consumes `GrokDeps.revoke`、Task3 restore、Task5 lock/files/transaction；Produces：
+**Interfaces:** Consumes `GrokDeps.revoke`、Task3B restore、Task5 lock/files/transaction；Produces：
 
 ```ts
 export function removeGrok(root: string, adapterVersion: string, deps: GrokDeps): Promise<{
@@ -1043,20 +1202,22 @@ rtk bun run --filter @aio-proxy/cli test:compat:grok --grok-bin /Users/bytedance
 
 ## Spec 覆盖与交接自检
 
+Task3拆为3A（共享编辑器及Codex迁移）和3B（Grok归属规则）；其余编号保留，文中Tasks2–4包含这两个子任务。共12个可独立验证和提交的任务。
+
 | Spec | 实施与证据 |
 | --- | --- |
-| §1 独立Grok范围，无Codex/Claude依赖 | Tasks1/9/11；无静态框架/SDK扩展 |
+| §1 独立Grok范围，无Codex/Claude依赖 | Tasks1/3A/9/11；仅复用已提交TOML代码，无#327整体功能依赖 |
 | §2 真实host基线、fresh401限制 | Task11 baseline/current、ACP expiry/fresh401报告 |
 | §3 CLI、离线configure、stdout契约 | Tasks7/9/11；compiled helper输出检查 |
 | §4 根/稳定入口/私有路径 | Tasks4/5/11；路径链接/权限/升级实验 |
-| §5 七字段/别名/外部模型/policy/egress | Tasks3/4/11；AST roundtrip、无token外部请求 |
-| §6 幂等/逐字段三方恢复/崩溃 | Tasks3/5/8/10；每个提交阶段断点 |
+| §5 七字段/别名/外部模型/policy/egress | Tasks3A/3B/4/11；共享编辑器、AST roundtrip、无token外部请求 |
+| §6 幂等/逐字段三方恢复/崩溃 | Tasks3B/5/8/10；每个提交阶段断点 |
 | §7 普通/静默/总预算/revision/replay | Tasks2/6/7/10；真实子进程而非仅mock |
 | §8 身份/普通models/revoke/remove | Tasks1/8/9/11；真实device批准及服务重启 |
-| §9 list/upgrade/module边界 | Tasks1/5/9；modified身份可见、plugin循环收窄 |
+| §9 list/upgrade/module边界 | Tasks1/3A/5/9；共享编辑入口、modified身份可见、plugin循环收窄 |
 | §10 验收/发布 | Tasks10/11；preflight+artifact+compat+minor changeset |
 | §11 不采用的替代方案 | 全局约束；不发RT给Grok、不复制OAuth、不恢复全文件 |
 
 执行者每个task先确认RED是目标行为失败，PASS后再提交；代码块给定核心实现和接口，标准imports从该task的Files/Interfaces取，不为代码片段另建示例实现。每个勾选动作只做所述的一项修改或验证；一个矩阵的用例逐项添加，每项以2–5分钟的小步推进。实现偏离本计划只在证据要求时进行，并同步修改调用方和测试，不能留下前后不一致的契约。
 
-计划交接时只提交本文和spec状态，不运行以上产品实现命令。下一步由用户选择 subagent-driven（推荐）或当前会话 executing-plans；选择之前不开始实现。
+计划交接时只提交本文和spec的模块复用说明，不运行以上产品实现命令。下一步由用户选择 subagent-driven（推荐）或当前会话 executing-plans；选择之前不开始实现。
