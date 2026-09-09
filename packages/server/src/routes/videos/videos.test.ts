@@ -32,6 +32,18 @@ describe('OpenAI Videos follow-up capacity', () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ error: { code: 'video_store_full' } });
   });
+
+  test('an early follow-up reject releases the inbound body', async () => {
+    const app = videosApp(1);
+    const request = new Request('http://proxy.test/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light' }),
+    });
+    const response = await app.request(request);
+    expect(response.status).toBe(400);
+    expect(request.bodyUsed).toBe(true);
+  });
 });
 
 function videosApp(capacity: number) {

@@ -15,6 +15,7 @@ import { type Context, Hono } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pipeline';
+import { cancelRetainedRequestBody } from '../pipeline/request';
 import { videoCapabilityNotSupported, videoForbidden, videoInvalidRequest, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
 import { pinSuccessfulVideoJob } from './pin';
@@ -47,7 +48,7 @@ export function createOpenAIVideosRoutes(source: VideosRouteSource) {
 }
 
 async function handleVideoCreate(context: Context<CallerPrincipalEnv>, source: VideosRouteSource) {
-  return await withCapacity(source, () =>
+  return await withCapacity(source, context.req.raw, () =>
     handleProtocolRequest({
       adapter: openAIVideosAdapter,
       context: { operation: 'create' },
@@ -64,32 +65,40 @@ async function handleFollowUpCreate(
   operation: 'edits' | 'extensions',
 ) {
   const owner = callerPrincipal(context);
-  const peek = await peekFollowUpBody(context.req.raw);
-  if (peek.kind === 'reject') return peek.response;
-  if (peek.kind !== 'json') return videosRequestError(new OpenAIVideosInvalidRequestError('content_type'));
+  const raw = context.req.raw;
+  const peek = await peekFollowUpBody(raw);
+  if (peek.kind === 'reject') return await rejectFollowUp(raw, peek.response);
+  if (peek.kind !== 'json') {
+    return await rejectFollowUp(raw, videosRequestError(new OpenAIVideosInvalidRequestError('content_type')));
+  }
   const parsed = videosTryParse(() => parseOpenAIVideoEdit(peek.body));
-  if (!parsed.ok) return parsed.response;
+  if (!parsed.ok) return await rejectFollowUp(raw, parsed.response);
   const sourceId = parsed.value.sourceVideoId;
-  if (!isValidVideoId(sourceId)) return videoInvalidRequest('Invalid video id');
+  if (!isValidVideoId(sourceId)) return await rejectFollowUp(raw, videoInvalidRequest('Invalid video id'));
   const record = source.videoJobs.lookup(sourceId);
-  if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
+  if (record !== undefined && !sameVideoOwner(record.owner, owner)) {
+    return await rejectFollowUp(raw, videoForbidden());
+  }
   if (record !== undefined) {
     const modelId = parsed.value.modelDefaulted ? record.model : parsed.value.model;
-    return await withCapacity(source, () =>
+    const rewritten =
+      parsed.value.modelDefaulted && isPlainObject(peek.body)
+        ? jsonFollowUpRequest(raw, { ...peek.body, model: modelId })
+        : undefined;
+    if (rewritten !== undefined) await cancelRetainedRequestBody(raw, 'videos pinned follow-up rewritten');
+    return await withCapacity(source, raw, () =>
       invokePinnedVideo(context, source, record, {
         pinNewJob: true,
         modelId,
-        ...(parsed.value.modelDefaulted && isPlainObject(peek.body)
-          ? { request: jsonFollowUpRequest(context.req.raw, { ...peek.body, model: modelId }) }
-          : {}),
+        ...(rewritten === undefined ? {} : { request: rewritten }),
       }),
     );
   }
-  return await withCapacity(source, () =>
+  return await withCapacity(source, raw, () =>
     handleProtocolRequest({
       adapter: openAIVideosAdapter,
       context: { operation },
-      rawRequest: context.req.raw,
+      rawRequest: raw,
       source,
       onSuccessfulAttempt: (info) => pinSuccessfulVideoJob(source, owner, info),
     }),
@@ -97,19 +106,24 @@ async function handleFollowUpCreate(
 }
 
 async function handleRemix(context: Context<CallerPrincipalEnv>, source: VideosRouteSource) {
-  const parsed = await peekFollowUpBody(context.req.raw);
-  if (parsed.kind === 'reject') return parsed.response;
-  if (parsed.kind !== 'json') return videosRequestError(new OpenAIVideosInvalidRequestError('content_type'));
+  const raw = context.req.raw;
+  const parsed = await peekFollowUpBody(raw);
+  if (parsed.kind === 'reject') return await rejectFollowUp(raw, parsed.response);
+  if (parsed.kind !== 'json') {
+    return await rejectFollowUp(raw, videosRequestError(new OpenAIVideosInvalidRequestError('content_type')));
+  }
   const remix = videosTryParse(() => parseOpenAIVideoRemix(parsed.body));
-  if (!remix.ok) return remix.response;
+  if (!remix.ok) return await rejectFollowUp(raw, remix.response);
   const resolved = resolveOwnedPinnedVideo(context, source);
-  if ('response' in resolved) return resolved.response;
-  return await withCapacity(source, () => invokePinnedVideo(context, source, resolved.record, { pinNewJob: true }));
+  if ('response' in resolved) return await rejectFollowUp(raw, resolved.response);
+  return await withCapacity(source, raw, () =>
+    invokePinnedVideo(context, source, resolved.record, { pinNewJob: true }),
+  );
 }
 
-async function withCapacity(source: VideosRouteSource, run: () => Promise<Response>): Promise<Response> {
+async function withCapacity(source: VideosRouteSource, raw: Request, run: () => Promise<Response>): Promise<Response> {
   const slot = source.videoJobs.reserveCapacity();
-  if (slot === undefined) return videoStoreFull();
+  if (slot === undefined) return await rejectFollowUp(raw, videoStoreFull());
   try {
     return await run();
   } finally {
@@ -128,7 +142,7 @@ async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
   }
   if (isMultipartRequest(raw) || !isJsonRequest(raw)) return { kind: 'unparsed' };
   try {
-    return { kind: 'json', body: await readJsonRequest(raw.clone(), REQUEST_BODY_LIMITS) };
+    return { kind: 'json', body: await readJsonRequest(raw, REQUEST_BODY_LIMITS) };
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
       return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
@@ -152,6 +166,11 @@ function videosTryParse<T>(
 
 function videosRequestError(error: unknown): Response {
   return openAIVideosAdapter.errors.requestError(error) ?? videoInvalidRequest('Invalid OpenAI Videos request');
+}
+
+async function rejectFollowUp(raw: Request, response: Response): Promise<Response> {
+  await cancelRetainedRequestBody(raw, 'videos follow-up rejected');
+  return response;
 }
 
 function jsonFollowUpRequest(raw: Request, body: Record<string, unknown>): Request {
