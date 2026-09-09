@@ -47,7 +47,7 @@ describe('OpenAI Videos follow-up capacity', () => {
   });
 
   test('an unavailable pinned provider releases the inbound body', async () => {
-    const videoJobs = createVideoJobStore({ capacity: 1 });
+    const videoJobs = createVideoJobStore({ capacity: 2 });
     videoJobs.insert({
       videoId: 'video_abc',
       providerId: 'openai',
