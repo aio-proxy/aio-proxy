@@ -1,5 +1,17 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.21.0
+
+### Minor Changes
+
+- [#341](https://github.com/aio-proxy/aio-proxy/pull/341) [`9b1547a`](https://github.com/aio-proxy/aio-proxy/commit/9b1547a263492ba9753fea3eb4761ad434d302f8) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth providers now expose `gpt-image-2.5-sunburst` and `gpt-image-2.5-flare` on `/v1/images/generations` and `/v1/images/edits`. Blank `model` still defaults to `gpt-image-2`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.21.0
+  - @aio-proxy/types@0.21.0
+
 ## 0.20.5
 
 ### Patch Changes
