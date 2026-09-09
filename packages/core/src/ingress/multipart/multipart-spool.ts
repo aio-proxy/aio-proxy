@@ -70,7 +70,10 @@ export async function spoolMultipartBody(
 
 export function retainMultipartSpool(raw: Request, spool: MultipartSpool): void {
   spools.set(raw, spool);
-  spoolFinalizers.register(raw, spool.path);
+  // Token must be `raw`: unregister() only matches this third argument, and
+  // transfer/release have to drop the source finalizer or GC of `from` unlinks
+  // the path now owned by `to`.
+  spoolFinalizers.register(raw, spool.path, raw);
   raw.signal.addEventListener('abort', () => void spool.unlink(), { once: true });
 }
 
@@ -91,6 +94,7 @@ export async function releaseMultipartSpool(raw: Request): Promise<void> {
   const spool = spools.get(raw);
   if (spool === undefined) return;
   spools.delete(raw);
+  spoolFinalizers.unregister(raw);
   await spool.unlink();
 }
 

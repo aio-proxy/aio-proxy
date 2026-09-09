@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 
 import { RequestBodyTooLargeError } from '../../protocol/request';
 import {
   acquireMultipartSlot,
   multipartSpoolPath,
   releaseMultipartSpool,
+  replaySpooledMultipartRaw,
   retainMultipartSpool,
   spoolMultipartBody,
   transferMultipartSpool,
@@ -59,8 +61,11 @@ test('transfer moves a retained spool onto a new Request identity', async () => 
   transferMultipartSpool(raw, wrapped);
   expect(multipartSpoolPath(raw)).toBeUndefined();
   expect(multipartSpoolPath(wrapped)).toBe(spool.path);
+  expect(existsSync(spool.path)).toBe(true);
+  expect((await replaySpooledMultipartRaw(wrapped).arrayBuffer()).byteLength).toBe(2_048);
   transferMultipartSpool(wrapped, wrapped);
   expect(multipartSpoolPath(wrapped)).toBe(spool.path);
   await releaseMultipartSpool(wrapped);
   expect(multipartSpoolPath(wrapped)).toBeUndefined();
+  expect(existsSync(spool.path)).toBe(false);
 });
