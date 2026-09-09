@@ -1,5 +1,3 @@
-import { chmod } from 'node:fs/promises';
-
 import {
   codexProviderEdits,
   editCodexDocument,
@@ -16,9 +14,9 @@ import type {
   ConfigRemoval,
   OwnedField,
 } from '../contracts';
-import { clearJournal, fingerprint, readJournal, startJournal, updateJournal } from './journal';
+import { clearJournal, fingerprint, isLiveJournal, readJournal, startJournal, updateJournal } from './journal';
 import { deleteMarker, readMarker, writeMarker } from './marker';
-import { readRegularFile, syncParent, writeTomlAtomically } from './storage';
+import { chmodChecked, readRegularFile, syncParent, writeTomlAtomically } from './storage';
 
 const providerFields = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'] as const;
 const authenticationFields = new Set(['env_key', 'auth', 'aws', 'headers', 'header', 'api_key']);
@@ -53,9 +51,35 @@ const markerFields = (marker: CodexMarker): readonly string[][] => marker.fields
 
 const readText = async (location: CodexLocation) => readRegularFile(location.configPath);
 
+const applyEditsSequentially = (text: string, edits: readonly FieldEdit[]): string =>
+  edits.reduce((current, edit) => editCodexDocument(current, [edit]), text);
+
+function providerObject(text: string, providerId: string): Record<string, unknown> | undefined {
+  const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
+  const providers = parsed['model_providers'];
+  if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
+  const provider = (providers as Record<string, unknown>)[providerId];
+  return provider && typeof provider === 'object' && !Array.isArray(provider)
+    ? (provider as Record<string, unknown>)
+    : undefined;
+}
+
+function removeCreatedProvider(text: string, marker: CodexMarker): string {
+  if (!marker.createdTables.some((path) => path.length === 2 && path[0] === 'model_providers')) return text;
+  const provider = providerObject(text, marker.providerId);
+  if (provider === undefined || Object.keys(provider).length > 0) return text;
+  return editCodexDocument(text, [{ path: ['model_providers', marker.providerId], next: { present: false } }]);
+}
+
+function restoreOwnedFields(text: string, marker: CodexMarker, edits: readonly FieldEdit[]): string {
+  const restored = applyEditsSequentially(text, edits);
+  return removeCreatedProvider(restored, marker);
+}
+
 async function recoverPending(location: CodexLocation): Promise<void> {
   const pending = await readJournal(location);
   if (pending === undefined) return;
+  if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
   const current = await readText(location);
   const currentFingerprint = current === undefined ? undefined : fingerprint(current.text);
   const beforeMatches =
@@ -122,12 +146,12 @@ async function completeOperation(
   nextText: string,
   marker: CodexMarker | undefined,
 ): Promise<void> {
-  await startJournal(location, journal);
+  const ownedJournal = await startJournal(location, journal);
   await writeTomlAtomically(location, original, nextText);
-  await updateJournal(location, { ...journal, stage: 'config-written' });
+  await updateJournal(location, { ...ownedJournal, stage: 'config-written' });
   if (marker === undefined) await deleteMarker(location);
   else await writeMarker(location, marker);
-  await updateJournal(location, { ...journal, stage: 'marker-written' });
+  await updateJournal(location, { ...ownedJournal, stage: 'marker-written' });
   await clearJournal(location);
   await syncParent(location.markerPath);
 }
@@ -200,7 +224,7 @@ export async function configureCodexConfig(input: {
       if (drift.length > 0)
         throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
       const cleanup = marker.fields.map((field) => ({ path: field.path, next: field.before }));
-      workingText = editCodexDocument(text, cleanup);
+      workingText = restoreOwnedFields(text, marker, cleanup);
     } else if (marker === undefined && document.providerIds.includes(providerId)) {
       throw new Error(`Codex provider ${providerId} is not managed by aio-proxy`);
     } else if (marker !== undefined) {
@@ -211,12 +235,12 @@ export async function configureCodexConfig(input: {
     const edits = codexProviderEdits(providerId, baseUrl, token);
     const nextText = editCodexDocument(workingText, edits);
     const fields = makeFields(text, providerId, edits, marker?.providerId === providerId ? marker : undefined);
-    if (marker === undefined && !document.providerIds.includes(providerId))
-      createdTables = [['model_providers', providerId]];
+    if (marker?.providerId === providerId) createdTables = marker.createdTables;
+    else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
     const nextMarker = markerFor(location, providerId, fields, createdTables);
     if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
-      await chmod(location.configPath, 0o600);
-      await chmod(location.markerPath, 0o600);
+      await chmodChecked(location.configPath, 0o600);
+      await chmodChecked(location.markerPath, 0o600);
       return { status: 'unchanged', providerId };
     }
     await completeOperation(
@@ -234,7 +258,7 @@ export async function configureCodexConfig(input: {
       nextText,
       nextMarker,
     );
-    await chmod(location.configPath, 0o600);
+    await chmodChecked(location.configPath, 0o600);
     return { status: 'configured', providerId };
   });
 }
@@ -246,7 +270,7 @@ export async function removeCodexConfig(location: CodexLocation): Promise<Config
     if (marker === undefined) return { status: 'absent', preservedPaths: [] };
     const current = await readText(location);
     if (current === undefined) {
-      await startJournal(location, {
+      const ownedJournal = await startJournal(location, {
         operation: 'remove',
         originalExists: false,
         afterFingerprint: undefined,
@@ -259,6 +283,7 @@ export async function removeCodexConfig(location: CodexLocation): Promise<Config
         originalExists: false,
         afterFingerprint: undefined,
         oldMarker: marker,
+        owner: ownedJournal.owner,
         stage: 'marker-written',
       });
       await clearJournal(location);
@@ -273,7 +298,7 @@ export async function removeCodexConfig(location: CodexLocation): Promise<Config
       }
       return [field.path];
     });
-    const nextText = restoreEdits.length === 0 ? current.text : editCodexDocument(current.text, restoreEdits);
+    const nextText = restoreEdits.length === 0 ? current.text : restoreOwnedFields(current.text, marker, restoreEdits);
     await completeOperation(
       location,
       {

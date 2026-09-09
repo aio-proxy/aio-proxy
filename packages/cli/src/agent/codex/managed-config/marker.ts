@@ -38,10 +38,25 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
     ...[...ownedProviderFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
   ]);
   const paths = new Set<string>();
+  const expectedPaths = new Set([
+    'model_provider',
+    ...[...ownedProviderFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
+  ]);
+  if (parsed.fields.length !== expectedPaths.size) throw new Error('Codex marker ownership is incomplete');
   for (const field of parsed.fields) {
     const key = field.path.length === 1 ? field.path[0]! : field.path.join('\u0000');
     if (!allowed.has(key) || paths.has(key)) throw new Error('Codex marker contains an invalid field path');
     paths.add(key);
+  }
+  if (paths.size !== expectedPaths.size || [...expectedPaths].some((path) => !paths.has(path)))
+    throw new Error('Codex marker ownership is incomplete');
+  if (
+    parsed.createdTables.length !== 1 ||
+    parsed.createdTables[0]?.length !== 2 ||
+    parsed.createdTables[0]?.[0] !== 'model_providers' ||
+    parsed.createdTables[0]?.[1] !== parsed.providerId
+  ) {
+    throw new Error('Codex marker table ownership is inconsistent');
   }
   for (const path of parsed.createdTables) {
     if (path.length !== 2 || path[0] !== 'model_providers' || path[1] !== parsed.providerId)
@@ -68,11 +83,13 @@ export async function readMarker(location: CodexLocation): Promise<CodexMarker |
 
 export async function writeMarker(location: CodexLocation, marker: CodexMarker): Promise<void> {
   validateMarker(marker, location);
-  await durableWrite(location.markerPath, `${JSON.stringify(marker)}\n`, 0o600);
+  const current = await readRegularFile(location.markerPath);
+  await durableWrite(location.markerPath, `${JSON.stringify(marker)}\n`, 0o600, current);
 }
 
 export async function deleteMarker(location: CodexLocation): Promise<void> {
-  await durableDelete(location.markerPath);
+  const current = await readRegularFile(location.markerPath);
+  await durableDelete(location.markerPath, current);
 }
 
 export type { ValueSlot, OwnedField };
