@@ -92,7 +92,7 @@ Formatter and lint passed. The host probe passed its assertion gate on `codex-cl
 
 Fix commits:
 
-- `ROUND1_FIX_COMMIT_PENDING` — implementation and runtime split, with `Co-authored-by: Codex <noreply@openai.com>`.
-- `ROUND1_REPORT_COMMIT_PENDING` — this report and contract-report update, with the same required footer.
+- `04da909` — implementation and runtime split, with `Co-authored-by: Codex <noreply@openai.com>`.
+- The report update is committed in the follow-up report commit returned with the task status, with the same required footer.
 
 Round 1 concerns: the result is still an isolated host contract experiment against version `0.146.0`; it does not establish a minimum supported version or compatibility for Computer Use, plugins, or the real AIO Proxy service. The malformed helper outcomes are observed host behavior and are not treated as bearer-protocol success.
