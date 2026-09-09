@@ -48,9 +48,9 @@ The CLI assertion gate failed on the first required positive condition (`rawToke
 
 ## Exact commit
 
-The task commit will be recorded here immediately after it is created:
+The implementation commit is:
 
-`PENDING_COMMIT_HASH`
+`e56e8d595`
 
 Commit message:
 
@@ -59,6 +59,8 @@ Commit message:
 The commit includes the required footer:
 
 `Co-authored-by: Codex <noreply@openai.com>`
+
+This report was committed in the follow-up report-only commit returned with the task status.
 
 ## Concerns
 
