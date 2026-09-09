@@ -91,6 +91,14 @@ test('requires every device rotation to succeed', () => {
       { status: 'fulfilled', value: undefined },
     ]),
   ).toBe('pass');
+  const backendFailure = new Error('sync backend unavailable');
+  backendFailure.name = 'SyncBackendError';
+  expect(
+    classifyRotationResults([
+      { status: 'fulfilled', value: undefined },
+      { status: 'rejected', reason: backendFailure },
+    ]),
+  ).toBe('blocked');
 });
 
 test('does not treat an ignored fulfilled interruption as uncertain recovery', () => {

@@ -58,6 +58,12 @@ class BlockedError extends Error {
   }
 }
 
+class AssertionError extends Error {
+  constructor(readonly code: LiveFailureCode) {
+    super(code);
+  }
+}
+
 type AssertionResult = 'pass' | 'fail' | 'blocked';
 
 export function matchesOAuthAdapter(
@@ -96,7 +102,7 @@ function isInfrastructureFailure(reason: unknown): boolean {
 export function classifyRotationResults(results: readonly PromiseSettledResult<unknown>[]): AssertionResult {
   if (results.length === 0) return 'blocked';
   if (results.every((result) => result.status === 'fulfilled')) return 'pass';
-  if (results.every((result) => result.status === 'rejected' && isInfrastructureFailure(result.reason)))
+  if (results.some((result) => result.status === 'rejected' && isInfrastructureFailure(result.reason)))
     return 'blocked';
   return 'fail';
 }
@@ -154,6 +160,28 @@ function copyAccount(
     },
   });
   repository.completeAccountOperation(operation.operationId);
+}
+
+function applyCredential(
+  repository: ReturnType<typeof createPluginRepository>,
+  providerId: string,
+  account: LiveAccount,
+  credential: unknown,
+): void {
+  const current = repository.readAccount(providerId);
+  if (current === null) throw new Error('copied-account-missing');
+  const owner = crypto.randomUUID();
+  const now = Date.now();
+  if (!repository.tryAcquireRefreshLease(providerId, owner, now, now + 60_000)) throw new Error('local-refresh-lease');
+  try {
+    const updated = repository.compareAndSwapCredential(providerId, current.revision, owner, credential, {
+      ...(account.payload.label === undefined ? {} : { label: account.payload.label }),
+      ...(account.payload.expiresAt === undefined ? {} : { expiresAt: account.payload.expiresAt }),
+    });
+    if (updated === null) throw new Error('local-credential-apply');
+  } finally {
+    repository.releaseRefreshLease(providerId, owner);
+  }
 }
 
 function putEntity(repo: SyncRepository, local: LocalBinding, account: LiveAccount, providerId: string): void {
@@ -320,60 +348,109 @@ export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResu
             exchange,
             validate: async (value: unknown) => input.adapter.credentials.parse(value),
           });
+          const coordinators = locals.map((local, index) => coordinator(repositories[index]!, sessions[index]!, local));
           const results = await Promise.allSettled([
-            coordinator(repositories[0]!, sessions[0]!, locals[0]!).refresh(
-              refreshInput(initial.account),
-              controller.signal,
-            ),
-            coordinator(repositories[1]!, sessions[1]!, locals[1]!).refresh(
-              refreshInput(initial.account),
-              controller.signal,
-            ),
+            coordinators[0]!.refresh(refreshInput(initial.account), controller.signal),
+            coordinators[1]!.refresh(refreshInput(initial.account), controller.signal),
           ]);
-          const rotation = classifyRotationResults(results);
+          let rotation = classifyRotationResults(results);
+          for (const [index, result] of results.entries()) {
+            if (result.status !== 'fulfilled') continue;
+            try {
+              applyCredential(accountRepositories[index]!, input.providerId, result.value.account, result.value.value);
+              const operationId = result.value.account.lastCompletedOperationId;
+              if (operationId !== null) coordinators[index]!.confirm(input.remoteObjectId, operationId);
+            } catch {
+              rotation = 'fail';
+              failureCode ??= 'assertion-rotation-failed';
+            }
+          }
+          if (rotation === 'pass') {
+            const refreshed = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
+            const updated = results.find(
+              (result) => result.status === 'fulfilled' && result.value.status === 'updated',
+            );
+            const journalsResolved = repositories.every(
+              (repository, index) => repository.oauthJournals(locals[index]!.id).length === 0,
+            );
+            const localCredentialsApplied = accountRepositories.every(
+              (repository) =>
+                JSON.stringify(repository.readAccount(input.providerId)?.credential) ===
+                JSON.stringify(refreshed?.account.payload.credential),
+            );
+            if (
+              refreshed === null ||
+              refreshed.account.phase !== 'ready' ||
+              refreshed.account.generation <= initial.account.generation ||
+              updated === undefined ||
+              refreshed.account.generation !== updated.value.account.generation ||
+              JSON.stringify(refreshed.account.payload.credential) !== JSON.stringify(updated.value.value) ||
+              !journalsResolved ||
+              !localCredentialsApplied
+            ) {
+              rotation = 'fail';
+              failureCode ??= 'assertion-rotation-failed';
+            }
+          }
           evidence = { ...evidence, rotation };
           if (rotation === 'fail') failureCode ??= 'assertion-rotation-failed';
-          const current = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-          if (current === null) throw new BlockedError('setup-remote-object-missing');
-          const caller = new AbortController();
-          let exchangeCompleted = false;
-          const interruptedResults = await Promise.allSettled([
-            coordinator(repositories[0]!, sessions[0]!, locals[0]!).refresh(
-              {
-                ...refreshInput(current.account),
-                exchange: async (value, signal) => {
-                  const result = await exchange(value, signal);
-                  exchangeCompleted = true;
-                  caller.abort();
-                  return result;
+          if (rotation === 'pass') {
+            const current = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
+            if (current === null) throw new BlockedError('setup-remote-object-missing');
+            const caller = new AbortController();
+            let exchangeCompleted = false;
+            let interruptedCredential: unknown;
+            const interruptedResults = await Promise.allSettled([
+              coordinators[0]!.refresh(
+                {
+                  ...refreshInput(current.account),
+                  exchange: async (value, signal) => {
+                    const result = await exchange(value, signal);
+                    interruptedCredential = result.value;
+                    exchangeCompleted = true;
+                    caller.abort();
+                    return result;
+                  },
                 },
-              },
-              caller.signal,
-            ),
-          ]);
-          const interruptedResult = interruptedResults[0];
-          const interruptedRemote = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-          const uncertainStateObserved =
-            interruptedRemote?.account.phase === 'uncertain' ||
-            interruptedRemote?.account.phase === 'refreshing' ||
-            repositories[0]!.oauthJournals(locals[0]!.id).some((journal) => journal.phase !== 'complete');
-          let recovered = false;
-          if (interruptedResult?.status === 'rejected' && uncertainStateObserved) {
-            const recoveredAccount = await coordinator(repositories[0]!, sessions[0]!, locals[0]!)
-              .recover(input.remoteObjectId, controller.signal)
-              .catch(() => null);
-            recovered = recoveredAccount?.phase === 'ready';
+                caller.signal,
+              ),
+            ]);
+            const interruptedResult = interruptedResults[0];
+            const interruptedRemote = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
+            const uncertainStateObserved =
+              interruptedRemote?.account.phase === 'uncertain' ||
+              interruptedRemote?.account.phase === 'refreshing' ||
+              repositories[0]!.oauthJournals(locals[0]!.id).some((journal) => journal.phase !== 'complete');
+            let recoveredAccount: LiveAccount | null = null;
+            if (interruptedResult?.status === 'rejected' && uncertainStateObserved) {
+              try {
+                recoveredAccount = await coordinators[0]!.recover(input.remoteObjectId, controller.signal);
+              } catch {
+                evidence = { ...evidence, uncertainRecovery: 'fail' };
+                failureCode ??= 'assertion-recovery-failed';
+                throw new AssertionError('assertion-recovery-failed');
+              }
+            }
+            const journalResolved = repositories[0]!.oauthJournals(locals[0]!.id).length === 0;
+            const recovered =
+              recoveredAccount?.phase === 'ready' &&
+              recoveredAccount.generation === current.account.generation + 1 &&
+              JSON.stringify(recoveredAccount.payload.credential) === JSON.stringify(interruptedCredential) &&
+              journalResolved;
+            evidence = {
+              ...evidence,
+              uncertainRecovery: classifyInterruptedRefresh({
+                result: interruptedResult?.status ?? 'rejected',
+                exchangeCompleted,
+                uncertainStateObserved,
+                recovered,
+              }),
+            };
+            if (evidence.uncertainRecovery === 'fail') {
+              failureCode ??= 'assertion-recovery-failed';
+              throw new AssertionError('assertion-recovery-failed');
+            }
           }
-          evidence = {
-            ...evidence,
-            uncertainRecovery: classifyInterruptedRefresh({
-              result: interruptedResult?.status ?? 'rejected',
-              exchangeCompleted,
-              uncertainStateObserved,
-              recovered,
-            }),
-          };
-          if (evidence.uncertainRecovery === 'fail') failureCode ??= 'assertion-recovery-failed';
         }
         const after = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
         if (after === null) throw new BlockedError('setup-remote-object-missing');
@@ -391,6 +468,7 @@ export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResu
     }
   } catch (error) {
     if (error instanceof BlockedError) failureCode ??= error.code;
+    else if (error instanceof AssertionError) failureCode ??= error.code;
     else if (error instanceof BackendSetupError) failureCode ??= error.code;
     else failureCode ??= 'setup-backend-unavailable';
   } finally {
