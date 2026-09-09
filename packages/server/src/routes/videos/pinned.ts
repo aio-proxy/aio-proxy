@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { isInboundAbort } from '../../route-observation';
 import { withoutCallerCredentialQuery, withoutCallerCredentials } from '../../server/api-key-auth';
+import { cancelRetainedRequestBody } from '../pipeline/request';
 import { videoForbidden, videoInvalidRequest, videoNotFound, videoUpstreamUnavailable } from './errors';
 import { isValidVideoId, sameVideoOwner, type VideoJobRecord } from './job-store';
 import { pinnedVideoProvider, pinSuccessfulVideoJob } from './pin';
@@ -39,6 +40,7 @@ export async function invokePinnedVideo(
 ): Promise<Response> {
   const lease = source.acquireProviderSnapshot();
   const modelId = options.modelId ?? record.model;
+  const inbound = options.request ?? context.req.raw;
   try {
     const provider = pinnedVideoProvider(lease.snapshot.providers, record);
     const raw = provider?.raw?.resolve({
@@ -46,8 +48,10 @@ export async function invokePinnedVideo(
       modelId,
       requestPath: new URL(context.req.raw.url).pathname,
     });
-    if (provider === undefined || raw === undefined) return videoUpstreamUnavailable();
-    const inbound = options.request ?? context.req.raw;
+    if (provider === undefined || raw === undefined) {
+      await cancelRetainedRequestBody(inbound, 'videos pinned upstream unavailable');
+      return videoUpstreamUnavailable();
+    }
     const response = await raw.invoke(
       new Request(withoutCallerCredentialQuery(inbound.url), {
         method: inbound.method,
@@ -67,6 +71,7 @@ export async function invokePinnedVideo(
     return response;
   } catch (error) {
     if (isInboundAbort(error, context.req.raw.signal)) return new Response(null, { status: 499 });
+    await cancelRetainedRequestBody(inbound, 'videos pinned upstream unavailable');
     return videoUpstreamUnavailable();
   } finally {
     lease.release();
