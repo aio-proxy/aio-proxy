@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { EntityBody, LocalEntity, LocalBinding, SyncRepository } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
@@ -217,9 +219,13 @@ export async function applyPreview(
     const remote = remoteByObject.get(candidate.row.objectId);
     if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
     try {
-      if (decision.choice === 'restore' && selectedBody !== null) {
+      if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
         const operationId =
-          record.input.kind === 'restore' ? record.input.operationId : `restore:${candidate.row.objectId}`;
+          decision.choice === 'restore'
+            ? record.input.kind === 'restore'
+              ? record.input.operationId
+              : `restore:${candidate.row.objectId}`
+            : `restore:${record.input.operationId}:${randomUUID()}`;
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
       } else if (decision.choice === 'cloud') {
         await input.applyLocal(selectedBody, current, candidate.row.objectId);

@@ -67,9 +67,11 @@ function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Rec
         if (typeof entry === 'string') return entry === body.logicalKey;
         return Array.isArray(entry) && entry[0] === body.logicalKey;
       });
-      const value = body.value;
-      if (index < 0) plugins.push(value);
-      else plugins[index] = value;
+      const value = record(body.value);
+      const options = value['options'];
+      const entry = options === undefined ? body.logicalKey : [body.logicalKey, options];
+      if (index < 0) plugins.push(entry);
+      else plugins[index] = entry;
       next['plugins'] = plugins as JsonValue;
       break;
     }
@@ -203,6 +205,16 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           if (candidate !== current) await input.applyCandidate(candidate, 'remote');
         } catch {
           return { applied: false, pending: 'invalid-config' as const };
+        }
+        if (body?.kind === 'plugin-business') {
+          const value = record(body.value);
+          const secret = value['secret'];
+          const previous = input.accounts.readPluginSecret(body.logicalKey);
+          if (secret === undefined) {
+            if (previous !== null) input.accounts.deletePluginSecret(body.logicalKey, previous.revision);
+          } else {
+            input.accounts.writePluginSecret(body.logicalKey, previous?.revision ?? null, secret);
+          }
         }
         assertCurrent();
         if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider') {

@@ -20,11 +20,12 @@
     "test": "bun run test:unit",
     "test:unit": "bun test ./src"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@aio-proxy/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
+    "@aio-proxy/plugin-sdk": "workspace:*",
     "@rslib/core": "catalog:",
     "@types/bun": "catalog:",
     "typescript": "catalog:"

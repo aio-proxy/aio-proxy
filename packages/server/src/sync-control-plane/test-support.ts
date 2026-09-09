@@ -17,7 +17,14 @@ import {
   type SyncRepository,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
-import { definePlugin, zod, type SyncBackendDefinition, type SyncRead, type SyncSession } from '@aio-proxy/plugin-sdk';
+import {
+  SyncBackendError,
+  definePlugin,
+  zod,
+  type SyncBackendDefinition,
+  type SyncRead,
+  type SyncSession,
+} from '@aio-proxy/plugin-sdk';
 import { ConfigSchema } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
@@ -180,44 +187,59 @@ type AcceptanceMemoryBackend = {
   readonly definition: SyncBackendDefinition<Record<string, never>>;
   readonly readAll: () => ReadonlyMap<string, AcceptanceMemoryValue>;
   readonly poke: () => void;
+  readonly setOnline: (online: boolean) => void;
+  readonly setIdentity: (identityId: string) => void;
+  readonly advance: (milliseconds: number) => void;
+  readonly inject: (key: string, value: Uint8Array) => void;
 };
 
 function createAcceptanceMemoryBackend(): AcceptanceMemoryBackend {
   const values = new Map<string, AcceptanceMemoryValue>();
   let version = 0;
+  let clock = Date.now();
+  let online = true;
+  let identityId = 'acceptance-memory-identity';
+
+  function assertAvailable(sessionIdentity: string, signal: AbortSignal): void {
+    signal.throwIfAborted();
+    if (!online) throw new SyncBackendError('offline', 'Acceptance backend is offline');
+    if (identityId !== sessionIdentity) throw new SyncBackendError('identity-changed', 'Acceptance identity changed');
+  }
+
   const definition: SyncBackendDefinition<Record<string, never>> = {
     id: 'memory',
     displayName: 'Acceptance memory',
     options: { schema: zod.object({}), form: [] },
     async connect() {
+      const sessionIdentity = identityId;
       const session: SyncSession = {
-        identityId: 'acceptance-memory-identity',
+        identityId: sessionIdentity,
         spaceId: 'default',
         maxValueBytes: 1_000_000,
         async read(key, signal) {
-          signal.throwIfAborted();
+          assertAvailable(sessionIdentity, signal);
           const current = values.get(key);
           return current === undefined ? { kind: 'absent' as const } : { ...current, value: current.value.slice() };
         },
         async compareAndSwap(key, expected, value, signal) {
-          signal.throwIfAborted();
+          assertAvailable(sessionIdentity, signal);
           const current = values.get(key);
           if ((current?.version ?? null) !== expected) return { kind: 'conflict' as const };
           const next: AcceptanceMemoryValue = {
             kind: 'present',
             value: value.slice(),
             version: String(++version),
-            modifiedAt: version,
+            modifiedAt: clock,
           };
           values.set(key, next);
           return { kind: 'written' as const, version: next.version, modifiedAt: next.modifiedAt };
         },
         async list({ prefix }, signal) {
-          signal.throwIfAborted();
+          assertAvailable(sessionIdentity, signal);
           return { keys: [...values.keys()].filter((key) => key.startsWith(prefix)) };
         },
         async remove(key, expected, signal) {
-          signal.throwIfAborted();
+          assertAvailable(sessionIdentity, signal);
           if (values.get(key)?.version !== expected) return { kind: 'conflict' as const };
           values.delete(key);
           return { kind: 'removed' as const };
@@ -227,7 +249,23 @@ function createAcceptanceMemoryBackend(): AcceptanceMemoryBackend {
       return session;
     },
   };
-  return { definition, readAll: () => values, poke: () => {} };
+  return {
+    definition,
+    readAll: () => values,
+    poke: () => {},
+    setOnline(next) {
+      online = next;
+    },
+    setIdentity(next) {
+      identityId = next;
+    },
+    advance(milliseconds) {
+      clock += milliseconds;
+    },
+    inject(key, value) {
+      values.set(key, { kind: 'present', value: value.slice(), version: String(++version), modifiedAt: clock });
+    },
+  };
 }
 
 const ACCEPTANCE_PLUGIN = '@example/sync-acceptance';
@@ -240,6 +278,29 @@ function acceptanceDescriptor(backend: SyncBackendDefinition<Record<string, neve
     descriptor: definePlugin(
       (api) => {
         api.sync.register(backend);
+        api.oauth.register({
+          id: 'acceptance-oauth',
+          displayName: 'Acceptance OAuth',
+          account: { options: { schema: zod.object({}), form: [] } },
+          credentials: zod.object({ token: zod.string() }),
+          async login() {
+            throw new Error('acceptance OAuth login is not used by sync tests');
+          },
+          catalog: {
+            policy: { kind: 'static' },
+            async discover() {
+              return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+            },
+          },
+          async createRuntime() {
+            throw new Error('acceptance OAuth runtime is not used by sync tests');
+          },
+          credentialSync: {
+            formatVersion: 1,
+            multiDevice: { evidenceId: 'acceptance-oauth-evidence' },
+            canDetach: async () => true,
+          },
+        });
       },
       {
         options: {
@@ -285,13 +346,20 @@ export type TwoServerSyncFixture = {
   readonly close: () => Promise<void>;
 };
 
+export type TwoServerSyncFixtureOptions = {
+  readonly providerObjectIds?: Partial<Record<'a' | 'b', string>>;
+};
+
 /**
  * Open two real ServerState instances with independent homes and one shared
  * backend. Actions in acceptance tests go through ConfigStore, PluginControlPlane,
  * and SyncControlPlane; the repository is touched only while preparing durable
  * fixture state before a server starts.
  */
-export async function withTwoServerSyncFixtures(run: (fixture: TwoServerSyncFixture) => Promise<void>): Promise<void> {
+export async function withTwoServerSyncFixtures(
+  run: (fixture: TwoServerSyncFixture) => Promise<void>,
+  options: TwoServerSyncFixtureOptions = {},
+): Promise<void> {
   const backend = createAcceptanceMemoryBackend();
   const descriptor = acceptanceDescriptor(backend.definition);
   const initialRaw = {
@@ -301,7 +369,11 @@ export async function withTwoServerSyncFixtures(run: (fixture: TwoServerSyncFixt
   const homes: string[] = [];
   const devices = new Map<'a' | 'b', AcceptanceServer>();
 
-  const createDevice = async (device: 'a' | 'b', markers?: { provider: string; plugin: string }) => {
+  const createDevice = async (
+    device: 'a' | 'b',
+    markers?: { provider: string; plugin: string },
+    seedPluginSecret = false,
+  ) => {
     const home = mkdtempSync(join(tmpdir(), `aio-proxy-sync-acceptance-${device}-`));
     homes.push(home);
     const configPath = join(home, 'config.jsonc');
@@ -321,9 +393,14 @@ export async function withTwoServerSyncFixtures(run: (fixture: TwoServerSyncFixt
       options: {},
     };
     repository.writeBinding(binding);
-    repository.putEntity(binding.id, acceptanceEntity('provider-work', 'provider', 'work'));
+    repository.putEntity(
+      binding.id,
+      acceptanceEntity(options.providerObjectIds?.[device] ?? 'provider-work', 'provider', 'work'),
+    );
     repository.putEntity(binding.id, acceptanceEntity('plugin-shared', 'plugin-business', ACCEPTANCE_PLUGIN));
-    if (markers !== undefined) pluginRepository.writePluginSecret(ACCEPTANCE_PLUGIN, null, { token: markers.plugin });
+    repository.putEntity(binding.id, acceptanceEntity('model-shared', 'model-rule', 'shared-model'));
+    if (markers !== undefined && seedPluginSecret)
+      pluginRepository.writePluginSecret(ACCEPTANCE_PLUGIN, null, { token: markers.plugin });
     database.close();
     const providerMarker = markers?.provider ?? `provider-marker-${crypto.randomUUID()}`;
     const pluginMarker = markers?.plugin ?? `plugin-marker-${crypto.randomUUID()}`;
@@ -354,8 +431,8 @@ export async function withTwoServerSyncFixtures(run: (fixture: TwoServerSyncFixt
     provider: `provider-marker-${crypto.randomUUID()}`,
     plugin: `plugin-marker-${crypto.randomUUID()}`,
   };
-  await createDevice('a', markers);
-  await createDevice('b', markers);
+  await createDevice('a', markers, true);
+  await createDevice('b', markers, false);
   const fixture = {
     backend,
     get a() {

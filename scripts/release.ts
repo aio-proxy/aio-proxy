@@ -62,6 +62,28 @@ type CloudKitRuntimeManifest = {
   readonly minimumMacOS: '14.0';
   readonly archive: string;
   readonly sha256: string;
+  readonly signatureStatus: 'verified' | 'unsigned';
+  readonly notarizationStatus: 'accepted' | 'unverified';
+  readonly signing?: {
+    readonly teamId?: string;
+    readonly bundleIdentifier?: string;
+    readonly signatureStatus?: string;
+    readonly notarizationStatus?: string;
+  };
+};
+
+type CloudKitSignedManifest = {
+  readonly artifactVersion: string;
+  readonly archiveRelativePath: string;
+  readonly archiveSha256: string;
+  readonly signatureStatus: string;
+  readonly notarizationStatus: string;
+  readonly signing?: {
+    readonly teamId?: string;
+    readonly bundleIdentifier?: string;
+    readonly signatureStatus?: string;
+    readonly notarizationStatus?: string;
+  };
 };
 
 // --- discover every workspace package -----------------------------------------
@@ -161,7 +183,7 @@ if (!DRY_RUN) {
 // archive into CloudKit's publishable dist tree immediately before packing it.
 // This keeps native signing out of ordinary Bun/Linux builds while making a
 // release fail closed when the lockstep artifact is absent or stale.
-if (cloudKitPackage !== undefined) {
+if (cloudKitPackage !== undefined && (await shouldPrepareCloudKitArtifact(version))) {
   await prepareCloudKitArtifact(cloudKitPackage.path.replace(/\/package\.json$/u, ''), version);
 }
 
@@ -190,6 +212,16 @@ for (const tgz of tarballs.values()) {
     throw new Error(`${tgz} still contains catalog:/workspace: — pack did not resolve protocols`);
   }
   const packed = JSON.parse(raw) as PackageJson;
+  if (packed.name === '@aio-proxy/plugin-cloudkit') {
+    if (packed.dependencies?.['@aio-proxy/plugin-sdk'] !== undefined) {
+      throw new Error('@aio-proxy/plugin-cloudkit must not carry @aio-proxy/plugin-sdk as a runtime dependency');
+    }
+    if (packed.peerDependencies?.['@aio-proxy/plugin-sdk'] !== version) {
+      throw new Error(
+        `@aio-proxy/plugin-cloudkit: peerDependencies.@aio-proxy/plugin-sdk must be "${version}" in the packed artifact`,
+      );
+    }
+  }
   for (const field of DEP_FIELDS) {
     for (const [dep, range] of Object.entries(packed[field] ?? {})) {
       if (workspaceNames.has(dep) && range !== version) {
@@ -293,7 +325,39 @@ async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: stri
   if (!(await Bun.file(signedArchivePath).exists())) {
     throw new Error('CLOUDKIT_SIGNED_ARCHIVE does not point to an existing signed artifact');
   }
+  const signedManifest = process.env['CLOUDKIT_SIGNED_MANIFEST'];
+  if (signedManifest === undefined || signedManifest.trim() === '') {
+    throw new Error('CLOUDKIT_SIGNED_MANIFEST is required for a CloudKit release');
+  }
+  const signedManifestPath = resolve(signedManifest);
+  if (!(await Bun.file(signedManifestPath).exists())) {
+    throw new Error('CLOUDKIT_SIGNED_MANIFEST does not point to an existing artifact manifest');
+  }
+  const archiveDigest = createHash('sha256')
+    .update(await Bun.file(signedArchivePath).bytes())
+    .digest('hex');
+  const signedJson: unknown = await Bun.file(signedManifestPath).json();
+  const signedValue =
+    signedJson !== null && typeof signedJson === 'object' && !Array.isArray(signedJson)
+      ? (signedJson as Partial<CloudKitSignedManifest>)
+      : undefined;
+  if (
+    signedValue === undefined ||
+    signedValue.artifactVersion !== releaseVersion ||
+    signedValue.signatureStatus !== 'verified' ||
+    signedValue.notarizationStatus !== 'accepted' ||
+    signedValue.archiveSha256 !== archiveDigest ||
+    typeof signedValue.archiveRelativePath !== 'string' ||
+    basename(signedValue.archiveRelativePath) !== basename(signedArchivePath) ||
+    signedValue.signing?.teamId !== teamId ||
+    signedValue.signing?.bundleIdentifier !== 'dev.aioproxy' ||
+    signedValue.signing?.signatureStatus !== 'verified' ||
+    signedValue.signing?.notarizationStatus !== 'accepted'
+  ) {
+    throw new Error('CLOUDKIT_SIGNED_MANIFEST is not a verified, notarized artifact for this release');
+  }
   process.env['CLOUDKIT_NATIVE_VERSION'] ??= releaseVersion;
+  process.env['CLOUDKIT_SIGNED_MANIFEST'] = signedManifestPath;
   await $`bun run --filter @aio-proxy/plugin-cloudkit pack-native`;
 
   const manifestPath = join(packageRoot, 'dist', 'native', 'manifest.json');
@@ -309,7 +373,13 @@ async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: stri
     typeof manifest.archive !== 'string' ||
     !manifest.archive.endsWith('.app.zip') ||
     typeof manifest.sha256 !== 'string' ||
-    !/^[a-f0-9]{64}$/u.test(manifest.sha256)
+    !/^[a-f0-9]{64}$/u.test(manifest.sha256) ||
+    manifest.signatureStatus !== 'verified' ||
+    manifest.notarizationStatus !== 'accepted' ||
+    manifest.signing?.teamId !== teamId ||
+    manifest.signing?.bundleIdentifier !== 'dev.aioproxy' ||
+    manifest.signing?.signatureStatus !== 'verified' ||
+    manifest.signing?.notarizationStatus !== 'accepted'
   ) {
     throw new Error('CloudKit native manifest does not match the lockstep signed release');
   }
@@ -325,4 +395,13 @@ async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: stri
     .update(await Bun.file(archivePath).bytes())
     .digest('hex');
   if (digest !== manifest.sha256) throw new Error('CloudKit native archive digest does not match its manifest');
+}
+
+async function shouldPrepareCloudKitArtifact(releaseVersion: string): Promise<boolean> {
+  if (DRY_RUN) return false;
+  const override = process.env['CLOUDKIT_RELEASE_REQUIRED'];
+  if (override === 'true') return true;
+  if (override === 'false') return false;
+  const published = await $`npm view @aio-proxy/plugin-cloudkit version`.nothrow().quiet();
+  return published.exitCode !== 0 || published.text().trim() !== releaseVersion;
 }

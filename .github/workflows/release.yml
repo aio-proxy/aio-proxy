@@ -81,6 +81,7 @@ jobs:
           )"
           echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "CLOUDKIT_RELEASE_REQUIRED=$should_prepare" >> "$GITHUB_ENV"
 
       # This is intentionally a macOS-only release step. The native bundle is
       # signed on the same host that builds it, then copied to a temporary path;
@@ -108,21 +109,27 @@ jobs:
 
           keychain="$RUNNER_TEMP/aio-cloudkit-signing.keychain-db"
           certificate="$RUNNER_TEMP/aio-cloudkit-signing.p12"
+          certificate_password="$RUNNER_TEMP/aio-cloudkit-signing.password"
           profile="$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile"
           manifest="packages/plugins/cloudkit/release-manifest.json"
           manifest_backup="$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
+          signed_manifest="$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
           cp "$manifest" "$manifest_backup"
           restore_manifest() { cp "$manifest_backup" "$manifest"; }
           trap restore_manifest EXIT
 
-          security create-keychain -p "$CLOUDKIT_CERTIFICATE_PASSWORD" "$keychain"
+          # Keep the temporary keychain password empty. The certificate password
+          # is supplied to `security import` over stdin, so it never appears in
+          # an external command's argument list.
+          security create-keychain -p '' "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$CLOUDKIT_CERTIFICATE_PASSWORD" "$keychain"
+          security unlock-keychain -p '' "$keychain"
           printf '%s' "$CLOUDKIT_CERTIFICATE_BASE64" | base64 -D > "$certificate"
-          security import "$certificate" -k "$keychain" -P "$CLOUDKIT_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          printf '%s\n' "$CLOUDKIT_CERTIFICATE_PASSWORD" > "$certificate_password"
+          security import "$certificate" -k "$keychain" -T /usr/bin/codesign < "$certificate_password"
           security set-keychain-settings -lut 21600 "$keychain"
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$CLOUDKIT_CERTIFICATE_PASSWORD" "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k '' "$keychain"
           printf '%s' "$CLOUDKIT_PROFILE_BASE64" | base64 -D > "$profile"
 
           version="${{ steps.cloudkit-release.outputs.version }}"
@@ -140,6 +147,8 @@ jobs:
           signed="$(find packages/plugins/cloudkit/dist/native -maxdepth 1 -name '*.app.zip' ! -name '*.submission.zip' -print -quit)"
           test -n "$signed"
           cp "$signed" "$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip"
+          cp packages/plugins/cloudkit/dist/native/manifest.json "$signed_manifest"
+          echo "CLOUDKIT_SIGNED_MANIFEST=$signed_manifest" >> "$GITHUB_ENV"
 
       - name: Clean CloudKit signing keychain
         if: always() && steps.cloudkit-release.outputs.publishable == 'true'
@@ -148,8 +157,10 @@ jobs:
           set -euo pipefail
           security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.password" \
             "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
-            "$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
+            "$RUNNER_TEMP/aio-cloudkit-release-manifest.json" \
+            "$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
 
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
