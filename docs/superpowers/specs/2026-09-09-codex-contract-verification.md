@@ -12,19 +12,19 @@ The machine-readable result was:
 {
   "version": "codex-cli 0.146.0",
   "platform": "darwin/arm64",
-  "rawTokenAccepted": false,
+  "rawTokenAccepted": true,
   "incompatibleConfigRejected": true,
-  "refreshAfter401": false,
-  "proactiveRefresh": false,
-  "staticAccountType": null,
+  "refreshAfter401": true,
+  "proactiveRefresh": true,
+  "staticAccountType": "chatgpt",
   "commandAccountType": null,
   "authFilesUnchanged": true
 }
 ```
 
-The incompatible configuration was rejected as expected. The command-auth and static app-server sessions both timed out during `initialize`, before `account/read` or a model request could run. Therefore the raw bearer, 401 retry, proactive refresh, and account-type contracts remain unverified for this executable. The five isolated helper inputs produced sanitized observations: `json` exited 0, `empty` exited 0, `nonzero` exited 7, and `timeout` exceeded the 5-second limit; no output or header value was recorded.
+The incompatible configuration was rejected as expected. The command session sent two inference requests: the first used the raw helper token, the second used a refreshed token after the synthetic 401, and the helper ran twice. A separate session with `refresh_interval_ms = 100` observed an additional helper invocation without a second `account/read`; the production value remains 300000. Static `account/read` returned `chatgpt`, while command `account/read` returned no ChatGPT account type. The malformed helper cases were all executed through Codex command-auth configurations: JSON produced two requests with three helper invocations, empty output one request with ten invocations, non-zero output one request with ten invocations, and the over-5-second helper timed out after two invocations. No output or Authorization header value was recorded.
 
-The assertion gate in the probe intentionally fails when these required positive conditions are absent. This is host evidence only: it does not establish a minimum supported version, does not authorize command-auth product wiring, and does not claim Computer Use, plugin, or real AIO Proxy compatibility. The existing static experiment below remains a separate result.
+The assertion gate passed for this run. This is host evidence only: it does not establish a minimum supported version, does not authorize command-auth product wiring, and does not claim Computer Use, plugin, or real AIO Proxy compatibility. The existing static experiment below remains a separate result.
 
 ## Verified executable and schema
 

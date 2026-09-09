@@ -3,18 +3,15 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-type JsonRpcPacket = {
-  readonly id?: number;
-  readonly result?: unknown;
-  readonly error?: { readonly code?: number; readonly message?: string };
-};
-
-type CommandResult = {
-  readonly code: number;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly timedOut: boolean;
-};
+import {
+  createContext,
+  envFor,
+  openRpcSession,
+  spawn,
+  timeoutMs,
+  type ProbeContext,
+  type RpcSession,
+} from './codex-command-auth-runtime';
 
 export type CommandAuthProbe = {
   readonly version: string;
@@ -28,13 +25,8 @@ export type CommandAuthProbe = {
   readonly authFilesUnchanged: boolean;
 };
 
-type RpcSession = {
-  readonly call: (method: string, params: unknown) => Promise<unknown>;
-  readonly stop: () => Promise<void>;
-};
-
-const timeoutMs = 10_000;
 const rawToken = 'probe-command-token';
+const refreshedToken = 'probe-command-token-refreshed';
 const jsonToken = JSON.stringify({ token: rawToken });
 const staticToken = 'probe-static-token';
 
@@ -48,16 +40,6 @@ refresh_interval_ms = 300000
 
 const rawHelper = String.raw`process.stdout.write("probe-command-token\n");`;
 
-function envFor(root: string, codexHome: string, extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    PATH: process.env['PATH'] ?? '',
-    HOME: root,
-    CODEX_HOME: codexHome,
-    TMPDIR: join(root, 'tmp'),
-    ...extra,
-  };
-}
-
 function sanitizedError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message
@@ -66,37 +48,6 @@ function sanitizedError(error: unknown): string {
     .replaceAll(staticToken, '<static-token>')
     .replaceAll(/Bearer\s+[^\s)]+/g, 'Bearer <redacted>')
     .replaceAll(/\/[^\s:;,)]+/g, '<path>');
-}
-
-async function spawn(
-  args: readonly string[],
-  env: Record<string, string>,
-  cwd: string,
-  input?: string,
-  limit = timeoutMs,
-): Promise<CommandResult> {
-  const child = Bun.spawn(args, {
-    cwd,
-    env,
-    stdin: input === undefined ? 'ignore' : 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill();
-  }, limit);
-  try {
-    if (input !== undefined) {
-      child.stdin.write(input);
-      child.stdin.end();
-    }
-    const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-    return { code: await child.exited, stdout, stderr, timedOut };
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function writeAuthConfig(
@@ -148,90 +99,6 @@ async function writeStaticConfig(codexHome: string, port: number): Promise<void>
   );
 }
 
-async function openRpcSession(
-  executable: string,
-  root: string,
-  codexHome: string,
-  extraEnv: Record<string, string> = {},
-): Promise<RpcSession> {
-  const child = Bun.spawn([executable, 'app-server'], {
-    cwd: root,
-    env: envFor(root, codexHome, extraEnv),
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const pending = new Map<number, (packet: JsonRpcPacket) => void>();
-  const consume = (async () => {
-    const reader = child.stdout.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    try {
-      for (;;) {
-        const chunk = await reader.read();
-        if (chunk.done) return;
-        buffer += decoder.decode(chunk.value, { stream: true });
-        for (;;) {
-          const newline = buffer.indexOf('\\n');
-          if (newline < 0) break;
-          const line = buffer.slice(0, newline);
-          buffer = buffer.slice(newline + 1);
-          if (!line.trim()) continue;
-          const packet = JSON.parse(line) as JsonRpcPacket;
-          if (typeof packet.id === 'number') pending.get(packet.id)?.(packet);
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  })();
-  const stderr = new Response(child.stderr).text();
-  let nextId = 0;
-  const call = (method: string, params: unknown): Promise<unknown> => {
-    const id = ++nextId;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error(`${method}: timeout`));
-      }, timeoutMs);
-      pending.set(id, (packet) => {
-        clearTimeout(timer);
-        pending.delete(id);
-        if (packet.error !== undefined) reject(new Error(`${method}: ${packet.error.message ?? 'rejected'}`));
-        else resolve(packet.result);
-      });
-      child.stdin.write(JSON.stringify({ id, method, params }) + '\\n');
-      child.stdin.flush();
-    });
-  };
-  const stop = async (): Promise<void> => {
-    child.kill();
-    await child.exited;
-    await consume;
-    await stderr;
-  };
-  try {
-    await call('initialize', {
-      clientInfo: { name: 'aio-proxy-command-auth-probe', version: '1' },
-      capabilities: { experimentalApi: true },
-    });
-    child.stdin.write(JSON.stringify({ method: 'initialized' }) + '\\n');
-    child.stdin.flush();
-    return { call, stop };
-  } catch (error) {
-    await stop();
-    const details = await stderr;
-    throw new Error(`${sanitizedError(error)}${details.trim() === '' ? '' : `; stderr=${sanitizedError(details)}`}`);
-  }
-}
-
-async function waitFor<T>(promise: Promise<T>, limit = timeoutMs): Promise<T> {
-  return await Promise.race([
-    promise,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('probe timeout')), limit)),
-  ]);
-}
-
 function accountType(value: unknown): 'chatgpt' | null {
   if (typeof value !== 'object' || value === null) return null;
   const account = (value as { account?: unknown }).account;
@@ -239,15 +106,25 @@ function accountType(value: unknown): 'chatgpt' | null {
   return (account as { type?: unknown }).type === 'chatgpt' ? 'chatgpt' : null;
 }
 
+function authorizationMatches(request: Request, token: string): boolean {
+  const value = request.headers.get('authorization');
+  return value !== null && value.startsWith('Bearer ') && value.slice('Bearer '.length) === token;
+}
+
+async function helperCount(path: string): Promise<number> {
+  return (await readFile(path, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+}
+
 async function commandProbe(
+  context: ProbeContext,
   executable: string,
   root: string,
+  addDiagnostic: (message: string) => void,
 ): Promise<{
+  readonly complete: boolean;
   readonly rawTokenAccepted: boolean;
   readonly refreshAfter401: boolean;
-  readonly proactiveRefresh: boolean;
   readonly commandAccountType: 'chatgpt' | null;
-  readonly errors: readonly string[];
 }> {
   const codexHome = join(root, 'command-codex');
   const helperDirectory = join(root, 'helper with spaces');
@@ -255,11 +132,14 @@ async function commandProbe(
   await mkdir(helperDirectory, { recursive: true, mode: 0o700 });
   const helper = join(helperDirectory, 'auth helper.js');
   const counter = join(root, 'helper-count');
-  const errors: string[] = [];
+  const marker = join(root, 'refresh-marker');
   const helperSource = `const fs = require('node:fs');
 const mode = process.argv[2];
 const countFile = process.env.PROBE_COUNT_FILE;
+const markerFile = process.env.PROBE_REFRESH_MARKER;
+const count = countFile && fs.existsSync(countFile) ? fs.readFileSync(countFile, 'utf8').split('\\n').filter(Boolean).length : 0;
 if (countFile) fs.appendFileSync(countFile, mode + '\\n');
+if (mode === 'sequence') process.stdout.write(markerFile && fs.existsSync(markerFile) && count > Number(fs.readFileSync(markerFile, 'utf8')) ? '${refreshedToken}\\n' : '${rawToken}\\n');
 if (mode === 'raw') ${rawHelper}
 if (mode === 'json') process.stdout.write(${JSON.stringify(jsonToken)} + '\\n');
 if (mode === 'empty') process.stdout.write('');
@@ -268,21 +148,12 @@ if (mode === 'timeout') setTimeout(() => process.stdout.write('late\\n'), 6000);
 `;
   await Bun.write(helper, helperSource);
   const command = process.execPath;
-  const helperArgs = [helper, 'raw'];
-  for (const mode of ['raw', 'json', 'empty', 'nonzero', 'timeout']) {
-    const result = await spawn(
-      [command, helper, mode],
-      envFor(root, codexHome, { PROBE_COUNT_FILE: counter }),
-      root,
-      undefined,
-      5_500,
-    );
-    if (mode !== 'raw') errors.push(`${mode}: ${result.timedOut ? 'timeout' : `exit=${result.code}`}`);
-  }
-  const observed: string[] = [];
   let requestNumber = 0;
   let requestResolve: (() => void) | undefined;
   let requestCount = 0;
+  let firstRequestUsedRaw = false;
+  let secondRequestUsedRefreshed = false;
+  let allObservedRequestsUsedExpectedBearer = true;
   const requestArrived = new Promise<void>((resolve) => {
     requestResolve = resolve;
   });
@@ -292,18 +163,30 @@ if (mode === 'timeout') setTimeout(() => process.stdout.write('late\\n'), 6000);
     async fetch(request) {
       if (new URL(request.url).pathname !== '/v1/responses') return Response.json({ models: [] });
       requestCount += 1;
-      observed.push(request.headers.get('authorization') ?? '');
+      const requestIndex = requestNumber++;
+      firstRequestUsedRaw ||= requestIndex === 0 && authorizationMatches(request, rawToken);
+      secondRequestUsedRefreshed ||= requestIndex === 1 && authorizationMatches(request, refreshedToken);
+      allObservedRequestsUsedExpectedBearer &&=
+        requestIndex === 0
+          ? authorizationMatches(request, rawToken)
+          : requestIndex === 1 && authorizationMatches(request, refreshedToken);
+      if (requestIndex === 0) return Response.json({ error: { message: 'synthetic 401' } }, { status: 401 });
       requestResolve?.();
-      if (requestNumber++ === 0) return Response.json({ error: { message: 'synthetic 401' } }, { status: 401 });
       return Response.json({ id: 'probe-response', object: 'response', status: 'completed', output: [] });
     },
   });
   let session: RpcSession | undefined;
   try {
     if (server.port === undefined) throw new Error('local server did not expose a port');
-    await writeAuthConfig(codexHome, server.port, command, helperArgs);
-    session = await openRpcSession(executable, root, codexHome, { PROBE_COUNT_FILE: counter });
+    await writeAuthConfig(codexHome, server.port, command, [helper, 'sequence']);
+    session = await openRpcSession(context, executable, root, codexHome, sanitizedError, {
+      PROBE_COUNT_FILE: counter,
+      PROBE_REFRESH_MARKER: marker,
+    });
     const commandAccountType = accountType(await session.call('account/read', {}));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const baseline = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+    await Bun.write(marker, String(baseline));
     const started = (await session.call('thread/start', {
       cwd: root,
       model: 'probe-model',
@@ -315,35 +198,30 @@ if (mode === 'timeout') setTimeout(() => process.stdout.write('late\\n'), 6000);
     try {
       await session.call('turn/start', { threadId, input: [{ type: 'text', text: 'command auth probe' }] });
     } catch (error) {
-      errors.push(sanitizedError(error));
+      addDiagnostic(sanitizedError(error));
     }
-    await waitFor(requestArrived);
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    const countBeforeRefresh = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
-    await writeAuthConfig(codexHome, server.port, command, [helper, 'raw'], 100);
-    try {
-      await session.call('account/read', {});
-    } catch (error) {
-      errors.push(sanitizedError(error));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const countAfterRefresh = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+    const secondRequest = await Promise.race([
+      requestArrived.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), Math.min(timeoutMs, context.remaining()))),
+    ]);
+    const helperInvocations = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+    addDiagnostic(
+      `command: requests=${requestCount}; firstExpected=${firstRequestUsedRaw}; secondExpected=${secondRequestUsedRefreshed}; helperInvocations=${helperInvocations - baseline}`,
+    );
     return {
-      rawTokenAccepted: observed.some((value) => value === `Bearer ${rawToken}`),
+      complete: secondRequest,
+      rawTokenAccepted: firstRequestUsedRaw && allObservedRequestsUsedExpectedBearer,
       refreshAfter401:
-        requestCount >= 2 && observed[0] === `Bearer ${rawToken}` && observed[1] === `Bearer ${rawToken}`,
-      proactiveRefresh: countAfterRefresh > countBeforeRefresh,
+        requestCount >= 2 && firstRequestUsedRaw && secondRequestUsedRefreshed && helperInvocations >= baseline + 2,
       commandAccountType,
-      errors,
     };
   } catch (error) {
-    errors.push(sanitizedError(error));
+    addDiagnostic(sanitizedError(error));
     return {
+      complete: false,
       rawTokenAccepted: false,
       refreshAfter401: false,
-      proactiveRefresh: false,
       commandAccountType: null,
-      errors,
     };
   } finally {
     if (session !== undefined) await session.stop();
@@ -351,10 +229,105 @@ if (mode === 'timeout') setTimeout(() => process.stdout.write('late\\n'), 6000);
   }
 }
 
-async function incompatibleConfigProbe(
+async function malformedCommandProbe(
+  context: ProbeContext,
   executable: string,
   root: string,
-): Promise<{ accepted: boolean; error?: string }> {
+  addDiagnostic: (message: string) => void,
+): Promise<boolean> {
+  const helper = join(root, 'helper with spaces', 'auth helper.js');
+  let complete = true;
+  for (const mode of ['json', 'empty', 'nonzero', 'timeout']) {
+    const codexHome = join(root, `mode-${mode}`);
+    await mkdir(codexHome, { recursive: true, mode: 0o700 });
+    const count = join(root, `mode-${mode}-count`);
+    let requestCount = 0;
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: (request) => {
+        if (new URL(request.url).pathname !== '/v1/responses') return Response.json({ models: [] });
+        requestCount += 1;
+        return Response.json({ error: { message: 'synthetic helper mode' } }, { status: 401 });
+      },
+    });
+    let session: RpcSession | undefined;
+    try {
+      if (server.port === undefined) throw new Error(`${mode}: local server unavailable`);
+      await writeAuthConfig(codexHome, server.port, process.execPath, [helper, mode]);
+      session = await openRpcSession(context, executable, root, codexHome, sanitizedError, {
+        PROBE_COUNT_FILE: count,
+      });
+      const started = (await session.call('thread/start', {
+        cwd: root,
+        model: 'probe-model',
+        modelProvider: 'proxy',
+        sandbox: 'read-only',
+      })) as { thread?: { id?: string } };
+      if (started.thread?.id === undefined) throw new Error(`${mode}: thread/start returned no id`);
+      try {
+        await session.call('turn/start', {
+          threadId: started.thread.id,
+          input: [{ type: 'text', text: `helper ${mode}` }],
+        });
+      } catch (error) {
+        addDiagnostic(`${mode}: ${sanitizedError(error)}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const invocations = await helperCount(count);
+      addDiagnostic(`${mode}: requests=${requestCount}; invocations=${invocations}`);
+      if (invocations === 0) complete = false;
+    } catch (error) {
+      const invocations = await helperCount(count);
+      addDiagnostic(`${mode}: ${sanitizedError(error)} invocations=${invocations}`);
+      if (invocations === 0) complete = false;
+    } finally {
+      if (session !== undefined) await session.stop();
+      server.stop(true);
+    }
+  }
+  return complete;
+}
+
+async function proactiveRefreshProbe(
+  context: ProbeContext,
+  executable: string,
+  root: string,
+  addDiagnostic: (message: string) => void,
+): Promise<{ readonly complete: boolean; readonly refreshed: boolean }> {
+  const codexHome = join(root, 'proactive-codex');
+  const helper = join(root, 'helper with spaces', 'auth helper.js');
+  const counter = join(root, 'proactive-count');
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ models: [] }) });
+  let session: RpcSession | undefined;
+  try {
+    if (server.port === undefined) throw new Error('proactive: local server unavailable');
+    await mkdir(codexHome, { recursive: true, mode: 0o700 });
+    await writeAuthConfig(codexHome, server.port, process.execPath, [helper, 'sequence'], 100);
+    session = await openRpcSession(context, executable, root, codexHome, sanitizedError, {
+      PROBE_COUNT_FILE: counter,
+      PROBE_REFRESH_MARKER: join(root, 'missing-refresh-marker'),
+    });
+    await session.call('account/read', {});
+    const baseline = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const after = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+    return { complete: true, refreshed: after > baseline };
+  } catch (error) {
+    addDiagnostic(`proactive: ${sanitizedError(error)}`);
+    return { complete: false, refreshed: false };
+  } finally {
+    if (session !== undefined) await session.stop();
+    server.stop(true);
+  }
+}
+
+async function incompatibleConfigProbe(
+  context: ProbeContext,
+  executable: string,
+  root: string,
+  addDiagnostic: (message: string) => void,
+): Promise<{ rejected: boolean }> {
   const codexHome = join(root, 'incompatible-codex');
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
   const helper = join(root, 'incompatible-helper.js');
@@ -363,17 +336,23 @@ async function incompatibleConfigProbe(
     join(codexHome, 'config.toml'),
     `model = "probe-model"\nmodel_provider = "proxy"\n[model_providers.proxy]\nname = "proxy"\nbase_url = "http://127.0.0.1:1/v1"\nwire_api = "responses"\nrequires_openai_auth = true\n${authTable(process.execPath, [helper, 'raw'])}`,
   );
-  const result = await spawn([executable, 'app-server'], envFor(root, codexHome), root, '');
-  return {
-    accepted: result.code === 0 && !result.timedOut && !/invalid configuration/i.test(result.stderr),
-    error: result.code === 0 ? undefined : sanitizedError(result.stderr),
-  };
+  const result = await spawn(context, [executable, 'app-server'], envFor(root, codexHome), root, '');
+  const error = sanitizedError(result.stderr);
+  const configRejected =
+    !result.timedOut &&
+    /invalid configuration|unknown (configuration )?field|unexpected key|expected newline/i.test(error);
+  addDiagnostic(
+    `incompatible: ${result.timedOut ? 'timeout' : configRejected ? 'rejected' : result.code === 0 ? 'loaded' : 'failed'}`,
+  );
+  return { rejected: configRejected };
 }
 
 async function staticAccountProbe(
+  context: ProbeContext,
   executable: string,
   root: string,
-): Promise<{ type: 'chatgpt' | null; authFilesUnchanged: boolean }> {
+  addDiagnostic: (message: string) => void,
+): Promise<{ complete: boolean; type: 'chatgpt' | null; authFilesUnchanged: boolean }> {
   const codexHome = join(root, 'static-codex');
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
   await writeStaticAuth(codexHome);
@@ -387,10 +366,13 @@ async function staticAccountProbe(
   try {
     if (server.port === undefined) throw new Error('local server did not expose a port');
     await writeStaticConfig(codexHome, server.port);
-    session = await openRpcSession(executable, root, codexHome);
+    session = await openRpcSession(context, executable, root, codexHome, sanitizedError);
     const type = accountType(await session.call('account/read', {}));
     const authAfter = await readFile(join(codexHome, 'auth.json'), 'utf8');
-    return { type, authFilesUnchanged: authBefore === authAfter };
+    return { complete: true, type, authFilesUnchanged: authBefore === authAfter };
+  } catch (error) {
+    addDiagnostic(`static: ${sanitizedError(error)}`);
+    return { complete: false, type: null, authFilesUnchanged: false };
   } finally {
     if (session !== undefined) await session.stop();
     server.stop(true);
@@ -399,44 +381,55 @@ async function staticAccountProbe(
 
 export async function verifyCodexCommandAuth(executable: string): Promise<CommandAuthProbe> {
   if (executable.trim() === '') throw new Error('Codex executable must be non-empty');
+  const context = createContext();
+  const errors: string[] = [];
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-command-auth-'));
+  const deadlineTimer = setTimeout(() => void context.stopAll(), context.remaining());
+  let result: CommandAuthProbe = {
+    version: 'unknown',
+    platform: `${process.platform}/${process.arch}`,
+    rawTokenAccepted: false,
+    incompatibleConfigRejected: false,
+    refreshAfter401: false,
+    proactiveRefresh: false,
+    staticAccountType: null,
+    commandAccountType: null,
+    authFilesUnchanged: false,
+  };
   try {
     await mkdir(join(root, 'tmp'), { recursive: true, mode: 0o700 });
-    const version = await spawn([executable, '--version'], envFor(root, root), root);
-    const incompatible = await incompatibleConfigProbe(executable, root);
-    let command = {
-      rawTokenAccepted: false,
-      refreshAfter401: false,
-      proactiveRefresh: false,
-      commandAccountType: null as 'chatgpt' | null,
-      errors: [] as readonly string[],
-    };
-    let staticAccountType: 'chatgpt' | null = null;
-    let authFilesUnchanged = true;
-    try {
-      command = await commandProbe(executable, root);
-      const staticResult = await staticAccountProbe(executable, root);
-      staticAccountType = staticResult.type;
-      authFilesUnchanged = staticResult.authFilesUnchanged;
-    } catch (error) {
-      command.errors = [...command.errors, sanitizedError(error)];
-    }
-    for (const error of [...command.errors, ...(incompatible.error === undefined ? [] : [incompatible.error])])
-      console.error(`probe error: ${error}`);
-    return {
-      version: version.stdout.trim() || 'unknown',
+    const version = await spawn(context, [executable, '--version'], envFor(root, root), root);
+    const versionText = version.stdout.trim() || 'unknown';
+    const incompatible = await incompatibleConfigProbe(context, executable, root, (message) => errors.push(message));
+    const command = await commandProbe(context, executable, root, (message) => errors.push(message));
+    const malformedComplete = await malformedCommandProbe(context, executable, root, (message) => errors.push(message));
+    const proactive = await proactiveRefreshProbe(context, executable, root, (message) => errors.push(message));
+    const staticResult = await staticAccountProbe(context, executable, root, (message) => errors.push(message));
+    result = {
+      version: versionText,
       platform: `${process.platform}/${process.arch}`,
       rawTokenAccepted: command.rawTokenAccepted,
-      incompatibleConfigRejected: !incompatible.accepted,
+      incompatibleConfigRejected: incompatible.rejected,
       refreshAfter401: command.refreshAfter401,
-      proactiveRefresh: command.proactiveRefresh,
-      staticAccountType,
+      proactiveRefresh: proactive.refreshed,
+      staticAccountType: staticResult.type,
       commandAccountType: command.commandAccountType,
-      authFilesUnchanged,
+      authFilesUnchanged:
+        command.complete &&
+        malformedComplete &&
+        proactive.complete &&
+        staticResult.complete &&
+        staticResult.authFilesUnchanged,
     };
+  } catch (error) {
+    errors.push(sanitizedError(error));
   } finally {
+    clearTimeout(deadlineTimer);
+    await context.stopAll();
     await rm(root, { recursive: true, force: true });
   }
+  for (const error of errors) console.error(`probe error: ${error}`);
+  return result;
 }
 
 async function main(): Promise<void> {
