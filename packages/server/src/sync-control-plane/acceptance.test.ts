@@ -211,6 +211,101 @@ test('expired history is removed during the next public reconciliation', async (
   });
 }, 30_000);
 
+test('synthetic OAuth copies a rotated account and fences a refresh outage as uncertain', async () => {
+  await withTwoServerSyncFixtures(
+    async (fixture) => {
+      await fixture.a.reconcile();
+      await fixture.b.reconcile();
+
+      await fixture.a.state.oauthCredentialRefresh.refresh('acceptance-oauth-provider', new AbortController().signal);
+      expect(fixture.oauth.refreshInputs()).toEqual([{ token: 'shared-token', family: 'shared-family' }]);
+
+      await fixture.b.state.oauthCredentialRefresh.refresh('acceptance-oauth-provider', new AbortController().signal);
+      expect(fixture.oauth.refreshInputs()).toEqual([
+        { token: 'shared-token', family: 'shared-family' },
+        { token: 'acceptance-refresh-1', family: 'shared-family' },
+      ]);
+
+      const beforeOutage = cloudText(fixture);
+      fixture.oauth.setOnline(false);
+      await expect(
+        fixture.b.state.oauthCredentialRefresh.refresh('acceptance-oauth-provider', new AbortController().signal),
+      ).rejects.toThrow('OAuth credential refresh failed');
+      const afterOutage = cloudText(fixture);
+      expect(afterOutage).toContain('"phase":"uncertain"');
+      expect(afterOutage).toContain('"token":"acceptance-refresh-2"');
+      expect(afterOutage).not.toContain('"token":"acceptance-refresh-3"');
+      expect(afterOutage).not.toBe(beforeOutage);
+      expect(fixture.oauth.refreshInputs()).toHaveLength(2);
+    },
+    {
+      oauthCredentials: {
+        a: { token: 'shared-token', family: 'shared-family' },
+        b: { token: 'shared-token', family: 'shared-family' },
+      },
+    },
+  );
+}, 30_000);
+
+test('synthetic OAuth detach stays pending through outage until an independent candidate is verified', async () => {
+  await withTwoServerSyncFixtures(
+    async (fixture) => {
+      await fixture.a.reconcile();
+      await fixture.b.reconcile();
+      fixture.oauth.setLoginCredential({ token: 'independent-token', family: 'independent-family' });
+      fixture.oauth.setAllowDetach(false);
+
+      const login = fixture.b.state.oauthLoginSessions.start({
+        capability: { plugin: '@example/sync-acceptance', capability: 'acceptance-oauth' },
+        publicValues: {},
+        secrets: {},
+        clearSecrets: [],
+      });
+      await waitUntil(() => {
+        const status = fixture.b.state.oauthLoginSessions.get(login.id)?.status;
+        return status === 'succeeded' || status === 'failed' || status === 'cancelled';
+      }, 'synthetic OAuth duplicate login did not finish');
+      expect(fixture.b.state.oauthLoginSessions.get(login.id)).toMatchObject({
+        status: 'succeeded',
+        providerId: 'acceptance-oauth-provider',
+      });
+
+      await fixture.b.state.sync!.detach('acceptance-oauth-provider', login.id);
+      expect(fixture.b.state.sync!.status().providers).toContainEqual(
+        expect.objectContaining({
+          providerId: 'acceptance-oauth-provider',
+          credentialState: 'detach-pending',
+          pendingReason: 'detach-pending',
+        }),
+      );
+      expect(fixture.oauth.detachChecks().at(-1)).toEqual({
+        shared: { token: 'shared-token', family: 'shared-family' },
+        candidate: { token: 'independent-token', family: 'independent-family' },
+      });
+
+      fixture.oauth.setOnline(false);
+      await expect(fixture.b.state.sync!.detach('acceptance-oauth-provider', login.id)).rejects.toThrow('offline');
+      fixture.oauth.setOnline(true);
+      fixture.oauth.setAllowDetach(true);
+      await fixture.b.state.sync!.detach('acceptance-oauth-provider', login.id);
+      expect(fixture.b.state.sync!.status().providers).toContainEqual(
+        expect.objectContaining({
+          providerId: 'acceptance-oauth-provider',
+          credentialState: 'independent',
+          pendingReason: null,
+        }),
+      );
+    },
+    {
+      oauthCredentials: {
+        a: { token: 'shared-token', family: 'shared-family' },
+        b: { token: 'independent-token', family: 'independent-family' },
+      },
+      oauthShared: { b: true },
+    },
+  );
+}, 30_000);
+
 test('unknown remote format remains read-only and marks the local identity upgrade-required', async () => {
   await withTwoServerSyncFixtures(async (fixture) => {
     fixture.backend.inject('s/v1/default/entity/provider-work', new TextEncoder().encode('{"protocol":2}'));

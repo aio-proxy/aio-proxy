@@ -110,6 +110,7 @@ jobs:
           keychain="$RUNNER_TEMP/aio-cloudkit-signing.keychain-db"
           certificate="$RUNNER_TEMP/aio-cloudkit-signing.p12"
           certificate_password="$RUNNER_TEMP/aio-cloudkit-signing.password"
+          unlocked_certificate="$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem"
           profile="$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile"
           manifest="packages/plugins/cloudkit/release-manifest.json"
           manifest_backup="$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
@@ -119,14 +120,18 @@ jobs:
           trap restore_manifest EXIT
 
           # Keep the temporary keychain password empty. The certificate password
-          # is supplied to `security import` over stdin, so it never appears in
-          # an external command's argument list.
+          # is supplied to OpenSSL through a protected file, so it never appears
+          # in an external command's argument list. Import the resulting PEM
+          # into the temporary keychain without a GUI prompt.
           security create-keychain -p '' "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p '' "$keychain"
           printf '%s' "$CLOUDKIT_CERTIFICATE_BASE64" | base64 -D > "$certificate"
-          printf '%s\n' "$CLOUDKIT_CERTIFICATE_PASSWORD" > "$certificate_password"
-          security import "$certificate" -k "$keychain" -T /usr/bin/codesign < "$certificate_password"
+          printf '%s' "$CLOUDKIT_CERTIFICATE_PASSWORD" > "$certificate_password"
+          chmod 600 "$certificate" "$certificate_password"
+          openssl pkcs12 -in "$certificate" -passin file:"$certificate_password" -nodes -out "$unlocked_certificate"
+          chmod 600 "$unlocked_certificate"
+          security import "$unlocked_certificate" -k "$keychain" -f pem -T /usr/bin/codesign
           security set-keychain-settings -lut 21600 "$keychain"
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
           security set-key-partition-list -S apple-tool:,apple: -s -k '' "$keychain"
@@ -149,18 +154,6 @@ jobs:
           cp "$signed" "$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip"
           cp packages/plugins/cloudkit/dist/native/manifest.json "$signed_manifest"
           echo "CLOUDKIT_SIGNED_MANIFEST=$signed_manifest" >> "$GITHUB_ENV"
-
-      - name: Clean CloudKit signing keychain
-        if: always() && steps.cloudkit-release.outputs.publishable == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
-            "$RUNNER_TEMP/aio-cloudkit-signing.password" \
-            "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
-            "$RUNNER_TEMP/aio-cloudkit-release-manifest.json" \
-            "$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
 
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
@@ -189,6 +182,22 @@ jobs:
           # runs on OIDC alone.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Keep the archive and verified manifest alive until the publish script has
+      # consumed them. This always runs after Changesets, including a failed
+      # publish, so no signing material survives the job.
+      - name: Clean CloudKit signing keychain
+        if: always() && steps.cloudkit-release.outputs.publishable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.password" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
+            "$RUNNER_TEMP/aio-cloudkit-release-manifest.json" \
+            "$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
 
   docker:
     needs: release

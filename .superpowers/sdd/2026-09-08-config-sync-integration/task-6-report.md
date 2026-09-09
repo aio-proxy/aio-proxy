@@ -36,12 +36,19 @@
   packing, and made packed-artifact checks reject a runtime SDK dependency or a
   mismatched peer range.
 - Copied the verified runtime manifest from the macOS signing job into the
-  publish environment. The certificate password is passed to `security import`
-  through stdin and temporary password and manifest files are cleaned up.
-- Extended the acceptance fixture to cover offline operation, identity
-  switching, time advancement, malformed remote data, and secret import with
-  redacted configured-state checks. Restore previews use a fresh operation ID
-  when restoring deleted heads.
+  publish environment. The certificate password is consumed by OpenSSL through
+  a protected ephemeral file, and temporary password, key, and manifest files
+  are cleaned up after Changesets publishes.
+- Added workflow regression checks for publish-before-cleanup ordering and
+  headless signing without password arguments.
+- Extended the acceptance fixture with a deterministic OAuth adapter and fake
+  upstream covering account copy, token-family refresh, independent detach
+  checks, pending detach, and uncertain refresh outage states. Real provider
+  live evidence remains blocked.
+- Packed and inspected the CloudKit npm tarball in artifact tests, covering
+  signed production metadata and explicit unsigned development metadata.
+- Added the CloudKit workspace entry and lockstep versions to `bun.lock`; a
+  frozen offline install now succeeds.
 
 ## Verification
 
@@ -49,30 +56,47 @@ From `packages/server`:
 
 ```text
 rtk bun test --preload=./__tests__/setup.ts src/sync-control-plane/acceptance.test.ts
-1 pass, 0 fail, 6 expect() calls
+12 pass, 0 fail, 35 expect() calls
+
+rtk bun test --preload=./__tests__/setup.ts src/sync-control-plane/*.test.ts
+30 pass, 0 fail, 95 expect() calls
 ```
 
 CloudKit deterministic checks:
 
 ```text
-rtk bun test packages/plugins/cloudkit/build/artifact.test.ts
-1 pass, 0 fail
+rtk bun test packages/plugins/cloudkit/build/artifact.test.ts packages/plugins/cloudkit/scripts/artifact.test.ts
+9 pass, 0 fail, 28 expect() calls
 
 rtk bun run --filter @aio-proxy/plugin-cloudkit test
-16 pass, 0 fail
+16 pass, 0 fail, 22 expect() calls
 
 rtk swift test --package-path packages/plugins/cloudkit/native
 exit 0; native test bundle built successfully
 ```
 
-The first full CloudKit package run encountered an intermittent EPIPE in the
-partial-frame test; the focused native-session run and an immediate full rerun
-both passed. Swift emitted the existing Swift 6 concurrency warnings for the
-`NSLock` calls in `StdioServer.swift`.
+The Swift run emits the existing Swift 6 concurrency warnings for the `NSLock`
+calls in `StdioServer.swift`.
+
+Release and packaging checks:
+
+```text
+rtk bun test scripts/release-workflow.test.ts
+2 pass, 0 fail, 7 expect() calls
+
+rtk bun install --frozen-lockfile --prefer-offline
+exit 0; 97 packages installed
+
+rtk bunx oxlint scripts/release.ts scripts/release-workflow.test.ts packages/plugins/cloudkit/scripts/pack-native.ts packages/plugins/cloudkit/build/artifact.test.ts packages/server/src/sync-control-plane/acceptance-oauth.ts packages/server/src/sync-control-plane/acceptance.test.ts packages/server/src/sync-control-plane/test-support.ts
+exit 0
+
+rtk bunx oxfmt --check packages/plugins/cloudkit/build/artifact.test.ts packages/server/src/sync-control-plane/acceptance-oauth.ts packages/server/src/sync-control-plane/acceptance.test.ts packages/server/src/sync-control-plane/test-support.ts scripts/release-workflow.test.ts
+All matched files use the correct format.
+```
 
 Other checks:
 
-````text
+```text
 rtk bun run --filter @aio-proxy/dashboard build
 exit 0
 
@@ -81,40 +105,14 @@ exit 0
 
 rtk bun run check
 exit 0; existing oxlint warnings only, formatting clean
-
-Review-round verification:
-
-```text
-rtk bun test --preload=./__tests__/setup.ts src/sync-control-plane/acceptance.test.ts
-10 pass, 0 fail, 22 expect() calls
-
-rtk bun test --preload=./__tests__/setup.ts src/sync-control-plane/*.test.ts
-25 pass, 0 fail, 74 expect() calls
-
-rtk bun test packages/plugins/cloudkit/build/artifact.test.ts packages/plugins/cloudkit/scripts/pack-native.test.ts
-9 pass, 0 fail
-
-rtk bun run --filter @aio-proxy/plugin-cloudkit test
-16 pass, 0 fail, 22 expect() calls
-
-rtk bunx oxlint scripts/release.ts
-exit 0
-
-rtk bunx oxlint packages/plugins/cloudkit/scripts/pack-native.ts
-exit 0
-
-rtk bunx oxfmt --check .github/workflows/release.yml packages/plugins/cloudkit/build/artifact.test.ts packages/plugins/cloudkit/package.json packages/plugins/cloudkit/scripts/pack-native.ts packages/server/src/sync-control-plane/acceptance.test.ts packages/server/src/sync-control-plane/local-port.ts packages/server/src/sync-control-plane/operations.ts packages/server/src/sync-control-plane/test-support.ts scripts/release.ts
-All matched files use the correct format.
-````
-
-````
+```
 
 The focused native build command also completed successfully:
 
 ```text
 rtk bun packages/plugins/cloudkit/scripts/build-native.ts
 exit 0
-````
+```
 
 ## Blocked gates
 

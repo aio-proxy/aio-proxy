@@ -8,7 +8,6 @@ import {
   createPluginRepository,
   createSyncRepository,
   encodeCandidate,
-  type BuiltInPluginDefinition,
   type EntityKind,
   type LocalBinding,
   type LocalEntity,
@@ -19,7 +18,6 @@ import {
 import { openDb } from '@aio-proxy/core/db';
 import {
   SyncBackendError,
-  definePlugin,
   zod,
   type SyncBackendDefinition,
   type SyncRead,
@@ -30,6 +28,16 @@ import { ConfigSchema } from '@aio-proxy/types';
 import { createServerState } from '#server-test-lifecycle';
 
 import { createFifoQueue, type FifoQueue } from '../fifo-queue';
+import {
+  ACCEPTANCE_BINDING_PLUGIN_VERSION,
+  ACCEPTANCE_OAUTH_PROVIDER_ID,
+  ACCEPTANCE_PLUGIN,
+  acceptanceDescriptor,
+  createAcceptanceOAuthState,
+  seedAcceptanceOAuth,
+  type AcceptanceOAuthControls,
+  type AcceptanceOAuthCredential,
+} from './acceptance-oauth';
 import { createServerSyncLifecycle } from './lifecycle';
 import { createLocalSyncPort } from './local-port';
 
@@ -268,53 +276,6 @@ function createAcceptanceMemoryBackend(): AcceptanceMemoryBackend {
   };
 }
 
-const ACCEPTANCE_PLUGIN = '@example/sync-acceptance';
-const ACCEPTANCE_BINDING_PLUGIN_VERSION = '1.0.0';
-
-function acceptanceDescriptor(backend: SyncBackendDefinition<Record<string, never>>): BuiltInPluginDefinition {
-  return {
-    packageName: ACCEPTANCE_PLUGIN,
-    version: ACCEPTANCE_BINDING_PLUGIN_VERSION,
-    descriptor: definePlugin(
-      (api) => {
-        api.sync.register(backend);
-        api.oauth.register({
-          id: 'acceptance-oauth',
-          displayName: 'Acceptance OAuth',
-          account: { options: { schema: zod.object({}), form: [] } },
-          credentials: zod.object({ token: zod.string() }),
-          async login() {
-            throw new Error('acceptance OAuth login is not used by sync tests');
-          },
-          catalog: {
-            policy: { kind: 'static' },
-            async discover() {
-              return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
-            },
-          },
-          async createRuntime() {
-            throw new Error('acceptance OAuth runtime is not used by sync tests');
-          },
-          credentialSync: {
-            formatVersion: 1,
-            multiDevice: { evidenceId: 'acceptance-oauth-evidence' },
-            canDetach: async () => true,
-          },
-        });
-      },
-      {
-        options: {
-          schema: zod.object({ endpoint: zod.url().optional(), token: zod.string().optional() }),
-          form: [
-            { type: 'text', key: 'endpoint', label: 'Endpoint' },
-            { type: 'secret', key: 'token', label: 'Token' },
-          ],
-        },
-      },
-    ),
-  };
-}
-
 function acceptanceEntity(objectId: string, kind: EntityKind, logicalKey: string): LocalEntity {
   return {
     objectId,
@@ -342,12 +303,15 @@ export type TwoServerSyncFixture = {
   readonly backend: AcceptanceMemoryBackend;
   readonly a: AcceptanceServer;
   readonly b: AcceptanceServer;
+  readonly oauth: AcceptanceOAuthControls;
   readonly restart: (device: 'a' | 'b') => Promise<void>;
   readonly close: () => Promise<void>;
 };
 
 export type TwoServerSyncFixtureOptions = {
   readonly providerObjectIds?: Partial<Record<'a' | 'b', string>>;
+  readonly oauthCredentials?: Partial<Record<'a' | 'b', AcceptanceOAuthCredential>>;
+  readonly oauthShared?: Partial<Record<'a' | 'b', boolean>>;
 };
 
 /**
@@ -361,10 +325,20 @@ export async function withTwoServerSyncFixtures(
   options: TwoServerSyncFixtureOptions = {},
 ): Promise<void> {
   const backend = createAcceptanceMemoryBackend();
-  const descriptor = acceptanceDescriptor(backend.definition);
+  const oauth = createAcceptanceOAuthState();
+  const descriptor = acceptanceDescriptor(backend.definition, oauth.state);
+  const oauthEnabled = options.oauthCredentials !== undefined;
   const initialRaw = {
     plugins: [[ACCEPTANCE_PLUGIN, { endpoint: 'https://plugin.example.test' }]],
-    providers: {},
+    providers: oauthEnabled
+      ? {
+          [ACCEPTANCE_OAUTH_PROVIDER_ID]: {
+            kind: 'oauth',
+            plugin: ACCEPTANCE_PLUGIN,
+            capability: 'acceptance-oauth',
+          },
+        }
+      : {},
   } satisfies Record<string, unknown>;
   const homes: string[] = [];
   const devices = new Map<'a' | 'b', AcceptanceServer>();
@@ -399,6 +373,17 @@ export async function withTwoServerSyncFixtures(
     );
     repository.putEntity(binding.id, acceptanceEntity('plugin-shared', 'plugin-business', ACCEPTANCE_PLUGIN));
     repository.putEntity(binding.id, acceptanceEntity('model-shared', 'model-rule', 'shared-model'));
+    if (oauthEnabled) {
+      const oauthCredential = options.oauthCredentials?.[device];
+      if (oauthCredential === undefined) throw new Error(`missing OAuth credential for acceptance device ${device}`);
+      seedAcceptanceOAuth({
+        binding,
+        repository,
+        accounts: pluginRepository,
+        credential: oauthCredential,
+        shared: options.oauthShared?.[device] === true,
+      });
+    }
     if (markers !== undefined && seedPluginSecret)
       pluginRepository.writePluginSecret(ACCEPTANCE_PLUGIN, null, { token: markers.plugin });
     database.close();
@@ -410,6 +395,8 @@ export async function withTwoServerSyncFixtures(
       configPath,
       dbHome: home,
       watchConfig: false,
+      logger: () => {},
+      pluginLogger: () => {},
       builtIns: [descriptor],
     });
     const server = {
@@ -435,6 +422,7 @@ export async function withTwoServerSyncFixtures(
   await createDevice('b', markers, false);
   const fixture = {
     backend,
+    oauth: oauth.controls,
     get a() {
       return devices.get('a')!;
     },
@@ -451,6 +439,8 @@ export async function withTwoServerSyncFixtures(
         configPath: current.configPath,
         dbHome: current.home,
         watchConfig: false,
+        logger: () => {},
+        pluginLogger: () => {},
         builtIns: [descriptor],
       });
       devices.set(device, {

@@ -4,6 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { $ } from 'bun';
+
 import { nativeArchivePath, packNative, validateRuntimeManifestForProduction } from '../scripts/pack-native';
 
 async function withCloudKitEnvironment<T>(
@@ -22,6 +24,32 @@ async function withCloudKitEnvironment<T>(
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+  }
+}
+
+async function inspectPackedNative(archiveName: string): Promise<{
+  readonly packageJson: Record<string, unknown>;
+  readonly manifest: Record<string, unknown>;
+  readonly archive: Uint8Array;
+}> {
+  const destination = await mkdtemp(join(tmpdir(), 'aio-cloudkit-tarball-'));
+  try {
+    await $`bun pm pack --destination ${destination}`.cwd(join(import.meta.dir, '..'));
+    const [tarball] = await Array.fromAsync(new Bun.Glob('*.tgz').scan({ cwd: destination, absolute: true }));
+    if (tarball === undefined) throw new Error('CloudKit test pack produced no tarball');
+    const files = await new Bun.Archive(await Bun.file(tarball).bytes()).files();
+    const packageFile = files.get('package/package.json');
+    const manifestFile = files.get('package/dist/native/manifest.json');
+    const archiveFile = files.get(`package/dist/native/${archiveName}`);
+    if (packageFile === undefined || manifestFile === undefined || archiveFile === undefined)
+      throw new Error('CloudKit tarball omitted native package files');
+    return {
+      packageJson: (await packageFile.json()) as Record<string, unknown>,
+      manifest: (await manifestFile.json()) as Record<string, unknown>,
+      archive: await archiveFile.bytes(),
+    };
+  } finally {
+    await rm(destination, { recursive: true, force: true });
   }
 }
 
@@ -83,6 +111,16 @@ test('packs verified signing and notarization metadata into the runtime manifest
         .update(await readFile(join(import.meta.dir, '..', 'dist/native', archive.split('/').at(-1)!)))
         .digest('hex'),
     ).toBe(digest);
+    const packed = await inspectPackedNative(archive.split('/').at(-1)!);
+    expect(packed.packageJson.peerDependencies).toEqual({ '@aio-proxy/plugin-sdk': version });
+    expect(packed.manifest).toMatchObject({
+      archive: `dist/native/AIOProxyCloudKit-${version}.app.zip`,
+      sha256: digest,
+      signatureStatus: 'verified',
+      notarizationStatus: 'accepted',
+      signing: { teamId: 'TEAM123', bundleIdentifier: 'dev.aioproxy' },
+    });
+    expect(createHash('sha256').update(packed.archive).digest('hex')).toBe(digest);
     validateRuntimeManifestForProduction(manifest, 'TEAM123');
   } finally {
     await rm(join(import.meta.dir, '..', 'dist', 'native'), { recursive: true, force: true });
@@ -107,6 +145,13 @@ test('marks unsigned development artifacts as non-production', async () => {
       () => packNative(),
     );
     expect(manifest).toMatchObject({ signatureStatus: 'unsigned', notarizationStatus: 'unverified' });
+    const packed = await inspectPackedNative(archive.split('/').at(-1)!);
+    expect(packed.manifest).toMatchObject({
+      signatureStatus: 'unsigned',
+      notarizationStatus: 'unverified',
+      archive: `dist/native/AIOProxyCloudKit-${version}.app.zip`,
+    });
+    expect(createHash('sha256').update(packed.archive).digest('hex')).toBe(manifest.sha256);
     expect(() => validateRuntimeManifestForProduction(manifest, 'TEAM123')).toThrow('production');
   } finally {
     await rm(join(import.meta.dir, '..', 'dist', 'native'), { recursive: true, force: true });
