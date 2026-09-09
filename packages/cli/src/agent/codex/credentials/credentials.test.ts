@@ -41,7 +41,7 @@ test('keyless proxy stays keyless and uses a non-secret explicit token', async (
     expect(await snapshot.resolve({ kind: 'none' }, 'aio-proxy')).toEqual({
       token: 'aio-proxy-local',
       kind: 'placeholder',
-      verified: true,
+      verified: false,
     });
     expect(generated).toBe(false);
     expect(await Bun.file(path).text()).toBe(`${before}\n`);

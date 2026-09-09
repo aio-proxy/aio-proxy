@@ -146,7 +146,7 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
       status: commit.status,
       providerId,
       configPath: deps.location.configPath,
-      connection: credential.verified ? 'ok' : 'offline',
+      connection: credential.kind === 'placeholder' ? 'not_checked' : credential.verified ? 'ok' : 'offline',
       credential: credential.kind,
       migration: migrationResult,
     };

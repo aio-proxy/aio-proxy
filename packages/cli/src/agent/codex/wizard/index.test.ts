@@ -34,7 +34,7 @@ test('skips Key prompt and leaves history when migration is declined', async () 
       choices: [],
       resolve: async () => {
         events.push('resolve-key');
-        return { token: 'aio-proxy-local', kind: 'placeholder', verified: true };
+        return { token: 'aio-proxy-local', kind: 'placeholder', verified: false };
       },
     }),
     inspectSessions: async (providerId) => {
@@ -56,7 +56,12 @@ test('skips Key prompt and leaves history when migration is declined', async () 
   });
   expect(events).toEqual(['migration-question', 'resolve-key', 'save']);
   expect(inspectedProvider).toBe('custom');
-  expect(result).toMatchObject({ target: 'codex', providerId: 'custom', migration: { status: 'declined' } });
+  expect(result).toMatchObject({
+    target: 'codex',
+    providerId: 'custom',
+    connection: 'not_checked',
+    migration: { status: 'declined' },
+  });
   expect(JSON.stringify(result)).not.toContain('aio-proxy-local');
 });
 

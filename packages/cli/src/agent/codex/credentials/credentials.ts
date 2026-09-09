@@ -268,7 +268,9 @@ export async function inspectProxyKeys(deps: CredentialDeps): Promise<KeySnapsho
       choices: [],
       resolve: async (selection) => {
         if (selection.kind !== 'none') throw asCredentialError('CREDENTIAL_AUTH_DISABLED');
-        return { token: 'aio-proxy-local', kind: 'placeholder', verified: true };
+        // The fixed placeholder only identifies an unauthenticated proxy. It must not
+        // claim that the endpoint is reachable or that /v1/models was verified.
+        return { token: 'aio-proxy-local', kind: 'placeholder', verified: false };
       },
     };
   }
