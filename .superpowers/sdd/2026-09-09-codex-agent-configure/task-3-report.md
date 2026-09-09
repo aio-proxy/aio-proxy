@@ -34,6 +34,31 @@ rtk bunx oxfmt --check packages/cli/src/agent/codex/location packages/cli/src/ag
 All matched files use the correct format.
 ```
 
+## Default Codex location regression
+
+The production call site now passes `$HOME/.codex` as the resolver fallback, so an unset `CODEX_HOME` resolves to `$HOME/.codex/config.toml` while an explicit `CODEX_HOME` remains authoritative. Added a focused regression assertion at the configure call site.
+
+Exact verification:
+
+```text
+rtk bun test ./packages/cli/src/agent/codex/codex.test.ts
+2 pass
+0 fail
+3 expect() calls
+
+rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config
+22 pass
+0 fail
+56 expect() calls
+
+rtk bun run check
+oxlint: existing warnings only; no errors
+oxfmt --check: all matched files use the correct format
+
+rtk git diff --check
+no output
+```
+
 ## Final cancellation fix
 
 `recoverCodexConfigOperation` now checks the configured home and managed-root path read-only before looking for a journal. It creates or chmods the managed root only after a pending operation is found and recovery is accepted. Absent roots return `none` without filesystem writes; declined and aborted recovery leave the pending journal untouched.

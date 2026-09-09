@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 import { AtomicConfigFile, configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
@@ -79,7 +80,7 @@ const cancelledCodexResult = (location: CodexLocation, reason?: 'non_interactive
   ...(reason === undefined ? {} : { reason }),
 });
 
-const configuredLocation = (): CodexLocation => resolveCodexLocation(homedir(), process.env);
+const configuredLocation = (): CodexLocation => resolveCodexLocation(join(homedir(), '.codex'), process.env);
 
 const occupiedIds = async (location: CodexLocation): Promise<readonly string[]> => {
   try {
