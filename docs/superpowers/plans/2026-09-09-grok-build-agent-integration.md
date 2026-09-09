@@ -16,8 +16,8 @@
 - 最低已验证 Grok `1.0.24`；低版本或未知版本给警告。macOS 之外没有通过真实宿主验证前不宣称兼容。
 - helper 命令固定为 `aio-proxy agent auth grok --installation-id <uuid>`，不增加 `--grok-home`、endpoint 或 token 参数。
 - `GROK_HOME` 支持绝对路径和 `~/`，未设置时 `~/.grok`；其他相对路径拒绝。helper 从宿主继承，不搜索其他 installation。
-- stdout 成功仅一行 `{"access_token":"...","expires_in":900}`；秒数是输出时实际剩余整数且 >0。失败为空；RT 永不输出；诊断和设备码 URL 走 stderr。
-- 普通 helper 有 RT 必须经服务端 refresh；只有等待期间观察到新 revision 的并发调用可复用结果。
+- stdout 成功仅一行 `{"access_token":"...","expires_in":900}`；秒数是输出时实际剩余整数且 >0。输出前失败为空；stdout/完成标记写失败可能有输出但必须非零；RT 永不输出；诊断和设备码 URL 走 stderr。
+- 普通 helper 有 RT 必须经服务端 refresh；只有等待期间观察到新 revision，或同一 revision 从未输出变为已输出的并发调用可复用结果。
 - `GROK_AUTH_EXPIRED=1` 只静默刷新；锁等待、网络、持久化和清理共享最多 5 秒预算；普通交互总预算最多 240 秒。
 - AT 15 分钟、RT 90 天、refresh replay 30 秒，沿用服务端现有规则，不调整安全语义。
 - configure 不启动 Grok/server、不签发凭据、不修改 `[models].default`；模型目录是普通 `/v1/models`，没有 Grok LKG/timer。
@@ -525,7 +525,7 @@ const desired = {
 
 ## Task 4: 定位 Grok 根和稳定入口，拒绝可见路由冲突
 
-**Files:** hosts、executable、service、`upgrade/{index.ts,detect.ts}`，以及 `grok/{policy.ts,policy.test.ts}`。`executable/index.ts` 导出 resolver；`hosts/index.ts` 导出路径函数。
+**Files:** hosts、executable、service、`upgrade/{index.ts,detect.ts}`，以及 `grok/{index.ts,grok.ts,types.ts,policy.ts,policy.test.ts}`。`executable/index.ts` 导出 resolver；`hosts/index.ts` 导出路径函数。
 
 **Interfaces:** Consumes 现有 `AgentHostDeps`、`resolveExec()` 实现和 `resolveStableManagedExec()`；Produces：
 
@@ -538,7 +538,8 @@ export function resolveAgentExecutable(
 // executable公开Grok严格入口；upgrade公开已安装launcher业务操作。
 export function resolveGrokExecutable(): Promise<string>;
 export function resolveInstalledLauncher(executable: string): Promise<string>;
-// grok/policy.ts 私有；读取器不读取 auth.json。
+// grok/policy.ts实现私有；policy类型在grok/types.ts定义；不读取auth.json。
+export type GrokDeadline = { readonly deadline: number; readonly signal: AbortSignal };
 export type GrokPolicySource = { readonly path: string; readonly text: string; readonly kind: 'toml' | 'json' };
 export type GrokVisiblePolicy = {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -547,8 +548,10 @@ export type GrokVisiblePolicy = {
 export function checkGrokPolicy(text: string, endpoint: string, command: string,
   policy: GrokVisiblePolicy): readonly string[]; // 冲突字段路径，不含值或 secret
 export function readGrokPolicy(root: string,
-  env: Readonly<Record<string, string | undefined>>): Promise<GrokVisiblePolicy>;
+  env: Readonly<Record<string, string | undefined>>, budget?: GrokDeadline): Promise<GrokVisiblePolicy>;
 export function grokAuthCommand(executable: string, installationId: string): string;
+// grok/grok.ts公开facade由index.ts导出，内部调用私有readGrokPolicy。
+export function loadGrokPolicy(root: string, budget?: GrokDeadline): Promise<GrokVisiblePolicy>;
 ```
 
 - [ ] 写路径和 shell 参数实际执行测试，不只是字符串 snapshot：
@@ -597,9 +600,17 @@ function grokAuthCommand(executable: string, installationId: string): string {
 Windows 不复用 POSIX quoting；当前发布包无 Windows binary。本期兼容声明只写真实验证的平台，Linux shell 路径可测试但不能仅据此宣布 Grok Linux 验收通过。
 - [ ] 实现 policy 读取：`root/managed_config.toml`、`/etc/grok/managed_config.toml`、`root/requirements.toml`、`/etc/grok/requirements.toml`；`GROK_CONFIG` inline JSON、`GROK_CONFIG_PATH` 指定 JSON/TOML。macOS 以 `defaults export ai.x.grok -` 读取可见 domain，并用 `plutil -convert json -o - -` 解析 stdin 输出；无 domain 视作 absent，存在但无法读取/解析返回可见 policy 不可验证错误。每个子进程设超时并回收，输出不进日志。不存在文件可跳过，存在但非法/不可读不能静默忽略。
 - [ ] 只解释 spec 相关叶子和 model/provider endpoints，遵循宿主 documented precedence（requirements pin 对抗 env，user config 覆盖 managed user keys）。检查七字段的 `GROK_*` env 对应值；不同值产生字段冲突，同值允许。按已核实的宿主优先级检查实际冲突：per-model api_key/env_key/auth_provider以及extra_headers/env_http_headers中的Authorization覆盖高于global session，生效时报告该字段；XAI_API_KEY只是无session时fallback，OIDC低于external helper，不能仅因它们存在就拒绝。强制team/relay若与当前登录方式冲突则报具体字段，不清空环境。用户配置和可见覆盖中的 `model.*.base_url`、`model.*.api_base_url`、`model_providers.*.base_url`、`model_providers.*.api_base_url` 解析 URL，与 E 的 origin 不同或不可解析时拒绝；不递归把所有字符串当 URL。
+- [ ] 在 `grok/grok.ts` 实现并由同目录index公开policy读取facade；helper的生产deps使用该入口，policy算法继续私有：
+
+```ts
+export function loadGrokPolicy(root: string, budget?: GrokDeadline): Promise<GrokVisiblePolicy> {
+  return readGrokPolicy(root, process.env, budget);
+}
+```
+
 - [ ] 添加行为测试：env 外部 URL、相同 origin 值、alias requirements、无关 UI/MCP 设置、显式外部模型、自定义同 origin 模型、不可读 policy。断言返回字段名并且输入 config 未变；不要把外部 API Key 或完整 policy 放进错误。
 - [ ] `rtk bun test packages/cli/src/agent/hosts packages/cli/src/agent/grok/policy.test.ts packages/cli/src/executable packages/cli/src/service/service.test.ts` 预期通过。
-- [ ] `rtk git add packages/cli/src/executable packages/cli/src/service packages/cli/src/upgrade/index.ts packages/cli/src/upgrade/detect.ts packages/cli/src/agent/hosts packages/cli/src/agent/grok/policy.ts packages/cli/src/agent/grok/policy.test.ts`；`rtk git commit -m "feat(agent): resolve safe Grok configuration and helper entry" -m "Co-authored-by: Codex <noreply@openai.com>"`。
+- [ ] `rtk git add packages/cli/src/executable packages/cli/src/service packages/cli/src/upgrade/index.ts packages/cli/src/upgrade/detect.ts packages/cli/src/agent/hosts packages/cli/src/agent/grok`；`rtk git commit -m "feat(agent): resolve safe Grok configuration and helper entry" -m "Co-authored-by: Codex <noreply@openai.com>"`。
 
 ## Task 5: 安全文件写入与可恢复 configure 事务
 
@@ -609,7 +620,6 @@ Windows 不复用 POSIX quoting；当前发布包无 Windows binary。本期兼�
 
 ```ts
 export type GrokMarker = AgentManagedMarker & { readonly agent: 'grok' };
-export type GrokDeadline = { readonly deadline: number; readonly signal: AbortSignal };
 export type GrokTransaction = {
   readonly operation: 'configure' | 'remove';
   readonly changes: readonly FieldChange[];
@@ -627,7 +637,7 @@ export type GrokConfigureInput = {
 };
 export type GrokDeps = {
   readonly now: () => number; readonly randomUUID: () => string;
-  readonly policy: (root: string) => Promise<GrokVisiblePolicy>;
+  readonly policy: (root: string, budget?: GrokDeadline) => Promise<GrokVisiblePolicy>;
   readonly revoke: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
 };
 export type GrokInspection = {
@@ -640,6 +650,7 @@ export type GrokInspection = {
 export type GrokContext = {
   readonly marker: GrokMarker; readonly root: string; readonly budget: GrokDeadline;
   readonly assertOwnership: () => Promise<void>;
+  assertRoutingSafe(): Promise<void>; // 重读当前配置和可见policy，失败不接触凭据
   readCredential(): Promise<unknown | undefined>;
   writeCredential(value: unknown): Promise<void>;
   clearCredential(): Promise<void>;
@@ -650,11 +661,43 @@ export function configureGrok(input: GrokConfigureInput, deps: GrokDeps): Promis
 export function inspectGrok(root: string, adapterVersion: string): Promise<GrokInspection>;
 export function withGrokInstallation<T>(input: {
   readonly root: string; readonly installationId: string; readonly adapterVersion: string;
-  readonly budget: GrokDeadline;
+  readonly budget: GrokDeadline; readonly policy: GrokDeps['policy'];
 }, action: (context: GrokContext) => Promise<T>): Promise<T>;
 ```
 
-`withGrokInstallation` 用于 auth：拿锁→重读→校验身份和版本→恢复 ownership transaction→要求 active/current→调用 action；不允许配置漂移时认证。remove 的内部路径允许 modified 状态，但使用相同恢复和锁。list 仅 `inspectGrok`，绝不调用恢复函数。
+`withGrokInstallation` 用于 auth：拿锁→重读→校验身份和版本→恢复 ownership transaction→要求 active/current→`assertRoutingSafe()`→调用 action。该检查必须早于完整凭据的解码/取用、refresh/device请求或缓存复用；锁外仅允许下述revision/delivered元数据观察；不仅比较七个受管叶子，还用Task4同一个policy检查器校验当前完整配置及本次helper可见覆盖。`context.assertRoutingSafe()`在输出前再次执行。remove 的内部路径允许 modified 状态，但使用相同恢复和锁。list 仅 `inspectGrok`，绝不调用恢复函数。
+
+- [ ] 实现 auth 复用的私有路由复核（不从外部目录导入policy私有文件）：
+
+```ts
+async function assertGrokRoutingSafe(root: string, marker: GrokMarker,
+  ownership: GrokOwnership, policy: GrokDeps['policy'], budget: GrokDeadline): Promise<void> {
+  budget.signal.throwIfAborted();
+  const path = join(root, 'config.toml');
+  const snapshot = await readGrokFile(path);
+  if (snapshot === undefined) throw new Error('Grok configuration missing');
+  for (const leaf of ownership.leaves) {
+    if (!equalGrokLeaf(readGrokLeaf(snapshot.text, leaf.path), leaf.written)) {
+      throw new Error('Grok configuration modified: ' + leaf.path.join('.'));
+    }
+  }
+  const command = ownership.leaves.find(leaf =>
+    leaf.path.length === 2 && ['auth', 'grok_com_config'].includes(leaf.path[0]!) &&
+    leaf.path[1] === 'auth_provider_command')?.written;
+  if (command?.present !== true) throw new Error('Grok auth command missing');
+  const visible = await policy(root, budget);
+  const conflicts = checkGrokPolicy(snapshot.text, marker.endpoint, command.value, visible);
+  if (conflicts.length > 0) throw new Error('Grok routing conflict: ' + conflicts.join(', '));
+  const latest = await readGrokFile(path);
+  if (latest === undefined || latest.dev !== snapshot.dev || latest.ino !== snapshot.ino ||
+      latest.text !== snapshot.text || latest.mode !== snapshot.mode) {
+    throw new Error('Grok configuration changed during authorization');
+  }
+  budget.signal.throwIfAborted();
+}
+```
+
+传入已验证的marker/ownership，不能从当前config反向推导可信endpoint或command。`GrokContext.assertRoutingSafe`绑定此函数及最新已恢复ownership；生产policy每次经 `loadGrokPolicy(root, budget)` 调用 `readGrokPolicy(root, process.env, budget)`，不缓存configure时的policy。所有policy子进程/文件操作计入同一helper deadline，子进程超时或abort必须终止并回收。helper不承诺阻止不合作外部进程在最终检查后改写配置或环境。
 
 私有文件接口：
 
@@ -756,7 +799,7 @@ function classifyChange(current: LeafValue, change: FieldChange): 'before' | 'af
 export type GrokCredential = {
   readonly format: 1; readonly agent: 'grok'; readonly installationId: string; readonly endpoint: string;
   readonly revision: number; readonly accessToken: string; readonly refreshToken: string;
-  readonly accessExpiresAt: number;
+  readonly accessExpiresAt: number; readonly delivered: boolean; // 本revision是否已成功写stdout并持久化完成标记
   readonly status: 'ready' | 'refreshing' | 'needs_login';
   readonly refreshStartedAt?: number;
 };
@@ -775,7 +818,7 @@ export function createGrokTransport(marker: GrokMarker, budget: GrokDeadline,
   options?: { readonly fetch?: typeof globalThis.fetch; readonly now?: () => number }): GrokTransport;
 ```
 
-状态规则：`ready` 不带 startedAt；`refreshing` 必须带有限正 startedAt；`needs_login` 清空 AT/RT，expiry=0，并保持 revision。缺 credential 表示从未登录；损坏/绑定不符/未知 format 拒绝读取和任何网络请求，不将其当空文件重新授权。
+状态规则：`delivered`是必需boolean，新token保存为false，成功stdout后同一安装锁内持久化为true且不增加revision；复用已delivered结果不再写该标记。`ready` 不带 startedAt；`refreshing` 必须带有限正 startedAt；`needs_login` 清空AT/RT、expiry=0、delivered=false，并保持revision；refreshing保留该revision原有delivered。缺 credential 表示从未登录；损坏/绑定不符/未知 format 拒绝读取和任何网络请求，不将其当空文件重新授权。
 
 - [ ] 写真实 storage-before-return 测试及 replay deadline 测试：
 
@@ -784,7 +827,7 @@ test('refresh replay is bounded by the first attempt, not each restart', () => {
   const state: GrokCredential = {
     format: 1, agent: 'grok', installationId: '11111111-1111-4111-8111-111111111111',
     endpoint: 'http://127.0.0.1:9317', revision: 2,
-    accessToken: 'fake-at', refreshToken: 'fake-rt', accessExpiresAt: 901_000,
+    accessToken: 'fake-at', refreshToken: 'fake-rt', accessExpiresAt: 901_000, delivered: true,
     status: 'refreshing', refreshStartedAt: 1_000,
   };
   expect(grokRefreshRecoverable(state, 30_999)).toBe(true);
@@ -801,7 +844,7 @@ async function saveGrokToken(context: GrokContext, previous: GrokCredential | un
   token: AgentTokenResponse, requestStartedAt: number): Promise<GrokCredential> {
   const saved: GrokCredential = {
     format: 1, agent: 'grok', installationId: context.marker.installationId, endpoint: context.marker.endpoint,
-    revision: (previous?.revision ?? 0) + 1, status: 'ready',
+    revision: (previous?.revision ?? 0) + 1, status: 'ready', delivered: false,
     accessToken: token.access_token, refreshToken: token.refresh_token,
     accessExpiresAt: requestStartedAt + token.expires_in * 1_000,
   };
@@ -838,19 +881,21 @@ const safeFetch = async (input: Parameters<typeof fetch>[0], init?: Parameters<t
 
 ## Task 7: 薄 helper 编排、并发 revision 和 stdout 契约
 
-**Files:** `grok-auth/{index.ts,grok-auth.ts,grok-auth.test.ts,types.ts}`；`grok/{index.ts,grok.ts,files.ts}` 增加只读 revision 入口。
+**Files:** `grok-auth/{index.ts,grok-auth.ts,grok-auth.test.ts,types.ts}`；`grok/{index.ts,grok.ts,files.ts}` 增加只读revision/delivered观察入口。
 
 **Interfaces:** Consumes Tasks 5–6；Produces：
 
 ```ts
-export function readGrokRevision(root: string, installationId: string): Promise<number | undefined>;
+export type GrokAuthObservation = { readonly revision: number; readonly delivered: boolean };
+export function readGrokObservation(root: string, installationId: string): Promise<GrokAuthObservation | undefined>;
 export type GrokAuthInput = {
   readonly root: string; readonly installationId: string; readonly adapterVersion: string;
   readonly expired: boolean;
 };
 export type GrokAuthDeps = {
   readonly now: () => number;
-  readonly readRevision?: typeof readGrokRevision; // 注入同一只读实现用于进程barrier测试
+  readonly policy: GrokDeps['policy'];
+  readonly readObservation?: typeof readGrokObservation; // 注入同一只读实现用于进程barrier测试
   readonly transport: (marker: GrokMarker, budget: GrokDeadline) => GrokTransport;
   readonly stdout: (line: string) => Promise<void>;
   readonly stderr: (line: string) => void;
@@ -859,7 +904,7 @@ export function grokAuth(input: GrokAuthInput, deps: GrokAuthDeps): Promise<void
 function grokTokenLine(credential: GrokCredential, now: number): string;
 ```
 
-生产 deps 用 `Date.now`、`createGrokTransport`、`process.stdout.write` callback Promise 和 stderr；不做 browser open/stdin read。`readGrokRevision` 经 grok public index 导出：安全读取文件，只返回绑定 installation 的 revision，校验 format/agent/ID/revision；不刷新或写入。
+生产 deps 用 `Date.now`、`createGrokTransport`、`process.stdout.write` callback Promise 和 stderr；不做 browser open/stdin read。`readGrokObservation` 经 grok public index 导出：安全读取文件，只返回绑定 installation 的 `{revision,delivered}`，校验 format/agent/ID/revision/delivered；不刷新或写入。
 
 - [ ] 在 helper 测试内定义 `authFixture()`：调用 Task 5 `grokFixture()`、`configureGrok()`，返回它们和如下 input/deps/counters。fake token/device 使用 runtime schema 验证完整字段。
 
@@ -872,7 +917,7 @@ const input: GrokAuthInput = {
   adapterVersion: f.input.adapterVersion, expired: false,
 };
 const deps: GrokAuthDeps = {
-  now: Date.now, stdout: async (line) => { stdout.push(line); },
+  now: Date.now, policy: f.deps.policy, stdout: async (line) => { stdout.push(line); },
   stderr: (line) => { stderr.push(line); },
   transport: () => ({
     device: async () => { calls.device++; return device; },
@@ -882,7 +927,7 @@ const deps: GrokAuthDeps = {
 };
 ```
 
-fixture在上面代码前声明真实协议形状：
+fixture的policy可由每个用例覆盖，默认使用 `f.deps.policy`；生产绑定 `loadGrokPolicy(root, budget)` 的公开Grok域入口，不跨目录导入私有policy实现。fixture在上面代码前声明真实协议形状：
 
 ```ts
 const device = AgentDeviceCodeResponseSchema.parse({
@@ -921,24 +966,50 @@ test('normal login validates apparently unexpired credentials through refresh', 
 });
 ```
 
+- [ ] 添加configure之后的auth路由漂移回归，七个受管字段保持原样也必须拒绝：
+
+```ts
+test.each([false, true])('auth rejects a newly added external model (silent=%s)', async expired => {
+  const f = await authFixture();
+  try {
+    const configPath = join(f.root, 'config.toml');
+    const text = await readFile(configPath, 'utf8');
+    await writeFile(configPath, text + '\n[model.external]\nbase_url="https://outside.invalid/v1"\n');
+    await expect(grokAuth({ ...f.input, expired }, f.deps)).rejects.toThrow(/routing conflict/);
+    expect(f.calls).toEqual({ device: 0, poll: 0, refresh: 0 });
+    expect(f.stdout).toEqual([]);
+    expect(await readFile(configPath, 'utf8')).toContain('https://outside.invalid/v1');
+  } finally { await f.cleanup(); }
+});
+```
+
+相同矩阵再覆盖configure后新增 `GROK_CONFIG`/组织policy外部地址、不可读policy、受管alias冲突，以及同源模型/无关UI允许。用真实临时credential文件中AT/RT类型错误（JSON及revision/delivered元数据仍合法）的用例同时加入路由冲突，断言先报路由冲突以证明检查先于token解码；对revision复用分支同样验证无stdout。在transport response gate期间修改config或policy，返回token后最终复核必须拒绝stdout并保留durable的新RT以便修复后重试。policy gate超时计入5秒总预算。
+
 - [ ] `rtk bun test --preload ./packages/cli/__tests__/setup.ts packages/cli/src/agent/grok-auth/grok-auth.test.ts` 预期 helper 缺失失败。
-- [ ] 在 helper 入口创建总 budget，读等待前 revision 后锁内重读。不能锁外拿 RT 发请求。核心编排：
+- [ ] 在 helper 入口创建总 budget，读等待前 `{revision,delivered}` 后锁内重读。这个观察只用于并发比较，不能读取或返回AT/RT；可信凭据读取在锁内路由复核之后。锁覆盖stdout及delivered完成标记写入。核心编排：
 
 ```ts
 async function grokAuth(input: GrokAuthInput, deps: GrokAuthDeps): Promise<void> {
   const started = deps.now();
   const duration = input.expired ? 5_000 : 240_000;
   const budget: GrokDeadline = { deadline: started + duration, signal: AbortSignal.timeout(duration) };
-  const observed = await (deps.readRevision ?? readGrokRevision)(input.root, input.installationId);
-  const credential = await withGrokInstallation({ ...input, budget }, async context => {
-    const raw = await context.readCredential();
+  const observed = await (deps.readObservation ?? readGrokObservation)(input.root, input.installationId);
+  await withGrokInstallation({ ...input, budget, policy: deps.policy }, async context => {
+    const raw = await context.readCredential(); // withGrokInstallation已完成首次路由复核
     const current = raw === undefined ? undefined : parseGrokCredential(raw, context.marker);
-    if (current?.status === 'ready' && current.revision > (observed ?? 0) &&
-        current.accessExpiresAt - deps.now() >= 1_000) return current;
-    return acquireGrokToken(context, current, input.expired, deps);
+    const joined = current !== undefined && (current.revision > (observed?.revision ?? 0) ||
+      (observed !== undefined && current.revision === observed.revision && !observed.delivered && current.delivered));
+    const credential = current?.status === 'ready' && joined &&
+      current.accessExpiresAt - deps.now() >= 1_000 ? current :
+      await acquireGrokToken(context, current, input.expired, deps);
+    await context.assertRoutingSafe(); // 包括网络等待期间用户新增的路由/覆盖
+    budget.signal.throwIfAborted();
+    await context.assertOwnership();
+    await deps.stdout(grokTokenLine(credential, deps.now())); // callback完成前不释放安装锁
+    if (!credential.delivered) {
+      await context.writeCredential({ ...credential, delivered: true }); // 不增加revision
+    }
   });
-  budget.signal.throwIfAborted();
-  await deps.stdout(grokTokenLine(credential, deps.now()));
 }
 function grokTokenLine(credential: GrokCredential, now: number): string {
   const expiresIn = Math.floor((credential.accessExpiresAt - now) / 1_000);
@@ -946,6 +1017,10 @@ function grokTokenLine(credential: GrokCredential, now: number): string {
   return JSON.stringify({ access_token: credential.accessToken, expires_in: expiresIn }) + '\n';
 }
 ```
+
+`delivered`解决具体窗口：A已保存N+1/false；B读到N+1/false并等待；A在锁内写stdout，再保存N+1/true；B拿锁观察到同revision的false→true，复用N+1，不轮换N+2。A完成后才开始的普通调用读到true，不满足joined，仍向服务端refresh以发现撤销。仅移动stdout进锁而不增加这个观察，仍会令重叠调用紧接着作无谓轮换。不得以“AT未过期”或固定时间缓存替代并发条件。
+
+持久化完成标记失败或stdout失败时命令非零，保留已保存的新RT；不回滚或谎称交付成功。stdout写入与本地完成标记无法成为跨进程原子事务，标记失败后允许下一helperrefresh；测试不得把失败命令的部分stdout当作成功登录。进程在保存后、输出前被kill且无完成转变时，下一helper正常refresh该新RT，不返回未验证旧缓存。输出后未来的独立refresh/revoke仍可能令先前AT失效，这是现有family语义，不承诺AT在返回后永不失效。
 
 `acquireGrokToken(context:GrokContext,current:GrokCredential|undefined,expired:boolean,deps:GrokAuthDeps):Promise<GrokCredential>` 是本 task 的私有状态机，下三步定义所有分支。Task 11 测量 compiled 进程启动在内的用时；网络 deadline 比总 deadline 提前250ms，给文件释放和输出留余量。不能5秒per-request叠加。依赖 await 的文件操作不能被 Promise.race 丢到后台继续写。
 - [ ] 用下面的状态机落实重放与交互分支；`GrokAuthError`按下文定义，transport为Task6公开接口：
@@ -959,7 +1034,7 @@ async function acquireGrokToken(context: GrokContext, current: GrokCredential | 
     if (state === undefined) return;
     state = {
       format: 1, agent: 'grok', installationId: state.installationId, endpoint: state.endpoint,
-      revision: state.revision, status: 'needs_login', accessToken: '', refreshToken: '', accessExpiresAt: 0,
+      revision: state.revision, status: 'needs_login', delivered: false, accessToken: '', refreshToken: '', accessExpiresAt: 0,
     };
     await context.writeCredential(state);
   };
@@ -992,7 +1067,7 @@ async function loginGrokToken(context: GrokContext, previous: GrokCredential | u
 ```
 
 `saveGrokToken`放在refresh catch外面：磁盘写入失败不能被当作invalid_grant或触发第二次登录。生产入口把runtime网络/拒绝错误映射为简短stderr，不打印error对象。重放journal无startedAt是schema错误，不能凭非空断言跳过验证。
-- [ ] 有 RT：ready→`beginGrokRefresh`→transport.refresh→saveGrokToken；refreshing 且 recoverable→同一 RT/first startedAt 重试一次；refreshing 超窗或时钟倒退→持久化 needs_login，静默报错、普通进入 device flow。ready 不允许直接返回缓存 AT。临时失败保留 refreshing/RT并退出；`invalid_grant` 清 token为 needs_login，再按 expired决定是否进入device。
+- [ ] 有 RT：ready→`beginGrokRefresh`→transport.refresh→saveGrokToken；refreshing 且 recoverable→同一 RT/first startedAt 重试一次；refreshing 超窗或时钟倒退→持久化 needs_login，静默报错、普通进入 device flow。ready只有上述joined条件允许复用，否则不允许直接返回缓存AT。临时失败保留 refreshing/RT并退出；`invalid_grant` 清 token为 needs_login，再按 expired决定是否进入device。
 - [ ] 普通缺 RT/needs_login：requestDeviceAuthorization 后仅 stderr 输出验证过的 `verification_uri_complete`；poll 受 total budget/device expires/cancel限制。保守记录 polling开始时间作为 requestStartedAt；成功先save再return；access_denied/expired_token不输出token。轮询期间保持安装锁heartbeat。
 - [ ] 静默缺 RT/needs_login：立即抛结构化 `GrokAuthError`，其构造函数为 `(code:'login_required'|'deadline'|'configuration'|'temporary')`，message不附原始server body/token。值严格等于 `'1'` 的 `GROK_AUTH_EXPIRED` 才选silent。任何异常不得 stringify credential或完整response。
 - [ ] 补测试：普通 invalid_grant→device；普通 network/500→无device且RT保留；silent invalid_grant→无device；silent不回传旧AT；等待revision变化复用新AT；不足1秒无stdout；stdout callback失败后RT已保存；device拒绝/取消/超时无token。用barrier控制真实两个Promise对安装锁争用，不能只mock“并发成功”。Task 10再验跨进程。
@@ -1175,8 +1250,26 @@ expect(await first.exit).toBe(0);
 expect(await second.exit).toBe(0);
 ```
 
-`refreshEntered`/`releaseRefresh` 是loopback handler中的Promise resolver；`secondObservedRevision` 由test入口使用自己的read-only revision读取后向父进程发送ready，再调用helper。为准确锁住helper内部observed时点，使用Task7已定义的可选依赖 `readRevision?:typeof readGrokRevision`（默认真实函数），测试wrapper真实读取后发送ready。不是读取完就伪造revision。
+`refreshEntered`/`releaseRefresh` 是loopback handler中的Promise resolver；`secondObservedRevision` 由helper注入的readObservation wrapper真实读取revision/delivered后向父进程发送ready。为准确锁住helper内部observed时点，使用Task7已定义的可选依赖 `readObservation?:typeof readGrokObservation`（默认真实函数），测试wrapper真实读取后发送ready。不是读取完就伪造revision。
 - [ ] `rtk bun test --preload ./packages/cli/__tests__/setup.ts --timeout 20000 packages/cli/src/agent/grok-auth/process.test.ts`；若首次已经通过则保留有效回归，不人为破坏实现来制造RED。后续发现失败按systematic-debugging修复。
+- [ ] 单独复现save-before-release窗口，不能只保留“B在A响应前开始”的用例。`afterSave`/`releaseOutput`由fixture的stdout callback gate发IPC ready和接收release；此时新credential已durable，stdout尚未写且安装锁仍持有。B的readObservation wrapper报告真实 `{revision:N+1,delivered:false}`；解除A gate后应只有一次rotation：
+
+```ts
+const first = spawnHelperForTest(input, { gate: 'after-credential-save' });
+await afterSave;
+const second = spawnHelperForTest(input);
+await secondObservedRevision;
+releaseOutput();
+const [a, b] = await Promise.all([first.stdout, second.stdout]);
+expect(await first.exit).toBe(0);
+expect(await second.exit).toBe(0);
+expect(rotationCount).toBe(1);
+expect(JSON.parse(a).access_token).toBe(JSON.parse(b).access_token);
+expect(identity.authenticateAccessToken(JSON.parse(a).access_token).status).toBe('valid');
+```
+
+该fixture的loopback refresh handler必须调用真实 `createAgentIdentityService` 的refreshCredential并将结果映射为协议response；不能用每次都相同的假token掩盖失效。`identity`就是handler所用实例，使用Task1后的Grok身份。另测A完成后才启动B：B必须refresh；两次普通调用之间revoke则进入device，silent则非零。completion标记写失败、A输出前kill、输出后标记前kill分别检查非零/锁恢复和新RT保留，不声称这类失败调用输出的AT仍有效。
+
 - [ ] 检查refresh响应丢失：server记录已经轮换后关闭socket，credential保持refreshing；同RT在30秒内重放获得同新family结果。用测试clock越过30秒再重启helper，确认静默不发旧RT、普通可进入device。不得修改journal startedAt获得新窗口。
 - [ ] kill场景分成三个可确定边界：写refreshing后/response到达前；server已签发/credential rename前；credential已durable/stdout前。前两者保留replay能力，最后者下一helper拿到新RT，不恢复旧RT。stdout pipe提前关闭不回滚credential。测试observer只记录revision和请求次数，不将完整凭据写入输出报告。
 - [ ] holder活着的设备轮询阻塞另一silent helper，后者总时限≤5秒（给CI计时误差单独报告，不把7秒宿主上限当产品预算）。kill holder后新进程靠process identity恢复锁；故意替换inode后旧owner无法unlink新锁。配置写前external改写必须检测，不测试无法保证的最终rename极短窗口为“无竞态”。
