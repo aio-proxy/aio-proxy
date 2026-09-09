@@ -1,5 +1,7 @@
 import type { EntityBody, LocalEntity, LocalBinding, SyncRepository } from '@aio-proxy/core';
+import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { PreviewFence, PreviewRecord, RemoteEntity } from './preview';
 import { SyncPreviewError, sameFence } from './preview';
@@ -44,8 +46,89 @@ export type OperationInput = {
     paths: readonly string[][],
     current: LocalEntity | undefined,
   ) => Promise<void>;
+  readonly persistProviderIdentity?: (
+    oldProviderId: string,
+    newProviderId: string,
+    entities: readonly LocalEntity[],
+  ) => Promise<void>;
   readonly now?: () => number;
 };
+
+type ProviderIdentityRows = {
+  readonly oldProviderId: string;
+  readonly newProviderId: string;
+  readonly entities: readonly LocalEntity[];
+};
+
+function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
+  if (Array.isArray(value)) return value.map((entry) => rewireProviderReferences(entry, oldProviderId, newProviderId));
+  if (!isPlainObject(value)) return value;
+  const result: Record<string, JsonValue> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if ((key === 'providers' || key === 'accounts') && isPlainObject(child)) {
+      const references = { ...(child as Record<string, JsonValue>) };
+      if (Object.hasOwn(references, oldProviderId)) {
+        if (Object.hasOwn(references, newProviderId)) throw new SyncOperationError('upgrade-required');
+        references[newProviderId] = references[oldProviderId]!;
+        delete references[oldProviderId];
+      }
+      result[key] = rewireProviderReferences(references, oldProviderId, newProviderId);
+    } else if ((key === 'providerId' || key === 'accountProviderId') && child === oldProviderId) {
+      result[key] = newProviderId;
+    } else result[key] = rewireProviderReferences(child, oldProviderId, newProviderId);
+  }
+  return result;
+}
+
+function providerIdentityRows(
+  input: OperationInput,
+  binding: LocalBinding,
+  current: LocalEntity,
+  selected: EntityBody,
+  newProviderId: string,
+): ProviderIdentityRows {
+  if (current.kind !== 'provider' || selected.kind !== 'provider' || newProviderId === '')
+    throw new SyncOperationError('upgrade-required');
+  const entities = input.repo.entities(binding.id);
+  if (
+    entities.some(
+      (entity) =>
+        entity.objectId !== current.objectId && entity.kind === 'provider' && entity.logicalKey === newProviderId,
+    )
+  )
+    throw new SyncOperationError('upgrade-required');
+  return {
+    oldProviderId: current.logicalKey,
+    newProviderId,
+    entities: entities.map((entity) => {
+      if (entity.objectId === current.objectId)
+        return { ...entity, logicalKey: newProviderId, desired: { ...selected, logicalKey: newProviderId } };
+      if (entity.desired?.kind !== 'model-rule') return entity;
+      return {
+        ...entity,
+        desired: {
+          ...entity.desired,
+          value: rewireProviderReferences(entity.desired.value, current.logicalKey, newProviderId),
+        },
+      };
+    }),
+  };
+}
+
+async function persistProviderIdentity(
+  input: OperationInput,
+  binding: LocalBinding,
+  rows: ProviderIdentityRows,
+): Promise<void> {
+  if (input.persistProviderIdentity !== undefined) {
+    await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
+    return;
+  }
+  const bulk = (input.repo as SyncRepository & { putEntities?: (id: string, entities: readonly LocalEntity[]) => void })
+    .putEntities;
+  if (typeof bulk === 'function') bulk.call(input.repo, binding.id, rows.entities);
+  else for (const entity of rows.entities) input.repo.putEntity(binding.id, entity);
+}
 
 export async function assertFresh(input: OperationInput, expected: PreviewFence): Promise<void> {
   const current = await input.fence();
@@ -63,7 +146,7 @@ export async function applyPreview(
   await assertFresh(input, record.fence);
   const selected = new Map(decisions.map((decision) => [decision.objectId, decision]));
   const localByObject = new Map(input.localEntities().map((entity) => [entity.objectId, entity]));
-  const remoteByObject = new Map((await input.remoteEntities()).map((entity) => [entity.objectId, entity]));
+  const remoteByObject = new Map(record.remote.map((entity) => [entity.objectId, entity]));
   if (record.input.kind === 'purge') {
     if (record.dependencyError) throw new SyncOperationError('dependency-in-use');
     for (const candidate of record.rows) {
@@ -84,8 +167,11 @@ export async function applyPreview(
     if (decision === undefined) continue;
     if (candidate.requiresProviderId && decision.newProviderId === undefined)
       throw new SyncOperationError('upgrade-required');
+    if (decision.newProviderId !== undefined && candidate.row.kind !== 'provider')
+      throw new SyncOperationError('upgrade-required');
     if (!candidate.row.choices.includes(decision.choice)) throw new SyncOperationError('upgrade-required');
     const current = localByObject.get(candidate.row.objectId);
+    let identityRows: ProviderIdentityRows | undefined;
     let selectedBody =
       decision.choice === 'local'
         ? candidate.local
@@ -96,6 +182,8 @@ export async function applyPreview(
             : (candidate.restoreBody ?? remoteByObject.get(candidate.row.objectId)?.body ?? null);
     if (decision.newProviderId !== undefined && selectedBody !== null) {
       selectedBody = { ...selectedBody, logicalKey: decision.newProviderId };
+      if (current !== undefined)
+        identityRows = providerIdentityRows(input, binding, current, selectedBody, decision.newProviderId);
     }
     const remote = remoteByObject.get(candidate.row.objectId);
     if (decision.choice === 'restore' && selectedBody !== null) {
@@ -107,7 +195,8 @@ export async function applyPreview(
     } else {
       await input.applyCloud(selectedBody, current, remote?.version ?? null);
     }
-    if (current !== undefined && typeof input.repo.putEntity === 'function') {
+    if (identityRows !== undefined) await persistProviderIdentity(input, binding, identityRows);
+    else if (current !== undefined && typeof input.repo.putEntity === 'function') {
       input.repo.putEntity(binding.id, {
         ...current,
         mode: 'included',

@@ -108,11 +108,14 @@ async function casHead(
   objectId: string,
   change: (head: EntityHead) => EntityHead,
   signal: AbortSignal,
+  expectedVersion?: string,
 ): Promise<{ head: EntityHead; modifiedAt: number }> {
   for (;;) {
     signal.throwIfAborted();
     const current = await store.readHead(objectId, signal);
     if (current === null) throw new SyncProtocolError('invalid-data', 'missing head');
+    if (expectedVersion !== undefined && current.version !== expectedVersion)
+      throw new SyncProtocolError('upgrade-required', 'head version changed');
     const next = change(current.head);
     if (next === current.head) return { head: current.head, modifiedAt: current.modifiedAt };
     const bytes = encode(next);
@@ -122,20 +125,24 @@ async function casHead(
   }
 }
 
-async function ensureHead(store: SyncObjectStore, operation: OutboxOperation, signal: AbortSignal): Promise<void> {
+async function ensureHead(
+  store: SyncObjectStore,
+  operation: OutboxOperation,
+  signal: AbortSignal,
+): Promise<{ readonly version: string; readonly created: boolean }> {
   assertPut(operation);
   for (;;) {
     signal.throwIfAborted();
     const current = await store.readHead(operation.objectId, signal);
     if (current !== null) {
       assertHeadIdentity(current.head, operation);
-      return;
+      return { version: current.version, created: false };
     }
     const next = newHead(operation.objectId, operation.body);
     const bytes = encode(next);
     assertSize(store, bytes);
     const result = await store.session.compareAndSwap(entityKey(operation.objectId), null, bytes, signal);
-    if (result.kind === 'written') return;
+    if (result.kind === 'written') return { version: result.version, created: true };
   }
 }
 
@@ -242,9 +249,16 @@ export async function publishEntity(
   store: SyncObjectStore,
   operation: OutboxOperation,
   signal: AbortSignal,
+  expectedVersion?: string | null,
 ): Promise<PublishedRevision> {
   assertPut(operation);
-  await ensureHead(store, operation, signal);
+  const ensured = await ensureHead(store, operation, signal);
+  if (expectedVersion !== undefined) {
+    if (expectedVersion === null && !ensured.created) throw new SyncProtocolError('upgrade-required', 'head exists');
+    if (expectedVersion !== null && ensured.version !== expectedVersion)
+      throw new SyncProtocolError('upgrade-required', 'head version changed');
+  }
+  const firstExpected = expectedVersion === null || ensured.created ? undefined : expectedVersion;
   for (;;) {
     signal.throwIfAborted();
     const current = await store.readHead(operation.objectId, signal);
@@ -266,6 +280,7 @@ export async function publishEntity(
         return reserve(head, operation.operationId, operation.epoch);
       },
       signal,
+      firstExpected,
     );
     const payload = await ensurePayload(store, operation, signal);
     if (payload.record.state !== 'payload')

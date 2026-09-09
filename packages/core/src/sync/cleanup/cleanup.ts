@@ -44,10 +44,13 @@ export async function updateHead(
   objectId: string,
   change: (head: EntityHead) => EntityHead,
   signal: AbortSignal,
+  expectedVersion?: string,
 ): Promise<{ head: EntityHead; version: string; modifiedAt: number }> {
   for (;;) {
     signal.throwIfAborted();
     const current = await readHeadOrThrow(store, objectId, signal);
+    if (expectedVersion !== undefined && current.version !== expectedVersion)
+      throw new SyncProtocolError('upgrade-required', 'head version changed');
     const next = change(current.head);
     if (next === current.head) return current;
     const bytes = encode(next);
@@ -311,10 +314,14 @@ export async function deleteEntity(
   objectId: string,
   epoch: number,
   signal: AbortSignal,
+  expectedVersion?: string | null,
 ): Promise<void> {
+  let firstExpected = expectedVersion;
   for (;;) {
     signal.throwIfAborted();
     const current = await readHeadOrThrow(store, objectId, signal);
+    if (firstExpected !== undefined && current.version !== firstExpected)
+      throw new SyncProtocolError('upgrade-required', 'head version changed');
     if (current.head.epoch !== epoch) throw new SyncProtocolError('epoch-mismatch', 'epoch-mismatch');
     if (current.head.state === 'purging' || current.head.state === 'purged') {
       throw new SyncProtocolError('deleted', 'deleted');
@@ -330,7 +337,9 @@ export async function deleteEntity(
           cancelling: [...new Set([...head.cancelling, ...head.reserved])],
         }),
         signal,
+        firstExpected ?? undefined,
       );
+      firstExpected = undefined;
       continue;
     }
     break;
@@ -415,9 +424,12 @@ export async function restoreEntity(
   body: EntityBody,
   operationId: string,
   signal: AbortSignal,
+  expectedVersion?: string | null,
 ): Promise<PublishedRevision> {
   for (;;) {
     const current = await readHeadOrThrow(store, objectId, signal);
+    if (expectedVersion !== undefined && current.version !== expectedVersion)
+      throw new SyncProtocolError('upgrade-required', 'head version changed');
     if (current.head.kind !== body.kind || current.head.logicalKey !== body.logicalKey) {
       throw new SyncProtocolError('invalid-data', 'head logical identity mismatch');
     }
@@ -438,7 +450,7 @@ export async function restoreEntity(
         commitId: `restore:${operationId}`,
         body,
       };
-      return publishEntity(store, operation, signal);
+      return publishEntity(store, operation, signal, current.version);
     }
     if (!current.head.cleanupComplete) throw new SyncProtocolError('deleted', 'deletion cleanup is incomplete');
     if (current.head.state !== 'deleted' && current.head.state !== 'purged') {
@@ -461,6 +473,7 @@ export async function restoreEntity(
         };
       },
       signal,
+      expectedVersion ?? undefined,
     );
     await ensureAccountActiveFence(store, objectId, restored.head.epoch, signal);
     const operation: OutboxOperation = {

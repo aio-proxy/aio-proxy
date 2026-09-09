@@ -37,10 +37,18 @@ async function verifyErasedRevisions(store: SyncObjectStore, head: EntityHead, s
   }
 }
 
-export async function purgeEntity(store: SyncObjectStore, objectId: string, signal: AbortSignal): Promise<void> {
+export async function purgeEntity(
+  store: SyncObjectStore,
+  objectId: string,
+  signal: AbortSignal,
+  expectedVersion?: string | null,
+): Promise<void> {
+  let firstExpected = expectedVersion;
   for (;;) {
     signal.throwIfAborted();
     const initial = await readHeadOrThrow(store, objectId, signal);
+    if (firstExpected !== undefined && initial.version !== firstExpected)
+      throw new SyncProtocolError('upgrade-required', 'head version changed');
     if (initial.head.state === 'purged') {
       await ensureAccountTombstone(store, objectId, initial.head.epoch, signal);
       await verifyErasedRevisions(store, initial.head, signal);
@@ -55,7 +63,9 @@ export async function purgeEntity(store: SyncObjectStore, objectId: string, sign
           cancelling: [...new Set([...head.cancelling, ...head.reserved])],
         }),
         signal,
+        firstExpected ?? undefined,
       );
+      firstExpected = undefined;
       continue;
     }
 

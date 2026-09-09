@@ -83,6 +83,20 @@ test('purge fills an absent reserved key so a paused uploader cannot recreate se
   expect(head(backend, item.objectId).state).toBe('purged');
 });
 
+test('conditional purge rejects a changed head before marking it purging', async () => {
+  const backend = createMemorySyncBackend();
+  const session = backend.connect();
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), 'first', 'first');
+  await publishEntity(createSyncObjectStore(session), item, signal);
+  const expected = (await createSyncObjectStore(session).readHead(item.objectId, signal))!.version;
+  await publishEntity(createSyncObjectStore(session), operation(item.objectId, 'second', 'second'), signal);
+  await expect(purgeEntity(createSyncObjectStore(session), item.objectId, signal, expected)).rejects.toMatchObject({
+    code: 'upgrade-required',
+  });
+  expect(head(backend, item.objectId).state).toBe('active');
+});
+
 test('purge fences a writer paused immediately before publication', async () => {
   const backend = createMemorySyncBackend();
   const item = operation(crypto.randomUUID());

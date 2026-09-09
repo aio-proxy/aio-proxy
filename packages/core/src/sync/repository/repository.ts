@@ -73,6 +73,7 @@ export interface SyncRepository {
   writeBinding(binding: LocalBinding): void;
   entities(bindingId: string): LocalEntity[];
   putEntity(bindingId: string, entity: LocalEntity): void;
+  putEntities?(bindingId: string, entities: readonly LocalEntity[]): void;
   prepare(bindingId: string, intent: CommitIntent): void;
   readCommit(bindingId: string, commitId: string): CommitIntent | null;
   latestConfirmedCommit(bindingId: string): CommitIntent | null;
@@ -305,6 +306,42 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
             entity.pendingReason,
             entity.oauth === undefined ? null : stringifyJson(entity.oauth as unknown as JsonValue),
           );
+      });
+    },
+
+    putEntities(bindingId, entities) {
+      transaction(() => {
+        for (const entity of entities) {
+          sqlite
+            .query(
+              `INSERT INTO sync_entity
+               (binding_id, object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason, oauth_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(binding_id, object_id) DO UPDATE SET
+               logical_key = excluded.logical_key,
+               kind = excluded.kind,
+               mode = excluded.mode,
+               epoch = excluded.epoch,
+               desired_json = excluded.desired_json,
+               baseline = excluded.baseline,
+               overrides_json = excluded.overrides_json,
+               pending_reason = excluded.pending_reason,
+               oauth_json = excluded.oauth_json`,
+            )
+            .run(
+              bindingId,
+              entity.objectId,
+              entity.logicalKey,
+              entity.kind,
+              entity.mode,
+              entity.epoch,
+              entity.desired === null ? null : stringifyJson(entity.desired as unknown as JsonValue),
+              entity.baseline,
+              stringifyJson(entity.overrides as unknown as JsonValue),
+              entity.pendingReason,
+              entity.oauth === undefined ? null : stringifyJson(entity.oauth as unknown as JsonValue),
+            );
+        }
       });
     },
 

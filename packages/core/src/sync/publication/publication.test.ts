@@ -83,6 +83,34 @@ test('unknown CAS result retries the same operation without another revision', a
   expect((await store.readHead(operation.objectId, signal))?.head.sequence).toBe(1);
 });
 
+test('conditional publication rejects a changed head before reserving a revision', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const first = makeOperation();
+  await publishEntity(store, first, signal);
+  const expected = (await store.readHead(first.objectId, signal))!.version;
+  await publishEntity(
+    store,
+    makeOperation({
+      objectId: first.objectId,
+      body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'new' }, dependencies: [] },
+    }),
+    signal,
+  );
+  await expect(
+    publishEntity(
+      store,
+      makeOperation({
+        objectId: first.objectId,
+        body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'stale' }, dependencies: [] },
+      }),
+      signal,
+      expected,
+    ),
+  ).rejects.toMatchObject({ code: 'upgrade-required' });
+});
+
 test('outcome-unknown at every publication CAS position is recoverable with one operation', async () => {
   for (const position of [1, 2, 3, 4, 5]) {
     const backend = createMemorySyncBackend();

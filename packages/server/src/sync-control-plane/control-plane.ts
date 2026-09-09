@@ -10,6 +10,7 @@ import {
   purgeEntity,
   revisionKey,
   restoreEntity,
+  SyncProtocolError,
   type EntityBody,
   type LocalBinding,
   type LocalEntity,
@@ -35,6 +36,7 @@ import {
   createPreviewToken,
   latestCommitId,
   listRemoteEntities,
+  snapshotRemoteEntities,
   SyncPreviewError,
   type PreviewFence,
   type PreviewRecord,
@@ -63,6 +65,7 @@ export type SyncControlPlaneOptions = {
   ) => Promise<void>;
   readonly restore?: OperationInput['restore'];
   readonly persistOverrides: OperationInput['persistOverrides'];
+  readonly persistProviderIdentity?: OperationInput['persistProviderIdentity'];
   readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<void>;
   readonly detach?: (providerId: string, loginSessionId: string) => Promise<void>;
   readonly cancelDetach?: (providerId: string) => Promise<void>;
@@ -99,13 +102,43 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           if (session === undefined) throw new SyncOperationError('not-connected');
           const store = createSyncObjectStore(session);
           const signal = new AbortController().signal;
-          const assertVersion = async (objectId: string, expected: string | null): Promise<void> => {
-            const current = await session.read(entityKey(objectId), signal);
-            if ((current.kind === 'absent' ? null : current.version) !== expected)
-              throw new SyncOperationError('operation-pending');
+          const restoreWithExpected = restoreEntity as unknown as (
+            store: Parameters<typeof restoreEntity>[0],
+            objectId: string,
+            body: EntityBody,
+            operationId: string,
+            signal: AbortSignal,
+            expected: string | null,
+          ) => Promise<unknown>;
+          const purgeWithExpected = purgeEntity as unknown as (
+            store: Parameters<typeof purgeEntity>[0],
+            objectId: string,
+            signal: AbortSignal,
+            expected: string | null,
+          ) => Promise<unknown>;
+          const deleteWithExpected = deleteEntity as unknown as (
+            store: Parameters<typeof deleteEntity>[0],
+            objectId: string,
+            epoch: number,
+            signal: AbortSignal,
+            expected: string | null,
+          ) => Promise<unknown>;
+          const publishWithExpected = publishEntity as unknown as (
+            store: Parameters<typeof publishEntity>[0],
+            operation: Parameters<typeof publishEntity>[1],
+            signal: AbortSignal,
+            expected: string | null,
+          ) => Promise<unknown>;
+          const conditional = async <T>(operation: () => Promise<T>): Promise<T> => {
+            try {
+              return await operation();
+            } catch (error) {
+              if (error instanceof SyncProtocolError && error.code === 'upgrade-required')
+                throw new SyncOperationError('operation-pending');
+              throw error;
+            }
           };
           return {
-            assertVersion,
             async restore(
               objectId: string,
               body: EntityBody,
@@ -113,30 +146,31 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
               current: LocalEntity | undefined,
               expected: string | null,
             ) {
-              await assertVersion(objectId, expected);
-              await restoreEntity(store, objectId, body, operationId, signal);
+              await conditional(() => restoreWithExpected(store, objectId, body, operationId, signal, expected));
             },
             async purge(objectId: string, expected: string | null) {
-              await assertVersion(objectId, expected);
-              await purgeEntity(store, objectId, signal);
+              await conditional(() => purgeWithExpected(store, objectId, signal, expected));
             },
             async publish(body: EntityBody | null, current: LocalEntity | undefined, expected: string | null) {
-              await assertVersion(current?.objectId ?? body?.logicalKey ?? '', expected);
               if (current === undefined) throw new SyncOperationError('operation-pending');
               const objectId = current.objectId;
-              if (body === null) await deleteEntity(store, objectId, current.epoch, signal);
+              if (body === null)
+                await conditional(() => deleteWithExpected(store, objectId, current.epoch, signal, expected));
               else
-                await publishEntity(
-                  store,
-                  {
-                    operationId: randomUUID(),
-                    objectId,
-                    epoch: current.epoch,
-                    kind: 'put',
-                    body,
-                    commitId: `control:${randomUUID()}`,
-                  },
-                  signal,
+                await conditional(() =>
+                  publishWithExpected(
+                    store,
+                    {
+                      operationId: randomUUID(),
+                      objectId,
+                      epoch: current.epoch,
+                      kind: 'put',
+                      body,
+                      commitId: `control:${randomUUID()}`,
+                    },
+                    signal,
+                    expected,
+                  ),
                 );
             },
           };
@@ -186,6 +220,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     applyCloud,
     restore,
     persistOverrides: options.persistOverrides,
+    persistProviderIdentity: options.persistProviderIdentity,
     purge,
     now,
   });
@@ -219,7 +254,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       if (binding() === null) throw new SyncPreviewError('not-connected');
       const previewId = createPreviewToken(24, options.randomBytes);
       const expiresAt = now() + 10 * 60_000;
-      const remote = await remoteEntities();
+      const remote = snapshotRemoteEntities(await remoteEntities());
       const built = buildPreview({
         request: input,
         local: localEntities(),

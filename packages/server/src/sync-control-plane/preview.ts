@@ -38,6 +38,7 @@ export type PreviewFence = {
 export type PreviewRecord = {
   readonly fence: PreviewFence;
   readonly input: SyncPreviewInput;
+  readonly remote: readonly RemoteEntity[];
   readonly rows: readonly PreviewCandidate[];
   readonly expiresAt: number;
   readonly dependencyError?: boolean;
@@ -58,7 +59,30 @@ export class SyncPreviewError extends Error {
   }
 }
 
-const FORBIDDEN_OVERRIDE = /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets)$/iu;
+function snapshotBody(body: EntityBody | null | undefined): EntityBody | null | undefined {
+  if (body === null || body === undefined) return body;
+  return {
+    ...body,
+    value: clone(body.value),
+    dependencies: body.dependencies.map((dependency) => ({ ...dependency })),
+  };
+}
+
+export function snapshotRemoteEntities(remote: readonly RemoteEntity[]): RemoteEntity[] {
+  return remote.map((entity) => ({
+    ...entity,
+    version: entity.version,
+    body: snapshotBody(entity.body) ?? null,
+    revisions:
+      entity.revisions === undefined
+        ? undefined
+        : Object.fromEntries(Object.entries(entity.revisions).map(([id, body]) => [id, snapshotBody(body) ?? null])),
+    restoreBody: snapshotBody(entity.restoreBody),
+  }));
+}
+
+const FORBIDDEN_OVERRIDE =
+  /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets|plugin|capability|packageName|version|objectId|logicalKey|kind|epoch|dependencies|providerId|accountId)$/iu;
 
 function valueAt(
   value: JsonValue,
@@ -305,41 +329,58 @@ export function buildPreview(input: {
   readonly registry?: PluginRegistry;
   readonly accounts?: PluginRepository;
 }): { readonly preview: SyncPreview; readonly record: PreviewRecord } {
+  const remoteSnapshot = snapshotRemoteEntities(input.remote);
   const localByObject = new Map(input.local.map((entity) => [entity.objectId, entity]));
-  const remoteByObject = new Map(input.remote.map((entity) => [entity.objectId, entity]));
+  const remoteByObject = new Map(remoteSnapshot.map((entity) => [entity.objectId, entity]));
   const ids = new Set<string>();
   if (input.request.kind === 'join') {
     for (const entity of input.local) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
-    for (const entity of input.remote) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
+    for (const entity of remoteSnapshot) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
   } else if (input.request.kind === 'restore' || input.request.kind === 'overrides') ids.add(input.request.objectId);
   else if (input.request.kind === 'purge') {
     const purge = input.request;
+    const remoteIds = new Set(remoteSnapshot.map((entity) => entity.objectId));
     const all = [
       ...input.local.map((entity) => ({
         objectId: entity.objectId,
         logicalKey: entity.logicalKey,
+        kind: entity.kind,
+        remote: false,
         dependencies: entity.desired?.dependencies ?? [],
       })),
-      ...input.remote.map((entity) => ({
+      ...remoteSnapshot.map((entity) => ({
         objectId: entity.objectId,
         logicalKey: entity.logicalKey,
+        kind: entity.kind,
+        remote: true,
         dependencies: entity.body?.dependencies ?? [],
       })),
     ];
     const targets = new Set(
       all
         .filter((entity) =>
-          purge.scope === 'provider' ? entity.logicalKey === purge.objectId : entity.objectId === purge.objectId,
+          purge.scope === 'provider'
+            ? entity.kind === 'provider' && entity.logicalKey === purge.objectId
+            : entity.kind === 'plugin-business' && entity.logicalKey === purge.objectId,
         )
         .map((entity) => entity.objectId),
     );
-    for (const entity of all) {
-      if (entity.dependencies.some((dependency) => targets.has(dependency.objectId))) targets.add(entity.objectId);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const entity of all) {
+        if (entity.remote && entity.dependencies.some((dependency) => targets.has(dependency.objectId))) {
+          if (!targets.has(entity.objectId)) {
+            targets.add(entity.objectId);
+            changed = true;
+          }
+        }
+      }
     }
-    for (const objectId of targets) ids.add(objectId);
+    for (const objectId of targets) if (remoteIds.has(objectId)) ids.add(objectId);
   } else for (const id of [...localByObject.keys(), ...remoteByObject.keys()]) ids.add(id);
   const identityGroups = new Map<string, Set<string>>();
-  for (const entity of [...input.local, ...input.remote]) {
+  for (const entity of [...input.local, ...remoteSnapshot]) {
     const groupKey = `${entity.kind}\0${entity.logicalKey}`;
     const idsForKey = identityGroups.get(groupKey) ?? new Set<string>();
     idsForKey.add(entity.objectId);
@@ -348,7 +389,9 @@ export function buildPreview(input: {
   const identityConflictKeys = new Set(
     [...identityGroups].filter(([, objectIds]) => objectIds.size > 1).map(([groupKey]) => groupKey),
   );
-  const candidates = [...ids]
+  const candidateIds =
+    input.request.kind === 'purge' ? [...ids].filter((objectId) => remoteByObject.has(objectId)) : [...ids];
+  const candidates = candidateIds
     .map((objectId) =>
       (() => {
         const local = localByObject.get(objectId)?.desired ?? null;
@@ -405,10 +448,13 @@ export function buildPreview(input: {
           ),
         ]
       : [];
-  const allRemoteIds = new Set(input.remote.map((entity) => entity.objectId));
+  const allRemoteIds = new Set(remoteSnapshot.map((entity) => entity.objectId));
+  const allLocalIds = new Set(input.local.map((entity) => entity.objectId));
   const dependencyError =
     input.request.kind === 'purge' &&
-    candidates.some((candidate) => candidate.row.dependencies.some((dependency) => !allRemoteIds.has(dependency)));
+    candidates.some((candidate) =>
+      candidate.row.dependencies.some((dependency) => !allRemoteIds.has(dependency) && !allLocalIds.has(dependency)),
+    );
   const preview: SyncPreview = {
     previewId: input.previewId,
     kind: input.request.kind,
@@ -418,7 +464,14 @@ export function buildPreview(input: {
   };
   return {
     preview,
-    record: { fence: input.fence, input: input.request, rows: candidates, expiresAt: input.expiresAt, dependencyError },
+    record: {
+      fence: input.fence,
+      input: input.request,
+      remote: remoteSnapshot,
+      rows: candidates,
+      expiresAt: input.expiresAt,
+      dependencyError,
+    },
   };
 }
 

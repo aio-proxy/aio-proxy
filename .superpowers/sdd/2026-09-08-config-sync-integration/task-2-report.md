@@ -110,3 +110,38 @@ Self-review after the fixes:
 - Overrides copy selected nested values, copy whole arrays only at the selected path, delete cloud values whose local source is absent, reject forbidden paths, and reject array traversal.
 - Purge computes dependent targets, rejects unresolved dependencies, skips local-only rows, and verifies tombstones. Same logical identities on different object IDs require a replacement provider ID.
 - The remaining integration boundary is server-state construction and authenticated route registration in the parent task; the root `bun run check` still includes the unrelated pre-existing unused import in `scripts/verify-oauth-sync.ts`.
+
+## Fix round 2
+
+The second review fixes make the expected remote head version part of the core publication, deletion, restore, and purge operations. Conditional head CAS now fails with `upgrade-required` before a stale operation can reserve or transition a head; the control plane maps that conflict to `operation-pending`. Preview records retain a deep snapshot of remote bodies, revisions, and versions, and apply uses that snapshot after its freshness fence instead of rebuilding mutation inputs from a newer remote read.
+
+Override paths now reject provider, plugin, package, version, identity, dependency, and account metadata. Plugin purge uses package logical identity, computes transitive cloud dependents, omits local-only rows, and only blocks genuinely unresolved remote dependencies. Same-ID provider resolution persists the logical ID and rewires structured model/account reference maps through one repository transaction when available; an integration hook is available for account-store coordination.
+
+Fix-round regression coverage includes conditional publication and purge races, frozen remote snapshot application, forbidden metadata paths, transitive purge closure with local-only rows, and atomic provider-ID/reference persistence.
+
+Verification after round 2:
+
+```text
+rtk proxy bun test --preload=./__tests__/setup.ts src/sync-control-plane
+15 pass, 0 fail
+
+rtk proxy bun test packages/core/src/sync/publication/publication.test.ts packages/core/src/sync/cleanup/cleanup.test.ts packages/core/src/sync/repository/repository.test.ts
+51 pass, 0 fail
+
+rtk proxy bun test packages/types/src/sync/sync.test.ts
+1 pass, 0 fail
+
+rtk proxy bunx tsc --noEmit -p packages/core/tsconfig.json
+passed
+
+rtk proxy bunx tsc --noEmit -p tsconfig.json 2>&1 | rg 'src/sync-control-plane|server-state/types'
+No matching errors.
+
+rtk proxy bunx oxlint packages/core/src/sync/publication packages/core/src/sync/cleanup packages/core/src/sync/repository packages/server/src/sync-control-plane
+0 errors
+
+rtk proxy bunx oxfmt --check packages/core/src/sync/publication packages/core/src/sync/cleanup packages/core/src/sync/repository packages/server/src/sync-control-plane
+All matched files use the correct format.
+```
+
+Round 2 self-review: the core conditional APIs protect the first mutating head CAS and return a conflict before stale publication, restore, delete, or purge work proceeds. The apply path still performs a freshness reread to detect changed bindings or remote heads, while all mutation bodies and expected versions come from the frozen preview record. Repository bulk persistence is transactional; the optional provider-identity hook allows the parent integration to include its account repository in the same coordination boundary. OAuth verifier files remain untouched.
