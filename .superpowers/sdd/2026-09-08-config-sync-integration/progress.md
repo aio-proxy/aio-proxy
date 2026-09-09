@@ -112,3 +112,13 @@ The fix must preserve the existing OAuth ownership metadata and keep public cont
 - Task 7 fix round 2 commit `dbac726bd` adds the fresh controller preflight result to the report. Scoped re-review: PASS; no new Critical/Important/Minor issues.
 - Task 7 final status: complete after fix rounds 1–2 (commits `4bab7e55..dbac726b`).
 - Ledger clarification: the three residual rulings at lines 91–93 were the pre-fix final-review state; the subsequent final-fix and residual scoped review recorded below addressed them in commits `472d58ef` and the prepared-retry follow-up. They remain listed as historical rulings with their original costs.
+- Task 8 brief: `task-8-brief.md`; base commit: `3fc68bb189b0bf6d63e761e59482a67771ebe9a6`.
+- Task 8 implementation commit `d32935d1e` preserves caller-spelled macOS Homebrew launcher paths, keeps realpath ownership classification, and makes native fixtures derive the current platform/architecture. Focused upgrade tests pass; preflight reaches the server suite but retains five unrelated timing/resource-sensitive failures and one unhandled SQLite/I/O error. Report: `task-8-report.md`.
+- Task 8 review: one Important portability gap found because two native-package fixture tests lacked the supported-platform guard.
+- Task 8 fix round 1 commit `c720aca5f` adds the `nativeTest` guard to both remaining native-package tests; report commit metadata was corrected in `bd0ae6a7`.
+- Task 8 scoped re-review: PASS; both prior findings are addressed and the fix diff has no new Critical/Important/Minor regressions.
+- Task 8: complete (commits `d32935d1e..bd0ae6a7`, review clean after fix round 1).
+- Final whole-branch review from `ef5f8fb5..bd0ae6a7`: one Important cross-plan contract defect found; CloudKit `modifiedAt` returned epoch seconds while core retention arithmetic requires milliseconds. No Critical findings.
+- Final fix commit `f84805215` converts CloudKit modification dates to safe UTC epoch milliseconds, preserves missing/overflow as `outcome-unknown`, and adds native unit/retention regression coverage. Native/plugin checks passed; XCTest execution and live Apple/CloudKit gates remain unavailable and are documented in `final-review-fix-report.md`.
+- Final scoped re-review: PASS; the timestamp contract finding is addressed and the fix diff has no new Critical/Important/Minor regressions.
+- Final deterministic assessment: ready for merge at the source/test level; signed CloudKit, installed-path/launchd, two-Mac, and provider-specific OAuth gates remain blocked and are not release evidence.
