@@ -23,7 +23,7 @@ async function captureRecords(): Promise<LogRecord[]> {
   return records;
 }
 
-// Mirrors the middleware wiring in server/server.ts createRoutes.
+// Mirrors the middleware wiring in server/create-routes.ts.
 function accessLoggedApp(seen: { requestId?: string }): Hono {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
