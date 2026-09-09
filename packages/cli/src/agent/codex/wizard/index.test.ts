@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { CodexConfigWriteError } from '@aio-proxy/i18n';
+
 import { runCodexWizard } from './index';
 
 test('skips Key prompt and leaves history when migration is declined', async () => {
@@ -149,4 +151,41 @@ test('defaults a first multi-source migration selector to openai', async () => {
   });
   expect(previousProvider).toBe('openai');
   expect(result.migration).toEqual({ status: 'declined' });
+});
+
+test('reports a retained generated key when Codex config saving fails', async () => {
+  const secret = 'sk-generated-secret';
+  const error = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => 'custom',
+      key: async () => ({ kind: 'none' }),
+      sources: async () => [],
+      migrate: async () => false,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: '', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => ({ token: secret, kind: 'created', label: 'Codex: custom', verified: true }),
+    }),
+    inspectSessions: async () => ({ groups: [], blocked: [], targets: [] }),
+    saveConfig: async () => {
+      throw new Error(`config write failed: ${secret}`);
+    },
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  }).catch((cause: unknown) => cause);
+
+  expect(error).toBeInstanceOf(CodexConfigWriteError);
+  expect((error as CodexConfigWriteError).providerId).toBe('custom');
+  expect(String(error)).not.toContain(secret);
 });

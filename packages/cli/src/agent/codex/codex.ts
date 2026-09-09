@@ -7,7 +7,7 @@ import { checkbox, confirm, input, select } from '@inquirer/prompts';
 
 import { reloadCommand } from '../../reload';
 import { loadServiceEnv } from '../../service-env';
-import { resolveAgentEndpoint } from '../control-plane';
+import { codexBaseUrl, resolveAgentEndpoint } from '../control-plane';
 import { readCodexDocument, validateCodexProviderId } from './config-document';
 import type { ConfigInspection, CodexLocation } from './contracts';
 import { inspectProxyKeys } from './credentials';
@@ -238,7 +238,8 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     occupiedIds: () => occupiedIds(location),
     inspectKeys: () => inspectProxyKeys(createCredentialDeps(endpoint)),
     inspectSessions: (providerId) => inspectCodexSessions(location, providerId),
-    saveConfig: (providerId, token) => configureCodexConfig({ location, providerId, baseUrl: endpoint, token }),
+    saveConfig: (providerId, token) =>
+      configureCodexConfig({ location, providerId, baseUrl: codexBaseUrl(endpoint), token }),
     migrateSessions: (targets, providerId) => migrateCodexSessions({ location, targets, targetProviderId: providerId }),
   });
   return result.status === 'cancelled' ? result : { ...result, version, versionCompatibility: 'unverified' as const };

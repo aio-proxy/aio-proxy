@@ -5,6 +5,7 @@ import {
   AliasCollisionError,
   AppError,
   ConfigWriteError,
+  CodexConfigWriteError,
   ERROR_CODES,
   PortOutOfRangeError,
   ProviderNotInstalledError,
@@ -40,6 +41,17 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
       return {
         code: err.code,
         message: m['cli.error.config_write_failed']({ path: '' }, { locale }),
+      };
+    case 'cli_agent_codex_config_write_failed':
+      if (err instanceof CodexConfigWriteError) {
+        return {
+          code: err.code,
+          message: m['cli.agent.codex.config_write_failed']({ providerId: err.providerId }, { locale }),
+        };
+      }
+      return {
+        code: err.code,
+        message: m['cli.agent.codex.config_write_failed']({ providerId: '' }, { locale }),
       };
     case 'cli_error_port_out_of_range':
       if (err instanceof PortOutOfRangeError) {

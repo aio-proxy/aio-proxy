@@ -4,12 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  codexBaseUrl,
   controlBaseUrl,
   DEFAULT_CONTROL_HOST,
   DEFAULT_CONTROL_PORT,
   probeHealth,
   resolveControlAddress,
 } from './control-plane';
+
+test('codexBaseUrl appends the model API path without duplicate slashes', () => {
+  expect(codexBaseUrl('http://127.0.0.1:9317')).toBe('http://127.0.0.1:9317/v1');
+  expect(codexBaseUrl('http://127.0.0.1:9317///')).toBe('http://127.0.0.1:9317/v1');
+});
 
 test('controlBaseUrl brackets an IPv6 host so the URL is valid', () => {
   // Raw interpolation would yield http://::1:9317, which is not a parseable URL

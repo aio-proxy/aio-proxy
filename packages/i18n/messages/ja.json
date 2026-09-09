@@ -367,7 +367,8 @@
         "removed": "Codex の管理設定を {configPath} から {status} しました。",
         "keys_retained": "プロキシキーは保持されました。",
         "restore_option": "操作 UUID で Codex 移行を復元",
-        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？"
+        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？",
+        "config_write_failed": "Provider {providerId} の Codex 設定を保存できませんでした。プロキシキーは保持されています。設定を完了するには `aio-proxy agent configure codex` を再実行してください。"
       }
     }
   },

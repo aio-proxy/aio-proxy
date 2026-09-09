@@ -367,7 +367,8 @@
         "removed": "{configPath}의 Codex 관리 구성을 {status}했습니다.",
         "keys_retained": "프록시 키는 유지되었습니다.",
         "restore_option": "작업 UUID로 Codex 마이그레이션 복원",
-        "pending_recovery": "이전 Codex 구성 작업이 보류 중입니다. 계속하기 전에 복구할까요?"
+        "pending_recovery": "이전 Codex 구성 작업이 보류 중입니다. 계속하기 전에 복구할까요?",
+        "config_write_failed": "Provider {providerId}의 Codex 구성을 저장하지 못했습니다. 프록시 키는 유지되었습니다. 설정을 완료하려면 `aio-proxy agent configure codex`를 다시 실행하세요."
       }
     }
   },

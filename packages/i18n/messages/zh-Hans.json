@@ -367,7 +367,8 @@
         "removed": "已从 {configPath} {status} Codex 受管配置。",
         "keys_retained": "代理密钥已保留。",
         "restore_option": "按操作 UUID 恢复 Codex 迁移",
-        "pending_recovery": "之前的 Codex 配置操作仍在等待处理。是否在继续前恢复？"
+        "pending_recovery": "之前的 Codex 配置操作仍在等待处理。是否在继续前恢复？",
+        "config_write_failed": "无法为 Provider {providerId} 保存 Codex 配置。代理密钥已保留；请重新运行 `aio-proxy agent configure codex` 完成设置。"
       }
     }
   },

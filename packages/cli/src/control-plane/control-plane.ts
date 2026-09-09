@@ -41,6 +41,8 @@ export async function resolveControlAddress(options: { readonly host?: string; r
 export const controlBaseUrl = (host: string, port: string): string =>
   `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
+export const codexBaseUrl = (endpoint: string): string => `${endpoint.replace(/\/+$/u, '')}/v1`;
+
 // Probe the daemon's /health. Only accept a response that carries aio-proxy's
 // own `status: "ok"` marker, so an unrelated service answering /health on the
 // same port is not mistaken for a running proxy. A non-2xx, non-JSON, or

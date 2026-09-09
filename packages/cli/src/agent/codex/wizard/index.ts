@@ -1,3 +1,5 @@
+import { CodexConfigWriteError } from '@aio-proxy/i18n';
+
 import { validateCodexProviderId } from '../config-document';
 import type {
   ConfigCommit,
@@ -130,7 +132,13 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
     const previousProviderId = (inspection.providerId ?? inspection.activeProviderId) || 'openai';
     const migration = await migrationSelection(preview, providerId, previousProviderId, deps.prompts);
     const credential = await keys.resolve(selection, providerId);
-    const commit = await deps.saveConfig(providerId, credential.token);
+    let commit: ConfigCommit;
+    try {
+      commit = await deps.saveConfig(providerId, credential.token);
+    } catch (error) {
+      if (credential.kind === 'created') throw new CodexConfigWriteError(providerId);
+      throw error;
+    }
     let migrationResult: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' } =
       migration.accepted ? { status: 'not_requested' } : migration.result;
     if (migration.accepted) {

@@ -367,7 +367,8 @@
         "removed": "Codex managed configuration {status} at {configPath}.",
         "keys_retained": "Proxy keys were retained.",
         "restore_option": "Restore a Codex migration by operation UUID",
-        "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?"
+        "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?",
+        "config_write_failed": "Could not save Codex configuration for Provider {providerId}. The proxy key was retained; rerun `aio-proxy agent configure codex` to finish setup."
       }
     }
   },
