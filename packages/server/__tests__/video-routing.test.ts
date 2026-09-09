@@ -523,6 +523,53 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.resolves.some((input) => input.requestPath === '/v1/videos/video_abc')).toBe(true);
   });
 
+  test('a keyless unpinned create does not forward caller credentials', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const sentinel = 'caller-secret-credential';
+    const created = await app.request(`/v1/videos?key=${sentinel}&auth_token=${sentinel}&variant=thumbnail`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${sentinel}`,
+        'x-api-key': sentinel,
+        'x-goog-api-key': sentinel,
+      },
+      body: createBody({ model: 'sora-2' }),
+    });
+    expect(created.status).toBe(200);
+    const forwarded = fixture.headerBags.at(-1);
+    expect(forwarded?.get('authorization')).toBeNull();
+    expect(forwarded?.get('x-api-key')).toBeNull();
+    expect(forwarded?.get('x-goog-api-key')).toBeNull();
+    expect([...(forwarded?.values() ?? [])].join('\n')).not.toContain(sentinel);
+    expect(fixture.urls.at(-1)).not.toContain(sentinel);
+    expect(fixture.urls.at(-1)).toContain('variant=thumbnail');
+  });
+
+  test('a keyless unpinned edit does not forward caller credentials', async () => {
+    const fixture = videoProvider('openai');
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const sentinel = 'caller-secret-credential';
+    const edits = await app.request(`/v1/videos/edits?key=${sentinel}&auth_token=${sentinel}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${sentinel}`,
+        'x-api-key': sentinel,
+        'x-goog-api-key': sentinel,
+      },
+      body: JSON.stringify({ model: 'sora-2', prompt: 'warmer light', video: { id: 'video_unknown' } }),
+    });
+    expect(edits.status).toBe(200);
+    const forwarded = fixture.headerBags.at(-1);
+    expect(forwarded?.get('authorization')).toBeNull();
+    expect(forwarded?.get('x-api-key')).toBeNull();
+    expect(forwarded?.get('x-goog-api-key')).toBeNull();
+    expect([...(forwarded?.values() ?? [])].join('\n')).not.toContain(sentinel);
+    expect(fixture.urls.at(-1)).not.toContain(sentinel);
+  });
+
   test('a keyless pinned follow-up does not forward caller credentials', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });

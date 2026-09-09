@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { isInboundAbort } from '../../route-observation';
-import { withoutCallerCredentialQuery, withoutCallerCredentials } from '../../server/api-key-auth';
+import { withoutCallerCredentialsOnRequest } from '../../server/api-key-auth';
 import { cancelRetainedRequestBody } from '../pipeline/request';
 import { videoForbidden, videoInvalidRequest, videoNotFound, videoUpstreamUnavailable } from './errors';
 import { isValidVideoId, sameVideoOwner, type VideoJobRecord } from './job-store';
@@ -52,14 +52,7 @@ export async function invokePinnedVideo(
       await cancelRetainedRequestBody(inbound, 'videos pinned upstream unavailable');
       return videoUpstreamUnavailable();
     }
-    const response = await raw.invoke(
-      new Request(withoutCallerCredentialQuery(inbound.url), {
-        method: inbound.method,
-        headers: withoutCallerCredentials(inbound.headers),
-        body: inbound.body,
-        signal: inbound.signal,
-      }),
-    );
+    const response = await raw.invoke(withoutCallerCredentialsOnRequest(inbound));
     if (context.req.method === 'DELETE' && response.ok) source.videoJobs.remove(record.videoId, record);
     if (options.pinNewJob === true && response.ok) {
       await pinSuccessfulVideoJob(source, callerPrincipal(context), {

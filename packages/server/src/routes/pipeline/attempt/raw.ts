@@ -3,6 +3,7 @@ import { isRecord } from '@aio-proxy/shared';
 import { attributeName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
+import { withoutCallerCredentialsOnRequest } from '../../../server/api-key-auth';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { publicSlug } from '../public-slug';
@@ -31,7 +32,11 @@ export async function attemptRawCandidate<TRequest, TContext>(
     slot.candidate.modelId,
     slot.candidate.provider.upstreamMetadata?.[slot.candidate.modelId],
   );
-  const upstream = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
+  const rewritten = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
+  // Keyless proxies leave caller secrets on the inbound request. Video raw is a
+  // plugin-shaped passthrough, so strip after rewrite and before invoke — the
+  // same copy pinned follow-ups already use. Language/image/audio stay as-is.
+  const upstream = adapter.capability === 'video' ? withoutCallerCredentialsOnRequest(rewritten) : rewritten;
   return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan, options);
 }
 
