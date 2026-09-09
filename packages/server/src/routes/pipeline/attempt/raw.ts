@@ -178,13 +178,14 @@ export async function completeRawAttempt<TRequest, TContext>(
   return { kind: 'return', response: captured.value };
 }
 
-async function releaseInvokedRawBodies(
+export async function releaseInvokedRawBodies(
   upstream: Request,
   retrySource: Request | undefined,
   reason: unknown,
 ): Promise<void> {
-  await cancelRetainedRequestBody(upstream, reason);
-  if (retrySource !== undefined) await cancelRetainedRequestBody(retrySource, reason);
+  const pending = [cancelRetainedRequestBody(upstream, reason)];
+  if (retrySource !== undefined) pending.push(cancelRetainedRequestBody(retrySource, reason));
+  await Promise.all(pending);
 }
 
 function shouldFallbackVideoSource404<TRequest, TContext>(
