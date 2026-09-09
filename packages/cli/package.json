@@ -27,6 +27,7 @@
     "@inquirer/prompts": "^8.7.1",
     "commander": "15",
     "es-toolkit": "catalog:",
+    "toml-eslint-parser": "1.0.3",
     "zod": "catalog:"
   },
   "devDependencies": {
