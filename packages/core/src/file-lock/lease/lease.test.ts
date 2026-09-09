@@ -1,5 +1,6 @@
-import { expect, test } from 'bun:test';
-import { chmod, lstat, mkdir, utimes, writeFile } from 'node:fs/promises';
+import { expect, spyOn, test } from 'bun:test';
+import { chmod, lstat, mkdir, readFile, unlink, utimes, writeFile } from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -75,4 +76,29 @@ test('fence fails after replacement and cancellation aborts acquisition', async 
   const controller = new AbortController();
   controller.abort(new Error('cancelled'));
   await expect(acquireProcessFileLock(join(root, 'cancelled.lock'), controller.signal)).rejects.toThrow('cancelled');
+});
+
+test('recovers the exact owner after release cleanup fails', async () => {
+  const root = await temporaryRoot();
+  const path = join(root, '.lock');
+  const realUnlink = fsPromises.unlink.bind(fsPromises);
+  let failed = false;
+  const unlinkSpy = spyOn(fsPromises, 'unlink').mockImplementation(async (target) => {
+    if (target === path && !failed) {
+      failed = true;
+      throw new Error('release failed');
+    }
+    return realUnlink(target);
+  });
+  try {
+    const first = await acquireProcessFileLock(path);
+    await expect(first.release()).rejects.toThrow('release failed');
+    const abandoned = await readFile(path, 'utf8');
+    const second = await acquireProcessFileLock(path, AbortSignal.timeout(500));
+    expect(await readFile(path, 'utf8')).not.toBe(abandoned);
+    await second.release();
+  } finally {
+    unlinkSpy.mockRestore();
+    await unlink(path).catch(() => undefined);
+  }
 });

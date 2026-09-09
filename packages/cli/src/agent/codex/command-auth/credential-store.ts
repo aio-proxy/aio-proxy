@@ -18,6 +18,8 @@ const CredentialSchema = z.strictObject({
   status: z.enum(['ready', 'refreshing', 'reauthorize']),
   refreshStartedAt: z.number().finite().nonnegative().optional(),
   deliveredBy: z.string().min(1).optional(),
+  deliveredRevision: z.number().int().nonnegative().optional(),
+  deliveredAt: z.number().finite().nonnegative().optional(),
 });
 
 export type CredentialState = z.output<typeof CredentialSchema>;
@@ -30,6 +32,7 @@ export async function readCredential(location: CodexLocation): Promise<Credentia
     const metadata = await lstat(path);
     if (metadata.isSymbolicLink()) throw new Error('Refusing symbolic credential file');
     if (!metadata.isFile() || metadata.nlink > 1) throw new Error('Refusing unsafe credential file');
+    if ((metadata.mode & 0o077) !== 0) throw new Error('Refusing insecure credential file');
   } catch (error) {
     if (isFsCode(error, 'ENOENT')) return undefined;
     throw error;
@@ -53,6 +56,9 @@ export async function writeCredential(
   expected?: Awaited<ReturnType<typeof readRegularFile>>,
 ): Promise<void> {
   await ensureManagedRoot(location);
-  const snapshot = expected ?? (await readRegularFile(credentialPath(location)));
+  const current = await readRegularFile(credentialPath(location));
+  if (current !== undefined && (current.stat.isSymbolicLink() || current.stat.nlink > 1))
+    throw new Error('Refusing unsafe credential file');
+  const snapshot = expected ?? current;
   await durableWrite(credentialPath(location), `${JSON.stringify(state)}\n`, 0o600, snapshot);
 }

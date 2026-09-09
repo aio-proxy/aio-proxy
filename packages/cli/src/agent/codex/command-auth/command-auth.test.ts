@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test';
-import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import { pollDeviceAuthorization } from '@aio-proxy/agent-provider-runtime';
 
 import { resolveCodexLocation } from '../location';
 import { withCodexInstallation } from '../storage/installation-lock';
@@ -13,10 +15,19 @@ import {
   readCodexCommandIdentity,
   writeCodexAuthToken,
 } from './command-auth';
+import { writeCredential } from './credential-store';
 
 const ACCESS = `aio_agent_at_v1_${'a'.repeat(43)}`;
+const ROTATED_ACCESS = `aio_agent_at_v1_${'z'.repeat(43)}`;
 const REFRESH = `aio_agent_rt_v1_${'b'.repeat(43)}`;
+const ROTATED_REFRESH = `aio_agent_rt_v1_${'y'.repeat(43)}`;
 const DEVICE = 'd'.repeat(43);
+
+const instantDevicePoll = async (...args: Parameters<typeof pollDeviceAuthorization>) =>
+  pollDeviceAuthorization(args[0], args[1], {
+    ...args[2],
+    sleep: async () => undefined,
+  });
 
 async function fixture() {
   const root = join(tmpdir(), `aio-codex-auth-${crypto.randomUUID()}`);
@@ -71,6 +82,7 @@ test.serial('persists pending identity before device authorization and never emi
             expect(device.user_code).toBe('ABCD-EFGH');
             delivered = true;
           },
+          pollDeviceAuthorization: instantDevicePoll,
         },
         lease,
       );
@@ -87,8 +99,10 @@ test.serial('persists pending identity before device authorization and never emi
 test.serial('refreshes concurrently under the installation lock and persists rotation before delivery', async () => {
   const f = await fixture();
   const previousFetch = globalThis.fetch;
+  let refreshCount = 0;
   globalThis.fetch = (async (input) => {
     const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    if (path === '/oauth/token') refreshCount += 1;
     return new Response(
       JSON.stringify(
         path === '/oauth/device/code'
@@ -100,7 +114,12 @@ test.serial('refreshes concurrently under the installation lock and persists rot
               expires_in: 600,
               interval: 5,
             }
-          : { token_type: 'Bearer', access_token: ACCESS, refresh_token: REFRESH, expires_in: 900 },
+          : {
+              token_type: 'Bearer',
+              access_token: refreshCount > 1 ? ROTATED_ACCESS : ACCESS,
+              refresh_token: refreshCount > 1 ? ROTATED_REFRESH : REFRESH,
+              expires_in: 900,
+            },
       ),
       { headers: { 'content-type': 'application/json' } },
     );
@@ -119,6 +138,7 @@ test.serial('refreshes concurrently under the installation lock and persists rot
           installation,
           signal: AbortSignal.timeout(10_000),
           onDevice: async () => undefined,
+          pollDeviceAuthorization: instantDevicePoll,
         },
         lease,
       );
@@ -158,7 +178,7 @@ test.serial('refreshes concurrently under the installation lock and persists rot
         lease,
       }),
     );
-    expect(refreshedAfterUnauthorized).toBe(ACCESS);
+    expect(refreshedAfterUnauthorized).toBe(ROTATED_ACCESS);
     await expect(
       withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) =>
         writeCodexAuthToken({
@@ -173,7 +193,7 @@ test.serial('refreshes concurrently under the installation lock and persists rot
         }),
       ),
     ).rejects.toThrow('Codex token delivery failed');
-    expect(await readFile(join(f.location.managedRoot, 'codex-credential.json'), 'utf8')).toContain(ACCESS);
+    expect(await readFile(join(f.location.managedRoot, 'codex-credential.json'), 'utf8')).toContain(ROTATED_ACCESS);
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -193,8 +213,8 @@ test.serial('coordinates refresh delivery across two helper processes', async ()
         return Response.json({
           device_code: DEVICE,
           user_code: 'ABCD-EFGH',
-          verification_uri: `http://127.0.0.1:${server.port}/dashboard/agents/authorize`,
-          verification_uri_complete: `http://127.0.0.1:${server.port}/dashboard/agents/authorize#code=ABCD-EFGH`,
+          verification_uri: `${new URL(request.url).origin}/dashboard/agents/authorize`,
+          verification_uri_complete: `${new URL(request.url).origin}/dashboard/agents/authorize#code=ABCD-EFGH`,
           expires_in: 600,
           interval: 5,
         });
@@ -227,7 +247,13 @@ test.serial('coordinates refresh delivery across two helper processes', async ()
       );
       installationId = installation.marker.installationId;
       await authorizeCodexInstallation(
-        { location, installation, signal: AbortSignal.timeout(10_000), onDevice: async () => undefined },
+        {
+          location,
+          installation,
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => undefined,
+          pollDeviceAuthorization: instantDevicePoll,
+        },
         lease,
       );
       await activateCodexCommandInstallation(location, installationId, lease);
@@ -283,4 +309,54 @@ test('read-only inspection does not rotate credentials and rejects symlink crede
   await expect(
     inspectCodexCommandCredential({ location: f.location, check: false, signal: AbortSignal.timeout(100) }),
   ).rejects.toThrow(/symbolic|unsafe|symlink/i);
+});
+
+test.serial('marks an abandoned refresh outside the replay window for reauthorization', async () => {
+  const f = await fixture();
+  await withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) => {
+    const installation = await prepareCodexCommandInstallation(
+      { location: f.location, providerId: 'aio-proxy', endpoint: f.marker.endpoint, adapterVersion: '0.21.0' },
+      lease,
+    );
+    await writeCredential(f.location, {
+      format: 1,
+      installationId: installation.marker.installationId,
+      endpoint: f.marker.endpoint,
+      revision: 1,
+      accessToken: ACCESS,
+      refreshToken: REFRESH,
+      accessExpiresAt: Date.now() + 60_000,
+      status: 'refreshing',
+      refreshStartedAt: Date.now() - 31_000,
+    });
+    await writeFile(
+      join(f.location.managedRoot, 'codex-command.json'),
+      JSON.stringify({
+        format: 1,
+        marker: {
+          format: 1,
+          managedBy: 'aio-proxy',
+          ...f.marker,
+          agent: 'codex',
+          installationId: installation.marker.installationId,
+        },
+        configPath: f.location.configPath,
+        providerId: 'aio-proxy',
+        status: 'active',
+      }),
+    );
+    await chmod(join(f.location.managedRoot, 'codex-command.json'), 0o600);
+    await expect(
+      writeCodexAuthToken({
+        location: f.location,
+        installationId: installation.marker.installationId,
+        signal: AbortSignal.timeout(10_000),
+        writeToken: async () => undefined,
+        lease,
+      }),
+    ).rejects.toThrow(/replay_lost|reauthorize/i);
+    expect(JSON.parse(await readFile(join(f.location.managedRoot, 'codex-credential.json'), 'utf8')).status).toBe(
+      'reauthorize',
+    );
+  });
 });

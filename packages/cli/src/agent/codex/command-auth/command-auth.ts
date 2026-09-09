@@ -11,9 +11,12 @@ import type { AgentDeviceCodeResponse, AgentManagedMarker, AgentRevokeStatus } f
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 
 import type { CodexLocation } from '../contracts';
+import { inspectCodexConfig } from '../managed-config';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
 import { durableDelete, durableWrite, ensureManagedRoot, isFsCode, readRegularFile } from '../storage/storage';
 import { credentialPath, readCredential, writeCredential, type CredentialState } from './credential-store';
+
+const REFRESH_REPLAY_WINDOW_MS = 30_000;
 
 type InstallationRecord = {
   readonly format: 1;
@@ -47,7 +50,11 @@ async function readIdentity(location: CodexLocation): Promise<InstallationRecord
     if (isFsCode(error, 'ENOENT')) return undefined;
     throw error;
   });
-  if (identityMetadata?.isSymbolicLink() || (identityMetadata?.nlink ?? 1) > 1)
+  if (
+    identityMetadata?.isSymbolicLink() ||
+    (identityMetadata?.nlink ?? 1) > 1 ||
+    (identityMetadata !== undefined && (identityMetadata.mode & 0o077) !== 0)
+  )
     throw new Error('Refusing unsafe Codex command identity');
   const file = await readRegularFile(identityPath(location));
   if (file === undefined) return undefined;
@@ -74,6 +81,8 @@ async function readIdentity(location: CodexLocation): Promise<InstallationRecord
 async function writeIdentity(location: CodexLocation, identity: InstallationRecord): Promise<void> {
   await ensureManagedRoot(location);
   const expected = await readRegularFile(identityPath(location));
+  if (expected !== undefined && (expected.stat.isSymbolicLink() || expected.stat.nlink > 1))
+    throw new Error('Refusing unsafe Codex command identity');
   await durableWrite(identityPath(location), `${JSON.stringify(identity)}\n`, 0o600, expected);
 }
 
@@ -126,6 +135,7 @@ async function authorizeOwned(
     readonly installation: CodexCommandInstallation;
     readonly signal: AbortSignal;
     readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
+    readonly pollDeviceAuthorization?: typeof pollDeviceAuthorization;
   },
   lease: CodexLease,
 ): Promise<void> {
@@ -133,13 +143,63 @@ async function authorizeOwned(
     const current = await readIdentity(input.location);
     if (current?.marker.installationId !== input.installation.marker.installationId || current.status !== 'pending')
       throw new Error('Codex command installation is not pending');
+    await assertManagedInstallation(input.location, current);
+    const cached = await readCredential(input.location);
+    if (
+      cached !== undefined &&
+      (cached.installationId !== current.marker.installationId || cached.endpoint !== current.marker.endpoint)
+    )
+      throw new Error('Codex credential endpoint or installation does not match');
+    if (
+      cached !== undefined &&
+      cached.installationId === current.marker.installationId &&
+      cached.endpoint === current.marker.endpoint
+    ) {
+      if (cached.status === 'ready' && cached.accessExpiresAt > Date.now() + 1_000) return;
+      if (cached.status === 'refreshing' && !isRecentRefresh(cached.refreshStartedAt, Date.now())) {
+        await writeCredential(input.location, { ...cached, status: 'reauthorize', refreshStartedAt: undefined });
+      } else if (cached.status === 'ready' || isRecentRefresh(cached.refreshStartedAt, Date.now())) {
+        const requestStartedAt = cached.refreshStartedAt ?? Date.now();
+        const refreshing = { ...cached, status: 'refreshing' as const, refreshStartedAt: requestStartedAt };
+        await writeCredential(input.location, refreshing);
+        try {
+          const response = await refreshAgentCredential(current.marker, cached.refreshToken, {
+            signal: input.signal,
+            fetch: boundFetch(current.marker.endpoint, input.signal),
+          });
+          await assertOwned();
+          await writeCredential(input.location, {
+            ...cached,
+            revision: cached.revision + 1,
+            accessToken: response.access_token,
+            refreshToken: response.refresh_token,
+            accessExpiresAt: requestStartedAt + response.expires_in * 1_000,
+            status: 'ready',
+            refreshStartedAt: undefined,
+            deliveredBy: undefined,
+            deliveredRevision: undefined,
+            deliveredAt: undefined,
+          });
+          return;
+        } catch (error) {
+          await assertOwned();
+          if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') {
+            await writeCredential(input.location, { ...cached, status: 'reauthorize', refreshStartedAt: undefined });
+          } else {
+            await writeCredential(input.location, { ...cached, status: 'ready', refreshStartedAt: undefined });
+            throw error;
+          }
+        }
+      }
+    }
     const device = await requestDeviceAuthorization(input.installation.marker, { signal: input.signal });
     await assertOwned();
     await input.onDevice(device);
-    const tokenResponse = await pollDeviceAuthorization(input.installation.marker, device, {
-      signal: input.signal,
-      sleep: async () => undefined,
-    });
+    const tokenResponse = await (input.pollDeviceAuthorization ?? pollDeviceAuthorization)(
+      input.installation.marker,
+      device,
+      { signal: input.signal },
+    );
     await assertOwned();
     const state: CredentialState = {
       format: 1,
@@ -150,9 +210,45 @@ async function authorizeOwned(
       refreshToken: tokenResponse.refresh_token,
       accessExpiresAt: Date.now() + tokenResponse.expires_in * 1_000,
       status: 'ready',
+      deliveredRevision: undefined,
+      deliveredAt: undefined,
     };
     await writeCredential(input.location, state);
   });
+}
+
+async function assertManagedInstallation(location: CodexLocation, identity: InstallationRecord): Promise<void> {
+  assertManagedInspection(identity, await inspectCodexConfig(location));
+}
+
+function assertManagedInspection(
+  identity: InstallationRecord,
+  inspection: Awaited<ReturnType<typeof inspectCodexConfig>>,
+): void {
+  if (inspection.status === 'conflict') throw new Error('Codex managed configuration is invalid');
+  if (inspection.providerId === undefined) return;
+  if (
+    inspection.status !== 'managed' ||
+    inspection.providerId !== identity.providerId ||
+    inspection.authMode !== 'command' ||
+    inspection.installationId !== identity.marker.installationId
+  )
+    throw new Error('Codex managed configuration does not match the command installation');
+  if (inspection.baseUrl !== undefined) {
+    const configured = new URL(inspection.baseUrl);
+    const endpoint = new URL(identity.marker.endpoint);
+    if (
+      configured.origin !== endpoint.origin ||
+      configured.pathname.replace(/\/+$/u, '') !== `${endpoint.pathname.replace(/\/+$/u, '')}/v1`
+    )
+      throw new Error('Codex managed endpoint does not match the command installation');
+  }
+}
+
+function isRecentRefresh(refreshStartedAt: number | undefined, now: number): boolean {
+  return (
+    refreshStartedAt !== undefined && refreshStartedAt <= now && now - refreshStartedAt <= REFRESH_REPLAY_WINDOW_MS
+  );
 }
 
 export async function authorizeCodexInstallation(
@@ -161,6 +257,7 @@ export async function authorizeCodexInstallation(
     readonly installation: CodexCommandInstallation;
     readonly signal: AbortSignal;
     readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
+    readonly pollDeviceAuthorization?: typeof pollDeviceAuthorization;
   },
   lease: CodexLease,
 ): Promise<void> {
@@ -234,7 +331,17 @@ export async function inspectCodexCommandCredential(input: {
   const credential = await readCredential(input.location);
   if (identity === undefined || credential === undefined)
     return { credentialStatus: 'missing', connection: 'not_checked' };
-  if (credential.status === 'reauthorize') return { credentialStatus: 'reauthorize', connection: 'not_checked' };
+  try {
+    assertManagedInspection(identity, await inspectCodexConfig(input.location));
+  } catch {
+    return { credentialStatus: 'reauthorize', connection: 'not_checked' };
+  }
+  if (
+    credential.status === 'reauthorize' ||
+    credential.installationId !== identity.marker.installationId ||
+    credential.endpoint !== identity.marker.endpoint
+  )
+    return { credentialStatus: 'reauthorize', connection: 'not_checked' };
   const expired = credential.accessExpiresAt <= Date.now();
   if (!input.check || expired) return { credentialStatus: expired ? 'expired' : 'ready', connection: 'not_checked' };
   try {
@@ -282,14 +389,35 @@ async function writeTokenOwned(
     const identity = await readIdentity(input.location);
     if (identity?.marker.installationId !== input.installationId || identity.status !== 'active')
       throw new Error('Codex command installation is not active');
+    await assertManagedInstallation(input.location, identity);
     const current = await readCredential(input.location);
-    if (current === undefined || current.status === 'reauthorize' || current.installationId !== input.installationId)
+    if (
+      current === undefined ||
+      current.status === 'reauthorize' ||
+      current.installationId !== input.installationId ||
+      current.endpoint !== identity.marker.endpoint
+    )
       throw new Error('Codex credential requires authorization');
     const now = Date.now();
-    if (input.forceRefresh !== true && current.accessExpiresAt > now + 1_000 && current.deliveredBy !== undefined) {
+    if (current.status === 'refreshing' && !isRecentRefresh(current.refreshStartedAt, now)) {
+      await assertOwned();
+      await writeCredential(input.location, { ...current, status: 'reauthorize', refreshStartedAt: undefined });
+      throw new Error('Codex credential refresh replay_lost; reauthorize required');
+    }
+    if (
+      input.forceRefresh !== true &&
+      current.accessExpiresAt > now + 1_000 &&
+      current.deliveredBy !== undefined &&
+      current.deliveredRevision === current.revision
+    ) {
       await input.writeToken(current.accessToken);
       await assertOwned();
-      await writeCredential(input.location, { ...current, deliveredBy: lease.owner });
+      await writeCredential(input.location, {
+        ...current,
+        deliveredBy: lease.owner,
+        deliveredRevision: current.revision,
+        deliveredAt: now,
+      });
       return;
     }
     const requestStartedAt = Date.now();
@@ -319,7 +447,12 @@ async function writeTokenOwned(
         throw new Error('Codex token delivery failed');
       }
       await assertOwned();
-      await writeCredential(input.location, { ...next, deliveredBy: lease.owner });
+      await writeCredential(input.location, {
+        ...next,
+        deliveredBy: lease.owner,
+        deliveredRevision: next.revision,
+        deliveredAt: Date.now(),
+      });
     } catch (error) {
       if (committed !== undefined)
         throw error instanceof Error && error.message === 'Codex token delivery failed'

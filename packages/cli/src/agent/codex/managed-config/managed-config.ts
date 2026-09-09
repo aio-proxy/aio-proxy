@@ -167,7 +167,7 @@ export async function recoverCodexConfigOperation(
   confirmRecovery?: () => Promise<boolean>,
   lease?: CodexLease,
 ): Promise<'none' | 'recovered' | 'declined'> {
-  return withInstallationLease(location, lease, async () =>
+  return withInstallationLease(location, lease, async (ownedLease) =>
     runExclusive(location.markerPath, async () => {
       await assertNoSymlinkParents(location.home);
       if ((await inspectDirectory(location.managedRoot)) === undefined) return 'none';
@@ -176,7 +176,7 @@ export async function recoverCodexConfigOperation(
       if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
       if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
       await ensureManagedRoot(location);
-      await recoverPending(location);
+      await ownedLease.withOwnershipFence(() => recoverPending(location));
       return 'recovered';
     }),
   );
@@ -257,20 +257,25 @@ async function completeOperation(
   original: Awaited<ReturnType<typeof readText>>,
   nextText: string,
   marker: CodexMarker | undefined,
+  lease: CodexLease,
 ): Promise<void> {
-  const ownedJournal = await startJournal(location, journal);
-  try {
-    await writeTomlAtomically(location, original, nextText);
-    await updateJournal(location, { ...ownedJournal, stage: 'config-written' });
-    if (marker === undefined) await deleteMarker(location);
-    else await writeMarker(location, marker);
-    await updateJournal(location, { ...ownedJournal, stage: 'marker-written' });
-    await clearJournal(location);
-    await syncParent(location.markerPath);
-  } catch (error) {
-    await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
-    throw error;
-  }
+  await lease.withOwnershipFence(async (assertOwned) => {
+    const ownedJournal = await startJournal(location, journal);
+    try {
+      await assertOwned();
+      await writeTomlAtomically(location, original, nextText);
+      await updateJournal(location, { ...ownedJournal, stage: 'config-written' });
+      await assertOwned();
+      if (marker === undefined) await deleteMarker(location);
+      else await writeMarker(location, marker);
+      await updateJournal(location, { ...ownedJournal, stage: 'marker-written' });
+      await clearJournal(location);
+      await syncParent(location.markerPath);
+    } catch (error) {
+      await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
+      throw error;
+    }
+  });
 }
 
 function changedFields(marker: CodexMarker, text: string): readonly (readonly string[])[] {
@@ -327,10 +332,10 @@ export async function configureCodexConfig(
   lease?: CodexLease,
 ): Promise<ConfigCommit> {
   await checkCodexInstalled();
-  return withInstallationLease(input.location, lease, async () =>
+  return withInstallationLease(input.location, lease, async (ownedLease) =>
     runExclusive(input.location.markerPath, async () => {
       const { location, providerId, baseUrl, auth } = input;
-      await recoverPending(location);
+      await ownedLease.withOwnershipFence(() => recoverPending(location));
       const current = await readText(location);
       const text = current?.text ?? '';
       const document =
@@ -405,6 +410,7 @@ export async function configureCodexConfig(
         current,
         nextText,
         nextMarker,
+        ownedLease,
       );
       await chmodChecked(location.configPath, 0o600);
       return { status: 'configured', providerId };
@@ -413,35 +419,38 @@ export async function configureCodexConfig(
 }
 
 export async function removeCodexConfig(location: CodexLocation, lease?: CodexLease): Promise<ConfigRemoval> {
-  return withInstallationLease(location, lease, async () =>
+  return withInstallationLease(location, lease, async (ownedLease) =>
     runExclusive(location.markerPath, async () => {
-      await recoverPending(location);
+      await ownedLease.withOwnershipFence(() => recoverPending(location));
       const marker = await readMarker(location);
       if (marker === undefined) return { status: 'absent', preservedPaths: [] };
       const current = await readText(location);
       if (current === undefined) {
-        const ownedJournal = await startJournal(location, {
-          operation: 'remove',
-          originalExists: false,
-          afterFingerprint: undefined,
-          oldMarker: marker,
-          stage: 'prepared',
-        });
-        try {
-          await deleteMarker(location);
-          await updateJournal(location, {
+        await ownedLease.withOwnershipFence(async (assertOwned) => {
+          const ownedJournal = await startJournal(location, {
             operation: 'remove',
             originalExists: false,
             afterFingerprint: undefined,
             oldMarker: marker,
-            owner: ownedJournal.owner,
-            stage: 'marker-written',
+            stage: 'prepared',
           });
-          await clearJournal(location);
-        } catch (error) {
-          await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
-          throw error;
-        }
+          try {
+            await assertOwned();
+            await deleteMarker(location);
+            await updateJournal(location, {
+              operation: 'remove',
+              originalExists: false,
+              afterFingerprint: undefined,
+              oldMarker: marker,
+              owner: ownedJournal.owner,
+              stage: 'marker-written',
+            });
+            await clearJournal(location);
+          } catch (error) {
+            await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
+            throw error;
+          }
+        });
         return { status: 'absent', preservedPaths: [] };
       }
       const restoreEdits: FieldEdit[] = [];
@@ -468,6 +477,7 @@ export async function removeCodexConfig(location: CodexLocation, lease?: CodexLe
         current,
         nextText,
         undefined,
+        ownedLease,
       );
       return { status: preservedPaths.length === 0 ? 'removed' : 'partial', preservedPaths };
     }),

@@ -26,3 +26,18 @@ test('rejects missing, development and unknown command entries', async () => {
   ).rejects.toThrow();
   await expect(resolveCodexAuthCommand({ pathEnv: '', candidates: ['/tmp/other-tool'] })).rejects.toThrow();
 });
+
+test('accepts the published npm launcher while rejecting arbitrary javascript entries', async () => {
+  const root = await executableRoot();
+  const packageRoot = join(root, 'node_modules', 'aio-proxy');
+  const launcher = join(packageRoot, 'bin', 'aio-proxy.js');
+  await mkdir(join(packageRoot, 'bin'), { recursive: true });
+  await writeFile(launcher, '#!/usr/bin/env node\nconsole.log("aio-proxy 0.21.0")\n');
+  await chmod(launcher, 0o755);
+  await expect(resolveCodexAuthCommand({ candidates: [launcher] })).resolves.toBe(launcher);
+  const source = join(root, 'src', 'aio-proxy.js');
+  await mkdir(join(root, 'src'), { recursive: true });
+  await writeFile(source, '#!/usr/bin/env node\nconsole.log("aio-proxy 0.21.0")\n');
+  await chmod(source, 0o755);
+  await expect(resolveCodexAuthCommand({ candidates: [source] })).rejects.toThrow();
+});

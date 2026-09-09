@@ -3,6 +3,7 @@ import { constants, type Stats } from 'node:fs';
 import { mkdir, open, readFile, lstat, unlink } from 'node:fs/promises';
 import { dirname, join, parse, resolve } from 'node:path';
 
+import { clearAbandonedOwner, reclaimAbandonedOwner, rememberAbandonedOwner } from '../abandoned-owner';
 import { abortableDelay } from '../delay';
 import { isNodeError } from '../fs';
 import { processIsAlive, processStarttime } from '../process-identity';
@@ -96,8 +97,9 @@ async function ownerIsStale(path: string): Promise<{ stale: boolean; text?: stri
   }
   const currentStarttime = alive ? await processStarttime(record.pid) : null;
   const identityVerifiable = alive && currentStarttime !== null && record.starttime !== STARTTIME_UNAVAILABLE;
-  const stale =
-    !alive || (identityVerifiable ? currentStarttime !== record.starttime : Date.now() - metadata.mtimeMs > STALE_MS);
+  // A live process with an unverifiable start time is conservatively retained.
+  // An expired heartbeat alone cannot prove that a live owner abandoned the lock.
+  const stale = !alive || (identityVerifiable ? currentStarttime !== record.starttime : false);
   return stale ? { stale: true, text, identity: metadata } : { stale: false, text };
 }
 
@@ -163,9 +165,11 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
           await handle.sync();
           identity = await handle.stat();
           await assertFence();
+          clearAbandonedOwner(path);
           return true;
         } catch (error) {
           if (isNodeError(error, 'EEXIST')) {
+            if (await reclaimAbandonedOwner(path, assertFence)) return null;
             const inspection = await ownerIsStale(path);
             if (inspection.stale && inspection.text !== undefined && inspection.identity !== undefined)
               return (await removeIfUnchanged(path, inspection.text, inspection.identity, assertFence)) ? null : false;
@@ -243,6 +247,10 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
           },
           (assertFence) => removeIfUnchanged(path, content, identity!, assertFence),
         );
+        clearAbandonedOwner(path);
+      } catch (error) {
+        rememberAbandonedOwner(path, { owner, identity: identity!, text: content });
+        throw error;
       } finally {
         await handle!.close().catch(() => {});
       }

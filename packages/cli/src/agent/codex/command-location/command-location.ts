@@ -9,9 +9,14 @@ export type CommandLocationOptions = {
 
 const candidateNames = new Set(['aiop', 'aio-proxy']);
 
+function isPublishedLauncher(path: string): boolean {
+  const normalized = normalize(path).replaceAll('\\', '/');
+  return /(?:^|\/)(?:node_modules\/)?aio-proxy\/bin\/aio-proxy\.js$/u.test(normalized);
+}
+
 function isAllowedName(path: string): boolean {
   const name = basename(path);
-  return candidateNames.has(name) && !name.endsWith('.js') && !name.endsWith('.ts');
+  return candidateNames.has(name) || (name === 'aio-proxy.js' && isPublishedLauncher(path));
 }
 
 function isDevelopmentPath(path: string): boolean {
@@ -20,7 +25,7 @@ function isDevelopmentPath(path: string): boolean {
     normalized.endsWith('/bun') ||
     normalized.endsWith('/node') ||
     normalized.includes('/node_modules/.bin/') ||
-    normalized.endsWith('.js') ||
+    (normalized.endsWith('.js') && !isPublishedLauncher(normalized)) ||
     normalized.endsWith('.ts') ||
     normalized.includes('/src/') ||
     normalized.includes('/scripts/')
@@ -30,8 +35,23 @@ function isDevelopmentPath(path: string): boolean {
 async function runVersion(path: string, spawn: typeof Bun.spawn): Promise<boolean> {
   try {
     const child = spawn([path, '--version'], { stdout: 'pipe', stderr: 'pipe' });
-    const output = await new Response(child.stdout as ReadableStream<Uint8Array>).text();
-    const status = await child.exited;
+    // Drain both pipes while the process runs. A noisy invalid entry must not
+    // deadlock discovery, and a broken launcher must not hold the CLI forever.
+    const stdout = new Response(child.stdout as ReadableStream<Uint8Array>).text().catch(() => '');
+    const stderr = new Response(child.stderr as ReadableStream<Uint8Array>).text().catch(() => '');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const status = await Promise.race([
+      child.exited,
+      new Promise<number>((resolve) => {
+        timer = setTimeout(() => {
+          child.kill();
+          resolve(-1);
+        }, 3_000);
+      }),
+    ]);
+    if (timer !== undefined) clearTimeout(timer);
+    const output = await stdout;
+    await stderr;
     return status === 0 && /(?:aiop|aio-proxy)(?:-cli)?\s+\d+\.\d+\.\d+/iu.test(output);
   } catch {
     return false;
