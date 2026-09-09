@@ -159,8 +159,8 @@ async function rpcProbe(root: string, codexHome: string, loggedIn: boolean, prox
     port: 0,
     fetch(request) {
       const path = new URL(request.url).pathname;
-      if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
       observedTokens.push(request.headers.get('authorization') ?? '');
+      if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
       inferenceRequest();
       return Response.json({ error: { message: 'contract probe' } }, { status: 503 });
     },
@@ -349,19 +349,80 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
 function schemaMethods(schema: Record<string, unknown>): string[] {
   const definitions = schema['definitions'];
   if (typeof definitions !== 'object' || definitions === null) return [];
-  const requiredFields: Record<string, readonly string[]> = {
-    ThreadStartParams: ['modelProvider', 'historyMode'],
-    ThreadResumeParams: ['threadId', 'modelProvider'],
-    ThreadListParams: ['modelProviders', 'useStateDbOnly'],
-    ThreadMetadataUpdateParams: ['threadId', 'isPinned', 'gitInfo'],
+  const expected: Record<string, { required: readonly string[]; optional: readonly string[] }> = {
+    ThreadStartParams: { required: [], optional: ['modelProvider', 'historyMode'] },
+    ThreadResumeParams: { required: ['threadId'], optional: ['modelProvider'] },
+    ThreadListParams: { required: [], optional: ['modelProviders', 'useStateDbOnly'] },
+    ThreadMetadataUpdateParams: { required: ['threadId'], optional: ['isPinned', 'gitInfo'] },
+  };
+  const definitionOf = (name: string): Record<string, unknown> | undefined => {
+    const definition = definitions[name];
+    return typeof definition === 'object' && definition !== null ? (definition as Record<string, unknown>) : undefined;
+  };
+  const propertiesOf = (definition: Record<string, unknown>): Record<string, unknown> | undefined => {
+    const properties = definition['properties'];
+    return typeof properties === 'object' && properties !== null ? (properties as Record<string, unknown>) : undefined;
+  };
+  const requiredOf = (definition: Record<string, unknown>): readonly string[] | undefined => {
+    const required = definition['required'];
+    if (required === undefined) return [];
+    return Array.isArray(required) && required.every((field): field is string => typeof field === 'string')
+      ? required
+      : undefined;
+  };
+  const hasType = (properties: Record<string, unknown>, name: string, expectedTypes: readonly string[]): boolean => {
+    const property = properties[name];
+    if (typeof property !== 'object' || property === null) return false;
+    const type = (property as { type?: unknown }).type;
+    return (
+      (typeof type === 'string' && expectedTypes.length === 1 && type === expectedTypes[0]) ||
+      (Array.isArray(type) &&
+        type.length === expectedTypes.length &&
+        expectedTypes.every((value) => type.includes(value)))
+    );
+  };
+  const hasAnyOfRef = (properties: Record<string, unknown>, name: string, reference: string): boolean => {
+    const property = properties[name];
+    if (typeof property !== 'object' || property === null) return false;
+    const anyOf = (property as { anyOf?: unknown }).anyOf;
+    return (
+      Array.isArray(anyOf) &&
+      anyOf.some(
+        (entry) => typeof entry === 'object' && entry !== null && (entry as { $ref?: unknown })['$ref'] === reference,
+      )
+    );
   };
   const valid: string[] = [];
-  for (const [name, fields] of Object.entries(requiredFields)) {
-    const definition = definitions[name];
-    if (typeof definition !== 'object' || definition === null) continue;
-    const properties = (definition as { properties?: unknown }).properties;
-    if (typeof properties !== 'object' || properties === null) continue;
-    if (fields.every((field) => Object.hasOwn(properties, field))) valid.push(`${name}[${fields.join('|')}]`);
+  for (const [name, fields] of Object.entries(expected)) {
+    const definition = definitionOf(name);
+    const properties = definition === undefined ? undefined : propertiesOf(definition);
+    const required = definition === undefined ? undefined : requiredOf(definition);
+    if (properties === undefined || required === undefined) continue;
+    if (
+      !fields.required.every((field) => required.includes(field)) ||
+      fields.optional.some((field) => required.includes(field))
+    )
+      continue;
+    if (
+      !fields.required.every((field) => Object.hasOwn(properties, field)) ||
+      !fields.optional.every((field) => Object.hasOwn(properties, field))
+    )
+      continue;
+    const shapeValid =
+      name === 'ThreadStartParams'
+        ? hasType(properties, 'modelProvider', ['string', 'null']) &&
+          hasAnyOfRef(properties, 'historyMode', '#/definitions/ThreadHistoryMode')
+        : name === 'ThreadResumeParams'
+          ? hasType(properties, 'threadId', ['string']) && hasType(properties, 'modelProvider', ['string', 'null'])
+          : name === 'ThreadListParams'
+            ? hasType(properties, 'modelProviders', ['array', 'null']) &&
+              hasType(properties, 'useStateDbOnly', ['boolean'])
+            : hasType(properties, 'threadId', ['string']) &&
+              hasType(properties, 'isPinned', ['boolean', 'null']) &&
+              hasAnyOfRef(properties, 'gitInfo', '#/definitions/ThreadMetadataGitInfoUpdateParams') &&
+              !Object.hasOwn(properties, 'modelProvider');
+    if (shapeValid)
+      valid.push(`${name}[required=${fields.required.join('|') || '(none)'};optional=${fields.optional.join('|')}]`);
   }
   return valid;
 }

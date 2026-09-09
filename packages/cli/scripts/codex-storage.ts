@@ -1,20 +1,44 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 
-async function listFiles(path: string, prefix = ''): Promise<string[]> {
+function isContained(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}/`);
+}
+
+async function storageRoot(path: string): Promise<string> {
+  const metadata = await lstat(path);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory())
+    throw new Error('storage refused: configured root is not a real directory');
+  return realpath(path);
+}
+
+async function listFiles(root: string, path: string, prefix = ''): Promise<string[]> {
   const entries = await readdir(path, { withFileTypes: true });
   const result: string[] = [];
   for (const entry of entries) {
     const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) result.push(...(await listFiles(join(path, entry.name), relative)));
+    const child = join(path, entry.name);
+    if (entry.isSymbolicLink()) {
+      if (!/\.(sqlite|db|sqlite3|jsonl)$/i.test(entry.name)) continue;
+      const childReal = await realpath(child);
+      if (!isContained(root, childReal))
+        throw new Error(`storage refused: path escapes configured storage (${entry.name})`);
+      throw new Error('storage refused: symlink candidate in configured storage');
+    }
+    const childReal = await realpath(child);
+    if (!isContained(root, childReal))
+      throw new Error(`storage refused: path escapes configured storage (${entry.name})`);
+    if (entry.isDirectory()) result.push(...(await listFiles(root, child, relative)));
     else result.push(relative);
   }
   return result;
 }
 
 export async function inspectCodexStorage(codexHome: string, sqliteHome: string): Promise<string> {
-  const homeFiles = await listFiles(codexHome);
-  const sqliteHomeFiles = await listFiles(sqliteHome);
+  const homeRoot = await storageRoot(codexHome);
+  const sqliteRoot = await storageRoot(sqliteHome);
+  const homeFiles = await listFiles(homeRoot, homeRoot);
+  const sqliteHomeFiles = await listFiles(sqliteRoot, sqliteRoot);
   const files = homeFiles.map((file) => `codex-home/${file}`);
   files.push(...sqliteHomeFiles.map((file) => `sqlite-home/${file}`));
   const sqliteFiles = files.filter((file) => /\.(sqlite|db|sqlite3)$/i.test(file));
@@ -26,7 +50,10 @@ export async function inspectCodexStorage(codexHome: string, sqliteHome: string)
   const descriptions: string[] = [];
   for (const relative of sqliteFiles) {
     const [location, ...parts] = relative.split('/');
-    const path = join(location === 'sqlite-home' ? sqliteHome : codexHome, ...parts);
+    const path = join(location === 'sqlite-home' ? sqliteRoot : homeRoot, ...parts);
+    const pathReal = await realpath(path);
+    if (!isContained(location === 'sqlite-home' ? sqliteRoot : homeRoot, pathReal))
+      throw new Error('storage refused: database path escapes configured storage');
     const database = new Database(path, { readonly: true, strict: true });
     try {
       const tables = database
@@ -67,7 +94,10 @@ export async function inspectCodexStorage(codexHome: string, sqliteHome: string)
   const rolloutSummary: string[] = [];
   for (const relative of rolloutFiles) {
     const [location, ...parts] = relative.split('/');
-    const path = join(location === 'sqlite-home' ? sqliteHome : codexHome, ...parts);
+    const path = join(location === 'sqlite-home' ? sqliteRoot : homeRoot, ...parts);
+    const pathReal = await realpath(path);
+    if (!isContained(location === 'sqlite-home' ? sqliteRoot : homeRoot, pathReal))
+      throw new Error('storage refused: rollout path escapes configured storage');
     const lines = (await readFile(path, 'utf8')).split('\n').filter((line) => line.length > 0);
     const metadata = lines
       .map((line) => {

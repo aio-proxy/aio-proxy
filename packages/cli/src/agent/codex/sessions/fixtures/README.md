@@ -2,7 +2,8 @@
 
 These fixtures contain synthetic identifiers and no user paths, credentials, or conversation data. They capture only the fields that the Task 1 experiment could verify for offline inspection:
 
-- `legacy-session.jsonl` uses the observed legacy `session_meta.payload.id` and `session_meta.payload.model_provider` fields, followed by opaque rollout records that must remain byte-for-byte unchanged by a metadata rewrite.
+- `legacy-session.jsonl` is a one-turn inspection fixture using the observed legacy `session_meta.payload.id` and `session_meta.payload.model_provider` fields, followed by opaque rollout records that must remain byte-for-byte unchanged by a metadata rewrite.
+- `synthetic-history.json` is a separate inspection-only fixture that concretely contains two parent turns, a tool call/output, a child thread, and an archived child. It is not a live Codex rollout and does not claim that app-server generated these records.
 - `paginated-state.json` records the observed state-index fields needed to identify a paginated thread: `id`, `model_provider`, `history_mode`, `rollout_path`, `archived`, and `parent_thread_id`.
 - `codex-0.146.0-schema-summary.json` preserves the sanitized generated schema contract used by the probe.
 - `rejection-cases.json` makes the required refusal conditions concrete without containing real session data.

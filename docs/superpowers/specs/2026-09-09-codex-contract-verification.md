@@ -75,5 +75,8 @@ The fixtures capture only synthetic, rewrite-safe inspection shapes:
 
 - Legacy JSONL has a unique `session_meta.payload.id` and `session_meta.payload.model_provider`; all following rollout records are opaque bytes to preserve.
 - The paginated fixture records the fields required to identify a thread (`id`, `model_provider`, `history_mode`, `rollout_path`, `archived`, and `parent_thread_id`). It is synthetic and does not authorize assuming a database filename or location.
+- `synthetic-history.json` is a separate inspection-only fixture with two parent turns, a tool call/output, a child thread, and an archived child. It is not a live generated history. The live app-server run attempted two turns plus fork/archive; the resulting database had two rows and one archive but zero persisted spawn edges, and the 503 upstream prevented a live tool record.
+
+Storage inspection resolves both configured roots, rejects root symlinks, rejects candidate SQLite/JSONL symlinks, and rejects real paths escaping their configured root before opening a database or rollout. Non-candidate symlinks are ignored because they cannot be read as storage records. This keeps the isolated-home guarantee while allowing unrelated runtime links in the temporary directory.
 
 An offline implementation must reject missing or conflicting IDs, a source-provider mismatch, unknown history formats, an unverified database location, and any active writer. It must update a verified metadata field and its index transactionally with recovery information; changing only an index is insufficient because JSONL repair can overwrite it.

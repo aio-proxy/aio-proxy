@@ -5,9 +5,12 @@ Status: DONE_WITH_CONCERNS
 ## Changed files
 
 - `packages/cli/scripts/verify-codex-contract.ts` — isolated executable/version/schema/auth/persistence probe. It requires one explicit executable argument, strips inherited credential environment variables, uses temporary `HOME`/`CODEX_HOME`, and reports PASS/FAIL/BLOCKED.
-- `packages/cli/src/agent/codex/sessions/fixtures/legacy-session.jsonl` — synthetic legacy JSONL with session metadata, two turns, and a tool record.
+- `packages/cli/scripts/codex-storage.ts` — real-path-contained SQLite/JSONL storage inspection with symlink and escape refusal.
+- `packages/cli/src/agent/codex/sessions/fixtures/legacy-session.jsonl` — one-turn synthetic legacy inspection JSONL with a tool record.
+- `packages/cli/src/agent/codex/sessions/fixtures/synthetic-history.json` — separate inspection-only synthetic history containing two turns, a tool record, a child session, and an archived session; it is not described as a live generated rollout.
 - `packages/cli/src/agent/codex/sessions/fixtures/paginated-state.json` — synthetic paginated state metadata covering active, archived, and child sessions.
 - `packages/cli/src/agent/codex/sessions/fixtures/README.md` — fixture scope and refusal rules.
+- `packages/cli/src/agent/codex/sessions/fixtures/codex-0.146.0-schema-summary.json` and `rejection-cases.json` — sanitized schema and concrete refusal fixtures.
 - `docs/superpowers/specs/2026-09-09-codex-contract-verification.md` — verified contract and migration decision.
 
 ## Exact commands and outputs
@@ -39,7 +42,7 @@ Schema export and inspection:
 ```text
 rtk proxy codex app-server generate-json-schema --experimental --out <temporary-dir>/schema
 exit 0
-verified v2 schema methods: ThreadStartParams, ThreadResumeParams, ThreadListParams, ThreadMetadataUpdateParams
+verified v2 schema fields: ThreadStartParams, ThreadResumeParams, ThreadListParams, ThreadMetadataUpdateParams
 ```
 
 The generated v2 schema title was `CodexAppServerProtocolV2`. Its relevant fields and the unavailable upstream revision are recorded in the companion spec.
@@ -52,12 +55,12 @@ executable: codex-cli 0.146.0
 version command exit: 0
 app-server help exit: 0
 schema command exit: 0
-verified v2 schema methods: ThreadStartParams, ThreadResumeParams, ThreadListParams, ThreadMetadataUpdateParams
+verified v2 schema fields: ThreadStartParams, ThreadResumeParams, ThreadListParams, ThreadMetadataUpdateParams
 PASS: logged-out / test-proxy-key: model request used the configured proxy bearer
 PASS: logged-out / aio-proxy-local: model request used the configured proxy bearer
 PASS: logged-in / test-proxy-key: model request used the configured proxy bearer
 PASS: logged-in / aio-proxy-local: model request used the configured proxy bearer
-BLOCKED: native provider migration persistence: resume override=source-proxy, after restart=source-proxy, list source/target=1/0, restart source/target=1/0; metadata/update has no provider field, so no native migration write was attempted
+BLOCKED: native provider migration persistence: resume override=source-proxy, after restart=source-proxy, list source/target=1/0, restart source/target=1/0; actual configured sqlite_home/state_5.sqlite was inspected; metadata/update has no provider field, so no native migration write was attempted
 migration: BLOCKED — this probe does not claim persistence without a restart/list/resume proof
 ```
 
@@ -97,8 +100,8 @@ The 13 failures are pre-existing upgrade-path expectations for Homebrew, pnpm, a
 - `requires_openai_auth = true` still sent the configured proxy bearer in all four synthetic login/token combinations. A synthetic login token was never forwarded.
 - `thread/list` supports provider filtering and `useStateDbOnly`; `thread/resume` declares a `modelProvider` override; `thread/metadata/update` updates pin/Git metadata only.
 - The live resume override did not persist or change provider ownership. Native migration is rejected for this version.
-- The database path and full SQLite schema were not inferred from a temporary run. The implementation must not select a `state_*.sqlite` by modification time.
-- Legacy and paginated fixtures are synthetic inspection inputs. They contain no real IDs, paths, credentials, or conversation data.
+- The isolated run used authored `sqlite_home`, inspected the actual `state_5.sqlite` and rollout files, and recorded the real `threads` columns, `history_mode`, archive state, and `thread_spawn_edges` schema. Storage selection was based on the configured root and table contents, never modification time. The production writer must still refuse symlinks, escapes, unknown formats, and active writers.
+- The legacy and paginated files are synthetic inspection inputs. `synthetic-history.json` separately contains two turns, a tool record, a child, and an archived session for offline parser tests; it is not a live generated rollout. All fixtures contain synthetic IDs and no credentials or user data.
 
 ## Concerns
 
@@ -155,3 +158,43 @@ exit 0
 rtk bun run packages/cli/scripts/verify-codex-contract.ts /opt/homebrew/bin/codex
 exit 1 (expected: required native migration contract is BLOCKED)
 ```
+
+## Fix round 2 review response
+
+The changed-files inventory and conclusions above were corrected. `legacy-session.jsonl` is explicitly a one-turn inspection fixture. `synthetic-history.json` is a separate inspection-only synthetic set with two parent turns, a tool call/output, a child session, and an archived child; it is not represented as a live Codex rollout. The live run attempted two turns plus fork/archive and recorded the exact boundary: two state rows, one archived row, zero persisted `thread_spawn_edges`, and no tool record because the synthetic upstream returned 503 before model output.
+
+The authoritative storage conclusion is now that the configured `sqlite_home` was materialized and inspected. The prior wording that the database and full schema were not inferred was removed. `state_5.sqlite` was selected from the configured root and verified by SQLite table contents, never by modification time. The full `threads` field list, `history_mode`, archive count, rollout record counts, and spawn-edge fields are recorded in the fix-round output above.
+
+Schema validation now checks property shape and requiredness: start/list fields are optional, resume requires `threadId` while `modelProvider` is optional, metadata update requires `threadId` while `isPinned`/`gitInfo` are optional, and metadata update explicitly has no `modelProvider` property. The generated sanitized summary remains at `packages/cli/src/agent/codex/sessions/fixtures/codex-0.146.0-schema-summary.json`.
+
+Authorization is captured for every upstream request, including `/v1/models`; all four auth cases passed with every observed request matching the configured bearer. No raw header or token was printed.
+
+Storage hardening resolves real paths for both configured roots, rejects symlink roots and candidate SQLite/JSONL symlinks, and rejects candidate paths escaping their configured root before any SQLite or JSONL read. Unrelated non-candidate links are skipped. This preserves the temporary-home isolation while handling the runtime's unrelated `applypatch` link.
+
+Fix-round 2 exact commands and results:
+
+```text
+rtk bunx oxfmt packages/cli/scripts/verify-codex-contract.ts packages/cli/scripts/codex-storage.ts
+Finished in 43ms on 2 files using 12 threads.
+
+rtk bunx oxlint packages/cli/scripts/verify-codex-contract.ts packages/cli/scripts/codex-storage.ts
+exit 0
+
+rtk bun run packages/cli/scripts/verify-codex-contract.ts /opt/homebrew/bin/codex
+executable: codex-cli 0.146.0
+version command exit: 0
+app-server help exit: 0
+isolated login help exit: 0
+isolated login help first line: Manage login
+schema command exit: 0
+verified v2 schema fields: ThreadStartParams[required=(none);optional=modelProvider|historyMode], ThreadResumeParams[required=threadId;optional=modelProvider], ThreadListParams[required=(none);optional=modelProviders|useStateDbOnly], ThreadMetadataUpdateParams[required=threadId;optional=isPinned|gitInfo]
+PASS: logged-out / test-proxy-key: model request used the configured proxy bearer
+PASS: logged-out / aio-proxy-local: model request used the configured proxy bearer
+PASS: logged-in / test-proxy-key: model request used the configured proxy bearer
+PASS: logged-in / aio-proxy-local: model request used the configured proxy bearer
+BLOCKED: native provider migration persistence: resume override=source-proxy, after restart=source-proxy, list source/target=1/0, restart source/target=1/0, repaired source=1; rounds=accepted/accepted, fork=accepted, archive=accepted; state_5.sqlite in configured sqlite_home had two source-proxy legacy rows, one archived row, zero spawn edges, and rollout summaries with session_meta/event_msg/response_item/world_state/turn_context records; metadata/update has no provider field, so no native migration write was attempted
+migration: BLOCKED — this probe does not claim persistence without a restart/list/resume proof
+probe-exit=1
+```
+
+The nonzero exit is intentional and machine-visible: a required migration result marked `BLOCKED` cannot be mistaken for a passing contract probe.
