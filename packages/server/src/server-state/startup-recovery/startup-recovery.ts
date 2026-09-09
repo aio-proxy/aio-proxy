@@ -1,8 +1,8 @@
 import type { recoverPendingAccountOperations } from '@aio-proxy/core';
 
-import type { ServerRuntime } from './lifecycle';
-import { recoverBeforeSnapshot } from './recovery';
-import type { RecoveryScheduler } from './types';
+import type { ServerRuntime } from '../lifecycle';
+import { recoverBeforeSnapshot } from '../recovery';
+import type { RecoveryScheduler } from '../types';
 
 export function recoverBeforeInitialSnapshot(
   runtime: Pick<

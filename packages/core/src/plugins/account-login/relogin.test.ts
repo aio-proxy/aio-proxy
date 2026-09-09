@@ -484,6 +484,17 @@ test('a shared-login finalization failure leaves the staged account durable for 
     mode: 'cli',
     now: () => Date.now() + PENDING_OPERATION_TTL_MS + 1,
   });
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  let synchronized = false;
+  await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'server',
+    canDeleteAccount: () => true,
+    now: () => Date.now() + PENDING_OPERATION_TTL_MS + 1,
+    beforeAccountOperationComplete: async () => {
+      synchronized = true;
+    },
+  });
+  expect(synchronized).toBe(true);
   expect(state.repository.listPendingAccountOperations()).toEqual([]);
   expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'new' });
 });

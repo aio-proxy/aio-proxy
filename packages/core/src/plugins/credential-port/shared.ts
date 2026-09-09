@@ -116,6 +116,7 @@ export function applySyncedAccount(input: {
     input.repo.putEntity(input.binding.id, {
       ...entity,
       oauth: {
+        multiDeviceEvidenceId: input.account.multiDeviceEvidenceId,
         mode: entity.oauth?.mode === 'detach-pending' ? 'detach-pending' : 'shared',
         epoch: input.account.epoch,
         generation: input.account.generation,
@@ -144,6 +145,16 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
       }
       throw new SyncOAuthError('refresh-deferred', 'The shared OAuth account is not ready');
     }
+    if (recovered.plugin !== local.plugin || recovered.capability !== local.capability)
+      throw new CredentialAccountMissingError();
+    if (
+      recovered.objectId !== entity.objectId ||
+      recovered.pluginVersion !== ownership.pluginVersion ||
+      recovered.formatVersion !== ownership.formatVersion ||
+      recovered.multiDeviceEvidenceId !== ownership.multiDeviceEvidenceId ||
+      recovered.claim !== null
+    )
+      throw new SyncOAuthError('upgrade-required', 'The shared OAuth account is incompatible');
     const value = await validated(input.schema, recovered.payload.credential);
     if (needsImport(ownership, local, recovered)) {
       const hadRefreshDiagnostic = input.accounts

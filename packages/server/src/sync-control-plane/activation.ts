@@ -1,4 +1,4 @@
-import type { JsonValue, EntityBody, PendingReason, ActivationResult } from '@aio-proxy/core';
+import type { JsonValue, EntityBody, PendingReason, ActivationResult, LocalEntity } from '@aio-proxy/core';
 
 export type OAuthActivationEvidence = {
   readonly plugin: string;
@@ -17,9 +17,22 @@ export function readOAuthActivationEvidence(
   account: unknown,
   expectedFormatVersion: number | undefined,
   expectedMultiDeviceEvidenceId: string | undefined,
+  entity?: LocalEntity,
 ): OAuthActivationEvidence | undefined {
   if (account === null || typeof account !== 'object' || Array.isArray(account)) return undefined;
-  const value = account as Record<string, unknown>;
+  let value = account as Record<string, unknown>;
+  if (entity !== undefined) {
+    const owner = entity.oauth;
+    if (owner?.mode !== 'shared' || entity.pendingReason !== null || owner.localRevision !== value['revision'])
+      return undefined;
+    value = {
+      ...value,
+      pluginVersion: owner.pluginVersion,
+      formatVersion: owner.formatVersion,
+      multiDeviceEvidenceId: owner.multiDeviceEvidenceId,
+      phase: 'ready',
+    };
+  }
   const plugin = value['plugin'];
   const capability = value['capability'];
   const pluginVersion = value['pluginVersion'];

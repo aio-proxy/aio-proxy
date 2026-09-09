@@ -1,14 +1,25 @@
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import { SyncBackendError } from '@aio-proxy/plugin-sdk';
 
-import type { AccountWrite, PluginRepository, StoredAccount } from '../../../plugins/repository';
-import { parsePluginSchema } from '../../../plugins/schema';
+import type { AccountWrite, PluginRepository } from '../../../plugins/repository';
 import { accountKey } from '../../protocol';
 import type { SyncObjectStore } from '../../publication';
-import type { LocalBinding, OAuthJournalRow, SyncRepository } from '../../repository';
-import type { LiveAccount, OAuthOwnership } from '../protocol';
+import type { LocalBinding, SyncRepository } from '../../repository';
 import { accountBytes, entityFor, payloadFor, readRemote, verifyDetach } from './detach';
-import { asJournalPayload, journalJson, sameJson, sameRemote, type SharingJournalPayload } from './journal';
+import { asJournalPayload, sameJson, sameRemote } from './journal';
+import {
+  accountWrite,
+  applyLocal,
+  compatibleRemote,
+  findJournal,
+  finishJournal,
+  liveAccount,
+  ownership,
+  readyOwnedRemote,
+  setPending,
+  validatedAdapter,
+  writeJournal,
+} from './state';
 
 export interface OAuthSharingService {
   share(providerId: string, signal: AbortSignal): Promise<'shared' | 'pending'>;
@@ -28,228 +39,59 @@ export interface OAuthSharingServiceInput {
   withProviderGate<T>(providerId: string, run: () => Promise<T>): Promise<T>;
 }
 
-function accountWrite(account: StoredAccount): AccountWrite {
-  return {
-    providerId: account.providerId,
-    plugin: account.plugin,
-    capability: account.capability,
-    fingerprint: account.fingerprint,
-    options: account.options,
-    secrets: account.secrets,
-    credential: account.credential,
-    ...(account.label === undefined ? {} : { label: account.label }),
-    ...(account.expiresAt === undefined ? {} : { expiresAt: account.expiresAt }),
-    catalog: { kind: 'preserve' },
-  };
-}
-
-function accountMatches(current: StoredAccount, candidate: AccountWrite): boolean {
-  return (
-    current.providerId === candidate.providerId &&
-    current.plugin === candidate.plugin &&
-    current.capability === candidate.capability &&
-    current.fingerprint === candidate.fingerprint &&
-    sameJson(current.options, candidate.options) &&
-    sameJson(current.secrets, candidate.secrets) &&
-    sameJson(current.credential, candidate.credential) &&
-    current.label === candidate.label &&
-    current.expiresAt === candidate.expiresAt
-  );
-}
-
-function ownership(account: LiveAccount, localRevision: number, mode: OAuthOwnership['mode']): OAuthOwnership {
-  return {
-    mode,
-    epoch: account.epoch,
-    generation: account.generation,
-    localRevision,
-    pluginVersion: account.pluginVersion,
-    formatVersion: account.formatVersion,
-  };
-}
-
-function setPending(input: OAuthSharingServiceInput, providerId: string, reason: string, detach = false): void {
-  const entity = entityFor(input.repo, input.binding, providerId);
-  if (entity === undefined) return;
-  input.repo.putEntity(input.binding.id, {
-    ...entity,
-    pendingReason: reason,
-    ...(detach && entity.oauth !== undefined ? { oauth: { ...entity.oauth, mode: 'detach-pending' } } : {}),
-  });
-}
-
-function finishJournal(input: OAuthSharingServiceInput, row: OAuthJournalRow): void {
-  input.repo.writeOAuthJournal(input.binding.id, { ...row, phase: 'complete' });
-  input.repo.clearOAuthJournal(input.binding.id, row.operationId);
-}
-
-function findJournal(
-  input: OAuthSharingServiceInput,
-  providerId: string,
-  kind: SharingJournalPayload['kind'],
-): { readonly row: OAuthJournalRow; readonly payload: SharingJournalPayload } | undefined {
-  for (const row of input.repo.oauthJournals(input.binding.id)) {
-    const payload = asJournalPayload(row.payload);
-    if (payload?.providerId === providerId && payload.kind === kind) return { row, payload };
-  }
-  return undefined;
-}
-
-function writeJournal(
-  input: OAuthSharingServiceInput,
-  payload: SharingJournalPayload,
-  identity: { readonly objectId: string; readonly epoch: number; readonly generation: number },
-): OAuthJournalRow {
-  const row: OAuthJournalRow = {
-    operationId: crypto.randomUUID(),
-    objectId: identity.objectId,
-    epoch: identity.epoch,
-    baseGeneration: identity.generation,
-    phase: 'started',
-    payload: journalJson(payload),
-  };
-  input.repo.writeOAuthJournal(input.binding.id, row);
-  return row;
-}
-
-async function validatedAdapter(
-  input: OAuthSharingServiceInput,
-  providerId: string,
-  candidate: AccountWrite,
-): Promise<{ readonly adapter: OAuthAdapter; readonly pluginVersion: string } | undefined> {
-  const resolved = input.resolveAdapter(providerId);
-  const sync = resolved.adapter.credentialSync;
-  if (
-    candidate.providerId !== providerId ||
-    resolved.adapter.id !== candidate.capability ||
-    sync?.formatVersion !== 1 ||
-    (sync.multiDevice?.evidenceId.length ?? 0) === 0
-  )
-    return undefined;
-  const parsed = await parsePluginSchema(resolved.adapter.credentials, candidate.credential);
-  return parsed.ok ? resolved : undefined;
-}
-
-function compatibleRemote(
-  remote: LiveAccount,
-  candidate: AccountWrite,
-  resolved: { readonly adapter: OAuthAdapter; readonly pluginVersion: string },
-): boolean {
-  return (
-    remote.plugin === candidate.plugin &&
-    remote.capability === candidate.capability &&
-    remote.pluginVersion === resolved.pluginVersion &&
-    remote.formatVersion === resolved.adapter.credentialSync?.formatVersion
-  );
-}
-
-function readyOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
-  return (
-    remote.phase === 'ready' &&
-    remote.claim === null &&
-    ownership.epoch === remote.epoch &&
-    ownership.generation === remote.generation &&
-    ownership.pluginVersion === remote.pluginVersion &&
-    ownership.formatVersion === remote.formatVersion
-  );
-}
-
-function liveAccount(
-  objectId: string,
-  candidate: AccountWrite,
-  resolved: { readonly adapter: OAuthAdapter; readonly pluginVersion: string },
-  generation: number,
-  epoch = 0,
-): LiveAccount {
-  return {
-    protocol: 1,
-    objectId,
-    epoch,
-    plugin: candidate.plugin,
-    capability: candidate.capability,
-    pluginVersion: resolved.pluginVersion,
-    formatVersion: resolved.adapter.credentialSync!.formatVersion,
-    generation,
-    phase: 'ready',
-    payload: payloadFor(candidate),
-    claim: null,
-    lastCompletedOperationId: null,
-  };
-}
-
-function applyLocal(
-  input: OAuthSharingServiceInput,
-  providerId: string,
-  candidate: AccountWrite,
-  remote: LiveAccount,
-  row: OAuthJournalRow,
-  mode: 'shared' | 'independent',
-): void {
-  input.accounts.withAccountTransaction(() => {
-    let current = input.accounts.readAccount(providerId);
-    if (current === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
-    if (!accountMatches(current, candidate)) {
-      const pending = input.accounts.stageAccountOperation({
-        kind: 'update',
-        targetDigest: `sync:${remote.objectId}:${remote.epoch}:${remote.generation}`,
-        expectedRuntimeRevision: current.runtimeRevision,
-        account: candidate,
-      });
-      input.accounts.completeAccountOperation(pending.operationId);
-      current = input.accounts.readAccount(providerId);
-      if (current === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
-    }
-    const entity = entityFor(input.repo, input.binding, providerId);
-    if (entity === undefined || entity.objectId !== remote.objectId) throw new Error('SYNC_OAUTH_ENTITY_MISSING');
-    input.repo.putEntity(input.binding.id, {
-      ...entity,
-      pendingReason: null,
-      oauth: ownership(remote, current.revision, mode),
-    });
-    finishJournal(input, row);
-  });
-}
-
 // eslint-disable-next-line max-lines-per-function
 export function createOAuthSharingService(input: OAuthSharingServiceInput): OAuthSharingService {
   async function share(providerId: string, signal: AbortSignal): Promise<'shared' | 'pending'> {
     return input.withProviderGate(providerId, async () => {
       const local = input.accounts.readAccount(providerId);
       const entity = entityFor(input.repo, input.binding, providerId);
-      if (local === null || entity === undefined) return 'pending';
+      if (local === null || entity === undefined || input.repo.readBinding()?.id !== input.binding.id) return 'pending';
       const candidate = accountWrite(local);
       const resolved = await validatedAdapter(input, providerId, candidate);
       if (resolved === undefined) {
         setPending(input, providerId, 'pending-plugin-update');
         return 'pending';
       }
-      const pending = findJournal(input, providerId, 'share');
-      const next = pending?.payload.next ?? liveAccount(entity.objectId, candidate, resolved, 0);
-      if (next === null || !sameJson(pending?.payload.candidate ?? candidate, candidate)) return 'pending';
-      const remote = await readRemote(input.store, entity.objectId, signal);
-      if (remote !== null && 'unknown' in remote) {
-        setPending(input, providerId, 'pending-plugin-update');
-        return 'pending';
-      }
-      if (remote !== null) {
-        if (!compatibleRemote(remote.account, candidate, resolved) || !sameRemote(remote.account, next)) {
-          setPending(input, providerId, 'pending-plugin-update');
-          return 'pending';
-        }
-        const row =
-          pending?.row ??
-          writeJournal(
-            input,
-            { schema: 'oauth-sharing-v1', kind: 'share', providerId, candidate, base: null, next },
-            { objectId: next.objectId, epoch: next.epoch, generation: 0 },
-          );
-        applyLocal(input, providerId, candidate, remote.account, row, 'shared');
-        return 'shared';
-      }
-      if (entity.oauth?.mode === 'shared' || entity.oauth?.mode === 'detach-pending') {
+      if (
+        input.repo
+          .bindings()
+          .some(
+            (binding) =>
+              binding.id !== input.binding.id &&
+              input.repo
+                .entities(binding.id)
+                .some(
+                  (old) =>
+                    old.kind === 'provider' &&
+                    old.logicalKey === providerId &&
+                    ((old.oauth !== undefined && old.oauth.mode !== 'independent') ||
+                      input.repo.oauthJournals(binding.id).some((row) => row.objectId === old.objectId)),
+                ),
+          )
+      ) {
         setPending(input, providerId, 'detach-pending');
         return 'pending';
       }
+      const pending = findJournal(input, providerId, 'share');
+      if (entity.oauth?.mode === 'shared' || entity.oauth?.mode === 'detach-pending') {
+        if (
+          entity.oauth.pluginVersion !== resolved.pluginVersion ||
+          entity.oauth.formatVersion !== resolved.adapter.credentialSync?.formatVersion ||
+          entity.oauth.multiDeviceEvidenceId !== resolved.adapter.credentialSync?.multiDevice?.evidenceId
+        ) {
+          setPending(input, providerId, 'pending-plugin-update');
+          return 'pending';
+        }
+        return entity.oauth.mode === 'shared' ? 'shared' : 'pending';
+      }
+      const next = pending?.payload.next ?? liveAccount(entity.objectId, candidate, resolved, 0);
+      if (
+        next === null ||
+        !sameJson(pending?.payload.candidate ?? candidate, candidate) ||
+        !compatibleRemote(next, candidate, resolved)
+      )
+        return 'pending';
+      // Fence ownership before the first remote read/write, including conflicts and lost replies.
       const row =
         pending?.row ??
         writeJournal(
@@ -257,6 +99,25 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
           { schema: 'oauth-sharing-v1', kind: 'share', providerId, candidate, base: null, next },
           { objectId: next.objectId, epoch: next.epoch, generation: 0 },
         );
+      input.repo.putEntity(input.binding.id, {
+        ...entity,
+        pendingReason: 'share-pending',
+        oauth: ownership(next, local.revision, 'share-pending'),
+      });
+      const remote = await readRemote(input.store, entity.objectId, signal);
+      if (remote !== null) {
+        if (
+          'unknown' in remote ||
+          !compatibleRemote(remote.account, candidate, resolved) ||
+          !sameRemote(remote.account, next)
+        ) {
+          setPending(input, providerId, 'pending-plugin-update');
+          return 'pending';
+        }
+        applyLocal(input, providerId, candidate, remote.account, row, 'shared');
+        return 'shared';
+      }
+      if (pending !== undefined) return 'pending';
       try {
         const result = await input.store.session.compareAndSwap(
           accountKey(next.objectId),
@@ -389,6 +250,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
   function cancelDetach(providerId: string): void {
     const pending = findJournal(input, providerId, 'detach');
     if (pending === undefined) return;
+    input.repo.writeOAuthJournal(input.binding.id, pending.row);
     input.accounts.withAccountTransaction(() => {
       const entity = entityFor(input.repo, input.binding, providerId);
       if (
@@ -416,17 +278,45 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       else await detach(payload.providerId, payload.candidate, signal);
     }
     for (const entity of input.repo.entities(input.binding.id)) {
-      if (entity.kind === 'provider' && entity.oauth === undefined) await share(entity.logicalKey, signal);
+      if (entity.kind === 'provider' && entity.oauth?.mode !== 'independent') await share(entity.logicalKey, signal);
     }
   }
 
   async function synchronizeLogin(providerId: string, candidate: AccountWrite, signal: AbortSignal): Promise<void> {
     const entity = entityFor(input.repo, input.binding, providerId);
-    if (entity === undefined) return;
+    if (entity === undefined) {
+      if (
+        input.repo
+          .bindings()
+          .some((binding) =>
+            input.repo
+              .entities(binding.id)
+              .some(
+                (old) => old.logicalKey === providerId && old.oauth !== undefined && old.oauth.mode !== 'independent',
+              ),
+          )
+      )
+        throw new Error('SYNC_OAUTH_DETACH_PENDING');
+      return;
+    }
     if (entity.oauth?.mode === 'detach-pending') cancelDetach(providerId);
-    if (entity.oauth === undefined || entity.oauth.mode === 'independent') {
+    if (entity.oauth === undefined || entity.oauth.mode === 'independent' || entity.oauth.mode === 'share-pending') {
       if ((await share(providerId, signal)) !== 'shared') throw new Error('SYNC_OAUTH_SHARE_PENDING');
       return;
+    }
+    const resolved = await validatedAdapter(input, providerId, candidate);
+    if (resolved === undefined) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
+    const local = input.accounts.readAccount(providerId);
+    if (entity.oauth.localRevision === local?.revision && findJournal(input, providerId, 'replace') === undefined) {
+      const remote = await readRemote(input.store, entity.objectId, signal);
+      if (
+        remote !== null &&
+        !('unknown' in remote) &&
+        compatibleRemote(remote.account, candidate, resolved) &&
+        readyOwnedRemote(entity.oauth, remote.account) &&
+        sameJson(remote.account.payload, payloadFor(candidate))
+      )
+        return;
     }
     await replaceShared(providerId, candidate, signal);
   }

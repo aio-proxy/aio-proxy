@@ -52,6 +52,7 @@ export function liveAccountFixture(overrides: Partial<LiveAccount> = {}): LiveAc
     capability: 'test-capability',
     pluginVersion: '1.0.0',
     formatVersion: 1,
+    multiDeviceEvidenceId: 'fixture-evidence',
     generation: 0,
     phase: 'ready',
     payload: { credential: { token: 'old' }, options: {}, secrets: {}, fingerprint: 'fixture' },
@@ -221,6 +222,7 @@ export async function withOAuthSharingFixture(
             localRevision: 1,
             pluginVersion: '1.0.0',
             formatVersion: 1,
+            multiDeviceEvidenceId: 'fixture-evidence',
           },
         }
       : {}),

@@ -41,6 +41,7 @@ export function sameRemote(left: LiveAccount, right: LiveAccount): boolean {
     left.capability === right.capability &&
     left.pluginVersion === right.pluginVersion &&
     left.formatVersion === right.formatVersion &&
+    left.multiDeviceEvidenceId === right.multiDeviceEvidenceId &&
     left.generation === right.generation &&
     left.phase === right.phase &&
     sameJson(left.payload, right.payload) &&

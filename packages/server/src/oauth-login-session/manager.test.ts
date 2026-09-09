@@ -158,7 +158,7 @@ test('a proxy-unsupported adapter fails a Dashboard session with the stable code
   }
 });
 
-test('re-login holds the Provider gate through shared replacement before reporting success', async () => {
+test.each([true, false])('re-login retains required sharing coordination when available=%s', async (available) => {
   const dir = mkdtempSync(join(tmpdir(), 'aio-oauth-session-shared-'));
   const configPath = join(dir, 'config.json');
   writeFileSync(
@@ -238,7 +238,7 @@ test('re-login holds the Provider gate through shared replacement before reporti
     logger: () => {},
     coordinateProviderCommit: (_capability, commit) => commit(),
     validateProviderCommit: () => {},
-    sharing: () => sharing,
+    sharing: () => (available ? sharing : undefined),
     withProviderGate: async (providerId, run) => {
       gatedProvider = providerId;
       return run();
@@ -255,7 +255,12 @@ test('re-login holds the Provider gate through shared replacement before reporti
       clearSecrets: [],
     });
     await finished.promise;
-    expect(manager.get(session.id)).toMatchObject({ status: 'succeeded', providerId: 'person' });
+    expect(manager.get(session.id)).toMatchObject(
+      available
+        ? { status: 'succeeded', providerId: 'person' }
+        : { status: 'failed', code: 'SYNC_OAUTH_COORDINATION_UNAVAILABLE' },
+    );
+    expect(repository.listPendingAccountOperations()).toHaveLength(available ? 0 : 1);
     expect(gatedProvider).toBe('person');
   } finally {
     manager.close();

@@ -21,12 +21,14 @@ import { createLocalSyncPort } from './local-port';
 
 export interface ServerSyncLifecycle {
   start(): Promise<void>;
+  activate(): void;
   abort(): void;
   close(): Promise<void>;
   onCommitted(input: { commitId: string; origin: 'local' | 'remote' }): Promise<void>;
 }
 
 export type ServerSyncLifecycleInput = {
+  readonly deferEngine?: boolean;
   readonly configPath: string;
   readonly configFile?: NonNullable<LocalPortInput['configFile']>;
   readonly repo: SyncRepository;
@@ -130,7 +132,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         local: port,
         onStatus: () => {},
       });
-      engine.start();
+      if (!input.deferEngine) engine.start();
     } catch (error) {
       if (engine !== undefined) {
         await engine.stop().catch(() => {});
@@ -170,5 +172,13 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     return closePromise;
   }
 
-  return { start, abort, close, onCommitted };
+  return {
+    start,
+    activate: () => {
+      if (!closed) engine?.start();
+    },
+    abort,
+    close,
+    onCommitted,
+  };
 }

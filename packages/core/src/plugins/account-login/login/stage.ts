@@ -55,7 +55,7 @@ export function stageAccountWrite(current: ConfigRecord, ctx: StageContext, stat
   const entry = buildProviderEntry(ctx, existingEntry);
   const account = buildAccountWrite(ctx, providerId, currentAccount);
   ctx.signal.throwIfAborted();
-  const targetDigest = digestProviderEntry(entry);
+  const targetDigest = `${ctx.options.beforeAccountOperationComplete === undefined ? '' : 'oauth-sync:'}${digestProviderEntry(entry)}`;
   const operation =
     currentAccount === null
       ? ctx.options.repository.stageAccountOperation({ kind: 'create', targetDigest, account })

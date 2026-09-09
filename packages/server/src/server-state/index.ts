@@ -8,15 +8,11 @@ import {
   createPluginDiagnosticFactory,
   createPluginRepository,
   createSyncRepository,
-  parseRuntimeConfig,
-  parsePluginSchema,
   type DiagnosticFactory,
-  type PluginRepository,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
-  type JsonValue,
 } from '@aio-proxy/core';
 import type { OAuthSharingService, SharedOAuthCoordinator } from '@aio-proxy/core';
 import {
@@ -47,14 +43,6 @@ import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import { createRealtimeCallStore } from '../routes/realtime';
-import {
-  checkPrerequisites,
-  createLocalSyncPort,
-  createServerSyncLifecycle,
-  readOAuthActivationEvidence,
-  type OAuthActivationEvidence,
-} from '../sync-control-plane';
-import { createSyncCommitHooks } from '../sync-control-plane/commit';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -71,8 +59,9 @@ import { createProviderSummaries } from './probe';
 import { createQuotaIdentityTracker } from './quota-invalidation';
 import { defaultRecoveryScheduler } from './recovery';
 import { createSharedCredentialResolver } from './shared-credential-resolver';
-import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
+import { buildSnapshot, buildSnapshotWithProviders, emptyPluginSnapshot, type Snapshot } from './snapshot';
 import { recoverBeforeInitialSnapshot } from './startup-recovery';
+import { createSyncIntegration, syncCommitOption, startSyncIntegration } from './sync-integration';
 import type {
   ConfigReloadResult,
   InternalServerStateOptions,
@@ -83,150 +72,6 @@ import type {
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
-}
-
-function createSyncIntegration(
-  runtime: ServerRuntime,
-  dbHandle: OpenDbHandle,
-  repository: PluginRepository,
-  manager: SnapshotManager,
-  configFile: AtomicConfigFile | undefined,
-  options: ServerStateOptions,
-  queue: ReturnType<typeof createFifoQueue>,
-  syncRepository = createSyncRepository(dbHandle.sqlite),
-  onCoordinator?: (coordinator: SharedOAuthCoordinator | undefined) => void,
-  onSharing?: (sharing: OAuthSharingService | undefined) => void,
-) {
-  const syncBinding = syncRepository.readBinding();
-  if (syncBinding === null || configFile === undefined || options.configPath === undefined) {
-    return {
-      syncRepository,
-      syncBinding,
-      syncPort: undefined,
-      syncApplyCandidate: async () => {},
-      lifecycle: undefined,
-      configPath: options.configPath,
-    };
-  }
-  const syncApplyCandidate = async (raw: Record<string, JsonValue>, origin: 'local' | 'remote'): Promise<void> => {
-    await configFile.replace(() => raw, {
-      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
-      verify: async (candidate) => {
-        await commitConfig(runtime, parseRuntimeConfig(candidate), origin === 'remote' ? 'sync-remote' : 'sync-local');
-      },
-    });
-  };
-  const pluginVersions = () =>
-    new Map(
-      [...(manager.current() as Snapshot).plugins.plugins]
-        .filter(([, plugin]) => plugin.version !== undefined)
-        .map(([name, plugin]) => [name, plugin.version!] as const),
-    );
-  const checkActivation = async (raw: Record<string, JsonValue>, body: import('@aio-proxy/core').EntityBody) => {
-    let credentialValid = true;
-    let oauthEvidence: OAuthActivationEvidence | undefined;
-    const value = body.value;
-    if (
-      body.kind === 'provider' &&
-      value !== null &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      (value as Record<string, JsonValue>)['kind'] === 'oauth'
-    ) {
-      const valueRecord = value as Record<string, JsonValue>;
-      const plugin = typeof valueRecord['plugin'] === 'string' ? valueRecord['plugin'] : undefined;
-      const capability = typeof valueRecord['capability'] === 'string' ? valueRecord['capability'] : undefined;
-      const adapter =
-        plugin === undefined || capability === undefined
-          ? undefined
-          : (manager.current() as Snapshot).plugins.registry.resolveOAuth(plugin, capability);
-      const account = repository.readAccount(body.logicalKey);
-      if (
-        plugin === undefined ||
-        capability === undefined ||
-        adapter === undefined ||
-        account === null ||
-        account.plugin !== plugin ||
-        account.capability !== capability
-      )
-        credentialValid = false;
-      else {
-        credentialValid = (await parsePluginSchema(adapter.credentials, account.credential)).ok;
-        oauthEvidence = readOAuthActivationEvidence(
-          account,
-          adapter.credentialSync?.formatVersion,
-          adapter.credentialSync?.multiDevice?.evidenceId,
-        );
-      }
-    }
-    return checkPrerequisites({
-      raw,
-      body,
-      apply: async () => {},
-      dependencies: {
-        installedPackages: pluginVersions(),
-        missingEnv: [],
-        oauthVerified: credentialValid,
-        credentialValid,
-        ...(oauthEvidence === undefined ? {} : { oauthEvidence }),
-      },
-    });
-  };
-  const syncPort = createLocalSyncPort({
-    configPath: options.configPath,
-    configFile,
-    repo: syncRepository,
-    accounts: repository,
-    bindingId: syncBinding.id,
-    bindingGeneration: syncBinding.sessionGeneration,
-    enqueue: queue,
-    registry: () => (manager.current() as Snapshot).plugins.registry,
-    applyCandidate: syncApplyCandidate,
-    checkActivation,
-    pluginVersions,
-  });
-  const lifecycle = createServerSyncLifecycle({
-    configPath: options.configPath,
-    configFile,
-    repo: syncRepository,
-    accounts: repository,
-    registry: () => (manager.current() as Snapshot).plugins.registry,
-    enqueue: queue,
-    applyCandidate: syncApplyCandidate,
-    pluginVersions,
-    localPort: syncPort,
-    onCoordinator,
-    onSharing,
-    withProviderGate: runtime.withProviderGate,
-  });
-  return { syncRepository, syncBinding, syncPort, syncApplyCandidate, lifecycle, configPath: options.configPath };
-}
-
-function syncCommitOption(integration: ReturnType<typeof createSyncIntegration>) {
-  return integration.syncBinding === null || integration.syncPort === undefined
-    ? undefined
-    : createSyncCommitHooks({
-        path: integration.configPath,
-        repo: integration.syncRepository,
-        bindingId: integration.syncBinding.id,
-        port: integration.syncPort,
-      });
-}
-
-async function startSyncIntegration(
-  runtime: ServerRuntime,
-  integration: ReturnType<typeof createSyncIntegration>,
-  registerStartupCleanup: (cleanup: () => void | Promise<void>) => void,
-): Promise<void> {
-  if (integration.lifecycle === undefined) return;
-  runtime.sync = integration.lifecycle;
-  registerStartupCleanup(() => integration.lifecycle?.close());
-  try {
-    await integration.lifecycle.start();
-  } catch (error) {
-    await integration.lifecycle.close().catch(() => {});
-    throw error;
-  }
 }
 
 function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
@@ -301,13 +146,52 @@ async function initializeServerState(
   const providerGate = createOAuthProviderGate();
   let sharedCoordinator: SharedOAuthCoordinator | undefined;
   let oauthSharing: OAuthSharingService | undefined;
-  const resolveSharedCredential = createSharedCredentialResolver(syncRepository, repository, () => sharedCoordinator);
+  let installedPlugins = emptyPluginSnapshot();
+  const resolveSharedCredential = createSharedCredentialResolver(
+    syncRepository,
+    repository,
+    () => sharedCoordinator,
+    (providerId) => {
+      const account = repository.readAccount(providerId);
+      if (account === null) return undefined;
+      const adapter = installedPlugins.registry.resolveOAuth(account.plugin, account.capability);
+      const pluginVersion = installedPlugins.plugins.get(account.plugin)?.version;
+      return adapter === undefined || pluginVersion === undefined ? undefined : { adapter, pluginVersion };
+    },
+  );
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
   const logger = options.logger ?? defaultLogger;
   const configFile =
     testHooks?.configFile ?? (options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath));
-  const recoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
+  const rawRecoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
+  const recoverAccounts: typeof recoverPendingAccountOperations = (
+    file,
+    accounts,
+    recoveryOptions,
+    diagnosticOptions,
+  ) =>
+    rawRecoverAccounts(
+      file,
+      accounts,
+      recoveryOptions.mode === 'cli'
+        ? recoveryOptions
+        : {
+            ...recoveryOptions,
+            beforeAccountOperationComplete: async (operation, signal) => {
+              if (oauthSharing === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
+              const account = accounts.readAccount(operation.providerId);
+              if (account === null || account.revision !== operation.appliedRevision)
+                throw new Error('SYNC_OAUTH_LOGIN_CONFLICT');
+              await oauthSharing.synchronizeLogin(
+                operation.providerId,
+                { ...account, catalog: { kind: 'preserve' } },
+                signal,
+              );
+            },
+          },
+      diagnosticOptions,
+    );
   const recoveryScheduler = testHooks?.recoveryScheduler ?? defaultRecoveryScheduler();
   const queue = createFifoQueue();
 
@@ -337,7 +221,30 @@ async function initializeServerState(
     withProviderGate: providerGate.run,
   };
 
-  await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
+  let syncIntegration: ReturnType<typeof createSyncIntegration> | undefined;
+  runtime.prepareOAuth = async (plugins) => {
+    installedPlugins = plugins;
+    if (syncIntegration !== undefined) return;
+    syncIntegration = createSyncIntegration(
+      runtime,
+      dbHandle,
+      repository,
+      () => installedPlugins,
+      configFile,
+      options,
+      queue,
+      syncRepository,
+      (coordinator) => {
+        sharedCoordinator = coordinator;
+      },
+      (sharing) => {
+        oauthSharing = sharing;
+      },
+    );
+    runtime.syncCommit = syncCommitOption(syncIntegration);
+    await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
+    await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
+  };
 
   const initial =
     options.providerInstances === undefined
@@ -352,8 +259,11 @@ async function initializeServerState(
           createRouter,
           resolveSharedCredential,
           providerGate.run,
+          runtime.prepareOAuth,
         )
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
+  if (syncIntegration === undefined) await runtime.prepareOAuth(initial.plugins);
+  const syncCommit = runtime.syncCommit;
   runtime.manager = createSnapshotManager(initial);
   const manager = runtime.manager;
   runtime.managerReady = true;
@@ -390,26 +300,6 @@ async function initializeServerState(
     onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
   });
 
-  const syncIntegration = createSyncIntegration(
-    runtime,
-    dbHandle,
-    repository,
-    manager,
-    configFile,
-    options,
-    queue,
-    syncRepository,
-    (coordinator) => {
-      sharedCoordinator = coordinator;
-      if (runtime.managerReady) void queueRebuild(runtime);
-    },
-    (sharing) => {
-      oauthSharing = sharing;
-    },
-  );
-  const syncCommit = syncCommitOption(syncIntegration);
-  runtime.syncCommit = syncCommit;
-
   const configStore = await startRecovery(
     runtime,
     {
@@ -438,12 +328,18 @@ async function initializeServerState(
     },
   });
 
-  await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
+  runtime.sync?.activate();
 
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
-  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload, syncCommit, () => oauthSharing);
+  const oauthLoginSessions = startLoginSessions(
+    runtime,
+    configStore,
+    reload,
+    syncCommit,
+    syncRepository.bindings().length === 0 ? undefined : () => oauthSharing,
+  );
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');
   const watcher =

@@ -219,6 +219,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           baseline: null,
           overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
           pendingReason: null,
+          ...(currentEntity?.oauth === undefined ? {} : { oauth: currentEntity.oauth }),
         });
         return { applied: true };
       });

@@ -64,6 +64,7 @@ export type ServerRuntime = {
   configFile: AtomicConfigFile | undefined;
   sync: ServerSyncLifecycle | undefined;
   syncCommit: SyncCommitHooks | undefined;
+  prepareOAuth?: (plugins: import('@aio-proxy/core').PluginRegistrySnapshot) => Promise<void>;
   readonly resolveSharedCredential: (
     providerId: string,
     schema: ZodType<unknown>,
@@ -112,6 +113,7 @@ export async function commitConfig(
     runtime.createRouter,
     runtime.resolveSharedCredential,
     runtime.withProviderGate,
+    runtime.prepareOAuth,
   );
   const before = (runtime.manager.current() as Snapshot).summaries;
   const retired = runtime.manager.swap(candidate);
@@ -361,6 +363,7 @@ export function startLoginSessions(
       return createRuntimeFetch({ control, model: control });
     },
     reload,
+    onAccountOperationPending: () => runtime.recovery?.schedule(Date.now() + 5_000),
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
     ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),
   });

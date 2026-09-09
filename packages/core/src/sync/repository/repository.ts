@@ -69,6 +69,7 @@ export interface OAuthJournalRow {
 
 export interface SyncRepository {
   readBinding(): LocalBinding | null;
+  bindings(): LocalBinding[];
   writeBinding(binding: LocalBinding): void;
   entities(bindingId: string): LocalEntity[];
   putEntity(bindingId: string, entity: LocalEntity): void;
@@ -207,6 +208,10 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
         )
         .get();
       return row === null ? null : toBinding(row);
+    },
+
+    bindings() {
+      return sqlite.query<BindingRow, []>('SELECT * FROM sync_binding ORDER BY rowid').all().map(toBinding);
     },
 
     writeBinding(binding) {

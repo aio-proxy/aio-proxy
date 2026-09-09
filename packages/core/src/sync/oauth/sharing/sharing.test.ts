@@ -281,8 +281,12 @@ test('a backend switch never seeds an already-shared credential into an empty sp
       const value = f.backend.readAll().get(`s/v1/default/account/${f.objectId}`);
       expect(value?.kind).toBe('present');
       const emptyBackend = (await import('../../test-support')).createMemorySyncBackend();
+      const switched = { ...f.repo.readBinding()!, id: 'second-binding', identityId: 'second-identity' };
+      f.repo.writeBinding(switched);
+      const { oauth: _oldOwnership, ...entity } = f.repo.entities('oauth-sharing')[0]!;
+      f.repo.putEntity(switched.id, { ...entity, objectId: crypto.randomUUID() });
       const service = (await import('./sharing')).createOAuthSharingService({
-        binding: f.repo.readBinding()!,
+        binding: switched,
         repo: f.repo,
         accounts: f.accounts,
         store: (await import('../../publication')).createSyncObjectStore(emptyBackend.connect()),
@@ -291,6 +295,129 @@ test('a backend switch never seeds an already-shared credential into an empty sp
       });
       expect(await service.share(f.providerId, f.signal)).toBe('pending');
       expect(emptyBackend.readAll()).toHaveLength(0);
+    },
+    { shared: true },
+  );
+});
+
+test('an unconfirmed first share durably fences local ownership before returning pending', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    const session = f.backend.connect();
+    let published = false;
+    const service = (await import('./sharing')).createOAuthSharingService({
+      binding: f.repo.readBinding()!,
+      repo: f.repo,
+      accounts: f.accounts,
+      store: (await import('../../publication')).createSyncObjectStore({
+        ...session,
+        async compareAndSwap(...args) {
+          await session.compareAndSwap(...args);
+          published = true;
+          throw new (await import('@aio-proxy/plugin-sdk')).SyncBackendError('outcome-unknown');
+        },
+        async read(...args) {
+          if (published) return { kind: 'absent' };
+          return session.read(...args);
+        },
+      }),
+      resolveAdapter: () => ({ adapter: f.adapter, pluginVersion: '1.0.0' }),
+      withProviderGate: async (_id, run) => run(),
+    });
+    expect(await service.share(f.providerId, f.signal)).toBe('pending');
+    expect(f.remote()?.payload.credential).toEqual({ token: 'shared-token' });
+    expect(f.ownership()?.mode).toBe('share-pending');
+    expect(f.repo.oauthJournals('oauth-sharing')).toHaveLength(1);
+    await f.restart().recover(f.signal);
+    expect(f.ownership()?.mode).toBe('shared');
+  });
+});
+
+test('startup revalidates established ownership after adapter evidence is removed', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      f.replaceAdapter(oauthAdapterFixture());
+      await f.restart().recover(f.signal);
+      expect(f.repo.entities('oauth-sharing')[0]?.pendingReason).toBe('pending-plugin-update');
+      expect(f.remote()?.generation).toBe(0);
+    },
+    { shared: true },
+  );
+});
+
+test('a previously attempted first share never republishes after the remote account disappears', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    f.backend.failNext('compareAndSwap', 'before');
+    await expect(f.sharing.share(f.providerId, f.signal)).rejects.toThrow();
+    await f.restart().recover(f.signal);
+    expect(f.remote()).toBeNull();
+    expect(f.ownership()?.mode).toBe('share-pending');
+  });
+});
+
+test.each(['generation', 'identity', 'claim', 'credential'])(
+  'first share rejects a conflicting remote %s without overwriting it',
+  async (field) => {
+    await withOAuthSharingFixture(async (f) => {
+      const remote = (await import('../test-support')).liveAccountFixture({
+        payload: {
+          credential: { token: 'shared-token' },
+          fingerprint: 'fixture',
+          options: {},
+          secrets: {},
+        },
+      });
+      if (field === 'generation') remote.generation = 1;
+      if (field === 'identity') remote.objectId = 'other-object';
+      if (field === 'claim') remote.claim = { operationId: 'rotation', ownerDeviceId: 'other', baseGeneration: 0 };
+      if (field === 'credential') remote.payload.credential = { token: 'other-token' };
+      const session = f.backend.connect();
+      const key = `s/v1/default/account/${f.objectId}`;
+      await session.compareAndSwap(key, null, new TextEncoder().encode(JSON.stringify(remote)), f.signal);
+      expect(await f.sharing.share(f.providerId, f.signal)).toBe('pending');
+      expect(f.remote()).toEqual(remote);
+      expect(f.ownership()?.mode).toBe('share-pending');
+    });
+  },
+);
+
+test('verified detachment from the old binding allows an independent credential in the new binding', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      f.replaceAdapter({ ...f.adapter, credentialSync: { ...f.adapter.credentialSync!, canDetach: async () => true } });
+      expect(
+        await f.sharing.detach(f.providerId, { ...f.accountWrite, credential: { token: 'independent' } }, f.signal),
+      ).toBe('independent');
+      const switched = { ...f.repo.readBinding()!, id: 'second', identityId: 'second-identity' };
+      f.repo.writeBinding(switched);
+      const { oauth: _old, ...entity } = f.repo.entities('oauth-sharing')[0]!;
+      f.repo.putEntity(switched.id, { ...entity, objectId: crypto.randomUUID() });
+      const backend = (await import('../../test-support')).createMemorySyncBackend();
+      const service = (await import('./sharing')).createOAuthSharingService({
+        binding: switched,
+        repo: f.repo,
+        accounts: f.accounts,
+        store: (await import('../../publication')).createSyncObjectStore(backend.connect()),
+        resolveAdapter: () => ({ adapter: f.adapter, pluginVersion: '1.0.0' }),
+        withProviderGate: async (_id, run) => run(),
+      });
+      expect(await service.share(f.providerId, f.signal)).toBe('shared');
+      expect(f.remote()?.payload.credential).toEqual({ token: 'shared-token' });
+      expect(f.currentCredential()).toEqual({ token: 'independent' });
+    },
+    { shared: true },
+  );
+});
+
+test('invalid login credentials cannot be published or committed by detachment', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      const candidate = { ...f.accountWrite, credential: { token: 123 } };
+      await expect(f.sharing.replaceShared(f.providerId, candidate, f.signal)).rejects.toThrow(
+        'SYNC_OAUTH_UPGRADE_REQUIRED',
+      );
+      expect(await f.sharing.detach(f.providerId, candidate, f.signal)).toBe('pending');
+      expect(f.currentCredential()).toEqual({ token: 'shared-token' });
+      expect(f.remote()?.generation).toBe(0);
     },
     { shared: true },
   );

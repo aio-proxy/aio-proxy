@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { EntityBody } from '@aio-proxy/core';
 
-import { activateDesired, checkPrerequisites } from './activation';
+import { activateDesired, checkPrerequisites, readOAuthActivationEvidence } from './activation';
 
 const provider: EntityBody = {
   kind: 'provider',
@@ -137,4 +137,39 @@ test('activation keeps missing or stale account evidence pending', async () => {
       },
     }),
   ).resolves.toBe('incompatible-version');
+});
+
+test('verified durable sharing ownership activates the stored account', async () => {
+  const { withOAuthSharingFixture } = await import('../../../core/src/sync/oauth/test-support');
+  await withOAuthSharingFixture(async (f) => {
+    await f.sharing.share(f.providerId, f.signal);
+    const account = f.accounts.readAccount(f.providerId)!;
+    const entity = f.repo.entities('oauth-sharing')[0]!;
+    const evidence = readOAuthActivationEvidence(account, 1, 'fixture-evidence', entity);
+    let applied = false;
+    const result = await activateDesired({
+      raw: {},
+      body: {
+        kind: 'provider',
+        logicalKey: f.providerId,
+        value: { kind: 'oauth', plugin: account.plugin, capability: account.capability },
+        dependencies: [{ objectId: 'plugin', packageName: account.plugin, version: '1.0.0' }],
+      },
+      apply: async () => {
+        applied = true;
+      },
+      dependencies: {
+        installedPackages: new Map([[account.plugin, '1.0.0']]),
+        missingEnv: [],
+        oauthVerified: true,
+        credentialValid: true,
+        oauthEvidence: evidence,
+      },
+    });
+    expect(result).toEqual({ applied: true });
+    expect(applied).toBe(true);
+    expect(
+      readOAuthActivationEvidence({ ...account, revision: account.revision + 1 }, 1, 'fixture-evidence', entity),
+    ).toBeUndefined();
+  });
 });

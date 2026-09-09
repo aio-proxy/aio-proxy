@@ -44,6 +44,7 @@ export interface LiveAccount {
   capability: string;
   pluginVersion: string;
   formatVersion: number;
+  multiDeviceEvidenceId?: string;
   generation: number;
   phase: 'ready' | 'refreshing' | 'uncertain' | 'login-required';
   payload: AccountPayload;
@@ -54,12 +55,13 @@ export interface LiveAccount {
 export type AccountRecord = LiveAccount | DeletedAccount;
 
 export interface OAuthOwnership {
-  mode: 'shared' | 'detach-pending' | 'independent';
+  mode: 'shared' | 'share-pending' | 'detach-pending' | 'independent';
   epoch: number;
   generation: number;
   localRevision: number;
   pluginVersion: string;
   formatVersion: number;
+  multiDeviceEvidenceId?: string;
 }
 
 const accountPayloadSchema = z.object({
@@ -83,6 +85,7 @@ const liveAccountSchema = z.object({
   capability: z.string(),
   pluginVersion: z.string(),
   formatVersion: z.literal(1),
+  multiDeviceEvidenceId: z.string().optional(),
   generation: z.number().int().nonnegative(),
   phase: z.enum(['ready', 'refreshing', 'uncertain', 'login-required']),
   payload: accountPayloadSchema,
@@ -121,6 +124,7 @@ export function canActivateSyncedAccount(adapter: OAuthAdapter, pluginVersion: s
     sync !== undefined &&
     sync.formatVersion === account.formatVersion &&
     pluginVersion === account.pluginVersion &&
-    (sync.multiDevice?.evidenceId.length ?? 0) > 0
+    (sync.multiDevice?.evidenceId.length ?? 0) > 0 &&
+    account.multiDeviceEvidenceId === sync.multiDevice?.evidenceId
   );
 }

@@ -28,12 +28,13 @@ const overrideSchema = z.object({ path: z.array(z.string()), value: jsonValueSch
 const remoteOperationSchema = z.object({ objectId: z.string(), operationId: z.string() });
 const sourceRevisionsSchema = z.record(z.string(), z.number().int().nonnegative());
 const oauthOwnershipSchema: z.ZodType<OAuthOwnership> = z.object({
-  mode: z.enum(['shared', 'detach-pending', 'independent']),
+  mode: z.enum(['shared', 'share-pending', 'detach-pending', 'independent']),
   epoch: z.number().int().nonnegative(),
   generation: z.number().int().nonnegative(),
   localRevision: z.number().int().nonnegative(),
   pluginVersion: z.string(),
   formatVersion: z.number().int().positive(),
+  multiDeviceEvidenceId: z.string().optional(),
 });
 
 export function stringifyJson(value: JsonValue): string {

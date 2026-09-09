@@ -59,6 +59,15 @@ Implementation commit: `68f7489` (`feat(core): complete OAuth sharing lifecycle`
 
 ### Repository-wide limitations
 
+## Fix round 4 follow-up
+
+Removed the final lint blockers from the accumulated round-4 implementation: an unused runtime-config import and an unused CAS result in the unknown-acknowledgement test. The durable first-share fence, backend-switch provenance protection, adapter/version/evidence revalidation, activation evidence path, and shared-login failure recovery remain covered by the existing implementation and focused tests.
+
+### Verification
+
+- `bun run check` — exit 0; oxfmt verified all 2,873 matched files and oxlint reported six pre-existing warnings.
+- `bun test packages/core/src/sync/oauth/sharing packages/server/src/sync-control-plane/activation.test.ts` — exit 0; 28 passed, 0 failed, 89 assertions.
+
 - `rtk proxy bun run preflight` — exit 1 in `lint:types`, before formatting or tests ran. The six errors are outside this change: two dashboard errors in `use-oauth-editor-session.ts` (`TS2322`, `TS2589`) and four CloudKit script errors in `artifact.ts` and `sign-native.ts` (`TS18048`, `TS2322`).
 - `rtk proxy bun run test` — exit 1 in the existing `@aio-proxy/core#test:artifact` smoke test. Its regex treats valid emitted `./repository.js` imports as unresolved; both the matcher and the source barrel imports are unchanged from the starting commit. The full test command stopped after 50 of 55 tasks, so the core and server unit suites were run directly.
 - `rtk proxy bun run --filter @aio-proxy/server test:unit` — exit 1 with 1,858 passed and 2 failed across 294 files. The failures are unchanged baseline tests: the post-close credential-port test reads the already-closed sync database, and the unrelated realtime frame-ceiling test timed out after 2 seconds. The focused server suite above passed all 222 tests.

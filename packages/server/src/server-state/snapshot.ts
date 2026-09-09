@@ -73,6 +73,7 @@ export async function buildSnapshot(
     callbacks?: CredentialPortCallbacks,
   ) => CredentialPort<unknown> | undefined,
   withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>,
+  prepareOAuth?: (plugins: PluginRegistrySnapshot) => Promise<void>,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
@@ -82,6 +83,7 @@ export async function buildSnapshot(
     diagnostics,
     logger,
   );
+  await prepareOAuth?.(plugins);
   // Resolve router model `metadata.extend` before model resolution and capability
   // indexing read the policies, so downstream consumers see effective values.
   const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });

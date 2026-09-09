@@ -39,6 +39,7 @@ type LoginSessionDeps = {
   readonly syncCommit?: SyncCommitHooks;
   readonly sharing?: () => OAuthSharingService | undefined;
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  readonly onAccountOperationPending?: () => void;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
@@ -108,7 +109,7 @@ const runLoginSession = async (
           : {
               beforeAccountOperationComplete: async (operation, signal) => {
                 const sharing = deps.sharing?.();
-                if (sharing === undefined) return;
+                if (sharing === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
                 const account = deps.repository.readAccount(operation.providerId);
                 if (account === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
                 const candidate: AccountWrite = {
@@ -146,6 +147,12 @@ const runLoginSession = async (
       ...(warning === undefined ? {} : { warning }),
     });
   } catch (error) {
+    if (
+      deps.repository
+        .listPendingAccountOperations()
+        .some((operation) => operation.targetDigest.startsWith('oauth-sync:'))
+    )
+      deps.onAccountOperationPending?.();
     if (error instanceof ProviderAccountAlreadyExistsError) {
       deps.publish(session, { id, status: 'succeeded', providerId: error.existingProviderId, duplicate: true });
     } else if (session.controller.signal.aborted) {
@@ -171,6 +178,7 @@ export const createOAuthLoginSessionManager = (options: {
   readonly syncCommit?: SyncCommitHooks;
   readonly sharing?: () => OAuthSharingService | undefined;
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  readonly onAccountOperationPending?: () => void;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly now?: () => number;
@@ -230,6 +238,7 @@ export const createOAuthLoginSessionManager = (options: {
         ...(options.sharing === undefined ? {} : { sharing: options.sharing }),
         ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
         reload: options.reload,
+        onAccountOperationPending: options.onAccountOperationPending,
         ...(options.createFetch === undefined ? {} : { createFetch: options.createFetch }),
         ...(options.completeUrl === undefined ? {} : { completeUrl: options.completeUrl }),
         publish,

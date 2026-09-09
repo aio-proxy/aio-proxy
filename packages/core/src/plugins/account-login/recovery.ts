@@ -32,6 +32,10 @@ export type RecoverPendingAccountOperationsOptions =
       readonly mode: 'server';
       readonly canDeleteAccount: (providerId: string) => boolean;
       readonly deleteMarkerOnProviderPresent?: 'complete' | 'retain';
+      readonly beforeAccountOperationComplete?: (
+        operation: PendingAccountOperation,
+        signal: AbortSignal,
+      ) => Promise<void>;
       readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
       readonly now?: () => number;
     };
@@ -125,14 +129,36 @@ export async function recoverPendingAccountOperations(
     const providers = rawProviders ?? {};
     for (const operation of repository.listPendingAccountOperations()) {
       const deadline = operation.createdAt + PENDING_OPERATION_TTL_MS;
-      if (now < deadline) {
+      if (now < deadline && !operation.targetDigest.startsWith('oauth-sync:')) {
         nextRunAt = earlier(nextRunAt, deadline);
         continue;
       }
       if (options.mode === 'cli' && operation.kind === 'delete') continue;
       const currentEntry = providers[operation.providerId];
       const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
-      if (observedDigest === operation.targetDigest) {
+      const needsSync = operation.targetDigest.startsWith('oauth-sync:');
+      const targetDigest = needsSync ? operation.targetDigest.slice('oauth-sync:'.length) : operation.targetDigest;
+      if (needsSync) {
+        // A config digest cannot prove that a credential was committed remotely. Do not
+        // compensate after publication either: retain the operation until exact reconciliation.
+        if (
+          observedDigest !== targetDigest ||
+          options.mode !== 'server' ||
+          options.beforeAccountOperationComplete === undefined
+        ) {
+          nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
+          continue;
+        }
+        try {
+          await withGate(operation.providerId, () =>
+            options.beforeAccountOperationComplete!(operation, new AbortController().signal),
+          );
+        } catch {
+          nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
+          continue;
+        }
+      }
+      if (observedDigest === targetDigest) {
         if (operation.kind === 'delete') {
           if (options.mode !== 'server') continue;
           if (!options.canDeleteAccount(operation.providerId)) {

@@ -12,7 +12,7 @@ test('format metadata permits storage while missing evidence blocks activation',
 
 test('verified metadata activates only an exact ready account version', () => {
   const adapter = oauthAdapterFixture({
-    credentialSync: { formatVersion: 1, multiDevice: { evidenceId: 'evidence-1' } },
+    credentialSync: { formatVersion: 1, multiDevice: { evidenceId: 'fixture-evidence' } },
   });
   const account = liveAccountFixture();
   expect(canActivateSyncedAccount(adapter, '1.0.0', account)).toBe(true);
