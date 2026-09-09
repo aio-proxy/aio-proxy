@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/shared';
+
 import { attributeName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
@@ -86,11 +88,10 @@ export async function completeRawAttempt<TRequest, TContext>(
     invoke: invokeRaw,
   });
 
-  // Video source-not-found is candidate-specific: the next video-capable
-  // provider may own that id. Language/image 404s stay terminal.
+  // Unpinned edits/extensions 404 is source-not-found: the next video-capable
+  // provider may own that id. Create and language/image 404s stay terminal.
   const fallback =
-    hasNext &&
-    (shouldFallbackStatus(response.status) || (ctx.adapter.capability === 'video' && response.status === 404));
+    hasNext && (shouldFallbackStatus(response.status) || shouldFallbackVideoSource404(ctx, response.status));
   if (fallback || response.status < 200 || response.status >= 400) {
     const cooldownMs = cooldownTtlMs(response.status, response.headers.get('retry-after'), ctx.retryAfterCapMs);
     if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
@@ -157,6 +158,14 @@ export async function completeRawAttempt<TRequest, TContext>(
   );
   deferRelease();
   return { kind: 'return', response: captured.value };
+}
+
+function shouldFallbackVideoSource404<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  status: number,
+): boolean {
+  if (ctx.adapter.capability !== 'video' || status !== 404 || !isRecord(ctx.context)) return false;
+  return ctx.context['operation'] === 'edits' || ctx.context['operation'] === 'extensions';
 }
 
 function withEventStreamContentType(response: Response, streamRequested: boolean): Response {

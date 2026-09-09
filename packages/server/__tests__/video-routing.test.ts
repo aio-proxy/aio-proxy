@@ -259,6 +259,23 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
   });
 
+  test('a create 404 does not fail over to the next video provider', async () => {
+    const missing = videoProvider('missing', { notFoundOnCreate: true });
+    const owner = videoProvider('owner');
+    const app = await createServer({
+      config: { providers: {} },
+      providerInstances: [missing.value, owner.value],
+    });
+    const created = await app.request(CREATE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: createBody(),
+    });
+    expect(created.status).toBe(404);
+    expect(missing.calls.raw).toBe(1);
+    expect(owner.calls.raw).toBe(0);
+  });
+
   test('a pinned edit whose explicit model the provider cannot resolve is 503', async () => {
     const pinned = videoProvider('openai', {
       models: ['sora-2', 'sora-2-pro'],
@@ -557,6 +574,7 @@ function videoProvider(
     readonly raw?: false;
     readonly rejectModelIds?: readonly string[];
     readonly requireRequestPath?: boolean;
+    readonly notFoundOnCreate?: boolean;
     readonly notFoundOnEdits?: boolean;
     readonly speech?: boolean;
   } = {},
@@ -613,6 +631,9 @@ function videoProvider(
                       bodies.push(await request.clone().json());
                     } catch {
                       bodies.push(undefined);
+                    }
+                    if (options.notFoundOnCreate === true && /\/v1\/videos$/u.test(path)) {
+                      return Response.json({ error: { code: 'not_found' } }, { status: 404 });
                     }
                     if (options.notFoundOnEdits === true && path.includes('/edits')) {
                       return Response.json({ error: { code: 'not_found' } }, { status: 404 });

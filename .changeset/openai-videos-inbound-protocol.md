@@ -9,6 +9,6 @@
 
 Add official OpenAI Videos ports: create, retrieve, content, delete, remix, edits, and extensions.
 Omitted `model` defaults to `sora-2`; convert is not implemented. Follow-ups stay on the creating
-provider (`404` after restart); omitted `model` keeps the source job; unpinned 404s fail over.
+provider (`404` after restart); omitted `model` keeps the source job; unpinned edit/extension 404s fail over.
 Edits/extensions are JSON only; list and character ports are `501`; generations is not registered.
 The API table also lists shipped Codex Live/Realtime signaling ports (media is not relayed).

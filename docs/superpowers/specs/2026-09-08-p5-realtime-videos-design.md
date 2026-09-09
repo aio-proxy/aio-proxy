@@ -181,7 +181,7 @@ Other official fields (`seconds`, `size`, `input_reference`, plus unknown future
 
 Body limits: default `REQUEST_BODY_LIMITS` (64 MiB). Create carries at most one optional image reference, not a 16-file edits envelope.
 
-`wantsStream` is always `false`.
+`wantsStream` is always `false`. An upstream create 404 (missing `input_reference`, etc.) is terminal; do not fail over.
 
 ### Edits / extensions (model-first when unpinned)
 
