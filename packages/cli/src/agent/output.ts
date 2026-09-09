@@ -16,7 +16,10 @@ const renderCodexList = (result: CodexListResult): string =>
   });
 
 const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
-  if (result.status === 'cancelled') return [m['cli.agent.codex.cancelled']()];
+  if (result.status === 'cancelled')
+    return [
+      result.reason === 'non_interactive' ? m['cli.agent.codex.non_interactive']() : m['cli.agent.codex.cancelled'](),
+    ];
   const lines = [
     result.migrationAction === 'restore'
       ? m['cli.agent.codex.restore']()
@@ -26,6 +29,8 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
           configPath: result.configPath,
         }),
   ];
+  if (result.version !== undefined && result.versionCompatibility === 'unverified')
+    lines.push(m['cli.agent.codex.version_unverified']({ version: result.version }));
   if (result.connection === 'offline') lines.push(m['cli.agent.codex.offline']());
   if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());
   else if (result.migration.status === 'blocked') lines.push(m['cli.agent.codex.migration_blocked']());

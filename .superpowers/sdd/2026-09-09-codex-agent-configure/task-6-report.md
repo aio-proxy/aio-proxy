@@ -32,3 +32,9 @@ Result: 544 pass, 13 fail, 557 tests. The 13 failures are pre-existing upgrade-p
 
 - The full CLI suite remains red because of the existing `/private/var` path fixture mismatch and package-manager path detection failures described above.
 - Codex live configure still requires the installed `codex-cli` executable and a loopback proxy endpoint; list/remove and UUID restore do not require the executable.
+
+## Review fix round 1
+
+The follow-up review fixes move the TTY gate ahead of executable detection and pending-journal prompts, return a localized non-interactive result without writes, catch prompt aborts as cancelled, report the detected semver with compatibility explicitly marked unverified, pass the selected target Provider into session preview, and allow built-in `openai` history to be previewed before the first managed marker. The migration confirmation now explains the current-Provider default and target-Provider exclusion.
+
+The fix-round affected test command completed with 63 pass, 0 fail, 965 expectations across 6 files. `rtk proxy bun run check` completed with exit 0; only the same pre-existing dashboard/logger warnings remained. `rtk git diff --check` completed with no output.

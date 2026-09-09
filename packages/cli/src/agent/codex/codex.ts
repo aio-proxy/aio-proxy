@@ -48,7 +48,7 @@ export type CodexConfigureOptions = { readonly restoreMigration?: string };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-const checkCodexInstalled = async (): Promise<void> => {
+const checkCodexInstalled = async (): Promise<string> => {
   let child: ReturnType<typeof Bun.spawn>;
   try {
     child = Bun.spawn(['codex', '--version'], { stdout: 'pipe', stderr: 'pipe' });
@@ -57,10 +57,27 @@ const checkCodexInstalled = async (): Promise<void> => {
   }
   const output = await new Response(child.stdout as ReadableStream<Uint8Array>).text();
   const exit = await child.exited;
-  if (exit !== 0 || !/^codex-cli\s+\d+\.\d+\.\d+\b/m.test(output)) {
+  const version = output.match(/^codex-cli\s+(\d+\.\d+\.\d+)\b/m)?.[1];
+  if (exit !== 0 || version === undefined) {
     throw new Error('Codex installation is missing');
   }
+  return version;
 };
+
+const isPromptCancellation = (error: unknown): boolean =>
+  error instanceof Error &&
+  /(?:abort|cancel|exit)prompt|(?:cancelled|canceled)/iu.test(`${error.name} ${error.message}`);
+
+const cancelledCodexResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
+  target: 'codex',
+  integration: 'static-config',
+  status: 'cancelled',
+  configPath: location.configPath,
+  connection: 'not_checked',
+  credential: 'none',
+  migration: { status: 'not_requested' },
+  ...(reason === undefined ? {} : { reason }),
+});
 
 const configuredLocation = (): CodexLocation => resolveCodexLocation(homedir(), process.env);
 
@@ -138,12 +155,12 @@ const createPrompts = (): CodexPrompts => ({
     }),
   migrate: async ({ sources, target, active, archived }) =>
     confirm({
-      message: m['cli.agent.codex.migrate']({
+      message: `${m['cli.agent.codex.migrate_explanation']()}\n${m['cli.agent.codex.migrate']({
         sources: sources.join(', '),
         target,
         active: String(active),
         archived: String(archived),
-      }),
+      })}`,
       default: false,
     }),
 });
@@ -188,10 +205,18 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
       migrationAction: 'restore',
     };
   }
-  await checkCodexInstalled();
-  const recovery = await recoverCodexConfigOperation(location, async () =>
-    confirm({ message: m['cli.agent.codex.pending_recovery'](), default: false }),
-  );
+  const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
+  if (!isTTY) return cancelledCodexResult(location, 'non_interactive');
+  const version = await checkCodexInstalled();
+  let recovery: Awaited<ReturnType<typeof recoverCodexConfigOperation>>;
+  try {
+    recovery = await recoverCodexConfigOperation(location, async () =>
+      confirm({ message: m['cli.agent.codex.pending_recovery'](), default: false }),
+    );
+  } catch (error) {
+    if (isPromptCancellation(error)) return cancelledCodexResult(location);
+    throw error;
+  }
   if (recovery === 'declined') {
     return {
       target: 'codex',
@@ -204,7 +229,7 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     };
   }
   const endpoint = await resolveAgentEndpoint();
-  return runCodexWizard({
+  const result = await runCodexWizard({
     location,
     endpoint,
     isTTY: process.stdin.isTTY === true && process.stdout.isTTY === true,
@@ -212,10 +237,11 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     inspectConfig: () => inspectCodexConfig(location),
     occupiedIds: () => occupiedIds(location),
     inspectKeys: () => inspectProxyKeys(createCredentialDeps(endpoint)),
-    inspectSessions: () => inspectCodexSessions(location),
+    inspectSessions: (providerId) => inspectCodexSessions(location, providerId),
     saveConfig: (providerId, token) => configureCodexConfig({ location, providerId, baseUrl: endpoint, token }),
     migrateSessions: (targets, providerId) => migrateCodexSessions({ location, targets, targetProviderId: providerId }),
   });
+  return result.status === 'cancelled' ? result : { ...result, version, versionCompatibility: 'unverified' as const };
 }
 
 export async function listCodexAgent(check = false): Promise<CodexListResult> {

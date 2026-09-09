@@ -21,6 +21,9 @@ export type CodexConfigureResult = {
   readonly connection: 'ok' | 'offline' | 'not_checked';
   readonly credential: 'none' | 'placeholder' | 'existing' | 'created';
   readonly migration: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' };
+  readonly reason?: 'non_interactive';
+  readonly version?: string;
+  readonly versionCompatibility?: 'unverified';
   readonly migrationAction?: 'restore';
 };
 
@@ -44,7 +47,7 @@ export type WizardDeps = {
   readonly inspectConfig: () => Promise<ConfigInspection>;
   readonly occupiedIds: () => Promise<readonly string[]>;
   readonly inspectKeys: () => Promise<KeySnapshot>;
-  readonly inspectSessions: () => Promise<MigrationPreview>;
+  readonly inspectSessions: (providerId?: string) => Promise<MigrationPreview>;
   readonly saveConfig: (providerId: string, token: string) => Promise<ConfigCommit>;
   readonly migrateSessions: (targets: readonly MigrationTarget[], providerId: string) => Promise<MigrationResult>;
 };
@@ -54,7 +57,7 @@ const cancelledError = (error: unknown): boolean => {
   return error instanceof Error && /(?:cancelled|canceled)/i.test(error.message);
 };
 
-const cancelledResult = (location: CodexLocation): CodexConfigureResult => ({
+const cancelledResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
   target: 'codex',
   integration: 'static-config',
   status: 'cancelled',
@@ -62,6 +65,7 @@ const cancelledResult = (location: CodexLocation): CodexConfigureResult => ({
   connection: 'not_checked',
   credential: 'none',
   migration: { status: 'not_requested' },
+  ...(reason === undefined ? {} : { reason }),
 });
 
 const validateProvider = (providerId: string, occupied: ReadonlySet<string>): string => {
@@ -114,9 +118,7 @@ const migrationSelection = async (
 };
 
 export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureResult> {
-  if (!deps.isTTY) {
-    throw new Error('Codex configuration requires an interactive terminal');
-  }
+  if (!deps.isTTY) return cancelledResult(deps.location, 'non_interactive');
   try {
     const inspection = await deps.inspectConfig();
     const occupied = new Set(await deps.occupiedIds());
@@ -124,7 +126,7 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
     const providerId = validateProvider(await deps.prompts.providerId(defaultId, [...occupied]), occupied);
     const keys = await deps.inspectKeys();
     const selection = keys.choices.length === 0 ? ({ kind: 'none' } as const) : await deps.prompts.key(keys.choices);
-    const preview = await deps.inspectSessions();
+    const preview = await deps.inspectSessions(providerId);
     const previousProviderId = inspection.providerId ?? inspection.activeProviderId;
     const migration = await migrationSelection(preview, providerId, previousProviderId, deps.prompts);
     const credential = await keys.resolve(selection, providerId);

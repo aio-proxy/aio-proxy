@@ -241,6 +241,8 @@ function isValidProviderId(value: string): boolean {
     validateCodexProviderId(value);
     return true;
   } catch {
-    return false;
+    // Built-in Codex providers are valid session owners even though they are
+    // reserved as managed provider IDs.
+    return ['openai', 'ollama', 'lmstudio', 'amazon-bedrock'].includes(value);
   }
 }

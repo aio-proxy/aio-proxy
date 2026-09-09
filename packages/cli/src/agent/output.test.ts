@@ -120,8 +120,11 @@ const AGENT_KEYS = [
   'cli.agent.codex.list',
   'cli.agent.codex.configured',
   'cli.agent.codex.cancelled',
+  'cli.agent.codex.non_interactive',
   'cli.agent.codex.restore',
   'cli.agent.codex.offline',
+  'cli.agent.codex.version_unverified',
+  'cli.agent.codex.migrate_explanation',
   'cli.agent.codex.migration_complete',
   'cli.agent.codex.migration_partial',
   'cli.agent.codex.migration_blocked',
@@ -179,6 +182,39 @@ test.each([
   });
   expect(lines.join('\n')).toContain(first);
   expect(lines.join('\n')).toContain(second);
+});
+
+test('Codex configure output reports detected version without claiming a minimum', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'configured',
+    providerId: 'custom',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'ok',
+    credential: 'placeholder',
+    migration: { status: 'empty' },
+    version: '0.146.0',
+    versionCompatibility: 'unverified',
+  }).join('\n');
+  expect(text).toContain('0.146.0');
+  expect(text).toContain('unverified');
+  expect(text).not.toContain('minimum');
+});
+
+test('Codex non-interactive output is localized and does not mention a write', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'cancelled',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'not_checked',
+    credential: 'none',
+    migration: { status: 'not_requested' },
+    reason: 'non_interactive',
+  }).join('\n');
+  expect(text).toContain('interactive');
+  expect(text).toContain('no files were changed');
 });
 
 test('every Agent lifecycle key exists in all five source locales and compiled Paraglide output', () => {

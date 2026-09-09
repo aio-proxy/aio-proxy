@@ -116,6 +116,41 @@ test('previews, migrates, and explicitly restores a legacy session', async () =>
   }
 });
 
+test('previews existing history before the first managed marker is created', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-first-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'first-history.jsonl');
+    await writeFile(rolloutPath, rollout('openai'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT, model TEXT, title TEXT, parent_thread_id TEXT, created_at INTEGER)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+      id,
+      'openai',
+      'legacy',
+      0,
+      rolloutPath,
+      'model',
+      'title',
+      null,
+      1700000000,
+    );
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+
+    const preview = await inspectCodexSessions(location, 'custom');
+    expect(preview.blocked).toEqual([]);
+    expect(preview.groups).toEqual([{ providerId: 'openai', active: 1, archived: 0 }]);
+    expect(preview.targets).toHaveLength(1);
+    expect(preview.targets[0]?.sourceProviderId).toBe('openai');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rolls back a replacement failure and restores a committed operation after later content is appended', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-failure-'));
   try {

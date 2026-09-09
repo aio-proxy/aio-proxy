@@ -7,3 +7,8 @@ test('rejects restore migration identifiers before touching Codex storage', asyn
     'migration operation id must be a UUID',
   );
 });
+
+test('returns a non-interactive result before probing the Codex executable', async () => {
+  const result = await configureCodexAgent();
+  expect(result).toMatchObject({ target: 'codex', status: 'cancelled', reason: 'non_interactive' });
+});

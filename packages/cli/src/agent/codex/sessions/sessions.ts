@@ -114,7 +114,10 @@ function isValidProviderId(value: string): boolean {
   }
 }
 
-export async function inspectCodexSessions(location: CodexLocation): Promise<MigrationPreview> {
+export async function inspectCodexSessions(
+  location: CodexLocation,
+  targetProviderId?: string,
+): Promise<MigrationPreview> {
   try {
     const snapshot = await readStateIndex(location);
     const grouped = new Map<string, SessionGroup>();
@@ -130,7 +133,7 @@ export async function inspectCodexSessions(location: CodexLocation): Promise<Mig
         archived: previous.archived + (session.archived ? 1 : 0),
       });
     }
-    const targetProvider = await managedProvider(location);
+    const targetProvider = targetProviderId ?? (await managedProvider(location));
     const targets = snapshot.sessions
       .filter((session) => session.sourceProviderId !== targetProvider)
       .map((session) => toTarget(session));
