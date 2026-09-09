@@ -97,7 +97,7 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.calls.raw).toBe(before);
   });
 
-  test('remix 2xx pins the new id; edits with a pin skip model rewrite', async () => {
+  test('remix 2xx pins the new id; pinned edits inject the source model', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
     expect(
@@ -125,7 +125,11 @@ describe('OpenAI Videos HTTP dispatch', () => {
       body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
     });
     expect(edits.status).toBe(200);
-    expect(fixture.bodies.at(-1)).toEqual({ prompt: 'warmer light', video: { id: 'video_abc' } });
+    expect(fixture.bodies.at(-1)).toEqual({
+      model: 'sora-2',
+      prompt: 'warmer light',
+      video: { id: 'video_abc' },
+    });
 
     const unpinned = await app.request('/v1/videos/edits', {
       method: 'POST',
@@ -192,8 +196,32 @@ describe('OpenAI Videos HTTP dispatch', () => {
     });
     expect(edits.status).toBe(200);
     expect(fixture.resolves.slice(afterCreate)[0]).toMatchObject({ modelId: 'sora-2-pro' });
+    expect(fixture.bodies.at(-1)).toEqual({
+      model: 'sora-2-pro',
+      prompt: 'warmer light',
+      video: { id: 'video_abc' },
+    });
     expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
     expect(fixture.resolves.at(-1)).toMatchObject({ modelId: 'sora-2-pro' });
+  });
+
+  test('an unpinned edit 404 fails over to the next video provider', async () => {
+    const missing = videoProvider('missing', { notFoundOnEdits: true });
+    const owner = videoProvider('owner');
+    const app = await createServer({
+      config: { providers: {} },
+      providerInstances: [missing.value, owner.value],
+    });
+    const edits = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_other' } }),
+    });
+    expect(edits.status).toBe(200);
+    expect(await edits.json()).toEqual({ id: 'video_edit', object: 'video', status: 'queued' });
+    expect(missing.calls.raw).toBe(1);
+    expect(owner.calls.raw).toBe(1);
+    expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
   });
 
   test('a pinned edit whose explicit model the provider cannot resolve is 503', async () => {
@@ -494,6 +522,7 @@ function videoProvider(
     readonly raw?: false;
     readonly rejectModelIds?: readonly string[];
     readonly requireRequestPath?: boolean;
+    readonly notFoundOnEdits?: boolean;
     readonly speech?: boolean;
   } = {},
 ): {
@@ -549,6 +578,9 @@ function videoProvider(
                       bodies.push(await request.clone().json());
                     } catch {
                       bodies.push(undefined);
+                    }
+                    if (options.notFoundOnEdits === true && path.includes('/edits')) {
+                      return Response.json({ error: { code: 'not_found' } }, { status: 404 });
                     }
                     const videoId = path.endsWith('/remix')
                       ? 'video_remix'

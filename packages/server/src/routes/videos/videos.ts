@@ -10,6 +10,7 @@ import {
   RequestBodyTooLargeError,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { type Context, Hono } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
@@ -73,10 +74,14 @@ async function handleFollowUpCreate(
   const record = source.videoJobs.lookup(sourceId);
   if (record !== undefined && !sameVideoOwner(record.owner, owner)) return videoForbidden();
   if (record !== undefined) {
+    const modelId = parsed.value.modelDefaulted ? record.model : parsed.value.model;
     return await withCapacity(source, () =>
       invokePinnedVideo(context, source, record, {
         pinNewJob: true,
-        modelId: parsed.value.modelDefaulted ? record.model : parsed.value.model,
+        modelId,
+        ...(parsed.value.modelDefaulted && isPlainObject(peek.body)
+          ? { request: jsonFollowUpRequest(context.req.raw, { ...peek.body, model: modelId }) }
+          : {}),
       }),
     );
   }
@@ -147,4 +152,12 @@ function videosTryParse<T>(
 
 function videosRequestError(error: unknown): Response {
   return openAIVideosAdapter.errors.requestError(error) ?? videoInvalidRequest('Invalid OpenAI Videos request');
+}
+
+function jsonFollowUpRequest(raw: Request, body: Record<string, unknown>): Request {
+  const headers = new Headers(raw.headers);
+  headers.set('content-type', 'application/json');
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  return new Request(raw, { method: raw.method, headers, body: JSON.stringify(body), signal: raw.signal });
 }

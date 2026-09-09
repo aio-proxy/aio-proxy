@@ -35,7 +35,7 @@ export async function invokePinnedVideo(
   context: Context<CallerPrincipalEnv>,
   source: VideosRouteSource,
   record: VideoJobRecord,
-  options: { readonly pinNewJob?: boolean; readonly modelId?: string } = {},
+  options: { readonly pinNewJob?: boolean; readonly modelId?: string; readonly request?: Request } = {},
 ): Promise<Response> {
   const lease = source.acquireProviderSnapshot();
   const modelId = options.modelId ?? record.model;
@@ -47,7 +47,7 @@ export async function invokePinnedVideo(
       requestPath: new URL(context.req.raw.url).pathname,
     });
     if (provider === undefined || raw === undefined) return videoUpstreamUnavailable();
-    const inbound = context.req.raw;
+    const inbound = options.request ?? context.req.raw;
     const response = await raw.invoke(
       new Request(withoutCallerCredentialQuery(inbound.url), {
         method: inbound.method,
