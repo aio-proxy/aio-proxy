@@ -80,6 +80,37 @@ final class CloudKitStoreTests: XCTestCase {
         XCTAssertFalse(version.isEmpty)
     }
 
+    func testModifiedAtUsesEpochMillisecondsForReadsAndWrites() async throws {
+        let driver = FakeCloudKitDriver()
+        let date = Date(timeIntervalSince1970: 1_700_000_000.125)
+        await driver.setNextModificationDate(date)
+        let store = CloudKitStore(driver: driver)
+
+        guard case let .written(_, writtenAt) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8)) else {
+            return XCTFail("write did not succeed")
+        }
+        XCTAssertEqual(writtenAt, 1_700_000_000_125)
+        XCTAssertGreaterThan(writtenAt, Int64(date.timeIntervalSince1970))
+
+        guard case let .present(value) = try await store.read(key: "k") else {
+            return XCTFail("written value was not readable")
+        }
+        XCTAssertEqual(value.modifiedAt, writtenAt)
+        let historyRetentionMs: Int64 = 30 * 24 * 60 * 60 * 1_000
+        XCTAssertGreaterThan(writtenAt, historyRetentionMs)
+        XCTAssertEqual(writtenAt - historyRetentionMs, 1_697_408_000_125)
+    }
+
+    func testModifiedAtOverflowRemainsAnUnknownOutcome() async throws {
+        let driver = FakeCloudKitDriver()
+        await driver.setNextModificationDate(Date(timeIntervalSince1970: Double(Int64.max)))
+        do {
+            _ = try await CloudKitStore(driver: driver).compareAndSwap(key: "k", expected: nil, value: Data("v".utf8))
+            XCTFail("out-of-range modification date was accepted")
+        } catch StoreError.outcomeUnknown {
+        }
+    }
+
     func testAccountIdentityChangeIsRejected() async throws {
         let driver = FakeCloudKitDriver()
         let store = CloudKitStore(driver: driver)

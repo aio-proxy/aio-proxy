@@ -169,7 +169,12 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
     }
 
     private func modifiedAt(from record: CKRecord) throws -> Int64 {
-        if let date = record.modificationDate { return Int64(date.timeIntervalSince1970) }
-        throw StoreError.outcomeUnknown
+        guard let date = record.modificationDate else { throw StoreError.outcomeUnknown }
+        let milliseconds = date.timeIntervalSince1970 * 1_000
+        guard milliseconds.isFinite,
+              milliseconds >= Double(Int64.min),
+              milliseconds < Double(Int64.max)
+        else { throw StoreError.outcomeUnknown }
+        return Int64(milliseconds)
     }
 }
