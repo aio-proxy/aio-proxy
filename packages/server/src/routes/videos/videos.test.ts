@@ -87,6 +87,50 @@ describe('OpenAI Videos follow-up capacity', () => {
     }
   });
 
+  test('a pinned edit that would rewrite is 503 when the job store is full', async () => {
+    const videoJobs = createVideoJobStore({ capacity: 1 });
+    videoJobs.insert({
+      videoId: 'video_abc',
+      providerId: 'openai',
+      model: 'sora-2-pro',
+      owner: ANONYMOUS_CALLER,
+      createdAt: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+    let invoked = 0;
+    const route = defineProviderRouteSource([
+      {
+        calls: { ensure: 0, model: [], raw: [] },
+        provider: {
+          capabilityIndex: { 'sora-2-pro': new Set(['video']) },
+          enabled: true,
+          id: 'openai',
+          kind: ProviderKind.Api,
+          models: ['sora-2-pro'],
+          raw: {
+            resolve: ({ protocol }) =>
+              protocol === ProviderProtocol.OpenAIVideo
+                ? {
+                    invoke: async () => {
+                      invoked += 1;
+                      return Response.json({ id: 'video_edit', object: 'video', status: 'queued' });
+                    },
+                  }
+                : undefined,
+          },
+        },
+      },
+    ]);
+    const response = await createOpenAIVideosRoutes({ ...route.source, videoJobs }).request('/v1/videos/edits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: 'video_store_full' } });
+    expect(invoked).toBe(0);
+  });
+
   test('a valid unpinned edit is 503 when the job store is full', async () => {
     const app = videosApp(0);
     const response = await app.request('/v1/videos/edits', {

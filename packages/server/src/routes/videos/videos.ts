@@ -88,18 +88,20 @@ async function handleFollowUpCreate(
   }
   if (record !== undefined) {
     const modelId = parsed.value.modelDefaulted ? record.model : parsed.value.model;
-    const rewritten =
+    const rewriteBody =
       isPlainObject(peek.body) && (parsed.value.modelDefaulted || parsed.value.clientModel !== modelId)
-        ? jsonFollowUpRequest(raw, { ...peek.body, model: modelId })
+        ? peek.body
         : undefined;
-    if (rewritten !== undefined) await cancelRetainedRequestBody(raw, 'videos pinned follow-up rewritten');
-    return await withCapacity(source, raw, () =>
-      invokePinnedVideo(context, source, record, {
+    return await withCapacity(source, raw, async () => {
+      const rewritten =
+        rewriteBody === undefined ? undefined : jsonFollowUpRequest(raw, { ...rewriteBody, model: modelId });
+      if (rewritten !== undefined) await cancelRetainedRequestBody(raw, 'videos pinned follow-up rewritten');
+      return invokePinnedVideo(context, source, record, {
         pinNewJob: true,
         modelId,
         ...(rewritten === undefined ? {} : { request: rewritten }),
-      }),
-    );
+      });
+    });
   }
   return await withCapacity(source, raw, () =>
     handleProtocolRequest({
