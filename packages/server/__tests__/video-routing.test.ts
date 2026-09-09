@@ -181,6 +181,36 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.resolves.at(-1)).toMatchObject({ modelId: 'sora-2-pro' });
   });
 
+  test('a rewritten pinned edit drops stale body integrity headers', async () => {
+    const fixture = videoProvider('openai', { models: ['sora-2', 'sora-2-pro'] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    expect(
+      (
+        await app.request(CREATE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: createBody(),
+        })
+      ).status,
+    ).toBe(200);
+    const edits = await app.request('/v1/videos/edits', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-md5': 'Q2hlY2sgSW50ZWdyaXR5IQ==',
+        digest: 'sha-256=deadbeef',
+        'content-digest': 'sha-256=:deadbeef:',
+      },
+      body: JSON.stringify({ model: ' sora-2-pro ', prompt: 'warmer light', video: { id: 'video_abc' } }),
+    });
+    expect(edits.status).toBe(200);
+    const forwarded = fixture.headerBags.at(-1);
+    expect(forwarded?.get('content-md5')).toBeNull();
+    expect(forwarded?.get('digest')).toBeNull();
+    expect(forwarded?.get('content-digest')).toBeNull();
+    expect(forwarded?.get('content-type')).toBe('application/json');
+  });
+
   test('a pinned edit without a model keeps the source job model', async () => {
     const fixture = videoProvider('openai', { models: ['sora-2', 'sora-2-pro'] });
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });

@@ -8,6 +8,7 @@ import {
   readJsonRequest,
   REQUEST_BODY_LIMITS,
   RequestBodyTooLargeError,
+  stripHopHeaders,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -174,9 +175,7 @@ async function rejectFollowUp(raw: Request, response: Response): Promise<Respons
 }
 
 function jsonFollowUpRequest(raw: Request, body: Record<string, unknown>): Request {
-  const headers = new Headers(raw.headers);
+  const headers = stripHopHeaders(raw.headers);
   headers.set('content-type', 'application/json');
-  headers.delete('content-encoding');
-  headers.delete('content-length');
   return new Request(raw, { method: raw.method, headers, body: JSON.stringify(body), signal: raw.signal });
 }
