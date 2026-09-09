@@ -7,6 +7,7 @@ import { SettingsAboutGroup } from '../../components/settings-about-group';
 import { SettingsForm } from '../../components/settings-form';
 import { SettingsPreferencesGroup } from '../../components/settings-preferences-group';
 import { SettingsReloadButton } from '../../components/settings-reload-button';
+import { SyncSettingsGroup } from '../../components/sync-settings-group';
 import { useSettingsQuery } from '../../hooks/use-settings-query';
 
 export const SettingsPage: React.FC = () => {
@@ -41,6 +42,7 @@ export const SettingsPage: React.FC = () => {
         {/* Preferences are browser-local and always available, so they lead: they render even
             while the server-backed settings are still loading or failed to load. */}
         <SettingsPreferencesGroup />
+        <SyncSettingsGroup />
         {content}
         <SettingsAboutGroup />
       </div>

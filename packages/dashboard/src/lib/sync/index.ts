@@ -1,0 +1,25 @@
+export {
+  applySync,
+  cancelSyncDetach,
+  disconnectSync,
+  detachSync,
+  historySync,
+  syncHistoryQueryOptions,
+  previewSync,
+  retrySync,
+  setSyncRange,
+  syncBackendsQueryOptions,
+  syncQueryOptions,
+  SyncRequestError,
+} from './service';
+export {
+  useApplySync,
+  useCancelSyncDetach,
+  useDisconnectSync,
+  useDetachSync,
+  usePreviewSync,
+  useRetrySync,
+  useSetSyncRange,
+  useSyncBackends,
+  useSyncStatus,
+} from './hooks';
