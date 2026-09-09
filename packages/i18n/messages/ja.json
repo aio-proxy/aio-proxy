@@ -343,7 +343,29 @@
         "updated": "更新済み",
         "newer": "新しい"
       },
-      "loopback_required": "Agent 連携にはループバック上の aio-proxy エンドポイントが必要です。"
+      "loopback_required": "Agent 連携にはループバック上の aio-proxy エンドポイントが必要です。",
+      "codex": {
+        "provider_id": "Codex プロバイダー ID",
+        "provider_conflict": "プロバイダー ID {providerId} は既に使用されています。",
+        "provider_id_invalid": "有効な Codex プロバイダー ID を入力してください。",
+        "key_select": "既存のプロキシキーを選択するか、新規作成してください",
+        "key_new": "新しいキーを作成",
+        "sources": "移行するセッション履歴のソースを選択してください",
+        "sources_required": "少なくとも 1 つのソースを選択してください。",
+        "migrate": "{sources} から {target} へアクティブ {active} 件、アーカイブ {archived} 件を移行しますか？",
+        "list": "codex: 設定 {configPath}; プロバイダー {providerId}; active {activeProviderId}; ベース URL {baseUrl}; 状態 {status}; 接続 {connection}; 変更パス {changedPaths}",
+        "configured": "codex: プロバイダー {providerId} の設定を {configPath} に {status} しました。",
+        "cancelled": "Codex の設定をキャンセルしました。ファイルは変更されていません。",
+        "restore": "Codex セッション履歴の所有者を復元しました。",
+        "offline": "Codex の設定を保存しましたが、プロキシを確認できませんでした。",
+        "migration_complete": "Codex セッション履歴の移行が完了しました。",
+        "migration_partial": "Codex セッション履歴の移行は一部完了しました。移行記録を確認してください。",
+        "migration_blocked": "Codex セッション履歴の移行にはオフライン復旧または対応形式が必要です。",
+        "removed": "Codex の管理設定を {configPath} から {status} しました。",
+        "keys_retained": "プロキシキーは保持されました。",
+        "restore_option": "操作 UUID で Codex 移行を復元",
+        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？"
+      }
     }
   },
   "oauth": {

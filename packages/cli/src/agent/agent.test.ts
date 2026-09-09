@@ -124,6 +124,28 @@ function commandFixture(
     adapterVersion: '1.2.3',
     randomUUID: () => INSTALLATION,
     now: () => Date.parse('2026-08-18T00:05:00.000Z'),
+    codex: {
+      configure: async () => {
+        throw new Error('codex stub not configured');
+      },
+      list: async () => ({
+        target: 'codex',
+        integration: 'static-config',
+        configPath: '/tmp/codex/config.toml',
+        activeProviderId: 'openai',
+        status: 'absent',
+        connection: 'not_checked',
+        changedPaths: [],
+      }),
+      remove: async () => ({
+        target: 'codex',
+        integration: 'static-config',
+        configPath: '/tmp/codex/config.toml',
+        keysRetained: true,
+        status: 'absent',
+        preservedPaths: [],
+      }),
+    },
   };
   return { deps, events, install, remove, revoke, resolveEndpoint, readSnapshot };
 }

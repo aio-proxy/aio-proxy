@@ -1,0 +1,56 @@
+import { expect, test } from 'bun:test';
+
+import { runCodexWizard } from './index';
+
+test('skips Key prompt and leaves history when migration is declined', async () => {
+  const events: string[] = [];
+  const result = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async (value) => {
+        expect(value).toBe('aio-proxy');
+        return 'custom';
+      },
+      key: async () => {
+        throw new Error('unexpected Key prompt');
+      },
+      sources: async () => ['openai'],
+      migrate: async () => {
+        events.push('migration-question');
+        return false;
+      },
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'openai', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => {
+        events.push('resolve-key');
+        return { token: 'aio-proxy-local', kind: 'placeholder', verified: true };
+      },
+    }),
+    inspectSessions: async () => ({
+      groups: [{ providerId: 'openai', active: 1, archived: 0 }],
+      blocked: [],
+      targets: [{ id: 'test-id', sourceProviderId: 'openai', archived: false, storage: 'legacy', revision: 'r1' }],
+    }),
+    saveConfig: async (id, token) => {
+      expect(token).toBe('aio-proxy-local');
+      events.push('save');
+      return { status: 'configured', providerId: id };
+    },
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  });
+  expect(events).toEqual(['migration-question', 'resolve-key', 'save']);
+  expect(result).toMatchObject({ target: 'codex', providerId: 'custom', migration: { status: 'declined' } });
+  expect(JSON.stringify(result)).not.toContain('aio-proxy-local');
+});

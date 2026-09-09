@@ -233,6 +233,15 @@ const listResult: AgentListResult = {
     },
   ],
   server: 'not_checked',
+  codex: {
+    target: 'codex',
+    integration: 'static-config',
+    configPath: '/tmp/codex/config.toml',
+    activeProviderId: 'openai',
+    status: 'absent',
+    connection: 'not_checked',
+    changedPaths: [],
+  },
 };
 const configureResult: AgentConfigureResult = {
   target: 'opencode',
@@ -307,7 +316,7 @@ test('agent configure and remove help render the supported target grammar', () =
   const program = buildProgram();
   const agent = program.commands.find((command) => command.name() === 'agent');
   const help = agent?.helpInformation() ?? '';
-  expect(help).toContain('configure <opencode|pi|omp>');
-  expect(help).toContain('remove <opencode|pi|omp>');
+  expect(help).toContain('configure [options] <opencode|pi|omp|codex>');
+  expect(help).toContain('remove <opencode|pi|omp|codex>');
   expect(help).not.toContain('<target>');
 });

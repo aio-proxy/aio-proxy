@@ -1,1 +1,6 @@
-export { configureCodexConfig, inspectCodexConfig, removeCodexConfig } from './managed-config';
+export {
+  configureCodexConfig,
+  inspectCodexConfig,
+  recoverCodexConfigOperation,
+  removeCodexConfig,
+} from './managed-config';

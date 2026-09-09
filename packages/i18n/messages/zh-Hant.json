@@ -343,7 +343,29 @@
         "updated": "已更新",
         "newer": "較新"
       },
-      "loopback_required": "Agent 整合要求 aio-proxy 使用迴環位址。"
+      "loopback_required": "Agent 整合要求 aio-proxy 使用迴環位址。",
+      "codex": {
+        "provider_id": "Codex Provider ID",
+        "provider_conflict": "Provider ID {providerId} 已在使用。",
+        "provider_id_invalid": "請輸入有效的 Codex Provider ID。",
+        "key_select": "選擇現有代理金鑰或建立新金鑰",
+        "key_new": "建立新金鑰",
+        "sources": "選擇要移轉的工作階段歷史來源",
+        "sources_required": "至少選擇一個來源。",
+        "migrate": "要將 {sources} 中的 {active} 個活動工作階段和 {archived} 個封存工作階段移轉到 {target} 嗎？",
+        "list": "codex：設定 {configPath}；Provider {providerId}；活動 Provider {activeProviderId}；基礎 URL {baseUrl}；狀態 {status}；連線 {connection}；變更路徑 {changedPaths}",
+        "configured": "已在 {configPath} 為 Provider {providerId} 完成 codex 設定（{status}）。",
+        "cancelled": "Codex 設定已取消；未修改檔案。",
+        "restore": "已恢復 Codex 工作階段歷史歸屬。",
+        "offline": "已儲存 Codex 設定，但無法驗證代理程式。",
+        "migration_complete": "Codex 工作階段歷史移轉已完成。",
+        "migration_partial": "Codex 工作階段歷史移轉部分完成；請檢查移轉記錄。",
+        "migration_blocked": "Codex 工作階段歷史移轉需要離線復原或受支援的格式。",
+        "removed": "已從 {configPath} {status} Codex 受管理設定。",
+        "keys_retained": "代理金鑰已保留。",
+        "restore_option": "依操作 UUID 復原 Codex 移轉",
+        "pending_recovery": "先前的 Codex 設定操作仍在等待處理。是否在繼續前復原？"
+      }
     }
   },
   "oauth": {

@@ -343,7 +343,29 @@
         "updated": "updated",
         "newer": "newer"
       },
-      "loopback_required": "Agent integrations require a loopback aio-proxy endpoint."
+      "loopback_required": "Agent integrations require a loopback aio-proxy endpoint.",
+      "codex": {
+        "provider_id": "Codex Provider ID",
+        "provider_conflict": "Provider ID {providerId} is already in use.",
+        "provider_id_invalid": "Enter a valid Codex Provider ID.",
+        "key_select": "Select an existing proxy key or create a new one",
+        "key_new": "Create a new key",
+        "sources": "Select session history sources to migrate",
+        "sources_required": "Select at least one source.",
+        "migrate": "Migrate {active} active and {archived} archived sessions from {sources} to {target}?",
+        "list": "codex: config {configPath}; provider {providerId}; active {activeProviderId}; base URL {baseUrl}; status {status}; connection {connection}; changed paths {changedPaths}",
+        "configured": "codex: configuration {status} for provider {providerId} at {configPath}.",
+        "cancelled": "Codex configuration cancelled; no files were changed.",
+        "restore": "Codex session history ownership restored.",
+        "offline": "Codex configuration saved, but the proxy could not be verified.",
+        "migration_complete": "Codex session history migration completed.",
+        "migration_partial": "Codex session history migration partially completed; review the migration record.",
+        "migration_blocked": "Codex session history migration requires offline recovery or a supported format.",
+        "removed": "Codex managed configuration {status} at {configPath}.",
+        "keys_retained": "Proxy keys were retained.",
+        "restore_option": "Restore a Codex migration by operation UUID",
+        "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?"
+      }
     }
   },
   "oauth": {

@@ -111,6 +111,21 @@ async function recoverPending(location: CodexLocation): Promise<void> {
   throw new Error('Codex configuration operation has an unknown recovery state; manual review is required');
 }
 
+export async function recoverCodexConfigOperation(
+  location: CodexLocation,
+  confirmRecovery?: () => Promise<boolean>,
+): Promise<'none' | 'recovered' | 'declined'> {
+  return runExclusive(location.markerPath, async () => {
+    await ensureManagedRoot(location);
+    const pending = await readJournal(location);
+    if (pending === undefined) return 'none';
+    if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
+    if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
+    await recoverPending(location);
+    return 'recovered';
+  });
+}
+
 async function checkCodexInstalled(): Promise<void> {
   let child: ReturnType<typeof Bun.spawn>;
   try {

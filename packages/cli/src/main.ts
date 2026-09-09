@@ -206,7 +206,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
   registerAgentCommands(program, {
     actions: {
       list: (options) => agentList(options, commandDeps),
-      configure: (target) => agentConfigure(target, commandDeps),
+      configure: (target, options) => agentConfigure(target, options, commandDeps),
       remove: (target) => agentRemove(target, commandDeps),
       revoke: (installationId) => agentRevoke(installationId, commandDeps),
     },

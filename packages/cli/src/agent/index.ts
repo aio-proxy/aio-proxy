@@ -7,8 +7,10 @@ export {
   type AgentAuthorizationListItem,
   type AgentCommandDeps,
   type AgentConfigureResult,
+  type PluginAgentConfigureResult,
   type AgentListResult,
   type AgentListTargetResult,
   type AgentRemoveResult,
+  type PluginAgentRemoveResult,
   type AgentRevokeResult,
 } from './agent';

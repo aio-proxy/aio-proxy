@@ -2,6 +2,41 @@ import { m } from '@aio-proxy/i18n';
 import type { Command } from 'commander';
 
 import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
+import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
+
+const renderCodexList = (result: CodexListResult): string =>
+  m['cli.agent.codex.list']({
+    configPath: result.configPath,
+    providerId: result.providerId ?? '-',
+    activeProviderId: result.activeProviderId || '-',
+    baseUrl: result.baseUrl ?? '-',
+    status: result.status,
+    connection: result.connection,
+    changedPaths: result.changedPaths.length === 0 ? '-' : result.changedPaths.map((path) => path.join('.')).join(', '),
+  });
+
+const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
+  if (result.status === 'cancelled') return [m['cli.agent.codex.cancelled']()];
+  const lines = [
+    result.migrationAction === 'restore'
+      ? m['cli.agent.codex.restore']()
+      : m['cli.agent.codex.configured']({
+          status: result.status,
+          providerId: result.providerId ?? '-',
+          configPath: result.configPath,
+        }),
+  ];
+  if (result.connection === 'offline') lines.push(m['cli.agent.codex.offline']());
+  if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());
+  else if (result.migration.status === 'blocked') lines.push(m['cli.agent.codex.migration_blocked']());
+  else if (result.migration.status === 'completed') lines.push(m['cli.agent.codex.migration_complete']());
+  return lines;
+};
+
+const renderCodexRemove = (result: CodexRemoveResult): string[] => [
+  m['cli.agent.codex.removed']({ configPath: result.configPath, status: result.status }),
+  m['cli.agent.codex.keys_retained'](),
+];
 
 export function renderAgentList(result: AgentListResult, json: boolean): string[] {
   if (json) return [JSON.stringify(result)];
@@ -55,10 +90,12 @@ export function renderAgentList(result: AgentListResult, json: boolean): string[
       }),
     );
   }
+  lines.push(String(renderCodexList(result.codex)));
   return lines;
 }
 
 export function renderAgentConfigure(result: AgentConfigureResult): string[] {
+  if (result.target === 'codex') return renderCodexConfigure(result);
   const lines = [
     result.status === 'newer'
       ? m['cli.agent.configure.newer']({ target: result.target })
@@ -82,9 +119,10 @@ export function renderAgentConfigure(result: AgentConfigureResult): string[] {
   return lines;
 }
 
-export const renderAgentRemove = (result: AgentRemoveResult): string[] => [
-  m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId }),
-];
+export const renderAgentRemove = (result: AgentRemoveResult): string[] =>
+  result.target === 'codex'
+    ? renderCodexRemove(result)
+    : [m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })];
 export const renderAgentRevoke = (result: AgentRevokeResult): string[] => [
   m['cli.agent.revoke.success']({ installationId: result.installationId, status: result.status }),
 ];
@@ -95,7 +133,7 @@ export type AgentCliActions = {
     readonly authorizations: boolean;
     readonly json: boolean;
   }) => Promise<AgentListResult>;
-  readonly configure: (target: string) => Promise<AgentConfigureResult>;
+  readonly configure: (target: string, options?: CodexConfigureOptions) => Promise<AgentConfigureResult>;
   readonly remove: (target: string) => Promise<AgentRemoveResult>;
   readonly revoke: (installationId: string) => Promise<AgentRevokeResult>;
 };
@@ -121,10 +159,21 @@ export function registerAgentCommands(
       };
       emit(renderAgentList(await input.actions.list(normalized), normalized.json));
     });
-  agent.command('configure <opencode|pi|omp>').action(async (target) => {
-    emit(renderAgentConfigure(await input.actions.configure(target)));
-  });
-  agent.command('remove <opencode|pi|omp>').action(async (target) => {
+  agent
+    .command('configure <opencode|pi|omp|codex>')
+    .option('--restore-migration <operation-id>', m['cli.agent.codex.restore_option']())
+    .action(async (target, options) => {
+      if (target !== 'codex' && options.restoreMigration !== undefined)
+        throw new Error('--restore-migration is only supported for codex');
+      emit(
+        renderAgentConfigure(
+          await input.actions.configure(target, {
+            ...(options.restoreMigration === undefined ? {} : { restoreMigration: options.restoreMigration }),
+          }),
+        ),
+      );
+    });
+  agent.command('remove <opencode|pi|omp|codex>').action(async (target) => {
     emit(renderAgentRemove(await input.actions.remove(target)));
   });
   agent.command('revoke <installation-id>').action(async (installationId) => {

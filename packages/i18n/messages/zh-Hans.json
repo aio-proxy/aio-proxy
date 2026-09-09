@@ -343,7 +343,29 @@
         "updated": "已更新",
         "newer": "更新"
       },
-      "loopback_required": "Agent 集成要求 aio-proxy 使用回环地址。"
+      "loopback_required": "Agent 集成要求 aio-proxy 使用回环地址。",
+      "codex": {
+        "provider_id": "Codex Provider ID",
+        "provider_conflict": "Provider ID {providerId} 已在使用。",
+        "provider_id_invalid": "请输入有效的 Codex Provider ID。",
+        "key_select": "选择现有代理密钥或创建新密钥",
+        "key_new": "创建新密钥",
+        "sources": "选择要迁移的会话历史来源",
+        "sources_required": "至少选择一个来源。",
+        "migrate": "要将 {sources} 中的 {active} 个活动会话和 {archived} 个归档会话迁移到 {target} 吗？",
+        "list": "codex：配置 {configPath}；Provider {providerId}；活动 Provider {activeProviderId}；基础 URL {baseUrl}；状态 {status}；连接 {connection}；变更路径 {changedPaths}",
+        "configured": "codex：已在 {configPath} 为 Provider {providerId} 完成配置（{status}）。",
+        "cancelled": "Codex 配置已取消；未修改文件。",
+        "restore": "已恢复 Codex 会话历史归属。",
+        "offline": "已保存 Codex 配置，但无法验证代理。",
+        "migration_complete": "Codex 会话历史迁移已完成。",
+        "migration_partial": "Codex 会话历史迁移部分完成；请检查迁移记录。",
+        "migration_blocked": "Codex 会话历史迁移需要离线恢复或受支持的格式。",
+        "removed": "已从 {configPath} {status} Codex 受管配置。",
+        "keys_retained": "代理密钥已保留。",
+        "restore_option": "按操作 UUID 恢复 Codex 迁移",
+        "pending_recovery": "之前的 Codex 配置操作仍在等待处理。是否在继续前恢复？"
+      }
     }
   },
   "oauth": {

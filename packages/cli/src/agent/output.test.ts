@@ -51,6 +51,15 @@ const completeListResult: AgentListResult = {
       local: 'configured',
     },
   ],
+  codex: {
+    target: 'codex',
+    integration: 'static-config',
+    configPath: '/tmp/codex/config.toml',
+    activeProviderId: 'openai',
+    status: 'absent',
+    connection: 'not_checked',
+    changedPaths: [],
+  },
 };
 
 const AGENT_KEYS = [
@@ -100,6 +109,26 @@ const AGENT_KEYS = [
   'cli.agent.status.updated',
   'cli.agent.status.newer',
   'cli.agent.loopback_required',
+  'cli.agent.codex.provider_id',
+  'cli.agent.codex.provider_conflict',
+  'cli.agent.codex.provider_id_invalid',
+  'cli.agent.codex.key_select',
+  'cli.agent.codex.key_new',
+  'cli.agent.codex.sources',
+  'cli.agent.codex.sources_required',
+  'cli.agent.codex.migrate',
+  'cli.agent.codex.list',
+  'cli.agent.codex.configured',
+  'cli.agent.codex.cancelled',
+  'cli.agent.codex.restore',
+  'cli.agent.codex.offline',
+  'cli.agent.codex.migration_complete',
+  'cli.agent.codex.migration_partial',
+  'cli.agent.codex.migration_blocked',
+  'cli.agent.codex.removed',
+  'cli.agent.codex.keys_retained',
+  'cli.agent.codex.restore_option',
+  'cli.agent.codex.pending_recovery',
 ] as const;
 
 const flattenMessages = (value: unknown, prefix = ''): Record<string, string> => {
