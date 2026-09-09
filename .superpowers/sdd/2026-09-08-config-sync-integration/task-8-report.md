@@ -14,7 +14,9 @@ Native package fixtures derive their package directory from `process.platform` a
 
 ## Commit
 
-`2faff3148375523fd7cae1336cb379666e27395e`
+`d32935d1eeb39fdb64e032fed97a047f0098cfda`
+
+Follow-up guard commit: `c720aca5f592921fcca59b870aa59fff0df9b5d0`
 
 ## Verification
 
