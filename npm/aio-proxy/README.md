@@ -391,20 +391,31 @@ Each `label` is optional and only helps identify a key. With at least one key co
 
 ## Agent integrations
 
-Install or update the managed OpenCode, Pi, and oh-my-pi adapters, then sign in with each Agent's native login. Integrations are global to the current user; aio-proxy does not write project-local Agent config.
+aio-proxy supports two integration types: managed plugins for OpenCode, Pi, and oh-my-pi, and a Codex static-config integration. Plugin integrations install or update an adapter and keep the Agent's native login flow. The Codex integration edits the global `config.toml`; it does not install a plugin or replace native Codex login. Integrations are global to the current user and do not write project-local Agent config.
 
 ```bash
 aio-proxy agent configure opencode
 aio-proxy agent configure pi
 aio-proxy agent configure omp
+aiop agent configure codex
 aio-proxy agent list --check
 aio-proxy agent list --authorizations
+aiop agent list --check
 aio-proxy agent remove <target>
+aiop agent remove codex
 ```
 
 Supported floors are OpenCode 1.17.10, Pi 0.84.2, and oh-my-pi 17.3.7. After configure, sign in with `opencode auth login --provider aio-proxy` or `/login aio-proxy` in Pi and oh-my-pi. Reload or restart the Agent so it loads the updated adapter. `aio-proxy upgrade` refreshes managed adapters the same way and also requires a reload.
 
 When `server.apiKeys` is enabled, set `server.password` so Device Approval can authorize the Agent. `aio-proxy agent remove` revokes the installation and deletes aio-proxy's managed files; it does not log the Agent out of its own host account. If the local control plane is offline, remove refuses and leaves files in place.
+
+### Codex static config
+
+`aiop agent configure codex` uses the global `~/.codex/config.toml`, or the directory selected by `CODEX_HOME`, and takes effect after Codex is reopened. The default Provider ID is `aio-proxy`; the wizard accepts a custom Provider ID when it does not conflict with an existing entry. It preserves the top-level `model` and does not add a model selection step. The provider uses the proxy's Responses endpoint and selects an existing proxy API Key or creates one; when no proxy Key exists, the Key prompt is skipped and the local non-secret token is used without enabling proxy authentication. Native Codex login remains available.
+
+The wizard can offer history migration after showing the source Provider IDs and counts. It filters selected legacy JSONL sessions by Provider ID and leaves unselected and unrelated history in place; this is not a deletion mechanism or a security isolation boundary. The verified compatibility experiment used `codex-cli 0.146.0` and validated the observed configuration and app-server schema fields. The executable exposes no upstream revision, and compatibility beyond that observed version and format is unverified. Native and paginated state migration remains blocked pending an independently verified storage contract.
+
+If a configuration operation is pending, rerun `aiop agent configure codex` to enter the recovery prompt. A completed or partial history migration can be restored with `aiop agent configure codex --restore-migration <operation-id>`. Journals and JSONL backups are kept under `$CODEX_HOME/.aio-proxy/migrations/<operation-id>/` and its `backups/` directory. `aiop agent list --check` reports the configured Provider ID, active Provider ID, configuration status, and proxy connection status. `aiop agent remove codex` restores aio-proxy-owned fields while preserving unrelated settings and later user edits; it retains proxy Keys and does not reverse-migrate history. No other Codex capability is implied by this integration.
 
 aio-proxy does not copy an upstream API key or a shared embedded SK into an Agent.
 
