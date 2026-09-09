@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "plugin": "@aio-proxy/plugin-openrouter",
+  "pluginVersion": "0.20.2",
+  "capability": "default",
+  "formatVersion": 1,
+  "testedAt": "2026-09-09T01:11:12.595Z",
+  "upstream": "unconfigured",
+  "account": {
+    "dedicatedTestAccount": false,
+    "providerConfigured": false,
+    "credentialRead": false,
+    "isolatedConfigurations": 0,
+    "remoteObjectConfigured": false
+  },
+  "evidence": {
+    "plugin": "@aio-proxy/plugin-openrouter",
+    "pluginVersion": "0.20.2",
+    "capability": "default",
+    "formatVersion": 1,
+    "testedAt": "2026-09-09T01:11:12.595Z",
+    "upstream": "unconfigured",
+    "copiedUse": "blocked",
+    "rotation": "not-applicable",
+    "uncertainRecovery": "blocked",
+    "deviceBinding": "blocked",
+    "loginEffects": "blocked",
+    "independentDetach": "blocked"
+  },
+  "evaluation": {
+    "multiDevice": false,
+    "independentDetach": false
+  },
+  "productionGate": "blocked",
+  "failureCode": "Set OAUTH_SYNC_TEST_ACCOUNT=1 for a dedicated non-production test account",
+  "redaction": {
+    "credentials": "omitted",
+    "accountIdentifiers": "omitted"
+  }
+}

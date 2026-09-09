@@ -65,6 +65,7 @@ export function createOpenAIChatGPTPlugin(
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
+    credentialSync: { formatVersion: 1 },
     credentials: zod.object({
       accessToken: zod.string(),
       accountId: zod.string(),
