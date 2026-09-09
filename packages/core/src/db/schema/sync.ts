@@ -59,6 +59,7 @@ export const syncCommit = sqliteTable(
     accountOperationIds: text('account_operation_ids_json', { mode: 'json' }).$type<unknown>().notNull(),
     phase: text('phase').notNull(),
     remoteOperations: text('remote_operations_json', { mode: 'json' }).$type<unknown>(),
+    pluginSecrets: text('plugin_secrets_json', { mode: 'json' }).$type<unknown>(),
     sourceRevisions: text('source_revisions_json', { mode: 'json' }).$type<unknown>(),
     confirmedOrder: integer('confirmed_order'),
   },

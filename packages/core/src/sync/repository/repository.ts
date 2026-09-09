@@ -56,7 +56,14 @@ export interface CommitIntent {
   accountOperationIds: string[];
   phase: 'prepared' | 'confirmed';
   remoteOperations?: { objectId: string; operationId: string }[];
+  pluginSecrets?: PluginSecretCommit[];
   sourceRevisions?: Record<string, number>;
+}
+
+export interface PluginSecretCommit {
+  plugin: string;
+  before?: JsonValue;
+  after?: JsonValue;
 }
 
 export interface OAuthJournalRow {
@@ -103,6 +110,7 @@ type CommitRow = {
   account_operation_ids_json: unknown;
   phase: string;
   remote_operations_json: unknown;
+  plugin_secrets_json: unknown;
   source_revisions_json: unknown;
 };
 
@@ -128,6 +136,7 @@ function sameCommitIntent(left: CommitIntent, right: CommitIntent): boolean {
     sameJson(left.rawAfter, right.rawAfter) &&
     sameJson(left.accountOperationIds, right.accountOperationIds) &&
     sameJson(left.remoteOperations, right.remoteOperations) &&
+    sameJson(left.pluginSecrets, right.pluginSecrets) &&
     sameJson(left.sourceRevisions, right.sourceRevisions)
   );
 }
@@ -155,7 +164,7 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
       sqlite
         .query<CommitRow, [string, string]>(
           `SELECT commit_id, origin, before_digest, after_digest, raw_after_json,
-                account_operation_ids_json, phase, remote_operations_json, source_revisions_json
+                account_operation_ids_json, phase, remote_operations_json, plugin_secrets_json, source_revisions_json
            FROM sync_commit WHERE binding_id = ? AND commit_id = ?`,
         )
         .get(bindingId, commitId) ?? null
@@ -178,8 +187,8 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
           .query(
             `INSERT INTO sync_commit
              (binding_id, commit_id, origin, before_digest, after_digest, raw_after_json,
-              account_operation_ids_json, phase, remote_operations_json, source_revisions_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)
+              account_operation_ids_json, phase, remote_operations_json, plugin_secrets_json, source_revisions_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?, ?)
            ON CONFLICT(binding_id, commit_id) DO NOTHING`,
           )
           .run(
@@ -193,6 +202,7 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
             intent.remoteOperations === undefined
               ? null
               : stringifyJson(intent.remoteOperations as unknown as JsonValue),
+            intent.pluginSecrets === undefined ? null : stringifyJson(intent.pluginSecrets as unknown as JsonValue),
             intent.sourceRevisions === undefined ? null : stringifyJson(intent.sourceRevisions as unknown as JsonValue),
           );
       });
@@ -207,7 +217,7 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
       const row = sqlite
         .query<CommitRow, [string]>(
           `SELECT commit_id, origin, before_digest, after_digest, raw_after_json,
-                  account_operation_ids_json, phase, remote_operations_json, source_revisions_json
+                  account_operation_ids_json, phase, remote_operations_json, plugin_secrets_json, source_revisions_json
              FROM sync_commit
             WHERE binding_id = ? AND phase = 'confirmed'
             ORDER BY confirmed_order DESC LIMIT 1`,
@@ -220,7 +230,7 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
       return sqlite
         .query<CommitRow, [string]>(
           `SELECT commit_id, origin, before_digest, after_digest, raw_after_json,
-                  account_operation_ids_json, phase, remote_operations_json, source_revisions_json
+                  account_operation_ids_json, phase, remote_operations_json, plugin_secrets_json, source_revisions_json
              FROM sync_commit WHERE binding_id = ? AND phase = 'prepared' ORDER BY rowid`,
         )
         .all(bindingId)

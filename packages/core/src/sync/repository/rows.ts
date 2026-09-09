@@ -3,7 +3,14 @@ import { z } from 'zod';
 
 import type { OAuthOwnership } from '../oauth';
 import type { EntityBody, EntityKind } from '../protocol';
-import type { CommitIntent, LocalEntity, LocalOverride, OAuthJournalRow, OutboxOperation } from './repository';
+import type {
+  CommitIntent,
+  LocalEntity,
+  LocalOverride,
+  OAuthJournalRow,
+  OutboxOperation,
+  PluginSecretCommit,
+} from './repository';
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
@@ -27,6 +34,11 @@ const entityBodySchema = z.object({
 const overrideSchema = z.object({ path: z.array(z.string()), value: jsonValueSchema.optional() });
 const remoteOperationSchema = z.object({ objectId: z.string(), operationId: z.string() });
 const sourceRevisionsSchema = z.record(z.string(), z.number().int().nonnegative());
+const pluginSecretCommitSchema = z.object({
+  plugin: z.string(),
+  before: jsonValueSchema.optional(),
+  after: jsonValueSchema.optional(),
+});
 const oauthOwnershipSchema: z.ZodType<OAuthOwnership> = z.object({
   mode: z.enum(['shared', 'share-pending', 'detach-pending', 'independent']),
   epoch: z.number().int().nonnegative(),
@@ -88,6 +100,10 @@ export function parseSourceRevisions(value: unknown): Record<string, number> | u
   return value === null ? undefined : parseJson(value, sourceRevisionsSchema);
 }
 
+export function parsePluginSecrets(value: unknown): PluginSecretCommit[] | undefined {
+  return value === null ? undefined : parseJson(value, z.array(pluginSecretCommitSchema));
+}
+
 export function parseEntityRow(row: {
   object_id: string;
   logical_key: string;
@@ -143,6 +159,7 @@ export function parseCommitRow(row: {
   account_operation_ids_json: unknown;
   phase: string;
   remote_operations_json: unknown;
+  plugin_secrets_json: unknown;
   source_revisions_json: unknown;
 }): CommitIntent {
   return {
@@ -154,6 +171,7 @@ export function parseCommitRow(row: {
     accountOperationIds: parseStringArray(row.account_operation_ids_json),
     phase: z.enum(['prepared', 'confirmed']).parse(row.phase) as CommitIntent['phase'],
     remoteOperations: parseRemoteOperations(row.remote_operations_json),
+    pluginSecrets: parsePluginSecrets(row.plugin_secrets_json),
     sourceRevisions: parseSourceRevisions(row.source_revisions_json),
   };
 }

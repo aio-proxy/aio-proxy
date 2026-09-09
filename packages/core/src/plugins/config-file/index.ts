@@ -1,5 +1,6 @@
 export {
   AtomicConfigCommitUncertainError,
+  AtomicConfigExpectedDigestError,
   AtomicConfigFile,
   AtomicConfigLockReleaseError,
   type AtomicConfigTransactionOptions,

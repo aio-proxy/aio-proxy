@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { chmod, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -10,6 +11,8 @@ export { CONFIG_LOCK_HEARTBEAT_MS, CONFIG_LOCK_STALE_MS, CONFIG_LOCK_WAIT_MS } f
 export { digestProviderEntry } from './serialization';
 
 export type AtomicConfigTransactionOptions = {
+  /** Rejects a stale read while the config lock is held. */
+  readonly expectedDigest?: string;
   readonly validateCandidate?: (candidate: ConfigRecord) => void;
   readonly verify?: (candidate: ConfigRecord) => Promise<void>;
   /** Runs under the recovery fence before cleanup; failures restore the original verified config. */
@@ -35,6 +38,18 @@ export class AtomicConfigLockReleaseError extends AtomicConfigCommitUncertainErr
     this.message = `Config transaction completed but lock release failed: ${cause instanceof Error ? cause.message : String(cause)}`;
     this.cause = cause;
   }
+}
+
+export class AtomicConfigExpectedDigestError extends Error {
+  override readonly name = 'AtomicConfigExpectedDigestError';
+
+  constructor() {
+    super('Config changed before the locked transaction could apply its candidate');
+  }
+}
+
+function configDigest(value: ConfigRecord, path: string): string {
+  return createHash('sha256').update(encodeCandidate(value, path)).digest('hex');
 }
 
 async function originalFile(path: string): Promise<{ readonly bytes: Uint8Array | null; readonly mode: number }> {
@@ -83,6 +98,8 @@ export class AtomicConfigFile {
         options.signal?.throwIfAborted();
         const original = await originalFile(this.#path);
         const current = parseConfig(original.bytes, this.#path);
+        if (options.expectedDigest !== undefined && configDigest(current, this.#path) !== options.expectedDigest)
+          throw new AtomicConfigExpectedDigestError();
         options.signal?.throwIfAborted();
         const { next, result } = await mutate(current);
         options.signal?.throwIfAborted();

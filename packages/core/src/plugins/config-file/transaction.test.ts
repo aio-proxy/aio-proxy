@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AtomicConfigFile } from '.';
+import { AtomicConfigExpectedDigestError, AtomicConfigFile } from '.';
+import { encodeCandidate } from './serialization';
 import { fixture } from './test-support';
 
 describe('AtomicConfigFile', () => {
@@ -135,5 +137,16 @@ describe('AtomicConfigFile', () => {
     const first = await config.providerEntryDigest('demo');
     writeFileSync(path, JSON.stringify({ providers: { demo: { nested: { a: 1, b: 2 }, z: 1 } } }));
     expect(await config.providerEntryDigest('demo')).toBe(first);
+  });
+
+  test('rejects a stale expected digest while holding the config lock', async () => {
+    const { path } = fixture('{"one":1}\n');
+    const expected = createHash('sha256')
+      .update(encodeCandidate({ one: 0 }, path))
+      .digest('hex');
+    await expect(
+      new AtomicConfigFile(path).replace((current) => ({ ...current, two: 2 }), { expectedDigest: expected }),
+    ).rejects.toBeInstanceOf(AtomicConfigExpectedDigestError);
+    expect(await new AtomicConfigFile(path).read()).toEqual({ one: 1 });
   });
 });

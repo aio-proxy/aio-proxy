@@ -71,6 +71,13 @@
       "when": 1788888731020,
       "tag": "0009_glamorous_orphan",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788959653221,
+      "tag": "0010_goofy_gambit",
+      "breakpoints": true
     }
   ]
 }

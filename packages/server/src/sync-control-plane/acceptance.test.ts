@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
+import * as fsPromises from 'node:fs/promises';
 
 import { twoServerSyncAcceptancePlugin, type TwoServerSyncFixture, withTwoServerSyncFixtures } from './test-support';
 
@@ -104,6 +105,46 @@ test('watcher-enabled remote import has no local echo; discovery and purge leave
 
       expect(fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(true);
       expect(cloudText(fixture).includes(a.pluginMarker)).toBe(true);
+    },
+    { watchConfig: true },
+  );
+}, 30_000);
+
+test('watcher-enabled remote import retries after lock-release uncertainty without echoing the revision', async () => {
+  await withTwoServerSyncFixtures(
+    async (fixture) => {
+      await setProvider(fixture.a, 'work', fixture.providerMarker);
+      await fixture.a.reconcile();
+      const before = cloudEntityVersions(fixture);
+      const lockPath = `${fixture.b.configPath}.lock`;
+      const realUnlink = fsPromises.unlink.bind(fsPromises);
+      let failed = false;
+      const unlink = spyOn(fsPromises, 'unlink').mockImplementation(async (target, options) => {
+        if (String(target) === lockPath && !failed) {
+          failed = true;
+          throw new Error('simulated config lock release failure');
+        }
+        return realUnlink(target, options);
+      });
+      try {
+        await fixture.b.reconcile();
+        expect(failed).toBe(true);
+        expect(fixture.b.state.sync!.status().providers).toContainEqual(
+          expect.objectContaining({ providerId: 'work', pendingReason: 'invalid-config' }),
+        );
+        await fixture.b.reconcile();
+        await waitUntil(
+          () =>
+            failed &&
+            fixture.b.state
+              .sync!.status()
+              .providers.some((provider) => provider.providerId === 'work' && provider.pendingReason === null),
+          'the uncertain remote import did not recover',
+        );
+        expect(cloudEntityVersions(fixture)).toEqual(before);
+      } finally {
+        unlink.mockRestore();
+      }
     },
     { watchConfig: true },
   );

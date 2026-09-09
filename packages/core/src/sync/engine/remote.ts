@@ -174,8 +174,32 @@ export async function reconcileRemote(
         const tombstoneRevision = `deleted:${head.epoch}`;
         if (existing !== undefined && existing.baseline !== tombstoneRevision) {
           input.assertGeneration(generation);
-          await input.local.applyRemote(objectId, null, tombstoneRevision);
+          const activation = await input.local.applyRemote(objectId, null, tombstoneRevision);
           input.assertGeneration(generation);
+          if (!activation.applied) {
+            upsertEntity(
+              input,
+              existing,
+              head,
+              null,
+              existing.mode,
+              activation.pending ?? 'invalid-config',
+              existing.baseline,
+            );
+            known.set(objectId, {
+              ...existing,
+              objectId,
+              logicalKey: head.logicalKey,
+              kind: head.kind,
+              mode: existing.mode,
+              epoch: head.epoch,
+              desired: null,
+              baseline: existing.baseline,
+              overrides: existing.overrides,
+              pendingReason: activation.pending ?? 'invalid-config',
+            });
+            continue;
+          }
         }
         input.assertGeneration(generation);
         upsertEntity(input, existing, head, null, existing?.mode ?? 'excluded', null, tombstoneRevision);

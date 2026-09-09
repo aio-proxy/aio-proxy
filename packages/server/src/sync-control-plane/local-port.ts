@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import {
+  AtomicConfigCommitUncertainError,
   type CommittedSource,
   confirmLocalCommit,
   type EntityBody,
@@ -8,6 +9,7 @@ import {
   type PendingReason,
   type PluginRegistry,
   type PluginRepository,
+  type PluginSecretCommit,
   type SyncRepository,
   encodeCandidate,
   overlayLocal,
@@ -40,6 +42,7 @@ export type LocalPortInput = {
     origin: 'local' | 'remote',
     operationId?: string,
     pluginSecret?: PluginSecretChange,
+    expectedDigest?: string,
   ) => Promise<void>;
   readonly checkActivation?: (raw: Record<string, JsonValue>, body: EntityBody) => Promise<PendingReason | undefined>;
   readonly entities?: () => ReturnType<SyncRepository['entities']>;
@@ -152,6 +155,33 @@ function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function restorePluginSecret(
+  accounts: PluginRepository,
+  plugin: string,
+  previous: ReturnType<PluginRepository['readPluginSecret']>,
+): boolean {
+  const current = accounts.readPluginSecret(plugin);
+  if (previous === null) {
+    if (current === null) return true;
+    return accounts.deletePluginSecret(plugin, current.revision);
+  }
+  if (current === null) {
+    try {
+      accounts.writePluginSecret(plugin, null, previous.value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (sameJson(current.value, previous.value)) return true;
+  try {
+    accounts.writePluginSecret(plugin, current.revision, previous.value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function pluginSecretChange(
   body: EntityBody | null,
   currentEntity: ReturnType<SyncRepository['entities']>[number] | undefined,
@@ -224,6 +254,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
         const currentEntities = entities();
         const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
         const secretChange = pluginSecretChange(body, currentEntity);
+        const previousSecret = secretChange === undefined ? null : input.accounts.readPluginSecret(secretChange.plugin);
         const shared =
           body === null && currentEntity?.mode === 'included'
             ? removeBody(current, currentEntity)
@@ -240,50 +271,72 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           (existingCommit.beforeDigest !== beforeDigest || existingCommit.afterDigest !== afterDigest)
         )
           input.repo.discard(input.bindingId, remoteCommitId);
-        prepareLocalCommit(input.repo, input.bindingId, {
-          commitId: remoteCommitId,
-          origin: 'remote',
-          beforeDigest,
-          afterDigest,
-          rawAfter: candidate,
-          accountOperationIds: [],
-          remoteOperations: [{ objectId, operationId }],
-        });
-        const previousSecret = secretChange === undefined ? null : input.accounts.readPluginSecret(secretChange.plugin);
+        const shouldMutateSecret = existingCommit?.phase !== 'confirmed';
+        if (existingCommit?.phase !== 'confirmed')
+          prepareLocalCommit(input.repo, input.bindingId, {
+            commitId: remoteCommitId,
+            origin: 'remote',
+            beforeDigest,
+            afterDigest,
+            rawAfter: candidate,
+            accountOperationIds: [],
+            remoteOperations: [{ objectId, operationId }],
+            ...(secretChange === undefined
+              ? {}
+              : {
+                  pluginSecrets: [
+                    {
+                      plugin: secretChange.plugin,
+                      ...(previousSecret === null ? {} : { before: previousSecret.value as JsonValue }),
+                      ...(secretChange.value === undefined ? {} : { after: secretChange.value }),
+                    } satisfies PluginSecretCommit,
+                  ],
+                }),
+          });
         let secretChanged = false;
-        if (secretChange !== undefined) {
-          if (secretChange.value === undefined) {
-            if (previousSecret !== null) {
-              input.accounts.deletePluginSecret(secretChange.plugin, previousSecret.revision);
+        try {
+          if (shouldMutateSecret && secretChange !== undefined) {
+            if (secretChange.value === undefined) {
+              if (
+                previousSecret !== null &&
+                !input.accounts.deletePluginSecret(secretChange.plugin, previousSecret.revision)
+              )
+                return { applied: false, pending: 'secret-conflict' as const };
+              secretChanged = previousSecret !== null;
+            } else if (previousSecret === null || !sameJson(previousSecret.value, secretChange.value)) {
+              input.accounts.writePluginSecret(
+                secretChange.plugin,
+                previousSecret?.revision ?? null,
+                secretChange.value,
+              );
               secretChanged = true;
             }
-          } else if (previousSecret === null || !sameJson(previousSecret.value, secretChange.value)) {
-            input.accounts.writePluginSecret(secretChange.plugin, previousSecret?.revision ?? null, secretChange.value);
-            secretChanged = true;
           }
-        }
-        try {
           if (candidate !== current || secretChanged)
-            await input.applyCandidate(candidate, 'remote', operationId, secretChange);
-        } catch {
-          if (secretChanged && secretChange !== undefined) {
-            const currentSecret = input.accounts.readPluginSecret(secretChange.plugin);
-            if (previousSecret === null) {
-              if (currentSecret !== null)
-                input.accounts.deletePluginSecret(secretChange.plugin, currentSecret.revision);
-            } else if (currentSecret === null) {
-              input.accounts.writePluginSecret(secretChange.plugin, null, previousSecret.value);
-            } else if (!sameJson(currentSecret.value, previousSecret.value)) {
-              input.accounts.writePluginSecret(secretChange.plugin, currentSecret.revision, previousSecret.value);
-            }
-          }
+            await input.applyCandidate(
+              candidate,
+              'remote',
+              operationId,
+              shouldMutateSecret ? secretChange : undefined,
+              beforeDigest,
+            );
+        } catch (error) {
+          if (error instanceof AtomicConfigCommitUncertainError)
+            return { applied: false, pending: 'invalid-config' as const };
+          if (
+            secretChanged &&
+            secretChange !== undefined &&
+            !restorePluginSecret(input.accounts, secretChange.plugin, previousSecret)
+          )
+            return { applied: false, pending: 'secret-conflict' as const };
+          input.repo.discard(input.bindingId, remoteCommitId);
           return { applied: false, pending: 'invalid-config' as const };
         }
         assertCurrent();
         if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider') {
           input.accounts.deleteAccount(currentEntity.logicalKey);
         }
-        input.repo.putEntity(input.bindingId, {
+        const nextEntity = {
           objectId,
           logicalKey:
             body?.logicalKey ?? currentEntities.find((entity) => entity.objectId === objectId)?.logicalKey ?? objectId,
@@ -295,7 +348,8 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
           pendingReason: null,
           ...(currentEntity?.oauth === undefined ? {} : { oauth: currentEntity.oauth }),
-        });
+        };
+        input.repo.putEntity(input.bindingId, nextEntity);
         await confirmLocalCommit(input.repo, input.bindingId, remoteCommitId, {
           withFence: async <T>(run: () => Promise<T>) => run(),
           rawDigest: async () => digest((await input.configFile.read()) as Record<string, JsonValue>, input.configPath),
@@ -303,6 +357,13 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           committedSource: async () => source(input, candidate),
           assertCurrent,
         });
+        if (input.repo.readCommit(input.bindingId, remoteCommitId)?.phase !== 'confirmed') {
+          if (currentEntity !== undefined) input.repo.putEntity(input.bindingId, currentEntity);
+          return {
+            applied: false,
+            pending: secretChange === undefined ? ('invalid-config' as const) : ('secret-conflict' as const),
+          };
+        }
         return { applied: true };
       });
     },

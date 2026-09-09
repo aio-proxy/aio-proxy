@@ -40,7 +40,13 @@ export type ServerSyncLifecycleInput = {
   readonly accounts: PluginRepository;
   readonly registry: () => PluginRegistry;
   readonly enqueue: FifoQueue;
-  readonly applyCandidate: (raw: Record<string, JsonValue>, origin: 'local' | 'remote') => Promise<void>;
+  readonly applyCandidate: (
+    raw: Record<string, JsonValue>,
+    origin: 'local' | 'remote',
+    operationId?: string,
+    pluginSecret?: { readonly plugin: string; readonly value: JsonValue | undefined },
+    expectedDigest?: string,
+  ) => Promise<void>;
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
   readonly localPort?: ReturnType<typeof createLocalSyncPort>;
   readonly onCoordinator?: (coordinator: import('@aio-proxy/core').SharedOAuthCoordinator | undefined) => void;

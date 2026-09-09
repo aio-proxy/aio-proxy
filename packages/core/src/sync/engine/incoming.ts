@@ -9,6 +9,7 @@ export type PendingReason =
   | 'invalid-credential'
   | 'provider-id-conflict'
   | 'oauth-unverified'
+  | 'secret-conflict'
   | 'upgrade-required';
 
 export interface ActivationResult {

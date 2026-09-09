@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 
 import {
   AtomicConfigFile,
+  AtomicConfigExpectedDigestError,
+  AtomicConfigLockReleaseError,
   createSyncRepository,
   encodeCandidate,
   parseRuntimeConfig,
@@ -68,33 +70,43 @@ export function createSyncIntegration(
     raw: Record<string, JsonValue>,
     origin: 'local' | 'remote',
     operationId?: string,
-    pluginSecret?: PluginSecretChange,
+    _pluginSecret?: PluginSecretChange,
+    expectedDigest?: string,
   ): Promise<void> => {
-    const before = (await configFile.read()) as Record<string, JsonValue>;
-    const changed =
-      createHash('sha256').update(encodeCandidate(raw, options.configPath!)).digest('hex') !==
-      createHash('sha256').update(encodeCandidate(before, options.configPath!)).digest('hex');
-    if (origin === 'remote' && operationId !== undefined && changed) {
-      runtime.remoteConfigFence = {
-        digest: createHash('sha256').update(encodeCandidate(raw, options.configPath!)).digest('hex'),
-        operationId,
-      };
-    }
+    const afterDigest = createHash('sha256').update(encodeCandidate(raw, options.configPath!)).digest('hex');
     try {
-      await configFile.replace(() => raw, {
-        validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
-        verify: async (candidate) => {
-          await commitConfig(
-            runtime,
-            parseRuntimeConfig(candidate),
-            origin === 'remote' ? 'sync-remote' : 'sync-local',
-          );
+      await configFile.transaction(
+        async (current) => {
+          if (expectedDigest !== undefined) {
+            const currentDigest = createHash('sha256')
+              .update(encodeCandidate(current as Record<string, JsonValue>, options.configPath!))
+              .digest('hex');
+            if (currentDigest !== expectedDigest) throw new AtomicConfigExpectedDigestError();
+          }
+          if (origin === 'remote' && operationId !== undefined)
+            runtime.remoteConfigFence = { digest: afterDigest, operationId };
+          return { next: raw, result: undefined };
         },
-      });
-      if (!changed && pluginSecret !== undefined)
-        await commitConfig(runtime, parseRuntimeConfig(raw), origin === 'remote' ? 'sync-remote-secret' : 'sync-local');
+        {
+          ...(expectedDigest === undefined ? {} : { expectedDigest }),
+          validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+          verify: async (candidate) => {
+            await commitConfig(
+              runtime,
+              parseRuntimeConfig(candidate),
+              origin === 'remote' ? 'sync-remote' : 'sync-local',
+            );
+          },
+        },
+      );
     } catch (error) {
-      if (origin === 'remote' && operationId !== undefined && runtime.remoteConfigFence?.operationId === operationId)
+      if (
+        !(error instanceof AtomicConfigLockReleaseError) &&
+        !(error instanceof AtomicConfigExpectedDigestError) &&
+        origin === 'remote' &&
+        operationId !== undefined &&
+        runtime.remoteConfigFence?.operationId === operationId
+      )
         runtime.remoteConfigFence = undefined;
       throw error;
     }

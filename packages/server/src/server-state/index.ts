@@ -347,8 +347,10 @@ async function initializeServerState(
       if (fence !== undefined && runtime.configFile !== undefined && options.configPath !== undefined) {
         const current = (await runtime.configFile.read()) as Record<string, import('@aio-proxy/plugin-sdk').JsonValue>;
         const digest = createHash('sha256').update(encodeCandidate(current, options.configPath)).digest('hex');
-        runtime.remoteConfigFence = undefined;
-        if (digest === fence.digest) return reloadNow(runtime, [], true);
+        if (digest === fence.digest) {
+          runtime.remoteConfigFence = undefined;
+          return reloadNow(runtime, [], true);
+        }
       }
       return reloadNow(runtime);
     });

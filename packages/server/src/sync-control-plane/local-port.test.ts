@@ -244,6 +244,166 @@ test('a plugin tombstone removes its local secret before a restart can re-enable
   }
 });
 
+test('a plugin tombstone CAS conflict remains pending and preserves the newer local secret', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-tombstone-conflict-'));
+  const configPath = join(directory, 'config.jsonc');
+  const plugin = '@example/business';
+  writeFileSync(configPath, encodeCandidate({ plugins: [plugin], providers: {} }, configPath));
+  const database = openDb({ home: directory });
+  const baseAccounts = createPluginRepository(database.sqlite);
+  baseAccounts.writePluginSecret(plugin, null, { token: 'newer-secret' });
+  const accounts = {
+    ...baseAccounts,
+    deletePluginSecret: () => false,
+  } as PluginRepository;
+  const repo = createSyncRepository(database.sqlite);
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  repo.putEntity(binding.id, {
+    objectId: 'plugin-object',
+    logicalKey: plugin,
+    kind: 'plugin-business',
+    mode: 'included',
+    epoch: 0,
+    desired: { kind: 'plugin-business', logicalKey: plugin, value: {}, dependencies: [] },
+    baseline: 'old',
+    overrides: [],
+    pendingReason: null,
+  });
+  const file = new AtomicConfigFile(configPath);
+  let applyCalls = 0;
+  const port = createLocalSyncPort({
+    configPath,
+    configFile: file,
+    repo,
+    accounts,
+    bindingId: binding.id,
+    bindingGeneration: binding.sessionGeneration,
+    enqueue: createFifoQueue(),
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    applyCandidate: async () => {
+      applyCalls++;
+    },
+  });
+
+  try {
+    await expect(port.applyRemote('plugin-object', null, 'remote-plugin-delete-conflict')).resolves.toEqual({
+      applied: false,
+      pending: 'secret-conflict',
+    });
+    expect(applyCalls).toBe(0);
+    expect(accounts.readPluginSecret(plugin)?.value).toEqual({ token: 'newer-secret' });
+    expect(repo.entities(binding.id)[0]).toMatchObject({ baseline: 'old', pendingReason: null });
+    expect(repo.pendingCommits(binding.id)).toHaveLength(1);
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a plugin-secret-only remote commit recovers after reopen before remote confirmation', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-secret-recovery-'));
+  const configPath = join(directory, 'config.jsonc');
+  const plugin = '@example/business';
+  writeFileSync(configPath, encodeCandidate({ plugins: [plugin], providers: {} }, configPath));
+  const database = openDb({ home: directory });
+  const accounts = createPluginRepository(database.sqlite);
+  accounts.writePluginSecret(plugin, null, { token: 'old-secret' });
+  const realRepo = createSyncRepository(database.sqlite);
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  realRepo.writeBinding(binding);
+  realRepo.putEntity(binding.id, {
+    objectId: 'plugin-object',
+    logicalKey: plugin,
+    kind: 'plugin-business',
+    mode: 'included',
+    epoch: 0,
+    desired: { kind: 'plugin-business', logicalKey: plugin, value: {}, dependencies: [] },
+    baseline: 'old',
+    overrides: [],
+    pendingReason: null,
+  });
+  const file = new AtomicConfigFile(configPath);
+  let failConfirm = true;
+  const repo = {
+    ...realRepo,
+    confirm: (...args: Parameters<typeof realRepo.confirm>) => {
+      if (failConfirm) {
+        failConfirm = false;
+        throw new Error('simulated crash before remote confirmation');
+      }
+      realRepo.confirm(...args);
+    },
+  } as typeof realRepo;
+  const createPort = (currentRepo: typeof realRepo) =>
+    createLocalSyncPort({
+      configPath,
+      configFile: file,
+      repo: currentRepo,
+      accounts,
+      bindingId: binding.id,
+      bindingGeneration: binding.sessionGeneration,
+      enqueue: createFifoQueue(),
+      registry: () => ({
+        resolveOAuth: () => undefined,
+        oauthCapabilities: () => [],
+        resolveSync: () => undefined,
+        syncCapabilities: () => [],
+      }),
+      applyCandidate: async () => {},
+    });
+
+  try {
+    await expect(
+      createPort(repo).applyRemote(
+        'plugin-object',
+        { kind: 'plugin-business', logicalKey: plugin, value: { secret: { token: 'new-secret' } }, dependencies: [] },
+        'remote-plugin-secret-only',
+      ),
+    ).rejects.toThrow('simulated crash');
+    expect(accounts.readPluginSecret(plugin)?.value).toEqual({ token: 'new-secret' });
+    expect(realRepo.pendingCommits(binding.id)).toHaveLength(1);
+    expect(realRepo.readCommit(binding.id, 'remote:plugin-object:remote-plugin-secret-only')?.pluginSecrets).toEqual([
+      { plugin, after: { token: 'new-secret' }, before: { token: 'old-secret' } },
+    ]);
+    const changed = accounts.readPluginSecret(plugin);
+    expect(changed).not.toBeNull();
+    accounts.writePluginSecret(plugin, changed!.revision, { token: 'external-secret' });
+    await recoverLocalCommits(realRepo, binding.id, createPort(realRepo));
+    expect(realRepo.pendingCommits(binding.id)).toHaveLength(1);
+    expect(realRepo.entities(binding.id)[0]?.baseline).toBeNull();
+    expect(accounts.readPluginSecret(plugin)?.value).toEqual({ token: 'external-secret' });
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('remote apply records the revision operation ID as the local baseline without creating outbox work', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-baseline-'));
   const configPath = join(directory, 'config.jsonc');

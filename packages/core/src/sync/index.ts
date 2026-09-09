@@ -11,6 +11,7 @@ export {
   type LocalBinding,
   type LocalEntity,
   type LocalOverride,
+  type PluginSecretCommit,
   type OAuthJournalRow,
   type OutboxOperation,
   type SyncRepository,

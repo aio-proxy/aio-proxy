@@ -57,6 +57,17 @@ function authoredEntity(source: CommittedSource, entity: LocalEntity): boolean {
   }
 }
 
+function pluginSecretsMatch(source: CommittedSource, intent: CommitIntent): boolean {
+  return (intent.pluginSecrets ?? []).every((change) => {
+    const present = source.pluginSecrets.has(change.plugin);
+    const expectedPresent = change.after !== undefined;
+    return (
+      present === expectedPresent &&
+      (!present || JSON.stringify(source.pluginSecrets.get(change.plugin)) === JSON.stringify(change.after))
+    );
+  });
+}
+
 function committedOperations(
   commitId: string,
   source: CommittedSource,
@@ -110,6 +121,7 @@ async function confirmLocalCommitUnderFence(
 
   const source = await port.committedSource();
   port.assertCurrent?.();
+  if (!pluginSecretsMatch(source, intent)) return;
   if (intent.sourceRevisions !== undefined && !sameSourceRevisions(intent.sourceRevisions, source.sourceRevisions)) {
     return;
   }
