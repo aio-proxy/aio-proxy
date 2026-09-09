@@ -8,6 +8,7 @@ export {
   type RefreshClaim,
   SyncOAuthError,
 } from './protocol';
+export { evaluateOAuthEvidence, type OAuthSyncEvidence } from './adapter-conformance';
 export {
   createSharedOAuthCoordinator,
   type ExchangeResult,

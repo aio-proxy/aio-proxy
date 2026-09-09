@@ -4,21 +4,24 @@
   "pluginVersion": "0.20.2",
   "capability": "default",
   "formatVersion": 1,
-  "testedAt": "2026-09-09T01:11:12.595Z",
+  "testedAt": "2026-09-09T01:48:44.096Z",
   "upstream": "unconfigured",
   "account": {
     "dedicatedTestAccount": false,
+    "testHomeConfigured": false,
     "providerConfigured": false,
+    "remoteObjectConfigured": false,
     "credentialRead": false,
     "isolatedConfigurations": 0,
-    "remoteObjectConfigured": false
+    "backendConnected": false,
+    "remoteObjectObserved": false
   },
   "evidence": {
     "plugin": "@aio-proxy/plugin-openrouter",
     "pluginVersion": "0.20.2",
     "capability": "default",
     "formatVersion": 1,
-    "testedAt": "2026-09-09T01:11:12.595Z",
+    "testedAt": "2026-09-09T01:48:44.096Z",
     "upstream": "unconfigured",
     "copiedUse": "blocked",
     "rotation": "not-applicable",
@@ -32,9 +35,10 @@
     "independentDetach": false
   },
   "productionGate": "blocked",
-  "failureCode": "Set OAUTH_SYNC_TEST_ACCOUNT=1 for a dedicated non-production test account",
+  "failureCode": "setup-test-home-required",
   "redaction": {
     "credentials": "omitted",
-    "accountIdentifiers": "omitted"
+    "accountIdentifiers": "omitted",
+    "errors": "allowlisted-codes-only"
   }
 }

@@ -11,7 +11,7 @@ All nine built-in adapters currently declare `formatVersion: 1` only. They have 
 Run the verifier only with a dedicated, non-production account and an isolated test home. The verifier reads the selected account through the existing SQLite account repository, validates its credential schema, copies it into two temporary local configurations, and removes those configurations before returning. It never prints credentials, account identifiers, or raw remote object identifiers.
 
 ```sh
-AIO_PROXY_HOME=/path/to/oauth-sync-test-home \
+OAUTH_SYNC_TEST_HOME=/path/to/oauth-sync-test-home \
 OAUTH_SYNC_TEST_ACCOUNT=1 \
 OAUTH_SYNC_PROVIDER_ID=<local-provider-id> \
 OAUTH_SYNC_REMOTE_OBJECT_ID=<test-remote-object-id> \
@@ -20,9 +20,9 @@ OAUTH_SYNC_UPSTREAM=<provider-under-test> \
     --plugin @aio-proxy/plugin-openai-chatgpt --live
 ```
 
-The command requires both `--plugin` and `--live`, plus the dedicated-account and provider variables above. Repeat it for each adapter version under test. `OAUTH_SYNC_EVIDENCE_PATH` can point to a reviewable output location; otherwise the redacted result is written to `docs/testing/evidence/oauth-sync.json`.
+The command requires both `--plugin` and `--live`, plus the explicit isolated `OAUTH_SYNC_TEST_HOME`, dedicated-account, provider, and remote-object variables above. The test home must not be the default production home or the `AIO_PROXY_HOME` path. The runner reads the sync binding from that test home, connects through the configured sync backend, and reads the supplied remote object before creating two temporary device homes. Repeat it for each adapter version under test. `OAUTH_SYNC_BACKEND_MODULE` can name an installed backend module when the binding is not the built-in CloudKit backend. `OAUTH_SYNC_EVIDENCE_PATH` can point to a reviewable output location; otherwise the redacted result is written to `docs/testing/evidence/oauth-sync.json`.
 
-The runner records `blocked` when the upstream-specific test harness is unavailable or a check cannot be completed. It does not turn deterministic fake-endpoint results into upstream evidence. A refresh-capable adapter records rotation as `blocked` until the live exchange, concurrent refresh, interruption, and journal recovery checks pass. OpenRouter and Muse record rotation as `not-applicable` because they do not expose a refresh function, while copied use, login/revocation effects, device binding, and detachment remain required.
+The runner records `blocked` when required setup, credentials, the configured backend, or the remote object is unavailable. Once a live check executes, a failed assertion is recorded as `fail`; its artifact contains only a fixed allowlisted failure code. It does not turn deterministic fake-endpoint results into upstream evidence. A refresh-capable adapter records rotation as `blocked` until the live exchange, concurrent refresh, interruption, and journal recovery checks pass. OpenRouter and Muse have explicit non-rotating checks and record rotation as `not-applicable`, while copied use, login/revocation effects, device binding, and detachment remain required.
 
 The six evidence checks are:
 
