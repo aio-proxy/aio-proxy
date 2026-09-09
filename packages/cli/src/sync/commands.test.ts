@@ -471,6 +471,13 @@ test('configured service exposes the real sync control plane to CLI mutations', 
   db.close();
   const backend = createMemorySyncBackend();
   const connectedOptions: unknown[] = [];
+  let mismatchOptionChecks = 0;
+  const backendOptions = z
+    .object({
+      token: z.string().default('default-token'),
+      containerId: z.string().default('default-container'),
+    })
+    .refine((options) => options.token !== 'mismatch' || mismatchOptionChecks++ < 2);
   const builtIns = [
     {
       packageName: '@example/sync',
@@ -479,7 +486,7 @@ test('configured service exposes the real sync control plane to CLI mutations', 
         api.sync.register({
           id: 'memory',
           displayName: 'Memory',
-          options: { schema: z.object({ token: z.string().optional() }), form: [] },
+          options: { schema: backendOptions, form: [] },
           connect: async (options) => {
             connectedOptions.push(options);
             return backend.connect();
@@ -498,6 +505,9 @@ test('configured service exposes the real sync control plane to CLI mutations', 
   });
   const calls: Array<{ url: string; origin: string | null; authorization: string | null }> = [];
   try {
+    expect(backend.connectionCount()).toBe(1);
+    expect(backend.disposeCount()).toBe(0);
+    expect(backend.activeWatchCount()).toBe(1);
     const output: string[] = [];
     const deps = createDefaultSyncCliDeps({
       fetch: async (input, init) => {
@@ -560,13 +570,83 @@ test('configured service exposes the real sync control plane to CLI mutations', 
     expect(JSON.parse(output[2]!)).toMatchObject({
       backend: { plugin: '@example/sync', capability: 'memory' },
     });
-    expect(connectedOptions).toContainEqual({ token: 'backend-secret' });
+    expect(connectedOptions).toContainEqual({ token: 'backend-secret', containerId: 'default-container' });
+    expect(backend.connectionCount()).toBe(2);
+    expect(backend.disposeCount()).toBe(1);
+    expect(backend.activeWatchCount()).toBe(1);
+    const verifyDb = openDb({ home });
+    try {
+      const verifyRepo = createSyncRepository(verifyDb.sqlite);
+      const binding = verifyRepo.readBinding();
+      expect(binding?.id).not.toBe('configured-binding');
+      expect(binding?.options).toEqual({ token: 'backend-secret', containerId: 'default-container' });
+      expect(binding === null ? [] : verifyRepo.entities(binding.id)).toHaveLength(1);
+    } finally {
+      verifyDb.close();
+    }
+    await program.parseAsync(['node', 'aio-proxy', 'sync', 'status', '--json']);
+    expect(JSON.parse(output[3]!)).toMatchObject({
+      state: 'idle',
+      backend: { plugin: '@example/sync', capability: 'memory' },
+    });
+
+    const beforeFailureDb = openDb({ home });
+    const beforeFailure = createSyncRepository(beforeFailureDb.sqlite).readBinding();
+    beforeFailureDb.close();
+    expect(beforeFailure).not.toBeNull();
+    const beforeFailureConnections = backend.connectionCount();
+    const beforeFailureDisposals = backend.disposeCount();
+    writeFileSync(optionsPath, JSON.stringify({ token: 'mismatch' }));
+    await program.parseAsync([
+      'node',
+      'aio-proxy',
+      'sync',
+      'connect',
+      '--plugin',
+      '@example/sync',
+      '--capability',
+      'memory',
+      '--options-file',
+      optionsPath,
+      '--json',
+    ]);
+    const failedPreview = JSON.parse(output[4]!);
+    await expect(
+      program.parseAsync([
+        'node',
+        'aio-proxy',
+        'sync',
+        'apply',
+        failedPreview.previewId,
+        '--decisions-file',
+        decisionsPath,
+        '--json',
+      ]),
+    ).rejects.toThrow();
+    expect(backend.connectionCount()).toBe(beforeFailureConnections + 1);
+    expect(backend.disposeCount()).toBe(beforeFailureDisposals + 1);
+    expect(backend.activeWatchCount()).toBe(1);
+    const afterFailureDb = openDb({ home });
+    try {
+      expect(createSyncRepository(afterFailureDb.sqlite).readBinding()).toEqual(beforeFailure);
+    } finally {
+      afterFailureDb.close();
+    }
+    await program.parseAsync(['node', 'aio-proxy', 'sync', 'status', '--json']);
+    expect(JSON.parse(output[5]!)).toMatchObject({
+      state: 'idle',
+      backend: { plugin: '@example/sync', capability: 'memory' },
+    });
     expect(calls.map(({ url }) => new URL(url).pathname)).toEqual([
       '/dashboard/api/auth/session',
       '/dashboard/api/auth/login',
       '/dashboard/api/sync/range',
       '/dashboard/api/sync/preview',
       '/dashboard/api/sync/apply',
+      '/dashboard/api/sync',
+      '/dashboard/api/sync/preview',
+      '/dashboard/api/sync/apply',
+      '/dashboard/api/sync',
     ]);
   } finally {
     await app.closeAsync();

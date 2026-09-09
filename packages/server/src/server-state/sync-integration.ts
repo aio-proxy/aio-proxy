@@ -138,7 +138,7 @@ export function createSyncIntegration(
     onSharing?.(next);
   };
 
-  const createLifecycle = (binding: LocalBinding | null, preconnectedSession?: SyncSession) => {
+  const createLifecycle = (binding: LocalBinding | null, preconnectedSession?: SyncSession, candidate = false) => {
     const port =
       binding === null
         ? undefined
@@ -155,7 +155,10 @@ export function createSyncIntegration(
             checkActivation,
             pluginVersions,
           });
-    const nextLifecycle = createServerSyncLifecycle({
+    let coordinator: SharedOAuthCoordinator | undefined;
+    let nextSharing: OAuthSharingService | undefined;
+    let nextLifecycle!: ReturnType<typeof createServerSyncLifecycle>;
+    nextLifecycle = createServerSyncLifecycle({
       configPath: options.configPath!,
       configFile,
       repo: syncRepository,
@@ -165,13 +168,27 @@ export function createSyncIntegration(
       applyCandidate: syncApplyCandidate,
       pluginVersions,
       localPort: port,
-      onCoordinator,
-      onSharing: onSharingChange,
+      onCoordinator: (next) => {
+        coordinator = next;
+        if (lifecycle === nextLifecycle) onCoordinator?.(next);
+      },
+      onSharing: (next) => {
+        nextSharing = next;
+        if (lifecycle === nextLifecycle) onSharingChange(next);
+      },
       withProviderGate: runtime.withProviderGate,
       deferEngine: true,
+      ...(candidate && binding !== null ? { initialBinding: binding } : {}),
       ...(preconnectedSession === undefined ? {} : { preconnectedSession }),
     });
-    return { port, lifecycle: nextLifecycle };
+    return {
+      port,
+      lifecycle: nextLifecycle,
+      publish() {
+        onCoordinator?.(coordinator);
+        onSharingChange(nextSharing);
+      },
+    };
   };
 
   const initial = createLifecycle(syncRepository.readBinding());
@@ -181,51 +198,65 @@ export function createSyncIntegration(
   const replaceBackend = async (binding: LocalBinding, preconnectedSession: SyncSession): Promise<void> => {
     const previousBinding = syncRepository.readBinding();
     const previousEntities = previousBinding === null ? [] : syncRepository.entities(previousBinding.id);
-    await lifecycle?.close();
-    syncRepository.writeBinding(binding);
-    if (syncRepository.putEntities !== undefined) syncRepository.putEntities(binding.id, previousEntities);
-    else for (const entity of previousEntities) syncRepository.putEntity(binding.id, entity);
-    const next = createLifecycle(binding, preconnectedSession);
-    syncPort = next.port;
-    lifecycle = next.lifecycle;
-    runtime.sync = lifecycle;
+    const previousLifecycle = lifecycle;
+    const previousPort = syncPort;
+    const previousRuntimeSync = runtime.sync;
+    const next = createLifecycle(binding, preconnectedSession, true);
     try {
-      await lifecycle.start();
-      lifecycle.activate();
+      await next.lifecycle.start();
+      syncRepository.writeBinding(binding);
+      if (syncRepository.putEntities !== undefined) syncRepository.putEntities(binding.id, previousEntities);
+      else for (const entity of previousEntities) syncRepository.putEntity(binding.id, entity);
+      next.lifecycle.activate();
+      syncPort = next.port;
+      lifecycle = next.lifecycle;
+      runtime.sync = lifecycle;
+      next.publish();
+      await previousLifecycle?.close().catch(() => {});
     } catch (error) {
-      await lifecycle.close().catch(() => {});
+      await next.lifecycle.close().catch(() => {});
+      syncPort = previousPort;
+      lifecycle = previousLifecycle;
+      runtime.sync = previousRuntimeSync;
+      if (syncRepository.readBinding()?.id === binding.id) {
+        if (previousBinding === null) syncRepository.clearBinding?.();
+        else syncRepository.writeBinding(previousBinding);
+      }
       throw error;
     }
   };
 
   const connectBackend = async (input: { plugin: string; capability: string; options: JsonValue }): Promise<void> => {
     const backend = plugins().registry.resolveSync(input.plugin, input.capability);
-    if (backend === undefined || !backend.options.schema.safeParse(input.options).success)
+    const parsed = backend?.options.schema.safeParse(input.options);
+    if (backend === undefined || parsed === undefined || !parsed.success)
       throw new SyncOperationError('backend-unavailable');
+    const normalizedOptions = parsed.data as JsonValue;
     const bindingId = `sync-${crypto.randomUUID()}`;
     const dataDirectory = join(dirname(options.configPath!), '.sync', bindingId);
     await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
     await chmod(dataDirectory, 0o700);
     let session: SyncSession | undefined;
     try {
-      session = await backend.connect(input.options, { signal: new AbortController().signal, dataDirectory });
+      session = await backend.connect(normalizedOptions, { signal: new AbortController().signal, dataDirectory });
       if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
       const current = syncRepository.readBinding();
+      const candidateSession = session;
+      session = undefined;
       await replaceBackend(
         {
           id: bindingId,
           plugin: input.plugin,
           capability: input.capability,
           pluginVersion: plugins().plugins.get(input.plugin)?.version ?? 'unknown',
-          identityId: session.identityId,
+          identityId: candidateSession.identityId,
           spaceId: 'default',
           deviceId: current?.deviceId ?? crypto.randomUUID(),
           sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
-          options: input.options,
+          options: normalizedOptions,
         },
-        session,
+        candidateSession,
       );
-      session = undefined;
       refreshCommitHooks();
     } catch (error) {
       await session?.dispose().catch(() => {});

@@ -9,6 +9,7 @@ import {
   createOAuthSharingService,
   createSyncObjectStore,
   type JsonValue,
+  type LocalBinding,
   type PluginRegistry,
   type PluginRepository,
   type SyncRepository,
@@ -30,6 +31,7 @@ export interface ServerSyncLifecycle {
 
 export type ServerSyncLifecycleInput = {
   readonly deferEngine?: boolean;
+  readonly initialBinding?: LocalBinding;
   readonly preconnectedSession?: SyncSession;
   readonly configPath: string;
   readonly configFile?: NonNullable<LocalPortInput['configFile']>;
@@ -44,6 +46,11 @@ export type ServerSyncLifecycleInput = {
   readonly onSharing?: (sharing: import('@aio-proxy/core').OAuthSharingService | undefined) => void;
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
+
+async function candidateStartFailure(input: ServerSyncLifecycleInput, message: string): Promise<never> {
+  await input.preconnectedSession?.dispose().catch(() => {});
+  throw new Error(message);
+}
 
 export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): ServerSyncLifecycle {
   const controller = new AbortController();
@@ -65,14 +72,31 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
   async function start(): Promise<void> {
     if (started || closed) return;
     started = true;
-    const binding = input.repo.readBinding();
-    if (binding === null) return;
+    const binding = input.initialBinding ?? input.repo.readBinding();
+    if (binding === null) {
+      if (input.initialBinding !== undefined) return candidateStartFailure(input, 'Synchronization binding is missing');
+      return;
+    }
     bindingId = binding.id;
     bindingGeneration = binding.sessionGeneration;
     const backend = input.registry().resolveSync(binding.plugin, binding.capability);
-    if (backend === undefined) return;
+    if (backend === undefined) {
+      if (input.initialBinding !== undefined)
+        return candidateStartFailure(input, 'Synchronization backend is unavailable');
+      return;
+    }
     const configFile = input.configFile;
-    if (configFile === undefined) return;
+    if (configFile === undefined) {
+      if (input.initialBinding !== undefined)
+        return candidateStartFailure(input, 'Synchronization config is unavailable');
+      return;
+    }
+    const parsedOptions = backend.options.schema.safeParse(binding.options);
+    if (!parsedOptions.success) {
+      if (input.initialBinding !== undefined)
+        return candidateStartFailure(input, 'Invalid synchronization backend options');
+      return;
+    }
     const dataDirectory = join(dirname(input.configPath), '.sync', binding.id);
     await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
     await chmod(dataDirectory, 0o700);
@@ -93,18 +117,17 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     await recoverLocalCommits(input.repo, binding.id, port);
     let connected: SyncSession | undefined = input.preconnectedSession;
     try {
-      connected ??= await backend.connect(binding.options, { signal: controller.signal, dataDirectory });
+      connected ??= await backend.connect(parsedOptions.data, { signal: controller.signal, dataDirectory });
       const current = input.repo.readBinding();
-      if (
-        closed ||
-        current === null ||
-        current.id !== binding.id ||
-        current.sessionGeneration !== binding.sessionGeneration ||
-        connected.identityId !== binding.identityId ||
-        connected.spaceId !== binding.spaceId
-      ) {
+      const currentBindingMismatch =
+        input.initialBinding === undefined &&
+        (current === null || current.id !== binding.id || current.sessionGeneration !== binding.sessionGeneration);
+      const sessionMismatch = connected.identityId !== binding.identityId || connected.spaceId !== binding.spaceId;
+      if (closed || currentBindingMismatch || sessionMismatch) {
         await connected.dispose().catch(() => {});
         connected = undefined;
+        if (!closed && input.initialBinding !== undefined && sessionMismatch)
+          throw new Error('Synchronization session does not match binding');
         return;
       }
       session = connected;
@@ -164,12 +187,17 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     closed = true;
     controller.abort();
     closePromise = (async () => {
-      await engine?.stop();
+      const currentEngine = engine;
       engine = undefined;
-      session = undefined;
-      input.onCoordinator?.(undefined);
-      input.onSharing?.(undefined);
-      port = undefined;
+      try {
+        await currentEngine?.stop();
+      } finally {
+        if (currentEngine === undefined) await session?.dispose().catch(() => {});
+        session = undefined;
+        input.onCoordinator?.(undefined);
+        input.onSharing?.(undefined);
+        port = undefined;
+      }
     })();
     return closePromise;
   }

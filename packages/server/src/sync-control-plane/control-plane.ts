@@ -254,14 +254,19 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     async preview(input) {
       if (input.kind === 'connect') {
         const backend = options.registry?.().resolveSync(input.plugin, input.capability);
-        if (backend === undefined || !backend.options.schema.safeParse(input.options).success)
+        const parsed = backend?.options.schema.safeParse(input.options);
+        if (backend === undefined || parsed === undefined || !parsed.success)
           throw new SyncOperationError('backend-unavailable');
+        const request = {
+          ...input,
+          options: parsed.data as Extract<SyncPreviewInput, { kind: 'connect' }>['options'],
+        };
         const previewId = createPreviewToken(24, options.randomBytes);
         const expiresAt = now() + 10 * 60_000;
         const local = captureLocal();
         const fence = await currentFence([], local.localCommitId, local.binding);
         const built = buildPreview({
-          request: input,
+          request,
           local: local.entities,
           remote: [],
           fence,

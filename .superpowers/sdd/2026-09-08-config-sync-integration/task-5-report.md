@@ -102,3 +102,30 @@ Review-round 2 verification:
 - `bun run check`: passed with the existing lint warnings.
 - `bun run lint:types`: touched files remain clean; only the existing Dashboard
   OAuth editor and CloudKit diagnostics remain.
+
+## Review round 3
+
+- Connect previews and backend replacement now retain the validated
+  `safeParse().data` options, including schema defaults, for backend connection
+  and persisted binding state.
+- Backend switching starts and validates a candidate lifecycle while the old
+  binding and engine remain active. It persists and activates the candidate
+  first, then closes the old lifecycle; startup, activation, and persistence
+  failures dispose the candidate and restore the previous binding and runtime
+  references.
+- Lifecycle callbacks are isolated per candidate so a failed or retired
+  lifecycle cannot clear the active OAuth coordinator or sharing service. The
+  configured-service test now verifies defaulted options, binding/entity
+  transfer, status continuity, connection/disposal counts, one active engine,
+  and failed replacement rollback.
+
+Review-round 3 verification:
+
+- Focused configured-service regression: passed.
+- CLI/server sync, control-plane, dashboard sync, server-state, and
+  server-config tests: **102 passed, 0 failed**.
+- `bun run check`: passed with the existing lint warnings.
+- `bun run i18n:compile`: passed.
+- `bun run lint:types`: only the existing Dashboard OAuth editor and CloudKit
+  diagnostics remain.
+- `git diff --check`: passed.
