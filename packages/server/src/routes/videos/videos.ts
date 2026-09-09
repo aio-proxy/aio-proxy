@@ -8,9 +8,7 @@ import {
   readJsonRequest,
   releaseMultipartSpool,
   REQUEST_BODY_LIMITS,
-  RequestBodyTooLargeError,
   stripHopHeaders,
-  UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { type Context, Hono } from 'hono';
@@ -20,6 +18,7 @@ import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pi
 import { cancelRetainedRequestBody } from '../pipeline/request';
 import { videoCapabilityNotSupported, videoForbidden, videoInvalidRequest, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
+import { videosParseErrorResponse } from './parse-error';
 import { pinSuccessfulVideoJob } from './pin';
 import { handlePinnedVideoRequest, invokePinnedVideo, resolveOwnedPinnedVideo } from './pinned';
 import type { VideosRouteSource } from './source';
@@ -152,12 +151,6 @@ async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
   try {
     return { kind: 'json', body: await readJsonRequest(raw, REQUEST_BODY_LIMITS) };
   } catch (error) {
-    if (error instanceof RequestBodyTooLargeError) {
-      return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
-    }
-    if (error instanceof UnsupportedContentEncodingError) {
-      return { kind: 'reject', response: openAIVideosAdapter.errors.unsupportedContentEncoding() };
-    }
     return { kind: 'reject', response: videosRequestError(error) };
   }
 }
@@ -178,18 +171,14 @@ async function videosTryParseAsync<T>(
   try {
     return { ok: true, value: await parse() };
   } catch (error) {
-    if (error instanceof RequestBodyTooLargeError) {
-      return { ok: false, response: openAIVideosAdapter.errors.tooLarge() };
-    }
-    if (error instanceof UnsupportedContentEncodingError) {
-      return { ok: false, response: openAIVideosAdapter.errors.unsupportedContentEncoding() };
-    }
     return { ok: false, response: videosRequestError(error) };
   }
 }
 
 function videosRequestError(error: unknown): Response {
-  return openAIVideosAdapter.errors.requestError(error) ?? videoInvalidRequest('Invalid OpenAI Videos request');
+  const mapped = videosParseErrorResponse(error);
+  if (mapped === undefined) throw error;
+  return mapped;
 }
 
 async function rejectFollowUp(raw: Request, response: Response): Promise<Response> {
