@@ -1,7 +1,15 @@
 import { open } from 'node:fs/promises';
 
 import type { CodexLocation, CodexMarker } from '../contracts';
-import { durableDelete, durableWrite, ensureManagedRoot, fingerprint, readRegularFile, syncParent } from './storage';
+import {
+  durableDelete,
+  durableWrite,
+  ensureManagedRoot,
+  fingerprint,
+  isFsCode,
+  readRegularFile,
+  syncParent,
+} from './storage';
 
 export type ConfigJournal = {
   readonly operation: 'configure' | 'remove';
@@ -68,7 +76,7 @@ export async function releaseJournalOwner(location: CodexLocation, journal: Conf
 
 async function expireJournalOwner(location: CodexLocation, journal: ConfigJournal): Promise<void> {
   const current = await readJournal(location);
-  if (current?.owner?.token !== journal.owner?.token || current.owner === undefined) return;
+  if (current === undefined || current.owner?.token !== journal.owner?.token || current.owner === undefined) return;
   await updateJournal(location, { ...current, owner: { ...current.owner, leaseUntil: 0 } });
 }
 

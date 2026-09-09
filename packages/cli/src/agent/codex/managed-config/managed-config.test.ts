@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { resolveCodexLocation } from '../location';
 import { configureCodexConfig, inspectCodexConfig, removeCodexConfig } from './index';
 import { startJournal } from './journal';
+import { readRegularFile, writeTomlAtomically } from './storage';
 
 const fixture = async (text = 'model = "before"\nmodel_provider = "openai"\n') => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-config-'));
@@ -203,6 +204,30 @@ test('does not recover a journal owned by a live process', async () => {
   }
 });
 
+test('recovers a prepared journal owned by a dead process', async () => {
+  const f = await fixture();
+  const journal = join(f.location.managedRoot, 'config-operation.json');
+  try {
+    await mkdir(f.location.managedRoot, { recursive: true });
+    const text = await Bun.file(f.location.configPath).text();
+    await Bun.write(
+      journal,
+      `${JSON.stringify({
+        operation: 'remove',
+        originalExists: true,
+        beforeFingerprint: Bun.hash(text).toString(16),
+        afterFingerprint: 'different',
+        stage: 'prepared',
+        owner: { pid: 999999999, token: 'dead-owner', leaseUntil: Date.now() - 1 },
+      })}\n`,
+    );
+    await expect(removeCodexConfig(f.location)).resolves.toMatchObject({ status: 'absent' });
+    expect(await Bun.file(journal).exists()).toBe(false);
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test('rejects an existing symlinked parent before creating managed files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-config-'));
   const real = join(root, 'real');
@@ -234,6 +259,21 @@ test('refuses a symlinked operation journal without following its target', async
   }
 });
 
+test('refuses a symlinked managed root before deleting a foreign journal', async () => {
+  const f = await fixture();
+  const foreignRoot = join(f.root, 'foreign-managed');
+  const foreignJournal = join(foreignRoot, 'config-operation.json');
+  try {
+    await mkdir(foreignRoot, { recursive: true });
+    await Bun.write(foreignJournal, '{}\n');
+    await symlink(foreignRoot, f.location.managedRoot);
+    await expect(removeCodexConfig(f.location)).rejects.toThrow('symbolic link');
+    expect(await Bun.file(foreignJournal).text()).toBe('{}\n');
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test('refuses a symlinked TOML destination before any replacement', async () => {
   const f = await fixture();
   const foreign = join(f.root, 'foreign-config.toml');
@@ -245,6 +285,24 @@ test('refuses a symlinked TOML destination before any replacement', async () => 
       configureCodexConfig({ location: f.location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', token: 'key' }),
     ).rejects.toThrow('symbolic link');
     expect(await Bun.file(foreign).text()).toBe('model = "foreign"\n');
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('refuses a destination replacement in the final atomic-write check', async () => {
+  const f = await fixture();
+  try {
+    const original = await readRegularFile(f.location.configPath);
+    await expect(
+      writeTomlAtomically(f.location, original, 'model = "replacement"\n', {
+        beforeFinalCheck: async () => {
+          await rm(f.location.configPath);
+          await Bun.write(f.location.configPath, 'model = "foreign"\n');
+        },
+      }),
+    ).rejects.toThrow('changed during update');
+    expect(Bun.TOML.parse(await Bun.file(f.location.configPath).text())).toEqual({ model: 'foreign' });
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }

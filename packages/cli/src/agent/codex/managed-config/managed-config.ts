@@ -24,7 +24,7 @@ import {
   updateJournal,
 } from './journal';
 import { deleteMarker, readMarker, validateMarker, writeMarker } from './marker';
-import { chmodChecked, readRegularFile, syncParent, writeTomlAtomically } from './storage';
+import { chmodChecked, ensureManagedRoot, readRegularFile, syncParent, writeTomlAtomically } from './storage';
 
 const providerFields = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'] as const;
 const authenticationFields = new Set(['env_key', 'auth', 'aws', 'headers', 'header', 'api_key']);
@@ -85,6 +85,7 @@ function restoreOwnedFields(text: string, marker: CodexMarker, edits: readonly F
 }
 
 async function recoverPending(location: CodexLocation): Promise<void> {
+  await ensureManagedRoot(location);
   const pending = await readJournal(location);
   if (pending === undefined) return;
   if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');

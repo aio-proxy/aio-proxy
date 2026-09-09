@@ -15,6 +15,7 @@ export type FileSnapshot = {
 };
 
 export async function assertNoSymlinkParents(path: string): Promise<void> {
+  // macOS exposes /var and /tmp as stable system aliases; every component below them is user-controlled.
   const absolute = resolve(path);
   let current = parse(absolute).root;
   for (const part of absolute.slice(current.length).split('/').filter(Boolean)) {
@@ -128,6 +129,7 @@ export async function durableWrite(path: string, text: string, mode: number, exp
 }
 
 export async function durableDelete(path: string, expected?: FileSnapshot): Promise<void> {
+  await assertNoSymlinkParents(dirname(path));
   const current = await readRegularFile(path);
   if (current === undefined) return;
   if (
@@ -139,6 +141,7 @@ export async function durableDelete(path: string, expected?: FileSnapshot): Prom
   const latest = await readRegularFile(path);
   if (latest === undefined || latest.stat.dev !== current.stat.dev || latest.stat.ino !== current.stat.ino)
     throw new Error(`Destination changed during durable delete: ${path}`);
+  await assertNoSymlinkParents(dirname(path));
   await unlink(path).catch((error) => {
     if (!isFsCode(error, 'ENOENT')) throw error;
   });
@@ -158,6 +161,7 @@ export async function writeTomlAtomically(
   location: CodexLocation,
   original: FileSnapshot | undefined,
   next: string,
+  testDeps?: { readonly beforeFinalCheck?: () => void | Promise<void> },
 ): Promise<void> {
   await assertNoSymlinkParents(location.home);
   await mkdir(location.home, { recursive: true, mode: 0o700 });
@@ -172,6 +176,7 @@ export async function writeTomlAtomically(
     await handle.close();
   }
   try {
+    await testDeps?.beforeFinalCheck?.();
     const current = await readRegularFile(location.configPath);
     if (original === undefined) {
       if (current !== undefined) throw new Error('Codex configuration changed during update');

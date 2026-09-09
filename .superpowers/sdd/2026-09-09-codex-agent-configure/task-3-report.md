@@ -104,6 +104,32 @@ rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/co
 86 expect() calls
 ```
 
+## Fix round 3
+
+Recovery now validates the Codex home, managed root, and all user-controlled parent components before reading journals. Journal reads use the same no-follow identity-checked file reader, and durable deletion rechecks the parent immediately before unlinking. macOS `/var` and `/tmp` remain explicitly allowed system aliases; components below them are checked and user-controlled symlinks are refused.
+
+The atomic TOML writer exposes a private test dependency hook to inject a destination replacement immediately before its final identity/content check. The regression confirms the replacement is refused and the foreign content remains intact. Dead-owner recovery coverage exercises the `process.kill`/`isFsCode` path and clears a stale prepared journal. Failure paths expire the in-process owner lease so an exception cannot create a permanent same-process lock.
+
+Exact verification:
+
+```text
+rtk bunx oxfmt packages/cli/src/agent/codex/managed-config
+Finished in 35ms on 6 files using 12 threads.
+
+rtk bunx oxlint packages/cli/src/agent/codex/managed-config
+(no diagnostics)
+
+rtk bunx tsc --noEmit -p packages/cli/tsconfig.json 2>&1 | rtk rg 'packages/cli/src/agent/codex/(location|managed-config|contracts)' | head -100
+(no diagnostics for changed Codex implementation files)
+
+rtk bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config ./packages/cli/src/agent/codex/config-document/config-document.test.ts
+32 pass
+0 fail
+92 expect() calls
+```
+
+The test hook narrows and detects the replacement window; Node/Bun do not expose an atomic rename-if-unchanged primitive here, so an external writer racing after the final check remains outside the deterministic guarantee.
+
 ## Fix round 1 verification
 
 The review fix round was committed after a fresh verification run:
