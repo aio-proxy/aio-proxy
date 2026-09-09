@@ -82,7 +82,7 @@ async function handleFollowUpCreate(
   if (record !== undefined) {
     const modelId = parsed.value.modelDefaulted ? record.model : parsed.value.model;
     const rewritten =
-      parsed.value.modelDefaulted && isPlainObject(peek.body)
+      isPlainObject(peek.body) && (parsed.value.modelDefaulted || parsed.value.clientModel !== modelId)
         ? jsonFollowUpRequest(raw, { ...peek.body, model: modelId })
         : undefined;
     if (rewritten !== undefined) await cancelRetainedRequestBody(raw, 'videos pinned follow-up rewritten');

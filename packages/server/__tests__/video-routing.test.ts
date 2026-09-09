@@ -165,12 +165,17 @@ describe('OpenAI Videos HTTP dispatch', () => {
     const edits = await app.request('/v1/videos/edits', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'sora-2-pro', prompt: 'warmer light', video: { id: 'video_abc' } }),
+      body: JSON.stringify({ model: ' sora-2-pro ', prompt: 'warmer light', video: { id: 'video_abc' } }),
     });
     expect(edits.status).toBe(200);
     expect(fixture.resolves.slice(afterCreate)[0]).toMatchObject({
       protocol: ProviderProtocol.OpenAIVideo,
       modelId: 'sora-2-pro',
+    });
+    expect(fixture.bodies.at(-1)).toEqual({
+      model: 'sora-2-pro',
+      prompt: 'warmer light',
+      video: { id: 'video_abc' },
     });
     expect((await app.request('/v1/videos/video_edit')).status).toBe(200);
     expect(fixture.resolves.at(-1)).toMatchObject({ modelId: 'sora-2-pro' });
