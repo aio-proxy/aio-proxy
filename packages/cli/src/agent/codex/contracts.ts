@@ -1,3 +1,5 @@
+import type { AtomicConfigFile } from '@aio-proxy/core';
+
 import type { ValueSlot } from './config-document';
 
 export type CodexLocation = {
@@ -35,4 +37,33 @@ export type ConfigCommit = { readonly status: 'configured' | 'unchanged'; readon
 export type ConfigRemoval = {
   readonly status: 'removed' | 'partial' | 'absent';
   readonly preservedPaths: readonly (readonly string[])[];
+};
+
+export type KeyChoice = { readonly id: string; readonly label: string };
+
+export type KeySelection =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'existing'; readonly id: string }
+  | { readonly kind: 'new' };
+
+export type ResolvedCredential = {
+  readonly token: string;
+  readonly kind: 'placeholder' | 'existing' | 'created';
+  readonly label?: string;
+  readonly verified: boolean;
+};
+
+export type KeySnapshot = {
+  readonly choices: readonly KeyChoice[];
+  readonly resolve: (selection: KeySelection, providerId: string) => Promise<ResolvedCredential>;
+};
+
+export type CredentialDeps = {
+  readonly file: AtomicConfigFile;
+  readonly endpoint: string;
+  readonly loadEnvironment: () => void;
+  readonly readEnvironment: () => Readonly<Record<string, string | undefined>>;
+  readonly randomKey: () => string;
+  readonly reload: () => Promise<void>;
+  readonly check: (token: string) => Promise<'ok' | 'offline' | 'unauthorized' | 'invalid_response'>;
 };
