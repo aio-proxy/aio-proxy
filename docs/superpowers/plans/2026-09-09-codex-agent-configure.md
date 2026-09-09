@@ -71,7 +71,7 @@
 
 不修改 `packages/types/src/agent-integration/agent-integration.ts`、插件 Provider 包或 post-upgrade 的目标数组。默认不增加服务端代码。
 
-## 任务 1：验证 Codex 认证、列表与迁移持久化契约
+## Task 1：验证 Codex 认证、列表与迁移持久化契约
 
 **Files:**
 
@@ -225,7 +225,7 @@ rtk git add packages/cli/scripts/verify-codex-contract.ts packages/cli/src/agent
 rtk git commit -m 'test(cli): verify Codex static configuration contracts' -m 'Co-authored-by: Codex <noreply@openai.com>'
 ```
 
-## 任务 2：实现按键路径修改 TOML 的纯模块
+## Task 2：实现按键路径修改 TOML 的纯模块
 
 **Files:** Create `config-document/{index.ts,config-document.ts,ast-edits.ts,config-document.test.ts}`；Modify `packages/cli/package.json`、`bun.lock`。
 
@@ -325,7 +325,7 @@ rtk git add packages/cli/src/agent/codex/config-document packages/cli/package.js
 rtk git commit -m 'feat(cli): preserve Codex config while editing provider fields' -m 'Co-authored-by: Codex <noreply@openai.com>'
 ```
 
-## 任务 3：实现全局位置与字段归属生命周期
+## Task 3：实现全局位置与字段归属生命周期
 
 **Files:** Create `location/`、`managed-config/` 上表文件和 `contracts.ts`。
 
@@ -429,7 +429,7 @@ rtk git add packages/cli/src/agent/codex/location packages/cli/src/agent/codex/m
 rtk git commit -m 'feat(cli): track and restore managed Codex configuration' -m 'Co-authored-by: Codex <noreply@openai.com>'
 ```
 
-## 任务 4：选择、创建并验证代理 Key
+## Task 4：选择、创建并验证代理 Key
 
 **Files:** Create `credentials/{index.ts,credentials.ts,credentials.test.ts}`；共享类型加入 `contracts.ts`。
 
@@ -535,7 +535,7 @@ rtk git add packages/cli/src/agent/codex/credentials packages/cli/src/agent/code
 rtk git commit -m 'feat(cli): select and provision proxy credentials for Codex' -m 'Co-authored-by: Codex <noreply@openai.com>'
 ```
 
-## 任务 5：实现历史会话预览、迁移与恢复
+## Task 5：实现历史会话预览、迁移与恢复
 
 **Files:** Create `sessions/{index.ts,sessions.ts,sessions.test.ts,legacy-rollout.ts,state-index.ts,journal.ts}`；使用任务 1 的合成 fixtures；更新 `contracts.ts`。
 
@@ -646,7 +646,7 @@ rtk git add packages/cli/src/agent/codex/sessions packages/cli/src/agent/codex/c
 rtk git commit -m 'feat(cli): migrate Codex session provider ownership safely' -m 'Co-authored-by: Codex <noreply@openai.com>'
 ```
 
-## 任务 6：接入交互向导、命令分流与结果展示
+## Task 6：接入交互向导、命令分流与结果展示
 
 **Files:** Create `wizard/`、`codex.ts`、`codex.test.ts`、`index.ts`、`output.ts`；Modify `agent.ts`、现有 `output.ts` 与相关测试、`contracts.ts`、五个 locale 文件。
 
@@ -790,7 +790,7 @@ rtk git add packages/cli/src/agent packages/cli/src/main.test.ts packages/i18n/m
 rtk git commit -m 'feat(cli): add interactive Codex agent configuration' -m 'Co-authored-by: Codex <noreply@openai.com>'
 ```
 
-## 任务 7：端到端验收、文档与发布说明
+## Task 7：端到端验收、文档与发布说明
 
 **Files:** Modify `README.md` 与任务 1 的兼容报告；Create 一个 changeset；必要的 CLI artifact 行为测试放在 `codex/codex.test.ts`，不向 legacy `__tests__/` 增添文件。
 
