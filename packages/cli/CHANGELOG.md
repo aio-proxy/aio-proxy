@@ -1,5 +1,26 @@
 # @aio-proxy/cli
 
+## 0.21.0
+
+### Patch Changes
+
+- [#343](https://github.com/aio-proxy/aio-proxy/pull/343) [`52b07ce`](https://github.com/aio-proxy/aio-proxy/commit/52b07ce1deba1c2e23ececd5c9689994d359b1dc) Thanks [@baranwang](https://github.com/baranwang)! - Updating from the dashboard now always restarts the service after a successful install. The install
+  step first asked over HTTP whether a daemon was running, even though it was running inside that very
+  daemon, so a busy server, a slow answer, or a `server.host` that is not locally reachable made it
+  conclude there was nothing to restart. The new version was installed and then never started, with no
+  error to explain why.
+- Updated dependencies []:
+  - @aio-proxy/core@0.21.0
+  - @aio-proxy/server@0.21.0
+  - @aio-proxy/dashboard@0.21.0
+  - @aio-proxy/opencode-provider@0.21.0
+  - @aio-proxy/pi-provider@0.21.0
+  - @aio-proxy/i18n@0.21.0
+  - @aio-proxy/logger@0.21.0
+  - @aio-proxy/plugin-sdk@0.21.0
+  - @aio-proxy/shared@0.21.0
+  - @aio-proxy/types@0.21.0
+
 ## 0.20.5
 
 ### Patch Changes
