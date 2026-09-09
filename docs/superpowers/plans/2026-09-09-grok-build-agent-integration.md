@@ -44,7 +44,7 @@ TOML采用Codex已经使用的组合：`toml-eslint-parser@1.0.3`提供AST/sourc
 
 复用来源是任务 **Add Codex configure target**（`01a084fa-0d23-7503-9fc9-3518b1660b51`）的已提交代码，核对到 `6c30e00ca0c22014fe75f54a2f910cf255c3b0bd`：`packages/cli/src/agent/codex/config-document/{config-document.ts,ast-edits.ts,index.ts,config-document.test.ts}`。该编辑器仍包含 `model_providers`、Provider字段集合和清理判断；不能让Grok直接调用 `editCodexDocument()`。Task3A将纯文本部分提取到同包 `agent/toml-document/`，并迁移Codex调用方；Task3B再接入Grok。
 
-本工作树当前没有Codex目录。执行Task3A前把上述四个已提交文件和对应parser依赖作为最小源码基线整合进执行分支；不复制另一个任务的未提交修改，不合入向导/会话迁移等整个#327功能。随后同一任务内完成提取、删除Codex私有重复实现并验证两种路径。若执行时Codex已合入，直接基于执行分支的最新接口提取，保留更新后的回归测试；记录实际来源commit，不覆盖较新代码。本轮仅写计划，不改变另一个任务的工作树或发送消息。
+本PR已携带四文件的完整源码补丁及SHA-256校验表，见 [TOML源码基线](../references/grok-toml-baseline/README.md)。上面的commit只记录来源，不再作为必须fetch或解析的前置条件。执行Task3A时从仓库内补丁应用最小源码基线，然后完成提取、删除Codex私有重复实现并验证；不引入向导/会话迁移等整个#327功能。若执行时Codex已合入，保留执行分支的较新代码和回归测试，不覆盖。
 
 共享模块通过显式 `tomlVersion` 选项保留两种宿主契约：Codex `1.1`，Grok `1.0`。这个选项限制源文档和最终文本，不因抽共享模块而悄悄扩大Grok支持范围。
 
@@ -58,7 +58,8 @@ TOML采用Codex已经使用的组合：`toml-eslint-parser@1.0.3`提供AST/sourc
 | --- | --- |
 | `packages/types/src/agent-integration/agent-integration.ts` | 四目标身份、client ID；新增三目标 `AgentPluginTargetSchema` / type |
 | `packages/core/src/agent-identity/{identity-repository.ts,agent-identity.test.ts,identity-repository.test.ts}` | target 解码、Grok 身份持久化/刷新/撤销回归 |
-| `packages/server/src/agent-authorization/{routes.ts,routes.test.ts,device-challenges.ts,device-challenges.test.ts}` | 固定 client tuple、真实 device flow、普通 models 认证 |
+| `packages/server/src/agent-authorization/{routes.ts,routes.test.ts,device-challenges.ts,device-challenges.test.ts}` | 固定client tuple、真实device flow与token认证 |
+| `packages/server/src/server/{server.ts,models-routing.ts,server.models.test.ts}` | 提取现有models协商/分发；Grok AT返回普通目录，插件目标继续要求协商；认证与路由矩阵回归 |
 | `packages/core/src/file-lock/{index.ts,file-lock.ts,file-lock.test.ts,abandoned-owner.ts}` | 从 config lock 移入可复用文件锁和遗留 holder 清理；显式 deadline |
 | `packages/core/src/plugins/config-file/lock.ts` | 保留原 API/defaults 的薄包装；原 abandoned-owner 移走 |
 | `packages/core/src/index.ts` | 导出新的文件锁公共入口，不暴露私有 fence/fs 模块 |
@@ -86,6 +87,7 @@ TOML采用Codex已经使用的组合：`toml-eslint-parser@1.0.3`提供AST/sourc
 | `packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json` | 同步新诊断、漂移、登录/模型提示文案 |
 | `packages/cli/package.json`、`bun.lock` | runtime/parser 直接依赖和显式 compat script；不改 SDK API |
 | `docs/superpowers/specs/2026-09-09-grok-build-agent-integration-design.md` | 实现后记录验收状态和证据入口 |
+| `docs/superpowers/references/grok-toml-baseline/{README.md,codex-config-document.patch,SHA256SUMS}` | 随本PR发布的四文件源码基线与完整性校验；不依赖本地Git对象 |
 | `docs/agent-grok.md` | 用户配置/登录/移除/冲突排查说明 |
 | `.changeset/<bun-changeset-generated-name>.md` | 一条 minor release note，实际文件名由命令生成 |
 
@@ -93,7 +95,7 @@ TOML采用Codex已经使用的组合：`toml-eslint-parser@1.0.3`提供AST/sourc
 
 ## Task 1: 让 Grok 身份走通现有 device/token/admin 链路
 
-**Files:** 修改 types、core identity、server authorization（上表同名文件）；修改 CLI assets/managed-installation/upgrade 的 target 类型；对应现有测试。
+**Files:** 修改types、core identity、server authorization（上表同名文件）；修改 `packages/server/src/server/server.ts`、新建其私有 `models-routing.ts`、更新 `server.models.test.ts`；修改CLI assets/managed-installation/upgrade target类型与现有测试。
 
 **Interfaces:**
 
@@ -104,6 +106,7 @@ export type AgentPluginTarget = z.infer<typeof AgentPluginTargetSchema>;
 export const AgentTargetSchema = z.enum(['opencode', 'pi', 'omp', 'grok']);
 export type AgentTarget = z.infer<typeof AgentTargetSchema>;
 // 保留原 AGENT_CLIENT_ID，增加 grok: 'aio-proxy-grok'。
+// AgentCatalogQuerySchema.agent使用AgentPluginTargetSchema：Grok不协商插件目录。
 // AgentClientIdSchema 同时增加 'aio-proxy-grok'，不通过 as 绕过请求校验。
 ```
 
@@ -143,8 +146,56 @@ test('device endpoint accepts the Grok tuple and rejects cross-client use', asyn
 });
 ```
 
-- [ ] 运行 `rtk bun test packages/core/src/agent-identity packages/server/src/agent-authorization`，预期新 target 在 schema/decoder 处失败；保存具体失败，不把已有环境失败误当 RED。
+- [ ] 在现有 `server.models.test.ts` 的describe中声明 `let grok: IssuedAgentCredential`，在beforeEach现有identity实例上签发：`grok = identity.issueCredential({ installationId: randomUUID(), target:'grok', adapterVersion:'1.2.3' })`。添加无插件协商参数的真实handler回归，复用已有app/lockedApp/cache隔离：
+
+```ts
+test.each(['/v1/models', '/v1/models?client_version=0.146.0'])(
+  'Grok installation receives ordinary models at %s', async path => {
+    for (const server of [app, lockedApp]) {
+      const response = await server.request(path, {
+        headers: { authorization: `Bearer ${grok.accessToken}` },
+      }, loopbackServer);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.object).toBe('list');
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data.length).toBeGreaterThan(0);
+      expect(body).not.toHaveProperty('schema_version');
+      expect(body).not.toHaveProperty('models');
+    }
+  },
+);
+```
+
+当前代码中任意 `agentGrant` 无 `AgentCatalogQuery` 都返回400，这是本任务必须修改的dispatch，不是只扩展身份enum即可通过。
+
+- [ ] 运行 `rtk bun test packages/core/src/agent-identity packages/server/src/agent-authorization packages/server/src/server/server.models.test.ts`。身份扩展前记录target/schema失败；身份扩展后新的Grok models用例应明确复现400而非200，确认覆盖遗漏的分支。
+
 - [ ] 更新身份 schema/client mapping，repository 解码用 `AgentTargetSchema.parse(value)` 替代三个手写分支。服务端继续校验 `AGENT_CLIENT_ID[agent] === client_id`。不新增 DB migration，不改 TTL、replay、family revoke。
+- [ ] `server.ts` 当前497行，已包含独立的models协商职责：将 `AgentCatalogQuery`、`ModelsEnv`、`agentQueryFields`、`parseAgentCatalogNegotiation`、`listModelsHandler` 移入同目录私有 `models-routing.ts`，server.ts仅import并保持原路由中间件注册顺序。私有模块导出 `parseAgentCatalogNegotiation:MiddlewareHandler<ModelsEnv>` 与 `listModelsHandler(state:ServerState):MiddlewareHandler<ModelsEnv>`，不经server公共barrel导出。移入相关imports，避免server.ts超过500行。
+- [ ] 保留已有query验证、grant/query target mismatch与插件目录协商分支；在“无query但有grant返回400”之前增加Grok分支，并置于client_version路由之前：
+
+```ts
+if (query !== null && query !== undefined) {
+  if (grant === undefined) return authenticationError(context);
+  if (grant.target !== query.agent) {
+    return context.json({ error: { code: 'forbidden', message: 'Agent catalog target mismatch.' } }, 403);
+  }
+  return context.json(await agentCatalog(state, query.agent));
+}
+if (grant?.target === 'grok') return context.json(await listModels(state));
+if (grant !== undefined) {
+  return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
+}
+if (context.req.query('client_version') !== undefined) {
+  return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
+}
+return context.json(await listModels(state));
+```
+
+`listModels`是现有普通目录实现，不添加Grok私有schema；不能删除整个grant检查、把所有插件AT都放行到普通目录。`requireModelAuthentication`仍在分发前运行，过期/撤销AT不得因Grok分支绕过验证。
+
+- [ ] 在同一models测试文件覆盖：三个插件AT无query仍400；合法协商仍返回schema_version1；Grok AT配插件target query仍403；`agent=grok`协商及畸形query仍400；Grok普通目录不被client_version改成Codex目录；撤销AT后不再200；匿名/static key的原有行为全部保持。保留身份fixture用于撤销调用，并复用已有service revoke方法，不制造假grant绕过认证。运行完整 `server.models.test.ts`，不只运行新增用例。
 - [ ] 同一提交中切断枚举扩展对插件循环的影响：
 
 ```ts
@@ -162,7 +213,7 @@ export async function agentFiles(
 
 这里仅改原循环的输入类型和 schema，保留循环体。此阶段通用 CLI `parseTarget()` 暂用 `AgentPluginTargetSchema.parse`，Task 9 再开放 Grok command dispatch，避免 Grok 落入 OMP 路径。通用 host 函数中 Grok 明确报“尚未接入”直到 Task 4，不能伪装成 OMP。现有 plugin fixtures/map 明确标注 `AgentPluginTarget`。
 - [ ] 运行上述 identity/routes 测试与 `rtk bun test --preload ./packages/cli/__tests__/setup.ts packages/cli/src/agent/assets packages/cli/src/agent/managed-installation packages/cli/src/upgrade/post-upgrade-agents.test.ts`，预期全部通过。用现有 post-upgrade fixture 加入捕获 target 的断言：Grok marker 存在时仍没有 Grok asset read/install 调用。
-- [ ] 提交：`rtk git add packages/types/src/agent-integration packages/core/src/agent-identity packages/server/src/agent-authorization packages/cli/src/agent packages/cli/src/upgrade`；`rtk git commit -m "feat(agent): support Grok installation identities" -m "Co-authored-by: Codex <noreply@openai.com>"`。
+- [ ] 提交：`rtk git add packages/types/src/agent-integration packages/core/src/agent-identity packages/server/src/agent-authorization packages/server/src/server/server.ts packages/server/src/server/models-routing.ts packages/server/src/server/server.models.test.ts packages/cli/src/agent packages/cli/src/upgrade`；`rtk git commit -m "feat(agent): support Grok installation identities" -m "Co-authored-by: Codex <noreply@openai.com>"`。
 
 ## Task 2: 提取已有文件锁并贯穿总 deadline
 
@@ -264,15 +315,15 @@ export function editTomlFields(text: string, edits: readonly TomlFieldEdit[], op
 
 `TomlScalar`只覆盖两个已知调用方使用的string/boolean。其它合法TOML值原文透传，但读取它们作为受管scalar时明确报类型错误；不为假想第三宿主扩充复杂值序列化。显式 `next.present=false` 删除精确path对应的节点；删除table subtree需要调用方明确请求该path，shared不会推断归属。`removeEmptyTables`只修剪所列的、编辑后确实为空且无子表的表头，不扫描删除用户空表。`createdTables`只记录此次新增的显式标准表头；inline容器的叶子删除不引入整表归属。
 
-- [ ] **Step 1：建立固定来源基线，不覆盖另一个任务的工作。** 执行分支无Codex config-document目录时，先确认当前路径无本地变更，再从已提交对象恢复这四个文件；不得恢复整个Codex目录或运行中的工作树快照：
+- [ ] **Step 1：从本PR携带的源码补丁建立基线。** 执行分支无Codex config-document目录时运行以下命令；补丁只新增四个文件，check失败就停止应用，不能覆盖执行分支已有代码。不需要本地来源commit对象或另一个任务的工作树：
 
 ```sh
-rtk git status --short -- packages/cli/src/agent/codex/config-document
-rtk git cat-file -e 6c30e00ca0c22014fe75f54a2f910cf255c3b0bd:packages/cli/src/agent/codex/config-document/config-document.ts
-rtk git restore --source=6c30e00ca0c22014fe75f54a2f910cf255c3b0bd --worktree -- packages/cli/src/agent/codex/config-document/config-document.ts packages/cli/src/agent/codex/config-document/ast-edits.ts packages/cli/src/agent/codex/config-document/index.ts packages/cli/src/agent/codex/config-document/config-document.test.ts
+rtk git apply --check docs/superpowers/references/grok-toml-baseline/codex-config-document.patch
+rtk git apply docs/superpowers/references/grok-toml-baseline/codex-config-document.patch
+rtk proxy shasum -a 256 -c docs/superpowers/references/grok-toml-baseline/SHA256SUMS
 ```
 
-目录已存在则跳过restore，以本分支现有版本为基线。仅当CLI尚未声明parser依赖时运行 `rtk bun add --cwd packages/cli --exact toml-eslint-parser@1.0.3`；否则保留已有同版本声明。记录来源revision，执行 `rtk bun test packages/cli/src/agent/codex/config-document` 确认原行为基线，不把基线失败当新功能RED。
+目录已存在则跳过补丁，以执行分支现有版本为基线。仅当CLI尚未声明parser依赖时运行 `rtk bun add --cwd packages/cli --exact toml-eslint-parser@1.0.3`；否则保留已有同版本声明。执行 `rtk bun test packages/cli/src/agent/codex/config-document` 确认原行为基线，不把基线失败当新功能RED。校验表只验证补丁的原始文件，后续提取重构不要求保留其字节hash。
 - [ ] **Step 2：写能同时覆盖两种宿主形状的共享接口失败测试。** 测试不mockparser，不只比较静态常量：
 
 ```ts
@@ -1213,7 +1264,7 @@ Task3拆为3A（共享编辑器及Codex迁移）和3B（Grok归属规则）；�
 | §5 七字段/别名/外部模型/policy/egress | Tasks3A/3B/4/11；共享编辑器、AST roundtrip、无token外部请求 |
 | §6 幂等/逐字段三方恢复/崩溃 | Tasks3B/5/8/10；每个提交阶段断点 |
 | §7 普通/静默/总预算/revision/replay | Tasks2/6/7/10；真实子进程而非仅mock |
-| §8 身份/普通models/revoke/remove | Tasks1/8/9/11；真实device批准及服务重启 |
+| §8 身份/普通models/revoke/remove | Tasks1/8/9/11；真实device批准、Grok普通models分发/插件协商回归及服务重启 |
 | §9 list/upgrade/module边界 | Tasks1/3A/5/9；共享编辑入口、modified身份可见、plugin循环收窄 |
 | §10 验收/发布 | Tasks10/11；preflight+artifact+compat+minor changeset |
 | §11 不采用的替代方案 | 全局约束；不发RT给Grok、不复制OAuth、不恢复全文件 |
