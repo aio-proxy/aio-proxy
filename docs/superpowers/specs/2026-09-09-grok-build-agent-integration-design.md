@@ -1,7 +1,7 @@
 # Grok Build Agent Integration 设计
 
 - 日期：2026-09-09
-- 状态：待审阅；鉴权方向已在讨论中确认，本文为完整设计提案
+- 状态：设计已确认，进入实现计划阶段；尚未开始实现
 - 对应 issue：[#329](https://github.com/aio-proxy/aio-proxy/issues/329)
 - 基线：Grok Build `1.0.24 (68e414c661e3)`；aio-proxy `989e5ebb`
 
@@ -221,4 +221,4 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 - 复制 Pi/OpenCode 的 OAuth 实现到 CLI：已有公共 runtime，拒绝。
 - 无条件恢复整个 config/auth 快照：会覆盖用户和宿主的后续修改，拒绝。
 
-产品方向已确定；本设计列出的文件格式、生命周期和宿主限制均给出具体处理规则。剩余工作是本文审阅，以及按验收要求完成实现计划和验证，不需要先完成 Codex 或 Claude Code 接入。
+产品方向已确定；本设计列出的文件格式、生命周期和宿主限制均给出具体处理规则。实现计划见 [Grok Build Agent Integration Implementation Plan](../plans/2026-09-09-grok-build-agent-integration.md)；后续按计划完成实现和验证，不需要先完成 Codex 或 Claude Code 接入。
