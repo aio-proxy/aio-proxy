@@ -1072,7 +1072,7 @@ test('resolveManagedRestartExec returns the brew launcher bin', () => {
   ).toBe('/opt/homebrew/bin/aio-proxy');
 });
 
-test('AIO_PROXY_UPGRADE_METHOD=npm reconstructs an absolute command from the cli-* prefix', async () => {
+nativeTest('AIO_PROXY_UPGRADE_METHOD=npm reconstructs an absolute command from the cli-* prefix', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-env-'));
   const native = writePlatformCliBinary(prefix, 'npm');
   await withEmptyManagerPath(async () => {
@@ -1218,7 +1218,7 @@ test('brew install whose launcher version stays at current returns unchanged and
   expect(restarted).toBe(false);
 });
 
-test('runUpgradeCommand restarts npm installs with the native cli-* path, not the JS shim', async () => {
+nativeTest('runUpgradeCommand restarts npm installs with the native cli-* path, not the JS shim', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-restart-'));
   const native = writePlatformCliBinary(prefix, 'npm');
   const shim = join(prefix, 'bin', 'aio-proxy');

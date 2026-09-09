@@ -24,3 +24,10 @@ Native package fixtures derive their package directory from `process.platform` a
 ## Concerns
 
 The full preflight remains red in `@aio-proxy/server` for existing timing/resource-sensitive tests: `plugin-snapshot/recovery-close.test.ts`, `plugin-snapshot/isolation-diagnostics.test.ts`, `plugin-snapshot/recovery-deadline.test.ts`, `dashboard-routes/plugins/plugins.test.ts`, and `routes/realtime/sideband.test.ts`. The failures include closed-database/SQLite I/O errors, recovery-close scheduling assertions, and a downstream relay close timeout. They are outside the CLI upgrade changes.
+
+## Round 1 portability follow-up
+
+The two remaining tests that construct native package fixtures now use the same `nativeTest` supported-platform guard as the other native-only cases: `AIO_PROXY_UPGRADE_METHOD=npm reconstructs an absolute command from the cli-* prefix` and `runUpgradeCommand restarts npm installs with the native cli-* path, not the JS shim`.
+
+- `rtk proxy bun test packages/cli/src/upgrade/upgrade.test.ts` — 75 pass, 0 fail, 124 expect() calls.
+- `rtk proxy bun run preflight` — formatting passed and the CLI suite passed (510 pass, 0 fail); the gate failed only in the server suite with the same 5 unrelated timing/resource-sensitive failures listed above.
