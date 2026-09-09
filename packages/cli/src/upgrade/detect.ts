@@ -166,12 +166,13 @@ const pathLauncherTarget = (preferred?: NodeManager): UpgradeTarget | undefined 
   return undefined;
 };
 
-const brewTargetFromCellar = (binPath: string): UpgradeTarget | undefined => {
+const brewTargetFromCellar = (binPath: string, launcherPath = binPath): UpgradeTarget | undefined => {
   const prefix = brewPrefixFromCellar(binPath);
   if (prefix === undefined) return undefined;
-  const command = join(prefix, 'bin', 'brew');
+  const launcherDir = launcherPath === binPath ? join(prefix, 'bin') : dirname(launcherPath);
+  const command = join(launcherDir, 'brew');
   if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
-  return { method: 'brew', command, bin: join(prefix, 'bin', PACKAGE) };
+  return { method: 'brew', command, bin: join(launcherDir, PACKAGE) };
 };
 
 const brewTargetFromResolvedCellar = (binPath: string): UpgradeTarget | undefined => {
@@ -179,7 +180,7 @@ const brewTargetFromResolvedCellar = (binPath: string): UpgradeTarget | undefine
   if (fromPath !== undefined) return fromPath;
   const real = tryRealpath(binPath);
   if (real === undefined || real === binPath) return undefined;
-  return brewTargetFromCellar(real);
+  return brewTargetFromCellar(real, binPath);
 };
 
 const brewTargetFromSibling = (binPath: string): UpgradeTarget | undefined => {
