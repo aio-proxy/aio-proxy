@@ -163,7 +163,7 @@ Grok 对刚签发 token 的保护属于宿主行为，不通过伪造时间或�
 
 给 `AgentTargetSchema` 增加 `grok`，对应 client ID 为 `aio-proxy-grok`。同时更新请求 schema、服务端 client/target 校验、repository 的 target 解码和 admin 展示；不能只扩展 TypeScript union。现有数据库 target 列为 text，没有需要为了此枚举值新增的表结构。保持 token TTL、family rotation 和撤销规则不变。
 
-Grok 使用普通 OpenAI-compatible `GET /v1/models`，不假装消费插件专用的中立 Agent catalog schema。由现有 AT 认证保护请求，响应保持现有普通模型目录结构；本期不添加 Grok 私有目录协议、后台刷新 timer 或 CLI 的 LKG。模型到协议的映射遵从宿主，默认 Chat Completions；代理继续通过现有 pipeline 完成跨协议转换和 failover。
+Grok 使用普通 OpenAI-compatible `GET /v1/models`，不假装消费插件专用的中立 Agent catalog schema。现有 models handler 对任何没有目录协商参数的 Agent grant 都返回 400，因此实现必须新增已认证 `grant.target === 'grok'` 的普通目录分支；它位于插件协商处理之后、通用 Agent 拒绝和 `client_version` 分流之前。插件目标仍必须协商目录，畸形协商参数仍拒绝，过期或撤销 token 仍由前置认证拦截。由现有 AT 认证保护请求，响应保持现有普通模型目录结构；本期不添加 Grok 私有目录协议、后台刷新 timer 或 CLI 的 LKG。模型到协议的映射遵从宿主，默认 Chat Completions；代理继续通过现有 pipeline 完成跨协议转换和 failover。
 
 remove 按顺序执行：
 
