@@ -135,11 +135,11 @@ ownership 中记录待提交操作和逐字段 before/after，再写 config，�
 
 ## 7. 凭据状态机与并发
 
-CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refreshToken`、`accessExpiresAt`、`status`、`delivered`（该revision是否已成功输出并持久化完成标记）。RT 到期、撤销等最终状态以服务端为准，不伪造服务端未返回的到期信息。损坏、安装绑定不匹配或未知版本的状态不得用于请求。
+CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refreshToken`、`accessExpiresAt`、`status`、可选`deliveredBy`（最近成功输出该revision的安装锁owner UUID）。RT 到期、撤销等最终状态以服务端为准，不伪造服务端未返回的到期信息。损坏、安装绑定不匹配或未知版本的状态不得用于请求。
 
 ### 普通调用
 
-在同一安装锁内读取并验证 marker/config/credential。有 RT 时调用公共 `refreshAgentCredential()`，不因缓存 AT 尚未过期就绕过服务端校验；这样用户撤销后再次执行 `grok login` 能进入重新授权，不会反复拿到已撤销的缓存 AT。只有等待时观察到新revision，或同一revision从delivered=false变为true的并发调用可复用新结果；后者覆盖新token已保存但尚未输出时启动的helper。缺少凭据或服务端确认 `invalid_grant` 后，允许交互调用开始现有 device flow。设备码 URL 和状态在 stderr；超时、取消或拒绝不输出 token。
+在同一安装锁内读取并验证 marker/config/credential。有 RT 时调用公共 `refreshAgentCredential()`，不因缓存 AT 尚未过期就绕过服务端校验；这样用户撤销后再次执行 `grok login` 能进入重新授权，不会反复拿到已撤销的缓存 AT。只有观察到新revision、同revision的新交付owner，或本次观察到的锁持有者正是当前交付owner时，才允许并发复用。该规则同时覆盖token保存后和完成标记保存后、释放锁前两个窗口。缺少凭据或服务端确认 `invalid_grant` 后，允许交互调用开始现有 device flow。设备码 URL 和状态在 stderr；超时、取消或拒绝不输出 token。
 
 从无凭据进入授权时使用公共 `requestDeviceAuthorization()` 和 `pollDeviceAuthorization()`。总交互期限不超过 240 秒，并受服务端 device-code 到期限制，留在 Grok 已验证的 300 秒交互调用期限内。refresh 的临时网络失败不自动变成新的 device flow。
 
@@ -153,9 +153,9 @@ CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refresh
 
 configure、auth、remove 共用安装锁。复用或小范围提取仓库已有的文件锁进程身份、陈旧持有者恢复和 fencing 机制；不以进程内 single-flight 代替跨进程互斥，也不直接拿 server 数据库 ownership lock 管理 CLI 文件。
 
-普通交互授权期间保留安装锁，设置 heartbeat；其他静默调用在自己的 5 秒预算内失败即可，不发起第二个登录。拿锁后必须重读状态，不能使用等待前缓存的 RT。对并发调用，锁外只观察绑定安装的revision/delivered，不取用AT/RT；拿锁并复核路由后读取完整凭据。若revision增加，或同一revision发生delivered=false→true，且当前AT仍有效至少1秒，复用该结果；否则刷新。普通顺序调用观察到的delivered已是true，因此仍经服务端校验，不成为任意缓存命中。
+普通交互授权期间保留安装锁，设置 heartbeat；其他静默调用在自己的 5 秒预算内失败即可，不发起第二个登录。拿锁后必须重读状态，不能使用等待前缓存的 RT。对并发调用，先只读观察当前存活的安装锁owner，再读绑定安装的revision/deliveredBy元数据，不取用AT/RT；即使随后锁释放，也保留已经观察到的owner。拿锁并复核路由后读取完整凭据。若revision增加，或同revision的deliveredBy相对快照改变，或deliveredBy等于观察到的lockOwner，且AT仍有效至少1秒，则复用；否则刷新。锁不存在的独立调用没有owner匹配且交付元数据不变，仍经服务端校验。死亡或身份不可验证的持有者不能提供复用依据；不能只凭任意锁文件存在就放行。
 
-refresh/login成功后先原子持久化新AT/RT/revision及delivered=false，在同一安装锁内复核路由并等待stdout写入完成，再将delivered=true原子保存，最后释放锁。复用已交付revision时不再更新delivered。这样A保存后、输出前启动的B会观察到false→true并复用，不会令A输出已被B轮换作废的token。输出或完成标记写失败时非零退出，保留新RT；二者不是原子事务，不能承诺失败调用的部分stdout可用。保存后输出前崩溃且未见完成转变，后继helper刷新已保存的新RT；正常输出后未来独立轮换/撤销仍遵循现有family失效语义。网络请求前记录可恢复的 refresh-in-flight 状态；进程中断或响应丢失后，仅在服务端现有短重放窗口内重试同一 RT，超过窗口转为需要重新登录，避免无限重放旧 RT。复用现有协议的窗口规则，不调整服务端防重放语义来适配客户端。
+refresh/login成功后先原子持久化新AT/RT/revision，不带deliveredBy；在同一安装锁内复核路由并等待stdout写入完成，再将deliveredBy设为本次锁owner原子保存，最后释放锁。每次成功交付（包括复用）更新该owner，不增加token revision。因此完成标记已写但锁未释放时启动的B也有重叠依据；若其他等待者先取得锁并完成复用，交付owner变化仍让B识别新交付，无需公平排队或无界历史。输出或完成标记写失败时非零退出，保留新RT；二者不是原子事务，不能承诺失败调用的部分stdout可用。保存后输出前崩溃且未见完成转变，后继helper刷新已保存的新RT；正常输出后未来独立轮换/撤销仍遵循现有family失效语义。网络请求前记录可恢复的 refresh-in-flight 状态；进程中断或响应丢失后，仅在服务端现有短重放窗口内重试同一 RT，超过窗口转为需要重新登录，避免无限重放旧 RT。复用现有协议的窗口规则，不调整服务端防重放语义来适配客户端。
 
 Grok 对刚签发 token 的保护属于宿主行为，不通过伪造时间或循环重签绕开。测试必须覆盖并发轮换后其他 Grok 进程的恢复；若最终被宿主拒绝，呈现原生重新登录/重试路径，不能承诺所有 401 都无感恢复。
 
