@@ -72,26 +72,16 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   }
   if (paths.size !== expectedPaths.size || [...expectedPaths].some((path) => !paths.has(path)))
     throw new Error('Codex marker ownership is incomplete');
+  const tableKeys = parsed.createdTables.map((path) => path.join('\u0000'));
+  const validTablePath = (path: readonly string[]): boolean =>
+    (path.length === 2 && path[0] === 'model_providers' && path[1] === parsed.providerId) ||
+    (isV2 && path.length === 3 && path[0] === 'model_providers' && path[1] === parsed.providerId && path[2] === 'auth');
   if (
     parsed.createdTables.length < 1 ||
-    parsed.createdTables.some(
-      (path) =>
-        path.length < 2 ||
-        path.length > (isV2 ? 3 : 2) ||
-        path[0] !== 'model_providers' ||
-        path[1] !== parsed.providerId,
-    )
+    new Set(tableKeys).size !== tableKeys.length ||
+    parsed.createdTables.some((path) => !validTablePath(path))
   ) {
     throw new Error('Codex marker table ownership is inconsistent');
-  }
-  for (const path of parsed.createdTables) {
-    if (
-      path.length < 2 ||
-      path.length > (isV2 ? 3 : 2) ||
-      path[0] !== 'model_providers' ||
-      path[1] !== parsed.providerId
-    )
-      throw new Error('Codex marker contains an invalid table path');
   }
   return parsed as CodexMarker;
 }

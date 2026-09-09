@@ -183,7 +183,7 @@ The test hook narrows and detects the replacement window; Node/Bun do not expose
 
 The review fix round was committed after a fresh verification run:
 
-````text
+```text
 rtk bunx tsc --noEmit -p packages/cli/tsconfig.json 2>&1 | rtk rg 'packages/cli/src/agent/codex/(location|managed-config|contracts)' | head -100
 (no diagnostics for changed Codex implementation files)
 
@@ -197,6 +197,7 @@ rtk bunx oxlint packages/cli/src/agent/codex/location packages/cli/src/agent/cod
 
 rtk bunx oxfmt --check packages/cli/src/agent/codex/location packages/cli/src/agent/codex/managed-config packages/cli/src/agent/codex/contracts.ts
 All matched files use the correct format.
+```
 
 ## Revised Task 3 implementation
 
@@ -217,10 +218,19 @@ passed; existing repository warnings only
 
 git diff --check
 passed
-````
-
-The configure input retains a temporary optional `token` compatibility property for existing in-repository tests; new production callers use `auth`. Wizard/API-key removal, device authorization, helper lifecycle, migration, CLI dispatch, and locale work remain for later tasks.
-
 ```
 
+The configure input now requires `auth`; empty keep-chatgpt tokens are rejected. Wizard/API-key removal, device authorization, helper lifecycle, migration, CLI dispatch, and locale work remain for later tasks.
+
+## Review fix round
+
+Coalesced nested inline-table edits into one source operation, blocked V1 static markers from claiming command auth fields, detected empty standard auth tables structurally, constrained V2 created-table paths to the provider auth table, and made `auth` required with empty bearer tokens rejected. Added regressions for each review finding and repaired this report's Markdown fences.
+
+Verification:
+
+```text
+bun test packages/cli/src/agent/codex/config-document packages/cli/src/agent/codex/managed-config
+37 pass
+0 fail
+108 expect() calls
 ```

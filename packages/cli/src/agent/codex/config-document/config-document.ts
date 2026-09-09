@@ -1,6 +1,5 @@
 import { parseTOML, type AST } from 'toml-eslint-parser';
 
-import type { CodexAuthConfig } from '../contracts';
 import {
   applyInlineOperations,
   applySourceEdits,
@@ -213,6 +212,10 @@ export function readManagedField(text: string, path: readonly string[]): ValueSl
   return value === undefined ? { present: false } : { present: true, value: managedValue(value) };
 }
 
+export function hasCodexTable(text: string, path: readonly string[]): boolean {
+  return findTable(inspectDocument(parseDocument(text)), path) !== undefined;
+}
+
 export function readCodexDocument(text: string): CodexDocument {
   const document = inspectDocument(parseDocument(text));
   const active = findValue(document, ['model_provider']);
@@ -270,6 +273,7 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
     document.tables.filter((table) => {
       const tablePath = table.resolvedKey.map(String);
       if ((tablePath.length !== 2 && tablePath.length !== 3) || tablePath[0] !== 'model_providers') return false;
+      if (tablePath.length === 3 && !deletedPaths.has(tablePath.join('\u0000'))) return false;
       if (table.body.length === 0) return deletedPaths.has(tablePath.join('\u0000'));
       return (
         deletedPaths.has(tablePath.join('\u0000')) ||
@@ -456,68 +460,27 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
         .join(', ')} }`,
     });
   }
+  const coalescedInlineOperations = new Map<AST.TOMLInlineTable, InlineOperation[]>();
   for (const [container, operations] of inlineOperations) {
+    let scope = container;
+    for (const candidate of inlineOperations.keys()) {
+      if (
+        candidate !== container &&
+        candidate.range[0] <= scope.range[0] &&
+        candidate.range[1] >= scope.range[1] &&
+        candidate.range[1] - candidate.range[0] > scope.range[1] - scope.range[0]
+      ) {
+        scope = candidate;
+      }
+    }
+    const scoped = coalescedInlineOperations.get(scope) ?? [];
+    scoped.push(...operations);
+    coalescedInlineOperations.set(scope, scoped);
+  }
+  for (const [container, operations] of coalescedInlineOperations) {
     sourceEdits.push(applyInlineOperations(text, container.range, operations));
   }
   const result = applySourceEdits(text, sourceEdits);
   validateFinalDocument(result);
   return result;
-}
-
-export function codexProviderEdits(providerId: string, baseUrl: string, auth: CodexAuthConfig): readonly FieldEdit[] {
-  const id = validateCodexProviderId(providerId);
-  const fields: Record<string, ManagedValue> = {
-    name: 'AIO Proxy',
-    base_url: baseUrl,
-    wire_api: 'responses',
-  };
-  const edits: FieldEdit[] = [
-    { path: ['model_provider'], next: { present: true, value: id } },
-    ...Object.entries(fields).map(([key, value]) => ({
-      path: ['model_providers', id, key],
-      next: { present: true as const, value },
-    })),
-    {
-      path: ['model_providers', id, 'requires_openai_auth'],
-      next: auth.mode === 'keep-chatgpt' ? { present: true, value: true } : { present: false },
-    },
-    {
-      path: ['model_providers', id, 'experimental_bearer_token'],
-      next: auth.mode === 'keep-chatgpt' ? { present: true, value: auth.token } : { present: false },
-    },
-    {
-      path: ['model_providers', id, 'auth', 'command'],
-      next: auth.mode === 'command' ? { present: true, value: auth.command } : { present: false },
-    },
-    {
-      path: ['model_providers', id, 'auth', 'args'],
-      next:
-        auth.mode === 'command'
-          ? { present: true, value: ['agent', 'auth', 'codex', '--installation-id', auth.installationId] }
-          : { present: false },
-    },
-    {
-      path: ['model_providers', id, 'auth', 'timeout_ms'],
-      next: auth.mode === 'command' ? { present: true, value: 5000 } : { present: false },
-    },
-    {
-      path: ['model_providers', id, 'auth', 'refresh_interval_ms'],
-      next: auth.mode === 'command' ? { present: true, value: 300000 } : { present: false },
-    },
-  ];
-  return edits;
-}
-
-export function validateCodexProviderId(value: string): string {
-  const hasControlCharacter = [...value].some((character) => {
-    const codePoint = character.codePointAt(0)!;
-    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
-  });
-  if (hasControlCharacter) throw new Error('Codex provider ID cannot contain control characters');
-  const id = value.trim();
-  if (id.length === 0) throw new Error('Codex provider ID cannot be empty');
-  if (new Set(['openai', 'ollama', 'lmstudio', 'amazon-bedrock']).has(id)) {
-    throw new Error(`Codex provider ID is reserved: ${id}`);
-  }
-  return id;
 }

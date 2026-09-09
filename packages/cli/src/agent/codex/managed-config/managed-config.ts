@@ -1,6 +1,7 @@
 import {
   codexProviderEdits,
   editCodexDocument,
+  hasCodexTable,
   readCodexDocument,
   readManagedField,
   type FieldEdit,
@@ -180,7 +181,11 @@ async function checkCodexInstalled(): Promise<void> {
   if (exit !== 0 || !/^codex-cli\s+\d+\.\d+\.\d+\b/m.test(output)) throw new Error('Codex installation is missing');
 }
 
-function findAuthenticationConflict(text: string, providerId: string): string | undefined {
+function findAuthenticationConflict(
+  text: string,
+  providerId: string,
+  allowManagedCommandFields = false,
+): string | undefined {
   try {
     const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
     const providers = parsed['model_providers'];
@@ -191,7 +196,7 @@ function findAuthenticationConflict(text: string, providerId: string): string | 
       if (key === 'auth') {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return `model_providers.${providerId}.auth`;
         for (const authKey of Object.keys(value as Record<string, unknown>)) {
-          if (!commandFields.includes(authKey as (typeof commandFields)[number]))
+          if (!allowManagedCommandFields || !commandFields.includes(authKey as (typeof commandFields)[number]))
             return `model_providers.${providerId}.auth.${authKey}`;
         }
         continue;
@@ -303,28 +308,33 @@ export async function configureCodexConfig(input: {
   readonly location: CodexLocation;
   readonly providerId: string;
   readonly baseUrl: string;
-  readonly auth?: CodexAuthConfig;
-  /** @deprecated Temporary compatibility for existing callers; new code passes auth. */
-  readonly token?: string;
+  readonly auth: CodexAuthConfig;
 }): Promise<ConfigCommit> {
   await checkCodexInstalled();
   return runExclusive(input.location.markerPath, async () => {
-    const { location, providerId, baseUrl } = input;
-    const auth: CodexAuthConfig = input.auth ?? { mode: 'keep-chatgpt', token: input.token ?? '' };
+    const { location, providerId, baseUrl, auth } = input;
     await recoverPending(location);
     const current = await readText(location);
     const text = current?.text ?? '';
     const document =
       current === undefined ? { activeProviderId: '', providerIds: [] as string[] } : readCodexDocument(text);
     const marker = await readMarker(location);
-    const authConflict = findAuthenticationConflict(text, providerId);
+    const authConflict = findAuthenticationConflict(
+      text,
+      providerId,
+      marker?.providerId === providerId && marker.format === 2 && marker.authMode === 'command',
+    );
     if (authConflict !== undefined)
       throw new Error(`Codex provider contains user authentication field: ${authConflict}`);
     if (marker !== undefined && marker.providerId !== providerId) {
       if (document.providerIds.includes(providerId)) {
         throw new Error(`Codex provider ${providerId} is occupied and is not managed by aio-proxy`);
       }
-      const oldAuthConflict = findAuthenticationConflict(text, marker.providerId);
+      const oldAuthConflict = findAuthenticationConflict(
+        text,
+        marker.providerId,
+        marker.format === 2 && marker.authMode === 'command',
+      );
       if (oldAuthConflict !== undefined)
         throw new Error(`Codex provider contains user authentication field: ${oldAuthConflict}`);
     }
@@ -344,12 +354,13 @@ export async function configureCodexConfig(input: {
         throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
     }
     const edits = codexProviderEdits(providerId, baseUrl, auth);
-    const nextText = editCodexDocument(workingText, edits);
+    const editedText = editCodexDocument(workingText, edits);
+    const nextText = marker?.providerId === providerId ? removeCreatedTables(editedText, marker) : editedText;
     const fields = makeFields(text, providerId, edits, marker?.providerId === providerId ? marker : undefined);
     if (marker?.providerId === providerId) createdTables = marker.createdTables;
     else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
     const authPath = ['model_providers', providerId, 'auth'] as const;
-    const hadAuthTable = readManagedField(text, authPath).present;
+    const hadAuthTable = hasCodexTable(text, authPath) || readManagedField(text, authPath).present;
     if (
       auth.mode === 'command' &&
       !hadAuthTable &&

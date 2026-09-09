@@ -191,3 +191,36 @@ test('removes an explicitly managed provider table after deleting all managed fi
 test('rejects a provider ID containing a control character before trimming', () => {
   expect(() => validateCodexProviderId('proxy\n')).toThrow(/control/i);
 });
+
+test('coalesces edits for an inline provider with an inline auth table', () => {
+  const original =
+    'model = "keep-model"\n' +
+    'model_providers = { "custom.proxy" = { name = "old", auth = { command = "old", args = ["old"], user = "keep" } } }\n';
+  const actual = editCodexDocument(
+    original,
+    codexProviderEdits('custom.proxy', 'http://proxy/v1', {
+      mode: 'command',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      command: '/tmp/AIO Proxy/bin/aiop',
+    }),
+  );
+  expect(Bun.TOML.parse(actual)).toMatchObject({
+    model: 'keep-model',
+    model_providers: {
+      'custom.proxy': {
+        name: 'AIO Proxy',
+        base_url: 'http://proxy/v1',
+        auth: {
+          command: '/tmp/AIO Proxy/bin/aiop',
+          user: 'keep',
+        },
+      },
+    },
+  });
+});
+
+test('rejects an empty keep-chatgpt token', () => {
+  expect(() => codexProviderEdits('proxy', 'http://proxy/v1', { mode: 'keep-chatgpt', token: '' })).toThrow(
+    /token cannot be empty/i,
+  );
+});

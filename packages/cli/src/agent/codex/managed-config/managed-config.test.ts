@@ -25,7 +25,7 @@ test('remove restores managed fields and retains a later model choice', async ()
       location,
       providerId: 'aio-proxy',
       baseUrl: 'http://127.0.0.1:9317/v1',
-      token: 'test-key',
+      auth: keep('test-key'),
     });
     const configured = await Bun.file(location.configPath).text();
     await Bun.write(location.configPath, configured.replace('model = "before"', 'model = "after"'));
@@ -42,7 +42,7 @@ test('remove restores managed fields and retains a later model choice', async ()
 test('preserves a user change to base_url and reports modified state', async () => {
   const { root, location } = await fixture();
   try {
-    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://old/v1', token: 'test-key' });
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://old/v1', auth: keep('test-key') });
     const configured = await Bun.file(location.configPath).text();
     await Bun.write(location.configPath, configured.replace('http://old/v1', 'http://user/v1'));
     const inspection = await inspectCodexConfig(location);
@@ -64,8 +64,18 @@ test('preserves a user change to base_url and reports modified state', async () 
 test('reconfigure keeps the original before values', async () => {
   const { root, location } = await fixture();
   try {
-    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://old/v1', token: 'old-token' });
-    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://new/v1', token: 'new-token' });
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://old/v1',
+      auth: keep('old-token'),
+    });
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://new/v1',
+      auth: keep('new-token'),
+    });
     await removeCodexConfig(location);
     const result = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, unknown>;
     expect(result['model_provider']).toBe('openai');
@@ -124,6 +134,76 @@ test('round-trips command authentication and upgrades the marker to V2', async (
   }
 });
 
+test('V1 static ownership rejects user-authored command fields', async () => {
+  const { root, location } = await fixture();
+  try {
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
+    const marker = JSON.parse(await Bun.file(location.markerPath).text()) as Record<string, any>;
+    marker.format = 1;
+    delete marker.authMode;
+    delete marker.installationId;
+    marker.fields = marker.fields.filter((field: { path: string[] }) => field.path.length < 4);
+    await Bun.write(location.markerPath, `${JSON.stringify(marker)}\n`);
+    const before = await Bun.file(location.configPath).text();
+    await Bun.write(
+      location.configPath,
+      `${before}[model_providers.aio-proxy.auth]\ncommand = "user-command"\nargs = ["user"]\n`,
+    );
+    const changed = await Bun.file(location.configPath).text();
+    await expect(
+      configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v2', auth: keep('new-key') }),
+    ).rejects.toThrow('authentication');
+    expect(await Bun.file(location.configPath).text()).toBe(changed);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('does not claim or remove an existing empty auth table', async () => {
+  const { root, location } = await fixture();
+  try {
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
+    const marker = JSON.parse(await Bun.file(location.markerPath).text()) as Record<string, any>;
+    marker.format = 1;
+    delete marker.authMode;
+    delete marker.installationId;
+    marker.fields = marker.fields.filter((field: { path: string[] }) => field.path.length < 4);
+    await Bun.write(location.markerPath, `${JSON.stringify(marker)}\n`);
+    const before = await Bun.file(location.configPath).text();
+    await Bun.write(location.configPath, `${before}[model_providers.aio-proxy.auth]\n`);
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://proxy/v1',
+      auth: { mode: 'command', installationId: '11111111-1111-4111-8111-111111111111', command: 'aiop' },
+    });
+    const commandMarker = JSON.parse(await Bun.file(location.markerPath).text()) as { createdTables: string[][] };
+    expect(commandMarker.createdTables).toEqual([['model_providers', 'aio-proxy']]);
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
+    expect(await Bun.file(location.configPath).text()).toContain('[model_providers.aio-proxy.auth]');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects malformed nested table ownership in a marker', async () => {
+  const { root, location } = await fixture();
+  try {
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://proxy/v1',
+      auth: { mode: 'command', installationId: '11111111-1111-4111-8111-111111111111', command: 'aiop' },
+    });
+    const marker = JSON.parse(await Bun.file(location.markerPath).text()) as { createdTables: string[][] };
+    marker.createdTables.push(['model_providers', 'aio-proxy', 'other']);
+    await Bun.write(location.markerPath, `${JSON.stringify(marker)}\n`);
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({ status: 'conflict' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects a foreign marker and marker symlink', async () => {
   const { root, location } = await fixture();
   try {
@@ -146,7 +226,7 @@ test('uses private modes for managed directory and marker', async () => {
       location,
       providerId: 'aio-proxy',
       baseUrl: 'http://127.0.0.1/v1',
-      token: 'test-key',
+      auth: keep('test-key'),
     });
     expect((await lstat(location.managedRoot)).mode & 0o777).toBe(0o700);
     expect((await lstat(location.markerPath)).mode & 0o777).toBe(0o600);
@@ -155,7 +235,7 @@ test('uses private modes for managed directory and marker', async () => {
       location,
       providerId: 'aio-proxy',
       baseUrl: 'http://127.0.0.1/v1',
-      token: 'test-key',
+      auth: keep('test-key'),
     });
     expect((await lstat(location.configPath)).mode & 0o777).toBe(0o600);
     expect((await readFile(location.markerPath)).toString()).toContain('experimental_bearer_token');
@@ -172,7 +252,7 @@ test('does not take over an unmarked provider or remove user auth fields', async
         location: first.location,
         providerId: 'aio-proxy',
         baseUrl: 'http://proxy/v1',
-        token: 'key',
+        auth: keep('key'),
       }),
     ).rejects.toThrow('not managed');
   } finally {
@@ -185,7 +265,7 @@ test('does not take over an unmarked provider or remove user auth fields', async
       location: second.location,
       providerId: 'aio-proxy',
       baseUrl: 'http://proxy/v1',
-      token: 'key',
+      auth: keep('key'),
     });
     const text = await Bun.file(second.location.configPath).text();
     await Bun.write(second.location.configPath, `${text}env_key = "USER_KEY"\n`);
@@ -194,7 +274,7 @@ test('does not take over an unmarked provider or remove user auth fields', async
         location: second.location,
         providerId: 'aio-proxy',
         baseUrl: 'http://new/v1',
-        token: 'key2',
+        auth: keep('key2'),
       }),
     ).rejects.toThrow('authentication');
   } finally {
@@ -209,7 +289,7 @@ test('removes an owned inline provider while preserving neighboring providers', 
       location: f.location,
       providerId: 'aio-proxy',
       baseUrl: 'http://proxy/v1',
-      token: 'key',
+      auth: keep('key'),
     });
     await removeCodexConfig(f.location);
     const result = Bun.TOML.parse(await Bun.file(f.location.configPath).text()) as Record<string, unknown>;
@@ -226,7 +306,7 @@ test('rejects a partial ownership marker instead of taking it over', async () =>
       location: f.location,
       providerId: 'aio-proxy',
       baseUrl: 'http://proxy/v1',
-      token: 'key',
+      auth: keep('key'),
     });
     const marker = JSON.parse(await Bun.file(f.location.markerPath).text()) as { fields: unknown[] };
     marker.fields.pop();
@@ -288,7 +368,7 @@ test('rejects an existing symlinked parent before creating managed files', async
   const location = resolveCodexLocation(join(linked, 'codex'), {});
   try {
     await expect(
-      configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', token: 'key' }),
+      configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') }),
     ).rejects.toThrow('Refusing symbolic link parent');
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -333,7 +413,12 @@ test('refuses a symlinked TOML destination before any replacement', async () => 
     await rm(f.location.configPath);
     await symlink(foreign, f.location.configPath);
     await expect(
-      configureCodexConfig({ location: f.location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', token: 'key' }),
+      configureCodexConfig({
+        location: f.location,
+        providerId: 'aio-proxy',
+        baseUrl: 'http://proxy/v1',
+        auth: keep('key'),
+      }),
     ).rejects.toThrow('symbolic link');
     expect(await Bun.file(foreign).text()).toBe('model = "foreign"\n');
   } finally {
@@ -366,7 +451,7 @@ test('rejects switching to an occupied provider before changing the old configur
       location: f.location,
       providerId: 'old-proxy',
       baseUrl: 'http://old/v1',
-      token: 'old-key',
+      auth: keep('old-key'),
     });
     const before = await Bun.file(f.location.configPath).text();
     await Bun.write(f.location.configPath, `${before}\n[model_providers.existing]\nname = "user-owned"\n`);
@@ -376,7 +461,7 @@ test('rejects switching to an occupied provider before changing the old configur
         location: f.location,
         providerId: 'existing',
         baseUrl: 'http://new/v1',
-        token: 'new-key',
+        auth: keep('new-key'),
       }),
     ).rejects.toThrow('occupied');
     expect(await Bun.file(f.location.configPath).text()).toBe(occupied);
