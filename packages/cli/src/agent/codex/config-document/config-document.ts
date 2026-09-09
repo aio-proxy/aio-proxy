@@ -1,5 +1,6 @@
 import { parseTOML, type AST } from 'toml-eslint-parser';
 
+import type { CodexAuthConfig } from '../contracts';
 import {
   applyInlineOperations,
   applySourceEdits,
@@ -15,7 +16,7 @@ import {
   type SourceEdit,
 } from './ast-edits';
 
-export type ManagedValue = string | boolean;
+export type ManagedValue = string | boolean | number | readonly string[];
 export type ValueSlot = { readonly present: false } | { readonly present: true; readonly value: ManagedValue };
 export type FieldEdit = { readonly path: readonly string[]; readonly next: ValueSlot };
 export type CodexDocument = {
@@ -80,17 +81,27 @@ const findInlineContainer = (
   return value?.keyValue.value.type === 'TOMLInlineTable' ? value.keyValue.value : undefined;
 };
 
-const valueFromNode = (node: AST.TOMLValue): ManagedValue | undefined => {
+const valueFromNode = (node: AST.TOMLContentNode): ManagedValue | undefined => {
+  if (node.type === 'TOMLArray') {
+    const values: string[] = [];
+    for (const element of node.elements) {
+      if (element.type !== 'TOMLValue' || element.kind !== 'string') return undefined;
+      values.push(element.value as string);
+    }
+    return values;
+  }
+  if (node.type !== 'TOMLValue') return undefined;
   if (node.kind === 'string' || node.kind === 'boolean') return node.value as ManagedValue;
+  if (node.kind === 'integer' && Number.isFinite(node.value)) return node.value as number;
   return undefined;
 };
 
 const managedValue = (value: LocatedValue): ManagedValue => {
-  if (value.keyValue.value.type !== 'TOMLValue') {
-    throw new Error(`Managed field ${value.path.join('.')} must be a TOML string or boolean`);
-  }
   const result = valueFromNode(value.keyValue.value);
-  if (result === undefined) throw new Error(`Managed field ${value.path.join('.')} must be a TOML string or boolean`);
+  if (result === undefined)
+    throw new Error(
+      `Managed field ${value.path.join('.')} must be a string or boolean, finite integer, or string array`,
+    );
   return result;
 };
 
@@ -129,9 +140,18 @@ const standardTableBlock = (
   tables: readonly AST.TOMLTable[],
   table: AST.TOMLTable,
   fields: readonly (readonly [string, ManagedValue])[],
+  removedTables: ReadonlySet<AST.TOMLTable> = new Set(),
 ): SourceEdit => {
   const ending = lineEndingFor(source);
-  const start = tableInsertionPoint(source, table, tables);
+  const nextTable = tables.find((candidate) => candidate.range[0] > table.range[0] && !removedTables.has(candidate));
+  const removedFollowing = tables
+    .filter((candidate) => candidate.range[0] > table.range[0] && removedTables.has(candidate))
+    .at(-1);
+  const start =
+    nextTable?.range[0] ??
+    (removedFollowing === undefined
+      ? tableInsertionPoint(source, table, tables)
+      : textAfterLine(source, removedFollowing.body.at(-1)?.range[1] ?? removedFollowing.range[1]));
   return {
     start,
     end: start,
@@ -143,13 +163,19 @@ const newProviderTable = (
   source: string,
   providerId: string,
   fields: readonly (readonly [string, ManagedValue])[],
+  nestedTables: readonly (readonly [readonly string[], readonly (readonly [string, ManagedValue])[]])[] = [],
 ): SourceEdit => {
   const ending = lineEndingFor(source);
   const prefix = source.length > 0 && !source.endsWith('\n') ? ending : '';
   return {
     start: source.length,
     end: source.length,
-    text: `${prefix}[model_providers.${encodeTomlKey(providerId)}]${ending}${fieldLines(fields, ending)}`,
+    text: `${prefix}[model_providers.${encodeTomlKey(providerId)}]${ending}${fieldLines(fields, ending)}${nestedTables
+      .map(
+        ([path, nestedFields]) =>
+          `${ending}[${path.map(encodeTomlKey).join('.')}]${ending}${fieldLines(nestedFields, ending)}`,
+      )
+      .join('')}`,
   };
 };
 
@@ -157,12 +183,18 @@ const newInlineProvider = (
   container: AST.TOMLInlineTable,
   providerId: string,
   fields: readonly (readonly [string, ManagedValue])[],
+  nestedFields: readonly (readonly [string, ManagedValue])[] = [],
 ): InlineOperation => ({
   kind: 'insert',
   start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
-  text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(providerId)} = { ${fields
-    .map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`)
-    .join(', ')} }`,
+  text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(providerId)} = { ${[
+    ...fields.map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`),
+    ...(nestedFields.length > 0
+      ? [
+          `auth = { ${nestedFields.map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`).join(', ')} }`,
+        ]
+      : []),
+  ].join(', ')} }`,
 });
 
 const validateFinalDocument = (text: string): void => {
@@ -210,6 +242,8 @@ export function readCodexDocument(text: string): CodexDocument {
   return { text, activeProviderId, providerIds: [...providerIds] };
 }
 
+// The source-preserving edit planner necessarily keeps all edit locations in one scope.
+// oxlint-disable-next-line max-lines-per-function
 export function editCodexDocument(text: string, edits: readonly FieldEdit[]): string {
   const document = inspectDocument(parseDocument(text));
   const ending = lineEndingFor(text);
@@ -218,37 +252,30 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
   const tableFields = new Map<AST.TOMLTable, [string, ManagedValue][]>();
   const topLevelFields: [string, ManagedValue][] = [];
   const newProviders = new Map<string, [string, ManagedValue][]>();
+  const newNestedTables = new Map<string, { path: string[]; fields: [string, ManagedValue][] }>();
   const newInlineProviders = new Map<
     AST.TOMLInlineTable,
-    { readonly providerId: string; readonly fields: [string, ManagedValue][] }
+    {
+      readonly providerId: string;
+      readonly fields: [string, ManagedValue][];
+      readonly nestedFields: [string, ManagedValue][];
+    }
+  >();
+  const newInlineNested = new Map<
+    AST.TOMLInlineTable,
+    { readonly key: string; readonly fields: [string, ManagedValue][] }
   >();
   const deletedPaths = new Set(edits.filter((edit) => !edit.next.present).map((edit) => edit.path.join('\u0000')));
-  const managedProviderFields = new Set([
-    'name',
-    'base_url',
-    'wire_api',
-    'requires_openai_auth',
-    'experimental_bearer_token',
-  ]);
   const providerTableCleanup = new Set(
     document.tables.filter((table) => {
       const tablePath = table.resolvedKey.map(String);
-      if (tablePath.length !== 2 || tablePath[0] !== 'model_providers') return false;
+      if ((tablePath.length !== 2 && tablePath.length !== 3) || tablePath[0] !== 'model_providers') return false;
       if (table.body.length === 0) return deletedPaths.has(tablePath.join('\u0000'));
-      const allFieldsManaged = table.body.every((field) => {
-        const fieldPath = [...tablePath, ...keyParts(field.key)];
-        return fieldPath.length === 3 && managedProviderFields.has(fieldPath[2]!);
-      });
-      if (!allFieldsManaged) return false;
       return (
         deletedPaths.has(tablePath.join('\u0000')) ||
         table.body.every((field) => {
           const fieldPath = [...tablePath, ...keyParts(field.key)];
-          return (
-            fieldPath.length === 3 &&
-            managedProviderFields.has(fieldPath[2]!) &&
-            deletedPaths.has(fieldPath.join('\u0000'))
-          );
+          return deletedPaths.has(fieldPath.join('\u0000'));
         })
       );
     }),
@@ -272,7 +299,7 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       if (!edit.next.present) {
         if (existing.container.type === 'TOMLInlineTable') {
           addInlineOperation(existing.container, inlineMemberDelete(text, existing.container.body, existing.keyValue));
-        } else if (existing.container.type === 'TOMLTable' && edit.path.length === 3) {
+        } else if (existing.container.type === 'TOMLTable' && edit.path.length >= 3) {
           if (!providerTableCleanup.has(existing.container))
             sourceEdits.push(lineDelete(text, existing.keyValue.range));
         } else if (edit.path.length === 1 || edit.path[0] !== 'model_providers') {
@@ -315,14 +342,41 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       topLevelFields.push([key, edit.next.value]);
       continue;
     }
-    if (edit.path[0] !== 'model_providers' || edit.path.length !== 3) {
+    if (edit.path[0] !== 'model_providers' || (edit.path.length !== 3 && edit.path.length !== 4)) {
       throw new Error(`Cannot create nested TOML field ${edit.path.join('.')}`);
     }
     const providerId = edit.path[1]!;
     const providerPath = ['model_providers', providerId];
     const providerInline = findInlineContainer(document, providerPath);
     if (providerInline !== undefined) {
+      if (edit.path.length === 4) {
+        const nested = newInlineNested.get(providerInline) ?? { key: 'auth', fields: [] };
+        newInlineNested.set(providerInline, { key: 'auth', fields: [...nested.fields, [key, edit.next.value]] });
+        continue;
+      }
       addInlineOperation(providerInline, inlineInsert(providerInline, key, edit.next.value));
+      continue;
+    }
+    const parentTable = findTable(document, parentPath);
+    if (parentTable !== undefined) {
+      addTableField(parentTable, key, edit.next.value);
+      continue;
+    }
+    if (edit.path.length === 4) {
+      const rootInline = findInlineContainer(document, ['model_providers']);
+      if (rootInline !== undefined) {
+        const existingInline = newInlineProviders.get(rootInline);
+        newInlineProviders.set(rootInline, {
+          providerId,
+          fields: existingInline?.fields ?? [],
+          nestedFields: [...(existingInline?.nestedFields ?? []), [key, edit.next.value]],
+        });
+        continue;
+      }
+      const nestedKey = parentPath.join('\u0000');
+      const nested = newNestedTables.get(nestedKey) ?? { path: [...parentPath], fields: [] };
+      nested.fields.push([key, edit.next.value]);
+      newNestedTables.set(nestedKey, nested);
       continue;
     }
     const rootInline = findInlineContainer(document, ['model_providers']);
@@ -330,7 +384,11 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       const existingInline = newInlineProviders.get(rootInline);
       const fields = existingInline?.fields ?? [];
       fields.push([key, edit.next.value]);
-      newInlineProviders.set(rootInline, { providerId, fields });
+      newInlineProviders.set(rootInline, {
+        providerId,
+        fields,
+        nestedFields: existingInline?.nestedFields ?? [],
+      });
       continue;
     }
     const providerTable = findTable(document, providerPath);
@@ -351,8 +409,33 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       text: `${sourceInsertionPrefix(text, position, ending)}${fieldLines(topLevelFields, ending)}`,
     });
   }
-  for (const [table, fields] of tableFields) sourceEdits.push(standardTableBlock(text, document.tables, table, fields));
-  for (const [providerId, fields] of newProviders) sourceEdits.push(newProviderTable(text, providerId, fields));
+  for (const [table, fields] of tableFields)
+    sourceEdits.push(standardTableBlock(text, document.tables, table, fields, providerTableCleanup));
+  for (const [providerId, fields] of newProviders) {
+    const nested = [...newNestedTables.values()].filter(
+      ({ path }) => path.length === 3 && path[0] === 'model_providers' && path[1] === providerId,
+    );
+    sourceEdits.push(
+      newProviderTable(
+        text,
+        providerId,
+        fields,
+        nested.map(({ path, fields: nestedFields }) => [path, nestedFields]),
+      ),
+    );
+  }
+  for (const { path, fields } of newNestedTables.values()) {
+    if (newProviders.has(path[1]!)) continue;
+    const providerTable = findTable(document, path.slice(0, 2));
+    if (providerTable === undefined) throw new Error(`Cannot create nested TOML field ${path.join('.')}`);
+    const endingText = lineEndingFor(text);
+    const start = tableInsertionPoint(text, providerTable, document.tables);
+    sourceEdits.push({
+      start,
+      end: start,
+      text: `${sourceInsertionPrefix(text, start, endingText)}[${path.map(encodeTomlKey).join('.')}]${endingText}${fieldLines(fields, endingText)}`,
+    });
+  }
   for (const table of providerTableCleanup) {
     const last = table.body.at(-1);
     sourceEdits.push({
@@ -361,8 +444,17 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
       text: '',
     });
   }
-  for (const [container, { providerId, fields }] of newInlineProviders) {
-    addInlineOperation(container, newInlineProvider(container, providerId, fields));
+  for (const [container, { providerId, fields, nestedFields }] of newInlineProviders) {
+    addInlineOperation(container, newInlineProvider(container, providerId, fields, nestedFields));
+  }
+  for (const [container, { key, fields }] of newInlineNested) {
+    addInlineOperation(container, {
+      kind: 'insert',
+      start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
+      text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(key)} = { ${fields
+        .map(([field, value]) => `${encodeTomlKey(field)} = ${encodeTomlValue(value)}`)
+        .join(', ')} }`,
+    });
   }
   for (const [container, operations] of inlineOperations) {
     sourceEdits.push(applyInlineOperations(text, container.range, operations));
@@ -372,22 +464,48 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
   return result;
 }
 
-export function codexProviderEdits(providerId: string, baseUrl: string, token: string): readonly FieldEdit[] {
+export function codexProviderEdits(providerId: string, baseUrl: string, auth: CodexAuthConfig): readonly FieldEdit[] {
   const id = validateCodexProviderId(providerId);
   const fields: Record<string, ManagedValue> = {
-    name: 'aio-proxy',
+    name: 'AIO Proxy',
     base_url: baseUrl,
     wire_api: 'responses',
-    requires_openai_auth: true,
-    experimental_bearer_token: token,
   };
-  return [
+  const edits: FieldEdit[] = [
     { path: ['model_provider'], next: { present: true, value: id } },
     ...Object.entries(fields).map(([key, value]) => ({
       path: ['model_providers', id, key],
       next: { present: true as const, value },
     })),
+    {
+      path: ['model_providers', id, 'requires_openai_auth'],
+      next: auth.mode === 'keep-chatgpt' ? { present: true, value: true } : { present: false },
+    },
+    {
+      path: ['model_providers', id, 'experimental_bearer_token'],
+      next: auth.mode === 'keep-chatgpt' ? { present: true, value: auth.token } : { present: false },
+    },
+    {
+      path: ['model_providers', id, 'auth', 'command'],
+      next: auth.mode === 'command' ? { present: true, value: auth.command } : { present: false },
+    },
+    {
+      path: ['model_providers', id, 'auth', 'args'],
+      next:
+        auth.mode === 'command'
+          ? { present: true, value: ['agent', 'auth', 'codex', '--installation-id', auth.installationId] }
+          : { present: false },
+    },
+    {
+      path: ['model_providers', id, 'auth', 'timeout_ms'],
+      next: auth.mode === 'command' ? { present: true, value: 5000 } : { present: false },
+    },
+    {
+      path: ['model_providers', id, 'auth', 'refresh_interval_ms'],
+      next: auth.mode === 'command' ? { present: true, value: 300000 } : { present: false },
+    },
   ];
+  return edits;
 }
 
 export function validateCodexProviderId(value: string): string {

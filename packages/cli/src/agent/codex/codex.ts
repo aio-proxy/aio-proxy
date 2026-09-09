@@ -240,7 +240,12 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     inspectKeys: () => inspectProxyKeys(createCredentialDeps(endpoint)),
     inspectSessions: (providerId) => inspectCodexSessions(location, providerId),
     saveConfig: (providerId, token) =>
-      configureCodexConfig({ location, providerId, baseUrl: codexBaseUrl(endpoint), token }),
+      configureCodexConfig({
+        location,
+        providerId,
+        baseUrl: codexBaseUrl(endpoint),
+        auth: { mode: 'keep-chatgpt', token },
+      }),
     migrateSessions: (targets, providerId) => migrateCodexSessions({ location, targets, targetProviderId: providerId }),
   });
   return result.status === 'cancelled' ? result : { ...result, version, versionCompatibility: 'unverified' as const };

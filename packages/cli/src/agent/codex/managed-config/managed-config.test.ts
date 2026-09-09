@@ -8,6 +8,8 @@ import { configureCodexConfig, inspectCodexConfig, recoverCodexConfigOperation, 
 import { startJournal } from './journal';
 import { readRegularFile, writeTomlAtomically } from './storage';
 
+const keep = (token: string) => ({ mode: 'keep-chatgpt' as const, token });
+
 const fixture = async (text = 'model = "before"\nmodel_provider = "openai"\n') => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-config-'));
   const location = resolveCodexLocation(root, {});
@@ -68,6 +70,55 @@ test('reconfigure keeps the original before values', async () => {
     const result = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, unknown>;
     expect(result['model_provider']).toBe('openai');
     expect(result['model_providers']).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('round-trips command authentication and upgrades the marker to V2', async () => {
+  const { root, location } = await fixture('# keep\nmodel = "custom-model"\nmodel_provider = "openai"\n');
+  try {
+    const auth = {
+      mode: 'command' as const,
+      installationId: '11111111-1111-4111-8111-111111111111',
+      command: '/tmp/AIO Proxy/bin/aiop',
+    };
+    await configureCodexConfig({ location, providerId: 'custom.proxy', baseUrl: 'http://127.0.0.1:9317/v1', auth });
+    const commandText = await Bun.file(location.configPath).text();
+    expect(Bun.TOML.parse(commandText)).toMatchObject({
+      model: 'custom-model',
+      model_providers: {
+        'custom.proxy': {
+          name: 'AIO Proxy',
+          auth: {
+            command: auth.command,
+            args: ['agent', 'auth', 'codex', '--installation-id', auth.installationId],
+            timeout_ms: 5000,
+            refresh_interval_ms: 300000,
+          },
+        },
+      },
+    });
+    expect(JSON.parse(await Bun.file(location.markerPath).text())).toMatchObject({
+      format: 2,
+      authMode: 'command',
+      installationId: auth.installationId,
+    });
+    await configureCodexConfig({
+      location,
+      providerId: 'custom.proxy',
+      baseUrl: 'http://127.0.0.1:9317/v1',
+      auth: keep('token'),
+    });
+    const staticText = await Bun.file(location.configPath).text();
+    const parsed = Bun.TOML.parse(staticText) as Record<string, any>;
+    expect(parsed.model).toBe('custom-model');
+    expect(parsed.model_providers['custom.proxy'].auth).toBeUndefined();
+    expect(parsed.model_providers['custom.proxy'].experimental_bearer_token).toBe('token');
+    expect(JSON.parse(await Bun.file(location.markerPath).text())).toMatchObject({
+      format: 2,
+      authMode: 'keep-chatgpt',
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

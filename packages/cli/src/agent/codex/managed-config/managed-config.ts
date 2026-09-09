@@ -8,6 +8,7 @@ import {
 } from '../config-document';
 import type {
   CodexLocation,
+  CodexAuthConfig,
   CodexMarker,
   ConfigCommit,
   ConfigInspection,
@@ -35,7 +36,8 @@ import {
 } from './storage';
 
 const providerFields = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'] as const;
-const authenticationFields = new Set(['env_key', 'auth', 'aws', 'headers', 'header', 'api_key']);
+const commandFields = ['command', 'args', 'timeout_ms', 'refresh_interval_ms'] as const;
+const authenticationFields = new Set(['env_key', 'aws', 'headers', 'header', 'api_key']);
 const operations = new Map<string, Promise<void>>();
 
 const runExclusive = async <T>(key: string, operation: () => Promise<T>): Promise<T> => {
@@ -54,8 +56,15 @@ const runExclusive = async <T>(key: string, operation: () => Promise<T>): Promis
   }
 };
 
-const equalSlot = (left: ValueSlot, right: ValueSlot): boolean =>
-  left.present === right.present && (!left.present || (right.present && left.value === right.value));
+const equalSlot = (left: ValueSlot, right: ValueSlot): boolean => {
+  if (!left.present || !right.present) return left.present === right.present;
+  if (Array.isArray(left.value) || Array.isArray(right.value)) {
+    if (!Array.isArray(left.value) || !Array.isArray(right.value)) return false;
+    const rightValues = right.value as readonly string[];
+    return left.value.length === rightValues.length && left.value.every((value, index) => value === rightValues[index]);
+  }
+  return left.value === right.value;
+};
 
 const providerPath = (providerId: string, field: string): readonly string[] => ['model_providers', providerId, field];
 const ownedPaths = (providerId: string): readonly (readonly string[])[] => [
@@ -87,9 +96,32 @@ function removeCreatedProvider(text: string, marker: CodexMarker): string {
   return editCodexDocument(text, [{ path: ['model_providers', marker.providerId], next: { present: false } }]);
 }
 
+function removeCreatedTables(text: string, marker: CodexMarker): string {
+  let result = text;
+  for (const path of [...marker.createdTables].sort((left, right) => right.length - left.length)) {
+    if (path.length === 2) {
+      result = removeCreatedProvider(result, marker);
+      continue;
+    }
+    const parsed = Bun.TOML.parse(result) as Record<string, unknown>;
+    const provider = parsed['model_providers'];
+    const providerValue =
+      provider && typeof provider === 'object' && !Array.isArray(provider)
+        ? (provider as Record<string, unknown>)[marker.providerId]
+        : undefined;
+    const auth =
+      providerValue && typeof providerValue === 'object' && !Array.isArray(providerValue)
+        ? (providerValue as Record<string, unknown>)['auth']
+        : undefined;
+    if (auth && typeof auth === 'object' && !Array.isArray(auth) && Object.keys(auth).length === 0)
+      result = editCodexDocument(result, [{ path, next: { present: false } }]);
+  }
+  return result;
+}
+
 function restoreOwnedFields(text: string, marker: CodexMarker, edits: readonly FieldEdit[]): string {
   const restored = applyEditsSequentially(text, edits);
-  return removeCreatedProvider(restored, marker);
+  return removeCreatedTables(restored, marker);
 }
 
 async function recoverPending(location: CodexLocation): Promise<void> {
@@ -155,7 +187,15 @@ function findAuthenticationConflict(text: string, providerId: string): string | 
     if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
     const provider = (providers as Record<string, unknown>)[providerId];
     if (!provider || typeof provider !== 'object' || Array.isArray(provider)) return undefined;
-    for (const key of Object.keys(provider as Record<string, unknown>)) {
+    for (const [key, value] of Object.entries(provider as Record<string, unknown>)) {
+      if (key === 'auth') {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return `model_providers.${providerId}.auth`;
+        for (const authKey of Object.keys(value as Record<string, unknown>)) {
+          if (!commandFields.includes(authKey as (typeof commandFields)[number]))
+            return `model_providers.${providerId}.auth.${authKey}`;
+        }
+        continue;
+      }
       if (authenticationFields.has(key) || key.startsWith('header')) return `model_providers.${providerId}.${key}`;
     }
     return undefined;
@@ -169,8 +209,28 @@ function markerFor(
   providerId: string,
   fields: readonly OwnedField[],
   createdTables: readonly (readonly string[])[],
+  auth: CodexAuthConfig,
 ): CodexMarker {
-  return { format: 1, managedBy: 'aio-proxy', configPath: location.configPath, providerId, fields, createdTables };
+  return auth.mode === 'command'
+    ? {
+        format: 2,
+        managedBy: 'aio-proxy',
+        configPath: location.configPath,
+        providerId,
+        fields,
+        createdTables,
+        authMode: 'command',
+        installationId: auth.installationId,
+      }
+    : {
+        format: 2,
+        managedBy: 'aio-proxy',
+        configPath: location.configPath,
+        providerId,
+        fields,
+        createdTables,
+        authMode: 'keep-chatgpt',
+      };
 }
 
 async function completeOperation(
@@ -229,6 +289,12 @@ export async function inspectCodexConfig(location: CodexLocation): Promise<Confi
     providerId: marker.providerId,
     activeProviderId: document.activeProviderId,
     baseUrl: base.present && typeof base.value === 'string' ? base.value : undefined,
+    ...(marker.format === 2
+      ? {
+          authMode: marker.authMode,
+          ...(marker.authMode === 'command' ? { installationId: marker.installationId } : {}),
+        }
+      : { authMode: 'keep-chatgpt' }),
     changedPaths,
   };
 }
@@ -237,11 +303,14 @@ export async function configureCodexConfig(input: {
   readonly location: CodexLocation;
   readonly providerId: string;
   readonly baseUrl: string;
-  readonly token: string;
+  readonly auth?: CodexAuthConfig;
+  /** @deprecated Temporary compatibility for existing callers; new code passes auth. */
+  readonly token?: string;
 }): Promise<ConfigCommit> {
   await checkCodexInstalled();
   return runExclusive(input.location.markerPath, async () => {
-    const { location, providerId, baseUrl, token } = input;
+    const { location, providerId, baseUrl } = input;
+    const auth: CodexAuthConfig = input.auth ?? { mode: 'keep-chatgpt', token: input.token ?? '' };
     await recoverPending(location);
     const current = await readText(location);
     const text = current?.text ?? '';
@@ -274,12 +343,20 @@ export async function configureCodexConfig(input: {
       if (drift.length > 0)
         throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
     }
-    const edits = codexProviderEdits(providerId, baseUrl, token);
+    const edits = codexProviderEdits(providerId, baseUrl, auth);
     const nextText = editCodexDocument(workingText, edits);
     const fields = makeFields(text, providerId, edits, marker?.providerId === providerId ? marker : undefined);
     if (marker?.providerId === providerId) createdTables = marker.createdTables;
     else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
-    const nextMarker = markerFor(location, providerId, fields, createdTables);
+    const authPath = ['model_providers', providerId, 'auth'] as const;
+    const hadAuthTable = readManagedField(text, authPath).present;
+    if (
+      auth.mode === 'command' &&
+      !hadAuthTable &&
+      !createdTables.some((path) => path.join('\u0000') === authPath.join('\u0000'))
+    )
+      createdTables = [...createdTables, authPath];
+    const nextMarker = markerFor(location, providerId, fields, createdTables, auth);
     validateMarker(nextMarker, location);
     if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
       await chmodChecked(location.configPath, 0o600);

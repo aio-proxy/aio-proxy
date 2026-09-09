@@ -8,11 +8,16 @@ import {
   validateCodexProviderId,
 } from './index';
 
+const keep = (token: string) => ({ mode: 'keep-chatgpt' as const, token });
+
 test('switches Provider without rewriting model, comments or MCP', () => {
   const original =
     '# chosen by user\nmodel = "keep-model"\n' +
     'approval_policy = "never"\n\n[mcp_servers.local]\ncommand = "local-mcp"\n';
-  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', 'test-key'));
+  const actual = editCodexDocument(
+    original,
+    codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', keep('test-key')),
+  );
   const parsed = Bun.TOML.parse(actual);
   expect(parsed.model).toBe('keep-model');
   expect(parsed.model_provider).toBe('proxy.team');
@@ -20,16 +25,16 @@ test('switches Provider without rewriting model, comments or MCP', () => {
   expect(actual).toContain('[mcp_servers.local]\ncommand = "local-mcp"');
   expect(parsed.model_providers).toEqual({
     'proxy.team': {
-      name: 'aio-proxy',
+      name: 'AIO Proxy',
       base_url: 'http://127.0.0.1:9317/v1',
       wire_api: 'responses',
       requires_openai_auth: true,
       experimental_bearer_token: 'test-key',
     },
   });
-  expect(editCodexDocument(actual, codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', 'test-key'))).toBe(
-    actual,
-  );
+  expect(
+    editCodexDocument(actual, codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', keep('test-key'))),
+  ).toBe(actual);
 });
 
 test('preserves unrelated model provider tables and updates an inline provider', () => {
@@ -37,12 +42,12 @@ test('preserves unrelated model provider tables and updates an inline provider',
     'model_provider = "old"\n' +
     'model_providers = { other = { name = "keep" }, old = { name = "old" } }\n' +
     '[mcp_servers.local]\ncommand = "mcp"\n';
-  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'https://proxy/v1', 'tok'));
+  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'https://proxy/v1', keep('tok')));
   const parsed = Bun.TOML.parse(actual);
   expect(parsed.model_providers.other).toEqual({ name: 'keep' });
   expect(parsed.model_providers.old).toEqual({ name: 'old' });
   expect(parsed.model_providers['proxy.team']).toEqual({
-    name: 'aio-proxy',
+    name: 'AIO Proxy',
     base_url: 'https://proxy/v1',
     wire_api: 'responses',
     requires_openai_auth: true,
@@ -53,23 +58,23 @@ test('preserves unrelated model provider tables and updates an inline provider',
 
 test('adds missing fields to an existing inline provider in source order', () => {
   const original = 'model_providers = { "proxy.team" = { name = "old" } }\n';
-  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', 'token'));
+  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', keep('token')));
   expect(Bun.TOML.parse(actual).model_providers['proxy.team']).toEqual({
-    name: 'aio-proxy',
+    name: 'AIO Proxy',
     base_url: 'url',
     wire_api: 'responses',
     requires_openai_auth: true,
     experimental_bearer_token: 'token',
   });
   expect(actual).toContain(
-    'name = "aio-proxy", base_url = "url", wire_api = "responses", requires_openai_auth = true, experimental_bearer_token = "token"',
+    'name = "AIO Proxy", base_url = "url", wire_api = "responses", requires_openai_auth = true, experimental_bearer_token = "token"',
   );
 });
 
 test('creates a valid document from an empty source', () => {
-  const actual = editCodexDocument('', codexProviderEdits('proxy.team', 'url', 'token'));
+  const actual = editCodexDocument('', codexProviderEdits('proxy.team', 'url', keep('token')));
   expect(Bun.TOML.parse(actual).model_provider).toBe('proxy.team');
-  expect(editCodexDocument(actual, codexProviderEdits('proxy.team', 'url', 'token'))).toBe(actual);
+  expect(editCodexDocument(actual, codexProviderEdits('proxy.team', 'url', keep('token')))).toBe(actual);
 });
 
 test('updates an existing quoted and dotted provider table without splitting its id', () => {
@@ -79,9 +84,9 @@ test('updates an existing quoted and dotted provider table without splitting its
     'name = "old" # preserve this comment\n' +
     'base_url = "old-url"\n' +
     '[mcp_servers.local]\ncommand = "mcp"\n';
-  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'new-url', 'new-token'));
+  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'new-url', keep('new-token')));
   expect(actual).toContain('[model_providers."proxy.team"]');
-  expect(actual).toContain('name = "aio-proxy" # preserve this comment');
+  expect(actual).toContain('name = "AIO Proxy" # preserve this comment');
   expect(Bun.TOML.parse(actual).model_providers['proxy.team'].base_url).toBe('new-url');
 });
 
@@ -90,7 +95,7 @@ test('preserves comma strings, multiline strings, comments, and CRLF', () => {
     '# header\r\nmodel = "keep, model" # model comment\r\n' +
     'description = """line one\r\nline two"""\r\n\r\n' +
     '[model_providers.other]\r\nname = "keep"\r\n';
-  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', 'token,with,commas'));
+  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', keep('token,with,commas')));
   expect(actual).toContain('# header\r\nmodel = "keep, model" # model comment\r\n');
   expect(actual).toContain('description = """line one\r\nline two"""\r\n');
   expect(actual).toContain('[model_providers.other]\r\nname = "keep"\r\n');
@@ -118,7 +123,7 @@ test('deletes first, middle, and last inline members while retaining other sourc
 });
 
 test('reports an existing managed field with an unsupported type', () => {
-  expect(() => readManagedField('model_provider = ["wrong"]\n', ['model_provider'])).toThrow(
+  expect(() => readManagedField('model_provider = 1.5\n', ['model_provider'])).toThrow(
     /managed field.*string or boolean/i,
   );
 });

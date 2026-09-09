@@ -14,8 +14,13 @@ export const isPrefix = (prefix: readonly string[], path: readonly string[]): bo
 export const encodeTomlKey = (value: string): string =>
   /^[A-Za-z0-9_-]+$/.test(value) ? value : JSON.stringify(value);
 
-export const encodeTomlValue = (value: string | boolean): string =>
-  typeof value === 'string' ? JSON.stringify(value) : String(value);
+export type TomlLeaf = string | boolean | number | readonly string[];
+
+export const encodeTomlValue = (value: TomlLeaf): string => {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  return `[${value.map((item) => JSON.stringify(item)).join(', ')}]`;
+};
 
 export const applySourceEdits = (source: string, edits: readonly SourceEdit[]): string => {
   const merged: Array<{ start: number; end: number; text: string }> = [];

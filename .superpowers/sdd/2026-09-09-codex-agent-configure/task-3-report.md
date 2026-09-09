@@ -183,7 +183,7 @@ The test hook narrows and detects the replacement window; Node/Bun do not expose
 
 The review fix round was committed after a fresh verification run:
 
-```text
+````text
 rtk bunx tsc --noEmit -p packages/cli/tsconfig.json 2>&1 | rtk rg 'packages/cli/src/agent/codex/(location|managed-config|contracts)' | head -100
 (no diagnostics for changed Codex implementation files)
 
@@ -197,4 +197,30 @@ rtk bunx oxlint packages/cli/src/agent/codex/location packages/cli/src/agent/cod
 
 rtk bunx oxfmt --check packages/cli/src/agent/codex/location packages/cli/src/agent/codex/managed-config packages/cli/src/agent/codex/contracts.ts
 All matched files use the correct format.
+
+## Revised Task 3 implementation
+
+Implemented dual Codex authentication modes in the configuration document and managed ownership layers. Provider edits now preserve source text while supporting command auth fields (`auth.command`, string-array `args`, finite integer timeouts) and keep-chatgpt token fields as mutually exclusive leaves. Markers read V1 as keep-chatgpt and write V2 with auth mode and command installation identity; inspections expose the mode. Ownership checks preserve user auth fields, compare arrays by contents, clean only managed tables, and retain user model/comments/fields. Existing static wizard callers pass `{ mode: 'keep-chatgpt', token }`.
+
+Verification:
+
+```text
+bun test packages/cli/src/agent/codex/config-document packages/cli/src/agent/codex/managed-config
+32 pass
+0 fail
+
+bunx oxlint --type-aware --type-check <changed Codex implementation files>
+no diagnostics
+
+bun run check
+passed; existing repository warnings only
+
+git diff --check
+passed
+````
+
+The configure input retains a temporary optional `token` compatibility property for existing in-repository tests; new production callers use `auth`. Wizard/API-key removal, device authorization, helper lifecycle, migration, CLI dispatch, and locale work remain for later tasks.
+
+```
+
 ```

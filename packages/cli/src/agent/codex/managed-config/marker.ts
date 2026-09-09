@@ -6,21 +6,35 @@ import { durableDelete, durableWrite, inspectRegularFile, readRegularFile } from
 
 const ValueSlotSchema = z.union([
   z.strictObject({ present: z.literal(false) }),
-  z.strictObject({ present: z.literal(true), value: z.union([z.string(), z.boolean()]) }),
+  z.strictObject({
+    present: z.literal(true),
+    value: z.union([z.string(), z.boolean(), z.number().int().finite(), z.array(z.string())]),
+  }),
 ]);
 const OwnedFieldSchema = z.strictObject({
   path: z.array(z.string()).min(1),
   before: ValueSlotSchema,
   applied: ValueSlotSchema,
 });
-const MarkerSchema = z.strictObject({
-  format: z.literal(1),
+const MarkerBaseSchema = z.strictObject({
   managedBy: z.literal('aio-proxy'),
   configPath: z.string(),
   providerId: z.string().min(1),
   fields: z.array(OwnedFieldSchema),
   createdTables: z.array(z.array(z.string())),
 });
+const MarkerSchema = z.union([
+  MarkerBaseSchema.extend({ format: z.literal(1) }),
+  MarkerBaseSchema.extend({
+    format: z.literal(2),
+    authMode: z.literal('keep-chatgpt'),
+  }),
+  MarkerBaseSchema.extend({
+    format: z.literal(2),
+    authMode: z.literal('command'),
+    installationId: z.uuid(),
+  }),
+]);
 
 const ownedProviderFields = new Set([
   'name',
@@ -29,18 +43,26 @@ const ownedProviderFields = new Set([
   'requires_openai_auth',
   'experimental_bearer_token',
 ]);
+const ownedCommandFields = new Set(['command', 'args', 'timeout_ms', 'refresh_interval_ms']);
 
 export function validateMarker(value: unknown, location: CodexLocation): CodexMarker {
   const parsed = MarkerSchema.parse(value);
   if (parsed.configPath !== location.configPath) throw new Error('Codex marker config path conflict');
+  const isV2 = parsed.format === 2;
   const allowed = new Set([
     'model_provider',
     ...[...ownedProviderFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
+    ...(isV2
+      ? [...ownedCommandFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000auth\u0000${field}`)
+      : []),
   ]);
   const paths = new Set<string>();
   const expectedPaths = new Set([
     'model_provider',
     ...[...ownedProviderFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
+    ...(isV2
+      ? [...ownedCommandFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000auth\u0000${field}`)
+      : []),
   ]);
   if (parsed.fields.length !== expectedPaths.size) throw new Error('Codex marker ownership is incomplete');
   for (const field of parsed.fields) {
@@ -51,15 +73,24 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   if (paths.size !== expectedPaths.size || [...expectedPaths].some((path) => !paths.has(path)))
     throw new Error('Codex marker ownership is incomplete');
   if (
-    parsed.createdTables.length !== 1 ||
-    parsed.createdTables[0]?.length !== 2 ||
-    parsed.createdTables[0]?.[0] !== 'model_providers' ||
-    parsed.createdTables[0]?.[1] !== parsed.providerId
+    parsed.createdTables.length < 1 ||
+    parsed.createdTables.some(
+      (path) =>
+        path.length < 2 ||
+        path.length > (isV2 ? 3 : 2) ||
+        path[0] !== 'model_providers' ||
+        path[1] !== parsed.providerId,
+    )
   ) {
     throw new Error('Codex marker table ownership is inconsistent');
   }
   for (const path of parsed.createdTables) {
-    if (path.length !== 2 || path[0] !== 'model_providers' || path[1] !== parsed.providerId)
+    if (
+      path.length < 2 ||
+      path.length > (isV2 ? 3 : 2) ||
+      path[0] !== 'model_providers' ||
+      path[1] !== parsed.providerId
+    )
       throw new Error('Codex marker contains an invalid table path');
   }
   return parsed as CodexMarker;

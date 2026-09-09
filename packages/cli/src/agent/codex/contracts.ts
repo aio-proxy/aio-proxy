@@ -44,7 +44,12 @@ export type OwnedField = {
   readonly applied: ValueSlot;
 };
 
-export type CodexMarker = {
+export type CodexAuthMode = 'keep-chatgpt' | 'command';
+export type CodexAuthConfig =
+  | { readonly mode: 'keep-chatgpt'; readonly token: string }
+  | { readonly mode: 'command'; readonly installationId: string; readonly command: string };
+
+export type CodexMarkerV1 = {
   readonly format: 1;
   readonly managedBy: 'aio-proxy';
   readonly configPath: string;
@@ -52,12 +57,22 @@ export type CodexMarker = {
   readonly fields: readonly OwnedField[];
   readonly createdTables: readonly (readonly string[])[];
 };
+export type CodexMarkerV2 =
+  | (Omit<CodexMarkerV1, 'format'> & { readonly format: 2; readonly authMode: 'keep-chatgpt' })
+  | (Omit<CodexMarkerV1, 'format'> & {
+      readonly format: 2;
+      readonly authMode: 'command';
+      readonly installationId: string;
+    });
+export type CodexMarker = CodexMarkerV1 | CodexMarkerV2;
 
 export type ConfigInspection = {
   readonly status: 'absent' | 'managed' | 'modified' | 'conflict';
   readonly providerId?: string;
   readonly activeProviderId: string;
   readonly baseUrl?: string;
+  readonly authMode?: CodexAuthMode;
+  readonly installationId?: string;
   readonly changedPaths: readonly (readonly string[])[];
 };
 
