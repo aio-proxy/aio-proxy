@@ -1,8 +1,17 @@
 import { expect, test } from 'bun:test';
-import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const repositoryRoot = join(import.meta.dir, '..');
 const workflowPath = join(import.meta.dir, '..', '.github', 'workflows', 'release.yml');
+
+async function lockHash(): Promise<string> {
+  return createHash('sha256')
+    .update(await readFile(join(repositoryRoot, 'bun.lock')))
+    .digest('hex');
+}
 
 test('keeps the signed CloudKit manifest until the Changesets publish step', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
@@ -28,3 +37,40 @@ test('uses a headless certificate-password file path without password argv', asy
   expect(workflow).not.toMatch(/security import[^\n]*\s-P(?:\s|$)/u);
   expect(workflow).not.toContain('< "$certificate_password"');
 });
+
+test('dry-run restores bun.lock and never invokes npm publish', async () => {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'aio-release-dry-run-'));
+  const fakeBin = join(temporaryDirectory, 'bin');
+  const npmMarker = join(temporaryDirectory, 'npm-invoked');
+  const fakeNpm = join(fakeBin, 'npm');
+  await mkdir(fakeBin);
+  await writeFile(fakeNpm, '#!/bin/sh\nprintf \'%s\\n\' "$*" > "$RELEASE_TEST_NPM_MARKER"\nexit 97\n');
+  await chmod(fakeNpm, 0o755);
+
+  const before = await lockHash();
+  try {
+    const child = Bun.spawn([process.execPath, join(repositoryRoot, 'scripts', 'release.ts'), '--dry-run'], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}:${process.env['PATH'] ?? ''}`,
+        RELEASE_TEST_NPM_MARKER: npmMarker,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('[dry-run] Would publish');
+    expect(`${stdout}\n${stderr}`).not.toContain('npm publish');
+    expect(await lockHash()).toBe(before);
+    expect(await Bun.file(npmMarker).exists()).toBe(false);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}, 120_000);

@@ -41,6 +41,9 @@
   are cleaned up after Changesets publishes.
 - Added workflow regression checks for publish-before-cleanup ordering and
   headless signing without password arguments.
+- Made `scripts/release.ts --dry-run` restore `bun.lock` and `package.json` in a
+  `finally` block after lock refresh and packing, and added a regression check
+  that hashes `bun.lock` and proves no npm publish command runs.
 - Extended the acceptance fixture with a deterministic OAuth adapter and fake
   upstream covering account copy, token-family refresh, independent detach
   checks, pending detach, and uncertain refresh outage states. Real provider
@@ -82,7 +85,7 @@ Release and packaging checks:
 
 ```text
 rtk bun test scripts/release-workflow.test.ts
-2 pass, 0 fail, 7 expect() calls
+3 pass, 0 fail, 12 expect() calls
 
 rtk bun install --frozen-lockfile --prefer-offline
 exit 0; 97 packages installed
@@ -90,7 +93,7 @@ exit 0; 97 packages installed
 rtk bunx oxlint scripts/release.ts scripts/release-workflow.test.ts packages/plugins/cloudkit/scripts/pack-native.ts packages/plugins/cloudkit/build/artifact.test.ts packages/server/src/sync-control-plane/acceptance-oauth.ts packages/server/src/sync-control-plane/acceptance.test.ts packages/server/src/sync-control-plane/test-support.ts
 exit 0
 
-rtk bunx oxfmt --check packages/plugins/cloudkit/build/artifact.test.ts packages/server/src/sync-control-plane/acceptance-oauth.ts packages/server/src/sync-control-plane/acceptance.test.ts packages/server/src/sync-control-plane/test-support.ts scripts/release-workflow.test.ts
+rtk bunx oxfmt --check scripts/release.ts scripts/release-workflow.test.ts packages/plugins/cloudkit/build/artifact.test.ts packages/server/src/sync-control-plane/acceptance-oauth.ts packages/server/src/sync-control-plane/acceptance.test.ts packages/server/src/sync-control-plane/test-support.ts
 All matched files use the correct format.
 ```
 
@@ -132,11 +135,19 @@ exit 0
   `docs/testing/evidence/oauth-sync.json` remains blocked with
   `setup-test-home-required`; no credentials or account identifiers were
   created.
-- `rtk bun run preflight` remains blocked by baseline type-aware diagnostics in
-  the dashboard OAuth editor (`TS2322`, `TS2589`), CloudKit `artifact.ts`
-  (`TS18048`), and CloudKit `sign-native.ts` (`TS2322`). The touched release
-  script itself passes `rtk bunx oxlint scripts/release.ts` and the touched
-  files pass `rtk bunx oxfmt --check`.
+- The acceptance OAuth fixture diagnostic at
+  `packages/server/src/sync-control-plane/acceptance-oauth.ts:89`
+  (`TS2322`, `PluginDescriptor<{ endpoint?: string; token?: string }>` not
+  assignable to `PluginDescriptor<unknown>`) was resolved at the built-in
+  descriptor boundary and is no longer reported by targeted or full
+  type-aware checks.
+- `rtk bun run preflight` remains blocked by the existing
+  `packages/server/src/sync-control-plane/operations.ts:228` (`TS2339`, the
+  `operationId` property is not present on every sync operation variant), plus
+  baseline diagnostics in the dashboard OAuth editor (`TS2322`, `TS2589`),
+  CloudKit `artifact.ts` (`TS18048`), and CloudKit `sign-native.ts` (`TS2322`).
+  The touched release script and acceptance OAuth fixture pass targeted
+  type-aware oxlint, and the touched files pass `rtk bunx oxfmt --check`.
 
 Signed CloudKit, installed-path, launchd, two-Mac, and live OAuth readiness are
 therefore not claimed.

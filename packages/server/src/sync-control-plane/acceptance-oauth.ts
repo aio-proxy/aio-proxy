@@ -5,7 +5,7 @@ import {
   type PluginRepository,
   type SyncRepository,
 } from '@aio-proxy/core';
-import { definePlugin, zod, type SyncBackendDefinition } from '@aio-proxy/plugin-sdk';
+import { definePlugin, type PluginDescriptor, zod, type SyncBackendDefinition } from '@aio-proxy/plugin-sdk';
 
 export const ACCEPTANCE_PLUGIN = '@example/sync-acceptance';
 export const ACCEPTANCE_BINDING_PLUGIN_VERSION = '1.0.0';
@@ -140,7 +140,7 @@ export function acceptanceDescriptor(
           ],
         },
       },
-    ),
+    ) as unknown as PluginDescriptor<unknown>,
   };
 }
 
