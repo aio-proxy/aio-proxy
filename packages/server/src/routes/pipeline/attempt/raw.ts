@@ -7,6 +7,7 @@ import { withoutCallerCredentialsOnRequest } from '../../../server/api-key-auth'
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { publicSlug } from '../public-slug';
+import { cancelRetainedRequestBody } from '../request';
 import { retainResponseBody } from '../stream';
 import type { OpenSpan } from '../tracing';
 import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot, RawCapableAttemptLoopContext } from './context';
@@ -82,16 +83,25 @@ export async function completeRawAttempt<TRequest, TContext>(
   // the first invoke consumes the body.
   const hook = 'rawRetry' in adapter ? adapter.rawRetry : undefined;
   const retrySource = hook === undefined ? undefined : upstream.clone();
-  const response = await resolveRawRetry({
-    hook,
-    retrySource,
-    request: ctx.request,
-    context: ctx.context,
-    response: await invokeRaw(upstream),
-    streamRequested: ctx.streamRequested,
-    guards: { signal: ctx.rawRequest.signal },
-    invoke: invokeRaw,
-  });
+  let response: Response;
+  try {
+    response = await resolveRawRetry({
+      hook,
+      retrySource,
+      request: ctx.request,
+      context: ctx.context,
+      response: await invokeRaw(upstream),
+      streamRequested: ctx.streamRequested,
+      guards: { signal: ctx.rawRequest.signal },
+      invoke: invokeRaw,
+    });
+  } catch (error) {
+    // Video credential-strip (and any other rewrite) may own the body on
+    // `upstream`, not `rawRequest`. Cancel the object we invoked.
+    await cancelRetainedRequestBody(upstream, error);
+    if (retrySource !== undefined) await cancelRetainedRequestBody(retrySource, error);
+    throw error;
+  }
 
   // Unpinned edits/extensions 404 is source-not-found: the next video-capable
   // provider may own that id. Create and language/image 404s stay terminal.

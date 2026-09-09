@@ -539,6 +539,21 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.resolves.some((input) => input.requestPath === '/v1/videos/video_abc')).toBe(true);
   });
 
+  test('a throwing unpinned create cancels the credential-sanitized body', async () => {
+    const fixture = videoProvider('openai', { throwOnInvoke: true });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+    const created = await app.request(CREATE, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer caller-secret-credential',
+      },
+      body: createBody({ model: 'sora-2' }),
+    });
+    expect(created.status).toBeGreaterThanOrEqual(500);
+    expect(fixture.invoked.at(-1)?.bodyUsed).toBe(true);
+  });
+
   test('a keyless unpinned create does not forward caller credentials', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
@@ -653,12 +668,14 @@ function videoProvider(
     readonly notFoundOnCreate?: boolean;
     readonly notFoundOnEdits?: boolean;
     readonly speech?: boolean;
+    readonly throwOnInvoke?: boolean;
   } = {},
 ): {
   readonly bodies: unknown[];
   readonly calls: VideoCalls;
   readonly disableRaw: () => void;
   readonly headerBags: Headers[];
+  readonly invoked: Request[];
   readonly resolves: RawResolveInput[];
   readonly urls: string[];
   readonly value: RuntimeProviderInstance;
@@ -667,6 +684,7 @@ function videoProvider(
   const resolves: RawResolveInput[] = [];
   const bodies: unknown[] = [];
   const headerBags: Headers[] = [];
+  const invoked: Request[] = [];
   const urls: string[] = [];
   const modelIds = options.models ?? ['sora-2'];
   const rejectModelIds = [...(options.rejectModelIds ?? [])];
@@ -679,6 +697,7 @@ function videoProvider(
       rawAvailable = false;
     },
     headerBags,
+    invoked,
     resolves,
     urls,
     value: {
@@ -700,8 +719,10 @@ function videoProvider(
                 return {
                   invoke: async (request: Request) => {
                     calls.raw += 1;
+                    invoked.push(request);
                     headerBags.push(new Headers(request.headers));
                     urls.push(request.url);
+                    if (options.throwOnInvoke === true) throw new Error('upstream down');
                     const path = new URL(request.url).pathname;
                     try {
                       bodies.push(await request.clone().json());
