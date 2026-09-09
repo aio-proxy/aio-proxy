@@ -98,3 +98,21 @@ Fix commits:
 - The report update is committed in the follow-up report commit returned with the task status, with the same required footer.
 
 Round 1 concerns: the result is still an isolated host contract experiment against version `0.146.0`; it does not establish a minimum supported version or compatibility for Computer Use, plugins, or the real AIO Proxy service. The malformed helper outcomes are observed host behavior and are not treated as bearer-protocol success.
+
+## Round 1 type-check fixes
+
+The runtime blockers were fixed in `packages/cli/scripts/codex-command-auth-runtime.ts` only:
+
+- `Bun.spawn` now receives a mutable copy of readonly argv (`[...args]`), preserving argument-array execution and path handling.
+- The optional piped stdin is narrowed before `.write()` and `.end()`; unavailable stdin fails explicitly instead of relying on an unsafe assertion.
+
+Verification:
+
+```text
+rtk bunx oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' packages/cli/scripts/codex-command-auth-runtime.ts
+rtk bunx oxfmt --check packages/cli/scripts/codex-command-auth-runtime.ts
+rtk bunx oxlint packages/cli/scripts/codex-command-auth-runtime.ts
+rtk bun test ./scripts
+```
+
+All checks passed; the script suite reported 9 passing tests and 0 failures. The fix commit is recorded in the task status and includes `Co-authored-by: Codex <noreply@openai.com>`.

@@ -52,7 +52,7 @@ export async function spawn(
   input?: string,
   limit = timeoutMs,
 ): Promise<CommandResult> {
-  const child = Bun.spawn(args, {
+  const child = Bun.spawn([...args], {
     cwd,
     env,
     stdin: input === undefined ? 'ignore' : 'pipe',
@@ -70,8 +70,10 @@ export async function spawn(
   );
   try {
     if (input !== undefined) {
-      child.stdin.write(input);
-      child.stdin.end();
+      const stdin = child.stdin;
+      if (stdin === undefined) throw new Error('child stdin unavailable');
+      stdin.write(input);
+      stdin.end();
     }
     const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
     return { code: await child.exited, stdout, stderr, timedOut };
