@@ -71,7 +71,7 @@ installation ID 参数由 configure 生成，绑定具体受管安装；旧配�
 {"access_token":"...","expires_in":900}
 ```
 
-`expires_in` 是输出时的实际剩余秒数，向下取整，必须大于 0；复用缓存时不能重新报告完整 900 秒。失败 stdout 为空，退出码非零。RT 不输出；使用相同字段集合返回登录与刷新结果。
+`expires_in` 是输出时的实际剩余秒数，向下取整，必须大于 0；复用缓存时不能重新报告完整 900 秒。输出前失败stdout为空、退出码非零；stdout写入或完成标记失败可能已有输出，仍非零退出，调用方不得将其当成功结果。RT 不输出；使用相同字段集合返回登录与刷新结果。
 
 ## 4. 路径与受管文件
 
@@ -111,7 +111,7 @@ G/.aio-proxy.lock                    # installation 生命周期与凭据操作�
 
 这是将当前 Grok 全局模型/登录接到一个 aio-proxy 的模式。现有显式指向其他服务的 `[model.*]` / `[model_providers.*]` 自定义 endpoint 会与全局凭据形成额外用途；本期将其报告为路由冲突并拒绝自动接管，不删除、改写这些模型。原生内置模型使用本节全局端点。已有非路由配置，如界面、权限、MCP、hooks、skills，保持不变。
 
-configure 检查当前进程可见的相关环境覆盖和组织级配置限制；若它们令这些受管值不生效，返回具体字段冲突。不能修改组织策略、用户 shell 配置或清空 API Key。检查仅代表当前可见环境，list 不声称能证明所有未来 Grok 进程的环境。发布兼容测试需要从实际请求证明，没有 aio-proxy AT/RT 被发送到非受管 origin；涉及 relay、独立远端模型等额外功能不在本期支持范围。
+configure以及每次auth都检查当前进程可见的相关环境覆盖和组织级配置限制；若它们令这些受管值不生效，返回具体字段冲突。不能修改组织策略、用户 shell 配置或清空 API Key。auth在安装锁内恢复事务后、读取凭据或调用OAuth前，重新读取完整config与可见policy，复用相同路由冲突检查；即使七个受管字段未变，后来新增的远端model/provider或环境覆盖仍拒绝。网络操作后和输出AT前再复核一次；失败不输出token，已保存的新RT保留以供配置修复后重试。所有读取和policy子进程计入helper总期限。该检查不阻止不合作的外部写者在最终检查后改配置。检查仅代表当前可见环境，list 不声称能证明所有未来 Grok 进程的环境。发布兼容测试需要从实际请求证明，没有 aio-proxy AT/RT 被发送到非受管 origin；涉及 relay、独立远端模型等额外功能不在本期支持范围。
 
 ## 6. 合并、幂等与还原
 
@@ -135,11 +135,11 @@ ownership 中记录待提交操作和逐字段 before/after，再写 config，�
 
 ## 7. 凭据状态机与并发
 
-CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refreshToken`、`accessExpiresAt`、`status`。RT 到期、撤销等最终状态以服务端为准，不伪造服务端未返回的到期信息。损坏、安装绑定不匹配或未知版本的状态不得用于请求。
+CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refreshToken`、`accessExpiresAt`、`status`、`delivered`（该revision是否已成功输出并持久化完成标记）。RT 到期、撤销等最终状态以服务端为准，不伪造服务端未返回的到期信息。损坏、安装绑定不匹配或未知版本的状态不得用于请求。
 
 ### 普通调用
 
-在同一安装锁内读取并验证 marker/config/credential。有 RT 时调用公共 `refreshAgentCredential()`，不因缓存 AT 尚未过期就绕过服务端校验；这样用户撤销后再次执行 `grok login` 能进入重新授权，不会反复拿到已撤销的缓存 AT。只有等待同一轮刷新且观察到新 revision 的并发调用可复用新结果。缺少凭据或服务端确认 `invalid_grant` 后，允许交互调用开始现有 device flow。设备码 URL 和状态在 stderr；超时、取消或拒绝不输出 token。
+在同一安装锁内读取并验证 marker/config/credential。有 RT 时调用公共 `refreshAgentCredential()`，不因缓存 AT 尚未过期就绕过服务端校验；这样用户撤销后再次执行 `grok login` 能进入重新授权，不会反复拿到已撤销的缓存 AT。只有等待时观察到新revision，或同一revision从delivered=false变为true的并发调用可复用新结果；后者覆盖新token已保存但尚未输出时启动的helper。缺少凭据或服务端确认 `invalid_grant` 后，允许交互调用开始现有 device flow。设备码 URL 和状态在 stderr；超时、取消或拒绝不输出 token。
 
 从无凭据进入授权时使用公共 `requestDeviceAuthorization()` 和 `pollDeviceAuthorization()`。总交互期限不超过 240 秒，并受服务端 device-code 到期限制，留在 Grok 已验证的 300 秒交互调用期限内。refresh 的临时网络失败不自动变成新的 device flow。
 
@@ -153,9 +153,9 @@ CLI 保存 `installationId`、`endpoint`、`revision`、`accessToken`、`refresh
 
 configure、auth、remove 共用安装锁。复用或小范围提取仓库已有的文件锁进程身份、陈旧持有者恢复和 fencing 机制；不以进程内 single-flight 代替跨进程互斥，也不直接拿 server 数据库 ownership lock 管理 CLI 文件。
 
-普通交互授权期间保留安装锁，设置 heartbeat；其他静默调用在自己的 5 秒预算内失败即可，不发起第二个登录。拿锁后必须重读状态，不能使用等待前缓存的 RT。对并发静默调用，记录等待前 revision：若拿锁后发现另一调用已轮换并持久化新的有效 AT，复用这个新 revision，不再次轮换；否则执行一次刷新。
+普通交互授权期间保留安装锁，设置 heartbeat；其他静默调用在自己的 5 秒预算内失败即可，不发起第二个登录。拿锁后必须重读状态，不能使用等待前缓存的 RT。对并发调用，锁外只观察绑定安装的revision/delivered，不取用AT/RT；拿锁并复核路由后读取完整凭据。若revision增加，或同一revision发生delivered=false→true，且当前AT仍有效至少1秒，复用该结果；否则刷新。普通顺序调用观察到的delivered已是true，因此仍经服务端校验，不成为任意缓存命中。
 
-refresh/login 成功后，先原子持久化完整的新 AT/RT/revision，再输出 AT。输出失败不回滚已经保存的新凭据。网络请求前记录可恢复的 refresh-in-flight 状态；进程中断或响应丢失后，仅在服务端现有短重放窗口内重试同一 RT，超过窗口转为需要重新登录，避免无限重放旧 RT。复用现有协议的窗口规则，不调整服务端防重放语义来适配客户端。
+refresh/login成功后先原子持久化新AT/RT/revision及delivered=false，在同一安装锁内复核路由并等待stdout写入完成，再将delivered=true原子保存，最后释放锁。复用已交付revision时不再更新delivered。这样A保存后、输出前启动的B会观察到false→true并复用，不会令A输出已被B轮换作废的token。输出或完成标记写失败时非零退出，保留新RT；二者不是原子事务，不能承诺失败调用的部分stdout可用。保存后输出前崩溃且未见完成转变，后继helper刷新已保存的新RT；正常输出后未来独立轮换/撤销仍遵循现有family失效语义。网络请求前记录可恢复的 refresh-in-flight 状态；进程中断或响应丢失后，仅在服务端现有短重放窗口内重试同一 RT，超过窗口转为需要重新登录，避免无限重放旧 RT。复用现有协议的窗口规则，不调整服务端防重放语义来适配客户端。
 
 Grok 对刚签发 token 的保护属于宿主行为，不通过伪造时间或循环重签绕开。测试必须覆盖并发轮换后其他 Grok 进程的恢复；若最终被宿主拒绝，呈现原生重新登录/重试路径，不能承诺所有 401 都无感恢复。
 
