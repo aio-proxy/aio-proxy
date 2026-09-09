@@ -55,6 +55,102 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
+      # The standing Version PR also runs this workflow. Only a lockstep version
+      # newer than the registry is an actual publish, so do not ask for signing
+      # material while Changesets is merely maintaining that PR.
+      - name: Determine whether CloudKit is being published
+        id: cloudkit-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/plugins/cloudkit/package.json').version")"
+          published="$(npm view @aio-proxy/plugin-cloudkit version 2>/dev/null || true)"
+          should_prepare="$(node - "$version" "$published" <<'NODE'
+          const [current, published] = process.argv.slice(2);
+          const parse = (value) => value.split('-')[0].split('.').map((part) => Number.parseInt(part, 10));
+          const compare = (left, right) => {
+            const a = parse(left);
+            const b = parse(right);
+            for (let index = 0; index < 3; index += 1) {
+              if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
+            }
+            return 0;
+          };
+          process.stdout.write(published === '' || compare(current, published) > 0 ? 'true' : 'false');
+          NODE
+          )"
+          echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # This is intentionally a macOS-only release step. The native bundle is
+      # signed on the same host that builds it, then copied to a temporary path;
+      # scripts/release.ts restores that exact archive after the JS build cleans
+      # package dist directories and verifies its digest/version before packing.
+      - name: Build and sign CloudKit native artifact
+        if: steps.cloudkit-release.outputs.publishable == 'true'
+        env:
+          CLOUDKIT_TEAM_ID: ${{ secrets.CLOUDKIT_TEAM_ID }}
+          CLOUDKIT_SIGN_IDENTITY: ${{ secrets.CLOUDKIT_SIGN_IDENTITY }}
+          CLOUDKIT_CONTAINER_ID: ${{ secrets.CLOUDKIT_CONTAINER_ID }}
+          CLOUDKIT_NOTARY_PROFILE: ${{ secrets.CLOUDKIT_NOTARY_PROFILE }}
+          CLOUDKIT_CERTIFICATE_BASE64: ${{ secrets.CLOUDKIT_CERTIFICATE_BASE64 }}
+          CLOUDKIT_CERTIFICATE_PASSWORD: ${{ secrets.CLOUDKIT_CERTIFICATE_PASSWORD }}
+          CLOUDKIT_PROFILE_BASE64: ${{ secrets.CLOUDKIT_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          : "${CLOUDKIT_TEAM_ID:?CLOUDKIT_TEAM_ID is required}"
+          : "${CLOUDKIT_SIGN_IDENTITY:?CLOUDKIT_SIGN_IDENTITY is required}"
+          : "${CLOUDKIT_CONTAINER_ID:?CLOUDKIT_CONTAINER_ID is required}"
+          : "${CLOUDKIT_NOTARY_PROFILE:?CLOUDKIT_NOTARY_PROFILE is required}"
+          : "${CLOUDKIT_CERTIFICATE_BASE64:?CLOUDKIT_CERTIFICATE_BASE64 is required}"
+          : "${CLOUDKIT_CERTIFICATE_PASSWORD:?CLOUDKIT_CERTIFICATE_PASSWORD is required}"
+          : "${CLOUDKIT_PROFILE_BASE64:?CLOUDKIT_PROFILE_BASE64 is required}"
+
+          keychain="$RUNNER_TEMP/aio-cloudkit-signing.keychain-db"
+          certificate="$RUNNER_TEMP/aio-cloudkit-signing.p12"
+          profile="$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile"
+          manifest="packages/plugins/cloudkit/release-manifest.json"
+          manifest_backup="$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
+          cp "$manifest" "$manifest_backup"
+          restore_manifest() { cp "$manifest_backup" "$manifest"; }
+          trap restore_manifest EXIT
+
+          security create-keychain -p "$CLOUDKIT_CERTIFICATE_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$CLOUDKIT_CERTIFICATE_PASSWORD" "$keychain"
+          printf '%s' "$CLOUDKIT_CERTIFICATE_BASE64" | base64 -D > "$certificate"
+          security import "$certificate" -k "$keychain" -P "$CLOUDKIT_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-keychain-settings -lut 21600 "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$CLOUDKIT_CERTIFICATE_PASSWORD" "$keychain"
+          printf '%s' "$CLOUDKIT_PROFILE_BASE64" | base64 -D > "$profile"
+
+          version="${{ steps.cloudkit-release.outputs.version }}"
+          printf '{"version":"%s"}\n' "$version" > "$manifest"
+          echo "CLOUDKIT_PROFILE_PATH=$profile" >> "$GITHUB_ENV"
+          echo "CLOUDKIT_NATIVE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "CLOUDKIT_SIGNED_ARCHIVE=$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip" >> "$GITHUB_ENV"
+          echo "CLOUDKIT_TEAM_ID=$CLOUDKIT_TEAM_ID" >> "$GITHUB_ENV"
+          echo "CLOUDKIT_SIGN_IDENTITY=$CLOUDKIT_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "CLOUDKIT_CONTAINER_ID=$CLOUDKIT_CONTAINER_ID" >> "$GITHUB_ENV"
+          echo "CLOUDKIT_NOTARY_PROFILE=$CLOUDKIT_NOTARY_PROFILE" >> "$GITHUB_ENV"
+
+          bun packages/plugins/cloudkit/scripts/build-native.ts
+          bun packages/plugins/cloudkit/scripts/sign-native.ts
+          signed="$(find packages/plugins/cloudkit/dist/native -maxdepth 1 -name '*.app.zip' ! -name '*.submission.zip' -print -quit)"
+          test -n "$signed"
+          cp "$signed" "$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip"
+
+      - name: Clean CloudKit signing keychain
+        if: always() && steps.cloudkit-release.outputs.publishable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
+            "$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
+
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
       # (and the @changesets/* devDependencies) together when upgrading.

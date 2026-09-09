@@ -143,3 +143,17 @@ The deterministic checks preceding live execution are:
 rtk proxy bun run --filter @aio-proxy/plugin-cloudkit test
 rtk proxy swift test --package-path packages/plugins/cloudkit/native
 ```
+
+The release preparation path additionally runs these commands on the macOS
+runner, with the exact versioned artifact copied into a temporary path for the
+publish step:
+
+```sh
+rtk proxy bun packages/plugins/cloudkit/scripts/build-native.ts
+rtk proxy bun packages/plugins/cloudkit/scripts/sign-native.ts
+```
+
+The native gate is currently blocked until those commands have access to the
+private signing profile and the real iCloud container, and until the installed
+bundle returns a confirmed account result from both the direct and launchd
+service paths. A passing Swift or package test does not change that status.

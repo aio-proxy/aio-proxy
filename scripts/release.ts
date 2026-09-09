@@ -35,9 +35,10 @@
 // below is what catches it if nobody did.
 // Discovery is automatic; adding a non-private package needs no change here.
 
+import { createHash } from 'node:crypto';
 import { appendFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 
 import { $ } from 'bun';
 
@@ -50,6 +51,17 @@ type PackageJson = {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+};
+
+type CloudKitRuntimeManifest = {
+  readonly format: 1;
+  readonly pluginVersion: string;
+  readonly nativeVersion: string;
+  readonly bundleId: 'dev.aioproxy';
+  readonly teamId: string;
+  readonly minimumMacOS: '14.0';
+  readonly archive: string;
+  readonly sha256: string;
 };
 
 // --- discover every workspace package -----------------------------------------
@@ -109,6 +121,8 @@ console.log(
     .join('\n')}\n`,
 );
 
+const cloudKitPackage = publishable.find(({ json }) => json.name === '@aio-proxy/plugin-cloudkit');
+
 // --- refresh bun.lock's workspace versions so `bun pm pack` resolves siblings -
 // A plain `bun install` reports "no changes" and leaves the lock's workspace
 // versions stale, so the launcher's `workspace:*` optionalDependencies and
@@ -140,6 +154,15 @@ await Bun.write('bun.lock', updatedLock.slice(0, headEnd) + pristineLock.slice(t
 if (!DRY_RUN) {
   await $`bun run build`;
   await $`bun run --filter @aio-proxy/cli build:binary`;
+}
+
+// The macOS workflow builds and notarizes the native bundle before invoking this
+// script. The JS build cleans package dist directories, so restore the signed
+// archive into CloudKit's publishable dist tree immediately before packing it.
+// This keeps native signing out of ordinary Bun/Linux builds while making a
+// release fail closed when the lockstep artifact is absent or stale.
+if (cloudKitPackage !== undefined) {
+  await prepareCloudKitArtifact(cloudKitPackage.path.replace(/\/package\.json$/u, ''), version);
 }
 
 // --- pack (bun, rewrites catalog:/workspace:/optionalDeps) in publish order ---
@@ -256,4 +279,50 @@ async function hasChangelogEntry(dir: string, ver: string): Promise<boolean> {
   const nextSection = after.findIndex((line) => /^##\s/.test(line));
   const entry = nextSection < 0 ? after : after.slice(0, nextSection);
   return entry.some((line) => line.trim() !== ''); // any non-blank line = real notes
+}
+
+async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: string): Promise<void> {
+  const signedArchive = process.env['CLOUDKIT_SIGNED_ARCHIVE'];
+  if (signedArchive === undefined || signedArchive.trim() === '') {
+    throw new Error('CLOUDKIT_SIGNED_ARCHIVE is required for a CloudKit release');
+  }
+  const teamId = process.env['CLOUDKIT_TEAM_ID'];
+  if (teamId === undefined || teamId.trim() === '')
+    throw new Error('CLOUDKIT_TEAM_ID is required for a CloudKit release');
+  const signedArchivePath = resolve(signedArchive);
+  if (!(await Bun.file(signedArchivePath).exists())) {
+    throw new Error('CLOUDKIT_SIGNED_ARCHIVE does not point to an existing signed artifact');
+  }
+  process.env['CLOUDKIT_NATIVE_VERSION'] ??= releaseVersion;
+  await $`bun run --filter @aio-proxy/plugin-cloudkit pack-native`;
+
+  const manifestPath = join(packageRoot, 'dist', 'native', 'manifest.json');
+  if (!(await Bun.file(manifestPath).exists())) throw new Error('CloudKit native manifest is missing after packaging');
+  const manifest = (await Bun.file(manifestPath).json()) as Partial<CloudKitRuntimeManifest>;
+  if (
+    manifest.format !== 1 ||
+    manifest.pluginVersion !== releaseVersion ||
+    manifest.nativeVersion !== releaseVersion ||
+    manifest.bundleId !== 'dev.aioproxy' ||
+    manifest.minimumMacOS !== '14.0' ||
+    manifest.teamId !== teamId ||
+    typeof manifest.archive !== 'string' ||
+    !manifest.archive.endsWith('.app.zip') ||
+    typeof manifest.sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(manifest.sha256)
+  ) {
+    throw new Error('CloudKit native manifest does not match the lockstep signed release');
+  }
+  const archivePath = resolve(packageRoot, manifest.archive);
+  const archiveRelative = relative(resolve(packageRoot), archivePath);
+  if (archiveRelative.startsWith('..') || resolve(packageRoot, archiveRelative) !== archivePath) {
+    throw new Error('CloudKit native archive path escapes the package');
+  }
+  if (basename(archivePath) !== basename(signedArchivePath) || !(await Bun.file(archivePath).exists())) {
+    throw new Error('CloudKit native archive is missing from the package payload');
+  }
+  const digest = createHash('sha256')
+    .update(await Bun.file(archivePath).bytes())
+    .digest('hex');
+  if (digest !== manifest.sha256) throw new Error('CloudKit native archive digest does not match its manifest');
 }

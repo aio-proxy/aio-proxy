@@ -36,3 +36,17 @@ The six evidence checks are:
 | `independentDetach` | optional                   | A provider-specific candidate authorization proves detachment; it is evaluated only after every `multiDevice` check passes. |
 
 The evidence artifact contains the exact plugin version, capability, format version, timestamps, statuses, evaluation, and redaction markers. It intentionally contains no credentials or account identifiers. A blocked or failed result keeps the adapter pending activation; it must not be converted into `multiDevice.evidenceId` or `canDetach` metadata by hand.
+
+From `packages/server`, the deterministic server acceptance check is separate
+from the live adapter gate:
+
+```sh
+rtk proxy bun test --preload=./__tests__/setup.ts \
+  src/sync-control-plane/acceptance.test.ts
+```
+
+OAuth release evidence remains blocked when the isolated test home, dedicated
+account, configured backend, or provider-specific upstream proof is unavailable.
+In particular, the acceptance fixture does not prove copied-token use,
+refresh-rotation recovery, device portability, revocation effects, or independent
+detachment for any real adapter.

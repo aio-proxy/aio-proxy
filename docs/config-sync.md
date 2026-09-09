@@ -107,3 +107,21 @@ OAuth adapters should declare the credential format and evidence required for
 multi-device use and independent detachment. An undeclared capability is treated
 as unverified; it is never inferred from a successful login or from two token
 strings that happen to differ.
+
+## Verification and release status
+
+From `packages/server`, the deterministic product acceptance scenario runs with
+two real server states, separate configuration directories, and one shared
+backend:
+
+```sh
+rtk proxy bun test --preload=./__tests__/setup.ts \
+  src/sync-control-plane/acceptance.test.ts
+```
+
+It covers selected Provider and plugin synchronization, restart discovery,
+redacted committed export, remote import without an entity echo, local exclusion,
+purge, and preservation of an independent local copy. The release also requires
+the CloudKit installed-path and launchd checks plus the adapter-specific OAuth
+evidence described in the testing guides; deterministic fixtures never stand in
+for those live gates.
