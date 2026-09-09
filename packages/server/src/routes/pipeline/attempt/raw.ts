@@ -98,13 +98,15 @@ export async function completeRawAttempt<TRequest, TContext>(
   } catch (error) {
     // Video credential-strip (and any other rewrite) may own the body on
     // `upstream`, not `rawRequest`. Cancel the object we invoked.
-    await releaseInvokedRawBodies(upstream, retrySource, error);
+    void releaseInvokedRawBodies(upstream, retrySource, error);
     throw error;
   }
   // A plugin can return 4xx/5xx or a cached 2xx without reading. Parse already
   // cloned, so this copy can hold a full tee branch until GC — including across
-  // fallback, which clones from the original again.
-  await releaseInvokedRawBodies(upstream, retrySource, 'raw request body no longer needed');
+  // fallback, which clones from the original again. Do not await: `upstream` is
+  // often a tee of `ctx.rawRequest`, and that sibling is cancelled only after
+  // this function returns.
+  void releaseInvokedRawBodies(upstream, retrySource, 'raw request body no longer needed');
 
   // Unpinned edits/extensions 404 is source-not-found: the next video-capable
   // provider may own that id. Create and language/image 404s stay terminal.
