@@ -195,3 +195,23 @@ rtk proxy bunx oxlint packages/server/src/sync-control-plane/operations.ts packa
 rtk proxy bunx oxfmt --check packages/server/src/sync-control-plane/operations.ts packages/server/src/sync-control-plane/preview.ts packages/server/src/sync-control-plane/preview.test.ts
 All matched files use the correct format.
 ```
+
+## Fix round 5
+
+The preview implementation was split by responsibility: override path validation and nested value projection now live in the private `preview-overrides.ts` collaborator, while `preview.ts` retains snapshot capture, redaction, remote reads, and preview assembly. The shared `SyncPreviewError` moved to a private error module and remains re-exported by `preview.ts`; all existing public imports and behavior are unchanged. `preview.ts` is now 456 lines, below the repository's 500-line handwritten implementation limit.
+
+Verification after round 5:
+
+```text
+rtk proxy bun test --preload=./__tests__/setup.ts src/sync-control-plane
+17 pass, 0 fail
+
+rtk proxy bunx oxlint packages/server/src/sync-control-plane
+0 errors
+
+rtk proxy bunx oxfmt --check packages/server/src/sync-control-plane
+All matched files use the correct format.
+
+rtk proxy bunx tsc --noEmit -p tsconfig.json 2>&1 | rg 'sync-control-plane/(preview|preview-overrides|preview-errors)'
+No matching errors. The package type check still reports unrelated existing errors in test helpers and other server modules.
+```
