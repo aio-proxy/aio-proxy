@@ -11,7 +11,7 @@
 
 不重新实现 token 签发、轮换、重放保护或撤销。Grok 拥有独立 installation ID 和 token family，不使用 OpenCode / Pi / OMP 的实际凭据，也不复制上游 Provider 凭据或 `server.apiKeys`。
 
-本设计补充 [Agent Provider Integrations 设计](2026-08-18-agent-provider-integrations-design.md)，保持已有三个插件目标的行为不变。#329 原来安排在 Codex / Claude Code 之后，是基于共享静态配置机制的交付顺序。实测证明 Grok 存在鉴权命令接口，本增量采用该原生接口，不依赖 #327 / #328 的实现，也不在本期定义面向所有静态目标的通用框架。配置字段归属规则可以供后续目标参考。
+本设计补充 [Agent Provider Integrations 设计](2026-08-18-agent-provider-integrations-design.md)，保持已有三个插件目标的行为不变。#329 原来安排在 Codex / Claude Code 之后，是基于共享静态配置机制的交付顺序。实测证明 Grok 存在鉴权命令接口，本增量采用该原生接口，不依赖 #327 / #328 的完整交付，也不在本期定义面向所有静态目标的通用框架。TOML 文本编辑复用 Codex 已提交的代码，通过 CLI 内共享模块服务两者；这不引入 Codex 的登录、Provider 选择或会话迁移流程。配置字段归属规则可以供后续目标参考。
 
 交付：`agent configure grok`、`agent list` 中的 Grok 状态、`agent remove grok`、`agent auth grok`，以及真实宿主兼容测试。只管理一个用户全局 Grok 配置根和一个本机 aio-proxy endpoint。
 
@@ -186,14 +186,15 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 
 | 模块 | 职责 |
 | --- | --- |
-| `packages/cli/src/agent/grok/` | Grok configure/inspect/remove、TOML 字段归属和事务 |
+| `packages/cli/src/agent/toml-document/` | Codex/Grok 共用的纯 TOML 文本编辑、源码范围定位及最终语法验证，不包含宿主字段或生命周期规则 |
+| `packages/cli/src/agent/grok/` | Grok configure/inspect/remove、七字段与别名、TOML 字段归属和事务；调用共享文本接口 |
 | `packages/cli/src/agent/grok-auth/` | 薄命令适配、凭据状态和跨进程刷新协调 |
 | `packages/agent-provider/runtime/` | 复用现有 device-code、token 请求与错误分类；必要时补充可复用 deadline 支持 |
 | `packages/types/src/agent-integration/` | target/client ID 与兼容的结果类型 |
 | `packages/core/src/agent-identity/`、server auth | 接受新增身份；保持既有鉴权语义 |
 | CLI 命令输出和 i18n | 原生登录提示、配置漂移和只读诊断 |
 
-私有模块保持在对应目录内，`index.ts` 只导出公共入口。新增 CLI 对公共 runtime 的使用要声明直接 workspace 依赖。TOML parser 的具体库选择留给实现计划的依赖评估；必须满足第 6 节可检验的编辑契约，不由 spec 预造通用工具框架。
+私有模块保持在对应目录内，`index.ts` 只导出公共入口。新增 CLI 对公共 runtime 的使用要声明直接 workspace 依赖。共享文本模块沿用 Codex 的 `toml-eslint-parser` 源码范围解析与 `Bun.TOML.parse()` 最终验证组合，具体接口、版本选项和迁移步骤见实现计划。Bun 的 stringify 可用于新建实验配置，不能用于整份重写用户配置。parser 只在共享模块导入，Grok 不导入 Codex 的私有编辑器；共享模块必须满足第 6 节契约，归属、别名、撤销和事务仍由各宿主模块管理。
 
 ## 10. 验收与发布
 
