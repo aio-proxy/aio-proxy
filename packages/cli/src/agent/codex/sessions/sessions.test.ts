@@ -151,6 +151,30 @@ test('previews existing history before the first managed marker is created', asy
   }
 });
 
+test('previews and migrates ordinary legacy history using config-declared sqlite_home', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-config-sqlite-'));
+  try {
+    await writeFile(join(root, 'config.toml'), 'sqlite_home = "state"\n');
+    const location = resolveCodexLocation(root, { HOME: root });
+    await prepareMarker(location);
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'ordinary-history.jsonl');
+    await writeFile(rolloutPath, rollout('source-proxy'));
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    expect(preview.blocked).toEqual([]);
+    expect(preview.targets).toHaveLength(1);
+    const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    expect(migrated.status).toBe('completed');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"aio-proxy"');
+    const restored = await restoreCodexMigration(location, migrated.operationId!);
+    expect(restored.status).toBe('completed');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"source-proxy"');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rolls back a replacement failure and restores a committed operation after later content is appended', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-failure-'));
   try {

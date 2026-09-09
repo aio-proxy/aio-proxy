@@ -26,7 +26,11 @@ async function assertJournalPaths(location: CodexLocation, journal: SessionMigra
   const roots: string[] = [];
   for (const root of [location.home, location.sqliteHome]) {
     if (root === undefined) continue;
-    roots.push(await realpath(root));
+    try {
+      roots.push(await realpath(root));
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    }
   }
   const operationPathValue = operationPath(location, journal.operationId);
   await assertNoSymlinkParents(dirname(operationPathValue));

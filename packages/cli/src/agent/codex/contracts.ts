@@ -7,9 +7,9 @@ export type CodexLocation = {
   readonly configPath: string;
   readonly managedRoot: string;
   readonly markerPath: string;
-  /** Optional separately configured CODEX_SQLITE_HOME. */
+  /** Optional verified SQLite root from CODEX_SQLITE_HOME or global config.toml sqlite_home. */
   readonly sqliteHome?: string;
-  /** Set only when the installed executable contract explicitly permits legacy scanning. */
+  /** Set only for an explicitly allowed or config-verified legacy JSONL fallback. */
   readonly legacyScanAllowed?: boolean;
 };
 
