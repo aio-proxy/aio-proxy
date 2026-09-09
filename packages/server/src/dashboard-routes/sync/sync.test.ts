@@ -125,7 +125,7 @@ test('sync routes validate inputs and map control-plane failures without native 
         throw new SyncPreviewError('preview-stale');
       },
       apply: async () => {
-        throw new Error('work-refresh-secret');
+        throw new TypeError('work-refresh-secret');
       },
     }),
   );
@@ -163,6 +163,44 @@ test('sync routes validate inputs and map control-plane failures without native 
   const nativeBody = await native.text();
   expect(JSON.parse(nativeBody)).toEqual({ ok: false, error: { code: 'backend-unavailable' } });
   expect(nativeBody).not.toContain('work-refresh-secret');
+});
+
+test('sync routes preserve dependency-in-use conflicts', async () => {
+  const routes = createSyncRoutes(
+    control({
+      apply: async () => {
+        throw new SyncOperationError('dependency-in-use');
+      },
+    }),
+  );
+
+  const response = await routes.request('/apply', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ previewId: 'preview-1', decisions: [] }),
+  });
+
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ ok: false, error: { code: 'dependency-in-use' } });
+});
+
+test('sync routes preserve operation-pending conflicts', async () => {
+  const routes = createSyncRoutes(
+    control({
+      apply: async () => {
+        throw new SyncOperationError('operation-pending');
+      },
+    }),
+  );
+
+  const response = await routes.request('/apply', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ previewId: 'preview-1', decisions: [] }),
+  });
+
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ ok: false, error: { code: 'operation-pending' } });
 });
 
 test('sync routes delegate every operation and publish status-only change events', async () => {

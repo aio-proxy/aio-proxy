@@ -84,11 +84,7 @@ const invalidRequest = (context: { json: (value: SyncResponse, status: 400) => R
 
 function errorCode(error: unknown): { readonly code: SyncErrorCode; readonly status: 400 | 409 | 503 } {
   const code =
-    error instanceof SyncPreviewError || error instanceof SyncOperationError
-      ? error.code
-      : error instanceof TypeError
-        ? 'invalid-request'
-        : 'backend-unavailable';
+    error instanceof SyncPreviewError || error instanceof SyncOperationError ? error.code : 'backend-unavailable';
   if (code === 'invalid-request') return { code, status: 400 };
   if (code === 'not-connected' || code === 'backend-unavailable') return { code, status: 503 };
   return { code, status: 409 };
