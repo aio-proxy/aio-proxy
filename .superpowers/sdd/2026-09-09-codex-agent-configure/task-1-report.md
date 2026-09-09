@@ -105,3 +105,53 @@ The 13 failures are pre-existing upgrade-path expectations for Homebrew, pnpm, a
 - The probe does not validate the full TUI login flow, OS keychain behavior, or a successful inference response; its deliberate 503 only verifies credential selection.
 - The native migration branch is blocked, so Task 5 must independently discover and version-gate the active SQLite/rollout location before any write.
 - No changes to user data were made, and no upstream revision could be established from the installed binary.
+
+## Fix round 1 review response
+
+Status: DONE_WITH_CONCERNS. The required migration verification remains blocked by the live executable, and the probe now exits nonzero (`1`) whenever a required result is `BLOCKED`; the report is retained for that blocked run.
+
+The probe now rejects extra positional arguments as well as a missing argument:
+
+```text
+rtk bun run packages/cli/scripts/verify-codex-contract.ts /opt/homebrew/bin/codex extra
+extra-arg-exit=2
+FAIL: Pass exactly one Codex executable argument
+```
+
+The rerun recorded the isolated first-login boundary and validated schema fields:
+
+```text
+executable: codex-cli 0.146.0
+version command exit: 0
+app-server help exit: 0
+isolated login help exit: 0
+isolated login help first line: Manage login
+schema command exit: 0
+verified v2 schema fields: ThreadStartParams[modelProvider|historyMode], ThreadResumeParams[threadId|modelProvider], ThreadListParams[modelProviders|useStateDbOnly], ThreadMetadataUpdateParams[threadId|isPinned|gitInfo]
+PASS: logged-out / test-proxy-key: model request used the configured proxy bearer
+PASS: logged-out / aio-proxy-local: model request used the configured proxy bearer
+PASS: logged-in / test-proxy-key: model request used the configured proxy bearer
+PASS: logged-in / aio-proxy-local: model request used the configured proxy bearer
+BLOCKED: native provider migration persistence: resume override=source-proxy, after restart=source-proxy, list source/target=1/0, restart source/target=1/0, repaired source=1; rounds=accepted/accepted, fork=accepted, archive=accepted; storage inspected: configured sqlite_home used; state_5.sqlite threads columns include id, rollout_path, model_provider, archived, history_mode, model, created_at, updated_at, and is_pinned; threadRows=2; providers=source-proxy; historyModes=legacy; archived=1; thread_spawn_edges fields=parent_thread_id, child_thread_id, status; spawnEdges=0; rollouts=two JSONL files with 14/10 lines and session_meta/event_msg/response_item/world_state/turn_context records; sessionMetaProvider=source-proxy; metadata/update has no provider field, so no native migration write was attempted
+migration: BLOCKED — this probe does not claim persistence without a restart/list/resume proof
+probe-exit=1
+```
+
+The storage inspection used the authored `sqlite_home` directory and opened every SQLite candidate in that configured directory by extension and table contents. It did not select a state database by modification time. The observed `state_5.sqlite` contained `threads`, `thread_spawn_edges`, and the real column list recorded above; `logs`, `memories`, and `goals` databases were inspected and rejected as non-thread stores. The rollout scan counted records without printing paths or payloads. `thread/list` with `useStateDbOnly=false` returned the same source row count as the state-only query, so this is the observed repair comparison rather than an index mutation.
+
+The synthetic history attempted two accepted turn starts, a `thread/fork`, and `thread/archive`; the database contained two rows and one archived row, while `thread_spawn_edges` remained empty. The synthetic upstream returned 503 before model output, so no tool call record could be generated through the public API; this is reported as unavailable. Concrete refusal fixtures now cover missing IDs, conflicting providers, unknown `history_mode`, rollout/index mismatch, and active writers. The sanitized generated schema summary is committed alongside the fixtures.
+
+The full TUI login flow remains outside the automated boundary: the isolated no-auth `login --help` surface was observed, but interactive/browser authentication was not started. The app-server bearer experiment does not claim OS keychain or TUI behavior.
+
+Fix-round checks:
+
+```text
+rtk bunx oxfmt packages/cli/scripts/verify-codex-contract.ts packages/cli/scripts/codex-storage.ts
+exit 0
+
+rtk bunx oxlint packages/cli/scripts/verify-codex-contract.ts packages/cli/scripts/codex-storage.ts
+exit 0
+
+rtk bun run packages/cli/scripts/verify-codex-contract.ts /opt/homebrew/bin/codex
+exit 1 (expected: required native migration contract is BLOCKED)
+```

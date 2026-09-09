@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { inspectCodexStorage } from './codex-storage';
+
 type JsonRpcPacket = {
   readonly id?: number;
   readonly result?: unknown;
@@ -19,16 +21,14 @@ type CommandResult = {
   readonly stdout: string;
   readonly stderr: string;
 };
-
 const executable = process.argv[2];
-if (executable === undefined || executable.trim() === '') {
-  console.error('FAIL: Pass the Codex executable explicitly');
+if (process.argv.length !== 3 || executable === undefined || executable.trim() === '') {
+  console.error('FAIL: Pass exactly one Codex executable argument');
   process.exit(2);
 }
 
 const timeoutMs = 10_000;
 const expectedLoginToken = 'synthetic-login-token';
-
 async function command(args: readonly string[], env: Record<string, string>, cwd: string): Promise<CommandResult> {
   const child = Bun.spawn([executable!, ...args], {
     cwd,
@@ -54,7 +54,6 @@ function isolatedEnv(root: string, codexHome: string): Record<string, string> {
     TMPDIR: join(root, 'tmp'),
   };
 }
-
 async function writeConfig(codexHome: string, port: number, proxyKey: string): Promise<void> {
   await Bun.write(
     join(codexHome, 'config.toml'),
@@ -75,12 +74,10 @@ async function writeConfig(codexHome: string, port: number, proxyKey: string): P
     }),
   );
 }
-
 type RpcSession = {
   readonly call: (method: string, params: unknown) => Promise<unknown>;
   readonly stop: () => Promise<void>;
 };
-
 async function openRpcSession(root: string, codexHome: string): Promise<RpcSession> {
   const child = Bun.spawn([executable!, 'app-server'], {
     env: isolatedEnv(root, codexHome),
@@ -151,9 +148,8 @@ async function openRpcSession(root: string, codexHome: string): Promise<RpcSessi
     throw error;
   }
 }
-
 async function rpcProbe(root: string, codexHome: string, loggedIn: boolean, proxyKey: string): Promise<ProbeResult> {
-  let observedToken: string | null = null;
+  const observedTokens: string[] = [];
   let inferenceRequest!: () => void;
   const inferenceArrived = new Promise<void>((resolve) => {
     inferenceRequest = resolve;
@@ -164,7 +160,7 @@ async function rpcProbe(root: string, codexHome: string, loggedIn: boolean, prox
     fetch(request) {
       const path = new URL(request.url).pathname;
       if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
-      observedToken = request.headers.get('authorization');
+      observedTokens.push(request.headers.get('authorization') ?? '');
       inferenceRequest();
       return Response.json({ error: { message: 'contract probe' } }, { status: 503 });
     },
@@ -191,7 +187,7 @@ async function rpcProbe(root: string, codexHome: string, loggedIn: boolean, prox
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('No model request observed')), timeoutMs)),
     ]);
     const expected = `Bearer ${proxyKey}`;
-    if (observedToken !== expected)
+    if (observedTokens.length === 0 || observedTokens.some((token) => token !== expected))
       throw new Error(`Authorization did not match expected test token (${loggedIn ? 'logged-in' : 'logged-out'})`);
     await session.stop();
     session = undefined;
@@ -211,8 +207,7 @@ async function rpcProbe(root: string, codexHome: string, loggedIn: boolean, prox
     server.stop(true);
   }
 }
-
-async function writeMigrationConfig(codexHome: string, port: number): Promise<void> {
+async function writeMigrationConfig(codexHome: string, port: number, sqliteHome: string): Promise<void> {
   const provider = (name: string) => ({
     name,
     base_url: `http://127.0.0.1:${port}/v1`,
@@ -227,6 +222,7 @@ async function writeMigrationConfig(codexHome: string, port: number): Promise<vo
       model: 'contract-model',
       model_provider: 'source-proxy',
       cli_auth_credentials_store: 'file',
+      sqlite_home: sqliteHome,
       model_providers: { 'source-proxy': provider('source-proxy'), 'aio-proxy': provider('aio-proxy') },
     }),
   );
@@ -242,7 +238,9 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
   try {
     await mkdir(join(root, 'tmp'), { recursive: true, mode: 0o700 });
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
-    await writeMigrationConfig(codexHome, server.port);
+    const sqliteHome = join(root, 'sqlite-home');
+    await mkdir(sqliteHome, { recursive: true, mode: 0o700 });
+    await writeMigrationConfig(codexHome, server.port, sqliteHome);
     session = await openRpcSession(root, codexHome);
     const started = (await session.call('thread/start', {
       cwd: root,
@@ -253,12 +251,39 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
     })) as { thread?: { id?: string } };
     const threadId = started.thread?.id;
     if (threadId === undefined) throw new Error('thread/start returned no thread id');
-    try {
-      await session.call('turn/start', { threadId, input: [{ type: 'text', text: 'migration probe' }] });
-    } catch {
-      // The synthetic upstream intentionally cannot complete inference; the rollout may still be persisted.
+    const turnResults: string[] = [];
+    for (const text of ['migration probe round one', 'migration probe round two']) {
+      try {
+        await session.call('turn/start', { threadId, input: [{ type: 'text', text }] });
+        turnResults.push('accepted');
+      } catch {
+        turnResults.push('rejected');
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
+    let childThreadId: string | undefined;
+    let forkResult = 'rejected';
+    try {
+      const forked = (await session.call('thread/fork', {
+        threadId,
+        modelProvider: 'source-proxy',
+        model: 'contract-model',
+        excludeTurns: true,
+      })) as { thread?: { id?: string } };
+      childThreadId = forked.thread?.id;
+      forkResult = childThreadId === undefined ? 'accepted-without-id' : 'accepted';
+    } catch {
+      // The app-server may require a completed rollout before forking.
+    }
+    let archiveResult = 'not-attempted';
+    if (childThreadId !== undefined) {
+      try {
+        await session.call('thread/archive', { threadId: childThreadId });
+        archiveResult = 'accepted';
+      } catch {
+        archiveResult = 'rejected';
+      }
+    }
     const sourceList = (await session.call('thread/list', {
       modelProviders: ['source-proxy'],
       limit: 100,
@@ -289,6 +314,11 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
       limit: 100,
       useStateDbOnly: true,
     })) as { data?: readonly { id?: string }[] };
+    const repairedList = (await session.call('thread/list', {
+      modelProviders: ['source-proxy'],
+      limit: 100,
+      useStateDbOnly: false,
+    })) as { data?: readonly { id?: string }[] };
     const restarted = (await session.call('thread/resume', { threadId, excludeTurns: true })) as {
       modelProvider?: string;
     };
@@ -296,11 +326,13 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
     const targetCount = targetList.data?.filter((thread) => thread.id === threadId).length ?? 0;
     const restartedSourceCount = restartedSource.data?.filter((thread) => thread.id === threadId).length ?? 0;
     const restartedTargetCount = restartedTarget.data?.filter((thread) => thread.id === threadId).length ?? 0;
-    const detail = `resume override=${resumed.modelProvider ?? 'unknown'}, after restart=${restarted.modelProvider ?? 'unknown'}, list source/target=${sourceCount}/${targetCount}, restart source/target=${restartedSourceCount}/${restartedTargetCount}`;
+    const repairedCount = repairedList.data?.filter((thread) => thread.id === threadId).length ?? 0;
+    const detail = `resume override=${resumed.modelProvider ?? 'unknown'}, after restart=${restarted.modelProvider ?? 'unknown'}, list source/target=${sourceCount}/${targetCount}, restart source/target=${restartedSourceCount}/${restartedTargetCount}, repaired source=${repairedCount}`;
+    const storage = await inspectCodexStorage(codexHome, sqliteHome);
     return {
       name: 'native provider migration persistence',
       status: 'BLOCKED',
-      detail: `${detail}; metadata/update has no provider field, so no native migration write was attempted`,
+      detail: `${detail}; rounds=${turnResults.join('/')}, fork=${forkResult}, archive=${archiveResult}; ${storage}; metadata/update has no provider field, so no native migration write was attempted`,
     };
   } catch (error) {
     return {
@@ -317,8 +349,21 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
 function schemaMethods(schema: Record<string, unknown>): string[] {
   const definitions = schema['definitions'];
   if (typeof definitions !== 'object' || definitions === null) return [];
-  const methods = ['ThreadStartParams', 'ThreadResumeParams', 'ThreadListParams', 'ThreadMetadataUpdateParams'];
-  return methods.filter((name) => Object.hasOwn(definitions, name));
+  const requiredFields: Record<string, readonly string[]> = {
+    ThreadStartParams: ['modelProvider', 'historyMode'],
+    ThreadResumeParams: ['threadId', 'modelProvider'],
+    ThreadListParams: ['modelProviders', 'useStateDbOnly'],
+    ThreadMetadataUpdateParams: ['threadId', 'isPinned', 'gitInfo'],
+  };
+  const valid: string[] = [];
+  for (const [name, fields] of Object.entries(requiredFields)) {
+    const definition = definitions[name];
+    if (typeof definition !== 'object' || definition === null) continue;
+    const properties = (definition as { properties?: unknown }).properties;
+    if (typeof properties !== 'object' || properties === null) continue;
+    if (fields.every((field) => Object.hasOwn(properties, field))) valid.push(`${name}[${fields.join('|')}]`);
+  }
+  return valid;
 }
 
 async function main(): Promise<void> {
@@ -335,6 +380,9 @@ async function main(): Promise<void> {
     console.log(`version command exit: ${version.code}`);
     const help = await command(['app-server', '--help'], env, root);
     console.log(`app-server help exit: ${help.code}`);
+    const loginHelp = await command(['login', '--help'], env, root);
+    console.log(`isolated login help exit: ${loginHelp.code}`);
+    console.log(`isolated login help first line: ${(loginHelp.stdout.split('\n')[0] ?? '').trim() || '(no stdout)'}`);
     await mkdir(schemaDir, { recursive: true, mode: 0o700 });
     const schema = await command(
       ['app-server', 'generate-json-schema', '--experimental', '--out', schemaDir],
@@ -345,7 +393,7 @@ async function main(): Promise<void> {
     if (schema.code === 0) {
       const schemaPath = join(schemaDir, 'codex_app_server_protocol.v2.schemas.json');
       const parsed = JSON.parse(await readFile(schemaPath, 'utf8')) as Record<string, unknown>;
-      console.log(`verified v2 schema methods: ${schemaMethods(parsed).join(', ') || '(none)'}`);
+      console.log(`verified v2 schema fields: ${schemaMethods(parsed).join(', ') || '(none)'}`);
     }
     for (const loggedIn of [false, true]) {
       for (const proxyKey of ['test-proxy-key', 'aio-proxy-local']) {
@@ -365,8 +413,9 @@ async function main(): Promise<void> {
     if (
       version.code !== 0 ||
       help.code !== 0 ||
+      loginHelp.code !== 0 ||
       schema.code !== 0 ||
-      results.some((result) => result.status === 'FAIL')
+      results.some((result) => result.status === 'FAIL' || result.status === 'BLOCKED')
     )
       process.exitCode = 1;
   } finally {
