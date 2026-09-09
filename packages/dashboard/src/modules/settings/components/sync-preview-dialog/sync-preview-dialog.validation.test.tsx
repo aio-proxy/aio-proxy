@@ -188,3 +188,44 @@ test('requests an exact fresh preview after removing a pin and keeps submit disa
   );
   expect(apply).toBe(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
 });
+
+test('retries a failed removal with the same empty override path set', async () => {
+  const basePreview: SyncPreview = {
+    ...preview,
+    previewId: 'preview-base',
+    kind: 'join',
+    rows: [{ ...preview.rows[0]!, change: 'update', choices: ['local', 'cloud'] }],
+  };
+  const replacement: SyncPreview = { ...basePreview, previewId: 'preview-overrides', kind: 'overrides' };
+  const onPreviewOverrides = rs
+    .fn()
+    .mockResolvedValueOnce(replacement)
+    .mockRejectedValueOnce(new Error('refresh failed'))
+    .mockResolvedValueOnce(replacement);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewStateHarness initialPreview={basePreview} onPreviewOverrides={onPreviewOverrides} />
+    </QueryClientProvider>,
+  );
+
+  const path = screen.getByLabelText(/Option path|选项路径/u);
+  fireEvent.change(path, { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  const remove = await waitFor(() => {
+    const button = screen.getByRole('button', { name: /Remove local option.*limits\.timeout/u });
+    expect(button).not.toBeDisabled();
+    return button;
+  });
+
+  fireEvent.click(remove);
+  await waitFor(() => expect(screen.getByText(/Could not refresh the preview|无法刷新预览/u)).toBeTruthy());
+  expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, []);
+  expect(screen.getByRole('button', { name: /Retry preview|重试预览/u })).not.toBeDisabled();
+  expect(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u })).toBeDisabled();
+
+  fireEvent.click(screen.getByRole('button', { name: /Retry preview|重试预览/u }));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(3, []));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u })).not.toBeDisabled(),
+  );
+});

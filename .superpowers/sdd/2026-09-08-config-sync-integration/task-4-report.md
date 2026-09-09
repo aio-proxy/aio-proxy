@@ -44,3 +44,15 @@ Generated `route-tree.gen.ts` was not edited.
 - `rtk proxy bun run i18n:compile` — passed.
 - `rtk proxy bun run check` — passed; existing oxlint warnings only, formatting clean.
 - Fresh `rtk proxy bun run lint:types` — remains blocked only by the baseline OAuth editor TS2322/TS2589 and CloudKit script TS2322/TS18048 diagnostics.
+
+## Fix round 3
+
+- Failed override refreshes retain the exact intended path set and expose a localized retry action; closing or reopening the dialog clears stale override state, including an empty set after removal.
+- Added regression coverage for close/reopen reset and failed removal retry behavior across the two preview test files.
+- `rtk proxy bun run i18n:compile` — passed.
+- `rtk proxy bun run check` — passed; existing oxlint warnings only, formatting clean.
+- Focused preview tests — 11 passed across 2 files.
+- `rtk proxy bun run --filter @aio-proxy/dashboard test` — 987 passed, 1 skipped, 0 failed across 163 files.
+- `rtk proxy bun run --filter @aio-proxy/dashboard build` — passed.
+- `rtk proxy bun run lint:types` — remains blocked only by the baseline OAuth editor TS2322/TS2589 and CloudKit script TS2322/TS18048 diagnostics.
+- `git diff --check` — passed.

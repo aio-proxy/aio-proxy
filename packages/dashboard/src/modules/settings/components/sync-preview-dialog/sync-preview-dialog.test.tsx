@@ -86,3 +86,39 @@ test('requests a new overrides preview when pinning a local option', async () =>
 
   await waitFor(() => expect(onPreviewOverrides).toHaveBeenCalledWith([['limits', 'timeout']]));
 });
+
+test('clears override paths when closing before reopening a new preview', async () => {
+  const replacement: SyncPreview = { ...preview, previewId: 'preview-overrides', kind: 'overrides' };
+  const onPreviewOverrides = rs.fn().mockResolvedValue(replacement);
+  const view = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={preview} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+    </QueryClientProvider>,
+  );
+
+  const path = screen.getByLabelText(/Option path|选项路径/u);
+  fireEvent.change(path, { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(1, [['limits', 'timeout']]));
+
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open={false} preview={null} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+    </QueryClientProvider>,
+  );
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog
+        open
+        preview={{ ...preview, previewId: 'preview-reopen' }}
+        onOpenChange={rs.fn()}
+        onPreviewOverrides={onPreviewOverrides}
+      />
+    </QueryClientProvider>,
+  );
+
+  const reopenedPath = screen.getByLabelText(/Option path|选项路径/u);
+  fireEvent.change(reopenedPath, { target: { value: 'models.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, [['models', 'timeout']]));
+});

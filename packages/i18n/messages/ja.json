@@ -421,6 +421,7 @@
       "override_preview_required": "固定を解除した後は、もう一度プレビューを確認してください。",
       "override_invalid": "ドット区切りのオプションパスを入力してください。",
       "override_preview_failed": "ローカルオプションの変更後にプレビューを更新できませんでした。",
+      "override_preview_retry": "プレビューを再試行",
       "rename_provider": "新しい Provider ID",
       "rename_provider_required": "この競合を解決するには新しい Provider ID を入力してください。",
       "rename_provider_invalid": "Provider ID には英数字、ハイフン、アンダースコア、ドットを使用してください。",

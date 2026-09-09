@@ -421,6 +421,7 @@
       "override_preview_required": "Review the preview again after removing a pin.",
       "override_invalid": "Enter a dot-separated option path.",
       "override_preview_failed": "Could not refresh the preview after changing local options.",
+      "override_preview_retry": "Retry preview",
       "rename_provider": "New Provider ID",
       "rename_provider_required": "Enter a new Provider ID to resolve this conflict.",
       "rename_provider_invalid": "Provider ID must contain letters, numbers, hyphens, underscores, or dots.",

@@ -95,6 +95,71 @@ const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): v
   typeof value.previewId === 'string' &&
   value.previewId.trim().length > 0;
 
+interface StalePreviewAlertArgs {
+  readonly stale: boolean;
+  readonly pending: boolean;
+  readonly preview: SyncPreview | null;
+  readonly onRetry: SyncPreviewDialogProps['onRetry'];
+  readonly applyMutation: ReturnType<typeof useApplySync>;
+  readonly retryError: boolean;
+  setRetryError(value: boolean): void;
+  setNeedsFreshPreview(value: boolean): void;
+}
+
+const stalePreviewAlert = ({
+  stale,
+  pending,
+  preview,
+  onRetry,
+  applyMutation,
+  retryError,
+  setRetryError,
+  setNeedsFreshPreview,
+}: StalePreviewAlertArgs): React.ReactNode => {
+  if (!stale) return null;
+  return (
+    <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+      <p>{m['dashboard.sync.preview_stale_retry']()}</p>
+      <Button
+        type="button"
+        size="sm"
+        className="mt-2"
+        onClick={async () => {
+          setRetryError(false);
+          const replacement =
+            onRetry === undefined
+              ? undefined
+              : await Promise.resolve()
+                  .then(() => onRetry())
+                  .catch(() => undefined);
+          if (replacement !== undefined && isValidReplacementPreview(replacement, preview?.kind ?? 'join')) {
+            applyMutation.reset();
+            setNeedsFreshPreview(false);
+          } else {
+            setRetryError(true);
+          }
+        }}
+        disabled={pending}
+      >
+        {m['dashboard.sync.preview_retry']()}
+      </Button>
+      {retryError ? <p role="alert">{m['dashboard.sync.preview_retry_failed']()}</p> : null}
+    </div>
+  );
+};
+
+const clearOverrideDraft = (
+  overridesRef: { current: readonly string[][] },
+  setNeedsFreshPreview: (value: boolean) => void,
+  setOverrideError: (value: 'invalid' | 'refresh' | undefined) => void,
+  setIsRefreshingOverrides: (value: boolean) => void,
+) => {
+  overridesRef.current = [];
+  setNeedsFreshPreview(false);
+  setOverrideError(undefined);
+  setIsRefreshingOverrides(false);
+};
+
 export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   open,
   preview,
@@ -109,18 +174,22 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const [overrideError, setOverrideError] = useState<'invalid' | 'refresh' | undefined>();
   const [retryError, setRetryError] = useState(false);
   const [isRefreshingOverrides, setIsRefreshingOverrides] = useState(false);
-  const [overridePaths, setOverridePaths] = useState<readonly string[][]>([]);
   const overridesRef = useRef<readonly string[][]>([]);
+  const [, rerenderOverrides] = useState(0);
   const form = useForm({ defaultValues: initialValues(preview), validators: { onChange: previewFormSchema } });
 
   useEffect(() => {
-    const existingOverrides = preview === null ? [] : overridesRef.current;
-    setOverridePaths(existingOverrides);
+    if (!open || preview === null) {
+      clearOverrideDraft(overridesRef, setNeedsFreshPreview, setOverrideError, setIsRefreshingOverrides);
+      form.reset(initialValues(preview));
+      return;
+    }
+    const existingOverrides = overridesRef.current;
     form.reset({
       ...initialValues(preview),
       overrides: existingOverrides,
     });
-  }, [form, preview]);
+  }, [form, open, preview]);
 
   const stale = applyMutation.error instanceof SyncRequestError && applyMutation.error.code === 'preview-stale';
   const pending = applyMutation.isPending || isRefreshingOverrides;
@@ -146,6 +215,11 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
       setOverrideError('refresh');
     }
     setIsRefreshingOverrides(false);
+  };
+
+  const setOverridePaths = (paths: readonly string[][]) => {
+    overridesRef.current = paths;
+    rerenderOverrides((version) => version + 1);
   };
 
   const apply = () => {
@@ -185,35 +259,16 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
           <DialogTitle>{m['dashboard.sync.preview_title']()}</DialogTitle>
           <DialogDescription>{m['dashboard.sync.preview_description']()}</DialogDescription>
         </DialogHeader>
-        {stale ? (
-          <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
-            <p>{m['dashboard.sync.preview_stale_retry']()}</p>
-            <Button
-              type="button"
-              size="sm"
-              className="mt-2"
-              onClick={async () => {
-                setRetryError(false);
-                const replacement =
-                  onRetry === undefined
-                    ? undefined
-                    : await Promise.resolve()
-                        .then(() => onRetry())
-                        .catch(() => undefined);
-                if (replacement !== undefined && isValidReplacementPreview(replacement, preview?.kind ?? 'join')) {
-                  applyMutation.reset();
-                  setNeedsFreshPreview(false);
-                } else {
-                  setRetryError(true);
-                }
-              }}
-              disabled={pending}
-            >
-              {m['dashboard.sync.preview_retry']()}
-            </Button>
-            {retryError ? <p role="alert">{m['dashboard.sync.preview_retry_failed']()}</p> : null}
-          </div>
-        ) : null}
+        {stalePreviewAlert({
+          stale,
+          pending,
+          preview,
+          onRetry,
+          applyMutation,
+          retryError,
+          setRetryError,
+          setNeedsFreshPreview,
+        })}
         {applyMutation.isError && !stale ? <p role="alert">{m['dashboard.sync.apply_failed']()}</p> : null}
         {preview === null || rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{m['dashboard.sync.preview_empty']()}</p>
@@ -316,7 +371,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                   <div className="rounded-lg border p-3">
                     <p className="font-medium">{m['dashboard.sync.override_title']()}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {overridePaths.map((path) => (
+                      {overridesRef.current.map((path) => (
                         <Button
                           key={path.join('.')}
                           type="button"
@@ -324,8 +379,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                           variant="outline"
                           disabled={pending}
                           onClick={async () => {
-                            const next = overridePaths.filter((current) => current.join('.') !== path.join('.'));
-                            overridesRef.current = next;
+                            const next = overridesRef.current.filter((current) => current.join('.') !== path.join('.'));
                             setOverridePaths(next);
                             field.handleChange(next);
                             await requestOverridesPreview(next);
@@ -357,8 +411,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                                 return;
                               }
                               const path = parsedPath.data.split('.');
-                              const next = [...overridePaths, path];
-                              overridesRef.current = next;
+                              const next = [...overridesRef.current, path];
                               setOverridePaths(next);
                               field.handleChange(next);
                               pathField.handleChange('');
@@ -371,11 +424,24 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                       )}
                     </form.Field>
                     {overrideError !== undefined ? (
-                      <p role="alert" className="mt-2 text-xs text-destructive">
-                        {overrideError === 'invalid'
-                          ? m['dashboard.sync.override_invalid']()
-                          : m['dashboard.sync.override_preview_failed']()}
-                      </p>
+                      <div className="mt-2 space-y-2">
+                        <p role="alert" className="text-xs text-destructive">
+                          {overrideError === 'invalid'
+                            ? m['dashboard.sync.override_invalid']()
+                            : m['dashboard.sync.override_preview_failed']()}
+                        </p>
+                        {overrideError === 'refresh' ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={pending || onPreviewOverrides === undefined}
+                            onClick={() => void requestOverridesPreview(overridesRef.current)}
+                          >
+                            {m['dashboard.sync.override_preview_retry']()}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                     {needsFreshPreview ? (
                       <p role="status" className="mt-2 text-xs text-muted-foreground">

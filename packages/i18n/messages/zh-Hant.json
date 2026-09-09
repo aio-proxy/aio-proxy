@@ -421,6 +421,7 @@
       "override_preview_required": "移除固定項目後需要重新檢閱預覽。",
       "override_invalid": "請輸入以點分隔的選項路徑。",
       "override_preview_failed": "變更本機選項後無法重新整理預覽。",
+      "override_preview_retry": "重試預覽",
       "rename_provider": "新的 Provider ID",
       "rename_provider_required": "請輸入新的 Provider ID 以解決此衝突。",
       "rename_provider_invalid": "Provider ID 只能包含字母、數字、連字號、底線或點。",

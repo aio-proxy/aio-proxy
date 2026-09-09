@@ -421,6 +421,7 @@
       "override_preview_required": "移除固定项后需要重新审核预览。",
       "override_invalid": "请输入以点分隔的选项路径。",
       "override_preview_failed": "更改本地选项后无法刷新预览。",
+      "override_preview_retry": "重试预览",
       "rename_provider": "新的 Provider ID",
       "rename_provider_required": "请输入新的 Provider ID 以解决此冲突。",
       "rename_provider_invalid": "Provider ID 只能包含字母、数字、连字符、下划线或点。",
