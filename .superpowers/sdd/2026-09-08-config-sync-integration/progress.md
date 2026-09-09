@@ -99,3 +99,15 @@ The fix must preserve the existing OAuth ownership metadata and keep public cont
 - Residual fix evidence: same-operation secret-change and config-change retry regressions pass; the focused server/core suite passes 47 tests, `bun run check` passes with documented pre-existing warnings only, and `git diff --check` passes.
 - Final residual scoped re-review: PASS. Prepared remote retries reuse the durable before/after intent, preserve unknown external configuration and plugin secrets, and avoid conflicting re-prepares or journal discard. Focused local-port tests passed 7/7; no new Critical/Important/Minor regressions.
 - Integration plan: complete through final residual review (commits `090de0b9f..472d58ef`). Live CloudKit signing, installed-path/launchd, two-Mac, and provider OAuth gates remain blocked and are not release evidence.
+
+## Post-plan verification repair
+
+- The required repository-wide preflight exposed a false positive in `packages/core/__tests__/build-entry.smoke.ts`: legitimate `sync/repository/` internal imports were still matched as stale moved-plugin imports.
+- Task 7 brief: `task-7-brief.md`; base commit: `432e801ff245260abd3d46775be0b57be22c0aae`.
+- Task 7 implementation commit `4bab7e556` narrows the artifact smoke-test exception to intentional `sync/repository/` imports. Focused smoke test and lint/format passed; repository-wide preflight remains red on unrelated core/server/CLI/dashboard tests. Report: `task-7-report.md`.
+- Task 7 review: FAIL only because the report named the wrong implementation hash; code scope and focused verification passed.
+- Task 7 fix round 1 commit `176c2e86d` corrects the report hash and preserves the verification record. Scoped re-review: prior finding addressed; no new Critical/Important/Minor issues.
+- Task 7: complete (commits `4bab7e55..176c2e86`, review clean after fix round 1).
+- Fresh controller verification: `rtk proxy bun test ./packages/core/__tests__/build-entry.smoke.ts` passed (1/1); `rtk proxy bun run check` and `rtk git diff --check` passed. `rtk proxy bun run preflight` passed lint/types and format, then failed only at `@aio-proxy/cli#test` with 13 existing upgrade-path fixture failures; no core artifact failure remained.
+- Task 7 fix round 2 commit `dbac726bd` adds the fresh controller preflight result to the report. Scoped re-review: PASS; no new Critical/Important/Minor issues.
+- Task 7 final status: complete after fix rounds 1–2 (commits `4bab7e55..dbac726b`).
