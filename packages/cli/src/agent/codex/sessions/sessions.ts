@@ -1,21 +1,20 @@
 import { Database } from 'bun:sqlite';
 import { constants } from 'node:fs';
-import { lstat, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget, SessionGroup } from '../contracts';
-import { inspectRegularFile } from '../managed-config/storage';
+import { inspectRegularFile, syncParent } from '../managed-config/storage';
 import {
   acquireSessionLock,
   createOperation,
   operationPath,
-  readJournal,
   type JournalEntry,
   type SessionMigrationJournal,
   updateJournal,
   writeBackup,
 } from './journal';
-import { fingerprintBytes, inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
+import { fingerprintBytes, rewriteLegacyProvider } from './legacy-rollout';
 import { readStateIndex, type IndexedSession } from './state-index';
 
 type SessionTestDeps = {
@@ -32,28 +31,75 @@ export function setSessionTestDeps(deps: SessionTestDeps): void {
   testDeps = deps;
 }
 
-const defaultOfflineCheck = async (): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> => {
+const defaultOfflineCheck = async (
+  location: CodexLocation,
+): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> => {
   try {
     const result = Bun.spawnSync(['ps', '-axo', 'command=']);
     if (result.exitCode !== 0) return 'offline_check_unavailable';
     const output = new TextDecoder().decode(result.stdout);
-    return output.split('\n').some((line) => /(?:^|[\s/])codex(?:$|[\s/])/i.test(line)) ? 'codex_active' : 'ok';
+    if (output.split('\n').some((line) => /(?:^|[\s/])codex(?:-cli)?(?:$|[\s/])|\bcodex\s+app-server\b/i.test(line)))
+      return 'codex_active';
+    const lsof = Bun.spawnSync(['lsof', '+D', location.home, '-n', '-P']);
+    if (lsof.exitCode !== 127) {
+      if (lsof.exitCode !== 0 && lsof.exitCode !== 1) return 'offline_check_unavailable';
+      const handles = new TextDecoder().decode(lsof.stdout);
+      if (handles.split('\n').some((line) => /codex(?:-cli)?|codex\s+app-server/i.test(line))) return 'codex_active';
+      return 'ok';
+    }
+    const fuser = Bun.spawnSync(['fuser', '-m', location.home]);
+    if (fuser.exitCode !== 127) {
+      if (fuser.exitCode !== 0 && fuser.exitCode !== 1) return 'offline_check_unavailable';
+      if (fuser.exitCode === 0 && /codex(?:-cli)?|codex\s+app-server/i.test(new TextDecoder().decode(fuser.stdout)))
+        return 'codex_active';
+    }
+    const proc = await readdir('/proc', { withFileTypes: true }).catch(() => undefined);
+    if (proc === undefined) return 'offline_check_unavailable';
+    for (const entry of proc) {
+      if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
+      const command = await readFile(`/proc/${entry.name}/cmdline`).catch(() => undefined);
+      if (command !== undefined && /codex(?:-cli)?|codex\s+app-server/i.test(command.toString('utf8')))
+        return 'codex_active';
+    }
+    return 'ok';
   } catch {
     return 'offline_check_unavailable';
   }
 };
 
-const checkOffline = (): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> =>
-  (testDeps.offlineCheck ?? defaultOfflineCheck)();
+const checkOffline = (location: CodexLocation): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> =>
+  testDeps.offlineCheck !== undefined ? testDeps.offlineCheck() : defaultOfflineCheck(location);
 
 async function managedProvider(location: CodexLocation): Promise<string> {
+  let marker: unknown;
   try {
-    const marker = JSON.parse(await readFile(location.markerPath, 'utf8')) as { providerId?: unknown };
-    if (typeof marker.providerId === 'string' && marker.providerId.length > 0) return marker.providerId;
+    marker = JSON.parse(await readFile(location.markerPath, 'utf8'));
   } catch {
-    // An absent marker is expected before the first configure operation.
+    throw new Error('managed_marker_missing_or_invalid');
   }
-  return 'aio-proxy';
+  if (typeof marker !== 'object' || marker === null) throw new Error('managed_marker_invalid');
+  const value = marker as { format?: unknown; managedBy?: unknown; configPath?: unknown; providerId?: unknown };
+  if (
+    value.format !== 1 ||
+    value.managedBy !== 'aio-proxy' ||
+    value.configPath !== location.configPath ||
+    typeof value.providerId !== 'string' ||
+    value.providerId.length === 0
+  )
+    throw new Error('managed_marker_invalid');
+  let config: unknown;
+  try {
+    config = Bun.TOML.parse(await readFile(location.configPath, 'utf8'));
+  } catch {
+    throw new Error('managed_config_missing_or_invalid');
+  }
+  if (
+    typeof config !== 'object' ||
+    config === null ||
+    (config as { model_provider?: unknown }).model_provider !== value.providerId
+  )
+    throw new Error('managed_config_invalid');
+  return value.providerId;
 }
 
 export async function inspectCodexSessions(location: CodexLocation): Promise<MigrationPreview> {
@@ -85,7 +131,7 @@ export async function inspectCodexSessions(location: CodexLocation): Promise<Mig
     return {
       groups: [],
       targets: [],
-      blocked: [{ id: 'storage', reason: error instanceof Error ? error.message : 'Codex storage is unavailable' }],
+      blocked: [{ id: 'storage', reason: previewDiagnostic(error) }],
     };
   }
 }
@@ -104,32 +150,14 @@ function resultBlocked(conflicts = 0): MigrationResult {
   return { status: 'blocked', migrated: 0, skipped: 0, conflicts: conflicts || 1 };
 }
 
-async function assertJournalPaths(location: CodexLocation, journal: SessionMigrationJournal): Promise<void> {
-  const roots: string[] = [];
-  for (const root of [location.home, location.sqliteHome]) {
-    if (root === undefined) continue;
-    try {
-      roots.push(await realpath(root));
-    } catch {
-      throw new Error('configured storage root is unavailable');
-    }
-  }
-  const operationRoot = await realpath(operationPath(location, journal.operationId));
-  const managedRoot = await realpath(location.managedRoot);
-  if (!(operationRoot === managedRoot || operationRoot.startsWith(`${managedRoot}/`)))
-    throw new Error('migration journal escapes managed storage');
-  const backupRoot = join(operationRoot, 'backups');
-  const isUnder = (root: string, path: string): boolean => path === root || path.startsWith(`${root}/`);
-  for (const entry of journal.entries) {
-    const fileStat = await lstat(entry.path);
-    if (fileStat.isSymbolicLink() || !fileStat.isFile())
-      throw new Error('migration journal contains unsafe rollout path');
-    const canonical = await realpath(entry.path);
-    if (!roots.some((root) => isUnder(root, canonical))) throw new Error('migration journal rollout escapes storage');
-    const backupCanonical = await realpath(entry.backup);
-    if (!isUnder(backupRoot, backupCanonical)) throw new Error('migration journal backup escapes operation');
-  }
-}
+const recoveryPathFor = (operationId: string): string => `migrations/${operationId}`;
+const previewDiagnostic = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : '';
+  if (/^(managed_marker|managed_config)_/.test(message)) return message;
+  if (message.includes('paginated')) return 'paginated history format is not verified for offline migration';
+  if (message.includes('schema')) return 'state database schema is not verified';
+  return 'storage_blocked';
+};
 
 async function replaceFile(path: string, originalFingerprint: string, bytes: Uint8Array): Promise<void> {
   const stat = await inspectRegularFile(path);
@@ -154,38 +182,11 @@ async function replaceFile(path: string, originalFingerprint: string, bytes: Uin
     if (fingerprintBytes(new Uint8Array(await readFile(path))) !== originalFingerprint)
       throw new Error('rollout changed before replacement');
     await rename(temporary, path);
+    await syncParent(path);
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
-}
-
-async function restoreFiles(entries: readonly JournalEntry[], targetToSource: boolean): Promise<number> {
-  let conflicts = 0;
-  for (const entry of entries) {
-    const bytes = new Uint8Array(await readFile(entry.path));
-    const metadata = (() => {
-      try {
-        return inspectLegacyMetadata(bytes);
-      } catch {
-        return undefined;
-      }
-    })();
-    if (metadata === undefined || metadata.id !== entry.id) {
-      conflicts += 1;
-      continue;
-    }
-    const from = targetToSource ? entry.targetProviderId : entry.sourceProviderId;
-    const to = targetToSource ? entry.sourceProviderId : entry.targetProviderId;
-    if (metadata.providerId === to) continue;
-    if (metadata.providerId !== from) {
-      conflicts += 1;
-      continue;
-    }
-    const next = rewriteLegacyProvider(bytes, entry.id, from, to);
-    await replaceFile(entry.path, fingerprintBytes(bytes), next);
-  }
-  return conflicts;
 }
 
 async function rollbackFiles(entries: readonly JournalEntry[]): Promise<void> {
@@ -212,6 +213,36 @@ function updateDatabase(database: Database, targets: readonly MigrationTarget[],
   return changed;
 }
 
+function selectMigrationSessions(
+  snapshot: { readonly sessions: readonly IndexedSession[] },
+  targets: readonly MigrationTarget[],
+  targetProviderId: string,
+): { readonly selected: readonly IndexedSession[]; readonly skipped: number; readonly conflicts: number } {
+  const byId = new Map(snapshot.sessions.map((session) => [session.id, session]));
+  const selected: IndexedSession[] = [];
+  let skipped = 0;
+  let conflicts = 0;
+  const seen = new Set<string>();
+  for (const target of targets) {
+    const session = byId.get(target.id);
+    if (session === undefined || seen.has(target.id)) {
+      skipped += 1;
+      continue;
+    }
+    seen.add(target.id);
+    if (target.storage !== 'legacy' || session.storage !== 'legacy' || target.revision !== session.revision) {
+      conflicts += 1;
+      continue;
+    }
+    if (session.sourceProviderId !== target.sourceProviderId || session.sourceProviderId === targetProviderId) {
+      skipped += 1;
+      continue;
+    }
+    selected.push(session);
+  }
+  return { selected, skipped, conflicts };
+}
+
 export async function migrateCodexSessions(input: {
   readonly location: CodexLocation;
   readonly targets: readonly MigrationTarget[];
@@ -219,37 +250,16 @@ export async function migrateCodexSessions(input: {
 }): Promise<MigrationResult> {
   const { location, targets, targetProviderId } = input;
   if (targets.length === 0) return { status: 'completed', migrated: 0, skipped: 0, conflicts: 0 };
-  const lockRelease = await acquireSessionLock(location);
+  const lock = await acquireSessionLock(location);
   try {
-    const offline = await checkOffline();
+    await lock.renew();
+    const offline = await checkOffline(location);
     if (offline !== 'ok') return resultBlocked();
     const preview = await inspectCodexSessions(location);
     if (preview.blocked.length > 0) return resultBlocked(preview.blocked.length);
+    if (targetProviderId !== (await managedProvider(location))) return resultBlocked();
     const snapshot = await readStateIndex(location);
-    const byId = new Map<string, IndexedSession>(
-      snapshot.sessions.map((session: IndexedSession) => [session.id, session]),
-    );
-    const selected: IndexedSession[] = [];
-    let skipped = 0;
-    let conflicts = 0;
-    const seen = new Set<string>();
-    for (const target of targets) {
-      const session = byId.get(target.id);
-      if (session === undefined || seen.has(target.id)) {
-        skipped += 1;
-        continue;
-      }
-      seen.add(target.id);
-      if (target.storage !== 'legacy' || session.storage !== 'legacy' || target.revision !== session.revision) {
-        conflicts += 1;
-        continue;
-      }
-      if (session.sourceProviderId !== target.sourceProviderId || session.sourceProviderId === targetProviderId) {
-        skipped += 1;
-        continue;
-      }
-      selected.push(session);
-    }
+    const { selected, skipped, conflicts } = selectMigrationSessions(snapshot, targets, targetProviderId);
     const paths = new Set<string>();
     for (const session of selected) {
       if (paths.has(session.rolloutPath)) return resultBlocked(1);
@@ -271,7 +281,9 @@ export async function migrateCodexSessions(input: {
       progress: 0,
       createdAt: Date.now(),
       databasePath: selected.find((session) => session.dbPath !== undefined)?.dbPath,
+      ownerToken: lock.token,
     };
+    let transactionCommitted = false;
     await createOperation(location, journalBase);
     try {
       if (testDeps.beforeLog !== undefined) await testDeps.beforeLog();
@@ -312,11 +324,13 @@ export async function migrateCodexSessions(input: {
           await replaceFile(entry.path, entry.originalFingerprint, applied);
           entries[index] = { ...entry, status: 'applied' };
           await updateJournal(location, { ...journalBase, status: 'applying', entries, progress: index + 1 });
+          await lock.renew();
           if (index === 0 && testDeps.afterFirstReplacement !== undefined) await testDeps.afterFirstReplacement();
         }
         if (testDeps.beforeCommit !== undefined) await testDeps.beforeCommit();
         database?.exec('COMMIT');
         committed = true;
+        transactionCommitted = true;
         if (testDeps.afterCommit !== undefined) await testDeps.afterCommit();
         await updateJournal(location, { ...journalBase, status: 'completed', entries, progress: entries.length });
       } catch {
@@ -331,17 +345,19 @@ export async function migrateCodexSessions(input: {
             skipped,
             conflicts: conflicts + 1,
             operationId,
-            recoveryPath: operationDir,
+            recoveryPath: recoveryPathFor(operationId),
           };
         }
-        await updateJournal(location, { ...journalBase, status: 'committed', entries, progress: entries.length });
+        await updateJournal(location, { ...journalBase, status: 'committed', entries, progress: entries.length }).catch(
+          () => undefined,
+        );
         return {
           status: 'partial',
           migrated: entries.length,
           skipped,
           conflicts: conflicts + 1,
           operationId,
-          recoveryPath: operationDir,
+          recoveryPath: recoveryPathFor(operationId),
         };
       }
       database?.close();
@@ -351,89 +367,34 @@ export async function migrateCodexSessions(input: {
         skipped,
         conflicts,
         operationId,
-        recoveryPath: operationDir,
+        recoveryPath: recoveryPathFor(operationId),
       };
     } catch {
+      if (transactionCommitted) {
+        await updateJournal(location, { ...journalBase, status: 'committed', entries, progress: entries.length }).catch(
+          () => undefined,
+        );
+        return {
+          status: 'partial',
+          migrated: entries.length,
+          skipped,
+          conflicts: conflicts + 1,
+          operationId,
+          recoveryPath: recoveryPathFor(operationId),
+        };
+      }
       await rollbackFiles(entries);
-      await updateJournal(location, { ...journalBase, status: 'failed', entries });
+      await updateJournal(location, { ...journalBase, status: 'failed', entries }).catch(() => undefined);
       return {
         status: 'blocked',
         migrated: 0,
         skipped,
         conflicts: conflicts + 1,
         operationId,
-        recoveryPath: operationDir,
+        recoveryPath: recoveryPathFor(operationId),
       };
     }
   } finally {
-    await lockRelease();
-  }
-}
-
-export async function restoreCodexMigration(location: CodexLocation, operationId: string): Promise<MigrationResult> {
-  const lockRelease = await acquireSessionLock(location);
-  try {
-    const journal = await readJournal(location, operationId);
-    if (journal === undefined) return resultBlocked();
-    await assertJournalPaths(location, journal);
-    if (journal.status === 'restored')
-      return { status: 'completed', migrated: 0, skipped: journal.entries.length, conflicts: 0, operationId };
-    const database =
-      journal.databasePath === undefined ? undefined : new Database(journal.databasePath, { strict: true });
-    let conflicts = 0;
-    try {
-      database?.exec('BEGIN IMMEDIATE');
-      if (database !== undefined) {
-        const select = database.query<{ model_provider: string }, [string]>(
-          'SELECT model_provider FROM threads WHERE id = ?',
-        );
-        const update = database.query('UPDATE threads SET model_provider = ? WHERE id = ? AND model_provider = ?');
-        for (const entry of journal.entries) {
-          const current = select.get(entry.id);
-          if (current === undefined) {
-            conflicts += 1;
-            continue;
-          }
-          if (current.model_provider === entry.sourceProviderId) continue;
-          if (current.model_provider !== entry.targetProviderId) {
-            conflicts += 1;
-            continue;
-          }
-          const row = update.run(entry.sourceProviderId, entry.id, entry.targetProviderId);
-          if (row.changes !== 1) conflicts += 1;
-        }
-      }
-      conflicts += await restoreFiles(journal.entries, true);
-      database?.exec('COMMIT');
-      await updateJournal(location, {
-        ...journal,
-        status: 'restored',
-        progress: journal.entries.length,
-        entries: journal.entries.map((entry: JournalEntry) => ({ ...entry, status: 'restored' })),
-      });
-    } catch {
-      database?.exec('ROLLBACK');
-      await restoreFiles(journal.entries, false).catch(() => undefined);
-      conflicts += 1;
-      return {
-        status: 'partial',
-        migrated: 0,
-        skipped: 0,
-        conflicts,
-        operationId,
-        recoveryPath: operationPath(location, operationId),
-      };
-    } finally {
-      database?.close();
-    }
-    return {
-      status: conflicts > 0 ? 'partial' : 'completed',
-      migrated: journal.entries.length - conflicts,
-      skipped: 0,
-      conflicts,
-      operationId,
-    };
-  } finally {
-    await lockRelease();
+    await lock.release();
   }
 }

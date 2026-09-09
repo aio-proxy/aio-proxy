@@ -9,6 +9,8 @@ export type CodexLocation = {
   readonly markerPath: string;
   /** Optional separately configured CODEX_SQLITE_HOME. */
   readonly sqliteHome?: string;
+  /** Set only when the installed executable contract explicitly permits legacy scanning. */
+  readonly legacyScanAllowed?: boolean;
 };
 
 export type SessionGroup = { readonly providerId: string; readonly active: number; readonly archived: number };

@@ -92,6 +92,9 @@ export function rewriteLegacyProvider(bytes: Uint8Array, id: string, source: str
   const key = /("model_provider"\s*:\s*)"(?:\\.|[^"\\])*"/;
   const match = lines[matchingLine]!.match(key);
   if (match === null) throw new Error('session provider metadata is not writable');
-  lines[matchingLine] = lines[matchingLine]!.replace(key, `$1${JSON.stringify(target)}`);
+  lines[matchingLine] = lines[matchingLine]!.replace(
+    key,
+    (_match, prefix: string) => `${prefix}${JSON.stringify(target)}`,
+  );
   return new TextEncoder().encode(lines.join('\n'));
 }

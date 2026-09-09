@@ -30,5 +30,6 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
     managedRoot,
     markerPath: join(managedRoot, 'codex-config.json'),
     sqliteHome,
+    legacyScanAllowed: env['CODEX_LEGACY_SCAN_ALLOWED'] === '1',
   };
 }

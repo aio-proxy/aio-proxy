@@ -23,7 +23,7 @@ export type IndexedSession = {
 export type IndexBlocked = { readonly id: string; readonly reason: string };
 export type StateSnapshot = { readonly sessions: readonly IndexedSession[]; readonly blocked: readonly IndexBlocked[] };
 
-const databaseNames = ['state_5.sqlite', 'state.sqlite', 'state.db'] as const;
+const databaseNames = ['state_5.sqlite'] as const;
 const roots = async (location: CodexLocation): Promise<string[]> => {
   const candidates = [location.sqliteHome, location.home].filter((value): value is string => value !== undefined);
   const result: string[] = [];
@@ -42,6 +42,23 @@ const roots = async (location: CodexLocation): Promise<string[]> => {
 };
 
 const contained = (root: string, path: string): boolean => path === root || path.startsWith(`${root}/`);
+
+function rejectDuplicates(sessions: readonly IndexedSession[], blocked: readonly IndexBlocked[]): StateSnapshot {
+  const ids = new Map<string, IndexedSession[]>();
+  const paths = new Map<string, IndexedSession[]>();
+  for (const session of sessions) {
+    ids.set(session.id, [...(ids.get(session.id) ?? []), session]);
+    paths.set(session.rolloutPath, [...(paths.get(session.rolloutPath) ?? []), session]);
+  }
+  const duplicateIds = new Set([...ids].filter(([, values]) => values.length > 1).map(([id]) => id));
+  const duplicatePaths = new Set([...paths].filter(([, values]) => values.length > 1).map(([path]) => path));
+  const valid = sessions.filter((session) => !duplicateIds.has(session.id) && !duplicatePaths.has(session.rolloutPath));
+  const duplicateBlocked: IndexBlocked[] = [
+    ...[...duplicateIds].map((id) => ({ id, reason: 'duplicate_session_id' })),
+    ...[...duplicatePaths].map(() => ({ id: 'rollout', reason: 'duplicate_rollout_path' })),
+  ];
+  return { sessions: valid, blocked: [...blocked, ...duplicateBlocked] };
+}
 
 async function safeFile(path: string, allowedRoots: readonly string[]): Promise<string> {
   const absolute = isAbsolute(path) ? path : join(allowedRoots[0]!, path);
@@ -124,15 +141,28 @@ async function scanLegacy(allowedRoots: readonly string[]): Promise<StateSnapsho
     await visit(root, join(root, 'sessions'), false);
     await visit(root, join(root, 'archived_sessions'), true);
   }
-  return { sessions, blocked };
+  return rejectDuplicates(sessions, blocked);
 }
 
 export async function readStateIndex(location: CodexLocation): Promise<StateSnapshot> {
   const allowedRoots = await roots(location);
   if (allowedRoots.length === 0)
     return { sessions: [], blocked: [{ id: 'storage', reason: 'configured_storage_missing' }] };
-  const databasePath = await findDatabase(allowedRoots);
-  if (databasePath === undefined) return scanLegacy(allowedRoots);
+  let databaseRoots: string[] = [];
+  if (location.sqliteHome !== undefined) {
+    try {
+      const sqliteRoot = await realpath(location.sqliteHome);
+      databaseRoots = allowedRoots.filter((root) => root === sqliteRoot);
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    }
+  }
+  const databasePath = await findDatabase(databaseRoots);
+  if (databasePath === undefined) {
+    if (location.legacyScanAllowed !== true)
+      return { sessions: [], blocked: [{ id: 'storage', reason: 'legacy_scan_not_verified' }] };
+    return scanLegacy(allowedRoots);
+  }
   const database = new Database(databasePath, { readonly: true, strict: true });
   try {
     const tables = new Set(
@@ -196,7 +226,7 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
         blocked.push({ id, reason: error instanceof Error ? error.message : 'invalid rollout' });
       }
     }
-    return { sessions, blocked };
+    return rejectDuplicates(sessions, blocked);
   } finally {
     database.close();
   }
