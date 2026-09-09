@@ -58,7 +58,7 @@ export type SyncControlPlaneOptions = {
   readonly session?: () => SyncSession | undefined;
   readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
   readonly lifecycle?: Pick<ServerSyncLifecycle, 'activate' | 'close'>;
-  readonly applyLocal: (candidate: EntityBody | null, current: LocalEntity | undefined) => Promise<void>;
+  readonly applyLocal: OperationInput['applyLocal'];
   readonly applyCloud?: (
     candidate: EntityBody | null,
     current: LocalEntity | undefined,

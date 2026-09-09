@@ -75,6 +75,9 @@
       "preview_expires": "Preview expires: {expiresAt}",
       "preview_rows": "Redacted changes: {count}",
       "preview_row": "{objectId}: {change}; secret change {secretChange}; choices {choices}",
+      "preview_local": "Local",
+      "preview_cloud": "Cloud",
+      "preview_dependencies": "Dependencies",
       "retained_plugins": "Shared plugin data retained: {plugins}",
       "status_line": "Sync state: {state}; backend: {backend}",
       "no_backend": "none",
@@ -97,6 +100,7 @@
       "invalid_request": "The sync request is invalid",
       "request_failed": "The sync request failed ({status})",
       "invalid_response": "The running service returned an invalid sync response",
+      "oauth_login_failed": "The local OAuth login did not complete",
       "invalid_file": "Could not read valid JSON from {path}"
     },
     "provider": {

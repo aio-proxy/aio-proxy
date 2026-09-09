@@ -61,7 +61,12 @@ import { defaultRecoveryScheduler } from './recovery';
 import { createSharedCredentialResolver } from './shared-credential-resolver';
 import { buildSnapshot, buildSnapshotWithProviders, emptyPluginSnapshot, type Snapshot } from './snapshot';
 import { recoverBeforeInitialSnapshot } from './startup-recovery';
-import { createSyncIntegration, syncCommitOption, startSyncIntegration } from './sync-integration';
+import {
+  createSyncControlPlaneIntegration,
+  createSyncIntegration,
+  syncCommitOption,
+  startSyncIntegration,
+} from './sync-integration';
 import type {
   ConfigReloadResult,
   InternalServerStateOptions,
@@ -216,6 +221,7 @@ async function initializeServerState(
     recovery: undefined,
     configFile,
     sync: undefined,
+    syncControl: undefined,
     syncCommit: undefined,
     resolveSharedCredential,
     withProviderGate: providerGate.run,
@@ -342,6 +348,10 @@ async function initializeServerState(
   );
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');
+  runtime.syncControl =
+    syncIntegration === undefined
+      ? undefined
+      : createSyncControlPlaneIntegration(runtime, syncIntegration, oauthLoginSessions);
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)
@@ -371,7 +381,8 @@ async function initializeServerState(
     usageCapture,
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
-    sync: runtime.sync,
+    sync: runtime.syncControl,
+    syncLifecycle: runtime.sync,
   });
 }
 

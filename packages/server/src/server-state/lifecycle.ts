@@ -9,6 +9,7 @@ import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig }
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
 import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import type { Config } from '@aio-proxy/types';
+import type { SyncControlPlane } from '@aio-proxy/types';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import type { CatalogScheduler } from '../catalog-scheduler';
@@ -63,6 +64,7 @@ export type ServerRuntime = {
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
   sync: ServerSyncLifecycle | undefined;
+  syncControl: SyncControlPlane | undefined;
   syncCommit: SyncCommitHooks | undefined;
   prepareOAuth?: (plugins: import('@aio-proxy/core').PluginRegistrySnapshot) => Promise<void>;
   readonly resolveSharedCredential: (
@@ -173,7 +175,8 @@ export type ServerStateParts = Pick<
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
   readonly databaseOwnership: DatabaseOwnershipLock;
-  readonly sync?: ServerSyncLifecycle;
+  readonly sync?: SyncControlPlane;
+  readonly syncLifecycle?: ServerSyncLifecycle;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
@@ -207,7 +210,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     runtime.closed = true;
     closePromise = (async () => {
       try {
-        await parts.sync?.close();
+        await parts.syncLifecycle?.close();
       } finally {
         closeRemainingResources();
       }
@@ -221,13 +224,13 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      if (parts.sync === undefined) {
+      if (parts.syncLifecycle === undefined) {
         closeRemainingResources();
         closePromise = Promise.resolve();
         return;
       }
-      parts.sync.abort();
-      closePromise = parts.sync
+      parts.syncLifecycle.abort();
+      closePromise = parts.syncLifecycle
         .close()
         .catch(() => {})
         .then(() => closeRemainingResources());
@@ -257,6 +260,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     traceStore: parts.traceStore,
     logger,
     requestRecorder: parts.requestRecorder,
+    sync: parts.sync,
     usageCapture: parts.usageCapture,
   };
 }

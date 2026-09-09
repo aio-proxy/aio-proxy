@@ -16,6 +16,7 @@ import {
 import { password } from '@inquirer/prompts';
 import { z } from 'zod';
 
+import { connectHost } from '../agent/control-plane/control-plane';
 import { controlBaseUrl, resolveControlAddress } from '../control-plane';
 
 export interface SyncCliDeps {
@@ -50,9 +51,17 @@ type SyncClient = {
   readonly startDetachSession: (providerId: string) => Promise<string>;
 };
 
+type OAuthSessionSnapshot = {
+  readonly id: string;
+  readonly status: string;
+  readonly providerId?: string;
+  readonly code?: string;
+};
+
 const errorCode = (body: unknown): string | undefined => {
   if (typeof body !== 'object' || body === null) return undefined;
   const error = Reflect.get(body, 'error');
+  if (typeof error === 'string') return error;
   if (typeof error !== 'object' || error === null) return undefined;
   const code = Reflect.get(error, 'code');
   return typeof code === 'string' ? code : undefined;
@@ -85,6 +94,25 @@ function mapError(code: string | undefined, status: number, url: string): SyncCl
 }
 
 const parseResponse = async (response: Response): Promise<unknown> => response.json().catch(() => undefined);
+
+const sessionSnapshot = (body: unknown): OAuthSessionSnapshot => {
+  const session = typeof body === 'object' && body !== null ? Reflect.get(body, 'session') : undefined;
+  const id = typeof session === 'object' && session !== null ? Reflect.get(session, 'id') : undefined;
+  const status = typeof session === 'object' && session !== null ? Reflect.get(session, 'status') : undefined;
+  const providerId = typeof session === 'object' && session !== null ? Reflect.get(session, 'providerId') : undefined;
+  const code = typeof session === 'object' && session !== null ? Reflect.get(session, 'code') : undefined;
+  if (typeof id !== 'string' || id.length === 0 || typeof status !== 'string' || status.length === 0)
+    throw new SyncCliError('invalid-response', m['cli.sync.invalid_response']());
+  return {
+    id,
+    status,
+    ...(typeof providerId === 'string' ? { providerId } : {}),
+    ...(typeof code === 'string' ? { code } : {}),
+  };
+};
+
+const stripFinalLineEnding = (value: string): string =>
+  value.endsWith('\r\n') ? value.slice(0, -2) : value.endsWith('\n') ? value.slice(0, -1) : value;
 
 export function createSyncClient(deps: SyncCliDeps): SyncClient {
   const requestJson = async (path: string, init: RequestInit = {}): Promise<unknown> => {
@@ -188,11 +216,20 @@ export function createSyncClient(deps: SyncCliDeps): SyncClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetProviderId: providerId }),
       });
-      const session = typeof body === 'object' && body !== null ? Reflect.get(body, 'session') : undefined;
-      const id = typeof session === 'object' && session !== null ? Reflect.get(session, 'id') : undefined;
-      if (typeof id !== 'string' || id.length === 0)
-        throw new SyncCliError('invalid-response', m['cli.sync.invalid_response']());
-      return id;
+      let snapshot = sessionSnapshot(body);
+      for (;;) {
+        if (snapshot.status === 'succeeded') {
+          if (snapshot.providerId !== undefined && snapshot.providerId !== providerId)
+            throw new SyncCliError('oauth-login-failed', m['cli.sync.oauth_login_failed']());
+          return snapshot.id;
+        }
+        if (snapshot.status === 'failed' || snapshot.status === 'cancelled')
+          throw new SyncCliError('oauth-login-failed', m['cli.sync.oauth_login_failed']());
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        snapshot = sessionSnapshot(
+          await requestJson(`/dashboard/api/oauth/sessions/${encodeURIComponent(snapshot.id)}`),
+        );
+      }
     },
   };
 }
@@ -213,10 +250,10 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
   const resolveEndpoint = async (): Promise<string> => {
     if (endpoint !== undefined) return endpoint;
     const address = await resolveControlAddress({});
-    endpoint = controlBaseUrl(address.host, address.port);
+    endpoint = controlBaseUrl(connectHost(address.host), address.port);
     return endpoint;
   };
-  const readStdin = options.readPasswordStdin ?? (async () => (await Bun.stdin.text()).trimEnd());
+  const readStdin = options.readPasswordStdin ?? (async () => stripFinalLineEnding(await Bun.stdin.text()));
   const readPassword =
     options.readPassword ?? (async () => password({ message: m['cli.sync.password_prompt'](), mask: '*' }));
 
@@ -239,7 +276,7 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
       if (sessionBody?.status === 'disabled') return undefined;
       if (sessionBody?.status === 'unavailable')
         throw new SyncCliError('service-not-running', m['cli.sync.service_not_running']({ url: base }), true);
-      const secret = options.passwordStdin === true ? await readStdin() : await readPassword();
+      const secret = options.passwordStdin === true ? stripFinalLineEnding(await readStdin()) : await readPassword();
       if (secret.length === 0) throw new SyncCliError('authentication-required', m['cli.sync.password_required']());
       let login: Response;
       try {

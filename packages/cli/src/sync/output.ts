@@ -26,7 +26,7 @@ export function renderSyncStatus(status: SyncStatus, json: boolean): string {
 export function renderSyncPreview(preview: SyncPreview, json: boolean): string {
   const safe = redactSyncValue(preview) as SyncPreview;
   if (json) return JSON.stringify(safe);
-  const lines = [
+  const lines: string[] = [
     m['cli.sync.preview_id']({ previewId: preview.previewId }),
     m['cli.sync.preview_expires']({ expiresAt: new Date(preview.expiresAt).toISOString() }),
     m['cli.sync.preview_rows']({ count: String(preview.rows.length) }),
@@ -40,8 +40,17 @@ export function renderSyncPreview(preview: SyncPreview, json: boolean): string {
         choices: row.choices.join(', '),
       }),
     );
+    lines.push(`  ${m['cli.sync.preview_local']()}: ${JSON.stringify(safeRowValue(row.local))}`);
+    lines.push(`  ${m['cli.sync.preview_cloud']()}: ${JSON.stringify(safeRowValue(row.cloud))}`);
+    lines.push(
+      `  ${m['cli.sync.preview_dependencies']()}: ${row.dependencies.length === 0 ? m['cli.sync.no_backend']() : row.dependencies.join(', ')}`,
+    );
   }
   if (preview.retainedSharedPlugins.length > 0)
     lines.push(m['cli.sync.retained_plugins']({ plugins: preview.retainedSharedPlugins.join(', ') }));
   return lines.join('\n');
+}
+
+function safeRowValue(value: SyncPreview['rows'][number]['local']): unknown {
+  return redactSyncValue(value);
 }

@@ -75,6 +75,9 @@
       "preview_expires": "預覽到期時間：{expiresAt}",
       "preview_rows": "已遮罩變更：{count}",
       "preview_row": "{objectId}：{change}；密鑰變更 {secretChange}；選擇 {choices}",
+      "preview_local": "本機",
+      "preview_cloud": "雲端",
+      "preview_dependencies": "相依項目",
       "retained_plugins": "保留的共享外掛資料：{plugins}",
       "status_line": "同步狀態：{state}；後端：{backend}",
       "no_backend": "無",
@@ -97,6 +100,7 @@
       "invalid_request": "同步請求無效",
       "request_failed": "同步請求失敗（{status}）",
       "invalid_response": "執行中的服務回傳了無效的同步回應",
+      "oauth_login_failed": "本機 OAuth 登入未完成",
       "invalid_file": "無法從 {path} 讀取有效的 JSON"
     },
     "provider": {

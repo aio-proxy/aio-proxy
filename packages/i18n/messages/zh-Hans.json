@@ -75,6 +75,9 @@
       "preview_expires": "预览过期时间：{expiresAt}",
       "preview_rows": "已脱敏变更：{count}",
       "preview_row": "{objectId}：{change}；密钥变更 {secretChange}；选择 {choices}",
+      "preview_local": "本地",
+      "preview_cloud": "云端",
+      "preview_dependencies": "依赖",
       "retained_plugins": "保留的共享插件数据：{plugins}",
       "status_line": "同步状态：{state}；后端：{backend}",
       "no_backend": "无",
@@ -97,6 +100,7 @@
       "invalid_request": "同步请求无效",
       "request_failed": "同步请求失败（{status}）",
       "invalid_response": "运行中的服务返回了无效的同步响应",
+      "oauth_login_failed": "本地 OAuth 登录未完成",
       "invalid_file": "无法从 {path} 读取有效的 JSON"
     },
     "provider": {

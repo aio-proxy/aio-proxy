@@ -1,4 +1,9 @@
-import { canonicalizeLoopbackHost, fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
+import {
+  canonicalizeLoopbackHost,
+  fetchLatestNpmVersion,
+  parseRuntimeConfig,
+  type BuiltInPluginDefinition,
+} from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
@@ -255,6 +260,7 @@ export type CreateServerOptions = {
   readonly dashboardAssets?: DashboardAssets;
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
+  readonly builtIns?: readonly BuiltInPluginDefinition[];
   readonly version?: string;
   readonly autoUpdate?: {
     readonly isManagedService: () => boolean;
@@ -450,6 +456,7 @@ export const createServer = async (
     ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
+    ...(options.builtIns === undefined ? {} : { builtIns: options.builtIns }),
   };
   const state = await createServerState(stateOptions);
   const logger = options.logger ?? defaultLogger;

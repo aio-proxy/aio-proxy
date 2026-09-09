@@ -75,6 +75,9 @@
       "preview_expires": "プレビューの有効期限: {expiresAt}",
       "preview_rows": "秘匿化された変更: {count}",
       "preview_row": "{objectId}: {change}、秘密情報の変更 {secretChange}、選択肢 {choices}",
+      "preview_local": "ローカル",
+      "preview_cloud": "クラウド",
+      "preview_dependencies": "依存関係",
       "retained_plugins": "保持される共有プラグインデータ: {plugins}",
       "status_line": "同期状態: {state}、バックエンド: {backend}",
       "no_backend": "なし",
@@ -97,6 +100,7 @@
       "invalid_request": "同期リクエストが無効です",
       "request_failed": "同期リクエストに失敗しました ({status})",
       "invalid_response": "実行中のサービスが無効な同期レスポンスを返しました",
+      "oauth_login_failed": "ローカル OAuth ログインが完了しませんでした",
       "invalid_file": "{path} から有効な JSON を読み取れませんでした"
     },
     "provider": {

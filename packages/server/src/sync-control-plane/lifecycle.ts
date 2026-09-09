@@ -25,6 +25,7 @@ export interface ServerSyncLifecycle {
   abort(): void;
   close(): Promise<void>;
   onCommitted(input: { commitId: string; origin: 'local' | 'remote' }): Promise<void>;
+  session(): SyncSession | undefined;
 }
 
 export type ServerSyncLifecycleInput = {
@@ -180,5 +181,6 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     abort,
     close,
     onCommitted,
+    session: () => session,
   };
 }

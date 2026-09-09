@@ -57,3 +57,26 @@ sync messages to all five supported locales and compiled the i18n artifact.
 
 The affected CLI tests and repository check are green. The two broader repository
 checks retain the unrelated failures described above.
+
+## Review round 1
+
+- Wired the CLI and Dashboard routes to the server-owned sync control plane while
+  retaining one lifecycle/engine owner and awaited shutdown ordering.
+- `sync detach` now waits for the local OAuth session to reach a successful
+  terminal state before handing its ID to sync control; failed or cancelled
+  sessions never reach the mutation endpoint.
+- Wildcard service hosts are canonicalized for both requests and same-origin
+  checks, password stdin removes only one final line ending, and top-level
+  `dashboard_unavailable` responses map to the actionable service-unavailable
+  error.
+- Human previews now show redacted local/cloud values and dependencies. A real
+  configured-service fixture verifies CLI range mutation, Dashboard password
+  authentication, bearer forwarding, and same-origin headers.
+
+Review-round verification:
+
+- Focused CLI/server sync suite: **82 passed, 0 failed**.
+- `bun run i18n:compile`: passed.
+- `bun run check`: passed with the existing lint warnings.
+- `bun run lint:types`: still reports only the existing Dashboard OAuth editor
+  and CloudKit script diagnostics; the touched sync files are clean.

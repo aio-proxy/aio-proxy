@@ -1,12 +1,17 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { definePlugin } from '@aio-proxy/plugin-sdk';
 import { createServer } from '@aio-proxy/server';
 import { Command } from 'commander';
+import { z } from 'zod';
 
+import { openDb } from '../../../core/src/db';
+import { createSyncRepository } from '../../../core/src/sync/repository';
+import { createMemorySyncBackend } from '../../../core/src/sync/test-support';
 import { loopbackServer } from '../../../server/src/dashboard-auth/test-support';
 import { createDefaultSyncCliDeps, createSyncClient } from './client';
 import { registerSyncCommands } from './commands';
@@ -178,16 +183,37 @@ test('preview-stale is localized without exposing a server error', async () => {
   });
 });
 
-test('detach hands only the local OAuth session ID to sync control', async () => {
+test('dashboard auth outage maps to the actionable service-unavailable error', async () => {
+  const client = createSyncClient({
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async () => Response.json({ error: 'dashboard_unavailable' }, { status: 503 }),
+    write: () => undefined,
+  });
+  await expect(client.status()).rejects.toMatchObject({ code: 'service-not-running', transient: true });
+});
+
+test('detach polls the local OAuth session until it succeeds before sync control', async () => {
   const calls: Array<{ path: string; body: string | undefined }> = [];
   const output: string[] = [];
+  let polls = 0;
   const program = new Command();
   registerSyncCommands(program, {
     endpoint: async () => 'http://127.0.0.1:9317',
     authenticate: async () => undefined,
     request: async (path, init) => {
       calls.push({ path, body: typeof init.body === 'string' ? init.body : undefined });
-      if (path === '/dashboard/api/oauth/sessions') return Response.json({ session: { id: 'local-session' } });
+      if (path === '/dashboard/api/oauth/sessions')
+        return Response.json({ session: { id: 'local-session', status: 'preparing' } });
+      if (path === '/dashboard/api/oauth/sessions/local-session') {
+        polls += 1;
+        return Response.json({
+          session:
+            polls === 1
+              ? { id: 'local-session', status: 'discovering' }
+              : { id: 'local-session', status: 'succeeded', providerId: 'work' },
+        });
+      }
       return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
     },
     write: (value) => output.push(value),
@@ -195,12 +221,116 @@ test('detach hands only the local OAuth session ID to sync control', async () =>
   await program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json']);
   expect(calls).toEqual([
     { path: '/dashboard/api/oauth/sessions', body: JSON.stringify({ targetProviderId: 'work' }) },
+    { path: '/dashboard/api/oauth/sessions/local-session', body: undefined },
+    { path: '/dashboard/api/oauth/sessions/local-session', body: undefined },
     {
       path: '/dashboard/api/sync/detach',
       body: JSON.stringify({ providerId: 'work', loginSessionId: 'local-session' }),
     },
   ]);
   expect(JSON.parse(output[0]!)).toMatchObject({ state: 'idle' });
+});
+
+test('detach reports OAuth failure without handing a pending session to sync control', async () => {
+  const calls: string[] = [];
+  const program = new Command();
+  registerSyncCommands(program, {
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async (path, _init) => {
+      calls.push(path);
+      if (path === '/dashboard/api/oauth/sessions')
+        return Response.json({ session: { id: 'failed-session', status: 'preparing' } });
+      if (path === '/dashboard/api/oauth/sessions/failed-session')
+        return Response.json({ session: { id: 'failed-session', status: 'failed', code: 'AUTH_DENIED' } });
+      return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+    },
+    write: () => undefined,
+  });
+  await expect(program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json'])).rejects.toMatchObject({
+    code: 'oauth-login-failed',
+  });
+  expect(calls).toEqual(['/dashboard/api/oauth/sessions', '/dashboard/api/oauth/sessions/failed-session']);
+});
+
+test('human previews include redacted local/cloud values and dependencies', async () => {
+  const output: string[] = [];
+  const program = new Command();
+  registerSyncCommands(program, {
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async () =>
+      Response.json({
+        previewId: 'preview-detail',
+        kind: 'join',
+        rows: [
+          {
+            objectId: 'provider-1',
+            logicalKey: 'work',
+            kind: 'provider',
+            change: 'conflict',
+            local: { endpoint: 'local', token: '[redacted]' },
+            cloud: { endpoint: 'cloud', token: '[redacted]' },
+            secretChange: 'changed',
+            dependencies: ['plugin-1'],
+            choices: ['local', 'cloud'],
+          },
+        ],
+        retainedSharedPlugins: [],
+        expiresAt: 10,
+      }),
+    write: (value) => output.push(value),
+  });
+  await program.parseAsync(['node', 'aio-proxy', 'sync', 'join', 'work']);
+  expect(output.join('\n')).toContain('"endpoint":"local"');
+  expect(output.join('\n')).toContain('"endpoint":"cloud"');
+  expect(output.join('\n')).toContain('plugin-1');
+});
+
+test('password stdin removes only the line ending and preserves trailing spaces', async () => {
+  const calls: Array<{ url: string; body: string | undefined }> = [];
+  const deps = createDefaultSyncCliDeps({
+    fetch: async (input, init) => {
+      calls.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : undefined });
+      if (String(input).endsWith('/dashboard/api/auth/session')) return Response.json({ status: 'unauthenticated' });
+      if (String(input).endsWith('/dashboard/api/auth/login')) return Response.json({ token: 'memory-token' });
+      return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+    },
+    passwordStdin: true,
+    readPasswordStdin: async () => 'dashboard-secret  \n',
+  });
+  await createSyncClient(deps).status();
+  expect(calls.find((call) => call.url.endsWith('/dashboard/api/auth/login'))?.body).toBe(
+    JSON.stringify({ password: 'dashboard-secret  ' }),
+  );
+});
+
+test('sync endpoint canonicalizes wildcard config hosts for requests and Origin', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-sync-host-'));
+  const previousHome = process.env.AIO_PROXY_HOME;
+  process.env.AIO_PROXY_HOME = home;
+  writeFileSync(join(home, 'config.jsonc'), '{ "server": { "host": "0.0.0.0", "port": 9317 }, "providers": {} }\n');
+  const calls: Array<{ url: string; origin: string | null }> = [];
+  try {
+    const deps = createDefaultSyncCliDeps({
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        calls.push({ url: String(input), origin: headers.get('Origin') });
+        return String(input).endsWith('/dashboard/api/auth/session')
+          ? Response.json({ status: 'disabled' })
+          : Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+      },
+    });
+    await createSyncClient(deps).status();
+    expect(calls).toEqual([
+      { url: 'http://127.0.0.1:9317/dashboard/api/auth/session', origin: 'http://127.0.0.1:9317' },
+      { url: 'http://127.0.0.1:9317/dashboard/api/sync', origin: 'http://127.0.0.1:9317' },
+    ]);
+  } finally {
+    if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test('JSON status is one machine-readable result', async () => {
@@ -246,5 +376,109 @@ test('status delegates to one running service engine', async () => {
   } finally {
     await app.closeAsync();
     rmSync(dbHome, { recursive: true, force: true });
+  }
+});
+
+test('configured service exposes the real sync control plane to CLI mutations', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-sync-configured-'));
+  const previousHome = process.env.AIO_PROXY_HOME;
+  process.env.AIO_PROXY_HOME = home;
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      plugins: ['@example/sync'],
+      server: { password: 'dashboard-secret' },
+      providers: { work: { kind: 'api', baseUrl: 'https://local.test' } },
+    }),
+  );
+  const db = openDb({ home });
+  const repo = createSyncRepository(db.sqlite);
+  repo.writeBinding({
+    id: 'configured-binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'memory-identity',
+    spaceId: 'default',
+    deviceId: 'configured-device',
+    sessionGeneration: 1,
+    options: {},
+  });
+  repo.putEntity('configured-binding', {
+    objectId: 'provider-work',
+    logicalKey: 'work',
+    kind: 'provider',
+    mode: 'included',
+    epoch: 0,
+    desired: {
+      kind: 'provider',
+      logicalKey: 'work',
+      value: { kind: 'api', baseUrl: 'https://local.test' },
+      dependencies: [],
+    },
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  db.close();
+  const backend = createMemorySyncBackend();
+  const builtIns = [
+    {
+      packageName: '@example/sync',
+      version: '1.0.0',
+      descriptor: definePlugin((api) =>
+        api.sync.register({
+          id: 'memory',
+          displayName: 'Memory',
+          options: { schema: z.object({}), form: [] },
+          connect: async () => backend.connect(),
+        }),
+      ),
+    },
+  ];
+  const app = await createServer({
+    config: {},
+    configPath,
+    dbHome: home,
+    host: '127.0.0.1',
+    port: 9317,
+    builtIns,
+  });
+  const calls: Array<{ url: string; origin: string | null; authorization: string | null }> = [];
+  try {
+    const output: string[] = [];
+    const deps = createDefaultSyncCliDeps({
+      fetch: async (input, init) => {
+        const url = String(input);
+        const headers = new Headers(init?.headers);
+        headers.set('Host', '127.0.0.1:9317');
+        calls.push({ url, origin: headers.get('Origin'), authorization: headers.get('Authorization') });
+        const parsed = new URL(url);
+        return app.request(parsed.pathname + parsed.search, { ...init, headers }, loopbackServer);
+      },
+      passwordStdin: true,
+      readPasswordStdin: async () => 'dashboard-secret\n',
+      write: (value) => output.push(value),
+    });
+    const program = new Command();
+    registerSyncCommands(program, deps);
+    await program.parseAsync(['node', 'aio-proxy', 'sync', 'leave', 'work', '--json']);
+    expect(JSON.parse(output[0]!)).toMatchObject({
+      backend: { plugin: '@example/sync', capability: 'memory' },
+      providers: [{ providerId: 'work', included: false }],
+    });
+    expect(calls.map(({ url }) => new URL(url).pathname)).toEqual([
+      '/dashboard/api/auth/session',
+      '/dashboard/api/auth/login',
+      '/dashboard/api/sync/range',
+    ]);
+    expect(calls[2]).toMatchObject({ origin: 'http://127.0.0.1:9317' });
+    expect(calls[2]?.authorization).toMatch(/^Bearer .+$/u);
+  } finally {
+    await app.closeAsync();
+    if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
   }
 });

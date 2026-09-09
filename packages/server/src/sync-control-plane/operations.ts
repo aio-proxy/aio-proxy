@@ -27,7 +27,11 @@ export type OperationInput = {
   readonly remoteEntities: () => Promise<readonly RemoteEntity[]>;
   readonly fence: () => Promise<PreviewFence>;
   readonly status: () => SyncStatus;
-  readonly applyLocal: (candidate: EntityBody | null, current: LocalEntity | undefined) => Promise<void>;
+  readonly applyLocal: (
+    candidate: EntityBody | null,
+    current: LocalEntity | undefined,
+    objectId: string,
+  ) => Promise<void>;
   readonly applyCloud: (
     candidate: EntityBody | null,
     current: LocalEntity | undefined,
@@ -218,7 +222,7 @@ export async function applyPreview(
           record.input.kind === 'restore' ? record.input.operationId : `restore:${candidate.row.objectId}`;
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
       } else if (decision.choice === 'cloud') {
-        await input.applyLocal(selectedBody, current);
+        await input.applyLocal(selectedBody, current, candidate.row.objectId);
       } else {
         await input.applyCloud(selectedBody, current, remote?.version ?? null);
       }
