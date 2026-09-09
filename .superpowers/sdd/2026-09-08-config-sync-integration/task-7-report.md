@@ -47,3 +47,7 @@ The full preflight remains red because of the unrelated test failures above. No 
 ## Fix note
 
 Corrected the implementation commit hash in this report to match the final commit that includes the smoke-test change and report.
+
+## Final verification note — 2026-09-09
+
+A fresh `rtk proxy bun run preflight` verification passed lint/types and formatting, and the core artifact smoke test passed. The test stage failed only at `@aio-proxy/cli#test` with 13 existing upgrade-path fixture failures in `packages/cli/src/upgrade/upgrade.test.ts` involving Homebrew, pnpm, npm, and native binary resolution. This change does not touch CLI code.
