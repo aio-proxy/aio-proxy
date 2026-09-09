@@ -90,6 +90,8 @@ rtk proxy bun packages/cli/scripts/verify-codex-command-auth.ts /opt/homebrew/bi
 
 Formatter and lint passed. The host probe passed its assertion gate on `codex-cli 0.146.0` / `darwin/arm64` with `rawTokenAccepted=true`, `incompatibleConfigRejected=true`, `refreshAfter401=true`, `proactiveRefresh=true`, `staticAccountType="chatgpt"`, `commandAccountType=null`, and `authFilesUnchanged=true`. Sanitized diagnostics recorded two requests and two helper invocations for the 401 path; malformed helper cases ran through Codex configuration with invocation counts 3, 10, 10, and 2 for JSON, empty, non-zero, and timeout modes respectively.
 
+The repository script suite also passed: `rtk bun test ./scripts` reported 9 passing tests and 0 failures.
+
 Fix commits:
 
 - `04da909` — implementation and runtime split, with `Co-authored-by: Codex <noreply@openai.com>`.
