@@ -4,7 +4,7 @@ import type { Command } from 'commander';
 import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
 import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
 
-const renderCodexList = (result: CodexListResult): string =>
+const renderCodexList = (result: CodexListResult) =>
   m['cli.agent.codex.list']({
     configPath: result.configPath,
     providerId: result.providerId ?? '-',
@@ -95,7 +95,7 @@ export function renderAgentList(result: AgentListResult, json: boolean): string[
       }),
     );
   }
-  lines.push(String(renderCodexList(result.codex)));
+  lines.push(renderCodexList(result.codex));
   return lines;
 }
 
