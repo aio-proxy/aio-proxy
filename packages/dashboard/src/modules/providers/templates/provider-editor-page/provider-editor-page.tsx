@@ -1,11 +1,11 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind } from '@aio-proxy/types';
-import type { SyncPreview } from '@aio-proxy/types';
+import type { SyncPreview, SyncPreviewInput } from '@aio-proxy/types';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { useDetachSync, usePreviewSync, useSetSyncRange, useSyncStatus } from '@/lib/sync';
+import { SyncRequestError, useDetachSync, usePreviewSync, useSetSyncRange, useSyncStatus } from '@/lib/sync';
 
 import { SyncPreviewDialog } from '../../../settings/components/sync-preview-dialog';
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';
@@ -25,6 +25,8 @@ import { SectionNav } from './section-nav';
 import { type ProviderEditorPageProps, useProviderEditorPage } from './use-provider-editor-page';
 
 export type { ProviderEditorPageProps };
+
+type ProviderSyncPreviewInput = Extract<SyncPreviewInput, { kind: 'join' | 'overrides' }>;
 
 export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => {
   const {
@@ -63,6 +65,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   const rangeMutation = useSetSyncRange();
   const detachMutation = useDetachSync();
   const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null);
+  const [lastSyncPreviewInput, setLastSyncPreviewInput] = useState<ProviderSyncPreviewInput>();
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
   const models = values.kind === 'oauth' ? [] : (values.models ?? []);
   const exposed =
@@ -84,10 +87,18 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     persistedId === undefined
       ? undefined
       : syncStatus.data?.providers.find((entry) => entry.providerId === persistedId);
+  const previewInput = async (input: ProviderSyncPreviewInput) => {
+    setLastSyncPreviewInput(input);
+    setSyncPreview(await previewMutation.mutateAsync(input));
+  };
   const openSyncPreview = async () => {
     if (persistedId === undefined) return;
-    const next = await previewMutation.mutateAsync({ kind: 'join', providerId: persistedId });
-    setSyncPreview(next);
+    await previewInput({ kind: 'join', providerId: persistedId });
+  };
+  const previewOverrides = async (paths: readonly string[][]) => {
+    const objectId = syncPreview?.rows[0]?.objectId;
+    if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
+    await previewInput({ kind: 'overrides', objectId, paths: paths.map((path) => [...path]) });
   };
 
   const identitySection = <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />;
@@ -246,7 +257,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
                 }
                 onDetach={() =>
                   session?.id === undefined
-                    ? Promise.resolve()
+                    ? Promise.reject(new SyncRequestError('login-required', 401))
                     : detachMutation
                         .mutateAsync({ providerId: providerSync.providerId, loginSessionId: session.id })
                         .then(() => undefined)
@@ -271,7 +282,11 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           if (!open) setSyncPreview(null);
         }}
         onApplied={() => setSyncPreview(null)}
-        onRetry={openSyncPreview}
+        onRetry={async () => {
+          if (lastSyncPreviewInput === undefined) return;
+          await previewInput(lastSyncPreviewInput);
+        }}
+        onPreviewOverrides={previewOverrides}
       />
     </PageContainer>
   );

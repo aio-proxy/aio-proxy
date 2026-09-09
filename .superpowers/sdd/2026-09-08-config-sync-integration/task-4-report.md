@@ -18,3 +18,18 @@
 - `rtk proxy bun run lint:types` — the new sync files are clean; the repository command remains blocked by unrelated existing diagnostics in OAuth editor and CloudKit script files.
 
 Generated `route-tree.gen.ts` was not edited.
+
+## Fix round 1
+
+- Provider purge previews now target the selected Provider ID, while override edits use replacement previews and preserve the newest preview for apply/retry.
+- Added validation for Provider IDs, override paths, and decisions, including localized same-ID conflict errors; secret disclosure now covers secret changes as well as dependencies.
+- Provider detach handles missing login sessions and pending/excluded states with localized errors and cloud-copy disclosure. Preview mutations invalidate sync, Provider, and Settings queries.
+- History now supports filtering, sorting, pagination, column visibility, and semantic timestamps through TanStack Table features.
+- `rtk proxy bun run i18n:compile` — passed.
+- `rtk proxy bun run check` — passed; existing oxlint warnings only, formatting clean.
+- Focused Dashboard sync tests — 12 passed.
+- `rtk proxy bun run --filter @aio-proxy/dashboard test` — 982 passed, 1 skipped, 0 failed across 163 files.
+- `rtk proxy bun run --filter @aio-proxy/dashboard build` — passed.
+- Root `rtk proxy bun run test` reached 50 successful tasks; the repository run remains blocked by the existing `@aio-proxy/core` artifact smoke failure for unresolved `./repository.js` imports in `sync/repository` declaration/output files.
+- `rtk proxy bun run lint:types` remains blocked by unrelated existing diagnostics in the OAuth editor and CloudKit scripts.
+- Fresh `rtk proxy bun run lint:types` — failed only on the known baseline diagnostics: `use-oauth-editor-session.ts` TS2322/TS2589 and CloudKit `sign-native.ts` TS2322 plus `artifact.ts` TS18048 (three occurrences).

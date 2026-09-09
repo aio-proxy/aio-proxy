@@ -43,3 +43,28 @@ test('discloses pending credentials without adding a second consent control', ()
   expect(screen.getByText(/Credential copied|凭据已复制/u)).toBeTruthy();
   expect(screen.getAllByRole('switch')).toHaveLength(1);
 });
+
+test('shows login-required state when detaching without a session and keeps detach available while pending', async () => {
+  const onDetach = rs.fn().mockRejectedValue({ code: 'login-required' });
+  render(
+    <ProviderSyncControl
+      state={{
+        providerId: 'work',
+        objectId: 'object-work',
+        included: false,
+        credentialState: 'detach-pending',
+        pendingReason: 'login required',
+      }}
+      onEnable={rs.fn()}
+      onExclude={rs.fn()}
+      onDetach={onDetach}
+    />,
+  );
+
+  const button = screen.getByRole('button', { name: /Disconnect|연결 해제|接続を解除|断开连接|中斷連線/u });
+  expect(button).toBeTruthy();
+  fireEvent.click(button);
+
+  expect(await screen.findByText(/Sign in again to manage shared credentials|请重新登录以管理共享凭据/u)).toBeTruthy();
+  expect(onDetach).toHaveBeenCalledTimes(1);
+});

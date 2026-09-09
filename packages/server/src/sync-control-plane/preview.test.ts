@@ -114,6 +114,44 @@ test('purge previews include transitive cloud dependents and omit local-only row
   expect(built.record.dependencyError).toBe(false);
 });
 
+test('provider purge targets the Provider ID while returning its opaque cloud object row', () => {
+  const provider = (objectId: string, logicalKey: string) => ({
+    kind: 'provider' as const,
+    logicalKey,
+    value: { plugin: '@example/plugin' },
+    dependencies: [],
+    objectId,
+  });
+  const built = buildPreview({
+    request: { kind: 'purge', scope: 'provider', objectId: 'work' },
+    local: [
+      {
+        ...provider('local-work', 'work'),
+        mode: 'included',
+        epoch: 1,
+        desired: provider('local-work', 'work'),
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'cloud-work',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        body: provider('cloud-work', 'work'),
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-provider',
+    expiresAt: 1,
+  });
+
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['cloud-work']);
+});
+
 test('rejoin preview is one-use, expires, and redacts candidate values', async () => {
   let remoteVersion = 'v1';
   const control = createSyncControlPlane({

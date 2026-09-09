@@ -1,7 +1,7 @@
 import type { SyncPreview } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { SyncPreviewDialog } from './sync-preview-dialog';
 
@@ -32,11 +32,28 @@ const renderDialog = (onOpenChange = rs.fn()) =>
     </QueryClientProvider>,
   );
 
+const previewWithSecretAdded: SyncPreview = {
+  ...preview,
+  rows: [{ ...preview.rows[0]!, secretChange: 'added' }],
+};
+
 test('renders redacted values and plugin retention without a second secret consent toggle', () => {
   renderDialog();
   expect(screen.getAllByText(/redacted/u).length).toBeGreaterThan(1);
   expect(screen.getByText(/Shared plugin data will remain|共享插件数据会保留/u)).toBeTruthy();
   expect(screen.queryAllByRole('switch')).toHaveLength(0);
+});
+
+test('discloses required plugin data when a preview adds a secret without dependencies', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={previewWithSecretAdded} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  expect(
+    screen.getByText(/Required plugin settings and secrets are included|会包含必需的插件设置和密钥/u),
+  ).toBeTruthy();
 });
 
 test('removing a local override requires a fresh preview before submit', () => {
@@ -49,4 +66,18 @@ test('removing a local override requires a fresh preview before submit', () => {
   expect(
     screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }).hasAttribute('disabled'),
   ).toBe(true);
+});
+
+test('requests a new overrides preview when pinning a local option', async () => {
+  const onPreviewOverrides = rs.fn().mockResolvedValue(undefined);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={preview} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+    </QueryClientProvider>,
+  );
+  const path = screen.getByLabelText(/Option path|选项路径/u);
+  fireEvent.change(path, { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenCalledWith([['limits', 'timeout']]));
 });

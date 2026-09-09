@@ -2,7 +2,7 @@ import { expect, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 
-import { SyncSettingsGroup } from './sync-settings-group';
+import { providerPurgePreviewInput, SyncSettingsGroup } from './sync-settings-group';
 
 test('shows the explicit local plugin action when no backend is installed', () => {
   render(
@@ -11,4 +11,8 @@ test('shows the explicit local plugin action when no backend is installed', () =
     </QueryClientProvider>,
   );
   expect(screen.getByTestId('settings-sync-group')).toBeTruthy();
+});
+
+test('builds provider purge previews from the selected Provider ID', () => {
+  expect(providerPurgePreviewInput('work')).toEqual({ kind: 'purge', scope: 'provider', objectId: 'work' });
 });

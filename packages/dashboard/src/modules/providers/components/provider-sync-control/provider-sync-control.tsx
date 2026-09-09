@@ -12,6 +12,19 @@ export interface ProviderSyncControlProps {
   onDetach(): Promise<void>;
 }
 
+type ProviderSyncAction = 'enable' | 'exclude' | 'detach';
+
+const actionErrorCopy = (error: unknown, action: ProviderSyncAction): string => {
+  const code =
+    error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
+  if (code === 'login-required') return m['dashboard.sync.login_required']();
+  if (code === 'preview-stale') return m['dashboard.sync.preview_retry_failed']();
+  if (code === 'detach-pending') return m['dashboard.sync.detach_failed']();
+  if (action === 'enable') return m['dashboard.sync.enable_failed']();
+  if (action === 'exclude') return m['dashboard.sync.exclude_failed']();
+  return m['dashboard.sync.detach_failed']();
+};
+
 const credentialCopy = (state: ProviderSyncView): string | undefined => {
   if (state.credentialState === 'detach-pending') return m['dashboard.sync.uncertain_login']();
   if (state.credentialState === 'refresh-deferred') return m['dashboard.sync.offline']();
@@ -25,14 +38,16 @@ const credentialCopy = (state: ProviderSyncView): string | undefined => {
 
 export const ProviderSyncControl: React.FC<ProviderSyncControlProps> = ({ state, onEnable, onExclude, onDetach }) => {
   const [isPending, setIsPending] = useState(false);
-  const run = async (operation: () => Promise<void>) => {
+  const [actionError, setActionError] = useState<string | undefined>();
+  const run = async (action: ProviderSyncAction, operation: () => Promise<void>) => {
     setIsPending(true);
+    setActionError(undefined);
     try {
       await operation();
       setIsPending(false);
     } catch (error) {
+      setActionError(actionErrorCopy(error, action));
       setIsPending(false);
-      throw error;
     }
   };
   const copy = credentialCopy(state);
@@ -52,14 +67,28 @@ export const ProviderSyncControl: React.FC<ProviderSyncControlProps> = ({ state,
             checked={state.included}
             disabled={isPending}
             aria-label={m['dashboard.sync.provider_switch']()}
-            onCheckedChange={(checked) => void run(checked ? onEnable : onExclude)}
+            onCheckedChange={(checked) => void run(checked ? 'enable' : 'exclude', checked ? onEnable : onExclude)}
           />
         </div>
         {copy === undefined ? null : <p className="text-xs text-muted-foreground">{copy}</p>}
-        {state.included && state.credentialState === 'shared' ? (
-          <Button type="button" size="sm" variant="outline" disabled={isPending} onClick={() => void run(onDetach)}>
+        {!state.included && (state.credentialState === 'shared' || state.credentialState === 'detach-pending') ? (
+          <p className="text-xs text-muted-foreground">{m['dashboard.sync.cloud_copies_remain']()}</p>
+        ) : null}
+        {state.credentialState === 'shared' || state.credentialState === 'detach-pending' ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => void run('detach', onDetach)}
+          >
             {m['dashboard.sync.disconnect']()}
           </Button>
+        ) : null}
+        {actionError !== undefined ? (
+          <p role="alert" className="text-xs text-destructive">
+            {actionError}
+          </p>
         ) : null}
         {state.credentialState === 'detach-pending' ? (
           <p role="status" className="text-xs text-muted-foreground">

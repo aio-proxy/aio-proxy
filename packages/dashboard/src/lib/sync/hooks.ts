@@ -25,7 +25,10 @@ const invalidateSync = async (queryClient: ReturnType<typeof useQueryClient>) =>
   ]);
 };
 
-export const usePreviewSync = () => useMutation({ mutationFn: previewSync });
+export const usePreviewSync = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: previewSync, onSuccess: () => invalidateSync(queryClient) });
+};
 
 export const useApplySync = () => {
   const queryClient = useQueryClient();

@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthFormField, SyncPreview, SyncPreviewInput } from '@aio-proxy/types';
+import type { DashboardOAuthFormField, ProviderSyncView, SyncPreview, SyncPreviewInput } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
@@ -27,6 +27,13 @@ const initialOptions = (fields: readonly DashboardOAuthFormField[]): Record<stri
     ),
   );
 const syncOptionsSchema = z.record(z.string(), z.json());
+const EMPTY_PROVIDERS: readonly ProviderSyncView[] = [];
+
+export const providerPurgePreviewInput = (providerId: string): Extract<SyncPreviewInput, { kind: 'purge' }> => ({
+  kind: 'purge',
+  scope: 'provider',
+  objectId: providerId,
+});
 
 const statusCopy = (state: string): string => {
   const key = `dashboard.sync.status_${state}` as keyof typeof m;
@@ -146,11 +153,18 @@ export const SyncSettingsGroup: React.FC = () => {
   const [lastPreviewInput, setLastPreviewInput] = useState<SyncPreviewInput>();
   const [historyObjectId, setHistoryObjectId] = useState<string | null>(null);
   const backend = backends.data?.backends[0];
-  const form = useForm({ defaultValues: { options: initialOptions(backend?.form ?? []) } });
+  const form = useForm({ defaultValues: { options: initialOptions(backend?.form ?? []), providerId: '' } });
+  const providers = status.data?.providers ?? EMPTY_PROVIDERS;
 
   useEffect(() => {
-    if (backend !== undefined) form.reset({ options: initialOptions(backend.form) });
+    if (backend !== undefined) form.setFieldValue('options', initialOptions(backend.form));
   }, [backend, form]);
+
+  useEffect(() => {
+    const selected = form.getFieldValue('providerId');
+    if (providers.some((provider) => provider.providerId === selected)) return;
+    form.setFieldValue('providerId', providers[0]?.providerId ?? '');
+  }, [form, providers]);
 
   const connect = () => {
     if (backend === undefined) return;
@@ -167,14 +181,21 @@ export const SyncSettingsGroup: React.FC = () => {
   };
 
   const previewProviderPurge = () => {
-    if (providerObjectId === null) return;
-    const input: SyncPreviewInput = { kind: 'purge', scope: 'provider', objectId: providerObjectId };
+    if (selectedProviderId === '') return;
+    const input = providerPurgePreviewInput(selectedProviderId);
     setLastPreviewInput(input);
     previewMutation.mutate(input, { onSuccess: setPreview });
   };
 
   const statusLabel = status.data === undefined ? undefined : statusCopy(status.data.state);
-  const providerObjectId = status.data?.providers[0]?.objectId ?? null;
+  const selectedProviderId = form.state.values.providerId;
+  const selectedProvider = providers.find((provider) => provider.providerId === selectedProviderId);
+  const providerObjectId = selectedProvider?.objectId ?? null;
+  const previewError = previewMutation.isError
+    ? lastPreviewInput?.kind === 'connect'
+      ? m['dashboard.sync.connect_failed']()
+      : m['dashboard.sync.preview_failed']()
+    : undefined;
 
   return (
     <>
@@ -211,6 +232,27 @@ export const SyncSettingsGroup: React.FC = () => {
               <p className="text-sm font-medium">
                 {m['dashboard.sync.backend_label']()}: {resolveDashboardText(backend.displayName)}
               </p>
+              {providers.length === 0 ? null : (
+                <form.Field name="providerId">
+                  {(field) => (
+                    <Field>
+                      <FieldLabel htmlFor="sync-provider-select">{m['dashboard.sync.provider_select']()}</FieldLabel>
+                      <Select value={field.state.value} onValueChange={(value) => field.handleChange(value ?? '')}>
+                        <SelectTrigger id="sync-provider-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {providers.map((provider) => (
+                            <SelectItem key={provider.providerId} value={provider.providerId}>
+                              {provider.providerId}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                </form.Field>
+              )}
               {backend.form.map((field) => (
                 <div key={field.key}>{renderSyncBackendField(field, form as unknown as SyncReactFormApi)}</div>
               ))}
@@ -239,7 +281,7 @@ export const SyncSettingsGroup: React.FC = () => {
                     {m['dashboard.sync.history']()}
                   </Button>
                 )}
-                {providerObjectId === null ? null : (
+                {selectedProviderId === '' ? null : (
                   <Button type="button" variant="destructive" onClick={previewProviderPurge}>
                     {m['dashboard.sync.purge_provider']()}
                   </Button>
@@ -247,7 +289,9 @@ export const SyncSettingsGroup: React.FC = () => {
               </div>
             </form>
           ) : null}
-          {previewMutation.isError ? <p role="alert">{m['dashboard.sync.connect_failed']()}</p> : null}
+          {previewError === undefined ? null : <p role="alert">{previewError}</p>}
+          {disconnectMutation.isError ? <p role="alert">{m['dashboard.sync.disconnect_failed']()}</p> : null}
+          {retryMutation.isError ? <p role="alert">{m['dashboard.sync.retry_failed']()}</p> : null}
         </CardContent>
       </Card>
       <SyncPreviewDialog
@@ -261,6 +305,13 @@ export const SyncSettingsGroup: React.FC = () => {
           if (lastPreviewInput === undefined) return;
           const next = await previewMutation.mutateAsync(lastPreviewInput);
           setPreview(next);
+        }}
+        onPreviewOverrides={async (paths) => {
+          const objectId = preview?.rows[0]?.objectId;
+          if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
+          const input: SyncPreviewInput = { kind: 'overrides', objectId, paths: paths.map((path) => [...path]) };
+          setLastPreviewInput(input);
+          setPreview(await previewMutation.mutateAsync(input));
         }}
       />
       <SyncHistoryDialog
