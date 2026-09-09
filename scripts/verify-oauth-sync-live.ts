@@ -4,6 +4,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { openDb } from '../packages/core/src/db';
 import {
   accountKey,
+  applySyncedAccount,
   createPluginRegistryHost,
   createPluginRepository,
   createSharedOAuthCoordinator,
@@ -14,6 +15,7 @@ import {
   type SyncRepository,
   type LiveAccount,
   type SharedOAuthCoordinator,
+  type SharedRefreshResult,
 } from '../packages/core/src/index';
 import type { OAuthSyncEvidence } from '../packages/core/src/sync/oauth/adapter-conformance';
 import type { OAuthAdapter, RuntimeFetch, SyncBackendDefinition, SyncSession } from '../packages/plugin-sdk/src';
@@ -182,6 +184,14 @@ function applyCredential(
   } finally {
     repository.releaseRefreshLease(providerId, owner);
   }
+}
+
+export function confirmRecoveredOAuthOperation(
+  input: Parameters<typeof applySyncedAccount>[0] & { readonly coordinator: Pick<SharedOAuthCoordinator, 'confirm'> },
+): void {
+  if (input.account.lastCompletedOperationId === null) throw new Error('recovered-operation-missing');
+  applySyncedAccount(input);
+  input.coordinator.confirm(input.account.objectId, input.account.lastCompletedOperationId);
 }
 
 function putEntity(repo: SyncRepository, local: LocalBinding, account: LiveAccount, providerId: string): void {
@@ -368,7 +378,8 @@ export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResu
           if (rotation === 'pass') {
             const refreshed = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
             const updated = results.find(
-              (result) => result.status === 'fulfilled' && result.value.status === 'updated',
+              (result): result is PromiseFulfilledResult<SharedRefreshResult<unknown>> =>
+                result.status === 'fulfilled' && result.value.status === 'updated',
             );
             const journalsResolved = repositories.every(
               (repository, index) => repository.oauthJournals(locals[index]!.id).length === 0,
@@ -425,17 +436,37 @@ export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResu
             if (interruptedResult?.status === 'rejected' && uncertainStateObserved) {
               try {
                 recoveredAccount = await coordinators[0]!.recover(input.remoteObjectId, controller.signal);
+                if (recoveredAccount?.phase === 'ready') {
+                  confirmRecoveredOAuthOperation({
+                    account: recoveredAccount,
+                    providerId: input.providerId,
+                    binding: locals[0]!,
+                    repo: repositories[0]!,
+                    accounts: accountRepositories[0]!,
+                    coordinator: coordinators[0]!,
+                  });
+                }
               } catch {
                 evidence = { ...evidence, uncertainRecovery: 'fail' };
                 failureCode ??= 'assertion-recovery-failed';
                 throw new AssertionError('assertion-recovery-failed');
               }
             }
+            const reread = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
+            const local = accountRepositories[0]!.readAccount(input.providerId);
+            const ownership = repositories[0]!
+              .entities(locals[0]!.id)
+              .find((entity) => entity.objectId === input.remoteObjectId)?.oauth;
             const journalResolved = repositories[0]!.oauthJournals(locals[0]!.id).length === 0;
             const recovered =
               recoveredAccount?.phase === 'ready' &&
               recoveredAccount.generation === current.account.generation + 1 &&
               JSON.stringify(recoveredAccount.payload.credential) === JSON.stringify(interruptedCredential) &&
+              reread?.account.phase === 'ready' &&
+              reread.account.generation === recoveredAccount.generation &&
+              JSON.stringify(reread.account.payload.credential) === JSON.stringify(interruptedCredential) &&
+              JSON.stringify(local?.credential) === JSON.stringify(interruptedCredential) &&
+              ownership?.generation === recoveredAccount.generation &&
               journalResolved;
             evidence = {
               ...evidence,
