@@ -437,6 +437,30 @@ describe('OpenAI Videos HTTP dispatch', () => {
     expect(fixture.calls.raw).toBe(before);
   });
 
+  test.each(['application/jsonp', 'text/plain; profile=application/json'] as const)(
+    '%s create and edits are 415 without an upstream fetch',
+    async (contentType) => {
+      const fixture = videoProvider('openai');
+      const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });
+      const created = await app.request(CREATE, {
+        method: 'POST',
+        headers: { 'content-type': contentType },
+        body: createBody(),
+      });
+      expect(created.status).toBe(415);
+      expect(await created.json()).toMatchObject({ error: { code: 'invalid_request' } });
+      expect(fixture.calls.raw).toBe(0);
+
+      const edits = await app.request('/v1/videos/edits', {
+        method: 'POST',
+        headers: { 'content-type': contentType },
+        body: JSON.stringify({ prompt: 'warmer light', video: { id: 'video_abc' } }),
+      });
+      expect(edits.status).toBe(415);
+      expect(fixture.calls.raw).toBe(0);
+    },
+  );
+
   test('multipart edits is 415 and never pin-firsts', async () => {
     const fixture = videoProvider('openai');
     const app = await createServer({ config: { providers: {} }, providerInstances: [fixture.value] });

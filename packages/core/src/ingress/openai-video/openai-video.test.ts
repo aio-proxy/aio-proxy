@@ -4,6 +4,7 @@ import { OpenAIVideosInvalidRequestError } from '../../error';
 import { UnsupportedContentEncodingError } from '../../protocol/request';
 import { multipartSpoolPath } from '../multipart';
 import {
+  isJsonRequest,
   OFFICIAL_DEFAULT_VIDEO_MODEL,
   parseOpenAIVideoCreate,
   parseOpenAIVideoCreateMultipart,
@@ -134,3 +135,27 @@ describe('parseOpenAIVideoCreateMultipart', () => {
     expect(multipartSpoolPath(raw)).toBeUndefined();
   });
 });
+
+describe('isJsonRequest', () => {
+  test.each(['', 'application/json', 'application/json; charset=utf-8', 'text/json'] as const)(
+    'accepts %s',
+    (contentType) => {
+      expect(isJsonRequest(jsonRequest(contentType))).toBe(true);
+    },
+  );
+
+  test.each(['application/jsonp', 'text/plain; profile=application/json', 'text/plain'] as const)(
+    'rejects %s',
+    (contentType) => {
+      expect(isJsonRequest(jsonRequest(contentType))).toBe(false);
+    },
+  );
+});
+
+function jsonRequest(contentType: string): Request {
+  return new Request('http://x/v1/videos', {
+    method: 'POST',
+    ...(contentType === '' ? {} : { headers: { 'content-type': contentType } }),
+    body: JSON.stringify({ prompt: 'a cat' }),
+  });
+}

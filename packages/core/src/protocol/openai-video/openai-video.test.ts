@@ -102,6 +102,21 @@ describe('openAIVideosAdapter', () => {
     await releaseMultipartSpool(raw);
   });
 
+  test.each(['application/jsonp', 'text/plain; profile=application/json'] as const)(
+    '%s create is 415 and is not parsed',
+    async (contentType) => {
+      const raw = new Request('http://x/v1/videos', {
+        method: 'POST',
+        headers: { 'content-type': contentType },
+        body: JSON.stringify({ prompt: 'a cat' }),
+      });
+      const error = await openAIVideosAdapter.parse(raw, { operation: 'create' }).catch((caught: unknown) => caught);
+      const response = openAIVideosAdapter.errors.requestError(error);
+      expect(response?.status).toBe(415);
+      expect(await response?.json()).toMatchObject({ error: { code: 'invalid_request' } });
+    },
+  );
+
   test('malformed multipart is 400, not an unmapped 500', async () => {
     const raw = new Request('http://x/v1/videos', {
       method: 'POST',

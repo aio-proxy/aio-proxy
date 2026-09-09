@@ -146,12 +146,16 @@ export function isModelField(name: string): boolean {
 }
 
 export function isMultipartRequest(raw: Request): boolean {
-  return raw.headers.get('content-type')?.toLowerCase().includes('multipart/form-data') === true;
+  return requestMediaType(raw) === 'multipart/form-data';
 }
 
 export function isJsonRequest(raw: Request): boolean {
-  const type = raw.headers.get('content-type')?.toLowerCase() ?? '';
-  return type === '' || type.includes('application/json') || type.includes('text/json');
+  const mediaType = requestMediaType(raw);
+  return mediaType === '' || mediaType === 'application/json' || mediaType === 'text/json';
+}
+
+function requestMediaType(raw: Request): string {
+  return (raw.headers.get('content-type') ?? '').split(';', 1)[0]?.trim().toLowerCase() ?? '';
 }
 
 export async function replaySpooledVideoFormData(raw: Request): Promise<FormData> {
