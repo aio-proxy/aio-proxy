@@ -13,6 +13,7 @@ import type { AgentCliActions } from './agent/output';
 import { registerAgentCommands } from './agent/output';
 import { defaultCliDeps } from './dashboard-assets';
 import { buildProgram, invokedProgramName } from './main';
+import type { SyncCliDeps } from './sync';
 
 describe('cli', () => {
   test('prints package version when requested', () => {
@@ -212,6 +213,35 @@ describe('cli', () => {
     const program = buildProgram(defaultCliDeps, 'aiop');
     expect(program.name()).toBe('aiop');
     expect(program.helpInformation()).toContain('Usage: aiop');
+  });
+
+  test('registers sync commands against an injected service client', async () => {
+    const calls: string[] = [];
+    const output: string[] = [];
+    const syncDeps: SyncCliDeps = {
+      endpoint: async () => 'http://127.0.0.1:9317',
+      authenticate: async () => undefined,
+      request: async (path, init) => {
+        calls.push(`${path} ${String(init.body)}`);
+        return Response.json({
+          state: 'idle',
+          backend: null,
+          providers: [],
+          pendingOperations: 0,
+          lastSuccessAt: null,
+        });
+      },
+      write: (value) => output.push(value),
+    };
+    await buildProgram(defaultCliDeps, 'aio-proxy', syncDeps).parseAsync([
+      'node',
+      'aio-proxy',
+      'sync',
+      'leave',
+      'work',
+    ]);
+    expect(calls).toEqual(['/dashboard/api/sync/range {"providerId":"work","included":false}']);
+    expect(output).toHaveLength(1);
   });
 });
 

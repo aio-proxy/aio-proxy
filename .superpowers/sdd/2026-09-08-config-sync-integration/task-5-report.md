@@ -1,0 +1,59 @@
+# Task 5 report: CLI configuration sync integration
+
+## Delivered behavior
+
+The CLI now registers one `sync` command tree in `packages/cli/src/main.ts` and
+delegates every operation to the running Dashboard service:
+
+- `status`, `connect`, `join`, `leave`, `apply`, `history`, `restore`,
+  `overrides`, `purge`, `detach`, `detach-cancel`, `retry`, and `disconnect`.
+- Connect, join, restore, overrides, and purge read local JSON input, request a
+  redacted server preview, and print the opaque preview token. Only `apply` reads
+  decisions and performs the reviewed mutation.
+- `--json` emits one JSON value and keeps the preview/apply boundary explicit.
+- `overrides` sends path-segment arrays to the service and never edits local
+  SQLite or configuration files.
+- `detach` starts the existing Dashboard OAuth login-session flow and forwards only
+  its local session ID with the Provider ID to sync control.
+
+## Authentication and secret handling
+
+`createDefaultSyncCliDeps` resolves the endpoint through
+`resolveControlAddress`/`controlBaseUrl`, sends same-host `Origin`, and keeps the
+Dashboard bearer token in process memory only. It checks the existing Dashboard
+session endpoint first. Password-protected services use the hidden Inquirer
+password prompt or `--password-stdin`; the password is never cached, logged, or
+printed. Authentication-disabled services continue through the existing loopback
+and Origin policy. Model API keys are never treated as Dashboard credentials.
+
+The client validates service DTOs with the shared sync schemas and converts HTTP
+and control-plane error codes to localized CLI messages. Native errors and backend
+secrets do not reach output. Preview rendering applies an additional key-based
+redaction pass before JSON output.
+
+## Documentation and localization
+
+Added `docs/config-sync.md` covering local-only defaults, cloud discovery,
+environment/local fields, explicit business-option overrides, plugin dependency
+activation, rejoin choices, 30-day history, leave versus purge, backend switching,
+OAuth adapter limits, and third-party backend conformance guidance. Added the CLI
+sync messages to all five supported locales and compiled the i18n artifact.
+
+## Verification
+
+- TDD red phase: the new command test initially failed because `./commands` did
+  not exist.
+- Targeted CLI tests: **30 passed, 0 failed** across `main.test.ts` and
+  `sync/commands.test.ts`.
+- i18n tests: **11 passed, 0 failed**.
+- `bun run i18n:compile`: passed.
+- `bun run check`: passed; repository lint emitted only the existing warnings and
+  format check passed for all 2,919 files.
+- `bun run --filter @aio-proxy/cli test`: **488 passed, 13 failed**. The failures
+  are pre-existing upgrade-path tests whose expected temporary paths omit macOS's
+  `/private` canonical prefix; no sync test failed.
+- `bun run lint:types`: blocked by existing errors in Dashboard OAuth route typing
+  and CloudKit artifact scripts; no reported error was in the new sync files.
+
+The affected CLI tests and repository check are green. The two broader repository
+checks retain the unrelated failures described above.
