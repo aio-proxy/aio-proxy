@@ -127,7 +127,7 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
     const keys = await deps.inspectKeys();
     const selection = keys.choices.length === 0 ? ({ kind: 'none' } as const) : await deps.prompts.key(keys.choices);
     const preview = await deps.inspectSessions(providerId);
-    const previousProviderId = inspection.providerId ?? inspection.activeProviderId;
+    const previousProviderId = (inspection.providerId ?? inspection.activeProviderId) || 'openai';
     const migration = await migrationSelection(preview, providerId, previousProviderId, deps.prompts);
     const credential = await keys.resolve(selection, providerId);
     const commit = await deps.saveConfig(providerId, credential.token);

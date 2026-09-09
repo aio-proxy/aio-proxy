@@ -98,3 +98,50 @@ test('returns a localized non-interactive result before inspecting or writing', 
   expect(inspected).toBe(false);
   expect(result).toMatchObject({ status: 'cancelled', reason: 'non_interactive', credential: 'none' });
 });
+
+test('defaults a first multi-source migration selector to openai', async () => {
+  let previousProvider: string | undefined;
+  const result = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => 'custom',
+      key: async () => ({ kind: 'none' }),
+      sources: async (groups, previous) => {
+        expect(groups.map((group) => group.providerId)).toEqual(['zeta', 'openai']);
+        previousProvider = previous;
+        return ['openai'];
+      },
+      migrate: async () => false,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: '', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => ({ token: 'placeholder', kind: 'placeholder', verified: true }),
+    }),
+    inspectSessions: async () => ({
+      groups: [
+        { providerId: 'zeta', active: 1, archived: 0 },
+        { providerId: 'openai', active: 1, archived: 0 },
+      ],
+      blocked: [],
+      targets: [
+        { id: 'openai-id', sourceProviderId: 'openai', archived: false, storage: 'legacy', revision: 'r1' },
+        { id: 'zeta-id', sourceProviderId: 'zeta', archived: false, storage: 'legacy', revision: 'r2' },
+      ],
+    }),
+    saveConfig: async (providerId) => ({ status: 'configured', providerId }),
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  });
+  expect(previousProvider).toBe('openai');
+  expect(result.migration).toEqual({ status: 'declined' });
+});
