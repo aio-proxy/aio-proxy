@@ -73,3 +73,40 @@ All matched files use the correct format.
 - Remote tombstones expose only `restore`; same logical identities with different object IDs are marked conflicts and require `newProviderId`.
 - Backend forms expose descriptors and secret `configured` flags only; backend option values never enter the DTO.
 - The control plane is intentionally hook-based for lifecycle/config/account mutation integration. Server-state construction and authenticated routes remain the follow-up integration boundary for Tasks 3 and the parent task.
+
+## Fix round 1
+
+The review fixes derive redaction keys from OAuth account form metadata, validate remote object and revision identities, preserve restore operation IDs, enforce preview fences and expected remote versions, implement nested override projection with forbidden and array traversal checks, preserve local-only purge rows, validate backend options, persist included state after apply, and make the default session-backed mutation hooks lazy and core-backed. The status view also reports the actual disconnected state and durable pending-operation sources.
+
+Additional regression coverage now checks nested and array overrides, explicit deletion of a missing local field, unsafe paths, non-obvious secret fields, and restore operation ID forwarding.
+
+Verification after the fix round:
+
+```text
+rtk proxy bun test packages/types/src/sync
+1 pass, 0 fail
+
+rtk proxy bun test packages/types/src
+330 pass, 0 fail
+
+rtk proxy bun test --preload=./__tests__/setup.ts src/sync-control-plane
+13 pass, 0 fail
+
+rtk proxy bunx oxlint packages/types/src/sync packages/types/src/index.ts packages/server/src/sync-control-plane packages/server/src/server-state/types.ts
+0 errors
+
+rtk proxy bunx oxfmt --check packages/types/src/sync packages/types/src/index.ts packages/server/src/sync-control-plane packages/server/src/server-state/types.ts
+All matched files use the correct format.
+
+rtk proxy bunx tsc --noEmit -p tsconfig.json 2>&1 | rg 'src/sync-control-plane|server-state/types'
+No matching errors.
+```
+
+Self-review after the fixes:
+
+- Preview redaction no longer depends on a caller-provided secret-key set and covers account, credential, secret, and plugin-business secret records plus adapter-declared secret fields.
+- A preview records one remote snapshot and fences that snapshot; every default cloud mutation checks the expected head version before invoking the core CAS-backed operation and rereads purge results.
+- Restore previews require the requested history revision and apply forwards its operation ID. Remote history rejects mismatched object or logical identities and purging heads.
+- Overrides copy selected nested values, copy whole arrays only at the selected path, delete cloud values whose local source is absent, reject forbidden paths, and reject array traversal.
+- Purge computes dependent targets, rejects unresolved dependencies, skips local-only rows, and verifies tombstones. Same logical identities on different object IDs require a replacement provider ID.
+- The remaining integration boundary is server-state construction and authenticated route registration in the parent task; the root `bun run check` still includes the unrelated pre-existing unused import in `scripts/verify-oauth-sync.ts`.

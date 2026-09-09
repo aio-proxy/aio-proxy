@@ -1,4 +1,4 @@
-import type { PluginRegistry, SyncRepository } from '@aio-proxy/core';
+import type { LocalBinding, PluginRegistry, PluginRepository, SyncRepository } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { ProviderSyncView, SyncBackendView, SyncConnectionState, SyncStatus } from '@aio-proxy/types';
 
@@ -10,6 +10,9 @@ export type StatusInput = {
   readonly now?: () => number;
   readonly lastSuccessAt?: () => number | null;
   readonly state?: () => SyncConnectionState;
+  readonly backendOptions?: (plugin: string, capability: string) => JsonValue | undefined;
+  readonly binding?: () => LocalBinding | null;
+  readonly accounts?: PluginRepository;
 };
 
 function dashboardForm(form: readonly Record<string, unknown>[], options: JsonValue): SyncBackendView['form'] {
@@ -22,6 +25,7 @@ function dashboardForm(form: readonly Record<string, unknown>[], options: JsonVa
 
 export function createStatus(input: StatusInput): { status: () => SyncStatus; backends: () => SyncBackendView[] } {
   const state = input.state ?? (() => 'idle' as const);
+  const binding = input.binding ?? (() => input.repo.readBinding());
   return {
     backends() {
       return (input.registry?.().syncCapabilities() ?? []).map(({ plugin, capability, backend }) => ({
@@ -30,25 +34,38 @@ export function createStatus(input: StatusInput): { status: () => SyncStatus; ba
         displayName: backend.displayName,
         form: dashboardForm(
           backend.options.form as readonly Record<string, unknown>[],
-          input.repo.readBinding()?.options ?? {},
+          input.backendOptions?.(plugin, capability) ?? {},
         ),
       }));
     },
     status() {
-      const binding = input.repo.readBinding();
-      const entities = binding === null ? [] : input.repo.entities(binding.id);
+      const currentBinding = binding();
+      const entities = currentBinding === null ? [] : input.repo.entities(currentBinding.id);
       const pendingOperations =
-        binding === null ? 0 : input.repo.outbox(binding.id).length + input.repo.pendingCommits(binding.id).length;
+        currentBinding === null
+          ? 0
+          : input.repo.outbox(currentBinding.id).length +
+            input.repo.pendingCommits(currentBinding.id).length +
+            input.repo.oauthJournals(currentBinding.id).length +
+            (input.accounts?.listPendingAccountOperations().length ?? 0);
       return {
-        state: binding === null ? 'disconnected' : state(),
+        state: currentBinding === null ? 'disconnected' : state(),
         backend:
-          binding === null
+          currentBinding === null
             ? null
-            : { plugin: binding.plugin, capability: binding.capability, spaceId: binding.spaceId },
+            : { plugin: currentBinding.plugin, capability: currentBinding.capability, spaceId: currentBinding.spaceId },
         providers: entities
           .filter((entity) => entity.kind === 'provider')
           .map((entity) => {
-            const oauthState = entity.oauth?.mode === 'share-pending' ? 'unverified' : entity.oauth?.mode;
+            const pendingState = entity.pendingReason;
+            const oauthState =
+              pendingState === 'refresh-deferred' ||
+              pendingState === 'result-uncertain' ||
+              pendingState === 'login-required'
+                ? pendingState
+                : entity.oauth?.mode === 'share-pending'
+                  ? 'unverified'
+                  : entity.oauth?.mode;
             return {
               providerId: entity.logicalKey,
               objectId: entity.objectId,

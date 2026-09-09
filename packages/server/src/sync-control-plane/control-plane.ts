@@ -1,12 +1,20 @@
+import { randomUUID } from 'node:crypto';
+
 import {
+  createSyncObjectStore,
+  deleteEntity,
   decodeHead,
   decodeRevision,
   entityKey,
+  publishEntity,
+  purgeEntity,
   revisionKey,
+  restoreEntity,
   type EntityBody,
   type LocalBinding,
   type LocalEntity,
   type PluginRegistry,
+  type PluginRepository,
   type SyncRepository,
 } from '@aio-proxy/core';
 import type { SyncSession } from '@aio-proxy/plugin-sdk';
@@ -21,7 +29,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { ServerSyncLifecycle } from './lifecycle';
-import { applyPreview, setRange, type OperationInput } from './operations';
+import { applyPreview, setRange, SyncOperationError, type OperationInput } from './operations';
 import {
   buildPreview,
   createPreviewToken,
@@ -37,23 +45,43 @@ import { createStatus } from './status';
 export type SyncControlPlaneOptions = {
   readonly repo: SyncRepository;
   readonly registry?: () => PluginRegistry;
+  readonly accounts?: PluginRepository;
+  readonly backendOptions?: (
+    plugin: string,
+    capability: string,
+  ) => import('@aio-proxy/plugin-sdk').JsonValue | undefined;
   readonly binding?: () => LocalBinding | null;
   readonly localEntities?: () => readonly LocalEntity[];
   readonly session?: () => SyncSession | undefined;
   readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
   readonly lifecycle?: Pick<ServerSyncLifecycle, 'activate' | 'close'>;
-  readonly applyLocal?: (candidate: EntityBody | null, current: LocalEntity | undefined) => Promise<void>;
-  readonly applyCloud?: (candidate: EntityBody | null, current: LocalEntity | undefined) => Promise<void>;
-  readonly connect?: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<void>;
+  readonly applyLocal: (candidate: EntityBody | null, current: LocalEntity | undefined) => Promise<void>;
+  readonly applyCloud?: (
+    candidate: EntityBody | null,
+    current: LocalEntity | undefined,
+    expectedVersion: string | null,
+  ) => Promise<void>;
+  readonly restore?: OperationInput['restore'];
+  readonly persistOverrides: OperationInput['persistOverrides'];
+  readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<void>;
   readonly detach?: (providerId: string, loginSessionId: string) => Promise<void>;
   readonly cancelDetach?: (providerId: string) => Promise<void>;
-  readonly purge?: (objectId: string) => Promise<void>;
+  readonly purge?: OperationInput['purge'];
   readonly now?: () => number;
   readonly randomBytes?: (size: number) => Uint8Array;
-  readonly secretKeys?: () => ReadonlySet<string>;
 };
 
+// eslint-disable-next-line max-lines-per-function -- this assembles the public operations over one fence owner
 export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncControlPlane {
+  if (
+    options.applyLocal === undefined ||
+    (options.applyCloud === undefined && options.session === undefined) ||
+    (options.restore === undefined && options.session === undefined) ||
+    options.persistOverrides === undefined ||
+    (options.purge === undefined && options.session === undefined) ||
+    options.connect === undefined
+  )
+    throw new SyncOperationError('backend-unavailable');
   const now = options.now ?? Date.now;
   const binding = options.binding ?? (() => options.repo.readBinding());
   const localEntities =
@@ -63,6 +91,62 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       return current === null ? [] : options.repo.entities(current.id);
     });
   const remoteEntities = options.remoteEntities ?? (() => listRemoteEntities(options.session?.()));
+  const remoteOps =
+    options.session === undefined
+      ? undefined
+      : () => {
+          const session = options.session!();
+          if (session === undefined) throw new SyncOperationError('not-connected');
+          const store = createSyncObjectStore(session);
+          const signal = new AbortController().signal;
+          const assertVersion = async (objectId: string, expected: string | null): Promise<void> => {
+            const current = await session.read(entityKey(objectId), signal);
+            if ((current.kind === 'absent' ? null : current.version) !== expected)
+              throw new SyncOperationError('operation-pending');
+          };
+          return {
+            assertVersion,
+            async restore(
+              objectId: string,
+              body: EntityBody,
+              operationId: string,
+              current: LocalEntity | undefined,
+              expected: string | null,
+            ) {
+              await assertVersion(objectId, expected);
+              await restoreEntity(store, objectId, body, operationId, signal);
+            },
+            async purge(objectId: string, expected: string | null) {
+              await assertVersion(objectId, expected);
+              await purgeEntity(store, objectId, signal);
+            },
+            async publish(body: EntityBody | null, current: LocalEntity | undefined, expected: string | null) {
+              await assertVersion(current?.objectId ?? body?.logicalKey ?? '', expected);
+              if (current === undefined) throw new SyncOperationError('operation-pending');
+              const objectId = current.objectId;
+              if (body === null) await deleteEntity(store, objectId, current.epoch, signal);
+              else
+                await publishEntity(
+                  store,
+                  {
+                    operationId: randomUUID(),
+                    objectId,
+                    epoch: current.epoch,
+                    kind: 'put',
+                    body,
+                    commitId: `control:${randomUUID()}`,
+                  },
+                  signal,
+                );
+            },
+          };
+        };
+  const restore =
+    options.restore ?? (async (...args: Parameters<OperationInput['restore']>) => remoteOps!().restore(...args));
+  const purge = options.purge ?? (async (...args: Parameters<OperationInput['purge']>) => remoteOps!().purge(...args));
+  const applyCloud =
+    options.applyCloud ??
+    (async (...args: Parameters<NonNullable<OperationInput['applyCloud']>>) => remoteOps!().publish(...args));
   const previews = new Map<string, PreviewRecord>();
   let rangeRevision = 0;
   let state: SyncConnectionState = 'idle';
@@ -74,11 +158,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     now,
     state: () => state,
     lastSuccessAt: () => lastSuccessAt,
+    backendOptions: options.backendOptions,
+    binding,
+    accounts: options.accounts,
   });
 
-  const currentFence = async (): Promise<PreviewFence> => {
+  const currentFence = async (snapshot?: readonly RemoteEntity[]): Promise<PreviewFence> => {
     const current = binding();
-    const remote = await remoteEntities();
+    const remote = snapshot ?? (await remoteEntities());
     return {
       bindingId: current?.id ?? '',
       sessionGeneration: current?.sessionGeneration ?? 0,
@@ -95,8 +182,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     remoteEntities,
     fence: currentFence,
     status: statuses.status,
-    ...(options.applyLocal === undefined ? {} : { applyLocal: options.applyLocal }),
-    ...(options.applyCloud === undefined ? {} : { applyCloud: options.applyCloud }),
+    applyLocal: options.applyLocal,
+    applyCloud,
+    restore,
+    persistOverrides: options.persistOverrides,
+    purge,
     now,
   });
 
@@ -108,9 +198,12 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     status,
     async preview(input) {
       if (input.kind === 'connect') {
+        const backend = options.registry?.().resolveSync(input.plugin, input.capability);
+        if (backend === undefined || !backend.options.schema.safeParse(input.options).success)
+          throw new SyncOperationError('backend-unavailable');
         const previewId = createPreviewToken(24, options.randomBytes);
         const expiresAt = now() + 10 * 60_000;
-        const fence = await currentFence();
+        const fence = await currentFence([]);
         const built = buildPreview({
           request: input,
           local: localEntities(),
@@ -118,7 +211,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           fence,
           previewId,
           expiresAt,
-          secretKeys: options.secretKeys?.(),
+          registry: options.registry?.(),
         });
         previews.set(previewId, built.record);
         return built.preview;
@@ -126,14 +219,15 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       if (binding() === null) throw new SyncPreviewError('not-connected');
       const previewId = createPreviewToken(24, options.randomBytes);
       const expiresAt = now() + 10 * 60_000;
+      const remote = await remoteEntities();
       const built = buildPreview({
         request: input,
         local: localEntities(),
-        remote: await remoteEntities(),
-        fence: await currentFence(),
+        remote,
+        fence: await currentFence(remote),
         previewId,
         expiresAt,
-        secretKeys: options.secretKeys?.(),
+        registry: options.registry?.(),
       });
       previews.set(previewId, built.record);
       state = 'preview-required';
@@ -145,9 +239,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       previews.delete(input.previewId);
       if (now() >= record.expiresAt) throw new SyncPreviewError('preview-stale');
       if (record.input.kind === 'connect') {
-        await options.connect?.(record.input);
-      } else if (record.input.kind === 'purge') {
-        for (const candidate of record.rows) await options.purge?.(candidate.row.objectId);
+        await options.connect(record.input);
       } else {
         await applyPreview(operationInput(), record, input.decisions);
       }
@@ -177,12 +269,19 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       const headValue = await session.read(entityKey(objectId), signal);
       if (headValue.kind === 'absent') return [];
       const head = decodeHead(headValue.value);
+      if (head.objectId !== objectId || head.state === 'purging') throw new SyncOperationError('operation-pending');
       const operationIds = [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])];
       const items: SyncHistoryItem[] = [];
       for (const operationId of operationIds) {
         const value = await session.read(revisionKey(objectId, operationId), signal);
         if (value.kind === 'absent') continue;
         const record = decodeRevision(value.value);
+        if (record.objectId !== objectId) throw new SyncOperationError('operation-pending');
+        if (
+          record.state === 'payload' &&
+          (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
+        )
+          throw new SyncOperationError('operation-pending');
         items.push({
           operationId,
           objectId,

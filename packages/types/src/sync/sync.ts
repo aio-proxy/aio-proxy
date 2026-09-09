@@ -119,6 +119,10 @@ export const SyncApplyInputSchema = z.strictObject({
   decisions: z.array(SyncApplyDecisionSchema),
 });
 
+export const SyncRangeInputSchema = z.strictObject({ providerId: id, included: z.literal(false) });
+export const SyncDetachInputSchema = z.strictObject({ providerId: id, loginSessionId: id });
+export const SyncCancelDetachInputSchema = z.strictObject({ providerId: id });
+
 export const SyncHistoryItemSchema = z.strictObject({
   operationId: id,
   objectId: id,
@@ -136,6 +140,9 @@ export type SyncPreviewRow = z.output<typeof SyncPreviewRowSchema>;
 export type SyncPreview = z.output<typeof SyncPreviewSchema>;
 export type SyncApplyInput = z.output<typeof SyncApplyInputSchema>;
 export type SyncHistoryItem = z.output<typeof SyncHistoryItemSchema>;
+export type SyncRangeInput = z.output<typeof SyncRangeInputSchema>;
+export type SyncDetachInput = z.output<typeof SyncDetachInputSchema>;
+export type SyncCancelDetachInput = z.output<typeof SyncCancelDetachInputSchema>;
 
 export type SyncControlPlane = {
   readonly backends: () => SyncBackendView[];
