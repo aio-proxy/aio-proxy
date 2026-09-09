@@ -4,13 +4,16 @@ import { ModalitySchema } from '../model-metadata';
 
 export const AGENT_ACCESS_TOKEN_PREFIX = 'aio_agent_at_v1_';
 export const AGENT_REFRESH_TOKEN_PREFIX = 'aio_agent_rt_v1_';
-export const AgentTargetSchema = z.enum(['opencode', 'pi', 'omp']);
+export const AgentPluginTargetSchema = z.enum(['opencode', 'pi', 'omp']);
+export type AgentPluginTarget = z.output<typeof AgentPluginTargetSchema>;
+export const AgentTargetSchema = z.enum(['opencode', 'pi', 'omp', 'codex']);
 export type AgentTarget = z.output<typeof AgentTargetSchema>;
 
 export const AGENT_CLIENT_ID = {
   opencode: 'aio-proxy-opencode',
   pi: 'aio-proxy-pi',
   omp: 'aio-proxy-omp',
+  codex: 'aio-proxy-codex',
 } as const satisfies Record<AgentTarget, string>;
 
 const SemverSchema = z
@@ -60,7 +63,7 @@ export const AgentCatalogModelV1Schema = z.strictObject({
 });
 export const AgentCatalogV1Schema = z.strictObject({
   schema_version: z.literal(1),
-  agent: AgentTargetSchema,
+  agent: AgentPluginTargetSchema,
   models: z.array(AgentCatalogModelV1Schema),
 });
 export type AgentCatalogV1 = z.output<typeof AgentCatalogV1Schema>;
@@ -112,12 +115,12 @@ export function hasReservedAgentTokenPrefix(value: string): boolean {
 }
 
 export const AgentCatalogQuerySchema = z.strictObject({
-  agent: AgentTargetSchema,
+  agent: AgentPluginTargetSchema,
   adapter_version: SemverSchema,
   schema_version: z.literal('1'),
 });
 
-const AgentClientIdSchema = z.enum(['aio-proxy-opencode', 'aio-proxy-pi', 'aio-proxy-omp']);
+const AgentClientIdSchema = z.enum(['aio-proxy-opencode', 'aio-proxy-pi', 'aio-proxy-omp', 'aio-proxy-codex']);
 export const AgentDeviceCodeRequestSchema = z.strictObject({
   client_id: AgentClientIdSchema,
   agent: AgentTargetSchema,

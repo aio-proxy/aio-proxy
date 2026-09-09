@@ -1,6 +1,11 @@
 import { expect, mock, test } from 'bun:test';
 
-import type { AgentAdminSnapshot, AgentInstallationSummary, AgentRevokeStatus, AgentTarget } from '@aio-proxy/types';
+import type {
+  AgentAdminSnapshot,
+  AgentInstallationSummary,
+  AgentPluginTarget,
+  AgentRevokeStatus,
+} from '@aio-proxy/types';
 
 import { agentConfigure, agentList, agentRemove, agentRevoke, type AgentCommandDeps } from './agent';
 import type { AgentHost, AgentLocation } from './hosts';
@@ -17,7 +22,7 @@ const installation = (installationId: string): AgentInstallationSummary => ({
   accessExpiresAt: '2026-08-18T00:15:01.000Z',
 });
 
-const commandLocation = (target: AgentTarget): AgentLocation => {
+const commandLocation = (target: AgentPluginTarget): AgentLocation => {
   const hostRoot = `/tmp/${target}/${target === 'opencode' ? 'plugins' : 'extensions'}`;
   return {
     target,
@@ -33,11 +38,11 @@ function commandFixture(
     readonly serverHost?: string;
     readonly resolvedEndpoint?: string;
     readonly markerEndpoint?: string;
-    readonly target?: AgentTarget;
+    readonly target?: AgentPluginTarget;
     readonly hostSupport?: AgentHost['support'];
     readonly hostVersion?: string;
-    readonly missingTargets?: readonly AgentTarget[];
-    readonly pathFailureTargets?: readonly AgentTarget[];
+    readonly missingTargets?: readonly AgentPluginTarget[];
+    readonly pathFailureTargets?: readonly AgentPluginTarget[];
     readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
     readonly catalogSchemaVersions?: readonly number[];
     readonly revokeStatus?: AgentRevokeStatus;
@@ -49,7 +54,7 @@ function commandFixture(
   const missing = new Set(options.missingTargets ?? []);
   const pathFailures = new Set(options.pathFailureTargets ?? []);
   const localIds = options.localInstallationIds ?? (options.target === undefined ? [] : [INSTALLATION]);
-  const localByTarget = new Map<AgentTarget, string>();
+  const localByTarget = new Map<AgentPluginTarget, string>();
   if (options.target !== undefined && localIds[0] !== undefined) localByTarget.set(options.target, localIds[0]);
   else
     (['opencode', 'pi', 'omp'] as const).forEach((target, index) => {
@@ -237,6 +242,7 @@ test('list --check returns the complete per-target and server capability contrac
     catalogSchemaVersions: [1],
   });
   const result = await agentList({ check: true }, f.deps);
+  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp']);
   expect(result).toMatchObject({
     server: 'reachable',
     deviceAuthorization: 'password_required',

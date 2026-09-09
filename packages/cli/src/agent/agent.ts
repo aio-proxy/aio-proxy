@@ -2,9 +2,10 @@ import { homedir } from 'node:os';
 
 import {
   AgentRevokeResponseSchema,
-  AgentTargetSchema,
+  AgentPluginTargetSchema,
   type AgentAdminSnapshot,
   type AgentInstallationSummary,
+  type AgentPluginTarget,
   type AgentRevokeStatus,
   type AgentTarget,
 } from '@aio-proxy/types';
@@ -33,15 +34,15 @@ import {
 const AGENT_TARGETS = ['opencode', 'pi', 'omp'] as const;
 
 export type AgentCommandDeps = {
-  readonly detectHost: (target: AgentTarget) => Promise<AgentHost>;
-  readonly resolveLocation: (target: AgentTarget) => Promise<AgentLocation>;
+  readonly detectHost: (target: AgentPluginTarget) => Promise<AgentHost>;
+  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentLocation>;
   readonly inspect: (location: AgentLocation, now: () => number) => Promise<LocalIntegrationStatus>;
   readonly resolveEndpoint: () => Promise<string>;
   readonly install: typeof installManagedIntegration;
   readonly remove: typeof removeManagedIntegration;
   readonly readSnapshot: (endpoint: string) => Promise<AgentAdminSnapshot>;
   readonly revoke: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
-  readonly readAssets: (target: AgentTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
+  readonly readAssets: (target: AgentPluginTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
   readonly adapterVersion: string;
   readonly randomUUID: () => `${string}-${string}-${string}-${string}-${string}`;
   readonly now: () => number;
@@ -53,7 +54,7 @@ export type AgentCommandDeps = {
 };
 
 type AgentListTargetBase = {
-  readonly target: AgentTarget;
+  readonly target: AgentPluginTarget;
   readonly host: AgentHost;
   readonly authorization: 'not_checked' | AgentInstallationSummary['authorization'] | 'missing';
   readonly schemaCompatibility: 'not_checked' | 'compatible' | 'incompatible';
@@ -84,7 +85,7 @@ export type AgentListResult = {
 };
 
 export type PluginAgentConfigureResult = {
-  readonly target: AgentTarget;
+  readonly target: AgentPluginTarget;
   readonly host: AgentHost;
   readonly installed: true;
   readonly status: 'installed' | 'updated' | 'newer';
@@ -95,7 +96,7 @@ export type PluginAgentConfigureResult = {
 };
 
 export type PluginAgentRemoveResult = {
-  readonly target: AgentTarget;
+  readonly target: AgentPluginTarget;
   readonly installationId: string;
   readonly revokeStatus: AgentRevokeStatus;
 };
@@ -147,12 +148,12 @@ export const createAgentCommandDeps = (cliDeps: CliDeps): AgentCommandDeps => {
 
 const commandDeps = (deps?: AgentCommandDeps): AgentCommandDeps => deps ?? createAgentCommandDeps(defaultCliDeps);
 
-const parseTarget = (target: string): AgentTarget => AgentTargetSchema.parse(target);
+const parseTarget = (target: string): AgentPluginTarget => AgentPluginTargetSchema.parse(target);
 
-const loginCommand = (target: AgentTarget): PluginAgentConfigureResult['loginCommand'] =>
+const loginCommand = (target: AgentPluginTarget): PluginAgentConfigureResult['loginCommand'] =>
   target === 'opencode' ? 'opencode auth login --provider aio-proxy' : '/login aio-proxy';
 
-const requireDetectedHost = async (target: AgentTarget, deps: AgentCommandDeps): Promise<AgentHost> => {
+const requireDetectedHost = async (target: AgentPluginTarget, deps: AgentCommandDeps): Promise<AgentHost> => {
   const host = await deps.detectHost(target);
   if (!host.detected) throw new Error(`${target} is not installed`);
   return host;
@@ -180,7 +181,7 @@ const endpointMatches = (
 };
 
 const listTarget = async (
-  target: AgentTarget,
+  target: AgentPluginTarget,
   configuredEndpoint: string | undefined,
   deps: AgentCommandDeps,
 ): Promise<AgentListTargetResult> => {

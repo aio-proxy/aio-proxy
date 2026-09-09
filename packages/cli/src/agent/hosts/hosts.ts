@@ -1,6 +1,6 @@
 import { isAbsolute, join } from 'node:path';
 
-import type { AgentTarget } from '@aio-proxy/types';
+import type { AgentPluginTarget } from '@aio-proxy/types';
 
 export type AgentHostDeps = {
   readonly which: (name: string) => string | null;
@@ -9,7 +9,7 @@ export type AgentHostDeps = {
   readonly home: string;
 };
 export type AgentHost = {
-  readonly target: AgentTarget;
+  readonly target: AgentPluginTarget;
   readonly detected: boolean;
   readonly executable?: string;
   readonly version?: string;
@@ -17,7 +17,7 @@ export type AgentHost = {
   readonly support: 'supported' | 'unsupported' | 'unknown';
 };
 export type AgentLocation = {
-  readonly target: AgentTarget;
+  readonly target: AgentPluginTarget;
   readonly hostRoot: string;
   readonly managedDir: string;
   readonly adjacentEntry?: string;
@@ -29,7 +29,7 @@ const hostCommand = {
   omp: { executable: 'omp', versionArgs: ['--version'], floor: '17.3.7' },
 } as const;
 
-const parseVersion = (target: AgentTarget, output: string): string | undefined => {
+const parseVersion = (target: AgentPluginTarget, output: string): string | undefined => {
   const value = output.trim();
   const candidate = value.startsWith(`${target}/`) ? value.slice(target.length + 1) : value;
   try {
@@ -40,7 +40,7 @@ const parseVersion = (target: AgentTarget, output: string): string | undefined =
   }
 };
 
-export async function detectAgentHost(target: AgentTarget, deps: AgentHostDeps): Promise<AgentHost> {
+export async function detectAgentHost(target: AgentPluginTarget, deps: AgentHostDeps): Promise<AgentHost> {
   const command = hostCommand[target];
   const executable = deps.which(command.executable);
   if (executable === null) {
@@ -70,7 +70,7 @@ const requireAbsolute = (value: string, diagnostic: string): string => {
   return value;
 };
 
-export async function resolveAgentLocation(target: AgentTarget, deps: AgentHostDeps): Promise<AgentLocation> {
+export async function resolveAgentLocation(target: AgentPluginTarget, deps: AgentHostDeps): Promise<AgentLocation> {
   const command = hostCommand[target];
   const executable = deps.which(command.executable);
   if (executable === null) throw new Error(`${command.executable} is not installed`);

@@ -1,4 +1,4 @@
-import type { AgentTarget } from '@aio-proxy/types';
+import type { AgentPluginTarget } from '@aio-proxy/types';
 
 export type AgentAssetPaths = {
   readonly opencode: string;
@@ -15,7 +15,7 @@ const bytes = async (path: string): Promise<Uint8Array> => {
 };
 
 export async function agentFiles(
-  target: AgentTarget,
+  target: AgentPluginTarget,
   paths: AgentAssetPaths,
 ): Promise<ReadonlyMap<string, Uint8Array>> {
   if (target === 'opencode') {

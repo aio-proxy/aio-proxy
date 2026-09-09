@@ -5,7 +5,7 @@ import {
   AgentManagedMarkerSchema,
   AgentManagedStateV1Schema,
   type AgentManagedMarker,
-  type AgentTarget,
+  type AgentPluginTarget,
 } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../hosts';
@@ -73,7 +73,7 @@ const writeStagingTree = async (
 
 const validateBackup = async (
   backupDir: string,
-  target: AgentTarget,
+  target: AgentPluginTarget,
   installationId: string,
   adapterVersion: string,
 ): Promise<'ok' | 'newer'> => {
@@ -98,7 +98,7 @@ const validateBackup = async (
   return isNewerAdapter(parsed.data.adapterVersion, adapterVersion) ? 'newer' : 'ok';
 };
 
-const copyValidState = async (backupDir: string, stagingDir: string, target: AgentTarget): Promise<void> => {
+const copyValidState = async (backupDir: string, stagingDir: string, target: AgentPluginTarget): Promise<void> => {
   const statePath = join(backupDir, '.aio-proxy-state.json');
   const stat = await inspectPath(statePath);
   if (stat === undefined || stat.isSymbolicLink() || !stat.isFile()) return;

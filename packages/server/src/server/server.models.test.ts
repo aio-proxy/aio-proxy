@@ -24,6 +24,7 @@ describe('GET /v1/models client_version routing', () => {
   let opencode: IssuedAgentCredential;
   let pi: IssuedAgentCredential;
   let omp: IssuedAgentCredential;
+  let codex: IssuedAgentCredential;
   let closeIdentity: () => void = () => {};
 
   beforeEach(async () => {
@@ -72,6 +73,11 @@ describe('GET /v1/models client_version routing', () => {
       installationId: randomUUID(),
       target: 'omp',
       adapterVersion: '1.2.3',
+    });
+    codex = identity.issueCredential({
+      installationId: randomUUID(),
+      target: 'codex',
+      adapterVersion: '0.146.0',
     });
     app = await createBaseServer({ config, dbHome: dir, __test: { agentIdentity: identity } });
     lockedHome = mkdtempSync(join(tmpdir(), 'aio-proxy-locked-models-'));
@@ -194,6 +200,25 @@ describe('GET /v1/models client_version routing', () => {
       expect(typeof model.base_instructions).toBe('string');
     }
     expect(body.object).toBeUndefined();
+  });
+
+  test('authenticated Codex grants access to both model catalog protocols', async () => {
+    const ordinary = await app.request(
+      '/v1/models',
+      { headers: { authorization: `Bearer ${codex.accessToken}` } },
+      loopbackServer,
+    );
+    expect(ordinary.status).toBe(200);
+    expect((await ordinary.json()).object).toBe('list');
+
+    const native = await codexApp.request(
+      '/v1/models?client_version=0.146.0',
+      { headers: { authorization: `Bearer ${codex.accessToken}` } },
+      loopbackServer,
+    );
+    const body = await native.json();
+    expect(native.status).toBe(200);
+    expect(body.models.length).toBeGreaterThan(0);
   });
 
   test('client_version query hides models with no text output modality', async () => {

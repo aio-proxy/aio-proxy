@@ -10,6 +10,7 @@ const DEVICE_REQUEST = {
   installation_id: '0f4dcb50-d68c-4b99-8af1-da32480ddd09',
   adapter_version: '1.2.3',
 } as const;
+const INSTALLATION = DEVICE_REQUEST.installation_id;
 const uuid = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 
 function challengeFixture() {
@@ -78,6 +79,29 @@ test('pending, slow_down, approval, and duplicate consume are deterministic', ()
   expect(f.store.poll({ clientId: DEVICE_REQUEST.client_id, deviceCode: created.device_code }, '127.0.0.1')).toEqual({
     ok: false,
     error: 'expired_token',
+  });
+});
+
+test('approved Codex challenges issue a credential bound to the Codex target', () => {
+  const f = challengeFixture();
+  const request = {
+    client_id: 'aio-proxy-codex',
+    agent: 'codex',
+    installation_id: INSTALLATION,
+    adapter_version: '0.146.0',
+  } as const;
+  const created = f.store.create(request, '127.0.0.1');
+  const details = f.store.resolve(created.user_code, '127.0.0.1');
+  if (details.status !== 'pending') throw new Error('expected pending challenge');
+  expect(details.target).toBe('codex');
+  expect(f.store.approve(details.deviceId, '127.0.0.1')).toBe('approved');
+  expect(f.store.poll({ clientId: request.client_id, deviceCode: created.device_code }, '127.0.0.1')).toMatchObject({
+    ok: true,
+  });
+  expect(f.issueCredential).toHaveBeenCalledWith({
+    installationId: INSTALLATION,
+    target: 'codex',
+    adapterVersion: '0.146.0',
   });
 });
 

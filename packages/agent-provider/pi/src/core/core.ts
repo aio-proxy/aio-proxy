@@ -8,7 +8,7 @@ import {
   type ManagedInstallation,
   type RefreshCatalogResult,
 } from '@aio-proxy/agent-provider-runtime';
-import type { AgentCatalogV1, AgentDeviceCodeResponse, AgentManagedMarker, AgentTarget } from '@aio-proxy/types';
+import type { AgentCatalogV1, AgentDeviceCodeResponse, AgentManagedMarker, AgentPluginTarget } from '@aio-proxy/types';
 
 const DEFAULT_CONTEXT = 128_000;
 const DEFAULT_OUTPUT = 16_384;
@@ -58,7 +58,10 @@ type CoreOptions = {
   readonly pollDeviceAuthorization?: typeof pollDeviceAuthorization;
   readonly refreshAgentCredential?: typeof refreshAgentCredential;
   readonly refreshAgentCatalog?: typeof refreshAgentCatalog;
-  readonly readLastKnownCatalog?: (statePath: string, expectedTarget: AgentTarget) => Promise<AgentCatalogV1 | null>;
+  readonly readLastKnownCatalog?: (
+    statePath: string,
+    expectedTarget: AgentPluginTarget,
+  ) => Promise<AgentCatalogV1 | null>;
 };
 
 const credentialFromToken = (
