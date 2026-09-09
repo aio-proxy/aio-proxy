@@ -66,8 +66,8 @@ export async function invokePinnedVideo(
     }
     return response;
   } catch (error) {
+    await cancelRetainedRequestBody(upstream, error);
     if (isInboundAbort(error, context.req.raw.signal)) return new Response(null, { status: 499 });
-    await cancelRetainedRequestBody(upstream, 'videos pinned upstream unavailable');
     return videoUpstreamUnavailable();
   } finally {
     lease.release();
