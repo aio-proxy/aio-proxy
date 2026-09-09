@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { chmod, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import {
   AtomicConfigFile,
   createSyncRepository,
+  encodeCandidate,
   parseRuntimeConfig,
   parsePluginSchema,
   type PluginRegistrySnapshot,
@@ -31,6 +33,7 @@ import {
   type OAuthActivationEvidence,
 } from '../sync-control-plane';
 import { createSyncCommitHooks } from '../sync-control-plane/commit';
+import type { PluginSecretChange } from '../sync-control-plane/local-port';
 import { commitConfig, type ServerRuntime } from './lifecycle';
 import type { ServerStateOptions } from './types';
 
@@ -61,13 +64,40 @@ export function createSyncIntegration(
       },
     };
   }
-  const syncApplyCandidate = async (raw: Record<string, JsonValue>, origin: 'local' | 'remote'): Promise<void> => {
-    await configFile.replace(() => raw, {
-      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
-      verify: async (candidate) => {
-        await commitConfig(runtime, parseRuntimeConfig(candidate), origin === 'remote' ? 'sync-remote' : 'sync-local');
-      },
-    });
+  const syncApplyCandidate = async (
+    raw: Record<string, JsonValue>,
+    origin: 'local' | 'remote',
+    operationId?: string,
+    pluginSecret?: PluginSecretChange,
+  ): Promise<void> => {
+    const before = (await configFile.read()) as Record<string, JsonValue>;
+    const changed =
+      createHash('sha256').update(encodeCandidate(raw, options.configPath!)).digest('hex') !==
+      createHash('sha256').update(encodeCandidate(before, options.configPath!)).digest('hex');
+    if (origin === 'remote' && operationId !== undefined && changed) {
+      runtime.remoteConfigFence = {
+        digest: createHash('sha256').update(encodeCandidate(raw, options.configPath!)).digest('hex'),
+        operationId,
+      };
+    }
+    try {
+      await configFile.replace(() => raw, {
+        validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+        verify: async (candidate) => {
+          await commitConfig(
+            runtime,
+            parseRuntimeConfig(candidate),
+            origin === 'remote' ? 'sync-remote' : 'sync-local',
+          );
+        },
+      });
+      if (!changed && pluginSecret !== undefined)
+        await commitConfig(runtime, parseRuntimeConfig(raw), origin === 'remote' ? 'sync-remote-secret' : 'sync-local');
+    } catch (error) {
+      if (origin === 'remote' && operationId !== undefined && runtime.remoteConfigFence?.operationId === operationId)
+        runtime.remoteConfigFence = undefined;
+      throw error;
+    }
   };
   const pluginVersions = () =>
     new Map(

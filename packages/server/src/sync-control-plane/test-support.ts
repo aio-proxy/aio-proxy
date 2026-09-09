@@ -312,6 +312,7 @@ export type TwoServerSyncFixtureOptions = {
   readonly providerObjectIds?: Partial<Record<'a' | 'b', string>>;
   readonly oauthCredentials?: Partial<Record<'a' | 'b', AcceptanceOAuthCredential>>;
   readonly oauthShared?: Partial<Record<'a' | 'b', boolean>>;
+  readonly watchConfig?: boolean;
 };
 
 /**
@@ -394,7 +395,7 @@ export async function withTwoServerSyncFixtures(
       config: ConfigSchema.parse(raw),
       configPath,
       dbHome: home,
-      watchConfig: false,
+      watchConfig: options.watchConfig ?? false,
       logger: () => {},
       pluginLogger: () => {},
       builtIns: [descriptor],
@@ -438,7 +439,7 @@ export async function withTwoServerSyncFixtures(
         config: ConfigSchema.parse(raw),
         configPath: current.configPath,
         dbHome: current.home,
-        watchConfig: false,
+        watchConfig: options.watchConfig ?? false,
         logger: () => {},
         pluginLogger: () => {},
         builtIns: [descriptor],

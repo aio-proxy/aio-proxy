@@ -101,6 +101,7 @@ async function confirmLocalCommitUnderFence(
   if (
     intent.beforeDigest === intent.afterDigest &&
     intent.accountOperationIds.length === 0 &&
+    (intent.remoteOperations === undefined || intent.remoteOperations.length === 0) &&
     intent.sourceRevisions === undefined
   ) {
     repo.discard(bindingId, commitId);

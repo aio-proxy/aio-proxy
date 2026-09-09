@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   type CommittedSource,
+  confirmLocalCommit,
   type EntityBody,
   type LocalSyncPort,
   type PendingReason,
@@ -11,6 +12,7 @@ import {
   encodeCandidate,
   overlayLocal,
   projectCommitted,
+  prepareLocalCommit,
 } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
@@ -18,6 +20,11 @@ import type { ConfigStore } from '../config-store';
 import type { FifoQueue } from '../fifo-queue';
 
 type ConfigFile = NonNullable<ConfigStore['file']>;
+
+export type PluginSecretChange = {
+  readonly plugin: string;
+  readonly value: JsonValue | undefined;
+};
 
 export type LocalPortInput = {
   readonly configPath: string;
@@ -28,7 +35,12 @@ export type LocalPortInput = {
   readonly bindingGeneration?: number;
   readonly enqueue: FifoQueue;
   readonly registry: () => PluginRegistry;
-  readonly applyCandidate: (raw: Record<string, JsonValue>, origin: 'local' | 'remote') => Promise<void>;
+  readonly applyCandidate: (
+    raw: Record<string, JsonValue>,
+    origin: 'local' | 'remote',
+    operationId?: string,
+    pluginSecret?: PluginSecretChange,
+  ) => Promise<void>;
   readonly checkActivation?: (raw: Record<string, JsonValue>, body: EntityBody) => Promise<PendingReason | undefined>;
   readonly entities?: () => ReturnType<SyncRepository['entities']>;
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
@@ -136,6 +148,23 @@ function removeBody(
   return next;
 }
 
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function pluginSecretChange(
+  body: EntityBody | null,
+  currentEntity: ReturnType<SyncRepository['entities']>[number] | undefined,
+): PluginSecretChange | undefined {
+  if (body?.kind === 'plugin-business') {
+    const value = record(body.value);
+    return { plugin: body.logicalKey, value: Object.hasOwn(value, 'secret') ? value['secret'] : undefined };
+  }
+  if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'plugin-business')
+    return { plugin: currentEntity.logicalKey, value: undefined };
+  return undefined;
+}
+
 function source(input: LocalPortInput, raw: Record<string, JsonValue>): CommittedSource {
   const accounts = new Map(
     Object.keys(record(raw['providers']))
@@ -188,12 +217,13 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
       return source(input, (await input.configFile.read()) as Record<string, JsonValue>);
     },
     assertCurrent,
-    async applyRemote(objectId, body) {
+    async applyRemote(objectId, body, operationId) {
       return withFence(async () => {
         const current = (await input.configFile.read()) as Record<string, JsonValue>;
         assertCurrent();
         const currentEntities = entities();
         const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
+        const secretChange = pluginSecretChange(body, currentEntity);
         const shared =
           body === null && currentEntity?.mode === 'included'
             ? removeBody(current, currentEntity)
@@ -201,20 +231,53 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
         const projection = projectCommitted(source(input, shared), currentEntities);
         const candidate = overlayLocal(shared, projection.local, currentEntities);
         assertCurrent();
-        try {
-          if (candidate !== current) await input.applyCandidate(candidate, 'remote');
-        } catch {
-          return { applied: false, pending: 'invalid-config' as const };
-        }
-        if (body?.kind === 'plugin-business') {
-          const value = record(body.value);
-          const secret = value['secret'];
-          const previous = input.accounts.readPluginSecret(body.logicalKey);
-          if (secret === undefined) {
-            if (previous !== null) input.accounts.deletePluginSecret(body.logicalKey, previous.revision);
-          } else {
-            input.accounts.writePluginSecret(body.logicalKey, previous?.revision ?? null, secret);
+        const remoteCommitId = `remote:${objectId}:${operationId}`;
+        const beforeDigest = digest(current, input.configPath);
+        const afterDigest = digest(candidate, input.configPath);
+        const existingCommit = input.repo.readCommit(input.bindingId, remoteCommitId);
+        if (
+          existingCommit?.phase === 'prepared' &&
+          (existingCommit.beforeDigest !== beforeDigest || existingCommit.afterDigest !== afterDigest)
+        )
+          input.repo.discard(input.bindingId, remoteCommitId);
+        prepareLocalCommit(input.repo, input.bindingId, {
+          commitId: remoteCommitId,
+          origin: 'remote',
+          beforeDigest,
+          afterDigest,
+          rawAfter: candidate,
+          accountOperationIds: [],
+          remoteOperations: [{ objectId, operationId }],
+        });
+        const previousSecret = secretChange === undefined ? null : input.accounts.readPluginSecret(secretChange.plugin);
+        let secretChanged = false;
+        if (secretChange !== undefined) {
+          if (secretChange.value === undefined) {
+            if (previousSecret !== null) {
+              input.accounts.deletePluginSecret(secretChange.plugin, previousSecret.revision);
+              secretChanged = true;
+            }
+          } else if (previousSecret === null || !sameJson(previousSecret.value, secretChange.value)) {
+            input.accounts.writePluginSecret(secretChange.plugin, previousSecret?.revision ?? null, secretChange.value);
+            secretChanged = true;
           }
+        }
+        try {
+          if (candidate !== current || secretChanged)
+            await input.applyCandidate(candidate, 'remote', operationId, secretChange);
+        } catch {
+          if (secretChanged && secretChange !== undefined) {
+            const currentSecret = input.accounts.readPluginSecret(secretChange.plugin);
+            if (previousSecret === null) {
+              if (currentSecret !== null)
+                input.accounts.deletePluginSecret(secretChange.plugin, currentSecret.revision);
+            } else if (currentSecret === null) {
+              input.accounts.writePluginSecret(secretChange.plugin, null, previousSecret.value);
+            } else if (!sameJson(currentSecret.value, previousSecret.value)) {
+              input.accounts.writePluginSecret(secretChange.plugin, currentSecret.revision, previousSecret.value);
+            }
+          }
+          return { applied: false, pending: 'invalid-config' as const };
         }
         assertCurrent();
         if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider') {
@@ -232,6 +295,13 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
           pendingReason: null,
           ...(currentEntity?.oauth === undefined ? {} : { oauth: currentEntity.oauth }),
+        });
+        await confirmLocalCommit(input.repo, input.bindingId, remoteCommitId, {
+          withFence: async <T>(run: () => Promise<T>) => run(),
+          rawDigest: async () => digest((await input.configFile.read()) as Record<string, JsonValue>, input.configPath),
+          accountOperationsSettled: () => true,
+          committedSource: async () => source(input, candidate),
+          assertCurrent,
         });
         return { applied: true };
       });

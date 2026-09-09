@@ -66,6 +66,7 @@ export type ServerRuntime = {
   sync: ServerSyncLifecycle | undefined;
   syncControl: SyncControlPlane | undefined;
   syncCommit: SyncCommitHooks | undefined;
+  remoteConfigFence: { readonly digest: string; readonly operationId: string } | undefined;
   prepareOAuth?: (plugins: import('@aio-proxy/core').PluginRegistrySnapshot) => Promise<void>;
   readonly resolveSharedCredential: (
     providerId: string,
@@ -132,6 +133,7 @@ export async function commitConfig(
 export function reloadNow(
   runtime: ServerRuntime,
   retainedOperations: readonly PendingAccountOperation[] = [],
+  remoteOrigin = false,
 ): Promise<ConfigReloadResult> {
   return reloadSnapshot({
     accountRemovals: runtime.accountRemovals,
@@ -143,7 +145,7 @@ export function reloadNow(
       ? {}
       : { onDashboardAuthHealthChanged: runtime.internalOptions.__dashboardAuthHealthChanged }),
     retainedOperations,
-    ...(runtime.syncCommit === undefined ? {} : { syncCommit: runtime.syncCommit }),
+    ...(remoteOrigin || runtime.syncCommit === undefined ? {} : { syncCommit: runtime.syncCommit }),
   });
 }
 

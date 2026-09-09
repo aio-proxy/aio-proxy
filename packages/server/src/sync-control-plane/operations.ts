@@ -246,7 +246,7 @@ export async function applyPreview(
         ...current,
         mode: 'included',
         desired: selectedBody,
-        baseline: remote?.version ?? current.baseline,
+        baseline: remote?.revision ?? current.baseline,
         pendingReason: null,
       });
     }

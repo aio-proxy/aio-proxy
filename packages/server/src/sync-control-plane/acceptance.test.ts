@@ -41,69 +41,72 @@ async function setProvider(
   }));
 }
 
-test('committed export has no echo; discovery and purge leave independent local copies', async () => {
-  await withTwoServerSyncFixtures(async (fixture) => {
-    const { a, b } = fixture;
-    expect(a.state.sync).toBeDefined();
-    expect(b.state.sync).toBeDefined();
-    expect(
-      a.state.pluginControlPlane.summaries().some((plugin) => plugin.packageName === twoServerSyncAcceptancePlugin),
-    ).toBe(true);
+test('watcher-enabled remote import has no local echo; discovery and purge leave independent local copies', async () => {
+  await withTwoServerSyncFixtures(
+    async (fixture) => {
+      const { a, b } = fixture;
+      expect(a.state.sync).toBeDefined();
+      expect(b.state.sync).toBeDefined();
+      expect(
+        a.state.pluginControlPlane.summaries().some((plugin) => plugin.packageName === twoServerSyncAcceptancePlugin),
+      ).toBe(true);
 
-    await setProvider(a, 'work', a.providerMarker);
-    await a.reconcile();
-    const providerPreview = await a.state.sync!.preview({ kind: 'join', providerId: 'work' });
-    await a.state.sync!.apply({
-      previewId: providerPreview.previewId,
-      decisions: providerPreview.rows.map((row) => ({ objectId: row.objectId, choice: 'local' as const })),
-    });
-    const edit = await a.state.pluginControlPlane.editView(twoServerSyncAcceptancePlugin);
-    await a.state.pluginControlPlane.updateOptions({
-      packageName: twoServerSyncAcceptancePlugin,
-      revision: edit.revision,
-      publicValues: { endpoint: 'https://plugin.example.test' },
-      secretValues: { token: a.pluginMarker },
-      clearSecretKeys: [],
-    });
-    await a.reconcile();
+      await setProvider(a, 'work', a.providerMarker);
+      await a.reconcile();
+      const providerPreview = await a.state.sync!.preview({ kind: 'join', providerId: 'work' });
+      await a.state.sync!.apply({
+        previewId: providerPreview.previewId,
+        decisions: providerPreview.rows.map((row) => ({ objectId: row.objectId, choice: 'local' as const })),
+      });
+      const edit = await a.state.pluginControlPlane.editView(twoServerSyncAcceptancePlugin);
+      await a.state.pluginControlPlane.updateOptions({
+        packageName: twoServerSyncAcceptancePlugin,
+        revision: edit.revision,
+        publicValues: { endpoint: 'https://plugin.example.test' },
+        secretValues: { token: a.pluginMarker },
+        clearSecretKeys: [],
+      });
+      await a.reconcile();
 
-    await waitUntil(
-      () => cloudText(fixture).includes(a.providerMarker) && cloudText(fixture).includes(a.pluginMarker),
-      'the server did not publish the selected Provider and plugin records',
-    );
-    const beforeRemoteImport = cloudEntityVersions(fixture);
+      await waitUntil(
+        () => cloudText(fixture).includes(a.providerMarker) && cloudText(fixture).includes(a.pluginMarker),
+        'the server did not publish the selected Provider and plugin records',
+      );
+      const beforeRemoteImport = cloudEntityVersions(fixture);
 
-    await fixture.restart('a');
-    await fixture.restart('b');
-    await fixture.a.reconcile();
-    await fixture.b.reconcile();
-    await waitUntil(
-      () => fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work'),
-      'the second server did not activate the discovered Provider',
-    );
-    const importedPlugin = await fixture.b.state.pluginControlPlane.editView(twoServerSyncAcceptancePlugin);
-    expect(importedPlugin.form).toContainEqual(
-      expect.objectContaining({ type: 'secret', key: 'token', configured: true }),
-    );
-    expect(JSON.stringify(importedPlugin)).not.toContain(a.pluginMarker);
-    await Bun.sleep(50);
-    expect(cloudEntityVersions(fixture)).toEqual(beforeRemoteImport);
+      await fixture.restart('a');
+      await fixture.restart('b');
+      await fixture.a.reconcile();
+      await fixture.b.reconcile();
+      await waitUntil(
+        () => fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work'),
+        'the second server did not activate the discovered Provider',
+      );
+      const importedPlugin = await fixture.b.state.pluginControlPlane.editView(twoServerSyncAcceptancePlugin);
+      expect(importedPlugin.form).toContainEqual(
+        expect.objectContaining({ type: 'secret', key: 'token', configured: true }),
+      );
+      expect(JSON.stringify(importedPlugin)).not.toContain(a.pluginMarker);
+      await Bun.sleep(50);
+      expect(cloudEntityVersions(fixture)).toEqual(beforeRemoteImport);
 
-    await fixture.b.state.sync!.setRange('work', false);
-    await fixture.restart('b');
-    await fixture.b.reconcile();
-    const purge = await fixture.a.state.sync!.preview({ kind: 'purge', scope: 'provider', objectId: 'work' });
-    await fixture.a.state.sync!.apply({ previewId: purge.previewId, decisions: [] });
-    await fixture.a.reconcile();
-    await fixture.restart('a');
-    await fixture.restart('b');
-    await fixture.a.reconcile();
-    await fixture.b.reconcile();
-    await waitUntil(() => !cloudText(fixture).includes(a.providerMarker), 'purge left Provider bytes in the cloud');
+      await fixture.b.state.sync!.setRange('work', false);
+      await fixture.restart('b');
+      await fixture.b.reconcile();
+      const purge = await fixture.a.state.sync!.preview({ kind: 'purge', scope: 'provider', objectId: 'work' });
+      await fixture.a.state.sync!.apply({ previewId: purge.previewId, decisions: [] });
+      await fixture.a.reconcile();
+      await fixture.restart('a');
+      await fixture.restart('b');
+      await fixture.a.reconcile();
+      await fixture.b.reconcile();
+      await waitUntil(() => !cloudText(fixture).includes(a.providerMarker), 'purge left Provider bytes in the cloud');
 
-    expect(fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(true);
-    expect(cloudText(fixture).includes(a.pluginMarker)).toBe(true);
-  });
+      expect(fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(true);
+      expect(cloudText(fixture).includes(a.pluginMarker)).toBe(true);
+    },
+    { watchConfig: true },
+  );
 }, 30_000);
 
 test('a late offline preview is rejected after the cloud version changes', async () => {

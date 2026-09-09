@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { dirname } from 'node:path';
 
 import {
@@ -8,6 +9,7 @@ import {
   createPluginDiagnosticFactory,
   createPluginRepository,
   createSyncRepository,
+  encodeCandidate,
   type DiagnosticFactory,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
@@ -223,6 +225,7 @@ async function initializeServerState(
     sync: undefined,
     syncControl: undefined,
     syncCommit: undefined,
+    remoteConfigFence: undefined,
     resolveSharedCredential,
     withProviderGate: providerGate.run,
   };
@@ -338,7 +341,17 @@ async function initializeServerState(
 
   const providerSummaries = createProviderSummaries(manager);
 
-  const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
+  const reload = (): Promise<ConfigReloadResult> =>
+    queue(async () => {
+      const fence = runtime.remoteConfigFence;
+      if (fence !== undefined && runtime.configFile !== undefined && options.configPath !== undefined) {
+        const current = (await runtime.configFile.read()) as Record<string, import('@aio-proxy/plugin-sdk').JsonValue>;
+        const digest = createHash('sha256').update(encodeCandidate(current, options.configPath)).digest('hex');
+        runtime.remoteConfigFence = undefined;
+        if (digest === fence.digest) return reloadNow(runtime, [], true);
+      }
+      return reloadNow(runtime);
+    });
   const oauthLoginSessions = startLoginSessions(
     runtime,
     configStore,

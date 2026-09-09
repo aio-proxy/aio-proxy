@@ -27,6 +27,8 @@ export type RemoteEntity = {
   readonly logicalKey: string;
   readonly kind: string;
   readonly version: string | null;
+  /** Current protocol revision operation ID; this is the sync baseline identity. */
+  readonly revision: string | null;
   readonly body: EntityBody | null;
   readonly tombstone?: boolean;
   readonly revisions?: Readonly<Record<string, EntityBody | null>>;
@@ -72,6 +74,7 @@ export function snapshotRemoteEntities(remote: readonly RemoteEntity[]): RemoteE
   return remote.map((entity) => ({
     ...entity,
     version: entity.version,
+    revision: entity.revision,
     body: snapshotBody(entity.body) ?? null,
     revisions:
       entity.revisions === undefined
@@ -271,6 +274,7 @@ export async function listRemoteEntities(session: SyncSession | undefined): Prom
       logicalKey: head.logicalKey,
       kind: head.kind,
       version: value.version,
+      revision: head.current,
       body,
       tombstone: head.state === 'deleted' || head.state === 'purged',
       revisions,

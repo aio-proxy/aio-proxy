@@ -4,8 +4,9 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
 import type { OAuthOwnership } from '../oauth';
 import type { EntityBody, EntityKind } from '../protocol';
+import { createSyncLocalStateRepository } from './local-state';
 import { createOAuthJournalRepository } from './oauth-journal';
-import { parseCommitRow, parseEntityRow, parseJsonValue, parseOutboxRow, stringifyJson } from './rows';
+import { parseCommitRow, parseOutboxRow, stringifyJson } from './rows';
 
 export interface LocalBinding {
   id: string;
@@ -93,19 +94,6 @@ export interface SyncRepository {
   oauthJournals(bindingId: string): OAuthJournalRow[];
 }
 
-type BindingRow = {
-  id: string;
-  plugin: string;
-  capability: string;
-  plugin_version: string;
-  identity_id: string;
-  space_id: string;
-  device_id: string;
-  session_generation: number;
-  options_json: unknown;
-  active: number;
-};
-
 type CommitRow = {
   commit_id: string;
   origin: string;
@@ -116,18 +104,6 @@ type CommitRow = {
   phase: string;
   remote_operations_json: unknown;
   source_revisions_json: unknown;
-};
-
-type EntityRow = {
-  object_id: string;
-  logical_key: string;
-  kind: string;
-  mode: string;
-  epoch: number;
-  desired_json: unknown;
-  baseline: string | null;
-  overrides_json: unknown;
-  pending_reason: string | null;
 };
 
 type OutboxRow = {
@@ -172,6 +148,7 @@ function sameOutboxOperation(left: OutboxOperation, right: OutboxOperation): boo
 export function createSyncRepository(sqlite: Database): SyncRepository {
   const transaction = <T>(callback: () => T): T => sqlite.transaction(callback)();
   const oauthJournal = createOAuthJournalRepository(sqlite, transaction);
+  const localState = createSyncLocalStateRepository(sqlite, transaction);
 
   function readCommitRow(bindingId: string, commitId: string): CommitRow | null {
     return (
@@ -185,172 +162,8 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
     );
   }
 
-  function toBinding(row: BindingRow): LocalBinding {
-    if (row.space_id !== 'default') throw new TypeError('Invalid sync binding space');
-    return {
-      id: row.id,
-      plugin: row.plugin,
-      capability: row.capability,
-      pluginVersion: row.plugin_version,
-      identityId: row.identity_id,
-      spaceId: 'default',
-      deviceId: row.device_id,
-      sessionGeneration: row.session_generation,
-      options: parseJsonValue(row.options_json),
-    };
-  }
-
   return {
-    readBinding() {
-      const row = sqlite
-        .query<BindingRow, []>(
-          `SELECT id, plugin, capability, plugin_version, identity_id, space_id, device_id,
-                  session_generation, options_json, active
-             FROM sync_binding WHERE active = 1 LIMIT 1`,
-        )
-        .get();
-      return row === null ? null : toBinding(row);
-    },
-
-    bindings() {
-      return sqlite.query<BindingRow, []>('SELECT * FROM sync_binding ORDER BY rowid').all().map(toBinding);
-    },
-
-    clearBinding() {
-      transaction(() => {
-        sqlite.run('UPDATE sync_binding SET active = 0 WHERE active = 1');
-      });
-    },
-
-    writeBinding(binding) {
-      transaction(() => {
-        const existing = sqlite
-          .query<BindingRow, [string]>(
-            `SELECT id, plugin, capability, plugin_version, identity_id, space_id, device_id,
-                    session_generation, options_json, active
-               FROM sync_binding WHERE id = ?`,
-          )
-          .get(binding.id);
-        if (
-          existing !== null &&
-          (existing.plugin !== binding.plugin ||
-            existing.capability !== binding.capability ||
-            existing.identity_id !== binding.identityId ||
-            existing.space_id !== binding.spaceId)
-        ) {
-          throw new Error(`Conflicting sync binding identity: ${binding.id}`);
-        }
-        sqlite.run('UPDATE sync_binding SET active = 0 WHERE active = 1');
-        sqlite
-          .query(
-            `INSERT INTO sync_binding
-             (id, plugin, capability, plugin_version, identity_id, space_id, device_id,
-              session_generation, options_json, active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-           ON CONFLICT(id) DO UPDATE SET
-             plugin = excluded.plugin,
-             capability = excluded.capability,
-             plugin_version = excluded.plugin_version,
-             identity_id = excluded.identity_id,
-             space_id = excluded.space_id,
-             device_id = excluded.device_id,
-             session_generation = excluded.session_generation,
-             options_json = excluded.options_json,
-             active = 1`,
-          )
-          .run(
-            binding.id,
-            binding.plugin,
-            binding.capability,
-            binding.pluginVersion,
-            binding.identityId,
-            binding.spaceId,
-            binding.deviceId,
-            binding.sessionGeneration,
-            stringifyJson(binding.options),
-          );
-      });
-    },
-
-    entities(bindingId) {
-      return sqlite
-        .query<EntityRow, [string]>(
-          `SELECT object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason, oauth_json
-             FROM sync_entity WHERE binding_id = ? ORDER BY rowid`,
-        )
-        .all(bindingId)
-        .map(parseEntityRow);
-    },
-
-    putEntity(bindingId, entity) {
-      transaction(() => {
-        sqlite
-          .query(
-            `INSERT INTO sync_entity
-             (binding_id, object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason, oauth_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(binding_id, object_id) DO UPDATE SET
-             logical_key = excluded.logical_key,
-             kind = excluded.kind,
-             mode = excluded.mode,
-             epoch = excluded.epoch,
-             desired_json = excluded.desired_json,
-             baseline = excluded.baseline,
-             overrides_json = excluded.overrides_json,
-             pending_reason = excluded.pending_reason,
-             oauth_json = excluded.oauth_json`,
-          )
-          .run(
-            bindingId,
-            entity.objectId,
-            entity.logicalKey,
-            entity.kind,
-            entity.mode,
-            entity.epoch,
-            entity.desired === null ? null : stringifyJson(entity.desired as unknown as JsonValue),
-            entity.baseline,
-            stringifyJson(entity.overrides as unknown as JsonValue),
-            entity.pendingReason,
-            entity.oauth === undefined ? null : stringifyJson(entity.oauth as unknown as JsonValue),
-          );
-      });
-    },
-
-    putEntities(bindingId, entities) {
-      transaction(() => {
-        for (const entity of entities) {
-          sqlite
-            .query(
-              `INSERT INTO sync_entity
-               (binding_id, object_id, logical_key, kind, mode, epoch, desired_json, baseline, overrides_json, pending_reason, oauth_json)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(binding_id, object_id) DO UPDATE SET
-               logical_key = excluded.logical_key,
-               kind = excluded.kind,
-               mode = excluded.mode,
-               epoch = excluded.epoch,
-               desired_json = excluded.desired_json,
-               baseline = excluded.baseline,
-               overrides_json = excluded.overrides_json,
-               pending_reason = excluded.pending_reason,
-               oauth_json = excluded.oauth_json`,
-            )
-            .run(
-              bindingId,
-              entity.objectId,
-              entity.logicalKey,
-              entity.kind,
-              entity.mode,
-              entity.epoch,
-              entity.desired === null ? null : stringifyJson(entity.desired as unknown as JsonValue),
-              entity.baseline,
-              stringifyJson(entity.overrides as unknown as JsonValue),
-              entity.pendingReason,
-              entity.oauth === undefined ? null : stringifyJson(entity.oauth as unknown as JsonValue),
-            );
-        }
-      });
-    },
+    ...localState,
 
     prepare(bindingId, intent) {
       if (intent.phase !== 'prepared') throw new TypeError('Sync intents must be prepared before confirmation');

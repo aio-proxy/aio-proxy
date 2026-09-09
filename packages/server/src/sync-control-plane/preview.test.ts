@@ -89,6 +89,7 @@ test('purge previews include transitive cloud dependents and omit local-only row
         logicalKey: '@example/plugin',
         kind: 'plugin-business',
         version: 'a',
+        revision: 'plugin-a-revision',
         body: body('plugin-business', '@example/plugin'),
       },
       {
@@ -96,6 +97,7 @@ test('purge previews include transitive cloud dependents and omit local-only row
         logicalKey: 'dependent-b',
         kind: 'plugin-business',
         version: 'b',
+        revision: 'plugin-b-revision',
         body: body('plugin-business', 'dependent-b', ['plugin-a']),
       },
       {
@@ -103,6 +105,7 @@ test('purge previews include transitive cloud dependents and omit local-only row
         logicalKey: 'dependent-c',
         kind: 'plugin-business',
         version: 'c',
+        revision: 'plugin-c-revision',
         body: body('plugin-business', 'dependent-c', ['plugin-b']),
       },
     ],
@@ -141,6 +144,7 @@ test('provider purge targets the Provider ID while returning its opaque cloud ob
         logicalKey: 'work',
         kind: 'provider',
         version: 'v1',
+        revision: 'provider-revision',
         body: provider('cloud-work', 'work'),
       },
     ],
@@ -201,6 +205,7 @@ test('rejoin preview is one-use, expires, and redacts candidate values', async (
         get version() {
           return remoteVersion;
         },
+        revision: 'remote-revision',
         body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'plugin-secret' }, dependencies: [] },
       },
     ],
@@ -366,6 +371,7 @@ test('restore apply forwards the requested operation id', async () => {
         logicalKey: 'work',
         kind: 'provider',
         version: 'v1',
+        revision: 'provider-revision',
         body: providerBody({ value: 'current' }),
         revisions: { old: providerBody({ value: 'old' }) },
       },
@@ -441,6 +447,7 @@ test('same-id resolution persists the new provider ID and rewires model referenc
         logicalKey: 'work',
         kind: 'provider',
         version: 'v1',
+        revision: 'provider-revision',
         body: providerBody({ value: 'cloud' }),
       },
     ],
@@ -528,6 +535,7 @@ test('same-id resolution falls back to repository bulk persistence when no integ
         logicalKey: 'work',
         kind: 'provider',
         version: 'v1',
+        revision: 'provider-revision',
         body: providerBody({ value: 'cloud' }),
       },
     ],
@@ -553,4 +561,65 @@ test('same-id resolution falls back to repository bulk persistence when no integ
       (row) => row.desired?.value && 'providers' in row.desired.value && 'work-renamed' in row.desired.value.providers,
     ),
   ).toBeDefined();
+});
+
+test('manual cloud apply records the current revision operation ID instead of its storage version', async () => {
+  const local = {
+    objectId: 'provider-work',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 0,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  let saved = local;
+  const repo = {
+    readBinding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default' as const,
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    entities: () => [saved],
+    putEntity: (_binding: string, entity: typeof local) => {
+      saved = entity;
+    },
+    outbox: () => [],
+    pendingCommits: () => [],
+    oauthJournals: () => [],
+  } as never;
+  const control = createSyncControlPlane({
+    repo,
+    localEntities: () => [saved],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-work',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'storage-version-7',
+        revision: 'remote-operation-7',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {},
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: [{ objectId: 'provider-work', choice: 'local' }],
+  });
+  expect(saved.baseline).toBe('remote-operation-7');
 });
