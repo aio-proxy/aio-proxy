@@ -48,31 +48,30 @@ async function command(args: readonly string[], env: Record<string, string>, cwd
 
 function isolatedEnv(root: string, codexHome: string): Record<string, string> {
   return {
-    PATH: process.env.PATH ?? '',
+    PATH: process.env['PATH'] ?? '',
     HOME: root,
     CODEX_HOME: codexHome,
     TMPDIR: join(root, 'tmp'),
   };
 }
 async function writeConfig(codexHome: string, port: number, proxyKey: string): Promise<void> {
-  await Bun.write(
-    join(codexHome, 'config.toml'),
-    Bun.TOML.stringify({
-      model: 'contract-model',
-      model_provider: 'contract-proxy',
-      cli_auth_credentials_store: 'file',
-      model_providers: {
-        'contract-proxy': {
-          name: 'contract-proxy',
-          base_url: `http://127.0.0.1:${port}/v1`,
-          wire_api: 'responses',
-          requires_openai_auth: true,
-          experimental_bearer_token: proxyKey,
-          request_max_retries: 0,
-        },
+  const config = Bun.TOML.stringify({
+    model: 'contract-model',
+    model_provider: 'contract-proxy',
+    cli_auth_credentials_store: 'file',
+    model_providers: {
+      'contract-proxy': {
+        name: 'contract-proxy',
+        base_url: `http://127.0.0.1:${port}/v1`,
+        wire_api: 'responses',
+        requires_openai_auth: true,
+        experimental_bearer_token: proxyKey,
+        request_max_retries: 0,
       },
-    }),
-  );
+    },
+  });
+  if (config === undefined) throw new Error('Failed to serialize Codex config');
+  await Bun.write(join(codexHome, 'config.toml'), config);
 }
 type RpcSession = {
   readonly call: (method: string, params: unknown) => Promise<unknown>;
@@ -168,7 +167,9 @@ async function rpcProbe(root: string, codexHome: string, loggedIn: boolean, prox
   let session: RpcSession | undefined;
   try {
     await mkdir(join(root, 'tmp'), { recursive: true, mode: 0o700 });
-    await writeConfig(codexHome, server.port, proxyKey);
+    const port = server.port;
+    if (port === undefined) throw new Error('Probe server did not expose a port');
+    await writeConfig(codexHome, port, proxyKey);
     if (loggedIn) {
       await Bun.write(join(codexHome, 'auth.json'), JSON.stringify({ OPENAI_API_KEY: expectedLoginToken }) + '\n');
     }
@@ -216,16 +217,15 @@ async function writeMigrationConfig(codexHome: string, port: number, sqliteHome:
     experimental_bearer_token: 'aio-proxy-local',
     request_max_retries: 0,
   });
-  await Bun.write(
-    join(codexHome, 'config.toml'),
-    Bun.TOML.stringify({
-      model: 'contract-model',
-      model_provider: 'source-proxy',
-      cli_auth_credentials_store: 'file',
-      sqlite_home: sqliteHome,
-      model_providers: { 'source-proxy': provider('source-proxy'), 'aio-proxy': provider('aio-proxy') },
-    }),
-  );
+  const config = Bun.TOML.stringify({
+    model: 'contract-model',
+    model_provider: 'source-proxy',
+    cli_auth_credentials_store: 'file',
+    sqlite_home: sqliteHome,
+    model_providers: { 'source-proxy': provider('source-proxy'), 'aio-proxy': provider('aio-proxy') },
+  });
+  if (config === undefined) throw new Error('Failed to serialize Codex migration config');
+  await Bun.write(join(codexHome, 'config.toml'), config);
 }
 
 async function migrationProbe(root: string, codexHome: string): Promise<ProbeResult> {
@@ -240,7 +240,9 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
     const sqliteHome = join(root, 'sqlite-home');
     await mkdir(sqliteHome, { recursive: true, mode: 0o700 });
-    await writeMigrationConfig(codexHome, server.port, sqliteHome);
+    const port = server.port;
+    if (port === undefined) throw new Error('Migration probe server did not expose a port');
+    await writeMigrationConfig(codexHome, port, sqliteHome);
     session = await openRpcSession(root, codexHome);
     const started = (await session.call('thread/start', {
       cwd: root,
@@ -349,6 +351,7 @@ async function migrationProbe(root: string, codexHome: string): Promise<ProbeRes
 function schemaMethods(schema: Record<string, unknown>): string[] {
   const definitions = schema['definitions'];
   if (typeof definitions !== 'object' || definitions === null) return [];
+  const definitionMap = definitions as Record<string, unknown>;
   const expected: Record<string, { required: readonly string[]; optional: readonly string[] }> = {
     ThreadStartParams: { required: [], optional: ['modelProvider', 'historyMode'] },
     ThreadResumeParams: { required: ['threadId'], optional: ['modelProvider'] },
@@ -356,7 +359,7 @@ function schemaMethods(schema: Record<string, unknown>): string[] {
     ThreadMetadataUpdateParams: { required: ['threadId'], optional: ['isPinned', 'gitInfo'] },
   };
   const definitionOf = (name: string): Record<string, unknown> | undefined => {
-    const definition = definitions[name];
+    const definition = definitionMap[name];
     return typeof definition === 'object' && definition !== null ? (definition as Record<string, unknown>) : undefined;
   };
   const propertiesOf = (definition: Record<string, unknown>): Record<string, unknown> | undefined => {
