@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
+import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation } from '../contracts';
 import { assertNoSymlinkParents } from '../managed-config/storage';
 import { inspectLegacyMetadata, fingerprintBytes } from './legacy-rollout';
@@ -25,7 +26,6 @@ export type StateSnapshot = { readonly sessions: readonly IndexedSession[]; read
 
 const databaseNames = ['state_5.sqlite'] as const;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const provider = /^[A-Za-z0-9._:-]{1,128}$/;
 const roots = async (location: CodexLocation): Promise<string[]> => {
   const candidates = [location.sqliteHome, location.home].filter((value): value is string => value !== undefined);
   const result: string[] = [];
@@ -125,7 +125,7 @@ async function scanLegacy(allowedRoots: readonly string[]): Promise<StateSnapsho
       const bytes = new Uint8Array(await readFile(path));
       try {
         const meta = inspectLegacyMetadata(bytes);
-        if (!providerPattern(meta.providerId)) throw new Error('invalid provider metadata');
+        if (!isValidProviderId(meta.providerId)) throw new Error('invalid provider metadata');
         const canonical = await safeFile(path, [root]);
         sessions.push({
           id: meta.id,
@@ -195,7 +195,7 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
       const mode = optionalString(row, 'history_mode');
       const provider = optionalString(row, 'model_provider');
       const rollout = optionalString(row, 'rollout_path');
-      if (provider === undefined || !providerPattern(provider) || mode === undefined || rollout === undefined) {
+      if (provider === undefined || !isValidProviderId(provider) || mode === undefined || rollout === undefined) {
         blocked.push({ id, reason: 'thread metadata is incomplete' });
         continue;
       }
@@ -236,6 +236,11 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
   }
 }
 
-function providerPattern(value: string): boolean {
-  return provider.test(value);
+function isValidProviderId(value: string): boolean {
+  try {
+    validateCodexProviderId(value);
+    return true;
+  } catch {
+    return false;
+  }
 }

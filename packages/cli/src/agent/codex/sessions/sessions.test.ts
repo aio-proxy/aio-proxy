@@ -1,12 +1,12 @@
 import { Database } from 'bun:sqlite';
 import { afterEach, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveCodexLocation } from '../location';
 import { acquireSessionLock } from './journal';
-import { rewriteLegacyProvider } from './legacy-rollout';
+import { inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
 import { restoreCodexMigration } from './restore';
 import { inspectCodexSessions, migrateCodexSessions, setSessionTestDeps } from './sessions';
 
@@ -43,8 +43,15 @@ test('accepts the Task 1 legacy rollout fixture shape and preserves opaque recor
   const bytes = new Uint8Array(
     await Bun.file(new URL('./fixtures/legacy-session.jsonl', import.meta.url)).arrayBuffer(),
   );
+  const original = new TextDecoder().decode(bytes);
   const result = new TextDecoder().decode(rewriteLegacyProvider(bytes, id, 'source-proxy', 'aio-proxy'));
-  expect(result).toContain('"model_provider":"aio-proxy"');
+  const originalLines = original.split('\n');
+  const resultLines = result.split('\n');
+  const metadataLine = inspectLegacyMetadata(bytes).line;
+  expect(resultLines).toHaveLength(originalLines.length);
+  for (let line = 0; line < originalLines.length; line += 1)
+    if (line !== metadataLine) expect(resultLines[line]).toBe(originalLines[line]);
+  expect(JSON.parse(resultLines[metadataLine]!).payload.model_provider).toBe('aio-proxy');
   expect(result).toContain('"type":"function_call_output"');
 });
 
@@ -59,9 +66,9 @@ test('previews, migrates, and explicitly restores a legacy session', async () =>
     await writeFile(rolloutPath, original);
     let db = new Database(join(root, 'state_5.sqlite'));
     db.exec(
-      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT, model TEXT, title TEXT, parent_thread_id TEXT)',
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT, model TEXT, title TEXT, parent_thread_id TEXT, created_at INTEGER)',
     );
-    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       id,
       'source-proxy',
       'legacy',
@@ -70,6 +77,7 @@ test('previews, migrates, and explicitly restores a legacy session', async () =>
       'model',
       'title',
       null,
+      1700000000,
     );
     db.close();
     setSessionTestDeps({ offlineCheck: async () => 'ok' });
@@ -83,10 +91,11 @@ test('previews, migrates, and explicitly restores a legacy session', async () =>
         .query('SELECT model_provider FROM threads WHERE id = ?')
         .get(id),
     ).toEqual({ model_provider: 'aio-proxy' });
-    expect(db.query('SELECT model, title, parent_thread_id FROM threads WHERE id = ?').get(id)).toEqual({
+    expect(db.query('SELECT model, title, parent_thread_id, created_at FROM threads WHERE id = ?').get(id)).toEqual({
       model: 'model',
       title: 'title',
       parent_thread_id: null,
+      created_at: 1700000000,
     });
     expect(new TextDecoder().decode(new Uint8Array(await readFile(rolloutPath)))).toContain(
       '"model_provider":"aio-proxy"',
@@ -236,6 +245,84 @@ test('recovers a stale migration lease and blocks when the offline check is unav
     });
     expect(result.status).toBe('blocked');
     expect(JSON.stringify(result)).not.toContain(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('does not reclaim an expired lease held by a live process', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-live-lease-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    const ownerPath = join(location.managedRoot, 'migrations', '.lock', 'owner.json');
+    const owner = { pid: process.pid, token: '00000000-0000-4000-8000-000000000000', expiresAt: 1 };
+    await mkdir(join(location.managedRoot, 'migrations', '.lock'), { recursive: true });
+    await writeFile(ownerPath, JSON.stringify(owner));
+    await expect(acquireSessionLock(location)).rejects.toThrow('another Codex session migration is in progress');
+    expect(JSON.parse(await readFile(ownerPath, 'utf8'))).toEqual(owner);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('blocks restore when the journal file is replaced by a symlink', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-journal-link-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await prepareMarker(location);
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'history.jsonl');
+    await writeFile(rolloutPath, rollout('source-proxy'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'legacy', 0, rolloutPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    const journalPath = join(location.managedRoot, 'migrations', migrated.operationId!, 'journal.json');
+    const journalTarget = join(root, 'journal-copy.json');
+    await writeFile(journalTarget, await readFile(journalPath));
+    await rm(journalPath);
+    await symlink(journalTarget, journalPath);
+    const restored = await restoreCodexMigration(location, migrated.operationId!);
+    expect(restored.status).toBe('blocked');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('aio-proxy');
+    const currentDb = new Database(join(root, 'state_5.sqlite'));
+    expect(currentDb.query('SELECT model_provider FROM threads WHERE id = ?').get(id)).toEqual({
+      model_provider: 'aio-proxy',
+    });
+    currentDb.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('migrates and restores a legacy session with a special provider ID', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-special-provider-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await prepareMarker(location);
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'history.jsonl');
+    await writeFile(rolloutPath, rollout('$&'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, '$&', 'legacy', 0, rolloutPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    expect(preview.groups).toEqual([{ providerId: '$&', active: 1, archived: 0 }]);
+    const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    expect(migrated.status).toBe('completed');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"aio-proxy"');
+    const restored = await restoreCodexMigration(location, migrated.operationId!);
+    expect(restored.status).toBe('completed');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"$&"');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

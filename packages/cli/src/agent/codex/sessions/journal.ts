@@ -1,5 +1,5 @@
-import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import type { CodexLocation } from '../contracts';
 import { assertNoSymlinkParents, durableWrite, isFsCode, readRegularFile, syncParent } from '../managed-config/storage';
@@ -125,6 +125,7 @@ async function reclaimExpiredLock(
   try {
     owner = parseOwner(JSON.parse(await readFile(join(quarantine, 'owner.json'), 'utf8')));
   } catch {
+    await restoreQuarantinedLock(location, quarantine);
     return false;
   }
   if (
@@ -134,11 +135,27 @@ async function reclaimExpiredLock(
     owner.expiresAt !== observed.expiresAt ||
     owner.expiresAt > Date.now() ||
     processAlive(owner.pid)
-  )
+  ) {
+    await restoreQuarantinedLock(location, quarantine);
     return false;
+  }
   await rm(quarantine, { recursive: true, force: true });
   await syncParent(quarantine);
   return true;
+}
+
+async function restoreQuarantinedLock(location: CodexLocation, quarantine: string): Promise<void> {
+  try {
+    await rename(quarantine, lockPath(location));
+    await syncParent(lockPath(location));
+  } catch (error) {
+    if (isFsCode(error, 'EEXIST')) {
+      await rm(quarantine, { recursive: true, force: true });
+      await syncParent(quarantine);
+      return;
+    }
+    if (!isFsCode(error, 'ENOENT')) throw error;
+  }
 }
 
 export async function acquireSessionLock(location: CodexLocation): Promise<SessionLock> {
@@ -155,7 +172,7 @@ export async function acquireSessionLock(location: CodexLocation): Promise<Sessi
     } catch (error) {
       if (!isFsCode(error, 'EEXIST')) throw error;
       const current = await readLease(location);
-      if (current === undefined || (current.expiresAt > Date.now() && processAlive(current.pid)))
+      if (current === undefined || processAlive(current.pid) || current.expiresAt > Date.now())
         throw new Error('another Codex session migration is in progress');
       await reclaimExpiredLock(location, current, token);
     }
@@ -207,7 +224,11 @@ export async function readJournal(
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId))
     throw new Error('invalid migration operation id');
   try {
-    const text = await readFile(journalPath(location, operationId), 'utf8');
+    const path = journalPath(location, operationId);
+    await assertNoSymlinkParents(dirname(path));
+    const snapshot = await readRegularFile(path);
+    if (snapshot === undefined) return undefined;
+    const text = snapshot.text;
     const value: unknown = JSON.parse(text);
     if (
       typeof value !== 'object' ||
@@ -248,14 +269,18 @@ export async function readJournal(
 }
 
 export async function writeJournal(location: CodexLocation, journal: SessionMigrationJournal): Promise<void> {
-  await durableWrite(journalPath(location, journal.operationId), `${JSON.stringify(journal)}\n`, 0o600);
+  const path = journalPath(location, journal.operationId);
+  await assertNoSymlinkParents(dirname(path));
+  await durableWrite(path, `${JSON.stringify(journal)}\n`, 0o600);
 }
 
 export async function updateJournal(location: CodexLocation, journal: SessionMigrationJournal): Promise<void> {
   const path = journalPath(location, journal.operationId);
-  const current = await readFile(path, 'utf8');
+  await assertNoSymlinkParents(dirname(path));
+  const snapshot = await readRegularFile(path);
+  if (snapshot === undefined) throw new Error('migration journal disappeared');
   await durableWrite(path, `${JSON.stringify(journal)}\n`, 0o600, {
-    text: current,
-    stat: await lstat(path),
+    text: snapshot.text,
+    stat: snapshot.stat,
   });
 }

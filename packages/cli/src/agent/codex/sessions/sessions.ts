@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget, SessionGroup } from '../contracts';
 import { inspectRegularFile, syncParent } from '../managed-config/storage';
 import {
@@ -86,7 +87,7 @@ async function managedProvider(location: CodexLocation): Promise<string> {
     value.managedBy !== 'aio-proxy' ||
     value.configPath !== location.configPath ||
     typeof value.providerId !== 'string' ||
-    !/^[A-Za-z0-9._:-]{1,128}$/.test(value.providerId)
+    !isValidProviderId(value.providerId)
   )
     throw new Error('managed_marker_invalid');
   let config: unknown;
@@ -102,6 +103,15 @@ async function managedProvider(location: CodexLocation): Promise<string> {
   )
     throw new Error('managed_config_invalid');
   return value.providerId;
+}
+
+function isValidProviderId(value: string): boolean {
+  try {
+    validateCodexProviderId(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function inspectCodexSessions(location: CodexLocation): Promise<MigrationPreview> {
