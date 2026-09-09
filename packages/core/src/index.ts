@@ -141,6 +141,7 @@ export {
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,
   releaseMultipartSpool,
+  transferMultipartSpool,
   type OpenAIImageRequest,
   type OpenAIImageSourceRef,
   type OpenAIImageUpload,

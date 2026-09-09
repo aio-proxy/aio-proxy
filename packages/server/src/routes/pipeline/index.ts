@@ -3,6 +3,7 @@ import {
   RequestBodyTooLargeError,
   releaseMultipartSpool,
   RouterModelNotFoundError,
+  transferMultipartSpool,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import type { ProviderProtocol } from '@aio-proxy/types';
@@ -60,7 +61,12 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
   let releaseRetainedBody = false;
   try {
     try {
+      // Create pre-parse retains a multipart spool on this Request. Debug
+      // observation wraps a new identity; move the spool or the second parse
+      // rereads an already-consumed body.
+      const inbound = rawRequest;
       rawRequest = observeInboundRequest(rawRequest, inboundProtocol);
+      transferMultipartSpool(inbound, rawRequest);
     } catch (error) {
       await cancelRetainedRequestBody(rawRequest, error);
       throw error;

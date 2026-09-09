@@ -1,7 +1,14 @@
 import { expect, test } from 'bun:test';
 
 import { RequestBodyTooLargeError } from '../../protocol/request';
-import { acquireMultipartSlot, spoolMultipartBody } from './multipart-spool';
+import {
+  acquireMultipartSlot,
+  multipartSpoolPath,
+  releaseMultipartSpool,
+  retainMultipartSpool,
+  spoolMultipartBody,
+  transferMultipartSpool,
+} from './multipart-spool';
 
 function bodyRequest(bytes: Uint8Array): Request {
   return new Request('https://x/v1/anything', {
@@ -42,4 +49,18 @@ test('a double release cannot raise the effective parse concurrency', async () =
   const overflowRelease = await overflow;
   third();
   overflowRelease();
+});
+
+test('transfer moves a retained spool onto a new Request identity', async () => {
+  const raw = bodyRequest(new Uint8Array(2_048));
+  const spool = await spoolMultipartBody(raw, 30_000, 'aio-proxy-test');
+  retainMultipartSpool(raw, spool);
+  const wrapped = new Request(raw.url, { method: raw.method, headers: raw.headers });
+  transferMultipartSpool(raw, wrapped);
+  expect(multipartSpoolPath(raw)).toBeUndefined();
+  expect(multipartSpoolPath(wrapped)).toBe(spool.path);
+  transferMultipartSpool(wrapped, wrapped);
+  expect(multipartSpoolPath(wrapped)).toBe(spool.path);
+  await releaseMultipartSpool(wrapped);
+  expect(multipartSpoolPath(wrapped)).toBeUndefined();
 });

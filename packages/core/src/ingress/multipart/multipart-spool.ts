@@ -74,6 +74,19 @@ export function retainMultipartSpool(raw: Request, spool: MultipartSpool): void 
   raw.signal.addEventListener('abort', () => void spool.unlink(), { once: true });
 }
 
+/** Moves a retained spool onto a new `Request` identity. Debug inbound
+ *  observation wraps the request after a route pre-parse, and the WeakMap is
+ *  keyed by object identity — without this the second parse cannot find the
+ *  spool and rereads an already-consumed body. */
+export function transferMultipartSpool(from: Request, to: Request): void {
+  if (from === to) return;
+  const spool = spools.get(from);
+  if (spool === undefined) return;
+  spools.delete(from);
+  spoolFinalizers.unregister(from);
+  retainMultipartSpool(to, spool);
+}
+
 export async function releaseMultipartSpool(raw: Request): Promise<void> {
   const spool = spools.get(raw);
   if (spool === undefined) return;
