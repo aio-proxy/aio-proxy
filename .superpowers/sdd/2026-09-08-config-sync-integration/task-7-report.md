@@ -10,7 +10,7 @@ The artifact scan still rejects imports ending in `/account-login`, `/repository
 
 ## Commit
 
-- `23fca2ad7a815c2fddb8444ccc3437398ad5de3d` — `test(core): allow split repository artifact imports`
+- `4bab7e5563859df9013e79c179f17c1b9ad1d5ce` — `test(core): allow split repository artifact imports`
 - Includes `Co-authored-by: Codex <noreply@openai.com>`.
 
 ## Focused test
@@ -43,3 +43,7 @@ Status: failed during the repository-wide test stage after lint and formatting p
 ## Remaining concerns
 
 The full preflight remains red because of the unrelated test failures above. No additional concerns were found in the focused artifact smoke test.
+
+## Fix note
+
+Corrected the implementation commit hash in this report to match the final commit that includes the smoke-test change and report.
