@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path';
 
 import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget, SessionGroup } from '../contracts';
-import { inspectRegularFile, syncParent } from '../managed-config/storage';
+import { readManagedCodexMarker } from '../managed-config';
+import { inspectRegularFile, readRegularFile, syncParent } from '../managed-config/storage';
 import {
   acquireSessionLock,
   createOperation,
@@ -98,35 +99,26 @@ export function isCodexWriterProcess(pid: number, command: string): boolean {
 }
 
 async function managedProvider(location: CodexLocation): Promise<string> {
-  let marker: unknown;
-  try {
-    marker = JSON.parse(await readFile(location.markerPath, 'utf8'));
-  } catch {
-    throw new Error('managed_marker_missing_or_invalid');
-  }
-  if (typeof marker !== 'object' || marker === null) throw new Error('managed_marker_invalid');
-  const value = marker as { format?: unknown; managedBy?: unknown; configPath?: unknown; providerId?: unknown };
-  if (
-    value.format !== 1 ||
-    value.managedBy !== 'aio-proxy' ||
-    value.configPath !== location.configPath ||
-    typeof value.providerId !== 'string' ||
-    !isValidProviderId(value.providerId)
-  )
+  const marker = await readManagedCodexMarker(location).catch(() => {
     throw new Error('managed_marker_invalid');
+  });
+  if (marker === undefined) throw new Error('managed_marker_missing_or_invalid');
   let config: unknown;
   try {
-    config = Bun.TOML.parse(await readFile(location.configPath, 'utf8'));
+    const file = await readRegularFile(location.configPath);
+    if (file === undefined) throw new Error('missing');
+    config = Bun.TOML.parse(file.text);
   } catch {
     throw new Error('managed_config_missing_or_invalid');
   }
   if (
     typeof config !== 'object' ||
     config === null ||
-    (config as { model_provider?: unknown }).model_provider !== value.providerId
+    (config as { model_provider?: unknown }).model_provider !== marker.providerId
   )
     throw new Error('managed_config_invalid');
-  return value.providerId;
+  if (!isValidProviderId(marker.providerId)) throw new Error('managed_marker_invalid');
+  return marker.providerId;
 }
 
 function isValidProviderId(value: string): boolean {

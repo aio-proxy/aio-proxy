@@ -14,13 +14,73 @@ const id = '11111111-1111-4111-8111-111111111111';
 const rollout = (provider: string, extra = '') =>
   `${JSON.stringify({ type: 'turn_context', payload: { model_provider: provider } })}\n${JSON.stringify({ type: 'session_meta', payload: { id, model_provider: provider } })}\n${extra}`;
 
-async function prepareMarker(location: ReturnType<typeof resolveCodexLocation>): Promise<void> {
+async function prepareMarker(
+  location: ReturnType<typeof resolveCodexLocation>,
+  mode: 'v1' | 'v2-command' = 'v1',
+): Promise<void> {
   await mkdir(location.managedRoot, { recursive: true });
+  const command = '/tmp/aio-proxy/aiop';
+  const provider = {
+    name: 'AIO Proxy',
+    base_url: 'http://127.0.0.1:9317/v1',
+    wire_api: 'responses',
+    requires_openai_auth: mode === 'v1' ? true : undefined,
+    experimental_bearer_token: mode === 'v1' ? 'aio-proxy-local' : undefined,
+  };
+  const fields = [
+    { path: ['model_provider'], before: { present: false }, applied: { present: true, value: 'aio-proxy' } },
+    ...Object.entries(provider).map(([field, value]) => ({
+      path: ['model_providers', 'aio-proxy', field],
+      before: { present: false },
+      applied: value === undefined ? { present: false } : { present: true, value },
+    })),
+  ];
+  if (mode === 'v2-command') {
+    fields.push(
+      ...[
+        ['command', command],
+        ['args', ['agent', 'auth', 'codex', '--installation-id', id]],
+        ['timeout_ms', 5000],
+        ['refresh_interval_ms', 300000],
+      ].map(([field, value]) => ({
+        path: ['model_providers', 'aio-proxy', 'auth', field as string],
+        before: { present: false },
+        applied: { present: true, value },
+      })),
+    );
+  }
   await writeFile(
     location.markerPath,
-    JSON.stringify({ format: 1, managedBy: 'aio-proxy', configPath: location.configPath, providerId: 'aio-proxy' }),
+    JSON.stringify({
+      format: mode === 'v1' ? 1 : 2,
+      managedBy: 'aio-proxy',
+      configPath: location.configPath,
+      providerId: 'aio-proxy',
+      fields,
+      createdTables: [
+        ['model_providers', 'aio-proxy'],
+        ...(mode === 'v2-command' ? [['model_providers', 'aio-proxy', 'auth']] : []),
+      ],
+      ...(mode === 'v2-command' ? { authMode: 'command', installationId: id } : {}),
+    }),
   );
-  await writeFile(location.configPath, 'model_provider = "aio-proxy"\n');
+  await writeFile(
+    location.configPath,
+    `model_provider = "aio-proxy"\n\n[model_providers.aio-proxy]\n${Object.entries(provider)
+      .filter(([, value]) => value !== undefined)
+      .map(([field, value]) => `${field} = ${JSON.stringify(value)}`)
+      .join('\n')}\n${
+      mode === 'v2-command'
+        ? `\n[model_providers.aio-proxy.auth]\ncommand = ${JSON.stringify(command)}\nargs = ${JSON.stringify([
+            'agent',
+            'auth',
+            'codex',
+            '--installation-id',
+            id,
+          ])}\ntimeout_ms = 5000\nrefresh_interval_ms = 300000\n`
+        : ''
+    }`,
+  );
 }
 
 afterEach(() => setSessionTestDeps({}));
@@ -170,6 +230,77 @@ test('previews and migrates ordinary legacy history using config-declared sqlite
     const restored = await restoreCodexMigration(location, migrated.operationId!);
     expect(restored.status).toBe('completed');
     expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"source-proxy"');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('migrates legacy history with a V2 command-auth marker', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-v2-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await prepareMarker(location, 'v2-command');
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'v2-history.jsonl');
+    await writeFile(rolloutPath, rollout('source-proxy'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'legacy', 0, rolloutPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    expect(preview.blocked).toEqual([]);
+    const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    expect(migrated.status).toBe('completed');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"aio-proxy"');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('blocks migration for a symlinked or partial managed marker without leaking its path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-marker-safety-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await prepareMarker(location, 'v2-command');
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'marker-safety.jsonl');
+    await writeFile(rolloutPath, rollout('source-proxy'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'legacy', 0, rolloutPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+
+    const markerCopy = join(root, 'marker-copy.json');
+    await writeFile(markerCopy, await readFile(location.markerPath));
+    await rm(location.markerPath);
+    await symlink(markerCopy, location.markerPath);
+    const symlinked = await migrateCodexSessions({
+      location,
+      targets: [{ id, sourceProviderId: 'source-proxy', archived: false, storage: 'legacy', revision: '0'.repeat(64) }],
+      targetProviderId: 'aio-proxy',
+    });
+    expect(symlinked.status).toBe('blocked');
+    expect(JSON.stringify(symlinked)).not.toContain(root);
+    expect(await readFile(rolloutPath, 'utf8')).toContain('source-proxy');
+
+    await rm(location.markerPath);
+    const partial = JSON.parse(await readFile(markerCopy, 'utf8')) as { fields: unknown[] };
+    partial.fields.pop();
+    await writeFile(location.markerPath, `${JSON.stringify(partial)}\n`);
+    const partialResult = await migrateCodexSessions({
+      location,
+      targets: [{ id, sourceProviderId: 'source-proxy', archived: false, storage: 'legacy', revision: '0'.repeat(64) }],
+      targetProviderId: 'aio-proxy',
+    });
+    expect(partialResult.status).toBe('blocked');
+    expect(JSON.stringify(partialResult)).not.toContain(root);
+    expect(await readFile(rolloutPath, 'utf8')).toContain('source-proxy');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

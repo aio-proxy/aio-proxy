@@ -211,6 +211,23 @@ const authContext = (location: CodexLocation, endpoint: string) => ({
 const pendingRecovery = async (message: () => string): Promise<boolean> =>
   confirm({ message: message(), default: false });
 
+export async function recoverPendingCodexOperations(
+  recoverConfig: (
+    confirmRecovery: () => Promise<boolean>,
+  ) => Promise<Awaited<ReturnType<typeof recoverCodexConfigOperation>>>,
+  hasAuthOperation: boolean,
+  confirmRecovery: () => Promise<boolean>,
+  recoverAuth: () => Promise<'none' | 'completed' | 'blocked'>,
+): Promise<'continue' | 'cancelled'> {
+  const configRecovery = await recoverConfig(confirmRecovery);
+  if (configRecovery === 'declined') return 'cancelled';
+  if (hasAuthOperation) {
+    if (!(await confirmRecovery())) return 'cancelled';
+    if ((await recoverAuth()) === 'blocked') throw new Error('Codex authentication operation requires recovery');
+  }
+  return 'continue';
+}
+
 export async function configureCodexAgent(options: CodexConfigureOptions = {}): Promise<CodexConfigureResult> {
   const location = configuredLocation();
   if (options.restoreMigration !== undefined) {
@@ -231,39 +248,21 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
   if (!isTTY) return cancelledCodexResult(location, 'non_interactive');
   const version = await checkCodexInstalled();
   const endpoint = await resolveAgentEndpoint();
-  let recovery: Awaited<ReturnType<typeof recoverCodexConfigOperation>>;
-  let recoveryAccepted = false;
+  const authOperation = await import('./setup/journal').then(({ readAuthOperation }) => readAuthOperation(location));
   const confirmRecovery = async (): Promise<boolean> => {
-    recoveryAccepted = await pendingRecovery(() => m['cli.agent.codex.pending_recovery']());
-    return recoveryAccepted;
+    return pendingRecovery(() => m['cli.agent.codex.pending_recovery']());
   };
   try {
-    recovery = await recoverCodexConfigOperation(location, confirmRecovery);
+    const recovery = await recoverPendingCodexOperations(
+      (confirm) => recoverCodexConfigOperation(location, confirm),
+      authOperation !== undefined,
+      confirmRecovery,
+      () => recoverCodexAuthOperation(authContext(location, endpoint), 'complete'),
+    );
+    if (recovery === 'cancelled') return cancelledCodexResult(location);
   } catch (error) {
     if (isPromptCancellation(error)) return cancelledCodexResult(location);
     throw error;
-  }
-  if (recovery === 'declined') {
-    return {
-      target: 'codex',
-      integration: 'static-config',
-      status: 'cancelled',
-      configPath: location.configPath,
-      connection: 'not_checked',
-      credential: 'none',
-      migration: { status: 'not_requested' },
-    };
-  }
-  const authOperation = await import('./setup/journal').then(({ readAuthOperation }) => readAuthOperation(location));
-  if (authOperation !== undefined) {
-    try {
-      if (!recoveryAccepted && !(await confirmRecovery())) return cancelledCodexResult(location);
-      const restored = await recoverCodexAuthOperation(authContext(location, endpoint), 'complete');
-      if (restored === 'blocked') throw new Error('Codex authentication operation requires recovery');
-    } catch (error) {
-      if (isPromptCancellation(error)) return cancelledCodexResult(location);
-      throw error;
-    }
   }
   const result = await runCodexWizard({
     location,
