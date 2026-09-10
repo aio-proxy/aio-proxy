@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { prepareCodexCommandInstallation, readCodexCommandIdentity } from '../command-auth';
-import { writeCredential } from '../command-auth/credential-store';
+import { credentialPath, readCredential, writeCredential } from '../command-auth/credential-store';
 import { resolveCodexLocation } from '../location';
 import { configureCodexConfig } from '../managed-config';
 import { authOperationPath } from '../setup/journal';
@@ -112,6 +112,57 @@ test('lists a pending command installation before its config is committed', asyn
       lifecycle: 'pending',
       credentialStatus: 'missing',
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('removes an orphan credential without attempting remote revocation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  const endpoint = 'http://127.0.0.1:9317';
+  try {
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'aio-proxy',
+          baseUrl: `${endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+    });
+    await rm(join(location.managedRoot, 'codex-command.json'));
+    let revokeCalls = 0;
+    const result = await removeCodexLifecycle({
+      location,
+      revoke: async () => {
+        revokeCalls += 1;
+        return 'revoked';
+      },
+    });
+    expect(result).toMatchObject({ status: 'removed' });
+    expect(result.authorization).toBe('missing');
+    expect(revokeCalls).toBe(0);
+    await expect(readCredential(location)).resolves.toBeUndefined();
+    await expect(Bun.file(credentialPath(location)).exists()).resolves.toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

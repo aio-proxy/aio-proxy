@@ -17,7 +17,7 @@ import {
   readCodexCommandIdentity,
   writeCodexAuthToken,
 } from './command-auth';
-import { writeCredential } from './credential-store';
+import { readCredential, writeCredential } from './credential-store';
 
 const ACCESS = `aio_agent_at_v1_${'a'.repeat(43)}`;
 const ROTATED_ACCESS = `aio_agent_at_v1_${'z'.repeat(43)}`;
@@ -409,6 +409,34 @@ test('refuses to delete an insecure credential file during cleanup', async () =>
       ),
     ).rejects.toThrow(/unsafe|insecure/i);
   });
+});
+
+test('refuses to clear a credential whose installation does not match identity', async () => {
+  const f = await fixture();
+  const otherInstallationId = crypto.randomUUID();
+  await withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) => {
+    const installation = await prepareCodexCommandInstallation(
+      { location: f.location, providerId: 'aio-proxy', endpoint: f.marker.endpoint, adapterVersion: '0.21.0' },
+      lease,
+    );
+    await writeCredential(f.location, {
+      format: 1,
+      installationId: otherInstallationId,
+      endpoint: f.marker.endpoint,
+      revision: 1,
+      accessToken: ACCESS,
+      refreshToken: REFRESH,
+      accessExpiresAt: Date.now() + 60_000,
+      status: 'ready',
+    });
+    await expect(
+      clearCodexCommandInstallation(
+        { location: f.location, installationId: installation.marker.installationId, revocation: 'revoked' },
+        lease,
+      ),
+    ).rejects.toThrow(/installation mismatch/i);
+  });
+  await expect(readCredential(f.location)).resolves.toMatchObject({ installationId: otherInstallationId });
 });
 
 test.serial('marks an abandoned refresh outside the replay window for reauthorization', async () => {

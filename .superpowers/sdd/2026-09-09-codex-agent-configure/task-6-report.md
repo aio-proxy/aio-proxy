@@ -52,6 +52,17 @@ Verification commands and results:
 - `bun run check` — exit 0; oxlint reported only existing dashboard/logger warnings and oxfmt passed all files.
 - `git diff --check` — no output.
 
+## Review fix round 5
+
+Normal command-to-keep-chatgpt setup and lifecycle removal now journal and clean credential-only state, while remote revocation remains limited to matching identity metadata. Both-file mismatches block safely and retain the credential; added direct transition, removal, and mismatch regressions.
+
+Verification commands and results:
+
+- `bun test --preload=./__tests__/setup.ts --timeout 20000 src/agent/codex/setup src/agent/codex/lifecycle src/agent/codex/command-auth src/agent/codex/wizard src/agent/output.test.ts` — 33 pass, 0 fail, 850 expectations across 5 files.
+- `bun test --preload=./__tests__/setup.ts --timeout 20000 src/main.test.ts` — 21 pass, 0 fail, 61 expectations.
+- `bun run check` — exit 0; oxlint reported only existing dashboard/logger warnings and oxfmt passed all files.
+- `git diff --check` — no output.
+
 ## Review fix round 4
 
 Command cleanup now handles identity-only, credential-only, both-file, and neither-file states idempotently, fences credential removal to the journal installation ID, and deletes credentials before identity metadata so a cleanup crash remains recoverable. Recovery also blocks safely when an orphan credential has no installation ID to validate. Added a regression test for identity deletion leaving an orphan credential.

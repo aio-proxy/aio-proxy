@@ -3,6 +3,7 @@ import type { AgentRevokeStatus } from '@aio-proxy/types';
 import {
   clearCodexCommandInstallation,
   inspectCodexCommandCredential,
+  readCodexCommandCredentialInstallationId,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
 } from '../command-auth';
@@ -89,31 +90,31 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
   return withCodexInstallation(input.location, signal, async (lease) => {
     const inspection = await inspectCodexConfig(input.location);
     const identity = await readCodexCommandIdentity(input.location).catch(() => undefined);
+    const credentialInstallationId = await readCodexCommandCredentialInstallationId(input.location);
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];
-    if (identity !== undefined) {
+    const installationId = identity?.marker.installationId ?? credentialInstallationId;
+    if (installationId !== undefined) {
       const operation = await writeAuthOperation(input.location, {
         configPath: input.location.configPath,
         kind: 'remove',
         fromMode: 'command',
         phase: 'retiring',
-        installationId: identity.marker.installationId,
+        installationId,
         providerId,
       });
       try {
-        if (identity.status === 'active')
-          await retireCodexCommandInstallation(input.location, identity.marker.installationId, lease);
-        const status =
-          input.revoke === undefined
-            ? 'missing'
-            : await input.revoke(identity.marker.endpoint, identity.marker.installationId);
+        let status: AgentRevokeStatus = 'missing';
+        if (identity !== undefined) {
+          if (identity.status === 'active')
+            await retireCodexCommandInstallation(input.location, identity.marker.installationId, lease);
+          if (input.revoke !== undefined)
+            status = await input.revoke(identity.marker.endpoint, identity.marker.installationId);
+        }
         authorization = status;
         if (!terminalRevocations.has(status)) return blockedResult(input.location, authorization);
         await writeAuthOperation(input.location, { ...operation, phase: 'revoked' });
-        await clearCodexCommandInstallation(
-          { location: input.location, installationId: identity.marker.installationId, revocation: status },
-          lease,
-        );
+        await clearCodexCommandInstallation({ location: input.location, installationId, revocation: status }, lease);
       } catch {
         return blockedResult(input.location, 'pending');
       }

@@ -103,8 +103,8 @@ export async function readCodexCommandIdentity(location: CodexLocation): Promise
   return readIdentity(location);
 }
 
-export async function hasCodexCommandCredential(location: CodexLocation): Promise<boolean> {
-  return (await readCredential(location)) !== undefined;
+export async function readCodexCommandCredentialInstallationId(location: CodexLocation): Promise<string | undefined> {
+  return (await readCredential(location))?.installationId;
 }
 
 export async function prepareCodexCommandInstallation(

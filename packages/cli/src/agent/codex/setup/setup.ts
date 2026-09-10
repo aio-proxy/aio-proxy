@@ -5,9 +5,9 @@ import {
   activateCodexCommandInstallation,
   authorizeCodexInstallation,
   clearCodexCommandInstallation,
-  hasCodexCommandCredential,
   prepareCodexCommandInstallation,
   rebindCodexCommandInstallation,
+  readCodexCommandCredentialInstallationId,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
 } from '../command-auth';
@@ -43,7 +43,8 @@ async function revokeAndClear(
   const identity = await readCodexCommandIdentity(context.location);
   if (identity === undefined) {
     if (expectedInstallationId === undefined) {
-      if (await hasCodexCommandCredential(context.location)) throw setupError('CODEX_AUTH_INSTALLATION_MISSING');
+      if ((await readCodexCommandCredentialInstallationId(context.location)) !== undefined)
+        throw setupError('CODEX_AUTH_INSTALLATION_MISSING');
       return 'missing';
     }
     await clearCodexCommandInstallation(
@@ -77,20 +78,20 @@ async function commitKeepChatgpt(
 ): Promise<CodexSetupCommit> {
   const credential = await selection.keys.resolve(selection.selection);
   const identity = await readCodexCommandIdentity(context.location);
-  const hasCommandIdentity = identity !== undefined;
+  const credentialInstallationId = await readCodexCommandCredentialInstallationId(context.location);
+  const installationId = identity?.marker.installationId ?? credentialInstallationId;
   const fromMode = modeOf(inspection);
-  let operation: AuthOperation | undefined;
-  if (hasCommandIdentity) {
-    operation = await writeAuthOperation(context.location, {
+  if (installationId !== undefined) {
+    const operation = await writeAuthOperation(context.location, {
       configPath: context.location.configPath,
       kind: 'switch',
       ...(fromMode === undefined ? {} : { fromMode }),
       targetMode: 'keep-chatgpt',
       phase: 'retiring',
-      installationId: identity?.marker.installationId,
+      installationId,
       providerId,
     });
-    await revokeAndClear(context, lease);
+    await revokeAndClear(context, lease, installationId);
     await writeAuthOperation(context.location, { ...operation, phase: 'revoked' });
   }
   const commit = await configureCodexConfig(
