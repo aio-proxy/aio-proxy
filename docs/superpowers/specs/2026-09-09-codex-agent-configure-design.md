@@ -1,165 +1,227 @@
 # Codex Agent Configure 向导设计
 
-状态：产品交互与认证选择已由用户确认，进入实施规划；尚未实施。实施前必须完成文末所列 Codex 契约验证。
+状态：修订后的双模式行为已实现，并完成受影响单元测试、构建和主机契约验证。真实 AIO Proxy 双模式端到端、官方 Computer Use/插件兼容，以及 native/paginated 迁移写入仍未验证；具体证据和限制见[契约验证报告](2026-09-09-codex-contract-verification.md)与 Task 7 报告。现有提交 `ec170fce` 已包含静态配置向导、字段归属、list/remove 和受限的历史迁移，本次鉴权增量已接入产品。
 
-实施计划：[Codex Agent Configure Implementation Plan](../plans/2026-09-09-codex-agent-configure.md)。
-
-关联：[#327](https://github.com/aio-proxy/aio-proxy/issues/327)、[#310](https://github.com/aio-proxy/aio-proxy/issues/310)。
+实施计划：[Codex Agent Configure Implementation Plan](../plans/2026-09-09-codex-agent-configure.md)。关联：[#327](https://github.com/aio-proxy/aio-proxy/issues/327)、[#310](https://github.com/aio-proxy/aio-proxy/issues/310)。
 
 ## 目标与已确认决定
 
-`aiop agent configure codex` 是一套交互向导，完成后 Codex 可以连接当前用户运行的 aio-proxy。
+`aiop agent configure codex` 是交互向导，帮助用户把 Codex 模型请求接入本机 AIO Proxy，同时选择是否保留 ChatGPT 登录相关功能。
 
-1. 输入 Codex Provider ID，首次默认 `aio-proxy`，允许自定义。
-2. 检测代理 API Key：未启用认证直接跳过；已启用则选择已有 Key，或选择生成新 Key。
-3. 选中或生成的 Key 直接保存到 Codex 配置，用户无需另外设置环境变量。
-4. 解释 Provider 对历史会话可见性的影响，询问是否迁移历史会话到目标 Provider。
-5. 不读取用户对话正文来推荐模型，不新增模型选择步骤，不写、删除或恢复顶层 `model`。
-6. 设置 `requires_openai_auth = true`，保留 Codex 原有登录流程；模型请求显式使用代理侧 token，避免回退到登录凭据。该设置不代表所有依赖官方后端的功能都已获得兼容保证。
+1. 首次 Provider ID 默认 `aio-proxy`，用户可以自定义；重复配置沿用受管 ID。
+2. 新增“是否保留 ChatGPT 登录相关功能？”选择，首次默认保留；重复配置沿用已保存的鉴权模式。
+3. 保留时设置 `requires_openai_auth = true`，有代理 API Key 则只选择已有 Key，并直接保存到 `experimental_bearer_token`；没有 Key 则跳过选择，使用非秘密占位 token `aio-proxy-local`。
+4. 不保留时使用 Codex 原生 command 鉴权，不选静态 Key；通过 AIO Proxy 现有 Agent 设备授权与 token 刷新协议建立 Codex 专属 installation。
+5. 两种模式都不创建代理 API Key，不改 `server.apiKeys`，不代用户开启代理认证。
+6. 继续提供可选历史会话迁移，不写、删除或恢复顶层 `model`，不新增模型选择步骤。
+7. 产品显示名统一为 `AIO Proxy`。命令、包名、目录、协议标识和默认 Provider ID 仍保留 `aio-proxy`。
 
-上述决定修订 #327 中“写入顶层 model”及此前方案中默认使用 `env_key` 的要求。没有 API Key 时不自动开启代理认证。这里只使用代理自己的调用凭据，不使用上游 Provider 密钥。
+这替代旧稿中的“选择或生成新 Key”和“始终使用静态 Key”设计。用户已选择后续使用 `superpowers:subagent-driven-development`，实施始终使用 `gpt-5.6-luna`；须等本轮文档审阅确认后再恢复。
 
-## 交互流程
-
-以下为示例，实际计数与标签来自检测结果：
+## 向导交互与文案
 
 ```text
 $ aiop agent configure codex
 
 Codex 配置：~/.codex/config.toml
-代理地址：http://127.0.0.1:9317/v1
+AIO Proxy 地址：http://127.0.0.1:9317/v1
 
 ? Provider ID › aio-proxy
 
-检测到代理已启用 API Key 认证。
-? 使用哪个 API Key？
+保留后，Codex 可继续使用已有 ChatGPT 登录提供的相关功能。
+模型请求仍通过 AIO Proxy；此选项不会自动登录 ChatGPT。
+? 是否保留 ChatGPT 登录相关功能？
+  保留（默认）
+  不保留
+```
+
+选择“保留”且有 Key：
+
+```text
+? 使用哪个 AIO Proxy API Key？
   Codex 日常使用
   开发工具
-  生成新的 API Key
+```
 
+仅列出已有 Key 的标签或编号，即使只有一个也由用户选择；不展示明文，不提供新建入口。没有 Key 则显示“AIO Proxy 未启用 API Key 认证，跳过 Key 选择”。
+
+选择“不保留”：
+
+```text
+将使用 AIO Proxy 命令鉴权，无需选择 API Key。
+部分依赖 ChatGPT 登录的官方功能可能不可用；已有登录凭据不会被删除。
+```
+
+之后沿用会话预览与迁移选择：
+
+```text
 Codex 本地会话选择器默认按当前 Provider 筛选历史。
 切换到 aio-proxy 后，其他 Provider 下的旧会话可能不出现在列表中；会话没有被删除。
 ? 将原 Provider openai 下的 42 个历史会话迁移到 aio-proxy？
   是，迁移历史会话
   否，保留原有归属
-
-配置已保存。历史会话迁移：42 个成功。
-重新打开 Codex 后生效。
 ```
 
-没有 API Key 时只显示“代理未启用 API Key 认证，跳过 Key 选择”。没有可迁移会话时显示计数为零并跳过迁移问题。
+先收集 Provider ID、鉴权模式、必要的 Key 选择和迁移选择，再进行持久化或设备授权。没有历史则跳过迁移问题；多个来源可以选择，默认来源为切换前的有效全局 Provider，未配置时为 `openai`，不默认合并所有来源。
 
-收集完选择后再写入，用户在提示期间取消不产生配置或凭据变更。不再增加重复的最终确认步骤。迁移范围及影响必须在用户回答迁移问题之前展示。
+提示阶段取消不产生本次配置、凭据或会话变更。已有未完成操作仍先走现有显式恢复入口，恢复不冒充本次向导的零写入。首次 command 授权在选择收集完成后进行：展示现有 Dashboard 设备授权 URL 和状态，等待用户批准；无需先运行另一条登录命令。运行时 helper 绝不打开浏览器或等待交互。
 
-首次使用默认 Provider ID 为 `aio-proxy`；重复运行默认沿用当前受管 Provider ID。Provider ID 是 Codex 配置中的标识，不是 aio-proxy 上游 Provider ID。
+设备授权会产生服务端 challenge 和可恢复的私有准备状态，因此进入该阶段后的取消不能宣称服务端零副作用。尚未拿到 token 时，保持原 Codex 配置和历史，清理可安全清理的本次私有准备文件，challenge 按现有协议到期。已经拿到 token 后的失败必须按下述生命周期记录处理。
 
-目标 ID 已存在且不受本工具管理时，显示冲突并要求换一个 ID；不因名称相同自动接管。受管 ID 更新时保留最初的恢复基线。更换受管 ID 时复用字段归属与恢复规则，不能遗留工具独占的旧凭据。
+不再添加重复的最终确认。配置成功后报告鉴权模式、配置路径、连接验证结果、迁移结果和“重新打开 Codex 后生效”。迁移不支持或失败不否定已经成功保存的 Provider 配置。
 
-## Codex 配置契约
+## 两种 Codex 配置契约
 
-默认目标为 `~/.codex/config.toml`。遵守 Codex 的全局目录设置，若设置有效的 `CODEX_HOME`，使用其全局 `config.toml`，并在向导开头展示实际路径。绝不定位或写入项目内的 `.codex/config.toml`。
+全局目标默认 `~/.codex/config.toml`，遵守现有 `CODEX_HOME` 解析规则，并展示实际路径。不搜索或管理项目内 `.codex/config.toml`。地址复用现有 loopback 解析并增加 `/v1`，协议固定 `responses`。
 
-无认证时写入：
+### 保留 ChatGPT 登录相关功能
 
 ```toml
 model_provider = "aio-proxy"
 
 [model_providers.aio-proxy]
-name = "aio-proxy"
+name = "AIO Proxy"
 base_url = "http://127.0.0.1:9317/v1"
 wire_api = "responses"
 requires_openai_auth = true
 experimental_bearer_token = "aio-proxy-local"
 ```
 
-启用认证时，将 `experimental_bearer_token` 的值替换为用户选中或新建的代理 Key。未启用认证时的 `aio-proxy-local` 是固定的非秘密占位 token，不会加入 `server.apiKeys`、开启认证或引入 Key 选择步骤。显式 token 的作用是避免 `requires_openai_auth = true` 在缺少代理凭据时把 Codex 登录 token 发给本地代理。
+代理有 Key 时，最后一行换为用户所选的已有代理 Key。无 Key 时显式占位 token 防止模型请求回退到 ChatGPT 登录 token；它不加入代理配置、不启用认证，也不表示已经验证连接。此模式不写 `auth` 或 `env_key`。
 
-Codex 当前源码先解析显式 Provider bearer token，再考虑 OpenAI 登录凭据；因此 `true` 可以和直接保存的代理 Key 配合。不能把实际 Key 填入 `env_key`，也不改 Codex 的 `auth.json`、Keychain 或 ChatGPT 登录状态。尚未登录的 Codex 可能仍显示原生登录提示；不承诺该设置能让匿名 Codex 跳过登录，或自动解锁全部官方功能。
+`requires_openai_auth = true` 保留 Codex 识别已有 ChatGPT 登录的路径，不是自动登录、续期登录或官方插件兼容保证。未登录时仍可能需要 Codex 原生登录操作。不读取或改写 `auth.json`、Keychain，不调用 logout。
 
-只管理顶层 `model_provider` 和所选 Provider 表内本工具写入的字段。保留顶层 `model`、profiles、审批、sandbox、MCP、其他 Provider 以及用户添加的字段。TOML 修改要基于解析后的键路径，支持合法的带引号 ID、已有表和不同字段排列；不得用全局字符串替换改写文件。实现时需要选择支持保留无关内容的 TOML 编辑方式，并用注释、内联表和多行字符串夹具验证。
+### 不保留 ChatGPT 登录相关功能
 
-地址复用现有 loopback 解析并增加 `/v1`。凭据判断不能复用会吞掉配置错误的探测回退：无法解析配置不等于没有 API Key。
+```toml
+model_provider = "aio-proxy"
 
-直接凭据配置与归属记录仅允许当前用户访问，新建文件使用 `0600`、私有目录使用 `0700`。Key 不进入日志、错误消息、列表输出或测试快照。
+[model_providers.aio-proxy]
+name = "AIO Proxy"
+base_url = "http://127.0.0.1:9317/v1"
+wire_api = "responses"
 
-## API Key 选择与创建
+[model_providers.aio-proxy.auth]
+command = "/stable/path/to/aiop"
+args = ["agent", "auth", "codex", "--installation-id", "<uuid>"]
+timeout_ms = 5000
+refresh_interval_ms = 300000
+```
 
-- 用当前代理配置及 service.env 的现有解析逻辑获取有效 Key；选项仅显示标签或“API Key 1”等编号，不显示明文。
-- Dashboard settings 返回 `****`，不能把该视图当作可用 Key 来源；也不为了向导向 Dashboard 增加明文密钥接口。
-- 选择“生成新的 API Key”后使用密码学随机源，遵守现有代理 Key 格式；追加带有 Codex 用途标签的条目，保留现有 Key 和环境变量模板。
-- 新 Key 的追加必须遵守配置写入锁和并发检查。优先复用现有配置修改/生效机制，不能对读取时的整个配置做无条件覆盖。
-- 先保存代理端新 Key 并确认已生效，再向 Codex 写入它；生效验证只读，不发起计费推理请求。
-- 配置不可写、模板不能解析或代理拒绝新 Key 时，明确失败，不报告“可使用”。代理离线时可以保存本地配置，但必须区分“已保存，未验证”和“已验证可用”。
-- 若新 Key 已经提交而后续步骤失败，保留恢复信息并报告已创建 Key 的标签，不能假定跨两个配置文件的修改天然是一个事务，也不能无条件删除可能已被使用的 Key。
-- `agent remove codex` 不撤销用户选择的共享 Key，也不自动撤销已生成但可能被复用的 Key；结果说明 Key 仍保留在代理设置中。
+此分支省略 `requires_openai_auth`，不写 `experimental_bearer_token`、`env_key`。Codex 原生校验禁止 command auth 与这些字段组合，不能用 `requires_openai_auth = true` 同时实现两种效果。
 
-## 历史会话迁移
+`command` 是发布安装中稳定的绝对 CLI 入口，保留升级会更新的稳定入口路径，不固化版本缓存或开发态 Bun 路径。按 Codex 的可执行文件与参数数组契约写入，不拼接 shell 命令；路径中的空格和引号作为 TOML 字符串处理。找不到可持续使用的入口时，在授权和配置变更前失败。
 
-### 范围与说明
+helper 命令为 `aiop agent auth codex --installation-id <uuid>`，`aio-proxy` 别名同样可用。只接受 installation ID，不接收任意 endpoint、静态 Key 或 refresh token 参数。按相同 `CODEX_HOME` 规则定位受管数据；旧 ID、目录不匹配或失去归属时失败，不自动创建新 installation。
 
-迁移能力作为 Codex 模块内部的独立操作，由 configure 向导调用，本期无需另加公开命令才能使用。
+## Agent 授权与运行时 helper
 
-默认来源为切换前的有效全局 Provider ID，未配置时为 `openai`。迁移前按 Provider 汇总计数；若用户需要其他来源，可在同一阶段选择来源 Provider。禁止默认将所有 Provider 的会话混在一起迁移。
+command 模式复用 `@aio-proxy/agent-provider-runtime` 的 `requestDeviceAuthorization()`、`pollDeviceAuthorization()`、`refreshAgentCredential()`。目标是 `codex`，client ID 是 `aio-proxy-codex`，身份绑定 installation ID 和原 loopback endpoint。不是上游 Provider 密钥，也不是用户共享的代理 Key；即使代理未启用通用 API Key 认证，此模式仍使用 installation 授权。
 
-选定来源的现有会话包括已归档会话，预览分别显示数量；保留归档状态。已在目标 Provider 下的会话不重复处理。保持会话 ID、消息历史、模型、工作目录、标题、父子关系和时间顺序不变。更改的是归属，后续继续这些会话时会使用目标 Provider；不承诺不同上游之间可以复用加密推理状态。
+首次配置需要 AIO Proxy 在线且现有设备授权功能可用。未设置 Dashboard 密码、服务离线、批准被拒绝或到期时，明确报告原因，保持原 Codex 配置；不悄悄切换静态模式，不代用户开启服务或设置密码。初次授权等待受服务端 `expires_in`（当前 600 秒）和用户取消限制。
 
-文案应说“本地会话选择器默认按当前 Provider 筛选”，不能宣称不同 Provider 之间存在安全隔离，也不能把这一行为泛化成所有 App 或远程会话的永久限制。
+helper 的输出与期限：
 
-### 持久化与恢复
+- 无 stdin。成功只向 stdout 写原始 bearer access token 和一个换行，不写 JSON、引号、设备码、日志或更新提示；refresh token 永不输出。
+- 本机期限为从 CLI 入口计时的 4500 毫秒，包含锁等待、网络、状态读取与持久化，留在 Codex 的 5000 毫秒超时内。
+- helper 只进行静默刷新；没有凭据、确定失效或撤销时，stderr 提示重新执行 configure，非零退出，绝不启动 device flow。
+- 普通独立调用也刷新，以响应 Codex 在 401 后重新调用 helper 的行为；不能总是返回仍未过期但已经被拒绝的缓存 AT。只有识别出重叠调用已完成刷新时才复用其结果。
+- AT/RT 轮换结果必须先原子持久化再输出。输出前失败 stdout 为空；输出过程中失败可能留下部分 stdout，但必须非零退出，保留新 RT 供恢复。
+- 网络/5xx/超时与确定的 `invalid_grant` 分开处理；临时失败不删除 RT，也不隐式重新申请授权。
 
-已确认 Codex 的 rollout `session_meta` 中有 `model_provider`，SQLite `threads.model_provider` 也参与列表过滤；单改配置或只改其中一份不算迁移完成。
+同一 installation 的 configure、helper、模式切换和 remove 共用跨进程锁，复用仓库文件锁的进程身份、存活检查、heartbeat 与 fencing。不能以现有进程内串行队列替代文件锁。拿锁后重读状态；交互授权持锁期间，其他 helper 在自己的期限内失败，不启动第二份授权。
 
-实施前先针对支持的 Codex 版本验证原生接口是否支持持久迁移：恢复会话时覆盖 Provider 不一定重写其持久归属，必须同时检验列表、重启和再次恢复。若原生接口满足契约，优先使用；若不满足，使用受版本与 schema 检查约束的离线迁移。
+凭据记录包含 revision、最近交付 owner 及可恢复的 refresh-in-flight 状态。重叠调用通过等待前观察到的有效锁 owner/revision 和拿锁后的交付变化识别同一次刷新；正常独立调用仍须访问服务端。先保存新凭据，再输出，最后标记交付完成。失去锁所有权后不能继续写入或输出。
 
-离线迁移需要 Codex 停止对相关存储写入。不能把 aio-proxy 自己的锁说成能阻止 Codex 写入。发现运行中的写入者、未知历史格式或不匹配的记录时拒绝迁移，保留已完成的 Provider 配置并报告原因。
+响应丢失或进程退出后，仅在服务端现有 30 秒重放窗口内恢复同一 RT；超出窗口或返回 `replay_lost` 时转为需要重新授权，禁止无限重放消耗过的 RT。沿用现有 15 分钟 AT、refresh family 轮换和撤销语义，不为 Codex 改 token 协议。多 Codex 进程持有旧 AT 时仍可能触发原生 401 重试；不承诺所有并发场景完全无感。
 
-离线实现必须具备：
+CLI 的 OAuth 请求与撤销请求只访问绑定 origin，拒绝重定向，复用设备授权 URL 校验。helper 在网络前、输出前均核验受管 Provider、endpoint 和鉴权字段；有漂移就停止交付。此检查不声称能识别宿主进程所有项目/profile/命令行覆盖，也不保证阻止不合作的外部写者在最后检查之后修改配置。
 
-1. 在修改前对选定记录进行完整预检，确认 ID、来源 Provider、存储位置及记录格式一致。
-2. 保存只含本次变更的恢复日志及必要备份，并持久化进度。
-3. 精确更新会话元数据与对应索引，不改对话内容、不删除数据库以强制重建。
-4. 使用数据库事务及文件原子替换；跨存储通过恢复日志处理失败，不能假设一次 SQLite 事务能覆盖 JSONL 文件。
-5. 重复执行不增加副本；中断后能够恢复或继续，报告成功、未处理和冲突数量。
-6. 恢复只撤回仍与本次写入匹配的归属，不覆盖迁移后新增的对话内容。
+## API Key 只读选择
 
-当前 Codex 源码已经包含 legacy 和 paginated 历史格式。实现不能把扫描 `sessions/**/*.jsonl` 作为全版本方案；必须建立版本/格式兼容矩阵。未支持的格式在写入前明确拒绝，不做猜测性修改。兼容探测使用临时 Codex 数据目录与合成会话，不试改用户真实会话。
+- 使用当前代理配置和 service.env 的现有解析逻辑获取有效 Key；配置损坏或模板解析失败是错误，不能当成“没有 Key”。
+- Dashboard settings 的 `****` 视图不是凭据来源，不新增明文密钥接口。
+- 保留配置 revision/选择失效检测；收集完提示后重读，Key 或环境模板发生变化则在 Codex 写入前失败。
+- 删除生成 Key、随机源、代理配置 transaction/reload 和新 Key 补偿逻辑。原版本已经创建的 Key 不自动删除。
+- 通过带所选 token 的受保护只读模型目录请求检查凭据；`/health` 成功仅表示连通，不能证明 Key 有效。不发起计费推理请求。
+- 静态模式允许服务离线时保存本地配置，但结果必须标明“已保存，未验证”；在线返回 401/403 时不保存无效凭据。无 Key 占位分支也必须在提交前复查认证状态。
 
-## list / remove 与插件边界
+## 受管状态、切换和移除
 
-CLI 层增加 static-config 分支，现有 `@aio-proxy/types` 内服务插件、catalog 与 device-code 的 `AgentTargetSchema` 保持原语义。Codex 不进入插件资产安装、授权撤销或 post-upgrade adapter 更新循环。
+沿用 `<CODEX_HOME>/.aio-proxy/codex-config.json` 的逐字段 before/applied 归属、配置 journal 和迁移日志。配置 marker 升为 format 2，记录鉴权模式；兼容读取 format 1 并识别为保留模式，第一次成功变更时升级，保留最初恢复基线，list 不隐式写入升级。未知版本拒绝修改。
 
-独立 sidecar 记录实际全局配置路径、Provider ID、格式版本，以及每个受管字段修改前/最后写入的值。注释、字段重排或相邻配置被 Codex 重写不应丢失归属。凭据字段的记录同样受私有文件权限保护。
+command 模式另存 `codex-command.json`（身份与生命周期）、`codex-credential.json`（AT/RT 和轮换状态）、`codex-auth-operation.json`（设置/切换/移除进度）。锁位于全局根的 `.aio-proxy.lock`，不能随受管目录清理而删除另一进程的锁。记录与 credential 必须匹配 configPath、installation ID、target 和 endpoint；不可因文件存在就信任。
 
-`agent list` 展示 Codex 的 Provider ID、配置路径、端点、归属/修改状态；`--check` 检查连接和凭据。不展示伪造的 installation ID、device-code、token 到期或授权状态。`--authorizations` 只列出现有插件授权。
+新建私有目录 `0700`、凭据文件 `0600`；凭据所在 TOML 与归属记录继续按现有私有文件规则处理。受管文件拒绝符号链接、硬链接和目录逃逸；不修改用户整个 Codex 根目录权限。Key、AT、RT 不出现在日志、错误、list/JSON 或快照中，唯一例外是 helper 成功的专用 stdout。
 
-`agent remove codex` 可以离线执行，逐字段撤销仍等于最后写入值的内容；保留用户后改的字段并报告。只清理工具创建且已空的表。没有有效归属记录时不按 Provider ID 猜测并删除配置。
+只管理 `model_provider`、所选 Provider 的公共字段和所选模式的鉴权叶子。继续基于 TOML 键路径做源码范围编辑，保留注释、内联表、多行字符串、quoted ID、profiles、MCP、其他 Provider 及用户字段。新增对 `auth.args` 字符串数组和超时整数的精确编辑与结构比较。
 
-移除配置不自动反向迁移历史会话。配置恢复与会话归属恢复是两个独立操作，迁移记录应说明如何恢复及其条件。
+目标 Provider ID 已存在且不受管时拒绝接管。受管字段被用户修改时不能在 configure 中静默覆盖。模式切换只清除仍归属于本工具的另一种鉴权字段；存在不受管的冲突认证字段时报告冲突，不能生成 Codex 拒绝加载的混合配置。
 
-实施计划为恢复提供显式入口 `aiop agent configure codex --restore-migration <operation-id>`，仅撤回指定日志中仍可恢复的历史归属；不修改全局配置、Key 或模型。正常配置向导不增加额外步骤。
+| 操作                  | 行为与失败边界                                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 保留 → 保留           | 只读选择已有 Key/占位 token，更新受管字段；不建立 Agent installation                                                                               |
+| 保留 → command        | 完成预检与所有选择，记录待设置 installation，批准并保存凭据后提交 TOML/marker，最后激活 helper；中途不改变历史                                     |
+| command → command     | 同一根和 endpoint 保持 installation ID；凭据有效时无需再次批准，确定失效后由 configure 重新授权；helper 不自行授权                                 |
+| command → 保留        | 先预检静态凭据与目标配置；记录 retiring 阶段阻止 helper，撤销旧 installation，删除私有凭据，再提交静态配置；失败保留可重试日志，不伪造原授权仍有效 |
+| command 更换 endpoint | 不转移或发送旧 RT；先完成旧 installation 移除，再重新 configure，取得新 ID                                                                         |
+| 更换受管 Provider ID  | 沿用配置恢复基线，清理旧受管字段；同 endpoint 的 command installation 可以保留，身份记录随配置事务更新                                             |
+| remove 保留模式       | 可以离线，逐字段恢复仍等于 applied 的内容；保留用户修改及所有代理 Key                                                                              |
+| remove command 模式   | 标记 retiring 并阻止 helper，向原 endpoint 撤销；成功或已有 missing/expired 后清除私有凭据，再逐字段恢复；服务离线则保留可重试状态，不报告 removed |
 
-## 实施顺序与验收
+首次授权已成功但配置提交失败时，保留仅本用户可访问的 pending installation、凭据和操作日志，helper 拒绝交付；重新 configure 恢复提交，或 remove 撤销清理。不得抛下未记录的服务端授权，也不得无条件删除可能已经生效的凭据。已有 command 被撤销后无法靠文件回滚使授权复活；恢复必须据日志继续完成目标状态。
 
-1. **Codex 契约验证**：在隔离目录验证 `requires_openai_auth = true` 与直接 bearer token 的组合、全局 Provider 切换、不同存储格式和原生迁移可能性；锁定兼容范围与迁移路径。
-2. **共享配置生命周期**：新增 Codex 配置编辑/归属模块，完成 configure/list/remove 的文件行为测试。
-3. **凭据与交互向导**：复用 `@inquirer/prompts`，接入 Provider ID、Key 选择/生成、取消行为和脱敏输出。
-4. **会话迁移模块**：实现预览、选择来源、迁移和失败恢复，并接入向导末步。
-5. **命令与发布验证**：更新帮助、五种语言文案、README 与 changeset，覆盖真实 CLI 分发和原插件行为。
+配置移除与会话恢复始终独立，remove 不自动反向迁移。不得递归删除未知文件或迁移备份。
 
-必须覆盖：无 Key 完全跳过凭据问题；已有 Key 与生成 Key 两条路径；自定义及冲突 Provider ID；顶层 `model` 原样保留；取消零写入；损坏 TOML；宿主重写；并发配置变更；迁移接受/拒绝/无历史；多个来源 Provider；归档与父子会话；迁移中断恢复；不支持格式；重复执行；remove 保留用户修改与 Key；完整输出不泄露密钥。
+## list、服务端和插件边界
 
-认证兼容验收矩阵包含 Codex 已登录/未登录与代理有 Key/无 Key 的四种组合。捕获请求确认使用代理 Key 或固定占位 token，不使用已有 ChatGPT token；另验证原有登录状态不变。官方功能按实际依赖逐项验证，不由 `requires_openai_auth` 单个开关推定全部正常。
+Codex 仍由 CLI 独立管理全局配置，不安装 Pi/OpenCode 插件资产，也不进入插件 post-upgrade 更新循环。JSON 中现有 `integration: "static-config"` 保留为配置接入方式，新增 `authMode: "keep-chatgpt" | "command"` 表示认证方式。
 
-集成验收使用临时目录运行 `configure → list --check → remove`；迁移额外验证重新启动 Codex 后历史会话可见且接续使用目标端点。执行仓库要求的 `bun run preflight`。新增实现文件与测试遵守同名目录布局和文件行数限制。
+- `agent list` 展示 Provider ID、路径、端点、鉴权模式、归属/漂移/未完成状态；默认只读本地数据。
+- 静态模式不伪造 installation、device-code 或授权状态；command 模式显示实际 installation ID，`--check` 结合只读服务端授权快照与现有 token 检查，不轮换或重新授权。
+- `--check` 使用存储的受管 endpoint；不拿新解析出的其他地址验证旧 token。AT 到期时报告需要刷新，不因 `/health` 返回 200 声称授权可用。
+- `--authorizations` 纳入真实 Codex command installation，并正确判断本地 configured/orphaned；静态配置不产生授权条目。
+- `agent revoke <installation-id>` 沿用仅撤销服务端的契约。撤销后 helper 快速失败，由用户重新 configure 批准；不增加 `agent revoke codex` 别名。
 
-用 `bun changeset` 创建用户可见说明，至少同时覆盖 `aio-proxy` 与 `@aio-proxy/cli`；若新增 server 行为同时覆盖 server，产品包 bump 与内部包一致。此设计不包含安装、升级或自动启动 Codex，也不扩展 Pi/OpenCode 的授权协议。
+共享 Agent 身份 schema/client ID 与 repository 解码增加 `codex`，同时把插件专用 target 集合固定为 `opencode | pi | omp`。目录协商、插件资产、宿主探测、安装与升级仍使用插件集合，不能因扩大授权 target 集合而让 Codex 落入 Pi 分支。
 
-## 调研依据与尚未验证的范围
+当前服务端 `/v1/models` 会拒绝无插件目录协商的 Agent token。为已认证 `grant.target === "codex"` 放行现有目录分流：有 `client_version` 返回既有 Codex 目录，否则返回普通 OpenAI 模型目录。畸形协商参数、target 不匹配和其他插件无协商请求仍拒绝；不能让未认证请求绕过认证。Responses 继续复用现有 pipeline，不新建推理或 failover 循环。
 
-- [Codex config reference](https://learn.chatgpt.com/docs/config-file/config-reference)：Provider 字段、直接 bearer token、`env_key`、Responses、全局配置约束。
-- [Codex app-server](https://learn.chatgpt.com/docs/app-server)：列表的 `modelProviders` 过滤、resume 配置覆盖、不同历史格式的支持限制。
-- Codex 源码观察基于 main commit `634ebc1865c6ac840ed3ba118f040d527bf4b55d`，不是已验证的最低支持版本：`codex-rs/tui/src/resume_picker.rs` 的 `picker_provider_filter` 对本地模式使用当前 Provider；`codex-rs/rollout/src/metadata.rs` 从 `session_meta` 提取 Provider；`codex-rs/state/src/runtime/threads.rs` 持久化并过滤 `threads.model_provider`。
-- 同一 commit 的 `codex-rs/model-provider/src/auth.rs` 中 `resolve_provider_auth` 优先调用 `bearer_auth_for_provider`；`codex-rs/model-provider-info/src/lib.rs` 描述 `requires_openai_auth` 控制首次登录流程。仓库的 `authenticateStaticOrAnonymous` 在 `server.apiKeys` 为空时允许携带固定占位 token 的匿名请求。
-- 仓库现状：`packages/cli/src/agent/agent.ts` 为插件生命周期；`packages/cli/src/control-plane/control-plane.ts` 已加载 service.env；`packages/server/src/dashboard-routes/settings/settings.ts` 的 Key 视图脱敏且变更使用 revision；`packages/server/src/config-store.ts` 提供有校验的配置修改入口。
+Grok #329 的设计可作并发与生命周期参考，但该工作区尚无 Grok 实现，本增量不依赖其未落地的 helper、类型或共享层，不修改其他工作区。
 
-尚未运行真实 Codex 迁移实验，因此不声称已确定所有版本的数据库路径、存储格式或原生迁移支持。实施顺序第一步必须产出经过实验的兼容结论，之后才能实现会话存储写入。
+## 历史迁移：保留现有范围
+
+迁移是 Codex 内部独立能力，两个鉴权分支在配置提交后调用相同接口。默认来源、多个来源选择、归档计数、归属解释和不重复处理目标 Provider 的行为保持不变。
+
+保持会话 ID、消息正文、模型、工作目录、标题、父子关系、归档状态及时间顺序；更改 Provider 归属后，续聊使用目标 Provider，不保证跨上游的加密推理状态可复用。文案只说明本地默认筛选，不宣称安全隔离或所有 App/远程会话的永久限制。
+
+已完成的真实实验见[契约验证报告](2026-09-09-codex-contract-verification.md)：测试 Codex `0.146.0`，原生 resume 覆盖不能持久迁移；native/paginated 写入仍不支持。现有实现仅处理经验证的 legacy JSONL 与对应已验证索引，并在缺失位置、未知 schema/格式、元数据不一致或活动写者时阻止写入。本轮不扩大迁移兼容范围。
+
+继续使用完整预检、恢复日志、备份、数据库事务和文件原子替换处理跨存储失败；不删除数据库强制重建，不只改一份索引。AIO Proxy 文件锁不能阻止 Codex 写入。迁移要求相关写入者停止，失败报告成功、未处理和冲突数量，不把全部跳过算成完整迁移。
+
+恢复入口保持 `aiop agent configure codex --restore-migration <operation-id>`，只恢复仍满足日志条件的历史归属，不询问鉴权、不连接 OAuth、不修改配置或模型。迁移与恢复测试继续使用临时目录和合成历史。
+
+## 兼容证据与验收
+
+已知事实：
+
+- 官方文档规定 command helper 返回原始 bearer token，默认超时 5000 毫秒、主动刷新间隔 300000 毫秒，不能与 `env_key`、直接 bearer token、`requires_openai_auth` 混用。
+- 本机 Codex `0.146.0` 的正常启动已实测拒绝 `auth` 加 `requires_openai_auth = true`，错误为 `provider auth cannot be combined with requires_openai_auth`。
+- 在隔离 HOME/CODEX_HOME、假 ChatGPT 凭据并禁止外网的 app-server 实验中：静态 token + true 的 `account/read` 保留模拟 ChatGPT account，command 模式得到 `account: null`、`requiresOpenaiAuth: false`。用户另外实测确认部分官方功能会消失。
+- 既有报告证明静态代理 token/占位 token 的请求优先级和受限的历史契约；本轮已实现 AIO Proxy command helper 与 401 重试路径，但真实 AIO Proxy 服务端端到端、完整 Computer Use/插件功能仍未验证，不宣称它们全部通过。
+
+实施验收覆盖：两种模式及首次/重复默认；有 Key/无 Key/失效选择；无 Key 的并发变化；保留/不保留均不创建 Key；登录/未登录不泄露 ChatGPT token；嵌套 TOML、quoted ID、数组比较、format 1 升级；提示取消；设备授权失败与批准后提交失败；两个方向切换；刷新并发、响应丢失、撤销、超时、stdout 纯净；普通/Codex 模型目录与插件协商隔离；两个分支的迁移接受、拒绝、不支持及独立恢复；list/remove 不泄露凭据。
+
+实际兼容实验使用固定版本 Codex、临时全局目录、合成身份和本机模拟服务。记录测试版本和平台，不由一次 macOS 测试推定所有平台/版本兼容。CLI artifact 测试验证安装入口在含空格路径、升级后和别名下仍可调用。现有测试与主机契约实验验证了 helper 的原始 token、401 后重试和安全边界；由于真实 AIO Proxy 服务端链路未运行，不能据此宣称所有部署环境和依赖 ChatGPT 登录的功能均可用。
+
+实施按仓库要求运行了 `bun run preflight`、`bun run check` 和所有受影响包测试；preflight 的既有 Dashboard 类型错误以及 server/CLI 基线失败已记录在 Task 7 报告中。验证使用临时目录和合成身份，不运行真实用户配置操作。
+
+现有 `.changeset/codex-static-config.md` 已复写，去掉新建 Key 的旧说明，描述两种鉴权和现有迁移范围；按实际修改包覆盖 `aio-proxy`、`@aio-proxy/cli` 以及 server/types/core/runtime 等内部包，产品包 bump 与内部包一致。
+
+## 参考
+
+- [Codex 自定义 Provider 与 command 鉴权](https://learn.chatgpt.com/docs/config-file/config-advanced#custom-model-providers)
+- [Codex config reference](https://learn.chatgpt.com/docs/config-file/config-reference#configtoml)
+- [Codex app-server account/read](https://learn.chatgpt.com/docs/app-server#1-check-auth-state)
+- [Codex 插件的 API Key 可用性](https://learn.chatgpt.com/docs/plugins#api-key-availability)与[Computer Use](https://learn.chatgpt.com/docs/computer-use)
+- [现有 Codex 契约验证报告](2026-09-09-codex-contract-verification.md)

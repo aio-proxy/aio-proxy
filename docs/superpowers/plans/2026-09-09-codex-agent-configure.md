@@ -1,866 +1,778 @@
-# Codex Agent Configure Implementation Plan
+# Codex Agent Configure Authentication Revision Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 实现 `aiop agent configure codex` 交互向导：自定义 Provider ID、选择或创建代理 Key、可选历史会话迁移，并提供准确的 list/remove 行为。
+**Goal:** 在现有 Codex 向导中加入“是否保留 ChatGPT 登录相关功能”的选择，分别配置已有代理 Key 或 Agent command 鉴权，并继续提供历史迁移与准确的 list/remove 行为。
 
-**Architecture:** 在 CLI 内为 Codex 建立独立的 static-config 分支，继续复用现有 loopback 地址解析、原子代理配置写入和 reload。Codex TOML 使用源码范围编辑与字段归属记录，会话迁移使用独立的预览、执行、恢复边界。现有插件 Agent 的 schema、device-code、安装资产、升级和撤销协议不扩展。
+**Architecture:** 保留 `ec170fce` 已完成的 Codex 全局 TOML 编辑、归属 journal 和受限 legacy 迁移。command 分支复用现有 Agent 设备授权/refresh family，增加 Codex 身份、原生目录访问、私有凭据和静默 helper；静态分支删去创建 Key 的行为。两种模式共享同一配置归属与安装生命周期，插件资产和升级仍只处理 OpenCode/Pi/OMP。
 
-**Tech Stack:** Bun >=1.4.2、TypeScript、`bun:test`、`bun:sqlite`、`@inquirer/prompts`、Zod、已有 `es-toolkit`；新增仅 CLI 使用的 `toml-eslint-parser@1.0.3`，用于 Bun TOML 对象 API 不提供的源码范围和注释保留。
+**Tech Stack:** Bun >=1.4.2、TypeScript、`bun:test`、`bun:sqlite`、`@inquirer/prompts`、Zod、现有 `es-toolkit`、已安装的 `toml-eslint-parser@1.0.3`，以及 workspace 包 `@aio-proxy/agent-provider-runtime`。不新增外部依赖。
 
-**Spec:** `docs/superpowers/specs/2026-09-09-codex-agent-configure-design.md`。以该文件和本轮用户确认的流程为准，不照搬 #327 原文的顶层 `model` 要求。
+**Spec:** [Codex Agent Configure 向导设计](../specs/2026-09-09-codex-agent-configure-design.md)。执行前同时读取 spec；本计划替代旧版七个任务，不重新实施已完成的模块。
+
+**Status:** Tasks 1–7 implementation work is complete. The SDD ledger and `task-1-report.md` through `task-7-report.md` record the per-task evidence; available unit, build, and host-contract checks are complete, while the recorded preflight/baseline failures and live AIO Proxy, Computer Use, plugin, and native/paginated migration limits remain open. Task checkboxes below preserve their original acceptance requirements and are not marked for unavailable evidence.
 
 ## Global Constraints
 
+- 用户已确认继续实施；以下任务适用于当前独立 worktree。实施前后仍须保留 spec/plan 与代码的一致性。
+- 后续执行方式已选 `superpowers:subagent-driven-development`；实施始终使用 `gpt-5.6-luna`，不再询问执行方式。
 - 首次 Provider ID 默认 `aio-proxy`，用户可以自定义；重复配置沿用受管 ID。
-- 不写、删除或恢复顶层 `model`；不新增模型选择步骤。
-- 设置 `requires_openai_auth = true`，直接写 `experimental_bearer_token`。
-- 无代理 Key 时跳过 Key 提问，使用固定非秘密 token `aio-proxy-local`，不启用代理认证。
-- 默认全局 `~/.codex/config.toml`，遵守有效的 `CODEX_HOME`，不管理项目内 `.codex/config.toml`。
-- 受管配置固定 Responses 协议，默认 `http://127.0.0.1:9317/v1`，端口复用现有解析。
-- 提示期间取消零写入；迁移问题前先解释 Provider 筛选并展示来源及数量。
-- 只使用代理 Key；明文不进入日志、list/JSON 输出、错误消息或快照。
-- 新建私有目录 `0700`，包含凭据的文件 `0600`。
-- 迁移保留会话 ID、正文、模型、工作目录、标题、父子关系、归档状态和时间顺序。
-- 配置移除不撤销共享 Key，不自动反向迁移历史。
-- 新实现文件少于 500 行，达到 400 行评估拆分；测试与同名模块放入同名目录。
-- 不引用其他模块的私有协作者；`index.ts` 仅导出。
+- 产品显示名统一为 `AIO Proxy`。命令、包名、目录、协议标识和默认 Provider ID 仍保留 `aio-proxy`。
+- 不写、删除或恢复顶层 `model`，不新增模型选择步骤。
+- 首次默认 `keep-chatgpt`，重复配置沿用已保存模式；旧 format 1 marker 解释为 `keep-chatgpt`。
+- `keep-chatgpt` 写 `requires_openai_auth = true` 和 `experimental_bearer_token`；有 Key 只选已有 Key，无 Key 跳过选择并使用非秘密 `aio-proxy-local`。
+- `command` 省略 `requires_openai_auth`，不写 `experimental_bearer_token`、`env_key`；写原生 `auth.command/args/timeout_ms/refresh_interval_ms`。
+- command target 为 `codex`，client ID 为 `aio-proxy-codex`；helper 为 `aiop agent auth codex --installation-id <uuid>`。
+- command `timeout_ms = 5000`、`refresh_interval_ms = 300000`；helper 从 CLI 入口计时的总预算为 4500 毫秒。
+- 两种模式都不创建代理 API Key，不改 `server.apiKeys`，不代用户开启代理认证。
+- 使用全局 `CODEX_HOME`/`~/.codex/config.toml`，固定 Responses 与本机 loopback `/v1`，不管理项目配置。
+- 提示阶段取消零写入；先收集全部选择，再进行设备授权或持久化。已有未完成操作单独显式恢复。
+- 初次 command 授权在 configure 完成，helper 不打开浏览器、不读 stdin、不发起 device flow。
+- helper 成功 stdout 仅有原始 AT 和换行；其他输出不能含 Key/AT/RT，RT 永不输出。
+- 新建私有目录 `0700`、凭据文件 `0600`；不改真实 Codex auth.json、Keychain 或用户历史来做实验。
+- 沿用 Agent AT 15 分钟、30 秒重放窗口与现有 family 撤销语义；不新建鉴权协议或推理循环。
+- 迁移仅保留现有经验证的 legacy 范围；native/paginated 继续阻止写入。remove 不自动反向迁移。
+- 新实现文件少于 500 行，达到 400 行评估职责拆分；测试放同名目录，`index.ts` 仅导出，不跨模块导入私有协作者。
 - 所有 shell 命令以 `rtk` 开头。提交信息附带 `Co-authored-by: Codex <noreply@openai.com>`。
-- 不实施 Codex 安装、升级或自动启动功能。隔离兼容实验可以启动专用测试进程，不使用真实用户数据。
+- 不实施 Codex 安装、升级或自动启动。兼容实验只启动隔离的测试进程；不依赖 Grok 工作区尚未实现的代码。
 
-## 执行边界与依赖
+## 基线、执行顺序与交付边界
 
-这是一个产品交付，按可独立验收的模块拆任务。任务 1 是实际兼容性验证，不得用源码推断代替通过结果。任务 2–4 可以在迁移实验遇到问题时继续；任务 5 的实际写入必须等任务 1 给出已验证的存储契约。
+基线已完成：`config-document/`、`managed-config/`、`credentials/`、`wizard/`、`sessions/`、CLI 分发、五种语言、README 和 `.changeset/codex-static-config.md`。本轮按下面的增量任务执行；旧 SDD 账本中“任务完成”不代表这些新任务已经完成。
 
-顺序：`1 → 2 → 3 → 4 → 5 → 6 → 7`。这里不自动授权创建子 Agent；执行方式在计划交接时选择。
+顺序：`1 → 2 → 3 → 4 → 5 → 6 → 7`。任务 1 锁定 command 宿主行为；任务 2 是独立的服务端身份/目录契约；任务 3 是配置数据契约；任务 4 是凭据与跨进程执行；任务 5 是可恢复生命周期；任务 6 将这些能力接入产品；任务 7 做完整验收与发布说明。每项都有独立可拒绝/接受的验收边界。
 
-本计划不会捏造 Codex 最低支持版本。任务 1 必须记录真实测试的版本、schema 和历史格式。未知格式预览为不支持并零写入；若当前目标版本的迁移未通过，不能靠跳过所有会话宣称 #327 完成。
+实施沿用当前隔离 worktree；先读实际 git 状态，避免覆盖用户改动。任务提交只暂存列出的相关文件，不使用 `git add -A`。
+
+旧验证记录仅作为基线：`bun run check` 曾通过；旧 preflight 有 dashboard `use-oauth-editor-session.ts` 的 TS2322/TS2589，CLI 559 通过、13 个 macOS upgrade/path 失败。后续应运行当时的真实检查并比较结果，不能用旧结论跳过新增鉴权的验证，也不为本次文档修改运行全仓测试。
 
 ## 文件与职责
 
-新增文件均位于 `packages/cli/src/agent/codex/`，除特别标注外：
+下表路径相对仓库根；Codex 模块根记为 `C = packages/cli/src/agent/codex/`，runtime 根为 `R = packages/agent-provider/runtime/src/`。
 
-| 文件                                                                                                        | 职责                                        |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `index.ts`                                                                                                  | 对外仅导出 configure/list/remove 及结果类型 |
-| `contracts.ts`                                                                                              | Codex 私有领域接口，不扩展插件 wire types   |
-| `location/location.ts`, `location/index.ts`, `location/location.test.ts`                                    | 全局位置、可执行文件及版本探测              |
-| `config-document/config-document.ts`, `config-document/index.ts`, `config-document/config-document.test.ts` | TOML 解析、源码范围编辑、Provider 冲突      |
-| `config-document/ast-edits.ts`                                                                              | 私有 AST 键路径与区间处理                   |
-| `managed-config/managed-config.ts`, `managed-config/index.ts`, `managed-config/managed-config.test.ts`      | 字段归属、configure/remove 事务和恢复       |
-| `managed-config/journal.ts`                                                                                 | 私有受管配置日志 schema 与落盘              |
-| `credentials/credentials.ts`, `credentials/index.ts`, `credentials/credentials.test.ts`                     | 本机 Key 选择快照、创建、验证               |
-| `sessions/sessions.ts`, `sessions/index.ts`, `sessions/sessions.test.ts`                                    | 迁移预览、执行与恢复                        |
-| `sessions/legacy-rollout.ts`                                                                                | 私有 legacy JSONL 元数据定位与修改          |
-| `sessions/state-index.ts`                                                                                   | 私有 Codex SQLite schema 检查与定向更新     |
-| `sessions/journal.ts`                                                                                       | 私有迁移日志与中断恢复                      |
-| `sessions/fixtures/`                                                                                        | 合成持久化格式夹具，不包含用户数据          |
-| `wizard/wizard.ts`, `wizard/index.ts`, `wizard/wizard.test.ts`                                              | 收集选择、提交顺序、取消与部分成功          |
-| `codex.ts`, `codex.test.ts`                                                                                 | 生产依赖装配及三个操作的入口                |
-| `output.ts`                                                                                                 | static-config 输出分支与国际化映射          |
+| 文件                                                              | 增量职责                                                                         |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `packages/cli/scripts/verify-codex-command-auth.ts`               | 新增隔离原生 command 契约实验；现有迁移实验不重写                                |
+| `packages/types/src/agent-integration/`                           | 总授权 target 增加 Codex，插件 target 显式分离                                   |
+| `packages/core/src/agent-identity/identity-repository.ts`         | 从持久存储恢复 Codex target                                                      |
+| `packages/server/src/server/server.ts` 与 `server.models.test.ts` | 已认证 Codex 普通/Codex 目录分流                                                 |
+| `C/contracts.ts`、`C/config-document/`、`C/managed-config/`       | 鉴权 union、数组/整数叶子、format 2 marker 与模式切换的归属                      |
+| `packages/core/src/file-lock/lease/`                              | 从已有 config lock 提取可复用进程 lease，保留 fencing 与恢复语义                 |
+| `C/storage/`                                                      | 从既有 managed-config 私有 storage 移动持久写入能力，并提供 Codex 安装锁公共边界 |
+| `C/command-auth/`                                                 | 身份/凭据状态、设备授权、静默刷新与原始 stdout 交付                              |
+| `C/command-location/`                                             | 查找稳定发布入口，生成 Codex 命令参数，不依赖开发态启动器                        |
+| `C/setup/`                                                        | 静态/command 配置、切换和授权操作 journal                                        |
+| `C/lifecycle/`                                                    | list/check/remove 的本地归属与服务端撤销协调                                     |
+| `C/credentials/`                                                  | 只读 Key 选择，删除生成/写代理配置/reload                                        |
+| `C/wizard/`、`C/codex.ts`                                         | 两种提示分支、取消、配置后迁移与独立 restore 分发                                |
+| `packages/cli/src/agent/output/`、`main.ts`、`update-notify/`     | CLI helper 分发、无噪声 stdout、结果与帮助                                       |
+| `packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json`          | 鉴权选择、设备授权、恢复/撤销和准确品牌文案                                      |
+| `npm/aio-proxy/README.md`、现有 changeset                         | 面向用户解释最终行为，不保留“创建 Key”的旧说明                                   |
 
-其他文件：
+任务 4 新模块采用 `index.ts`（仅导出）、同名主实现、同名测试。私有 `credential-store.ts`、`refresh.ts` 留在 `command-auth/`，只经其公开入口协作。任务 5 的 `setup/journal.ts` 同样不从包级 barrel 导出。
 
-- `packages/cli/src/agent/agent.ts`：只增加 Codex 委派及结果联合类型，现有插件实现保持原路。
-- `packages/cli/src/agent/output.ts`：命令帮助加入 codex，按结果 `target` 分流渲染。
-- `packages/cli/src/agent/agent.test.ts`、`output.test.ts`、`packages/cli/src/main.test.ts`：命令与旧行为回归。
-- `packages/cli/package.json`、`bun.lock`：CLI 的 TOML parser 依赖。
-- `packages/cli/scripts/verify-codex-contract.ts`：显式运行的隔离实验，不加入常规单元测试。
-- `docs/superpowers/specs/2026-09-09-codex-contract-verification.md`：真实兼容验证结果，任务 1 执行时创建。
-- `packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json`、`README.md`、`.changeset/`：产品文案与发布说明。
+## Task 1：补充原生 command 兼容证据
 
-不修改 `packages/types/src/agent-integration/agent-integration.ts`、插件 Provider 包或 post-upgrade 的目标数组。默认不增加服务端代码。
+**Files:** Create `packages/cli/scripts/verify-codex-command-auth.ts`；Modify `docs/superpowers/specs/2026-09-09-codex-contract-verification.md`。参考现有 `packages/cli/scripts/verify-codex-contract.ts` 的隔离进程与 JSON-RPC 操作，既有历史夹具不改。
 
-## Task 1：验证 Codex 认证、列表与迁移持久化契约
-
-**Files:**
-
-- Create: `packages/cli/scripts/verify-codex-contract.ts`
-- Create: `docs/superpowers/specs/2026-09-09-codex-contract-verification.md`
-- Create: `packages/cli/src/agent/codex/sessions/fixtures/` 内已验证格式的合成夹具。
-
-**Interfaces:** 此任务产出实验报告和夹具，不增加生产调用接口。报告必须包含 executable 版本、上游 revision、全局配置字段、数据库解析规则、可迁移格式、拒绝格式，以及每个用例的实际结果。
-
-- [ ] **Step 1：记录当前宿主与接口，而不是读取真实会话。**
-
-```bash
-rtk proxy codex --version
-rtk proxy codex app-server --help
-rtk proxy bun --version
-```
-
-按本机 help 支持的 schema 导出命令获取 `thread/start`、`thread/resume`、`thread/list`、`thread/metadata/update` 类型，输出到临时目录。不要把未知版本标记为支持；不要把旧会话 Provider ID 缺省自动解释成 `openai`，除非该版本解析契约如此定义。
-
-- [ ] **Step 2：建立强制隔离的实验入口。**
-
-脚本接收唯一显式参数 Codex 可执行文件；没有参数即失败。只使用合成假登录凭据。最小进程框架：
+**Interfaces:** 新脚本导出下面的实验接口，报告仅包含布尔结论、版本、平台与脱敏错误。仅执行显式传入的 Codex 可执行文件。
 
 ```ts
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+export type CommandAuthProbe = {
+  readonly version: string;
+  readonly platform: string;
+  readonly rawTokenAccepted: boolean;
+  readonly incompatibleConfigRejected: boolean;
+  readonly refreshAfter401: boolean;
+  readonly refreshInvocationObserved: boolean;
+  readonly staticAccountType: 'chatgpt' | null;
+  readonly commandAccountType: 'chatgpt' | null;
+  readonly authFilesUnchanged: boolean;
+};
+export declare function verifyCodexCommandAuth(executable: string): Promise<CommandAuthProbe>;
+```
 
-const executable = process.argv[2];
-if (!executable) throw new Error('Pass the Codex executable explicitly');
-const root = await mkdtemp(join(tmpdir(), 'aio-codex-contract-'));
-const codexHome = join(root, 'codex');
-const requestHeaders: Headers[] = [];
-let requestArrived!: () => void;
-const inferenceRequest = new Promise<void>((resolve) => { requestArrived = resolve; });
-const server = Bun.serve({
-  hostname: '127.0.0.1',
-  port: 0,
-  fetch(request) {
-    requestHeaders.push(new Headers(request.headers));
-    // Catalog is enough for an auth probe; inference receives a deliberate error.
-    if (new URL(request.url).pathname === '/v1/models') {
-      return Response.json({ models: [] });
-    }
-    requestArrived();
-    return Response.json({ error: { message: 'contract probe' } }, { status: 503 });
+- [ ] **Step 1：建立合成实验输入。** 用临时 HOME/CODEX_HOME、假 JWT、本地服务和临时 helper，不访问真实凭据。helper 使用独立参数数组，覆盖空格路径。只记录 token 是否与预期相等，不记录 header。
+
+```ts
+const authTable = (command: string, args: readonly string[]) => `
+[model_providers.proxy.auth]
+command = ${JSON.stringify(command)}
+args = ${JSON.stringify(args)}
+timeout_ms = 5000
+refresh_interval_ms = 300000
+`;
+const rawHelper = String.raw`process.stdout.write("probe-command-token\n");`;
+```
+
+以上 `JSON.stringify` 仅编码合成 TOML 字符串，不用于 shell 拼接。实际命令通过 `Bun.spawn([executable, ...args])` 传递。stdin 为空；分别注入 raw token、JSON、空输出、非零退出、超过 5 秒五种结果。
+
+- [ ] **Step 2：跑真实原生契约。** 普通启动验证 `auth + requires_openai_auth = true` 拒绝加载；分别用静态和 command 配置调用 app-server `account/read`。向本地模型请求第一次返回 401，观察 helper 再次执行及第二次请求的 token；单独用缩短的实验刷新间隔观察 helper 是否再次执行，不能据此宣称新 token 已发送或用于请求，生产配置保持 300000。设置全部实验进程的总期限并清理子进程。
+
+Run: `rtk proxy bun packages/cli/scripts/verify-codex-command-auth.ts /opt/homebrew/bin/codex`
+
+Expected: 对实际版本逐项记录结果；未实现 helper 前，这只是宿主契约实验，不宣称生产功能通过。若 raw token 或 401 路径不符合文档，停止 command 产品接线并记录具体证据，不修改生产认证字段来绕过冲突。
+
+- [ ] **Step 3：将通过条件写入脚本并复跑。** 新增报告小节区分旧静态实验、新原生 command 实验与尚未运行的真实 AIO Proxy 链路。
+
+```ts
+import { strict as assert } from 'node:assert';
+const result = await verifyCodexCommandAuth(process.argv[2]!);
+assert.equal(result.rawTokenAccepted, true);
+assert.equal(result.incompatibleConfigRejected, true);
+assert.equal(result.refreshAfter401, true);
+assert.equal(result.refreshInvocationObserved, true);
+assert.equal(result.staticAccountType, 'chatgpt');
+assert.equal(result.commandAccountType, null);
+assert.equal(result.authFilesUnchanged, true);
+```
+
+同时记录 JSON 并非 Codex bearer 输出协议、空值/超时/非零退出的失败方式，不据此宣称 Computer Use 或所有插件兼容。版本基线仍明确为实测 `0.146.0`，不凭空定义最低版本。
+
+- [ ] **Step 4：提交实验与报告。**
+
+```bash
+rtk git add packages/cli/scripts/verify-codex-command-auth.ts docs/superpowers/specs/2026-09-09-codex-contract-verification.md
+rtk git commit -m "test(cli): verify Codex command authentication contract" -m "Co-authored-by: Codex <noreply@openai.com>"
+```
+
+## Task 2：接通 Codex Agent 身份与原生模型目录
+
+**Files:** Modify `packages/types/src/agent-integration/{agent-integration.ts,agent-integration.test.ts,index.ts}`；`packages/core/src/agent-identity/{identity-repository.ts,identity-repository.test.ts,agent-identity.test.ts}`；`packages/server/src/agent-authorization/{routes.test.ts,device-challenges.test.ts}`；`packages/server/src/server/{server.ts,server.models.test.ts}`；`packages/server/src/server/list-models/agent-catalog/agent-catalog.ts`；`packages/cli/src/agent/{agent.ts,agent.test.ts,assets/assets.ts,hosts/hosts.ts,managed-installation/install.ts,managed-installation/test-fixture.ts}`；`packages/cli/src/upgrade/{upgrade.ts,post-upgrade-agents.ts,post-upgrade-agents.test.ts}`。收窄 `R/catalog-client/` 与 `R/managed-state/` 的插件消费者，保留 OAuth 接口接受总 target 集合。
+
+**Interfaces:**
+
+```ts
+export const AgentPluginTargetSchema = z.enum(['opencode', 'pi', 'omp']);
+export type AgentPluginTarget = z.output<typeof AgentPluginTargetSchema>;
+export const AgentTargetSchema = z.enum(['opencode', 'pi', 'omp', 'codex']);
+export type AgentTarget = z.output<typeof AgentTargetSchema>;
+// AGENT_CLIENT_ID 增加 codex: 'aio-proxy-codex'。
+```
+
+device/token/admin/身份 marker 使用总集合；catalog schema/query、插件 host/assets/managed installation/post-upgrade 使用插件集合。`createAgentIdentityService()`、runtime OAuth 函数签名和 token 格式不变。
+
+- [ ] **Step 1：写行为回归并确认失败。** device request 接受 Codex 配对 client ID；拒绝跨 target/client；保存/重开数据库仍能读取 Codex installation。现有 server fixture 签发 Codex AT，测试 `/v1/models` 及 `?client_version=0.146.0` 分别返回普通目录和既有 Codex 目录；无协商 Pi AT 仍为 400，畸形协商仍 400，过期/撤销仍 401。
+
+```ts
+expect(
+  AgentDeviceCodeRequestSchema.safeParse({
+    client_id: 'aio-proxy-codex',
+    agent: 'codex',
+    installation_id: '11111111-1111-4111-8111-111111111111',
+    adapter_version: '0.21.0',
+  }).success,
+).toBe(true);
+expect(
+  AgentCatalogQuerySchema.safeParse({
+    agent: 'codex',
+    adapter_version: '0.21.0',
+    schema_version: '1',
+  }).success,
+).toBe(false);
+```
+
+这些 schema 断言与实际 device/目录请求放在同一验收中，不能只测 enum 字面量。
+
+Run: `rtk proxy bun test packages/types/src/agent-integration packages/core/src/agent-identity packages/server/src/agent-authorization packages/server/src/server/server.models.test.ts`
+
+Expected: 新 Codex device、持久恢复或无协商目录用例在基线上失败。
+
+- [ ] **Step 2：最小扩展身份并保留插件边界。** 更新 client ID schema 和 repository `asAgentTarget`；数据库 target 已为 text，不新增表。授权路由复用现有匹配/签发/撤销流程。目录协商处理之后仅收窄通用拒绝条件：
+
+```ts
+if (grant !== undefined && grant.target !== 'codex') {
+  return context.json(
+    {
+      error: {
+        code: 'invalid_request',
+        message: 'Invalid Agent catalog negotiation.',
+      },
+    },
+    400,
+  );
+}
+if (context.req.query('client_version') !== undefined) {
+  return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
+}
+return context.json(await listModels(state));
+```
+
+不移动前置认证与协商校验，不用 query 参数伪装 Codex 身份。更新全部 `AgentTargetSchema.options` 插件循环为 `AgentPluginTargetSchema.options`；总身份数据仍保留 Codex。CLI 的现有 Codex 独立分发保持在插件 parse 之前。
+
+- [ ] **Step 3：验证签发/刷新/撤销和旧目标回归。** 复跑 Step 1，另跑 runtime 的 OAuth/catalog 测试与 CLI agent、post-upgrade 测试；检查插件安装捕获列表不包含 Codex。`bun run lint:types` 用于发现未收窄的穷举分支，不能用 `as AgentPluginTarget` 隐藏问题；`bun run check` 只提供常规 lint 与格式检查。
+
+```bash
+rtk proxy bun test packages/agent-provider/runtime/src packages/cli/src/agent packages/cli/src/upgrade/post-upgrade-agents.test.ts
+rtk proxy bun run lint:types
+rtk proxy bun run check
+```
+
+- [ ] **Step 4：仅提交本任务文件。**
+
+Commit subject: `feat(agent): support Codex device credentials and native catalogs`，附规定 co-author footer；不要暂存 Task 1 以外的未完成文件。
+
+## Task 3：让 TOML 与归属记录支持两种认证模式
+
+**Files:** Modify `C/contracts.ts`、`C/config-document/{config-document.ts,ast-edits.ts,config-document.test.ts,index.ts}`、`C/managed-config/{managed-config.ts,marker.ts,journal.ts,managed-config.test.ts}`。既有同名测试继续扩展，不另造重复测试目录。
+
+**Interfaces:**
+
+```ts
+export type CodexAuthMode = 'keep-chatgpt' | 'command';
+export type CodexAuthConfig =
+  | { readonly mode: 'keep-chatgpt'; readonly token: string }
+  | { readonly mode: 'command'; readonly installationId: string; readonly command: string };
+export type ManagedValue = string | boolean | number | readonly string[];
+// ValueSlot / FieldEdit 保留现有 present 判别。
+export function codexProviderEdits(providerId: string, baseUrl: string, auth: CodexAuthConfig): readonly FieldEdit[];
+export function configureCodexConfig(input: {
+  readonly location: CodexLocation;
+  readonly providerId: string;
+  readonly baseUrl: string;
+  readonly auth: CodexAuthConfig;
+}): Promise<ConfigCommit>;
+```
+
+`CodexMarkerV1` 保留原有 `format: 1`；`CodexMarkerV2` 使用 `format: 2`，保留原有字段并增加 `authMode`，command 分支必须包含 `installationId`，静态分支不含它。解析返回的 `CodexMarker` 为二者 union；`ConfigInspection` 增加可选 `authMode` 和 `installationId`。只读兼容 V1，成功提交时写 V2。
+
+- [ ] **Step 1：补模式切换的行为测试并跑红。** 从含注释、自定义模型、带引号 ID 的静态配置切到 command，实际 `Bun.TOML.parse` 成功，旧 token/true 消失，helper args 保留路径空格；切回后 `auth` 不残留。测试再次运行无 diff、数组结构相等、手改 args/endpoint 导致冲突、remove 保留用户字段、V1 最初恢复值不丢失。
+
+```ts
+const edits = codexProviderEdits('custom.proxy', 'http://127.0.0.1:9317/v1', {
+  mode: 'command',
+  installationId: '11111111-1111-4111-8111-111111111111',
+  command: '/tmp/AIO Proxy/bin/aiop',
+});
+const next = editCodexDocument('model = "keep-model"\n', edits);
+expect(Bun.TOML.parse(next)['model']).toBe('keep-model');
+const prefix = ['model_providers', 'custom.proxy'];
+expect(readManagedField(next, [...prefix, 'name'])).toEqual({ present: true, value: 'AIO Proxy' });
+expect(readManagedField(next, [...prefix, 'requires_openai_auth'])).toEqual({ present: false });
+expect(readManagedField(next, [...prefix, 'experimental_bearer_token'])).toEqual({ present: false });
+expect(readManagedField(next, [...prefix, 'auth', 'args'])).toEqual({
+  present: true,
+  value: ['agent', 'auth', 'codex', '--installation-id', '11111111-1111-4111-8111-111111111111'],
+});
+```
+
+`readManagedField` 是既有公开入口，扩展后返回的 slot 支持数组；不要将整份含 token TOML 放快照。
+
+Run: `rtk proxy bun test packages/cli/src/agent/codex/config-document packages/cli/src/agent/codex/managed-config`
+
+- [ ] **Step 2：扩展叶子编辑并更新归属规则。** 对数组和整数使用 AST 编码/解码，不全量序列化文档。`args` 仅支持字符串数组、timeout 仅接受有限整数；slot 比较按数组内容。公共字段 `name` 写 `AIO Proxy`。
+
+```ts
+const commandLeaves = (id: string, executable: string) => ({
+  command: executable,
+  args: ['agent', 'auth', 'codex', '--installation-id', id],
+  timeout_ms: 5000,
+  refresh_interval_ms: 300000,
+});
+```
+
+删除另一模式的叶子前校验归属和当前 applied 值。不受管的 `env_key`、headers、其他 auth 方式仍报告冲突；不因为目标是 command 就整体删除用户 `auth` 表。只删除本工具创建且已空的表。更换 Provider ID 保留基线并清理旧受管字段，V1 journal 仍可恢复。
+
+- [ ] **Step 3：复跑并检查调用点。** 更新当前静态调用点临时传 `{ mode: 'keep-chatgpt', token }`，保持产品行为到 Task 6 才接入新选择；不趁此保留创建 Key 作为最终需求。
+
+```bash
+rtk proxy bun test packages/cli/src/agent/codex/config-document packages/cli/src/agent/codex/managed-config
+rtk proxy bun run check
+```
+
+- [ ] **Step 4：提交配置数据契约。** Commit subject: `feat(cli): manage both Codex authentication configurations`，附规定 co-author footer。
+
+## Task 4：实现受安装锁保护的设备凭据与静默 helper
+
+**Files:** Create `packages/core/src/file-lock/lease/{index.ts,lease.ts,abandoned-owner.ts,lease.test.ts}`，从 `packages/core/src/plugins/config-file/{lock.ts,abandoned-owner.ts}` 移动通用进程 lease 实现，原 config lock 保留兼容 wrapper；Modify `packages/core/src/index.ts` 及相关锁测试导入。Move `C/managed-config/storage.ts` → `C/storage/storage.ts`，Create `C/storage/{index.ts,installation-lock.ts,storage.test.ts}`；Modify原 storage 调用的模块导入。Create `C/command-auth/{index.ts,command-auth.ts,credential-store.ts,refresh.ts,command-auth.test.ts}`、`C/command-location/{index.ts,command-location.ts,command-location.test.ts}`；Modify `packages/cli/package.json`、`bun.lock` 增加现有 workspace runtime 依赖。
+
+**Interfaces:** Core 公共 lease 是已有 lock 的提取，不暴露 config-file 私有模块；保留 heartbeat、进程 starttime、恢复 fence 和过期判定。
+
+```ts
+export type ProcessFileLock = {
+  readonly owner: string;
+  readonly withOwnership: <T>(action: (assertOwned: () => Promise<void>) => Promise<T>) => Promise<T>;
+  readonly withOwnershipFence: <T>(action: (assertOwned: () => Promise<void>) => Promise<T>) => Promise<T>;
+  readonly release: () => Promise<void>;
+};
+export function acquireProcessFileLock(path: string, signal?: AbortSignal): Promise<ProcessFileLock>;
+export function observeProcessFileLock(path: string): Promise<{ readonly owner: string } | undefined>;
+export type CodexLease = ProcessFileLock;
+export function withCodexInstallation<T>(
+  location: CodexLocation,
+  signal: AbortSignal,
+  operation: (lease: CodexLease) => Promise<T>,
+): Promise<T>;
+```
+
+`observeProcessFileLock` 只返回已校验存活与进程身份的 owner，未知/死亡不提供复用依据。安装锁用 `<CODEX_HOME>/.aio-proxy.lock`。configure/remove 增加可选第二参数 `lease?: CodexLease`；`recoverCodexConfigOperation(location, confirmRecovery?, lease?)` 保留原确认回调，lease 放第三参数。未传 lease 时自己取得锁，传入时校验 ownership，不递归拿同一锁。
+
+```ts
+export type CodexCommandInstallation = {
+  readonly format: 1;
+  readonly marker: AgentManagedMarker & { readonly agent: 'codex' };
+  readonly configPath: string;
+  readonly providerId: string;
+  readonly status: 'pending' | 'active' | 'retiring';
+};
+export function resolveCodexAuthCommand(): Promise<string>;
+export function readCodexCommandIdentity(location: CodexLocation): Promise<CodexCommandInstallation | undefined>;
+export function prepareCodexCommandInstallation(
+  input: {
+    readonly location: CodexLocation;
+    readonly providerId: string;
+    readonly endpoint: string;
+    readonly adapterVersion: string;
+  },
+  lease: CodexLease,
+): Promise<CodexCommandInstallation>;
+export function authorizeCodexInstallation(
+  input: {
+    readonly location: CodexLocation;
+    readonly installation: CodexCommandInstallation;
+    readonly signal: AbortSignal;
+    readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
+  },
+  lease: CodexLease,
+): Promise<void>;
+export function activateCodexCommandInstallation(
+  location: CodexLocation,
+  installationId: string,
+  lease: CodexLease,
+): Promise<void>;
+export function retireCodexCommandInstallation(
+  location: CodexLocation,
+  installationId: string,
+  lease: CodexLease,
+): Promise<void>;
+export function clearCodexCommandInstallation(
+  input: {
+    readonly location: CodexLocation;
+    readonly installationId: string;
+    readonly revocation: AgentRevokeStatus;
+  },
+  lease: CodexLease,
+): Promise<void>;
+export function inspectCodexCommandCredential(input: {
+  readonly location: CodexLocation;
+  readonly check: boolean;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly credentialStatus: 'missing' | 'ready' | 'expired' | 'reauthorize';
+  readonly connection: 'ok' | 'offline' | 'unauthorized' | 'invalid_response' | 'not_checked';
+}>;
+export function writeCodexAuthToken(input: {
+  readonly location: CodexLocation;
+  readonly installationId: string;
+  readonly signal: AbortSignal;
+  readonly writeToken: (token: string) => Promise<void>;
+}): Promise<void>;
+```
+
+`authorizeCodexInstallation` 负责在 configure 内刷新已有凭据或发起批准，并原子保存，不输出 token。activate 必须校验已提交的受管配置与身份一致；retire 先阻止 helper；clear 只接受既有成功/expired/missing 撤销结果。`inspectCodexCommandCredential` 不轮换，check 时只使用有效缓存 AT 请求绑定 endpoint 的只读目录，不返回 secret。`writeCodexAuthToken` 只静默刷新/重叠复用，在锁内调用 `writeToken`，写完再标记 deliveredBy，不返回带 secret 的普通 CLI result。
+
+- [ ] **Step 1：写凭据协议及真实双进程失败用例。** 用本地合成 OAuth server 记录 refresh 次数和调用 client ID，断言 helper 输出前新 RT 已落盘；无凭据 helper 不请求 device endpoint。两进程同时调用只完成必要轮换，验证保存前、保存后未输出、已交付未释放锁三个窗口。复用 lease 原有 fencing/死亡持有者回归，不用只跑同进程 Promise 的测试代替跨进程。
+
+```ts
+const delivered: string[] = [];
+await writeCodexAuthToken({
+  location,
+  installationId,
+  signal: AbortSignal.timeout(4500),
+  writeToken: async (token) => {
+    const persisted = JSON.parse(await Bun.file(`${location.managedRoot}/codex-credential.json`).text());
+    expect(persisted.accessToken).toBe(token);
+    expect(persisted.refreshToken).not.toBe(previousRefreshToken);
+    delivered.push(token);
   },
 });
-await mkdir(codexHome, { mode: 0o700 });
-await Bun.write(join(codexHome, 'config.toml'), Bun.TOML.stringify({
-  model: 'contract-model', model_provider: 'contract-proxy',
-  cli_auth_credentials_store: 'file',
-  model_providers: { 'contract-proxy': {
-    name: 'contract-proxy', base_url: `http://127.0.0.1:${server.port}/v1`,
-    wire_api: 'responses', requires_openai_auth: true,
-    experimental_bearer_token: 'aio-proxy-local', request_max_retries: 0,
-  } },
-}));
-let proc: ReturnType<typeof Bun.spawn> | undefined;
-try {
-  const child = Bun.spawn([executable, 'app-server'], {
-    env: { PATH: process.env.PATH, HOME: root, CODEX_HOME: codexHome },
-    cwd: root,
-    stdin: 'pipe', stdout: 'pipe', stderr: 'pipe',
-  });
-  proc = child;
-  const waiters = new Map<number, (packet: { result?: unknown; error?: unknown }) => void>();
-  let nextId = 0;
-  const consume = (async () => {
-    const reader = child.stdout.getReader();
-    const decoder = new TextDecoder();
-    let pending = '';
-    try {
-      for (;;) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        pending += decoder.decode(chunk.value, { stream: true });
-        let newline: number;
-        while ((newline = pending.indexOf('\n')) >= 0) {
-          const line = pending.slice(0, newline); pending = pending.slice(newline + 1);
-          if (!line.trim()) continue;
-          const packet = JSON.parse(line);
-          if (typeof packet.id === 'number') waiters.get(packet.id)?.(packet);
-        }
-      }
-    } finally { reader.releaseLock(); }
-  })();
-  const stderr = new Response(child.stderr).text();
-  const call = (method: string, params: unknown): Promise<unknown> => {
-    const id = ++nextId;
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => { waiters.delete(id); reject(new Error(`${method}: timeout`)); }, 10_000);
-      waiters.set(id, (packet) => {
-        clearTimeout(timeout); waiters.delete(id);
-        if (packet.error) reject(new Error(`${method}: rejected`));
-        else resolve(packet.result);
-      });
-      child.stdin.write(JSON.stringify({ id, method, params }) + '\n');
-      child.stdin.flush();
-    });
-  };
-  await call('initialize', { clientInfo: { name: 'aio-proxy-contract', version: '1' } });
-  child.stdin.write(JSON.stringify({ method: 'initialized' }) + '\n');
-  child.stdin.flush();
-  const started = await call('thread/start', { cwd: root, model: 'contract-model' }) as { thread: { id: string } };
-  await call('turn/start', { threadId: started.thread.id, input: [{ type: 'text', text: 'auth probe' }] });
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([inferenceRequest, new Promise<never>((_, reject) => {
-      deadline = setTimeout(() => reject(new Error('No model request observed')), 10_000);
-    })]);
-  } finally { clearTimeout(deadline); }
-  if (!requestHeaders.every((headers) => headers.get('authorization') === 'Bearer aio-proxy-local')) {
-    throw new Error('Unexpected provider credential');
-  }
-  child.kill();
-  await child.exited;
-  await consume;
-  await stderr;
-} finally {
-  if (proc) { proc.kill(); await proc.exited; }
-  server.stop(true);
-  await rm(root, { recursive: true, force: true });
-}
+expect(delivered).toHaveLength(1);
 ```
 
-以上是无登录、无代理 Key 的完整探测路径；按 Step 1 导出的当前 schema 校正必填协议字段再运行。将配置 token 参数化为 `test-proxy-key`/`aio-proxy-local`，把是否写入合成 auth.json 参数化，形成下一步四个用例。503 是预期的模型失败，不记录原始 header；仅断言 Authorization 等于测试 token。不得继承进程中的任何真实登录/API Key 环境变量。脚本发生失败必须写入实验报告，不能删除断言使实验“通过”。
+以上变量由测试在临时目录中创建的合成 installation/token fixture 提供；fixture 依次使用 `prepareCodexCommandInstallation`、`authorizeCodexInstallation`、`configureCodexConfig` 和 `activateCodexCommandInstallation` 建立，禁止拷贝用户 credential。再覆盖网络失败保留 RT、确定 invalid_grant 要求重新授权、超时/锁竞争退出、symlink/hardlink 拒绝。
 
-- [ ] **Step 3：运行四种认证组合。**
+Run: `rtk proxy bun test packages/core/src/file-lock/lease packages/cli/src/agent/codex/command-auth packages/cli/src/agent/codex/command-location`
 
-已登录/未登录 × 代理 Key/固定占位 token；全部 `requires_openai_auth = true`。使用该版本支持的文件认证存储模式，以合成 auth.json 模拟登录，不能使用 OS Keychain。断言实际模型请求的 bearer 等于 `test-proxy-key` 或 `aio-proxy-local`，不等于合成登录 token；记录 CLI 首次登录提示行为，不声称 app-server 测试等于完整 TUI 功能验证。
+Expected: 新接口缺失或行为不满足而失败；不以静态常量测试替代轮换行为。
 
-- [ ] **Step 4：验证迁移是真正持久化的。**
-
-创建来源 `source-proxy`、目标 `aio-proxy` 两个测试 Provider。创建包含两轮、工具记录、一个子会话和一个归档会话的合成历史。先尝试原生 `thread/resume` 的 `modelProvider` 覆盖及已导出 schema 提供的元数据接口：检查按目标 Provider 列表、关闭进程、重开、再次列出并恢复。没有公开 Provider 更新接口时记录“不支持”，不能向接口塞未声明字段并把无报错当成功。
-
-**分支决策：** 原生接口仅在保留 ID、正文、模型、时间、归档与父子关系且重启后仍有效时采用。否则实施任务 5 的离线路径。原生分支通过时，保持任务 5 的公共接口不变，以该已验证方法替换离线写入并删除不需要的 codec；不要同时维护两套生产实现。
-
-- [ ] **Step 5：锁定离线格式与数据库定位。**
-
-记录 SQLite 中 `threads` 的实际字段及 `history_mode`、rollout 内容和索引重建行为。实验涵盖 legacy 和当前可生成的 paginated 格式；数据库位置以实际 Codex 解析规则为准，包含可能的 sqlite_home 设置。不能以“最新修改的 state_*.sqlite”猜测活跃库。当前计划已知 legacy 的 `session_meta.payload.model_provider` 与 `threads.model_provider`，其他格式仅在实验确认写入契约后支持。
-
-来源信息无法一致定位、缺失 ID、未知格式或运行中写入者均应可识别并拒绝。恢复过程中验证只改索引会被 JSONL 回填覆盖的问题。输出去除敏感路径、只包含合成 ID 的夹具。
-
-- [ ] **Step 6：报告结论并提交实验。**
-
-报告列出每个用例的 PASS/FAIL 和命令，而非模板空表。若没有任何目标版本完成真实迁移，任务 5 不进入持久化实施；仍可推进任务 2–4，但不得将整个 issue 作为完成。
-
-```bash
-rtk git add packages/cli/scripts/verify-codex-contract.ts packages/cli/src/agent/codex/sessions/fixtures docs/superpowers/specs/2026-09-09-codex-contract-verification.md
-rtk git commit -m 'test(cli): verify Codex static configuration contracts' -m 'Co-authored-by: Codex <noreply@openai.com>'
-```
-
-## Task 2：实现按键路径修改 TOML 的纯模块
-
-**Files:** Create `config-document/{index.ts,config-document.ts,ast-edits.ts,config-document.test.ts}`；Modify `packages/cli/package.json`、`bun.lock`。
-
-**Interfaces:** 本任务导出下列接口，其他模块只从 `config-document/index.ts` 导入：
+- [ ] **Step 2：提取锁并实现持久状态。** `codex-command.json` 存身份；`codex-credential.json` 存下面的私有状态，并在读取时校验 format、绑定、枚举、时间和 token 形状。
 
 ```ts
-export type ManagedValue = string | boolean;
-export type ValueSlot = { present: false } | { present: true; value: ManagedValue };
-export type FieldEdit = { path: readonly string[]; next: ValueSlot };
-export type CodexDocument = {
-  text: string;
-  activeProviderId: string;
-  providerIds: readonly string[];
+// command-auth/credential-store.ts 私有类型。
+type CredentialState = {
+  readonly format: 1;
+  readonly installationId: string;
+  readonly endpoint: string;
+  readonly revision: number;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly accessExpiresAt: number;
+  readonly status: 'ready' | 'refreshing' | 'reauthorize';
+  readonly refreshStartedAt?: number;
+  readonly deliveredBy?: string;
 };
-export function readCodexDocument(text: string): CodexDocument;
-export function readManagedField(text: string, path: readonly string[]): ValueSlot;
-export function editCodexDocument(text: string, edits: readonly FieldEdit[]): string;
-export function codexProviderEdits(providerId: string, baseUrl: string, token: string): readonly FieldEdit[];
-export function validateCodexProviderId(value: string): string;
 ```
 
-`readManagedField` 若目标字段存在但不是 string/boolean，抛出不含原值的结构错误，不将其视为不存在。新 ID trim 后不能为空，不允许控制字符；拒绝该版本的内建保留 ID（官方已列出 `openai`、`ollama`、`lmstudio`，当前还要排除 `amazon-bedrock`）。点号或非 ASCII 合法 ID 用带引号的 TOML 键完整编码，不拆成多个路径段。
+使用现有原子替换/fsync/最后读取校验；增加硬链接检查。`accessExpiresAt` 根据 token 请求开始时间加 `expires_in` 保守计算，不捏造服务端未返回的 RT 到期时间。所有调用网络前与输出前校验 identity/config/模式/endpoint/ownership。OAuth 使用受约束 fetch wrapper：绑定 origin、`redirect: 'error'` 和同一 signal；沿用 runtime 的设备 URL 校验。
 
-- [ ] **Step 1：编写保护用户配置的失败测试。**
+- [ ] **Step 3：实现轮换和交付顺序。** 拿锁前只观察有效 owner 与非秘密 revision/deliveredBy，拿锁后重读完整 credential。revision 增加、交付 owner 变化或交付 owner 等于已观察的有效锁 owner，且 AT 至少剩 1 秒时可重叠复用；否则独立调用刷新。网络前原子记录 refreshing，成功后存新 RT/AT/revision 并清除 deliveredBy，输出完成后标记本 owner。
 
 ```ts
-import { expect, test } from 'bun:test';
-import { codexProviderEdits, editCodexDocument } from './config-document';
-
-test('switches Provider without rewriting model, comments or MCP', () => {
-  const original = '# chosen by user\nmodel = "keep-model"\n'
-    + 'approval_policy = "never"\n\n[mcp_servers.local]\ncommand = "local-mcp"\n';
-  const actual = editCodexDocument(original,
-    codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', 'test-key'));
-  const parsed = Bun.TOML.parse(actual);
-  expect(parsed.model).toBe('keep-model');
-  expect(parsed.model_provider).toBe('proxy.team');
-  expect(actual).toContain('# chosen by user\nmodel = "keep-model"');
-  expect(actual).toContain('[mcp_servers.local]\ncommand = "local-mcp"');
-  expect(parsed.model_providers).toEqual({
-    'proxy.team': {
-      name: 'aio-proxy', base_url: 'http://127.0.0.1:9317/v1',
-      wire_api: 'responses', requires_openai_auth: true,
-      experimental_bearer_token: 'test-key',
-    },
-  });
-  expect(editCodexDocument(actual,
-    codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', 'test-key'))).toBe(actual);
+const response = await refreshAgentCredential(installation.marker, state.refreshToken, {
+  signal: input.signal,
+  fetch: boundFetch,
 });
+const accessExpiresAt = requestStartedAt + response.expires_in * 1000;
+// 用持久状态写入新 revision 后，才允许调用 input.writeToken(response.access_token)。
 ```
 
-再添加具体夹具：顶层 `model_providers = { other = { name = 'keep' } }`；`[model_providers]` 下内联 Provider；已有 dotted key；含逗号字符串；多行字符串；CRLF；注释在值后；删除第一个/中间/最后一个内联成员；目标字段类型错误；重复 TOML 键。原始文本中不受影响的区间必须保持原样。
+`boundFetch` 是本模块按身份 origin 校验、拒绝重定向的私有 fetch 实现，`requestStartedAt` 在发请求前捕获。临时失败不删除 RT；中断后的同 RT 重试仅在已有 30 秒窗口内，窗口外或 `replay_lost` 写 reauthorize 并失败。输出失败保留新凭据，不能回滚到旧 RT；失去 fence 就停止写入和交付。401 后的独立调用必须刷新，不能凭 AT 未到期直接复用。
 
-- [ ] **Step 2：运行失败测试。**
-
-```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/config-document/config-document.test.ts
-```
-
-预期仅因模块/实现缺失而失败，不能忽略解析/环境失败。
-
-- [ ] **Step 3：添加范围解析依赖并实现编辑。**
-
-```bash
-rtk proxy bun add --cwd packages/cli --exact toml-eslint-parser@1.0.3
-```
-
-使用 `parseTOML(text, { tomlVersion: '1.1' })` 获取 AST。键路径由 `TOMLTable.resolvedKey`、`TOMLKey.keys` 的 bare `name`/quoted `value` 组合；递归进入 `TOMLInlineTable.body`，不递归字符串文本。不引入 ESLint 本体。Bun 负责最终语义解析验证，不把 `Bun.TOML.stringify(Bun.TOML.parse(text))` 用在整份用户文档上。
-
-字段内容如下，`env_key`/`auth` 互斥检查由受管层负责：
+- [ ] **Step 4：实现稳定入口解析并验证。** 从已安装的 `aiop`/`aio-proxy` 入口解析绝对路径并验证版本调用；保留稳定 symlink 入口，不 `realpath` 固化其版本目标。拒绝 Bun/Node 开发入口或缺失命令。参数为数组，空格/引号路径无需 shell 引用。该只读解析在设备授权前完成。
 
 ```ts
-export function codexProviderEdits(id: string, baseUrl: string, token: string): readonly FieldEdit[] {
-  const fields = {
-    name: 'aio-proxy', base_url: baseUrl, wire_api: 'responses',
-    requires_openai_auth: true, experimental_bearer_token: token,
-  } as const;
-  return [
-    { path: ['model_provider'], next: { present: true, value: id } },
-    ...Object.entries(fields).map(([key, value]) => ({
-      path: ['model_providers', id, key], next: { present: true as const, value },
-    })),
-  ];
-}
+const args = ['agent', 'auth', 'codex', '--installation-id', installationId];
+// Codex TOML 的 command 是 executable，args 是上面的字符串数组。
+const processHandle = Bun.spawn([executable, '--version'], { stdout: 'pipe', stderr: 'pipe' });
 ```
 
-私有编辑器把修改归并成不重叠的 `[start,end)` 区间。已有值只替换 `value.range`；缺失顶层 scalar 在第一个表之前插入；新 Provider 表使用带引号 ID；已有内联结构在其括号内插入/删除并处理逗号，不能再声明同路径标准表。多个修改落在同一内联表时先在该区域内合并，再生成一个外层 patch。按 start 降序应用，最后再解析验证。只删除由受管层指明可删除的空表，不扫描删除用户空表。
+测试含空格的稳定入口、`aiop` 别名、升级替换入口后的调用、未知入口拒绝和非 TTY；不将源码入口视为发布兼容通过。
 
-- [ ] **Step 4：通过测试与 CLI 编译检查。**
-
-运行本任务测试；记录 Bun 下 parser 工作且不依赖 Node-only native addon。`bun run check` 留在最终任务统一执行。
-
-- [ ] **Step 5：提交。**
+- [ ] **Step 5：跑绿并确认提取未破坏现有锁。**
 
 ```bash
-rtk git add packages/cli/src/agent/codex/config-document packages/cli/package.json bun.lock
-rtk git commit -m 'feat(cli): preserve Codex config while editing provider fields' -m 'Co-authored-by: Codex <noreply@openai.com>'
+rtk proxy bun test packages/core/src/file-lock packages/core/src/plugins/config-file packages/cli/src/agent/codex/storage packages/cli/src/agent/codex/managed-config packages/cli/src/agent/codex/command-auth packages/cli/src/agent/codex/command-location
+rtk proxy bun run check
 ```
 
-## Task 3：实现全局位置与字段归属生命周期
+- [ ] **Step 6：提交 runtime 增量。** Commit subject: `feat(cli): add durable Codex command credentials`，附规定 co-author footer。
 
-**Files:** Create `location/`、`managed-config/` 上表文件和 `contracts.ts`。
+## Task 5：完成只读 Key 与可恢复的配置/撤销生命周期
+
+**Files:** Modify `C/credentials/{credentials.ts,credentials.test.ts}`、`C/contracts.ts`、`C/wizard/{index.ts,index.test.ts}`；Create `C/setup/{index.ts,setup.ts,journal.ts,setup.test.ts}`、`C/lifecycle/{index.ts,lifecycle.ts,lifecycle.test.ts}`；Modify `C/codex.ts`、`C/command-auth/`、`packages/cli/src/agent/control-plane/` 的调用衔接。`codex.ts` 保留薄组装与 restore 分发，凭据与生命周期职责放上述命名模块。
 
 **Interfaces:**
 
 ```ts
-export type CodexLocation = {
-  home: string; configPath: string; managedRoot: string; markerPath: string;
-};
-export type OwnedField = {
-  path: readonly string[]; before: ValueSlot; applied: ValueSlot;
-};
-export type CodexMarker = {
-  format: 1; managedBy: 'aio-proxy'; configPath: string; providerId: string;
-  fields: readonly OwnedField[]; createdTables: readonly (readonly string[])[];
-};
-export type ConfigInspection = {
-  status: 'absent' | 'managed' | 'modified' | 'conflict';
-  providerId?: string; activeProviderId: string; baseUrl?: string;
-  changedPaths: readonly (readonly string[])[];
-};
-export type ConfigCommit = { status: 'configured' | 'unchanged'; providerId: string };
-export type ConfigRemoval = { status: 'removed' | 'partial' | 'absent'; preservedPaths: readonly (readonly string[])[] };
-export function resolveCodexLocation(home: string, env: Readonly<Record<string, string | undefined>>): CodexLocation;
-export function inspectCodexConfig(location: CodexLocation): Promise<ConfigInspection>;
-export function configureCodexConfig(input: {
-  location: CodexLocation; providerId: string; baseUrl: string; token: string;
-}): Promise<ConfigCommit>;
-export function removeCodexConfig(location: CodexLocation): Promise<ConfigRemoval>;
-```
-
-公共结果不包含 marker、fields 的值或 token。`ValueSlot`/`CodexMarker` 只在 Codex 私有模块间使用。`location.home` 是实际 Codex home；`managedRoot = <home>/.aio-proxy`；`markerPath = <managedRoot>/codex-config.json`，避免依赖可被删除的 TOML 注释，也避免切换 `AIO_PROXY_HOME` 丢失归属。
-
-- [ ] **Step 1：添加真实文件 round-trip 与后续编辑测试。**
-
-```ts
-import { expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { resolveCodexLocation } from '../location';
-import { configureCodexConfig, removeCodexConfig } from './managed-config';
-
-test('remove restores managed fields and retains a later model choice', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'aio-codex-config-'));
-  try {
-    const location = resolveCodexLocation(root, {});
-    await mkdir(location.home, { recursive: true });
-    await Bun.write(location.configPath, 'model = "before"\nmodel_provider = "openai"\n');
-    await configureCodexConfig({ location, providerId: 'aio-proxy',
-      baseUrl: 'http://127.0.0.1:9317/v1', token: 'test-key' });
-    const configured = await Bun.file(location.configPath).text();
-    await Bun.write(location.configPath, configured.replace('model = "before"', 'model = "after"'));
-    await removeCodexConfig(location);
-    const result = Bun.TOML.parse(await Bun.file(location.configPath).text());
-    expect(result.model).toBe('after');
-    expect(result.model_provider).toBe('openai');
-    expect(result.model_providers).toBeUndefined();
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-```
-
-补充：用户后来改 `base_url` 保留该字段；宿主重排相邻键仍可移除；未标记同名 Provider 拒绝；失效 marker 不接管；重复 configure 不刷新原始 before；Provider ID 重命名只清理仍受管的旧字段；marker 含 path 越界拒绝；写入中断/两个 CLI 竞争/配置内容变更可恢复；退出后再次 list 不暴露 secret。
-
-- [ ] **Step 2：运行失败测试。**
-
-```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config
-```
-
-- [ ] **Step 3：实现位置、marker 与字段比较。**
-
-`CODEX_HOME` 空值使用默认；绝对路径和 `~/` 按已验证宿主语义处理，不把相对路径解释成当前项目。只探测 `codex --version`，无安装时 configure 报安装缺失；list/remove 仍可读取/清理已知全局配置。版本解析支持实际 `codex-cli X.Y.Z` 输出，不复用只处理 `target/version` 的插件解析器。
-
-Zod strict schema 验证 marker，字段路径仅允许 `model_provider` 和该受管 Provider 的六个配置字段；对 `createdTables` 同样限定。恢复规则：
-
-```ts
-const restoreEdits = marker.fields.flatMap((field) => {
-  const now = readManagedField(text, field.path);
-  const equal = now.present === field.applied.present
-    && (!now.present || (field.applied.present && now.value === field.applied.value));
-  return equal ? [{ path: field.path, next: field.before }] : [];
-});
-```
-
-发生漂移时 configure 不静默覆盖；返回字段路径冲突，用户可先恢复原状态或换 ID。若用户添加 `env_key`、`auth`、`aws`、会影响认证的 header 到受管 Provider，拒绝更新并解释冲突，不能悄悄删除这些用户字段。
-
-- [ ] **Step 4：实现日志先行的配置提交与恢复。**
-
-不要把 `AtomicConfigFile` 指向 TOML：它只支持 JSON/JSONC/YAML。可把它用于 `<managedRoot>/config-operation.json` 作为两个 aio-proxy 操作的协调锁与日志容器，不导入 core 私有 lock 模块。日志记录操作类型、旧 marker、目标 marker、原文件存在性、前后内容指纹和阶段；必须在改 TOML 前落盘。
-
-TOML 同目录临时文件 `open('wx', 0600)` →写入→fsync→再次检查原内容与文件身份→rename→更新 marker→清除 pending 日志。存在更宽松权限的凭据配置在提交时收紧至 0600。持久化目录 fsync 使用仓库支持平台的已有模式。检测到符号链接目标或路径身份变化时拒绝而不是替换未知文件。
-
-恢复按磁盘实际指纹/字段值判断 old/applied/changed，不只信日志阶段；未知状态保留 pending 并输出无秘密诊断。不存在文件时的回滚不能删除后来由用户创建的文件。aio-proxy 的锁只协调本工具，不能声称防住 Codex 并发重写；检测到活动 Codex 写入者时配置提交要求其停止，正文快照检查补充防护。
-
-- [ ] **Step 5：运行测试并提交。**
-
-```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/location ./packages/cli/src/agent/codex/managed-config
-rtk git add packages/cli/src/agent/codex/location packages/cli/src/agent/codex/managed-config packages/cli/src/agent/codex/contracts.ts
-rtk git commit -m 'feat(cli): track and restore managed Codex configuration' -m 'Co-authored-by: Codex <noreply@openai.com>'
-```
-
-## Task 4：选择、创建并验证代理 Key
-
-**Files:** Create `credentials/{index.ts,credentials.ts,credentials.test.ts}`；共享类型加入 `contracts.ts`。
-
-**Interfaces:**
-
-```ts
-export type KeyChoice = { id: string; label: string };
-export type KeySelection = { kind: 'none' } | { kind: 'existing'; id: string } | { kind: 'new' };
-export type KeySnapshot = {
-  choices: readonly KeyChoice[];
-  resolve: (selection: KeySelection, providerId: string) => Promise<ResolvedCredential>;
-};
+export type KeySelection = { readonly kind: 'none' } | { readonly kind: 'existing'; readonly id: string };
 export type ResolvedCredential = {
-  token: string; kind: 'placeholder' | 'existing' | 'created'; label?: string;
-  verified: boolean;
+  readonly token: string;
+  readonly kind: 'placeholder' | 'existing';
+  readonly label?: string;
+  readonly verified: boolean;
+};
+export type KeySnapshot = {
+  readonly choices: readonly KeyChoice[];
+  readonly resolve: (selection: KeySelection) => Promise<ResolvedCredential>;
 };
 export type CredentialDeps = {
-  file: AtomicConfigFile; endpoint: string;
-  loadEnvironment: () => void;
-  readEnvironment: () => Readonly<Record<string, string | undefined>>;
-  randomKey: () => string;
-  reload: () => Promise<void>;
-  check: (token: string) => Promise<'ok' | 'offline' | 'unauthorized' | 'invalid_response'>;
+  readonly file: { readonly read: () => Promise<Record<string, unknown>> };
+  readonly loadEnvironment: () => void;
+  readonly readEnvironment: () => Readonly<Record<string, string | undefined>>;
+  readonly check: (token: string) => Promise<'ok' | 'offline' | 'unauthorized' | 'invalid_response'>;
 };
-export function inspectProxyKeys(deps: CredentialDeps): Promise<KeySnapshot>;
+export type CodexSetupSelection = {
+  readonly providerId: string;
+  readonly auth:
+    | { readonly mode: 'keep-chatgpt'; readonly keys: KeySnapshot; readonly selection: KeySelection }
+    | { readonly mode: 'command'; readonly command: string };
+};
+export type CodexSetupCommit = ConfigCommit & {
+  readonly authMode: CodexAuthMode;
+  readonly credential: 'placeholder' | 'existing' | 'agent';
+  readonly connection: 'ok' | 'offline' | 'not_checked';
+  readonly installationId?: string;
+};
+export type CodexSetupContext = {
+  readonly location: CodexLocation;
+  readonly endpoint: string;
+  readonly adapterVersion: string;
+  readonly signal: AbortSignal;
+  readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
+};
+export function commitCodexSetup(selection: CodexSetupSelection, context: CodexSetupContext): Promise<CodexSetupCommit>;
+export function recoverCodexAuthOperation(
+  context: CodexSetupContext,
+  action: 'complete' | 'remove',
+): Promise<'none' | 'completed' | 'blocked'>;
 ```
 
-`KeySnapshot` 的 secret 捕获在 resolve 闭包中，不放进可被 JSON.stringify 的数据对象。`ResolvedCredential` 仅供 wizard 内部消费，不成为 AgentConfigureResult 的成员。已有 Key 的 opaque id 必须能检测原条目改变，不能在交互结束后直接信旧数组下标。
+`recoverCodexAuthOperation` 只在已解释影响、用户选择恢复后调用；`remove` 命令本身即授权恢复移除。公共 `listCodexAgent(check)` 与 `removeCodexAgent()` 保持入口签名，内部委托 lifecycle。`CodexRemoveResult.status` 增加 `blocked`，command 的 `authorization` 为 `revoked | expired | missing | pending`；静态不制造授权状态。
 
-- [ ] **Step 1：无认证分支失败测试。**
+`CodexListResult` 保留现有字段，新增 `authMode?: CodexAuthMode`、`installationId?: string`、`lifecycle?: 'pending' | 'active' | 'retiring'`、`authorization?: 'not_checked' | 'active' | 'expired' | 'revoked' | 'missing'` 和 `credentialStatus?: 'missing' | 'ready' | 'expired' | 'reauthorize'`。后三项仅用于有真实 command 身份的情况；未检查服务端时 authorization 是 not_checked，不能以本地缓存冒充 active。移除与列举类型分别由 `C/lifecycle/` 导出，`C/codex.ts` 重新导出以兼容既有调用方。
+
+- [ ] **Step 1：写产品行为测试并跑红。** 静态配置无法调用代理写入/reload；无 Key 在提交前再次读取，后来启用认证必须失败；选择消失或模板变动必须失败。command 初次批准后配置写失败留下 pending，helper 拒绝，恢复后才生效。command → 静态与 remove 在撤销失败时返回 blocked 并保留可重试记录。
 
 ```ts
-import { expect, test } from 'bun:test';
-import { AtomicConfigFile } from '@aio-proxy/core';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { inspectProxyKeys } from './credentials';
-
-test('keyless proxy stays keyless and uses a non-secret explicit token', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'aio-codex-key-'));
-  const path = join(root, 'config.json');
-  const before = '{"providers":{},"server":{"apiKeys":[]}}';
-  try {
-    await Bun.write(path, before);
-    const snapshot = await inspectProxyKeys({
-      file: new AtomicConfigFile(path), endpoint: 'http://127.0.0.1:9317',
-      loadEnvironment() {}, readEnvironment: () => ({}),
-      randomKey: () => { throw new Error('must not generate'); },
-      reload: async () => { throw new Error('must not reload'); },
-      check: async () => 'ok',
-    });
-    expect(snapshot.choices).toEqual([]);
-    expect(await snapshot.resolve({ kind: 'none' }, 'aio-proxy')).toMatchObject({
-      token: 'aio-proxy-local', kind: 'placeholder', verified: true,
-    });
-    expect(await Bun.file(path).text()).toBe(before);
-  } finally { await rm(root, { recursive: true, force: true }); }
+const readonlyFile = {
+  read: async () => ({ server: { apiKeys: [] }, providers: {} }),
+};
+const snapshot = await inspectProxyKeys({
+  file: readonlyFile,
+  loadEnvironment: () => {},
+  readEnvironment: () => ({}),
+  check: async () => 'offline',
 });
+expect(snapshot.choices).toEqual([]);
+expect((await snapshot.resolve({ kind: 'none' })).kind).toBe('placeholder');
 ```
 
-另写已有模板 Key 正确解析、创建 Key 保留模板/标签、旧选择被重排/删除拒绝、无效配置不是无认证、生成过程中认证被关闭不自动重启认证、reload 拒绝与 commit 不确定状态，以及错误输出不含 token 的行为测试。
+此测试通过只读依赖形状验证无需写代理配置；补充带有效最小配置的真实文件夹具与 revision 变化，避免单靠 mock 声称并发正确。使用 GET `/v1/models` 验证 token，禁止把公开 `/health` 当授权成功。
 
-- [ ] **Step 2：运行失败测试。**
+Run: `rtk proxy bun test packages/cli/src/agent/codex/credentials packages/cli/src/agent/codex/setup packages/cli/src/agent/codex/lifecycle`
 
-```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/credentials
-```
-
-- [ ] **Step 3：实现本地读取与 Key 创建。**
-
-生产装配复用 `configPath()`、`loadServiceEnv(configPath)`、`parseRuntimeConfig(raw, env)`；整个解析过程失败必须返回稳定诊断 code，不能把带 secret 的 Zod error/模板值拼入输出。检测环境变量模板缺值，禁止把空解析值当作有效 Key。
-
-随机 Key 使用 `node:crypto` 已有 CSPRNG 模式；固定前缀不得落入 Agent token 的保留前缀：
+- [ ] **Step 2：删除 Key 创建并实现 journal。** 删除 `kind: 'new'/'created'`、随机源、transaction/reload、创建失败补偿和相应过时测试。同步从当前静态向导移除新建选项、created 分支与 `CodexConfigWriteError` 的仅创建用途，更新 `keys.resolve(selection)` 调用，使本任务可独立编译和测试；新增 mode 提问仍由 Task 6 接入。保留 Key 只读解析、选择指纹和脱敏错误，旧版本已经创建的 Key 原样保留。操作 journal 使用 `codex-auth-operation.json`，写版本、操作 ID、原/目标模式、installation ID、阶段和最小恢复数据，不复制全部用户 TOML。
 
 ```ts
-import { randomBytes } from 'node:crypto';
-const randomKey = () => `sk-${randomBytes(32).toString('hex')}`;
-```
-
-新增 Key 使用 `file.transaction`：锁内重新读取并解析当前 authored 配置，确认 apiKeys 仍启用、选中快照未改变；追加 `{key, label: 'Codex: ' + providerId}`。保留原 `server` 字段与 apiKeys 原始条目，不把解析后的完整配置重新保存，否则会固化其他环境变量模板。
-
-```ts
-const next = {
-  ...current,
-  server: { ...server, apiKeys: [...authoredKeys, { key, label }] },
+// setup/journal.ts 私有；targetConfig 按 CodexAuthConfig 校验并以 0600 存储。
+type AuthOperation = {
+  readonly format: 1;
+  readonly operationId: string;
+  readonly configPath: string;
+  readonly kind: 'configure' | 'switch' | 'remove';
+  readonly fromMode?: CodexAuthMode;
+  readonly phase: 'prepared' | 'authorized' | 'retiring' | 'revoked' | 'config-written';
+  readonly installationId: string;
+  readonly targetConfig?: CodexAuthConfig;
+  readonly providerId: string;
 };
 ```
 
-`current` 来自 transaction 参数；`server` 用 `isPlainObject` 验证；`authoredKeys` 是该 server 中验证过的原数组；`key` 只生成一次，`label` 为上述名称。任务不引入新的服务端密钥读取接口。
+现有配置 journal 继续负责 TOML/marker 原子归属；auth journal 负责授权与撤销边界，二者恢复按 phase 和当前字段校验继续，遇第三种值保留并报告冲突，不能全量回滚共享文件。恢复时 endpoint 从已校验的 installation 身份读取；当前 context.endpoint 改变则阻止切换，不能把旧 RT 发送到新地址。普通静态更新无需创建 auth journal。
 
-- [ ] **Step 4：处理 reload/验证与部分提交。**
-
-Key 写入前探测代理健康，在线时 transaction 的 verify 调用 `reloadCommand` 后检查带新 Key 的 `/v1/models`。拒绝响应抛错使 `AtomicConfigFile` 恢复原文件，随后尝试 reload 原配置。网络不确定与 `AtomicConfigCommitUncertainError` 必须重新读取核对本次 Key，不无条件再次追加。Key 已存在则复用本次结果。
-
-代理开始就离线：允许持久保存 Key，返回 `verified:false`。在线变离线导致结果不确定：不报告 Key 可用、不盲目删除 Key，报告恢复结果。GET `/v1/models` 的 401 和网络离线是不同结果；不得只测 `/health` 就说凭据有效。测试只使用假 token。
-
-- [ ] **Step 5：通过测试并提交。**
-
-```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/credentials
-rtk git add packages/cli/src/agent/codex/credentials packages/cli/src/agent/codex/contracts.ts
-rtk git commit -m 'feat(cli): select and provision proxy credentials for Codex' -m 'Co-authored-by: Codex <noreply@openai.com>'
-```
-
-## Task 5：实现历史会话预览、迁移与恢复
-
-**Files:** Create `sessions/{index.ts,sessions.ts,sessions.test.ts,legacy-rollout.ts,state-index.ts,journal.ts}`；使用任务 1 的合成 fixtures；更新 `contracts.ts`。
-
-**Interfaces:** 对向导隐藏 schema 和文件细节。
+- [ ] **Step 3：接入安装状态转换。** 在同一 lease 内按 spec 的转换表实现：静态 → command 先 pending、授权、持久凭据、配置提交、active；同 endpoint 重配复用 ID；command → 静态先验证选中静态凭据与归属，再 retiring/revoke/清凭据/提交配置；更换 command endpoint 要求先移除。原 endpoint 撤销拒绝重定向。
 
 ```ts
-export type SessionGroup = { providerId: string; active: number; archived: number };
-export type MigrationPreview = {
-  groups: readonly SessionGroup[];
-  targets: readonly MigrationTarget[];
-  blocked: readonly { id: string; reason: string }[];
-};
-export type MigrationTarget = {
-  id: string; sourceProviderId: string; archived: boolean;
-  storage: 'legacy' | 'native'; revision: string;
-};
-export type MigrationResult = {
-  status: 'completed' | 'partial' | 'blocked';
-  migrated: number; skipped: number; conflicts: number;
-  operationId?: string; recoveryPath?: string;
-};
-export function inspectCodexSessions(location: CodexLocation): Promise<MigrationPreview>;
-export function migrateCodexSessions(input: {
-  location: CodexLocation; targets: readonly MigrationTarget[]; targetProviderId: string;
-}): Promise<MigrationResult>;
-export function restoreCodexMigration(location: CodexLocation, operationId: string): Promise<MigrationResult>;
-```
-
-`MigrationTarget` 不接受调用者提供任意路径，实际路径从经过验证的索引按 ID 重新解析。`revision` 仅是操作内一致性 token，不暴露对话正文。原生分支仅在任务 1 通过时选择；离线 schema 精确执行以下算法，不默认支持未验证的 paginated 格式。
-
-- [ ] **Step 1：添加元数据定向修改与正文保持测试。**
-
-私有 `rewriteLegacyProvider(bytes, id, source, target)` 返回新 bytes，并在 ID/来源不匹配、多个相互冲突 session_meta、未知结构时拒绝。测试与 sessions 模块放在 `sessions.test.ts`，不另建 `legacy-rollout.test.ts` 破坏同名目录规则。
-
-```ts
-import { expect, test } from 'bun:test';
-import { rewriteLegacyProvider } from './legacy-rollout';
-
-test('changes only session Provider metadata, never matching conversation text', () => {
-  const id = '11111111-1111-4111-8111-111111111111';
-  const header = JSON.stringify({ type: 'session_meta', payload: { id, model_provider: 'old' } });
-  const tail = '\n' + JSON.stringify({ type: 'response_item', payload: { text: 'old', model: 'keep' } }) + '\n';
-  const result = new TextDecoder().decode(rewriteLegacyProvider(
-    new TextEncoder().encode(header + tail), id, 'old', 'aio-proxy'));
-  expect(JSON.parse(result.split('\n')[0]!).payload.model_provider).toBe('aio-proxy');
-  expect(result.slice(result.indexOf('\n'))).toBe(tail);
-});
-```
-
-测试还需以任务 1 的完整真实 schema 夹具覆盖：两个来源、已经迁移的目标、归档、父子会话、没有索引、索引与日志不一致、非标准历史文件名、未知格式、目录越界和符号链接。不假定元数据永远是第一行；根据确认的格式定位唯一权威 session_meta，严格保留其余 bytes。
-
-- [ ] **Step 2：运行失败测试。**
-
-```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/sessions
-```
-
-- [ ] **Step 3：实现只读预览。**
-
-使用 `new Database(path, { readonly:true, strict:true })` 读取任务 1 确定的活跃索引，不创建缺失数据库，不在预览阶段做回填或 Codex 初始化。只选所需元数据列，避免载入全部正文。SQLite 不存在但该版本确认支持纯 legacy 时扫描 `sessions` 与 `archived_sessions`；否则返回明确 blocked。
-
-Provider 来源聚合包含归档；当前目标 ID 下的会话可计数但不加入待迁移集合。排除其他远程环境的存储，不对任意文件名通配“猜库”。schema 和 metadata 不一致时以 blocked 返回并展示数量，不悄悄跳过后报告全部成功。
-
-- [ ] **Step 4：实现离线事务与中断恢复。**
-
-离线前置条件：用户已在向导中获知需退出 Codex；探测存在相关进程/打开文件即拒绝，探测不可用返回 `offline_check_unavailable`。macOS/Linux 使用只读进程/文件占用探测，不能 kill 用户进程。两个 aio-proxy 迁移由私有操作锁协调；不声称该锁会阻止 Codex。
-
-操作目录 `<managedRoot>/migrations/<UUID>/`，日志记录 config/home 身份、目标 ID、每条会话的原 Provider、原/新日志指纹、索引旧值和进度。UUID 由工具生成，恢复入口只接受 UUID，不能用它拼出目录穿越路径。
-
-全量预检成功后，先持久化日志和必要的受影响文件备份，再开始变更。SQLite 使用 `BEGIN IMMEDIATE`，在同一连接上执行带来源条件的更新：
-
-```ts
-const update = db.query(
-  'UPDATE threads SET model_provider = ? WHERE id = ? AND model_provider = ?',
+const prepared = await prepareCodexCommandInstallation(
+  {
+    location: context.location,
+    providerId: selection.providerId,
+    endpoint: context.endpoint,
+    adapterVersion: context.adapterVersion,
+  },
+  lease,
 );
-db.exec('BEGIN IMMEDIATE');
-try {
-  for (const target of targets) {
-    const result = update.run(targetProviderId, target.id, target.sourceProviderId);
-    if (result.changes !== 1) throw new Error('session_changed');
-  }
-  // Write precomputed, backed-up JSONL replacements while transaction remains open.
-  // Recheck each original identity/revision immediately before atomic rename.
-  db.exec('COMMIT');
-} catch (error) {
-  db.exec('ROLLBACK');
-  throw error;
-}
+await authorizeCodexInstallation(
+  {
+    location: context.location,
+    installation: prepared,
+    signal: context.signal,
+    onDevice: context.onDevice,
+  },
+  lease,
+);
+await configureCodexConfig(
+  {
+    location: context.location,
+    providerId: selection.providerId,
+    baseUrl: codexBaseUrl(context.endpoint),
+    auth: { mode: 'command', installationId: prepared.marker.installationId, command: selection.auth.command },
+  },
+  lease,
+);
+await activateCodexCommandInstallation(context.location, prepared.marker.installationId, lease);
 ```
 
-实际异步文件 IO 用显式 BEGIN/COMMIT，不把 async callback 传入 `db.transaction()`。只更新 `model_provider`，不更新 timestamp/model/title。文件层复用本模块私有的写临时文件/fsync/rename流程，先从备份构建新内容，不能边读边覆盖原 JSONL。
+此片段放在已 narrowing 为 `selection.auth.mode === 'command'` 的分支中，并在每一步前后推进 journal；配置提交后才激活身份。授权前拒绝/取消不改原配置，授权后失败保留 pending 信息。command → 静态在已撤销阶段失败不能“恢复原登录”，恢复时继续静态提交。
 
-捕获失败后恢复已经改写且仍匹配 applied 指纹的文件；进程崩溃后 SQLite 会回滚未提交事务，下次依据磁盘/索引实值协调恢复。COMMIT 已完成但日志未标记时不能再写一遍。恢复只定向撤回 Provider 元数据并保留新增正文，不能用整份旧 DB 或 JSONL 覆盖迁移后历史。遇到第三种 Provider 或冲突内容时保留并报告 conflicts。
+- [ ] **Step 4：实现只读 list/check 和 remove。** 静态离线 remove 逐字段恢复；command 先 retiring，撤销成功/expired/missing 才清凭据与还原 TOML；离线不得声称 removed。保留未知文件与 migrations。`--check` 用存储的 endpoint、只读 admin 快照和缓存 AT 检查，不触发 refresh/device。补全 `--authorizations` 的 Codex configured/orphaned 匹配；单独 revoke 不改配置。
 
-- [ ] **Step 5：添加故障注入与可恢复性测试。**
+测试包括：服务离线、旧 endpoint、partial remove 用户漂移、remove 后旧 helper ID 被拒绝、重新 configure 新 ID、Key/AT/RT 未出现在 JSON、list 不升级 V1 marker、不发 OAuth token 请求。
 
-通过私有测试 deps 在“日志已写”“第一个 JSONL 替换后”“SQLite COMMIT 前”“COMMIT 后进度未更新”四个位置注入异常/模拟重启。每个场景重新打开数据库验证：成功则文件与索引均为目标；失败则均恢复来源，或存在明确待恢复日志，不能返回 completed。向恢复后的会话追加新正文，再运行 restore，断言正文保留。
-
-断言重复 migrate 不产生新会话，未选 Provider/归档状态/标题/模型/父子关系不变。对未知 paginated 格式断言一字节不写。调用任务 1 的真实宿主测试验证列表与重新恢复结果，不能只依赖自建 SQLite 表通过。
-
-- [ ] **Step 6：交付恢复入口与提交。**
-
-内部 restore 通过 configure 检测 pending 日志后的“恢复上次未完成的迁移”提示调用；正常向导仍只有用户确认的三阶段。为完成后的迁移提供显式恢复入口 `aiop agent configure codex --restore-migration <operation-id>`：只恢复该日志涉及的历史归属，不改全局 Provider、Key 或模型，不重新运行配置向导。这样用户可以撤销迁移，而无需重新接管旧的非受管 Provider 配置。不要在 remove 中隐式恢复或给缺少依据的历史做整体反向覆盖。
+- [ ] **Step 5：跑绿并提交生命周期。**
 
 ```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/sessions
-rtk git add packages/cli/src/agent/codex/sessions packages/cli/src/agent/codex/contracts.ts
-rtk git commit -m 'feat(cli): migrate Codex session provider ownership safely' -m 'Co-authored-by: Codex <noreply@openai.com>'
+rtk proxy bun test packages/cli/src/agent/codex/credentials packages/cli/src/agent/codex/setup packages/cli/src/agent/codex/lifecycle packages/cli/src/agent/codex/managed-config packages/cli/src/agent/agent.test.ts
+rtk proxy bun run check
 ```
 
-## Task 6：接入交互向导、命令分流与结果展示
+Commit subject: `feat(cli): support recoverable Codex authentication switching`，附规定 co-author footer。
 
-**Files:** Create `wizard/`、`codex.ts`、`codex.test.ts`、`index.ts`、`output.ts`；Modify `agent.ts`、现有 `output.ts` 与相关测试、`contracts.ts`、五个 locale 文件。
+## Task 6：接入向导、纯 stdout helper 与五种语言
+
+**Files:** Move `C/wizard/index.ts` → `C/wizard/wizard.ts`、`C/wizard/index.test.ts` → `C/wizard/wizard.test.ts`，Create export-only `C/wizard/index.ts`；Modify `C/codex.ts`、`C/codex.test.ts`、`C/index.ts`、`packages/cli/src/{main.ts,main.test.ts,main.rendering.test.ts}`；Move `packages/cli/src/agent/output.ts` → `packages/cli/src/agent/output/output.ts`、`output.test.ts` → `output/output.test.ts`，Create export-only `output/index.ts`、私有 `output/codex-output.ts`；Modify `packages/cli/src/update-notify/{update-notify.ts,update-notify.test.ts}`、`packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json`。
 
 **Interfaces:**
 
 ```ts
-export type CodexConfigureResult = {
-  target: 'codex'; integration: 'static-config';
-  status: 'configured' | 'unchanged' | 'cancelled';
-  providerId?: string; configPath: string;
-  connection: 'ok' | 'offline' | 'not_checked';
-  credential: 'none' | 'placeholder' | 'existing' | 'created';
-  migration: MigrationResult | { status: 'declined' | 'empty' | 'not_requested' };
-  migrationAction?: 'restore';
-};
-export type CodexListResult = {
-  target: 'codex'; integration: 'static-config'; configPath: string;
-  providerId?: string; activeProviderId: string; baseUrl?: string;
-  status: ConfigInspection['status'];
-  connection: 'ok' | 'offline' | 'unauthorized' | 'invalid_response' | 'not_checked';
-  changedPaths: readonly (readonly string[])[];
-};
-export type CodexRemoveResult = ConfigRemoval & {
-  target: 'codex'; integration: 'static-config'; configPath: string; keysRetained: true;
-};
 export type CodexPrompts = {
-  providerId: (defaultId: string, occupied: readonly string[]) => Promise<string>;
-  key: (choices: readonly KeyChoice[]) => Promise<KeySelection>;
-  sources: (groups: readonly SessionGroup[], previous: string) => Promise<readonly string[]>;
-  migrate: (input: { sources: readonly string[]; target: string; active: number; archived: number }) => Promise<boolean>;
+  readonly providerId: (defaultId: string, occupied: readonly string[]) => Promise<string>;
+  readonly authMode: (defaultMode: CodexAuthMode) => Promise<CodexAuthMode>;
+  readonly key: (choices: readonly KeyChoice[]) => Promise<KeySelection>;
+  readonly sources: (groups: readonly SessionGroup[], previous: string) => Promise<readonly string[]>;
+  readonly migrate: (input: {
+    readonly sources: readonly string[];
+    readonly target: string;
+    readonly active: number;
+    readonly archived: number;
+  }) => Promise<boolean>;
 };
-export type WizardDeps = {
-  location: CodexLocation; endpoint: string; isTTY: boolean;
-  prompts: CodexPrompts;
-  inspectConfig: () => Promise<ConfigInspection>;
-  occupiedIds: () => Promise<readonly string[]>;
-  inspectKeys: () => Promise<KeySnapshot>;
-  inspectSessions: () => Promise<MigrationPreview>;
-  saveConfig: (providerId: string, token: string) => Promise<ConfigCommit>;
-  migrateSessions: (targets: readonly MigrationTarget[], providerId: string) => Promise<MigrationResult>;
-};
-export function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureResult>;
+// WizardDeps 保留 location/endpoint/isTTY/prompts/inspectConfig/occupiedIds/inspectSessions/migrateSessions。
+// inspectKeys: () => Promise<KeySnapshot> 保留。
+// 删除 saveConfig(providerId, token)，新增：
+// resolveCommand: () => Promise<string>
+// commitSetup: (selection: CodexSetupSelection) => Promise<CodexSetupCommit>
 ```
 
-生产入口 `configureCodexAgent(options?: { restoreMigration?: string }): Promise<CodexConfigureResult>`、`listCodexAgent(check: boolean): Promise<CodexListResult>`、`removeCodexAgent(): Promise<CodexRemoveResult>`。三个函数由 `codex/index.ts` 导出，私有的 journals、token、SQL 类型不导出到 agent 层。恢复模式返回 `status:'unchanged'`（全局配置未改变）、`credential:'none'`、`connection:'not_checked'`、`migrationAction:'restore'` 和实际迁移恢复结果。
+`CodexConfigureResult` 保留 `integration: 'static-config'` 和迁移字段；增加可选 `authMode`、`installationId`，credential 改为 `none | placeholder | existing | agent`，取消结果无 installation。restore 入口原样绕过 auth/wizard，不新增任何鉴权选项。
 
-- [ ] **Step 1：编写无 Key、拒绝迁移的完整向导测试。**
+- [ ] **Step 1：写向导与真实 CLI 输出测试并跑红。** 两种 mode × 有/无 Key；command 不调用 inspectKeys/key，保留分支没 Key 不询问、有一个也选择；从 V1 默认保留，从 V2 默认上次模式；在每个 prompt 取消都不调用 commitSetup/device。提示顺序必须为 Provider ID → mode → 必要 Key → migration → commit。只测行为与秘密未泄露，不快照所有文案。
 
 ```ts
-import { expect, test } from 'bun:test';
-import { runCodexWizard } from './wizard';
-
-test('skips Key prompt and leaves history when migration is declined', async () => {
-  const events: string[] = [];
-  const result = await runCodexWizard({
-    location: { home: '/tmp/codex-test', configPath: '/tmp/codex-test/config.toml',
-      managedRoot: '/tmp/codex-test/.aio-proxy', markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json' },
-    endpoint: 'http://127.0.0.1:9317', isTTY: true,
+function commandWizardDeps(base: WizardDeps, calls: string[]): WizardDeps {
+  return {
+    ...base,
     prompts: {
-      providerId: async (value) => { expect(value).toBe('aio-proxy'); return 'custom'; },
-      key: async () => { throw new Error('unexpected Key prompt'); },
-      sources: async () => ['openai'],
-      migrate: async () => { events.push('migration-question'); return false; },
+      ...base.prompts,
+      authMode: async () => {
+        calls.push('mode');
+        return 'command';
+      },
     },
-    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'openai', changedPaths: [] }),
-    occupiedIds: async () => [],
-    inspectKeys: async () => ({ choices: [], resolve: async () => {
-      events.push('resolve-key'); return { token: 'aio-proxy-local', kind: 'placeholder', verified: true };
-    } }),
-    inspectSessions: async () => ({
-      groups: [{ providerId: 'openai', active: 1, archived: 0 }], blocked: [],
-      targets: [{ id: 'test-id', sourceProviderId: 'openai', archived: false, storage: 'legacy', revision: 'r1' }],
+    inspectKeys: async () => {
+      throw new Error('command must not inspect proxy keys');
+    },
+    resolveCommand: async () => '/tmp/AIO Proxy/bin/aiop',
+    commitSetup: async (selection) => {
+      calls.push('commit');
+      expect(selection.auth.mode).toBe('command');
+      return {
+        status: 'configured',
+        providerId: selection.providerId,
+        authMode: 'command',
+        credential: 'agent',
+        connection: 'ok',
+        installationId: '11111111-1111-4111-8111-111111111111',
+      };
+    },
+  };
+}
+```
+
+在既有临时目录 fixture 上运行 `runCodexWizard(commandWizardDeps(base, calls))`，检查最终结果及调用顺序。再以实际 CLI 入口运行 helper：stdout 恰好 `AT + "\n"`、stderr 不含 secrets、无交互；超时/旧 ID/无凭据退出非零，不出现 banner 或成功 result JSON。
+
+Run: `rtk proxy bun test packages/cli/src/agent/codex/wizard packages/cli/src/agent/codex/codex.test.ts packages/cli/src/main.test.ts packages/cli/src/main.rendering.test.ts packages/cli/src/agent/output`
+
+- [ ] **Step 2：接入两种模式和文案。** 使用以下中文主文案，并同步 en/zh-Hant/ja/ko 的含义：
+
+```json
+{
+  "cli.agent.codex.auth_mode": "是否保留 ChatGPT 登录相关功能？",
+  "cli.agent.codex.auth_keep": "保留",
+  "cli.agent.codex.auth_command": "不保留",
+  "cli.agent.codex.auth_keep_explanation": "保留后，Codex 可继续使用已有 ChatGPT 登录提供的相关功能。模型请求仍通过 AIO Proxy；此选项不会自动登录 ChatGPT。",
+  "cli.agent.codex.auth_command_explanation": "将使用 AIO Proxy 命令鉴权，无需选择 API Key。部分依赖 ChatGPT 登录的官方功能可能不可用；已有登录凭据不会被删除。"
+}
+```
+
+默认标记由当前选择决定，不在“保留”文案中永久硬编码“默认”。删除仅服务新建 Key 的 i18n 项和错误转换；新增设备批准/到期/重新配置、未完成操作和撤销未完成提示，所有原因使用受控错误码映射，不输出 OAuth 原响应或 TOML。
+
+```ts
+const mode = await deps.prompts.authMode(inspection.authMode ?? 'keep-chatgpt');
+const auth: CodexSetupSelection['auth'] =
+  mode === 'command'
+    ? { mode, command: await deps.resolveCommand() }
+    : await (async () => {
+        const keys = await deps.inspectKeys();
+        const selection =
+          keys.choices.length === 0 ? ({ kind: 'none' } as const) : await deps.prompts.key(keys.choices);
+        return { mode, keys, selection };
+      })();
+// 随后沿用 migrationSelection 收集选择，全部完成后：
+const commit = await deps.commitSetup({ providerId, auth });
+```
+
+配置提交成功后沿用现有 migrateSessions，失败单独返回 migration blocked；`--restore-migration` 不读取静态 Key、不定位 helper、不访问 OAuth。不要将 command 失败隐式降级为静态。
+
+- [ ] **Step 3：注册 helper 并保证启动预算与输出协议。** 在 `agent auth codex` 分支要求 UUID 参数；两种程序别名一致。此分支跳过 update banner 和普通 agent result renderer；从入口捕获启动时间，余下预算全部传给 `writeCodexAuthToken`。更新通知不得因超时拖延该路径。
+
+```ts
+const remainingMs = Math.max(0, 4500 - (Date.now() - startedAt));
+if (remainingMs === 0) throw new Error('CODEX_AUTH_TIMEOUT');
+await writeCodexAuthToken({
+  location,
+  installationId,
+  signal: AbortSignal.timeout(remainingMs),
+  writeToken: (token) =>
+    new Promise<void>((resolve, reject) => {
+      process.stdout.write(`${token}\n`, (error) => (error ? reject(error) : resolve()));
     }),
-    saveConfig: async (id, token) => {
-      expect(token).toBe('aio-proxy-local'); events.push('save');
-      return { status: 'configured', providerId: id };
-    },
-    migrateSessions: async () => { throw new Error('unexpected migration'); },
-  });
-  expect(events).toEqual(['migration-question', 'resolve-key', 'save']);
-  expect(result).toMatchObject({ target: 'codex', providerId: 'custom', migration: { status: 'declined' } });
-  expect(JSON.stringify(result)).not.toContain('aio-proxy-local');
 });
 ```
 
-再覆盖 Key 选择/创建、没有历史不提问、多个来源默认原 Provider、取消于每一阶段零 save/resolve/new key、非 TTY 无写入、迁移部分成功、配置失败不迁移、Key 提交但配置失败、原有登录提示不被伪装成插件 `/login`。
+`startedAt` 在 CLI 入口记录，不能在网络步骤开始时重新计时。错误只写受控 stderr 并非零退出，尚未写 token 时 stdout 为空；stdout 回调失败仍保留新 RT。若现有主入口启动成本无法满足 5 秒，提取仅此分支需要的加载路径，而不是提高生产 timeout 掩盖问题。
 
-- [ ] **Step 2：运行失败测试。**
+- [ ] **Step 4：跑绿、生成翻译并提交。** 使用仓库既有 i18n 生成脚本，不手改生成的 Paraglide 文件；执行 CLI test:unit 让 colocated 测试通过实际包脚本发现。
 
 ```bash
-rtk proxy bun test ./packages/cli/src/agent/codex/wizard ./packages/cli/src/agent/codex/codex.test.ts
+rtk proxy bun run --filter @aio-proxy/i18n build
+rtk proxy bun run --filter @aio-proxy/cli test:unit
+rtk proxy bun run check
 ```
 
-- [ ] **Step 3：实现先收集后提交的 orchestration。**
+Commit subject: `feat(cli): offer ChatGPT preservation in Codex setup`，附规定 co-author footer。
 
-顺序精确如下：
+## Task 7：双模式端到端验收与发布说明
+
+**Files:** Modify `C/codex.test.ts`、相关 command-auth/lifecycle 集成测试、`packages/cli/scripts/verify-codex-command-auth.ts`、`docs/superpowers/specs/2026-09-09-codex-contract-verification.md`、`npm/aio-proxy/README.md`、`.changeset/codex-static-config.md`；发布二进制验证使用已有 `packages/cli/scripts/build-binary.ts` 和包脚本。
+
+**Interfaces:** 产品命令为 `agent configure codex`、`agent list [--check] [--authorizations] [--json]`、`agent remove codex`、`agent auth codex --installation-id <uuid>`、`agent revoke <installation-id>` 和原 `--restore-migration`。不新增静态 Key 创建命令或登录命令。
+
+- [ ] **Step 1：补齐实际 CLI 与服务端集成。** 在临时 AIO Proxy home/Codex home 中运行真实 device approve/refresh/revoke 和两种配置链路。用合成 provider/no-billing 服务发请求，不调用真实上游；确认 helper raw AT 被 Codex 用于 Responses，401 后重新获取 token，普通/Codex 模型目录均正确。
 
 ```text
-检查 TTY / Codex 版本 / 路径 / pending 恢复
-读取当前受管配置与 activeProviderId
-输入并校验目标 Provider ID
-读取 Key 选项；有 Key 才提问（不在此刻生成/提交）
-读取迁移元数据；选择来源（默认前一个 Provider）
-展示筛选说明、活动与归档计数；询问是否迁移
-resolve 已选择 Key（必要时创建 + reload + 验证）
-saveConfig
-若接受迁移则 migrateSessions
-返回不含凭据的分阶段结果
+保留：configure → list --check → remove
+command：configure + device approve → auth helper → list --check → revoke → helper fails
+切换：保留 → command → 保留 → remove
+恢复：device approved + config write interrupted → helper refuses → configure recovery → helper succeeds
+迁移：两种模式分别接受/拒绝迁移；unsupported 保留阻止；restore 无 auth/OAuth 请求
 ```
 
-`@inquirer/prompts` 的 input/select/checkbox/confirm 封装成 `CodexPrompts`；确认迁移默认否。只有多来源需要范围选择，单来源不额外问。校验冲突在 input 的 validate 中反馈；终端 Ctrl+C/AbortPromptError 转 cancelled，无堆栈。正常 configure 不添加第二个“确认所有操作”问题。
+继续运行已有 sessions 测试，检查会话正文/模型/归档/关系不变，不因鉴权增量把 native/paginated 标为支持。command remove 时 OAuth server 离线必须留下可重试状态，重试成功后旧 ID 永远不能读取新 installation 凭据。
 
-向导运行中代理配置可能变化，所以 `resolve`、`saveConfig`、`migrateSessions` 均再次校验快照。部分失败输出准确分阶段结果，不把 credential 的对象或 cause 直接传给渲染器。非 TTY 明确要求交互终端，本期不新增一组无人值守参数替代用户要求的向导。
-
-- [ ] **Step 4：分流现有 agent 命令而不污染插件协议。**
-
-在 `AgentCommandDeps` 增加嵌套可注入 `codex` 操作依赖，在现有测试 fixture 中显式提供 stub，避免旧测试意外访问真实 HOME。`agentConfigure` 和 `agentRemove` 在 `AgentTargetSchema.parse` 之前分流字符串 `'codex'`；所有其他目标继续由旧 schema 验证。
-
-```ts
-if (target === 'codex') return resolved.codex.configure();
-const parsed = parseTarget(target);
-```
-
-将原结果类型分别命名为 `PluginAgentConfigureResult`、`PluginAgentRemoveResult`，对外联合对应 Codex 结果。list 保持原插件 snapshot 运算的数组类型，完成原 applySnapshot/authorizationItems 后才加入 Codex 行，避免凭空给 Codex 补 device-code 字段。`--check` 独立检查 Codex 目标，即便插件 admin snapshot 不可达也保留 Codex 的真实检查结果。
-
-`output.ts` renderer 先检查 `result.target === 'codex'` 调用 Codex 输出；命令帮助改 `<opencode|pi|omp|codex>`。给 configure 注册可选 `--restore-migration <operation-id>`，动作签名改为 `configure(target, options?)`，main 原样转交选项；其他目标收到该参数明确拒绝。恢复选项必须先通过 UUID 校验，再进入离线恢复，且不调用 Key 生成/配置保存；其输出使用“历史归属已恢复”，不显示“配置已保存”。main 的依赖装配使用 `createAgentCommandDeps`，不在 main 复制向导步骤。list/remove 不强制 Codex executable 已安装；正常 configure 才需要探测版本。
-
-- [ ] **Step 5：补齐五种语言和行为测试。**
-
-新增 key 统一使用 `cli.agent.codex.*`，对应：路径/端点、Provider ID、冲突、Key 选择/生成/跳过、来源选择、Provider 筛选解释、活动与归档计数、是否迁移、迁移完成/部分失败/需离线/不支持格式、配置完成/离线未验证、移除保留字段和 Key、取消/非交互。
-
-只在受影响语言文件增加实际翻译，不修改生成的 `m.ts`。用 locale parity 测试验证占位参数一致。没有定义安装最低版本时输出“版本兼容性未验证”，不编造 supported。主命令测试断言 Codex 输出没有 installationId、loginCommand、revokeStatus、token。
-
-- [ ] **Step 6：验证并提交。**
+- [ ] **Step 2：验证发布入口和全仓检查。** 构建实际 CLI artifact，放含空格的稳定入口，通过 `aiop` 和 `aio-proxy` 执行 helper；模拟升级替换后的入口仍可运行。分别记录 cold start、并发锁等待和完整 helper 是否在 5 秒内。已有临时假 helper 的 Task 1 通过不能替代此步骤。
 
 ```bash
-rtk proxy bun run i18n:compile
-rtk proxy bun run --filter @aio-proxy/cli test:unit
-rtk proxy bun run --filter @aio-proxy/i18n test:unit
-rtk git add packages/cli/src/agent packages/cli/src/main.test.ts packages/i18n/messages
-rtk git commit -m 'feat(cli): add interactive Codex agent configuration' -m 'Co-authored-by: Codex <noreply@openai.com>'
-```
-
-## Task 7：端到端验收、文档与发布说明
-
-**Files:** Modify `README.md` 与任务 1 的兼容报告；Create 一个 changeset；必要的 CLI artifact 行为测试放在 `codex/codex.test.ts`，不向 legacy `__tests__/` 增添文件。
-
-**Interfaces:** 产品命令保持 `aiop agent configure codex`、`agent list [--check] [--json]`、`agent remove codex`。不新增 `agent revoke codex`。
-
-- [ ] **Step 1：补充 README 与恢复说明。**
-
-在 Agent integrations 中区分 plugin 与 static-config 两类。实际可复制示例：
-
-```bash
-aiop agent configure codex
-aiop agent list --check
-aiop agent remove codex
-```
-
-说明默认/自定义 ID、不改模型、有 Key 选择或创建、无 Key 跳过、全局目录、保留原生登录、重开生效；迁移文案说明筛选而非删除或安全隔离。记录实际已验证 Codex 版本/格式。解释移除不会撤销 Key 或反向迁移，并说明 pending 操作恢复入口与备份目录。不承诺未经验证的 Codex 官方功能。
-
-- [ ] **Step 2：隔离验收完整旅程。**
-
-使用任务 1 的测试进程与 fake upstream、临时 HOME/CODEX_HOME/AIO_PROXY_HOME。场景至少为无 Key/选已有 Key/生成 Key × 接受/拒绝迁移；检查 `list --check` 的凭据状态，配置移除后恢复原 Provider，而顶层 model 和用户后改字段不变。重启 Codex 后验证 migrated IDs 可见且下一轮请求到本地 fake endpoint。
-
-用真实 CLI 参数分发和 mock prompts 验证交互顺序，再运行一次 TTY 手工 smoke。所有 smoke 限测试目录，不调用当前用户真实登录/历史。重复执行与中断恢复都需要一次跨进程验证，不能只 mock journals。
-
-- [ ] **Step 3：验证编译产物可加载新 parser。**
-
-先运行现有 CLI binary artifact tests；若它们没有覆盖新增静态 import，增加一个调用 `readCodexDocument` 的临时 `bun build --compile` smoke，运行后删除二进制，产物不提交。新依赖必须打包进独立 binary，不依赖用户机器上 node_modules。
-
-- [ ] **Step 4：编写 changeset 并清理旧说明。**
-
-```bash
-rtk proxy rg -n 'Codex|codex|static.config' .changeset
-rtk proxy bun changeset
-```
-
-通过 Changesets 交互选择 `aio-proxy` 与 `@aio-proxy/cli` 的 minor（新增用户功能）；若实际改动新增其他内部包，同时选择对应包同级 bump。仅一段用户说明，最多 5 行，不使用 Conventional Commit 前缀。建议正文：
-
-> Add an interactive Codex setup wizard with a customizable Provider ID, proxy API key selection or creation, and optional history migration. Codex settings are merged without changing the selected model, and removing the integration preserves unrelated settings.
-
-如任务 1 导致迁移未交付，不能保留上述宣称迁移的发布说明，也不能关闭本 issue。不要执行 changeset version/publish。
-
-- [ ] **Step 5：完成仓库检查。**
-
-```bash
+rtk proxy bun run --filter @aio-proxy/cli build:binary
+rtk proxy bun packages/cli/scripts/verify-codex-command-auth.ts /opt/homebrew/bin/codex
 rtk proxy bun run preflight
-rtk git diff --check
-rtk git status --short
 ```
 
-记录真实通过/失败结果。若环境导致无法跑完整 preflight，至少 `bun run check`、CLI unit tests 和受影响的 i18n tests，明确报告缺少的 artifact 检查；不凭局部通过称全部通过。
+若 preflight 仍受基线失败影响，记录当前失败和差异，并至少执行 `bun run check` 与受影响 types/core/server/runtime/cli 的全部 unit tests。不能漏掉新测试，也不把失败标为通过。实际官方 Computer Use/插件没有测过则明确保持未验证，不因用户选择 true 宣称全部兼容。
 
-- [ ] **Step 6：提交发布文档并交接审阅。**
+- [ ] **Step 3：更新用户文档与复写现有 changeset。** README 解释两种模式、默认值、无 Key 占位、command 首次批准/静默刷新、退出登录含义、离线差异、迁移范围与移除/撤销。用户界面和 Provider `name` 使用 `AIO Proxy`；命令和 ID 不改。
 
-```bash
-rtk git add README.md .changeset docs/superpowers/specs/2026-09-09-codex-contract-verification.md
-rtk git commit -m 'docs(cli): document Codex setup and migration' -m 'Co-authored-by: Codex <noreply@openai.com>'
+现有 changeset 是本功能未发布说明，直接复写，不能再追加一段或为同一修订新建第二条。按最终变更包更新 frontmatter，产品与内部包同为 minor，例如：
+
+```markdown
+---
+'aio-proxy': minor
+'@aio-proxy/cli': minor
+'@aio-proxy/types': minor
+'@aio-proxy/core': minor
+'@aio-proxy/server': minor
+---
+
+Add interactive Codex setup with a customizable Provider ID and a choice to retain ChatGPT login features using an existing proxy API Key, or use command authentication with AIO Proxy device authorization. Setup preserves model settings and supports optional legacy history migration; removal respects user edits and revokes command credentials.
 ```
 
-提交前只 stage 本任务文件。最终总结写出真实支持的 Codex 版本、迁移数量/恢复验证、Key 选择行为、检查结果与限制。创建 PR 时标题使用 `feat(cli): add interactive Codex agent configuration`，issue 关联 #327，明确设计已按用户确认不写顶层 model。
+如果修改 runtime 包的源码，在同一条 frontmatter 增加 `@aio-proxy/agent-provider-runtime: minor`。本任务更新既有 changeset，不运行 `changeset version/publish`。扫描 `.changeset/` 中本功能旧的创建 Key 声明，确保不会发布已经删除的行为。
 
-## 计划自检
+- [ ] **Step 4：完成最终审查和提交。** 核查源代码、spec、plan、README、release note 对模式/默认值/不创建 Key/原始 stdout/迁移范围一致；确认没有真实 token、调试全配置输出或用户目录测试。提交 subject：`docs(cli): document Codex authentication choices`，附规定 co-author footer。向用户报告实际测试和兼容限制，不自动推送、发布或合并。
 
-- [x] Spec 覆盖：交互与取消→任务 6；Provider/模型/认证→任务 1–3；Key 选择/创建/保留→任务 4；归属/list/remove→任务 3、6；会话迁移/恢复→任务 1、5；兼容、文案、changeset、preflight→任务 7。
-- [x] 术语与接口：`providerId` 只用于 Codex 配置 ID；`targetProviderId` 用于会话迁移；`MigrationTarget.sourceProviderId` 对应预览来源；结果不含 token。
-- [x] 私有边界：AST、SQL、journal 只能被各自目录内实现引用；codex 对外仅三个入口与结果类型。
-- [x] 真实验证：任务 1 报告完成前不能声称存储 schema 或最低版本受支持；单元测试通过不能替代真实 Codex 重启验证。
-- [x] 安全恢复：不覆盖用户后改字段/新增历史，不静默开启认证，不自动撤销共享 Key，不把登录 token 发给代理。
+## 计划自检与验收映射
 
-## 调研引用
+| Spec 要求                                               | 任务       |
+| ------------------------------------------------------- | ---------- |
+| 原生 command 与 true 不可混用、raw stdout、account 差异 | 1、6、7    |
+| AIO Proxy 显示名，ID/命令不改，顶层 model 保留          | 3、6、7    |
+| 只选已有 Key，无 Key 跳过，无创建/reload                | 5、6       |
+| Agent target/client/persistence、原生模型目录、插件边界 | 2          |
+| TOML 数组/整数、V1 兼容、归属漂移和切换字段清理         | 3、5       |
+| 稳定 executable、超时、跨进程刷新、secret 输出边界      | 4、6、7    |
+| 初次批准、取消、pending 恢复、撤销与离线 remove         | 4、5、6、7 |
+| 两种模式共用历史迁移、独立 restore、范围不扩大          | 6、7       |
+| 只读 list/check、真实 authorizations、revoke 契约       | 2、5、6    |
+| 五种语言、README、复写未发布 changeset                  | 6、7       |
 
-- [Bun TOML](https://bun.com/docs/runtime/toml.md)：解析、序列化以及源码信息缺失的边界。
-- [Bun SQLite](https://bun.com/docs/runtime/sqlite.md)：只读打开、事务和显式 SQL。
-- [toml-eslint-parser](https://github.com/ota-meshi/toml-eslint-parser)：`parseTOML`、`TOMLTable.resolvedKey`、`range`、内联表 AST；本计划选择已发布 1.0.3。
-- Codex 官方契约和源码 revision 见 Spec 的调研依据；版本声明以任务 1 的真实实验为准。
+执行者使用本计划中的公开接口，不跨模块导入 private helpers。主 Agent 在每个任务审查阶段检查类型/模式值、任务依赖和所有创建 Key 旧说明；任务完成前不得把复选框标为完成。最终实施仍须经过全分支审查与验证。
