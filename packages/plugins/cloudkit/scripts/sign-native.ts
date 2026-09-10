@@ -72,7 +72,7 @@ function entitlementsXml(input: {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>application-identifier</key><string>${escapeXml(input.applicationIdentifier)}</string>
+<key>com.apple.application-identifier</key><string>${escapeXml(input.applicationIdentifier)}</string>
 <key>com.apple.developer.team-identifier</key><string>${escapeXml(input.teamId)}</string>
 <key>com.apple.developer.icloud-container-identifiers</key><array><string>${escapeXml(input.containerId)}</string></array>
 <key>com.apple.developer.icloud-container-environment</key><string>${escapeXml(input.environment)}</string>

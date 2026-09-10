@@ -52,6 +52,33 @@ describe('CloudKit artifact gates', () => {
     expect(CLOUDKIT_SIGNING_STEPS.indexOf('staple')).toBeLessThan(CLOUDKIT_SIGNING_STEPS.indexOf('archive-final'));
   });
 
+  test('accepts macOS Developer ID profile entitlement names and wildcard CloudKit services', () => {
+    const macProfile = {
+      ...profile,
+      Entitlements: {
+        'com.apple.application-identifier': 'TEAM123.dev.aioproxy',
+        'com.apple.developer.team-identifier': 'TEAM123',
+        'com.apple.developer.icloud-container-identifiers': ['iCloud.dev.aioproxy'],
+        'com.apple.developer.icloud-services': '*',
+        'com.apple.developer.icloud-container-environment': 'Production',
+      },
+    };
+
+    expect(
+      validateProfileMetadata(macProfile, {
+        teamId: 'TEAM123',
+        containerId: 'iCloud.dev.aioproxy',
+        bundleId: 'dev.aioproxy',
+      }),
+    ).toEqual({ environment: 'Production' });
+    validateEffectiveEntitlements(macProfile.Entitlements, {
+      teamId: 'TEAM123',
+      containerId: 'iCloud.dev.aioproxy',
+      bundleId: 'dev.aioproxy',
+      environment: 'Production',
+    });
+  });
+
   test('requires universal output and final artifact digests', () => {
     expect(() =>
       validateManifest({

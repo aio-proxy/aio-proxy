@@ -58,6 +58,22 @@ const asString = (value: unknown): string | undefined => (typeof value === 'stri
 const asStrings = (value: unknown): readonly string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
+function hasExpectedApplicationIdentifier(entitlements: Record<string, unknown>, expected: string): boolean {
+  const identifiers = [
+    asString(entitlements['application-identifier']),
+    asString(entitlements['com.apple.application-identifier']),
+  ].filter((value): value is string => value !== undefined);
+  return identifiers.length > 0 && identifiers.every((value) => value === expected);
+}
+
+function hasCloudKitService(value: unknown): boolean {
+  return (
+    value === '*' ||
+    value === 'CloudKit' ||
+    asStrings(value).some((service) => service === '*' || service === 'CloudKit')
+  );
+}
+
 export function validateProfileMetadata(
   profile: ProfileMetadata,
   input: SigningProfileInput,
@@ -65,15 +81,17 @@ export function validateProfileMetadata(
   const entitlements = asRecord(profile.Entitlements);
   const team = asString(profile.TeamIdentifier) ?? asStrings(profile.TeamIdentifier)[0];
   const entitlementTeam = asString(entitlements['com.apple.developer.team-identifier']);
-  const applicationIdentifier = asString(entitlements['application-identifier']);
   if (team !== undefined && team !== input.teamId) throw new Error('Signing profile team does not match APPLE_TEAM_ID');
-  if (entitlementTeam !== input.teamId || applicationIdentifier !== `${input.teamId}.${input.bundleId}`) {
+  if (
+    entitlementTeam !== input.teamId ||
+    !hasExpectedApplicationIdentifier(entitlements, `${input.teamId}.${input.bundleId}`)
+  ) {
     throw new Error('Signing profile application identity does not match the native bundle');
   }
   if (!asStrings(entitlements['com.apple.developer.icloud-container-identifiers']).includes(input.containerId)) {
     throw new Error('Signing profile does not permit APPLE_CLOUDKIT_CONTAINER_ID');
   }
-  if (!asStrings(entitlements['com.apple.developer.icloud-services']).includes('CloudKit')) {
+  if (!hasCloudKitService(entitlements['com.apple.developer.icloud-services'])) {
     throw new Error('Signing profile does not permit CloudKit');
   }
   const environment = asString(entitlements['com.apple.developer.icloud-container-environment']);
@@ -98,7 +116,7 @@ export function validateEffectiveEntitlements(
   entitlements: Record<string, unknown>,
   input: SigningProfileInput & { readonly environment: string },
 ): void {
-  if (entitlements['application-identifier'] !== `${input.teamId}.${input.bundleId}`) {
+  if (!hasExpectedApplicationIdentifier(entitlements, `${input.teamId}.${input.bundleId}`)) {
     throw new Error('Effective entitlements have the wrong application identifier');
   }
   if (entitlements['com.apple.developer.team-identifier'] !== input.teamId) {
@@ -110,7 +128,7 @@ export function validateEffectiveEntitlements(
   if (entitlements['com.apple.developer.icloud-container-environment'] !== input.environment) {
     throw new Error('Effective entitlements have the wrong iCloud environment');
   }
-  if (!asStrings(entitlements['com.apple.developer.icloud-services']).includes('CloudKit')) {
+  if (!hasCloudKitService(entitlements['com.apple.developer.icloud-services'])) {
     throw new Error('Effective entitlements do not include CloudKit');
   }
 }
