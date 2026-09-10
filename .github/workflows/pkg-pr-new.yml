@@ -1,0 +1,33 @@
+name: Package preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - run: bun install --frozen-lockfile --prefer-offline
+      - run: bun run build
+
+      - name: Publish preview packages
+        run: >
+          bun run pkg-pr-new publish
+          --bun
+          --peerDeps
+          --previewVersion
+          --commentWithSha
+          --no-compact
+          --no-template
+          ./packages/plugin-sdk
+          ./packages/plugins/cloudkit
