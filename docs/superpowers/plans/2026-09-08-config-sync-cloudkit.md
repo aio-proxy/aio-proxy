@@ -75,7 +75,7 @@ Each tested TypeScript directory has index.ts, a named implementation and coloca
 - Native invocation: AIOProxyCloudKit --probe; reads one JSON line { containerId: string, expectedBundleId: "dev.aioproxy" } from stdin.
 - Output: { ok: true, account: "available", identityId: string, bundleId: string } or { ok: false, error: { code: SyncFailureCode } }.
 - build-native.ts produces a universal arm64/x86_64 AIOProxyCloudKit.app under dist/native.
-- sign-native.ts consumes CLOUDKIT_TEAM_ID, CLOUDKIT_SIGN_IDENTITY, CLOUDKIT_PROFILE_PATH, CLOUDKIT_CONTAINER_ID and CLOUDKIT_NOTARY_PROFILE from the executing environment. Signing identity/profile/container must agree; these are actual supplied inputs, not example credentials.
+- sign-native.ts consumes APPLE_TEAM_ID, APPLE_SIGN_IDENTITY, APPLE_PROFILE_PATH, APPLE_CLOUDKIT_CONTAINER_ID and APPLE_NOTARY_PROFILE from the executing environment. Signing identity/profile/container must agree; these are actual supplied inputs, not example credentials.
 
 - [ ] **Step 1: Create the probe and expected-failure procedure.**
 
@@ -123,13 +123,17 @@ Validate required environment inputs without printing their values:
 
 ~~~ts
 const required = [
-  'CLOUDKIT_TEAM_ID', 'CLOUDKIT_SIGN_IDENTITY', 'CLOUDKIT_PROFILE_PATH',
-  'CLOUDKIT_CONTAINER_ID', 'CLOUDKIT_NOTARY_PROFILE',
+  'APPLE_TEAM_ID', 'APPLE_SIGN_IDENTITY', 'APPLE_PROFILE_PATH',
+  'APPLE_CLOUDKIT_CONTAINER_ID', 'APPLE_NOTARY_PROFILE',
 ] as const;
 for (const key of required) {
   if (!process.env[key]) throw new Error('Missing native signing input: ' + key);
 }
 ~~~
+
+The GitHub-hosted release runner supplies the corresponding `APPLE_*` secrets,
+imports the Developer ID certificate and profile into a temporary keychain, and
+creates `APPLE_NOTARY_PROFILE` from the App Store Connect API key before signing.
 
 Decode the supplied profile using security cms, verify its team/application identifier, allowed iCloud container and distribution environment. Generate only profile-permitted entitlements, including iCloud-services CloudKit, container IDs, team/application identifier and the matching iCloud environment. Embed the profile. Sign nested code first and the bundle last with Developer ID, hardened runtime and timestamp. Do not ad hoc re-sign after this step. Push entitlement is included only when actually implementing/validating push; polling needs no push delivery.
 

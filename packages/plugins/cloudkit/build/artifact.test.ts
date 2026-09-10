@@ -92,10 +92,10 @@ test('packs verified signing and notarization metadata into the runtime manifest
   try {
     const manifest = await withCloudKitEnvironment(
       {
-        CLOUDKIT_SIGNED_ARCHIVE: archive,
-        CLOUDKIT_SIGNED_MANIFEST: signedManifest,
-        CLOUDKIT_TEAM_ID: 'TEAM123',
-        CLOUDKIT_NATIVE_VERSION: version,
+        APPLE_CLOUDKIT_SIGNED_ARCHIVE: archive,
+        APPLE_CLOUDKIT_SIGNED_MANIFEST: signedManifest,
+        APPLE_TEAM_ID: 'TEAM123',
+        APPLE_CLOUDKIT_NATIVE_VERSION: version,
       },
       () => packNative(),
     );
@@ -137,10 +137,10 @@ test('marks unsigned development artifacts as non-production', async () => {
   try {
     const manifest = await withCloudKitEnvironment(
       {
-        CLOUDKIT_SIGNED_ARCHIVE: archive,
-        CLOUDKIT_SIGNED_MANIFEST: undefined,
-        CLOUDKIT_TEAM_ID: 'TEAM123',
-        CLOUDKIT_NATIVE_VERSION: version,
+        APPLE_CLOUDKIT_SIGNED_ARCHIVE: archive,
+        APPLE_CLOUDKIT_SIGNED_MANIFEST: undefined,
+        APPLE_TEAM_ID: 'TEAM123',
+        APPLE_CLOUDKIT_NATIVE_VERSION: version,
       },
       () => packNative(),
     );
@@ -183,10 +183,10 @@ test('rejects a signed manifest without accepted notarization', async () => {
     await expect(
       withCloudKitEnvironment(
         {
-          CLOUDKIT_SIGNED_ARCHIVE: archive,
-          CLOUDKIT_SIGNED_MANIFEST: signedManifest,
-          CLOUDKIT_TEAM_ID: 'TEAM123',
-          CLOUDKIT_NATIVE_VERSION: version,
+          APPLE_CLOUDKIT_SIGNED_ARCHIVE: archive,
+          APPLE_CLOUDKIT_SIGNED_MANIFEST: signedManifest,
+          APPLE_TEAM_ID: 'TEAM123',
+          APPLE_CLOUDKIT_NATIVE_VERSION: version,
         },
         () => packNative(),
       ),

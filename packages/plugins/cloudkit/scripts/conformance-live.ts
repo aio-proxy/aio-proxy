@@ -18,7 +18,7 @@ const requiredGates = [
   'installed-path entitlement and direct access',
 ] as const;
 const evidencePath =
-  process.env.CLOUDKIT_EVIDENCE_PATH ??
+  process.env.APPLE_CLOUDKIT_EVIDENCE_PATH ??
   join(import.meta.dir, '..', '..', '..', '..', 'docs', 'testing', 'evidence', 'cloudkit-sync.json');
 
 function errorCode(error: unknown): string {
@@ -43,7 +43,7 @@ async function writeEvidence(cases: readonly CaseResult[]): Promise<void> {
       architecture: process.arch,
     },
     artifact: { installedAppSha256: (await installedArtifactDigest()) ?? 'unavailable' },
-    containerId: process.env.CLOUDKIT_CONTAINER_ID === undefined ? 'unavailable' : '<configured>',
+    containerId: process.env.APPLE_CLOUDKIT_CONTAINER_ID === undefined ? 'unavailable' : '<configured>',
     cases,
     productionGate: cases.some((entry) => entry.status !== 'pass') ? 'blocked' : 'unverified',
     recordedAt: new Date().toISOString(),

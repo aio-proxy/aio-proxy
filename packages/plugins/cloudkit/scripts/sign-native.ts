@@ -17,11 +17,11 @@ import {
 const packageRoot = resolve(import.meta.dir, '..');
 const nativeDist = join(packageRoot, 'dist', 'native');
 const requiredInputs = [
-  'CLOUDKIT_TEAM_ID',
-  'CLOUDKIT_SIGN_IDENTITY',
-  'CLOUDKIT_PROFILE_PATH',
-  'CLOUDKIT_CONTAINER_ID',
-  'CLOUDKIT_NOTARY_PROFILE',
+  'APPLE_TEAM_ID',
+  'APPLE_SIGN_IDENTITY',
+  'APPLE_PROFILE_PATH',
+  'APPLE_CLOUDKIT_CONTAINER_ID',
+  'APPLE_NOTARY_PROFILE',
 ] as const;
 
 type PlistValue = string | readonly PlistValue[] | { readonly [key: string]: PlistValue };
@@ -99,7 +99,7 @@ async function validateDeveloperIdIdentity(identity: string, teamId: string): Pr
     .split(/\r?\n/u)
     .find((line) => line.includes(identity) && line.includes('Developer ID Application:'));
   if (match === undefined || !match.includes(`(${teamId})`)) {
-    throw new Error('CLOUDKIT_SIGN_IDENTITY is not a Developer ID Application identity for CLOUDKIT_TEAM_ID');
+    throw new Error('APPLE_SIGN_IDENTITY is not a Developer ID Application identity for APPLE_TEAM_ID');
   }
 }
 
@@ -124,7 +124,7 @@ async function validateEffectiveSigning(
   });
   const details = await run('codesign', ['--display', '--verbose=4', appPath]);
   if (!details.stderr.includes(`TeamIdentifier=${teamId}`) && !details.stdout.includes(`TeamIdentifier=${teamId}`)) {
-    throw new Error('Signed bundle team identifier does not match CLOUDKIT_TEAM_ID');
+    throw new Error('Signed bundle team identifier does not match APPLE_TEAM_ID');
   }
 }
 
@@ -133,12 +133,12 @@ async function main(): Promise<void> {
   for (const tool of ['codesign', 'plutil', 'security', 'xcrun', 'ditto', 'spctl']) {
     if (Bun.which(tool) === null) throw new Error(`Required signing tool is missing: ${tool}`);
   }
-  const teamId = requiredValue('CLOUDKIT_TEAM_ID');
-  const signingIdentity = requiredValue('CLOUDKIT_SIGN_IDENTITY');
-  const profilePath = requiredValue('CLOUDKIT_PROFILE_PATH');
-  const containerId = requiredValue('CLOUDKIT_CONTAINER_ID');
-  const notaryProfile = requiredValue('CLOUDKIT_NOTARY_PROFILE');
-  if (!containerId.startsWith('iCloud.')) throw new Error('CLOUDKIT_CONTAINER_ID must start with iCloud.');
+  const teamId = requiredValue('APPLE_TEAM_ID');
+  const signingIdentity = requiredValue('APPLE_SIGN_IDENTITY');
+  const profilePath = requiredValue('APPLE_PROFILE_PATH');
+  const containerId = requiredValue('APPLE_CLOUDKIT_CONTAINER_ID');
+  const notaryProfile = requiredValue('APPLE_NOTARY_PROFILE');
+  if (!containerId.startsWith('iCloud.')) throw new Error('APPLE_CLOUDKIT_CONTAINER_ID must start with iCloud.');
   await validateDeveloperIdIdentity(signingIdentity, teamId);
 
   const manifestPath = join(nativeDist, 'manifest.json');

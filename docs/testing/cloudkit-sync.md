@@ -17,12 +17,30 @@ Signing and notarization require these environment variable names. Their values
 must be supplied privately and are never printed or written to evidence:
 
 ```text
-CLOUDKIT_TEAM_ID
-CLOUDKIT_SIGN_IDENTITY
-CLOUDKIT_PROFILE_PATH
-CLOUDKIT_CONTAINER_ID
-CLOUDKIT_NOTARY_PROFILE
+APPLE_TEAM_ID
+APPLE_SIGN_IDENTITY
+APPLE_PROFILE_PATH
+APPLE_CLOUDKIT_CONTAINER_ID
+APPLE_NOTARY_PROFILE
 ```
+
+The GitHub release workflow also expects these repository secrets so it can
+create the named notary profile on its ephemeral macOS keychain:
+
+```text
+APPLE_CERTIFICATE_BASE64
+APPLE_CERTIFICATE_PASSWORD
+APPLE_PROFILE_BASE64
+APPLE_NOTARY_KEY_BASE64
+APPLE_NOTARY_KEY_ID
+APPLE_NOTARY_ISSUER_ID
+```
+
+`APPLE_CERTIFICATE_BASE64` must decode to a password-protected `.p12` that
+contains the Developer ID Application private key. `APPLE_PROFILE_BASE64` must
+decode to the matching Developer ID provisioning profile. The `.p8` API key is
+used only to create `APPLE_NOTARY_PROFILE` with `xcrun notarytool`; it is never
+passed as a command-line secret or written to evidence.
 
 The profile must contain the matching `dev.aioproxy` application identifier,
 the requested iCloud container, CloudKit entitlement and either Development or
@@ -66,7 +84,7 @@ claim installed service access.
 Probe the versioned installed cache path with a container identifier:
 
 ```sh
-rtk proxy env CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
+rtk proxy env APPLE_CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
   bun packages/plugins/cloudkit/scripts/probe-installed.ts
 ```
 
@@ -83,7 +101,7 @@ response contains only `available`, an opaque SHA-256 identity binding and the
 bundle identifier. It never emits an email, account payload or raw CloudKit
 record identifier.
 
-Set `CLOUDKIT_EVIDENCE_PATH` to write the same redacted JSON to a file. The
+Set `APPLE_CLOUDKIT_EVIDENCE_PATH` to write the same redacted JSON to a file. The
 evidence includes the actual `sw_vers -productVersion` host OS version and
 architecture, bundle version, team ID, bundle ID, container ID, environment,
 signature/notarization status, direct launch result, service launch status and
@@ -117,10 +135,10 @@ the CloudKit capability unavailable for release.
 ## Installed two-process conformance
 
 Run the live wrapper only with an explicit `--live` flag and a dedicated
-`CLOUDKIT_CONTAINER_ID` configured for the test account:
+`APPLE_CLOUDKIT_CONTAINER_ID` configured for the test account:
 
 ```sh
-CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
+APPLE_CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
   rtk proxy bun packages/plugins/cloudkit/scripts/conformance-live.ts --live
 ```
 
@@ -130,7 +148,7 @@ separate native processes. The conformance harness places all records beneath
 a fresh UUID prefix and removes only those test records. It never targets the
 default user configuration space. Output is limited to case status and
 documented error codes; redacted host, artifact digest, and result are written
-to `docs/testing/evidence/cloudkit-sync.json` (or `CLOUDKIT_EVIDENCE_PATH`).
+to `docs/testing/evidence/cloudkit-sync.json` (or `APPLE_CLOUDKIT_EVIDENCE_PATH`).
 A blocked result remains a release NO-GO. The evidence always enumerates the
 same-machine pair, two-Mac run, launchd service, network and identity changes,
 restart recovery, quota rejection, Production schema/index availability, and

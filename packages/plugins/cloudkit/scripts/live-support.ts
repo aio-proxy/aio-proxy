@@ -42,9 +42,11 @@ export async function installedArtifactDigest(): Promise<string | undefined> {
 
 export async function connectInstalledPair(): Promise<InstalledPair> {
   if (process.platform !== 'darwin') throw new LiveSetupError('live CloudKit conformance requires macOS');
-  const containerId = process.env.CLOUDKIT_CONTAINER_ID?.trim();
-  if (containerId === undefined || containerId === '') throw new LiveSetupError('CLOUDKIT_CONTAINER_ID is required');
-  if (!/^iCloud\.[A-Za-z0-9.-]+$/u.test(containerId)) throw new LiveSetupError('CLOUDKIT_CONTAINER_ID is invalid');
+  const containerId = process.env.APPLE_CLOUDKIT_CONTAINER_ID?.trim();
+  if (containerId === undefined || containerId === '')
+    throw new LiveSetupError('APPLE_CLOUDKIT_CONTAINER_ID is required');
+  if (!/^iCloud\.[A-Za-z0-9.-]+$/u.test(containerId))
+    throw new LiveSetupError('APPLE_CLOUDKIT_CONTAINER_ID is invalid');
 
   let packageManifest: { readonly version?: unknown };
   let nativeManifest: ArtifactManifest;

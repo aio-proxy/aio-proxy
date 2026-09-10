@@ -66,13 +66,12 @@ export function validateProfileMetadata(
   const team = asString(profile.TeamIdentifier) ?? asStrings(profile.TeamIdentifier)[0];
   const entitlementTeam = asString(entitlements['com.apple.developer.team-identifier']);
   const applicationIdentifier = asString(entitlements['application-identifier']);
-  if (team !== undefined && team !== input.teamId)
-    throw new Error('Signing profile team does not match CLOUDKIT_TEAM_ID');
+  if (team !== undefined && team !== input.teamId) throw new Error('Signing profile team does not match APPLE_TEAM_ID');
   if (entitlementTeam !== input.teamId || applicationIdentifier !== `${input.teamId}.${input.bundleId}`) {
     throw new Error('Signing profile application identity does not match the native bundle');
   }
   if (!asStrings(entitlements['com.apple.developer.icloud-container-identifiers']).includes(input.containerId)) {
-    throw new Error('Signing profile does not permit CLOUDKIT_CONTAINER_ID');
+    throw new Error('Signing profile does not permit APPLE_CLOUDKIT_CONTAINER_ID');
   }
   if (!asStrings(entitlements['com.apple.developer.icloud-services']).includes('CloudKit')) {
     throw new Error('Signing profile does not permit CloudKit');

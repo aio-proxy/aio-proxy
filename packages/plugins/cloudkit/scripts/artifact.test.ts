@@ -37,7 +37,7 @@ describe('CloudKit artifact gates', () => {
     ).toThrow('team');
     expect(() =>
       validateProfileMetadata(profile, { teamId: 'TEAM123', containerId: 'iCloud.other', bundleId: 'dev.aioproxy' }),
-    ).toThrow('CLOUDKIT_CONTAINER_ID');
+    ).toThrow('APPLE_CLOUDKIT_CONTAINER_ID');
   });
 
   test('validates effective entitlements and preserves signing order', () => {

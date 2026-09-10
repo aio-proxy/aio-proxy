@@ -308,9 +308,9 @@ async function main(): Promise<void> {
   if (process.platform !== 'darwin') throw new Error('Installed CloudKit probing requires macOS');
   const osVersion = (await run('sw_vers', ['-productVersion'])).stdout.trim();
   if (!/^\d+(?:\.\d+){1,2}$/u.test(osVersion)) throw new Error('macOS version evidence is invalid');
-  const containerId = process.env.CLOUDKIT_CONTAINER_ID;
+  const containerId = process.env.APPLE_CLOUDKIT_CONTAINER_ID;
   if (containerId === undefined || containerId.trim() === '')
-    throw new Error('Missing probe input: CLOUDKIT_CONTAINER_ID');
+    throw new Error('Missing probe input: APPLE_CLOUDKIT_CONTAINER_ID');
   const manifestPath = join(nativeDist, 'manifest.json');
   if (!(await Bun.file(manifestPath).exists()))
     throw new Error('Native build manifest is missing; run build-native.ts first');
@@ -342,7 +342,7 @@ async function main(): Promise<void> {
     null,
     2,
   );
-  const evidencePath = process.env.CLOUDKIT_EVIDENCE_PATH;
+  const evidencePath = process.env.APPLE_CLOUDKIT_EVIDENCE_PATH;
   if (evidencePath !== undefined && evidencePath.trim() !== '') {
     await Bun.write(evidencePath, `${output}\n`);
   }

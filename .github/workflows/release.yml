@@ -81,7 +81,7 @@ jobs:
           )"
           echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "CLOUDKIT_RELEASE_REQUIRED=$should_prepare" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_RELEASE_REQUIRED=$should_prepare" >> "$GITHUB_ENV"
 
       # This is intentionally a macOS-only release step. The native bundle is
       # signed on the same host that builds it, then copied to a temporary path;
@@ -90,28 +90,35 @@ jobs:
       - name: Build and sign CloudKit native artifact
         if: steps.cloudkit-release.outputs.publishable == 'true'
         env:
-          CLOUDKIT_TEAM_ID: ${{ secrets.CLOUDKIT_TEAM_ID }}
-          CLOUDKIT_SIGN_IDENTITY: ${{ secrets.CLOUDKIT_SIGN_IDENTITY }}
-          CLOUDKIT_CONTAINER_ID: ${{ secrets.CLOUDKIT_CONTAINER_ID }}
-          CLOUDKIT_NOTARY_PROFILE: ${{ secrets.CLOUDKIT_NOTARY_PROFILE }}
-          CLOUDKIT_CERTIFICATE_BASE64: ${{ secrets.CLOUDKIT_CERTIFICATE_BASE64 }}
-          CLOUDKIT_CERTIFICATE_PASSWORD: ${{ secrets.CLOUDKIT_CERTIFICATE_PASSWORD }}
-          CLOUDKIT_PROFILE_BASE64: ${{ secrets.CLOUDKIT_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          APPLE_CLOUDKIT_CONTAINER_ID: ${{ secrets.APPLE_CLOUDKIT_CONTAINER_ID }}
+          APPLE_NOTARY_PROFILE: ${{ secrets.APPLE_NOTARY_PROFILE }}
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROFILE_BASE64: ${{ secrets.APPLE_PROFILE_BASE64 }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
-          : "${CLOUDKIT_TEAM_ID:?CLOUDKIT_TEAM_ID is required}"
-          : "${CLOUDKIT_SIGN_IDENTITY:?CLOUDKIT_SIGN_IDENTITY is required}"
-          : "${CLOUDKIT_CONTAINER_ID:?CLOUDKIT_CONTAINER_ID is required}"
-          : "${CLOUDKIT_NOTARY_PROFILE:?CLOUDKIT_NOTARY_PROFILE is required}"
-          : "${CLOUDKIT_CERTIFICATE_BASE64:?CLOUDKIT_CERTIFICATE_BASE64 is required}"
-          : "${CLOUDKIT_CERTIFICATE_PASSWORD:?CLOUDKIT_CERTIFICATE_PASSWORD is required}"
-          : "${CLOUDKIT_PROFILE_BASE64:?CLOUDKIT_PROFILE_BASE64 is required}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          : "${APPLE_SIGN_IDENTITY:?APPLE_SIGN_IDENTITY is required}"
+          : "${APPLE_CLOUDKIT_CONTAINER_ID:?APPLE_CLOUDKIT_CONTAINER_ID is required}"
+          : "${APPLE_NOTARY_PROFILE:?APPLE_NOTARY_PROFILE is required}"
+          : "${APPLE_CERTIFICATE_BASE64:?APPLE_CERTIFICATE_BASE64 is required}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?APPLE_CERTIFICATE_PASSWORD is required}"
+          : "${APPLE_PROFILE_BASE64:?APPLE_PROFILE_BASE64 is required}"
+          : "${APPLE_NOTARY_KEY_BASE64:?APPLE_NOTARY_KEY_BASE64 is required}"
+          : "${APPLE_NOTARY_KEY_ID:?APPLE_NOTARY_KEY_ID is required}"
+          : "${APPLE_NOTARY_ISSUER_ID:?APPLE_NOTARY_ISSUER_ID is required}"
 
           keychain="$RUNNER_TEMP/aio-cloudkit-signing.keychain-db"
           certificate="$RUNNER_TEMP/aio-cloudkit-signing.p12"
           certificate_password="$RUNNER_TEMP/aio-cloudkit-signing.password"
           unlocked_certificate="$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem"
           profile="$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile"
+          notary_key="$RUNNER_TEMP/aio-cloudkit-notary-key.p8"
           manifest="packages/plugins/cloudkit/release-manifest.json"
           manifest_backup="$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
           signed_manifest="$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
@@ -126,8 +133,8 @@ jobs:
           security create-keychain -p '' "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p '' "$keychain"
-          printf '%s' "$CLOUDKIT_CERTIFICATE_BASE64" | base64 -D > "$certificate"
-          printf '%s' "$CLOUDKIT_CERTIFICATE_PASSWORD" > "$certificate_password"
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$certificate"
+          printf '%s' "$APPLE_CERTIFICATE_PASSWORD" > "$certificate_password"
           chmod 600 "$certificate" "$certificate_password"
           openssl pkcs12 -in "$certificate" -passin file:"$certificate_password" -nodes -out "$unlocked_certificate"
           chmod 600 "$unlocked_certificate"
@@ -135,25 +142,36 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
           security set-key-partition-list -S apple-tool:,apple: -s -k '' "$keychain"
-          printf '%s' "$CLOUDKIT_PROFILE_BASE64" | base64 -D > "$profile"
+          printf '%s' "$APPLE_PROFILE_BASE64" | base64 -D > "$profile"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 -D > "$notary_key"
+          chmod 600 "$notary_key"
+          xcrun notarytool store-credentials "$APPLE_NOTARY_PROFILE" \
+            --key "$notary_key" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --keychain "$keychain"
 
           version="${{ steps.cloudkit-release.outputs.version }}"
+          signed_archive="$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip"
           printf '{"version":"%s"}\n' "$version" > "$manifest"
-          echo "CLOUDKIT_PROFILE_PATH=$profile" >> "$GITHUB_ENV"
-          echo "CLOUDKIT_NATIVE_VERSION=$version" >> "$GITHUB_ENV"
-          echo "CLOUDKIT_SIGNED_ARCHIVE=$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip" >> "$GITHUB_ENV"
-          echo "CLOUDKIT_TEAM_ID=$CLOUDKIT_TEAM_ID" >> "$GITHUB_ENV"
-          echo "CLOUDKIT_SIGN_IDENTITY=$CLOUDKIT_SIGN_IDENTITY" >> "$GITHUB_ENV"
-          echo "CLOUDKIT_CONTAINER_ID=$CLOUDKIT_CONTAINER_ID" >> "$GITHUB_ENV"
-          echo "CLOUDKIT_NOTARY_PROFILE=$CLOUDKIT_NOTARY_PROFILE" >> "$GITHUB_ENV"
+          export APPLE_PROFILE_PATH="$profile"
+          export APPLE_CLOUDKIT_NATIVE_VERSION="$version"
+          export APPLE_CLOUDKIT_SIGNED_ARCHIVE="$signed_archive"
+          echo "APPLE_PROFILE_PATH=$APPLE_PROFILE_PATH" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_NATIVE_VERSION=$APPLE_CLOUDKIT_NATIVE_VERSION" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_SIGNED_ARCHIVE=$APPLE_CLOUDKIT_SIGNED_ARCHIVE" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+          echo "APPLE_SIGN_IDENTITY=$APPLE_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_CONTAINER_ID=$APPLE_CLOUDKIT_CONTAINER_ID" >> "$GITHUB_ENV"
+          echo "APPLE_NOTARY_PROFILE=$APPLE_NOTARY_PROFILE" >> "$GITHUB_ENV"
 
           bun packages/plugins/cloudkit/scripts/build-native.ts
           bun packages/plugins/cloudkit/scripts/sign-native.ts
           signed="$(find packages/plugins/cloudkit/dist/native -maxdepth 1 -name '*.app.zip' ! -name '*.submission.zip' -print -quit)"
           test -n "$signed"
-          cp "$signed" "$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip"
+          cp "$signed" "$signed_archive"
           cp packages/plugins/cloudkit/dist/native/manifest.json "$signed_manifest"
-          echo "CLOUDKIT_SIGNED_MANIFEST=$signed_manifest" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_SIGNED_MANIFEST=$signed_manifest" >> "$GITHUB_ENV"
 
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
@@ -196,6 +214,7 @@ jobs:
             "$RUNNER_TEMP/aio-cloudkit-signing.password" \
             "$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem" \
             "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
+            "$RUNNER_TEMP/aio-cloudkit-notary-key.p8" \
             "$RUNNER_TEMP/aio-cloudkit-release-manifest.json" \
             "$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
 

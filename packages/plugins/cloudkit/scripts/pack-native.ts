@@ -57,7 +57,7 @@ function validateSignedManifest(
   teamId: string,
 ): SignedManifest {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('CLOUDKIT_SIGNED_MANIFEST is not a JSON object');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_MANIFEST is not a JSON object');
   }
   const manifest = value as Partial<SignedManifest>;
   if (
@@ -72,18 +72,18 @@ function validateSignedManifest(
     manifest.signing?.signatureStatus !== 'verified' ||
     manifest.signing?.notarizationStatus !== 'accepted'
   ) {
-    throw new Error('CLOUDKIT_SIGNED_MANIFEST is not a verified, notarized artifact manifest');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_MANIFEST is not a verified, notarized artifact manifest');
   }
   return manifest as SignedManifest;
 }
 
 export async function packNative(): Promise<RuntimeManifest> {
-  const archive = process.env.CLOUDKIT_SIGNED_ARCHIVE;
+  const archive = process.env.APPLE_CLOUDKIT_SIGNED_ARCHIVE;
   if (archive === undefined || archive.trim() === '') {
-    throw new Error('CLOUDKIT_SIGNED_ARCHIVE is required; refusing to package an unsigned native artifact');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_ARCHIVE is required; refusing to package an unsigned native artifact');
   }
-  const teamId = process.env.CLOUDKIT_TEAM_ID;
-  if (teamId === undefined || teamId.trim() === '') throw new Error('CLOUDKIT_TEAM_ID is required');
+  const teamId = process.env.APPLE_TEAM_ID;
+  if (teamId === undefined || teamId.trim() === '') throw new Error('APPLE_TEAM_ID is required');
   const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { version?: unknown };
   if (typeof packageJson.version !== 'string') throw new Error('CloudKit package version is missing');
   const outputRoot = join(packageRoot, 'dist', 'native');
@@ -92,7 +92,7 @@ export async function packNative(): Promise<RuntimeManifest> {
   const output = join(outputRoot, outputName);
   const bytes = await Bun.file(archive).bytes();
   const digest = createHash('sha256').update(bytes).digest('hex');
-  const signedManifestPath = process.env.CLOUDKIT_SIGNED_MANIFEST;
+  const signedManifestPath = process.env.APPLE_CLOUDKIT_SIGNED_MANIFEST;
   const signed =
     signedManifestPath === undefined || signedManifestPath.trim() === ''
       ? undefined
@@ -107,7 +107,7 @@ export async function packNative(): Promise<RuntimeManifest> {
   const manifest: RuntimeManifest = {
     format: 1 as const,
     pluginVersion: packageJson.version,
-    nativeVersion: process.env.CLOUDKIT_NATIVE_VERSION ?? packageJson.version,
+    nativeVersion: process.env.APPLE_CLOUDKIT_NATIVE_VERSION ?? packageJson.version,
     bundleId: 'dev.aioproxy' as const,
     teamId,
     minimumMacOS: '14.0' as const,

@@ -318,24 +318,23 @@ async function hasChangelogEntry(dir: string, ver: string): Promise<boolean> {
 }
 
 async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: string): Promise<void> {
-  const signedArchive = process.env['CLOUDKIT_SIGNED_ARCHIVE'];
+  const signedArchive = process.env['APPLE_CLOUDKIT_SIGNED_ARCHIVE'];
   if (signedArchive === undefined || signedArchive.trim() === '') {
-    throw new Error('CLOUDKIT_SIGNED_ARCHIVE is required for a CloudKit release');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_ARCHIVE is required for a CloudKit release');
   }
-  const teamId = process.env['CLOUDKIT_TEAM_ID'];
-  if (teamId === undefined || teamId.trim() === '')
-    throw new Error('CLOUDKIT_TEAM_ID is required for a CloudKit release');
+  const teamId = process.env['APPLE_TEAM_ID'];
+  if (teamId === undefined || teamId.trim() === '') throw new Error('APPLE_TEAM_ID is required for a CloudKit release');
   const signedArchivePath = resolve(signedArchive);
   if (!(await Bun.file(signedArchivePath).exists())) {
-    throw new Error('CLOUDKIT_SIGNED_ARCHIVE does not point to an existing signed artifact');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_ARCHIVE does not point to an existing signed artifact');
   }
-  const signedManifest = process.env['CLOUDKIT_SIGNED_MANIFEST'];
+  const signedManifest = process.env['APPLE_CLOUDKIT_SIGNED_MANIFEST'];
   if (signedManifest === undefined || signedManifest.trim() === '') {
-    throw new Error('CLOUDKIT_SIGNED_MANIFEST is required for a CloudKit release');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_MANIFEST is required for a CloudKit release');
   }
   const signedManifestPath = resolve(signedManifest);
   if (!(await Bun.file(signedManifestPath).exists())) {
-    throw new Error('CLOUDKIT_SIGNED_MANIFEST does not point to an existing artifact manifest');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_MANIFEST does not point to an existing artifact manifest');
   }
   const archiveDigest = createHash('sha256')
     .update(await Bun.file(signedArchivePath).bytes())
@@ -358,10 +357,10 @@ async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: stri
     signedValue.signing?.signatureStatus !== 'verified' ||
     signedValue.signing?.notarizationStatus !== 'accepted'
   ) {
-    throw new Error('CLOUDKIT_SIGNED_MANIFEST is not a verified, notarized artifact for this release');
+    throw new Error('APPLE_CLOUDKIT_SIGNED_MANIFEST is not a verified, notarized artifact for this release');
   }
-  process.env['CLOUDKIT_NATIVE_VERSION'] ??= releaseVersion;
-  process.env['CLOUDKIT_SIGNED_MANIFEST'] = signedManifestPath;
+  process.env['APPLE_CLOUDKIT_NATIVE_VERSION'] ??= releaseVersion;
+  process.env['APPLE_CLOUDKIT_SIGNED_MANIFEST'] = signedManifestPath;
   await $`bun run --filter @aio-proxy/plugin-cloudkit pack-native`;
 
   const manifestPath = join(packageRoot, 'dist', 'native', 'manifest.json');
@@ -403,7 +402,7 @@ async function prepareCloudKitArtifact(packageRoot: string, releaseVersion: stri
 
 async function shouldPrepareCloudKitArtifact(releaseVersion: string): Promise<boolean> {
   if (DRY_RUN) return false;
-  const override = process.env['CLOUDKIT_RELEASE_REQUIRED'];
+  const override = process.env['APPLE_CLOUDKIT_RELEASE_REQUIRED'];
   if (override === 'true') return true;
   if (override === 'false') return false;
   const published = await $`npm view @aio-proxy/plugin-cloudkit version`.nothrow().quiet();

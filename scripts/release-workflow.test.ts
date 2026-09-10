@@ -38,6 +38,18 @@ test('uses a headless certificate-password file path without password argv', asy
   expect(workflow).not.toContain('< "$certificate_password"');
 });
 
+test('creates the notarytool profile in the ephemeral signing keychain', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  expect(workflow).toContain('APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}');
+  expect(workflow).toContain('APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}');
+  expect(workflow).toContain('APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}');
+  expect(workflow).toContain('xcrun notarytool store-credentials "$APPLE_NOTARY_PROFILE"');
+  expect(workflow).toContain('--keychain "$keychain"');
+  expect(workflow).toContain('"$RUNNER_TEMP/aio-cloudkit-notary-key.p8"');
+  expect(workflow).toContain('export APPLE_PROFILE_PATH="$profile"');
+});
+
 test('dry-run restores bun.lock and never invokes npm publish', async () => {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'aio-release-dry-run-'));
   const fakeBin = join(temporaryDirectory, 'bin');
