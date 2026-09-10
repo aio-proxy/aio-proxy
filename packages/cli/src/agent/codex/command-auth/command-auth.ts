@@ -291,10 +291,16 @@ export async function activateCodexCommandInstallation(
   installationId: string,
   lease: CodexLease,
 ): Promise<void> {
-  const credential = await readCredential(location);
-  if (credential?.installationId !== installationId || credential.status !== 'ready')
-    throw new Error('Codex credential is not ready');
-  await updateStatus(location, installationId, 'active', lease);
+  await lease.withOwnershipFence(async (assertOwned) => {
+    const identity = await readIdentity(location);
+    if (identity?.marker.installationId !== installationId) throw new Error('Codex command installation mismatch');
+    await assertManagedInstallation(location, identity, true);
+    const credential = await readCredential(location);
+    if (credential?.installationId !== installationId || credential.status !== 'ready')
+      throw new Error('Codex credential is not ready');
+    await assertOwned();
+    await writeIdentity(location, { ...identity, status: 'active' });
+  });
 }
 
 export async function retireCodexCommandInstallation(
