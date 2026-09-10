@@ -1,6 +1,9 @@
 ---
 'aio-proxy': minor
 '@aio-proxy/cli': minor
+'@aio-proxy/types': minor
+'@aio-proxy/core': minor
+'@aio-proxy/server': minor
 ---
 
-Add an interactive Codex static-config setup with a customizable Provider ID, proxy API Key selection or creation, and optional legacy history migration. Codex settings preserve the selected model and unrelated user changes, while removal retains proxy Keys and migration backups support explicit recovery.
+Add interactive Codex setup with a customizable Provider ID and a choice to retain ChatGPT login features using an existing proxy API Key, or use command authentication with AIO Proxy device authorization. Setup preserves model settings and supports optional legacy history migration; removal respects user edits and revokes command credentials.
