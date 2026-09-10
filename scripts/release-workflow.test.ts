@@ -41,6 +41,8 @@ test('uses a headless certificate-password file path without password argv', asy
 test('creates the notarytool profile in the ephemeral signing keychain', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
+  expect(workflow).toContain('APPLE_CLOUDKIT_CONTAINER_ID: ${{ vars.APPLE_CLOUDKIT_CONTAINER_ID }}');
+  expect(workflow).toContain('APPLE_NOTARY_PROFILE: ${{ vars.APPLE_NOTARY_PROFILE }}');
   expect(workflow).toContain('APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}');
   expect(workflow).toContain('APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}');
   expect(workflow).toContain('APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}');
