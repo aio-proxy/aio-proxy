@@ -15,6 +15,7 @@ import type { CodexLocation } from '../contracts';
 import { inspectCodexConfig } from '../managed-config';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
 import { durableDelete, durableWrite, ensureManagedRoot, isFsCode, readRegularFile } from '../storage/storage';
+import { connectionFromError } from './connection-status';
 import { credentialPath, readCredential, writeCredential, type CredentialState } from './credential-store';
 
 const REFRESH_REPLAY_WINDOW_MS = 30_000;
@@ -100,6 +101,10 @@ export type CodexCommandInstallation = InstallationRecord;
 
 export async function readCodexCommandIdentity(location: CodexLocation): Promise<CodexCommandInstallation | undefined> {
   return readIdentity(location);
+}
+
+export async function hasCodexCommandCredential(location: CodexLocation): Promise<boolean> {
+  return (await readCredential(location)) !== undefined;
 }
 
 export async function prepareCodexCommandInstallation(
@@ -328,7 +333,7 @@ export async function clearCodexCommandInstallation(
   if (!['revoked', 'expired', 'missing'].includes(input.revocation)) throw new Error('Invalid Codex revocation status');
   await lease.withOwnership(async () => {
     const identity = await readIdentity(input.location);
-    if (identity?.marker.installationId !== input.installationId)
+    if (identity !== undefined && identity.marker.installationId !== input.installationId)
       throw new Error('Codex command installation mismatch');
     const identityFile = await readRegularFile(identityPath(input.location));
     if (identityFile !== undefined && (identityFile.stat.nlink > 1 || (Number(identityFile.stat.mode) & 0o077) !== 0))
@@ -339,19 +344,13 @@ export async function clearCodexCommandInstallation(
       (credentialFile.stat.nlink > 1 || (Number(credentialFile.stat.mode) & 0o077) !== 0)
     )
       throw new Error('Refusing unsafe Codex credential file');
-    await durableDelete(identityPath(input.location), identityFile);
+    const credential = await readCredential(input.location);
+    if (credential !== undefined && credential.installationId !== input.installationId)
+      throw new Error('Codex command installation mismatch');
     await durableDelete(credentialPath(input.location), credentialFile);
+    await durableDelete(identityPath(input.location), identityFile);
   });
 }
-
-const connectionFromError = (error: unknown): 'offline' | 'unauthorized' | 'invalid_response' =>
-  error instanceof AgentRuntimeError
-    ? error.code === 'network'
-      ? 'offline'
-      : error.code === 'invalid_grant' || error.code === 'invalid_client'
-        ? 'unauthorized'
-        : 'invalid_response'
-    : 'offline';
 
 export async function inspectCodexCommandCredential(input: {
   readonly location: CodexLocation;

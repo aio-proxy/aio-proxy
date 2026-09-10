@@ -52,6 +52,19 @@ Verification commands and results:
 - `bun run check` — exit 0; oxlint reported only existing dashboard/logger warnings and oxfmt passed all files.
 - `git diff --check` — no output.
 
+## Review fix round 4
+
+Command cleanup now handles identity-only, credential-only, both-file, and neither-file states idempotently, fences credential removal to the journal installation ID, and deletes credentials before identity metadata so a cleanup crash remains recoverable. Recovery also blocks safely when an orphan credential has no installation ID to validate. Added a regression test for identity deletion leaving an orphan credential.
+
+Verification commands and results:
+
+- `bun test --preload=./__tests__/setup.ts --timeout 20000 src/agent/codex/setup` — 5 pass, 0 fail, 16 expectations.
+- `bun test --preload=./__tests__/setup.ts --timeout 20000 src/agent/codex/lifecycle` — 3 pass, 0 fail, 8 expectations.
+- `bun test --preload=./__tests__/setup.ts --timeout 20000 src/agent/codex/command-auth` — 7 pass, 0 fail, 23 expectations.
+- `bun test --preload=./__tests__/setup.ts --timeout 20000 src/agent/codex/wizard src/agent/output.test.ts` — 15 pass, 0 fail, 793 expectations.
+- `bun run check` — exit 0; oxlint reported only existing dashboard/logger warnings and oxfmt passed all files.
+- `git diff --check` — no output.
+
 The direct mixed `main.test.ts` run intermittently reported the existing port-conflict assertion as exit code 2 instead of 1; the package unit run passed that test, and no server code was changed for it.
 
 ## Review fix round 3

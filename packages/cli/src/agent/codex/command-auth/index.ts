@@ -2,6 +2,7 @@ export {
   activateCodexCommandInstallation,
   authorizeCodexInstallation,
   clearCodexCommandInstallation,
+  hasCodexCommandCredential,
   inspectCodexCommandCredential,
   prepareCodexCommandInstallation,
   rebindCodexCommandInstallation,
