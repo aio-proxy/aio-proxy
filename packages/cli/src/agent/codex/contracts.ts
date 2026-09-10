@@ -1,4 +1,5 @@
 import type { AtomicConfigFile } from '@aio-proxy/core';
+import type { AgentDeviceCodeResponse, AgentRevokeStatus } from '@aio-proxy/types';
 
 import type { ValueSlot } from './config-document';
 
@@ -85,29 +86,73 @@ export type ConfigRemoval = {
 
 export type KeyChoice = { readonly id: string; readonly label: string };
 
-export type KeySelection =
-  | { readonly kind: 'none' }
-  | { readonly kind: 'existing'; readonly id: string }
-  | { readonly kind: 'new' };
+export type KeySelection = { readonly kind: 'none' } | { readonly kind: 'existing'; readonly id: string };
 
 export type ResolvedCredential = {
   readonly token: string;
-  readonly kind: 'placeholder' | 'existing' | 'created';
+  readonly kind: 'placeholder' | 'existing';
   readonly label?: string;
   readonly verified: boolean;
 };
 
 export type KeySnapshot = {
   readonly choices: readonly KeyChoice[];
-  readonly resolve: (selection: KeySelection, providerId: string) => Promise<ResolvedCredential>;
+  readonly resolve: (selection: KeySelection) => Promise<ResolvedCredential>;
 };
 
 export type CredentialDeps = {
-  readonly file: AtomicConfigFile;
-  readonly endpoint: string;
+  readonly file: Pick<AtomicConfigFile, 'read'>;
   readonly loadEnvironment: () => void;
   readonly readEnvironment: () => Readonly<Record<string, string | undefined>>;
-  readonly randomKey: () => string;
-  readonly reload: () => Promise<void>;
   readonly check: (token: string) => Promise<'ok' | 'offline' | 'unauthorized' | 'invalid_response'>;
+};
+
+export type CodexSetupSelection = {
+  readonly providerId: string;
+  readonly auth:
+    | { readonly mode: 'keep-chatgpt'; readonly keys: KeySnapshot; readonly selection: KeySelection }
+    | { readonly mode: 'command'; readonly command: string };
+};
+
+export type CodexSetupCommit = ConfigCommit & {
+  readonly authMode: CodexAuthMode;
+  readonly credential: 'placeholder' | 'existing' | 'agent';
+  readonly connection: 'ok' | 'offline' | 'not_checked';
+  readonly installationId?: string;
+};
+
+export type CodexSetupContext = {
+  readonly location: CodexLocation;
+  readonly endpoint: string;
+  readonly adapterVersion: string;
+  readonly signal: AbortSignal;
+  readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
+  readonly revoke?: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
+};
+
+export type CodexListResult = {
+  readonly target: 'codex';
+  readonly integration: 'static-config';
+  readonly configPath: string;
+  readonly providerId?: string;
+  readonly activeProviderId: string;
+  readonly baseUrl?: string;
+  readonly status: ConfigInspection['status'];
+  readonly connection: 'ok' | 'offline' | 'unauthorized' | 'invalid_response' | 'not_checked';
+  readonly changedPaths: readonly (readonly string[])[];
+  readonly authMode?: CodexAuthMode;
+  readonly installationId?: string;
+  readonly lifecycle?: 'pending' | 'active' | 'retiring';
+  readonly authorization?: 'not_checked' | 'active' | 'expired' | 'revoked' | 'missing' | 'pending';
+  readonly credentialStatus?: 'missing' | 'ready' | 'expired' | 'reauthorize';
+};
+
+export type CodexRemoveResult = {
+  readonly target: 'codex';
+  readonly integration: 'static-config';
+  readonly configPath: string;
+  readonly keysRetained: true;
+  readonly status: 'removed' | 'partial' | 'absent' | 'blocked';
+  readonly preservedPaths: readonly (readonly string[])[];
+  readonly authorization?: 'revoked' | 'expired' | 'missing' | 'pending';
 };

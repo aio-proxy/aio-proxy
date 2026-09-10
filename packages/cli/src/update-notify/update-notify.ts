@@ -7,6 +7,7 @@ import { isRecord } from '@aio-proxy/shared';
 
 export const shouldPrintUpdateBanner = (command: string, argv: readonly string[]): boolean => {
   if (command === 'upgrade' || command === 'update') return false;
+  if (command === 'auth' && argv.includes('codex')) return false;
   if (argv.includes('--version') || argv.includes('-v')) return false;
   return true;
 };

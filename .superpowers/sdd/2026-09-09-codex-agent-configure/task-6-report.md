@@ -38,3 +38,18 @@ Result: 544 pass, 13 fail, 557 tests. The 13 failures are pre-existing upgrade-p
 The follow-up review fixes move the TTY gate ahead of executable detection and pending-journal prompts, return a localized non-interactive result without writes, catch prompt aborts as cancelled, report the detected semver with compatibility explicitly marked unverified, pass the selected target Provider into session preview, and allow built-in `openai` history to be previewed before the first managed marker. The migration confirmation now explains the current-Provider default and target-Provider exclusion.
 
 The fix-round affected test command completed with 63 pass, 0 fail, 965 expectations across 6 files. `rtk proxy bun run check` completed with exit 0; only the same pre-existing dashboard/logger warnings remained. `rtk git diff --check` completed with no output.
+
+## Review fix round 2
+
+The integration now keeps the approved ChatGPT-preservation versus command-auth choice, starts the command-auth timeout only when setup commits or recovery begins, catches cancellation during pending auth recovery, and keeps restore output focused on history ownership. The obsolete API-key creation option and its Codex-specific retained-key error/localizations were removed. Wizard, helper command, output, update-banner, and locale tests cover the resulting behavior.
+
+Verification commands and results:
+
+- `bun run i18n:compile` — exit 0; Paraglide compilation and package build completed.
+- `bun test packages/cli/src/agent/codex packages/cli/src/agent/agent.test.ts packages/cli/src/agent/output.test.ts packages/cli/src/update-notify/update-notify.test.ts` — 123 pass, 0 fail, 1,127 expectations across 14 files.
+- `bun run --filter @aio-proxy/i18n test:unit` — 11 pass, 0 fail, 36 expectations across 5 files.
+- `bun run --filter @aio-proxy/cli test:unit` — completed with all CLI unit tests passing, including `main.test.ts` and the new Codex auth command assertions.
+- `bun run check` — exit 0; oxlint reported only existing dashboard/logger warnings and oxfmt passed all files.
+- `git diff --check` — no output.
+
+The direct mixed `main.test.ts` run intermittently reported the existing port-conflict assertion as exit code 2 instead of 1; the package unit run passed that test, and no server code was changed for it.

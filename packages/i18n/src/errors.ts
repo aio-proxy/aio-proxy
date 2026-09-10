@@ -3,7 +3,6 @@ export const ERROR_CODES = {
   configInvalid: 'config_invalid',
   configNotFound: 'config_not_found',
   configWriteFailed: 'config_write_failed',
-  codexConfigWriteFailed: 'codex_config_write_failed',
   httpException: 'http_exception',
   internalUnexpected: 'internal_unexpected',
   invalidLocale: 'invalid_locale',
@@ -19,7 +18,6 @@ export type AppErrorMessageKey =
   | 'cli_error_config_invalid'
   | 'cli_error_config_not_found'
   | 'cli_error_config_write_failed'
-  | 'cli_agent_codex_config_write_failed'
   | 'cli_error_port_out_of_range'
   | 'error_invalid_locale';
 
@@ -51,12 +49,6 @@ export class PortOutOfRangeError extends AppError {
 export class ConfigWriteError extends AppError {
   constructor(readonly path: string) {
     super(ERROR_CODES.configWriteFailed, 'cli_error_config_write_failed', 'ConfigWriteError');
-  }
-}
-
-export class CodexConfigWriteError extends AppError {
-  constructor(readonly providerId: string) {
-    super(ERROR_CODES.codexConfigWriteFailed, 'cli_agent_codex_config_write_failed', 'CodexConfigWriteError');
   }
 }
 

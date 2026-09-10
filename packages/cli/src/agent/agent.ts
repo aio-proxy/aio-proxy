@@ -241,6 +241,7 @@ const applySnapshot = (
 const authorizationItems = (
   targets: readonly AgentListTargetResult[],
   snapshot: AgentAdminSnapshot,
+  codex: CodexListResult,
 ): readonly AgentAuthorizationListItem[] => {
   const configured = new Set(
     targets.flatMap((row) =>
@@ -249,6 +250,7 @@ const authorizationItems = (
         : [],
     ),
   );
+  if (codex.installationId !== undefined) configured.add(localMarkerKey(codex.installationId, 'codex'));
   return snapshot.installations.map((item) => ({
     ...item,
     local: configured.has(localMarkerKey(item.installationId, item.target)) ? 'configured' : 'orphaned',
@@ -262,30 +264,38 @@ export async function agentList(
   void options.json;
   const resolved = commandDeps(deps);
   const configuredEndpoint = await resolveConfiguredEndpoint(resolved);
+  const codex = await resolved.codex.list(options.check === true);
   const targets: AgentListTargetResult[] = [];
   for (const target of AGENT_TARGETS) {
     targets.push(await listTarget(target, configuredEndpoint, resolved));
   }
 
   const online = options.check === true || options.authorizations === true;
-  if (!online) return { targets, server: 'not_checked', codex: await resolved.codex.list(false) };
+  if (!online) return { targets, server: 'not_checked', codex };
 
-  if (configuredEndpoint === undefined)
-    return { targets, server: 'unreachable', codex: await resolved.codex.list(options.check === true) };
+  if (configuredEndpoint === undefined) return { targets, server: 'unreachable', codex };
   let snapshot: AgentAdminSnapshot;
   try {
     snapshot = await resolved.readSnapshot(configuredEndpoint);
   } catch {
-    return { targets, server: 'unreachable', codex: await resolved.codex.list(options.check === true) };
+    return { targets, server: 'unreachable', codex };
   }
+
+  const codexAuthorization =
+    codex.installationId === undefined
+      ? undefined
+      : (snapshot.installations.find((item) => item.installationId === codex.installationId && item.target === 'codex')
+          ?.authorization ?? 'missing');
+  const checkedCodex: CodexListResult =
+    codex.installationId === undefined ? codex : { ...codex, authorization: codexAuthorization };
 
   return {
     targets: applySnapshot(targets, snapshot),
     server: 'reachable',
     deviceAuthorization: snapshot.deviceAuthorization,
     catalogSchemaVersions: snapshot.catalogSchemaVersions,
-    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot) } : {}),
-    codex: await resolved.codex.list(options.check === true),
+    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot, checkedCodex) } : {}),
+    codex: checkedCodex,
   };
 }
 

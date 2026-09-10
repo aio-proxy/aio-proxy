@@ -4,7 +4,7 @@ import type { Command } from 'commander';
 import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
 import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
 
-const renderCodexList = (result: CodexListResult) =>
+const renderCodexList = (result: CodexListResult) => [
   m['cli.agent.codex.list']({
     configPath: result.configPath,
     providerId: result.providerId ?? '-',
@@ -13,7 +13,19 @@ const renderCodexList = (result: CodexListResult) =>
     status: result.status,
     connection: result.connection,
     changedPaths: result.changedPaths.length === 0 ? '-' : result.changedPaths.map((path) => path.join('.')).join(', '),
-  });
+  }),
+  ...(result.authMode === undefined
+    ? []
+    : [
+        m['cli.agent.codex.list_auth']({
+          mode: result.authMode,
+          installationId: result.installationId ?? '-',
+          lifecycle: result.lifecycle ?? '-',
+          authorization: result.authorization ?? 'not_checked',
+          credentialStatus: result.credentialStatus ?? '-',
+        }),
+      ]),
+];
 
 const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
   if (result.status === 'cancelled')
@@ -31,7 +43,14 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
   ];
   if (result.version !== undefined && result.versionCompatibility === 'unverified')
     lines.push(m['cli.agent.codex.version_unverified']({ version: result.version }));
+  if (result.authMode !== undefined)
+    lines.push(
+      m['cli.agent.codex.auth_result']({
+        mode: result.authMode,
+      }),
+    );
   if (result.connection === 'offline') lines.push(m['cli.agent.codex.offline']());
+  if (result.migrationAction !== 'restore') lines.push(m['cli.agent.codex.reopen']());
   if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());
   else if (result.migration.status === 'blocked') lines.push(m['cli.agent.codex.migration_blocked']());
   else if (result.migration.status === 'completed') lines.push(m['cli.agent.codex.migration_complete']());
@@ -40,6 +59,7 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
 
 const renderCodexRemove = (result: CodexRemoveResult): string[] => [
   m['cli.agent.codex.removed']({ configPath: result.configPath, status: result.status }),
+  ...(result.status === 'blocked' ? [m['cli.agent.codex.remove_blocked']()] : []),
   m['cli.agent.codex.keys_retained'](),
 ];
 
@@ -95,7 +115,7 @@ export function renderAgentList(result: AgentListResult, json: boolean): string[
       }),
     );
   }
-  lines.push(renderCodexList(result.codex));
+  lines.push(...renderCodexList(result.codex));
   return lines;
 }
 
@@ -141,6 +161,7 @@ export type AgentCliActions = {
   readonly configure: (target: string, options?: CodexConfigureOptions) => Promise<AgentConfigureResult>;
   readonly remove: (target: string) => Promise<AgentRemoveResult>;
   readonly revoke: (installationId: string) => Promise<AgentRevokeResult>;
+  readonly authCodex?: (installationId: string) => Promise<void>;
 };
 
 export function registerAgentCommands(
@@ -184,4 +205,11 @@ export function registerAgentCommands(
   agent.command('revoke <installation-id>').action(async (installationId) => {
     emit(renderAgentRevoke(await input.actions.revoke(installationId)));
   });
+  agent
+    .command('auth <codex>')
+    .requiredOption('--installation-id <uuid>', m['cli.agent.codex.auth_installation_option']())
+    .action(async (target, options) => {
+      if (target !== 'codex' || input.actions.authCodex === undefined) throw new Error('Codex auth is unavailable');
+      await input.actions.authCodex(options.installationId);
+    });
 }

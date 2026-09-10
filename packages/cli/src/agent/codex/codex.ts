@@ -6,44 +6,24 @@ import { AtomicConfigFile, configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 import { checkbox, confirm, input, select } from '@inquirer/prompts';
 
-import { reloadCommand } from '../../reload';
+import packageJson from '../../../package.json' with { type: 'json' };
 import { loadServiceEnv } from '../../service-env';
-import { codexBaseUrl, resolveAgentEndpoint } from '../control-plane';
+import { resolveAgentEndpoint } from '../control-plane';
+import { writeCodexAuthToken } from './command-auth';
+import { resolveCodexAuthCommand } from './command-location';
 import { readCodexDocument, validateCodexProviderId } from './config-document';
-import type { ConfigInspection, CodexLocation } from './contracts';
+import type { CodexLocation, CodexListResult, CodexRemoveResult } from './contracts';
 import { inspectProxyKeys } from './credentials';
+import { listCodexLifecycle, removeCodexLifecycle } from './lifecycle';
 import { resolveCodexLocation } from './location';
-import {
-  configureCodexConfig,
-  inspectCodexConfig,
-  recoverCodexConfigOperation,
-  removeCodexConfig,
-} from './managed-config';
+import { inspectCodexConfig, recoverCodexConfigOperation } from './managed-config';
 import { inspectCodexSessions, migrateCodexSessions, restoreCodexMigration } from './sessions';
+import { commitCodexSetup, recoverCodexAuthOperation } from './setup';
 import { runCodexWizard, type CodexConfigureResult, type CodexPrompts } from './wizard';
 
 export type { CodexConfigureResult } from './wizard';
 
-export type CodexListResult = {
-  readonly target: 'codex';
-  readonly integration: 'static-config';
-  readonly configPath: string;
-  readonly providerId?: string;
-  readonly activeProviderId: string;
-  readonly baseUrl?: string;
-  readonly status: ConfigInspection['status'];
-  readonly connection: 'ok' | 'offline' | 'unauthorized' | 'invalid_response' | 'not_checked';
-  readonly changedPaths: readonly (readonly string[])[];
-};
-
-export type CodexRemoveResult = {
-  readonly target: 'codex';
-  readonly integration: 'static-config';
-  readonly configPath: string;
-  readonly keysRetained: true;
-  readonly status: 'removed' | 'partial' | 'absent';
-  readonly preservedPaths: readonly (readonly string[])[];
-};
+export type { CodexListResult, CodexRemoveResult } from './contracts';
 
 export type CodexConfigureOptions = { readonly restoreMigration?: string };
 
@@ -98,20 +78,18 @@ const createCredentialDeps = (endpoint: string) => {
   const file = new AtomicConfigFile(path);
   return {
     file,
-    endpoint,
     loadEnvironment: () => loadServiceEnv(path),
     readEnvironment: () => ({ ...process.env }),
-    randomKey: () => `sk-${crypto.randomUUID().replaceAll('-', '')}`,
-    reload: () => reloadCommand(),
     check: async (token: string): Promise<'ok' | 'offline' | 'unauthorized' | 'invalid_response'> => {
       try {
-        const response = await fetch(`${endpoint.replace(/\/+$/u, '')}/health`, {
+        const response = await fetch(`${endpoint.replace(/\/+$/u, '')}/v1/models`, {
           headers: { authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(3_000),
         });
         if (response.status === 401 || response.status === 403) return 'unauthorized';
         if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
-        return 'ok';
+        const body: unknown = await response.json().catch(() => undefined);
+        return body !== null && typeof body === 'object' ? 'ok' : 'invalid_response';
       } catch {
         return 'offline';
       }
@@ -134,15 +112,31 @@ const createPrompts = (): CodexPrompts => ({
         }
       },
     }),
+  authMode: async (defaultMode) => {
+    const value = await select({
+      message: m['cli.agent.codex.auth_mode'](),
+      default: defaultMode,
+      choices: [
+        {
+          value: 'keep-chatgpt' as const,
+          name: m['cli.agent.codex.auth_keep'](),
+          description: m['cli.agent.codex.auth_keep_explanation'](),
+        },
+        {
+          value: 'command' as const,
+          name: m['cli.agent.codex.auth_command'](),
+          description: m['cli.agent.codex.auth_command_explanation'](),
+        },
+      ],
+    });
+    return value;
+  },
   key: async (choices) => {
     const value = await select({
       message: m['cli.agent.codex.key_select'](),
-      choices: [
-        ...choices.map((choice) => ({ value: choice.id, name: choice.label })),
-        { value: 'new', name: m['cli.agent.codex.key_new']() },
-      ],
+      choices: choices.map((choice) => ({ value: choice.id, name: choice.label })),
     });
-    return value === 'new' ? { kind: 'new' } : { kind: 'existing', id: value };
+    return { kind: 'existing', id: value };
   },
   sources: async (groups, previous) =>
     checkbox({
@@ -166,29 +160,29 @@ const createPrompts = (): CodexPrompts => ({
     }),
 });
 
-const connectionStatus = async (endpoint: string): Promise<CodexListResult['connection']> => {
-  try {
-    const response = await fetch(`${endpoint.replace(/\/+$/u, '')}/health`, {
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (response.status === 401 || response.status === 403) return 'unauthorized';
-    if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
-    const body: unknown = await response.json().catch(() => undefined);
-    if (typeof body !== 'object' || body === null || (body as { readonly status?: unknown }).status !== 'ok')
-      return 'invalid_response';
-    return 'ok';
-  } catch {
-    return 'offline';
-  }
-};
+const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
 
-const resolveEndpointSafely = async (): Promise<string | undefined> => {
-  try {
-    return await resolveAgentEndpoint();
-  } catch {
-    return undefined;
-  }
-};
+const authContext = (location: CodexLocation, endpoint: string) => ({
+  location,
+  endpoint,
+  adapterVersion: packageJson.version,
+  signal: authSignal(),
+  onDevice: async (device: import('@aio-proxy/types').AgentDeviceCodeResponse): Promise<void> => {
+    console.error(
+      m['cli.agent.codex.device_authorization']({
+        url: device.verification_uri_complete,
+        code: device.user_code,
+      }),
+    );
+  },
+  revoke: (boundEndpoint: string, installationId: string) =>
+    import('../control-plane').then(({ revokeAgentInstallation }) =>
+      revokeAgentInstallation(boundEndpoint, installationId),
+    ),
+});
+
+const pendingRecovery = async (message: () => string): Promise<boolean> =>
+  confirm({ message: message(), default: false });
 
 export async function configureCodexAgent(options: CodexConfigureOptions = {}): Promise<CodexConfigureResult> {
   const location = configuredLocation();
@@ -209,11 +203,15 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
   const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
   if (!isTTY) return cancelledCodexResult(location, 'non_interactive');
   const version = await checkCodexInstalled();
+  const endpoint = await resolveAgentEndpoint();
   let recovery: Awaited<ReturnType<typeof recoverCodexConfigOperation>>;
+  let recoveryAccepted = false;
+  const confirmRecovery = async (): Promise<boolean> => {
+    recoveryAccepted = await pendingRecovery(() => m['cli.agent.codex.pending_recovery']());
+    return recoveryAccepted;
+  };
   try {
-    recovery = await recoverCodexConfigOperation(location, async () =>
-      confirm({ message: m['cli.agent.codex.pending_recovery'](), default: false }),
-    );
+    recovery = await recoverCodexConfigOperation(location, confirmRecovery);
   } catch (error) {
     if (isPromptCancellation(error)) return cancelledCodexResult(location);
     throw error;
@@ -229,7 +227,17 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
       migration: { status: 'not_requested' },
     };
   }
-  const endpoint = await resolveAgentEndpoint();
+  const authOperation = await import('./setup/journal').then(({ readAuthOperation }) => readAuthOperation(location));
+  if (authOperation !== undefined) {
+    try {
+      if (!recoveryAccepted && !(await confirmRecovery())) return cancelledCodexResult(location);
+      const restored = await recoverCodexAuthOperation(authContext(location, endpoint), 'complete');
+      if (restored === 'blocked') throw new Error('Codex authentication operation requires recovery');
+    } catch (error) {
+      if (isPromptCancellation(error)) return cancelledCodexResult(location);
+      throw error;
+    }
+  }
   const result = await runCodexWizard({
     location,
     endpoint,
@@ -237,15 +245,14 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     prompts: createPrompts(),
     inspectConfig: () => inspectCodexConfig(location),
     occupiedIds: () => occupiedIds(location),
-    inspectKeys: () => inspectProxyKeys(createCredentialDeps(endpoint)),
+    inspectKeys: async () => {
+      const keys = await inspectProxyKeys(createCredentialDeps(endpoint));
+      if (keys.choices.length === 0) console.error(m['cli.agent.codex.key_none']());
+      return keys;
+    },
     inspectSessions: (providerId) => inspectCodexSessions(location, providerId),
-    saveConfig: (providerId, token) =>
-      configureCodexConfig({
-        location,
-        providerId,
-        baseUrl: codexBaseUrl(endpoint),
-        auth: { mode: 'keep-chatgpt', token },
-      }),
+    resolveCommand: resolveCodexAuthCommand,
+    commitSetup: (selection) => commitCodexSetup(selection, authContext(location, endpoint)),
     migrateSessions: (targets, providerId) => migrateCodexSessions({ location, targets, targetProviderId: providerId }),
   });
   return result.status === 'cancelled' ? result : { ...result, version, versionCompatibility: 'unverified' as const };
@@ -253,29 +260,36 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
 
 export async function listCodexAgent(check = false): Promise<CodexListResult> {
   const location = configuredLocation();
-  const inspection = await inspectCodexConfig(location);
-  const endpoint = check ? await resolveEndpointSafely() : undefined;
-  return {
-    target: 'codex',
-    integration: 'static-config',
-    configPath: location.configPath,
-    ...(inspection.providerId === undefined ? {} : { providerId: inspection.providerId }),
-    activeProviderId: inspection.activeProviderId,
-    ...(inspection.baseUrl === undefined ? {} : { baseUrl: inspection.baseUrl }),
-    status: inspection.status,
-    connection: check ? (endpoint === undefined ? 'offline' : await connectionStatus(endpoint)) : 'not_checked',
-    changedPaths: inspection.changedPaths,
-  };
+  return listCodexLifecycle({ location, check });
 }
 
 export async function removeCodexAgent(): Promise<CodexRemoveResult> {
   const location = configuredLocation();
-  const result = await removeCodexConfig(location);
-  return {
-    target: 'codex',
-    integration: 'static-config',
-    configPath: location.configPath,
-    keysRetained: true,
-    ...result,
-  };
+  return removeCodexLifecycle({
+    location,
+    revoke: (endpoint, installationId) =>
+      import('../control-plane').then(({ revokeAgentInstallation }) =>
+        revokeAgentInstallation(endpoint, installationId),
+      ),
+  });
+}
+
+export async function runCodexAuthCommand(
+  installationId: string,
+  startedAt = Date.now(),
+  writeToken: (token: string) => Promise<void> = (token) =>
+    new Promise<void>((resolve, reject) => {
+      process.stdout.write(`${token}\n`, (error) => (error === undefined ? resolve() : reject(error)));
+    }),
+): Promise<void> {
+  if (!uuidPattern.test(installationId)) throw new Error('Codex installation id must be a UUID');
+  const remainingMs = Math.max(0, 4_500 - (Date.now() - startedAt));
+  if (remainingMs === 0) throw new Error('CODEX_AUTH_TIMEOUT');
+  const location = configuredLocation();
+  await writeCodexAuthToken({
+    location,
+    installationId,
+    signal: AbortSignal.timeout(remainingMs),
+    writeToken,
+  });
 }

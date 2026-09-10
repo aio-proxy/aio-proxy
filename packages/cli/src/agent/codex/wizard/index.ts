@@ -1,10 +1,10 @@
-import { CodexConfigWriteError } from '@aio-proxy/i18n';
-
 import { validateCodexProviderId } from '../config-document';
 import type {
-  ConfigCommit,
   ConfigInspection,
+  CodexAuthMode,
   CodexLocation,
+  CodexSetupCommit,
+  CodexSetupSelection,
   KeyChoice,
   KeySelection,
   KeySnapshot,
@@ -21,7 +21,9 @@ export type CodexConfigureResult = {
   readonly providerId?: string;
   readonly configPath: string;
   readonly connection: 'ok' | 'offline' | 'not_checked';
-  readonly credential: 'none' | 'placeholder' | 'existing' | 'created';
+  readonly credential: 'none' | 'placeholder' | 'existing' | 'agent';
+  readonly authMode?: CodexAuthMode;
+  readonly installationId?: string;
   readonly migration: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' };
   readonly reason?: 'non_interactive';
   readonly version?: string;
@@ -31,6 +33,7 @@ export type CodexConfigureResult = {
 
 export type CodexPrompts = {
   readonly providerId: (defaultId: string, occupied: readonly string[]) => Promise<string>;
+  readonly authMode: (defaultMode: CodexAuthMode) => Promise<CodexAuthMode>;
   readonly key: (choices: readonly KeyChoice[]) => Promise<KeySelection>;
   readonly sources: (groups: readonly SessionGroup[], previous: string) => Promise<readonly string[]>;
   readonly migrate: (input: {
@@ -50,7 +53,8 @@ export type WizardDeps = {
   readonly occupiedIds: () => Promise<readonly string[]>;
   readonly inspectKeys: () => Promise<KeySnapshot>;
   readonly inspectSessions: (providerId?: string) => Promise<MigrationPreview>;
-  readonly saveConfig: (providerId: string, token: string) => Promise<ConfigCommit>;
+  readonly resolveCommand: () => Promise<string>;
+  readonly commitSetup: (selection: CodexSetupSelection) => Promise<CodexSetupCommit>;
   readonly migrateSessions: (targets: readonly MigrationTarget[], providerId: string) => Promise<MigrationResult>;
 };
 
@@ -59,7 +63,7 @@ const cancelledError = (error: unknown): boolean => {
   return error instanceof Error && /(?:cancelled|canceled)/i.test(error.message);
 };
 
-const cancelledResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
+export const cancelledResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
   target: 'codex',
   integration: 'static-config',
   status: 'cancelled',
@@ -126,19 +130,20 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
     const occupied = new Set(await deps.occupiedIds());
     const defaultId = inspection.providerId ?? 'aio-proxy';
     const providerId = validateProvider(await deps.prompts.providerId(defaultId, [...occupied]), occupied);
-    const keys = await deps.inspectKeys();
-    const selection = keys.choices.length === 0 ? ({ kind: 'none' } as const) : await deps.prompts.key(keys.choices);
+    const mode = await deps.prompts.authMode(inspection.authMode ?? 'keep-chatgpt');
+    const auth: CodexSetupSelection['auth'] =
+      mode === 'command'
+        ? { mode, command: await deps.resolveCommand() }
+        : await (async () => {
+            const keys = await deps.inspectKeys();
+            const selection =
+              keys.choices.length === 0 ? ({ kind: 'none' } as const) : await deps.prompts.key(keys.choices);
+            return { mode, keys, selection };
+          })();
     const preview = await deps.inspectSessions(providerId);
     const previousProviderId = (inspection.providerId ?? inspection.activeProviderId) || 'openai';
     const migration = await migrationSelection(preview, providerId, previousProviderId, deps.prompts);
-    const credential = await keys.resolve(selection, providerId);
-    let commit: ConfigCommit;
-    try {
-      commit = await deps.saveConfig(providerId, credential.token);
-    } catch (error) {
-      if (credential.kind === 'created') throw new CodexConfigWriteError(providerId);
-      throw error;
-    }
+    const commit = await deps.commitSetup({ providerId, auth });
     let migrationResult: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' } =
       migration.accepted ? { status: 'not_requested' } : migration.result;
     if (migration.accepted) {
@@ -154,8 +159,10 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
       status: commit.status,
       providerId,
       configPath: deps.location.configPath,
-      connection: credential.kind === 'placeholder' ? 'not_checked' : credential.verified ? 'ok' : 'offline',
-      credential: credential.kind,
+      connection: commit.connection,
+      credential: commit.credential,
+      authMode: commit.authMode,
+      ...(commit.installationId === undefined ? {} : { installationId: commit.installationId }),
       migration: migrationResult,
     };
   } catch (error) {

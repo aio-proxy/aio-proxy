@@ -2,6 +2,7 @@ export {
   configureCodexAgent,
   listCodexAgent,
   removeCodexAgent,
+  runCodexAuthCommand,
   type CodexConfigureOptions,
   type CodexConfigureResult,
   type CodexListResult,

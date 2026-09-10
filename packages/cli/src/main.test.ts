@@ -275,6 +275,7 @@ function agentProgram() {
     configure: mock(async () => configureResult),
     remove: mock(async () => removeResult),
     revoke: mock(async () => revokeResult),
+    authCodex: mock(async () => undefined),
   };
   const program = new Command().name('aio-proxy').exitOverride();
   registerAgentCommands(program, { actions, print: (line) => lines.push(line) });
@@ -301,11 +302,26 @@ test('agent list --json forwards json in options and prints one JSON result', as
   expect(JSON.parse(f.lines[0]!)).toEqual(listResult);
 });
 
+test('agent auth codex forwards the installation id to the helper action', async () => {
+  const f = agentProgram();
+  await f.program.parseAsync([
+    'node',
+    'aio-proxy',
+    'agent',
+    'auth',
+    'codex',
+    '--installation-id',
+    removeResult.installationId,
+  ]);
+  expect(f.actions.authCodex).toHaveBeenCalledWith(removeResult.installationId);
+  expect(f.lines).toHaveLength(0);
+});
+
 test('the real buildProgram registers public Agent commands and keeps the child action hidden', () => {
   const program = buildProgram();
   const agent = program.commands.find((command) => command.name() === 'agent');
   const child = program.commands.find((command) => command.name() === '__agent-post-upgrade');
-  expect(agent?.commands.map((command) => command.name())).toEqual(['list', 'configure', 'remove', 'revoke']);
+  expect(agent?.commands.map((command) => command.name())).toEqual(['list', 'configure', 'remove', 'revoke', 'auth']);
   expect(child).toBeDefined();
   const help = program.helpInformation();
   expect(help).toContain('agent');

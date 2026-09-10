@@ -6,6 +6,7 @@ import { Command } from 'commander';
 
 import packageJson from '../package.json' with { type: 'json' };
 import { agentConfigure, agentList, agentRemove, agentRevoke, createAgentCommandDeps } from './agent';
+import { runCodexAuthCommand } from './agent/codex';
 import { registerAgentCommands } from './agent/output';
 import { completionCommand } from './completion';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
@@ -25,6 +26,12 @@ import { runUpgradeCommand } from './upgrade';
 export { readOrBootstrapConfig } from './run';
 
 const VERSION = packageJson.version;
+
+const codexAuthInvocation = (argv: readonly string[]): string | undefined => {
+  if (argv[0] !== 'agent' || argv[1] !== 'auth' || argv[2] !== 'codex') return undefined;
+  if (argv.length !== 5 || argv[3] !== '--installation-id') throw new Error('Codex auth requires --installation-id');
+  return argv[4];
+};
 
 const registerServiceCommands = (program: Command): void => {
   const service = program.command('service').description(m['cli.service.description']());
@@ -209,6 +216,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
       configure: (target, options) => agentConfigure(target, options, commandDeps),
       remove: (target) => agentRemove(target, commandDeps),
       revoke: (installationId) => agentRevoke(installationId, commandDeps),
+      authCodex: (installationId) => runCodexAuthCommand(installationId),
     },
     print: console.log,
   });
@@ -235,7 +243,13 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 };
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
+  const startedAt = Date.now();
   try {
+    const installationId = codexAuthInvocation(process.argv.slice(2));
+    if (installationId !== undefined) {
+      await runCodexAuthCommand(installationId, startedAt);
+      return;
+    }
     await setLocale(resolveLocaleFromArgv(process.argv));
     validatePortArgv(process.argv);
     await buildProgram(deps).parseAsync(process.argv);

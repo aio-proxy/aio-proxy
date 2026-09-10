@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { CodexConfigWriteError, formatUserError, m } from '@aio-proxy/i18n';
+import { m } from '@aio-proxy/i18n';
 
 import type { AgentListResult } from './agent';
 import { renderAgentConfigure, renderAgentList } from './output';
@@ -113,7 +113,6 @@ const AGENT_KEYS = [
   'cli.agent.codex.provider_conflict',
   'cli.agent.codex.provider_id_invalid',
   'cli.agent.codex.key_select',
-  'cli.agent.codex.key_new',
   'cli.agent.codex.sources',
   'cli.agent.codex.sources_required',
   'cli.agent.codex.migrate',
@@ -132,7 +131,6 @@ const AGENT_KEYS = [
   'cli.agent.codex.keys_retained',
   'cli.agent.codex.restore_option',
   'cli.agent.codex.pending_recovery',
-  'cli.agent.codex.config_write_failed',
 ] as const;
 
 const flattenMessages = (value: unknown, prefix = ''): Record<string, string> => {
@@ -218,11 +216,20 @@ test('Codex non-interactive output is localized and does not mention a write', (
   expect(text).toContain('no files were changed');
 });
 
-test('Codex config write errors give retained-key recovery guidance without secrets', () => {
-  const text = formatUserError(new CodexConfigWriteError('custom'), 'en').message;
-  expect(text).toContain('custom');
-  expect(text).toContain('key was retained');
-  expect(text).toContain('agent configure codex');
+test('Codex migration restore output does not claim configuration changed', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'unchanged',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'not_checked',
+    credential: 'none',
+    migration: { status: 'completed', migrated: 1, skipped: 0, conflicts: 0 },
+    migrationAction: 'restore',
+  }).join('\n');
+  expect(text).toContain('history ownership restored');
+  expect(text).not.toContain('configuration unchanged');
+  expect(text).not.toContain('Reopen Codex');
 });
 
 test('every Agent lifecycle key exists in all five source locales and compiled Paraglide output', () => {

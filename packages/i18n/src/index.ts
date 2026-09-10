@@ -3,7 +3,6 @@ export {
   AliasCollisionError,
   AppError,
   ConfigWriteError,
-  CodexConfigWriteError,
   PortOutOfRangeError,
   ProviderNotInstalledError,
   StaleProviderGenerationError,
