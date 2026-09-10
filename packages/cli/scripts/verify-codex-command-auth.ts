@@ -19,7 +19,7 @@ export type CommandAuthProbe = {
   readonly rawTokenAccepted: boolean;
   readonly incompatibleConfigRejected: boolean;
   readonly refreshAfter401: boolean;
-  readonly proactiveRefresh: boolean;
+  readonly refreshInvocationObserved: boolean;
   readonly staticAccountType: 'chatgpt' | null;
   readonly commandAccountType: 'chatgpt' | null;
   readonly authFilesUnchanged: boolean;
@@ -289,19 +289,19 @@ async function malformedCommandProbe(
   return complete;
 }
 
-async function proactiveRefreshProbe(
+async function refreshIntervalProbe(
   context: ProbeContext,
   executable: string,
   root: string,
   addDiagnostic: (message: string) => void,
-): Promise<{ readonly complete: boolean; readonly refreshed: boolean }> {
-  const codexHome = join(root, 'proactive-codex');
+): Promise<{ readonly complete: boolean; readonly invocationObserved: boolean }> {
+  const codexHome = join(root, 'refresh-interval-codex');
   const helper = join(root, 'helper with spaces', 'auth helper.js');
-  const counter = join(root, 'proactive-count');
+  const counter = join(root, 'refresh-interval-count');
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ models: [] }) });
   let session: RpcSession | undefined;
   try {
-    if (server.port === undefined) throw new Error('proactive: local server unavailable');
+    if (server.port === undefined) throw new Error('refresh-interval: local server unavailable');
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
     await writeAuthConfig(codexHome, server.port, process.execPath, [helper, 'sequence'], 100);
     session = await openRpcSession(context, executable, root, codexHome, sanitizedError, {
@@ -312,10 +312,10 @@ async function proactiveRefreshProbe(
     const baseline = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
     await new Promise((resolve) => setTimeout(resolve, 350));
     const after = (await readFile(counter, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
-    return { complete: true, refreshed: after > baseline };
+    return { complete: true, invocationObserved: after > baseline };
   } catch (error) {
-    addDiagnostic(`proactive: ${sanitizedError(error)}`);
-    return { complete: false, refreshed: false };
+    addDiagnostic(`refresh-interval: ${sanitizedError(error)}`);
+    return { complete: false, invocationObserved: false };
   } finally {
     if (session !== undefined) await session.stop();
     server.stop(true);
@@ -391,7 +391,7 @@ export async function verifyCodexCommandAuth(executable: string): Promise<Comman
     rawTokenAccepted: false,
     incompatibleConfigRejected: false,
     refreshAfter401: false,
-    proactiveRefresh: false,
+    refreshInvocationObserved: false,
     staticAccountType: null,
     commandAccountType: null,
     authFilesUnchanged: false,
@@ -403,7 +403,7 @@ export async function verifyCodexCommandAuth(executable: string): Promise<Comman
     const incompatible = await incompatibleConfigProbe(context, executable, root, (message) => errors.push(message));
     const command = await commandProbe(context, executable, root, (message) => errors.push(message));
     const malformedComplete = await malformedCommandProbe(context, executable, root, (message) => errors.push(message));
-    const proactive = await proactiveRefreshProbe(context, executable, root, (message) => errors.push(message));
+    const refreshInterval = await refreshIntervalProbe(context, executable, root, (message) => errors.push(message));
     const staticResult = await staticAccountProbe(context, executable, root, (message) => errors.push(message));
     result = {
       version: versionText,
@@ -411,13 +411,13 @@ export async function verifyCodexCommandAuth(executable: string): Promise<Comman
       rawTokenAccepted: command.rawTokenAccepted,
       incompatibleConfigRejected: incompatible.rejected,
       refreshAfter401: command.refreshAfter401,
-      proactiveRefresh: proactive.refreshed,
+      refreshInvocationObserved: refreshInterval.invocationObserved,
       staticAccountType: staticResult.type,
       commandAccountType: command.commandAccountType,
       authFilesUnchanged:
         command.complete &&
         malformedComplete &&
-        proactive.complete &&
+        refreshInterval.complete &&
         staticResult.complete &&
         staticResult.authFilesUnchanged,
     };
@@ -444,7 +444,7 @@ async function main(): Promise<void> {
   assert.equal(result.rawTokenAccepted, true);
   assert.equal(result.incompatibleConfigRejected, true);
   assert.equal(result.refreshAfter401, true);
-  assert.equal(result.proactiveRefresh, true);
+  assert.equal(result.refreshInvocationObserved, true);
   assert.equal(result.staticAccountType, 'chatgpt');
   assert.equal(result.commandAccountType, null);
   assert.equal(result.authFilesUnchanged, true);
