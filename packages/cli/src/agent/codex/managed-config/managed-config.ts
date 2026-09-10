@@ -135,7 +135,7 @@ function restoreOwnedFields(text: string, marker: CodexMarker, edits: readonly F
   return removeCreatedTables(restored, marker);
 }
 
-async function recoverPending(location: CodexLocation): Promise<void> {
+async function recoverPending(location: CodexLocation, assertOwned?: () => Promise<void>): Promise<void> {
   await ensureManagedRoot(location);
   const pending = await readJournal(location);
   if (pending === undefined) return;
@@ -146,16 +146,20 @@ async function recoverPending(location: CodexLocation): Promise<void> {
     currentFingerprint === pending.beforeFingerprint && pending.originalExists === (current !== undefined);
   const afterMatches = currentFingerprint === pending.afterFingerprint;
   if (pending.stage === 'prepared' && beforeMatches) {
+    await assertOwned?.();
     await clearJournal(location);
     return;
   }
   if (afterMatches) {
+    await assertOwned?.();
     if (pending.targetMarker === undefined) await deleteMarker(location);
     else await writeMarker(location, pending.targetMarker);
+    await assertOwned?.();
     await clearJournal(location);
     return;
   }
   if (pending.stage === 'config-written' && beforeMatches) {
+    await assertOwned?.();
     await clearJournal(location);
     return;
   }
@@ -176,7 +180,7 @@ export async function recoverCodexConfigOperation(
       if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
       if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
       await ensureManagedRoot(location);
-      await ownedLease.withOwnershipFence(() => recoverPending(location));
+      await ownedLease.withOwnershipFence((assertOwned) => recoverPending(location, assertOwned));
       return 'recovered';
     }),
   );
@@ -335,7 +339,7 @@ export async function configureCodexConfig(
   return withInstallationLease(input.location, lease, async (ownedLease) =>
     runExclusive(input.location.markerPath, async () => {
       const { location, providerId, baseUrl, auth } = input;
-      await ownedLease.withOwnershipFence(() => recoverPending(location));
+      await ownedLease.withOwnershipFence((assertOwned) => recoverPending(location, assertOwned));
       const current = await readText(location);
       const text = current?.text ?? '';
       const document =
@@ -421,7 +425,7 @@ export async function configureCodexConfig(
 export async function removeCodexConfig(location: CodexLocation, lease?: CodexLease): Promise<ConfigRemoval> {
   return withInstallationLease(location, lease, async (ownedLease) =>
     runExclusive(location.markerPath, async () => {
-      await ownedLease.withOwnershipFence(() => recoverPending(location));
+      await ownedLease.withOwnershipFence((assertOwned) => recoverPending(location, assertOwned));
       const marker = await readMarker(location);
       if (marker === undefined) return { status: 'absent', preservedPaths: [] };
       const current = await readText(location);

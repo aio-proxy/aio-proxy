@@ -7,6 +7,7 @@ import {
   refreshAgentCredential,
   requestDeviceAuthorization,
 } from '@aio-proxy/agent-provider-runtime';
+import { observeProcessFileLock } from '@aio-proxy/core';
 import type { AgentDeviceCodeResponse, AgentManagedMarker, AgentRevokeStatus } from '@aio-proxy/types';
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 
@@ -217,16 +218,24 @@ async function authorizeOwned(
   });
 }
 
-async function assertManagedInstallation(location: CodexLocation, identity: InstallationRecord): Promise<void> {
-  assertManagedInspection(identity, await inspectCodexConfig(location));
+async function assertManagedInstallation(
+  location: CodexLocation,
+  identity: InstallationRecord,
+  requireManaged = false,
+): Promise<void> {
+  assertManagedInspection(identity, await inspectCodexConfig(location), requireManaged);
 }
 
 function assertManagedInspection(
   identity: InstallationRecord,
   inspection: Awaited<ReturnType<typeof inspectCodexConfig>>,
+  requireManaged = false,
 ): void {
   if (inspection.status === 'conflict') throw new Error('Codex managed configuration is invalid');
-  if (inspection.providerId === undefined) return;
+  if (inspection.providerId === undefined) {
+    if (requireManaged) throw new Error('Codex managed configuration is missing');
+    return;
+  }
   if (
     inspection.status !== 'managed' ||
     inspection.providerId !== identity.providerId ||
@@ -305,8 +314,14 @@ export async function clearCodexCommandInstallation(
     const identity = await readIdentity(input.location);
     if (identity?.marker.installationId !== input.installationId)
       throw new Error('Codex command installation mismatch');
-    await durableDelete(identityPath(input.location), await readRegularFile(identityPath(input.location)));
-    await durableDelete(credentialPath(input.location), await readRegularFile(credentialPath(input.location)));
+    const identityFile = await readRegularFile(identityPath(input.location));
+    if (identityFile !== undefined && (identityFile.stat.nlink > 1 || (identityFile.stat.mode & 0o077) !== 0))
+      throw new Error('Refusing unsafe Codex command identity');
+    const credentialFile = await readRegularFile(credentialPath(input.location));
+    if (credentialFile !== undefined && (credentialFile.stat.nlink > 1 || (credentialFile.stat.mode & 0o077) !== 0))
+      throw new Error('Refusing unsafe Codex credential file');
+    await durableDelete(identityPath(input.location), identityFile);
+    await durableDelete(credentialPath(input.location), credentialFile);
   });
 }
 
@@ -332,7 +347,7 @@ export async function inspectCodexCommandCredential(input: {
   if (identity === undefined || credential === undefined)
     return { credentialStatus: 'missing', connection: 'not_checked' };
   try {
-    assertManagedInspection(identity, await inspectCodexConfig(input.location));
+    assertManagedInspection(identity, await inspectCodexConfig(input.location), true);
   } catch {
     return { credentialStatus: 'reauthorize', connection: 'not_checked' };
   }
@@ -382,6 +397,8 @@ async function writeTokenOwned(
     readonly writeToken: (token: string) => Promise<void>;
     /** Set after an upstream 401 so a still-fresh cached token is not reused. */
     readonly forceRefresh?: boolean;
+    /** Owner observed before acquiring the installation lock, if any. */
+    readonly observedOwner?: string;
   },
   lease: CodexLease,
 ): Promise<void> {
@@ -389,7 +406,7 @@ async function writeTokenOwned(
     const identity = await readIdentity(input.location);
     if (identity?.marker.installationId !== input.installationId || identity.status !== 'active')
       throw new Error('Codex command installation is not active');
-    await assertManagedInstallation(input.location, identity);
+    await assertManagedInstallation(input.location, identity, true);
     const current = await readCredential(input.location);
     if (
       current === undefined ||
@@ -406,9 +423,12 @@ async function writeTokenOwned(
     }
     if (
       input.forceRefresh !== true &&
+      current.status === 'ready' &&
       current.accessExpiresAt > now + 1_000 &&
       current.deliveredBy !== undefined &&
-      current.deliveredRevision === current.revision
+      current.deliveredRevision === current.revision &&
+      input.observedOwner !== undefined &&
+      current.deliveredBy === input.observedOwner
     ) {
       await input.writeToken(current.accessToken);
       await assertOwned();
@@ -478,5 +498,11 @@ export async function writeCodexAuthToken(input: {
   readonly forceRefresh?: boolean;
   readonly lease?: CodexLease;
 }): Promise<void> {
-  return withLease(input.location, input.lease, (lease) => writeTokenOwned(input, lease));
+  const observedOwner =
+    input.lease === undefined
+      ? (await observeProcessFileLock(`${input.location.home}/.aio-proxy.lock`))?.owner
+      : undefined;
+  return withLease(input.location, input.lease, (lease) =>
+    writeTokenOwned({ ...input, ...(observedOwner === undefined ? {} : { observedOwner }) }, lease),
+  );
 }

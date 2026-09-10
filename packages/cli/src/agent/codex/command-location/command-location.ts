@@ -40,19 +40,21 @@ async function runVersion(path: string, spawn: typeof Bun.spawn): Promise<boolea
     const stdout = new Response(child.stdout as ReadableStream<Uint8Array>).text().catch(() => '');
     const stderr = new Response(child.stderr as ReadableStream<Uint8Array>).text().catch(() => '');
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const status = await Promise.race([
-      child.exited,
-      new Promise<number>((resolve) => {
-        timer = setTimeout(() => {
-          child.kill();
-          resolve(-1);
-        }, 3_000);
+    const completed = Promise.all([child.exited, stdout, stderr]);
+    const result = await Promise.race([
+      completed.then(([status, output]) => ({ status, output })),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), 3_000);
       }),
     ]);
     if (timer !== undefined) clearTimeout(timer);
-    const output = await stdout;
-    await stderr;
-    return status === 0 && /(?:aiop|aio-proxy)(?:-cli)?\s+\d+\.\d+\.\d+/iu.test(output);
+    if (result === undefined) {
+      child.kill();
+      void child.stdout?.cancel().catch(() => {});
+      void child.stderr?.cancel().catch(() => {});
+      return false;
+    }
+    return result.status === 0 && /(?:aiop|aio-proxy)(?:-cli)?\s+\d+\.\d+\.\d+/iu.test(result.output);
   } catch {
     return false;
   }

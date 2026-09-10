@@ -41,3 +41,13 @@ test('accepts the published npm launcher while rejecting arbitrary javascript en
   await chmod(source, 0o755);
   await expect(resolveCodexAuthCommand({ candidates: [source] })).rejects.toThrow();
 });
+
+test('bounds launchers that keep descendants attached to stdout', async () => {
+  const root = await executableRoot();
+  const path = join(root, 'stable path', 'aiop');
+  await writeFile(path, '#!/bin/sh\nsleep 10 & wait\n');
+  await chmod(path, 0o755);
+  const startedAt = Date.now();
+  await expect(resolveCodexAuthCommand({ candidates: [path] })).rejects.toThrow();
+  expect(Date.now() - startedAt).toBeLessThan(3_500);
+});
