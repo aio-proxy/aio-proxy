@@ -321,10 +321,13 @@ export async function clearCodexCommandInstallation(
     if (identity?.marker.installationId !== input.installationId)
       throw new Error('Codex command installation mismatch');
     const identityFile = await readRegularFile(identityPath(input.location));
-    if (identityFile !== undefined && (identityFile.stat.nlink > 1 || (identityFile.stat.mode & 0o077) !== 0))
+    if (identityFile !== undefined && (identityFile.stat.nlink > 1 || (Number(identityFile.stat.mode) & 0o077) !== 0))
       throw new Error('Refusing unsafe Codex command identity');
     const credentialFile = await readRegularFile(credentialPath(input.location));
-    if (credentialFile !== undefined && (credentialFile.stat.nlink > 1 || (credentialFile.stat.mode & 0o077) !== 0))
+    if (
+      credentialFile !== undefined &&
+      (credentialFile.stat.nlink > 1 || (Number(credentialFile.stat.mode) & 0o077) !== 0)
+    )
       throw new Error('Refusing unsafe Codex credential file');
     await durableDelete(identityPath(input.location), identityFile);
     await durableDelete(credentialPath(input.location), credentialFile);
