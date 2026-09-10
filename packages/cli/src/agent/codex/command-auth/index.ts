@@ -4,6 +4,7 @@ export {
   clearCodexCommandInstallation,
   inspectCodexCommandCredential,
   prepareCodexCommandInstallation,
+  rebindCodexCommandInstallation,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
   writeCodexAuthToken,

@@ -366,6 +366,7 @@
         "auth_result": "Codex 인증 모드: {mode}.",
         "reopen": "변경 사항을 적용하려면 Codex를 다시 여세요.",
         "cancelled": "Codex 구성을 취소했습니다. 파일은 변경되지 않았습니다.",
+        "authorization_incomplete": "Codex 인증이 완료되지 않았습니다. 보류 중인 작업을 복구하거나 구성을 다시 실행하세요.",
         "non_interactive": "Codex 구성에는 대화형 터미널이 필요합니다. 파일은 변경되지 않았습니다.",
         "restore": "Codex 세션 기록 소유권을 복원했습니다.",
         "offline": "Codex 구성을 저장했지만 프록시를 확인하지 못했습니다.",

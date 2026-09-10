@@ -15,6 +15,7 @@ export type CodexLifecycleDeps = {
   readonly location: CodexLocation;
   readonly endpoint?: string;
   readonly signal?: AbortSignal;
+  readonly checkStatic?: () => Promise<CodexListResult['connection']>;
   readonly revoke?: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
 };
 
@@ -52,17 +53,28 @@ export async function listCodexLifecycle(
           check: input.check,
           signal: input.signal ?? defaultSignal(),
         }).catch(() => ({ credentialStatus: 'reauthorize' as const, connection: 'not_checked' as const }));
+  const authMode = inspection.authMode ?? (identity === undefined ? undefined : 'command');
+  const connection =
+    input.check && identity === undefined && authMode === 'keep-chatgpt'
+      ? ((await input.checkStatic?.()) ?? 'not_checked')
+      : input.check
+        ? (credential?.connection ?? 'not_checked')
+        : 'not_checked';
   const result: CodexListResult = {
     target: 'codex',
     integration: 'static-config',
     configPath: input.location.configPath,
-    ...(inspection.providerId === undefined ? {} : { providerId: inspection.providerId }),
+    ...(inspection.providerId === undefined && identity?.providerId === undefined
+      ? {}
+      : { providerId: inspection.providerId ?? identity?.providerId }),
     activeProviderId: inspection.activeProviderId,
     ...(inspection.baseUrl === undefined ? {} : { baseUrl: inspection.baseUrl }),
     status: inspection.status,
-    connection: input.check ? (credential?.connection ?? 'not_checked') : 'not_checked',
-    authMode: inspection.authMode,
-    installationId: inspection.installationId,
+    connection,
+    ...(authMode === undefined ? {} : { authMode }),
+    ...(inspection.installationId === undefined && identity?.marker.installationId === undefined
+      ? {}
+      : { installationId: inspection.installationId ?? identity?.marker.installationId }),
     ...(identity === undefined ? {} : { lifecycle: identity.status }),
     ...(credential === undefined ? {} : { credentialStatus: credential.credentialStatus }),
     changedPaths: inspection.changedPaths,

@@ -271,3 +271,42 @@ test('propagates setup failures without attempting migration', async () => {
   expect(error).toEqual(new Error('config write failed'));
   expect(events).toEqual(['commit']);
 });
+
+test('does not report zero side effects when command authorization is aborted', async () => {
+  const result = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => 'custom',
+      authMode: async () => 'command',
+      key: async () => ({ kind: 'none' }),
+      sources: async () => [],
+      migrate: async () => false,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'openai', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => {
+      throw new Error('command must not inspect proxy keys');
+    },
+    inspectSessions: async () => ({ groups: [], blocked: [], targets: [] }),
+    resolveCommand: async () => '/tmp/aiop',
+    commitSetup: async () => {
+      throw new DOMException('The operation was aborted', 'AbortError');
+    },
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  });
+  expect(result).toMatchObject({
+    status: 'cancelled',
+    reason: 'authorization_incomplete',
+    providerId: 'custom',
+    authMode: 'command',
+  });
+});

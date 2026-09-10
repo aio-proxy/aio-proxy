@@ -45,9 +45,12 @@ const checkCodexInstalled = async (): Promise<string> => {
   return version;
 };
 
-const isPromptCancellation = (error: unknown): boolean =>
-  error instanceof Error &&
-  /(?:abort|cancel|exit)prompt|(?:cancelled|canceled)/iu.test(`${error.name} ${error.message}`);
+const isPromptCancellation = (error: unknown): boolean => {
+  if (error === null || typeof error !== 'object') return false;
+  const name = 'name' in error && typeof error.name === 'string' ? error.name : '';
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+  return /abort|(?:cancel|exit)prompt|(?:cancelled|canceled)/iu.test(`${name} ${message}`);
+};
 
 const cancelledCodexResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
   target: 'codex',
@@ -162,6 +165,30 @@ const createPrompts = (): CodexPrompts => ({
 
 const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
 
+const connectionStatus = async (endpoint: string): Promise<CodexListResult['connection']> => {
+  try {
+    const response = await fetch(`${endpoint.replace(/\/+$/u, '')}/health`, {
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (response.status === 401 || response.status === 403) return 'unauthorized';
+    if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
+    const body: unknown = await response.json().catch(() => undefined);
+    return typeof body === 'object' && body !== null && (body as { readonly status?: unknown }).status === 'ok'
+      ? 'ok'
+      : 'invalid_response';
+  } catch {
+    return 'offline';
+  }
+};
+
+const resolveEndpointSafely = async (): Promise<string | undefined> => {
+  try {
+    return await resolveAgentEndpoint();
+  } catch {
+    return undefined;
+  }
+};
+
 const authContext = (location: CodexLocation, endpoint: string) => ({
   location,
   endpoint,
@@ -260,7 +287,14 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
 
 export async function listCodexAgent(check = false): Promise<CodexListResult> {
   const location = configuredLocation();
-  return listCodexLifecycle({ location, check });
+  const endpoint = check ? await resolveEndpointSafely() : undefined;
+  return listCodexLifecycle({
+    location,
+    check,
+    ...(endpoint === undefined
+      ? { checkStatic: async () => 'offline' as const }
+      : { checkStatic: () => connectionStatus(endpoint) }),
+  });
 }
 
 export async function removeCodexAgent(): Promise<CodexRemoveResult> {

@@ -53,3 +53,16 @@ Verification commands and results:
 - `git diff --check` — no output.
 
 The direct mixed `main.test.ts` run intermittently reported the existing port-conflict assertion as exit code 2 instead of 1; the package unit run passed that test, and no server code was changed for it.
+
+## Review fix round 3
+
+This round restores static keep-chatgpt connectivity checks for `agent list --check`, makes command-to-keep-chatgpt recovery roll back safely when no static token is available, rebinds an existing command installation when its managed Provider ID changes, and reports command authorization cancellation as incomplete/recoverable rather than write-free. Pending command identities are visible in list and authorization data. Focused tests cover each regression plus helper UUID and startup-budget rejection.
+
+Verification commands and results:
+
+- `bun run i18n:compile` — exit 0; Paraglide compilation and package build completed.
+- `bun run --filter @aio-proxy/i18n test:unit` — 11 pass, 0 fail, 36 expectations across 5 files.
+- `bun run --filter @aio-proxy/cli test:unit` — all CLI unit tests passed, including main, update-notify, Codex setup/lifecycle/wizard, and helper assertions.
+- `bun test packages/cli/src/agent/codex/setup packages/cli/src/agent/codex/lifecycle packages/cli/src/agent/codex/wizard packages/cli/src/agent/codex/codex.test.ts packages/cli/src/agent/output.test.ts` — 26 pass, 0 fail, 817 expectations across 5 files.
+- `bun run check` — exit 0; oxlint reported only existing dashboard/logger warnings and oxfmt passed all files.
+- `git diff --check` — no output.

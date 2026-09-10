@@ -25,6 +25,10 @@ test('lists static authentication without checking the proxy and removes it idem
       authMode: 'keep-chatgpt',
       connection: 'not_checked',
     });
+    await expect(listCodexLifecycle({ location, check: true, checkStatic: async () => 'ok' })).resolves.toMatchObject({
+      authMode: 'keep-chatgpt',
+      connection: 'ok',
+    });
     await expect(removeCodexLifecycle({ location })).resolves.toMatchObject({
       status: 'removed',
       keysRetained: true,
@@ -85,6 +89,28 @@ test('blocks command removal after revoke failure and keeps retry state', async 
     expect(JSON.parse(await readFile(authOperationPath(location), 'utf8'))).toMatchObject({
       phase: 'retiring',
       installationId,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('lists a pending command installation before its config is committed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  try {
+    const installation = await withCodexInstallation(location, AbortSignal.timeout(10_000), (lease) =>
+      prepareCodexCommandInstallation(
+        { location, providerId: 'custom', endpoint: 'http://127.0.0.1:9317', adapterVersion: '0.21.0' },
+        lease,
+      ),
+    );
+    await expect(listCodexLifecycle({ location, check: false })).resolves.toMatchObject({
+      providerId: 'custom',
+      authMode: 'command',
+      installationId: installation.marker.installationId,
+      lifecycle: 'pending',
+      credentialStatus: 'missing',
     });
   } finally {
     await rm(root, { recursive: true, force: true });

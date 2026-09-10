@@ -114,7 +114,7 @@ export async function prepareCodexCommandInstallation(
   return lease.withOwnership(async () => {
     const current = await readIdentity(input.location);
     if (current !== undefined) {
-      if (current.providerId !== input.providerId || current.marker.endpoint !== input.endpoint)
+      if (current.marker.endpoint !== input.endpoint)
         throw new Error('Codex command installation is already bound to another provider');
       return current;
     }
@@ -127,6 +127,19 @@ export async function prepareCodexCommandInstallation(
     };
     await writeIdentity(input.location, installation);
     return installation;
+  });
+}
+
+export async function rebindCodexCommandInstallation(
+  location: CodexLocation,
+  installationId: string,
+  providerId: string,
+  lease: CodexLease,
+): Promise<void> {
+  await lease.withOwnership(async () => {
+    const current = await readIdentity(location);
+    if (current?.marker.installationId !== installationId) throw new Error('Codex command installation mismatch');
+    await writeIdentity(location, { ...current, providerId });
   });
 }
 
@@ -254,11 +267,8 @@ function assertManagedInspection(
   }
 }
 
-function isRecentRefresh(refreshStartedAt: number | undefined, now: number): boolean {
-  return (
-    refreshStartedAt !== undefined && refreshStartedAt <= now && now - refreshStartedAt <= REFRESH_REPLAY_WINDOW_MS
-  );
-}
+const isRecentRefresh = (start: number | undefined, now: number) =>
+  start !== undefined && start <= now && now - start <= REFRESH_REPLAY_WINDOW_MS;
 
 export async function authorizeCodexInstallation(
   input: {
@@ -334,14 +344,14 @@ export async function clearCodexCommandInstallation(
   });
 }
 
-function connectionFromError(error: unknown): 'offline' | 'unauthorized' | 'invalid_response' {
-  if (error instanceof AgentRuntimeError) {
-    if (error.code === 'network') return 'offline';
-    if (error.code === 'invalid_grant' || error.code === 'invalid_client') return 'unauthorized';
-    return 'invalid_response';
-  }
-  return 'offline';
-}
+const connectionFromError = (error: unknown): 'offline' | 'unauthorized' | 'invalid_response' =>
+  error instanceof AgentRuntimeError
+    ? error.code === 'network'
+      ? 'offline'
+      : error.code === 'invalid_grant' || error.code === 'invalid_client'
+        ? 'unauthorized'
+        : 'invalid_response'
+    : 'offline';
 
 export async function inspectCodexCommandCredential(input: {
   readonly location: CodexLocation;

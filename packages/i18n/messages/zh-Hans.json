@@ -366,6 +366,7 @@
         "auth_result": "Codex 鉴权模式：{mode}。",
         "reopen": "请重新打开 Codex 使配置生效。",
         "cancelled": "Codex 配置已取消；未修改文件。",
+        "authorization_incomplete": "Codex 鉴权未完成；请恢复待处理操作或重新运行配置。",
         "non_interactive": "Codex 配置需要交互式终端；未修改文件。",
         "restore": "已恢复 Codex 会话历史归属。",
         "offline": "已保存 Codex 配置，但无法验证代理。",

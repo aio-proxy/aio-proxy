@@ -366,6 +366,7 @@
         "auth_result": "Codex authentication mode: {mode}.",
         "reopen": "Reopen Codex for the change to take effect.",
         "cancelled": "Codex configuration cancelled; no files were changed.",
+        "authorization_incomplete": "Codex authorization did not complete; recover the pending operation or run configure again.",
         "non_interactive": "Codex configuration requires an interactive terminal; no files were changed.",
         "restore": "Codex session history ownership restored.",
         "offline": "Codex configuration saved, but the proxy could not be verified.",

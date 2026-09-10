@@ -366,6 +366,7 @@
         "auth_result": "Codex の認証モード: {mode}。",
         "reopen": "変更を反映するには Codex を再起動してください。",
         "cancelled": "Codex の設定をキャンセルしました。ファイルは変更されていません。",
+        "authorization_incomplete": "Codex の認証が完了しませんでした。保留中の操作を復元するか、設定を再実行してください。",
         "non_interactive": "Codex の設定には対話型ターミナルが必要です。ファイルは変更されていません。",
         "restore": "Codex セッション履歴の所有者を復元しました。",
         "offline": "Codex の設定を保存しましたが、プロキシを確認できませんでした。",

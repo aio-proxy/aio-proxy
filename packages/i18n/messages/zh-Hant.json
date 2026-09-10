@@ -366,6 +366,7 @@
         "auth_result": "Codex 驗證模式：{mode}。",
         "reopen": "請重新開啟 Codex 以套用設定。",
         "cancelled": "Codex 設定已取消；未修改檔案。",
+        "authorization_incomplete": "Codex 鑑權未完成；請復原待處理操作或重新執行設定。",
         "non_interactive": "Codex 設定需要互動式終端機；未修改檔案。",
         "restore": "已恢復 Codex 工作階段歷史歸屬。",
         "offline": "已儲存 Codex 設定，但無法驗證代理程式。",

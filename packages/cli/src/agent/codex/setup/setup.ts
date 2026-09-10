@@ -6,6 +6,7 @@ import {
   authorizeCodexInstallation,
   clearCodexCommandInstallation,
   prepareCodexCommandInstallation,
+  rebindCodexCommandInstallation,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
 } from '../command-auth';
@@ -101,7 +102,7 @@ async function commitCommand(
   lease: CodexLease,
 ): Promise<CodexSetupCommit> {
   const existing = await readCodexCommandIdentity(context.location);
-  if (existing !== undefined && (existing.providerId !== providerId || existing.marker.endpoint !== context.endpoint))
+  if (existing !== undefined && existing.marker.endpoint !== context.endpoint)
     throw setupError('CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED');
   const prepared =
     existing ??
@@ -149,6 +150,8 @@ async function commitCommand(
     lease,
   );
   await writeAuthOperation(context.location, { ...operation, phase: 'config-written' });
+  if (prepared.providerId !== providerId)
+    await rebindCodexCommandInstallation(context.location, prepared.marker.installationId, providerId, lease);
   await activateCodexCommandInstallation(context.location, prepared.marker.installationId, lease);
   await clearAuthOperation(context.location);
   return {
@@ -202,7 +205,22 @@ async function recoverComplete(
     },
     lease,
   );
+  if (identity.providerId !== operation.providerId)
+    await rebindCodexCommandInstallation(context.location, operation.installationId, operation.providerId, lease);
   await activateCodexCommandInstallation(context.location, operation.installationId, lease);
+  await clearAuthOperation(context.location);
+  return true;
+}
+
+async function recoverKeepChatgpt(context: CodexSetupContext, lease: CodexLease): Promise<boolean> {
+  const identity = await readCodexCommandIdentity(context.location);
+  if (identity !== undefined) await revokeAndClear(context, lease);
+  const inspection = await inspectCodexConfig(context.location);
+  if (inspection.authMode === 'keep-chatgpt' || inspection.providerId === undefined) {
+    await clearAuthOperation(context.location);
+    return true;
+  }
+  await removeCodexConfig(context.location, lease);
   await clearAuthOperation(context.location);
   return true;
 }
@@ -221,6 +239,8 @@ export async function recoverCodexAuthOperation(
     if (operation === undefined) return 'none';
     if (action === 'complete') {
       try {
+        if (operation.targetMode === 'keep-chatgpt')
+          return (await recoverKeepChatgpt(context, lease)) ? 'completed' : 'blocked';
         return (await recoverComplete(context, operation, lease)) ? 'completed' : 'blocked';
       } catch {
         return 'blocked';

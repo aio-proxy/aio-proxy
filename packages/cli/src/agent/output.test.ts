@@ -232,6 +232,22 @@ test('Codex migration restore output does not claim configuration changed', () =
   expect(text).not.toContain('Reopen Codex');
 });
 
+test('Codex authorization cancellation does not claim a zero-write operation', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'cancelled',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'not_checked',
+    credential: 'none',
+    authMode: 'command',
+    migration: { status: 'not_requested' },
+    reason: 'authorization_incomplete',
+  }).join('\n');
+  expect(text).toContain('authorization did not complete');
+  expect(text).not.toContain('no files were changed');
+});
+
 test('every Agent lifecycle key exists in all five source locales and compiled Paraglide output', () => {
   const messagesDir = join(import.meta.dir, '../../../../packages/i18n/messages');
   const locales = readdirSync(messagesDir)

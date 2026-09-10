@@ -30,7 +30,11 @@ const renderCodexList = (result: CodexListResult) => [
 const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
   if (result.status === 'cancelled')
     return [
-      result.reason === 'non_interactive' ? m['cli.agent.codex.non_interactive']() : m['cli.agent.codex.cancelled'](),
+      result.reason === 'non_interactive'
+        ? m['cli.agent.codex.non_interactive']()
+        : result.reason === 'authorization_incomplete'
+          ? m['cli.agent.codex.authorization_incomplete']()
+          : m['cli.agent.codex.cancelled'](),
     ];
   const lines = [
     result.migrationAction === 'restore'

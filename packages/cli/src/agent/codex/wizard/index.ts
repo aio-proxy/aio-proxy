@@ -25,7 +25,7 @@ export type CodexConfigureResult = {
   readonly authMode?: CodexAuthMode;
   readonly installationId?: string;
   readonly migration: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' };
-  readonly reason?: 'non_interactive';
+  readonly reason?: 'non_interactive' | 'authorization_incomplete';
   readonly version?: string;
   readonly versionCompatibility?: 'unverified';
   readonly migrationAction?: 'restore';
@@ -59,11 +59,17 @@ export type WizardDeps = {
 };
 
 const cancelledError = (error: unknown): boolean => {
-  if (error instanceof Error && /(?:abort|cancel|exit)prompt/i.test(error.name)) return true;
-  return error instanceof Error && /(?:cancelled|canceled)/i.test(error.message);
+  if (error === null || typeof error !== 'object') return false;
+  const name = 'name' in error && typeof error.name === 'string' ? error.name : '';
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+  return /abort|(?:cancel|exit)prompt|(?:cancelled|canceled)/i.test(`${name} ${message}`);
 };
 
-export const cancelledResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
+export const cancelledResult = (
+  location: CodexLocation,
+  reason?: 'non_interactive' | 'authorization_incomplete',
+  details?: { readonly providerId?: string; readonly authMode?: CodexAuthMode },
+): CodexConfigureResult => ({
   target: 'codex',
   integration: 'static-config',
   status: 'cancelled',
@@ -71,6 +77,8 @@ export const cancelledResult = (location: CodexLocation, reason?: 'non_interacti
   connection: 'not_checked',
   credential: 'none',
   migration: { status: 'not_requested' },
+  ...(details?.providerId === undefined ? {} : { providerId: details.providerId }),
+  ...(details?.authMode === undefined ? {} : { authMode: details.authMode }),
   ...(reason === undefined ? {} : { reason }),
 });
 
@@ -125,12 +133,17 @@ const migrationSelection = async (
 
 export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureResult> {
   if (!deps.isTTY) return cancelledResult(deps.location, 'non_interactive');
+  let commitStarted = false;
+  let selectedProviderId: string | undefined;
+  let selectedAuthMode: CodexAuthMode | undefined;
   try {
     const inspection = await deps.inspectConfig();
     const occupied = new Set(await deps.occupiedIds());
     const defaultId = inspection.providerId ?? 'aio-proxy';
     const providerId = validateProvider(await deps.prompts.providerId(defaultId, [...occupied]), occupied);
+    selectedProviderId = providerId;
     const mode = await deps.prompts.authMode(inspection.authMode ?? 'keep-chatgpt');
+    selectedAuthMode = mode;
     const auth: CodexSetupSelection['auth'] =
       mode === 'command'
         ? { mode, command: await deps.resolveCommand() }
@@ -143,6 +156,7 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
     const preview = await deps.inspectSessions(providerId);
     const previousProviderId = (inspection.providerId ?? inspection.activeProviderId) || 'openai';
     const migration = await migrationSelection(preview, providerId, previousProviderId, deps.prompts);
+    commitStarted = true;
     const commit = await deps.commitSetup({ providerId, auth });
     let migrationResult: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' } =
       migration.accepted ? { status: 'not_requested' } : migration.result;
@@ -166,7 +180,14 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
       migration: migrationResult,
     };
   } catch (error) {
-    if (cancelledError(error)) return cancelledResult(deps.location);
+    if (cancelledError(error))
+      return cancelledResult(
+        deps.location,
+        commitStarted && selectedAuthMode === 'command' ? 'authorization_incomplete' : undefined,
+        commitStarted && selectedAuthMode === 'command'
+          ? { providerId: selectedProviderId, authMode: selectedAuthMode }
+          : undefined,
+      );
     throw error;
   }
 }
