@@ -24,13 +24,16 @@ export type AgentLocation = {
 };
 export type AgentPluginLocation = AgentLocation & { readonly target: AgentPluginTarget };
 
-const GROK_NOT_INTEGRATED = 'Grok is not yet integrated';
+const GROK_FLOOR = '1.0.24';
 
 const hostCommand = {
   opencode: { executable: 'opencode', versionArgs: ['--version'], floor: '1.17.10' },
   pi: { executable: 'pi', versionArgs: ['--version'], floor: '0.84.2' },
   omp: { executable: 'omp', versionArgs: ['--version'], floor: '17.3.7' },
 } as const;
+
+const isPluginTarget = (target: AgentTarget): target is AgentPluginTarget =>
+  target === 'opencode' || target === 'pi' || target === 'omp';
 
 const parseVersion = (target: AgentPluginTarget, output: string): string | undefined => {
   const value = output.trim();
@@ -43,34 +46,69 @@ const parseVersion = (target: AgentPluginTarget, output: string): string | undef
   }
 };
 
-const isPluginTarget = (target: AgentTarget): target is AgentPluginTarget =>
-  target === 'opencode' || target === 'pi' || target === 'omp';
-
-export async function detectAgentHost(target: AgentTarget, deps: AgentHostDeps): Promise<AgentHost> {
-  if (target === 'grok') throw new Error(GROK_NOT_INTEGRATED);
-  if (!isPluginTarget(target)) throw new Error(`${target} is not a plugin host`);
-  const command = hostCommand[target];
-  const executable = deps.which(command.executable);
-  if (executable === null) {
-    return { target, detected: false, minimumVersion: command.floor, support: 'unknown' };
-  }
-  let version: string | undefined;
+const parseGrokVersion = (output: string): string | undefined => {
+  const candidate = /^\s*grok\s+(\S+)/u.exec(output)?.[1];
+  if (candidate === undefined) return undefined;
   try {
-    version = parseVersion(target, await deps.capture([executable, ...command.versionArgs]));
+    Bun.semver.order(candidate, candidate);
+    return candidate;
   } catch {
-    return { target, detected: true, executable, minimumVersion: command.floor, support: 'unknown' };
+    return undefined;
   }
+};
+
+const classifyHost = (
+  target: AgentTarget,
+  executable: string,
+  version: string | undefined,
+  minimumVersion: string,
+): AgentHost => {
   if (version === undefined) {
-    return { target, detected: true, executable, minimumVersion: command.floor, support: 'unknown' };
+    return { target, detected: true, executable, minimumVersion, support: 'unknown' };
   }
   return {
     target,
     detected: true,
     executable,
     version,
-    minimumVersion: command.floor,
-    support: Bun.semver.order(version, command.floor) < 0 ? 'unsupported' : 'supported',
+    minimumVersion,
+    support: Bun.semver.order(version, minimumVersion) < 0 ? 'unsupported' : 'supported',
   };
+};
+
+export async function detectAgentHost(target: AgentTarget, deps: AgentHostDeps): Promise<AgentHost> {
+  if (target === 'grok') {
+    const executable = deps.which('grok');
+    if (executable === null) {
+      return { target, detected: false, minimumVersion: GROK_FLOOR, support: 'unknown' };
+    }
+    try {
+      return classifyHost(
+        target,
+        executable,
+        parseGrokVersion(await deps.capture([executable, '--version'])),
+        GROK_FLOOR,
+      );
+    } catch {
+      return { target, detected: true, executable, minimumVersion: GROK_FLOOR, support: 'unknown' };
+    }
+  }
+  if (!isPluginTarget(target)) throw new Error(`${target} is not a plugin host`);
+  const command = hostCommand[target];
+  const executable = deps.which(command.executable);
+  if (executable === null) {
+    return { target, detected: false, minimumVersion: command.floor, support: 'unknown' };
+  }
+  try {
+    return classifyHost(
+      target,
+      executable,
+      parseVersion(target, await deps.capture([executable, ...command.versionArgs])),
+      command.floor,
+    );
+  } catch {
+    return { target, detected: true, executable, minimumVersion: command.floor, support: 'unknown' };
+  }
 }
 
 const requireAbsolute = (value: string, diagnostic: string): string => {
@@ -78,13 +116,27 @@ const requireAbsolute = (value: string, diagnostic: string): string => {
   return value;
 };
 
+export function resolveGrokRoot(env: Readonly<Record<string, string | undefined>>, home: string): string {
+  const override = env['GROK_HOME'];
+  const configured =
+    override === undefined || override === ''
+      ? join(home, '.grok')
+      : override.startsWith('~/')
+        ? join(home, override.slice(2))
+        : override;
+  return requireAbsolute(configured, 'Grok home is not absolute');
+}
+
 export async function resolveAgentLocation(
   target: AgentPluginTarget,
   deps: AgentHostDeps,
 ): Promise<AgentPluginLocation>;
 export async function resolveAgentLocation(target: AgentTarget, deps: AgentHostDeps): Promise<AgentLocation>;
 export async function resolveAgentLocation(target: AgentTarget, deps: AgentHostDeps): Promise<AgentLocation> {
-  if (target === 'grok') throw new Error(GROK_NOT_INTEGRATED);
+  if (target === 'grok') {
+    const hostRoot = resolveGrokRoot(deps.env, deps.home);
+    return { target, hostRoot, managedDir: join(hostRoot, 'aio-proxy') };
+  }
   if (!isPluginTarget(target)) throw new Error(`${target} is not a plugin host`);
   const command = hostCommand[target];
   const executable = deps.which(command.executable);

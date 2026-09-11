@@ -1,6 +1,7 @@
 export {
   detectAgentHost,
   resolveAgentLocation,
+  resolveGrokRoot,
   type AgentHost,
   type AgentHostDeps,
   type AgentLocation,
