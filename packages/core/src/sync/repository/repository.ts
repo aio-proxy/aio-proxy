@@ -174,6 +174,23 @@ export function createSyncRepository(sqlite: Database): SyncRepository {
   return {
     ...localState,
 
+    // Deactivating a binding retires it for good: nothing can target an inactive lifecycle, so any
+    // OAuth ownership or in-flight journal left on it would block every future binding at
+    // `detach-pending` with no operation able to resolve it. Release both with the binding.
+    clearBinding() {
+      transaction(() => {
+        const active = localState.readBinding();
+        if (active !== null) {
+          // Not `clearOAuthJournal`: that refuses incomplete rows, and an interrupted share or
+          // detach is exactly what would otherwise survive the binding.
+          sqlite.query('DELETE FROM sync_oauth_journal WHERE binding_id = ?').run(active.id);
+          for (const entity of localState.entities(active.id))
+            if (entity.oauth !== undefined) localState.putEntity(active.id, { ...entity, oauth: undefined });
+        }
+        localState.clearBinding!();
+      });
+    },
+
     prepare(bindingId, intent) {
       if (intent.phase !== 'prepared') throw new TypeError('Sync intents must be prepared before confirmation');
       transaction(() => {

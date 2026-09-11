@@ -83,6 +83,34 @@ test('binding switches preserve old rows while exposing one active binding', () 
   db.close();
 });
 
+test('disconnecting releases the retired binding OAuth ownership and journal', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  repo.writeBinding(binding('old'));
+  repo.putEntity('old', {
+    ...entity('shared-object'),
+    oauth: { mode: 'shared', epoch: 2, generation: 1, localRevision: 1, pluginVersion: '1.0.0', formatVersion: 1 },
+  });
+  repo.writeOAuthJournal('old', {
+    operationId: 'oauth-inflight',
+    objectId: 'shared-object',
+    epoch: 1,
+    baseGeneration: 1,
+    phase: 'started',
+    payload: null,
+  });
+
+  repo.clearBinding!();
+
+  // Nothing can target an inactive lifecycle, so ownership or a journal surviving here would block
+  // every later binding at `detach-pending` with no operation able to resolve it.
+  expect(repo.entities('old')[0]?.oauth).toBeUndefined();
+  expect(repo.oauthJournals('old')).toEqual([]);
+  expect(repo.readBinding()).toBeNull();
+  db.close();
+});
+
 test('binding identity changes under the same ID are rejected without losing old rows', () => {
   const db = new Database(':memory:');
   migrateSyncTestDb(db);
