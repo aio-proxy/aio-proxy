@@ -158,6 +158,20 @@ function removingOwnership(ownership: GrokOwnership): GrokOwnership {
   };
 }
 
+function revokedOwnership(ownership: GrokOwnership, revokeStatus: AgentRevokeStatus): GrokOwnership {
+  return {
+    format: 1,
+    agent: 'grok',
+    installationId: ownership.installationId,
+    endpoint: ownership.endpoint,
+    status: 'removing',
+    leaves: ownership.leaves,
+    createdTables: ownership.createdTables,
+    ...(ownership.pending === undefined ? {} : { pending: ownership.pending }),
+    revokeStatus,
+  };
+}
+
 function completedOwnership(ownership: GrokOwnership, revokeStatus: AgentRevokeStatus): GrokOwnership {
   return {
     format: 1,
@@ -214,9 +228,14 @@ async function removeManaged(
 
   let revokeStatus: AgentRevokeStatus;
   let skippedFields: readonly string[] = [];
-  if (!isCompletedGrokRemoval(ownership)) {
+  if (ownership.revokeStatus === undefined) {
     revokeStatus = await deps.revoke(marker.endpoint, marker.installationId);
+    await saveOwnership(revokedOwnership(ownership, revokeStatus));
     await testDeps?.failpoint?.('revoked');
+  } else {
+    revokeStatus = ownership.revokeStatus;
+  }
+  if (!isCompletedGrokRemoval(ownership)) {
     const expectedCredential = await readGrokPrivateFile(paths.credential, 'credential');
     await lock.withOwnershipFence(async (assertFenced) => {
       await unlinkGrokFile(paths.credential, expectedCredential, budget, assertFenced);
@@ -228,8 +247,6 @@ async function removeManaged(
     await commitEdit(edit);
     await saveOwnership(completedOwnership(ownership, revokeStatus));
     await testDeps?.failpoint?.('cleanup_complete');
-  } else {
-    revokeStatus = ownership.revokeStatus;
   }
 
   const retainedFiles = await cleanupPrivateDir(

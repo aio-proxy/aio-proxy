@@ -204,6 +204,7 @@ export async function commitGrokEdit(
       nextLeaves: edit.leaves,
       nextCreatedTables: edit.createdTables,
     },
+    ...(ownership.revokeStatus === undefined ? {} : { revokeStatus: ownership.revokeStatus }),
   };
   let pendingFile = ownershipFile;
   if (encodeGrokOwnership(pending) !== ownershipFile.text) {
@@ -224,9 +225,12 @@ export async function commitGrokEdit(
     status: ownership.status,
     leaves: edit.leaves,
     createdTables: edit.createdTables,
-    ...(ownership.cleanupComplete === true && ownership.revokeStatus !== undefined
-      ? { cleanupComplete: true as const, revokeStatus: ownership.revokeStatus }
-      : {}),
+    ...(ownership.revokeStatus === undefined
+      ? {}
+      : {
+          revokeStatus: ownership.revokeStatus,
+          ...(ownership.cleanupComplete === true ? { cleanupComplete: true as const } : {}),
+        }),
   };
   const committedFile = await persistOwnership(lock, paths, committed, pendingFile, budget);
   await testDeps?.failpoint?.('ownership_committed');

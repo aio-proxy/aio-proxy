@@ -48,6 +48,24 @@ test('the same origin GROK_* value is allowed', () => {
   ).toEqual([]);
 });
 
+test('a user catalog alias beside the owned list URL is a conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\nmodels_endpoint = "https://api.x.ai/v1/models"\n`;
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy);
+  expect(conflicts).toContain('endpoints.models_list_url');
+  expect(conflicts).toContain('endpoints.models_endpoint');
+  expect(conflicts.join(',')).not.toContain('https://api.x.ai');
+});
+
+test('a same-origin user catalog alias is still an alias conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\nmodels_endpoint = "${ENDPOINT}/v1/models"\n`;
+  expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toContain('endpoints.models_endpoint');
+});
+
+test('the owned catalog URL alone is not an alias conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\n`;
+  expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toEqual([]);
+});
+
 test('alias requirements pins conflict on the authored path', () => {
   const text = '[models]\ndefault = "keep"\n';
   const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {

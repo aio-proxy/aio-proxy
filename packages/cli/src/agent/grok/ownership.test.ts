@@ -246,10 +246,13 @@ test('encode rejects cleanupComplete while pending remains', () => {
   ).toThrow();
 });
 
-test('encode stores revokeStatus only on a completed removing record', () => {
-  expect(() => encodeGrokOwnership({ ...baseOwnership(), status: 'removing', revokeStatus: 'missing' })).toThrow();
+test('encode stores revokeStatus on a removing record before cleanup completes', () => {
+  expect(() => encodeGrokOwnership({ ...baseOwnership(), revokeStatus: 'missing' })).toThrow();
   expect(() => encodeGrokOwnership({ ...baseOwnership(), cleanupComplete: true, revokeStatus: 'missing' })).toThrow();
   expect(() => encodeGrokOwnership({ ...baseOwnership(), status: 'removing', cleanupComplete: true })).toThrow();
+  expect(
+    JSON.parse(encodeGrokOwnership({ ...baseOwnership(), status: 'removing', revokeStatus: 'missing' })),
+  ).toMatchObject({ status: 'removing', revokeStatus: 'missing' });
   expect(
     JSON.parse(
       encodeGrokOwnership({

@@ -66,6 +66,27 @@ test('first configure refuses policy conflicts before creating the private direc
   }
 });
 
+test('inspect reports conflict when ownership binding does not match the marker', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const path = join(f.root, 'aio-proxy', 'ownership.json');
+    const ownership = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('current');
+    await writeFile(
+      path,
+      `${JSON.stringify({ ...ownership, installationId: '22222222-2222-4222-8222-222222222222' })}\n`,
+    );
+    expect(await inspectGrok(f.root, f.input.adapterVersion)).toMatchObject({ integration: 'conflict' });
+    await writeFile(path, `${JSON.stringify({ ...ownership, endpoint: 'http://127.0.0.1:9999' })}\n`);
+    const mismatched = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(mismatched.integration).toBe('conflict');
+    expect(mismatched.configuration).not.toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('a private directory without a marker is a conflict and is not taken over', async () => {
   const f = await grokFixture();
   try {
@@ -777,6 +798,40 @@ test('unlogged remove accepts a missing revoke and restores owned fields', async
     expect(result.skippedFields).toEqual([]);
     expect(await readFile(join(f.root, 'config.toml'), 'utf8')).toBe('[ui]\ntheme="dark"\n');
     expect(await Bun.file(join(f.root, 'aio-proxy', 'credential.json')).exists()).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('successful revoke is not repeated when cleanup crashes and the proxy is later down', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    await expect(
+      removeGrokForTest(f.root, f.input.adapterVersion, f.deps, {
+        failpoint: (point) => {
+          if (point === 'revoked') throw new Error('crash after revoke');
+        },
+      }),
+    ).rejects.toThrow('crash after revoke');
+    const ownership = JSON.parse(await readFile(join(f.root, 'aio-proxy', 'ownership.json'), 'utf8')) as {
+      status?: string;
+      cleanupComplete?: unknown;
+      revokeStatus?: unknown;
+    };
+    expect(ownership.status).toBe('removing');
+    expect(ownership.revokeStatus).toBe('revoked');
+    expect(ownership.cleanupComplete).toBeUndefined();
+    expect(f.revoked).toHaveLength(1);
+    const retried = await removeGrok(f.root, f.input.adapterVersion, {
+      ...f.deps,
+      revoke: async () => {
+        throw new Error('proxy down');
+      },
+    });
+    expect(retried.revokeStatus).toBe('revoked');
+    expect(f.revoked).toHaveLength(1);
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).integration).toBe('absent');
   } finally {
     await f.cleanup();
   }

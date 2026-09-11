@@ -235,6 +235,12 @@ export function checkGrokPolicy(
 
   for (const field of MANAGED_FIELDS) {
     const desired = field.desired(endpoint, command);
+    const userAliases = field.paths
+      .map((path) => ({ path: path.join('.'), value: asString(lookup(user, path)) }))
+      .filter((entry): entry is { path: string; value: string } => entry.value !== undefined);
+    if (userAliases.length > 1) {
+      for (const alias of userAliases) pushUnique(conflicts, alias.path);
+    }
     const pin = sourcedField(parsed, field.paths, isRequirements);
     if (pin !== undefined) {
       if (pin.value !== desired) pushUnique(conflicts, pin.path);

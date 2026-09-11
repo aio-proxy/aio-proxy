@@ -126,6 +126,9 @@ async function inspectManagedRoot(root: string, adapterVersion: string): Promise
   }
   if (ownershipKind === 'invalid') return conflictInspection(marker);
   const ownership = parseGrokOwnership(ownershipFile.text);
+  if (ownership.installationId !== marker.installationId || ownership.endpoint !== marker.endpoint) {
+    return conflictInspection(marker);
+  }
   if (ownership.pending !== undefined) {
     const config = await readGrokFile(paths.config);
     const recovered = recoverGrokOwnership(configTextOrEmpty(config), ownership);

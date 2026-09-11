@@ -69,8 +69,12 @@ export const GrokOwnershipSchema: z.ZodType<GrokOwnership> = z
     revokeStatus: AgentRevokeStatusSchema.optional(),
   })
   .refine((value) => isCanonicalLoopbackOrigin(value.endpoint))
-  .refine((value) => value.cleanupComplete !== true || (value.status === 'removing' && value.pending === undefined))
-  .refine((value) => (value.revokeStatus === undefined) === (value.cleanupComplete !== true));
+  .refine((value) => value.revokeStatus === undefined || value.status === 'removing')
+  .refine(
+    (value) =>
+      value.cleanupComplete !== true ||
+      (value.status === 'removing' && value.pending === undefined && value.revokeStatus !== undefined),
+  );
 
 export const pathKey = (path: GrokPath): string => JSON.stringify(path);
 
@@ -171,9 +175,12 @@ function committedOwnership(
     leaves,
     createdTables,
     ...(pending === undefined ? {} : { pending }),
-    ...(pending === undefined && ownership.cleanupComplete === true && ownership.revokeStatus !== undefined
-      ? { cleanupComplete: true as const, revokeStatus: ownership.revokeStatus }
-      : {}),
+    ...(ownership.revokeStatus === undefined
+      ? {}
+      : {
+          revokeStatus: ownership.revokeStatus,
+          ...(pending === undefined && ownership.cleanupComplete === true ? { cleanupComplete: true as const } : {}),
+        }),
   };
 }
 

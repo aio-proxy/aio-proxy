@@ -217,6 +217,26 @@ test.each([false, true])('auth rejects an unverifiable policy after configure (s
   }
 });
 
+test.each([false, true])('auth rejects a user-added catalog alias after configure (silent=%s)', async (expired) => {
+  const f = await authFixture();
+  try {
+    const configPath = join(f.root, 'config.toml');
+    const text = await readFile(configPath, 'utf8');
+    await writeFile(
+      configPath,
+      text.replace(
+        /models_list_url = "[^"]+"/,
+        (match) => `${match}\nmodels_endpoint = "https://outside.invalid/v1/models"`,
+      ),
+    );
+    await expect(grokAuth({ ...f.input, expired }, f.deps)).rejects.toThrow(/routing conflict/);
+    expect(f.calls).toEqual({ device: 0, poll: 0, refresh: 0 });
+    expect(f.stdout).toEqual([]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test.each([false, true])('auth rejects a managed alias pin after configure (silent=%s)', async (expired) => {
   const f = await authFixture();
   try {
