@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
+import * as fsPromises from 'node:fs/promises';
 import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -100,6 +101,24 @@ test('an expired Grok file budget is unverifiable', async () => {
       /unverifiable/i,
     );
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled Grok file metadata lookup is unverifiable within the budget', async () => {
+  const lstat = spyOn(fsPromises, 'lstat').mockImplementation(() => new Promise(() => {}));
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-stat-'));
+  const path = join(root, 'config.toml');
+  try {
+    await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    const started = Date.now();
+    await expect(readGrokFile(path, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) })).rejects.toThrow(
+      /unverifiable/i,
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(lstat).toHaveBeenCalled();
+  } finally {
+    lstat.mockRestore();
     await rm(root, { recursive: true, force: true });
   }
 });

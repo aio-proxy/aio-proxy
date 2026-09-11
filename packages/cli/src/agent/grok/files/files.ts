@@ -3,7 +3,7 @@ import { constants, type Stats } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText } from '../read-bounded';
+import { MAX_GROK_FILE_BYTES, readOpenFileText, withReadBudget } from '../read-bounded';
 import type { GrokDeadline } from '../types';
 
 export type GrokFileSnapshot = {
@@ -104,25 +104,26 @@ async function readGrokSnapshot(
   privateFile: boolean,
   budget?: GrokDeadline,
 ): Promise<GrokFileSnapshot | undefined> {
-  const link = await inspectPath(path);
+  const unverifiable = (): Error => new Error(`Grok ${kind} unverifiable`);
+  const link = await withReadBudget(budget, unverifiable, () => inspectPath(path));
   if (link === undefined) return undefined;
   assertSafeFile(link, kind, privateFile);
   let handle;
   try {
-    handle = await open(path, READ_FLAGS);
+    handle = await withReadBudget(budget, unverifiable, () => open(path, READ_FLAGS));
   } catch (error) {
     if (isFsCode(error, 'ENOENT')) return undefined;
     if (isFsCode(error, 'ELOOP') || isFsCode(error, 'EPERM')) reject(`Grok ${kind} is a symlink`);
     throw error;
   }
   try {
-    const file = await handle.stat();
+    const file = await withReadBudget(budget, unverifiable, () => handle.stat());
     if (file.dev !== link.dev || file.ino !== link.ino) reject(`Grok ${kind} changed during read`);
     assertSafeFile(file, kind, privateFile);
     const text = await readOpenFileText(handle, file.size, {
       maxBytes: MAX_GROK_FILE_BYTES,
       budget,
-      limitError: () => new Error(`Grok ${kind} unverifiable`),
+      limitError: unverifiable,
     });
     return { text, dev: file.dev, ino: file.ino, mode: file.mode };
   } finally {
