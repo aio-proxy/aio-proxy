@@ -1,4 +1,5 @@
 import type { JsonValue, EntityBody, PendingReason, ActivationResult, LocalEntity } from '@aio-proxy/core';
+import { isPluginRequirement } from '@aio-proxy/core';
 
 export type OAuthActivationEvidence = {
   readonly plugin: string;
@@ -82,15 +83,33 @@ function bodyValue(body: EntityBody): Record<string, JsonValue> | undefined {
 }
 
 /**
+ * The plugin packages a body needs installed at an exact version. Provider references in the
+ * dependency list are edges to other synchronized entities rather than packages, and a
+ * plugin-business body names the package it configures in its own identity instead of depending on
+ * it, so neither is covered by the dependency list alone.
+ */
+function pluginRequirements(body: EntityBody): { packageName: string; version: string }[] | undefined {
+  const requirements = body.dependencies
+    .filter(isPluginRequirement)
+    .map((dependency) => ({ packageName: dependency.packageName, version: dependency.version }));
+  if (body.kind !== 'plugin-business') return requirements;
+  const version = bodyValue(body)?.['version'];
+  if (typeof version !== 'string') return undefined;
+  return [...requirements, { packageName: body.logicalKey, version }];
+}
+
+/**
  * Check prerequisites before changing the running configuration. This function deliberately has
  * no side effects: the engine can persist the desired body while an installation or OAuth gate is
  * pending and retry the same body later.
  */
 export async function checkPrerequisites(input: ActivationInput): Promise<PendingReason | undefined> {
-  for (const dependency of input.body.dependencies) {
-    const installed = input.dependencies.installedPackages.get(dependency.packageName);
+  const requirements = pluginRequirements(input.body);
+  if (requirements === undefined) return 'invalid-config';
+  for (const requirement of requirements) {
+    const installed = input.dependencies.installedPackages.get(requirement.packageName);
     if (installed === undefined) return 'missing-plugin';
-    if (installed !== dependency.version) return 'incompatible-version';
+    if (installed !== requirement.version) return 'incompatible-version';
   }
   if (input.dependencies.missingEnv.length > 0) return 'missing-env';
   if (!input.dependencies.credentialValid) return 'invalid-credential';

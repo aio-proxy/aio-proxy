@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { isPluginRequirement } from '../protocol';
 import { includedEntity, storedAccount } from '../test-support';
 import { overlayLocal, projectCommitted } from './projection';
 
@@ -60,6 +61,11 @@ test('filters model references into shared and local overlays', () => {
   );
 
   expect(result.entities.get('m-shared')?.value).toEqual({ providers: { work: {} } });
+  // The rule depends on the Provider entity, not on a plugin package: it stays traversable by
+  // objectId while activation must not look it up in the plugin installation map.
+  const dependencies = result.entities.get('m-shared')?.dependencies ?? [];
+  expect(dependencies.map((dependency) => dependency.objectId)).toEqual(['p-work']);
+  expect(dependencies.filter(isPluginRequirement)).toEqual([]);
   expect(result.local.router).toEqual({ models: { shared: { providers: { personal: { weight: 2 } } } } });
   expect(overlayLocal({ router: { models: { shared: { providers: { work: {} } } } } }, result.local, [model])).toEqual({
     providers: { personal: { kind: 'api', apiKey: 'personal-key' } },
@@ -115,7 +121,7 @@ test('shares service and routing values while retaining raw env templates and lo
   });
 });
 
-test('applies nested overrides and keeps an untracked local provider local', () => {
+test('excludes overridden local paths from the published body and keeps an untracked local provider local', () => {
   const provider = {
     ...includedEntity('p-work', 'provider', 'work'),
     overrides: [
@@ -141,10 +147,15 @@ test('applies nested overrides and keeps an untracked local provider local', () 
     [provider],
   );
 
+  // An overridden path is a machine-local decision: it is never published, so neither the local
+  // value nor whatever this device authored at that path reaches another device.
   expect(result.entities.get('p-work')?.value).toEqual({
     kind: 'api',
-    options: { nested: { local: 'machine' } },
+    options: { nested: {} },
   });
+  const uploaded = JSON.stringify([...result.entities.values()]);
+  expect(uploaded).not.toContain('machine');
+  expect(uploaded).not.toContain('authored');
   expect(result.local.providers).toEqual({ personal: { kind: 'api', apiKey: 'local-key' } });
   expect(
     overlayLocal({ providers: { work: { kind: 'api', options: { nested: { local: 'cloud' } } } } }, result.local, [

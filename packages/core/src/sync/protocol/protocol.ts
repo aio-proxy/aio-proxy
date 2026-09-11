@@ -7,10 +7,39 @@ export type { JsonValue } from '@aio-proxy/plugin-sdk';
 
 export type EntityKind = 'provider' | 'model-rule' | 'plugin-business' | 'service-access' | 'routing-defaults';
 
+/**
+ * An edge from an entity body to something it needs. Two meanings share one shape so that every
+ * consumer can traverse the sync graph through `objectId`: a plugin requirement names an installed
+ * npm package in `packageName`, while a Provider reference names another synchronized entity and
+ * carries {@link PROVIDER_REFERENCE} instead. Use {@link isPluginRequirement} before reading
+ * `packageName` as a package.
+ */
 export interface Dependency {
   objectId: string;
   packageName: string;
   version: string;
+}
+
+/**
+ * `packageName` marker for a reference to a synchronized Provider entity. A colon cannot appear in
+ * an npm package name, so this never collides with a real plugin requirement.
+ */
+const PROVIDER_REFERENCE = 'sync:provider';
+
+/**
+ * A model rule's edge to a Provider it routes to. `version` carries the Provider entity epoch the
+ * rule was projected against, not a package version.
+ */
+export function providerReference(provider: { objectId: string; epoch: number }): Dependency {
+  return { objectId: provider.objectId, packageName: PROVIDER_REFERENCE, version: String(provider.epoch) };
+}
+
+/**
+ * Whether a dependency requires an installed plugin package. Provider references resolve against
+ * synchronized entities instead, so callers that validate plugin installation must skip them.
+ */
+export function isPluginRequirement(dependency: Dependency): boolean {
+  return dependency.packageName !== PROVIDER_REFERENCE;
 }
 
 export interface EntityBody {

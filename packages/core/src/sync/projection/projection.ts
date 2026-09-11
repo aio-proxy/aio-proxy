@@ -3,6 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { StoredAccount } from '../../plugins/repository';
 import type { EntityBody, Dependency } from '../protocol';
+import { providerReference } from '../protocol';
 import type { LocalEntity } from '../repository';
 import { applyEntityOverrides, applyOverrides, cloneJson, mergeRaw, overlayEntityOverrides } from './local-overrides';
 import { localModelPolicy, selectedModelPolicy } from './model-overlays';
@@ -195,22 +196,23 @@ function entityBody(entity: LocalEntity, value: JsonValue, dependencies: Depende
   return {
     kind: entity.kind,
     logicalKey: entity.logicalKey,
-    value: applyEntityOverridesValue(value, entity),
+    value: publishedValue(value, entity),
     dependencies,
   };
 }
 
-function applyEntityOverridesValue(value: JsonValue, entity: LocalEntity): JsonValue {
+/**
+ * The shared body for an entity. An overridden path holds a machine-local decision, so it is
+ * excluded from what is published whether or not the override carries a value; `overlayLocal` puts
+ * the local value back on activation. A root override leaves no publishable remainder, so the
+ * authored value is published unchanged rather than the local replacement.
+ */
+function publishedValue(value: JsonValue, entity: LocalEntity): JsonValue {
   let result = cloneJson(value);
   for (const override of entity.overrides) {
-    if (override.path.length === 0) {
-      if (override.value === undefined) continue;
-      result = cloneJson(override.value);
-      continue;
-    }
-    if (!isPlainObject(result)) continue;
+    if (override.path.length === 0 || !isPlainObject(result)) continue;
     const pathRoot = { value: result };
-    applyEntityOverrides(pathRoot, ['value'], [override]);
+    applyEntityOverrides(pathRoot, ['value'], [{ path: override.path, value: undefined }]);
     result = pathRoot.value;
   }
   return result;
@@ -321,7 +323,7 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
       dependencies = Object.keys(refs ?? {})
         .map((providerId) => index.get(identityKey('provider', providerId)))
         .filter((provider): provider is LocalEntity => provider?.mode === 'included')
-        .map((provider) => ({ objectId: provider.objectId, packageName: 'provider', version: String(provider.epoch) }));
+        .map(providerReference);
     } else if (entity.kind === 'plugin-business') {
       const version = source.pluginVersions.get(entity.logicalKey);
       if (version === undefined) continue;

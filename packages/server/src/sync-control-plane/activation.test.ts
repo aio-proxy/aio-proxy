@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { EntityBody } from '@aio-proxy/core';
+import { providerReference } from '@aio-proxy/core';
 
 import { activateDesired, checkPrerequisites, readOAuthActivationEvidence } from './activation';
 
@@ -27,6 +28,47 @@ const ready = {
     expectedMultiDeviceEvidenceId: 'evidence-1',
   },
 };
+
+test('activation does not require a plugin install for a model rule Provider reference', async () => {
+  const rule: EntityBody = {
+    kind: 'model-rule',
+    logicalKey: 'shared',
+    value: { providers: { work: {} } },
+    dependencies: [providerReference({ objectId: 'p-work', epoch: 3 })],
+  };
+  const applied: string[] = [];
+  const result = await activateDesired({
+    raw: {},
+    body: rule,
+    apply: async (_raw, origin) => applied.push(origin),
+    dependencies: { ...ready, installedPackages: new Map(), oauthEvidence: undefined },
+  });
+  expect(result).toEqual({ applied: true });
+  expect(applied).toEqual(['remote']);
+});
+
+test('activation validates the synchronized plugin package itself', async () => {
+  const pluginBody: EntityBody = {
+    kind: 'plugin-business',
+    logicalKey: '@example/business',
+    value: { packageName: '@example/business', version: '1.0.0', options: { endpoint: 'https://example.test' } },
+    dependencies: [],
+  };
+  const check = (installedPackages: ReadonlyMap<string, string>, body = pluginBody) =>
+    checkPrerequisites({
+      raw: {},
+      body,
+      apply: async () => {},
+      dependencies: { ...ready, installedPackages, oauthEvidence: undefined },
+    });
+
+  await expect(check(new Map())).resolves.toBe('missing-plugin');
+  await expect(check(new Map([['@example/business', '2.0.0']]))).resolves.toBe('incompatible-version');
+  await expect(check(new Map([['@example/business', '1.0.0']]))).resolves.toBeUndefined();
+  await expect(
+    check(new Map([['@example/business', '1.0.0']]), { ...pluginBody, value: { packageName: '@example/business' } }),
+  ).resolves.toBe('invalid-config');
+});
 
 test('activation keeps an OAuth copy pending when evidence is unavailable', async () => {
   await expect(

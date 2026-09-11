@@ -4,6 +4,8 @@ export {
   decodeRevision,
   encode,
   entityKey,
+  isPluginRequirement,
+  providerReference,
   revisionKey,
   SyncProtocolError,
   type DeletedAccount,
