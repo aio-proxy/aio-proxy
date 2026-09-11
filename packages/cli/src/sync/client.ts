@@ -14,30 +14,27 @@ import {
   type SyncPreviewInput,
   type SyncStatus,
 } from '@aio-proxy/types';
-import { password } from '@inquirer/prompts';
+import { input, password } from '@inquirer/prompts';
 import { z } from 'zod';
 
 import { connectHost } from '../agent/control-plane/control-plane';
 import { controlBaseUrl, resolveControlAddress } from '../control-plane';
+import { openBrowser } from '../open-browser';
+import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from '../plugin-commands/authorization';
+import { startDetachSession, type SyncAuthorizationPort } from './detach-session';
+import { SyncCliError } from './errors';
 
 export interface SyncCliDeps {
   endpoint(): Promise<string>;
   authenticate(): Promise<string | undefined>;
   request(path: string, init: RequestInit): Promise<Response>;
   write(value: string): void;
+  authorization?: SyncAuthorizationPort;
+  readManualCallbackUrl?(authorizationUrl: string, signal: AbortSignal): Promise<string>;
 }
 
-export class SyncCliError extends Error {
-  override readonly name = 'SyncCliError';
-
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly transient = false,
-  ) {
-    super(message);
-  }
-}
+export { SyncCliError };
+export type { SyncAuthorizationPort };
 
 type SyncClient = {
   readonly status: () => Promise<SyncStatus>;
@@ -52,12 +49,10 @@ type SyncClient = {
   readonly startDetachSession: (providerId: string) => Promise<string>;
 };
 
-type OAuthSessionSnapshot = {
-  readonly id: string;
-  readonly status: string;
-  readonly providerId?: string;
-  readonly code?: string;
-};
+/** Mutations can outlive the read timeout: CloudKit artifact setup and reconciliation are minutes, not seconds. */
+const MUTATION_TIMEOUT_MS = 10 * 60_000;
+
+const mutation = (init: RequestInit): RequestInit => ({ ...init, signal: AbortSignal.timeout(MUTATION_TIMEOUT_MS) });
 
 const errorCode = (body: unknown): string | undefined => {
   if (typeof body !== 'object' || body === null) return undefined;
@@ -96,22 +91,6 @@ function mapError(code: string | undefined, status: number, url: string): SyncCl
 
 const parseResponse = async (response: Response): Promise<unknown> => response.json().catch(() => undefined);
 
-const sessionSnapshot = (body: unknown): OAuthSessionSnapshot => {
-  const session = typeof body === 'object' && body !== null ? Reflect.get(body, 'session') : undefined;
-  const id = typeof session === 'object' && session !== null ? Reflect.get(session, 'id') : undefined;
-  const status = typeof session === 'object' && session !== null ? Reflect.get(session, 'status') : undefined;
-  const providerId = typeof session === 'object' && session !== null ? Reflect.get(session, 'providerId') : undefined;
-  const code = typeof session === 'object' && session !== null ? Reflect.get(session, 'code') : undefined;
-  if (typeof id !== 'string' || id.length === 0 || typeof status !== 'string' || status.length === 0)
-    throw new SyncCliError('invalid-response', m['cli.sync.invalid_response']());
-  return {
-    id,
-    status,
-    ...(typeof providerId === 'string' ? { providerId } : {}),
-    ...(typeof code === 'string' ? { code } : {}),
-  };
-};
-
 const stripFinalLineEnding = (value: string): string =>
   value.endsWith('\r\n') ? value.slice(0, -2) : value.endsWith('\n') ? value.slice(0, -1) : value;
 
@@ -147,32 +126,41 @@ export function createSyncClient(deps: SyncCliDeps): SyncClient {
       const body = parse(SyncPreviewInputSchema, input);
       return parse(
         SyncPreviewSchema,
-        await requestJson('/dashboard/api/sync/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }),
+        await requestJson(
+          '/dashboard/api/sync/preview',
+          mutation({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+        ),
       );
     },
     async apply(input) {
       const body = parse(SyncApplyInputSchema, input);
       return parse(
         SyncStatusSchema,
-        await requestJson('/dashboard/api/sync/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }),
+        await requestJson(
+          '/dashboard/api/sync/apply',
+          mutation({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+        ),
       );
     },
     async range(providerId) {
       return parse(
         SyncStatusSchema,
-        await requestJson('/dashboard/api/sync/range', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ providerId, included: false }),
-        }),
+        await requestJson(
+          '/dashboard/api/sync/range',
+          mutation({
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerId, included: false }),
+          }),
+        ),
       );
     },
     async history(objectId) {
@@ -188,49 +176,37 @@ export function createSyncClient(deps: SyncCliDeps): SyncClient {
     async detach(providerId, loginSessionId) {
       return parse(
         SyncStatusSchema,
-        await requestJson('/dashboard/api/sync/detach', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ providerId, loginSessionId }),
-        }),
+        await requestJson(
+          '/dashboard/api/sync/detach',
+          mutation({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerId, loginSessionId }),
+          }),
+        ),
       );
     },
     async cancelDetach(providerId) {
       return parse(
         SyncStatusSchema,
-        await requestJson('/dashboard/api/sync/detach/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ providerId }),
-        }),
+        await requestJson(
+          '/dashboard/api/sync/detach/cancel',
+          mutation({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerId }),
+          }),
+        ),
       );
     },
     async retry() {
-      return parse(SyncStatusSchema, await requestJson('/dashboard/api/sync/retry', { method: 'POST' }));
+      return parse(SyncStatusSchema, await requestJson('/dashboard/api/sync/retry', mutation({ method: 'POST' })));
     },
     async disconnect() {
-      return parse(SyncStatusSchema, await requestJson('/dashboard/api/sync/disconnect', { method: 'POST' }));
+      return parse(SyncStatusSchema, await requestJson('/dashboard/api/sync/disconnect', mutation({ method: 'POST' })));
     },
-    async startDetachSession(providerId) {
-      const body = await requestJson('/dashboard/api/oauth/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetProviderId: providerId }),
-      });
-      let snapshot = sessionSnapshot(body);
-      for (;;) {
-        if (snapshot.status === 'succeeded') {
-          if (snapshot.providerId !== undefined && snapshot.providerId !== providerId)
-            throw new SyncCliError('oauth-login-failed', m['cli.sync.oauth_login_failed']());
-          return snapshot.id;
-        }
-        if (snapshot.status === 'failed' || snapshot.status === 'cancelled')
-          throw new SyncCliError('oauth-login-failed', m['cli.sync.oauth_login_failed']());
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        snapshot = sessionSnapshot(
-          await requestJson(`/dashboard/api/oauth/sessions/${encodeURIComponent(snapshot.id)}`),
-        );
-      }
+    startDetachSession(providerId) {
+      return startDetachSession(providerId, { ...deps, requestJson, write: (value) => deps.write(value) });
     },
   };
 }
@@ -264,9 +240,23 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
   const readStdin = options.readPasswordStdin ?? (async () => stripFinalLineEnding(await Bun.stdin.text()));
   const readPassword =
     options.readPassword ?? (async () => password({ message: m['cli.sync.password_prompt'](), mask: '*' }));
+  const write = options.write ?? console.log;
+  const interactive = process.stdin.isTTY === true;
+  const readManualCallbackUrl = (authorizationUrl: string, signal: AbortSignal): Promise<string> =>
+    input({ message: authorizationUrl }, { signal });
 
   return {
     endpoint: resolveEndpoint,
+    authorization: createCliAuthorizationPort({
+      copy: createDefaultCliAuthorizationCopy(),
+      openBrowser,
+      copyToClipboard: () => false,
+      print: write,
+      readManualCallbackUrl,
+      confirmManualOnly: async () => false,
+      signal: new AbortController().signal,
+    }),
+    ...(interactive ? { readManualCallbackUrl } : {}),
     async authenticate() {
       if (authenticated) return token;
       authenticated = true;
@@ -316,7 +306,7 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
       if (token !== undefined) headers.set('Authorization', `Bearer ${token}`);
       return fetchImpl(`${base}${path}`, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(10_000) });
     },
-    write: options.write ?? console.log,
+    write: write,
   };
 }
 

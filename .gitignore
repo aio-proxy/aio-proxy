@@ -9,6 +9,8 @@ packages/*/.turbo/
 .omo/
 bun-debug.log
 *.tsbuildinfo
+# SwiftPM build output for the CloudKit bridge
+.build/
 npm/cli-*/bin/
 .playwright-mcp
 .superpowers/

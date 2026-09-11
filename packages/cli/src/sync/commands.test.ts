@@ -204,14 +204,14 @@ test('detach polls the local OAuth session until it succeeds before sync control
     request: async (path, init) => {
       calls.push({ path, body: typeof init.body === 'string' ? init.body : undefined });
       if (path === '/dashboard/api/oauth/sessions')
-        return Response.json({ session: { id: 'local-session', status: 'preparing' } });
-      if (path === '/dashboard/api/oauth/sessions/local-session') {
+        return Response.json({ session: { id: '11111111-1111-4111-8111-111111111111', status: 'preparing' } });
+      if (path === '/dashboard/api/oauth/sessions/11111111-1111-4111-8111-111111111111') {
         polls += 1;
         return Response.json({
           session:
             polls === 1
-              ? { id: 'local-session', status: 'discovering' }
-              : { id: 'local-session', status: 'succeeded', providerId: 'work' },
+              ? { id: '11111111-1111-4111-8111-111111111111', status: 'discovering' }
+              : { id: '11111111-1111-4111-8111-111111111111', status: 'succeeded', providerId: 'work' },
         });
       }
       return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
@@ -221,11 +221,11 @@ test('detach polls the local OAuth session until it succeeds before sync control
   await program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json']);
   expect(calls).toEqual([
     { path: '/dashboard/api/oauth/sessions', body: JSON.stringify({ targetProviderId: 'work' }) },
-    { path: '/dashboard/api/oauth/sessions/local-session', body: undefined },
-    { path: '/dashboard/api/oauth/sessions/local-session', body: undefined },
+    { path: '/dashboard/api/oauth/sessions/11111111-1111-4111-8111-111111111111', body: undefined },
+    { path: '/dashboard/api/oauth/sessions/11111111-1111-4111-8111-111111111111', body: undefined },
     {
       path: '/dashboard/api/sync/detach',
-      body: JSON.stringify({ providerId: 'work', loginSessionId: 'local-session' }),
+      body: JSON.stringify({ providerId: 'work', loginSessionId: '11111111-1111-4111-8111-111111111111' }),
     },
   ]);
   expect(JSON.parse(output[0]!)).toMatchObject({ state: 'idle' });
@@ -240,9 +240,11 @@ test('detach reports OAuth failure without handing a pending session to sync con
     request: async (path, _init) => {
       calls.push(path);
       if (path === '/dashboard/api/oauth/sessions')
-        return Response.json({ session: { id: 'failed-session', status: 'preparing' } });
-      if (path === '/dashboard/api/oauth/sessions/failed-session')
-        return Response.json({ session: { id: 'failed-session', status: 'failed', code: 'AUTH_DENIED' } });
+        return Response.json({ session: { id: '22222222-2222-4222-8222-222222222222', status: 'preparing' } });
+      if (path === '/dashboard/api/oauth/sessions/22222222-2222-4222-8222-222222222222')
+        return Response.json({
+          session: { id: '22222222-2222-4222-8222-222222222222', status: 'failed', code: 'AUTH_DENIED' },
+        });
       return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
     },
     write: () => undefined,
@@ -250,7 +252,10 @@ test('detach reports OAuth failure without handing a pending session to sync con
   await expect(program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json'])).rejects.toMatchObject({
     code: 'oauth-login-failed',
   });
-  expect(calls).toEqual(['/dashboard/api/oauth/sessions', '/dashboard/api/oauth/sessions/failed-session']);
+  expect(calls).toEqual([
+    '/dashboard/api/oauth/sessions',
+    '/dashboard/api/oauth/sessions/22222222-2222-4222-8222-222222222222',
+  ]);
 });
 
 test('human previews include redacted local/cloud values and dependencies', async () => {
@@ -793,4 +798,107 @@ test('configured service exposes the real sync control plane to CLI mutations', 
     else process.env.AIO_PROXY_HOME = previousHome;
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('detach renders the device code the service reports instead of silently polling', async () => {
+  const sessionId = '33333333-3333-4333-8333-333333333333';
+  const presentations: Array<{ url: string; userCode: string }> = [];
+  const program = new Command();
+  let polls = 0;
+  registerSyncCommands(program, {
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async (path) => {
+      if (path === '/dashboard/api/oauth/sessions')
+        return Response.json({
+          session: {
+            id: sessionId,
+            status: 'device_code',
+            url: 'https://provider.example/device',
+            userCode: 'WDJB-MJHT',
+            instructions: 'Enter the code shown above',
+          },
+        });
+      if (path === `/dashboard/api/oauth/sessions/${sessionId}`) {
+        polls += 1;
+        return Response.json({
+          session:
+            polls === 1
+              ? { id: sessionId, status: 'device_code', url: 'https://provider.example/device', userCode: 'WDJB-MJHT' }
+              : { id: sessionId, status: 'succeeded', providerId: 'work' },
+        });
+      }
+      return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+    },
+    write: () => undefined,
+    authorization: {
+      presentDeviceCode: async (presentation) => {
+        presentations.push({ url: presentation.url, userCode: presentation.userCode });
+      },
+      presentAuthorizeUrl: async () => undefined,
+    },
+  });
+  await program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json']);
+  // Rendered once when the state is entered, not repeated for every poll.
+  expect(presentations).toEqual([{ url: 'https://provider.example/device', userCode: 'WDJB-MJHT' }]);
+});
+
+test('detach submits a manual callback URL for a loopback session', async () => {
+  const sessionId = '44444444-4444-4444-8444-444444444444';
+  const callbackPath = `/dashboard/api/oauth/sessions/${sessionId}/callback`;
+  const authorizeUrls: string[] = [];
+  const program = new Command();
+  let submitted: string | undefined;
+  registerSyncCommands(program, {
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async (path, init) => {
+      const loopback = {
+        id: sessionId,
+        status: 'loopback',
+        authorizationUrl: 'https://provider.example/authorize?state=abc',
+        allowManualCallback: true,
+      };
+      if (path === '/dashboard/api/oauth/sessions') return Response.json({ session: loopback });
+      if (path === callbackPath) {
+        submitted = typeof init.body === 'string' ? (JSON.parse(init.body) as { callbackUrl: string }).callbackUrl : '';
+        return Response.json({ session: { id: sessionId, status: 'discovering' } });
+      }
+      if (path === `/dashboard/api/oauth/sessions/${sessionId}`)
+        return Response.json({
+          session: submitted === undefined ? loopback : { id: sessionId, status: 'succeeded', providerId: 'work' },
+        });
+      return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+    },
+    write: () => undefined,
+    authorization: {
+      presentDeviceCode: async () => undefined,
+      presentAuthorizeUrl: async (presentation) => {
+        authorizeUrls.push(presentation.url);
+      },
+    },
+    readManualCallbackUrl: async () => 'http://127.0.0.1:7788/callback?code=granted&state=abc',
+  });
+  await program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json']);
+  expect(authorizeUrls).toEqual(['https://provider.example/authorize?state=abc']);
+  expect(submitted).toBe('http://127.0.0.1:7788/callback?code=granted&state=abc');
+});
+
+test('sync mutations carry their own deadline while reads keep the default request timeout', async () => {
+  const signals = new Map<string, boolean>();
+  const client = createSyncClient({
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async (path, init) => {
+      signals.set(path, init.signal !== undefined);
+      return Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+    },
+    write: () => undefined,
+  });
+  await client.status();
+  await client.retry();
+  await client.apply({ previewId: 'preview-1', decisions: [] });
+  expect(signals.get('/dashboard/api/sync')).toBe(false);
+  expect(signals.get('/dashboard/api/sync/retry')).toBe(true);
+  expect(signals.get('/dashboard/api/sync/apply')).toBe(true);
 });
