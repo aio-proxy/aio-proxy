@@ -34,6 +34,7 @@ import {
   type GrokMarker,
 } from './grok';
 import {
+  captureHostCommand,
   detectAgentHost,
   resolveAgentLocation,
   type AgentHost,
@@ -164,13 +165,6 @@ export type AgentRemoveResult = PluginAgentRemoveResult | CodexRemoveResult | Gr
 export type AgentRevokeResult = {
   readonly installationId: string;
   readonly status: AgentRevokeStatus;
-};
-
-const captureHostCommand = async (command: readonly [string, ...string[]]): Promise<string> => {
-  const proc = Bun.spawn([...command], { stdout: 'pipe', stderr: 'pipe' });
-  const stdout = await new Response(proc.stdout).text();
-  if ((await proc.exited) !== 0) throw new Error(`${command[0]} command failed`);
-  return stdout;
 };
 
 const hostDeps = (): AgentHostDeps => ({

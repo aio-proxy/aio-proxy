@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test';
 
-import { detectAgentHost, resolveAgentLocation, resolveGrokRoot, type AgentHostDeps } from './hosts';
+import {
+  captureHostCommand,
+  detectAgentHost,
+  resolveAgentLocation,
+  resolveGrokRoot,
+  type AgentHostDeps,
+} from './hosts';
 
 const hostFixture = (
   options: {
@@ -120,6 +126,12 @@ test('Grok classifies an older release as unsupported', async () => {
 test('Grok keeps unknown support when the banner has no semver', async () => {
   const host = await detectAgentHost('grok', hostFixture({ versionOutput: 'grok nightly' }));
   expect(host).toMatchObject({ detected: true, support: 'unknown', minimumVersion: '1.0.24' });
+});
+
+test('captureHostCommand fails within the probe budget when the process hangs', async () => {
+  const started = Date.now();
+  await expect(captureHostCommand(['sleep', '30'], 80)).rejects.toThrow(/timed out/i);
+  expect(Date.now() - started).toBeLessThan(1_000);
 });
 
 test('Grok location uses GROK_HOME without requiring a plugin directory', async () => {

@@ -2,6 +2,34 @@ import { isAbsolute, join } from 'node:path';
 
 import type { AgentPluginTarget, AgentTarget } from '@aio-proxy/types';
 
+export const HOST_VERSION_PROBE_MS = 5_000;
+
+export async function captureHostCommand(
+  command: readonly [string, ...string[]],
+  probeMs = HOST_VERSION_PROBE_MS,
+): Promise<string> {
+  const timeoutMs = Math.max(0, probeMs);
+  if (timeoutMs === 0) throw new Error(`${command[0]} command timed out`);
+  const signal = AbortSignal.timeout(timeoutMs);
+  const proc = Bun.spawn([...command], { stdout: 'pipe', stderr: 'ignore', signal });
+  const timedOut = new Promise<never>((_, reject) => {
+    const onAbort = (): void => {
+      reject(new Error(`${command[0]} command timed out`));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+  try {
+    const stdout = await Promise.race([new Response(proc.stdout).text(), timedOut]);
+    if ((await Promise.race([proc.exited, timedOut])) !== 0) throw new Error(`${command[0]} command failed`);
+    return stdout;
+  } catch (error) {
+    proc.kill();
+    proc.kill('SIGKILL');
+    throw error;
+  }
+}
+
 export type AgentHostDeps = {
   readonly which: (name: string) => string | null;
   readonly capture: (command: readonly [string, ...string[]]) => Promise<string>;
