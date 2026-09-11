@@ -224,7 +224,9 @@ export async function commitGrokEdit(
     status: ownership.status,
     leaves: edit.leaves,
     createdTables: edit.createdTables,
-    ...(ownership.cleanupComplete === true ? { cleanupComplete: true } : {}),
+    ...(ownership.cleanupComplete === true && ownership.revokeStatus !== undefined
+      ? { cleanupComplete: true as const, revokeStatus: ownership.revokeStatus }
+      : {}),
   };
   const committedFile = await persistOwnership(lock, paths, committed, pendingFile, budget);
   await testDeps?.failpoint?.('ownership_committed');

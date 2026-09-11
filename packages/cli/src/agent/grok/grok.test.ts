@@ -664,6 +664,90 @@ test('remove revokes the original endpoint for only this installation', async ()
   }
 });
 
+test('first missing revoke and marker-deleted completed retry both report missing', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const missingDeps = {
+      ...f.deps,
+      revoke: async (endpoint: string, installationId: string) => {
+        f.revoked.push({ endpoint, installationId });
+        return 'missing' as const;
+      },
+    };
+    const first = await removeGrok(f.root, f.input.adapterVersion, missingDeps);
+    expect(first.revokeStatus).toBe('missing');
+  } finally {
+    await f.cleanup();
+  }
+
+  const g = await grokFixture();
+  try {
+    const installed = await configureGrok(g.input, g.deps);
+    const missingDeps = {
+      ...g.deps,
+      revoke: async (endpoint: string, installationId: string) => {
+        g.revoked.push({ endpoint, installationId });
+        return 'missing' as const;
+      },
+    };
+    await expect(
+      removeGrokForTest(g.root, g.input.adapterVersion, missingDeps, {
+        failpoint: (point) => {
+          if (point === 'marker_removed') throw new Error('crash at marker_removed');
+        },
+      }),
+    ).rejects.toThrow('crash at marker_removed');
+    expect(await Bun.file(join(g.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(false);
+    const ownership = JSON.parse(await readFile(join(g.root, 'aio-proxy', 'ownership.json'), 'utf8')) as {
+      cleanupComplete?: unknown;
+      revokeStatus?: unknown;
+    };
+    expect(ownership.cleanupComplete).toBe(true);
+    expect(ownership.revokeStatus).toBe('missing');
+    const retried = await removeGrok(g.root, g.input.adapterVersion, {
+      ...g.deps,
+      revoke: async () => {
+        throw new Error('must not revoke again');
+      },
+    });
+    expect(retried.installationId).toBe(installed.marker.installationId);
+    expect(retried.revokeStatus).toBe('missing');
+    expect(g.revoked).toHaveLength(1);
+  } finally {
+    await g.cleanup();
+  }
+
+  const h = await grokFixture();
+  try {
+    await configureGrok(h.input, h.deps);
+    const missingDeps = {
+      ...h.deps,
+      revoke: async (endpoint: string, installationId: string) => {
+        h.revoked.push({ endpoint, installationId });
+        return 'missing' as const;
+      },
+    };
+    await expect(
+      removeGrokForTest(h.root, h.input.adapterVersion, missingDeps, {
+        failpoint: (point) => {
+          if (point === 'cleanup_complete') throw new Error('crash at cleanup_complete');
+        },
+      }),
+    ).rejects.toThrow('crash at cleanup_complete');
+    const skipped = await removeGrok(h.root, h.input.adapterVersion, {
+      ...h.deps,
+      revoke: async () => {
+        throw new Error('must not revoke again');
+      },
+    });
+    expect(skipped.revokeStatus).toBe('missing');
+    expect(h.revoked).toHaveLength(1);
+  } finally {
+    await h.cleanup();
+  }
+});
+
 test('unlogged remove accepts a missing revoke and restores owned fields', async () => {
   const f = await grokFixture();
   try {
@@ -737,6 +821,27 @@ test('field drift is skipped and a missing config is not created', async () => {
     } finally {
       await g.cleanup();
     }
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('final cleanup retains a replaced leftover credential', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    await expect(
+      removeGrokForTest(f.root, f.input.adapterVersion, f.deps, {
+        failpoint: (point) => {
+          if (point === 'cleanup_complete') throw new Error('crash at cleanup_complete');
+        },
+      }),
+    ).rejects.toThrow('crash at cleanup_complete');
+    const credential = join(f.root, 'aio-proxy', 'credential.json');
+    await writeFile(credential, 'user-secret\n', { mode: 0o644 });
+    const retried = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(await readFile(credential, 'utf8')).toBe('user-secret\n');
+    expect(retried.retainedFiles).toContain('credential.json');
   } finally {
     await f.cleanup();
   }

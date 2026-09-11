@@ -13,6 +13,7 @@ import {
   removeGrokOwnedTemporaryFiles,
   removeMatchingDir,
   removeMatchingFile,
+  tryReadGrokPrivateFile,
   unlinkGrokFile,
   type GrokFileIdentity,
   type GrokPaths,
@@ -90,9 +91,13 @@ async function cleanupPrivateDir(
   testDeps?: GrokRemoveTestDeps,
 ): Promise<readonly string[]> {
   await removeGrokOwnedTemporaryFiles(paths);
-  const credential = await inspectPath(paths.credential);
-  if (credential !== undefined && !credential.isSymbolicLink() && credential.isFile()) {
-    await unlinkKnownFile(lock, { path: paths.credential, dev: credential.dev, ino: credential.ino }, budget);
+  const leftoverCredential = await tryReadGrokPrivateFile(paths.credential, 'credential');
+  if (leftoverCredential !== undefined) {
+    await unlinkKnownFile(
+      lock,
+      { path: paths.credential, dev: leftoverCredential.dev, ino: leftoverCredential.ino },
+      budget,
+    );
   }
   await unlinkKnownFile(lock, marker, budget);
   await testDeps?.failpoint?.('marker_removed');
@@ -134,7 +139,7 @@ async function narrowCompletedRemoval(
   );
   return {
     installationId: ownership.installationId,
-    revokeStatus: 'revoked',
+    revokeStatus: ownership.revokeStatus,
     skippedFields: [],
     retainedFiles,
   };
@@ -153,7 +158,7 @@ function removingOwnership(ownership: GrokOwnership): GrokOwnership {
   };
 }
 
-function completedOwnership(ownership: GrokOwnership): GrokOwnership {
+function completedOwnership(ownership: GrokOwnership, revokeStatus: AgentRevokeStatus): GrokOwnership {
   return {
     format: 1,
     agent: 'grok',
@@ -163,6 +168,7 @@ function completedOwnership(ownership: GrokOwnership): GrokOwnership {
     leaves: ownership.leaves,
     createdTables: ownership.createdTables,
     cleanupComplete: true,
+    revokeStatus,
   };
 }
 
@@ -206,7 +212,7 @@ async function removeManaged(
   if (ownership.status !== 'removing') await saveOwnership(removingOwnership(ownership));
   await testDeps?.failpoint?.('removing');
 
-  let revokeStatus: AgentRevokeStatus = 'revoked';
+  let revokeStatus: AgentRevokeStatus;
   let skippedFields: readonly string[] = [];
   if (!isCompletedGrokRemoval(ownership)) {
     revokeStatus = await deps.revoke(marker.endpoint, marker.installationId);
@@ -220,8 +226,10 @@ async function removeManaged(
     const edit = restoreGrokToml(config?.text ?? '', ownership.leaves, ownership.createdTables);
     skippedFields = edit.skipped;
     await commitEdit(edit);
-    await saveOwnership(completedOwnership(ownership));
+    await saveOwnership(completedOwnership(ownership, revokeStatus));
     await testDeps?.failpoint?.('cleanup_complete');
+  } else {
+    revokeStatus = ownership.revokeStatus;
   }
 
   const retainedFiles = await cleanupPrivateDir(

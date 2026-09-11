@@ -128,6 +128,15 @@ export const readGrokFile = (path: string): Promise<GrokFileSnapshot | undefined
 export const readGrokPrivateFile = (path: string, kind: string): Promise<GrokFileSnapshot | undefined> =>
   readGrokSnapshot(path, kind, true);
 
+export async function tryReadGrokPrivateFile(path: string, kind: string): Promise<GrokFileSnapshot | undefined> {
+  try {
+    return await readGrokPrivateFile(path, kind);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Grok ')) return undefined;
+    throw error;
+  }
+}
+
 export async function syncDirectory(path: string): Promise<void> {
   const handle = await open(path, 'r');
   try {

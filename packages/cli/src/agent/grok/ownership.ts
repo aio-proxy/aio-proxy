@@ -1,4 +1,4 @@
-import { AgentManagedMarkerSchema } from '@aio-proxy/types';
+import { AgentManagedMarkerSchema, AgentRevokeStatusSchema, type AgentRevokeStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
@@ -66,9 +66,11 @@ export const GrokOwnershipSchema: z.ZodType<GrokOwnership> = z
     createdTables: z.array(GrokPathSchema),
     pending: GrokTransactionSchema.optional(),
     cleanupComplete: z.literal(true).optional(),
+    revokeStatus: AgentRevokeStatusSchema.optional(),
   })
   .refine((value) => isCanonicalLoopbackOrigin(value.endpoint))
-  .refine((value) => value.cleanupComplete !== true || (value.status === 'removing' && value.pending === undefined));
+  .refine((value) => value.cleanupComplete !== true || (value.status === 'removing' && value.pending === undefined))
+  .refine((value) => (value.revokeStatus === undefined) === (value.cleanupComplete !== true));
 
 export const pathKey = (path: GrokPath): string => JSON.stringify(path);
 
@@ -125,8 +127,17 @@ export const encodeGrokMarker = (marker: GrokMarker): string => `${JSON.stringif
 export const encodeGrokOwnership = (ownership: GrokOwnership): string =>
   `${JSON.stringify(GrokOwnershipSchema.parse(ownership))}\n`;
 
-export const isCompletedGrokRemoval = (ownership: GrokOwnership): boolean =>
-  ownership.status === 'removing' && ownership.cleanupComplete === true && ownership.pending === undefined;
+export const isCompletedGrokRemoval = (
+  ownership: GrokOwnership,
+): ownership is GrokOwnership & {
+  readonly status: 'removing';
+  readonly cleanupComplete: true;
+  readonly revokeStatus: AgentRevokeStatus;
+} =>
+  ownership.status === 'removing' &&
+  ownership.cleanupComplete === true &&
+  ownership.pending === undefined &&
+  ownership.revokeStatus !== undefined;
 
 export function classifyChange(current: LeafValue, change: FieldChange): 'before' | 'after' | 'conflict' {
   if (equalGrokLeaf(current, change.after)) return 'after';
@@ -160,7 +171,9 @@ function committedOwnership(
     leaves,
     createdTables,
     ...(pending === undefined ? {} : { pending }),
-    ...(pending === undefined && ownership.cleanupComplete === true ? { cleanupComplete: true } : {}),
+    ...(pending === undefined && ownership.cleanupComplete === true && ownership.revokeStatus !== undefined
+      ? { cleanupComplete: true as const, revokeStatus: ownership.revokeStatus }
+      : {}),
   };
 }
 

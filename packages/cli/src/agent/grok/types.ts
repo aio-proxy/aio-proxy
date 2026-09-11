@@ -40,6 +40,7 @@ export type GrokOwnership = {
   readonly createdTables: readonly GrokPath[];
   readonly pending?: GrokTransaction;
   readonly cleanupComplete?: true;
+  readonly revokeStatus?: AgentRevokeStatus;
 };
 export type GrokConfigureInput = {
   readonly root: string;

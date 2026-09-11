@@ -216,8 +216,16 @@ test('recover does not retake a removed leaf that already matches after', () => 
   expect(recovered.ownership.leaves).toEqual([]);
 });
 
-test('completed removal requires removing status, no pending, and cleanupComplete', () => {
-  expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing', cleanupComplete: true })).toBe(true);
+test('completed removal requires removing status, no pending, cleanupComplete, and revokeStatus', () => {
+  expect(
+    isCompletedGrokRemoval({
+      ...baseOwnership(),
+      status: 'removing',
+      cleanupComplete: true,
+      revokeStatus: 'missing',
+    }),
+  ).toBe(true);
+  expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing', cleanupComplete: true })).toBe(false);
   expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing' })).toBe(false);
   expect(isCompletedGrokRemoval(baseOwnership())).toBe(false);
 });
@@ -233,6 +241,23 @@ test('encode rejects cleanupComplete while pending remains', () => {
       }),
       status: 'removing',
       cleanupComplete: true,
+      revokeStatus: 'revoked',
     }),
   ).toThrow();
+});
+
+test('encode stores revokeStatus only on a completed removing record', () => {
+  expect(() => encodeGrokOwnership({ ...baseOwnership(), status: 'removing', revokeStatus: 'missing' })).toThrow();
+  expect(() => encodeGrokOwnership({ ...baseOwnership(), cleanupComplete: true, revokeStatus: 'missing' })).toThrow();
+  expect(() => encodeGrokOwnership({ ...baseOwnership(), status: 'removing', cleanupComplete: true })).toThrow();
+  expect(
+    JSON.parse(
+      encodeGrokOwnership({
+        ...baseOwnership(),
+        status: 'removing',
+        cleanupComplete: true,
+        revokeStatus: 'missing',
+      }),
+    ),
+  ).toMatchObject({ status: 'removing', cleanupComplete: true, revokeStatus: 'missing' });
 });
