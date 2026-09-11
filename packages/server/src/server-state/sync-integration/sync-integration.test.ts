@@ -13,7 +13,7 @@ import {
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 
-import type { ServerRuntime } from './lifecycle';
+import type { ServerRuntime } from '../lifecycle';
 import { createSyncIntegration } from './sync-integration';
 
 test('remote apply rejects a stale digest without overwriting an external edit', async () => {
