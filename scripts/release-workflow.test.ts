@@ -72,6 +72,17 @@ test('creates the notarytool profile in the ephemeral signing keychain', async (
   expect(workflow).toContain('export APPLE_PROFILE_PATH="$profile"');
 });
 
+test('installs bun from a pinned commit, never a movable tag', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  // Every job here hands a secret to the `bun` this action installs — the Developer ID and
+  // notary key when releasing CloudKit, the tap token when notifying Homebrew. A retargeted
+  // tag would swap that binary for one that reads them.
+  const references = [...workflow.matchAll(/uses: oven-sh\/setup-bun@(\S+)/gu)].map(([, reference]) => reference);
+
+  expect(references.length).toBeGreaterThan(0);
+  for (const reference of references) expect(reference).toMatch(/^[0-9a-f]{40}$/u);
+});
+
 test('dry-run restores bun.lock and never invokes npm publish', async () => {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'aio-release-dry-run-'));
   const fakeBin = join(temporaryDirectory, 'bin');

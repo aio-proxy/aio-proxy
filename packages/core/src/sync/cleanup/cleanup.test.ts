@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
+import { decodeAccount } from '../oauth';
 import {
   accountKey,
   beginPurge,
@@ -439,6 +440,22 @@ test('restore preserves a recovered same-epoch account payload', async () => {
   expect(value?.kind).toBe('present');
   expect(new TextDecoder().decode(value!.value)).toContain('recovered-secret');
   expect(new TextDecoder().decode(value!.value)).toContain('"generation":7');
+});
+
+test('restore leaves an account record OAuth readers can decode', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old');
+  const signal = new AbortController().signal;
+  await publishEntity(store, item, signal);
+  await deleteEntity(store, item.objectId, 0, signal);
+  await restoreEntity(store, item.objectId, item.body, crypto.randomUUID(), signal);
+
+  const account = backend.readAll().get(accountKey(item.objectId));
+  if (account?.kind !== 'present') throw new Error('missing account fence');
+  // An undecodable fence reads as an unknown format, and the sharing service refuses to publish
+  // a credential over a non-absent unknown record.
+  expect(decodeAccount(account.value)).toEqual({ protocol: 1, phase: 'deleted', objectId: item.objectId, epoch: 1 });
 });
 
 test('restore cannot write an active account fence after concurrent deletion', async () => {

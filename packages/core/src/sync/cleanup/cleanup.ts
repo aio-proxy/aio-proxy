@@ -253,7 +253,12 @@ async function ensureAccountActiveFence(
   epoch: number,
   signal: AbortSignal,
 ): Promise<void> {
-  const bytes = encode({ protocol: 1, phase: 'ready', objectId, epoch, generation: 0 });
+  // A restored entity carries no credential yet, so the fence is a tombstone at the new epoch:
+  // it must stay a record `decodeAccount()` recognizes, or OAuth readers classify the account as
+  // an unknown format and refuse to publish. Present and epoch-bearing is what stops a stale
+  // purge from scrubbing the restored account.
+  const marker: DeletedAccount = { protocol: 1, phase: 'deleted', objectId, epoch };
+  const bytes = encode(marker);
   assertSize(store, bytes);
   const key = accountKey(objectId);
   for (;;) {

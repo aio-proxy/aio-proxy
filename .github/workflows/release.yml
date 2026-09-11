@@ -52,7 +52,12 @@ jobs:
           fetch-tags: true
           persist-credentials: false # avoid duplicate Authorization headers during changesets push
 
-      - uses: oven-sh/setup-bun@v2
+      # SHA-pinned, not @v2: this job later puts the Developer ID certificate, its
+      # password and the notary key into the environment of the `bun` this action
+      # installs. A retargeted tag or a compromised upstream account could
+      # otherwise swap that binary for one that exfiltrates the signing material.
+      # Bump together with the setup-bun pin in the homebrew job.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -308,7 +313,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
