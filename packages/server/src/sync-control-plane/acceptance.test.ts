@@ -194,7 +194,7 @@ test('a public delete creates a tombstone that the restore operation can reactiv
   });
 }, 30_000);
 
-test('same-ID collisions exclude both cloud objects before activation', async () => {
+test('same-ID collisions quarantine both cloud objects without destroying the active Provider', async () => {
   await withTwoServerSyncFixtures(
     async (fixture) => {
       await setProvider(fixture.a, 'work', `${fixture.providerMarker}-a`);
@@ -209,7 +209,9 @@ test('same-ID collisions exclude both cloud objects before activation', async ()
           expect.objectContaining({ credentialState: 'independent', pendingReason: 'provider-id-conflict' }),
         ]),
       );
-      expect(fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(false);
+      // Quarantine stops synchronizing the colliding objects; it must not delete the Provider this
+      // device authored, which was never itself in conflict.
+      expect(fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(true);
     },
     { providerObjectIds: { a: 'provider-work-a', b: 'provider-work-b' } },
   );

@@ -147,12 +147,16 @@ const runLoginSession = async (
       ...(warning === undefined ? {} : { warning }),
     });
   } catch (error) {
-    if (
-      deps.repository
-        .listPendingAccountOperations()
-        .some((operation) => operation.targetDigest.startsWith('oauth-sync:'))
-    )
-      deps.onAccountOperationPending?.();
+    // Best-effort: a login that failed because the server is shutting down reads a closed
+    // database here, and losing the session's real failure status to that is never worth it.
+    try {
+      if (
+        deps.repository
+          .listPendingAccountOperations()
+          .some((operation) => operation.targetDigest.startsWith('oauth-sync:'))
+      )
+        deps.onAccountOperationPending?.();
+    } catch {}
     if (error instanceof ProviderAccountAlreadyExistsError) {
       deps.publish(session, { id, status: 'succeeded', providerId: error.existingProviderId, duplicate: true });
     } else if (session.controller.signal.aborted) {
