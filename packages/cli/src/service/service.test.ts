@@ -1,11 +1,81 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { CliExit } from '../exit';
 import { resolveStableManagedExec } from '../upgrade/detect';
-import { renderLaunchdPlist, renderSystemdUnit, resolveExec, serviceRestart, writeManagedUnit } from './service';
+import {
+  renderLaunchdPlist,
+  renderSystemdUnit,
+  resolveExec,
+  serviceRestart,
+  serviceStart,
+  writeManagedUnit,
+} from './service';
+
+for (const platform of ['linux', 'darwin'] as const) {
+  for (const command of [serviceStart, serviceRestart]) {
+    test(`${command.name} on ${platform} installs a missing user service before starting it`, async () => {
+      const calls: string[] = [];
+      const writeManagedUnit = mock(async () => '/tmp/unused');
+      await command({
+        platform,
+        unitInstalled: () => false,
+        install: async (options) => {
+          expect(options?.system).not.toBe(true);
+          calls.push('install');
+        },
+        runManager: async (cmd) => {
+          calls.push(cmd.join(' '));
+          return 0;
+        },
+        unitPath: '/tmp/service.plist',
+        writeManagedUnit,
+      });
+      expect(calls).toEqual([
+        'install',
+        platform === 'linux' ? 'systemctl --user start aio-proxy.service' : 'launchctl load -w /tmp/service.plist',
+      ]);
+      expect(writeManagedUnit).not.toHaveBeenCalled();
+    });
+
+    for (const failingStep of ['install', 'start'] as const) {
+      test(`${command.name} on ${platform} shows recovery instructions only after automatic ${failingStep} fails`, async () => {
+        const failure = new CliExit(2, 'Permission denied');
+        const install = mock(async () => {
+          if (failingStep === 'install') throw failure;
+        });
+        const runManager = mock(async (): Promise<number> => {
+          throw failure;
+        });
+        const error = await command({ platform, unitInstalled: () => false, install, runManager }).catch(
+          (error: unknown) => error,
+        );
+        expect(error).toBeInstanceOf(CliExit);
+        if (!(error instanceof CliExit)) throw new Error('Expected a service setup error');
+        expect(error.code).toBe(2);
+        expect(error.message).toContain('Permission denied');
+        expect(error.message).toContain('aio-proxy service install --user');
+        expect(error.message).toContain('aio-proxy service start');
+        expect(install).toHaveBeenCalledTimes(1);
+        expect(runManager).toHaveBeenCalledTimes(failingStep === 'install' ? 0 : 1);
+      });
+    }
+  }
+
+  test(`serviceStart on ${platform} starts an installed service through its manager`, async () => {
+    const runManager = mock(async () => 0);
+    const install = mock(async () => {});
+    await serviceStart({ platform, unitInstalled: () => true, unitPath: '/tmp/service.plist', runManager, install });
+    expect(install).not.toHaveBeenCalled();
+    expect(runManager).toHaveBeenCalledWith(
+      platform === 'linux'
+        ? ['systemctl', '--user', 'start', 'aio-proxy.service']
+        : ['launchctl', 'load', '-w', '/tmp/service.plist'],
+    );
+  });
+}
 
 test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   const unit = renderSystemdUnit({ exec: '/usr/local/bin/aio-proxy', configPath: '/home/u/.aio-proxy/config.jsonc' });
