@@ -391,7 +391,8 @@
       "grok_close_settings": "Close Grok settings if they are open so AIO Proxy configuration reloads.",
       "grok_login_required": "Grok login required.",
       "grok_policy_conflict": "Grok routing conflict: {fields}.",
-      "grok_retained_files": "Retained files: {files}."
+      "grok_retained_files": "Retained files: {files}.",
+      "grok_skipped_fields": "Skipped fields: {fields}."
     }
   },
   "oauth": {

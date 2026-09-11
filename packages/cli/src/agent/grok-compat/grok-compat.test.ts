@@ -365,6 +365,12 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(report.cases.find((item) => item.name === 'approve')?.passed).toBe(true);
     expect(report.cases.find((item) => item.name === 'helper-stdout-contract')?.passed).toBe(true);
     expect(report.cases.find((item) => item.name === 'helper-404')?.passed).toBe(true);
+    const loopback = report.cases.find((item) => item.name === 'loopback-http-recorder');
+    expect(loopback?.passed).toBe(false);
+    expect(loopback?.detail.startsWith('not_run:')).toBe(true);
+    const sandbox = report.cases.find((item) => item.name === 'macos-sandbox-egress');
+    expect(sandbox?.passed).toBe(false);
+    expect(sandbox?.detail.startsWith('not_run:')).toBe(true);
     expect(compatScriptShouldFail(report)).toBe(false);
     const script = await runScript(options);
     expect(script.exitCode).toBe(0);

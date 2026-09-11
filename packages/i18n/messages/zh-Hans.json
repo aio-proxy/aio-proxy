@@ -391,7 +391,8 @@
       "grok_close_settings": "如果 Grok 设置已打开，请关闭以便重新加载 AIO Proxy 配置。",
       "grok_login_required": "需要 Grok 登录。",
       "grok_policy_conflict": "Grok 路由冲突：{fields}。",
-      "grok_retained_files": "保留的文件：{files}。"
+      "grok_retained_files": "保留的文件：{files}。",
+      "grok_skipped_fields": "跳过的字段：{fields}。"
     }
   },
   "oauth": {

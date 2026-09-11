@@ -134,6 +134,9 @@ async function probeUnimplementedHelperUrl(endpoint: string): Promise<GrokCompat
 }
 
 function loopbackRecorderCase(fixture: GrokCompatFixture): GrokCompatCase {
+  if (fixture.records.length === 0) {
+    return notRun('loopback-http-recorder', 'no HTTP records were captured');
+  }
   const foreign = fixture.records.filter((item) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/u.test(item.origin));
   if (foreign.length > 0) {
     return failed(
@@ -189,7 +192,8 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
   );
   cases.push(loopbackRecorderCase(fixture));
   const sandboxExec = Bun.which('sandbox-exec');
-  cases.push(sandboxExecCase(sandboxExec, true));
+  // Journey does not wrap Grok in sandbox-exec; presence of the binary is not evidence.
+  cases.push(sandboxExecCase(sandboxExec, false));
   cases.push(...namedNotRunGates(process.platform));
   return cases;
 }

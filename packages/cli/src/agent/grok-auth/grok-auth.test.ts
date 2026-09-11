@@ -440,6 +440,45 @@ test('a waiting helper reuses a newly delivered revision', async () => {
   }
 });
 
+test('silent overlapping helper refreshes instead of reusing the observed access token', async () => {
+  const f = await authFixture();
+  try {
+    await grokAuth(f.input, f.deps);
+    const current = await readCredentialFile(f.root);
+    const oldAccess = current.accessToken;
+    const lock = await acquireFileLock(join(f.root, '.aio-proxy.lock'), { deadline: Date.now() + 5_000 });
+    const seen = Promise.withResolvers<GrokAuthObservation>();
+    try {
+      await writeCredentialFile(f.root, { ...current, deliveredBy: lock.owner });
+      const pending = grokAuth(
+        { ...f.input, expired: true },
+        {
+          ...f.deps,
+          transport: () => countingTransport(f),
+          readObservation: async (root, id, budget) => {
+            const result = await readGrokObservation(root, id, budget);
+            seen.resolve(result);
+            return result;
+          },
+        },
+      );
+      const snap = await seen.promise;
+      expect(snap.lockOwner).toBe(lock.owner);
+      expect(snap.deliveredBy).toBe(lock.owner);
+      expect(snap.revision).toBe(current.revision);
+      await lock.release();
+      await pending;
+      expect(f.calls.refresh).toBe(1);
+      expect(JSON.parse(f.stdout[1]!).access_token).toBe(REFRESHED.access_token);
+      expect(JSON.parse(f.stdout[1]!).access_token).not.toBe(oldAccess);
+    } finally {
+      await lock.release().catch(() => undefined);
+    }
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('an overlapping lock owner reuses the same revision', async () => {
   const f = await authFixture();
   try {

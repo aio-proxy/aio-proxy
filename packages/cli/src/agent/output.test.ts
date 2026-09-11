@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { m } from '@aio-proxy/i18n';
 
 import type { AgentListResult } from './agent';
-import { renderAgentConfigure, renderAgentList } from './output';
+import { renderAgentConfigure, renderAgentList, renderAgentRemove } from './output';
 
 const OUTPUT_INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 const completeListResult: AgentListResult = {
@@ -141,6 +141,7 @@ const AGENT_KEYS = [
   'cli.agent.grok_login_required',
   'cli.agent.grok_policy_conflict',
   'cli.agent.grok_retained_files',
+  'cli.agent.grok_skipped_fields',
 ] as const;
 
 const flattenMessages = (value: unknown, prefix = ''): Record<string, string> => {
@@ -385,6 +386,20 @@ test('modified Grok list text keeps the marker and configured authorization entr
   expect(text).toContain(OUTPUT_INSTALLATION);
   expect(text).toContain('configured');
   expect(text).toContain('auth.auth_provider_label');
+});
+
+test('Grok remove rendering prints skipped field paths without secrets', () => {
+  const lines = renderAgentRemove({
+    target: 'grok',
+    installationId: OUTPUT_INSTALLATION,
+    revokeStatus: 'revoked',
+    skippedFields: ['auth.auth_provider_label'],
+    retainedFiles: ['unknown.txt'],
+  });
+  const text = lines.join('\n');
+  expect(text).toContain('auth.auth_provider_label');
+  expect(text).toContain('unknown.txt');
+  expect(text).not.toMatch(/access_token|refresh_token|aio_agent_/u);
 });
 
 test('every Agent lifecycle key exists in all five source locales and compiled Paraglide output', () => {

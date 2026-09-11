@@ -555,10 +555,22 @@ test('withGrokInstallation uses the lock owner and checks routing before credent
 
 test('tests never create or read the user Grok home', async () => {
   const f = await grokFixture();
+  const userConfig = join(homedir(), '.grok', 'config.toml');
   try {
     expect(f.root.startsWith(join(homedir(), '.grok'))).toBe(false);
+    const existed = await Bun.file(userConfig).exists();
+    const before = existed ? await stat(userConfig) : undefined;
+    const beforeText = existed ? await readFile(userConfig, 'utf8') : undefined;
     await configureGrok(f.input, f.deps);
-    expect(await Bun.file(join(homedir(), '.grok', 'config.toml')).exists()).toBe(false);
+    expect(f.root.startsWith(join(homedir(), '.grok'))).toBe(false);
+    if (existed && before !== undefined && beforeText !== undefined) {
+      const after = await stat(userConfig);
+      expect(after.ino).toBe(before.ino);
+      expect(after.mtimeNs).toBe(before.mtimeNs);
+      expect(await readFile(userConfig, 'utf8')).toBe(beforeText);
+    } else {
+      expect(await Bun.file(userConfig).exists()).toBe(false);
+    }
   } finally {
     await f.cleanup();
   }
@@ -868,27 +880,36 @@ test('unknown private files are retained and owned tmp is removed', async () => 
 
 test('remove does not read or change Grok auth.json', async () => {
   const f = await grokFixture();
-  const openSpy = spyOn(fsPromises, 'open');
-  const readSpy = spyOn(fsPromises, 'readFile');
   try {
     await configureGrok(f.input, f.deps);
     const authPath = join(f.root, 'auth.json');
     await writeFile(authPath, '{"token":"keep"}\n', { mode: 0o600 });
     const before = await stat(authPath);
     const beforeText = await readFile(authPath, 'utf8');
-    openSpy.mockClear();
-    readSpy.mockClear();
-    await removeGrok(f.root, f.input.adapterVersion, f.deps);
-    const touched = [...openSpy.mock.calls, ...readSpy.mock.calls].some((args) => String(args[0]) === authPath);
-    expect(touched).toBe(false);
-    const after = await stat(authPath);
-    expect(await readFile(authPath, 'utf8')).toBe(beforeText);
-    expect(after.mode).toBe(before.mode);
-    expect(after.ino).toBe(before.ino);
-    expect(after.mtimeNs).toBe(before.mtimeNs);
+    const realOpen = fsPromises.open.bind(fsPromises);
+    const realReadFile = fsPromises.readFile.bind(fsPromises);
+    const authTouches: string[] = [];
+    const openSpy = spyOn(fsPromises, 'open').mockImplementation(((path: unknown, ...args: unknown[]) => {
+      if (String(path) === authPath) authTouches.push('open');
+      return (realOpen as (...a: unknown[]) => ReturnType<typeof realOpen>)(path, ...args);
+    }) as never);
+    const readSpy = spyOn(fsPromises, 'readFile').mockImplementation(((path: unknown, ...args: unknown[]) => {
+      if (String(path) === authPath) authTouches.push('read');
+      return (realReadFile as (...a: unknown[]) => ReturnType<typeof realReadFile>)(path, ...args);
+    }) as never);
+    try {
+      await removeGrok(f.root, f.input.adapterVersion, f.deps);
+      expect(authTouches).toEqual([]);
+      const after = await stat(authPath);
+      expect(await readFile(authPath, 'utf8')).toBe(beforeText);
+      expect(after.mode).toBe(before.mode);
+      expect(after.ino).toBe(before.ino);
+      expect(after.mtimeNs).toBe(before.mtimeNs);
+    } finally {
+      openSpy.mockRestore();
+      readSpy.mockRestore();
+    }
   } finally {
-    openSpy.mockRestore();
-    readSpy.mockRestore();
     await f.cleanup();
   }
 });

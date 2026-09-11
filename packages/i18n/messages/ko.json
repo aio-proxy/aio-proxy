@@ -391,7 +391,8 @@
       "grok_close_settings": "Grok 설정이 열려 있으면 닫아 AIO Proxy 구성을 다시 불러오세요.",
       "grok_login_required": "Grok 로그인이 필요합니다.",
       "grok_policy_conflict": "Grok 라우팅 충돌: {fields}.",
-      "grok_retained_files": "유지된 파일: {files}."
+      "grok_retained_files": "유지된 파일: {files}.",
+      "grok_skipped_fields": "건너뛴 필드: {fields}."
     }
   },
   "oauth": {

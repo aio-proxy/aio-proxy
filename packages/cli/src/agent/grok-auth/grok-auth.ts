@@ -99,12 +99,15 @@ export async function grokAuth(input: GrokAuthInput, deps: GrokAuthDeps): Promis
   await withGrokInstallation({ ...input, budget, policy: deps.policy }, async (context) => {
     const raw = await context.readCredential();
     const current = raw === undefined ? undefined : parseGrokCredential(raw, context.marker);
-    const joined =
+    const newerRevision = current !== undefined && current.revision > (observed.revision ?? 0);
+    const sameRevisionJoin =
       current !== undefined &&
-      (current.revision > (observed.revision ?? 0) ||
-        (current.revision === observed.revision &&
-          current.deliveredBy !== undefined &&
-          (current.deliveredBy !== observed.deliveredBy || current.deliveredBy === observed.lockOwner)));
+      current.revision === observed.revision &&
+      current.deliveredBy !== undefined &&
+      (current.deliveredBy !== observed.deliveredBy || current.deliveredBy === observed.lockOwner);
+    // Silent (expired) mode must not reuse the AT that triggered 401 / near-expiry.
+    // Same-revision overlap or a new delivery of the observed revision still refreshes.
+    const joined = newerRevision || (!input.expired && sameRevisionJoin);
     const credential =
       current?.status === 'ready' && joined && current.accessExpiresAt - deps.now() >= 1_000
         ? current

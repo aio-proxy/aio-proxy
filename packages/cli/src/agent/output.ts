@@ -207,6 +207,9 @@ export function renderAgentConfigure(result: AgentConfigureResult): string[] {
 export const renderAgentRemove = (result: AgentRemoveResult): string[] => {
   if (result.target === 'codex') return renderCodexRemove(result);
   const lines = [m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })];
+  if (result.target === 'grok' && result.skippedFields !== undefined && result.skippedFields.length > 0) {
+    lines.push(m['cli.agent.grok_skipped_fields']({ fields: result.skippedFields.join(', ') }));
+  }
   if (result.target === 'grok' && result.retainedFiles !== undefined && result.retainedFiles.length > 0) {
     lines.push(m['cli.agent.grok_retained_files']({ files: result.retainedFiles.join(', ') }));
   }
