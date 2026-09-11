@@ -124,6 +124,37 @@ test('silent auth never starts device flow when credentials are missing', async 
   }
 });
 
+test('device login expiry starts when the token arrives', async () => {
+  const f = await authFixture();
+  try {
+    let now = Date.now();
+    await grokAuth(f.input, {
+      ...f.deps,
+      now: () => now,
+      transport: () => ({
+        device: async () => {
+          f.calls.device++;
+          return f.device;
+        },
+        poll: async () => {
+          now += 120_000;
+          f.calls.poll++;
+          return f.tokens;
+        },
+        refresh: async () => {
+          f.calls.refresh++;
+          return f.tokens;
+        },
+      }),
+    });
+    const credential = await readCredentialFile(f.root);
+    expect(credential.accessExpiresAt).toBe(now + 900_000);
+    expect(JSON.parse(f.stdout[0]!).expires_in).toBe(900);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('normal login validates apparently unexpired credentials through refresh', async () => {
   const f = await authFixture();
   try {

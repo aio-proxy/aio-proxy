@@ -66,6 +66,36 @@ test('the owned catalog URL alone is not an alias conflict', () => {
   expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toEqual([]);
 });
 
+test('a requirements pin with both catalog aliases is a conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\n`;
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [
+      {
+        path: '/etc/grok/requirements.toml',
+        kind: 'toml',
+        text: `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\nmodels_endpoint = "https://api.x.ai/v1/models"\n`,
+      },
+    ],
+  });
+  expect(conflicts).toContain('endpoints.models_list_url');
+  expect(conflicts).toContain('endpoints.models_endpoint');
+  expect(conflicts.join(',')).not.toContain('https://api.x.ai');
+});
+
+test('an overlay with both catalog aliases is a conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\n`;
+  const overlay = JSON.stringify({
+    endpoints: { models_list_url: `${ENDPOINT}/v1/models`, models_endpoint: 'https://api.x.ai/v1/models' },
+  });
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [{ path: 'GROK_CONFIG', kind: 'json', text: overlay }],
+  });
+  expect(conflicts).toContain('endpoints.models_list_url');
+  expect(conflicts).toContain('endpoints.models_endpoint');
+});
+
 test('alias requirements pins conflict on the authored path', () => {
   const text = '[models]\ndefault = "keep"\n';
   const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {

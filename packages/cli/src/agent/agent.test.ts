@@ -602,6 +602,45 @@ test('offline Grok list is read-only and does not issue, refresh, or recover', a
   }
 });
 
+test('conflict Grok marker is orphaned for authorizations', async () => {
+  const grokInstallation: AgentInstallationSummary = {
+    installationId: INSTALLATION,
+    target: 'grok',
+    adapterVersion: '1.2.3',
+    createdAt: '2026-08-18T00:00:00.000Z',
+    lastAuthorizedAt: '2026-08-18T00:00:01.000Z',
+    authorization: 'active',
+    accessExpiresAt: '2026-08-18T00:15:01.000Z',
+  };
+  const f = commandFixture({
+    grokInspection: {
+      integrationKind: 'auth-command',
+      integration: 'conflict',
+      configuration: 'missing',
+      fields: [],
+      marker: {
+        format: 1,
+        managedBy: 'aio-proxy',
+        agent: 'grok',
+        installationId: INSTALLATION,
+        adapterVersion: '1.2.3',
+        endpoint: 'http://127.0.0.1:9317',
+      },
+    },
+    serverInstallations: [grokInstallation],
+  });
+  const result = await agentList({ authorizations: true, check: true }, f.deps);
+  expect(result.targets).toContainEqual(
+    expect.objectContaining({
+      target: 'grok',
+      integration: 'conflict',
+      authorization: 'not_checked',
+      marker: expect.objectContaining({ installationId: INSTALLATION }),
+    }),
+  );
+  expect(result.authorizations).toEqual([expect.objectContaining({ installationId: INSTALLATION, local: 'orphaned' })]);
+});
+
 test('modified Grok stays configured for authorizations when the marker is valid', async () => {
   const grokInstallation: AgentInstallationSummary = {
     installationId: INSTALLATION,

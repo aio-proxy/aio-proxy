@@ -121,9 +121,9 @@ const applySnapshot = (
   const schemaCompatibility = snapshot.catalogSchemaVersions.includes(1) ? 'compatible' : 'incompatible';
   return targets.map((row) => {
     if (row.target === 'grok') {
-      if (row.marker === undefined) return row;
+      if (row.integration !== 'managed' || row.marker === undefined) return row;
       const match = snapshot.installations.find(
-        (item) => item.installationId === row.marker?.installationId && item.target === row.marker.agent,
+        (item) => item.installationId === row.marker.installationId && item.target === row.marker.agent,
       );
       return { ...row, authorization: match?.authorization ?? 'missing' };
     }
@@ -143,9 +143,8 @@ const authorizationItems = (
 ): readonly AgentAuthorizationListItem[] => {
   const configured = new Set(
     targets.flatMap((row) => {
-      if (row.marker === undefined) return [];
-      if (row.target === 'grok') return [localMarkerKey(row.marker.installationId, row.marker.agent)];
-      return row.integration === 'managed' ? [localMarkerKey(row.marker.installationId, row.marker.agent)] : [];
+      if (row.marker === undefined || row.integration !== 'managed') return [];
+      return [localMarkerKey(row.marker.installationId, row.marker.agent)];
     }),
   );
   if (codex.installationId !== undefined) configured.add(localMarkerKey(codex.installationId, 'codex'));

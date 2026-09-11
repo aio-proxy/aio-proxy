@@ -40,9 +40,8 @@ async function loginGrokToken(
 ): Promise<GrokCredential> {
   const device = await transport.device(context.marker);
   deps.stderr(device.verification_uri_complete + '\n');
-  const startedAt = deps.now();
   const token = await transport.poll(context.marker, device);
-  return saveGrokToken(context, previous, token, startedAt);
+  return saveGrokToken(context, previous, token, deps.now());
 }
 
 async function acquireGrokToken(
