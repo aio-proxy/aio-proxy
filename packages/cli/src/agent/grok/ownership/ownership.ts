@@ -14,8 +14,11 @@ export function isCanonicalLoopbackOrigin(value: string): boolean {
   try {
     const url = new URL(value);
     const host = url.hostname === '[::1]' ? '::1' : url.hostname;
+    // `URL.origin` drops the default HTTP port, but resolveAgentEndpoint always
+    // emits `http://127.0.0.1:${port}`, including `:80`.
+    const originMatches = value === url.origin || (url.port === '' && value === `${url.origin}:80`);
     return (
-      value === url.origin &&
+      originMatches &&
       url.protocol === 'http:' &&
       url.username === '' &&
       url.password === '' &&

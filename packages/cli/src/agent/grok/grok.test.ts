@@ -99,6 +99,17 @@ test('a private directory without a marker is a conflict and is not taken over',
   }
 });
 
+test('configure accepts a loopback endpoint that includes the default HTTP port', async () => {
+  const f = await grokFixture();
+  try {
+    const installed = await configureGrok({ ...f.input, endpoint: 'http://127.0.0.1:80' }, f.deps);
+    expect(installed.marker.endpoint).toBe('http://127.0.0.1:80');
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('a crash after the marker rename keeps the pending journal', async () => {
   const f = await grokFixture();
   try {

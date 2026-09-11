@@ -7,6 +7,7 @@ import {
   classifyChange,
   encodeGrokOwnership,
   isBootstrapGrokJournal,
+  isCanonicalLoopbackOrigin,
   isCompletedGrokRemoval,
   recoverGrokOwnership,
 } from './ownership';
@@ -34,6 +35,16 @@ const baseOwnership = (pending?: GrokOwnership['pending']): GrokOwnership => ({
   leaves: [owned(['auth', 'auth_provider_label'], value('Cloud'), value('AIO Proxy'))],
   createdTables: [['endpoints']],
   ...(pending === undefined ? {} : { pending }),
+});
+
+test('loopback origins may include the default HTTP port', () => {
+  expect(isCanonicalLoopbackOrigin('http://127.0.0.1:80')).toBe(true);
+  expect(isCanonicalLoopbackOrigin('http://localhost:80')).toBe(true);
+  expect(isCanonicalLoopbackOrigin('http://[::1]:80')).toBe(true);
+  expect(isCanonicalLoopbackOrigin('http://127.0.0.1')).toBe(true);
+  expect(isCanonicalLoopbackOrigin('http://127.0.0.1:9317')).toBe(true);
+  expect(isCanonicalLoopbackOrigin('http://127.0.0.1:80/v1')).toBe(false);
+  expect(isCanonicalLoopbackOrigin('https://127.0.0.1')).toBe(false);
 });
 
 test('classifyChange prefers after, then before, then conflict', () => {
