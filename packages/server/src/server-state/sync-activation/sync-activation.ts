@@ -39,17 +39,24 @@ const oauthProviderRecord = (body: EntityBody): Record<string, JsonValue> | unde
  * another device has no local account yet, so its separately published account object is imported
  * first: without that the prerequisite check below would reject the Provider forever.
  */
-function missingTemplateEnv(raw: Record<string, JsonValue>): readonly string[] {
-  // A body whose templates cannot even be parsed is rejected by the schema check below, not here.
+/**
+ * The environment references the incoming body carries. A published body keeps `{{env.NAME}}`
+ * unresolved so each device answers for itself, so this has to read the body: scanning the running
+ * configuration instead answers for Providers the remote entity is not replacing.
+ */
+function templateEnv(body: EntityBody): 'invalid-config' | readonly string[] {
   try {
-    return collectMissingTemplateEnv(raw);
+    return collectMissingTemplateEnv(body.value);
   } catch {
-    return [];
+    // A template this device cannot parse would fail the whole configuration on its next load.
+    return 'invalid-config';
   }
 }
 
 export function createActivationCheck(input: ActivationCheckInput) {
   return async (raw: Record<string, JsonValue>, body: EntityBody) => {
+    const missingEnv = templateEnv(body);
+    if (missingEnv === 'invalid-config') return missingEnv;
     let credentialValid = true;
     let oauthEvidence: OAuthActivationEvidence | undefined;
     const record = oauthProviderRecord(body);
@@ -102,7 +109,7 @@ export function createActivationCheck(input: ActivationCheckInput) {
         // An unresolved `{{env.NAME}}` resolves to an empty string, so a synchronized Provider
         // would replace a working configuration with an unauthenticated one on a device that
         // never defined the variable. Stay pending until it does.
-        missingEnv: missingTemplateEnv(raw),
+        missingEnv,
         oauthVerified: credentialValid,
         credentialValid,
         ...(oauthEvidence === undefined ? {} : { oauthEvidence }),
