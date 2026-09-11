@@ -648,15 +648,21 @@ test('a remaining lifetime under one second is not written to stdout', async () 
   try {
     let now = Date.now();
     await grokAuth(f.input, { ...f.deps, now: () => now });
+    let refreshReturned = false;
+    let nowCallsAfterRefresh = 0;
     await expect(
       grokAuth(f.input, {
         ...f.deps,
-        now: () => now,
+        now: () => {
+          if (!refreshReturned) return now;
+          nowCallsAfterRefresh++;
+          return nowCallsAfterRefresh === 1 ? now : now + 900_000;
+        },
         transport: () =>
           countingTransport(f, {
             refresh: async () => {
               f.calls.refresh++;
-              now += 900_000;
+              refreshReturned = true;
               return REFRESHED;
             },
           }),
