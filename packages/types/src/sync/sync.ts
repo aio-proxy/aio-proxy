@@ -98,6 +98,9 @@ export const SyncPreviewRowSchema = z.strictObject({
   secretChange: z.enum(['none', 'added', 'changed', 'removed']),
   dependencies: z.array(id),
   choices: z.array(z.enum(['local', 'cloud', 'restore'])),
+  // Only set when two distinct objects claim the same Provider ID. A plain local/cloud conflict on
+  // one object is resolvable under its existing ID, so the client must not demand a rename for it.
+  requiresProviderId: z.boolean().optional(),
 });
 
 export const SyncPreviewSchema = z.strictObject({

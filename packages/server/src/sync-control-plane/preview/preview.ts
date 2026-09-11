@@ -277,13 +277,17 @@ export function buildPreview(input: {
     .map((candidate) => {
       if (input.request.kind === 'purge') return candidate;
       if (!identityConflictKeys.has(`${candidate.row.kind}\0${candidate.row.logicalKey}`)) return candidate;
+      // Only a Provider can be renamed out of an identity collision; other kinds have no rename
+      // path, so demanding a new Provider ID for them would make the conflict unresolvable.
+      const renameable = candidate.row.kind === 'provider';
       return {
         ...candidate,
-        requiresProviderId: true,
+        ...(renameable ? { requiresProviderId: true } : {}),
         row: {
           ...candidate.row,
           change: 'conflict' as const,
           choices: ['local', 'cloud', 'restore'] as SyncPreviewRow['choices'],
+          ...(renameable ? { requiresProviderId: true } : {}),
         },
       };
     });

@@ -841,3 +841,42 @@ test('a tombstoned remote head reports no live body so the preview offers a rest
   });
   expect(built.preview.rows[0]).toMatchObject({ change: 'delete', choices: ['restore'], cloud: null });
 });
+
+test('only Provider identity collisions demand a replacement ID', () => {
+  const entity = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string, value: JsonValue) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind, logicalKey, value, dependencies: [] },
+    baseline: 'baseline',
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'full' },
+    local: [
+      entity('provider-a', 'provider', 'work', { value: 'a' }),
+      entity('provider-b', 'provider', 'work', { value: 'b' }),
+      entity('plugin-a', 'plugin-business', '@example/plugin', { value: 'a' }),
+      entity('plugin-b', 'plugin-business', '@example/plugin', { value: 'b' }),
+    ],
+    remote: [],
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+  const rows = new Map(built.preview.rows.map((row) => [row.objectId, row]));
+  expect(rows.get('provider-a')).toMatchObject({ change: 'conflict', requiresProviderId: true });
+  // A plugin cannot be renamed, so requiring a Provider ID would leave the conflict unresolvable.
+  expect(rows.get('plugin-a')).toMatchObject({ change: 'conflict' });
+  expect(rows.get('plugin-a')?.requiresProviderId).toBeUndefined();
+  expect(built.record.rows.find((c) => c.row.objectId === 'plugin-a')?.requiresProviderId).toBeUndefined();
+});
