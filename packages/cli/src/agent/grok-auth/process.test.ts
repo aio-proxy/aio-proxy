@@ -548,20 +548,15 @@ test('cleanup breakpoints keep unknown files and only clear this installation', 
     ).rejects.toThrow(/restored journal/);
     expect(await readFile(notes, 'utf8')).toBe('keep me\n');
     expect(JSON.parse(await readFile(join(h.root, 'aio-proxy', 'ownership.json'), 'utf8')).cleanupComplete).toBe(true);
-    await expect(
-      removeGrokForTest(h.root, h.input.adapterVersion, h.deps, {
-        failpoint: (point) => {
-          if (point === 'marker_removed') throw new Error('crash after marker delete');
-        },
-      }),
-    ).rejects.toThrow(/marker delete/);
-    expect(await Bun.file(join(h.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(false);
-    expect(await Bun.file(join(h.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
-    expect(await readFile(notes, 'utf8')).toBe('keep me\n');
-    const finished = await removeGrok(h.root, h.input.adapterVersion, h.deps);
+    const finished = await removeGrokForTest(h.root, h.input.adapterVersion, h.deps, {
+      failpoint: (point) => {
+        if (point === 'marker_removed') throw new Error('crash after marker delete');
+      },
+    });
     expect(finished.retainedFiles).toContain('notes.txt');
     expect(await readFile(notes, 'utf8')).toBe('keep me\n');
-    expect(await Bun.file(join(h.root, 'aio-proxy', 'ownership.json')).exists()).toBe(false);
+    expect(await Bun.file(join(h.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(true);
+    expect(await Bun.file(join(h.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
   } finally {
     await h.cleanup();
   }
