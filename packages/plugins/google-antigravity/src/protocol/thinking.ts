@@ -3,6 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { type ThinkingMode, classifyProvider } from '../catalog/classify';
 import type { AntigravityFamily, Effort } from '../catalog/collapse';
+import { splitVariantEfforts } from '../catalog/collapse';
 
 export type CcaThinkingConfig = {
   readonly thinkingBudget: number;
@@ -130,9 +131,14 @@ function mapGeminiEffort(wire: ResolvedWire, rawEffort: string): Readonly<Record
   return geminiBudgetOrLevel(wire, effort);
 }
 
+// `high` is the top level any Gemini wire accepts. The host normally clamps first, but its
+// capability set is empty whenever the persisted catalog predates this plugin version, so the
+// plugin folds the levels above `high` itself rather than hard-failing the request.
+const GEMINI_ABOVE_TOP = new Set(['xhigh', 'max']);
+
 function normalizeGeminiEffort(rawEffort: string): string {
   const effort = rawEffort.trim().toLowerCase();
-  if (effort === 'xhigh') return 'high';
+  if (GEMINI_ABOVE_TOP.has(effort)) return 'high';
   if (!GEMINI_EFFORTS.has(effort)) {
     throw new AntigravityThinkingError(`Unsupported thinking effort ${rawEffort}`);
   }
@@ -150,7 +156,7 @@ function geminiMinimal(wire: ResolvedWire): CcaThinkingConfig {
 }
 
 function splitVariantMatches(family: AntigravityFamily, modelId: string, effort: string): boolean {
-  return family.variants.some((variant) => variant.effort === effort && variant.model === modelId);
+  return splitVariantEfforts(family, modelId).some((accepted) => accepted === effort);
 }
 
 function geminiBudgetOrLevel(wire: ResolvedWire, effort: string): Readonly<Record<string, unknown>> {

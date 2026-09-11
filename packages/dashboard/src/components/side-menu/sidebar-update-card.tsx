@@ -41,20 +41,11 @@ export const SidebarUpdateCard: React.FC = () => {
     <div className="rounded-lg border bg-background p-3 text-sm">
       <p className="font-medium">{m['dashboard.update.available']()}</p>
       {latest === undefined ? null : <p className="mt-1 text-muted-foreground">{latest}</p>}
-      {restartRequired ? (
-        <p className="mt-2 text-muted-foreground">{m['dashboard.settings.version_restart_required']()}</p>
-      ) : (
-        <Button className="mt-2 w-full" disabled={inProgress} onClick={() => apply()}>
-          {inProgress ? m['dashboard.settings.version_updating']() : m['dashboard.settings.version_update']()}
-        </Button>
-      )}
-      {unavailable ? (
-        <p className="mt-2 text-muted-foreground">{m['dashboard.settings.version_update_unavailable']()}</p>
-      ) : failed ? (
-        <p className="mt-2 text-destructive" role="alert">
-          {m['dashboard.settings.version_update_failed']()}
-        </p>
-      ) : null}
+      {/* Failure, restart, and unavailable are reported by toast — a card this narrow turns a
+          full sentence into five ragged lines. */}
+      <Button className="mt-2 w-full" disabled={inProgress || restartRequired} onClick={apply}>
+        {inProgress ? m['dashboard.settings.version_updating']() : m['dashboard.settings.version_update']()}
+      </Button>
     </div>
   );
 };

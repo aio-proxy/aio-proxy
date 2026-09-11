@@ -1,5 +1,38 @@
 # @aio-proxy/plugin-cursor
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.21.0
+  - @aio-proxy/types@0.21.0
+
+## 0.20.5
+
+### Patch Changes
+
+- Updated dependencies [[`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854)]:
+  - @aio-proxy/types@0.20.5
+  - @aio-proxy/plugin-sdk@0.20.5
+
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.4
+  - @aio-proxy/types@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- [#324](https://github.com/aio-proxy/aio-proxy/pull/324) [`7877705`](https://github.com/aio-proxy/aio-proxy/commit/7877705e72bacd55ef197117e71b683888026789) Thanks [@baranwang](https://github.com/baranwang)! - Cursor now returns explicit failures for unsupported native tools and completes rejected tool execution streams so the upstream turn can continue. Bounded protocol diagnostics help investigate remaining stalls.
+- Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8)]:
+  - @aio-proxy/types@0.20.3
+  - @aio-proxy/plugin-sdk@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes

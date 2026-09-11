@@ -1,5 +1,51 @@
 # aio-proxy
 
+## 0.21.0
+
+### Minor Changes
+
+- [#341](https://github.com/aio-proxy/aio-proxy/pull/341) [`9b1547a`](https://github.com/aio-proxy/aio-proxy/commit/9b1547a263492ba9753fea3eb4761ad434d302f8) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth providers now expose `gpt-image-2.5-sunburst` and `gpt-image-2.5-flare` on `/v1/images/generations` and `/v1/images/edits`. Blank `model` still defaults to `gpt-image-2`.
+
+### Patch Changes
+
+- [#343](https://github.com/aio-proxy/aio-proxy/pull/343) [`52b07ce`](https://github.com/aio-proxy/aio-proxy/commit/52b07ce1deba1c2e23ececd5c9689994d359b1dc) Thanks [@baranwang](https://github.com/baranwang)! - Updating from the dashboard now always restarts the service after a successful install. The install
+  step first asked over HTTP whether a daemon was running, even though it was running inside that very
+  daemon, so a busy server, a slow answer, or a `server.host` that is not locally reachable made it
+  conclude there was nothing to restart. The new version was installed and then never started, with no
+  error to explain why.
+
+## 0.20.5
+
+### Patch Changes
+
+- [#337](https://github.com/aio-proxy/aio-proxy/pull/337) [`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854) Thanks [@baranwang](https://github.com/baranwang)! - Reasoning effort now clamps to what the chosen provider actually supports, read from the provider's
+  own catalog first and models.dev only as a fallback, so a `max` request reaches a provider that
+  supports `max` instead of arriving as `high`. Google Antigravity's variants, including its split
+  Low/Medium/High Gemini wires, clamp down instead of failing the request, and an alias asked for more
+  effort than its highest variant declares routes to that variant instead of the alias base.
+
+- [#336](https://github.com/aio-proxy/aio-proxy/pull/336) [`9817de6`](https://github.com/aio-proxy/aio-proxy/commit/9817de664952238e234e000d81daccb8a0b39d8c) Thanks [@baranwang](https://github.com/baranwang)! - Update status is now reported by toast instead of wrapped text inside the sidebar card and the About row. The "Update now" button no longer sits permanently disabled next to "Check for updates" — it appears only when a newer release is available, an install is running, a restart is pending, or an install failed. The restart notice stays until dismissed.
+
+- [#335](https://github.com/aio-proxy/aio-proxy/pull/335) [`f4f4d7d`](https://github.com/aio-proxy/aio-proxy/commit/f4f4d7d76d07d0b6ceafba73df5fc6f4f4a8d870) Thanks [@baranwang](https://github.com/baranwang)! - OAuth provider model aliases now use a switch for "inherit plugin aliases" instead of a checkbox, matching other boolean settings on the provider editor.
+
+## 0.20.4
+
+### Patch Changes
+
+- [#333](https://github.com/aio-proxy/aio-proxy/pull/333) [`3ae608c`](https://github.com/aio-proxy/aio-proxy/commit/3ae608cd6a24999dcf92f31a7e8269cdb04d4e03) Thanks [@baranwang](https://github.com/baranwang)! - Republish platform downloads to restore GitHub Release assets and Homebrew updates.
+
+## 0.20.3
+
+### Patch Changes
+
+- [#322](https://github.com/aio-proxy/aio-proxy/pull/322) [`5180e6e`](https://github.com/aio-proxy/aio-proxy/commit/5180e6ee4a4252067524bef3625cdb5ef677b857) Thanks [@baranwang](https://github.com/baranwang)! - Publish all four platform tarballs and SHA256 checksums as GitHub Release assets so Homebrew updates no longer wait for npm tarball availability.
+
+- [#323](https://github.com/aio-proxy/aio-proxy/pull/323) [`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8) Thanks [@baranwang](https://github.com/baranwang)! - The overview homepage stacks model trend as bars, shows Provider health as a table without filter or column controls, and ranks models by cost or Token.
+
+- [#324](https://github.com/aio-proxy/aio-proxy/pull/324) [`7877705`](https://github.com/aio-proxy/aio-proxy/commit/7877705e72bacd55ef197117e71b683888026789) Thanks [@baranwang](https://github.com/baranwang)! - Cursor now returns explicit failures for unsupported native tools and completes rejected tool execution streams so the upstream turn can continue. Bounded protocol diagnostics help investigate remaining stalls.
+
+- [#321](https://github.com/aio-proxy/aio-proxy/pull/321) [`8e5ee08`](https://github.com/aio-proxy/aio-proxy/commit/8e5ee083ad9ac96fb70b8394d93501342c8ca905) Thanks [@baranwang](https://github.com/baranwang)! - Prevent duplicate desktop upgrade notifications when multiple instances use different data directories. Only a successfully sent notification suppresses repeat reminders for the same OS user when shared storage is available; failed delivery can be retried by another instance, and notifications still work if that storage cannot be written.
+
 ## 0.20.2
 
 ### Patch Changes

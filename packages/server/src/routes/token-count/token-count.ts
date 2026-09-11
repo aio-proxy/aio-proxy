@@ -229,7 +229,11 @@ async function countCandidates<TRequest, TContext>({
     // as the generation path does; otherwise an unsupported level (e.g. xhigh)
     // survives and the provider's own count throws, silently falling back to a
     // local estimate. The lookup is skipped when the request carries no effort.
-    const supportedEfforts = await resolveSupportedEffortsForDimensions(dimensions, candidate.modelId);
+    const supportedEfforts = await resolveSupportedEffortsForDimensions(
+      dimensions,
+      candidate.modelId,
+      provider.upstreamMetadata?.[candidate.modelId],
+    );
     const candidateInvocation = adapter.modelInvocationForTarget(invocation, targetProtocol, supportedEfforts);
     try {
       assertImageInputSupported(candidateInvocation.messages, targetProtocol);

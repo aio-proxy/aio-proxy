@@ -139,7 +139,7 @@ const version = [...versions][0]!;
 
 console.log(
   `Publishing ${publishable.length} package(s) at v${version}${DRY_RUN ? '  [dry-run]' : ''}:\n${publishable
-    .map((p) => `  ${p.json.name}${platformProvided.has(p.json.name) ? '  (platform binary; npm only)' : ''}`)
+    .map((p) => `  ${p.json.name}${platformProvided.has(p.json.name) ? '  (platform binary)' : ''}`)
     .join('\n')}\n`,
 );
 
@@ -237,6 +237,24 @@ try {
   if (DRY_RUN) {
     console.log(`\n[dry-run] Would publish ${tarballs.size} tarball(s) with --provenance. Stopping.`);
   } else {
+    // Stage the same pack output for upload after Changesets creates the GitHub Release.
+    // Only local I/O here: npm availability must never delay tagging or Release creation.
+    const assetDirectory = process.env['RELEASE_ASSETS_DIR'];
+    if (assetDirectory) {
+      const checksums: string[] = [];
+      for (const name of Object.keys(
+        allPackages.find(({ json }) => json.name === 'aio-proxy')!.json.optionalDependencies ?? {},
+      )) {
+        const tarball = tarballs.get(name);
+        if (!tarball) throw new Error(`Missing platform tarball: ${name}`);
+        const filename = `${name.replace('@aio-proxy/', '')}-${version}.tgz`;
+        const bytes = await Bun.file(tarball).bytes();
+        await Bun.write(join(assetDirectory, filename), bytes);
+        checksums.push(`${new Bun.CryptoHasher('sha256').update(bytes).digest('hex')}  ${filename}\n`);
+      }
+      await Bun.write(join(assetDirectory, 'SHA256SUMS'), checksums.join(''));
+    }
+
     // --- publish; skip versions already on the registry so a rerun resumes cleanly-
     const outputPath = process.env['CHANGESETS_OUTPUT'];
     // changesets/action reads this file UNCONDITIONALLY after the publish script exits
@@ -272,7 +290,7 @@ try {
     // `aio-proxy` without an entry, and the action throws on a missing entry). If
     // neither has an entry — which the changeset convention in AGENTS.md prevents —
     // emit nothing so the action makes no contentless Release. The tag name is also
-    // what the Homebrew notify step reads (`gh release view` -> tagName -> strip `v`).
+    // what the GitHub asset upload and Homebrew notification job read.
     if (outputPath) {
       let releaseOf: string | undefined;
       for (const name of ['aio-proxy', '@aio-proxy/plugin-sdk']) {

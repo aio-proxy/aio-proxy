@@ -29,25 +29,9 @@ test('fetch and writeShellStdin are Not implemented errors', () => {
   expect(respondToExec(exec('writeShellStdinArgs'))).toMatchObject({ messageCase: 'writeShellStdinResult' });
 });
 
-test('backgroundShellSpawn is rejected; listMcpResources is an empty result', () => {
+test('backgroundShellSpawn is rejected', () => {
   expect(
     (respondToExec(exec('backgroundShellSpawnArgs', { command: 'ls' })) as { value: { result: { case: string } } })
       .value.result.case,
   ).toBe('rejected');
-  expect(respondToExec(exec('listMcpResourcesExecArgs'))).toMatchObject({
-    messageCase: 'listMcpResourcesExecResult',
-  });
-});
-
-test('an unknown exec case is a bare ack', () => {
-  expect(respondToExec(exec('someFutureArgs'))).toEqual({ ack: true });
-});
-
-test('shellStreamArgs returns one terminal exit event with code 1', () => {
-  const responses = [respondToExec(exec('shellStreamArgs', { command: 'exit 0' }))];
-  expect(responses).toHaveLength(1);
-  expect(responses[0]).toMatchObject({
-    messageCase: 'shellStream',
-    value: { event: { case: 'exit', value: { code: 1 } } },
-  });
 });

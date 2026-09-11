@@ -129,6 +129,7 @@ function splitInvocation(context: LogicalRequestContext, invocation: TokenCountI
   } as Parameters<typeof takeAioProxyOptions>[0]);
   const thinking = synthesizeThinking(
     split.privateOptions.thinking,
+    split.privateOptions.effort,
     settings === undefined ? undefined : Reflect.get(settings, 'reasoning'),
   );
   return {

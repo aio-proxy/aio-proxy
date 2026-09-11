@@ -103,6 +103,10 @@ describe('POST /v1/chat/completions', () => {
     // Then
     expect(response.status).toBe(200);
     expect(modelSeen).toBe('gpt-high');
-    expect(settingsSeen).toEqual({ reasoning: 'high', stream: true });
+    expect(settingsSeen).toEqual({
+      providerOptions: { aioProxy: { effort: 'high' } },
+      reasoning: 'high',
+      stream: true,
+    });
   });
 });

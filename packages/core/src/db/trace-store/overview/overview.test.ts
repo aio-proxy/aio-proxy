@@ -350,6 +350,13 @@ test('ranks Top 4 plus Other independently for requests, tokens, and cost', () =
       { modelId: 'd', estimatedCostNanoUsd: '20' },
       { modelId: 'c', estimatedCostNanoUsd: '10' },
     ]);
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).topModelTokens).toEqual([
+      { modelId: 'e', totalTokens: '50' },
+      { modelId: 'd', totalTokens: '40' },
+      { modelId: 'c', totalTokens: '30' },
+      { modelId: 'b', totalTokens: '20' },
+      { modelId: 'a', totalTokens: '10' },
+    ]);
   });
 });
 
@@ -392,13 +399,13 @@ test('scopes Provider health and top model costs to the selected range', () => {
       endedAt: new Date(NOW.getTime() - 40 * 24 * 60 * 60 * 1000),
       modelId: 'old-model',
       attempts: [{ providerId: 'old-provider', durationMs: 700 }],
-      usage: { estimatedCostUsd: 5 },
+      usage: { estimatedCostUsd: 5, totalTokens: 80 },
     });
     seedTrace(store, {
       id: 2,
       modelId: 'recent-model',
       attempts: [{ providerId: 'recent-provider', durationMs: 100 }],
-      usage: { estimatedCostUsd: 2 },
+      usage: { estimatedCostUsd: 2, totalTokens: 20 },
     });
 
     const recent = store.overviewDashboardDiagnostics({ range: '24h', now: NOW });
@@ -406,12 +413,17 @@ test('scopes Provider health and top model costs to the selected range', () => {
       { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100, totalTokens: '0' },
     ]);
     expect(recent.topModelCosts).toEqual([{ modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' }]);
+    expect(recent.topModelTokens).toEqual([{ modelId: 'recent-model', totalTokens: '20' }]);
 
     const quarter = store.overviewDashboardDiagnostics({ range: '90d', now: NOW });
     expect(quarter.providerHealth).toBeNull();
     expect(quarter.topModelCosts).toEqual([
       { modelId: 'old-model', estimatedCostNanoUsd: '5000000000' },
       { modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' },
+    ]);
+    expect(quarter.topModelTokens).toEqual([
+      { modelId: 'old-model', totalTokens: '80' },
+      { modelId: 'recent-model', totalTokens: '20' },
     ]);
   });
 });
@@ -426,9 +438,9 @@ test('ranks model costs by the requested alias, not the upstream model', () => {
       usage: { estimatedCostUsd: 2 },
     });
 
-    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).topModelCosts).toEqual([
-      { modelId: 'my-alias', estimatedCostNanoUsd: '2000000000' },
-    ]);
+    const diagnostics = store.overviewDashboardDiagnostics({ range: '24h', now: NOW });
+    expect(diagnostics.topModelCosts).toEqual([{ modelId: 'my-alias', estimatedCostNanoUsd: '2000000000' }]);
+    expect(diagnostics.topModelTokens).toEqual([]);
   });
 });
 
@@ -550,7 +562,7 @@ test('keeps 90-day model costs after trace pruning and marks Provider health una
       endedAt: now,
       modelId: 'pruned-model',
       attempts: [{ providerId: 'provider', durationMs: 10 }],
-      usage: { estimatedCostUsd: 5 },
+      usage: { estimatedCostUsd: 5, totalTokens: 123 },
     });
 
     store.prune(new Date(2025, 0, 16), new Date(2025, 0, 16));
@@ -559,6 +571,7 @@ test('keeps 90-day model costs after trace pruning and marks Provider health una
     expect(store.overviewDashboardDiagnostics({ range: '90d', now })).toEqual({
       providerHealth: null,
       topModelCosts: [{ modelId: 'pruned-model', estimatedCostNanoUsd: '5000000000' }],
+      topModelTokens: [{ modelId: 'pruned-model', totalTokens: '123' }],
     });
   } finally {
     handle.close();

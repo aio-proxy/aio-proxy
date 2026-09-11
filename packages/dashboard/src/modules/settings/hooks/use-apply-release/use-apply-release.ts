@@ -1,5 +1,7 @@
+import { m } from '@aio-proxy/i18n';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 import { reloadDashboard } from '@/lib/reload-dashboard';
@@ -9,6 +11,30 @@ import { useReleaseQuery } from '../use-release-query';
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 120_000;
+
+// Keyed so the sidebar card and the About row — both of which mount this hook — update one
+// toast instead of stacking two copies of the same outcome.
+const OUTCOME_TOASTS = {
+  failed: {
+    id: 'release-update-failed',
+    type: 'error',
+    title: m['dashboard.settings.version_update_failed'],
+    timeout: undefined,
+  },
+  restart: {
+    id: 'release-update-restart',
+    type: 'info',
+    title: m['dashboard.settings.version_restart_required'],
+    // Restarting is the user's move, so this must not disappear before they read it.
+    timeout: 0,
+  },
+  unavailable: {
+    id: 'release-update-unavailable',
+    type: 'warning',
+    title: m['dashboard.settings.version_update_unavailable'],
+    timeout: undefined,
+  },
+} as const;
 
 export type UseApplyReleaseOptions = {
   readonly outdated: boolean;
@@ -35,6 +61,10 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   const [polling, setPolling] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [applyMessage, setApplyMessage] = useState<'failed' | 'unavailable'>();
+  // A retry that fails the same way leaves `applyMessage` untouched, so the outcome alone
+  // cannot tell the toast effect that a second attempt just came back. Count the attempts
+  // that ended in a message so an identical repeat still reports.
+  const [applyAttempt, setApplyAttempt] = useState(0);
   const [pollStartedUpdatedAt, setPollStartedUpdatedAt] = useState(0);
 
   const updateStatus = release.data?.update.status;
@@ -107,6 +137,10 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
     onSuccess: (result) => {
       if (result.status === 'up_to_date') {
         setDismissedAsCurrent(true);
+        // An earlier attempt's failure or timeout must not outlive the news that there is
+        // nothing to install, or `failed` stays true and keeps a dead button on screen.
+        setApplyMessage(undefined);
+        setTimedOut(false);
         onUpToDate?.();
         void queryClient.invalidateQueries({ queryKey: queryKeys.release });
         return;
@@ -121,10 +155,12 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
       }
       if (code === 'unavailable') {
         setApplyMessage('unavailable');
+        setApplyAttempt((attempt) => attempt + 1);
         return;
       }
       if (code === 'check_failed') {
         setApplyMessage('failed');
+        setApplyAttempt((attempt) => attempt + 1);
         return;
       }
       // Transport / unknown errors are ambiguous: the server may already be applying.
@@ -139,6 +175,18 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   const failed =
     (timedOut && !awaitingRestart) || applyMessage === 'failed' || updateStatus === 'failed' || pollStatus === 'failed';
   const unavailable = applyMessage === 'unavailable';
+
+  const outcome = restartRequired ? 'restart' : unavailable ? 'unavailable' : failed ? 'failed' : undefined;
+  const shownToast = useRef<string>(undefined);
+  useEffect(() => {
+    const next = outcome === undefined ? undefined : OUTCOME_TOASTS[outcome];
+    // A retry that starts installing, succeeds, or ends differently has to take the previous
+    // notice with it, or the old toast keeps claiming the install failed.
+    if (shownToast.current !== undefined && shownToast.current !== next?.id) toast.close(shownToast.current);
+    shownToast.current = next?.id;
+    if (next === undefined) return;
+    toast.add({ id: next.id, type: next.type, title: next.title(), timeout: next.timeout });
+  }, [outcome, applyAttempt]);
 
   return {
     apply: () => apply.mutate(),

@@ -74,6 +74,10 @@ const createDiagnosticsData = () => ({
     { modelId: 'model-a', estimatedCostNanoUsd: 1_500_000_000n },
     { modelId: 'model-b', estimatedCostNanoUsd: 1_000_000_000n },
   ],
+  topModelTokens: [
+    { modelId: 'model-b', totalTokens: 8_192n },
+    { modelId: 'model-a', totalTokens: 4_096n },
+  ],
 });
 
 const createActivityData = () => ({
@@ -146,10 +150,12 @@ describe('overview page', () => {
   test('switches trend metrics locally without refetching or adding metric query input', () => {
     render(<OverviewPage />);
 
-    const tokens = screen.getByRole('tab', { name: /^Tokens$/u });
+    const trendMetrics = screen.getAllByRole('tablist', { name: /^Metric$/u })[0];
+    if (trendMetrics === undefined) throw new Error('Expected trend metric tabs');
+    const tokens = within(trendMetrics).getByRole('tab', { name: /^Tokens$/u });
     fireEvent.click(tokens);
     expect(tokens).toHaveAttribute('aria-selected', 'true');
-    const cost = screen.getByRole('tab', { name: /^Cost$/u });
+    const cost = within(trendMetrics).getByRole('tab', { name: /^Cost$/u });
     fireEvent.click(cost);
     expect(cost).toHaveAttribute('aria-selected', 'true');
 
@@ -216,7 +222,7 @@ describe('overview page', () => {
 
     expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Provider health|提供商健康状态/u })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Top model costs|模型成本排行/u })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Model ranking|模型排行/u })).toBeInTheDocument();
   });
 
   test('formats a retained trend with the range that produced the loaded buckets', () => {

@@ -3,5 +3,5 @@ export {
   clampSdkReasoning,
   modelEffortValues,
   normalizeEffort,
-  reasoningSetting,
+  reasoningSettings,
 } from './reasoning-effort';

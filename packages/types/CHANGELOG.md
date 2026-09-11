@@ -1,5 +1,29 @@
 # @aio-proxy/types
 
+## 0.21.0
+
+No changes in this release.
+
+## 0.20.5
+
+### Patch Changes
+
+- [#337](https://github.com/aio-proxy/aio-proxy/pull/337) [`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854) Thanks [@baranwang](https://github.com/baranwang)! - Reasoning effort now clamps to what the chosen provider actually supports, read from the provider's
+  own catalog first and models.dev only as a fallback, so a `max` request reaches a provider that
+  supports `max` instead of arriving as `high`. Google Antigravity's variants, including its split
+  Low/Medium/High Gemini wires, clamp down instead of failing the request, and an alias asked for more
+  effort than its highest variant declares routes to that variant instead of the alias base.
+
+## 0.20.4
+
+No changes in this release.
+
+## 0.20.3
+
+### Patch Changes
+
+- [#323](https://github.com/aio-proxy/aio-proxy/pull/323) [`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8) Thanks [@baranwang](https://github.com/baranwang)! - The overview homepage stacks model trend as bars, shows Provider health as a table without filter or column controls, and ranks models by cost or Token.
+
 ## 0.20.2
 
 ### Patch Changes

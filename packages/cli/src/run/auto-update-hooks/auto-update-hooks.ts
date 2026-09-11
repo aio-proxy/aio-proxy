@@ -82,6 +82,12 @@ export const createCliAutoUpdateHooks = (deps?: {
         resolveTarget,
         fetchLatest: async () => version,
         isServiceManaged: isManaged,
+        // Dashboard apply runs inside the daemon, so the default HTTP self-probe can
+        // only be wrong: a busy server, its 3s timeout, or a `server.host` that is not
+        // locally connectable answers "not running", and `runUpgradeCommand` then
+        // returns before its restart branch. Managed skips relaunch too, so the
+        // install lands with nothing restarted and no error to show for it.
+        isDaemonRunning: async () => true,
       },
     );
     if (result === 'installed' && !isManaged()) {

@@ -1,5 +1,91 @@
 # @aio-proxy/core
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [[`9b1547a`](https://github.com/aio-proxy/aio-proxy/commit/9b1547a263492ba9753fea3eb4761ad434d302f8)]:
+  - @aio-proxy/plugin-openai-chatgpt@0.21.0
+  - @aio-proxy/i18n@0.21.0
+  - @aio-proxy/logger@0.21.0
+  - @aio-proxy/plugin-sdk@0.21.0
+  - @aio-proxy/plugin-claude-code@0.21.0
+  - @aio-proxy/plugin-cursor@0.21.0
+  - @aio-proxy/plugin-github-copilot@0.21.0
+  - @aio-proxy/plugin-google-antigravity@0.21.0
+  - @aio-proxy/plugin-kimi-code@0.21.0
+  - @aio-proxy/plugin-muse-code@0.21.0
+  - @aio-proxy/plugin-openrouter@0.21.0
+  - @aio-proxy/plugin-xai-grok@0.21.0
+  - @aio-proxy/shared@0.21.0
+  - @aio-proxy/types@0.21.0
+
+## 0.20.5
+
+### Patch Changes
+
+- [#337](https://github.com/aio-proxy/aio-proxy/pull/337) [`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854) Thanks [@baranwang](https://github.com/baranwang)! - Reasoning effort now clamps to what the chosen provider actually supports, read from the provider's
+  own catalog first and models.dev only as a fallback, so a `max` request reaches a provider that
+  supports `max` instead of arriving as `high`. Google Antigravity's variants, including its split
+  Low/Medium/High Gemini wires, clamp down instead of failing the request, and an alias asked for more
+  effort than its highest variant declares routes to that variant instead of the alias base.
+- Updated dependencies [[`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854)]:
+  - @aio-proxy/types@0.20.5
+  - @aio-proxy/plugin-google-antigravity@0.20.5
+  - @aio-proxy/plugin-sdk@0.20.5
+  - @aio-proxy/plugin-cursor@0.20.5
+  - @aio-proxy/plugin-openai-chatgpt@0.20.5
+  - @aio-proxy/logger@0.20.5
+  - @aio-proxy/plugin-claude-code@0.20.5
+  - @aio-proxy/plugin-github-copilot@0.20.5
+  - @aio-proxy/plugin-kimi-code@0.20.5
+  - @aio-proxy/plugin-muse-code@0.20.5
+  - @aio-proxy/plugin-openrouter@0.20.5
+  - @aio-proxy/plugin-xai-grok@0.20.5
+  - @aio-proxy/i18n@0.20.5
+  - @aio-proxy/shared@0.20.5
+
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.20.4
+  - @aio-proxy/logger@0.20.4
+  - @aio-proxy/plugin-sdk@0.20.4
+  - @aio-proxy/plugin-claude-code@0.20.4
+  - @aio-proxy/plugin-cursor@0.20.4
+  - @aio-proxy/plugin-github-copilot@0.20.4
+  - @aio-proxy/plugin-google-antigravity@0.20.4
+  - @aio-proxy/plugin-kimi-code@0.20.4
+  - @aio-proxy/plugin-muse-code@0.20.4
+  - @aio-proxy/plugin-openai-chatgpt@0.20.4
+  - @aio-proxy/plugin-openrouter@0.20.4
+  - @aio-proxy/plugin-xai-grok@0.20.4
+  - @aio-proxy/shared@0.20.4
+  - @aio-proxy/types@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- [#323](https://github.com/aio-proxy/aio-proxy/pull/323) [`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8) Thanks [@baranwang](https://github.com/baranwang)! - The overview homepage stacks model trend as bars, shows Provider health as a table without filter or column controls, and ranks models by cost or Token.
+- Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8), [`7877705`](https://github.com/aio-proxy/aio-proxy/commit/7877705e72bacd55ef197117e71b683888026789)]:
+  - @aio-proxy/types@0.20.3
+  - @aio-proxy/i18n@0.20.3
+  - @aio-proxy/plugin-cursor@0.20.3
+  - @aio-proxy/plugin-sdk@0.20.3
+  - @aio-proxy/plugin-openai-chatgpt@0.20.3
+  - @aio-proxy/logger@0.20.3
+  - @aio-proxy/plugin-claude-code@0.20.3
+  - @aio-proxy/plugin-github-copilot@0.20.3
+  - @aio-proxy/plugin-google-antigravity@0.20.3
+  - @aio-proxy/plugin-kimi-code@0.20.3
+  - @aio-proxy/plugin-muse-code@0.20.3
+  - @aio-proxy/plugin-openrouter@0.20.3
+  - @aio-proxy/plugin-xai-grok@0.20.3
+  - @aio-proxy/shared@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes

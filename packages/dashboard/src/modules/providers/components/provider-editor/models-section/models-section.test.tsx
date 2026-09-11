@@ -442,7 +442,7 @@ describe('ModelsSection', () => {
       persistedProviderId: 'oauth-provider',
     });
 
-    fireEvent.click(screen.getByTestId('inherit-plugin-aliases-checkbox'));
+    fireEvent.click(screen.getByTestId('inherit-plugin-aliases-switch'));
     await waitFor(() => expect(section.state.values.pluginAliasInherit).toBe(false));
     expect(section.state.values.alias ?? []).toEqual([]);
     expect(screen.queryByTestId('provider-alias-card')).toBeNull();

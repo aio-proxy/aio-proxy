@@ -135,6 +135,20 @@ test('maps Gemini xhigh to high and rejects unknown efforts', () => {
   expect(() => applyAntigravityThinking('claude-opus-4-6-thinking', { mode: 'adaptive', effort: 'extreme' })).toThrow();
 });
 
+test('folds Gemini max down to high instead of failing the request', () => {
+  // The host clamps from the provider catalog, which is empty right after an upgrade
+  // persisted descriptors that predate reasoningOptions, so `max` reaches the wire raw.
+  expect(geminiThinkingConfig('gemini-3.8-flash', { thinkingLevel: 'MAX' })).toEqual({
+    thinkingBudget: 8000,
+    includeThoughts: true,
+  });
+  expect(applyAntigravityThinking('gemini-3.7-flash-tiered', { mode: 'adaptive', effort: 'max' })).toEqual({
+    thinkingLevel: 'high',
+  });
+  // A split wire still only accepts the efforts its own variant declares.
+  expect(() => applyAntigravityThinking('gemini-3.5-flash-low', { mode: 'adaptive', effort: 'max' })).toThrow();
+});
+
 test('maps Gemini wires outside any family without variant-table rejection', () => {
   expect(geminiThinkingConfig('gemini-lonely', { thinkingLevel: 'HIGH' })).toEqual({
     thinkingBudget: 2500,

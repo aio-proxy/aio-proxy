@@ -95,6 +95,23 @@ test('managed applyUpdate leaves restart to the service manager', async () => {
   expect(relaunched).toBe(0);
 });
 
+test('applyUpdate reports the daemon running so the managed restart is never skipped', async () => {
+  const upgrade = mock(
+    async (_options: unknown, _print: unknown, deps: { isDaemonRunning: () => Promise<boolean> }) => {
+      expect(await deps.isDaemonRunning()).toBe(true);
+      return 'installed' as const;
+    },
+  );
+  const hooks = createCliAutoUpdateHooks({
+    isManagedService: () => true,
+    upgrade: upgrade as never,
+    resolveExec: () => '/opt/aio-proxy',
+    resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
+  });
+  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(upgrade).toHaveBeenCalledTimes(1);
+});
+
 test('unmanaged applyUpdate does not print the manual restart hint', async () => {
   const printed: string[] = [];
   const hooks = createCliAutoUpdateHooks({

@@ -25,7 +25,11 @@ export function createAntigravityLanguageModel(
     supportedUrls: shape.supportedUrls,
     async doGenerate(options) {
       const split = takeAioProxyOptions(options.providerOptions);
-      const thinking = synthesizeThinking(split.privateOptions.thinking, options.reasoning);
+      const thinking = synthesizeThinking(
+        split.privateOptions.thinking,
+        split.privateOptions.effort,
+        options.reasoning,
+      );
       return await googleDelegate(modelId, {
         ...runtime.call(split.context),
         ...(thinking === undefined ? {} : { thinking }),
@@ -37,7 +41,11 @@ export function createAntigravityLanguageModel(
     },
     async doStream(options) {
       const split = takeAioProxyOptions(options.providerOptions);
-      const thinking = synthesizeThinking(split.privateOptions.thinking, options.reasoning);
+      const thinking = synthesizeThinking(
+        split.privateOptions.thinking,
+        split.privateOptions.effort,
+        options.reasoning,
+      );
       const result = await googleDelegate(modelId, {
         ...runtime.call(split.context),
         ...(thinking === undefined ? {} : { thinking }),
@@ -57,11 +65,16 @@ export function createAntigravityLanguageModel(
 
 export function synthesizeThinking(
   existing: AntigravityThinkingOption | undefined,
+  effort: string | undefined,
   reasoning: unknown,
 ): AntigravityThinkingOption | undefined {
   if (existing !== undefined) return existing;
-  if (typeof reasoning !== 'string' || reasoning === 'provider-default') return undefined;
-  return reasoning === 'none' ? { mode: 'disabled' } : { mode: 'adaptive', effort: reasoning };
+  // The host's canonical effort wins: it is already clamped to this wire's
+  // advertised set and can carry a level the AI SDK union cannot express.
+  const requested =
+    effort ?? (typeof reasoning === 'string' && reasoning !== 'provider-default' ? reasoning : undefined);
+  if (requested === undefined) return undefined;
+  return requested === 'none' ? { mode: 'disabled' } : { mode: 'adaptive', effort: requested };
 }
 
 function googleDelegate(modelId: string, call?: AntigravityGoogleFetchContext): LanguageModelV4 {

@@ -1,5 +1,75 @@
 # @aio-proxy/cli
 
+## 0.21.0
+
+### Patch Changes
+
+- [#343](https://github.com/aio-proxy/aio-proxy/pull/343) [`52b07ce`](https://github.com/aio-proxy/aio-proxy/commit/52b07ce1deba1c2e23ececd5c9689994d359b1dc) Thanks [@baranwang](https://github.com/baranwang)! - Updating from the dashboard now always restarts the service after a successful install. The install
+  step first asked over HTTP whether a daemon was running, even though it was running inside that very
+  daemon, so a busy server, a slow answer, or a `server.host` that is not locally reachable made it
+  conclude there was nothing to restart. The new version was installed and then never started, with no
+  error to explain why.
+- Updated dependencies []:
+  - @aio-proxy/core@0.21.0
+  - @aio-proxy/server@0.21.0
+  - @aio-proxy/dashboard@0.21.0
+  - @aio-proxy/opencode-provider@0.21.0
+  - @aio-proxy/pi-provider@0.21.0
+  - @aio-proxy/i18n@0.21.0
+  - @aio-proxy/logger@0.21.0
+  - @aio-proxy/plugin-sdk@0.21.0
+  - @aio-proxy/shared@0.21.0
+  - @aio-proxy/types@0.21.0
+
+## 0.20.5
+
+### Patch Changes
+
+- Updated dependencies [[`7ca4736`](https://github.com/aio-proxy/aio-proxy/commit/7ca473664bff145f4f27570c2d4a36bd7179c854), [`9817de6`](https://github.com/aio-proxy/aio-proxy/commit/9817de664952238e234e000d81daccb8a0b39d8c)]:
+  - @aio-proxy/types@0.20.5
+  - @aio-proxy/core@0.20.5
+  - @aio-proxy/server@0.20.5
+  - @aio-proxy/dashboard@0.20.5
+  - @aio-proxy/opencode-provider@0.20.5
+  - @aio-proxy/pi-provider@0.20.5
+  - @aio-proxy/plugin-sdk@0.20.5
+  - @aio-proxy/logger@0.20.5
+  - @aio-proxy/i18n@0.20.5
+  - @aio-proxy/shared@0.20.5
+
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/opencode-provider@0.20.4
+  - @aio-proxy/pi-provider@0.20.4
+  - @aio-proxy/core@0.20.4
+  - @aio-proxy/dashboard@0.20.4
+  - @aio-proxy/i18n@0.20.4
+  - @aio-proxy/logger@0.20.4
+  - @aio-proxy/plugin-sdk@0.20.4
+  - @aio-proxy/server@0.20.4
+  - @aio-proxy/shared@0.20.4
+  - @aio-proxy/types@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- [#321](https://github.com/aio-proxy/aio-proxy/pull/321) [`8e5ee08`](https://github.com/aio-proxy/aio-proxy/commit/8e5ee083ad9ac96fb70b8394d93501342c8ca905) Thanks [@baranwang](https://github.com/baranwang)! - Prevent duplicate desktop upgrade notifications when multiple instances use different data directories. Only a successfully sent notification suppresses repeat reminders for the same OS user when shared storage is available; failed delivery can be retried by another instance, and notifications still work if that storage cannot be written.
+- Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8)]:
+  - @aio-proxy/core@0.20.3
+  - @aio-proxy/types@0.20.3
+  - @aio-proxy/dashboard@0.20.3
+  - @aio-proxy/i18n@0.20.3
+  - @aio-proxy/server@0.20.3
+  - @aio-proxy/opencode-provider@0.20.3
+  - @aio-proxy/pi-provider@0.20.3
+  - @aio-proxy/plugin-sdk@0.20.3
+  - @aio-proxy/logger@0.20.3
+  - @aio-proxy/shared@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes

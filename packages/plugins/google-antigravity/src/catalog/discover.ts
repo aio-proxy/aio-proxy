@@ -12,6 +12,7 @@ import { antigravityEndpoints } from '../runtime/endpoints';
 import { antigravityUserAgent } from '../runtime/hub-version';
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { collapseAntigravityFamilies, pickerModelIds } from './collapse';
+import { withEffortMetadata } from './effort-metadata';
 import { CatalogDiscoveryError } from './errors';
 
 const DISCOVERY_PATH = '/v1internal:fetchAvailableModels';
@@ -212,8 +213,14 @@ export function assembleAntigravityCatalog(
     agentModelSorts: picker.agentModelSorts,
   });
   const descriptorsById = new Map(language.map((model) => [model.id, model]));
+  const families = collapseAntigravityFamilies({
+    pickerIds,
+    descriptorsById,
+    deprecatedModelIds: picker.deprecatedModelIds,
+  });
   return {
-    language,
+    // Annotate last so picker ids and family collapsing still see un-annotated descriptors.
+    language: withEffortMetadata(language, families),
     image: [],
     embedding: [],
     speech: [],
@@ -225,11 +232,7 @@ export function assembleAntigravityCatalog(
         ...(picker.tieredModelIds === undefined ? {} : { tieredModelIds: picker.tieredModelIds }),
         ...(picker.deprecatedModelIds === undefined ? {} : { deprecatedModelIds: picker.deprecatedModelIds }),
       },
-      antigravityFamilies: collapseAntigravityFamilies({
-        pickerIds,
-        descriptorsById,
-        deprecatedModelIds: picker.deprecatedModelIds,
-      }),
+      antigravityFamilies: families,
     } as JsonValue,
   };
 }

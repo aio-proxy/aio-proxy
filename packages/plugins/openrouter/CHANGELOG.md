@@ -1,5 +1,33 @@
 # @aio-proxy/plugin-openrouter
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.21.0
+
+## 0.20.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.5
+
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes

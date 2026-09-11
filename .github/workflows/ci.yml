@@ -4,12 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review is not a default type. Without it, marking a draft ready
+    # would never start this job after the draft skip below.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 jobs:
   preflight-and-unit:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
