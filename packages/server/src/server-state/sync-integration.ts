@@ -433,6 +433,11 @@ export function createSyncControlPlaneIntegration(
       ];
       integration.syncRepository.putEntity(binding.id, { ...current, overrides });
     },
+    shareOAuth: async (providerId) => {
+      // 'pending' is journalled by the sharing service and finished by its recovery pass, so the
+      // published configuration is not rolled back for it.
+      await integration.sharing()?.share(providerId, new AbortController().signal);
+    },
     connect: integration.connectBackend,
     detach: async (providerId, loginSessionId) => {
       const session = oauthLoginSessions.get(loginSessionId);

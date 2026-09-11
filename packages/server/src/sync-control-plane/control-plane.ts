@@ -80,6 +80,7 @@ export type SyncControlPlaneOptions = {
   readonly restore?: OperationInput['restore'];
   readonly persistOverrides: OperationInput['persistOverrides'];
   readonly persistProviderIdentity?: OperationInput['persistProviderIdentity'];
+  readonly shareOAuth?: OperationInput['shareOAuth'];
   readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<SyncConnectCandidate>;
   readonly detach?: (providerId: string, loginSessionId: string) => Promise<void>;
   readonly cancelDetach?: (providerId: string) => Promise<void>;
@@ -249,6 +250,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     restore,
     persistOverrides: options.persistOverrides,
     persistProviderIdentity: options.persistProviderIdentity,
+    shareOAuth: options.shareOAuth,
     purge,
     now,
   });

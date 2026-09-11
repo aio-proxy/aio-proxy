@@ -174,3 +174,34 @@ test('an override preview does not persist its paths when the row decision is mi
   ).rejects.toThrow(SyncOperationError);
   expect(scenario.persistedOverrides).toEqual([]);
 });
+
+test('applying an override keeps the paths it just persisted and concurrent OAuth ownership', async () => {
+  const rows = [candidate('object-a', 'provider', 'work')];
+  const stored: LocalEntity[] = [];
+  // persistOverrides() and an OAuth login both write this row outside the fence, so the preview
+  // snapshot is already stale by the time applying upserts the row.
+  const persisted = {
+    ...localEntity('object-a', 'provider', 'work'),
+    overrides: [['limits', 'timeout']],
+    oauth: { revision: 'login-revision' },
+  } as LocalEntity;
+  const scenario = harness({
+    localEntities: () => [persisted],
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => void stored.push(entity) } as never,
+  });
+
+  await applyPreview(
+    scenario.input,
+    record({ kind: 'overrides', objectId: 'object-a', paths: [['limits', 'timeout']] }, rows),
+    [{ objectId: 'object-a', choice: 'local' }],
+  );
+
+  expect(scenario.persistedOverrides).toEqual(['object-a']);
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({
+    mode: 'included',
+    pendingReason: null,
+    overrides: [['limits', 'timeout']],
+    oauth: { revision: 'login-revision' },
+  });
+});

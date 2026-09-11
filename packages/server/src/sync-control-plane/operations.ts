@@ -52,6 +52,12 @@ export type OperationInput = {
     paths: readonly string[][],
     current: LocalEntity | undefined,
   ) => Promise<void>;
+  /**
+   * Publishes a Provider's OAuth account object so other devices can verify the credential rather
+   * than holding the Provider at `oauth-unverified`. A `pending` outcome is journalled by the
+   * sharing service and completed by its recovery pass, so it is not an error here.
+   */
+  readonly shareOAuth?: (providerId: string) => Promise<void>;
   readonly persistProviderIdentity?: (
     oldProviderId: string,
     newProviderId: string,
@@ -99,6 +105,11 @@ export function rewireProviderReferences(value: JsonValue, oldProviderId: string
     } else result[key] = rewireProviderReferences(child, oldProviderId, newProviderId);
   }
   return result;
+}
+
+function isOAuthProvider(body: EntityBody | null): body is EntityBody {
+  if (body === null || body.kind !== 'provider' || !isPlainObject(body.value)) return false;
+  return (body.value as Record<string, JsonValue>)['kind'] === 'oauth';
 }
 
 function validateStructuredReferenceMaps(value: JsonValue): void {
@@ -278,6 +289,7 @@ export async function applyPreview(
     }
     const remote = remoteByObject.get(candidate.row.objectId);
     if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
+    let published = false;
     try {
       if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
         let operationId: string;
@@ -300,9 +312,15 @@ export async function applyPreview(
           identityRows.replacesPublished ? null : (remote?.version ?? null),
         );
         if (identityRows.replacesPublished) await input.applyCloud(null, current, remote?.version ?? null);
+        published = true;
       } else {
         await input.applyCloud(selectedBody, current, remote?.version ?? null);
+        published = true;
       }
+      // Publishing an OAuth Provider carries only its configuration. Until its account object is
+      // published too, every other device sees the Provider and holds it at `oauth-unverified`,
+      // and nothing else seeds it for a Provider that was authorized before sync was enabled.
+      if (published && isOAuthProvider(selectedBody)) await input.shareOAuth?.(selectedBody.logicalKey);
     } catch (error) {
       if (identityRows !== undefined) {
         await persistProviderIdentity(input, {
@@ -313,11 +331,15 @@ export async function applyPreview(
       throw error;
     }
     if (identityRows === undefined && current !== undefined && typeof input.repo.putEntity === 'function') {
+      // `current` is the preview snapshot, taken before persistOverrides() wrote this row's paths
+      // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
+      // the fence. Re-read the row and carry over only the fields applying actually decides.
+      const latest = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId) ?? current;
       input.repo.putEntity(binding.id, {
-        ...current,
+        ...latest,
         mode: 'included',
         desired: selectedBody,
-        baseline: remote?.revision ?? current.baseline,
+        baseline: remote?.revision ?? latest.baseline,
         pendingReason: null,
       });
     }
