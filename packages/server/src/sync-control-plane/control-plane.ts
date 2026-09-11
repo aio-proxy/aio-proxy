@@ -23,7 +23,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { ServerSyncLifecycle } from './lifecycle';
-import { applyPreview, setRange, SyncOperationError, type OperationInput } from './operations';
+import { applyPreview, assertDecisions, setRange, SyncOperationError, type OperationInput } from './operations';
 import {
   buildPreview,
   createPreviewToken,
@@ -47,6 +47,8 @@ import { createStatus } from './status';
  */
 export type SyncConnectCandidate = {
   readonly remote: readonly RemoteEntity[];
+  /** Re-reads the candidate's cloud state through its own session, before it is bound. */
+  readonly refresh: () => Promise<readonly RemoteEntity[]>;
   /** Swaps the binding onto the candidate backend. */
   readonly commit: () => Promise<void>;
   /** Releases the candidate when its preview is replaced, expires, or fails to apply. */
@@ -89,6 +91,8 @@ export type SyncControlPlaneOptions = {
    */
   readonly onEngineStatus?: (handle: (status: string) => void) => void;
   readonly now?: () => number;
+  /** How long a preview stays applicable before it is discarded. Defaults to ten minutes. */
+  readonly previewTtlMs?: number;
   readonly randomBytes?: (size: number) => Uint8Array;
 };
 
@@ -111,6 +115,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   )
     throw new SyncOperationError('backend-unavailable');
   const now = options.now ?? Date.now;
+  const previewTtlMs = options.previewTtlMs ?? 10 * 60_000;
   const binding = options.binding ?? (() => options.repo.readBinding());
   const localEntities =
     options.localEntities ??
@@ -128,9 +133,50 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     (async (...args: Parameters<NonNullable<OperationInput['applyCloud']>>) => remoteOps!().publish(...args));
   const previews = new Map<string, PreviewRecord>();
   const candidates = new Map<string, SyncConnectCandidate>();
+  const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let rangeRevision = 0;
   let state: SyncConnectionState = 'idle';
+  let stateBeforePreview: SyncConnectionState = 'idle';
   let lastSuccessAt: number | null = null;
+
+  // `preview-required` means a preview is waiting on the user. Remember what it displaced so a
+  // preview that is consumed or expires without applying can hand the state back instead of
+  // pinning it — a pinned `preview-required` also suppresses background engine outcomes.
+  const enterPreviewRequired = (): void => {
+    if (state !== 'preview-required') stateBeforePreview = state;
+    state = 'preview-required';
+  };
+  const releasePreviewState = (): void => {
+    if (state === 'preview-required' && previews.size === 0) state = stateBeforePreview;
+  };
+
+  const takeCandidate = (previewId: string): SyncConnectCandidate | undefined => {
+    const timer = expiryTimers.get(previewId);
+    if (timer !== undefined) clearTimeout(timer);
+    expiryTimers.delete(previewId);
+    const candidate = candidates.get(previewId);
+    candidates.delete(previewId);
+    return candidate;
+  };
+
+  // A candidate holds an open backend session — for CloudKit, a native helper process. `expiresAt`
+  // is only read when the user submits Apply, so closing the dialog or abandoning a CLI preview
+  // would otherwise leak the session until the next connect preview or process shutdown.
+  const retainCandidate = (previewId: string, candidate: SyncConnectCandidate, expiresAt: number): void => {
+    candidates.set(previewId, candidate);
+    const timer = setTimeout(
+      () => {
+        previews.delete(previewId);
+        releasePreviewState();
+        void takeCandidate(previewId)
+          ?.dispose()
+          .catch(() => {});
+      },
+      Math.max(0, expiresAt - now()),
+    );
+    timer.unref?.();
+    expiryTimers.set(previewId, timer);
+  };
 
   const statuses = createStatus({
     repo: options.repo,
@@ -210,17 +256,25 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   const status = (): SyncStatus => statuses.status();
   const backends = (): SyncBackendView[] => statuses.backends();
 
-  // The swap replaced the binding along with its commit history, so the binding and local-commit
-  // halves of the reviewed fence now describe a world that no longer exists. The cloud half is what
-  // the decisions were actually made against: re-read it through the newly bound session and fence
-  // on that alone, then run the decisions with the reviewed fence so they are not re-checked.
-  const applyConnect = async (record: PreviewRecord, decisions: SyncApplyInput['decisions']): Promise<void> => {
-    const remote = await remoteEntities();
+  // The swap replaces the binding along with its commit history, so the binding and local-commit
+  // halves of the reviewed fence describe a world that will no longer exist. The cloud half is what
+  // the decisions were actually made against: re-read it through the candidate's own session while
+  // it is still unbound, so a drifted backend or a malformed decision set is rejected before the
+  // service switches. Only then run the decisions, against the reviewed fence so it is not
+  // re-checked against the replaced binding.
+  const applyConnect = async (
+    candidate: SyncConnectCandidate,
+    record: PreviewRecord,
+    decisions: SyncApplyInput['decisions'],
+  ): Promise<void> => {
+    assertDecisions(record, decisions);
+    const remote = await candidate.refresh();
     const observed: PreviewFence = {
       ...record.fence,
       remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
     };
     if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
+    await candidate.commit();
     await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
   };
 
@@ -238,15 +292,16 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           options: parsed.data as Extract<SyncPreviewInput, { kind: 'connect' }>['options'],
         };
         // A pending candidate the user walked away from still holds an open backend session.
-        for (const [pending, stale] of candidates) {
-          candidates.delete(pending);
+        for (const pending of [...candidates.keys()]) {
           previews.delete(pending);
-          await stale.dispose().catch(() => {});
+          await takeCandidate(pending)
+            ?.dispose()
+            .catch(() => {});
         }
         const candidate = await options.connect(request);
         try {
           const previewId = createPreviewToken(24, options.randomBytes);
-          const expiresAt = now() + 10 * 60_000;
+          const expiresAt = now() + previewTtlMs;
           const local = captureLocal();
           const remote = snapshotRemoteEntities(candidate.remote);
           const built = buildPreview({
@@ -259,8 +314,8 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             registry: options.registry?.(),
           });
           previews.set(previewId, built.record);
-          candidates.set(previewId, candidate);
-          state = 'preview-required';
+          retainCandidate(previewId, candidate, expiresAt);
+          enterPreviewRequired();
           return built.preview;
         } catch (error) {
           await candidate.dispose().catch(() => {});
@@ -270,7 +325,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       const local = captureLocal();
       if (local.binding === null) throw new SyncPreviewError('not-connected');
       const previewId = createPreviewToken(24, options.randomBytes);
-      const expiresAt = now() + 10 * 60_000;
+      const expiresAt = now() + previewTtlMs;
       const remote = snapshotRemoteEntities(await remoteEntities());
       const source = input.kind === 'join' ? await options.committedSource?.() : undefined;
       const built = buildPreview({
@@ -284,30 +339,34 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         ...(source === undefined ? {} : { source }),
       });
       previews.set(previewId, built.record);
-      state = 'preview-required';
+      enterPreviewRequired();
       return built.preview;
     },
     async apply(input: SyncApplyInput) {
       const record = previews.get(input.previewId);
       if (record === undefined) throw new SyncPreviewError('preview-stale');
       previews.delete(input.previewId);
-      const candidate = candidates.get(input.previewId);
-      candidates.delete(input.previewId);
-      if (now() >= record.expiresAt) {
-        await candidate?.dispose().catch(() => {});
-        throw new SyncPreviewError('preview-stale');
-      }
-      if (record.input.kind === 'connect') {
-        if (candidate === undefined) throw new SyncPreviewError('preview-stale');
-        try {
-          await candidate.commit();
-        } catch (error) {
-          await candidate.dispose().catch(() => {});
-          throw error;
+      const candidate = takeCandidate(input.previewId);
+      try {
+        if (now() >= record.expiresAt) {
+          await candidate?.dispose().catch(() => {});
+          throw new SyncPreviewError('preview-stale');
         }
-        await applyConnect(record, input.decisions);
-      } else {
-        await applyPreview(operationInput(), record, input.decisions);
+        if (record.input.kind === 'connect') {
+          if (candidate === undefined) throw new SyncPreviewError('preview-stale');
+          try {
+            await applyConnect(candidate, record, input.decisions);
+          } catch (error) {
+            await candidate.dispose().catch(() => {});
+            throw error;
+          }
+        } else {
+          await applyPreview(operationInput(), record, input.decisions);
+        }
+      } catch (error) {
+        // The preview was consumed, so there is nothing left for the user to decide on.
+        releasePreviewState();
+        throw error;
       }
       state = 'idle';
       lastSuccessAt = now();

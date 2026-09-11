@@ -152,6 +152,10 @@ describe('dashboard authentication', () => {
     const blocked = await login(app, 'eventually-correct');
 
     expect(blocked.status).toBe(429);
-    expect(blocked.headers.get('retry-after')).toBe('60');
+    // Five password verifications take over a second, so the countdown has already ticked down
+    // from the full window. What the client needs is a bounded wait, not an exact second.
+    const retryAfter = Number(blocked.headers.get('retry-after'));
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
   });
 });

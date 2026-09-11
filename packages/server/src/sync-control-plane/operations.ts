@@ -187,10 +187,38 @@ export async function assertFresh(input: OperationInput, expected: PreviewFence)
   if (!sameFence(expected, current)) throw new SyncPreviewError('preview-stale');
 }
 
+export type SyncDecision = { objectId: string; choice: 'local' | 'cloud' | 'restore'; newProviderId?: string };
+
+/**
+ * The purely-local half of applying: does this decision set match the reviewed rows? It touches no
+ * repository and no backend, so callers can reject a malformed request before anything is committed.
+ */
+export function assertDecisions(record: PreviewRecord, decisions: readonly SyncDecision[]): void {
+  const selected = new Map(decisions.map((decision) => [decision.objectId, decision]));
+  const rowIds = new Set(record.rows.map((candidate) => candidate.row.objectId));
+  if (selected.size !== decisions.length || decisions.some((decision) => !rowIds.has(decision.objectId)))
+    throw new SyncOperationError('upgrade-required');
+  // Applying consumes the preview, so an omitted decision would silently skip its row and still
+  // report success. Overrides are worse: their paths persist before the decision loop below.
+  // Connecting is the exception: it lists the candidate backend's objects for review and selects
+  // none of them, so an empty decision set is its normal path rather than a dropped row.
+  if (record.input.kind !== 'connect' && selected.size !== rowIds.size)
+    throw new SyncOperationError('upgrade-required');
+  for (const candidate of record.rows) {
+    const decision = selected.get(candidate.row.objectId);
+    if (decision === undefined) continue;
+    if (candidate.requiresProviderId && decision.newProviderId === undefined)
+      throw new SyncOperationError('upgrade-required');
+    if (decision.newProviderId !== undefined && candidate.row.kind !== 'provider')
+      throw new SyncOperationError('upgrade-required');
+    if (!candidate.row.choices.includes(decision.choice)) throw new SyncOperationError('upgrade-required');
+  }
+}
+
 export async function applyPreview(
   input: OperationInput,
   record: PreviewRecord,
-  decisions: readonly { objectId: string; choice: 'local' | 'cloud' | 'restore'; newProviderId?: string }[],
+  decisions: readonly SyncDecision[],
 ): Promise<SyncStatus> {
   const binding = input.binding();
   if (binding === null) throw new SyncPreviewError('not-connected');
@@ -219,12 +247,7 @@ export async function applyPreview(
     }
     return input.status();
   }
-  // Applying consumes the preview, so an omitted decision would silently skip its row and still
-  // report success. Overrides are worse: their paths persist before the decision loop below.
-  if (decisions.length !== record.rows.length || selected.size !== decisions.length)
-    throw new SyncOperationError('upgrade-required');
-  for (const candidate of record.rows)
-    if (!selected.has(candidate.row.objectId)) throw new SyncOperationError('upgrade-required');
+  assertDecisions(record, decisions);
   if (record.input.kind === 'overrides') {
     const current = localByObject.get(record.input.objectId);
     await input.persistOverrides(record.input.objectId, record.input.paths, current);
@@ -232,11 +255,6 @@ export async function applyPreview(
   for (const candidate of record.rows) {
     const decision = selected.get(candidate.row.objectId);
     if (decision === undefined) continue;
-    if (candidate.requiresProviderId && decision.newProviderId === undefined)
-      throw new SyncOperationError('upgrade-required');
-    if (decision.newProviderId !== undefined && candidate.row.kind !== 'provider')
-      throw new SyncOperationError('upgrade-required');
-    if (!candidate.row.choices.includes(decision.choice)) throw new SyncOperationError('upgrade-required');
     const current = localByObject.get(candidate.row.objectId);
     let identityRows: ProviderIdentityRows | undefined;
     let selectedBody =

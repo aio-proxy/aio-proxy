@@ -299,10 +299,17 @@ export function createSyncIntegration(
           sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
           options: normalizedOptions,
         };
+        let released = false;
         return {
           remote,
+          refresh: () => listRemoteEntities(candidateSession),
           commit: () =>
             connectQueue(async () => {
+              // replaceBackend takes over the session either way: on success the new lifecycle owns
+              // it, and on failure it disposes the session or closes the lifecycle holding it. The
+              // caller still disposes the candidate when applying fails, which would otherwise
+              // either double-dispose or tear down the session that is now live.
+              released = true;
               try {
                 await replaceBackend(binding, candidateSession);
                 refreshCommitHooks();
@@ -312,6 +319,8 @@ export function createSyncIntegration(
               }
             }),
           dispose: async () => {
+            if (released) return;
+            released = true;
             await candidateSession.dispose().catch(() => {});
           },
         };

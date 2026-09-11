@@ -260,7 +260,7 @@ test('rejoin preview is one-use, expires, and redacts candidate values', async (
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
     now: () => 1_000,
     binding: () => ({
       id: 'binding',
@@ -354,7 +354,7 @@ test('preview rejects a local commit that lands during snapshot capture', async 
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
   await expect(control.preview({ kind: 'join', providerId: 'work' })).rejects.toMatchObject({ code: 'preview-stale' });
 });
@@ -414,7 +414,7 @@ test('preview redacts account option fields whose names do not reveal that they 
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   expect(JSON.stringify(preview)).not.toContain('value-to-hide');
@@ -465,7 +465,7 @@ test('preview redacts Provider header values whose names do not match a secret p
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
 
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
@@ -526,7 +526,7 @@ test('restore apply forwards the requested operation id', async () => {
     },
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
   const preview = await control.preview({ kind: 'restore', objectId: 'object', operationId: 'old' });
   await control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'object', choice: 'restore' }] });
@@ -600,7 +600,7 @@ test('same-id resolution persists the new provider ID and rewires model referenc
     persistOverrides: async () => {},
     persistProviderIdentity: async (_old, _new, entities) => persisted.push(entities),
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
@@ -687,7 +687,7 @@ test('same-id resolution falls back to repository bulk persistence when no integ
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
@@ -768,7 +768,7 @@ test('renaming a published Provider publishes a new object and deletes the ident
     persistOverrides: async () => {},
     persistProviderIdentity: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
 
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
@@ -843,7 +843,7 @@ test('manual cloud apply records the current revision operation ID instead of it
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
@@ -1035,6 +1035,7 @@ test('connect previews the candidate backend and applies the reviewed decisions'
     purge: async () => {},
     connect: async () => ({
       remote,
+      refresh: async () => remote,
       commit: async () => void (committed = true),
       dispose: async () => void (disposed = true),
     }),
@@ -1066,4 +1067,126 @@ test('connect previews the candidate backend and applies the reviewed decisions'
   // as included.
   expect(published).toEqual(['work']);
   expect(imported).toEqual(['cloud-object']);
+});
+
+test('an abandoned connect preview disposes its candidate at expiry', async () => {
+  let disposed = 0;
+  let committed = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    previewTtlMs: 10,
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => void (committed = true),
+      dispose: async () => void (disposed += 1),
+    }),
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+  expect(disposed).toBe(0);
+
+  // Nothing reads `expiresAt` unless Apply is submitted, so without a sweep the backend session
+  // (a native helper process for CloudKit) would stay open until the process exits.
+  await Bun.sleep(40);
+  expect(disposed).toBe(1);
+  expect(control.status().state).not.toBe('preview-required');
+
+  await expect(control.apply({ previewId: preview.previewId, decisions: [] })).rejects.toMatchObject({
+    code: 'preview-stale',
+  });
+  expect(committed).toBe(false);
+  expect(disposed).toBe(1);
+});
+
+test('connect validates decisions and fences the candidate before swapping the binding', async () => {
+  const cloudEntity = (version: string) => ({
+    objectId: 'cloud-object',
+    logicalKey: 'shared',
+    kind: 'provider',
+    version,
+    revision: 'op-1',
+    body: { kind: 'provider' as const, logicalKey: 'shared', value: {}, dependencies: [] },
+  });
+  let committed = 0;
+  let disposed = 0;
+  let cloudVersion = 'v1';
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [cloudEntity('v1')],
+      refresh: async () => [cloudEntity(cloudVersion)],
+      commit: async () => void (committed += 1),
+      dispose: async () => void (disposed += 1),
+    }),
+  });
+  const connect = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
+
+  // A decision naming a row the user never reviewed is rejected before the service switches
+  // backends: the preview is consumed, so a swap here could not be retried.
+  const malformed = await control.preview(connect);
+  await expect(
+    control.apply({ previewId: malformed.previewId, decisions: [{ objectId: 'unknown', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({ code: 'upgrade-required' });
+  expect(committed).toBe(0);
+  expect(disposed).toBe(1);
+
+  // Same for a candidate whose cloud state moved while the preview sat: the reviewed rows no
+  // longer describe it, so the binding must stay where it is.
+  const drifted = await control.preview(connect);
+  cloudVersion = 'v2';
+  await expect(control.apply({ previewId: drifted.previewId, decisions: [] })).rejects.toMatchObject({
+    code: 'preview-stale',
+  });
+  expect(committed).toBe(0);
+  expect(disposed).toBe(2);
 });
