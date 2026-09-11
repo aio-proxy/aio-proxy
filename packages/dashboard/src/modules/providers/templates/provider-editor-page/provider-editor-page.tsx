@@ -101,7 +101,15 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   const previewOverrides = async (paths: readonly string[][]): Promise<SyncPreview> => {
     const objectId = syncPreview?.rows[0]?.objectId;
     if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
-    return previewInput({ kind: 'overrides', objectId, paths: paths.map((path) => [...path]) });
+    // An override is its own operation. The join it was pinned from stays remembered so the dialog
+    // can regenerate it once these paths are applied.
+    const next = await previewMutation.mutateAsync({
+      kind: 'overrides',
+      objectId,
+      paths: paths.map((path) => [...path]),
+    });
+    setSyncPreview(next);
+    return next;
   };
 
   const identitySection = <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />;

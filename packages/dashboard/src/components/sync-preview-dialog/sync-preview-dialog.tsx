@@ -9,27 +9,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@aio-proxy/ui/components/dialog';
-import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
-import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { useApplySync } from '@/hooks/use-sync';
 import { SyncRequestError } from '@/lib/sync-service';
 
+import { SyncPreviewOverrideField } from './sync-preview-override-field';
 import { SyncPreviewRenameField } from './sync-preview-rename-field';
 
 const SECRET_KEY = /(?:secret|token|password|credential|api[-_]?key|private[-_]?key|authorization)/iu;
 const EMPTY_ROWS: readonly SyncPreviewRow[] = [];
 const PROVIDER_ID_PATTERN = /^[A-Za-z0-9._-]+$/u;
 const providerIdSchema = z.string().trim().min(1).regex(PROVIDER_ID_PATTERN);
-const overridePathSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/u);
 const decisionSchema = z.object({
   objectId: z.string().min(1),
   choice: z.enum(['local', 'cloud', 'restore']),
@@ -38,7 +32,6 @@ const decisionSchema = z.object({
 const previewFormSchema = z.object({
   decisions: z.record(z.string(), decisionSchema),
   overrides: z.array(z.array(z.string().min(1))),
-  newOverride: z.string(),
 });
 
 export const redactPreviewValue = (value: unknown): unknown => {
@@ -63,7 +56,6 @@ const displayValue = (value: unknown): string => {
 interface PreviewFormValues {
   readonly decisions: Record<string, SyncApplyInput['decisions'][number]>;
   readonly overrides: readonly string[][];
-  readonly newOverride: string;
 }
 
 export interface SyncPreviewDialogProps {
@@ -80,7 +72,6 @@ const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
     (preview?.rows ?? []).map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
   ),
   overrides: [],
-  newOverride: '',
 });
 
 const choiceLabel = (choice: SyncPreviewRow['choices'][number]): string => {
@@ -188,15 +179,20 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const [retryError, setRetryError] = useState(false);
   const [isRefreshingOverrides, setIsRefreshingOverrides] = useState(false);
   const overridesRef = useRef<readonly string[][]>([]);
+  // The operation the dialog was opened for. Pinning an override previews that override on its
+  // own, so this is what has to come back once the override is applied.
+  const openedKindRef = useRef<SyncPreview['kind'] | undefined>(undefined);
   const [, rerenderOverrides] = useState(0);
   const form = useForm({ defaultValues: initialValues(preview), validators: { onChange: previewFormSchema } });
 
   useEffect(() => {
     if (!open || preview === null) {
+      openedKindRef.current = undefined;
       clearOverrideDraft(overridesRef, setNeedsFreshPreview, setOverrideError, setIsRefreshingOverrides);
       form.reset(initialValues(preview));
       return;
     }
+    if (openedKindRef.current === undefined) openedKindRef.current = preview.kind;
     const existingOverrides = overridesRef.current;
     form.reset({
       ...initialValues(preview),
@@ -257,6 +253,17 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
       { previewId: preview.previewId, decisions },
       {
         onSuccess: () => {
+          // An override applied from inside another operation persists only its own paths. Bring
+          // that operation back for its own explicit apply rather than reporting it done: its
+          // decisions were never sent, and it now has to be previewed against the new overrides.
+          if (preview.kind === 'overrides' && openedKindRef.current !== 'overrides' && onRetry !== undefined) {
+            clearOverrideDraft(overridesRef, setNeedsFreshPreview, setOverrideError, setIsRefreshingOverrides);
+            applyMutation.reset();
+            void Promise.resolve()
+              .then(() => onRetry())
+              .catch(() => setRetryError(true));
+            return;
+          }
           onApplied?.();
           onOpenChange(false);
         },
@@ -372,87 +379,19 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
             {preview.kind === 'purge' ? null : (
               <form.Field name="overrides">
                 {(field) => (
-                  <div className="rounded-lg border p-3">
-                    <p className="font-medium">{m['dashboard.sync.override_title']()}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {overridesRef.current.map((path) => (
-                        <Button
-                          key={path.join('.')}
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={async () => {
-                            const next = overridesRef.current.filter((current) => current.join('.') !== path.join('.'));
-                            setOverridePaths(next);
-                            field.handleChange(next);
-                            await requestOverridesPreview(next);
-                          }}
-                          aria-label={`${m['dashboard.sync.override_remove']()} ${path.join('.')}`}
-                        >
-                          {path.join('.')}
-                          <X aria-hidden="true" />
-                        </Button>
-                      ))}
-                    </div>
-                    <form.Field name="newOverride">
-                      {(pathField) => (
-                        <div className="mt-3 flex gap-2">
-                          <Input
-                            aria-label={m['dashboard.sync.override_path']()}
-                            value={pathField.state.value}
-                            placeholder={m['dashboard.sync.override_path']()}
-                            onChange={(event) => pathField.handleChange(event.target.value)}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={pending || pathField.state.value.trim() === ''}
-                            onClick={async () => {
-                              const parsedPath = overridePathSchema.safeParse(pathField.state.value);
-                              if (!parsedPath.success) {
-                                setOverrideError('invalid');
-                                return;
-                              }
-                              const path = parsedPath.data.split('.');
-                              const next = [...overridesRef.current, path];
-                              setOverridePaths(next);
-                              field.handleChange(next);
-                              pathField.handleChange('');
-                              await requestOverridesPreview(next);
-                            }}
-                          >
-                            {m['dashboard.sync.override_add']()}
-                          </Button>
-                        </div>
-                      )}
-                    </form.Field>
-                    {overrideError !== undefined ? (
-                      <div className="mt-2 space-y-2">
-                        <p role="alert" className="text-xs text-destructive">
-                          {overrideError === 'invalid'
-                            ? m['dashboard.sync.override_invalid']()
-                            : m['dashboard.sync.override_preview_failed']()}
-                        </p>
-                        {overrideError === 'refresh' ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={pending || onPreviewOverrides === undefined}
-                            onClick={() => void requestOverridesPreview(overridesRef.current)}
-                          >
-                            {m['dashboard.sync.override_preview_retry']()}
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {needsFreshPreview ? (
-                      <p role="status" className="mt-2 text-xs text-muted-foreground">
-                        {m['dashboard.sync.override_preview_required']()}
-                      </p>
-                    ) : null}
-                  </div>
+                  <SyncPreviewOverrideField
+                    paths={overridesRef.current}
+                    pending={pending}
+                    error={overrideError}
+                    needsFreshPreview={needsFreshPreview}
+                    canPreview={onPreviewOverrides !== undefined}
+                    onInvalidPath={() => setOverrideError('invalid')}
+                    onPathsChange={(next) => {
+                      setOverridePaths(next);
+                      field.handleChange(next);
+                      void requestOverridesPreview(next);
+                    }}
+                  />
                 )}
               </form.Field>
             )}

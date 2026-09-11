@@ -36,19 +36,47 @@ rs.mock('@/lib/sync-service', () => ({
   SyncRequestError: class SyncRequestError extends Error {},
 }));
 
+const noop = () => {};
+
 interface PreviewStateHarnessProps {
   readonly initialPreview: SyncPreview;
   onPreviewOverrides(paths: readonly string[][]): Promise<SyncPreview>;
+  onRetry?(): Promise<SyncPreview>;
+  onApplied?(): void;
+  onOpenChange?(open: boolean): void;
 }
 
-const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({ initialPreview, onPreviewOverrides }) => {
+const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({
+  initialPreview,
+  onPreviewOverrides,
+  onRetry,
+  onApplied,
+  onOpenChange,
+}) => {
   const [current, setCurrent] = useState(initialPreview);
   const refresh = async (paths: readonly string[][]) => {
     const next = await onPreviewOverrides(paths);
     setCurrent(next);
     return next;
   };
-  return <SyncPreviewDialog open preview={current} onOpenChange={rs.fn()} onPreviewOverrides={refresh} />;
+  const retry =
+    onRetry === undefined
+      ? undefined
+      : async () => {
+          const next = await onRetry();
+          setCurrent(next);
+          return next;
+        };
+  return (
+    <SyncPreviewDialog
+      open
+      preview={current}
+      onOpenChange={onOpenChange ?? noop}
+      onApplied={onApplied}
+      onRetry={retry}
+      onPreviewOverrides={refresh}
+    />
+  );
 };
 
 test('requires a valid replacement Provider ID before applying an identity conflict', () => {
@@ -125,6 +153,44 @@ test('applies the preview ID returned after adding an override', async () => {
     },
     { onSuccess: expect.any(Function) },
   );
+});
+
+test('brings the join operation back instead of closing after applying a pinned override', async () => {
+  mocks.applySync.mockReset();
+  const overridesPreview: SyncPreview = { ...preview, previewId: 'preview-overrides', kind: 'overrides' };
+  const onRetry = rs.fn().mockResolvedValue({ ...preview, previewId: 'preview-join-refreshed' });
+  const onApplied = rs.fn();
+  const onOpenChange = rs.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewStateHarness
+        initialPreview={preview}
+        onPreviewOverrides={async () => overridesPreview}
+        onRetry={onRetry}
+        onApplied={onApplied}
+        onOpenChange={onOpenChange}
+      />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.change(screen.getByLabelText(/Option path|选项路径/u), { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  const apply = await waitFor(() => {
+    const button = screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u });
+    expect(button).not.toBeDisabled();
+    return button;
+  });
+
+  fireEvent.click(apply);
+  const [applyInput, handlers] = mocks.applySync.mock.calls[0] as [{ previewId: string }, { onSuccess(): void }];
+  expect(applyInput.previewId).toBe('preview-overrides');
+  handlers.onSuccess();
+
+  // The join decisions were never sent, so the dialog owes the user a second explicit apply.
+  await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
+  expect(onApplied).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Remove local option/u })).toBeNull());
 });
 
 test('keeps purge previews purge-only while the dialog is open', () => {
