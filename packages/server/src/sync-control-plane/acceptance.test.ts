@@ -244,6 +244,29 @@ test('structured local model references survive a discovered provider', async ()
   });
 }, 30_000);
 
+test('a Provider authored after connecting is selectable and publishes only once joined', async () => {
+  await withTwoServerSyncFixtures(async (fixture) => {
+    await setProvider(fixture.a, 'fresh', `${fixture.a.providerMarker}-fresh`);
+    await fixture.a.reconcile();
+    // Authoring is not selection: the new Provider has to be listed so it can be joined, but must
+    // stay out of the cloud until the user asks for it.
+    expect(fixture.a.state.sync!.status().providers).toContainEqual(
+      expect.objectContaining({ providerId: 'fresh', included: false }),
+    );
+    expect(cloudText(fixture)).not.toContain('fresh');
+
+    const preview = await fixture.a.state.sync!.preview({ kind: 'join', providerId: 'fresh' });
+    const row = preview.rows.find((candidate) => candidate.logicalKey === 'fresh');
+    expect(row?.local).toMatchObject({ baseURL: 'https://work.example.test/v1' });
+    await fixture.a.state.sync!.apply({
+      previewId: preview.previewId,
+      decisions: preview.rows.map((candidate) => ({ objectId: candidate.objectId, choice: 'local' as const })),
+    });
+    await fixture.a.reconcile();
+    expect(cloudText(fixture)).toContain('fresh');
+  });
+}, 30_000);
+
 test('expired history is removed during the next public reconciliation', async () => {
   await withTwoServerSyncFixtures(async (fixture) => {
     await setProvider(fixture.a, 'work', fixture.providerMarker);

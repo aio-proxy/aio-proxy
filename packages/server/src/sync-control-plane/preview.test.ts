@@ -117,6 +117,92 @@ test('purge previews include transitive cloud dependents and omit local-only row
   expect(built.record.dependencyError).toBe(false);
 });
 
+test('a local-only join projects authored bodies and pulls in the business plugin it depends on', () => {
+  const authored = {
+    plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],
+    providers: { fresh: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } } },
+  } satisfies Record<string, JsonValue>;
+  const excluded = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'excluded' as const,
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'fresh' },
+    local: [
+      excluded('local-fresh', 'provider', 'fresh'),
+      excluded('local-plugin', 'plugin-business', '@example/business'),
+    ],
+    remote: [],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-local-only',
+    expiresAt: 1,
+    source: {
+      raw: authored,
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map([['@example/business', '1.2.3']]),
+    },
+  });
+  // A never-published object stores no body, so without projecting the authored configuration the
+  // join would preview two empty rows and publish nothing.
+  expect(built.preview.rows).toEqual([
+    expect.objectContaining({
+      objectId: 'local-fresh',
+      logicalKey: 'fresh',
+      local: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } },
+      choices: ['local'],
+    }),
+    expect.objectContaining({
+      objectId: 'local-plugin',
+      logicalKey: '@example/business',
+      local: {
+        packageName: '@example/business',
+        version: '1.2.3',
+        options: { endpoint: 'https://plugin.example.test' },
+      },
+      choices: ['local'],
+    }),
+  ]);
+});
+
+test('a join follows published dependency object IDs instead of matching logical keys', () => {
+  const cloud = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string, dependsOn?: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    version: 'v1',
+    revision: `${objectId}-revision`,
+    body: {
+      kind,
+      logicalKey,
+      value: {},
+      dependencies:
+        dependsOn === undefined ? [] : [{ objectId: dependsOn, packageName: '@example/business', version: '1.2.3' }],
+    },
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'fresh' },
+    local: [],
+    remote: [
+      cloud('cloud-fresh', 'provider', 'fresh', 'cloud-plugin'),
+      cloud('cloud-plugin', 'plugin-business', '@example/business', 'cloud-transitive'),
+      cloud('cloud-transitive', 'plugin-business', '@example/transitive'),
+      cloud('cloud-unrelated', 'provider', 'other'),
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-dependencies',
+    expiresAt: 1,
+  });
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['cloud-fresh', 'cloud-plugin', 'cloud-transitive']);
+});
+
 test('provider purge targets the Provider ID while returning its opaque cloud object row', () => {
   const provider = (objectId: string, logicalKey: string) => ({
     kind: 'provider' as const,

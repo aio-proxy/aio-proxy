@@ -4,7 +4,10 @@ import {
   decodeHead,
   decodeRevision,
   entityKey,
+  projectCommitted,
+  providerDependencyPackage,
   revisionKey,
+  type CommittedSource,
   type EntityBody,
   type LocalBinding,
   type LocalEntity,
@@ -298,6 +301,7 @@ export function buildPreview(input: {
   readonly expiresAt: number;
   readonly registry?: PluginRegistry;
   readonly accounts?: PluginRepository;
+  readonly source?: CommittedSource;
 }): { readonly preview: SyncPreview; readonly record: PreviewRecord } {
   const localSnapshot = snapshotLocalEntities(input.local);
   const remoteSnapshot = snapshotRemoteEntities(input.remote);
@@ -305,8 +309,34 @@ export function buildPreview(input: {
   const remoteByObject = new Map(remoteSnapshot.map((entity) => [entity.objectId, entity]));
   const ids = new Set<string>();
   if (input.request.kind === 'join') {
-    for (const entity of localSnapshot) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
-    for (const entity of remoteSnapshot) if (entity.logicalKey === input.request.providerId) ids.add(entity.objectId);
+    // `providerId` is the logical key of any kind, not only a Provider: a model rule is joined the
+    // same way.
+    const providerId = input.request.providerId;
+    for (const entity of localSnapshot) if (entity.logicalKey === providerId) ids.add(entity.objectId);
+    for (const entity of remoteSnapshot) if (entity.logicalKey === providerId) ids.add(entity.objectId);
+    // A Provider is only publishable together with the business plugin config it needs, so the
+    // join has to carry that object too. The authored configuration is the only source for it
+    // while the Provider itself is still local-only and therefore has no published body yet.
+    const dependency = input.source === undefined ? undefined : providerDependencyPackage(input.source.raw, providerId);
+    if (dependency !== undefined) {
+      for (const entity of [...localSnapshot, ...remoteSnapshot])
+        if (entity.kind === 'plugin-business' && entity.logicalKey === dependency) ids.add(entity.objectId);
+    }
+    // Anything already published names its dependencies directly; follow them to their fixed point
+    // so a rejoin never leaves a selected object pointing at an unselected one.
+    const dependenciesOf = (objectId: string): readonly string[] => [
+      ...(localByObject.get(objectId)?.desired?.dependencies ?? []).map((d) => d.objectId),
+      ...(remoteByObject.get(objectId)?.body?.dependencies ?? []).map((d) => d.objectId),
+    ];
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const objectId of [...ids])
+        for (const dependent of dependenciesOf(objectId))
+          if (!ids.has(dependent)) {
+            ids.add(dependent);
+            changed = true;
+          }
+    }
   } else if (input.request.kind === 'restore' || input.request.kind === 'overrides') ids.add(input.request.objectId);
   else if (input.request.kind === 'purge') {
     const purge = input.request;
@@ -362,10 +392,21 @@ export function buildPreview(input: {
   );
   const candidateIds =
     input.request.kind === 'purge' ? [...ids].filter((objectId) => remoteByObject.has(objectId)) : [...ids];
+  // A local-only object has no published body, so its stored `desired` is null and the join would
+  // preview and publish nothing. Project the authored configuration as if the join set were already
+  // selected: that yields the exact bodies applying the local choice will publish, dependencies
+  // included, and reuses the one projection the commit path uses rather than a second encoding.
+  const joined =
+    input.request.kind !== 'join' || input.source === undefined
+      ? undefined
+      : projectCommitted(
+          input.source,
+          localSnapshot.map((entity) => (ids.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity)),
+        ).entities;
   const candidates = candidateIds
     .map((objectId) =>
       (() => {
-        const local = localByObject.get(objectId)?.desired ?? null;
+        const local = joined?.get(objectId) ?? localByObject.get(objectId)?.desired ?? null;
         const remoteEntity = remoteByObject.get(objectId);
         let remote: EntityBody | null;
         if (input.request.kind === 'restore') {

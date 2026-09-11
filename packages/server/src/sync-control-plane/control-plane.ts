@@ -11,6 +11,7 @@ import {
   revisionKey,
   restoreEntity,
   SyncProtocolError,
+  type CommittedSource,
   type EntityBody,
   type LocalBinding,
   type LocalEntity,
@@ -55,6 +56,8 @@ export type SyncControlPlaneOptions = {
   ) => import('@aio-proxy/plugin-sdk').JsonValue | undefined;
   readonly binding?: () => LocalBinding | null;
   readonly localEntities?: () => readonly LocalEntity[];
+  /** The committed configuration a join projects local-only bodies from. */
+  readonly committedSource?: () => Promise<CommittedSource>;
   readonly session?: () => SyncSession | undefined;
   readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
   readonly lifecycle?: Partial<Pick<ServerSyncLifecycle, 'start'>> &
@@ -287,6 +290,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       const previewId = createPreviewToken(24, options.randomBytes);
       const expiresAt = now() + 10 * 60_000;
       const remote = snapshotRemoteEntities(await remoteEntities());
+      const source = input.kind === 'join' ? await options.committedSource?.() : undefined;
       const built = buildPreview({
         request: input,
         local: local.entities,
@@ -295,6 +299,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         previewId,
         expiresAt,
         registry: options.registry?.(),
+        ...(source === undefined ? {} : { source }),
       });
       previews.set(previewId, built.record);
       state = 'preview-required';

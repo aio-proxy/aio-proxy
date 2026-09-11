@@ -91,6 +91,7 @@
       "access_denied": "控制台請求遭拒",
       "authentication_failed": "控制台驗證失敗",
       "service_not_running": "無法連線至 AIO Proxy（{url}）。請使用 `aio-proxy service start` 啟動",
+      "insecure_endpoint": "拒絕以未加密方式將憑證傳送至 {url}。請在執行 AIO Proxy 的主機上執行此命令，或透過回送通道連線",
       "preview_stale": "預覽已過期，請建立並審核新的預覽",
       "not_connected": "設定同步未連線",
       "backend_unavailable": "同步後端無法使用",

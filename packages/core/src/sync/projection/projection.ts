@@ -79,6 +79,23 @@ function providerDependency(
   return packageDependency(packageName, identities, versions);
 }
 
+/**
+ * The business plugin package an authored Provider needs, read from the configuration rather than
+ * from a published body. A Provider that is not yet selected has no body, so a join has to learn
+ * its dependency from here before the projection can produce one.
+ */
+export function providerDependencyPackage(raw: Record<string, JsonValue>, providerId: string): string | undefined {
+  const provider = asRecord(recordAt(raw, 'providers')[providerId]);
+  if (provider === undefined) return undefined;
+  const packageName =
+    provider['kind'] === 'oauth'
+      ? provider['plugin']
+      : provider['kind'] === 'ai-sdk'
+        ? provider['packageName']
+        : undefined;
+  return typeof packageName === 'string' ? packageName : undefined;
+}
+
 function sharedProvider(value: JsonValue): JsonValue {
   const provider = asRecord(value);
   if (provider === undefined) return cloneJson(value);

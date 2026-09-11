@@ -91,6 +91,7 @@
       "access_denied": "대시보드 요청이 거부되었습니다",
       "authentication_failed": "대시보드 인증에 실패했습니다",
       "service_not_running": "AIO Proxy({url})에 연결할 수 없습니다. `aio-proxy service start`로 시작하세요",
+      "insecure_endpoint": "{url}(으)로 자격 증명을 암호화하지 않고 전송할 수 없습니다. AIO Proxy가 실행 중인 호스트에서 이 명령을 실행하거나 루프백 터널을 통해 연결하세요",
       "preview_stale": "미리보기가 오래되었습니다. 새 미리보기를 만들고 검토하세요",
       "not_connected": "구성 동기화가 연결되지 않았습니다",
       "backend_unavailable": "동기화 백엔드를 사용할 수 없습니다",

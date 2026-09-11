@@ -612,7 +612,18 @@ test('configured service exposes the real sync control plane to CLI mutations', 
       const binding = verifyRepo.readBinding();
       expect(binding?.id).not.toBe('configured-binding');
       expect(binding?.options).toEqual({ token: 'backend-secret', containerId: 'default-container' });
-      expect(binding === null ? [] : verifyRepo.entities(binding.id)).toHaveLength(1);
+      const entities = binding === null ? [] : verifyRepo.entities(binding.id);
+      // The carried-over Provider keeps its object identity and its `sync leave` exclusion, and
+      // every other authored object gains its own row so it can be joined later. Connecting never
+      // selects anything, so all of them are excluded.
+      expect(entities.map((entity) => `${entity.kind}:${entity.logicalKey}`).sort()).toEqual([
+        'plugin-business:@example/sync',
+        'provider:work',
+        'routing-defaults:routing-defaults',
+        'service-access:service-access',
+      ]);
+      expect(entities.filter((entity) => entity.mode === 'excluded')).toHaveLength(4);
+      expect(entities.find((entity) => entity.logicalKey === 'work')?.objectId).toBe('provider-work');
     } finally {
       verifyDb.close();
     }

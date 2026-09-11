@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import type { CommittedSource } from '../projection';
-import { projectCommitted } from '../projection';
+import { projectCommitted, seedAuthoredEntities } from '../projection';
 import type { LocalEntity } from '../repository';
 import type { CommitIntent, OutboxOperation, SyncRepository } from '../repository';
 
@@ -121,6 +121,12 @@ async function confirmLocalCommitUnderFence(
 
   const source = await port.committedSource();
   port.assertCurrent?.();
+  // An authored object with no local row can be neither selected nor excluded, so it would be
+  // invisible to status and to a join. Every locally authored commit tops the rows up from what the
+  // configuration now declares; the new rows are excluded, so this publishes nothing by itself.
+  // Remote-origin commits are skipped: discovery owns those rows and already carries the cloud
+  // object ID, so minting a second row here would read back as an identity collision.
+  if (intent.origin === 'local') seedAuthoredEntities(repo, bindingId, source.raw);
   if (!pluginSecretsMatch(source, intent)) return;
   if (intent.sourceRevisions !== undefined && !sameSourceRevisions(intent.sourceRevisions, source.sourceRevisions)) {
     return;

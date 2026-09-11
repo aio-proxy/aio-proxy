@@ -4,7 +4,14 @@ export * from './cleanup';
 export * from './local-commit';
 export * from './engine';
 export * from './oauth';
-export { overlayLocal, projectCommitted, type CommittedSource, type Projection } from './projection';
+export {
+  overlayLocal,
+  projectCommitted,
+  providerDependencyPackage,
+  type CommittedSource,
+  type Projection,
+} from './projection';
+export { authoredEntityIdentities, seedAuthoredEntities } from './projection';
 export {
   createSyncRepository,
   type CommitIntent,

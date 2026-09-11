@@ -10,6 +10,7 @@ import {
   encodeCandidate,
   parseRuntimeConfig,
   parsePluginSchema,
+  seedAuthoredEntities,
   type PluginRegistrySnapshot,
   type PluginRepository,
   type JsonValue,
@@ -246,6 +247,7 @@ export function createSyncIntegration(
     try {
       next = createLifecycle(binding, preconnectedSession, true);
       await next.lifecycle.start();
+      const authored = (await configFile.read()) as Record<string, JsonValue>;
       await queue(async () => {
         const previousBinding = syncRepository.readBinding();
         const previousEntities = previousBinding === null ? [] : syncRepository.entities(previousBinding.id);
@@ -256,6 +258,11 @@ export function createSyncIntegration(
           syncRepository.writeBinding(binding);
           if (syncRepository.putEntities !== undefined) syncRepository.putEntities(binding.id, previousEntities);
           else for (const entity of previousEntities) syncRepository.putEntity(binding.id, entity);
+          // Carrying the previous binding's rows over covers a backend switch, but a first
+          // connection has none. Without a row per authored object the new binding starts blind:
+          // status lists no Provider and a join has nothing to select. Seeding is excluded-only,
+          // so connecting still publishes nothing until the user joins.
+          seedAuthoredEntities(syncRepository, binding.id, authored);
           next!.lifecycle.activate();
           syncPort = next!.port;
           lifecycle = next!.lifecycle;
@@ -390,6 +397,11 @@ export function createSyncControlPlaneIntegration(
       return binding === null ? [] : integration.syncRepository.entities(binding.id);
     },
     session: () => integration.lifecycle?.session(),
+    committedSource: async () => {
+      const syncPort = integration.syncPort;
+      if (syncPort === undefined) throw new SyncOperationError('not-connected');
+      return syncPort.committedSource();
+    },
     lifecycle: {
       start: async () => integration.lifecycle?.start(),
       activate: () => integration.lifecycle?.activate(),
