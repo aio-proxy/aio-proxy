@@ -90,7 +90,48 @@ test('malformed native output during CAS preserves outcome unknown', async () =>
   });
 });
 
-// The spawned helper's exit and its stdout EOF are two channels for one event, and CI reaps the
+// The helper answers the original id from its own request task, so cancelling races the reply it
+// pre-empts. Classifying that expected late reply as corruption used to fence the session and make
+// every later CloudKit call fail.
+test('a late reply for a locally cancelled request does not fence the session', async () => {
+  await withFakeNative('late-cancel-reply', async (executable) => {
+    const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
+    const controller = new AbortController();
+    const cancelled = session.read('k', controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ code: 'cancelled' });
+    await expect(session.read('k', new AbortController().signal)).resolves.toMatchObject({ kind: 'absent' });
+    await session.dispose();
+  });
+});
+
+// Callers share one long-lived lifecycle signal across a whole reconciliation, so a listener left
+// behind per settled request grows without bound and floods the helper with stale cancels on close.
+test('settled requests detach their abort listeners from the caller signal', async () => {
+  await withFakeNative('ok', async (executable) => {
+    const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
+    const signal = new AbortController().signal;
+    let live = 0;
+    const { addEventListener, removeEventListener } = signal;
+    Object.assign(signal, {
+      addEventListener(...args: Parameters<AbortSignal['addEventListener']>) {
+        live += 1;
+        return addEventListener.apply(signal, args);
+      },
+      removeEventListener(...args: Parameters<AbortSignal['removeEventListener']>) {
+        live -= 1;
+        return removeEventListener.apply(signal, args);
+      },
+    });
+    await session.compareAndSwap('k', null, new Uint8Array([1]), signal);
+    await session.read('k', signal);
+    await session.list({ prefix: '' }, signal);
+    expect(live).toBe(0);
+    await session.dispose();
+  });
+});
+
 // process before the pipe drains. Whichever the session believed first used to decide the error
 // code, so a helper dying mid-frame reported a retryable offline instead of fencing the protocol.
 test('a helper that dies mid-frame reports invalid data even when its exit is observed first', async () => {

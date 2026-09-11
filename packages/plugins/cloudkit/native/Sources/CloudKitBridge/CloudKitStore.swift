@@ -45,6 +45,14 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         return identity
     }
 
+    /// Connect is the only place the custom zone is created, so it must run before the session
+    /// reports success — otherwise the first read or CAS for a new user hits a missing zone.
+    func connect() async throws -> AccountIdentity {
+        let identity = try await accountIdentity()
+        try await driver.ensureZone()
+        return identity
+    }
+
     func read(key: String) async throws -> StoreRead {
         try await verifyIdentity()
         guard let record = try await driver.fetch(id: Self.recordID(for: key)) else { return .absent }

@@ -31,6 +31,9 @@ type Pending = {
   readonly mutation: boolean;
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: unknown) => void;
+  // Detaches this request's listener from the caller's long-lived signal. Every settlement path
+  // must call it, or a session accumulates one closure per completed operation.
+  readonly release: () => void;
 };
 
 export type ConnectNativeInput = {
@@ -61,6 +64,7 @@ class NativeSession implements SyncSession {
   maxValueBytes = 0;
   #child: NativeChild;
   #pending = new Map<string, Pending>();
+  #cancelled = new Set<string>();
   #sequence = 0;
   #generation = 0;
   #disposed = false;
@@ -169,7 +173,10 @@ class NativeSession implements SyncSession {
     return new Promise((resolve, reject) => {
       const abort = () => {
         signal.removeEventListener('abort', abort);
-        this.#pending.delete(id);
+        // The helper answers the original id from its own request task, so a cancel races the
+        // reply it is meant to pre-empt. Remember the id and drop that late reply rather than
+        // treating it as protocol corruption.
+        if (this.#pending.delete(id)) this.#cancelled.add(id);
         try {
           this.#send({ id: `${this.#generation}-${++this.#sequence}`, op: 'cancel', input: { targetId: id } });
         } catch {
@@ -177,16 +184,17 @@ class NativeSession implements SyncSession {
         }
         reject(new NativeSessionError(mutation ? 'outcome-unknown' : 'cancelled', 'native operation aborted'));
       };
+      const release = () => signal.removeEventListener('abort', abort);
       if (signal.aborted) {
         abort();
         return;
       }
-      this.#pending.set(id, { op, mutation, resolve, reject });
+      this.#pending.set(id, { op, mutation, resolve, reject, release });
       signal.addEventListener('abort', abort, { once: true });
       try {
         this.#send(request);
       } catch (error) {
-        signal.removeEventListener('abort', abort);
+        release();
         this.#pending.delete(id);
         reject(error);
       }
@@ -256,12 +264,14 @@ class NativeSession implements SyncSession {
     }
     const pending = this.#pending.get(reply.id);
     if (!pending) {
+      if (this.#cancelled.delete(reply.id)) return;
       this.#protocolFailed = true;
       this.#failAllWithCode('invalid-data', 'unexpected or duplicate native reply');
       this.#child.kill('SIGTERM');
       return;
     }
     this.#pending.delete(reply.id);
+    pending.release();
     if (reply.ok) pending.resolve(reply.result);
     else pending.reject(new NativeSessionError(reply.error.code));
   }
@@ -269,26 +279,32 @@ class NativeSession implements SyncSession {
   #failAll(mutationUnknown: boolean, message: string, code?: 'identity-changed'): void {
     for (const [id, pending] of this.#pending) {
       this.#pending.delete(id);
+      pending.release();
       pending.reject(
         new NativeSessionError(code ?? (mutationUnknown || pending.mutation ? 'outcome-unknown' : 'offline'), message),
       );
     }
+    this.#cancelled.clear();
   }
 
   #failAllWithCode(code: 'offline' | 'invalid-data', message: string): void {
     if (this.#protocolFailed && code !== 'invalid-data') return;
     for (const [id, pending] of this.#pending) {
       this.#pending.delete(id);
+      pending.release();
       pending.reject(new NativeSessionError(code, message));
     }
+    this.#cancelled.clear();
   }
 
   #fenceProtocol(message: string): void {
     this.#protocolFailed = true;
     for (const [id, pending] of this.#pending) {
       this.#pending.delete(id);
+      pending.release();
       pending.reject(new NativeSessionError(pending.mutation ? 'outcome-unknown' : 'invalid-data', message));
     }
+    this.#cancelled.clear();
     this.#child.kill('SIGTERM');
   }
 

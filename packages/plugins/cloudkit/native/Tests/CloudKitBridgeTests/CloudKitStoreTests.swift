@@ -4,6 +4,24 @@ import XCTest
 @testable import CloudKitBridge
 
 final class CloudKitStoreTests: XCTestCase {
+    // A custom zone is not created for a user automatically, so a first-run device can only read
+    // or write once connect has made it. Verifying the account alone left every op on zoneNotFound.
+    func testConnectCreatesTheZoneBeforeAnyRecordWork() async throws {
+        let driver = FakeCloudKitDriver(zoneExists: false)
+        let store = CloudKitStore(driver: driver)
+        do {
+            _ = try await store.read(key: "k")
+            return XCTFail("read succeeded without the zone")
+        } catch let error as CKError {
+            XCTAssertEqual(error.code, .zoneNotFound)
+        }
+        _ = try await store.connect()
+        guard case .written = try await store.compareAndSwap(key: "k", expected: nil, value: Data("a".utf8)) else {
+            return XCTFail("write after connect did not succeed")
+        }
+        let page = try await store.list(prefix: "k", cursor: nil)
+        XCTAssertEqual(page.keys, ["k"])    }
+
     func testOnlyOneConcurrentCreateWins() async throws {
         let driver = FakeCloudKitDriver()
         let a = CloudKitStore(driver: driver)

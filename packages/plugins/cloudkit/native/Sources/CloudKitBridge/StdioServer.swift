@@ -50,7 +50,7 @@ final class StdioServer: @unchecked Sendable {
         do {
             switch request.op {
             case "connect":
-                let identity = try await store.accountIdentity()
+                let identity = try await store.connect()
                 return .success(id: request.id, result: .object(["identityId": .string(identity.identifier), "spaceId": .string("default"), "maxValueBytes": .number(Double(AssetStore.maxPayload)), "protocol": .number(1), "version": .string("1")]))
             case "read":
                 let value = try await store.read(key: requiredString(request, "key"))

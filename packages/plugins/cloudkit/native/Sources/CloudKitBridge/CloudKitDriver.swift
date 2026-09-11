@@ -11,6 +11,7 @@ protocol CloudKitDriver: Sendable {
     func saveConditionally(record: CKRecord) async throws -> CKRecord
     func query(prefix: String, cursor: Data?) async throws -> CloudKitQueryPage
     func accountIdentity() async throws -> AccountIdentity
+    func ensureZone() async throws
 }
 
 final class CloudKitDatabaseDriver: CloudKitDriver, @unchecked Sendable {
@@ -81,6 +82,13 @@ final class CloudKitDatabaseDriver: CloudKitDriver, @unchecked Sendable {
     func accountIdentity() async throws -> AccountIdentity {
         guard try await container.accountStatus() == .available else { throw ProbeError.accountUnavailable }
         return AccountIdentity(identifier: try await container.userRecordID().recordName)
+    }
+
+    // A custom zone does not exist in a private database until someone creates it, so every
+    // record path would fail with `zoneNotFound` on a device that has never synced. Saving a
+    // zone that already exists is a no-op, which keeps this safe to run on each connect.
+    func ensureZone() async throws {
+        _ = try await database.modifyRecordZones(saving: [CKRecordZone(zoneName: CloudKitStore.zoneName)], deleting: [])
     }
 
     private static func encode(_ cursor: CKQueryOperation.Cursor) -> Data? {

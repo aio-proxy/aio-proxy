@@ -11,6 +11,14 @@ actor FakeCloudKitDriver: CloudKitDriver {
     private var identity = AccountIdentity(identifier: "fake-account")
     private var transportDown = false
     private var fetchFailsAfterSaveLoss = false
+    /// Mirrors a private database that has never had the custom zone created in it.
+    private var zoneExists: Bool
+
+    init(zoneExists: Bool = true) {
+        self.zoneExists = zoneExists
+    }
+
+    func ensureZone() async throws { zoneExists = true }
     /// `fetchAlsoFails` models the transport staying down past the save, so the recovery reread
     /// cannot observe what was persisted either.
     func armPostSaveTransportLoss(fetchAlsoFails: Bool = false) {
@@ -23,11 +31,13 @@ actor FakeCloudKitDriver: CloudKitDriver {
 
     func fetch(id: CKRecord.ID) async throws -> CKRecord? {
         if transportDown { throw CKError(.networkFailure) }
+        guard zoneExists else { throw CKError(.zoneNotFound) }
         guard let record = records[id] else { return nil }
         return copy(record)
     }
 
     func saveConditionally(record: CKRecord) async throws -> CKRecord {
+        guard zoneExists else { throw CKError(.zoneNotFound) }
         if let current = records[record.recordID] {
             let expected = record[CloudKitStore.expectedVersionField] as? String
             let currentVersion = current["_fakeVersion"] as? String
@@ -61,6 +71,7 @@ actor FakeCloudKitDriver: CloudKitDriver {
     }
 
     func query(prefix: String, cursor: Data?) async throws -> CloudKitQueryPage {
+        guard zoneExists else { throw CKError(.zoneNotFound) }
         let start = Int(String(data: cursor ?? Data("0".utf8), encoding: .utf8) ?? "0") ?? 0
         let values = records.values
             .filter { ($0[CloudKitStore.logicalKeyField] as? String)?.hasPrefix(prefix) == true }

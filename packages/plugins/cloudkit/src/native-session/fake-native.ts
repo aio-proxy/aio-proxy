@@ -2,6 +2,8 @@
 export {};
 const mode = Bun.argv.find((value) => value.startsWith('--mode='))?.slice('--mode='.length) ?? 'ok';
 const values = new Map<string, { valueBase64: string; version: string }>();
+let withheldReadId: string | undefined;
+let withholdNextRead = mode === 'late-cancel-reply';
 
 function emit(value: unknown): void {
   Bun.stdout.write(`${JSON.stringify(value)}\n`);
@@ -24,7 +26,15 @@ for await (const chunk of input) {
       emit({ id: request.id, ok: true, result: null });
       process.exit(0);
     }
-    if (request.op === 'cancel') continue;
+    if (request.op === 'cancel') {
+      // The real bridge cancels the task but its in-flight CloudKit callback still answers the
+      // original id, so the parent sees a reply for a request it already gave up on.
+      if (mode === 'late-cancel-reply' && withheldReadId !== undefined) {
+        emit({ id: withheldReadId, ok: true, result: { kind: 'absent' } });
+        withheldReadId = undefined;
+      }
+      continue;
+    }
     if (request.op === 'connect') {
       emit({
         id: request.id,
@@ -63,6 +73,11 @@ for await (const chunk of input) {
       continue;
     }
     if (request.op === 'read') {
+      if (withholdNextRead) {
+        withholdNextRead = false;
+        withheldReadId = request.id;
+        continue;
+      }
       const stored = values.get(String(request.input.key));
       emit({
         id: request.id,

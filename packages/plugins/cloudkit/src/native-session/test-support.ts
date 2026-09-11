@@ -7,6 +7,7 @@ export type FakeNativeMode =
   | 'unexpected'
   | 'hold'
   | 'malformed'
+  | 'late-cancel-reply'
   | 'ok';
 
 export async function withFakeNative(mode: FakeNativeMode, run: (executable: string) => Promise<void>): Promise<void> {
