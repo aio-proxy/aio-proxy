@@ -170,7 +170,7 @@ export async function tryReadGrokPrivateFile(
 
 const pathUnverifiable = (): Error => new Error('Grok path unverifiable');
 
-const cleanupBudget = (): GrokDeadline => ({
+export const cleanupBudget = (): GrokDeadline => ({
   deadline: Date.now() + DEFAULT_GROK_READ_MS,
   signal: AbortSignal.timeout(DEFAULT_GROK_READ_MS),
 });

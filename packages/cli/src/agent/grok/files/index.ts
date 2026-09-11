@@ -2,6 +2,7 @@ export {
   assertSafePrivateDir,
   assertSafeRoot,
   captureIdentity,
+  cleanupBudget,
   createPrivateDir,
   grokPaths,
   inspectPath,

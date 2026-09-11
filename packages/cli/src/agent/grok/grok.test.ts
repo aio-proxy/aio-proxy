@@ -14,6 +14,7 @@ import {
   withGrokInstallation,
 } from './grok';
 import * as grokPublic from './index';
+import * as grokLifecycle from './lifecycle';
 import { encodeGrokOwnership } from './ownership';
 import { grokFixture } from './test-fixture';
 
@@ -766,6 +767,44 @@ test('a hung marker probe after configure failure keeps the original error', asy
     expect(performance.now() - started).toBeLessThan(1_000);
   } finally {
     inspect.mockRestore();
+    await f.cleanup();
+  }
+});
+
+test('expired cleanup after configure failure keeps the original error', async () => {
+  const f = await grokFixture();
+  let operationSignal: AbortSignal | undefined;
+  const realCreateBudget = grokLifecycle.createBudget;
+  const create = spyOn(grokLifecycle, 'createBudget').mockImplementation((now) => {
+    const budget = realCreateBudget(now);
+    operationSignal = budget.signal;
+    return budget;
+  });
+  const expired = (budget?: { readonly signal: AbortSignal }): boolean =>
+    operationSignal !== undefined && budget?.signal === operationSignal;
+  const realRemoveFile = grokFiles.removeMatchingFile;
+  const realRemoveDir = grokFiles.removeMatchingDir;
+  const removeFile = spyOn(grokFiles, 'removeMatchingFile').mockImplementation(async (identity, budget) => {
+    if (expired(budget)) throw new Error('Grok path unverifiable');
+    return realRemoveFile(identity, budget);
+  });
+  const removeDir = spyOn(grokFiles, 'removeMatchingDir').mockImplementation(async (identity, budget) => {
+    if (expired(budget)) throw new Error('Grok path unverifiable');
+    return realRemoveDir(identity, budget);
+  });
+  try {
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'ownership_pending') throw new Error('boom');
+        },
+      }),
+    ).rejects.toThrow(/boom/);
+    expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
+  } finally {
+    create.mockRestore();
+    removeFile.mockRestore();
+    removeDir.mockRestore();
     await f.cleanup();
   }
 });

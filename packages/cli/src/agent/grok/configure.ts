@@ -4,6 +4,7 @@ import {
   assertSafePrivateDir,
   assertSafeRoot,
   captureIdentity,
+  cleanupBudget,
   createPrivateDir,
   grokPaths,
   inspectPath,
@@ -224,17 +225,23 @@ async function configureFirst(
       }
     }
     if (!markerWritten && reuse === undefined) {
-      for (const identity of created.reverse()) await removeMatchingFile(identity, budget);
-      if (privateDir !== undefined) await removeMatchingDir(privateDir, budget);
+      try {
+        const cleanup = cleanupBudget();
+        for (const identity of created.reverse()) await removeMatchingFile(identity, cleanup);
+        if (privateDir !== undefined) await removeMatchingDir(privateDir, cleanup);
+      } catch {
+        // Best-effort first-install rollback must not replace the original failure.
+      }
     }
     if (!markerWritten && reuse?.ownership !== undefined) {
       try {
+        const cleanup = cleanupBudget();
         await replaceOwnedFile(
           lock,
           paths.ownership,
           reuse.ownership.text,
-          await mustReadOwnership(paths, budget),
-          budget,
+          await mustReadOwnership(paths, cleanup),
+          cleanup,
         );
       } catch {
         // Best-effort restore of the pre-rebind ownership journal.
