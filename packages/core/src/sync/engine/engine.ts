@@ -222,10 +222,11 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
           return;
         }
         // The backend disposed the session when the signed-in identity changed. Retrying against it
-        // can only fail, so the engine stops and reports the state the user has to act on.
+        // can only fail, so the engine stops and reports the state the user has to act on. The
+        // failure still propagates: an explicit reconcile must not report success.
         if (isBackendFailure(error) && error.code === 'identity-changed') {
           void stopForIdentityChange();
-          return;
+          throw error;
         }
         status('error');
         throw error;

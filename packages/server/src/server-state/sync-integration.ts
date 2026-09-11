@@ -175,6 +175,7 @@ export function createSyncIntegration(
   let sharing: OAuthSharingService | undefined;
   let syncPort: ReturnType<typeof createLocalSyncPort> | undefined;
   let lifecycle: ReturnType<typeof createServerSyncLifecycle> | undefined;
+  let engineStatus: ((status: string) => void) | undefined;
   let refreshCommitHooks: () => void = () => {};
   const onSharingChange = (next: OAuthSharingService | undefined): void => {
     sharing = next;
@@ -218,6 +219,11 @@ export function createSyncIntegration(
       onSharing: (next) => {
         nextSharing = next;
         if (lifecycle === nextLifecycle) onSharingChange(next);
+      },
+      // A candidate lifecycle reconciles against a backend the user has not committed to yet, so
+      // only the active one is allowed to move the publicly reported state.
+      onStatus: (value) => {
+        if (lifecycle === nextLifecycle) engineStatus?.(value);
       },
       withProviderGate: runtime.withProviderGate,
       // A candidate backend must not reconcile until replaceBackend has swapped it in and called
@@ -346,6 +352,9 @@ export function createSyncIntegration(
     sharing: () => sharing,
     configPath: options.configPath,
     connectBackend,
+    onEngineStatus(handle: (status: string) => void) {
+      engineStatus = handle;
+    },
   };
   refreshCommitHooks = () => {
     runtime.syncCommit = syncCommitOption(integration);
@@ -397,6 +406,7 @@ export function createSyncControlPlaneIntegration(
       return binding === null ? [] : integration.syncRepository.entities(binding.id);
     },
     session: () => integration.lifecycle?.session(),
+    onEngineStatus: integration.onEngineStatus,
     committedSource: async () => {
       const syncPort = integration.syncPort;
       if (syncPort === undefined) throw new SyncOperationError('not-connected');

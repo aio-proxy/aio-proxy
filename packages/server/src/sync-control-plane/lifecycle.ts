@@ -51,6 +51,8 @@ export type ServerSyncLifecycleInput = {
   readonly localPort?: ReturnType<typeof createLocalSyncPort>;
   readonly onCoordinator?: (coordinator: import('@aio-proxy/core').SharedOAuthCoordinator | undefined) => void;
   readonly onSharing?: (sharing: import('@aio-proxy/core').OAuthSharingService | undefined) => void;
+  /** Background reconciliation outcomes, so the public status reflects automatic synchronization. */
+  readonly onStatus?: (status: string) => void;
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
@@ -154,7 +156,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         session,
         repo: input.repo,
         local: port,
-        onStatus: () => {},
+        onStatus: (value) => input.onStatus?.(value),
       });
       if (!input.deferEngine) engine.start();
     } catch (error) {

@@ -75,8 +75,21 @@ export type SyncControlPlaneOptions = {
   readonly detach?: (providerId: string, loginSessionId: string) => Promise<void>;
   readonly cancelDetach?: (providerId: string) => Promise<void>;
   readonly purge?: OperationInput['purge'];
+  /**
+   * Registers the sink the lifecycle pushes background engine outcomes into. Without it the public
+   * state only ever moves on a manual preview/apply/retry, so automatic synchronization can be
+   * failing while the Dashboard and CLI still report `idle`.
+   */
+  readonly onEngineStatus?: (handle: (status: string) => void) => void;
   readonly now?: () => number;
   readonly randomBytes?: (size: number) => Uint8Array;
+};
+
+const ENGINE_STATES: Readonly<Record<string, SyncConnectionState>> = {
+  offline: 'offline',
+  quota: 'quota',
+  'identity-changed': 'identity-changed',
+  error: 'error',
 };
 
 // eslint-disable-next-line max-lines-per-function -- this assembles the public operations over one fence owner
@@ -204,6 +217,19 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     backendOptions: options.backendOptions,
     binding,
     accounts: options.accounts,
+  });
+
+  // A preview awaiting a decision is the user's turn, so a background poll must not overwrite it;
+  // `stopped` belongs to disconnect(), which owns its own terminal state.
+  options.onEngineStatus?.((value) => {
+    if (state === 'preview-required' || state === 'disconnected') return;
+    if (value === 'online') {
+      state = 'idle';
+      lastSuccessAt = now();
+      return;
+    }
+    const mapped = ENGINE_STATES[value];
+    if (mapped !== undefined) state = mapped;
   });
 
   const currentFence = async (
