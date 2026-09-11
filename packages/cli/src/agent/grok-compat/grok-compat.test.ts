@@ -3,6 +3,8 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { requireCurrent } from '../grok/lifecycle';
+import { parseGrokOwnership } from '../grok/ownership';
 import { awaitChild, startArgv } from './compat-child';
 import { approveDashboardAuthorization } from './dashboard-approve';
 import { createGrokCompatFixture, GrokCompatProxyError, spawnArgv } from './fixture';
@@ -110,7 +112,7 @@ async function fakeCli(root: string, options: FakeCliOptions = {}): Promise<stri
   await writeExecutable(
     binary,
     `#!/usr/bin/env bun
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const log = ${JSON.stringify(log)};
 const argv = process.argv.slice(2);
@@ -147,6 +149,28 @@ if (argv[0] === 'agent' && argv[1] === 'configure' && argv[2] === 'grok') {
   if (!existing.includes('auth_provider_command')) {
     appendFileSync(configPath, '\\n[auth]\\nauth_provider_command = "' + command + '"\\n');
   }
+  const privateDir = join(grokHome, 'aio-proxy');
+  mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+  let endpoint = 'http://127.0.0.1:9';
+  try {
+    endpoint = 'http://127.0.0.1:' + String(JSON.parse(readFileSync(join(process.env.AIO_PROXY_HOME ?? '', 'config.jsonc'), 'utf8')).server.port);
+  } catch {}
+  writeFileSync(
+    join(privateDir, 'ownership.json'),
+    JSON.stringify({
+      format: 1,
+      agent: 'grok',
+      installationId: '${INSTALLATION_ID}',
+      endpoint,
+      status: 'active',
+      leaves: [{
+        path: ['auth', 'auth_provider_command'],
+        original: { present: false },
+        written: { present: true, value: command, raw: JSON.stringify(command) },
+      }],
+      createdTables: [['auth']],
+    }) + '\\n',
+  );
   process.exit(0);
 }
 if (argv[0] === 'agent' && argv[1] === 'auth' && argv[2] === 'grok') {
@@ -320,17 +344,28 @@ test('loopback recorder fails when models or completions never reach the proxy',
   expect(loopbackRecorderCase([])).toMatchObject({
     name: 'loopback-http-recorder',
     passed: false,
-    detail: expect.stringMatching(/GET \/models and POST \/chat\/completions/),
+    detail: expect.stringMatching(/GET \/models and two POST \/chat\/completions/),
   });
   expect(loopbackRecorderCase([])).not.toMatchObject({ detail: expect.stringMatching(/^not_run:/) });
   expect(loopbackRecorderCase([{ method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' }])).toMatchObject({
     name: 'loopback-http-recorder',
     passed: false,
-    detail: expect.stringMatching(/GET \/models and POST \/chat\/completions/),
+    detail: expect.stringMatching(/GET \/models and two POST \/chat\/completions/),
   });
   expect(
     loopbackRecorderCase([
       { method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' },
+      { method: 'POST', path: '/v1/chat/completions', origin: 'http://127.0.0.1:9' },
+    ]),
+  ).toMatchObject({
+    name: 'loopback-http-recorder',
+    passed: false,
+    detail: expect.stringMatching(/two POST \/chat\/completions/),
+  });
+  expect(
+    loopbackRecorderCase([
+      { method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' },
+      { method: 'POST', path: '/v1/chat/completions', origin: 'http://127.0.0.1:9' },
       { method: 'POST', path: '/v1/chat/completions', origin: 'http://127.0.0.1:9' },
     ]),
   ).toMatchObject({
@@ -340,6 +375,7 @@ test('loopback recorder fails when models or completions never reach the proxy',
   expect(
     loopbackRecorderCase([
       { method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' },
+      { method: 'POST', path: '/v1/chat/completions', origin: 'http://127.0.0.1:9' },
       { method: 'POST', path: '/v1/chat/completions', origin: 'https://api.x.ai' },
     ]),
   ).toMatchObject({
@@ -354,6 +390,31 @@ test('index.ts is export-only and does not start the script', async () => {
   expect(source).not.toContain('import.meta.main');
   expect(typeof grokCompatPublic.runGrokCompatibility).toBe('function');
   expect('createGrokCompatFixture' in grokCompatPublic).toBe(false);
+});
+
+test('wrapAuthCommand keeps ownership current after rewriting the helper command', async () => {
+  const root = await scratch('aio-grok-compat-wrap-');
+  try {
+    const { options } = await optionsFor(root, { version: '1.0.24', loginExit: 1 });
+    const fixture = await createGrokCompatFixture(options);
+    try {
+      const configure = await fixture.run([options.cliBinary, 'agent', 'configure', 'grok']);
+      expect(configure.exitCode).toBe(0);
+      const grokHome = fixture.env['GROK_HOME']!;
+      const ownershipPath = join(grokHome, 'aio-proxy', 'ownership.json');
+      const before = await readFile(join(grokHome, 'config.toml'), 'utf8');
+      requireCurrent(before, parseGrokOwnership(await readFile(ownershipPath, 'utf8')));
+      await fixture.wrapAuthCommand();
+      const after = await readFile(join(grokHome, 'config.toml'), 'utf8');
+      expect(after).toContain('--capture');
+      expect(after).not.toBe(before);
+      requireCurrent(after, parseGrokOwnership(await readFile(ownershipPath, 'utf8')));
+    } finally {
+      await fixture.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('fixture isolates HOME, GROK_HOME, and AIO_PROXY_HOME and writes hooks-off config', async () => {
@@ -435,7 +496,7 @@ test('journey configures before login, approves via Dashboard, and does not trea
     const loopback = report.cases.find((item) => item.name === 'loopback-http-recorder');
     expect(loopback?.passed).toBe(false);
     expect(loopback?.detail.startsWith('not_run:')).toBe(false);
-    expect(loopback?.detail).toMatch(/GET \/models and POST \/chat\/completions/);
+    expect(loopback?.detail).toMatch(/GET \/models and two POST \/chat\/completions/);
     const sandbox = report.cases.find((item) => item.name === 'macos-sandbox-egress');
     expect(sandbox?.passed).toBe(false);
     expect(sandbox?.detail.startsWith('not_run:')).toBe(true);

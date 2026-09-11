@@ -3,6 +3,9 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { grokPaths } from '../grok/files';
+import { encodeGrokOwnership, parseGrokOwnership } from '../grok/ownership';
+import { readGrokLeaf } from '../grok/toml';
 import {
   COMPAT_KILL_GRACE_MS,
   COMPAT_STREAM_SLACK_MS,
@@ -168,6 +171,26 @@ async function startProxy(
  * Host-only timestamp helper. Writes a temporary Grok auth file under this fixture
  * root. Not natural-expiry evidence. Never reads a user auth.json.
  */
+async function syncWrappedAuthOwnership(grokHome: string, configText: string): Promise<void> {
+  const ownershipPath = grokPaths(grokHome).ownership;
+  let encoded: string;
+  try {
+    encoded = await Bun.file(ownershipPath).text();
+  } catch {
+    return;
+  }
+  const ownership = parseGrokOwnership(encoded);
+  const leaves = ownership.leaves.map((leaf) => {
+    const isAuthCommand =
+      leaf.path.length === 2 &&
+      (leaf.path[0] === 'auth' || leaf.path[0] === 'grok_com_config') &&
+      leaf.path[1] === 'auth_provider_command';
+    return isAuthCommand ? { ...leaf, written: readGrokLeaf(configText, leaf.path) } : leaf;
+  });
+  if (leaves.every((leaf, index) => leaf === ownership.leaves[index])) return;
+  await writeFile(ownershipPath, encodeGrokOwnership({ ...ownership, leaves }), { mode: 0o600 });
+}
+
 export async function writeFixtureGrokAuth(root: string, text: string): Promise<string> {
   const authPath = resolve(root, 'auth.json');
   const prefix = resolve(root);
@@ -252,7 +275,9 @@ export async function createGrokCompatFixture(options: GrokCompatOptions): Promi
     async wrapAuthCommand() {
       const configPath = join(grokHome, 'config.toml');
       const text = await Bun.file(configPath).text();
-      await writeFile(configPath, wrapAuthProviderCommand(text, HELPER_RECORDER, helperCaptureDir), { mode: 0o600 });
+      const wrapped = wrapAuthProviderCommand(text, HELPER_RECORDER, helperCaptureDir);
+      await writeFile(configPath, wrapped, { mode: 0o600 });
+      await syncWrappedAuthOwnership(grokHome, wrapped);
     },
     run: (argv, timeoutMs = 20_000) =>
       spawnArgv(argv, env, root, timeoutMs, argv[0] === options.grokBinary ? sandboxPrefix : undefined),

@@ -123,11 +123,11 @@ async function probeUnimplementedHelperUrl(endpoint: string): Promise<GrokCompat
 
 export function loopbackRecorderCase(records: readonly GrokCompatHttpRecord[]): GrokCompatCase {
   const sawModels = records.some((item) => item.method === 'GET' && item.path.endsWith('/models'));
-  const sawCompletions = records.some((item) => item.method === 'POST' && item.path.endsWith('/chat/completions'));
-  if (!sawModels || !sawCompletions) {
+  const completions = records.filter((item) => item.method === 'POST' && item.path.endsWith('/chat/completions'));
+  if (!sawModels || completions.length < 2) {
     return failed(
       'loopback-http-recorder',
-      `expected GET /models and POST /chat/completions; captured ${String(records.length)} request(s)`,
+      `expected GET /models and two POST /chat/completions; captured ${String(records.length)} request(s)`,
     );
   }
   const foreign = records.filter((item) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/u.test(item.origin));
@@ -177,12 +177,15 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
   cases.push(fromChild('login', login));
   cases.push(await helperStdoutContractCase(fixture.helperCaptureDir, login.stderr));
   cases.push(fromChild('models', await fixture.run([options.grokBinary, 'models'])));
-  cases.push(
-    fromChild(
-      'stream-and-tool',
-      await fixture.run([options.grokBinary, '-p', '--no-session', '-m', 'compat-grok-model', 'compat'], 60_000),
-    ),
+  const prompt = await fixture.run(
+    [options.grokBinary, '-p', '--no-session', '-m', 'compat-grok-model', 'compat'],
+    60_000,
   );
+  if (prompt.exitCode === 0 && !prompt.stdout.includes('compat-ok')) {
+    cases.push(failed('stream-and-tool', 'prompt exited 0 without the terminal compat-ok text'));
+  } else {
+    cases.push(fromChild('stream-and-tool', prompt));
+  }
   cases.push(loopbackRecorderCase(fixture.records));
   cases.push(sandboxExecCase(fixture.sandboxExec, fixture.sandboxExec !== null));
   cases.push(...namedNotRunGates(process.platform));
