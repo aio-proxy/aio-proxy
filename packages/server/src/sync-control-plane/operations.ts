@@ -180,6 +180,15 @@ export async function applyPreview(
   const remoteByObject = new Map(record.remote.map((entity) => [entity.objectId, entity]));
   if (record.input.kind === 'purge') {
     if (record.dependencyError) throw new SyncOperationError('dependency-in-use');
+    const purge = record.input;
+    const targetKind = purge.scope === 'provider' ? 'provider' : 'plugin-business';
+    // buildPreview lists transitive cloud dependents so the user can see what a purge would
+    // orphan. Purging is permanent, so they are blockers, not collateral: erase only the
+    // requested object and make the user delete or rewrite anything still depending on it.
+    if (
+      record.rows.some((candidate) => candidate.row.kind !== targetKind || candidate.row.logicalKey !== purge.objectId)
+    )
+      throw new SyncOperationError('dependency-in-use');
     for (const candidate of record.rows) {
       const remote = remoteByObject.get(candidate.row.objectId);
       if (remote === undefined) continue;
@@ -189,6 +198,12 @@ export async function applyPreview(
     }
     return input.status();
   }
+  // Applying consumes the preview, so an omitted decision would silently skip its row and still
+  // report success. Overrides are worse: their paths persist before the decision loop below.
+  if (decisions.length !== record.rows.length || selected.size !== decisions.length)
+    throw new SyncOperationError('upgrade-required');
+  for (const candidate of record.rows)
+    if (!selected.has(candidate.row.objectId)) throw new SyncOperationError('upgrade-required');
   if (record.input.kind === 'overrides') {
     const current = localByObject.get(record.input.objectId);
     await input.persistOverrides(record.input.objectId, record.input.paths, current);

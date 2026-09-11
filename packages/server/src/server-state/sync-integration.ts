@@ -219,7 +219,11 @@ export function createSyncIntegration(
         if (lifecycle === nextLifecycle) onSharingChange(next);
       },
       withProviderGate: runtime.withProviderGate,
-      deferEngine: true,
+      // A candidate backend must not reconcile until replaceBackend has swapped it in and called
+      // activate(). The lifecycle restored from a persisted binding has no such handover, so it
+      // starts polling and watching immediately — otherwise a restart would never pick up remote
+      // changes until the next local mutation or manual retry.
+      deferEngine: candidate,
       ...(candidate && binding !== null ? { initialBinding: binding } : {}),
       ...(preconnectedSession === undefined ? {} : { preconnectedSession }),
     });

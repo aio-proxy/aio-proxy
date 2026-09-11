@@ -363,6 +363,9 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     },
     async disconnect() {
       await options.lifecycle?.close();
+      // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
+      // so the next service start would read it and reconnect, silently undoing the disconnect.
+      options.repo.clearBinding?.();
       state = 'disconnected';
       return status();
     },
