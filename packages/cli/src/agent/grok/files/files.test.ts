@@ -229,16 +229,22 @@ test('a stalled Grok file payload read does not outlive the budget', async () =>
   const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-read-'));
   const path = join(root, 'config.toml');
   const realOpen = fsPromises.open.bind(fsPromises);
+  const realCloses: Array<() => Promise<void>> = [];
   const open = spyOn(fsPromises, 'open').mockImplementation(async (target, flags, mode) => {
     const handle = await realOpen(target, flags, mode);
     if (target === path) {
+      const originalClose = handle.close.bind(handle);
+      realCloses.push(originalClose);
       Object.defineProperty(handle, 'read', {
         configurable: true,
         value: () => new Promise(() => {}),
       });
       Object.defineProperty(handle, 'close', {
         configurable: true,
-        value: () => new Promise(() => {}),
+        value: () => {
+          void originalClose().catch(() => undefined);
+          return new Promise(() => {});
+        },
       });
     }
     return handle;
@@ -252,6 +258,7 @@ test('a stalled Grok file payload read does not outlive the budget', async () =>
     expect(Date.now() - started).toBeLessThan(1_000);
   } finally {
     open.mockRestore();
+    await Promise.all(realCloses.map((close) => close().catch(() => undefined)));
     await rm(root, { recursive: true, force: true });
   }
 });
