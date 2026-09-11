@@ -103,6 +103,43 @@ test('recover drops pending when every field is still before', () => {
   expect(recovered.ownership.createdTables).toEqual([['endpoints']]);
 });
 
+test('recover keeps mixed leftover pending on a second all-before pass', () => {
+  const pending = {
+    operation: 'configure' as const,
+    changes: [
+      change(['auth', 'auth_provider_label'], value('Cloud'), value('AIO Proxy')),
+      change(['endpoints', 'models_base_url'], absent, value('http://127.0.0.1:9317/v1')),
+    ],
+    nextLeaves: [
+      owned(['auth', 'auth_provider_label'], value('Cloud'), value('AIO Proxy')),
+      owned(['endpoints', 'models_base_url'], absent, value('http://127.0.0.1:9317/v1')),
+    ],
+    nextCreatedTables: [['endpoints']],
+  };
+  const ownership: GrokOwnership = {
+    ...baseOwnership(pending),
+    leaves: [owned(['auth', 'auth_provider_label'], value('Cloud'), value('Cloud'))],
+  };
+  const text = '[auth]\nauth_provider_label = "Cloud"\n[endpoints]\nmodels_base_url = "http://127.0.0.1:9317/v1"\n';
+  const first = recoverGrokOwnership(text, ownership);
+  expect(first.ownership.pending).toBeDefined();
+  expect(first.ownership.pending?.changes).toEqual([
+    change(['auth', 'auth_provider_label'], value('Cloud'), value('AIO Proxy')),
+  ]);
+  const second = recoverGrokOwnership(text, first.ownership);
+  expect(second.conflicts).toEqual([]);
+  expect(second.ownership.pending).toEqual(first.ownership.pending);
+  const adopted = adoptRecoveredOwnership(first.ownership, encodeGrokOwnership(first.ownership), second);
+  expect(adopted.ownership.pending).toEqual(first.ownership.pending);
+  const dropped = {
+    ownership: { ...first.ownership, pending: undefined },
+    conflicts: [] as const,
+  };
+  const blocked = adoptRecoveredOwnership(first.ownership, encodeGrokOwnership(first.ownership), dropped);
+  expect(blocked.persist).toBe(false);
+  expect(blocked.ownership.pending).toEqual(first.ownership.pending);
+});
+
 test('recover keeps pending when a first-install is still entirely before', () => {
   const pending = {
     operation: 'configure' as const,

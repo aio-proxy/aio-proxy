@@ -213,7 +213,7 @@ export function recoverGrokOwnership(
   }
 
   if (conflicts.length === 0 && beforeCount === pending.changes.length) {
-    if (ownership.leaves.length > 0) {
+    if (isCommittedPendingTarget(ownership.leaves, pending)) {
       return {
         ownership: committedOwnership(ownership, ownership.leaves, ownership.createdTables),
         conflicts: [],
@@ -266,8 +266,8 @@ const sameOwnedLeaves = (left: readonly OwnedLeaf[], right: readonly OwnedLeaf[]
       equalGrokLeaf(leaf.written, right[index]!.written),
   );
 
-const sameCreatedTables = (left: readonly GrokPath[], right: readonly GrokPath[]): boolean =>
-  left.length === right.length && left.every((path, index) => pathKey(path) === pathKey(right[index]!));
+const isCommittedPendingTarget = (leaves: readonly OwnedLeaf[], pending: GrokTransaction): boolean =>
+  sameOwnedLeaves(leaves, pending.nextLeaves);
 
 function shouldPersistRecoveredOwnership(
   previous: GrokOwnership,
@@ -279,13 +279,7 @@ function shouldPersistRecoveredOwnership(
   if (next.pending !== undefined || recovered.conflicts.length > 0) return true;
   const pending = previous.pending;
   if (pending === undefined) return true;
-  if (
-    sameOwnedLeaves(next.leaves, pending.nextLeaves) &&
-    sameCreatedTables(next.createdTables, pending.nextCreatedTables)
-  ) {
-    return true;
-  }
-  return previous.leaves.length > 0;
+  return isCommittedPendingTarget(next.leaves, pending);
 }
 
 export function adoptRecoveredOwnership(
@@ -296,7 +290,12 @@ export function adoptRecoveredOwnership(
   if (shouldPersistRecoveredOwnership(previous, previousEncoded, recovered)) {
     return { ownership: recovered.ownership, persist: true };
   }
-  if (previous.pending !== undefined && recovered.ownership.pending === undefined && previous.leaves.length === 0) {
+  const pending = previous.pending;
+  if (
+    pending !== undefined &&
+    recovered.ownership.pending === undefined &&
+    !isCommittedPendingTarget(recovered.ownership.leaves, pending)
+  ) {
     return { ownership: previous, persist: false };
   }
   return { ownership: recovered.ownership, persist: false };

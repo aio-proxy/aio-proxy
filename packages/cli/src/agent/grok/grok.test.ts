@@ -166,6 +166,50 @@ test('configure does not persist a first-install all-before rollback before poli
   }
 });
 
+test('mixed recovery pending survives a second recover persist', async () => {
+  const f = await grokFixture();
+  try {
+    const config = join(f.root, 'config.toml');
+    await writeFile(
+      config,
+      '[auth]\nauth_provider_label = "Cloud"\n[endpoints]\nmodels_base_url = "http://127.0.0.1:9317/v1"\n',
+    );
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'marker') throw new Error('crash after marker');
+        },
+      }),
+    ).rejects.toThrow(/crash after marker/);
+    const ownershipPath = join(f.root, 'aio-proxy', 'ownership.json');
+    const marker = JSON.parse(await readFile(join(f.root, 'aio-proxy', '.aio-proxy-managed.json'), 'utf8')) as {
+      installationId: string;
+    };
+    const auth = () =>
+      withGrokInstallation(
+        {
+          root: f.root,
+          installationId: marker.installationId,
+          adapterVersion: f.input.adapterVersion,
+          budget: budget(),
+          policy: f.deps.policy,
+        },
+        async () => 'must not run',
+      );
+    await expect(auth()).rejects.toThrow(/recovery/);
+    const afterFirst = JSON.parse(await readFile(ownershipPath, 'utf8')) as { pending?: unknown };
+    expect(afterFirst.pending).toBeDefined();
+    await expect(auth()).rejects.toThrow(/recovery/);
+    const afterSecond = JSON.parse(await readFile(ownershipPath, 'utf8')) as { pending?: unknown };
+    expect(afterSecond.pending).toBeDefined();
+    const inspected = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(inspected.configuration).toBe('recovery_required');
+    expect(inspected.configuration).not.toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('mixed after/before recovery stays recovery_required until configure finishes', async () => {
   const f = await grokFixture();
   try {
