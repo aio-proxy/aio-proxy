@@ -88,6 +88,31 @@ const appendConfig = async (root: string, suffix: string) => {
   return configPath;
 };
 
+test('silent missing credentials throw login_required when the helper budget is nearly exhausted', async () => {
+  const f = await authFixture();
+  try {
+    const started = Date.now();
+    let advanced = false;
+    await expect(
+      grokAuth(
+        { ...f.input, expired: true },
+        {
+          ...f.deps,
+          now: () => {
+            if (advanced) return started + 4_900;
+            advanced = true;
+            return started;
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'login_required' });
+    expect(f.calls).toEqual({ device: 0, poll: 0, refresh: 0 });
+    expect(f.stdout).toEqual([]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('silent auth never starts device flow when credentials are missing', async () => {
   const f = await authFixture();
   try {

@@ -51,7 +51,6 @@ async function acquireGrokToken(
   expired: boolean,
   deps: GrokAuthDeps,
 ): Promise<GrokCredential> {
-  const transport = deps.transport(context.marker, networkBudget(context.budget, deps.now()));
   let state = current;
   const invalidate = async (): Promise<void> => {
     if (state === undefined) return;
@@ -68,10 +67,13 @@ async function acquireGrokToken(
     };
     await context.writeCredential(state);
   };
+  const transportForNetwork = (): GrokTransport =>
+    deps.transport(context.marker, networkBudget(context.budget, deps.now()));
   if (state?.status === 'refreshing' && !grokRefreshRecoverable(state, deps.now())) await invalidate();
   if (state !== undefined && state.status !== 'needs_login' && state.refreshToken !== '') {
     const inFlight = await beginGrokRefresh(context, state, deps.now());
     state = inFlight;
+    const transport = transportForNetwork();
     let token: AgentTokenResponse;
     try {
       token = await transport.refresh(context.marker, inFlight.refreshToken);
@@ -86,7 +88,7 @@ async function acquireGrokToken(
     return saveGrokToken(context, inFlight, token, startedAt);
   }
   if (expired) throw new GrokAuthError('login_required');
-  return loginGrokToken(context, state, transport, deps);
+  return loginGrokToken(context, state, transportForNetwork(), deps);
 }
 
 export async function grokAuth(input: GrokAuthInput, deps: GrokAuthDeps): Promise<void> {
