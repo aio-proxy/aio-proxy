@@ -50,13 +50,32 @@ const GrokObservationSchema = z
   })
   .passthrough();
 
+const isTemporaryLockObservation = (error: unknown): boolean =>
+  error instanceof Error && error.message.startsWith('temporary file lock observation failure');
+
+async function observeGrokLockOwner(root: string, budget: GrokDeadline): Promise<string | undefined> {
+  const path = join(root, '.aio-proxy.lock');
+  while (true) {
+    budget.signal.throwIfAborted();
+    try {
+      return await observeFileLockOwner(path, budget);
+    } catch (error) {
+      if (!isTemporaryLockObservation(error)) throw error;
+      const remaining = budget.deadline - Date.now();
+      if (remaining <= 0) throw error;
+      // acquireFileLock creates the lock file before writing the JSON record.
+      await Bun.sleep(Math.min(50 + Math.floor(Math.random() * 25), remaining));
+    }
+  }
+}
+
 export async function readGrokObservation(
   root: string,
   installationId: string,
   budget: GrokDeadline,
 ): Promise<GrokAuthObservation> {
   budget.signal.throwIfAborted();
-  const lockOwner = await observeFileLockOwner(join(root, '.aio-proxy.lock'), budget);
+  const lockOwner = await observeGrokLockOwner(root, budget);
   budget.signal.throwIfAborted();
   const text = await readGrokCredentialText(root);
   if (text === undefined) return lockOwner === undefined ? {} : { lockOwner };

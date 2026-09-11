@@ -812,6 +812,36 @@ test('readGrokObservation omits tokens and treats a missing credential as option
   }
 });
 
+test('readGrokObservation retries while the lock record is still being written', async () => {
+  const f = await authFixture();
+  try {
+    const lockPath = join(f.root, '.aio-proxy.lock');
+    await writeFile(lockPath, '', { mode: 0o600 });
+    await chmod(lockPath, 0o600);
+    const budget = { deadline: Date.now() + 2_000, signal: AbortSignal.timeout(2_000) };
+    const pending = readGrokObservation(f.root, f.input.installationId, budget);
+    await Bun.sleep(80);
+    const identity = Bun.spawn(['ps', '-o', 'lstart=', '-p', String(process.pid)], { stdout: 'pipe' });
+    const starttime = (await new Response(identity.stdout).text()).trim();
+    expect(await identity.exited).toBe(0);
+    expect(starttime.length).toBeGreaterThan(0);
+    await writeFile(
+      lockPath,
+      JSON.stringify({
+        pid: process.pid,
+        owner: 'concurrent-writer',
+        createdAt: Date.now(),
+        starttime,
+      }),
+      { mode: 0o600 },
+    );
+    await chmod(lockPath, 0o600);
+    await expect(pending).resolves.toEqual({ lockOwner: 'concurrent-writer' });
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('readGrokObservation rejects corrupt and unknown credentials', async () => {
   const f = await authFixture();
   try {

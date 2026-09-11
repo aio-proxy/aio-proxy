@@ -234,6 +234,20 @@ test('an unreadable policy file cannot be ignored', async () => {
   }
 });
 
+test.skipIf(process.platform === 'win32')('a FIFO policy file fails fast as unverifiable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'grok-policy-fifo-'));
+  const path = join(root, 'managed_config.toml');
+  try {
+    const created = Bun.spawn(['mkfifo', path]);
+    expect(await created.exited).toBe(0);
+    const started = Date.now();
+    await expect(readGrokPolicy(root, {})).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('GROK_CONFIG overlay with an external model is a field conflict', () => {
   const text = '[ui]\ntheme = "dark"\n';
   const overlay = JSON.stringify({ model: { remote: { base_url: 'https://api.openai.com/v1', api_key: SECRET } } });

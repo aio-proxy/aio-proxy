@@ -1,5 +1,5 @@
-import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { constants, type Stats } from 'node:fs';
+import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { GrokDeadline, GrokPolicySource, GrokVisiblePolicy } from './types';
@@ -28,15 +28,35 @@ const parsePolicyText = (text: string, kind: GrokPolicySource['kind']): void => 
   }
 };
 
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+const assertSafePolicyFile = (stats: Stats): void => {
+  if (stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) {
+    throw new Error(UNVERIFIABLE);
+  }
+};
+
 const readExistingFile = async (path: string, kind: GrokPolicySource['kind']): Promise<GrokPolicySource> => {
+  let link: Stats;
+  try {
+    link = await lstat(path);
+  } catch (error) {
+    if (isErrno(error, 'ENOENT')) throw error;
+    throw new Error(UNVERIFIABLE);
+  }
+  assertSafePolicyFile(link);
   let handle;
   try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // FIFOs and other non-regular paths must not block past the helper budget.
+    handle = await open(path, READ_FLAGS);
   } catch (error) {
     if (isErrno(error, 'ENOENT')) throw error;
     throw new Error(UNVERIFIABLE);
   }
   try {
+    const file = await handle.stat();
+    if (file.dev !== link.dev || file.ino !== link.ino) throw new Error(UNVERIFIABLE);
+    assertSafePolicyFile(file);
     const text = await handle.readFile('utf8');
     parsePolicyText(text, kind);
     return { path, text, kind };
