@@ -157,28 +157,30 @@ export async function tryReadGrokPrivateFile(
   }
 }
 
-export async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(path, 'r');
+const pathUnverifiable = (): Error => new Error('Grok path unverifiable');
+
+export async function syncDirectory(path: string, budget?: GrokDeadline): Promise<void> {
+  const handle = await withReadBudget(budget, pathUnverifiable, () => open(path, 'r'));
   try {
-    await handle.sync();
+    await withHandleBudget(handle, budget, pathUnverifiable, () => handle.sync());
   } finally {
-    await handle.close();
+    void handle.close().catch(() => undefined);
   }
 }
 
-export async function removeMatchingFile(identity: GrokFileIdentity): Promise<void> {
-  const current = await inspectPath(identity.path);
+export async function removeMatchingFile(identity: GrokFileIdentity, budget?: GrokDeadline): Promise<void> {
+  const current = await inspectPath(identity.path, budget);
   if (current === undefined) return;
   if (current.dev !== identity.dev || current.ino !== identity.ino) return;
-  await unlink(identity.path);
+  await withReadBudget(budget, pathUnverifiable, () => unlink(identity.path));
 }
 
-export async function removeMatchingDir(identity: GrokFileIdentity): Promise<void> {
-  const current = await inspectPath(identity.path);
+export async function removeMatchingDir(identity: GrokFileIdentity, budget?: GrokDeadline): Promise<void> {
+  const current = await inspectPath(identity.path, budget);
   if (current === undefined) return;
   if (current.dev !== identity.dev || current.ino !== identity.ino) return;
   try {
-    await rmdir(identity.path);
+    await withReadBudget(budget, pathUnverifiable, () => rmdir(identity.path));
   } catch (error) {
     if (isFsCode(error, 'ENOTEMPTY') || isFsCode(error, 'ENOENT')) return;
     throw error;
@@ -250,9 +252,9 @@ export async function replaceGrokFile(
     budget.signal.throwIfAborted();
     await withReadBudget(budget, unverifiable, () => rename(temporaryPath, path));
     temporary = undefined;
-    await withReadBudget(budget, unverifiable, () => syncDirectory(dirname(path)));
+    await syncDirectory(dirname(path), budget);
   } finally {
-    if (temporary !== undefined) await removeMatchingFile(temporary);
+    if (temporary !== undefined) await removeMatchingFile(temporary, budget);
   }
 }
 
@@ -271,8 +273,12 @@ export async function unlinkGrokFile(
   }
   if (current === undefined) return;
   budget.signal.throwIfAborted();
-  await unlink(path);
-  await syncDirectory(dirname(path));
+  await withReadBudget(
+    budget,
+    () => new Error('Grok file unverifiable'),
+    () => unlink(path),
+  );
+  await syncDirectory(dirname(path), budget);
 }
 
 const TMP_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -302,7 +308,7 @@ export async function removeOwnedGrokTmp(directory: string, basename: string, bu
     const path = join(directory, name);
     const stats = await inspectPath(path, budget);
     if (stats === undefined || stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) continue;
-    await removeMatchingFile({ path, dev: stats.dev, ino: stats.ino });
+    await removeMatchingFile({ path, dev: stats.dev, ino: stats.ino }, budget);
   }
 }
 

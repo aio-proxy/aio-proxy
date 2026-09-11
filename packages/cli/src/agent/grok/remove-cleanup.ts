@@ -69,7 +69,7 @@ async function unlinkKnownFile(
   await lock.withOwnershipFence(async (assertFenced) => {
     budget.signal.throwIfAborted();
     await assertFenced();
-    await removeMatchingFile(identity);
+    await removeMatchingFile(identity, budget);
   });
 }
 
@@ -123,7 +123,7 @@ export async function cleanupPrivateDir(
     await unlinkKnownFile(lock, ownership, budget);
     await testDeps?.failpoint?.('ownership_removed');
   }
-  await removeMatchingDir(privateDir);
+  await removeMatchingDir(privateDir, budget);
   const leftover = await unknownRetainedNames(paths, privateDir, budget);
   if (leftover.length === 0 && (await inspectPath(paths.privateDir)) === undefined) {
     await clearRemovalJournal(lock, paths, budget);

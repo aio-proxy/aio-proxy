@@ -11,8 +11,11 @@ import {
   isGrokOwnedTmpName,
   listGrokDirectoryNames,
   readGrokFile,
+  readGrokPrivateFile,
   removeGrokOwnedTemporaryFiles,
   replaceGrokFile,
+  syncDirectory,
+  unlinkGrokFile,
 } from './files';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
@@ -297,6 +300,47 @@ test('a stalled directory listing is unverifiable within the budget', async () =
     expect(Date.now() - started).toBeLessThan(1_000);
   } finally {
     readdirSpy.mockRestore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled Grok file unlink is unverifiable within the budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-unlink-'));
+  const path = join(root, 'credential.json');
+  const realUnlink = fsPromises.unlink.bind(fsPromises);
+  const unlinkSpy = spyOn(fsPromises, 'unlink').mockImplementation(async (target) => {
+    if (target === path) return new Promise(() => {});
+    return realUnlink(target);
+  });
+  try {
+    await writeFile(path, 'token\n', { mode: 0o600 });
+    const expected = await readGrokPrivateFile(path, 'credential');
+    const started = Date.now();
+    await expect(
+      unlinkGrokFile(path, expected, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }, async () => {}),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    unlinkSpy.mockRestore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled directory sync is unverifiable within the budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-sync-'));
+  const realOpen = fsPromises.open.bind(fsPromises);
+  const openSpy = spyOn(fsPromises, 'open').mockImplementation(async (target, flags, mode) => {
+    if (target === root) return new Promise(() => {});
+    return realOpen(target, flags, mode);
+  });
+  try {
+    const started = Date.now();
+    await expect(syncDirectory(root, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) })).rejects.toThrow(
+      /unverifiable/i,
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    openSpy.mockRestore();
     await rm(root, { recursive: true, force: true });
   }
 });

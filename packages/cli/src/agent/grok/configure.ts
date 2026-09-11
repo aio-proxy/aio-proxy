@@ -218,8 +218,8 @@ async function configureFirst(
   } catch (error) {
     if (!markerWritten && (await inspectPath(paths.marker)) !== undefined) markerWritten = true;
     if (!markerWritten && reuse === undefined) {
-      for (const identity of created.reverse()) await removeMatchingFile(identity);
-      if (privateDir !== undefined) await removeMatchingDir(privateDir);
+      for (const identity of created.reverse()) await removeMatchingFile(identity, budget);
+      if (privateDir !== undefined) await removeMatchingDir(privateDir, budget);
     }
     if (!markerWritten && reuse?.ownership !== undefined) {
       try {
