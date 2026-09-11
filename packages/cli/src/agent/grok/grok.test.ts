@@ -43,6 +43,7 @@ test('public grok index does not export test-only write hooks', () => {
   expect('removeGrokForTest' in grokPublic).toBe(false);
   expect('replaceGrokFile' in grokPublic).toBe(false);
   expect('beforeRename' in grokPublic).toBe(false);
+  expect('setGrokInstallationTestHookForTest' in grokPublic).toBe(false);
   expect(typeof grokPublic.readGrokObservation).toBe('function');
   expect(typeof grokPublic.removeGrok).toBe('function');
 });

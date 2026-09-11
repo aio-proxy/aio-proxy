@@ -174,6 +174,26 @@ export async function inspectGrok(root: string, adapterVersion: string): Promise
   }
 }
 
+export type GrokInstallationTestHook = {
+  readonly afterAction?: () => Promise<void>;
+  readonly beforeReadyCredentialRename?: () => Promise<void>;
+  readonly failDeliveredByWrite?: boolean;
+};
+
+let grokInstallationTestHook: GrokInstallationTestHook | undefined;
+
+export function setGrokInstallationTestHookForTest(hook?: GrokInstallationTestHook): void {
+  grokInstallationTestHook = hook;
+}
+
+function readyCredentialWithoutDelivery(value: unknown): boolean {
+  return isPlainObject(value) && value['status'] === 'ready' && value['deliveredBy'] === undefined;
+}
+
+function deliveredByWrite(value: unknown): boolean {
+  return isPlainObject(value) && typeof value['deliveredBy'] === 'string';
+}
+
 export async function withGrokInstallation<T>(
   input: {
     readonly root: string;
@@ -233,8 +253,17 @@ export async function withGrokInstallation<T>(
         async writeCredential(value: unknown) {
           const encoded = JSON.stringify(value);
           if (encoded === undefined) throw new Error('Grok credential invalid');
+          if (grokInstallationTestHook?.failDeliveredByWrite === true && deliveredByWrite(value)) {
+            throw new Error('Grok completion mark write failed');
+          }
           const expected = await readGrokPrivateFile(paths.credential, 'credential');
-          await replaceOwnedFile(lock, paths.credential, `${encoded}\n`, expected, input.budget);
+          await replaceOwnedFile(lock, paths.credential, `${encoded}\n`, expected, input.budget, {
+            beforeRename: async () => {
+              if (readyCredentialWithoutDelivery(value)) {
+                await grokInstallationTestHook?.beforeReadyCredentialRename?.();
+              }
+            },
+          });
         },
         async clearCredential() {
           const expected = await readGrokPrivateFile(paths.credential, 'credential');
@@ -243,7 +272,9 @@ export async function withGrokInstallation<T>(
           });
         },
       };
-      return action(context);
+      const result = await action(context);
+      await grokInstallationTestHook?.afterAction?.();
+      return result;
     }),
   );
 }
