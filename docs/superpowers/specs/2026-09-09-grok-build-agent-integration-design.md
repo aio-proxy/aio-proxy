@@ -1,7 +1,7 @@
 # Grok Build Agent Integration 设计
 
 - 日期：2026-09-09
-- 状态：设计已确认，进入实现计划阶段；尚未开始实现
+- 状态：已实现，但验收有缺口（见第 10 节）。Task 11 增加了 Grok 兼容 harness、`docs/agent-grok.md` 与 minor changeset；本 runner **未**把兼容性标为通过。
 - 对应 issue：[#329](https://github.com/aio-proxy/aio-proxy/issues/329)
 - 基线：Grok Build `1.0.24 (68e414c661e3)`；aio-proxy `989e5ebb`
 
@@ -210,9 +210,24 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 - helper token 的实际目的地包括模型发现、推理和辅助请求。正常本地使用不把 aio-proxy token 送往外部 origin，辅助 404 不触发云端鉴权替代；显式外部模型与受管覆盖冲突可解释且不损坏原配置。
 - OpenCode/Pi/OMP 的已有 tests 与 artifact/compatibility 验证继续通过，plugin 更新流程不尝试给 Grok 安装脚本。
 
-单元测试按模块 colocate，只保护上述行为与回归。真实 Grok 二进制是兼容验证依赖，不成为 aio-proxy 的构建或运行时依赖。常规实现完成门槛为 `bun run preflight` 与受影响 Agent artifact/compatibility 测试通过；本次仅提交设计文档，不宣称这些实现验收已经通过。
+单元测试按模块 colocate，只保护上述行为与回归。真实 Grok 二进制是兼容验证依赖，不成为 aio-proxy 的构建或运行时依赖。常规实现完成门槛为 `bun run preflight` 与受影响 Agent artifact/compatibility 测试通过。
 
 实现发布使用一条简短 changeset，产品包 `aio-proxy` 与实际修改的内部包使用一致 minor bump；不为本设计文档单独添加功能发布说明。不改变 plugin-sdk 公共 API 时不把它作为无关发布目标。
+
+### Task 11 验收状态（2026-09-11 Linux runner）
+
+Harness：`packages/cli/src/agent/grok-compat/`。入口 `bun run --filter @aio-proxy/cli test:compat:grok -- --grok-bin … --cli-bin … --expected-version 1.0.24 --report <path>`。无 binary 或版本不符时非零退出，不静默 skip 并声称通过。普通 `bun test` 只覆盖 harness 失败传播与脱敏，不下载或启动用户 Grok。
+
+本 runner **未通过**、不得当作兼容证据的项：
+
+- 真实 Grok `1.0.24` 不在本机（无 `/Users/bytedance/.grok/bin/grok`，未安装或更新用户 Grok）
+- 非 macOS：无 `sandbox-exec`，无等价网络隔离，因此 **token 目的地 / egress 验收未通过**
+- 未等待 15 分钟自然 AT 过期（不降低生产 TTL）；host-only 时间戳改写不能当作自然过期证据
+- 未编译或对照 `darwin-arm64` 发布产物；本平台为 Linux。compiled CLI + 真实 Grok host **未在本 runner 上执行**
+- `fresh401`、双 Grok 进程共享 installation 轮换、身份服务重启后的真实 grok login、silent 自批、真实 Dashboard CSRF/approve 旅程：**未跑真实宿主**
+- OpenCode / Pi / OMP `test:compat` 与 artifact：**本任务未执行，不能标为通过**
+
+已有证据：`bun test packages/cli/src/agent/grok-compat/grok-compat.test.ts` 覆盖错误版本拒绝且不调用 login、子进程非零则 case failed 且脚本非零、报告不含 AT/RT/`user_code`、缺 binary 失败闭合。无脱敏宿主 baseline/current JSON 可链接，因为真实宿主未运行。用户文档见 [docs/agent-grok.md](../../agent-grok.md)。
 
 ## 11. 备选方案与结论
 
