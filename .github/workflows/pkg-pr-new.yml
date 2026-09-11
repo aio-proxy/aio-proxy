@@ -20,6 +20,11 @@ jobs:
       - run: bun install --frozen-lockfile --prefer-offline
       - run: bun run build
 
+      # Every publishable library package, so a preview install of plugin-sdk resolves its
+      # workspace dependencies to this PR's code instead of silently falling back to the last
+      # release on npm. The launcher (`npm/aio-proxy`) and its `@aio-proxy/cli-*` platform
+      # packages stay out: they ship compiled binaries that only `build:binary` produces, and
+      # the darwin ones need codesigning on a macOS runner (see release.yml).
       - name: Publish preview packages
         run: >
           bun run pkg-pr-new publish
@@ -29,5 +34,7 @@ jobs:
           --commentWithSha
           --no-compact
           --no-template
+          ./packages/types
+          ./packages/shared
           ./packages/plugin-sdk
           ./packages/plugins/cloudkit
