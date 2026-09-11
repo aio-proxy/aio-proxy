@@ -14,6 +14,8 @@ import {
 import {
   encodeGrokMarker,
   encodeGrokOwnership,
+  isBootstrapGrokJournal,
+  isCompletedGrokRemoval,
   isNewerAdapter,
   parseGrokMarker,
   parseGrokOwnership,
@@ -204,6 +206,21 @@ export async function clearRemovalJournal(lock: FileLock, paths: GrokPaths, budg
   await lock.withOwnershipFence(async (assertOwnership) => {
     await unlinkGrokFile(paths.removalJournal, existing, budget, assertOwnership, 'removal journal');
   });
+}
+
+export async function clearOwnedRemovalJournal(lock: FileLock, paths: GrokPaths, budget: GrokDeadline): Promise<void> {
+  const existing = await readRemovalJournal(paths, budget);
+  if (existing === undefined) return;
+  try {
+    const ownership = parseGrokOwnership(existing.text);
+    if (isCompletedGrokRemoval(ownership) || isBootstrapGrokJournal(ownership)) {
+      await clearRemovalJournal(lock, paths, budget);
+      return;
+    }
+  } catch {
+    // Foreign or invalid leftover journals are not taken over.
+  }
+  throw new Error('Grok removal journal already exists');
 }
 
 export async function restoreOwnershipFromRemovalJournal(

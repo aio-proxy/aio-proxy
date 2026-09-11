@@ -17,7 +17,7 @@ import {
 } from './files';
 import { grokAuthCommand } from './grok-command';
 import {
-  clearRemovalJournal,
+  clearOwnedRemovalJournal,
   commitGrokEdit,
   configTextOrEmpty,
   createBudget,
@@ -205,7 +205,7 @@ async function configureGrokInternal(
       assertSafeRoot(rootStat);
       const privateStat = await inspectPath(paths.privateDir);
       if (privateStat === undefined) {
-        await clearRemovalJournal(lock, paths, budget);
+        await clearOwnedRemovalJournal(lock, paths, budget);
         return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config, budget), testDeps);
       }
       assertSafePrivateDir(privateStat);

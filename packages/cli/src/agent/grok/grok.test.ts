@@ -1188,3 +1188,16 @@ test('remove finishes when only a root removal journal remains', async () => {
     await f.cleanup();
   }
 });
+
+test('configure does not delete an unrelated removal-journal path', async () => {
+  const f = await grokFixture();
+  try {
+    const journal = join(f.root, '.aio-proxy-removal.json');
+    await writeFile(journal, 'keep this user file\n', { mode: 0o600 });
+    await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/already exists|removal journal/);
+    expect(await readFile(journal, 'utf8')).toBe('keep this user file\n');
+    expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+});
