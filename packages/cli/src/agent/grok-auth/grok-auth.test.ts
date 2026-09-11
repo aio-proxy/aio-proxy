@@ -155,6 +155,40 @@ test('device login expiry starts when the token arrives', async () => {
   }
 });
 
+test('refresh expiry starts when the token arrives', async () => {
+  const f = await authFixture();
+  try {
+    let now = Date.now();
+    const clockDeps = {
+      ...f.deps,
+      now: () => now,
+      transport: () => ({
+        device: async () => {
+          f.calls.device++;
+          return f.device;
+        },
+        poll: async () => {
+          f.calls.poll++;
+          return f.tokens;
+        },
+        refresh: async () => {
+          now += 120_000;
+          f.calls.refresh++;
+          return f.tokens;
+        },
+      }),
+    };
+    await grokAuth(f.input, clockDeps);
+    await grokAuth(f.input, clockDeps);
+    const credential = await readCredentialFile(f.root);
+    expect(credential.accessExpiresAt).toBe(now + 900_000);
+    expect(JSON.parse(f.stdout[1]!).expires_in).toBe(900);
+    expect(f.calls).toEqual({ device: 1, poll: 1, refresh: 1 });
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('normal login validates apparently unexpired credentials through refresh', async () => {
   const f = await authFixture();
   try {

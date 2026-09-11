@@ -82,9 +82,7 @@ async function acquireGrokToken(
       if (expired) throw new GrokAuthError('login_required');
       return loginGrokToken(context, state, transport, deps);
     }
-    const startedAt = inFlight.refreshStartedAt;
-    if (startedAt === undefined) throw new Error('Grok credential invalid');
-    return saveGrokToken(context, inFlight, token, startedAt);
+    return saveGrokToken(context, inFlight, token, deps.now());
   }
   if (expired) throw new GrokAuthError('login_required');
   return loginGrokToken(context, state, transportForNetwork(), deps);
