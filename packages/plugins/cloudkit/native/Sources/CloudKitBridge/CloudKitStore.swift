@@ -86,9 +86,13 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         } catch let error as CKError where error.code == .serverRecordChanged {
             return .conflict
         } catch {
-            if let recovered = try await driver.fetch(id: id),
+            // A conditional save that fails for any other reason may still have committed, so only
+            // a reread proving our own bytes are in place rules that out. A reread that itself
+            // fails proves nothing either, and must not degrade to the transport error: the caller
+            // skips its mandatory outcome-unknown recheck for anything but `outcomeUnknown`.
+            if let recovered = try? await driver.fetch(id: id),
                (recovered[Self.removedField] as? Int64 ?? 0) == 0,
-               try AssetStore.data(from: recovered[Self.payloadField] as? CKAsset) == value {
+               (try? AssetStore.data(from: recovered[Self.payloadField] as? CKAsset)) == value {
                 return try writtenResult(from: recovered)
             }
             throw StoreError.outcomeUnknown
@@ -133,6 +137,14 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
             return true
         } catch let error as CKError where error.code == .serverRecordChanged {
             return false
+        } catch {
+            // As in `compareAndSwap`: the tombstone may have committed before the failure
+            // surfaced. Reporting the transport error instead would make the caller retry
+            // against a key it can no longer tell apart from one it never removed.
+            if let recovered = try? await driver.fetch(id: id), (recovered[Self.removedField] as? Int64 ?? 0) != 0 {
+                return true
+            }
+            throw StoreError.outcomeUnknown
         }
     }
 

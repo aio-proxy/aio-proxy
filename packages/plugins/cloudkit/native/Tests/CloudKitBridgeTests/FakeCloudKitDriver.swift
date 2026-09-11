@@ -9,12 +9,20 @@ actor FakeCloudKitDriver: CloudKitDriver {
     var failNextSaveAfterPersist = false
     var accountAvailable = true
     private var identity = AccountIdentity(identifier: "fake-account")
-    func armPostSaveTransportLoss() { failNextSaveAfterPersist = true }
+    private var transportDown = false
+    private var fetchFailsAfterSaveLoss = false
+    /// `fetchAlsoFails` models the transport staying down past the save, so the recovery reread
+    /// cannot observe what was persisted either.
+    func armPostSaveTransportLoss(fetchAlsoFails: Bool = false) {
+        failNextSaveAfterPersist = true
+        fetchFailsAfterSaveLoss = fetchAlsoFails
+    }
     func setAccountAvailable(_ available: Bool) { accountAvailable = available }
     func changeIdentity() { identity = AccountIdentity(identifier: UUID().uuidString) }
     func setNextModificationDate(_ date: Date) { nextModificationDate = date }
 
     func fetch(id: CKRecord.ID) async throws -> CKRecord? {
+        if transportDown { throw CKError(.networkFailure) }
         guard let record = records[id] else { return nil }
         return copy(record)
     }
@@ -37,6 +45,7 @@ actor FakeCloudKitDriver: CloudKitDriver {
         records[record.recordID] = saved
         if failNextSaveAfterPersist {
             failNextSaveAfterPersist = false
+            transportDown = fetchFailsAfterSaveLoss
             throw CKError(.networkFailure)
         }
         return saved

@@ -80,6 +80,32 @@ final class CloudKitStoreTests: XCTestCase {
         XCTAssertFalse(version.isEmpty)
     }
 
+    // A removal whose conditional save commits but whose reply is lost must not surface as a
+    // transport failure: the caller's retry would see a key it cannot tell apart from one that
+    // was never removed. Only `outcomeUnknown` sends it down the mandatory reread path.
+    func testPostSaveTransportLossOnRemoveConfirmsTheTombstone() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        await driver.armPostSaveTransportLoss()
+        XCTAssertTrue(try await store.remove(key: "k", expected: version))
+        XCTAssertEqual(try await store.read(key: "k"), .absent)
+    }
+
+    func testTransportLossThroughTheRecoveryReadIsOutcomeUnknown() async throws {
+        let driver = FakeCloudKitDriver()
+        await driver.armPostSaveTransportLoss(fetchAlsoFails: true)
+        let store = CloudKitStore(driver: driver)
+        do {
+            _ = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8))
+            XCTFail("write reported an outcome it could not observe")
+        } catch {
+            XCTAssertEqual(error as? StoreError, .outcomeUnknown)
+        }
+    }
+
     func testModifiedAtUsesEpochMillisecondsForReadsAndWrites() async throws {
         let driver = FakeCloudKitDriver()
         let date = Date(timeIntervalSince1970: 1_700_000_000.125)
