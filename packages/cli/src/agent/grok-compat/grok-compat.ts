@@ -1,5 +1,6 @@
 import { access, writeFile } from 'node:fs/promises';
 
+import { spawnArgv } from './compat-child';
 import { approveDashboardAuthorization } from './dashboard-approve';
 import {
   createGrokCompatFixture,
@@ -57,24 +58,10 @@ async function requireBinary(path: string, label: string): Promise<void> {
   }
 }
 
-async function capture(
-  argv: readonly string[],
-  env: Record<string, string | undefined> = process.env,
-): Promise<GrokCompatCommandResult> {
-  const command = argv[0];
-  if (command === undefined) throw new Error('missing command');
-  const child = Bun.spawn([command, ...argv.slice(1)], {
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env,
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  return { exitCode, stdout, stderr };
+const VERSION_PROBE_MS = 5_000;
+
+async function captureVersion(argv: readonly string[]): Promise<GrokCompatCommandResult> {
+  return spawnArgv(argv, process.env, process.cwd(), VERSION_PROBE_MS);
 }
 
 function failed(name: string, detail: string): GrokCompatCase {
@@ -199,13 +186,13 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
 export async function runGrokCompatibility(options: GrokCompatOptions): Promise<GrokCompatReport> {
   await requireBinary(options.grokBinary, 'Grok');
   await requireBinary(options.cliBinary, 'CLI');
-  const grok = await capture([options.grokBinary, '--version']);
+  const grok = await captureVersion([options.grokBinary, '--version']);
   if (grok.exitCode !== 0) throw new Error(`Grok --version failed with ${grok.exitCode}`);
   const grokVersion = parseGrokVersion(grok.stdout) ?? grok.stdout.trim();
   if (grokVersion !== options.expectedVersion) {
     throw new Error(`Grok version ${grokVersion} does not match ${options.expectedVersion}`);
   }
-  const cli = await capture([options.cliBinary, '--version']);
+  const cli = await captureVersion([options.cliBinary, '--version']);
   const cliVersion = cli.stdout.trim();
   let fixture: GrokCompatFixture;
   try {

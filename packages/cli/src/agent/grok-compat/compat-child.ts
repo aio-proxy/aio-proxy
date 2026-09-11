@@ -54,7 +54,7 @@ export async function consumeStream(
 
 export function startArgv(
   argv: readonly string[],
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
   cwd: string,
   prefix?: readonly string[],
 ): GrokCompatChild {
@@ -111,7 +111,7 @@ export function startArgv(
 
 export async function spawnArgv(
   argv: readonly string[],
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
   cwd: string,
   timeoutMs: number,
   prefix?: readonly string[],

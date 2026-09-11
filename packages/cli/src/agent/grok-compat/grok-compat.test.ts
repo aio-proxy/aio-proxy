@@ -438,6 +438,33 @@ test('helper recorder persists redacted stdout without the bearer', async () => 
   }
 });
 
+test('version probes return instead of hanging when SIGTERM is ignored', async () => {
+  const root = await scratch('aio-grok-compat-version-timeout-');
+  const hang = join(root, 'hang-grok');
+  try {
+    await writeExecutable(
+      hang,
+      `#!/bin/sh
+trap '' TERM
+sleep 15 &
+wait
+`,
+    );
+    const started = Date.now();
+    await expect(
+      runGrokCompatibility({
+        grokBinary: hang,
+        cliBinary: await fakeCli(root),
+        expectedVersion: '1.0.24',
+        reportPath: join(root, 'report.json'),
+      }),
+    ).rejects.toThrow(/version failed|timed out/i);
+    expect(Date.now() - started).toBeLessThan(8_000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('compat spawn returns after timeout when SIGTERM is ignored and a descendant holds pipes', async () => {
   const root = await scratch('aio-grok-compat-timeout-');
   const hang = join(root, 'hang');
