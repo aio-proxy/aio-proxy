@@ -540,6 +540,30 @@ test('resolveUpgradeTargetFrom treats a standalone binary as binary', async () =
   expect(await resolveUpgradeTargetFrom('/opt/aio-proxy', {})).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
 });
 
+test('resolveUpgradeTargetFrom bounds hung package-manager prefix probes', async () => {
+  const originalWhich = Bun.which;
+  const originalSpawn = Bun.spawn;
+  Bun.which = ((name: string) =>
+    name === 'brew' || name === 'npm' || name === 'bun' || name === 'pnpm'
+      ? `/usr/bin/${name}`
+      : originalWhich(name)) as typeof Bun.which;
+  Bun.spawn = (() => ({
+    stdout: new ReadableStream<Uint8Array>(),
+    exited: new Promise<number>(() => {}),
+    kill() {},
+  })) as typeof Bun.spawn;
+  try {
+    const started = Date.now();
+    await expect(
+      resolveUpgradeTargetFrom('/opt/aio-proxy', {}, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }),
+    ).resolves.toEqual({ method: 'binary', path: '/opt/aio-proxy' });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    Bun.which = originalWhich;
+    Bun.spawn = originalSpawn;
+  }
+});
+
 test('resolveUpgradeTargetFrom does not treat a leftover npm package dir as ownership', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-leftover-'));
   const bin = join(prefix, 'bin', 'aio-proxy');
