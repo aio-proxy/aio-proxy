@@ -187,10 +187,10 @@ async function configureFirst(
         privateDir = await createPrivateDir(paths.privateDir);
       } else {
         assertSafePrivateDir(existing);
-        if (!(await isRecoverableBootstrapPrivateDir(paths.privateDir))) {
+        if (!(await isRecoverableBootstrapPrivateDir(paths.privateDir, budget))) {
           throw new Error('Grok private directory already exists');
         }
-        await removeGrokOwnedTemporaryFiles(paths);
+        await removeGrokOwnedTemporaryFiles(paths, budget);
         privateDir = { path: paths.privateDir, dev: existing.dev, ino: existing.ino };
       }
       await testDeps?.failpoint?.('private_dir');

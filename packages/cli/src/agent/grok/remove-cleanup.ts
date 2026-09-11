@@ -75,14 +75,22 @@ async function unlinkKnownFile(
 
 const REMOVAL_JOURNAL_NAMES = new Set(['.aio-proxy-managed.json', 'ownership.json']);
 
-async function retainedPrivateNames(paths: GrokPaths, privateDir: GrokFileIdentity): Promise<readonly string[]> {
-  const current = await inspectPath(paths.privateDir);
+async function retainedPrivateNames(
+  paths: GrokPaths,
+  privateDir: GrokFileIdentity,
+  budget?: GrokDeadline,
+): Promise<readonly string[]> {
+  const current = await inspectPath(paths.privateDir, budget);
   if (current === undefined || current.dev !== privateDir.dev || current.ino !== privateDir.ino) return [];
-  return [...(await listGrokDirectoryNames(paths.privateDir))].sort();
+  return [...(await listGrokDirectoryNames(paths.privateDir, budget))].sort();
 }
 
-async function unknownRetainedNames(paths: GrokPaths, privateDir: GrokFileIdentity): Promise<readonly string[]> {
-  return (await retainedPrivateNames(paths, privateDir)).filter((name) => !REMOVAL_JOURNAL_NAMES.has(name));
+async function unknownRetainedNames(
+  paths: GrokPaths,
+  privateDir: GrokFileIdentity,
+  budget?: GrokDeadline,
+): Promise<readonly string[]> {
+  return (await retainedPrivateNames(paths, privateDir, budget)).filter((name) => !REMOVAL_JOURNAL_NAMES.has(name));
 }
 
 export async function cleanupPrivateDir(
@@ -94,7 +102,7 @@ export async function cleanupPrivateDir(
   budget: GrokDeadline,
   testDeps?: GrokRemoveTestDeps,
 ): Promise<readonly string[]> {
-  await removeGrokOwnedTemporaryFiles(paths);
+  await removeGrokOwnedTemporaryFiles(paths, budget);
   const leftoverCredential = await tryReadGrokPrivateFile(paths.credential, 'credential', budget);
   if (leftoverCredential !== undefined) {
     await unlinkKnownFile(
@@ -103,7 +111,7 @@ export async function cleanupPrivateDir(
       budget,
     );
   }
-  const retained = await unknownRetainedNames(paths, privateDir);
+  const retained = await unknownRetainedNames(paths, privateDir, budget);
   if (retained.length > 0) return retained;
   if (ownership !== undefined) {
     const current = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
@@ -116,7 +124,7 @@ export async function cleanupPrivateDir(
     await testDeps?.failpoint?.('ownership_removed');
   }
   await removeMatchingDir(privateDir);
-  const leftover = await unknownRetainedNames(paths, privateDir);
+  const leftover = await unknownRetainedNames(paths, privateDir, budget);
   if (leftover.length === 0 && (await inspectPath(paths.privateDir)) === undefined) {
     await clearRemovalJournal(lock, paths, budget);
   } else if (leftover.length > 0) {

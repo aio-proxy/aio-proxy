@@ -283,37 +283,41 @@ export function isGrokOwnedTmpName(name: string, basename: string): boolean {
   return name.startsWith(prefix) && TMP_UUID.test(name.slice(prefix.length));
 }
 
-export async function listGrokDirectoryNames(directory: string): Promise<readonly string[]> {
+export async function listGrokDirectoryNames(directory: string, budget?: GrokDeadline): Promise<readonly string[]> {
   try {
-    return await readdir(directory);
+    return await withReadBudget(
+      budget,
+      () => new Error('Grok path unverifiable'),
+      () => readdir(directory),
+    );
   } catch (error) {
     if (isFsCode(error, 'ENOENT')) return [];
     throw error;
   }
 }
 
-export async function removeOwnedGrokTmp(directory: string, basename: string): Promise<void> {
-  for (const name of await listGrokDirectoryNames(directory)) {
+export async function removeOwnedGrokTmp(directory: string, basename: string, budget?: GrokDeadline): Promise<void> {
+  for (const name of await listGrokDirectoryNames(directory, budget)) {
     if (!isGrokOwnedTmpName(name, basename)) continue;
     const path = join(directory, name);
-    const stats = await inspectPath(path);
+    const stats = await inspectPath(path, budget);
     if (stats === undefined || stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) continue;
     await removeMatchingFile({ path, dev: stats.dev, ino: stats.ino });
   }
 }
 
-export async function removeGrokOwnedTemporaryFiles(paths: GrokPaths): Promise<void> {
+export async function removeGrokOwnedTemporaryFiles(paths: GrokPaths, budget?: GrokDeadline): Promise<void> {
   for (const basename of OWNED_PRIVATE_BASENAMES) {
-    await removeOwnedGrokTmp(paths.privateDir, basename);
+    await removeOwnedGrokTmp(paths.privateDir, basename, budget);
   }
-  await removeOwnedGrokTmp(paths.root, 'config.toml');
+  await removeOwnedGrokTmp(paths.root, 'config.toml', budget);
 }
 
-export async function isRecoverableBootstrapPrivateDir(privateDir: string): Promise<boolean> {
-  const names = await listGrokDirectoryNames(privateDir);
+export async function isRecoverableBootstrapPrivateDir(privateDir: string, budget?: GrokDeadline): Promise<boolean> {
+  const names = await listGrokDirectoryNames(privateDir, budget);
   for (const name of names) {
     if (!OWNED_PRIVATE_BASENAMES.some((basename) => isGrokOwnedTmpName(name, basename))) return false;
-    const stats = await inspectPath(join(privateDir, name));
+    const stats = await inspectPath(join(privateDir, name), budget);
     if (stats === undefined || stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) return false;
   }
   return true;

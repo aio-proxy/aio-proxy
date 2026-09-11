@@ -205,7 +205,7 @@ async function removeGrokInternal(
             return conflictExisting();
           }
         }
-        if (await isRecoverableBootstrapPrivateDir(paths.privateDir)) {
+        if (await isRecoverableBootstrapPrivateDir(paths.privateDir, budget)) {
           const retainedFiles = await cleanupPrivateDir(
             lock,
             paths,

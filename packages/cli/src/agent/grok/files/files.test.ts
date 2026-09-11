@@ -9,6 +9,7 @@ import {
   grokPaths,
   inspectPath,
   isGrokOwnedTmpName,
+  listGrokDirectoryNames,
   readGrokFile,
   removeGrokOwnedTemporaryFiles,
   replaceGrokFile,
@@ -277,6 +278,25 @@ test('a stalled Grok file metadata lookup is unverifiable within the budget', as
     expect(lstat).toHaveBeenCalled();
   } finally {
     lstat.mockRestore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled directory listing is unverifiable within the budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-readdir-'));
+  const realReaddir = fsPromises.readdir.bind(fsPromises);
+  const readdirSpy = spyOn(fsPromises, 'readdir').mockImplementation((async (target, options) => {
+    if (target === root) return new Promise(() => {});
+    return realReaddir(target, options);
+  }) as never);
+  try {
+    const started = Date.now();
+    await expect(
+      listGrokDirectoryNames(root, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    readdirSpy.mockRestore();
     await rm(root, { recursive: true, force: true });
   }
 });
