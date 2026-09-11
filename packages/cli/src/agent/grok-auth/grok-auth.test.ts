@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmod, readFile, writeFile } from 'node:fs/promises';
+import { chmod, readFile, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { AgentRuntimeError } from '@aio-proxy/agent-provider-runtime';
@@ -877,6 +877,23 @@ test('readGrokObservation retries while the lock record is still being written',
     );
     await chmod(lockPath, 0o600);
     await expect(pending).resolves.toEqual({ lockOwner: 'concurrent-writer' });
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('readGrokObservation treats an aged empty lock as no owner without waiting out the budget', async () => {
+  const f = await authFixture();
+  try {
+    const lockPath = join(f.root, '.aio-proxy.lock');
+    await writeFile(lockPath, '', { mode: 0o600 });
+    await chmod(lockPath, 0o600);
+    const aged = new Date(Date.now() - 1_000);
+    await utimes(lockPath, aged, aged);
+    const started = Date.now();
+    const budget = { deadline: Date.now() + 2_000, signal: AbortSignal.timeout(2_000) };
+    await expect(readGrokObservation(f.root, f.input.installationId, budget)).resolves.toEqual({});
+    expect(Date.now() - started).toBeLessThan(1_000);
   } finally {
     await f.cleanup();
   }
