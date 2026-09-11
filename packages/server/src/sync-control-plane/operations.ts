@@ -211,10 +211,10 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
     throw new SyncOperationError('upgrade-required');
   // Applying consumes the preview, so an omitted decision would silently skip its row and still
   // report success. Overrides are worse: their paths persist before the decision loop below.
-  // Connecting is the exception: it lists the candidate backend's objects for review and selects
-  // none of them, so an empty decision set is its normal path rather than a dropped row.
-  if (record.input.kind !== 'connect' && selected.size !== rowIds.size)
-    throw new SyncOperationError('upgrade-required');
+  // Connecting is not exempt: it applies its decisions like any other kind, and skipping a row
+  // there lets the post-swap reconciliation import that cloud object with no explicit choice. A
+  // blank backend has no rows, so its empty decision set still passes.
+  if (selected.size !== rowIds.size) throw new SyncOperationError('upgrade-required');
   for (const candidate of record.rows) {
     const decision = selected.get(candidate.row.objectId);
     if (decision === undefined) continue;

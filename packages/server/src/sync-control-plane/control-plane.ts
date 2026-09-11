@@ -160,11 +160,10 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     return candidate;
   };
 
-  // A candidate holds an open backend session — for CloudKit, a native helper process. `expiresAt`
-  // is only read when the user submits Apply, so closing the dialog or abandoning a CLI preview
-  // would otherwise leak the session until the next connect preview or process shutdown.
-  const retainCandidate = (previewId: string, candidate: SyncConnectCandidate, expiresAt: number): void => {
-    candidates.set(previewId, candidate);
+  // `expiresAt` is only read when the user submits Apply, so closing the dialog or abandoning a CLI
+  // preview would otherwise leave the record in `previews` until shutdown, pinning `preview-required`
+  // and suppressing background engine outcomes long after the advertised TTL.
+  const retainPreview = (previewId: string, expiresAt: number): void => {
     const timer = setTimeout(
       () => {
         previews.delete(previewId);
@@ -177,6 +176,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     );
     timer.unref?.();
     expiryTimers.set(previewId, timer);
+  };
+
+  // A connect candidate additionally holds an open backend session — for CloudKit, a native helper
+  // process — which the same expiry has to dispose.
+  const retainCandidate = (previewId: string, candidate: SyncConnectCandidate, expiresAt: number): void => {
+    candidates.set(previewId, candidate);
+    retainPreview(previewId, expiresAt);
   };
 
   const statuses = createStatus({
@@ -341,6 +347,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         ...(source === undefined ? {} : { source }),
       });
       previews.set(previewId, built.record);
+      retainPreview(previewId, expiresAt);
       enterPreviewRequired();
       return built.preview;
     },

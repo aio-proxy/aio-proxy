@@ -217,7 +217,10 @@ export function buildPreview(input: {
     for (const objectId of targets) if (remoteIds.has(objectId)) ids.add(objectId);
   } else for (const id of [...localByObject.keys(), ...remoteByObject.keys()]) ids.add(id);
   const identityGroups = new Map<string, Set<string>>();
-  for (const entity of [...localSnapshot, ...remoteSnapshot]) {
+  // A tombstoned remote head no longer claims its identity. Counting it would report a collision
+  // against the one live object that remains and, for a Provider, demand a replacement Provider ID
+  // to resolve a duplicate that has already been deleted or purged.
+  for (const entity of [...localSnapshot, ...remoteSnapshot.filter((entity) => entity.tombstone !== true)]) {
     const groupKey = `${entity.kind}\0${entity.logicalKey}`;
     const idsForKey = identityGroups.get(groupKey) ?? new Set<string>();
     idsForKey.add(entity.objectId);

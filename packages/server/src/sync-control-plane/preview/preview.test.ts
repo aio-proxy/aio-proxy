@@ -1126,6 +1126,59 @@ test('an abandoned connect preview disposes its candidate at expiry', async () =
   expect(disposed).toBe(1);
 });
 
+test('an abandoned join preview stops pinning preview-required at expiry', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'excluded',
+        epoch: 1,
+        desired: null,
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    previewTtlMs: 10,
+    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+  });
+
+  await control.preview({ kind: 'join', providerId: 'work' });
+  expect(control.status().state).toBe('preview-required');
+
+  // Only connect previews were swept, so abandoning any other kind pinned `preview-required` for
+  // the rest of the process and kept background engine outcomes suppressed.
+  await Bun.sleep(40);
+  expect(control.status().state).not.toBe('preview-required');
+});
+
 test('connect validates decisions and fences the candidate before swapping the binding', async () => {
   const cloudEntity = (version: string) => ({
     objectId: 'cloud-object',
@@ -1184,9 +1237,46 @@ test('connect validates decisions and fences the candidate before swapping the b
   // longer describe it, so the binding must stay where it is.
   const drifted = await control.preview(connect);
   cloudVersion = 'v2';
-  await expect(control.apply({ previewId: drifted.previewId, decisions: [] })).rejects.toMatchObject({
+  await expect(
+    control.apply({ previewId: drifted.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({
     code: 'preview-stale',
   });
   expect(committed).toBe(0);
   expect(disposed).toBe(2);
+
+  // A connect preview with rows needs a choice for each: skipping one would leave the post-swap
+  // reconciliation to import that cloud object with no explicit review.
+  const skipped = await control.preview(connect);
+  cloudVersion = 'v1';
+  await expect(control.apply({ previewId: skipped.previewId, decisions: [] })).rejects.toMatchObject({
+    code: 'upgrade-required',
+  });
+  expect(committed).toBe(0);
+  expect(disposed).toBe(3);
+});
+
+test('a tombstoned duplicate does not collide with the live object holding the identity', () => {
+  const remoteEntity = (objectId: string, tombstone: boolean) => ({
+    objectId,
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    version: 'v1',
+    revision: `${objectId}-revision`,
+    ...(tombstone ? { tombstone: true, body: null } : { body: providerBody({ region: 'eu' }) }),
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [],
+    // A purged predecessor of the same Provider ID is still in the remote snapshot. Counting it as a
+    // second claim on `provider\0work` made the surviving object a conflict demanding a rename to
+    // resolve a duplicate that no longer exists.
+    remote: [remoteEntity('live-object', false), remoteEntity('dead-object', true)],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview',
+    expiresAt: 1,
+  });
+  const live = built.preview.rows.find((row) => row.objectId === 'live-object');
+  expect(live?.change).not.toBe('conflict');
+  expect(live?.requiresProviderId).toBeUndefined();
 });
