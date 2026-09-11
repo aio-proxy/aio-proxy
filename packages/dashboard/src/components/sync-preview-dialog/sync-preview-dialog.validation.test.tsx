@@ -28,11 +28,11 @@ const preview: SyncPreview = {
 
 const mocks = rs.hoisted(() => ({ applySync: rs.fn() }));
 
-rs.mock('../../hooks/use-sync', () => ({
+rs.mock('@/hooks/use-sync', () => ({
   useApplySync: () => ({ mutate: mocks.applySync, isPending: false, error: null, reset: rs.fn() }),
 }));
 
-rs.mock('../../services/sync-service', () => ({
+rs.mock('@/lib/sync-service', () => ({
   SyncRequestError: class SyncRequestError extends Error {},
 }));
 
@@ -52,9 +52,14 @@ const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({ initialPrevie
 };
 
 test('requires a valid replacement Provider ID before applying an identity conflict', () => {
+  mocks.applySync.mockReset();
+  const collision: SyncPreview = {
+    ...preview,
+    rows: [{ ...preview.rows[0]!, requiresProviderId: true }],
+  };
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <SyncPreviewDialog open preview={preview} onOpenChange={rs.fn()} />
+      <SyncPreviewDialog open preview={collision} onOpenChange={rs.fn()} />
     </QueryClientProvider>,
   );
 
@@ -62,6 +67,23 @@ test('requires a valid replacement Provider ID before applying an identity confl
 
   expect(screen.getByText(/Enter a new Provider ID|请输入新的 Provider ID/u)).toBeTruthy();
   expect(mocks.applySync).not.toHaveBeenCalled();
+});
+
+test('applies a same-object Provider conflict under its existing ID', () => {
+  mocks.applySync.mockReset();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={preview} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  expect(screen.queryByLabelText(/New Provider ID|新的 Provider ID/u)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
+
+  expect(mocks.applySync).toHaveBeenCalledWith(
+    { previewId: 'preview-conflict', decisions: [{ objectId: 'object-work', choice: 'local' }] },
+    { onSuccess: expect.any(Function) },
+  );
 });
 
 test('applies the preview ID returned after adding an override', async () => {

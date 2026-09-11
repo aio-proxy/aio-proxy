@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '@/lib/query-keys';
-
 import {
   applySync,
   cancelSyncDetach,
@@ -12,7 +11,7 @@ import {
   setSyncRange,
   syncBackendsQueryOptions,
   syncQueryOptions,
-} from '../../services/sync-service';
+} from '@/lib/sync-service';
 
 export const useSyncStatus = () => useQuery(syncQueryOptions());
 export const useSyncBackends = () => useQuery(syncBackendsQueryOptions());

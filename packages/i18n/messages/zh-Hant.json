@@ -446,6 +446,7 @@
       "new_local": "新的本機 Provider 保持本機",
       "provider_select": "要管理的 Provider",
       "required_plugin_data": "會包含必要的外掛程式設定和密鑰。",
+      "secret_reenter": "已儲存該密鑰。重新連線時需要再次輸入。",
       "keep_cloud": "離開時保留雲端副本",
       "cloud_copies_remain": "排除此 Provider 後，雲端副本仍會保留。",
       "purge_provider": "清除此 Provider 的雲端設定、歷史和帳戶",

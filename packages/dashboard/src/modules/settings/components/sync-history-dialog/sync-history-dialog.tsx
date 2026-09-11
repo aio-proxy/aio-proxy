@@ -33,7 +33,7 @@ import {
 import type { PaginationState } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 
-import { syncHistoryQueryOptions } from '../../services/sync-service';
+import { syncHistoryQueryOptions } from '@/lib/sync-service';
 
 const EMPTY_HISTORY: readonly SyncHistoryItem[] = [];
 const HISTORY_FEATURES = tableFeatures({

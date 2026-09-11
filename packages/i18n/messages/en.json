@@ -446,6 +446,7 @@
       "new_local": "New local Providers stay local",
       "provider_select": "Provider to manage",
       "required_plugin_data": "Required plugin settings and secrets are included.",
+      "secret_reenter": "A value is stored. Enter it again to reconnect.",
       "keep_cloud": "Keep cloud copies when leaving",
       "cloud_copies_remain": "Cloud copies remain after excluding this Provider.",
       "purge_provider": "Clear this Provider's cloud configuration, history, and account",

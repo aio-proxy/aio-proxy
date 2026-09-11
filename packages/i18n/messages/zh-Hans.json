@@ -446,6 +446,7 @@
       "new_local": "新的本地 Provider 保持本地",
       "provider_select": "要管理的 Provider",
       "required_plugin_data": "会包含必需的插件设置和密钥。",
+      "secret_reenter": "已存储该密钥。重新连接时需要再次输入。",
       "keep_cloud": "离开时保留云端副本",
       "cloud_copies_remain": "排除此 Provider 后，云端副本仍会保留。",
       "purge_provider": "清除此 Provider 的云端配置、历史和账户",

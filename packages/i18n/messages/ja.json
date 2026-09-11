@@ -446,6 +446,7 @@
       "new_local": "新しいローカル Provider をローカルに保持",
       "provider_select": "管理する Provider",
       "required_plugin_data": "必要なプラグイン設定とシークレットが含まれます。",
+      "secret_reenter": "値は保存済みです。再接続するには再入力してください。",
       "keep_cloud": "離脱時にクラウドのコピーを保持",
       "cloud_copies_remain": "この Provider を除外した後もクラウドのコピーは残ります。",
       "purge_provider": "この Provider のクラウド設定、履歴、アカウントを消去",

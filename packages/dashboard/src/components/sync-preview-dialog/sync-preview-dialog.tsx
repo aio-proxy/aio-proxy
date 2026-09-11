@@ -16,8 +16,10 @@ import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
-import { useApplySync } from '../../hooks/use-sync';
-import { SyncRequestError } from '../../services/sync-service';
+import { useApplySync } from '@/hooks/use-sync';
+import { SyncRequestError } from '@/lib/sync-service';
+
+import { SyncPreviewRenameField } from './sync-preview-rename-field';
 
 const SECRET_KEY = /(?:secret|token|password|credential|api[-_]?key|private[-_]?key|authorization)/iu;
 const EMPTY_ROWS: readonly SyncPreviewRow[] = [];
@@ -85,6 +87,11 @@ const choiceLabel = (choice: SyncPreviewRow['choices'][number]): string => {
   if (choice === 'cloud') return m['dashboard.sync.preview_choice_cloud']();
   if (choice === 'restore') return m['dashboard.sync.preview_choice_restore']();
   return m['dashboard.sync.preview_choice_local']();
+};
+
+const renameError = (value: string | undefined): 'required' | 'invalid' | undefined => {
+  if (providerIdSchema.safeParse(value).success) return undefined;
+  return value === undefined || value.trim() === '' ? 'required' : 'invalid';
 };
 
 const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): value is SyncPreview =>
@@ -234,8 +241,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
     const parsed = previewFormSchema.safeParse(values);
     const requiredRename = rows.find(
       (row) =>
-        row.kind === 'provider' &&
-        row.change === 'conflict' &&
+        row.requiresProviderId === true &&
         !providerIdSchema.safeParse(values.decisions[row.objectId]?.newProviderId).success,
     );
     if (!parsed.success || requiredRename !== undefined) {
@@ -320,37 +326,29 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                     }}
                   </form.Field>
                 </div>
-                {row.change === 'conflict' ? (
+                {/* Only an identity collision — two objects claiming one Provider ID — needs a
+                    rename. A plain local/cloud conflict on a single object is resolvable under its
+                    existing ID, and the server rejects nothing there. */}
+                {row.requiresProviderId === true ? (
                   <form.Field name="decisions">
-                    {(field) => (
-                      <>
-                        <Input
-                          className="mt-3"
-                          aria-label={m['dashboard.sync.rename_provider']()}
-                          placeholder={m['dashboard.sync.rename_provider']()}
-                          value={field.state.value[row.objectId]?.newProviderId ?? ''}
-                          onChange={(event) =>
+                    {(field) => {
+                      const decision = field.state.value[row.objectId];
+                      return (
+                        <SyncPreviewRenameField
+                          value={decision?.newProviderId}
+                          error={validationError === row.objectId ? renameError(decision?.newProviderId) : undefined}
+                          onValueChange={(newProviderId) =>
                             field.handleChange({
                               ...field.state.value,
                               [row.objectId]: {
-                                ...(field.state.value[row.objectId] ?? { objectId: row.objectId, choice: 'local' }),
-                                newProviderId: event.target.value || undefined,
+                                ...(decision ?? { objectId: row.objectId, choice: 'local' }),
+                                newProviderId,
                               },
                             })
                           }
                         />
-                        {validationError === row.objectId ? (
-                          <p role="alert" className="mt-1 text-xs text-destructive">
-                            {providerIdSchema.safeParse(field.state.value[row.objectId]?.newProviderId).success
-                              ? null
-                              : field.state.value[row.objectId]?.newProviderId?.trim() === '' ||
-                                  field.state.value[row.objectId]?.newProviderId === undefined
-                                ? m['dashboard.sync.rename_provider_required']()
-                                : m['dashboard.sync.rename_provider_invalid']()}
-                          </p>
-                        ) : null}
-                      </>
-                    )}
+                      );
+                    }}
                   </form.Field>
                 ) : null}
                 <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">

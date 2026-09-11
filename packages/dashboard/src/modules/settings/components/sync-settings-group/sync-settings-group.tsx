@@ -1,5 +1,11 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthFormField, ProviderSyncView, SyncPreview, SyncPreviewInput } from '@aio-proxy/types';
+import type {
+  DashboardOAuthFormField,
+  ProviderSyncView,
+  SyncBackendView,
+  SyncPreview,
+  SyncPreviewInput,
+} from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
@@ -8,16 +14,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import type { AnyFieldApi } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 
+import { SyncPreviewDialog } from '@/components/sync-preview-dialog';
+import { usePreviewSync, useSyncBackends, useSyncStatus, useDisconnectSync, useRetrySync } from '@/hooks/use-sync';
+import { optionValue } from '@/lib/json-form-value';
 import { resolveDashboardText } from '@/lib/localized-text';
-import { SyncPreviewDialog } from '@/modules/settings/components/sync-preview-dialog';
 
-import { usePreviewSync, useSyncBackends, useSyncStatus, useDisconnectSync, useRetrySync } from '../../hooks/use-sync';
 import { SyncHistoryDialog } from '../sync-history-dialog';
 
 const initialOptions = (fields: readonly DashboardOAuthFormField[]): Record<string, unknown> =>
@@ -28,6 +35,11 @@ const initialOptions = (fields: readonly DashboardOAuthFormField[]): Record<stri
   );
 const syncOptionsSchema = z.record(z.string(), z.json());
 const EMPTY_PROVIDERS: readonly ProviderSyncView[] = [];
+const EMPTY_BACKENDS: readonly SyncBackendView[] = [];
+
+/** A plugin ID can contain `/`, so the pair is keyed as JSON rather than joined with a separator. */
+const syncBackendKey = (backend: { readonly plugin: string; readonly capability: string }): string =>
+  JSON.stringify([backend.plugin, backend.capability]);
 
 export const providerPurgePreviewInput = (providerId: string): Extract<SyncPreviewInput, { kind: 'purge' }> => ({
   kind: 'purge',
@@ -54,13 +66,28 @@ const renderSyncBackendField = (field: DashboardOAuthFormField, form: SyncReactF
       {(optionsField) => {
         const values = (optionsField.state.value ?? {}) as Record<string, unknown>;
         const value = values[field.key];
-        const setValue = (next: unknown) =>
-          optionsField.handleChange({ ...values, ...(next === undefined ? {} : { [field.key]: next }) });
+        // Deleting rather than spreading around the key: `connect` submits exactly this object, so a
+        // cleared field has to leave, not keep whatever was typed before it.
+        const setValue = (next: unknown) => {
+          const options = { ...values };
+          if (next === undefined) delete options[field.key];
+          else options[field.key] = next;
+          optionsField.handleChange(options);
+        };
         if (field.type === 'secret') {
           return (
             <Field>
-              <FieldLabel>{label}</FieldLabel>
-              <FieldDescription>{m['dashboard.sync.required_plugin_data']()}</FieldDescription>
+              <FieldLabel htmlFor={id}>{label}</FieldLabel>
+              {/* The stored value is never returned by `/backends`, and `connect` validates the
+                  submitted options on their own, so the secret has to be typed here every time. */}
+              <Input
+                id={id}
+                type="password"
+                value={typeof value === 'string' ? value : ''}
+                onChange={(event) => setValue(event.target.value === '' ? undefined : event.target.value)}
+              />
+              {description === undefined ? null : <FieldDescription>{description}</FieldDescription>}
+              {field.configured ? <FieldDescription>{m['dashboard.sync.secret_reenter']()}</FieldDescription> : null}
             </Field>
           );
         }
@@ -76,19 +103,25 @@ const renderSyncBackendField = (field: DashboardOAuthFormField, form: SyncReactF
           );
         }
         if (field.type === 'select') {
+          const optionLabel = (selected: string | null) => {
+            const option = field.options.find((entry) => optionValue(entry.value) === selected);
+            return option === undefined ? '' : resolveDashboardText(option.label);
+          };
           return (
             <Field>
               <FieldLabel htmlFor={id}>{label}</FieldLabel>
+              {/* A `<Select>` value is a string, so an authored number or boolean has to round-trip
+                  through JSON or the backend schema rejects the submitted `"1"` / `"true"`. */}
               <Select
-                value={value === undefined ? '' : String(value)}
-                onValueChange={(next) => setValue(next ?? undefined)}
+                value={value === undefined ? '' : optionValue(value as string | number | boolean)}
+                onValueChange={(next) => setValue(next === null || next === '' ? undefined : JSON.parse(next))}
               >
                 <SelectTrigger id={id}>
-                  <SelectValue />
+                  <SelectValue>{optionLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {field.options.map((option) => (
-                    <SelectItem key={String(option.value)} value={String(option.value)}>
+                    <SelectItem key={optionValue(option.value)} value={optionValue(option.value)}>
                       {resolveDashboardText(option.label)}
                     </SelectItem>
                   ))}
@@ -152,9 +185,28 @@ export const SyncSettingsGroup: React.FC = () => {
   const [preview, setPreview] = useState<SyncPreview | null>(null);
   const [lastPreviewInput, setLastPreviewInput] = useState<SyncPreviewInput>();
   const [historyObjectId, setHistoryObjectId] = useState<string | null>(null);
-  const backend = backends.data?.backends[0];
-  const form = useForm({ defaultValues: { options: initialOptions(backend?.form ?? []), providerId: '' } });
+  const backendList = backends.data?.backends ?? EMPTY_BACKENDS;
+  const form = useForm({ defaultValues: { backend: '', options: {} as Record<string, unknown>, providerId: '' } });
+  // `form.state` is a plain getter into the store, so reading it here would not re-render this
+  // component: the picked backend has to be subscribed or Connect keeps submitting the old one.
+  const selectedBackendKey = useStore(form.store, (state) => state.values.backend);
+  const selectedProviderId = useStore(form.store, (state) => state.values.providerId);
+  const backend = backendList.find((entry) => syncBackendKey(entry) === selectedBackendKey) ?? backendList[0];
   const providers = status.data?.providers ?? EMPTY_PROVIDERS;
+  const connectedBackend = status.data?.backend ?? null;
+
+  useEffect(() => {
+    const selected = form.getFieldValue('backend');
+    if (backendList.some((entry) => syncBackendKey(entry) === selected)) return;
+    // Fall back to the bound backend rather than entry zero: with two registered backends the
+    // connected one is not necessarily first, and Connect must not target an unrelated backend.
+    const active =
+      connectedBackend === null
+        ? undefined
+        : backendList.find((entry) => syncBackendKey(entry) === syncBackendKey(connectedBackend));
+    const fallback = active ?? backendList[0];
+    form.setFieldValue('backend', fallback === undefined ? '' : syncBackendKey(fallback));
+  }, [backendList, connectedBackend, form]);
 
   useEffect(() => {
     if (backend !== undefined) form.setFieldValue('options', initialOptions(backend.form));
@@ -188,7 +240,6 @@ export const SyncSettingsGroup: React.FC = () => {
   };
 
   const statusLabel = status.data === undefined ? undefined : statusCopy(status.data.state);
-  const selectedProviderId = form.state.values.providerId;
   const selectedProvider = providers.find((provider) => provider.providerId === selectedProviderId);
   const providerObjectId = selectedProvider?.objectId ?? null;
   const previewError = previewMutation.isError
@@ -229,9 +280,36 @@ export const SyncSettingsGroup: React.FC = () => {
                 connect();
               }}
             >
-              <p className="text-sm font-medium">
-                {m['dashboard.sync.backend_label']()}: {resolveDashboardText(backend.displayName)}
-              </p>
+              <form.Field name="backend">
+                {(field) => (
+                  <Field>
+                    <FieldLabel htmlFor="sync-backend-select">{m['dashboard.sync.backend_label']()}</FieldLabel>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(value) => {
+                        if (value === null) return;
+                        field.handleChange(value);
+                      }}
+                    >
+                      <SelectTrigger id="sync-backend-select">
+                        <SelectValue>
+                          {(selected) => {
+                            const entry = backendList.find((candidate) => syncBackendKey(candidate) === selected);
+                            return entry === undefined ? '' : resolveDashboardText(entry.displayName);
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {backendList.map((entry) => (
+                          <SelectItem key={syncBackendKey(entry)} value={syncBackendKey(entry)}>
+                            {resolveDashboardText(entry.displayName)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
+              </form.Field>
               {providers.length === 0 ? null : (
                 <form.Field name="providerId">
                   {(field) => (

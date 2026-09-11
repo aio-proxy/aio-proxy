@@ -446,6 +446,7 @@
       "new_local": "새 로컬 Provider를 로컬에 유지",
       "provider_select": "관리할 Provider",
       "required_plugin_data": "필수 플러그인 설정과 시크릿이 포함됩니다.",
+      "secret_reenter": "값이 저장되어 있습니다. 다시 연결하려면 다시 입력하세요.",
       "keep_cloud": "나갈 때 클라우드 복사본 유지",
       "cloud_copies_remain": "이 Provider를 제외해도 클라우드 복사본은 남습니다.",
       "purge_provider": "이 Provider의 클라우드 구성, 기록, 계정 삭제",
