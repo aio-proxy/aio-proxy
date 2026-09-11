@@ -38,6 +38,12 @@ type LoginSessionDeps = {
   readonly validateProviderCommit: ProviderCommitValidator;
   readonly syncCommit?: SyncCommitHooks;
   readonly sharing?: () => OAuthSharingService | undefined;
+  /**
+   * Whether this login must coordinate with sync at all, asked per login. A device that connects a
+   * backend after startup starts requiring coordination without recreating the manager, and one that
+   * never connects keeps plain logins instead of failing them for a service it will never have.
+   */
+  readonly syncEnabled?: () => boolean;
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
   readonly onAccountOperationPending?: () => void;
   readonly reload: () => Promise<unknown>;
@@ -104,7 +110,7 @@ const runLoginSession = async (
         coordinateProviderCommit: deps.coordinateProviderCommit,
         validateProviderCommit: deps.validateProviderCommit,
         ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
-        ...(deps.sharing === undefined
+        ...(deps.sharing === undefined || deps.syncEnabled?.() === false
           ? {}
           : {
               beforeAccountOperationComplete: async (operation, signal) => {
@@ -181,6 +187,7 @@ export const createOAuthLoginSessionManager = (options: {
   readonly validateProviderCommit: ProviderCommitValidator;
   readonly syncCommit?: SyncCommitHooks;
   readonly sharing?: () => OAuthSharingService | undefined;
+  readonly syncEnabled?: () => boolean;
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
   readonly onAccountOperationPending?: () => void;
   readonly reload: () => Promise<unknown>;
@@ -240,6 +247,7 @@ export const createOAuthLoginSessionManager = (options: {
         validateProviderCommit: options.validateProviderCommit,
         ...(options.syncCommit === undefined ? {} : { syncCommit: options.syncCommit }),
         ...(options.sharing === undefined ? {} : { sharing: options.sharing }),
+        ...(options.syncEnabled === undefined ? {} : { syncEnabled: options.syncEnabled }),
         ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
         reload: options.reload,
         onAccountOperationPending: options.onAccountOperationPending,

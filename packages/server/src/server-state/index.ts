@@ -361,7 +361,10 @@ async function initializeServerState(
     configStore,
     reload,
     syncCommit,
-    syncRepository.bindings().length === 0 ? undefined : () => oauthSharing,
+    () => oauthSharing,
+    // Connecting a backend after startup must start coordinating logins, and a device that never
+    // connects one must keep logging in without waiting for a service it will never have.
+    () => syncRepository.bindings().length > 0,
   );
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');

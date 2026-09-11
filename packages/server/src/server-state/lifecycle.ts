@@ -332,6 +332,7 @@ export function startLoginSessions(
   reload: () => Promise<ConfigReloadResult>,
   syncCommit?: SyncCommitHooks,
   sharing?: () => import('@aio-proxy/core').OAuthSharingService | undefined,
+  syncEnabled?: () => boolean,
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
   const testHooks = internalOptions.__test;
@@ -362,6 +363,7 @@ export function startLoginSessions(
       }),
     ...(syncCommit === undefined ? {} : { syncCommit }),
     ...(sharing === undefined ? {} : { sharing }),
+    ...(syncEnabled === undefined ? {} : { syncEnabled }),
     withProviderGate: runtime.withProviderGate,
     validateProviderCommit: (capability, current) => {
       const plugins = (manager.current() as Snapshot).plugins;
