@@ -2,6 +2,36 @@ import { expect, test } from 'bun:test';
 
 import { oauthAdapterFixture, withOAuthSharingFixture } from '../test-support';
 
+test('a login during a pending detachment stays local so the next attempt can prove independence', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      f.replaceAdapter({
+        ...f.adapter,
+        credentialSync: {
+          formatVersion: 1,
+          multiDevice: { evidenceId: 'fixture-evidence' },
+          // Independence requires the shared credential to stay behind: an authorization that was
+          // already published to every other device is the same authorization.
+          canDetach: async ({ shared, candidate }) =>
+            (shared as { token: string }).token !== (candidate as { token: string }).token,
+        },
+      });
+      expect(await f.sharing.detach(f.providerId, f.accountWrite, f.signal)).toBe('pending');
+      expect(f.ownership()?.mode).toBe('detach-pending');
+
+      const relogin = { ...f.accountWrite, credential: { token: 'independent-token' } };
+      await f.sharing.synchronizeLogin(f.providerId, relogin, f.signal);
+      expect(f.remote()?.payload.credential).toEqual({ token: 'shared-token' });
+      expect(f.ownership()?.mode).toBe('detach-pending');
+
+      expect(await f.sharing.detach(f.providerId, relogin, f.signal)).toBe('independent');
+      expect(f.ownership()?.mode).toBe('independent');
+      expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+    },
+    { shared: true },
+  );
+});
+
 test('different token strings do not complete independent detachment', async () => {
   await withOAuthSharingFixture(
     async (f) => {

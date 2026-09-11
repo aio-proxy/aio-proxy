@@ -7,7 +7,9 @@ import type { LocalBinding, LocalEntity, SyncRepository } from '../../repository
 import { decodeAccount, type LiveAccount } from '../protocol';
 
 export function entityFor(repo: SyncRepository, binding: LocalBinding, providerId: string): LocalEntity | undefined {
-  return repo.entities(binding.id).find((entity) => entity.logicalKey === providerId);
+  // A model rule or plugin row can carry the same logical key as an OAuth Provider ID. Coordinating
+  // credentials under that row would attach ownership to an unrelated object.
+  return repo.entities(binding.id).find((entity) => entity.kind === 'provider' && entity.logicalKey === providerId);
 }
 
 export function payloadFor(candidate: AccountWrite): LiveAccount['payload'] {

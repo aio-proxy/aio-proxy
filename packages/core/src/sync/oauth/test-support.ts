@@ -178,7 +178,7 @@ export type OAuthSharingFixture = {
 
 export async function withOAuthSharingFixture(
   run: (fixture: OAuthSharingFixture) => Promise<void>,
-  options: { readonly shared?: boolean } = {},
+  options: { readonly shared?: boolean; readonly localAccount?: boolean } = {},
 ): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-oauth-sharing-'));
   const database = openDb({ home });
@@ -200,8 +200,10 @@ export async function withOAuthSharingFixture(
     credential: { token: 'shared-token' },
     catalog: { kind: 'replace', value: { catalog, refreshedAt: 0 } },
   };
-  const pending = accounts.stageAccountOperation({ kind: 'create', targetDigest: 'fixture', account: accountWrite });
-  accounts.completeAccountOperation(pending.operationId);
+  if (options.localAccount !== false) {
+    const pending = accounts.stageAccountOperation({ kind: 'create', targetDigest: 'fixture', account: accountWrite });
+    accounts.completeAccountOperation(pending.operationId);
+  }
   repo.writeBinding(localBinding);
   repo.putEntity(localBinding.id, {
     objectId,

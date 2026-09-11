@@ -1,12 +1,13 @@
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import { SyncBackendError } from '@aio-proxy/plugin-sdk';
 
-import type { AccountWrite, PluginRepository } from '../../../plugins/repository';
+import type { AccountWrite, PluginRepository, StoredAccount } from '../../../plugins/repository';
 import { accountKey } from '../../protocol';
 import type { SyncObjectStore } from '../../publication';
 import type { LocalBinding, SyncRepository } from '../../repository';
 import { accountBytes, entityFor, payloadFor, readRemote, verifyDetach } from './detach';
 import { asJournalPayload, sameJson, sameRemote } from './journal';
+import { importRemoteAccount } from './receive';
 import {
   accountWrite,
   applyLocal,
@@ -23,6 +24,15 @@ import {
 
 export interface OAuthSharingService {
   share(providerId: string, signal: AbortSignal): Promise<'shared' | 'pending'>;
+  /**
+   * Imports a Provider's synchronized account on a device that has none yet. The caller resolves the
+   * adapter from the discovered entity, because no local account exists to resolve it from.
+   */
+  receive(
+    providerId: string,
+    resolved: { readonly adapter: OAuthAdapter; readonly pluginVersion: string },
+    signal: AbortSignal,
+  ): Promise<StoredAccount | null>;
   replaceShared(providerId: string, candidate: AccountWrite, signal: AbortSignal): Promise<void>;
   detach(providerId: string, candidate: AccountWrite, signal: AbortSignal): Promise<'independent' | 'pending'>;
   cancelDetach(providerId: string): void;
@@ -197,8 +207,12 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       if (entity?.oauth === undefined || entity.oauth.mode === 'independent') return 'pending';
       const resolved = await validatedAdapter(input, providerId, candidate);
       if (resolved === undefined) return 'pending';
-      const existing = findJournal(input, providerId, 'detach');
-      if (existing !== undefined && !sameJson(existing.payload.candidate, candidate)) return 'pending';
+      const journaled = findJournal(input, providerId, 'detach');
+      // A pending row means that candidate already failed the independence check, so re-verifying it
+      // can only fail again. Retire it and let the newer authorization be the candidate instead.
+      const stale = journaled !== undefined && !sameJson(journaled.payload.candidate, candidate);
+      if (stale) finishJournal(input, journaled.row);
+      const existing = stale ? undefined : journaled;
       const remote = await readRemote(input.store, entity.objectId, signal);
       if (
         remote === null ||
@@ -292,14 +306,21 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
             input.repo
               .entities(binding.id)
               .some(
-                (old) => old.logicalKey === providerId && old.oauth !== undefined && old.oauth.mode !== 'independent',
+                (old) =>
+                  old.kind === 'provider' &&
+                  old.logicalKey === providerId &&
+                  old.oauth !== undefined &&
+                  old.oauth.mode !== 'independent',
               ),
           )
       )
         throw new Error('SYNC_OAUTH_DETACH_PENDING');
       return;
     }
-    if (entity.oauth?.mode === 'detach-pending') cancelDetach(providerId);
+    // A pending detach is waiting for an independently usable authorization, and this login is how
+    // the user produces one. Publishing it as the shared credential would make the shared and
+    // candidate credentials identical, so canDetach could never approve the detachment again.
+    if (entity.oauth?.mode === 'detach-pending') return;
     if (entity.oauth === undefined || entity.oauth.mode === 'independent' || entity.oauth.mode === 'share-pending') {
       if ((await share(providerId, signal)) !== 'shared') throw new Error('SYNC_OAUTH_SHARE_PENDING');
       return;
@@ -321,5 +342,13 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
     await replaceShared(providerId, candidate, signal);
   }
 
-  return { share, replaceShared, detach, cancelDetach, recover, synchronizeLogin };
+  return {
+    share,
+    receive: (providerId, resolved, signal) => importRemoteAccount(input, providerId, resolved, signal),
+    replaceShared,
+    detach,
+    cancelDetach,
+    recover,
+    synchronizeLogin,
+  };
 }
