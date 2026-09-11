@@ -83,3 +83,8 @@ test('OMP delegates active profile resolution to omp config path', async () => {
     '/tmp/omp-profile/agent/extensions/aio-proxy',
   );
 });
+
+test('generic host functions reject Grok until it is integrated', async () => {
+  await expect(detectAgentHost('grok', hostFixture())).rejects.toThrow(/not yet integrated/i);
+  await expect(resolveAgentLocation('grok', hostFixture())).rejects.toThrow(/not yet integrated/i);
+});

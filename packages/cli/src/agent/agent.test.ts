@@ -8,7 +8,7 @@ import type {
 } from '@aio-proxy/types';
 
 import { agentConfigure, agentList, agentRemove, agentRevoke, type AgentCommandDeps } from './agent';
-import type { AgentHost, AgentLocation } from './hosts';
+import type { AgentHost, AgentPluginLocation } from './hosts';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 const ORPHAN_INSTALLATION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -22,7 +22,7 @@ const installation = (installationId: string): AgentInstallationSummary => ({
   accessExpiresAt: '2026-08-18T00:15:01.000Z',
 });
 
-const commandLocation = (target: AgentPluginTarget): AgentLocation => {
+const commandLocation = (target: AgentPluginTarget): AgentPluginLocation => {
   const hostRoot = `/tmp/${target}/${target === 'opencode' ? 'plugins' : 'extensions'}`;
   return {
     target,

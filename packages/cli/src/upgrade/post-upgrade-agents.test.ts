@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { AgentPluginTarget } from '@aio-proxy/types';
 
-import type { AgentLocation } from '../agent/hosts';
+import type { AgentPluginLocation } from '../agent/hosts';
 import {
   AgentPostUpgradePayloadSchema,
   runAgentPostUpgrade,
@@ -12,7 +12,7 @@ import {
 } from './post-upgrade-agents';
 
 const POST_UPGRADE_INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
-const postUpgradeLocation = (target: AgentPluginTarget): AgentLocation => {
+const postUpgradeLocation = (target: AgentPluginTarget): AgentPluginLocation => {
   const hostRoot = `/tmp/${target}/${target === 'opencode' ? 'plugins' : 'extensions'}`;
   return {
     target,
@@ -111,6 +111,50 @@ test('post-upgrade payload rejects Codex plugin entries', () => {
     AgentPostUpgradePayloadSchema.safeParse({
       format: 1,
       targets: [{ target: 'codex', managedDir: '/tmp/codex/aio-proxy' }],
+    }).success,
+  ).toBe(false);
+});
+
+test('a present Grok marker still produces no Grok asset read or install calls', async () => {
+  const f = postUpgradeFixture({ targets: ['opencode', 'pi', 'omp'] });
+  const inspect = f.deps.inspect;
+  const capturedTargets: string[] = [];
+  f.deps.resolveLocation = async (target) => {
+    capturedTargets.push(target);
+    return postUpgradeLocation(target);
+  };
+  f.deps.inspect = async (location) => {
+    if (location.target === 'grok') {
+      return {
+        integration: 'managed',
+        catalog: 'fresh',
+        marker: {
+          format: 1,
+          managedBy: 'aio-proxy',
+          agent: 'grok',
+          installationId: POST_UPGRADE_INSTALLATION,
+          adapterVersion: '1.0.0',
+          endpoint: 'http://127.0.0.1:9317',
+        },
+      };
+    }
+    return inspect(location);
+  };
+  const readAssets = mock(
+    async (_target: AgentPluginTarget) => new Map([['index.js', new TextEncoder().encode('adapter')]]),
+  );
+  f.deps.readAssets = readAssets;
+  await runAgentPostUpgrade(f.payload, f.deps);
+  expect(capturedTargets).toEqual(['opencode', 'pi', 'omp']);
+  expect(f.install.mock.calls.some((call) => call[0]!.location.target === 'grok')).toBe(false);
+  expect(readAssets.mock.calls.some((call) => call[0] === 'grok')).toBe(false);
+});
+
+test('payload schema rejects a Grok target even when a Grok marker path is present', () => {
+  expect(
+    AgentPostUpgradePayloadSchema.safeParse({
+      format: 1,
+      targets: [{ target: 'grok', managedDir: '/tmp/grok/aio-proxy' }],
     }).success,
   ).toBe(false);
 });

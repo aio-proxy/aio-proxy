@@ -1,8 +1,8 @@
 import { homedir } from 'node:os';
 
 import {
-  AgentRevokeResponseSchema,
   AgentPluginTargetSchema,
+  AgentRevokeResponseSchema,
   type AgentAdminSnapshot,
   type AgentInstallationSummary,
   type AgentPluginTarget,
@@ -23,7 +23,13 @@ import {
   type CodexRemoveResult,
 } from './codex';
 import { readAgentAdminSnapshot, resolveAgentEndpoint, revokeAgentInstallation } from './control-plane';
-import { detectAgentHost, resolveAgentLocation, type AgentHost, type AgentHostDeps, type AgentLocation } from './hosts';
+import {
+  detectAgentHost,
+  resolveAgentLocation,
+  type AgentHost,
+  type AgentHostDeps,
+  type AgentPluginLocation,
+} from './hosts';
 import {
   inspectManagedInstallation,
   installManagedIntegration,
@@ -31,12 +37,12 @@ import {
   type LocalIntegrationStatus,
 } from './managed-installation';
 
-const AGENT_TARGETS = ['opencode', 'pi', 'omp'] as const;
+const AGENT_TARGETS = AgentPluginTargetSchema.options;
 
 export type AgentCommandDeps = {
   readonly detectHost: (target: AgentPluginTarget) => Promise<AgentHost>;
-  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentLocation>;
-  readonly inspect: (location: AgentLocation, now: () => number) => Promise<LocalIntegrationStatus>;
+  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentPluginLocation>;
+  readonly inspect: (location: AgentPluginLocation, now: () => number) => Promise<LocalIntegrationStatus>;
   readonly resolveEndpoint: () => Promise<string>;
   readonly install: typeof installManagedIntegration;
   readonly remove: typeof removeManagedIntegration;
@@ -193,7 +199,7 @@ const listTarget = async (
     schemaCompatibility: 'not_checked',
   };
   if (!host.detected) return { ...base, integration: 'unresolved', reason: 'host_missing' };
-  let location: AgentLocation;
+  let location: AgentPluginLocation;
   try {
     location = await deps.resolveLocation(target);
   } catch {

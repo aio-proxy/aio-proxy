@@ -1,1 +1,8 @@
-export { detectAgentHost, resolveAgentLocation, type AgentHost, type AgentHostDeps, type AgentLocation } from './hosts';
+export {
+  detectAgentHost,
+  resolveAgentLocation,
+  type AgentHost,
+  type AgentHostDeps,
+  type AgentLocation,
+  type AgentPluginLocation,
+} from './hosts';

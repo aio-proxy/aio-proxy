@@ -1,6 +1,6 @@
 import { isAbsolute, join } from 'node:path';
 
-import type { AgentPluginTarget } from '@aio-proxy/types';
+import type { AgentPluginTarget, AgentTarget } from '@aio-proxy/types';
 
 export type AgentHostDeps = {
   readonly which: (name: string) => string | null;
@@ -9,7 +9,7 @@ export type AgentHostDeps = {
   readonly home: string;
 };
 export type AgentHost = {
-  readonly target: AgentPluginTarget;
+  readonly target: AgentTarget;
   readonly detected: boolean;
   readonly executable?: string;
   readonly version?: string;
@@ -17,11 +17,14 @@ export type AgentHost = {
   readonly support: 'supported' | 'unsupported' | 'unknown';
 };
 export type AgentLocation = {
-  readonly target: AgentPluginTarget;
+  readonly target: AgentTarget;
   readonly hostRoot: string;
   readonly managedDir: string;
   readonly adjacentEntry?: string;
 };
+export type AgentPluginLocation = AgentLocation & { readonly target: AgentPluginTarget };
+
+const GROK_NOT_INTEGRATED = 'Grok is not yet integrated';
 
 const hostCommand = {
   opencode: { executable: 'opencode', versionArgs: ['--version'], floor: '1.17.10' },
@@ -40,7 +43,12 @@ const parseVersion = (target: AgentPluginTarget, output: string): string | undef
   }
 };
 
-export async function detectAgentHost(target: AgentPluginTarget, deps: AgentHostDeps): Promise<AgentHost> {
+const isPluginTarget = (target: AgentTarget): target is AgentPluginTarget =>
+  target === 'opencode' || target === 'pi' || target === 'omp';
+
+export async function detectAgentHost(target: AgentTarget, deps: AgentHostDeps): Promise<AgentHost> {
+  if (target === 'grok') throw new Error(GROK_NOT_INTEGRATED);
+  if (!isPluginTarget(target)) throw new Error(`${target} is not a plugin host`);
   const command = hostCommand[target];
   const executable = deps.which(command.executable);
   if (executable === null) {
@@ -70,7 +78,14 @@ const requireAbsolute = (value: string, diagnostic: string): string => {
   return value;
 };
 
-export async function resolveAgentLocation(target: AgentPluginTarget, deps: AgentHostDeps): Promise<AgentLocation> {
+export async function resolveAgentLocation(
+  target: AgentPluginTarget,
+  deps: AgentHostDeps,
+): Promise<AgentPluginLocation>;
+export async function resolveAgentLocation(target: AgentTarget, deps: AgentHostDeps): Promise<AgentLocation>;
+export async function resolveAgentLocation(target: AgentTarget, deps: AgentHostDeps): Promise<AgentLocation> {
+  if (target === 'grok') throw new Error(GROK_NOT_INTEGRATED);
+  if (!isPluginTarget(target)) throw new Error(`${target} is not a plugin host`);
   const command = hostCommand[target];
   const executable = deps.which(command.executable);
   if (executable === null) throw new Error(`${command.executable} is not installed`);

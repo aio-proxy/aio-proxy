@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 
-import type { AgentLocation } from '../hosts';
+import type { AgentPluginLocation } from '../hosts';
 import {
   captureIdentity,
   inspectPath,
@@ -91,7 +91,7 @@ const bindAdjacentEntry = async (path: string, installationId: string): Promise<
 };
 
 async function runManagedRemove(
-  location: AgentLocation,
+  location: AgentPluginLocation,
   expectedInstallationId: string,
   testDeps?: ManagedRemovePrivateTestDeps,
 ): Promise<void> {
@@ -172,7 +172,7 @@ async function runManagedRemove(
 }
 
 export async function removeManagedIntegration(
-  location: AgentLocation,
+  location: AgentPluginLocation,
   expectedInstallationId: string,
   testDeps?: ManagedRemoveTestDeps,
 ): Promise<void> {
@@ -180,7 +180,7 @@ export async function removeManagedIntegration(
 }
 
 export async function removeManagedIntegrationForTest(
-  location: AgentLocation,
+  location: AgentPluginLocation,
   expectedInstallationId: string,
   testDeps?: ManagedRemovePrivateTestDeps,
 ): Promise<void> {
