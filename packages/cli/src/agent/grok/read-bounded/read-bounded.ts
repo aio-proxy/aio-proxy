@@ -89,7 +89,9 @@ export async function readOpenFileText(
     let offset = 0;
     while (offset < size) {
       if (signal.aborted) throw options.limitError();
-      const { bytesRead } = await handle.read(buffer, offset, size - offset, offset);
+      const { bytesRead } = await withReadBudget(options.budget, options.limitError, () =>
+        handle.read(buffer, offset, size - offset, offset),
+      );
       if (bytesRead === 0) break;
       offset += bytesRead;
     }

@@ -131,7 +131,7 @@ async function readGrokSnapshot(
     });
     return { text, dev: file.dev, ino: file.ino, mode: file.mode };
   } finally {
-    await handle.close().catch(() => undefined);
+    void handle.close().catch(() => undefined);
   }
 }
 

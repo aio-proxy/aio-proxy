@@ -225,6 +225,37 @@ test('a stalled directory metadata lookup is unverifiable within the budget', as
   }
 });
 
+test('a stalled Grok file payload read does not outlive the budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-read-'));
+  const path = join(root, 'config.toml');
+  const realOpen = fsPromises.open.bind(fsPromises);
+  const open = spyOn(fsPromises, 'open').mockImplementation(async (target, flags, mode) => {
+    const handle = await realOpen(target, flags, mode);
+    if (target === path) {
+      Object.defineProperty(handle, 'read', {
+        configurable: true,
+        value: () => new Promise(() => {}),
+      });
+      Object.defineProperty(handle, 'close', {
+        configurable: true,
+        value: () => new Promise(() => {}),
+      });
+    }
+    return handle;
+  });
+  try {
+    await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    const started = Date.now();
+    await expect(readGrokFile(path, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) })).rejects.toThrow(
+      /unverifiable/i,
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    open.mockRestore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a stalled Grok file metadata lookup is unverifiable within the budget', async () => {
   const lstat = spyOn(fsPromises, 'lstat').mockImplementation(() => new Promise(() => {}));
   const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-stat-'));

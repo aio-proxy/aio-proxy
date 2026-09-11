@@ -79,7 +79,7 @@ const readExistingFile = async (
     if (error instanceof Error && error.message === UNVERIFIABLE) throw error;
     throw new Error(UNVERIFIABLE);
   } finally {
-    await handle.close().catch(() => undefined);
+    void handle.close().catch(() => undefined);
   }
 };
 

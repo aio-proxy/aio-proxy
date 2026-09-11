@@ -78,6 +78,22 @@ test('a stalled handle operation fails without awaiting close', async () => {
   expect(closed).toBeGreaterThan(0);
 });
 
+test('a stalled file payload read fails without awaiting close', async () => {
+  const handle: ReadableFileHandle = {
+    read: () => new Promise<{ bytesRead: number }>(() => {}),
+    close: () => new Promise<void>(() => {}),
+  };
+  const started = Date.now();
+  await expect(
+    readOpenFileText(handle, 32, {
+      maxBytes: MAX_GROK_FILE_BYTES,
+      budget: { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) },
+      limitError: () => new Error('limit'),
+    }),
+  ).rejects.toThrow('limit');
+  expect(Date.now() - started).toBeLessThan(1_000);
+});
+
 test('abort closes the handle so a stalled read fails within the budget', async () => {
   let closed = 0;
   const handle: ReadableFileHandle = {
