@@ -16,7 +16,7 @@ async function lockHash(): Promise<string> {
 test('keeps the signed CloudKit manifest until the Changesets publish step', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
   const publishStep = workflow.indexOf('- name: Changesets — maintain Version PR or publish');
-  const cleanupStep = workflow.lastIndexOf('- name: Clean CloudKit signing keychain');
+  const cleanupStep = workflow.lastIndexOf('- name: Clean CloudKit release artifacts');
   const manifestRemoval = workflow.indexOf(
     '"$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"',
     cleanupStep,
@@ -25,6 +25,26 @@ test('keeps the signed CloudKit manifest until the Changesets publish step', asy
   expect(publishStep).toBeGreaterThan(-1);
   expect(cleanupStep).toBeGreaterThan(publishStep);
   expect(manifestRemoval).toBeGreaterThan(cleanupStep);
+});
+
+test('destroys every CloudKit signing secret before Changesets runs publish code', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const signStep = workflow.indexOf('- name: Build and sign CloudKit native artifact');
+  const destroyStep = workflow.indexOf('- name: Destroy CloudKit signing material');
+  const publishStep = workflow.indexOf('- name: Changesets — maintain Version PR or publish');
+  const destroySection = workflow.slice(destroyStep, publishStep);
+
+  expect(destroyStep).toBeGreaterThan(signStep);
+  expect(publishStep).toBeGreaterThan(destroyStep);
+  // Runs even when signing failed midway, so a partial write cannot outlive the step.
+  expect(destroySection).toContain("if: always() && steps.cloudkit-release.outputs.publishable == 'true'");
+  expect(destroySection).toContain('security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db"');
+  // Every secret the signing step writes to RUNNER_TEMP must be named here.
+  for (const [, secret] of workflow
+    .slice(signStep, destroyStep)
+    .matchAll(/"\$RUNNER_TEMP\/(aio-cloudkit-signing\.[\w.-]+|aio-cloudkit-notary-key\.p8)"/gu)) {
+    expect(destroySection).toContain(`"$RUNNER_TEMP/${secret}"`);
+  }
 });
 
 test('uses a headless certificate-password file path without password argv', async () => {

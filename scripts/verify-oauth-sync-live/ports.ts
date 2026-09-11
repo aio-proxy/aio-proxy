@@ -1,6 +1,6 @@
-import { decodeAccount, type LiveAccount } from '../packages/core/src/sync/oauth/protocol';
-import { accountKey } from '../packages/core/src/sync/protocol/protocol';
-import type { CredentialPort, OAuthAdapter, RuntimeFetch, SyncSession } from '../packages/plugin-sdk/src';
+import { decodeAccount, type LiveAccount } from '../../packages/core/src/sync/oauth/protocol';
+import { accountKey } from '../../packages/core/src/sync/protocol/protocol';
+import type { CredentialPort, OAuthAdapter, RuntimeFetch, SyncSession } from '../../packages/plugin-sdk/src';
 
 export async function readRemote(session: SyncSession, objectId: string, signal: AbortSignal) {
   const value = await session.read(accountKey(objectId), signal);

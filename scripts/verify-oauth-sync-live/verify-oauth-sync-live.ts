@@ -1,40 +1,22 @@
 import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 
-import { openDb } from '../packages/core/src/db';
+import { openDb } from '../../packages/core/src/db';
 import {
-  accountKey,
-  applySyncedAccount,
   createPluginRegistryHost,
   createPluginRepository,
-  createSharedOAuthCoordinator,
-  createSyncObjectStore,
   createSyncRepository,
-  encode,
+  type LiveAccount,
   type LocalBinding,
   type SyncRepository,
-  type LiveAccount,
-  type SharedOAuthCoordinator,
-  type SharedRefreshResult,
-} from '../packages/core/src/index';
-import type { OAuthSyncEvidence } from '../packages/core/src/sync/oauth/adapter-conformance';
-import type { OAuthAdapter, RuntimeFetch, SyncBackendDefinition, SyncSession } from '../packages/plugin-sdk/src';
-import { BackendSetupError, loadSyncBackendDescriptor } from './verify-oauth-sync-backend';
-import { copiedAccount, discover, readRemote } from './verify-oauth-sync-live-ports';
+} from '../../packages/core/src/index';
+import type { OAuthSyncEvidence } from '../../packages/core/src/sync/oauth/adapter-conformance';
+import type { OAuthAdapter, SyncBackendDefinition, SyncSession } from '../../packages/plugin-sdk/src';
+import { BackendSetupError, loadSyncBackendDescriptor } from '../verify-oauth-sync-backend';
+import { AssertionError, BlockedError, matchesOAuthAdapter, type LiveFailureCode } from './assertion-results';
+import { copiedAccount, discover, readRemote } from './ports';
+import { assertSharedRefresh } from './refresh-assertions';
 
-export type LiveFailureCode =
-  | 'setup-sync-binding-required'
-  | 'setup-backend-required'
-  | 'setup-backend-unavailable'
-  | 'setup-source-account-invalid'
-  | 'setup-remote-object-missing'
-  | 'setup-remote-object-invalid'
-  | 'assertion-copied-use-failed'
-  | 'assertion-rotation-failed'
-  | 'assertion-recovery-failed'
-  | 'assertion-device-binding-failed'
-  | 'assertion-login-effects-failed'
-  | 'assertion-detach-failed';
 export type LiveRunInput = {
   readonly home: string;
   readonly providerId: string;
@@ -53,28 +35,6 @@ export type LiveRunResult = {
     readonly remoteObjectObserved: boolean;
   };
 };
-
-class BlockedError extends Error {
-  constructor(readonly code: LiveFailureCode) {
-    super(code);
-  }
-}
-
-class AssertionError extends Error {
-  constructor(readonly code: LiveFailureCode) {
-    super(code);
-  }
-}
-
-type AssertionResult = 'pass' | 'fail' | 'blocked';
-
-export function matchesOAuthAdapter(
-  account: Readonly<{ plugin: string; capability: string }>,
-  plugin: string,
-  capability: string,
-): boolean {
-  return account.plugin === plugin && account.capability === capability;
-}
 
 function canonicalPath(path: string): string {
   let current = resolve(path);
@@ -95,32 +55,6 @@ function isWithin(path: string, root: string): boolean {
 export function isProtectedOAuthSyncHome(home: string, productionHomes: readonly string[]): boolean {
   const canonicalHome = canonicalPath(home);
   return productionHomes.some((productionHome) => isWithin(canonicalHome, canonicalPath(productionHome)));
-}
-
-function isInfrastructureFailure(reason: unknown): boolean {
-  return reason instanceof Error && (reason.name === 'SyncBackendError' || reason.name === 'AbortError');
-}
-
-export function classifyRotationResults(results: readonly PromiseSettledResult<unknown>[]): AssertionResult {
-  if (results.length === 0) return 'blocked';
-  if (results.every((result) => result.status === 'fulfilled')) return 'pass';
-  if (results.some((result) => result.status === 'rejected' && isInfrastructureFailure(result.reason)))
-    return 'blocked';
-  return 'fail';
-}
-
-export type InterruptedRefreshObservation = {
-  readonly result: 'fulfilled' | 'rejected';
-  readonly exchangeCompleted: boolean;
-  readonly uncertainStateObserved: boolean;
-  readonly recovered: boolean;
-};
-
-export function classifyInterruptedRefresh(observation: InterruptedRefreshObservation): AssertionResult {
-  if (!observation.exchangeCompleted) return 'blocked';
-  if (observation.result === 'fulfilled') return 'fail';
-  if (!observation.uncertainStateObserved) return 'fail';
-  return observation.recovered ? 'pass' : 'fail';
 }
 
 function binding(source: LocalBinding, deviceId: string): LocalBinding {
@@ -164,36 +98,6 @@ function copyAccount(
   repository.completeAccountOperation(operation.operationId);
 }
 
-function applyCredential(
-  repository: ReturnType<typeof createPluginRepository>,
-  providerId: string,
-  account: LiveAccount,
-  credential: unknown,
-): void {
-  const current = repository.readAccount(providerId);
-  if (current === null) throw new Error('copied-account-missing');
-  const owner = crypto.randomUUID();
-  const now = Date.now();
-  if (!repository.tryAcquireRefreshLease(providerId, owner, now, now + 60_000)) throw new Error('local-refresh-lease');
-  try {
-    const updated = repository.compareAndSwapCredential(providerId, current.revision, owner, credential, {
-      ...(account.payload.label === undefined ? {} : { label: account.payload.label }),
-      ...(account.payload.expiresAt === undefined ? {} : { expiresAt: account.payload.expiresAt }),
-    });
-    if (updated === null) throw new Error('local-credential-apply');
-  } finally {
-    repository.releaseRefreshLease(providerId, owner);
-  }
-}
-
-export function confirmRecoveredOAuthOperation(
-  input: Parameters<typeof applySyncedAccount>[0] & { readonly coordinator: Pick<SharedOAuthCoordinator, 'confirm'> },
-): void {
-  if (input.account.lastCompletedOperationId === null) throw new Error('recovered-operation-missing');
-  applySyncedAccount(input);
-  input.coordinator.confirm(input.account.objectId, input.account.lastCompletedOperationId);
-}
-
 function putEntity(repo: SyncRepository, local: LocalBinding, account: LiveAccount, providerId: string): void {
   repo.putEntity(local.id, {
     objectId: account.objectId,
@@ -217,15 +121,6 @@ function putEntity(repo: SyncRepository, local: LocalBinding, account: LiveAccou
   });
 }
 
-function coordinator(repo: SyncRepository, session: SyncSession, local: LocalBinding): SharedOAuthCoordinator {
-  return createSharedOAuthCoordinator({
-    binding: local,
-    store: createSyncObjectStore(session),
-    repo,
-  });
-}
-
-// eslint-disable-next-line max-lines-per-function -- the live runner keeps setup, backend execution, and cleanup in one fenced lifecycle.
 export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResult> {
   let evidence: OAuthSyncEvidence = {
     plugin: input.plugin,
@@ -326,163 +221,30 @@ export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResu
           // copied use cannot be promoted to device-binding evidence.
           deviceBinding: 'blocked',
         };
-        if (input.adapter.refreshCredential !== undefined) {
-          const exchange = (value: unknown, signal: AbortSignal) =>
-            input.adapter.refreshCredential!({
-              credential: value,
-              options: remote.account.payload.options,
-              signal,
-              fetch: globalThis.fetch as RuntimeFetch,
-            });
-          const initial = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-          if (initial === null) throw new BlockedError('setup-remote-object-missing');
-          const expired = {
-            ...initial.account,
-            payload: { ...initial.account.payload, expiresAt: Date.now() - 1 },
-          };
-          if (
-            (
-              await sessions[0]!.compareAndSwap(
-                accountKey(input.remoteObjectId),
-                initial.version,
-                encode(expired),
-                controller.signal,
-              )
-            ).kind !== 'written'
-          )
-            throw new BlockedError('setup-remote-object-missing');
-          const refreshInput = (account: LiveAccount) => ({
-            objectId: input.remoteObjectId,
-            epoch: account.epoch,
-            generation: account.generation,
-            exchange,
-            validate: async (value: unknown) => input.adapter.credentials.parse(value),
-          });
-          const coordinators = locals.map((local, index) => coordinator(repositories[index]!, sessions[index]!, local));
-          const results = await Promise.allSettled([
-            coordinators[0]!.refresh(refreshInput(initial.account), controller.signal),
-            coordinators[1]!.refresh(refreshInput(initial.account), controller.signal),
-          ]);
-          let rotation = classifyRotationResults(results);
-          for (const [index, result] of results.entries()) {
-            if (result.status !== 'fulfilled') continue;
-            try {
-              applyCredential(accountRepositories[index]!, input.providerId, result.value.account, result.value.value);
-              const operationId = result.value.account.lastCompletedOperationId;
-              if (operationId !== null) coordinators[index]!.confirm(input.remoteObjectId, operationId);
-            } catch {
-              rotation = 'fail';
-              failureCode ??= 'assertion-rotation-failed';
-            }
-          }
-          if (rotation === 'pass') {
-            const refreshed = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-            const updated = results.find(
-              (result): result is PromiseFulfilledResult<SharedRefreshResult<unknown>> =>
-                result.status === 'fulfilled' && result.value.status === 'updated',
-            );
-            const journalsResolved = repositories.every(
-              (repository, index) => repository.oauthJournals(locals[index]!.id).length === 0,
-            );
-            const localCredentialsApplied = accountRepositories.every(
-              (repository) =>
-                JSON.stringify(repository.readAccount(input.providerId)?.credential) ===
-                JSON.stringify(refreshed?.account.payload.credential),
-            );
-            if (
-              refreshed === null ||
-              refreshed.account.phase !== 'ready' ||
-              refreshed.account.generation <= initial.account.generation ||
-              updated === undefined ||
-              refreshed.account.generation !== updated.value.account.generation ||
-              JSON.stringify(refreshed.account.payload.credential) !== JSON.stringify(updated.value.value) ||
-              !journalsResolved ||
-              !localCredentialsApplied
-            ) {
-              rotation = 'fail';
-              failureCode ??= 'assertion-rotation-failed';
-            }
-          }
-          evidence = { ...evidence, rotation };
-          if (rotation === 'fail') failureCode ??= 'assertion-rotation-failed';
-          if (rotation === 'pass') {
-            const current = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-            if (current === null) throw new BlockedError('setup-remote-object-missing');
-            const caller = new AbortController();
-            let exchangeCompleted = false;
-            let interruptedCredential: unknown;
-            const interruptedResults = await Promise.allSettled([
-              coordinators[0]!.refresh(
-                {
-                  ...refreshInput(current.account),
-                  exchange: async (value, signal) => {
-                    const result = await exchange(value, signal);
-                    interruptedCredential = result.value;
-                    exchangeCompleted = true;
-                    caller.abort();
-                    return result;
-                  },
-                },
-                caller.signal,
-              ),
-            ]);
-            const interruptedResult = interruptedResults[0];
-            const interruptedRemote = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-            const uncertainStateObserved =
-              interruptedRemote?.account.phase === 'uncertain' ||
-              interruptedRemote?.account.phase === 'refreshing' ||
-              repositories[0]!.oauthJournals(locals[0]!.id).some((journal) => journal.phase !== 'complete');
-            let recoveredAccount: LiveAccount | null = null;
-            if (interruptedResult?.status === 'rejected' && uncertainStateObserved) {
-              try {
-                recoveredAccount = await coordinators[0]!.recover(input.remoteObjectId, controller.signal);
-                if (recoveredAccount?.phase === 'ready') {
-                  confirmRecoveredOAuthOperation({
-                    account: recoveredAccount,
-                    providerId: input.providerId,
-                    binding: locals[0]!,
-                    repo: repositories[0]!,
-                    accounts: accountRepositories[0]!,
-                    coordinator: coordinators[0]!,
-                  });
-                }
-              } catch {
-                evidence = { ...evidence, uncertainRecovery: 'fail' };
-                failureCode ??= 'assertion-recovery-failed';
-                throw new AssertionError('assertion-recovery-failed');
-              }
-            }
-            const reread = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
-            const local = accountRepositories[0]!.readAccount(input.providerId);
-            const ownership = repositories[0]!
-              .entities(locals[0]!.id)
-              .find((entity) => entity.objectId === input.remoteObjectId)?.oauth;
-            const journalResolved = repositories[0]!.oauthJournals(locals[0]!.id).length === 0;
-            const recovered =
-              recoveredAccount?.phase === 'ready' &&
-              recoveredAccount.generation === current.account.generation + 1 &&
-              JSON.stringify(recoveredAccount.payload.credential) === JSON.stringify(interruptedCredential) &&
-              reread?.account.phase === 'ready' &&
-              reread.account.generation === recoveredAccount.generation &&
-              JSON.stringify(reread.account.payload.credential) === JSON.stringify(interruptedCredential) &&
-              JSON.stringify(local?.credential) === JSON.stringify(interruptedCredential) &&
-              ownership?.generation === recoveredAccount.generation &&
-              journalResolved;
-            evidence = {
-              ...evidence,
-              uncertainRecovery: classifyInterruptedRefresh({
-                result: interruptedResult?.status ?? 'rejected',
-                exchangeCompleted,
-                uncertainStateObserved,
-                recovered,
-              }),
-            };
-            if (evidence.uncertainRecovery === 'fail') {
-              failureCode ??= 'assertion-recovery-failed';
-              throw new AssertionError('assertion-recovery-failed');
-            }
-          }
-        }
+        await assertSharedRefresh(
+          {
+            providerId: input.providerId,
+            remoteObjectId: input.remoteObjectId,
+            adapter: input.adapter,
+            remoteAccount: remote.account,
+            sessions,
+            locals,
+            repositories,
+            accountRepositories,
+            signal: controller.signal,
+          },
+          {
+            rotation: (result) => {
+              evidence = { ...evidence, rotation: result };
+            },
+            uncertainRecovery: (result) => {
+              evidence = { ...evidence, uncertainRecovery: result };
+            },
+            fail: (code) => {
+              failureCode ??= code;
+            },
+          },
+        );
         const after = await readRemote(sessions[0]!, input.remoteObjectId, controller.signal);
         if (after === null) throw new BlockedError('setup-remote-object-missing');
         evidence = {

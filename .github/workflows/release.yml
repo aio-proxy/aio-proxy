@@ -181,6 +181,26 @@ jobs:
           cp packages/plugins/cloudkit/dist/native/manifest.json "$signed_manifest"
           echo "APPLE_CLOUDKIT_SIGNED_MANIFEST=$signed_manifest" >> "$GITHUB_ENV"
 
+      # Signing is done: build-native/sign-native are the only consumers of the
+      # keychain identity, the provisioning profile and the notary key, and the
+      # publish script needs nothing but the archive + signed manifest (the CLI
+      # binaries are ad-hoc signed). Destroy the key material HERE, before
+      # Changesets runs third-party publish code — scripts/release.ts runs
+      # `bun update`, so a compromised build dependency must not find a usable
+      # Developer ID on disk. `always()` also covers a signing step that failed
+      # after writing some of these files.
+      - name: Destroy CloudKit signing material
+        if: always() && steps.cloudkit-release.outputs.publishable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.password" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
+            "$RUNNER_TEMP/aio-cloudkit-notary-key.p8"
+
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
       # (and the @changesets/* devDependencies) together when upgrading.
@@ -220,10 +240,11 @@ jobs:
           gh release upload "v$VERSION" "$RELEASE_ASSETS_DIR/"*.tgz --repo aio-proxy/aio-proxy
           gh release upload "v$VERSION" "$RELEASE_ASSETS_DIR/SHA256SUMS" --repo aio-proxy/aio-proxy
 
-      # Keep the archive and verified manifest alive until the publish script has
-      # consumed them. This always runs after Changesets, including a failed
-      # publish, so no signing material survives the job.
-      - name: Clean CloudKit signing keychain
+      # Safety net only: signing material is already destroyed before Changesets.
+      # Repeat those deletions idempotently in case that step was skipped or died
+      # partway, and drop the archive/manifest now that the publish script has
+      # consumed them.
+      - name: Clean CloudKit release artifacts
         if: always() && steps.cloudkit-release.outputs.publishable == 'true'
         shell: bash
         run: |
