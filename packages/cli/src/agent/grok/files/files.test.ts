@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { MAX_GROK_FILE_BYTES } from '../read-bounded';
 import {
   assertSafeRoot,
+  captureIdentity,
+  createPrivateDir,
   grokPaths,
   inspectPath,
   isGrokOwnedTmpName,
@@ -262,6 +264,47 @@ test('replaceGrokFile removes the temporary file when the write fails', async ()
       open.mockRestore();
     }
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled private-directory creation is unverifiable within the budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-mkdir-'));
+  const path = join(root, 'aio-proxy');
+  const realMkdir = fsPromises.mkdir.bind(fsPromises);
+  const mkdirSpy = spyOn(fsPromises, 'mkdir').mockImplementation((async (target, options) => {
+    if (target === path) return new Promise(() => {});
+    return realMkdir(target, options);
+  }) as typeof fsPromises.mkdir);
+  try {
+    const started = Date.now();
+    await expect(
+      createPrivateDir(path, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    mkdirSpy.mockRestore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled identity capture is unverifiable within the budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-stalled-identity-'));
+  const path = join(root, 'ownership.json');
+  await writeFile(path, '{}\n', { mode: 0o600 });
+  const realLstat = fsPromises.lstat.bind(fsPromises);
+  const lstatSpy = spyOn(fsPromises, 'lstat').mockImplementation(async (target, options) => {
+    if (target === path) return new Promise(() => {});
+    return realLstat(target, options);
+  });
+  try {
+    const started = Date.now();
+    await expect(captureIdentity(path, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) })).rejects.toThrow(
+      /unverifiable/i,
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    lstatSpy.mockRestore();
     await rm(root, { recursive: true, force: true });
   }
 });

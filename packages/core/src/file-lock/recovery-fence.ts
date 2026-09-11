@@ -69,7 +69,7 @@ async function removeIfUnchanged(path: string, text: string, metadata: Stats): P
     if ((await readFile(path, 'utf8')) !== text) return true;
     const currentMetadata = await stat(path);
     if (!sameFileSnapshot(metadata, currentMetadata)) return true;
-    await unlink(path);
+    await withLockReadDeadline(options, () => unlink(path));
     return false;
   } catch (error) {
     if (isNodeError(error, 'ENOENT')) return false;

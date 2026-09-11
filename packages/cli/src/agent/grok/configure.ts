@@ -184,7 +184,7 @@ async function configureFirst(
     if (reuse === undefined) {
       const existing = await inspectPath(paths.privateDir, budget);
       if (existing === undefined) {
-        privateDir = await createPrivateDir(paths.privateDir);
+        privateDir = await createPrivateDir(paths.privateDir, budget);
       } else {
         assertSafePrivateDir(existing);
         if (!(await isRecoverableBootstrapPrivateDir(paths.privateDir, budget))) {
@@ -196,10 +196,10 @@ async function configureFirst(
       await testDeps?.failpoint?.('private_dir');
     }
     await persistOwnership(lock, paths, pending, reuse?.ownership, budget);
-    created.push(await captureIdentity(paths.ownership));
+    created.push(await captureIdentity(paths.ownership, budget));
     await testDeps?.failpoint?.('ownership_pending');
     await persistMarker(lock, paths, marker, reuse?.marker, budget, testDeps);
-    created.push(await captureIdentity(paths.marker));
+    created.push(await captureIdentity(paths.marker, budget));
     markerWritten = true;
     await testDeps?.failpoint?.('marker');
     await commitGrokEdit(

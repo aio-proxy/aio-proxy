@@ -200,19 +200,19 @@ export async function removeMatchingDir(identity: GrokFileIdentity, budget?: Gro
   }
 }
 
-export async function captureIdentity(path: string): Promise<GrokFileIdentity> {
-  const stats = await lstat(path);
+export async function captureIdentity(path: string, budget?: GrokDeadline): Promise<GrokFileIdentity> {
+  const stats = await withReadBudget(budget, pathUnverifiable, () => lstat(path));
   return { path, dev: stats.dev, ino: stats.ino };
 }
 
-export async function createPrivateDir(path: string): Promise<GrokFileIdentity> {
+export async function createPrivateDir(path: string, budget?: GrokDeadline): Promise<GrokFileIdentity> {
   try {
-    await mkdir(path, { mode: 0o700 });
+    await withReadBudget(budget, pathUnverifiable, () => mkdir(path, { mode: 0o700 }));
   } catch (error) {
     if (isFsCode(error, 'EEXIST')) reject('Grok private directory already exists');
     throw error;
   }
-  const stats = await lstat(path);
+  const stats = await withReadBudget(budget, pathUnverifiable, () => lstat(path));
   assertSafePrivateDir(stats);
   return { path, dev: stats.dev, ino: stats.ino };
 }

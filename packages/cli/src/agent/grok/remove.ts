@@ -189,7 +189,7 @@ async function removeGrokInternal(
       const privateStat = await inspectPath(paths.privateDir, budget);
       if (privateStat === undefined) return finishRootRemovalJournal(lock, paths, budget);
       assertSafePrivateDir(privateStat);
-      const privateDir = await captureIdentity(paths.privateDir);
+      const privateDir = await captureIdentity(paths.privateDir, budget);
       const markerFile = await readGrokPrivateFile(paths.marker, 'marker', budget);
       if (markerFile === undefined) {
         const ownershipFile =
