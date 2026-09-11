@@ -183,34 +183,45 @@ export type ServerStateParts = Pick<
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
   const { events, repository, options, logger } = runtime;
+  let schedulersStopped = false;
   let resourcesClosed = false;
   let closePromise: Promise<void> | undefined;
-  const closeRemainingResources = (): void => {
-    if (resourcesClosed) return;
-    resourcesClosed = true;
-    const failures: unknown[] = [];
-    for (const close of [
-      () => parts.watcher?.close(),
-      () => runtime.scheduler.close(),
-      parts.closeRecovery,
-      () => parts.oauthLoginSessions.close(),
-      () => parts.realtimeCalls.close(),
-      () => parts.videoJobs.close(),
-      () => events.close(),
-      () => dbHandle.close(),
-      parts.databaseOwnership.release,
-    ]) {
+  const failures: unknown[] = [];
+  const runClosers = (closers: readonly (() => void)[]): void => {
+    for (const close of closers) {
       try {
         close();
       } catch (error) {
         failures.push(error);
       }
     }
+  };
+  // Cancelling the timers stays synchronous even when sync teardown is not. close() is a
+  // synchronous contract, and a recovery or catalog run that rearms or logs while the sync
+  // lifecycle is still draining outlives the server it belongs to.
+  const stopSchedulers = (): void => {
+    if (schedulersStopped) return;
+    schedulersStopped = true;
+    runClosers([
+      () => parts.watcher?.close(),
+      () => runtime.scheduler.close(),
+      parts.closeRecovery,
+      () => parts.oauthLoginSessions.close(),
+      () => parts.realtimeCalls.close(),
+      () => parts.videoJobs.close(),
+    ]);
+  };
+  const closeRemainingResources = (): void => {
+    if (resourcesClosed) return;
+    resourcesClosed = true;
+    stopSchedulers();
+    runClosers([() => events.close(), () => dbHandle.close(), parts.databaseOwnership.release]);
     if (failures[0] !== undefined) throw failures[0];
   };
   const closeAsync = async (): Promise<void> => {
     if (closePromise !== undefined) return closePromise;
     runtime.closed = true;
+    stopSchedulers();
     closePromise = (async () => {
       try {
         await runtime.sync?.close();
@@ -227,6 +238,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
+      stopSchedulers();
       if (runtime.sync === undefined) {
         closeRemainingResources();
         closePromise = Promise.resolve();

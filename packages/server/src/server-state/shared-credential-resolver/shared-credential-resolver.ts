@@ -88,10 +88,19 @@ export function createSharedCredentialResolver(
     });
   }
   return (providerId, schema, callbacks) => {
-    if (resolve(providerId, schema, callbacks) === undefined) return undefined;
+    // The credential port re-runs this resolver on every read, so it also runs after the server
+    // that owns the repository is closed. An unreadable repository is the same answer as an
+    // absent binding: no shared ownership is knowable, so leave the plain port alone.
+    const attempt = (): CredentialPort<unknown> | undefined => {
+      try {
+        return resolve(providerId, schema, callbacks);
+      } catch {
+        return undefined;
+      }
+    };
+    if (attempt() === undefined) return undefined;
     // Ports can outlive a plugin reload, binding switch or ownership transition.
-    const current = () =>
-      resolve(providerId, schema, callbacks) ?? blocked('detach-pending', 'The shared OAuth ownership changed');
+    const current = () => attempt() ?? blocked('detach-pending', 'The shared OAuth ownership changed');
     return { read: () => current().read(), refresh: (revision, exchange) => current().refresh(revision, exchange) };
   };
 }
