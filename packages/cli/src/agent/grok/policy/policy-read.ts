@@ -2,7 +2,13 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readBoundedStream, readOpenFileText, remainingReadMs } from '../read-bounded';
+import {
+  MAX_GROK_FILE_BYTES,
+  readBoundedStream,
+  readOpenFileText,
+  remainingReadMs,
+  withReadBudget,
+} from '../read-bounded';
 import type { GrokDeadline, GrokPolicySource, GrokVisiblePolicy } from '../types';
 
 const UNVERIFIABLE = 'Grok visible policy unverifiable';
@@ -14,6 +20,7 @@ const isErrno = (error: unknown, code: string): boolean =>
   error instanceof Error && 'code' in error && error.code === code;
 
 const remainingMs = remainingReadMs;
+const unverifiable = (): Error => new Error(UNVERIFIABLE);
 
 const parsePolicyText = (text: string, kind: GrokPolicySource['kind']): void => {
   if (Buffer.byteLength(text) > MAX_GROK_FILE_BYTES) throw new Error(UNVERIFIABLE);
@@ -43,7 +50,7 @@ const readExistingFile = async (
 ): Promise<GrokPolicySource> => {
   let link: Stats;
   try {
-    link = await lstat(path);
+    link = await withReadBudget(budget, unverifiable, () => lstat(path));
   } catch (error) {
     if (isErrno(error, 'ENOENT')) throw error;
     throw new Error(UNVERIFIABLE);
@@ -52,19 +59,19 @@ const readExistingFile = async (
   let handle;
   try {
     // FIFOs and other non-regular paths must not block past the helper budget.
-    handle = await open(path, READ_FLAGS);
+    handle = await withReadBudget(budget, unverifiable, () => open(path, READ_FLAGS));
   } catch (error) {
     if (isErrno(error, 'ENOENT')) throw error;
     throw new Error(UNVERIFIABLE);
   }
   try {
-    const file = await handle.stat();
+    const file = await withReadBudget(budget, unverifiable, () => handle.stat());
     if (file.dev !== link.dev || file.ino !== link.ino) throw new Error(UNVERIFIABLE);
     assertSafePolicyFile(file);
     const text = await readOpenFileText(handle, file.size, {
       maxBytes: MAX_GROK_FILE_BYTES,
       budget,
-      limitError: () => new Error(UNVERIFIABLE),
+      limitError: unverifiable,
     });
     parsePolicyText(text, kind);
     return { path, text, kind };
@@ -92,6 +99,33 @@ const readOptionalFile = async (
 const isMissingDomain = (stderr: string): boolean =>
   /does not exist/iu.test(stderr) || /not found/iu.test(stderr) || /domain.*not exist/iu.test(stderr);
 
+const POLICY_KILL_GRACE_MS = 250;
+const POLICY_EXIT_SLACK_MS = 250;
+
+const terminatePolicyProc = async (proc: {
+  kill: (signal?: NodeJS.Signals | number) => void;
+  readonly exited: Promise<number>;
+}): Promise<void> => {
+  try {
+    proc.kill();
+  } catch {
+    // already exited
+  }
+  const escalate = setTimeout(() => {
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // already exited
+    }
+  }, POLICY_KILL_GRACE_MS);
+  escalate.unref?.();
+  try {
+    await Promise.race([proc.exited.catch(() => undefined), Bun.sleep(POLICY_KILL_GRACE_MS + POLICY_EXIT_SLACK_MS)]);
+  } finally {
+    clearTimeout(escalate);
+  }
+};
+
 const captureTimed = async (
   command: readonly [string, ...string[]],
   stdin: string | undefined,
@@ -118,17 +152,12 @@ const captureTimed = async (
       readBoundedStream(proc.stdout, bound),
       readBoundedStream(proc.stderr, bound),
     ]);
-    const code = await proc.exited;
+    const code = await withReadBudget(budget, unverifiable, () => proc.exited);
     if (code === 0) return { stdout };
     if (isMissingDomain(stderr)) return 'absent';
     throw new Error(UNVERIFIABLE);
   } catch (error) {
-    try {
-      proc.kill();
-    } catch {
-      // already exited
-    }
-    await proc.exited.catch(() => undefined);
+    await terminatePolicyProc(proc);
     if (error instanceof Error && error.message === UNVERIFIABLE) throw error;
     throw new Error(UNVERIFIABLE);
   }

@@ -4,5 +4,6 @@ export {
   readBoundedStream,
   readOpenFileText,
   remainingReadMs,
+  withReadBudget,
   type ReadableFileHandle,
 } from './read-bounded';

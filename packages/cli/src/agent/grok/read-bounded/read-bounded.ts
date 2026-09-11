@@ -11,6 +11,31 @@ export type ReadableFileHandle = {
 export const remainingReadMs = (budget?: GrokDeadline): number =>
   budget === undefined ? DEFAULT_GROK_READ_MS : Math.max(0, budget.deadline - Date.now());
 
+export async function withReadBudget<T>(
+  budget: GrokDeadline | undefined,
+  limitError: () => Error,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const timeoutMs = remainingReadMs(budget);
+  if (timeoutMs === 0) throw limitError();
+  budget?.signal.throwIfAborted();
+  const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(budget === undefined ? [] : [budget.signal])]);
+  if (signal.aborted) throw limitError();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(limitError());
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([operation(signal), aborted]);
+  } catch (error) {
+    if (signal.aborted) throw limitError();
+    throw error;
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener('abort', onAbort);
+  }
+}
+
 export async function readOpenFileText(
   handle: ReadableFileHandle,
   size: number,

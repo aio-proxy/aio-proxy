@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test';
 
-import { MAX_GROK_FILE_BYTES, readBoundedStream, readOpenFileText, type ReadableFileHandle } from './read-bounded';
+import {
+  MAX_GROK_FILE_BYTES,
+  readBoundedStream,
+  readOpenFileText,
+  withReadBudget,
+  type ReadableFileHandle,
+} from './read-bounded';
 
 test('an oversized handle is rejected before reading', async () => {
   let reads = 0;
@@ -18,6 +24,18 @@ test('an oversized handle is rejected before reading', async () => {
     }),
   ).rejects.toThrow('limit');
   expect(reads).toBe(0);
+});
+
+test('a stalled operation fails within the remaining budget', async () => {
+  const started = Date.now();
+  await expect(
+    withReadBudget(
+      { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) },
+      () => new Error('limit'),
+      () => new Promise<never>(() => {}),
+    ),
+  ).rejects.toThrow('limit');
+  expect(Date.now() - started).toBeLessThan(1_000);
 });
 
 test('an expired budget is rejected before reading', async () => {

@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from 'bun:test';
+import * as fsPromises from 'node:fs/promises';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -235,6 +236,43 @@ test('an unreadable policy file cannot be ignored', async () => {
   }
 });
 
+test('a hung macOS policy command is unverifiable without waiting for exit', async () => {
+  const original = process.platform;
+  Object.defineProperty(process, 'platform', { value: 'darwin' });
+  const signals: Array<NodeJS.Signals | number | undefined> = [];
+  const which = spyOn(Bun, 'which').mockImplementation((command) =>
+    command === 'defaults' || command === 'plutil' ? `/bin/${command}` : null,
+  );
+  const spawn = spyOn(Bun, 'spawn').mockImplementation((() => ({
+    stdout: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('policy probe stdout stalled'));
+      },
+    }),
+    stderr: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('policy probe stderr stalled'));
+      },
+    }),
+    exited: new Promise<number>(() => {}),
+    kill(signal?: NodeJS.Signals | number) {
+      signals.push(signal);
+    },
+  })) as typeof Bun.spawn);
+  try {
+    const started = Date.now();
+    await expect(
+      readGrokPolicy('/tmp', {}, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(signals).toContain('SIGKILL');
+  } finally {
+    spawn.mockRestore();
+    which.mockRestore();
+    Object.defineProperty(process, 'platform', { value: original });
+  }
+});
+
 test('an oversized macOS policy command is unverifiable before the full output is kept', async () => {
   const original = process.platform;
   Object.defineProperty(process, 'platform', { value: 'darwin' });
@@ -286,6 +324,23 @@ test('an expired policy budget is unverifiable', async () => {
     const budget = { deadline: Date.now() - 1, signal: AbortSignal.timeout(5_000) };
     await expect(readGrokPolicy(root, {}, budget)).rejects.toThrow(/unverifiable/i);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled policy metadata lookup is unverifiable within the budget', async () => {
+  const lstat = spyOn(fsPromises, 'lstat').mockImplementation(() => new Promise(() => {}));
+  const root = await mkdtemp(join(tmpdir(), 'grok-policy-stalled-stat-'));
+  try {
+    await writeFile(join(root, 'managed_config.toml'), '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    const started = Date.now();
+    await expect(
+      readGrokPolicy(root, {}, { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(lstat).toHaveBeenCalled();
+  } finally {
+    lstat.mockRestore();
     await rm(root, { recursive: true, force: true });
   }
 });
