@@ -89,6 +89,25 @@ export function withoutCallerCredentialQuery(url: string): string {
   return parsed.toString();
 }
 
+/** A copy of `request` with caller credential headers and query removed. Same keyless
+ *  asymmetry as the two helpers above: keyed auth already stripped the inbound request,
+ *  but a keyless proxy still carries the caller's own secrets when a route or raw
+ *  attempt builds the upstream `Request`. Identity is preserved when there is nothing
+ *  to strip so a body stream is not moved onto a new object. */
+export function withoutCallerCredentialsOnRequest(request: Request): Request {
+  const url = withoutCallerCredentialQuery(request.url);
+  if (url === request.url && !CALLER_CREDENTIAL_HEADERS.some((header) => request.headers.has(header))) {
+    return request;
+  }
+  return new Request(url, {
+    method: request.method,
+    headers: withoutCallerCredentials(request.headers),
+    body: request.body,
+    signal: request.signal,
+    redirect: request.redirect,
+  });
+}
+
 export function bearerToken(value: string | undefined): string | undefined {
   const match = /^Bearer\s+(.+)$/iu.exec(value ?? '');
   return match?.[1];

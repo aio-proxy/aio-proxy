@@ -11,7 +11,8 @@ export type ProtocolId =
   | 'gemini'
   | 'gemini-interactions'
   | 'openai-image'
-  | 'openai-audio';
+  | 'openai-audio'
+  | 'openai-video';
 
 /** Non-deprecated replacement for the AI SDK `CallSettings` type. */
 export type AiSdkCallSettings = LanguageModelCallOptions &

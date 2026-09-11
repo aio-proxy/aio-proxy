@@ -194,6 +194,28 @@ export class OpenAIAudioUnsupportedFeatureError extends AioProxyError {
   }
 }
 
+export const OPENAI_VIDEO_UNSUPPORTED_FEATURES = ['video_convert'] as const;
+
+export type OpenAIVideoUnsupportedFeature = (typeof OPENAI_VIDEO_UNSUPPORTED_FEATURES)[number];
+
+export class OpenAIVideosUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_OPENAI_VIDEO_FEATURE';
+  readonly status = 501;
+
+  constructor(readonly feature: OpenAIVideoUnsupportedFeature) {
+    super('OpenAIVideosUnsupportedFeatureError', `OpenAI Videos feature is not supported: ${feature}`);
+  }
+}
+
+export class OpenAIVideosInvalidRequestError extends AioProxyError {
+  readonly code = 'INVALID_OPENAI_VIDEOS_REQUEST';
+  readonly status = 400;
+
+  constructor(readonly param: 'prompt' | 'video' | 'content_type') {
+    super('OpenAIVideosInvalidRequestError', `Invalid OpenAI Videos request parameter: ${param}`);
+  }
+}
+
 export class OpenAIAudioInvalidRequestError extends AioProxyError {
   readonly code = 'INVALID_OPENAI_AUDIO_REQUEST';
   readonly status = 400;

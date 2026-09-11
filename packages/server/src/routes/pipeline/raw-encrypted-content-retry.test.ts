@@ -140,8 +140,10 @@ test('does not retry after a content delta', async () => {
 
 test('retries HTTP 400 invalid_encrypted_content on the same candidate', async () => {
   let calls = 0;
-  const primary = responsesProvider(async () => {
+  const invoked: Request[] = [];
+  const primary = responsesProvider(async (request) => {
     calls += 1;
+    invoked.push(request);
     if (calls === 1) {
       return Response.json(
         { error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' } },
@@ -157,6 +159,9 @@ test('retries HTTP 400 invalid_encrypted_content on the same candidate', async (
   expect(response.status).toBe(200);
   expect(calls).toBe(2);
   expect(await response.json()).toMatchObject({ id: 'resp_ok' });
+  expect(invoked[1]).not.toBe(invoked[0]);
+  expect(invoked[0]?.bodyUsed).toBe(true);
+  expect(invoked[1]?.bodyUsed).toBe(true);
 });
 
 test('streams a non-JSON 400 without interception', async () => {

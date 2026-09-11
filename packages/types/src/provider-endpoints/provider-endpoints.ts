@@ -9,6 +9,7 @@ export enum ProviderProtocol {
   GeminiInteractions = 'gemini-interactions',
   OpenAIImage = 'openai-image',
   OpenAIAudio = 'openai-audio',
+  OpenAIVideo = 'openai-video',
 }
 
 export const ProviderProtocolSchema = z

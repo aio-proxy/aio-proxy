@@ -210,7 +210,7 @@ test('raw throw does not retry convert on the same candidate', async () => {
 
 test('same-protocol embedding raw passes through without converting', async () => {
   const embed = mock(async () => ({ embeddings: [[0.1]], usage: { tokens: 2 } }));
-  const forwarded: Request[] = [];
+  const forwarded: unknown[] = [];
   const provider = {
     id: 'compatible',
     kind: ProviderKind.Api,
@@ -218,7 +218,7 @@ test('same-protocol embedding raw passes through without converting', async () =
     raw: {
       resolve: () => ({
         invoke: async (request: Request) => {
-          forwarded.push(request);
+          forwarded.push(await request.clone().json());
           return Response.json({ object: 'list', data: [] });
         },
       }),
@@ -231,7 +231,7 @@ test('same-protocol embedding raw passes through without converting', async () =
   expect(step.kind).toBe('return');
   expect(embed).not.toHaveBeenCalled();
   expect(forwarded).toHaveLength(1);
-  expect(await forwarded[0]?.json()).toMatchObject({ model: MODEL_ID });
+  expect(forwarded[0]).toMatchObject({ model: MODEL_ID });
 });
 
 test('declines OpenAI token-id input with a fallback-capable 501', async () => {

@@ -6,6 +6,7 @@ import type {
   ModelInvocation,
   ProtocolAdapter,
   RouterCandidate,
+  VideoProtocolAdapter,
 } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import type { ProviderProtocol, RouterModelPolicy } from '@aio-proxy/types';
@@ -45,7 +46,8 @@ export type LogAttemptFailure = (
 export type PipelineAdapter<TRequest, TContext> =
   | AnyProtocolAdapter<TRequest, TContext>
   | ImageProtocolAdapter<TRequest, TContext>
-  | AudioProtocolAdapter<TRequest, TContext>;
+  | AudioProtocolAdapter<TRequest, TContext>
+  | VideoProtocolAdapter<TRequest, TContext>;
 
 // Invariants shared by every candidate attempt in one request. TAdapter keeps
 // the language, image, audio, and embedding attempt paths from seeing each
@@ -103,13 +105,21 @@ export type AudioAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
   AudioProtocolAdapter<TRequest, TContext>
 >;
 
+export type VideoAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  VideoProtocolAdapter<TRequest, TContext>
+>;
+
 // Contexts whose adapter carries the language-shaped `rawRequest`/`dimensions`
 // surface (embedding adapters use a different `rawRequest` arity), i.e. the
 // contexts eligible for the shared raw-passthrough attempt.
 export type RawCapableAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
   TRequest,
   TContext,
-  ProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>
+  | ProtocolAdapter<TRequest, TContext>
+  | ImageProtocolAdapter<TRequest, TContext>
+  | VideoProtocolAdapter<TRequest, TContext>
 >;
 
 // Accepted by helpers that only touch capability-agnostic context (protocol,

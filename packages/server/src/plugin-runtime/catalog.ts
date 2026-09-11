@@ -146,6 +146,7 @@ function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
     case ProviderProtocol.GeminiInteractions:
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
+    case ProviderProtocol.OpenAIVideo:
       return protocol;
     default:
       return undefined;

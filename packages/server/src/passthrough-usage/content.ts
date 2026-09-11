@@ -30,6 +30,7 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
     }
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
+    case ProviderProtocol.OpenAIVideo:
       return false;
     default:
       return assertNever(protocol);

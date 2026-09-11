@@ -9,6 +9,7 @@ export {
   replaySpooledMultipartRaw,
   retainMultipartSpool,
   spoolMultipartBody,
+  transferMultipartSpool,
 } from './multipart-spool';
 export {
   multipartBoundary,

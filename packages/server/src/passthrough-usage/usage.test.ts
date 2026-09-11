@@ -127,6 +127,53 @@ describe('passthrough usage extraction', () => {
     expect(usage).not.toHaveProperty('outputAudioTokens');
   });
 
+  test('records OpenAI Video usage tokens when the job JSON reports them', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIVideo,
+        JSON.stringify({
+          id: 'video_abc',
+          object: 'video',
+          status: 'queued',
+          usage: { input_tokens: 12, output_tokens: 3, total_tokens: 15 },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 12,
+      outputTokens: 3,
+      totalTokens: 15,
+    });
+  });
+
+  test('does not invent OpenAI Video tokens from seconds or file size', () => {
+    expect(
+      extractPassthroughObservation(
+        ProviderProtocol.OpenAIVideo,
+        JSON.stringify({
+          id: 'video_abc',
+          object: 'video',
+          seconds: 8,
+          size: '1280x720',
+          status: 'completed',
+        }),
+      ),
+    ).toEqual({});
+  });
+
+  test('rejects invalid OpenAI Video token fields', () => {
+    expect(
+      extractPassthroughObservation(
+        ProviderProtocol.OpenAIVideo,
+        JSON.stringify({
+          id: 'video_abc',
+          usage: { input_tokens: -1, output_tokens: 1, total_tokens: 1 },
+        }),
+      ),
+    ).toEqual({
+      issues: [{ code: 'invalid_token_count', path: ['inputTokens'] }],
+    });
+  });
+
   test('extracts official OpenAI Images usage tokens', () => {
     expect(
       extractPassthroughUsage(

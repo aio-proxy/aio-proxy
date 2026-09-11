@@ -295,7 +295,7 @@ export const geminiEmbeddingsErrors: ProtocolErrorMapper = {
   rateLimited: geminiRateLimited,
 };
 
-function openAIProviderError(error: unknown): Response | undefined {
+export function openAIProviderError(error: unknown): Response | undefined {
   const cause = error instanceof AiSdkProviderError ? error.cause : error;
   const missing = providerNotInstalled(error);
   if (missing !== undefined) {
@@ -393,7 +393,7 @@ function openAIUnsupported(feature: string): Response {
   );
 }
 
-function openAIInvalid(status: number, code: string, message: string): Response {
+export function openAIInvalid(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message, type: 'invalid_request_error' } }, { status });
 }
 
@@ -421,7 +421,7 @@ function withRetryAfter(response: Response, retryAfterSeconds: number): Response
   return response;
 }
 
-function openAIRateLimited(retryAfterSeconds: number): Response {
+export function openAIRateLimited(retryAfterSeconds: number): Response {
   return withRetryAfter(
     Response.json(
       {
