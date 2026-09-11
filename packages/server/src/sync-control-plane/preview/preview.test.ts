@@ -706,6 +706,92 @@ test('same-id resolution falls back to repository bulk persistence when no integ
   ).toBeDefined();
 });
 
+test('renaming a published Provider publishes a new object and deletes the identity it vacated', async () => {
+  const provider = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 3,
+    desired: providerBody({ value: 'local' }),
+    baseline: 'local-revision',
+    overrides: [],
+    pendingReason: null,
+  };
+  const published: { objectId: string; logicalKey: string | null; expected: string | null }[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [provider],
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [provider],
+    // The local object is itself published under `work`, and another device published a second
+    // object claiming the same Provider ID. That is the collision the rename resolves.
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-local',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v9',
+        revision: 'local-revision',
+        body: providerBody({ value: 'published' }),
+      },
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async (body, current, expected) => {
+      published.push({ objectId: current!.objectId, logicalKey: body?.logicalKey ?? null, expected });
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async () => {},
+    purge: async () => {},
+    connect: async () => {},
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: (row.objectId === 'provider-local' ? 'local' : 'cloud') as 'local' | 'cloud',
+      // Every row in the collision group must name an identity; the other device's object keeps
+      // the contested one, and only the local object moves aside.
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
+    })),
+  });
+
+  const renamed = published.find((call) => call.logicalKey === 'work-renamed');
+  expect(renamed).toBeDefined();
+  // A renamed body cannot be pushed through the old head, whose logical key is immutable.
+  expect(renamed!.objectId).not.toBe('provider-local');
+  expect(renamed!.expected).toBeNull();
+  // The vacated identity is removed so the cloud stops carrying two objects called `work`.
+  expect(published).toContainEqual({ objectId: 'provider-local', logicalKey: null, expected: 'v9' });
+});
+
 test('manual cloud apply records the current revision operation ID instead of its storage version', async () => {
   const local = {
     objectId: 'provider-work',

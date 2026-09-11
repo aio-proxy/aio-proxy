@@ -64,6 +64,10 @@ type ProviderIdentityRows = {
   readonly oldProviderId: string;
   readonly newProviderId: string;
   readonly entities: readonly LocalEntity[];
+  /** The renamed row itself, which carries a fresh object identity once the old one was published. */
+  readonly renamed: LocalEntity;
+  /** Whether the old object still exists remotely and has to be removed after the rename lands. */
+  readonly replacesPublished: boolean;
 };
 
 function sameJson(left: unknown, right: unknown): boolean {
@@ -109,6 +113,7 @@ function providerIdentityRows(
   selected: EntityBody,
   newProviderId: string,
   entities: readonly LocalEntity[],
+  published: boolean,
 ): ProviderIdentityRows {
   if (current.kind !== 'provider' || selected.kind !== 'provider' || newProviderId === '')
     throw new SyncOperationError('upgrade-required');
@@ -120,9 +125,17 @@ function providerIdentityRows(
     )
   )
     throw new SyncOperationError('upgrade-required');
+  // A published head's logical key is immutable, so the rename cannot be pushed through the same
+  // object. The renamed configuration becomes a new object and the old one is deleted afterwards,
+  // which is also what clears the colliding identity out of the cloud.
+  const renamed: LocalEntity = {
+    ...current,
+    logicalKey: newProviderId,
+    desired: { ...selected, logicalKey: newProviderId },
+    ...(published ? { objectId: crypto.randomUUID(), epoch: 0, baseline: null } : {}),
+  };
   const mapped = entities.map((entity) => {
-    if (entity.objectId === current.objectId)
-      return { ...entity, logicalKey: newProviderId, desired: { ...selected, logicalKey: newProviderId } };
+    if (entity.objectId === current.objectId) return renamed;
     if (entity.desired?.kind !== 'model-rule') return entity;
     return {
       ...entity,
@@ -135,6 +148,8 @@ function providerIdentityRows(
   return {
     oldProviderId: current.logicalKey,
     newProviderId,
+    renamed,
+    replacesPublished: published,
     // Persist only rows whose provider identity or structured references changed. This lets a
     // repository that predates bulk persistence handle a provider-only rename atomically while
     // still refusing a multi-row mapping that it cannot write as one transaction.
@@ -229,7 +244,13 @@ export async function applyPreview(
     if (decision.newProviderId !== undefined && selectedBody !== null) {
       selectedBody = { ...selectedBody, logicalKey: decision.newProviderId };
       if (current !== undefined)
-        identityRows = providerIdentityRows(current, selectedBody, decision.newProviderId, record.local);
+        identityRows = providerIdentityRows(
+          current,
+          selectedBody,
+          decision.newProviderId,
+          record.local,
+          remoteByObject.get(candidate.row.objectId)?.body != null,
+        );
     }
     const remote = remoteByObject.get(candidate.row.objectId);
     if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
@@ -246,6 +267,15 @@ export async function applyPreview(
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
       } else if (decision.choice === 'cloud') {
         await input.applyLocal(selectedBody, current, candidate.row.objectId);
+      } else if (identityRows !== undefined) {
+        // The renamed object is published first so the configuration is never absent from the cloud,
+        // then the identity it vacated is deleted. A fresh object has no expected version.
+        await input.applyCloud(
+          selectedBody,
+          identityRows.renamed,
+          identityRows.replacesPublished ? null : (remote?.version ?? null),
+        );
+        if (identityRows.replacesPublished) await input.applyCloud(null, current, remote?.version ?? null);
       } else {
         await input.applyCloud(selectedBody, current, remote?.version ?? null);
       }
