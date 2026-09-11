@@ -1,16 +1,8 @@
-import { randomUUID } from 'node:crypto';
-
 import {
-  createSyncObjectStore,
-  deleteEntity,
   decodeHead,
   decodeRevision,
   entityKey,
-  publishEntity,
-  purgeEntity,
   revisionKey,
-  restoreEntity,
-  SyncProtocolError,
   type CommittedSource,
   type EntityBody,
   type LocalBinding,
@@ -44,6 +36,7 @@ import {
   type PreviewRecord,
   type RemoteEntity,
 } from './preview';
+import { createRemoteOperations } from './remote-operations';
 import { createStatus } from './status';
 
 export type SyncControlPlaneOptions = {
@@ -112,87 +105,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       return current === null ? [] : options.repo.entities(current.id);
     });
   const remoteEntities = options.remoteEntities ?? (() => listRemoteEntities(options.session?.()));
-  const remoteOps =
-    options.session === undefined
-      ? undefined
-      : () => {
-          const session = options.session!();
-          if (session === undefined) throw new SyncOperationError('not-connected');
-          const store = createSyncObjectStore(session);
-          const signal = new AbortController().signal;
-          const restoreWithExpected = restoreEntity as unknown as (
-            store: Parameters<typeof restoreEntity>[0],
-            objectId: string,
-            body: EntityBody,
-            operationId: string,
-            signal: AbortSignal,
-            expected: string | null,
-          ) => Promise<unknown>;
-          const purgeWithExpected = purgeEntity as unknown as (
-            store: Parameters<typeof purgeEntity>[0],
-            objectId: string,
-            signal: AbortSignal,
-            expected: string | null,
-          ) => Promise<unknown>;
-          const deleteWithExpected = deleteEntity as unknown as (
-            store: Parameters<typeof deleteEntity>[0],
-            objectId: string,
-            epoch: number,
-            signal: AbortSignal,
-            expected: string | null,
-          ) => Promise<unknown>;
-          const publishWithExpected = publishEntity as unknown as (
-            store: Parameters<typeof publishEntity>[0],
-            operation: Parameters<typeof publishEntity>[1],
-            signal: AbortSignal,
-            expected: string | null,
-          ) => Promise<unknown>;
-          const conditional = async <T>(operation: () => Promise<T>): Promise<T> => {
-            try {
-              return await operation();
-            } catch (error) {
-              if (error instanceof SyncProtocolError && error.code === 'upgrade-required')
-                throw new SyncOperationError('operation-pending');
-              throw error;
-            }
-          };
-          return {
-            async restore(
-              objectId: string,
-              body: EntityBody,
-              operationId: string,
-              current: LocalEntity | undefined,
-              expected: string | null,
-            ) {
-              await conditional(() => restoreWithExpected(store, objectId, body, operationId, signal, expected));
-            },
-            async purge(objectId: string, expected: string | null) {
-              await conditional(() => purgeWithExpected(store, objectId, signal, expected));
-            },
-            async publish(body: EntityBody | null, current: LocalEntity | undefined, expected: string | null) {
-              if (current === undefined) throw new SyncOperationError('operation-pending');
-              const objectId = current.objectId;
-              if (body === null)
-                await conditional(() => deleteWithExpected(store, objectId, current.epoch, signal, expected));
-              else
-                await conditional(() =>
-                  publishWithExpected(
-                    store,
-                    {
-                      operationId: randomUUID(),
-                      objectId,
-                      epoch: current.epoch,
-                      kind: 'put',
-                      body,
-                      commitId: `control:${randomUUID()}`,
-                    },
-                    signal,
-                    expected,
-                  ),
-                );
-            },
-          };
-        };
+  const remoteOps = options.session === undefined ? undefined : () => createRemoteOperations(options.session!());
   const restore =
     options.restore ?? (async (...args: Parameters<OperationInput['restore']>) => remoteOps!().restore(...args));
   const purge = options.purge ?? (async (...args: Parameters<OperationInput['purge']>) => remoteOps!().purge(...args));
