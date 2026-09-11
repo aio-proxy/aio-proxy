@@ -18,6 +18,7 @@ import {
   ownership,
   readyOwnedRemote,
   setPending,
+  uncertainOwnedRemote,
   validatedAdapter,
   writeJournal,
 } from './state';
@@ -160,7 +161,10 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       const remote = await readRemote(input.store, entity.objectId, signal);
       if (remote === null || 'unknown' in remote) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
       if (!compatibleRemote(remote.account, candidate, resolved)) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
-      if (pending === undefined && !readyOwnedRemote(entity.oauth, remote.account)) {
+      // A fresh authorization is the documented recovery from an abandoned refresh, so it takes
+      // over the uncertain claim on a new epoch instead of waiting for a `ready` that never comes.
+      const abandoned = uncertainOwnedRemote(entity.oauth, remote.account);
+      if (pending === undefined && !abandoned && !readyOwnedRemote(entity.oauth, remote.account)) {
         throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
       }
       if (pending !== undefined) {
@@ -177,7 +181,13 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       const base = pending?.payload.base ?? remote.account;
       const next =
         pending?.payload.next ??
-        liveAccount(remote.account.objectId, candidate, resolved, remote.account.generation + 1, remote.account.epoch);
+        liveAccount(
+          remote.account.objectId,
+          candidate,
+          resolved,
+          remote.account.generation + 1,
+          abandoned ? remote.account.epoch + 1 : remote.account.epoch,
+        );
       if (base === null || next === null) throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
       const row =
         pending?.row ??
@@ -218,7 +228,9 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         remote === null ||
         'unknown' in remote ||
         !compatibleRemote(remote.account, candidate, resolved) ||
-        !readyOwnedRemote(entity.oauth, remote.account)
+        // Detaching reads the shared credential but never republishes it, so an abandoned refresh
+        // is no reason to strand this device on an account it is trying to stop following.
+        !(readyOwnedRemote(entity.oauth, remote.account) || uncertainOwnedRemote(entity.oauth, remote.account))
       )
         return 'pending';
       if (existing?.payload.base !== null && !sameRemote(existing?.payload.base ?? remote.account, remote.account)) {

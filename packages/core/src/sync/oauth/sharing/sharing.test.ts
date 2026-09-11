@@ -288,6 +288,37 @@ test('an active remote refresh claim blocks detachment and replacement', async (
   );
 });
 
+test('a fresh login replaces a shared account an abandoned refresh left uncertain', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      const stored = f.backend.readAll().get(`s/v1/default/account/${f.objectId}`);
+      if (stored?.kind !== 'present') throw new Error('missing remote fixture');
+      const remote = JSON.parse(new TextDecoder().decode(stored.value));
+      remote.phase = 'uncertain';
+      remote.claim = { operationId: 'abandoned-refresh', ownerDeviceId: 'this-device', baseGeneration: 0 };
+      const session = f.backend.connect();
+      await session.compareAndSwap(
+        `s/v1/default/account/${f.objectId}`,
+        stored.version,
+        new TextEncoder().encode(JSON.stringify(remote)),
+        f.signal,
+      );
+      await session.dispose();
+      const candidate = { ...f.accountWrite, credential: { token: 'new-login' } };
+
+      await f.sharing.replaceShared(f.providerId, candidate, f.signal);
+
+      // The new epoch is what makes a late result from the abandoned exchange fail rather than
+      // resurrect the credential this login just retired.
+      expect(f.remote()).toMatchObject({ phase: 'ready', claim: null, epoch: 1, generation: 1 });
+      expect(f.currentCredential()).toEqual({ token: 'new-login' });
+      expect(f.ownership()).toMatchObject({ mode: 'shared', epoch: 1, generation: 1 });
+      expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+    },
+    { shared: true },
+  );
+});
+
 test('a purged shared remote never falls back to the retained local credential', async () => {
   await withOAuthSharingFixture(
     async (f) => {

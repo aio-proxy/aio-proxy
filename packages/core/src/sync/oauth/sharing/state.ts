@@ -130,16 +130,28 @@ export function compatibleRemote(
   );
 }
 
-export function readyOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
+function ownedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
   return (
-    remote.phase === 'ready' &&
-    remote.claim === null &&
     ownership.epoch === remote.epoch &&
     ownership.generation === remote.generation &&
     ownership.pluginVersion === remote.pluginVersion &&
     ownership.formatVersion === remote.formatVersion &&
     ownership.multiDeviceEvidenceId === remote.multiDeviceEvidenceId
   );
+}
+
+export function readyOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
+  return remote.phase === 'ready' && remote.claim === null && ownedRemote(ownership, remote);
+}
+
+/**
+ * An interrupted refresh leaves the shared account `uncertain` behind a claim that nothing clears
+ * on its own, so a device still owning that exact generation has to be allowed to recover from it.
+ * The recovery paths take over rather than resume: replacing advances the epoch, which is what
+ * makes a late-landing result from the abandoned exchange fail instead of resurrect the account.
+ */
+export function uncertainOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
+  return remote.phase === 'uncertain' && ownedRemote(ownership, remote);
 }
 
 export function liveAccount(
