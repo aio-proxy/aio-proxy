@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import type { JsonValue } from '@aio-proxy/plugin-sdk';
+import { encode, entityKey, revisionKey } from '@aio-proxy/core';
+import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { createSyncControlPlane } from '../control-plane';
+import { listRemoteEntities } from './entities';
 import { applyOverrides } from './overrides';
 import { buildPreview } from './preview';
 
@@ -763,4 +765,79 @@ test('manual cloud apply records the current revision operation ID instead of it
     decisions: [{ objectId: 'provider-work', choice: 'local' }],
   });
   expect(saved.baseline).toBe('remote-operation-7');
+});
+
+test('a tombstoned remote head reports no live body so the preview offers a restore', async () => {
+  const objectId = 'provider-work';
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { value: 'cloud' }, dependencies: [] };
+  // A delete only flips `state`; `current` keeps pointing at the last payload revision.
+  const head = encode({
+    protocol: 1,
+    objectId,
+    kind: 'provider',
+    logicalKey: 'work',
+    epoch: 1,
+    sequence: 1,
+    state: 'deleted',
+    current: 'operation-1',
+    history: ['operation-1'],
+    reserved: [],
+    cancelling: [],
+    receipts: {},
+    cleanupComplete: true,
+  });
+  const revision = encode({
+    protocol: 1,
+    state: 'payload',
+    objectId,
+    epoch: 1,
+    operationId: 'operation-1',
+    body,
+    publishedSequence: 1,
+    writtenAt: 1,
+  });
+  const stored = new Map<string, Uint8Array>([
+    [entityKey(objectId), head],
+    [revisionKey(objectId, 'operation-1'), revision],
+  ]);
+  const session = {
+    list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+    read: async (key: string) => {
+      const value = stored.get(key);
+      return value === undefined
+        ? { kind: 'absent' as const }
+        : { kind: 'present' as const, value, version: 'v1', modifiedAt: 1 };
+    },
+  } as unknown as SyncSession;
+
+  const remote = await listRemoteEntities(session);
+  expect(remote[0]).toMatchObject({ tombstone: true, body: null, restoreBody: body });
+
+  const built = buildPreview({
+    request: { kind: 'full' },
+    local: [
+      {
+        objectId,
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: body,
+        baseline: 'operation-1',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote,
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+  expect(built.preview.rows[0]).toMatchObject({ change: 'delete', choices: ['restore'], cloud: null });
 });

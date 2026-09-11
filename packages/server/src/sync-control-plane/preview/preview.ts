@@ -50,6 +50,12 @@ function equal(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+// A tombstoned entity reports no live body, but its last payload still names the objects it linked
+// to; dependency traversal has to see them so a rejoin or purge covers the whole graph.
+function remoteDependencies(entity: RemoteEntity | undefined): readonly { readonly objectId: string }[] {
+  return entity?.body?.dependencies ?? entity?.restoreBody?.dependencies ?? [];
+}
+
 function rowFor(
   local: EntityBody | null,
   cloud: EntityBody | null,
@@ -156,7 +162,7 @@ export function buildPreview(input: {
     // so a rejoin never leaves a selected object pointing at an unselected one.
     const dependenciesOf = (objectId: string): readonly string[] => [
       ...(localByObject.get(objectId)?.desired?.dependencies ?? []).map((d) => d.objectId),
-      ...(remoteByObject.get(objectId)?.body?.dependencies ?? []).map((d) => d.objectId),
+      ...remoteDependencies(remoteByObject.get(objectId)).map((d) => d.objectId),
     ];
     for (let changed = true; changed;) {
       changed = false;
@@ -184,7 +190,7 @@ export function buildPreview(input: {
         logicalKey: entity.logicalKey,
         kind: entity.kind,
         remote: true,
-        dependencies: entity.body?.dependencies ?? [],
+        dependencies: remoteDependencies(entity),
       })),
     ];
     const targets = new Set(
@@ -295,13 +301,10 @@ export function buildPreview(input: {
   const allLocalIds = new Set(localSnapshot.map((entity) => entity.objectId));
   const dependencyError =
     input.request.kind === 'purge' &&
-    candidates.some(
-      (candidate) =>
-        remoteByObject
-          .get(candidate.row.objectId)
-          ?.body?.dependencies.some(
-            (dependency) => !allRemoteIds.has(dependency.objectId) && !allLocalIds.has(dependency.objectId),
-          ) ?? false,
+    candidates.some((candidate) =>
+      remoteDependencies(remoteByObject.get(candidate.row.objectId)).some(
+        (dependency) => !allRemoteIds.has(dependency.objectId) && !allLocalIds.has(dependency.objectId),
+      ),
     );
   const preview: SyncPreview = {
     previewId: input.previewId,

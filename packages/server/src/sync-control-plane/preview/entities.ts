@@ -92,14 +92,19 @@ export async function listRemoteEntities(session: SyncSession | undefined): Prom
     if (head.current !== null) {
       body = revisions[head.current] ?? null;
     }
+    // A delete only flips `state`; `current` keeps pointing at the last payload. Reporting that
+    // payload as the live cloud body would make the preview offer local/cloud on an entity the
+    // remote deleted, so the tombstone is surfaced as an absent body and the payload stays
+    // reachable through `revisions`/`restoreBody` for a restore.
+    const tombstone = head.state === 'deleted' || head.state === 'purged';
     result.push({
       objectId,
       logicalKey: head.logicalKey,
       kind: head.kind,
       version: value.version,
       revision: head.current,
-      body,
-      tombstone: head.state === 'deleted' || head.state === 'purged',
+      body: tombstone ? null : body,
+      tombstone,
       revisions,
       restoreBody:
         body ?? [...Object.values(revisions)].reverse().find((revision): revision is EntityBody => revision !== null),
