@@ -333,7 +333,7 @@ test('sync endpoint canonicalizes wildcard config hosts for requests and Origin'
   }
 });
 
-test('sync endpoint preserves an authenticated remote config host and same-host Origin', async () => {
+test('sync refuses to send the Dashboard password in cleartext to a remote config host', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-sync-remote-host-'));
   const previousHome = process.env.AIO_PROXY_HOME;
   process.env.AIO_PROXY_HOME = home;
@@ -341,13 +341,13 @@ test('sync endpoint preserves an authenticated remote config host and same-host 
     join(home, 'config.jsonc'),
     '{ "server": { "host": "192.0.2.10", "port": 9317, "password": "dashboard-secret" }, "providers": {} }\n',
   );
-  const calls: Array<{ url: string; origin: string | null }> = [];
+  const calls: string[] = [];
+  let promptedForPassword = false;
   try {
     const deps = createDefaultSyncCliDeps({
-      fetch: async (input, init) => {
+      fetch: async (input) => {
         const url = String(input);
-        const headers = new Headers(init?.headers);
-        calls.push({ url, origin: headers.get('Origin') });
+        calls.push(url);
         if (url.endsWith('/dashboard/api/auth/session')) return Response.json({ status: 'unauthenticated' });
         if (url.endsWith('/dashboard/api/auth/login')) return Response.json({ token: 'memory-token' });
         return Response.json({
@@ -359,18 +359,40 @@ test('sync endpoint preserves an authenticated remote config host and same-host 
         });
       },
       passwordStdin: true,
-      readPasswordStdin: async () => 'dashboard-secret\n',
+      readPasswordStdin: async () => {
+        promptedForPassword = true;
+        return 'dashboard-secret\n';
+      },
+    });
+    await expect(createSyncClient(deps).status()).rejects.toThrow(/192\.0\.2\.10/u);
+    expect(promptedForPassword).toBe(false);
+    expect(calls).toEqual(['http://192.0.2.10:9317/dashboard/api/auth/session']);
+  } finally {
+    if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('sync still reaches a remote config host whose Dashboard password is disabled', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-sync-remote-open-'));
+  const previousHome = process.env.AIO_PROXY_HOME;
+  process.env.AIO_PROXY_HOME = home;
+  writeFileSync(join(home, 'config.jsonc'), '{ "server": { "host": "192.0.2.10", "port": 9317 }, "providers": {} }\n');
+  const calls: Array<{ url: string; origin: string | null }> = [];
+  try {
+    const deps = createDefaultSyncCliDeps({
+      fetch: async (input, init) => {
+        const url = String(input);
+        calls.push({ url, origin: new Headers(init?.headers).get('Origin') });
+        return url.endsWith('/dashboard/api/auth/session')
+          ? Response.json({ status: 'disabled' })
+          : Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
+      },
     });
     await createSyncClient(deps).status();
     expect(calls).toEqual([
-      {
-        url: 'http://192.0.2.10:9317/dashboard/api/auth/session',
-        origin: 'http://192.0.2.10:9317',
-      },
-      {
-        url: 'http://192.0.2.10:9317/dashboard/api/auth/login',
-        origin: 'http://192.0.2.10:9317',
-      },
+      { url: 'http://192.0.2.10:9317/dashboard/api/auth/session', origin: 'http://192.0.2.10:9317' },
       { url: 'http://192.0.2.10:9317/dashboard/api/sync', origin: 'http://192.0.2.10:9317' },
     ]);
   } finally {

@@ -91,6 +91,7 @@
       "access_denied": "The Dashboard request was denied",
       "authentication_failed": "Dashboard authentication failed",
       "service_not_running": "AIO Proxy is not reachable at {url}. Start it with `aio-proxy service start`",
+      "insecure_endpoint": "Refusing to send the Dashboard password unencrypted to {url}. Run this command on the host running AIO Proxy, or reach it over a loopback tunnel",
       "preview_stale": "This preview is stale. Create and review a new preview",
       "not_connected": "Configuration sync is not connected",
       "backend_unavailable": "The sync backend is unavailable",

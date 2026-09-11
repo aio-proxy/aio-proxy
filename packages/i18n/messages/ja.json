@@ -91,6 +91,7 @@
       "access_denied": "ダッシュボードのリクエストが拒否されました",
       "authentication_failed": "ダッシュボードの認証に失敗しました",
       "service_not_running": "AIO Proxy ({url}) に接続できません。`aio-proxy service start` で起動してください",
+      "insecure_endpoint": "Dashboard のパスワードを暗号化せずに {url} へ送信することを拒否しました。AIO Proxy が動作しているホスト上で実行するか、ループバックトンネル経由で接続してください",
       "preview_stale": "このプレビューは古くなっています。新しいプレビューを作成して確認してください",
       "not_connected": "設定同期が接続されていません",
       "backend_unavailable": "同期バックエンドを利用できません",

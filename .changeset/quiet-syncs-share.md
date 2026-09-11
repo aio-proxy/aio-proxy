@@ -1,9 +1,21 @@
 ---
-'@aio-proxy/core': minor
+'@aio-proxy/plugin-google-antigravity': minor
+'@aio-proxy/plugin-github-copilot': minor
+'@aio-proxy/plugin-openai-chatgpt': minor
+'@aio-proxy/plugin-claude-code': minor
+'@aio-proxy/plugin-openrouter': minor
 '@aio-proxy/plugin-cloudkit': minor
+'@aio-proxy/plugin-kimi-code': minor
+'@aio-proxy/plugin-muse-code': minor
+'@aio-proxy/plugin-xai-grok': minor
+'@aio-proxy/plugin-cursor': minor
 '@aio-proxy/plugin-sdk': minor
+'@aio-proxy/dashboard': minor
 '@aio-proxy/server': minor
 '@aio-proxy/types': minor
+'@aio-proxy/core': minor
+'@aio-proxy/i18n': minor
+'@aio-proxy/cli': minor
 'aio-proxy': minor
 ---
 
