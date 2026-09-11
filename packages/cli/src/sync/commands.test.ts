@@ -366,7 +366,7 @@ test('sync refuses to send the Dashboard password in cleartext to a remote confi
     });
     await expect(createSyncClient(deps).status()).rejects.toThrow(/192\.0\.2\.10/u);
     expect(promptedForPassword).toBe(false);
-    expect(calls).toEqual(['http://192.0.2.10:9317/dashboard/api/auth/session']);
+    expect(calls).toEqual([]);
   } finally {
     if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
     else process.env.AIO_PROXY_HOME = previousHome;
@@ -374,27 +374,33 @@ test('sync refuses to send the Dashboard password in cleartext to a remote confi
   }
 });
 
-test('sync still reaches a remote config host whose Dashboard password is disabled', async () => {
+// Over cleartext http an impostor peer can always claim the Dashboard password is disabled, so a
+// refusal that only guards the password path still hands secret backend options to that peer.
+test('sync refuses a remote config host that reports its Dashboard password disabled', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-sync-remote-open-'));
   const previousHome = process.env.AIO_PROXY_HOME;
   process.env.AIO_PROXY_HOME = home;
   writeFileSync(join(home, 'config.jsonc'), '{ "server": { "host": "192.0.2.10", "port": 9317 }, "providers": {} }\n');
-  const calls: Array<{ url: string; origin: string | null }> = [];
+  const calls: string[] = [];
   try {
     const deps = createDefaultSyncCliDeps({
-      fetch: async (input, init) => {
+      fetch: async (input) => {
         const url = String(input);
-        calls.push({ url, origin: new Headers(init?.headers).get('Origin') });
+        calls.push(url);
         return url.endsWith('/dashboard/api/auth/session')
           ? Response.json({ status: 'disabled' })
           : Response.json({ state: 'idle', backend: null, providers: [], pendingOperations: 0, lastSuccessAt: null });
       },
     });
-    await createSyncClient(deps).status();
-    expect(calls).toEqual([
-      { url: 'http://192.0.2.10:9317/dashboard/api/auth/session', origin: 'http://192.0.2.10:9317' },
-      { url: 'http://192.0.2.10:9317/dashboard/api/sync', origin: 'http://192.0.2.10:9317' },
-    ]);
+    await expect(
+      createSyncClient(deps).preview({
+        kind: 'connect',
+        plugin: '@aio-proxy/plugin-cloudkit',
+        capability: 'icloud',
+        options: { secret: 'backend-credential' },
+      }),
+    ).rejects.toThrow(/192\.0\.2\.10/u);
+    expect(calls).toEqual([]);
   } finally {
     if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
     else process.env.AIO_PROXY_HOME = previousHome;

@@ -91,7 +91,7 @@
       "access_denied": "控制台请求被拒绝",
       "authentication_failed": "控制台身份验证失败",
       "service_not_running": "无法连接 AIO Proxy（{url}）。请使用 `aio-proxy service start` 启动",
-      "insecure_endpoint": "拒绝以未加密方式将 Dashboard 密码发送到 {url}。请在运行 AIO Proxy 的主机上执行此命令，或通过回环隧道访问",
+      "insecure_endpoint": "拒绝以未加密方式将凭据发送到 {url}。请在运行 AIO Proxy 的主机上执行此命令，或通过回环隧道访问",
       "preview_stale": "预览已过期，请创建并审核新的预览",
       "not_connected": "配置同步未连接",
       "backend_unavailable": "同步后端不可用",

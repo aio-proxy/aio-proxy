@@ -251,7 +251,14 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
   const resolveEndpoint = async (): Promise<string> => {
     if (endpoint !== undefined) return endpoint;
     const address = await resolveControlAddress({});
-    endpoint = controlBaseUrl(connectHost(address.host, { allowRemote: true }), address.port);
+    const base = controlBaseUrl(connectHost(address.host, { allowRemote: true }), address.port);
+    // controlBaseUrl only ever speaks http, so a non-loopback endpoint would put the Dashboard
+    // password and any secret backend options on the wire in cleartext. Refuse before the first
+    // request rather than after sending one: an impostor peer that answers /auth/session with
+    // "disabled" would otherwise skip a check placed on the password path alone.
+    if (canonicalizeLoopbackHost(new URL(base).hostname) === undefined)
+      throw new SyncCliError('insecure-endpoint', m['cli.sync.insecure_endpoint']({ url: base }));
+    endpoint = base;
     return endpoint;
   };
   const readStdin = options.readPasswordStdin ?? (async () => stripFinalLineEnding(await Bun.stdin.text()));
@@ -277,10 +284,6 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
       if (sessionBody?.status === 'disabled') return undefined;
       if (sessionBody?.status === 'unavailable')
         throw new SyncCliError('service-not-running', m['cli.sync.service_not_running']({ url: base }), true);
-      // controlBaseUrl only ever speaks http, so a non-loopback endpoint would put the Dashboard
-      // password on the wire in cleartext. Refuse before prompting rather than after sending it.
-      if (canonicalizeLoopbackHost(new URL(base).hostname) === undefined)
-        throw new SyncCliError('insecure-endpoint', m['cli.sync.insecure_endpoint']({ url: base }));
       const secret = options.passwordStdin === true ? stripFinalLineEnding(await readStdin()) : await readPassword();
       if (secret.length === 0) throw new SyncCliError('authentication-required', m['cli.sync.password_required']());
       let login: Response;
