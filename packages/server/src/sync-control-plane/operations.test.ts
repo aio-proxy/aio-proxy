@@ -224,3 +224,30 @@ test('applying an override keeps the paths it just persisted and concurrent OAut
     oauth: { revision: 'login-revision' },
   });
 });
+
+// The swap carries the previous binding's rows onto the new binding, mode included. A row the user
+// left out of the connect decisions has not been joined on this backend, so keeping it included
+// reported it as synchronized and let the next local commit publish it.
+test('connecting excludes a row the decisions left out instead of carrying its old mode', async () => {
+  const rows = [localOnly('provider-a', 'work'), candidate('provider-b', 'provider', 'other')];
+  const stored: LocalEntity[] = [];
+  const carried = [
+    localEntity('provider-a', 'provider', 'work'),
+    localEntity('provider-b', 'provider', 'other'),
+  ] satisfies LocalEntity[];
+  const scenario = harness({
+    localEntities: () => carried,
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => void stored.push(entity) } as never,
+  });
+
+  await applyPreview(
+    scenario.input,
+    record({ kind: 'connect', plugin: '@example/backend', capability: 'cloud', options: {} }, rows),
+    [{ objectId: 'provider-b', choice: 'local' }],
+  );
+
+  expect(stored).toMatchObject([
+    { objectId: 'provider-a', mode: 'excluded' },
+    { objectId: 'provider-b', mode: 'included' },
+  ]);
+});

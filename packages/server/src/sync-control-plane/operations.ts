@@ -271,7 +271,16 @@ export async function applyPreview(
   }
   for (const candidate of record.rows) {
     const decision = selected.get(candidate.row.objectId);
-    if (decision === undefined) continue;
+    if (decision === undefined) {
+      // Only connect gets here; assertDecisions demands a decision for every other kind. The row
+      // was carried across the swap with the previous binding's mode, which says nothing about
+      // this backend: leaving it included reports it as synchronized and lets the next local
+      // commit publish what the user declined to join.
+      const carried = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId);
+      if (carried !== undefined && carried.mode !== 'excluded' && typeof input.repo.putEntity === 'function')
+        input.repo.putEntity(binding.id, { ...carried, mode: 'excluded', pendingReason: null });
+      continue;
+    }
     const current = localByObject.get(candidate.row.objectId);
     let identityRows: ProviderIdentityRows | undefined;
     let selectedBody =

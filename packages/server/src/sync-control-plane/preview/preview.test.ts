@@ -260,7 +260,13 @@ test('rejoin preview is one-use, expires, and redacts candidate values', async (
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
     now: () => 1_000,
     binding: () => ({
       id: 'binding',
@@ -354,7 +360,13 @@ test('preview rejects a local commit that lands during snapshot capture', async 
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
   await expect(control.preview({ kind: 'join', providerId: 'work' })).rejects.toMatchObject({ code: 'preview-stale' });
 });
@@ -414,7 +426,13 @@ test('preview redacts account option fields whose names do not reveal that they 
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   expect(JSON.stringify(preview)).not.toContain('value-to-hide');
@@ -465,7 +483,13 @@ test('preview redacts Provider header values whose names do not match a secret p
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
 
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
@@ -526,7 +550,13 @@ test('restore apply forwards the requested operation id', async () => {
     },
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
   const preview = await control.preview({ kind: 'restore', objectId: 'object', operationId: 'old' });
   await control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'object', choice: 'restore' }] });
@@ -600,7 +630,13 @@ test('same-id resolution persists the new provider ID and rewires model referenc
     persistOverrides: async () => {},
     persistProviderIdentity: async (_old, _new, entities) => persisted.push(entities),
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
@@ -687,7 +723,13 @@ test('same-id resolution falls back to repository bulk persistence when no integ
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
@@ -768,7 +810,13 @@ test('renaming a published Provider publishes a new object and deletes the ident
     persistOverrides: async () => {},
     persistProviderIdentity: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
 
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
@@ -843,7 +891,13 @@ test('manual cloud apply records the current revision operation ID instead of it
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
@@ -999,6 +1053,7 @@ test('connect previews the candidate backend and applies the reviewed decisions'
   let disposed = false;
   const published: (string | null)[] = [];
   const imported: string[] = [];
+  let activatedAfter: (string | null)[] | undefined;
   const control = createSyncControlPlane({
     repo: {
       readBinding: () => null,
@@ -1037,6 +1092,7 @@ test('connect previews the candidate backend and applies the reviewed decisions'
       remote,
       refresh: async () => remote,
       commit: async () => void (committed = true),
+      activate: () => void (activatedAfter = [...published, ...imported]),
       dispose: async () => void (disposed = true),
     }),
   });
@@ -1067,6 +1123,9 @@ test('connect previews the candidate backend and applies the reviewed decisions'
   // as included.
   expect(published).toEqual(['work']);
   expect(imported).toEqual(['cloud-object']);
+  // Reconciliation imports remote objects under the engine's own inclusion defaults, so starting it
+  // between the swap and the decisions would transiently activate the cloud configuration.
+  expect(activatedAfter).toEqual(['work', 'cloud-object']);
 });
 
 test('an abandoned connect preview disposes its candidate at expiry', async () => {
@@ -1101,6 +1160,7 @@ test('an abandoned connect preview disposes its candidate at expiry', async () =
       remote: [],
       refresh: async () => [],
       commit: async () => void (committed = true),
+      activate: () => {},
       dispose: async () => void (disposed += 1),
     }),
   });
@@ -1167,7 +1227,13 @@ test('an abandoned join preview stops pinning preview-required at expiry', async
     persistOverrides: async () => {},
     purge: async () => {},
     previewTtlMs: 10,
-    connect: async () => ({ remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} }),
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
   });
 
   await control.preview({ kind: 'join', providerId: 'work' });
@@ -1219,6 +1285,7 @@ test('connect validates decisions and fences the candidate before swapping the b
       remote: [cloudEntity('v1')],
       refresh: async () => [cloudEntity(cloudVersion)],
       commit: async () => void (committed += 1),
+      activate: () => {},
       dispose: async () => void (disposed += 1),
     }),
   });

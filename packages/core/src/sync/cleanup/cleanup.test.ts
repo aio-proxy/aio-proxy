@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { SyncSession } from '@aio-proxy/plugin-sdk';
+import { SyncBackendError, type SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { decodeAccount } from '../oauth';
 import {
@@ -595,4 +595,34 @@ test('server time uses the confirmed storage timestamp and recovers an unknown w
   const value = backend.readAll().get('s/v1/default/space');
   expect(value?.kind).toBe('present');
   expect(now).toBe(value!.modifiedAt);
+});
+
+// A CAS that commits and then loses its acknowledgement leaves the head on a version the caller's
+// fence does not name. Rejecting that reread as someone else's write stranded the delete with
+// cleanupComplete: false, before the tombstone and reservation cleanup a restore depends on.
+test('a conditional delete recognizes its own head write after an unknown outcome', async () => {
+  const backend = createMemorySyncBackend();
+  const base = backend.connect();
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID());
+  await publishEntity(createSyncObjectStore(base), item, signal);
+  const expected = (await createSyncObjectStore(base).readHead(item.objectId, signal))!.version;
+
+  let swallowed = false;
+  const session: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expectedVersion, value, casSignal) {
+      const result = await base.compareAndSwap(key, expectedVersion, value, casSignal);
+      if (!swallowed && key === entityKey(item.objectId)) {
+        swallowed = true;
+        throw new SyncBackendError('outcome-unknown', 'acknowledgement lost');
+      }
+      return result;
+    },
+  };
+
+  await deleteEntity(createSyncObjectStore(session), item.objectId, 0, signal, expected);
+
+  expect(swallowed).toBe(true);
+  expect(head(backend, item.objectId)).toMatchObject({ state: 'deleted', cleanupComplete: true });
 });

@@ -201,7 +201,7 @@ export function createSyncIntegration(
   syncPort = initial.port;
   lifecycle = initial.lifecycle;
 
-  const replaceBackend = async (binding: LocalBinding, preconnectedSession: SyncSession): Promise<void> => {
+  const replaceBackend = async (binding: LocalBinding, preconnectedSession: SyncSession): Promise<() => void> => {
     let next: ReturnType<typeof createLifecycle> | undefined;
     try {
       next = createLifecycle(binding, preconnectedSession, true);
@@ -229,7 +229,6 @@ export function createSyncIntegration(
           // status lists no Provider and a join has nothing to select. Seeding is excluded-only,
           // so connecting still publishes nothing until the user joins.
           seedAuthoredEntities(syncRepository, binding.id, authored);
-          next!.lifecycle.activate();
           syncPort = next!.port;
           lifecycle = next!.lifecycle;
           runtime.sync = lifecycle;
@@ -247,6 +246,11 @@ export function createSyncIntegration(
           throw error;
         }
       });
+      // The engine stays deferred until the caller has applied the reviewed connect decisions:
+      // reconciling first would import the candidate's remote objects under the engine's default
+      // inclusion, transiently activating a cloud configuration the user chose to overwrite.
+      const activate = next.lifecycle.activate;
+      return activate;
     } catch (error) {
       if (next === undefined) await preconnectedSession.dispose().catch(() => {});
       else await next.lifecycle.close().catch(() => {});
@@ -294,6 +298,7 @@ export function createSyncIntegration(
           options: normalizedOptions,
         };
         let released = false;
+        let activateBackend: (() => void) | undefined;
         return {
           remote,
           refresh: () => listRemoteEntities(candidateSession),
@@ -305,13 +310,14 @@ export function createSyncIntegration(
               // either double-dispose or tear down the session that is now live.
               released = true;
               try {
-                await replaceBackend(binding, candidateSession);
+                activateBackend = await replaceBackend(binding, candidateSession);
                 refreshCommitHooks();
               } catch (error) {
                 if (error instanceof SyncOperationError) throw error;
                 throw new SyncOperationError('backend-unavailable');
               }
             }),
+          activate: () => activateBackend?.(),
           dispose: async () => {
             if (released) return;
             released = true;

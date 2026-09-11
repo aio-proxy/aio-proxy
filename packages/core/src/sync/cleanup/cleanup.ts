@@ -1,4 +1,5 @@
 import { SyncBackendError } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import {
   accountKey,
@@ -46,9 +47,15 @@ export async function updateHead(
   signal: AbortSignal,
   expectedVersion?: string,
 ): Promise<{ head: EntityHead; version: string; modifiedAt: number }> {
+  // An unknown CAS outcome may already have committed, which moves the version the fence names.
+  // Recognizing our own transition on the reread keeps the fence honest without rejecting a write
+  // that landed — for a delete that rejection stranded the head at cleanupComplete: false, before
+  // the tombstone and reservation cleanup that a later restore depends on.
+  let attempted: EntityHead | undefined;
   for (;;) {
     signal.throwIfAborted();
     const current = await readHeadOrThrow(store, objectId, signal);
+    if (attempted !== undefined && isEqual(current.head, attempted)) return current;
     if (expectedVersion !== undefined && current.version !== expectedVersion)
       throw new SyncProtocolError('upgrade-required', 'head version changed');
     const next = change(current.head);
@@ -59,7 +66,10 @@ export async function updateHead(
       const result = await store.session.compareAndSwap(entityKey(objectId), current.version, bytes, signal);
       if (result.kind === 'written') return { head: next, version: result.version, modifiedAt: result.modifiedAt };
     } catch (error) {
-      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') continue;
+      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') {
+        attempted = next;
+        continue;
+      }
       throw error;
     }
   }

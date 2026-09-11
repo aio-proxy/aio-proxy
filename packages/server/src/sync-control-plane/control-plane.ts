@@ -49,8 +49,13 @@ export type SyncConnectCandidate = {
   readonly remote: readonly RemoteEntity[];
   /** Re-reads the candidate's cloud state through its own session, before it is bound. */
   readonly refresh: () => Promise<readonly RemoteEntity[]>;
-  /** Swaps the binding onto the candidate backend. */
+  /** Swaps the binding onto the candidate backend, leaving its engine deferred. */
   readonly commit: () => Promise<void>;
+  /**
+   * Starts the committed backend's engine. Reconciliation imports remote objects under its default
+   * inclusion behavior, so it must not run until the reviewed decisions have been applied.
+   */
+  readonly activate: () => void;
   /** Releases the candidate when its preview is replaced, expires, or fails to apply. */
   readonly dispose: () => Promise<void>;
 };
@@ -283,7 +288,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     };
     if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
     await candidate.commit();
-    await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
+    // The swap is done, so the engine has to run whether or not the decisions all land; a thrown
+    // apply must not leave the bound backend without reconciliation until the next restart.
+    try {
+      await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
+    } finally {
+      candidate.activate();
+    }
   };
 
   return {
