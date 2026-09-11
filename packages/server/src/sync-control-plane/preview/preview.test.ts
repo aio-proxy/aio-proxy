@@ -176,6 +176,46 @@ test('a local-only join projects authored bodies and pulls in the business plugi
   ]);
 });
 
+test('an override on a local-only object pins the authored value rather than the empty published one', () => {
+  const authored = {
+    plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],
+    providers: { fresh: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } } },
+  } satisfies Record<string, JsonValue>;
+  const excluded = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'excluded' as const,
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'overrides', objectId: 'local-fresh', paths: [['options', 'region']] },
+    local: [
+      excluded('local-fresh', 'provider', 'fresh'),
+      excluded('local-plugin', 'plugin-business', '@example/business'),
+    ],
+    remote: [],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-overrides',
+    expiresAt: 1,
+    source: {
+      raw: authored,
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map([['@example/business', '1.2.3']]),
+    },
+  });
+
+  // The row carries the body applying the override persists. Falling back to the never-published
+  // `desired` would pin `undefined`, which deletes `region` from the authored configuration.
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['local-fresh']);
+  expect(built.record.rows[0]?.local?.value).toMatchObject({ options: { region: 'eu' } });
+});
+
 test('a join follows published dependency object IDs instead of matching logical keys', () => {
   const cloud = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string, dependsOn?: string) => ({
     objectId,
