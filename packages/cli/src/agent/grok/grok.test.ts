@@ -99,6 +99,29 @@ test('a private directory without a marker is a conflict and is not taken over',
   }
 });
 
+test('a crash after the marker rename keeps the pending journal', async () => {
+  const f = await grokFixture();
+  try {
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'marker_committed') throw new Error('crash after marker rename');
+        },
+      }),
+    ).rejects.toThrow(/crash after marker rename/);
+    const ownershipPath = join(f.root, 'aio-proxy', 'ownership.json');
+    expect(await Bun.file(ownershipPath).exists()).toBe(true);
+    expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(true);
+    expect(await readFile(ownershipPath, 'utf8')).toContain('"pending"');
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('recovery_required');
+    const recovered = await configureGrok(f.input, f.deps);
+    expect(recovered.status).toBe('updated');
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('inspect reports pending ownership without recovering it', async () => {
   const f = await grokFixture();
   try {

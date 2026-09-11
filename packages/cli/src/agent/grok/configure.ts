@@ -186,7 +186,7 @@ async function configureFirst(
     await persistOwnership(lock, paths, pending, reuse?.ownership, budget);
     created.push(await captureIdentity(paths.ownership));
     await testDeps?.failpoint?.('ownership_pending');
-    await persistMarker(lock, paths, marker, reuse?.marker, budget);
+    await persistMarker(lock, paths, marker, reuse?.marker, budget, testDeps);
     created.push(await captureIdentity(paths.marker));
     markerWritten = true;
     await testDeps?.failpoint?.('marker');
@@ -204,6 +204,7 @@ async function configureFirst(
     await clearConsumedRemovalJournal(lock, paths, budget);
     return { marker, status: 'installed' };
   } catch (error) {
+    if (!markerWritten && (await inspectPath(paths.marker)) !== undefined) markerWritten = true;
     if (!markerWritten && reuse === undefined) {
       for (const identity of created.reverse()) await removeMatchingFile(identity);
       if (privateDir !== undefined) await removeMatchingDir(privateDir);

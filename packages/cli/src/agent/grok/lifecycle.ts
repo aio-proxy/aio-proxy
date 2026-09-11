@@ -27,7 +27,14 @@ import type { GrokDeadline, GrokDeps, GrokMarker, GrokOwnership, GrokPath, TomlE
 
 export type GrokConfigureTestDeps = ReplaceGrokFileTestDeps & {
   readonly failpoint?: (
-    point: 'private_dir' | 'ownership_pending' | 'marker' | 'config' | 'ownership_committed' | 'marker_version',
+    point:
+      | 'private_dir'
+      | 'ownership_pending'
+      | 'marker_committed'
+      | 'marker'
+      | 'config'
+      | 'ownership_committed'
+      | 'marker_version',
   ) => void | Promise<void>;
 };
 
@@ -176,8 +183,10 @@ export async function persistMarker(
   marker: GrokMarker,
   expected: GrokFileSnapshot | undefined,
   budget: GrokDeadline,
+  testDeps?: GrokConfigureTestDeps,
 ): Promise<GrokFileSnapshot> {
-  await replaceOwnedFile(lock, paths.marker, encodeGrokMarker(marker), expected, budget);
+  await replaceOwnedFile(lock, paths.marker, encodeGrokMarker(marker), expected, budget, testDeps);
+  await testDeps?.failpoint?.('marker_committed');
   const saved = await readGrokPrivateFile(paths.marker, 'marker', budget);
   if (saved === undefined) throw new Error('Grok marker invalid');
   return saved;
