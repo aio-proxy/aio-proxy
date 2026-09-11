@@ -3,6 +3,7 @@ import { constants, type Stats } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { MAX_GROK_FILE_BYTES, readOpenFileText } from './read-bounded';
 import type { GrokDeadline } from './types';
 
 export type GrokFileSnapshot = {
@@ -29,7 +30,7 @@ export type ReplaceGrokFileTestDeps = {
   readonly beforeRename?: () => Promise<void>;
 };
 
-const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL;
 
 export const grokPaths = (root: string): GrokPaths => {
@@ -45,8 +46,8 @@ export const grokPaths = (root: string): GrokPaths => {
   };
 };
 
-export async function readGrokCredentialText(root: string): Promise<string | undefined> {
-  const snapshot = await readGrokPrivateFile(grokPaths(root).credential, 'credential');
+export async function readGrokCredentialText(root: string, budget?: GrokDeadline): Promise<string | undefined> {
+  const snapshot = await readGrokPrivateFile(grokPaths(root).credential, 'credential', budget);
   if (snapshot === undefined || snapshot.text.trim() === '') return undefined;
   return snapshot.text;
 }
@@ -99,6 +100,7 @@ async function readGrokSnapshot(
   path: string,
   kind: string,
   privateFile: boolean,
+  budget?: GrokDeadline,
 ): Promise<GrokFileSnapshot | undefined> {
   const link = await inspectPath(path);
   if (link === undefined) return undefined;
@@ -115,22 +117,33 @@ async function readGrokSnapshot(
     const file = await handle.stat();
     if (file.dev !== link.dev || file.ino !== link.ino) reject(`Grok ${kind} changed during read`);
     assertSafeFile(file, kind, privateFile);
-    const text = await handle.readFile('utf8');
+    const text = await readOpenFileText(handle, file.size, {
+      maxBytes: MAX_GROK_FILE_BYTES,
+      budget,
+      limitError: () => new Error(`Grok ${kind} unverifiable`),
+    });
     return { text, dev: file.dev, ino: file.ino, mode: file.mode };
   } finally {
-    await handle.close();
+    await handle.close().catch(() => undefined);
   }
 }
 
-export const readGrokFile = (path: string): Promise<GrokFileSnapshot | undefined> =>
-  readGrokSnapshot(path, 'configuration', false);
+export const readGrokFile = (path: string, budget?: GrokDeadline): Promise<GrokFileSnapshot | undefined> =>
+  readGrokSnapshot(path, 'configuration', false, budget);
 
-export const readGrokPrivateFile = (path: string, kind: string): Promise<GrokFileSnapshot | undefined> =>
-  readGrokSnapshot(path, kind, true);
+export const readGrokPrivateFile = (
+  path: string,
+  kind: string,
+  budget?: GrokDeadline,
+): Promise<GrokFileSnapshot | undefined> => readGrokSnapshot(path, kind, true, budget);
 
-export async function tryReadGrokPrivateFile(path: string, kind: string): Promise<GrokFileSnapshot | undefined> {
+export async function tryReadGrokPrivateFile(
+  path: string,
+  kind: string,
+  budget?: GrokDeadline,
+): Promise<GrokFileSnapshot | undefined> {
   try {
-    return await readGrokPrivateFile(path, kind);
+    return await readGrokPrivateFile(path, kind, budget);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Grok ')) return undefined;
     throw error;
@@ -220,7 +233,7 @@ export async function replaceGrokFile(
     // Configure while Grok is not also saving settings.
     budget.signal.throwIfAborted();
     await assertOwnership();
-    const current = await readGrokFile(path);
+    const current = await readGrokFile(path, budget);
     if (!sameGrokSnapshot(expected, current)) {
       throw new Error('Grok file changed during update. Configure while Grok is not also saving settings.');
     }
@@ -242,7 +255,7 @@ export async function unlinkGrokFile(
 ): Promise<void> {
   budget.signal.throwIfAborted();
   await assertOwnership();
-  const current = await readGrokPrivateFile(path, kind);
+  const current = await readGrokPrivateFile(path, kind, budget);
   if (!sameGrokSnapshot(expected, current)) {
     throw new Error('Grok file changed during update. Configure while Grok is not also saving settings.');
   }

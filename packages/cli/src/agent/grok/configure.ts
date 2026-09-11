@@ -55,8 +55,8 @@ function prepareEdit(
   return { command, edit: configureGrokToml(text, input.endpoint, command, previous) };
 }
 
-async function mustReadOwnership(paths: GrokPaths): Promise<GrokFileSnapshot> {
-  const saved = await readGrokPrivateFile(paths.ownership, 'ownership');
+async function mustReadOwnership(paths: GrokPaths, budget: GrokDeadline): Promise<GrokFileSnapshot> {
+  const saved = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
   if (saved === undefined) throw new Error('Grok ownership missing');
   return saved;
 }
@@ -172,7 +172,7 @@ async function configureFirst(
       edit,
       pending,
       config,
-      await mustReadOwnership(paths),
+      await mustReadOwnership(paths, budget),
       budget,
       testDeps,
     );
@@ -202,18 +202,27 @@ async function configureGrokInternal(
       assertSafeRoot(rootStat);
       const privateStat = await inspectPath(paths.privateDir);
       if (privateStat === undefined) {
-        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps);
+        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config, budget), testDeps);
       }
       assertSafePrivateDir(privateStat);
-      const markerFile = await readGrokPrivateFile(paths.marker, 'marker');
-      const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership');
+      const markerFile = await readGrokPrivateFile(paths.marker, 'marker', budget);
+      const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
       if (markerFile === undefined) {
         if (ownershipFile !== undefined) {
           try {
             if (isCompletedGrokRemoval(parseGrokOwnership(ownershipFile.text))) {
-              return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps, {
-                ownership: ownershipFile,
-              });
+              return configureFirst(
+                lock,
+                paths,
+                input,
+                deps,
+                budget,
+                await readGrokFile(paths.config, budget),
+                testDeps,
+                {
+                  ownership: ownershipFile,
+                },
+              );
             }
           } catch {
             // Foreign or invalid leftover ownership is not taken over.
@@ -221,13 +230,13 @@ async function configureGrokInternal(
         }
         throw new Error('Grok private directory already exists');
       }
-      const loaded = await loadManaged(paths, input.adapterVersion);
+      const loaded = await loadManaged(paths, input.adapterVersion, budget);
       if ('newer' in loaded) {
         if (loaded.newer === undefined) throw new Error('Grok configuration is newer');
         return { marker: loaded.newer, status: 'newer' };
       }
       if (isCompletedGrokRemoval(loaded.ownership)) {
-        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps, {
+        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config, budget), testDeps, {
           ownership: loaded.ownershipFile,
           marker: loaded.markerFile,
         });

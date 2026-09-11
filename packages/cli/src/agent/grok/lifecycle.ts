@@ -91,7 +91,7 @@ export async function assertGrokRoutingSafe(
 ): Promise<void> {
   budget.signal.throwIfAborted();
   const path = join(root, 'config.toml');
-  const snapshot = await readGrokFile(path);
+  const snapshot = await readGrokFile(path, budget);
   if (snapshot === undefined) throw new Error('Grok configuration missing');
   for (const leaf of ownership.leaves) {
     if (!equalGrokLeaf(readGrokLeaf(snapshot.text, leaf.path), leaf.written)) {
@@ -108,7 +108,7 @@ export async function assertGrokRoutingSafe(
   const visible = await policy(root, budget);
   const conflicts = checkGrokPolicy(snapshot.text, marker.endpoint, command.value, visible);
   if (conflicts.length > 0) throw new Error('Grok routing conflict: ' + conflicts.join(', '));
-  const latest = await readGrokFile(path);
+  const latest = await readGrokFile(path, budget);
   if (
     latest === undefined ||
     latest.dev !== snapshot.dev ||
@@ -124,15 +124,16 @@ export async function assertGrokRoutingSafe(
 export async function loadManaged(
   paths: GrokPaths,
   adapterVersion: string,
+  budget?: GrokDeadline,
 ): Promise<ManagedState | { readonly newer: GrokMarker | undefined }> {
-  const markerFile = await readGrokPrivateFile(paths.marker, 'marker');
+  const markerFile = await readGrokPrivateFile(paths.marker, 'marker', budget);
   if (markerFile === undefined) throw new Error('Grok private directory already exists');
   const markerKind = peekManagedFormat(markerFile.text);
   if (markerKind === 'newer') return { newer: undefined };
   if (markerKind === 'invalid') throw new Error('Grok marker invalid');
   const marker = parseGrokMarker(markerFile.text);
   if (isNewerAdapter(marker.adapterVersion, adapterVersion)) return { newer: marker };
-  const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership');
+  const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
   if (ownershipFile === undefined) throw new Error('Grok ownership missing');
   const ownershipKind = peekManagedFormat(ownershipFile.text);
   if (ownershipKind === 'newer') return { newer: marker };
@@ -141,7 +142,7 @@ export async function loadManaged(
   if (ownership.installationId !== marker.installationId || ownership.endpoint !== marker.endpoint) {
     throw new Error('Grok ownership identity mismatch');
   }
-  return { marker, markerFile, ownership, ownershipFile, config: await readGrokFile(paths.config) };
+  return { marker, markerFile, ownership, ownershipFile, config: await readGrokFile(paths.config, budget) };
 }
 
 export function requireCurrent(text: string, ownership: GrokOwnership): void {
@@ -161,7 +162,7 @@ export async function persistOwnership(
   budget: GrokDeadline,
 ): Promise<GrokFileSnapshot> {
   await replaceOwnedFile(lock, paths.ownership, encodeGrokOwnership(ownership), expected, budget);
-  const saved = await readGrokPrivateFile(paths.ownership, 'ownership');
+  const saved = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
   if (saved === undefined) throw new Error('Grok ownership missing');
   return saved;
 }
@@ -174,7 +175,7 @@ export async function persistMarker(
   budget: GrokDeadline,
 ): Promise<GrokFileSnapshot> {
   await replaceOwnedFile(lock, paths.marker, encodeGrokMarker(marker), expected, budget);
-  const saved = await readGrokPrivateFile(paths.marker, 'marker');
+  const saved = await readGrokPrivateFile(paths.marker, 'marker', budget);
   if (saved === undefined) throw new Error('Grok marker invalid');
   return saved;
 }

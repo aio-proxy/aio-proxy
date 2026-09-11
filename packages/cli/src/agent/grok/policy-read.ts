@@ -2,23 +2,21 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { MAX_GROK_FILE_BYTES, readOpenFileText, remainingReadMs } from './read-bounded';
 import type { GrokDeadline, GrokPolicySource, GrokVisiblePolicy } from './types';
 
 const UNVERIFIABLE = 'Grok visible policy unverifiable';
 const ETC_MANAGED = '/etc/grok/managed_config.toml';
 const ETC_REQUIREMENTS = '/etc/grok/requirements.toml';
-const DEFAULT_BUDGET_MS = 3_000;
-const MAX_POLICY_BYTES = 1_048_576;
 const MDM_DOMAIN = 'ai.x.grok';
 
 const isErrno = (error: unknown, code: string): boolean =>
   error instanceof Error && 'code' in error && error.code === code;
 
-const remainingMs = (budget?: GrokDeadline): number =>
-  budget === undefined ? DEFAULT_BUDGET_MS : Math.max(0, budget.deadline - Date.now());
+const remainingMs = remainingReadMs;
 
 const parsePolicyText = (text: string, kind: GrokPolicySource['kind']): void => {
-  if (Buffer.byteLength(text) > MAX_POLICY_BYTES) throw new Error(UNVERIFIABLE);
+  if (Buffer.byteLength(text) > MAX_GROK_FILE_BYTES) throw new Error(UNVERIFIABLE);
   try {
     if (kind === 'json') {
       JSON.parse(text);
@@ -28,33 +26,6 @@ const parsePolicyText = (text: string, kind: GrokPolicySource['kind']): void => 
   } catch {
     throw new Error(UNVERIFIABLE);
   }
-};
-
-const abortWhen = (signal: AbortSignal): Promise<never> =>
-  new Promise((_, reject) => {
-    const fail = (): void => {
-      reject(new Error(UNVERIFIABLE));
-    };
-    if (signal.aborted) {
-      fail();
-      return;
-    }
-    signal.addEventListener('abort', fail, { once: true });
-  });
-
-const readBoundedText = async (
-  handle: Awaited<ReturnType<typeof open>>,
-  size: number,
-  budget?: GrokDeadline,
-): Promise<string> => {
-  if (size > MAX_POLICY_BYTES) throw new Error(UNVERIFIABLE);
-  const timeoutMs = remainingMs(budget);
-  if (timeoutMs === 0) throw new Error(UNVERIFIABLE);
-  budget?.signal.throwIfAborted();
-  const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(budget === undefined ? [] : [budget.signal])]);
-  const text = await Promise.race([handle.readFile('utf8'), abortWhen(signal)]);
-  if (Buffer.byteLength(text) > MAX_POLICY_BYTES) throw new Error(UNVERIFIABLE);
-  return text;
 };
 
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
@@ -90,14 +61,18 @@ const readExistingFile = async (
     const file = await handle.stat();
     if (file.dev !== link.dev || file.ino !== link.ino) throw new Error(UNVERIFIABLE);
     assertSafePolicyFile(file);
-    const text = await readBoundedText(handle, file.size, budget);
+    const text = await readOpenFileText(handle, file.size, {
+      maxBytes: MAX_GROK_FILE_BYTES,
+      budget,
+      limitError: () => new Error(UNVERIFIABLE),
+    });
     parsePolicyText(text, kind);
     return { path, text, kind };
   } catch (error) {
     if (error instanceof Error && error.message === UNVERIFIABLE) throw error;
     throw new Error(UNVERIFIABLE);
   } finally {
-    await handle.close();
+    await handle.close().catch(() => undefined);
   }
 };
 

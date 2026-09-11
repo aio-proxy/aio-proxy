@@ -57,8 +57,8 @@ const conflictExisting = (): never => {
   throw new Error('Grok private directory already exists');
 };
 
-async function credentialAbsent(paths: GrokPaths): Promise<boolean> {
-  const snapshot = await readGrokPrivateFile(paths.credential, 'credential');
+async function credentialAbsent(paths: GrokPaths, budget: GrokDeadline): Promise<boolean> {
+  const snapshot = await readGrokPrivateFile(paths.credential, 'credential', budget);
   return snapshot === undefined || snapshot.text.trim() === '';
 }
 
@@ -97,7 +97,7 @@ async function cleanupPrivateDir(
   testDeps?: GrokRemoveTestDeps,
 ): Promise<readonly string[]> {
   await removeGrokOwnedTemporaryFiles(paths);
-  const leftoverCredential = await tryReadGrokPrivateFile(paths.credential, 'credential');
+  const leftoverCredential = await tryReadGrokPrivateFile(paths.credential, 'credential', budget);
   if (leftoverCredential !== undefined) {
     await unlinkKnownFile(
       lock,
@@ -132,10 +132,10 @@ async function narrowCompletedRemoval(
   budget: GrokDeadline,
   testDeps?: GrokRemoveTestDeps,
 ): Promise<GrokRemoveResult> {
-  const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership');
+  const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
   if (ownershipFile === undefined) return conflictExisting();
   const ownership = requireCompletedOwnership(ownershipFile.text);
-  if (!(await credentialAbsent(paths))) return conflictExisting();
+  if (!(await credentialAbsent(paths, budget))) return conflictExisting();
   const retainedFiles = await cleanupPrivateDir(
     lock,
     paths,
@@ -233,7 +233,7 @@ async function removeManaged(
     });
     ownership = result.ownership;
     ownershipFile = result.ownershipFile;
-    config = await readGrokFile(paths.config);
+    config = await readGrokFile(paths.config, budget);
   };
 
   if (adopted.persist) await saveOwnership(ownership);
@@ -250,12 +250,12 @@ async function removeManaged(
     revokeStatus = ownership.revokeStatus;
   }
   if (!isCompletedGrokRemoval(ownership)) {
-    const expectedCredential = await readGrokPrivateFile(paths.credential, 'credential');
+    const expectedCredential = await readGrokPrivateFile(paths.credential, 'credential', budget);
     await lock.withOwnershipFence(async (assertFenced) => {
       await unlinkGrokFile(paths.credential, expectedCredential, budget, assertFenced);
     });
     await testDeps?.failpoint?.('credential');
-    config = await readGrokFile(paths.config);
+    config = await readGrokFile(paths.config, budget);
     const edit = restoreGrokToml(config?.text ?? '', ownership.leaves, ownership.createdTables);
     skippedFields = edit.skipped;
     await commitEdit(edit);
@@ -300,11 +300,11 @@ async function removeGrokInternal(
       if (privateStat === undefined) throw new Error('Grok installation missing');
       assertSafePrivateDir(privateStat);
       const privateDir = await captureIdentity(paths.privateDir);
-      const markerFile = await readGrokPrivateFile(paths.marker, 'marker');
+      const markerFile = await readGrokPrivateFile(paths.marker, 'marker', budget);
       if (markerFile === undefined) {
         return narrowCompletedRemoval(lock, paths, privateDir, budget, testDeps);
       }
-      const loaded = await loadManaged(paths, adapterVersion);
+      const loaded = await loadManaged(paths, adapterVersion, budget);
       if ('newer' in loaded) throw new Error('Grok configuration is newer');
       return removeManaged(lock, paths, privateDir, deps, budget, loaded, testDeps);
     }),

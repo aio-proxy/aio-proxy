@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { grokPaths, isGrokOwnedTmpName, readGrokFile, removeGrokOwnedTemporaryFiles, replaceGrokFile } from './files';
+import { MAX_GROK_FILE_BYTES } from './read-bounded';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
 
@@ -72,6 +73,32 @@ test('owned tmp names are sibling aio uuid files and leftover tmp is removed wit
     expect(await Bun.file(leftover).exists()).toBe(false);
     expect(await Bun.file(configTmp).exists()).toBe(false);
     expect(await readFile(join(paths.privateDir, 'notes.txt'), 'utf8')).toBe('keep\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an oversized Grok file is unverifiable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-oversize-'));
+  const path = join(root, 'config.toml');
+  try {
+    await writeFile(path, `[ui]\ntheme = "${'a'.repeat(MAX_GROK_FILE_BYTES)}"\n`, { mode: 0o600 });
+    const started = Date.now();
+    await expect(readGrokFile(path)).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an expired Grok file budget is unverifiable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-expired-'));
+  const path = join(root, 'config.toml');
+  try {
+    await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    await expect(readGrokFile(path, { deadline: Date.now() - 1, signal: AbortSignal.timeout(5_000) })).rejects.toThrow(
+      /unverifiable/i,
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

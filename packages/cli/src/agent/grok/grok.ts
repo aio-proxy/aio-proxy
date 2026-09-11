@@ -77,7 +77,7 @@ export async function readGrokObservation(
   budget.signal.throwIfAborted();
   const lockOwner = await observeGrokLockOwner(root, budget);
   budget.signal.throwIfAborted();
-  const text = await readGrokCredentialText(root);
+  const text = await readGrokCredentialText(root, budget);
   if (text === undefined) return lockOwner === undefined ? {} : { lockOwner };
   let raw: unknown;
   try {
@@ -236,7 +236,7 @@ export async function withGrokInstallation<T>(
       const privateStat = await inspectPath(paths.privateDir);
       if (privateStat === undefined) throw new Error('Grok installation missing');
       assertSafePrivateDir(privateStat);
-      const loaded = await loadManaged(paths, input.adapterVersion);
+      const loaded = await loadManaged(paths, input.adapterVersion, input.budget);
       if ('newer' in loaded) throw new Error('Grok configuration is newer');
       if (loaded.marker.installationId !== input.installationId) throw new Error('installation id mismatch');
       const recovered = recoverGrokOwnership(configTextOrEmpty(loaded.config), loaded.ownership);
@@ -250,7 +250,7 @@ export async function withGrokInstallation<T>(
       }
       if (ownership.status !== 'active') throw new Error('Grok installation is removing');
       if (ownership.pending !== undefined) throw new Error('Grok configuration requires recovery');
-      const config = await readGrokFile(paths.config);
+      const config = await readGrokFile(paths.config, input.budget);
       if (config === undefined) throw new Error('Grok configuration missing');
       requireCurrent(config.text, ownership);
       await assertGrokRoutingSafe(input.root, loaded.marker, ownership, input.policy, input.budget);
@@ -264,7 +264,7 @@ export async function withGrokInstallation<T>(
           assertGrokRoutingSafe(input.root, loaded.marker, ownership, input.policy, input.budget),
         async readCredential() {
           await assertOwnership();
-          const snapshot = await readGrokPrivateFile(paths.credential, 'credential');
+          const snapshot = await readGrokPrivateFile(paths.credential, 'credential', input.budget);
           if (snapshot === undefined || snapshot.text.trim() === '') return undefined;
           try {
             return JSON.parse(snapshot.text) as unknown;
@@ -278,7 +278,7 @@ export async function withGrokInstallation<T>(
           if (grokInstallationTestHook?.failDeliveredByWrite === true && deliveredByWrite(value)) {
             throw new Error('Grok completion mark write failed');
           }
-          const expected = await readGrokPrivateFile(paths.credential, 'credential');
+          const expected = await readGrokPrivateFile(paths.credential, 'credential', input.budget);
           await replaceOwnedFile(lock, paths.credential, `${encoded}\n`, expected, input.budget, {
             beforeRename: async () => {
               if (readyCredentialWithoutDelivery(value)) {
@@ -288,7 +288,7 @@ export async function withGrokInstallation<T>(
           });
         },
         async clearCredential() {
-          const expected = await readGrokPrivateFile(paths.credential, 'credential');
+          const expected = await readGrokPrivateFile(paths.credential, 'credential', input.budget);
           await lock.withOwnershipFence(async (assertFenced) => {
             await unlinkGrokFile(paths.credential, expected, input.budget, assertFenced);
           });
