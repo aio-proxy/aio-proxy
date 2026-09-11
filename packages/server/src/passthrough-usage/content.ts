@@ -6,6 +6,8 @@ import { assertNever, nonEmptyString } from './shared';
 // Whether one parsed SSE event carries generated content (text or reasoning),
 // aligned with the streaming path's text-delta/reasoning-delta TTFT trigger.
 // Lifecycle/metadata frames (response.created, message_start, ping) return false.
+// OpenAI Responses also treats a completed message/reasoning `output_item.done`
+// with non-empty text as content: some relays omit incremental *.delta events.
 export function hasContentDelta(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
   switch (protocol) {
     case ProviderProtocol.OpenAICompatible:
@@ -64,11 +66,30 @@ function openAICompatibleContent(value: unknown): boolean {
 
 function openAIResponsesContent(eventType: string | undefined, value: unknown): boolean {
   const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
-  return (
+  if (
     type === 'response.output_text.delta' ||
     type === 'response.reasoning_text.delta' ||
     type === 'response.reasoning_summary_text.delta'
-  );
+  ) {
+    return true;
+  }
+  // Some Responses relays buffer the whole message or reasoning item and emit
+  // it on output_item.done with no preceding *.delta frames. Count that as
+  // first content so TTFT is recorded; empty shells and tool items still do not.
+  if (type !== 'response.output_item.done' || !isPlainObject(value)) return false;
+  return openAIResponsesItemHasGeneratedText(value['item']);
+}
+
+function openAIResponsesItemHasGeneratedText(item: unknown): boolean {
+  if (!isPlainObject(item)) return false;
+  const type = item['type'];
+  if (type === 'message') return partsHaveNonEmptyText(item['content']);
+  if (type === 'reasoning') return partsHaveNonEmptyText(item['summary']);
+  return false;
+}
+
+function partsHaveNonEmptyText(parts: unknown): boolean {
+  return Array.isArray(parts) && parts.some((part) => isPlainObject(part) && nonEmptyString(part['text']));
 }
 
 function geminiContent(value: unknown): boolean {
