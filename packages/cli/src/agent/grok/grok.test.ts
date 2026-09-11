@@ -965,6 +965,69 @@ test('unknown private files are retained and owned tmp is removed', async () => 
   }
 });
 
+test('a crash while rebinding a retained install stays recoverable', async () => {
+  const f = await grokFixture();
+  try {
+    const first = await configureGrok(f.input, f.deps);
+    await writeFile(join(f.root, 'aio-proxy', 'notes.txt'), 'keep\n', { mode: 0o600 });
+    await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    await writeFile(
+      join(f.root, 'aio-proxy', 'ownership.json'),
+      encodeGrokOwnership({
+        format: 1,
+        agent: 'grok',
+        installationId: '22222222-2222-4222-8222-222222222222',
+        endpoint: f.input.endpoint,
+        status: 'active',
+        leaves: [],
+        createdTables: [],
+        pending: { operation: 'configure', changes: [], nextLeaves: [], nextCreatedTables: [] },
+      }),
+      { mode: 0o600 },
+    );
+    expect(
+      JSON.parse(await readFile(join(f.root, 'aio-proxy', '.aio-proxy-managed.json'), 'utf8')).installationId,
+    ).toBe(first.marker.installationId);
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('recovery_required');
+    const again = await configureGrok(f.input, f.deps);
+    expect(again.status).toBe('installed');
+    expect(again.marker.installationId).toBe('22222222-2222-4222-8222-222222222222');
+    expect(await inspectGrok(f.root, f.input.adapterVersion)).toMatchObject({
+      integration: 'managed',
+      configuration: 'current',
+    });
+  } finally {
+    await f.cleanup();
+  }
+
+  const g = await grokFixture();
+  try {
+    await configureGrok(g.input, g.deps);
+    await writeFile(join(g.root, 'aio-proxy', 'notes.txt'), 'keep\n', { mode: 0o600 });
+    await removeGrok(g.root, g.input.adapterVersion, g.deps);
+    g.revoked.length = 0;
+    await writeFile(
+      join(g.root, 'aio-proxy', 'ownership.json'),
+      encodeGrokOwnership({
+        format: 1,
+        agent: 'grok',
+        installationId: '22222222-2222-4222-8222-222222222222',
+        endpoint: g.input.endpoint,
+        status: 'active',
+        leaves: [],
+        createdTables: [],
+        pending: { operation: 'configure', changes: [], nextLeaves: [], nextCreatedTables: [] },
+      }),
+      { mode: 0o600 },
+    );
+    const removed = await removeGrok(g.root, g.input.adapterVersion, g.deps);
+    expect(removed.revokeStatus).toBe('missing');
+    expect(g.revoked).toEqual([]);
+  } finally {
+    await g.cleanup();
+  }
+});
+
 test('remove does not read or change Grok auth.json', async () => {
   const f = await grokFixture();
   try {

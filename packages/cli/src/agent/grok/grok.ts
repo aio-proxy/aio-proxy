@@ -26,6 +26,7 @@ import {
 } from './lifecycle';
 import {
   adoptRecoveredOwnership,
+  isIncompleteRebind,
   isNewerAdapter,
   parseGrokMarker,
   parseGrokOwnership,
@@ -145,6 +146,15 @@ async function inspectManagedRoot(root: string, adapterVersion: string): Promise
   }
   if (ownershipKind === 'invalid') return conflictInspection(marker);
   const ownership = parseGrokOwnership(ownershipFile.text);
+  if (isIncompleteRebind(ownership, marker)) {
+    return {
+      integrationKind: 'auth-command',
+      integration: 'managed',
+      marker,
+      configuration: 'recovery_required',
+      fields: [],
+    };
+  }
   if (ownership.installationId !== marker.installationId || ownership.endpoint !== marker.endpoint) {
     return conflictInspection(marker);
   }

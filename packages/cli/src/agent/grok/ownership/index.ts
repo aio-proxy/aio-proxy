@@ -5,6 +5,7 @@ export {
   isCanonicalLoopbackOrigin,
   isBootstrapGrokJournal,
   isCompletedGrokRemoval,
+  isIncompleteRebind,
   isNewerAdapter,
   parseGrokMarker,
   parseGrokOwnership,

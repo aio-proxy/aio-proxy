@@ -24,6 +24,7 @@ import {
   loadManaged,
   persistMarker,
   persistOwnership,
+  replaceOwnedFile,
   requireCurrent,
   restoreOwnershipFromRemovalJournal,
   withGrokLock,
@@ -35,6 +36,9 @@ import {
   isBootstrapGrokJournal,
   isCanonicalLoopbackOrigin,
   isCompletedGrokRemoval,
+  isIncompleteRebind,
+  isNewerAdapter,
+  parseGrokMarker,
   parseGrokOwnership,
   recoverGrokOwnership,
 } from './ownership';
@@ -115,6 +119,23 @@ type ConfigureFirstReuse = {
   readonly marker?: GrokFileSnapshot;
 };
 
+const resumeConfigureInstallationId = (
+  reuse: ConfigureFirstReuse | undefined,
+  endpoint: GrokConfigureInput['endpoint'],
+  randomUUID: () => string,
+): string => {
+  if (reuse?.ownership === undefined) return randomUUID();
+  try {
+    const ownership = parseGrokOwnership(reuse.ownership.text);
+    if (isBootstrapGrokJournal(ownership) && ownership.endpoint === endpoint) {
+      return ownership.installationId;
+    }
+  } catch {
+    // A foreign leftover ownership file is not a resume token.
+  }
+  return randomUUID();
+};
+
 async function configureFirst(
   lock: FileLock,
   paths: GrokPaths,
@@ -125,7 +146,7 @@ async function configureFirst(
   testDeps?: GrokConfigureTestDeps,
   reuse?: ConfigureFirstReuse,
 ): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
-  const installationId = deps.randomUUID();
+  const installationId = resumeConfigureInstallationId(reuse, input.endpoint, deps.randomUUID);
   const { command, edit } = prepareEdit(configTextOrEmpty(config), input, installationId);
   const visible = await deps.policy(input.root, budget);
   const conflicts = checkGrokPolicy(edit.text, input.endpoint, command, visible);
@@ -185,6 +206,19 @@ async function configureFirst(
       for (const identity of created.reverse()) await removeMatchingFile(identity);
       if (privateDir !== undefined) await removeMatchingDir(privateDir);
     }
+    if (!markerWritten && reuse?.ownership !== undefined) {
+      try {
+        await replaceOwnedFile(
+          lock,
+          paths.ownership,
+          reuse.ownership.text,
+          await mustReadOwnership(paths, budget),
+          budget,
+        );
+      } catch {
+        // Best-effort restore of the pre-rebind ownership journal.
+      }
+    }
     throw error;
   }
 }
@@ -236,6 +270,32 @@ async function configureGrokInternal(
           }
         }
         throw new Error('Grok private directory already exists');
+      }
+      if (ownershipFile !== undefined) {
+        try {
+          const ownership = parseGrokOwnership(ownershipFile.text);
+          const marker = parseGrokMarker(markerFile.text);
+          if (isIncompleteRebind(ownership, marker)) {
+            if (isNewerAdapter(marker.adapterVersion, input.adapterVersion)) {
+              return { marker, status: 'newer' };
+            }
+            return configureFirst(
+              lock,
+              paths,
+              input,
+              deps,
+              budget,
+              await readGrokFile(paths.config, budget),
+              testDeps,
+              {
+                ownership: ownershipFile,
+                marker: markerFile,
+              },
+            );
+          }
+        } catch {
+          // loadManaged reports foreign or invalid leftovers.
+        }
       }
       const loaded = await loadManaged(paths, input.adapterVersion, budget);
       if ('newer' in loaded) {

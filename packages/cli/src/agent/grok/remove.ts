@@ -27,6 +27,8 @@ import {
   adoptRecoveredOwnership,
   isBootstrapGrokJournal,
   isCompletedGrokRemoval,
+  isIncompleteRebind,
+  parseGrokMarker,
   parseGrokOwnership,
   recoverGrokOwnership,
 } from './ownership';
@@ -203,6 +205,19 @@ async function removeGrokInternal(
           }
         }
         return narrowCompletedRemoval(lock, paths, privateDir, budget, testDeps);
+      }
+      const ownershipForRebind =
+        (await readGrokPrivateFile(paths.ownership, 'ownership', budget)) ??
+        (await restoreOwnershipFromRemovalJournal(lock, paths, budget));
+      if (ownershipForRebind !== undefined) {
+        try {
+          const ownership = parseGrokOwnership(ownershipForRebind.text);
+          if (isIncompleteRebind(ownership, parseGrokMarker(markerFile.text))) {
+            return narrowBootstrapRemoval(lock, paths, privateDir, budget, testDeps);
+          }
+        } catch {
+          // loadManaged reports foreign or invalid leftovers.
+        }
       }
       const loaded = await loadManaged(paths, adapterVersion, budget);
       if ('newer' in loaded) throw new Error('Grok configuration is newer');

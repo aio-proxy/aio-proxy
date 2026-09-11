@@ -151,6 +151,11 @@ export const isBootstrapGrokJournal = (ownership: GrokOwnership): boolean =>
   ownership.cleanupComplete !== true &&
   ownership.revokeStatus === undefined;
 
+export const isIncompleteRebind = (ownership: GrokOwnership, marker: GrokMarker): boolean =>
+  isBootstrapGrokJournal(ownership) &&
+  ownership.endpoint === marker.endpoint &&
+  ownership.installationId !== marker.installationId;
+
 export function classifyChange(current: LeafValue, change: FieldChange): 'before' | 'after' | 'conflict' {
   if (equalGrokLeaf(current, change.after)) return 'after';
   if (equalGrokLeaf(current, change.before)) return 'before';
