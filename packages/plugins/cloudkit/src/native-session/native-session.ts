@@ -71,6 +71,7 @@ class NativeSession implements SyncSession {
   #disposePromise: Promise<void> | undefined;
   #stop: (() => void) | undefined;
   #protocolFailed = false;
+  #reading: Promise<void> = Promise.resolve();
 
   constructor(child: NativeChild) {
     this.#child = child;
@@ -82,6 +83,7 @@ class NativeSession implements SyncSession {
     // racing into a generic exit failure — the two carry different retry semantics. #readLoop
     // never rejects, and the child's exit closes stdout, so this always settles.
     const reading = this.#readLoop();
+    this.#reading = reading;
     void this.#stderrLoop();
     void this.#child.exited.then(() => reading).then(() => this.#failAll(false, 'native process exited'));
   }
@@ -194,6 +196,15 @@ class NativeSession implements SyncSession {
       try {
         this.#send(request);
       } catch (error) {
+        if (!(error instanceof NativeSessionError)) {
+          // Only a helper that is already gone refuses a write, and its stdout says why: a
+          // truncated frame is protocol corruption, a clean EOF is a plain exit. Those carry
+          // different retry semantics, so wait for the read loop to classify rather than racing
+          // it with a raw EPIPE. #readLoop never rejects and a closed pipe ends it, so this
+          // settles; the loop's own failAll usually gets there first.
+          void this.#reading.then(() => this.#failAll(false, 'native input closed'));
+          return;
+        }
         release();
         this.#pending.delete(id);
         reject(error);

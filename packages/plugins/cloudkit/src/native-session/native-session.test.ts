@@ -132,6 +132,7 @@ test('settled requests detach their abort listeners from the caller signal', asy
   });
 });
 
+// Exit and stdout EOF are two channels for one event, and the parent can observe the dead
 // process before the pipe drains. Whichever the session believed first used to decide the error
 // code, so a helper dying mid-frame reported a retryable offline instead of fencing the protocol.
 test('a helper that dies mid-frame reports invalid data even when its exit is observed first', async () => {
@@ -174,6 +175,50 @@ test('a helper that dies mid-frame reports invalid data even when its exit is ob
       stdout,
       stderr: new ReadableStream<Uint8Array>({ start: (controller) => controller.close() }),
       exited,
+      kill: () => {},
+    }),
+  });
+  await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'invalid-data' });
+});
+
+// A dead helper makes the next stdin write throw EPIPE, which used to escape read() verbatim:
+// callers switch on the session's own error codes, and a raw Error carries none of them.
+test('a write to a dead helper is classified by the stdout it left behind, not by EPIPE', async () => {
+  let push!: (chunk: string) => void;
+  let closeStdout!: () => void;
+  const stdout = new ReadableStream<Uint8Array>({
+    start(controller) {
+      push = (chunk) => controller.enqueue(new TextEncoder().encode(chunk));
+      closeStdout = () => controller.close();
+    },
+  });
+  const session = await connectNative({
+    executable: 'unused',
+    containerId: 'test',
+    signal: new AbortController().signal,
+    spawn: () => ({
+      stdin: {
+        write(data: string) {
+          const request = JSON.parse(data) as { id: string; op: string };
+          if (request.op === 'connect') {
+            push(
+              `${JSON.stringify({
+                id: request.id,
+                ok: true,
+                result: { identityId: 'fake', spaceId: 'default', maxValueBytes: 1024, protocol: 1, version: 'fake' },
+              })}\n`,
+            );
+            // The helper truncates a frame and dies, so every later write hits a closed pipe.
+            push('{"id":"partial"');
+            setTimeout(closeStdout, 5);
+            return data.length;
+          }
+          throw new Error('EPIPE: broken pipe, write');
+        },
+      },
+      stdout,
+      stderr: new ReadableStream<Uint8Array>({ start: (controller) => controller.close() }),
+      exited: new Promise<number>((resolve) => setTimeout(() => resolve(0), 5)),
       kill: () => {},
     }),
   });
