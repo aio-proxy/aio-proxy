@@ -1,8 +1,15 @@
+import { join } from 'node:path';
+
+import { observeFileLockOwner } from '@aio-proxy/core';
+import { isPlainObject } from 'es-toolkit/predicate';
+import { z } from 'zod';
+
 import {
   assertSafePrivateDir,
   assertSafeRoot,
   grokPaths,
   inspectPath,
+  readGrokCredentialText,
   readGrokFile,
   readGrokPrivateFile,
   unlinkGrokFile,
@@ -26,10 +33,48 @@ import {
   recoverGrokOwnership,
 } from './ownership';
 import { equalGrokLeaf } from './toml';
-import type { GrokContext, GrokDeadline, GrokDeps, GrokInspection, GrokMarker } from './types';
+import type { GrokAuthObservation, GrokContext, GrokDeadline, GrokDeps, GrokInspection, GrokMarker } from './types';
 
 export { configureGrok, configureGrokForTest, type GrokConfigureTestDeps } from './configure';
 export { grokAuthCommand, loadGrokPolicy } from './grok-command';
+
+const revisionSchema = z.number().refine((value) => Number.isSafeInteger(value) && value >= 0);
+const GrokObservationSchema = z
+  .object({
+    format: z.literal(1),
+    agent: z.literal('grok'),
+    installationId: z.uuid(),
+    revision: revisionSchema,
+    deliveredBy: z.uuid().optional(),
+  })
+  .passthrough();
+
+export async function readGrokObservation(
+  root: string,
+  installationId: string,
+  budget: GrokDeadline,
+): Promise<GrokAuthObservation> {
+  budget.signal.throwIfAborted();
+  const lockOwner = await observeFileLockOwner(join(root, '.aio-proxy.lock'), budget);
+  budget.signal.throwIfAborted();
+  const text = await readGrokCredentialText(root);
+  if (text === undefined) return lockOwner === undefined ? {} : { lockOwner };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error('Grok credential invalid');
+  }
+  if (!isPlainObject(raw)) throw new Error('Grok credential invalid');
+  const parsed = GrokObservationSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Grok credential invalid');
+  if (parsed.data.installationId !== installationId) throw new Error('Grok credential binding mismatch');
+  return {
+    revision: parsed.data.revision,
+    ...(parsed.data.deliveredBy === undefined ? {} : { deliveredBy: parsed.data.deliveredBy }),
+    ...(lockOwner === undefined ? {} : { lockOwner }),
+  };
+}
 
 const absentInspection = (): GrokInspection => ({
   integrationKind: 'auth-command',

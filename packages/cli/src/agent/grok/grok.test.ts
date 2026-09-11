@@ -34,6 +34,7 @@ test('public grok index does not export test-only write hooks', () => {
   expect('configureGrokForTest' in grokPublic).toBe(false);
   expect('replaceGrokFile' in grokPublic).toBe(false);
   expect('beforeRename' in grokPublic).toBe(false);
+  expect(typeof grokPublic.readGrokObservation).toBe('function');
 });
 
 test('first configure refuses policy conflicts before creating the private directory', async () => {

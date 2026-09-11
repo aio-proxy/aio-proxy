@@ -60,6 +60,11 @@ export type GrokInspection = {
   readonly configuration: 'current' | 'modified' | 'missing' | 'recovery_required';
   readonly fields: readonly string[];
 };
+export type GrokAuthObservation = {
+  readonly revision?: number;
+  readonly deliveredBy?: string;
+  readonly lockOwner?: string;
+};
 export type GrokContext = {
   readonly marker: GrokMarker;
   readonly root: string;

@@ -1,6 +1,6 @@
 import type { AgentDeviceCodeResponse, AgentTokenResponse } from '@aio-proxy/types';
 
-import type { GrokMarker } from '../grok';
+import type { GrokAuthObservation, GrokDeadline, GrokDeps, GrokMarker } from '../grok';
 
 export type GrokCredential = {
   readonly format: 1;
@@ -20,4 +20,24 @@ export type GrokTransport = {
   device(marker: GrokMarker): Promise<AgentDeviceCodeResponse>;
   poll(marker: GrokMarker, device: AgentDeviceCodeResponse): Promise<AgentTokenResponse>;
   refresh(marker: GrokMarker, refreshToken: string): Promise<AgentTokenResponse>;
+};
+
+export type GrokAuthInput = {
+  readonly root: string;
+  readonly installationId: string;
+  readonly adapterVersion: string;
+  readonly expired: boolean;
+};
+
+export type GrokAuthDeps = {
+  readonly now: () => number;
+  readonly policy: GrokDeps['policy'];
+  readonly readObservation?: (
+    root: string,
+    installationId: string,
+    budget: GrokDeadline,
+  ) => Promise<GrokAuthObservation>;
+  readonly transport: (marker: GrokMarker, budget: GrokDeadline) => GrokTransport;
+  readonly stdout: (line: string) => Promise<void>;
+  readonly stderr: (line: string) => void;
 };

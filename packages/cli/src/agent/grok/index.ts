@@ -1,6 +1,14 @@
-export { configureGrok, grokAuthCommand, inspectGrok, loadGrokPolicy, withGrokInstallation } from './grok';
+export {
+  configureGrok,
+  grokAuthCommand,
+  inspectGrok,
+  loadGrokPolicy,
+  readGrokObservation,
+  withGrokInstallation,
+} from './grok';
 export type {
   FieldChange,
+  GrokAuthObservation,
   GrokConfigureInput,
   GrokContext,
   GrokDeadline,

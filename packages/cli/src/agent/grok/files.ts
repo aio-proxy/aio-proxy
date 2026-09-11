@@ -45,6 +45,12 @@ export const grokPaths = (root: string): GrokPaths => {
   };
 };
 
+export async function readGrokCredentialText(root: string): Promise<string | undefined> {
+  const snapshot = await readGrokPrivateFile(grokPaths(root).credential, 'credential');
+  if (snapshot === undefined || snapshot.text.trim() === '') return undefined;
+  return snapshot.text;
+}
+
 export const isFsCode = (error: unknown, code: string): boolean =>
   error instanceof Error && 'code' in error && error.code === code;
 
