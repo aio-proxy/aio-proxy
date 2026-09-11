@@ -2,7 +2,7 @@ import type { EntityBody } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { SyncPreviewError } from './preview-errors';
+import { SyncPreviewError } from './errors';
 
 const FORBIDDEN_OVERRIDE =
   /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;

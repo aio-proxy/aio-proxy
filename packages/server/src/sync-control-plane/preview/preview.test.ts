@@ -2,8 +2,9 @@ import { expect, test } from 'bun:test';
 
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
-import { createSyncControlPlane } from './control-plane';
-import { applyOverrides, buildPreview } from './preview';
+import { createSyncControlPlane } from '../control-plane';
+import { applyOverrides } from './overrides';
+import { buildPreview } from './preview';
 
 const providerBody = (value: Record<string, JsonValue>) => ({
   kind: 'provider' as const,

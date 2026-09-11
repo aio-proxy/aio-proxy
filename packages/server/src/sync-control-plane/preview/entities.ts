@@ -1,0 +1,109 @@
+import { decodeHead, decodeRevision, entityKey, revisionKey, type EntityBody, type LocalEntity } from '@aio-proxy/core';
+import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
+
+import { SyncPreviewError } from './errors';
+
+export type RemoteEntity = {
+  readonly objectId: string;
+  readonly logicalKey: string;
+  readonly kind: string;
+  readonly version: string | null;
+  /** Current protocol revision operation ID; this is the sync baseline identity. */
+  readonly revision: string | null;
+  readonly body: EntityBody | null;
+  readonly tombstone?: boolean;
+  readonly revisions?: Readonly<Record<string, EntityBody | null>>;
+  readonly restoreBody?: EntityBody | null;
+};
+
+export function clone(value: JsonValue): JsonValue {
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+function snapshotBody(body: EntityBody | null | undefined): EntityBody | null | undefined {
+  if (body === null || body === undefined) return body;
+  return {
+    ...body,
+    value: clone(body.value),
+    dependencies: body.dependencies.map((dependency) => ({ ...dependency })),
+  };
+}
+
+export function snapshotRemoteEntities(remote: readonly RemoteEntity[]): RemoteEntity[] {
+  return remote.map((entity) => ({
+    ...entity,
+    version: entity.version,
+    revision: entity.revision,
+    body: snapshotBody(entity.body) ?? null,
+    revisions:
+      entity.revisions === undefined
+        ? undefined
+        : Object.fromEntries(Object.entries(entity.revisions).map(([id, body]) => [id, snapshotBody(body) ?? null])),
+    restoreBody: snapshotBody(entity.restoreBody),
+  }));
+}
+
+export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntity[] {
+  return local.map((entity) => ({
+    ...entity,
+    desired: snapshotBody(entity.desired) ?? null,
+    overrides: entity.overrides.map((override) => ({
+      ...override,
+      ...(override.value === undefined ? {} : { value: clone(override.value) }),
+    })),
+    oauth: entity.oauth === undefined ? undefined : { ...entity.oauth },
+  }));
+}
+
+const ENTITY_PREFIX = 's/v1/default/entity/';
+
+export async function listRemoteEntities(session: SyncSession | undefined): Promise<RemoteEntity[]> {
+  if (session === undefined) return [];
+  const signal = new AbortController().signal;
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await session.list({ prefix: ENTITY_PREFIX, ...(cursor === undefined ? {} : { cursor }) }, signal);
+    keys.push(...page.keys);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  const result: RemoteEntity[] = [];
+  for (const key of keys) {
+    const objectId = key.slice(ENTITY_PREFIX.length);
+    if (objectId === '') continue;
+    const value = await session.read(entityKey(objectId), signal);
+    if (value.kind === 'absent') continue;
+    const head = decodeHead(value.value);
+    if (head.objectId !== objectId) throw new SyncPreviewError('not-connected');
+    if (head.state === 'purging') throw new SyncPreviewError('not-connected');
+    let body: EntityBody | null = null;
+    const revisions: Record<string, EntityBody | null> = {};
+    for (const operationId of [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])]) {
+      const revision = await session.read(revisionKey(objectId, operationId), signal);
+      if (revision.kind === 'absent') continue;
+      const record = decodeRevision(revision.value);
+      if (record.objectId !== objectId) throw new SyncPreviewError('not-connected');
+      if (record.state === 'payload') {
+        if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
+          throw new SyncPreviewError('not-connected');
+        revisions[operationId] = record.body;
+      } else revisions[operationId] = null;
+    }
+    if (head.current !== null) {
+      body = revisions[head.current] ?? null;
+    }
+    result.push({
+      objectId,
+      logicalKey: head.logicalKey,
+      kind: head.kind,
+      version: value.version,
+      revision: head.current,
+      body,
+      tombstone: head.state === 'deleted' || head.state === 'purged',
+      revisions,
+      restoreBody:
+        body ?? [...Object.values(revisions)].reverse().find((revision): revision is EntityBody => revision !== null),
+    });
+  }
+  return result;
+}

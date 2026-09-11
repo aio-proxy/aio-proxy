@@ -1,12 +1,8 @@
 import { randomBytes } from 'node:crypto';
 
 import {
-  decodeHead,
-  decodeRevision,
-  entityKey,
   projectCommitted,
   providerDependencyPackage,
-  revisionKey,
   type CommittedSource,
   type EntityBody,
   type LocalBinding,
@@ -15,28 +11,14 @@ import {
   type PluginRepository,
   type PluginRegistry,
 } from '@aio-proxy/core';
-import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
+import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreview, SyncPreviewInput, SyncPreviewRow } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { SyncPreviewError } from './preview-errors';
-import { applyOverrides } from './preview-overrides';
-
-export { SyncPreviewError } from './preview-errors';
-export { applyOverrides } from './preview-overrides';
-
-export type RemoteEntity = {
-  readonly objectId: string;
-  readonly logicalKey: string;
-  readonly kind: string;
-  readonly version: string | null;
-  /** Current protocol revision operation ID; this is the sync baseline identity. */
-  readonly revision: string | null;
-  readonly body: EntityBody | null;
-  readonly tombstone?: boolean;
-  readonly revisions?: Readonly<Record<string, EntityBody | null>>;
-  readonly restoreBody?: EntityBody | null;
-};
+import { snapshotLocalEntities, snapshotRemoteEntities, type RemoteEntity } from './entities';
+import { SyncPreviewError } from './errors';
+import { applyOverrides } from './overrides';
+import { redactEntityValue, secretChange } from './redact';
 
 export type PreviewFence = {
   readonly bindingId: string;
@@ -63,104 +45,6 @@ export type PreviewCandidate = {
   readonly restoreBody?: EntityBody | null;
   readonly requiresProviderId?: boolean;
 };
-
-function snapshotBody(body: EntityBody | null | undefined): EntityBody | null | undefined {
-  if (body === null || body === undefined) return body;
-  return {
-    ...body,
-    value: clone(body.value),
-    dependencies: body.dependencies.map((dependency) => ({ ...dependency })),
-  };
-}
-
-export function snapshotRemoteEntities(remote: readonly RemoteEntity[]): RemoteEntity[] {
-  return remote.map((entity) => ({
-    ...entity,
-    version: entity.version,
-    revision: entity.revision,
-    body: snapshotBody(entity.body) ?? null,
-    revisions:
-      entity.revisions === undefined
-        ? undefined
-        : Object.fromEntries(Object.entries(entity.revisions).map(([id, body]) => [id, snapshotBody(body) ?? null])),
-    restoreBody: snapshotBody(entity.restoreBody),
-  }));
-}
-
-export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntity[] {
-  return local.map((entity) => ({
-    ...entity,
-    desired: snapshotBody(entity.desired) ?? null,
-    overrides: entity.overrides.map((override) => ({
-      ...override,
-      ...(override.value === undefined ? {} : { value: clone(override.value) }),
-    })),
-    oauth: entity.oauth === undefined ? undefined : { ...entity.oauth },
-  }));
-}
-
-// `headers` is listed as a whole: any header name can carry a credential (`Authorization`,
-// `Cookie`, a vendor-specific name), so the map is redacted rather than matched key by key.
-const SECRET_KEY =
-  /(?:secret|password|passwd|token|credential|api[-_]?key|refresh|access[-_]?key|^headers$|(?:^|\.)headers\.)/iu;
-
-function clone(value: JsonValue): JsonValue {
-  return JSON.parse(JSON.stringify(value)) as JsonValue;
-}
-
-function redact(value: JsonValue, key = '', secretKeys: ReadonlySet<string> = new Set()): JsonValue {
-  if (SECRET_KEY.test(key) || secretKeys.has(key)) return '[redacted]';
-  if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map((entry) => redact(entry, '', secretKeys)) as JsonValue;
-  const result: Record<string, JsonValue> = {};
-  for (const [childKey, entry] of Object.entries(value)) result[childKey] = redact(entry, childKey, secretKeys);
-  return result;
-}
-
-function redactEntityValue(body: EntityBody, secretKeys: ReadonlySet<string>): JsonValue {
-  const wholeRecord = body.kind === 'plugin-business' && /(?:secret|credential)/iu.test(body.logicalKey);
-  if (wholeRecord) return '[redacted]';
-  const redactRecord = (value: JsonValue, key = ''): JsonValue => {
-    if (/^(?:account|credential|credentials|secret|secrets|pluginSecret|pluginSecrets)$/iu.test(key))
-      return '[redacted]';
-    return redact(value, key, secretKeys);
-  };
-  return redactRecord(clone(body.value));
-}
-
-function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = new Set()): Record<string, JsonValue> {
-  const found: Record<string, JsonValue> = {};
-  const visit = (entry: JsonValue, path: string): void => {
-    if (entry === null || typeof entry !== 'object') {
-      if (SECRET_KEY.test(path) || secretKeys.has(path) || secretKeys.has(path.split('.').at(-1) ?? ''))
-        found[path] = entry;
-      return;
-    }
-    if (Array.isArray(entry)) {
-      entry.forEach((child, index) => visit(child, `${path}[${index}]`));
-      return;
-    }
-    for (const [key, child] of Object.entries(entry)) visit(child, path === '' ? key : `${path}.${key}`);
-  };
-  if (value !== null) visit(value, '');
-  return found;
-}
-
-export function secretChange(
-  local: JsonValue | null,
-  cloud: JsonValue | null,
-  secretKeys?: ReadonlySet<string>,
-): SyncPreviewRow['secretChange'] {
-  const safeKeys = secretKeys ?? new Set<string>();
-  const left = sensitive(local, safeKeys);
-  const right = sensitive(cloud, safeKeys);
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length === 0 && rightKeys.length === 0) return 'none';
-  if (leftKeys.length === 0) return 'added';
-  if (rightKeys.length === 0) return 'removed';
-  return JSON.stringify(left) === JSON.stringify(right) ? 'none' : 'changed';
-}
 
 function equal(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -235,60 +119,6 @@ export function sameFence(a: PreviewFence, b: PreviewFence): boolean {
 
 export function createPreviewToken(bytes = 24, source: (size: number) => Uint8Array = randomBytes): string {
   return Buffer.from(source(bytes)).toString('base64url');
-}
-
-export async function listRemoteEntities(session: SyncSession | undefined): Promise<RemoteEntity[]> {
-  if (session === undefined) return [];
-  const signal = new AbortController().signal;
-  const keys: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await session.list(
-      { prefix: 's/v1/default/entity/', ...(cursor === undefined ? {} : { cursor }) },
-      signal,
-    );
-    keys.push(...page.keys);
-    cursor = page.nextCursor;
-  } while (cursor !== undefined);
-  const result: RemoteEntity[] = [];
-  for (const key of keys) {
-    const objectId = key.slice('s/v1/default/entity/'.length);
-    if (objectId === '') continue;
-    const value = await session.read(entityKey(objectId), signal);
-    if (value.kind === 'absent') continue;
-    const head = decodeHead(value.value);
-    if (head.objectId !== objectId) throw new SyncPreviewError('not-connected');
-    if (head.state === 'purging') throw new SyncPreviewError('not-connected');
-    let body: EntityBody | null = null;
-    const revisions: Record<string, EntityBody | null> = {};
-    for (const operationId of [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])]) {
-      const revision = await session.read(revisionKey(objectId, operationId), signal);
-      if (revision.kind === 'absent') continue;
-      const record = decodeRevision(revision.value);
-      if (record.objectId !== objectId) throw new SyncPreviewError('not-connected');
-      if (record.state === 'payload') {
-        if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
-          throw new SyncPreviewError('not-connected');
-        revisions[operationId] = record.body;
-      } else revisions[operationId] = null;
-    }
-    if (head.current !== null) {
-      body = revisions[head.current] ?? null;
-    }
-    result.push({
-      objectId,
-      logicalKey: head.logicalKey,
-      kind: head.kind,
-      version: value.version,
-      revision: head.current,
-      body,
-      tombstone: head.state === 'deleted' || head.state === 'purged',
-      revisions,
-      restoreBody:
-        body ?? [...Object.values(revisions)].reverse().find((revision): revision is EntityBody => revision !== null),
-    });
-  }
-  return result;
 }
 
 // eslint-disable-next-line max-lines-per-function -- preview assembly keeps one immutable snapshot for the fence
