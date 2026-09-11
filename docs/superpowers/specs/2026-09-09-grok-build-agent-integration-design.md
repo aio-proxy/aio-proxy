@@ -216,18 +216,20 @@ Grok 列表项带 `integrationKind: auth-command`，仍显示宿主版本、inst
 
 ### Task 11 验收状态（2026-09-11 Linux runner）
 
-Harness：`packages/cli/src/agent/grok-compat/`。入口 `bun run --filter @aio-proxy/cli test:compat:grok -- --grok-bin … --cli-bin … --expected-version 1.0.24 --report <path>`。无 binary 或版本不符时非零退出，不静默 skip 并声称通过。普通 `bun test` 只覆盖 harness 失败传播与脱敏，不下载或启动用户 Grok。
+Harness：`packages/cli/src/agent/grok-compat/`。入口 `bun run --filter @aio-proxy/cli test:compat:grok -- --grok-bin … --cli-bin … --expected-version 1.0.24 --report <path>`。无 binary 或版本不符时非零退出，不静默 skip 并声称通过。普通 `bun test` 只覆盖 harness 失败传播、脱敏、旅程顺序（configure → login/helper → Dashboard approve）和 helper stdout `JSON.parse` 契约，不下载或启动用户 Grok。
+
+本 runner 已实现的能力（仍 **不是** 真实宿主兼容通过）：隔离 env 从 PATH/locale/tmp allowlist 起步（不继承 `XAI_API_KEY` / `GROK_*` overlay）；fixture 在 loopback 启动假上游与 aio-proxy，启动失败则非零；基本旅程为 compiled `agent configure grok` → 真实 `grok login`/helper → 解析 helper **stderr** 中的 device URL → 真实 Dashboard login/CSRF/approve → `grok models` + fixture 模型上流式文本与一次工具调用（上游第一次 tool call、第二次文本）；helper stdout 在内存 `JSON.parse`，`Object.keys` 必须恰为 `access_token`/`expires_in`；未实现辅助 URL 探测真实 404 且不得云端 fallback；loopback HTTP recorder 记录路径/origin/token 指纹。`sandbox-exec` 缺失时报告 `macos-sandbox-egress` 为显式 `not_run: egress isolation not available`，不假装 egress 通过。未执行的 host-only/长周期/plugin-compat 门槛记为 `not_run:` 细节，不把它们当成已失败的 implemented case，以免未来真实宿主跑通旅程时 `test:compat:grok` 仍无法 exit 0。
 
 本 runner **未通过**、不得当作兼容证据的项：
 
-- 真实 Grok `1.0.24` 不在本机（无 `/Users/bytedance/.grok/bin/grok`，未安装或更新用户 Grok）
-- 非 macOS：无 `sandbox-exec`，无等价网络隔离，因此 **token 目的地 / egress 验收未通过**
+- 真实 Grok `1.0.24` 不在本机（无 `/Users/bytedance/.grok/bin/grok`，未安装或更新用户 Grok）。Runner 已实现真实宿主 *可以* 走完的旅程，但本 Linux 环境没有真实 Grok，**不得声称兼容通过**。
+- 非 macOS：无 `sandbox-exec`，无等价网络隔离，因此 **token 目的地 / egress 验收未通过**（报告为 named `not_run`，不是 canned always-fail）
 - 未等待 15 分钟自然 AT 过期（不降低生产 TTL）；host-only 时间戳改写不能当作自然过期证据
 - 未编译或对照 `darwin-arm64` 发布产物；本平台为 Linux。compiled CLI + 真实 Grok host **未在本 runner 上执行**
-- `fresh401`、双 Grok 进程共享 installation 轮换、身份服务重启后的真实 grok login、silent 自批、真实 Dashboard CSRF/approve 旅程：**未跑真实宿主**
-- OpenCode / Pi / OMP `test:compat` 与 artifact：**本任务未执行，不能标为通过**
+- `fresh401`、双 Grok 进程共享 installation 轮换、身份服务重启后的真实 grok login、silent 自批：**未跑真实宿主**
+- OpenCode / Pi / OMP `test:compat`：harness 不执行；artifact 若在本任务另行运行，按其真实结果记录，未跑的不能标为通过
 
-已有证据：`bun test packages/cli/src/agent/grok-compat/grok-compat.test.ts` 覆盖错误版本拒绝且不调用 login、子进程非零则 case failed 且脚本非零、报告不含 AT/RT/`user_code`、缺 binary 失败闭合。无脱敏宿主 baseline/current JSON 可链接，因为真实宿主未运行。用户文档见 [docs/agent-grok.md](../../agent-grok.md)。
+已有证据：`bun test packages/cli/src/agent/grok-compat/grok-compat.test.ts` 覆盖错误版本拒绝且不调用 login、子进程非零则 case failed 且脚本非零、报告不含 AT/RT/`user_code`、缺 binary 失败闭合、configure 先于 login、Dashboard approve 函数被调用、helper stdout 契约不是 `agent auth grok --installation-id missing`、proxy 启动失败非零、allowlist env。无脱敏宿主 baseline/current JSON 可链接，因为真实宿主未运行。用户文档见 [docs/agent-grok.md](../../agent-grok.md)。
 
 ## 11. 备选方案与结论
 
