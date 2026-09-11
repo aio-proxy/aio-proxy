@@ -4,6 +4,7 @@ import { encode, entityKey, revisionKey } from '@aio-proxy/core';
 import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { createSyncControlPlane } from '../control-plane';
+import { SyncOperationError } from '../operations';
 import { listRemoteEntities } from './entities';
 import { applyOverrides } from './overrides';
 import { buildPreview } from './preview';
@@ -1126,6 +1127,59 @@ test('connect previews the candidate backend and applies the reviewed decisions'
   // Reconciliation imports remote objects under the engine's own inclusion defaults, so starting it
   // between the swap and the decisions would transiently activate the cloud configuration.
   expect(activatedAfter).toEqual(['work', 'cloud-object']);
+});
+
+test('a failed replacement connect stops pinning preview-required', async () => {
+  let attempt = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {
+      attempt += 1;
+      if (attempt > 1) throw new SyncOperationError('backend-unavailable');
+      return { remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} };
+    },
+  });
+  const connect = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
+
+  await control.preview(connect);
+  expect(control.status().state).toBe('preview-required');
+
+  // Starting a second connect discards the pending candidate, so a failure here leaves no preview
+  // to expire or apply — the state would stay pinned and keep suppressing engine outcomes.
+  await expect(control.preview(connect)).rejects.toMatchObject({ code: 'backend-unavailable' });
+  expect(control.status().state).not.toBe('preview-required');
 });
 
 test('an abandoned connect preview disposes its candidate at expiry', async () => {

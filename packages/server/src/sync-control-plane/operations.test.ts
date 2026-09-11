@@ -194,6 +194,25 @@ test('an override preview does not persist its paths when the row decision is mi
   expect(scenario.persistedOverrides).toEqual([]);
 });
 
+test('an override persists the value from the row the preview projected, not the published one', async () => {
+  const rows = [candidate('object-a', 'provider', 'work')];
+  const authored: EntityBody = { kind: 'provider', logicalKey: 'work', value: { region: 'eu' }, dependencies: [] };
+  const seen: (EntityBody | null)[] = [];
+  const scenario = harness({
+    persistOverrides: async (_objectId, _paths, _current, body) => void seen.push(body),
+  });
+
+  await applyPreview(
+    scenario.input,
+    record({ kind: 'overrides', objectId: 'object-a', paths: [['region']] }, [{ ...rows[0]!, local: authored }]),
+    [{ objectId: 'object-a', choice: 'local' }],
+  );
+
+  // The row's local body is projected from the authored configuration; the snapshot entity's
+  // `desired` is empty for anything never published, and pinning from it stores a deletion.
+  expect(seen).toEqual([authored]);
+});
+
 test('applying an override keeps the paths it just persisted and concurrent OAuth ownership', async () => {
   const rows = [candidate('object-a', 'provider', 'work')];
   const stored: LocalEntity[] = [];

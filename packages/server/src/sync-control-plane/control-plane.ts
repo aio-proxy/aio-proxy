@@ -322,6 +322,9 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             ?.dispose()
             .catch(() => {});
         }
+        // The replacement may still fail to connect, and then no preview is left to expire or
+        // apply: hand the state back now rather than pinning `preview-required` for good.
+        releasePreviewState();
         const candidate = await options.connect(request);
         try {
           const previewId = createPreviewToken(24, options.randomBytes);

@@ -232,15 +232,28 @@ export function buildPreview(input: {
   const candidateIds =
     input.request.kind === 'purge' ? [...ids].filter((objectId) => remoteByObject.has(objectId)) : [...ids];
   // A local-only object has no published body, so its stored `desired` is null and the join would
-  // preview and publish nothing. Project the authored configuration as if the join set were already
-  // selected: that yields the exact bodies applying the local choice will publish, dependencies
-  // included, and reuses the one projection the commit path uses rather than a second encoding.
+  // preview and publish nothing. Project the authored configuration as if the selected set were
+  // already included: that yields the exact bodies applying the local choice will publish,
+  // dependencies included, and reuses the one projection the commit path uses rather than a second
+  // encoding. An override pins a path of that same authored body, so it needs the projection too —
+  // reading the published body there would pin `undefined` and delete the value locally. An
+  // override previews one object, so its business plugin is projected without becoming a row: the
+  // projection drops a Provider whose dependency is not included, and that would leave no body.
+  const projected = new Set(ids);
+  if (input.request.kind === 'overrides' && input.source !== undefined) {
+    const logicalKey = localByObject.get(input.request.objectId)?.logicalKey;
+    const dependency = logicalKey === undefined ? undefined : providerDependencyPackage(input.source.raw, logicalKey);
+    for (const entity of localSnapshot)
+      if (entity.kind === 'plugin-business' && entity.logicalKey === dependency) projected.add(entity.objectId);
+  }
   const joined =
-    input.request.kind !== 'join' || input.source === undefined
+    (input.request.kind !== 'join' && input.request.kind !== 'overrides') || input.source === undefined
       ? undefined
       : projectCommitted(
           input.source,
-          localSnapshot.map((entity) => (ids.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity)),
+          localSnapshot.map((entity) =>
+            projected.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity,
+          ),
         ).entities;
   const candidates = candidateIds
     .map((objectId) =>

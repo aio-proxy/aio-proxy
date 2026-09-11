@@ -51,6 +51,7 @@ export type OperationInput = {
     objectId: string,
     paths: readonly string[][],
     current: LocalEntity | undefined,
+    authored: EntityBody | null,
   ) => Promise<void>;
   /**
    * Publishes a Provider's OAuth account object so other devices can verify the credential rather
@@ -266,8 +267,13 @@ export async function applyPreview(
   }
   assertDecisions(record, decisions);
   if (record.input.kind === 'overrides') {
-    const current = localByObject.get(record.input.objectId);
-    await input.persistOverrides(record.input.objectId, record.input.paths, current);
+    const objectId = record.input.objectId;
+    const current = localByObject.get(objectId);
+    // The row's local body, which buildPreview projects from the authored configuration. The
+    // synchronization row's `desired` is the published body, so it is null for a local-only object
+    // and would record every pinned path as a deletion of the value the user asked to keep.
+    const authored = record.rows.find((candidate) => candidate.row.objectId === objectId)?.local ?? null;
+    await input.persistOverrides(objectId, record.input.paths, current, authored);
   }
   for (const candidate of record.rows) {
     const decision = selected.get(candidate.row.objectId);

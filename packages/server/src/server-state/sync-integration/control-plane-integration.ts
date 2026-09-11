@@ -72,18 +72,19 @@ export function createSyncControlPlaneIntegration(
       const result = await syncPort.applyRemote(objectId, candidate, `control:${crypto.randomUUID()}`);
       if (!result.applied) throw new SyncOperationError('operation-pending');
     },
-    persistOverrides: async (objectId, paths, current) => {
+    persistOverrides: async (objectId, paths, current, authored) => {
       const binding = integration.syncRepository.readBinding();
       if (binding === null || current === undefined || current.objectId !== objectId)
         throw new SyncOperationError('not-connected');
-      const selected = new Set(paths.map((path) => JSON.stringify(path)));
-      const overrides: LocalOverride[] = [
-        ...current.overrides.filter((override) => !selected.has(JSON.stringify(override.path))),
-        ...paths.map((path) => {
-          const value = localOverrideValue(current.desired, path);
-          return { path: [...path], value };
-        }),
-      ];
+      // `paths` is the reviewed resulting set, so it replaces the stored overrides instead of
+      // unioning with them: removing the last pinned path has to unmask the cloud value. The value
+      // comes from the authored configuration the preview projected, not the published body: a
+      // local-only object has none, and `undefined` here deletes the very setting the pin was meant
+      // to keep.
+      const overrides: LocalOverride[] = paths.map((path) => ({
+        path: [...path],
+        value: localOverrideValue(authored, path),
+      }));
       integration.syncRepository.putEntity(binding.id, { ...current, overrides });
     },
     shareOAuth: async (providerId) => {

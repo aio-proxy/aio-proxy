@@ -9,12 +9,10 @@ import {
   revisionKey,
   SyncProtocolError,
   type DeletedAccount,
-  type EntityBody,
   type EntityHead,
   type RevisionRecord,
 } from '../protocol';
-import { finalizeReceipt, publishEntity, type PublishedRevision, type SyncObjectStore } from '../publication';
-import type { OutboxOperation } from '../repository';
+import { finalizeReceipt, type SyncObjectStore } from '../publication';
 
 const SPACE_KEY = 's/v1/default/space';
 
@@ -257,7 +255,7 @@ function accountIdentity(bytes: Uint8Array): { objectId: string; epoch: number }
   return objectId !== undefined && epoch !== undefined ? { objectId, epoch } : undefined;
 }
 
-async function ensureAccountActiveFence(
+export async function ensureAccountActiveFence(
   store: SyncObjectStore,
   objectId: string,
   epoch: number,
@@ -426,79 +424,5 @@ export async function readServerTime(store: SyncObjectStore, signal: AbortSignal
       const confirmed = await store.session.read(SPACE_KEY, signal);
       if (confirmed.kind === 'present' && sameBytes(confirmed.value, nonceBytes)) return confirmed.modifiedAt;
     }
-  }
-}
-
-// Kept as a compatibility export for cleanup callers that use the task-local module.
-export { purgeEntity } from './purge';
-export { collectHistory } from './history';
-
-export async function restoreEntity(
-  store: SyncObjectStore,
-  objectId: string,
-  body: EntityBody,
-  operationId: string,
-  signal: AbortSignal,
-  expectedVersion?: string | null,
-): Promise<PublishedRevision> {
-  for (;;) {
-    const current = await readHeadOrThrow(store, objectId, signal);
-    if (expectedVersion !== undefined && current.version !== expectedVersion)
-      throw new SyncProtocolError('upgrade-required', 'head version changed');
-    if (current.head.kind !== body.kind || current.head.logicalKey !== body.logicalKey) {
-      throw new SyncProtocolError('invalid-data', 'head logical identity mismatch');
-    }
-    if (current.head.state === 'active') {
-      if (
-        !current.head.receipts[operationId] &&
-        !current.head.reserved.includes(operationId) &&
-        current.head.current !== operationId &&
-        !current.head.history.includes(operationId)
-      ) {
-        throw new SyncProtocolError('invalid-data', 'restore requires deleted or purged head');
-      }
-      const operation: OutboxOperation = {
-        operationId,
-        objectId,
-        epoch: current.head.epoch,
-        kind: 'put',
-        commitId: `restore:${operationId}`,
-        body,
-      };
-      return publishEntity(store, operation, signal, current.version);
-    }
-    if (!current.head.cleanupComplete) throw new SyncProtocolError('deleted', 'deletion cleanup is incomplete');
-    if (current.head.state !== 'deleted' && current.head.state !== 'purged') {
-      throw new SyncProtocolError('deleted', 'deleted');
-    }
-    const restored = await updateHead(
-      store,
-      objectId,
-      (head) => {
-        if (head.state !== 'deleted' && head.state !== 'purged') return head;
-        return {
-          ...head,
-          epoch: head.epoch + 1,
-          state: 'active',
-          current: null,
-          history: head.current === null ? head.history : [...new Set([...head.history, head.current])],
-          reserved: [],
-          cancelling: [],
-          cleanupComplete: true,
-        };
-      },
-      signal,
-      expectedVersion ?? undefined,
-    );
-    await ensureAccountActiveFence(store, objectId, restored.head.epoch, signal);
-    const operation: OutboxOperation = {
-      operationId,
-      objectId,
-      epoch: restored.head.epoch,
-      kind: 'put',
-      commitId: `restore:${operationId}`,
-      body,
-    };
-    return publishEntity(store, operation, signal);
   }
 }
