@@ -75,10 +75,16 @@ async function unlinkKnownFile(
   });
 }
 
+const REMOVAL_JOURNAL_NAMES = new Set(['.aio-proxy-managed.json', 'ownership.json']);
+
 async function retainedPrivateNames(paths: GrokPaths, privateDir: GrokFileIdentity): Promise<readonly string[]> {
   const current = await inspectPath(paths.privateDir);
   if (current === undefined || current.dev !== privateDir.dev || current.ino !== privateDir.ino) return [];
   return [...(await listGrokDirectoryNames(paths.privateDir))].sort();
+}
+
+async function unknownRetainedNames(paths: GrokPaths, privateDir: GrokFileIdentity): Promise<readonly string[]> {
+  return (await retainedPrivateNames(paths, privateDir)).filter((name) => !REMOVAL_JOURNAL_NAMES.has(name));
 }
 
 async function cleanupPrivateDir(
@@ -99,11 +105,13 @@ async function cleanupPrivateDir(
       budget,
     );
   }
+  const retained = await unknownRetainedNames(paths, privateDir);
+  if (retained.length > 0) return retained;
   await unlinkKnownFile(lock, marker, budget);
   await testDeps?.failpoint?.('marker_removed');
   await unlinkKnownFile(lock, ownership, budget);
   await removeMatchingDir(privateDir);
-  return retainedPrivateNames(paths, privateDir);
+  return unknownRetainedNames(paths, privateDir);
 }
 
 function requireCompletedOwnership(text: string): GrokOwnership {

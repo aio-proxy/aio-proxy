@@ -28,7 +28,13 @@ import {
   type GrokConfigureTestDeps,
   type ManagedState,
 } from './lifecycle';
-import { adoptRecoveredOwnership, isCanonicalLoopbackOrigin, recoverGrokOwnership } from './ownership';
+import {
+  adoptRecoveredOwnership,
+  isCanonicalLoopbackOrigin,
+  isCompletedGrokRemoval,
+  parseGrokOwnership,
+  recoverGrokOwnership,
+} from './ownership';
 import { checkGrokPolicy } from './policy';
 import { configureGrokToml, equalGrokLeaf } from './toml';
 import type { GrokConfigureInput, GrokDeadline, GrokDeps, GrokMarker, GrokOwnership, TomlEdit } from './types';
@@ -101,6 +107,11 @@ async function configureExisting(
   return { marker, status: 'updated' };
 }
 
+type ConfigureFirstReuse = {
+  readonly ownership?: GrokFileSnapshot;
+  readonly marker?: GrokFileSnapshot;
+};
+
 async function configureFirst(
   lock: FileLock,
   paths: GrokPaths,
@@ -109,6 +120,7 @@ async function configureFirst(
   budget: GrokDeadline,
   config: GrokFileSnapshot | undefined,
   testDeps?: GrokConfigureTestDeps,
+  reuse?: ConfigureFirstReuse,
 ): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
   const installationId = deps.randomUUID();
   const { command, edit } = prepareEdit(configTextOrEmpty(config), input, installationId);
@@ -142,12 +154,14 @@ async function configureFirst(
   let privateDir: GrokFileIdentity | undefined;
   let markerWritten = false;
   try {
-    privateDir = await createPrivateDir(paths.privateDir);
-    await testDeps?.failpoint?.('private_dir');
-    await persistOwnership(lock, paths, pending, undefined, budget);
+    if (reuse === undefined) {
+      privateDir = await createPrivateDir(paths.privateDir);
+      await testDeps?.failpoint?.('private_dir');
+    }
+    await persistOwnership(lock, paths, pending, reuse?.ownership, budget);
     created.push(await captureIdentity(paths.ownership));
     await testDeps?.failpoint?.('ownership_pending');
-    await persistMarker(lock, paths, marker, undefined, budget);
+    await persistMarker(lock, paths, marker, reuse?.marker, budget);
     created.push(await captureIdentity(paths.marker));
     markerWritten = true;
     await testDeps?.failpoint?.('marker');
@@ -164,7 +178,7 @@ async function configureFirst(
     );
     return { marker, status: 'installed' };
   } catch (error) {
-    if (!markerWritten) {
+    if (!markerWritten && reuse === undefined) {
       for (const identity of created.reverse()) await removeMatchingFile(identity);
       if (privateDir !== undefined) await removeMatchingDir(privateDir);
     }
@@ -191,10 +205,32 @@ async function configureGrokInternal(
         return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps);
       }
       assertSafePrivateDir(privateStat);
+      const markerFile = await readGrokPrivateFile(paths.marker, 'marker');
+      const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership');
+      if (markerFile === undefined) {
+        if (ownershipFile !== undefined) {
+          try {
+            if (isCompletedGrokRemoval(parseGrokOwnership(ownershipFile.text))) {
+              return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps, {
+                ownership: ownershipFile,
+              });
+            }
+          } catch {
+            // Foreign or invalid leftover ownership is not taken over.
+          }
+        }
+        throw new Error('Grok private directory already exists');
+      }
       const loaded = await loadManaged(paths, input.adapterVersion);
       if ('newer' in loaded) {
         if (loaded.newer === undefined) throw new Error('Grok configuration is newer');
         return { marker: loaded.newer, status: 'newer' };
+      }
+      if (isCompletedGrokRemoval(loaded.ownership)) {
+        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps, {
+          ownership: loaded.ownershipFile,
+          marker: loaded.markerFile,
+        });
       }
       return configureExisting(lock, paths, input, deps, budget, loaded, testDeps);
     }),

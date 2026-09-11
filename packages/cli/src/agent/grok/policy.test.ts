@@ -234,6 +234,29 @@ test('an unreadable policy file cannot be ignored', async () => {
   }
 });
 
+test('an oversized policy file is unverifiable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'grok-policy-oversize-'));
+  try {
+    await writeFile(join(root, 'managed_config.toml'), `[ui]\ntheme = "${'a'.repeat(1_048_576)}"\n`, { mode: 0o600 });
+    const started = Date.now();
+    await expect(readGrokPolicy(root, {})).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an expired policy budget is unverifiable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'grok-policy-expired-'));
+  try {
+    await writeFile(join(root, 'managed_config.toml'), '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    const budget = { deadline: Date.now() - 1, signal: AbortSignal.timeout(5_000) };
+    await expect(readGrokPolicy(root, {}, budget)).rejects.toThrow(/unverifiable/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.skipIf(process.platform === 'win32')('a FIFO policy file fails fast as unverifiable', async () => {
   const root = await mkdtemp(join(tmpdir(), 'grok-policy-fifo-'));
   const path = join(root, 'managed_config.toml');

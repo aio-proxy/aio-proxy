@@ -8,6 +8,7 @@ const UNVERIFIABLE = 'Grok visible policy unverifiable';
 const ETC_MANAGED = '/etc/grok/managed_config.toml';
 const ETC_REQUIREMENTS = '/etc/grok/requirements.toml';
 const DEFAULT_BUDGET_MS = 3_000;
+const MAX_POLICY_BYTES = 1_048_576;
 const MDM_DOMAIN = 'ai.x.grok';
 
 const isErrno = (error: unknown, code: string): boolean =>
@@ -17,6 +18,7 @@ const remainingMs = (budget?: GrokDeadline): number =>
   budget === undefined ? DEFAULT_BUDGET_MS : Math.max(0, budget.deadline - Date.now());
 
 const parsePolicyText = (text: string, kind: GrokPolicySource['kind']): void => {
+  if (Buffer.byteLength(text) > MAX_POLICY_BYTES) throw new Error(UNVERIFIABLE);
   try {
     if (kind === 'json') {
       JSON.parse(text);
@@ -28,6 +30,33 @@ const parsePolicyText = (text: string, kind: GrokPolicySource['kind']): void => 
   }
 };
 
+const abortWhen = (signal: AbortSignal): Promise<never> =>
+  new Promise((_, reject) => {
+    const fail = (): void => {
+      reject(new Error(UNVERIFIABLE));
+    };
+    if (signal.aborted) {
+      fail();
+      return;
+    }
+    signal.addEventListener('abort', fail, { once: true });
+  });
+
+const readBoundedText = async (
+  handle: Awaited<ReturnType<typeof open>>,
+  size: number,
+  budget?: GrokDeadline,
+): Promise<string> => {
+  if (size > MAX_POLICY_BYTES) throw new Error(UNVERIFIABLE);
+  const timeoutMs = remainingMs(budget);
+  if (timeoutMs === 0) throw new Error(UNVERIFIABLE);
+  budget?.signal.throwIfAborted();
+  const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(budget === undefined ? [] : [budget.signal])]);
+  const text = await Promise.race([handle.readFile('utf8'), abortWhen(signal)]);
+  if (Buffer.byteLength(text) > MAX_POLICY_BYTES) throw new Error(UNVERIFIABLE);
+  return text;
+};
+
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 const assertSafePolicyFile = (stats: Stats): void => {
@@ -36,7 +65,11 @@ const assertSafePolicyFile = (stats: Stats): void => {
   }
 };
 
-const readExistingFile = async (path: string, kind: GrokPolicySource['kind']): Promise<GrokPolicySource> => {
+const readExistingFile = async (
+  path: string,
+  kind: GrokPolicySource['kind'],
+  budget?: GrokDeadline,
+): Promise<GrokPolicySource> => {
   let link: Stats;
   try {
     link = await lstat(path);
@@ -57,7 +90,7 @@ const readExistingFile = async (path: string, kind: GrokPolicySource['kind']): P
     const file = await handle.stat();
     if (file.dev !== link.dev || file.ino !== link.ino) throw new Error(UNVERIFIABLE);
     assertSafePolicyFile(file);
-    const text = await handle.readFile('utf8');
+    const text = await readBoundedText(handle, file.size, budget);
     parsePolicyText(text, kind);
     return { path, text, kind };
   } catch (error) {
@@ -71,9 +104,10 @@ const readExistingFile = async (path: string, kind: GrokPolicySource['kind']): P
 const readOptionalFile = async (
   path: string,
   kind: GrokPolicySource['kind'],
+  budget?: GrokDeadline,
 ): Promise<GrokPolicySource | undefined> => {
   try {
-    return await readExistingFile(path, kind);
+    return await readExistingFile(path, kind, budget);
   } catch (error) {
     if (isErrno(error, 'ENOENT')) return undefined;
     throw error instanceof Error && error.message === UNVERIFIABLE ? error : new Error(UNVERIFIABLE);
@@ -143,7 +177,7 @@ export async function readGrokPolicy(
   ];
   for (const file of files) {
     budget?.signal.throwIfAborted();
-    const source = await readOptionalFile(file.path, file.kind);
+    const source = await readOptionalFile(file.path, file.kind, budget);
     if (source !== undefined) sources.push({ ...source, role: 'managed' });
   }
 
@@ -154,13 +188,13 @@ export async function readGrokPolicy(
     sources.push({ path: 'GROK_CONFIG', text: inline, kind: 'json', role: 'overlay' });
   } else if (overlayPath !== undefined && overlayPath !== '') {
     budget?.signal.throwIfAborted();
-    const source = await readOptionalFile(overlayPath, overlayKind(overlayPath));
+    const source = await readOptionalFile(overlayPath, overlayKind(overlayPath), budget);
     if (source !== undefined) sources.push({ ...source, role: 'overlay' });
   }
 
   for (const path of [join(root, 'requirements.toml'), ETC_REQUIREMENTS]) {
     budget?.signal.throwIfAborted();
-    const source = await readOptionalFile(path, 'toml');
+    const source = await readOptionalFile(path, 'toml', budget);
     if (source !== undefined) sources.push({ ...source, role: 'requirements' });
   }
   budget?.signal.throwIfAborted();

@@ -939,7 +939,7 @@ test('final cleanup retains a replaced leftover credential', async () => {
 test('unknown private files are retained and owned tmp is removed', async () => {
   const f = await grokFixture();
   try {
-    await configureGrok(f.input, f.deps);
+    const first = await configureGrok(f.input, f.deps);
     await writeFile(join(f.root, 'aio-proxy', 'notes.txt'), 'keep me\n', { mode: 0o600 });
     const tmp = join(f.root, 'aio-proxy', `ownership.json.aio-${crypto.randomUUID()}`);
     await writeFile(tmp, 'tmp\n', { mode: 0o600 });
@@ -947,8 +947,18 @@ test('unknown private files are retained and owned tmp is removed', async () => 
     expect(result.retainedFiles).toEqual(['notes.txt']);
     expect(await readFile(join(f.root, 'aio-proxy', 'notes.txt'), 'utf8')).toBe('keep me\n');
     expect(await Bun.file(tmp).exists()).toBe(false);
-    expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(false);
-    expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(false);
+    expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(true);
+    expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
+    const retried = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(retried.retainedFiles).toEqual(['notes.txt']);
+    const again = await configureGrok(f.input, f.deps);
+    expect(again.status).toBe('installed');
+    expect(again.marker.installationId).toBe(first.marker.installationId);
+    expect(await inspectGrok(f.root, f.input.adapterVersion)).toMatchObject({
+      integration: 'managed',
+      configuration: 'current',
+    });
+    expect(await readFile(join(f.root, 'aio-proxy', 'notes.txt'), 'utf8')).toBe('keep me\n');
   } finally {
     await f.cleanup();
   }
@@ -1033,7 +1043,6 @@ test('remove retries after each stage crash including marker-gone completed owne
             async () => 'must not run',
           ),
         ).rejects.toThrow();
-        await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/already exists/);
       }
       const retried = await removeGrok(f.root, f.input.adapterVersion, f.deps);
       expect(retried.installationId).toBe(installed.marker.installationId);
