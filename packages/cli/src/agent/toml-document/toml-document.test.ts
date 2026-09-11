@@ -246,6 +246,24 @@ test('TOML 1.0 rejects 1.1 inline trailing commas that 1.1 accepts', () => {
   expect(readTomlField(source, ['x', 'a'], { tomlVersion: '1.1' })).toMatchObject({ present: true, value: 'y' });
 });
 
+test('inserts siblings into an implicit dotted-key table without a new header', () => {
+  const source = 'endpoints.keep = "x"\n';
+  const result = editTomlFields(
+    source,
+    [{ path: ['endpoints', 'models_base_url'], next: { present: true, value: 'http://127.0.0.1:9/v1' } }],
+    { tomlVersion: '1.0' },
+  );
+  expect(result.text).not.toContain('[endpoints]');
+  expect(result.text).toContain('endpoints.keep = "x"');
+  expect(result.text).toContain('endpoints.models_base_url');
+  expect(result.createdTables).toEqual([]);
+  const parsed = Bun.TOML.parse(result.text) as {
+    readonly endpoints: { readonly keep: string; readonly models_base_url: string };
+  };
+  expect(parsed.endpoints.keep).toBe('x');
+  expect(parsed.endpoints.models_base_url).toBe('http://127.0.0.1:9/v1');
+});
+
 test('collects dotted implicit parent paths without joining segments', () => {
   const inspected = inspectTomlPaths('model_providers.proxy.name = "x"\n', { tomlVersion: '1.1' });
   expect(inspected.fieldPaths).toContainEqual(['model_providers', 'proxy', 'name']);

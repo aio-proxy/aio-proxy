@@ -85,6 +85,13 @@ test.each([
     modelsSnippet: MODELS_DEFAULT,
   },
   {
+    name: 'implicit dotted endpoints table',
+    input: `endpoints.keep = "x"\n${MODELS_DEFAULT}`,
+    preserved: ['endpoints.keep = "x"'],
+    modelsSnippet: MODELS_DEFAULT,
+    implicitEndpoints: true,
+  },
+  {
     name: 'inline endpoints table',
     input: `endpoints={models_base_url="old",other=1}\n${MODELS_DEFAULT}`,
     preserved: ['other=1'],
@@ -144,6 +151,11 @@ test.each([
   if (fixture.inlineOther) {
     expect(parsed.endpoints?.other).toBe(1);
     expect(first.createdTables).not.toContainEqual(['endpoints']);
+  }
+  if (fixture.implicitEndpoints) {
+    expect(first.text).not.toContain('[endpoints]');
+    expect(first.createdTables).not.toContainEqual(['endpoints']);
+    expect(parsed.endpoints?.keep).toBe('x');
   }
   if (fixture.name === 'quoted dotted table') {
     expect(inspectTomlPaths(first.text, { tomlVersion: '1.0' }).tablePaths).toContainEqual(['user.section']);

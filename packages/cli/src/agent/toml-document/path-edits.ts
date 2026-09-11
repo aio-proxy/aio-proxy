@@ -142,6 +142,26 @@ const topLevelInsertionPoint = (source: string, document: InspectedDocument): nu
   return firstTable?.range[0] ?? source.length;
 };
 
+const lastImplicitSibling = (
+  source: string,
+  document: InspectedDocument,
+  path: readonly string[],
+): { readonly prefix: readonly string[]; readonly after: number } | undefined => {
+  for (let index = path.length - 1; index >= 1; index -= 1) {
+    const prefix = path.slice(0, index);
+    if (findTable(document, prefix) !== undefined || findInlineContainer(document, prefix) !== undefined) continue;
+    const siblings = document.values.filter(
+      (value) => isPrefix(prefix, value.path) && value.path.length > prefix.length,
+    );
+    if (siblings.length === 0) continue;
+    const last = siblings.reduce((current, value) =>
+      value.keyValue.range[1] > current.keyValue.range[1] ? value : current,
+    );
+    return { prefix, after: textAfterLine(source, last.keyValue.range[1]) };
+  }
+  return undefined;
+};
+
 const encodeDottedKey = (path: readonly string[]): string => path.map(encodeTomlKey).join('.');
 
 const fieldAssignment = (path: readonly string[], encoded: string): string => `${encodeDottedKey(path)} = ${encoded}`;
@@ -210,6 +230,7 @@ export const planTomlEdits = (
   const tableFields = new Map<AST.TOMLTable, string[]>();
   const topLevelFields: string[] = [];
   const newTables = new Map<string, { path: readonly string[]; fields: string[] }>();
+  const implicitFields = new Map<string, { after: number; fields: string[] }>();
   const ending = lineEndingFor(source);
 
   const addCreatedTable = (path: readonly string[]): void => {
@@ -277,6 +298,19 @@ export const planTomlEdits = (
       }
     }
     if (located) continue;
+    const implicit = lastImplicitSibling(source, document, edit.path);
+    if (implicit !== undefined) {
+      const key = JSON.stringify(implicit.prefix);
+      const assignment = fieldAssignment(edit.path, edit.next.encoded);
+      const existing = implicitFields.get(key);
+      if (existing !== undefined) {
+        existing.fields.push(assignment);
+        if (implicit.after > existing.after) existing.after = implicit.after;
+      } else {
+        implicitFields.set(key, { after: implicit.after, fields: [assignment] });
+      }
+      continue;
+    }
     if (edit.path.length === 1) {
       topLevelFields.push(fieldAssignment(edit.path, edit.next.encoded));
       continue;
@@ -307,6 +341,13 @@ export const planTomlEdits = (
       start: position,
       end: position,
       text: `${sourceInsertionPrefix(source, position, ending)}${fields.join(ending)}${ending}`,
+    });
+  }
+  for (const { after, fields } of implicitFields.values()) {
+    sourceEdits.push({
+      start: after,
+      end: after,
+      text: `${sourceInsertionPrefix(source, after, ending)}${fields.join(ending)}${ending}`,
     });
   }
   for (const { path, fields } of newTables.values()) {
