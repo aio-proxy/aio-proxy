@@ -236,6 +236,7 @@
       "status_description": "バックグラウンドサービスのステータスを表示します",
       "installed": "サービスを {path} にインストールしました",
       "uninstalled": "サービスを {path} から削除しました",
+      "auto_install_failed": "サービスの自動インストールまたは起動に失敗しました: {reason}。エラーを解決してから `aio-proxy service install --user`、`aio-proxy service start` を実行してください。",
       "command_failed": "サービスコマンドが失敗しました: {command} (終了コード {code})",
       "unsupported_platform": "service コマンドはこのプラットフォームをサポートしていません: {platform}",
       "system_unsupported": "システムスコープのインストールは現在未対応です。代わりにユーザーごとのサービスとしてインストールしてください",
