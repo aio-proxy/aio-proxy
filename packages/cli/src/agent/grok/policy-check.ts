@@ -9,7 +9,6 @@ const AUTH_HEADER = 'authorization';
 type FieldSpec = {
   readonly env: string;
   readonly paths: readonly (readonly string[])[];
-  readonly pin: boolean;
   readonly desired: (endpoint: string, command: string) => string;
 };
 
@@ -17,7 +16,6 @@ const MANAGED_FIELDS: readonly FieldSpec[] = [
   {
     env: 'GROK_MODELS_BASE_URL',
     paths: [['endpoints', 'models_base_url']],
-    pin: true,
     desired: (endpoint) => `${endpoint}/v1`,
   },
   {
@@ -26,25 +24,21 @@ const MANAGED_FIELDS: readonly FieldSpec[] = [
       ['endpoints', 'models_list_url'],
       ['endpoints', 'models_endpoint'],
     ],
-    pin: true,
     desired: (endpoint) => `${endpoint}/v1/models`,
   },
   {
     env: 'GROK_CLI_CHAT_PROXY_BASE_URL',
     paths: [['endpoints', 'cli_chat_proxy_base_url']],
-    pin: true,
     desired: (endpoint) => endpoint,
   },
   {
     env: 'GROK_XAI_API_BASE_URL',
     paths: [['endpoints', 'xai_api_base_url']],
-    pin: true,
     desired: (endpoint) => `${endpoint}/v1`,
   },
   {
     env: 'GROK_MANAGED_CONFIG_URL',
     paths: [['endpoints', 'managed_config_url']],
-    pin: false,
     desired: (endpoint) => `${endpoint}/__grok_unavailable/managed-config`,
   },
   {
@@ -53,7 +47,6 @@ const MANAGED_FIELDS: readonly FieldSpec[] = [
       ['auth', 'auth_provider_command'],
       ['grok_com_config', 'auth_provider_command'],
     ],
-    pin: false,
     desired: (_endpoint, command) => command,
   },
   {
@@ -62,7 +55,6 @@ const MANAGED_FIELDS: readonly FieldSpec[] = [
       ['auth', 'auth_provider_label'],
       ['grok_com_config', 'auth_provider_label'],
     ],
-    pin: false,
     desired: () => AUTH_LABEL,
   },
 ];
@@ -91,6 +83,7 @@ const parseSource = (source: GrokPolicySource): unknown => {
 
 const isRequirements = (path: string): boolean => path.endsWith('requirements.toml') || path === 'ai.x.grok';
 const isManaged = (path: string): boolean => path.endsWith('managed_config.toml');
+const isOverlay = (path: string): boolean => !isManaged(path) && !isRequirements(path);
 const valuesIn = (
   parsed: readonly { readonly path: string; readonly value: unknown }[],
   match: (path: string) => boolean,
@@ -107,15 +100,16 @@ const firstString = (
   return undefined;
 };
 
-const pinnedField = (
+const sourcedField = (
   parsed: readonly { readonly path: string; readonly value: unknown }[],
   paths: readonly (readonly string[])[],
+  match: (path: string) => boolean,
 ): { path: string; value: string } | undefined => {
   let found: { path: string; value: string } | undefined;
   for (const source of parsed) {
-    if (!isRequirements(source.path)) continue;
-    const match = firstString(source.value, paths);
-    if (match !== undefined) found = match;
+    if (!match(source.path)) continue;
+    const field = firstString(source.value, paths);
+    if (field !== undefined) found = field;
   }
   return found;
 };
@@ -241,14 +235,19 @@ export function checkGrokPolicy(
 
   for (const field of MANAGED_FIELDS) {
     const desired = field.desired(endpoint, command);
-    const pin = field.pin ? pinnedField(parsed, field.paths) : undefined;
-    if (pin !== undefined && pin.value !== desired) {
-      pushUnique(conflicts, pin.path);
+    const pin = sourcedField(parsed, field.paths, isRequirements);
+    if (pin !== undefined) {
+      if (pin.value !== desired) pushUnique(conflicts, pin.path);
       continue;
     }
     const envValue = policy.env[field.env];
-    if (envValue !== undefined && envValue !== '' && envValue !== desired) {
-      pushUnique(conflicts, field.paths[0]!.join('.'));
+    if (envValue !== undefined && envValue !== '') {
+      if (envValue !== desired) pushUnique(conflicts, field.paths[0]!.join('.'));
+      continue;
+    }
+    const overlay = sourcedField(parsed, field.paths, isOverlay);
+    if (overlay !== undefined && overlay.value !== desired) {
+      pushUnique(conflicts, overlay.path);
     }
   }
 

@@ -2,6 +2,8 @@ import { basename, isAbsolute } from 'node:path';
 
 import { isPlatformCliBinary, resolveUpgradeTargetFrom } from './detect';
 
+export { resolveStableManagedExec } from './detect';
+
 const STABLE_NAMES = new Set(['aio-proxy', 'aio-proxy.exe']);
 
 export async function resolveInstalledLauncher(executable: string): Promise<string> {

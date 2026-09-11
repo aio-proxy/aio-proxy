@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { CliExit } from '../exit';
-import { resolveInstalledLauncher } from '../upgrade';
+import { resolveInstalledLauncher } from '../upgrade/installed-launcher';
 import { resolveAgentExecutable, resolveGrokExecutable } from './index';
 
 const writeExecutable = (path: string, body = '#!/bin/sh\n'): void => {
@@ -138,4 +138,13 @@ test('native package paths are not a stable launcher', async () => {
   await withEmptyManagerPath(async () => {
     await expect(resolveInstalledLauncher(native)).rejects.toThrow(/stable/i);
   });
+});
+
+test('the upgrade public surface exports the launcher without the upgrade command', async () => {
+  const grok = await Bun.file(new URL('./grok.ts', import.meta.url)).text();
+  const executable = await Bun.file(new URL('./executable.ts', import.meta.url)).text();
+  const surface = await import('../upgrade/index.ts');
+  expect(typeof surface.resolveInstalledLauncher).toBe('function');
+  expect(Object.hasOwn(surface, 'runUpgradeCommand')).toBe(false);
+  expect(`${grok}\n${executable}`).not.toMatch(/upgrade\/detect|package-ownership/);
 });

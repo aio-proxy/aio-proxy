@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path';
 
-import { resolveInstalledLauncher } from '../upgrade';
+import { resolveInstalledLauncher } from '../upgrade/installed-launcher';
 import { resolveAgentExecutable } from './executable';
 
 export async function resolveGrokExecutable(

@@ -64,6 +64,38 @@ test('alias requirements pins conflict on the authored path', () => {
   expect(text).toBe('[models]\ndefault = "keep"\n');
 });
 
+test('a matching requirements pin ignores a foreign GROK_* env', () => {
+  const text = '[ui]\ntheme = "dark"\n';
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: { GROK_MODELS_BASE_URL: 'https://api.x.ai/v1' },
+    sources: [
+      {
+        path: '/etc/grok/requirements.toml',
+        kind: 'toml',
+        text: `[endpoints]\nmodels_base_url = "${ENDPOINT}/v1"\n`,
+      },
+    ],
+  });
+  expect(conflicts).toEqual([]);
+  expect(text).toBe('[ui]\ntheme = "dark"\n');
+});
+
+test('a requirements pin of the auth helper command is a field conflict', () => {
+  const text = '[ui]\ntheme = "dark"\n';
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [
+      {
+        path: '/etc/grok/requirements.toml',
+        kind: 'toml',
+        text: '[auth]\nauth_provider_command = "/usr/bin/other-auth"\n',
+      },
+    ],
+  });
+  expect(conflicts).toContain('auth.auth_provider_command');
+  expect(text).toBe('[ui]\ntheme = "dark"\n');
+});
+
 test('unrelated UI and MCP settings are not routing conflicts', () => {
   const text = `[ui]\ntheme = "dark"\n[mcp_servers.local]\ncommand = "mcp"\n`;
   expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toEqual([]);
@@ -146,6 +178,18 @@ test('GROK_CONFIG overlay with an external model is a field conflict', () => {
   });
   expect(conflicts).toContain('model.remote.base_url');
   expect(conflicts.join(',')).not.toContain(SECRET);
+  expect(text).toBe('[ui]\ntheme = "dark"\n');
+});
+
+test('GROK_CONFIG overlay with a foreign models_base_url is a field conflict', () => {
+  const text = '[ui]\ntheme = "dark"\n';
+  const overlay = JSON.stringify({ endpoints: { models_base_url: 'https://api.x.ai/v1' } });
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [{ path: 'GROK_CONFIG', kind: 'json', text: overlay }],
+  });
+  expect(conflicts).toContain('endpoints.models_base_url');
+  expect(conflicts.join(',')).not.toContain('https://api.x.ai');
   expect(text).toBe('[ui]\ntheme = "dark"\n');
 });
 

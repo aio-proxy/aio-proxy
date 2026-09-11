@@ -4,7 +4,7 @@ import { basename } from 'node:path';
 import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../exit';
-import { resolveStableManagedExec } from '../upgrade';
+import { resolveStableManagedExec } from '../upgrade/installed-launcher';
 
 // Resolve the single executable the service manager should launch. The npm
 // `aio-proxy` bin on PATH is a Node shim (`#!/usr/bin/env node`) that spawns the
