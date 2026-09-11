@@ -90,6 +90,8 @@ const assertOwnedByCurrentUser = (stats: Stats, kind: string): void => {
 export function assertSafeRoot(stats: Stats): void {
   if (stats.isSymbolicLink()) reject('Grok root is a symlink');
   if (!stats.isDirectory()) reject('Grok root is not a directory');
+  assertOwnedByCurrentUser(stats, 'root');
+  if ((stats.mode & 0o022) !== 0) reject('Grok root is group or world writable');
 }
 
 export function assertSafePrivateDir(stats: Stats): void {

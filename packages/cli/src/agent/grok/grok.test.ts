@@ -547,6 +547,18 @@ test('symlink and hardlink config paths are refused', async () => {
   }
 });
 
+test('a group-writable Grok root is refused before configure writes credentials', async () => {
+  const f = await grokFixture();
+  try {
+    await chmod(f.root, 0o777);
+    await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/group or world writable/);
+    expect(await Bun.file(join(f.root, 'aio-proxy', 'credential.json')).exists()).toBe(false);
+  } finally {
+    await chmod(f.root, 0o700).catch(() => undefined);
+    await f.cleanup();
+  }
+});
+
 test('unknown private files are kept and group-writable private files are refused', async () => {
   const f = await grokFixture();
   try {

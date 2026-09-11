@@ -1,11 +1,12 @@
 import { expect, spyOn, test } from 'bun:test';
 import * as fsPromises from 'node:fs/promises';
-import { chmod, link, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MAX_GROK_FILE_BYTES } from '../read-bounded';
 import {
+  assertSafeRoot,
   grokPaths,
   inspectPath,
   isGrokOwnedTmpName,
@@ -19,6 +20,19 @@ import {
 } from './files';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
+
+test('assertSafeRoot rejects a group- or world-writable directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-root-mode-'));
+  try {
+    assertSafeRoot(await lstat(root));
+    await chmod(root, 0o777);
+    const writable = await lstat(root);
+    expect(() => assertSafeRoot(writable)).toThrow(/group or world writable/);
+  } finally {
+    await chmod(root, 0o700).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('replaceGrokFile preserves existing mode and rejects an external rewrite before rename', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-grok-files-'));
