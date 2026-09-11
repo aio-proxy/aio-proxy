@@ -595,3 +595,111 @@ test('remote apply records the revision operation ID as the local baseline witho
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+async function applyRemoteBody(
+  slug: string,
+  config: Record<string, unknown>,
+  entity: { objectId: string; logicalKey: string; kind: EntityBody['kind'] },
+  remote: EntityBody,
+): Promise<Record<string, unknown>> {
+  const directory = mkdtempSync(join(tmpdir(), `aio-proxy-local-port-${slug}-`));
+  const configPath = join(directory, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate(config, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  repo.putEntity(binding.id, {
+    ...entity,
+    mode: 'included',
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const file = new AtomicConfigFile(configPath);
+  try {
+    const port = createLocalSyncPort({
+      configPath,
+      configFile: file,
+      repo,
+      accounts: {
+        readPluginSecret: () => null,
+        readAccount: () => null,
+        deleteAccount: () => true,
+        listPendingAccountOperations: () => [],
+      } as unknown as PluginRepository,
+      bindingId: binding.id,
+      bindingGeneration: binding.sessionGeneration,
+      enqueue: createFifoQueue(),
+      registry: () => ({
+        resolveOAuth: () => undefined,
+        oauthCapabilities: () => [],
+        resolveSync: () => undefined,
+        syncCapabilities: () => [],
+      }),
+      applyCandidate: async (candidate) => file.replace(() => candidate),
+    });
+    expect((await port.applyRemote(entity.objectId, remote, `remote-${slug}`)).applied).toBe(true);
+    return (await file.read()) as Record<string, unknown>;
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test('a remote Provider revision keeps the device-local proxy instead of replacing the whole Provider', async () => {
+  const raw = await applyRemoteBody(
+    'proxy',
+    { providers: { work: { ...(body.value as object), proxy: 'http://user:secret@proxy.test:8080' } } },
+    { objectId: 'object', logicalKey: 'work', kind: 'provider' },
+    { ...body, value: { kind: 'api', protocol: 'openai-compatible', baseUrl: 'https://cloud.test/v1' } },
+  );
+
+  const provider = (raw['providers'] as Record<string, Record<string, unknown>>)['work']!;
+  expect(provider['proxy']).toBe('http://user:secret@proxy.test:8080');
+  expect(provider['baseUrl']).toBe('https://cloud.test/v1');
+});
+
+test('a shared access body deletes the credentials it omits and leaves unrelated server settings alone', async () => {
+  const raw = await applyRemoteBody(
+    'access',
+    { server: { host: '127.0.0.1', password: 'revoked', apiKeys: ['old'] } },
+    { objectId: 'access', logicalKey: 'service-access', kind: 'service-access' },
+    { kind: 'service-access', logicalKey: 'service-access', value: { apiKeys: ['fresh'] }, dependencies: [] },
+  );
+
+  const server = raw['server'] as Record<string, unknown>;
+  expect(Object.hasOwn(server, 'password')).toBe(false);
+  expect(server['apiKeys']).toEqual(['fresh']);
+  expect(server['host']).toBe('127.0.0.1');
+});
+
+test('a routing-defaults body writes model context aggregation under router, not server', async () => {
+  const raw = await applyRemoteBody(
+    'routing',
+    { server: {}, router: {} },
+    { objectId: 'routing', logicalKey: 'routing-defaults', kind: 'routing-defaults' },
+    {
+      kind: 'routing-defaults',
+      logicalKey: 'routing-defaults',
+      value: { retry: { attempts: 3 }, modelContextAggregation: { enabled: true } },
+      dependencies: [],
+    },
+  );
+
+  expect((raw['router'] as Record<string, unknown>)['modelContextAggregation']).toEqual({ enabled: true });
+  expect((raw['server'] as Record<string, unknown>)['retry']).toEqual({ attempts: 3 });
+  expect(Object.hasOwn(raw['server'] as Record<string, unknown>, 'modelContextAggregation')).toBe(false);
+});

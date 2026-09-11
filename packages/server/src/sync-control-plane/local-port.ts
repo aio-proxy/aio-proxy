@@ -63,13 +63,41 @@ function copyRaw(raw: Record<string, JsonValue>): Record<string, JsonValue> {
   return JSON.parse(JSON.stringify(raw)) as Record<string, JsonValue>;
 }
 
+// The allowlists projectCommitted publishes for these kinds. A shared body always carries the
+// complete set, so a key the body omits was deleted on the other device and must be deleted here
+// too — spreading the body would silently keep a revoked password or API key working.
+const SERVICE_ACCESS_KEYS = ['apiKeys', 'password'] as const;
+const ROUTING_DEFAULTS_SERVER_KEYS = ['retry'] as const;
+const ROUTING_DEFAULTS_ROUTER_KEYS = ['modelContextAggregation'] as const;
+
+function replaceKeys(
+  target: Record<string, JsonValue>,
+  value: Record<string, JsonValue>,
+  keys: readonly string[],
+): Record<string, JsonValue> {
+  for (const key of keys) {
+    if (Object.hasOwn(value, key)) target[key] = value[key]!;
+    else delete target[key];
+  }
+  return target;
+}
+
 function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Record<string, JsonValue> {
   const next = copyRaw(raw);
   if (body === null) return next;
   switch (body.kind) {
-    case 'provider':
-      next['providers'] = { ...record(next['providers']), [body.logicalKey]: body.value };
+    case 'provider': {
+      const providers = record(next['providers']);
+      const previous = record(providers[body.logicalKey]);
+      const value = record(body.value);
+      // sharedProvider strips `proxy` before publishing, so it stays device-local. Replacing the
+      // whole Provider on a remote revision would wipe the authored proxy and its URL credentials.
+      providers[body.logicalKey] = Object.hasOwn(previous, 'proxy')
+        ? { ...value, proxy: previous['proxy']! }
+        : body.value;
+      next['providers'] = providers;
       break;
+    }
     case 'model-rule': {
       const router = record(next['router']);
       router['models'] = { ...record(router['models']), [body.logicalKey]: body.value };
@@ -91,11 +119,13 @@ function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Rec
       break;
     }
     case 'service-access': {
-      next['server'] = { ...record(next['server']), ...record(body.value) };
+      next['server'] = replaceKeys(record(next['server']), record(body.value), SERVICE_ACCESS_KEYS);
       break;
     }
     case 'routing-defaults': {
-      next['server'] = { ...record(next['server']), ...record(body.value) };
+      const value = record(body.value);
+      next['server'] = replaceKeys(record(next['server']), value, ROUTING_DEFAULTS_SERVER_KEYS);
+      next['router'] = replaceKeys(record(next['router']), value, ROUTING_DEFAULTS_ROUTER_KEYS);
       break;
     }
   }
@@ -132,19 +162,12 @@ function removeBody(
       break;
     }
     case 'service-access': {
-      const server = record(next['server']);
-      delete server['apiKeys'];
-      delete server['password'];
-      next['server'] = server;
+      next['server'] = replaceKeys(record(next['server']), {}, SERVICE_ACCESS_KEYS);
       break;
     }
     case 'routing-defaults': {
-      const server = record(next['server']);
-      delete server['retry'];
-      const router = record(next['router']);
-      delete router['modelContextAggregation'];
-      next['server'] = server;
-      next['router'] = router;
+      next['server'] = replaceKeys(record(next['server']), {}, ROUTING_DEFAULTS_SERVER_KEYS);
+      next['router'] = replaceKeys(record(next['router']), {}, ROUTING_DEFAULTS_ROUTER_KEYS);
       break;
     }
   }

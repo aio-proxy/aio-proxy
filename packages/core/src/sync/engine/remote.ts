@@ -172,6 +172,9 @@ export async function reconcileRemote(
       );
       if (head.state !== 'active') {
         const tombstoneRevision = `deleted:${head.epoch}`;
+        // Excluded entities get the deletion signal too, for credential coordination. The local
+        // port gates the destructive half on `mode === 'included'`, so a `sync leave` copy of the
+        // Provider and its account survive this call.
         if (existing !== undefined && existing.baseline !== tombstoneRevision) {
           input.assertGeneration(generation);
           const activation = await input.local.applyRemote(objectId, null, tombstoneRevision);
@@ -240,11 +243,9 @@ export async function reconcileRemote(
             all.findIndex((item) => item.objectId === candidate.objectId) === index,
         );
         for (const candidate of candidates) {
-          if (candidate.mode === 'included') {
-            input.assertGeneration(generation);
-            await input.local.applyRemote(candidate.objectId, null, `conflict:${head.epoch}`);
-            input.assertGeneration(generation);
-          }
+          // Quarantine only: excluding the object stops synchronizing it while leaving the
+          // previously active Provider and its credential in place. Applying a remote deletion
+          // here would destroy a local configuration that was never itself in conflict.
           input.assertGeneration(generation);
           input.repo.putEntity(input.bindingId, {
             ...candidate,

@@ -188,6 +188,40 @@ test('conflicting cloud object IDs are all excluded before any provider is appli
   });
 });
 
+test('a late colliding cloud object quarantines both identities without deleting the active Provider', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.logicalKey === 'work')?.mode).toBe('included');
+    await publishEntity(
+      createSyncObjectStore(a.session),
+      {
+        operationId: 'collision-op',
+        objectId: 'provider-collision',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'work', value: { kind: 'api', apiKey: 'other' }, dependencies: [] },
+        commitId: 'fixture-collision',
+      },
+      a.signal,
+    );
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.remoteApplyCalls().some((call) => call.body === null)).toBe(false);
+    expect(
+      b.repo
+        .entities(b.binding.id)
+        .filter((entity) => entity.logicalKey === 'work')
+        .map((entity) => [entity.mode, entity.pendingReason]),
+    ).toEqual([
+      ['excluded', 'provider-id-conflict'],
+      ['excluded', 'provider-id-conflict'],
+    ]);
+  });
+});
+
 test('watch hints coalesce while one remote application is in flight', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     const gate = b.pauseRemoteApplication();

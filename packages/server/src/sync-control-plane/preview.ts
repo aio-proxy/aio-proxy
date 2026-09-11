@@ -96,7 +96,10 @@ export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntit
   }));
 }
 
-const SECRET_KEY = /(?:secret|password|passwd|token|credential|api[-_]?key|refresh|access[-_]?key)/iu;
+// `headers` is listed as a whole: any header name can carry a credential (`Authorization`,
+// `Cookie`, a vendor-specific name), so the map is redacted rather than matched key by key.
+const SECRET_KEY =
+  /(?:secret|password|passwd|token|credential|api[-_]?key|refresh|access[-_]?key|^headers$|(?:^|\.)headers\.)/iu;
 
 function clone(value: JsonValue): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;

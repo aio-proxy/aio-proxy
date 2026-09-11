@@ -331,6 +331,60 @@ test('preview redacts account option fields whose names do not reveal that they 
   expect(JSON.stringify(preview)).not.toContain('value-to-hide');
 });
 
+test('preview redacts Provider header values whose names do not match a secret pattern', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: {
+          kind: 'provider',
+          logicalKey: 'work',
+          value: { kind: 'api', headers: { Authorization: 'Bearer value-to-hide', Cookie: 'session=hide-me' } },
+          dependencies: [],
+        },
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    registry: () => ({ resolveOAuth: () => undefined }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {},
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+
+  expect(JSON.stringify(preview)).not.toContain('value-to-hide');
+  expect(JSON.stringify(preview)).not.toContain('hide-me');
+});
+
 test('restore apply forwards the requested operation id', async () => {
   let restoredOperationId = '';
   const control = createSyncControlPlane({
