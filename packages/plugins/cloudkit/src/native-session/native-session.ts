@@ -73,9 +73,13 @@ class NativeSession implements SyncSession {
   }
 
   start(): void {
-    void this.#readLoop();
+    // Process exit and stdout EOF are the same event on two channels. Drain and classify the
+    // output first, so a helper that dies mid-frame reliably reports invalid-data instead of
+    // racing into a generic exit failure — the two carry different retry semantics. #readLoop
+    // never rejects, and the child's exit closes stdout, so this always settles.
+    const reading = this.#readLoop();
     void this.#stderrLoop();
-    void this.#child.exited.then(() => this.#failAll(false, 'native process exited'));
+    void this.#child.exited.then(() => reading).then(() => this.#failAll(false, 'native process exited'));
   }
 
   setMetadata(value: { identityId: string; spaceId: string; maxValueBytes: number }): void {

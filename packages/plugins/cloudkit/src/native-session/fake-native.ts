@@ -39,12 +39,14 @@ for await (const chunk of input) {
           result: { identityId: 'fake', spaceId: 'default', maxValueBytes: 1024, protocol: 1, version: 'fake' },
         });
       if (mode === 'unexpected') emit({ id: 'unexpected', ok: true, result: null });
+      // Exiting straight after a write can drop it, and the point of both modes is that the
+      // bytes reach the parent before the process dies.
       if (mode === 'oversized') {
-        Bun.stdout.write(`${'x'.repeat(16 * 1024 * 1024 + 1)}\n`);
+        await Bun.stdout.write(`${'x'.repeat(16 * 1024 * 1024 + 1)}\n`);
         process.exit(0);
       }
       if (mode === 'partial-frame') {
-        Bun.stdout.write('{"id":"partial"');
+        await Bun.stdout.write('{"id":"partial"');
         process.exit(0);
       }
       continue;
