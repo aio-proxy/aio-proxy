@@ -507,6 +507,8 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(source.indexOf("'agent', 'configure', 'grok'")).toBeGreaterThan(-1);
     expect(source.indexOf("'agent', 'configure', 'grok'")).toBeLessThan(source.indexOf("grokBinary, 'login'"));
     expect(source).toContain('approveDashboardAuthorization');
+    expect(source).toContain('signal: loginSignal');
+    expect(source.indexOf('AbortSignal.timeout(LOGIN_WAIT_MS)')).toBeLessThan(source.indexOf('awaitChild(loginChild'));
     expect(source).toContain('awaitChild(loginChild');
     expect(source).not.toMatch(/--installation-id['\s,]*missing/u);
     expect(typeof approveDashboardAuthorization).toBe('function');

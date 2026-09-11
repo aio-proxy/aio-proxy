@@ -28,6 +28,7 @@ export async function approveDashboardAuthorization(options: {
   readonly endpoint: string;
   readonly password: string;
   readonly verificationUrl: string;
+  readonly signal?: AbortSignal;
 }): Promise<DashboardApproveResult> {
   const origin = new URL(options.endpoint).origin;
   const parsed = parseDeviceVerificationUrl(options.verificationUrl);
@@ -36,6 +37,7 @@ export async function approveDashboardAuthorization(options: {
     method: 'POST',
     headers: dashboardHeaders(origin),
     body: JSON.stringify({ password: options.password }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   const loginBody = await readJson(login);
   if (!login.ok || !isPlainObject(loginBody) || typeof loginBody['token'] !== 'string') {
@@ -46,6 +48,7 @@ export async function approveDashboardAuthorization(options: {
     method: 'POST',
     headers: dashboardHeaders(origin, token),
     body: JSON.stringify({ userCode: parsed.userCode }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   const resolvedBody = await readJson(resolved);
   if (!resolved.ok || !isPlainObject(resolvedBody) || typeof resolvedBody['deviceId'] !== 'string') {
@@ -56,6 +59,7 @@ export async function approveDashboardAuthorization(options: {
     method: 'POST',
     headers: dashboardHeaders(origin, token),
     body: '{}',
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   const approvedBody = await readJson(approved);
   if (!approved.ok || !isPlainObject(approvedBody) || approvedBody['status'] !== 'approved') {

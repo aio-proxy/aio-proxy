@@ -19,6 +19,7 @@ export { HELPER_STDOUT_KEYS, parseDeviceVerificationUrl } from './helper-capture
 type GrokCompatCase = GrokCompatReport['cases'][number];
 
 const NOT_RUN = 'not_run:';
+const LOGIN_WAIT_MS = 60_000;
 
 function parseFlag(argv: readonly string[], name: string): string {
   const index = argv.indexOf(name);
@@ -156,24 +157,27 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
   cases.push(fromChild('configure', configure));
   if (configure.exitCode === 0) await fixture.wrapAuthCommand();
   const loginChild = fixture.start([options.grokBinary, 'login']);
+  const loginStarted = Date.now();
+  const loginSignal = AbortSignal.timeout(LOGIN_WAIT_MS);
   try {
     const verification = await waitForVerificationUrl({
       captureDir: fixture.helperCaptureDir,
       stderr: () => loginChild.stderr(),
-      timeoutMs: 60_000,
+      timeoutMs: LOGIN_WAIT_MS,
       finished: () => loginChild.finished(),
     });
     await approveDashboardAuthorization({
       endpoint: fixture.endpoint,
       password: fixture.dashboardPassword,
       verificationUrl: verification.url,
+      signal: loginSignal,
     });
     cases.push(passed('approve', 'Dashboard login/CSRF/approve succeeded'));
   } catch (error) {
     loginChild.kill();
     cases.push(failed('approve', error instanceof Error ? error.message : String(error)));
   }
-  const login = await awaitChild(loginChild, 60_000);
+  const login = await awaitChild(loginChild, Math.max(0, LOGIN_WAIT_MS - (Date.now() - loginStarted)));
   cases.push(fromChild('login', login));
   cases.push(await helperStdoutContractCase(fixture.helperCaptureDir, login.stderr));
   cases.push(fromChild('models', await fixture.run([options.grokBinary, 'models'])));
