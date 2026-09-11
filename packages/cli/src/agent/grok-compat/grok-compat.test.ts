@@ -133,6 +133,11 @@ if (argv[0] === 'run') {
       if (url.pathname === '/dashboard/api/auth/login') return Response.json({ token: 'compat-session' });
       if (url.pathname === '/dashboard/api/agent-authorizations/resolve') return Response.json({ deviceId: 'compat-device' });
       if (url.pathname.endsWith('/approve')) return Response.json({ status: 'approved' });
+      if (url.pathname.startsWith('/v1/')) {
+        const auth = request.headers.get('authorization') ?? '';
+        if (!auth.startsWith('Bearer aio_agent_at_')) return new Response('unauthorized', { status: 401 });
+        return new Response('not found', { status: 404 });
+      }
       return new Response('not found', { status: 404 });
     },
   });
@@ -390,6 +395,32 @@ test('index.ts is export-only and does not start the script', async () => {
   expect(source).not.toContain('import.meta.main');
   expect(typeof grokCompatPublic.runGrokCompatibility).toBe('function');
   expect('createGrokCompatFixture' in grokCompatPublic).toBe(false);
+});
+
+test('fixture rejects anonymous model traffic when a static API key is configured', async () => {
+  const root = await scratch('aio-grok-compat-apikey-');
+  try {
+    const { options } = await optionsFor(root, { version: '1.0.24', loginExit: 1 });
+    const fixture = await createGrokCompatFixture(options);
+    try {
+      const config = JSON.parse(await readFile(join(fixture.env['AIO_PROXY_HOME']!, 'config.jsonc'), 'utf8')) as {
+        readonly server: { readonly apiKeys?: readonly { readonly key: string }[] };
+      };
+      expect(config.server.apiKeys?.length).toBe(1);
+      expect(config.server.apiKeys?.[0]?.key.startsWith('compat-lock-')).toBe(true);
+      expect(config.server.apiKeys?.[0]?.key.startsWith('aio_agent_')).toBe(false);
+      const anonymous = await fetch(`${fixture.endpoint}/v1/models`);
+      expect(anonymous.status).toBe(401);
+      const agent = await fetch(`${fixture.endpoint}/v1/models`, {
+        headers: { authorization: `Bearer ${SECRET_AT}` },
+      });
+      expect(agent.status).not.toBe(401);
+    } finally {
+      await fixture.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('wrapAuthCommand keeps ownership current after rewriting the helper command', async () => {

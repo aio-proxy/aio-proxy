@@ -227,7 +227,12 @@ export async function createGrokCompatFixture(options: GrokCompatOptions): Promi
     join(aioHome, 'config.jsonc'),
     `${JSON.stringify(
       {
-        server: { host: '127.0.0.1', port: proxyPort, password: dashboardPassword },
+        server: {
+          host: '127.0.0.1',
+          port: proxyPort,
+          password: dashboardPassword,
+          apiKeys: [{ key: `compat-lock-${crypto.randomUUID()}` }],
+        },
         providers: {
           loopback: {
             kind: 'api',
