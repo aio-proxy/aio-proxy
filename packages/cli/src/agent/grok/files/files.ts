@@ -105,9 +105,12 @@ function assertSafeFile(stats: Stats, kind: string, privateFile: boolean): void 
   if (stats.isSymbolicLink()) reject(`Grok ${kind} is a symlink`);
   if (!stats.isFile()) reject(`Grok ${kind} is not a regular file`);
   if (stats.nlink !== 1) reject(`Grok ${kind} is a hardlink`);
-  if (!privateFile) return;
   assertOwnedByCurrentUser(stats, kind);
-  if ((stats.mode & 0o077) !== 0) reject(`Grok ${kind} has unsafe permissions`);
+  if (privateFile) {
+    if ((stats.mode & 0o077) !== 0) reject(`Grok ${kind} has unsafe permissions`);
+    return;
+  }
+  if ((stats.mode & 0o022) !== 0) reject(`Grok ${kind} is group or world writable`);
 }
 
 async function readGrokSnapshot(

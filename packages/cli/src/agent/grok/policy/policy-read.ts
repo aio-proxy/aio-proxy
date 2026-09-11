@@ -41,6 +41,13 @@ const assertSafePolicyFile = (stats: Stats): void => {
   if (stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) {
     throw new Error(UNVERIFIABLE);
   }
+  const uid = process.getuid?.();
+  if (uid !== undefined && stats.uid !== uid && stats.uid !== 0) {
+    throw new Error(UNVERIFIABLE);
+  }
+  if ((stats.mode & 0o022) !== 0) {
+    throw new Error(UNVERIFIABLE);
+  }
 };
 
 const readExistingFile = async (

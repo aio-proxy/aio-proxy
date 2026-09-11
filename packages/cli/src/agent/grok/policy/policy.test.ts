@@ -213,6 +213,22 @@ test('missing policy files are skipped', async () => {
   }
 });
 
+test('a group-writable policy file cannot be ignored', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'grok-policy-writable-'));
+  try {
+    const path = join(root, 'managed_config.toml');
+    await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    expect((await readGrokPolicy(root, {})).sources).toHaveLength(1);
+    await chmod(path, 0o666);
+    await expect(readGrokPolicy(root, {})).rejects.toThrow(/unverifiable/i);
+    await chmod(path, 0o644);
+    expect((await readGrokPolicy(root, {})).sources[0]?.path).toBe(path);
+  } finally {
+    await chmod(join(root, 'managed_config.toml'), 0o600).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('an existing illegal policy file cannot be ignored', async () => {
   const root = await mkdtemp(join(tmpdir(), 'grok-policy-bad-'));
   try {

@@ -78,6 +78,8 @@ test('readGrokFile distinguishes missing from empty and rejects symlink and hard
     await expect(readGrokFile(target)).rejects.toThrow(/hardlink/);
     await chmod(empty, 0o644);
     expect((await readGrokFile(empty))?.text).toBe('');
+    await chmod(empty, 0o666);
+    await expect(readGrokFile(empty)).rejects.toThrow(/group or world writable/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
