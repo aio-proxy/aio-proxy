@@ -413,6 +413,20 @@ test('an external model provider endpoint is refused', () => {
   expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toContain('model_providers.proxy.base_url');
 });
 
+test('a same-origin model provider credential override is refused', () => {
+  const text = `[model_providers.proxy]\nbase_url = "${ENDPOINT}/v1"\napi_key = "${SECRET}"\n`;
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy);
+  expect(conflicts).toContain('model_providers.proxy.api_key');
+  expect(conflicts.join(',')).not.toContain(SECRET);
+});
+
+test('a same-origin model provider Authorization header is refused', () => {
+  const text = `[model_providers.proxy]\nbase_url = "${ENDPOINT}/v1"\nextra_headers = { Authorization = "Bearer ${SECRET}" }\n`;
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy);
+  expect(conflicts).toContain('model_providers.proxy.extra_headers.Authorization');
+  expect(conflicts.join(',')).not.toContain(SECRET);
+});
+
 test('an unparseable model URL is refused', () => {
   const text = `[model.bad]\nbase_url = "not-a-url"\n`;
   expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toContain('model.bad.base_url');

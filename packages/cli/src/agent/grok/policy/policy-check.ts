@@ -210,14 +210,18 @@ const checkUrls = (
   }
 };
 
-const checkModelAuth = (tables: Record<string, Record<string, unknown>>, conflicts: string[]): void => {
+const checkNamedAuth = (
+  tables: Record<string, Record<string, unknown>>,
+  section: string,
+  conflicts: string[],
+): void => {
   for (const [id, spec] of Object.entries(tables)) {
     for (const key of ['api_key', 'env_key', 'auth_provider'] as const) {
-      if (spec[key] !== undefined) pushUnique(conflicts, `model.${id}.${key}`);
+      if (spec[key] !== undefined) pushUnique(conflicts, `${section}.${id}.${key}`);
     }
     for (const key of ['extra_headers', 'env_http_headers'] as const) {
       const header = hasAuthorization(spec[key]);
-      if (header !== undefined) pushUnique(conflicts, `model.${id}.${key}.${header}`);
+      if (header !== undefined) pushUnique(conflicts, `${section}.${id}.${key}.${header}`);
     }
   }
 };
@@ -293,8 +297,10 @@ export function checkGrokPolicy(
 
   const models = mergeNamed(layers, 'model');
   checkUrls(models, 'model', expectedOrigin, conflicts);
-  checkModelAuth(models, conflicts);
-  checkUrls(mergeNamed(layers, 'model_providers'), 'model_providers', expectedOrigin, conflicts);
+  checkNamedAuth(models, 'model', conflicts);
+  const providers = mergeNamed(layers, 'model_providers');
+  checkUrls(providers, 'model_providers', expectedOrigin, conflicts);
+  checkNamedAuth(providers, 'model_providers', conflicts);
 
   const globalHeaders = hasAuthorization(lookup(user, ['models', 'extra_headers']));
   if (globalHeaders !== undefined) pushUnique(conflicts, `models.extra_headers.${globalHeaders}`);
