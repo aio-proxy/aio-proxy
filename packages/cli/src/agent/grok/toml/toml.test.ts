@@ -252,6 +252,15 @@ test('reconfigure keeps the first original and refuses drifted leaves', () => {
   expect(parse(drifted).models?.default).toBe('keep-me');
 });
 
+test('restore keeps a trailing comment when pruning a created table header', () => {
+  const first = configureGrokToml('', ENDPOINT, COMMAND);
+  const annotated = first.text.replace('[auth]', '[auth] # keep');
+  expect(annotated).toContain('[auth] # keep');
+  const restored = restoreGrokToml(annotated, first.leaves, first.createdTables);
+  expect(restored.text).toContain('# keep');
+  expect(restored.text).not.toContain('[auth]');
+});
+
 test('restore keeps a trailing comment when deleting a managed field', () => {
   const first = configureGrokToml(MODELS_DEFAULT, ENDPOINT, COMMAND);
   const annotated = first.text.replace(/(models_base_url = "[^"]*")\n/u, '$1 # keep this\n');

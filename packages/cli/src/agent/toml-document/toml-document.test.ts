@@ -47,6 +47,17 @@ test('inserts multiple leaves into one inline table without losing unrelated mem
   expect(Bun.TOML.parse(result.text).endpoints.models_list_url.endsWith('/v1/models')).toBe(true);
 });
 
+test('pruning an empty table keeps a same-line header comment', () => {
+  const source = '[auth] # keep\nlabel = "managed"\n';
+  const result = editTomlFields(source, [{ path: ['auth', 'label'], next: { present: false } }], {
+    tomlVersion: '1.0',
+    removeEmptyTables: [['auth']],
+  });
+  expect(result.text).toContain('# keep');
+  expect(result.text).not.toContain('[auth]');
+  expect(result.text).not.toContain('label');
+});
+
 test('prunes only caller-owned empty tables', () => {
   const source = '[auth]\nlabel="managed"\n\n[user_empty]\n';
   const result = editTomlFields(source, [{ path: ['auth', 'label'], next: { present: false } }], {

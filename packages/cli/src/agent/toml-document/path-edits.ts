@@ -384,11 +384,8 @@ export const planTomlEdits = (
   return { sourceEdits, createdTables };
 };
 
-export const emptyTableHeaderEdit = (source: string, table: AST.TOMLTable): SourceEdit => ({
-  start: lineStart(source, table.range[0]),
-  end: textAfterLine(source, table.body.at(-1)?.range[1] ?? table.range[1]),
-  text: '',
-});
+export const emptyTableHeaderEdit = (source: string, table: AST.TOMLTable): SourceEdit =>
+  lineDelete(source, [table.range[0], table.body.at(-1)?.range[1] ?? table.range[1]]);
 
 export const tableIsEmpty = (document: InspectedDocument, table: AST.TOMLTable): boolean => {
   if (table.body.length > 0) return false;
