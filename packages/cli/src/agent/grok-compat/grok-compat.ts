@@ -1,6 +1,6 @@
 import { access, writeFile } from 'node:fs/promises';
 
-import { spawnArgv } from './compat-child';
+import { awaitChild, spawnArgv } from './compat-child';
 import { approveDashboardAuthorization } from './dashboard-approve';
 import {
   createGrokCompatFixture,
@@ -9,6 +9,7 @@ import {
   type GrokCompatFixture,
 } from './fixture';
 import { helperStdoutContractCase, waitForVerificationUrl } from './helper-capture';
+import type { GrokCompatHttpRecord } from './loopback-upstream';
 import type { GrokCompatOptions, GrokCompatReport } from './types';
 
 export type { GrokCompatOptions, GrokCompatReport } from './types';
@@ -120,11 +121,16 @@ async function probeUnimplementedHelperUrl(endpoint: string): Promise<GrokCompat
   }
 }
 
-function loopbackRecorderCase(fixture: GrokCompatFixture): GrokCompatCase {
-  if (fixture.records.length === 0) {
-    return notRun('loopback-http-recorder', 'no HTTP records were captured');
+export function loopbackRecorderCase(records: readonly GrokCompatHttpRecord[]): GrokCompatCase {
+  const sawModels = records.some((item) => item.method === 'GET' && item.path.endsWith('/models'));
+  const sawCompletions = records.some((item) => item.method === 'POST' && item.path.endsWith('/chat/completions'));
+  if (!sawModels || !sawCompletions) {
+    return failed(
+      'loopback-http-recorder',
+      `expected GET /models and POST /chat/completions; captured ${String(records.length)} request(s)`,
+    );
   }
-  const foreign = fixture.records.filter((item) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/u.test(item.origin));
+  const foreign = records.filter((item) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/u.test(item.origin));
   if (foreign.length > 0) {
     return failed(
       'loopback-http-recorder',
@@ -133,7 +139,7 @@ function loopbackRecorderCase(fixture: GrokCompatFixture): GrokCompatCase {
   }
   return passed(
     'loopback-http-recorder',
-    `recorded ${String(fixture.records.length)} loopback request(s); token fingerprints only`,
+    `recorded ${String(records.length)} loopback request(s); token fingerprints only`,
   );
 }
 
@@ -167,7 +173,7 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
     loginChild.kill();
     cases.push(failed('approve', error instanceof Error ? error.message : String(error)));
   }
-  const login = await loginChild.result;
+  const login = await awaitChild(loginChild, 60_000);
   cases.push(fromChild('login', login));
   cases.push(await helperStdoutContractCase(fixture.helperCaptureDir, login.stderr));
   cases.push(fromChild('models', await fixture.run([options.grokBinary, 'models'])));
@@ -177,7 +183,7 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
       await fixture.run([options.grokBinary, '-p', '--no-session', '-m', 'compat-grok-model', 'compat'], 60_000),
     ),
   );
-  cases.push(loopbackRecorderCase(fixture));
+  cases.push(loopbackRecorderCase(fixture.records));
   cases.push(sandboxExecCase(fixture.sandboxExec, fixture.sandboxExec !== null));
   cases.push(...namedNotRunGates(process.platform));
   return cases;

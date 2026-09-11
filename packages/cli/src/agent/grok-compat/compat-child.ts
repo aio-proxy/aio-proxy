@@ -109,14 +109,7 @@ export function startArgv(
   };
 }
 
-export async function spawnArgv(
-  argv: readonly string[],
-  env: Record<string, string | undefined>,
-  cwd: string,
-  timeoutMs: number,
-  prefix?: readonly string[],
-): Promise<GrokCompatCommandResult> {
-  const child = startArgv(argv, env, cwd, prefix);
+export async function awaitChild(child: GrokCompatChild, timeoutMs: number): Promise<GrokCompatCommandResult> {
   let timedOut = false;
   const termTimer = setTimeout(() => {
     timedOut = true;
@@ -147,4 +140,14 @@ export async function spawnArgv(
     clearTimeout(termTimer);
     clearTimeout(hardTimer);
   }
+}
+
+export async function spawnArgv(
+  argv: readonly string[],
+  env: Record<string, string | undefined>,
+  cwd: string,
+  timeoutMs: number,
+  prefix?: readonly string[],
+): Promise<GrokCompatCommandResult> {
+  return awaitChild(startArgv(argv, env, cwd, prefix), timeoutMs);
 }

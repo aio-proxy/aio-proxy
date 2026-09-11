@@ -17,6 +17,29 @@ function json(data: unknown): Response {
   return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
 }
 
+function sseChunk(data: unknown): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
+
+function sse(events: readonly unknown[]): Response {
+  const encoder = new TextEncoder();
+  let index = 0;
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (index >= events.length) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoder.encode(sseChunk(events[index])));
+        index += 1;
+      },
+    }),
+    { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } },
+  );
+}
+
 export async function listenLoopbackUpstream(records: GrokCompatHttpRecord[]): Promise<{
   readonly origin: string;
   readonly stop: () => void;
@@ -43,33 +66,74 @@ export async function listenLoopbackUpstream(records: GrokCompatHttpRecord[]): P
       if (url.pathname.endsWith('/chat/completions') && request.method === 'POST') {
         completions += 1;
         if (completions === 1) {
-          return json({
-            id: 'compat-1',
-            object: 'chat.completion',
-            choices: [
-              {
-                index: 0,
-                finish_reason: 'tool_calls',
-                message: {
-                  role: 'assistant',
-                  content: null,
-                  tool_calls: [
-                    {
-                      id: 'call_compat',
-                      type: 'function',
-                      function: { name: 'exec', arguments: '{"command":"pwd"}' },
-                    },
-                  ],
+          return sse([
+            {
+              id: 'compat-1',
+              object: 'chat.completion.chunk',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: null,
+                  delta: {
+                    role: 'assistant',
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'call_compat',
+                        type: 'function',
+                        function: { name: 'exec', arguments: '' },
+                      },
+                    ],
+                  },
                 },
-              },
-            ],
-          });
+              ],
+            },
+            {
+              id: 'compat-1',
+              object: 'chat.completion.chunk',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: null,
+                  delta: { tool_calls: [{ index: 0, function: { arguments: '{"command":' } }] },
+                },
+              ],
+            },
+            {
+              id: 'compat-1',
+              object: 'chat.completion.chunk',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: null,
+                  delta: { tool_calls: [{ index: 0, function: { arguments: '"pwd"}' } }] },
+                },
+              ],
+            },
+            {
+              id: 'compat-1',
+              object: 'chat.completion.chunk',
+              choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
+            },
+          ]);
         }
-        return json({
-          id: 'compat-2',
-          object: 'chat.completion',
-          choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'compat-ok' } }],
-        });
+        return sse([
+          {
+            id: 'compat-2',
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, finish_reason: null, delta: { role: 'assistant', content: 'compat' } }],
+          },
+          {
+            id: 'compat-2',
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, finish_reason: null, delta: { content: '-ok' } }],
+          },
+          {
+            id: 'compat-2',
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, finish_reason: 'stop', delta: {} }],
+          },
+        ]);
       }
       return new Response('not found', { status: 404 });
     },

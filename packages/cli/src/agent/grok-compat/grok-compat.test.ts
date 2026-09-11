@@ -3,10 +3,12 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { awaitChild, startArgv } from './compat-child';
 import { approveDashboardAuthorization } from './dashboard-approve';
 import { createGrokCompatFixture, GrokCompatProxyError, spawnArgv } from './fixture';
 import {
   compatScriptShouldFail,
+  loopbackRecorderCase,
   redactCompatText,
   runGrokCompatibility,
   sandboxExecCase,
@@ -19,6 +21,7 @@ import {
   wrapAuthProviderCommand,
 } from './helper-capture';
 import * as grokCompatPublic from './index';
+import { listenLoopbackUpstream } from './loopback-upstream';
 
 const SCRIPT = join(import.meta.dir, 'grok-compat.ts');
 const SECRET_AT = `aio_agent_at_v1_${'a'.repeat(43)}`;
@@ -313,6 +316,39 @@ test('sandbox case reports the wrap that actually spawned Grok', () => {
   });
 });
 
+test('loopback recorder fails when models or completions never reach the proxy', () => {
+  expect(loopbackRecorderCase([])).toMatchObject({
+    name: 'loopback-http-recorder',
+    passed: false,
+    detail: expect.stringMatching(/GET \/models and POST \/chat\/completions/),
+  });
+  expect(loopbackRecorderCase([])).not.toMatchObject({ detail: expect.stringMatching(/^not_run:/) });
+  expect(loopbackRecorderCase([{ method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' }])).toMatchObject({
+    name: 'loopback-http-recorder',
+    passed: false,
+    detail: expect.stringMatching(/GET \/models and POST \/chat\/completions/),
+  });
+  expect(
+    loopbackRecorderCase([
+      { method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' },
+      { method: 'POST', path: '/v1/chat/completions', origin: 'http://127.0.0.1:9' },
+    ]),
+  ).toMatchObject({
+    name: 'loopback-http-recorder',
+    passed: true,
+  });
+  expect(
+    loopbackRecorderCase([
+      { method: 'GET', path: '/v1/models', origin: 'http://127.0.0.1:9' },
+      { method: 'POST', path: '/v1/chat/completions', origin: 'https://api.x.ai' },
+    ]),
+  ).toMatchObject({
+    name: 'loopback-http-recorder',
+    passed: false,
+    detail: expect.stringContaining('non-loopback origin'),
+  });
+});
+
 test('index.ts is export-only and does not start the script', async () => {
   const source = await readFile(join(import.meta.dir, 'index.ts'), 'utf8');
   expect(source).not.toContain('import.meta.main');
@@ -379,6 +415,7 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(source.indexOf("'agent', 'configure', 'grok'")).toBeGreaterThan(-1);
     expect(source.indexOf("'agent', 'configure', 'grok'")).toBeLessThan(source.indexOf("grokBinary, 'login'"));
     expect(source).toContain('approveDashboardAuthorization');
+    expect(source).toContain('awaitChild(loginChild');
     expect(source).not.toMatch(/--installation-id['\s,]*missing/u);
     expect(typeof approveDashboardAuthorization).toBe('function');
     expect(HELPER_STDOUT_KEYS).toEqual(['access_token', 'expires_in']);
@@ -397,13 +434,14 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(report.cases.find((item) => item.name === 'helper-404')?.passed).toBe(true);
     const loopback = report.cases.find((item) => item.name === 'loopback-http-recorder');
     expect(loopback?.passed).toBe(false);
-    expect(loopback?.detail.startsWith('not_run:')).toBe(true);
+    expect(loopback?.detail.startsWith('not_run:')).toBe(false);
+    expect(loopback?.detail).toMatch(/GET \/models and POST \/chat\/completions/);
     const sandbox = report.cases.find((item) => item.name === 'macos-sandbox-egress');
     expect(sandbox?.passed).toBe(false);
     expect(sandbox?.detail.startsWith('not_run:')).toBe(true);
-    expect(compatScriptShouldFail(report)).toBe(false);
+    expect(compatScriptShouldFail(report)).toBe(true);
     const script = await runScript(options);
-    expect(script.exitCode).toBe(0);
+    expect(script.exitCode).not.toBe(0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -460,6 +498,53 @@ wait
       }),
     ).rejects.toThrow(/version failed|timed out/i);
     expect(Date.now() - started).toBeLessThan(8_000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('loopback completions stream tool-call arguments and terminal text', async () => {
+  const records: { readonly method: string; readonly path: string; readonly origin: string }[] = [];
+  const server = await listenLoopbackUpstream(records);
+  try {
+    const first = await fetch(`${server.origin}/v1/chat/completions`, { method: 'POST' });
+    expect(first.headers.get('content-type')).toMatch(/text\/event-stream/);
+    const firstBody = await first.text();
+    expect(firstBody).toContain('chat.completion.chunk');
+    expect(firstBody).toContain('"arguments":""');
+    expect(firstBody).toContain('\\"command\\":');
+    expect(firstBody).toContain('\\"pwd\\"}');
+    expect(firstBody).toContain('tool_calls');
+    expect(firstBody).toContain('data: [DONE]');
+    const second = await fetch(`${server.origin}/v1/chat/completions`, { method: 'POST' });
+    expect(second.headers.get('content-type')).toMatch(/text\/event-stream/);
+    const secondBody = await second.text();
+    expect(secondBody).toContain('"content":"compat"');
+    expect(secondBody).toContain('"content":"-ok"');
+    expect(secondBody).toContain('data: [DONE]');
+  } finally {
+    server.stop();
+  }
+});
+
+test('awaitChild applies the same TERM/KILL deadline to an already-started process', async () => {
+  const root = await scratch('aio-grok-compat-await-child-');
+  const hang = join(root, 'hang');
+  try {
+    await writeExecutable(
+      hang,
+      `#!/bin/sh
+trap '' TERM
+sleep 15 &
+wait
+`,
+    );
+    const started = Date.now();
+    const child = startArgv([hang], { PATH: process.env['PATH'] ?? '/usr/bin:/bin' }, root);
+    const result = await awaitChild(child, 400);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/timed out/i);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
