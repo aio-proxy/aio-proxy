@@ -1,11 +1,18 @@
 import { expect, spyOn, test } from 'bun:test';
 import * as fsPromises from 'node:fs/promises';
-import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MAX_GROK_FILE_BYTES } from '../read-bounded';
-import { grokPaths, isGrokOwnedTmpName, readGrokFile, removeGrokOwnedTemporaryFiles, replaceGrokFile } from './files';
+import {
+  grokPaths,
+  inspectPath,
+  isGrokOwnedTmpName,
+  readGrokFile,
+  removeGrokOwnedTemporaryFiles,
+  replaceGrokFile,
+} from './files';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
 
@@ -169,6 +176,52 @@ test('a stalled Grok file write close does not outlive the budget', async () => 
     }
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('replaceGrokFile removes the temporary file when the write fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-tmp-cleanup-'));
+  const path = join(root, 'config.toml');
+  try {
+    await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    const expected = await readGrokFile(path);
+    const realOpen = fsPromises.open.bind(fsPromises);
+    const open = spyOn(fsPromises, 'open').mockImplementation(async (target, flags, mode) => {
+      const handle = await realOpen(target, flags, mode);
+      if (String(target).includes('.aio-')) {
+        Object.defineProperty(handle, 'writeFile', {
+          configurable: true,
+          value: async () => {
+            throw new Error('disk full');
+          },
+        });
+      }
+      return handle;
+    });
+    try {
+      await expect(
+        replaceGrokFile(path, '[ui]\ntheme = "light"\n', expected, budget(), async () => {}),
+      ).rejects.toThrow(/disk full/);
+      expect((await readdir(root)).filter((name) => name.includes('.aio-'))).toEqual([]);
+      expect(await readFile(path, 'utf8')).toBe('[ui]\ntheme = "dark"\n');
+    } finally {
+      open.mockRestore();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a stalled directory metadata lookup is unverifiable within the budget', async () => {
+  const lstat = spyOn(fsPromises, 'lstat').mockImplementation(() => new Promise(() => {}));
+  try {
+    const started = Date.now();
+    await expect(
+      inspectPath('/tmp/grok-root', { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) }),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    lstat.mockRestore();
   }
 });
 

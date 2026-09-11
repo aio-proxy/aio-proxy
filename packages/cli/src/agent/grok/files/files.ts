@@ -57,9 +57,13 @@ export async function readGrokCredentialText(root: string, budget?: GrokDeadline
 export const isFsCode = (error: unknown, code: string): boolean =>
   error instanceof Error && 'code' in error && error.code === code;
 
-export async function inspectPath(path: string): Promise<Stats | undefined> {
+export async function inspectPath(path: string, budget?: GrokDeadline): Promise<Stats | undefined> {
   try {
-    return await lstat(path);
+    return await withReadBudget(
+      budget,
+      () => new Error('Grok path unverifiable'),
+      () => lstat(path),
+    );
   } catch (error) {
     if (isFsCode(error, 'ENOENT')) return undefined;
     throw error;
@@ -105,7 +109,7 @@ async function readGrokSnapshot(
   budget?: GrokDeadline,
 ): Promise<GrokFileSnapshot | undefined> {
   const unverifiable = (): Error => new Error(`Grok ${kind} unverifiable`);
-  const link = await withReadBudget(budget, unverifiable, () => inspectPath(path));
+  const link = await inspectPath(path, budget);
   if (link === undefined) return undefined;
   assertSafeFile(link, kind, privateFile);
   let handle;
@@ -224,10 +228,10 @@ export async function replaceGrokFile(
   try {
     const handle = await withReadBudget(budget, unverifiable, () => open(temporaryPath, WRITE_FLAGS, 0o600));
     try {
+      const opened = await withHandleBudget(handle, budget, unverifiable, () => handle.stat());
+      temporary = { path: temporaryPath, dev: opened.dev, ino: opened.ino };
       await withHandleBudget(handle, budget, unverifiable, () => handle.writeFile(text));
       await withHandleBudget(handle, budget, unverifiable, () => handle.sync());
-      const stats = await withHandleBudget(handle, budget, unverifiable, () => handle.stat());
-      temporary = { path: temporaryPath, dev: stats.dev, ino: stats.ino };
     } finally {
       void handle.close().catch(() => undefined);
     }

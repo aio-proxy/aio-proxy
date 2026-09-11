@@ -183,10 +183,10 @@ async function removeGrokInternal(
   return withGrokLock(root, budget, async (lock) =>
     lock.withOwnership(async () => {
       budget.signal.throwIfAborted();
-      const rootStat = await inspectPath(paths.root);
+      const rootStat = await inspectPath(paths.root, budget);
       if (rootStat === undefined) throw new Error('Grok root is not a directory');
       assertSafeRoot(rootStat);
-      const privateStat = await inspectPath(paths.privateDir);
+      const privateStat = await inspectPath(paths.privateDir, budget);
       if (privateStat === undefined) return finishRootRemovalJournal(lock, paths, budget);
       assertSafePrivateDir(privateStat);
       const privateDir = await captureIdentity(paths.privateDir);

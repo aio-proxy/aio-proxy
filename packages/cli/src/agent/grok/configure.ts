@@ -182,7 +182,7 @@ async function configureFirst(
   let markerWritten = false;
   try {
     if (reuse === undefined) {
-      const existing = await inspectPath(paths.privateDir);
+      const existing = await inspectPath(paths.privateDir, budget);
       if (existing === undefined) {
         privateDir = await createPrivateDir(paths.privateDir);
       } else {
@@ -249,10 +249,10 @@ async function configureGrokInternal(
   return withGrokLock(input.root, budget, async (lock) =>
     lock.withOwnership(async () => {
       budget.signal.throwIfAborted();
-      const rootStat = await inspectPath(paths.root);
+      const rootStat = await inspectPath(paths.root, budget);
       if (rootStat === undefined) throw new Error('Grok root is not a directory');
       assertSafeRoot(rootStat);
-      const privateStat = await inspectPath(paths.privateDir);
+      const privateStat = await inspectPath(paths.privateDir, budget);
       if (privateStat === undefined) {
         await clearOwnedRemovalJournal(lock, paths, budget);
         return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config, budget), testDeps);

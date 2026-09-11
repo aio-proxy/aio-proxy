@@ -589,6 +589,34 @@ test('installation id mismatch and missing owned fields are refused', async () =
   }
 });
 
+test('withGrokInstallation fails within the budget when directory metadata stalls', async () => {
+  const f = await grokFixture();
+  try {
+    const installed = await configureGrok(f.input, f.deps);
+    const lstat = spyOn(fsPromises, 'lstat').mockImplementation(() => new Promise(() => {}));
+    try {
+      const started = Date.now();
+      await expect(
+        withGrokInstallation(
+          {
+            root: f.root,
+            installationId: installed.marker.installationId,
+            adapterVersion: f.input.adapterVersion,
+            budget: { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) },
+            policy: f.deps.policy,
+          },
+          async () => 'ok',
+        ),
+      ).rejects.toThrow(/unverifiable|timed out/i);
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      lstat.mockRestore();
+    }
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('withGrokInstallation uses the lock owner and checks routing before credentials', async () => {
   const f = await grokFixture();
   try {

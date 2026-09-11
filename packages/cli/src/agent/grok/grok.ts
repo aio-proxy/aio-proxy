@@ -251,10 +251,10 @@ export async function withGrokInstallation<T>(
   return withGrokLock(input.root, input.budget, async (lock) =>
     lock.withOwnership(async (assertOwnership) => {
       input.budget.signal.throwIfAborted();
-      const rootStat = await inspectPath(paths.root);
+      const rootStat = await inspectPath(paths.root, input.budget);
       if (rootStat === undefined) throw new Error('Grok root is not a directory');
       assertSafeRoot(rootStat);
-      const privateStat = await inspectPath(paths.privateDir);
+      const privateStat = await inspectPath(paths.privateDir, input.budget);
       if (privateStat === undefined) throw new Error('Grok installation missing');
       assertSafePrivateDir(privateStat);
       const loaded = await loadManaged(paths, input.adapterVersion, input.budget);
