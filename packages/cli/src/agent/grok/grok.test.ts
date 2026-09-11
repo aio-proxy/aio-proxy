@@ -869,6 +869,27 @@ test('failed revoke keeps credential, marker, and removing without reverting to 
   }
 });
 
+test('remove retry after cleanupComplete still reports skipped fields', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const config = join(f.root, 'config.toml');
+    await writeFile(config, (await readFile(config, 'utf8')).replace('"AIO Proxy"', '"Mine"'));
+    await expect(
+      removeGrokForTest(f.root, f.input.adapterVersion, f.deps, {
+        failpoint: (point) => {
+          if (point === 'cleanup_complete') throw new Error('crash at cleanup_complete');
+        },
+      }),
+    ).rejects.toThrow('crash at cleanup_complete');
+    const retried = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(retried.skippedFields).toContain('auth.auth_provider_label');
+    expect(await readFile(config, 'utf8')).toContain('"Mine"');
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('field drift is skipped and a missing config is not created', async () => {
   const f = await grokFixture();
   try {

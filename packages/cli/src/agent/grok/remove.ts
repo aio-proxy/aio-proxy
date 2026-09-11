@@ -29,7 +29,7 @@ import {
   type ManagedState,
 } from './lifecycle';
 import { adoptRecoveredOwnership, isCompletedGrokRemoval, parseGrokOwnership, recoverGrokOwnership } from './ownership';
-import { restoreGrokToml } from './toml';
+import { equalGrokLeaf, restoreGrokToml } from './toml';
 import type { GrokDeadline, GrokDeps, GrokOwnership, TomlEdit } from './types';
 
 export type GrokRemoveFailPoint =
@@ -140,9 +140,15 @@ async function narrowCompletedRemoval(
   return {
     installationId: ownership.installationId,
     revokeStatus: ownership.revokeStatus,
-    skippedFields: [],
+    skippedFields: skippedFieldsFromOwnership(ownership),
     retainedFiles,
   };
+}
+
+function skippedFieldsFromOwnership(ownership: GrokOwnership): readonly string[] {
+  return ownership.leaves
+    .filter((leaf) => !equalGrokLeaf(leaf.written, leaf.original))
+    .map((leaf) => leaf.path.join('.'));
 }
 
 function removingOwnership(ownership: GrokOwnership): GrokOwnership {
@@ -247,6 +253,8 @@ async function removeManaged(
     await commitEdit(edit);
     await saveOwnership(completedOwnership(ownership, revokeStatus));
     await testDeps?.failpoint?.('cleanup_complete');
+  } else {
+    skippedFields = skippedFieldsFromOwnership(ownership);
   }
 
   const retainedFiles = await cleanupPrivateDir(

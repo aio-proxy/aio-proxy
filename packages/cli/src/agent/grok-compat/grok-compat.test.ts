@@ -379,6 +379,35 @@ test('journey configures before login, approves via Dashboard, and does not trea
   }
 });
 
+test('helper recorder persists redacted stdout without the bearer', async () => {
+  const root = await scratch('aio-grok-recorder-');
+  try {
+    const capture = join(root, 'capture');
+    const helper = join(root, 'helper.sh');
+    await writeExecutable(
+      helper,
+      `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(JSON.stringify({ access_token: SECRET_AT, expires_in: 900 }))}\n`,
+    );
+    const recorder = new URL('./helper-recorder.ts', import.meta.url).pathname;
+    const child = Bun.spawn([process.execPath, recorder, '--capture', capture, '--', helper], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const [stdout, , code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(code).toBe(0);
+    expect(stdout).toContain(SECRET_AT);
+    const captured = await readFile(join(capture, 'stdout'), 'utf8');
+    expect(captured).not.toContain(SECRET_AT);
+    expect(JSON.parse(captured)).toEqual({ access_token: 'redacted', expires_in: 900 });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('helper stdout contract requires exact keys and keeps RT out of stdout', async () => {
   const root = await scratch('aio-grok-compat-helper-keys-');
   try {

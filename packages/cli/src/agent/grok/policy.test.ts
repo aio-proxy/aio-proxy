@@ -66,6 +66,23 @@ test('the owned catalog URL alone is not an alias conflict', () => {
   expect(checkGrokPolicy(text, ENDPOINT, COMMAND, emptyPolicy)).toEqual([]);
 });
 
+test('catalog aliases split across user and managed layers are a conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\n`;
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [
+      {
+        path: '/etc/grok/managed_config.toml',
+        kind: 'toml',
+        text: '[endpoints]\nmodels_endpoint = "https://api.x.ai/v1/models"\n',
+      },
+    ],
+  });
+  expect(conflicts).toContain('endpoints.models_list_url');
+  expect(conflicts).toContain('endpoints.models_endpoint');
+  expect(conflicts.join(',')).not.toContain('https://api.x.ai');
+});
+
 test('a requirements pin with both catalog aliases is a conflict', () => {
   const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\n`;
   const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {

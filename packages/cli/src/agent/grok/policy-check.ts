@@ -105,10 +105,19 @@ const presentAliases = (root: unknown, paths: readonly (readonly string[])[]): {
     .map((path) => ({ path: path.join('.'), value: asString(lookup(root, path)) }))
     .filter((entry): entry is { path: string; value: string } => entry.value !== undefined);
 
-const rejectDuplicateAliases = (root: unknown, paths: readonly (readonly string[])[], conflicts: string[]): void => {
-  const aliases = presentAliases(root, paths);
-  if (aliases.length > 1) {
-    for (const alias of aliases) pushUnique(conflicts, alias.path);
+const rejectMergedAliases = (
+  roots: readonly unknown[],
+  paths: readonly (readonly string[])[],
+  conflicts: string[],
+): void => {
+  const seen: string[] = [];
+  for (const root of roots) {
+    for (const alias of presentAliases(root, paths)) {
+      if (!seen.includes(alias.path)) seen.push(alias.path);
+    }
+  }
+  if (seen.length > 1) {
+    for (const path of seen) pushUnique(conflicts, path);
   }
 };
 
@@ -247,8 +256,7 @@ export function checkGrokPolicy(
 
   for (const field of MANAGED_FIELDS) {
     const desired = field.desired(endpoint, command);
-    rejectDuplicateAliases(user, field.paths, conflicts);
-    for (const source of parsed) rejectDuplicateAliases(source.value, field.paths, conflicts);
+    rejectMergedAliases([user, ...parsed.map((source) => source.value)], field.paths, conflicts);
     const pin = sourcedField(parsed, field.paths, isRequirements);
     if (pin !== undefined) {
       if (pin.value !== desired) pushUnique(conflicts, pin.path);
