@@ -29,6 +29,7 @@ import {
   createPreviewToken,
   latestCommitId,
   listRemoteEntities,
+  sameFence,
   snapshotRemoteEntities,
   snapshotLocalEntities,
   SyncPreviewError,
@@ -38,6 +39,19 @@ import {
 } from './preview';
 import { createRemoteOperations } from './remote-operations';
 import { createStatus } from './status';
+
+/**
+ * A candidate backend opened for previewing but not yet bound. Connecting has to read the
+ * candidate's cloud state before the swap — otherwise the preview cannot show what connecting would
+ * import, and applying it would start reconciling against objects the user never reviewed.
+ */
+export type SyncConnectCandidate = {
+  readonly remote: readonly RemoteEntity[];
+  /** Swaps the binding onto the candidate backend. */
+  readonly commit: () => Promise<void>;
+  /** Releases the candidate when its preview is replaced, expires, or fails to apply. */
+  readonly dispose: () => Promise<void>;
+};
 
 export type SyncControlPlaneOptions = {
   readonly repo: SyncRepository;
@@ -64,7 +78,7 @@ export type SyncControlPlaneOptions = {
   readonly restore?: OperationInput['restore'];
   readonly persistOverrides: OperationInput['persistOverrides'];
   readonly persistProviderIdentity?: OperationInput['persistProviderIdentity'];
-  readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<void>;
+  readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<SyncConnectCandidate>;
   readonly detach?: (providerId: string, loginSessionId: string) => Promise<void>;
   readonly cancelDetach?: (providerId: string) => Promise<void>;
   readonly purge?: OperationInput['purge'];
@@ -113,6 +127,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     options.applyCloud ??
     (async (...args: Parameters<NonNullable<OperationInput['applyCloud']>>) => remoteOps!().publish(...args));
   const previews = new Map<string, PreviewRecord>();
+  const candidates = new Map<string, SyncConnectCandidate>();
   let rangeRevision = 0;
   let state: SyncConnectionState = 'idle';
   let lastSuccessAt: number | null = null;
@@ -195,6 +210,20 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   const status = (): SyncStatus => statuses.status();
   const backends = (): SyncBackendView[] => statuses.backends();
 
+  // The swap replaced the binding along with its commit history, so the binding and local-commit
+  // halves of the reviewed fence now describe a world that no longer exists. The cloud half is what
+  // the decisions were actually made against: re-read it through the newly bound session and fence
+  // on that alone, then run the decisions with the reviewed fence so they are not re-checked.
+  const applyConnect = async (record: PreviewRecord, decisions: SyncApplyInput['decisions']): Promise<void> => {
+    const remote = await remoteEntities();
+    const observed: PreviewFence = {
+      ...record.fence,
+      remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
+    };
+    if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
+    await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
+  };
+
   return {
     backends,
     status,
@@ -208,21 +237,35 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           ...input,
           options: parsed.data as Extract<SyncPreviewInput, { kind: 'connect' }>['options'],
         };
-        const previewId = createPreviewToken(24, options.randomBytes);
-        const expiresAt = now() + 10 * 60_000;
-        const local = captureLocal();
-        const fence = await currentFence([], local.localCommitId, local.binding);
-        const built = buildPreview({
-          request,
-          local: local.entities,
-          remote: [],
-          fence,
-          previewId,
-          expiresAt,
-          registry: options.registry?.(),
-        });
-        previews.set(previewId, built.record);
-        return built.preview;
+        // A pending candidate the user walked away from still holds an open backend session.
+        for (const [pending, stale] of candidates) {
+          candidates.delete(pending);
+          previews.delete(pending);
+          await stale.dispose().catch(() => {});
+        }
+        const candidate = await options.connect(request);
+        try {
+          const previewId = createPreviewToken(24, options.randomBytes);
+          const expiresAt = now() + 10 * 60_000;
+          const local = captureLocal();
+          const remote = snapshotRemoteEntities(candidate.remote);
+          const built = buildPreview({
+            request,
+            local: local.entities,
+            remote,
+            fence: await currentFence(remote, local.localCommitId, local.binding),
+            previewId,
+            expiresAt,
+            registry: options.registry?.(),
+          });
+          previews.set(previewId, built.record);
+          candidates.set(previewId, candidate);
+          state = 'preview-required';
+          return built.preview;
+        } catch (error) {
+          await candidate.dispose().catch(() => {});
+          throw error;
+        }
       }
       const local = captureLocal();
       if (local.binding === null) throw new SyncPreviewError('not-connected');
@@ -248,9 +291,21 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       const record = previews.get(input.previewId);
       if (record === undefined) throw new SyncPreviewError('preview-stale');
       previews.delete(input.previewId);
-      if (now() >= record.expiresAt) throw new SyncPreviewError('preview-stale');
+      const candidate = candidates.get(input.previewId);
+      candidates.delete(input.previewId);
+      if (now() >= record.expiresAt) {
+        await candidate?.dispose().catch(() => {});
+        throw new SyncPreviewError('preview-stale');
+      }
       if (record.input.kind === 'connect') {
-        await options.connect(record.input);
+        if (candidate === undefined) throw new SyncPreviewError('preview-stale');
+        try {
+          await candidate.commit();
+        } catch (error) {
+          await candidate.dispose().catch(() => {});
+          throw error;
+        }
+        await applyConnect(record, input.decisions);
       } else {
         await applyPreview(operationInput(), record, input.decisions);
       }

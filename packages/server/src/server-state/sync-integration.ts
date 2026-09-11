@@ -9,7 +9,6 @@ import {
   createSyncRepository,
   encodeCandidate,
   parseRuntimeConfig,
-  parsePluginSchema,
   seedAuthoredEntities,
   type PluginRegistrySnapshot,
   type PluginRepository,
@@ -27,17 +26,18 @@ import type { SyncSession } from '@aio-proxy/plugin-sdk';
 import { createFifoQueue, type FifoQueue } from '../fifo-queue';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import {
-  checkPrerequisites,
   createLocalSyncPort,
   createServerSyncLifecycle,
   createSyncControlPlane,
-  readOAuthActivationEvidence,
+  listRemoteEntities,
   SyncOperationError,
-  type OAuthActivationEvidence,
+  type SyncConnectCandidate,
 } from '../sync-control-plane';
 import { createSyncCommitHooks } from '../sync-control-plane/commit';
 import type { PluginSecretChange } from '../sync-control-plane/local-port';
 import { commitConfig, type ServerRuntime } from './lifecycle';
+import { createActivationCheck } from './sync-activation';
+import { renameProviderIdentity } from './sync-rename';
 import type { ServerStateOptions } from './types';
 
 // eslint-disable-next-line max-lines-per-function -- lifecycle replacement keeps one integration owner
@@ -58,13 +58,19 @@ export function createSyncIntegration(
       syncRepository,
       syncBinding: null,
       syncPort: undefined,
-      syncApplyCandidate: async () => {},
+      configFile: undefined,
+      syncApplyCandidate: async (
+        _raw: Record<string, JsonValue>,
+        _origin: 'local' | 'remote',
+        _operationId?: string,
+      ) => {},
       lifecycle: undefined,
       sharing: () => undefined,
       configPath: options.configPath,
       connectBackend: async () => {
         throw new SyncOperationError('backend-unavailable');
       },
+      onEngineStatus: (_handle: (status: string) => void) => {},
     };
   }
   const syncApplyCandidate = async (
@@ -118,60 +124,13 @@ export function createSyncIntegration(
         .filter(([, plugin]) => plugin.version !== undefined)
         .map(([name, plugin]) => [name, plugin.version!] as const),
     );
-  const checkActivation = async (raw: Record<string, JsonValue>, body: import('@aio-proxy/core').EntityBody) => {
-    let credentialValid = true;
-    let oauthEvidence: OAuthActivationEvidence | undefined;
-    const currentBinding = syncRepository.readBinding();
-    const value = body.value;
-    if (
-      body.kind === 'provider' &&
-      value !== null &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      (value as Record<string, JsonValue>)['kind'] === 'oauth'
-    ) {
-      const valueRecord = value as Record<string, JsonValue>;
-      const plugin = typeof valueRecord['plugin'] === 'string' ? valueRecord['plugin'] : undefined;
-      const capability = typeof valueRecord['capability'] === 'string' ? valueRecord['capability'] : undefined;
-      const adapter =
-        plugin === undefined || capability === undefined
-          ? undefined
-          : plugins().registry.resolveOAuth(plugin, capability);
-      const account = repository.readAccount(body.logicalKey);
-      if (
-        plugin === undefined ||
-        capability === undefined ||
-        adapter === undefined ||
-        account === null ||
-        account.plugin !== plugin ||
-        account.capability !== capability
-      )
-        credentialValid = false;
-      else {
-        credentialValid = (await parsePluginSchema(adapter.credentials, account.credential)).ok;
-        oauthEvidence = readOAuthActivationEvidence(
-          account,
-          adapter.credentialSync?.formatVersion,
-          adapter.credentialSync?.multiDevice?.evidenceId,
-          currentBinding === null
-            ? undefined
-            : syncRepository.entities(currentBinding.id).find((entity) => entity.logicalKey === body.logicalKey),
-        );
-      }
-    }
-    return checkPrerequisites({
-      raw,
-      body,
-      apply: async () => {},
-      dependencies: {
-        installedPackages: pluginVersions(),
-        missingEnv: [],
-        oauthVerified: credentialValid,
-        credentialValid,
-        ...(oauthEvidence === undefined ? {} : { oauthEvidence }),
-      },
-    });
-  };
+  const checkActivation = createActivationCheck({
+    repo: syncRepository,
+    accounts: repository,
+    plugins,
+    pluginVersions,
+    sharing: () => sharing,
+  });
   let sharing: OAuthSharingService | undefined;
   let syncPort: ReturnType<typeof createLocalSyncPort> | undefined;
   let lifecycle: ReturnType<typeof createServerSyncLifecycle> | undefined;
@@ -256,7 +215,14 @@ export function createSyncIntegration(
       const authored = (await configFile.read()) as Record<string, JsonValue>;
       await queue(async () => {
         const previousBinding = syncRepository.readBinding();
-        const previousEntities = previousBinding === null ? [] : syncRepository.entities(previousBinding.id);
+        // Ownership is scoped to the space that holds the account object. The replacement backend
+        // has none, so a copied `shared` row would claim an object that does not exist there and
+        // leave the Provider blocked. Carry the configuration only; the new binding re-establishes
+        // OAuth ownership through its own recovery, which still refuses while the old binding owns
+        // the credential.
+        const previousEntities = (previousBinding === null ? [] : syncRepository.entities(previousBinding.id)).map(
+          ({ oauth, ...entity }) => (oauth === undefined ? entity : { ...entity, pendingReason: null }),
+        );
         const previousLifecycle = lifecycle;
         const previousPort = syncPort;
         const previousRuntimeSync = runtime.sync;
@@ -297,7 +263,11 @@ export function createSyncIntegration(
   // Candidate startup uses the mutation queue for local recovery, so serialize whole connect operations here and
   // keep the existing queue available for the recovery and transactional swap steps.
   const connectQueue = createFifoQueue();
-  const connectBackend = (input: { plugin: string; capability: string; options: JsonValue }): Promise<void> =>
+  const connectBackend = (input: {
+    plugin: string;
+    capability: string;
+    options: JsonValue;
+  }): Promise<SyncConnectCandidate> =>
     connectQueue(async () => {
       const backend = plugins().registry.resolveSync(input.plugin, input.capability);
       const parsed = backend?.options.schema.safeParse(input.options);
@@ -314,22 +284,37 @@ export function createSyncIntegration(
         if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
         const current = syncRepository.readBinding();
         const candidateSession = session;
+        // Read the candidate's cloud state before it is bound: this is the snapshot the preview
+        // reviews, and reconciliation must not be the first thing that sees these objects.
+        const remote = await listRemoteEntities(candidateSession);
         session = undefined;
-        await replaceBackend(
-          {
-            id: bindingId,
-            plugin: input.plugin,
-            capability: input.capability,
-            pluginVersion: plugins().plugins.get(input.plugin)?.version ?? 'unknown',
-            identityId: candidateSession.identityId,
-            spaceId: 'default',
-            deviceId: current?.deviceId ?? crypto.randomUUID(),
-            sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
-            options: normalizedOptions,
+        const binding: LocalBinding = {
+          id: bindingId,
+          plugin: input.plugin,
+          capability: input.capability,
+          pluginVersion: plugins().plugins.get(input.plugin)?.version ?? 'unknown',
+          identityId: candidateSession.identityId,
+          spaceId: 'default',
+          deviceId: current?.deviceId ?? crypto.randomUUID(),
+          sessionGeneration: (current?.sessionGeneration ?? 0) + 1,
+          options: normalizedOptions,
+        };
+        return {
+          remote,
+          commit: () =>
+            connectQueue(async () => {
+              try {
+                await replaceBackend(binding, candidateSession);
+                refreshCommitHooks();
+              } catch (error) {
+                if (error instanceof SyncOperationError) throw error;
+                throw new SyncOperationError('backend-unavailable');
+              }
+            }),
+          dispose: async () => {
+            await candidateSession.dispose().catch(() => {});
           },
-          candidateSession,
-        );
-        refreshCommitHooks();
+        };
       } catch (error) {
         await session?.dispose().catch(() => {});
         if (error instanceof SyncOperationError) throw error;
@@ -345,6 +330,7 @@ export function createSyncIntegration(
     get syncPort() {
       return syncPort;
     },
+    configFile,
     syncApplyCandidate,
     get lifecycle() {
       return lifecycle;
@@ -453,12 +439,17 @@ export function createSyncControlPlaneIntegration(
       if (sharing === undefined) throw new SyncOperationError('backend-unavailable');
       sharing.cancelDetach(providerId);
     },
-    persistProviderIdentity: async (_oldProviderId, _newProviderId, entities: readonly LocalEntity[]) => {
-      const binding = integration.syncRepository.readBinding();
-      if (binding === null || integration.syncRepository.putEntities === undefined)
-        throw new SyncOperationError('upgrade-required');
-      integration.syncRepository.putEntities(binding.id, entities);
-    },
+    persistProviderIdentity: (oldProviderId, newProviderId, entities: readonly LocalEntity[]) =>
+      renameProviderIdentity(
+        {
+          configFile: integration.configFile!,
+          repo: integration.syncRepository,
+          applyCandidate: integration.syncApplyCandidate,
+        },
+        oldProviderId,
+        newProviderId,
+        entities,
+      ),
   });
 }
 

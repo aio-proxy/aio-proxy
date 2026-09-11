@@ -74,7 +74,13 @@ function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
+/**
+ * Moves every reference to `oldProviderId` onto `newProviderId`: the keys of `providers`/`accounts`
+ * maps and the `providerId`/`accountProviderId` scalars that name them. Shared by the entity bodies
+ * a rename publishes and the authored configuration those bodies are projected from, so the two can
+ * never disagree about which Provider ID a rule points at.
+ */
+export function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
   if (Array.isArray(value)) return value.map((entry) => rewireProviderReferences(entry, oldProviderId, newProviderId));
   if (!isPlainObject(value)) return value;
   const result: Record<string, JsonValue> = {};

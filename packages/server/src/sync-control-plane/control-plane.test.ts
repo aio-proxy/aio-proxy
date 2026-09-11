@@ -24,7 +24,7 @@ test('disconnect clears the persisted binding so the next start does not reconne
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
     lifecycle: {
       activate: () => {},
       reconcile: async () => {},
@@ -69,7 +69,7 @@ test('background engine outcomes move the publicly reported state', async () => 
     restore: async () => {},
     persistOverrides: async () => {},
     purge: async () => {},
-    connect: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, dispose: async () => {} }),
     now: () => 1_000,
     onEngineStatus: (next) => {
       handle = next;
