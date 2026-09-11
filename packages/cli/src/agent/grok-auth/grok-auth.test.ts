@@ -741,8 +741,40 @@ test('a network refresh failure keeps the refresh token and skips device login',
     expect(f.calls.device).toBe(1);
     const after = await readCredentialFile(f.root);
     expect(after.refreshToken).toBe(before.refreshToken);
-    expect(after.status).toBe('refreshing');
+    expect(after.status).toBe('ready');
     expect(f.stdout).toHaveLength(1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a delayed retry after a network refresh failure still uses the refresh token', async () => {
+  const f = await authFixture();
+  try {
+    await grokAuth(f.input, f.deps);
+    const before = await readCredentialFile(f.root);
+    await expect(
+      grokAuth(f.input, {
+        ...f.deps,
+        transport: () =>
+          countingTransport(f, {
+            refresh: async () => {
+              f.calls.refresh++;
+              throw new AgentRuntimeError('network');
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({ code: 'network' });
+    const later = Date.now() + 31_000;
+    await grokAuth(f.input, {
+      ...f.deps,
+      now: () => later,
+      transport: () => countingTransport(f),
+    });
+    expect(f.calls.device).toBe(1);
+    expect(f.calls.refresh).toBe(2);
+    expect((await readCredentialFile(f.root)).refreshToken).toBe(REFRESHED.refresh_token);
+    expect(before.refreshToken).not.toBe(REFRESHED.refresh_token);
   } finally {
     await f.cleanup();
   }

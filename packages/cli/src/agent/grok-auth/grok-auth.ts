@@ -70,6 +70,7 @@ async function acquireGrokToken(
     deps.transport(context.marker, networkBudget(context.budget, deps.now()));
   if (state?.status === 'refreshing' && !grokRefreshRecoverable(state, deps.now())) await invalidate();
   if (state !== undefined && state.status !== 'needs_login' && state.refreshToken !== '') {
+    const previous = state;
     const inFlight = await beginGrokRefresh(context, state, deps.now());
     state = inFlight;
     const transport = transportForNetwork();
@@ -77,6 +78,11 @@ async function acquireGrokToken(
     try {
       token = await transport.refresh(context.marker, inFlight.refreshToken);
     } catch (error) {
+      if (error instanceof AgentRuntimeError && error.code === 'network' && previous.status === 'ready') {
+        state = previous;
+        await context.writeCredential(previous);
+        throw error;
+      }
       if (!(error instanceof AgentRuntimeError) || error.code !== 'invalid_grant') throw error;
       await invalidate();
       if (expired) throw new GrokAuthError('login_required');
