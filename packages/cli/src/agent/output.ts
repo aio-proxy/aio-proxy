@@ -1,7 +1,14 @@
 import { m } from '@aio-proxy/i18n';
 import type { Command } from 'commander';
+import { z } from 'zod';
 
-import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
+import type {
+  AgentConfigureResult,
+  AgentListResult,
+  AgentRemoveResult,
+  AgentRevokeResult,
+  GrokAgentListTargetResult,
+} from './agent';
 import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
 
 const renderCodexList = (result: CodexListResult) => [
@@ -76,11 +83,42 @@ const renderCodexRemove = (result: CodexRemoveResult): string[] => [
   m['cli.agent.codex.keys_retained'](),
 ];
 
+const grokListLines = (target: GrokAgentListTargetResult): string[] => {
+  const lines = [
+    m['cli.agent.list.target']({
+      target: target.target,
+      hostVersion: target.host.version ?? 'unknown',
+      minimumVersion: target.host.minimumVersion,
+      support: target.host.support,
+      integration: target.integration,
+      installationId: target.marker?.installationId ?? '-',
+      adapterVersion: target.marker?.adapterVersion ?? '-',
+      endpoint: target.marker?.endpoint ?? '-',
+      endpointMatch: target.endpointMatches === undefined ? 'unknown' : target.endpointMatches ? 'match' : 'mismatch',
+      catalog: m['cli.agent.host_managed_catalog'](),
+      lastSuccessfulAt: '-',
+      authorization: target.authorization,
+      schemaCompatibility: target.schemaCompatibility,
+    }),
+  ];
+  if (target.integration === 'absent' || target.integration === 'unresolved') return lines;
+  if (target.configuration === 'modified') {
+    lines.push(m['cli.agent.configuration_modified']({ fields: target.fields.join(', ') }));
+  } else if (target.configuration === 'missing') {
+    lines.push(m['cli.agent.configuration_missing']());
+  } else if (target.configuration === 'recovery_required') {
+    lines.push(m['cli.agent.recovery_required']({ fields: target.fields.join(', ') }));
+  }
+  return lines;
+};
+
 export function renderAgentList(result: AgentListResult, json: boolean): string[] {
   if (json) return [JSON.stringify(result)];
-  const lines = result.targets.map((target) =>
-    target.integration === 'unresolved'
-      ? m['cli.agent.list.unresolved']({
+  const lines = result.targets.flatMap((target) => {
+    if (target.target === 'grok') return grokListLines(target);
+    if (target.integration === 'unresolved') {
+      return [
+        m['cli.agent.list.unresolved']({
           target: target.target,
           reason: target.reason,
           hostVersion: target.host.version ?? 'unknown',
@@ -88,24 +126,27 @@ export function renderAgentList(result: AgentListResult, json: boolean): string[
           support: target.host.support,
           authorization: target.authorization,
           schemaCompatibility: target.schemaCompatibility,
-        })
-      : m['cli.agent.list.target']({
-          target: target.target,
-          hostVersion: target.host.version ?? 'unknown',
-          minimumVersion: target.host.minimumVersion,
-          support: target.host.support,
-          integration: target.integration,
-          installationId: target.marker?.installationId ?? '-',
-          adapterVersion: target.marker?.adapterVersion ?? '-',
-          endpoint: target.marker?.endpoint ?? '-',
-          endpointMatch:
-            target.endpointMatches === undefined ? 'unknown' : target.endpointMatches ? 'match' : 'mismatch',
-          catalog: target.catalog,
-          lastSuccessfulAt: target.lastSuccessfulAt ?? '-',
-          authorization: target.authorization,
-          schemaCompatibility: target.schemaCompatibility,
         }),
-  );
+      ];
+    }
+    return [
+      m['cli.agent.list.target']({
+        target: target.target,
+        hostVersion: target.host.version ?? 'unknown',
+        minimumVersion: target.host.minimumVersion,
+        support: target.host.support,
+        integration: target.integration,
+        installationId: target.marker?.installationId ?? '-',
+        adapterVersion: target.marker?.adapterVersion ?? '-',
+        endpoint: target.marker?.endpoint ?? '-',
+        endpointMatch: target.endpointMatches === undefined ? 'unknown' : target.endpointMatches ? 'match' : 'mismatch',
+        catalog: target.catalog,
+        lastSuccessfulAt: target.lastSuccessfulAt ?? '-',
+        authorization: target.authorization,
+        schemaCompatibility: target.schemaCompatibility,
+      }),
+    ];
+  });
   if (result.server !== 'not_checked') {
     lines.push(m['cli.agent.list.server']({ status: result.server }));
   }
@@ -152,15 +193,25 @@ export function renderAgentConfigure(result: AgentConfigureResult): string[] {
   }
   if (result.server === 'unreachable') lines.push(m['cli.agent.configure.server_offline']());
   if (result.deviceAuthorization === 'password_required') lines.push(m['cli.agent.configure.password_required']());
-  lines.push(m['cli.agent.configure.login']({ command: result.loginCommand }));
+  if (result.loginCommand === 'grok login') {
+    lines.push(m['cli.agent.grok_login']());
+    lines.push(m['cli.agent.grok_models']());
+    lines.push(m['cli.agent.grok_close_settings']());
+  } else {
+    lines.push(m['cli.agent.configure.login']({ command: result.loginCommand }));
+  }
   lines.push(m['cli.agent.configure.reload']({ target: result.target }));
   return lines;
 }
 
-export const renderAgentRemove = (result: AgentRemoveResult): string[] =>
-  result.target === 'codex'
-    ? renderCodexRemove(result)
-    : [m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })];
+export const renderAgentRemove = (result: AgentRemoveResult): string[] => {
+  if (result.target === 'codex') return renderCodexRemove(result);
+  const lines = [m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })];
+  if (result.target === 'grok' && result.retainedFiles !== undefined && result.retainedFiles.length > 0) {
+    lines.push(m['cli.agent.grok_retained_files']({ files: result.retainedFiles.join(', ') }));
+  }
+  return lines;
+};
 export const renderAgentRevoke = (result: AgentRevokeResult): string[] => [
   m['cli.agent.revoke.success']({ installationId: result.installationId, status: result.status }),
 ];
@@ -175,6 +226,7 @@ export type AgentCliActions = {
   readonly remove: (target: string) => Promise<AgentRemoveResult>;
   readonly revoke: (installationId: string) => Promise<AgentRevokeResult>;
   readonly authCodex?: (installationId: string) => Promise<void>;
+  readonly auth?: (target: string, options: { readonly installationId: string }) => Promise<void>;
 };
 
 export function registerAgentCommands(
@@ -199,7 +251,7 @@ export function registerAgentCommands(
       emit(renderAgentList(await input.actions.list(normalized), normalized.json));
     });
   agent
-    .command('configure <opencode|pi|omp|codex>')
+    .command('configure <opencode|pi|omp|codex|grok>')
     .option('--restore-migration <operation-id>', m['cli.agent.codex.restore_option']())
     .action(async (target, options) => {
       if (target !== 'codex' && options.restoreMigration !== undefined)
@@ -212,17 +264,23 @@ export function registerAgentCommands(
         ),
       );
     });
-  agent.command('remove <opencode|pi|omp|codex>').action(async (target) => {
+  agent.command('remove <opencode|pi|omp|codex|grok>').action(async (target) => {
     emit(renderAgentRemove(await input.actions.remove(target)));
   });
   agent.command('revoke <installation-id>').action(async (installationId) => {
     emit(renderAgentRevoke(await input.actions.revoke(installationId)));
   });
   agent
-    .command('auth <codex>')
+    .command('auth <codex|grok>')
     .requiredOption('--installation-id <uuid>', m['cli.agent.codex.auth_installation_option']())
     .action(async (target, options) => {
-      if (target !== 'codex' || input.actions.authCodex === undefined) throw new Error('Codex auth is unavailable');
-      await input.actions.authCodex(options.installationId);
+      const installationId = z.uuid().parse(options.installationId);
+      if (target === 'codex') {
+        if (input.actions.authCodex === undefined) throw new Error('Codex auth is unavailable');
+        await input.actions.authCodex(installationId);
+        return;
+      }
+      if (target !== 'grok' || input.actions.auth === undefined) throw new Error('Unsupported auth command target');
+      await input.actions.auth(target, { installationId });
     });
 }

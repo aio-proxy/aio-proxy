@@ -131,6 +131,16 @@ const AGENT_KEYS = [
   'cli.agent.codex.keys_retained',
   'cli.agent.codex.restore_option',
   'cli.agent.codex.pending_recovery',
+  'cli.agent.grok_login',
+  'cli.agent.grok_models',
+  'cli.agent.configuration_modified',
+  'cli.agent.configuration_missing',
+  'cli.agent.recovery_required',
+  'cli.agent.host_managed_catalog',
+  'cli.agent.grok_close_settings',
+  'cli.agent.grok_login_required',
+  'cli.agent.grok_policy_conflict',
+  'cli.agent.grok_retained_files',
 ] as const;
 
 const flattenMessages = (value: unknown, prefix = ''): Record<string, string> => {
@@ -294,6 +304,87 @@ test('Codex authorization cancellation does not claim a zero-write operation', (
   }).join('\n');
   expect(text).toContain('authorization did not complete');
   expect(text).not.toContain('no files were changed');
+});
+
+test('Grok configure rendering includes login, models, and close-settings prompts', () => {
+  const lines = renderAgentConfigure({
+    target: 'grok',
+    installed: true,
+    status: 'installed',
+    server: 'reachable',
+    host: {
+      target: 'grok',
+      detected: true,
+      version: '1.0.24',
+      minimumVersion: '1.0.24',
+      support: 'supported',
+    },
+    loginCommand: 'grok login',
+    reloadRequired: true,
+  });
+  const text = lines.join('\n');
+  expect(text).toContain('grok login');
+  expect(text).toContain('grok models');
+  expect(text).toContain('grok -m <model-id>');
+  expect(text).toContain('AIO Proxy');
+});
+
+test('modified Grok list text keeps the marker and configured authorization entry', () => {
+  const grokList: AgentListResult = {
+    targets: [
+      {
+        target: 'grok',
+        host: {
+          target: 'grok',
+          detected: true,
+          version: '1.0.24',
+          minimumVersion: '1.0.24',
+          support: 'supported',
+        },
+        integrationKind: 'auth-command',
+        integration: 'managed',
+        configuration: 'modified',
+        marker: {
+          format: 1,
+          managedBy: 'aio-proxy',
+          agent: 'grok',
+          installationId: OUTPUT_INSTALLATION,
+          adapterVersion: '1.2.3',
+          endpoint: 'http://127.0.0.1:9317',
+        },
+        fields: ['auth.auth_provider_label'],
+        authorization: 'active',
+        catalog: 'host_managed',
+        schemaCompatibility: 'not_applicable',
+      },
+    ],
+    server: 'reachable',
+    codex: completeListResult.codex,
+    authorizations: [
+      {
+        installationId: OUTPUT_INSTALLATION,
+        target: 'grok',
+        adapterVersion: '1.2.3',
+        createdAt: '2026-08-18T00:00:00.000Z',
+        lastAuthorizedAt: '2026-08-18T00:00:01.000Z',
+        authorization: 'active',
+        accessExpiresAt: '2026-08-18T00:15:01.000Z',
+        local: 'configured',
+      },
+    ],
+  };
+  const json = renderAgentList(grokList, true);
+  expect(json).toHaveLength(1);
+  const parsed = JSON.parse(json[0]!) as AgentListResult;
+  expect(JSON.stringify(parsed)).not.toMatch(/access_token|refresh_token|aio_agent_/u);
+  expect(parsed.targets[0]).toMatchObject({
+    marker: { installationId: OUTPUT_INSTALLATION, agent: 'grok' },
+    configuration: 'modified',
+  });
+  const text = renderAgentList(grokList, false).join('\n');
+  expect(text).toContain(OUTPUT_INSTALLATION);
+  expect(text).toContain('configured');
+  expect(text).toContain('auth.auth_provider_label');
 });
 
 test('every Agent lifecycle key exists in all five source locales and compiled Paraglide output', () => {

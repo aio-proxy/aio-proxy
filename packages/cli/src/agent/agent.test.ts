@@ -1,14 +1,23 @@
 import { expect, mock, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import type {
   AgentAdminSnapshot,
   AgentInstallationSummary,
   AgentPluginTarget,
   AgentRevokeStatus,
+  AgentTarget,
 } from '@aio-proxy/types';
 
-import { agentConfigure, agentList, agentRemove, agentRevoke, type AgentCommandDeps } from './agent';
-import type { AgentHost, AgentPluginLocation } from './hosts';
+import { agentConfigure, agentRemove, agentRevoke, type AgentCommandDeps } from './agent';
+import { configureGrok, inspectGrok, type GrokInspection } from './grok';
+import { configureGrokForTest } from './grok/configure';
+import { grokFixture } from './grok/test-fixture';
+import type { AgentHost, AgentLocation, AgentPluginLocation } from './hosts';
+import { agentList } from './list';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 const ORPHAN_INSTALLATION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -22,7 +31,8 @@ const installation = (installationId: string): AgentInstallationSummary => ({
   accessExpiresAt: '2026-08-18T00:15:01.000Z',
 });
 
-const commandLocation = (target: AgentPluginTarget): AgentPluginLocation => {
+const commandLocation = (target: AgentTarget): AgentLocation => {
+  if (target === 'grok') return { target, hostRoot: '/tmp/grok', managedDir: '/tmp/grok/aio-proxy' };
   const hostRoot = `/tmp/${target}/${target === 'opencode' ? 'plugins' : 'extensions'}`;
   return {
     target,
@@ -30,6 +40,20 @@ const commandLocation = (target: AgentPluginTarget): AgentPluginLocation => {
     managedDir: `${hostRoot}/aio-proxy`,
     ...(target === 'opencode' ? { adjacentEntry: `${hostRoot}/aio-proxy.js` } : {}),
   };
+};
+
+const hashFiles = (root: string): string => {
+  const hasher = createHash('sha256');
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir).sort()) {
+      const path = join(dir, name);
+      const stat = statSync(path);
+      if (stat.isDirectory()) walk(path);
+      else hasher.update(path).update(readFileSync(path));
+    }
+  };
+  walk(root);
+  return hasher.digest('hex');
 };
 
 function commandFixture(
@@ -41,14 +65,17 @@ function commandFixture(
     readonly target?: AgentPluginTarget;
     readonly hostSupport?: AgentHost['support'];
     readonly hostVersion?: string;
-    readonly missingTargets?: readonly AgentPluginTarget[];
-    readonly pathFailureTargets?: readonly AgentPluginTarget[];
+    readonly missingTargets?: readonly AgentTarget[];
+    readonly pathFailureTargets?: readonly AgentTarget[];
     readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
     readonly catalogSchemaVersions?: readonly number[];
     readonly revokeStatus?: AgentRevokeStatus;
     readonly revokeError?: Error;
     readonly localInstallationIds?: readonly string[];
     readonly serverInstallations?: readonly AgentInstallationSummary[];
+    readonly grokInspection?: GrokInspection;
+    readonly grokRemoveSkipped?: readonly string[];
+    readonly grokRemoveRetained?: readonly string[];
   } = {},
 ) {
   const missing = new Set(options.missingTargets ?? []);
@@ -87,6 +114,43 @@ function commandFixture(
       catalogSchemaVersions: [...(options.catalogSchemaVersions ?? [1])],
     };
   });
+  const grokMarker = {
+    format: 1 as const,
+    managedBy: 'aio-proxy' as const,
+    agent: 'grok' as const,
+    installationId: INSTALLATION,
+    adapterVersion: '1.2.3',
+    endpoint: options.markerEndpoint ?? 'http://127.0.0.1:9317',
+  };
+  const grokConfigure = mock(async () => {
+    events.push('grok-configure');
+    return { status: 'installed' as const, marker: grokMarker };
+  });
+  const grokInspect = mock(async (): Promise<GrokInspection> => {
+    events.push('grok-inspect');
+    return (
+      options.grokInspection ?? {
+        integrationKind: 'auth-command',
+        integration: 'absent',
+        configuration: 'missing',
+        fields: [],
+      }
+    );
+  });
+  const grokRemove = mock(async () => {
+    events.push('grok-remove');
+    return {
+      installationId: INSTALLATION,
+      revokeStatus: options.revokeStatus ?? 'revoked',
+      skippedFields: options.grokRemoveSkipped ?? [],
+      retainedFiles: options.grokRemoveRetained ?? [],
+    };
+  });
+  const resolveExecutable = mock(async () => '/opt/bin/aio-proxy');
+  const grokRevoke = mock(async () => {
+    events.push('grok-deps-revoke');
+    return 'revoked' as const;
+  });
   const deps: AgentCommandDeps = {
     detectHost: async (target) => ({
       target,
@@ -95,16 +159,16 @@ function commandFixture(
         ? {}
         : {
             executable: `/usr/local/bin/${target}`,
-            version: options.hostVersion ?? '99.0.0',
+            version: options.hostVersion ?? (target === 'grok' ? '1.0.24' : '99.0.0'),
           }),
-      minimumVersion: { opencode: '1.17.10', pi: '0.84.2', omp: '17.3.7' }[target],
+      minimumVersion: target === 'grok' ? '1.0.24' : { opencode: '1.17.10', pi: '0.84.2', omp: '17.3.7' }[target],
       support: missing.has(target) ? 'unknown' : (options.hostSupport ?? 'supported'),
     }),
     resolveLocation: async (target) => {
       if (pathFailures.has(target)) throw new Error(`${target} path unavailable`);
       return commandLocation(target);
     },
-    inspect: async (location) => {
+    inspect: async (location: AgentPluginLocation) => {
       const installationId = localByTarget.get(location.target);
       if (installationId === undefined) return { integration: 'absent', catalog: 'missing' };
       return {
@@ -151,8 +215,32 @@ function commandFixture(
         preservedPaths: [],
       }),
     },
+    grok: {
+      configure: grokConfigure,
+      inspect: grokInspect,
+      remove: grokRemove,
+      resolveExecutable,
+      deps: {
+        now: () => Date.parse('2026-08-18T00:05:00.000Z'),
+        randomUUID: () => INSTALLATION,
+        policy: async () => ({ env: {}, sources: [] }),
+        revoke: grokRevoke,
+      },
+    },
   };
-  return { deps, events, install, remove, revoke, resolveEndpoint, readSnapshot };
+  return {
+    deps,
+    events,
+    install,
+    remove,
+    revoke,
+    resolveEndpoint,
+    readSnapshot,
+    grokConfigure,
+    grokInspect,
+    grokRemove,
+    resolveExecutable,
+  };
 }
 
 test('configure installs while an offline server remains an explicit warning', async () => {
@@ -265,7 +353,7 @@ test('list --check returns the complete per-target and server capability contrac
     catalogSchemaVersions: [1],
   });
   const result = await agentList({ check: true }, f.deps);
-  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp']);
+  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp', 'grok']);
   expect(result).toMatchObject({
     server: 'reachable',
     deviceAuthorization: 'password_required',
@@ -375,7 +463,7 @@ test('list isolates a failed Codex inspection from other integrations', async ()
     },
   );
   expect(result.codex).toMatchObject({ status: 'conflict', connection: 'not_checked' });
-  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp']);
+  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp', 'grok']);
 });
 
 test('list reports an undetected host as unresolved without resolving its path', async () => {
@@ -413,4 +501,184 @@ test('revoke invokes the client once with the resolved endpoint and installation
   expect(f.resolveEndpoint).toHaveBeenCalledTimes(1);
   expect(f.revoke).toHaveBeenCalledTimes(1);
   expect(f.revoke).toHaveBeenCalledWith('http://127.0.0.1:9317', INSTALLATION);
+});
+
+test('configure grok uses resolveEndpoint, resolveGrokExecutable, and grok.deps without plugin assets', async () => {
+  const f = commandFixture();
+  await expect(agentConfigure('grok', f.deps)).resolves.toMatchObject({
+    target: 'grok',
+    installed: true,
+    status: 'installed',
+    loginCommand: 'grok login',
+    reloadRequired: true,
+  });
+  expect(f.install).not.toHaveBeenCalled();
+  expect(f.grokConfigure).toHaveBeenCalledTimes(1);
+  expect(f.resolveExecutable).toHaveBeenCalledTimes(1);
+  expect(f.resolveEndpoint).toHaveBeenCalledTimes(1);
+});
+
+test('remove grok enters locked removeGrok and does not reuse lock-outside plugin revoke', async () => {
+  const f = commandFixture({ grokRemoveSkipped: ['auth.auth_provider_label'], grokRemoveRetained: ['unknown.txt'] });
+  await expect(agentRemove('grok', f.deps)).resolves.toMatchObject({
+    target: 'grok',
+    installationId: INSTALLATION,
+    skippedFields: ['auth.auth_provider_label'],
+    retainedFiles: ['unknown.txt'],
+  });
+  expect(f.events).toEqual(['grok-remove']);
+  expect(f.revoke).not.toHaveBeenCalled();
+  expect(f.remove).not.toHaveBeenCalled();
+});
+
+test('list walks all four targets and inspects Grok without a host binary', async () => {
+  const f = commandFixture({
+    missingTargets: ['grok'],
+    grokInspection: {
+      integrationKind: 'auth-command',
+      integration: 'managed',
+      configuration: 'current',
+      fields: [],
+      marker: {
+        format: 1,
+        managedBy: 'aio-proxy',
+        agent: 'grok',
+        installationId: INSTALLATION,
+        adapterVersion: '1.2.3',
+        endpoint: 'http://127.0.0.1:9317',
+      },
+    },
+  });
+  const result = await agentList({}, f.deps);
+  expect(result.targets.map((row) => row.target)).toEqual(['opencode', 'pi', 'omp', 'grok']);
+  expect(result.targets).toContainEqual(
+    expect.objectContaining({
+      target: 'grok',
+      host: expect.objectContaining({ detected: false }),
+      integrationKind: 'auth-command',
+      integration: 'managed',
+      catalog: 'host_managed',
+      schemaCompatibility: 'not_applicable',
+      marker: expect.objectContaining({ installationId: INSTALLATION }),
+    }),
+  );
+  expect(f.grokInspect).toHaveBeenCalledTimes(1);
+  expect(f.readSnapshot).not.toHaveBeenCalled();
+});
+
+test('offline Grok list is read-only and does not issue, refresh, or recover', async () => {
+  const g = await grokFixture();
+  try {
+    await expect(
+      configureGrokForTest(g.input, g.deps, {
+        failpoint: (point) => {
+          if (point === 'marker') throw new Error('crash after marker');
+        },
+      }),
+    ).rejects.toThrow(/crash after marker/);
+    const before = hashFiles(g.root);
+    const f = commandFixture();
+    const deps: AgentCommandDeps = {
+      ...f.deps,
+      resolveLocation: async (target) =>
+        target === 'grok'
+          ? { target, hostRoot: g.root, managedDir: join(g.root, 'aio-proxy') }
+          : commandLocation(target),
+      grok: { ...f.deps.grok, inspect: inspectGrok },
+    };
+    const result = await agentList({}, deps);
+    expect(result.targets).toContainEqual(
+      expect.objectContaining({
+        target: 'grok',
+        configuration: 'recovery_required',
+        marker: expect.objectContaining({ installationId: g.deps.randomUUID() }),
+      }),
+    );
+    expect(hashFiles(g.root)).toBe(before);
+    expect(f.readSnapshot).not.toHaveBeenCalled();
+    expect(f.revoke).not.toHaveBeenCalled();
+  } finally {
+    await g.cleanup();
+  }
+});
+
+test('modified Grok stays configured for authorizations when the marker is valid', async () => {
+  const grokInstallation: AgentInstallationSummary = {
+    installationId: INSTALLATION,
+    target: 'grok',
+    adapterVersion: '1.2.3',
+    createdAt: '2026-08-18T00:00:00.000Z',
+    lastAuthorizedAt: '2026-08-18T00:00:01.000Z',
+    authorization: 'active',
+    accessExpiresAt: '2026-08-18T00:15:01.000Z',
+  };
+  const f = commandFixture({
+    grokInspection: {
+      integrationKind: 'auth-command',
+      integration: 'managed',
+      configuration: 'modified',
+      fields: ['auth.auth_provider_label'],
+      marker: {
+        format: 1,
+        managedBy: 'aio-proxy',
+        agent: 'grok',
+        installationId: INSTALLATION,
+        adapterVersion: '1.2.3',
+        endpoint: 'http://127.0.0.1:9317',
+      },
+    },
+    serverInstallations: [grokInstallation],
+  });
+  const result = await agentList({ authorizations: true, check: true }, f.deps);
+  expect(result.targets).toContainEqual(
+    expect.objectContaining({
+      target: 'grok',
+      configuration: 'modified',
+      authorization: 'active',
+      catalog: 'host_managed',
+      schemaCompatibility: 'not_applicable',
+      marker: expect.objectContaining({ installationId: INSTALLATION }),
+    }),
+  );
+  expect(result.authorizations).toEqual([
+    expect.objectContaining({ installationId: INSTALLATION, local: 'configured' }),
+  ]);
+});
+
+test('Grok list JSON does not include tokens from the credential file', async () => {
+  const g = await grokFixture();
+  try {
+    const installed = await configureGrok(g.input, g.deps);
+    await writeFile(
+      join(g.root, 'aio-proxy', 'credential.json'),
+      `${JSON.stringify({
+        accessToken: 'aio_agent_at_v1_secret-token',
+        refreshToken: 'aio_agent_rt_v1_secret-refresh',
+      })}\n`,
+      { mode: 0o600 },
+    );
+    const f = commandFixture();
+    const deps: AgentCommandDeps = {
+      ...f.deps,
+      resolveLocation: async (target) =>
+        target === 'grok'
+          ? { target, hostRoot: g.root, managedDir: join(g.root, 'aio-proxy') }
+          : commandLocation(target),
+      grok: { ...f.deps.grok, inspect: inspectGrok },
+    };
+    const result = await agentList({ json: true }, deps);
+    const encoded = JSON.stringify(result);
+    expect(encoded).not.toContain('aio_agent_at_v1_secret-token');
+    expect(encoded).not.toContain('aio_agent_rt_v1_secret-refresh');
+    expect(encoded).not.toContain('accessToken');
+    expect(encoded).not.toContain('refreshToken');
+    expect(result.targets).toContainEqual(
+      expect.objectContaining({
+        target: 'grok',
+        marker: expect.objectContaining({ installationId: installed.marker.installationId }),
+      }),
+    );
+  } finally {
+    await g.cleanup();
+  }
 });

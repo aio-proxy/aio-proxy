@@ -12,6 +12,7 @@ import {
 
 import packageJson from '../../package.json' with { type: 'json' };
 import { defaultCliDeps, type CliDeps } from '../dashboard-assets';
+import { resolveGrokExecutable } from '../executable';
 import { agentFiles } from './assets';
 import {
   configureCodexAgent,
@@ -24,10 +25,20 @@ import {
 } from './codex';
 import { readAgentAdminSnapshot, resolveAgentEndpoint, revokeAgentInstallation } from './control-plane';
 import {
+  configureGrok,
+  inspectGrok,
+  loadGrokPolicy,
+  removeGrok,
+  type GrokDeps,
+  type GrokInspection,
+  type GrokMarker,
+} from './grok';
+import {
   detectAgentHost,
   resolveAgentLocation,
   type AgentHost,
   type AgentHostDeps,
+  type AgentLocation,
   type AgentPluginLocation,
 } from './hosts';
 import {
@@ -37,11 +48,12 @@ import {
   type LocalIntegrationStatus,
 } from './managed-installation';
 
-const AGENT_TARGETS = AgentPluginTargetSchema.options;
-
 export type AgentCommandDeps = {
-  readonly detectHost: (target: AgentPluginTarget) => Promise<AgentHost>;
-  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentPluginLocation>;
+  readonly detectHost: (target: AgentTarget) => Promise<AgentHost>;
+  readonly resolveLocation: {
+    (target: AgentPluginTarget): Promise<AgentPluginLocation>;
+    (target: AgentTarget): Promise<AgentLocation>;
+  };
   readonly inspect: (location: AgentPluginLocation, now: () => number) => Promise<LocalIntegrationStatus>;
   readonly resolveEndpoint: () => Promise<string>;
   readonly install: typeof installManagedIntegration;
@@ -57,25 +69,45 @@ export type AgentCommandDeps = {
     readonly list: (check: boolean) => Promise<CodexListResult>;
     readonly remove: () => Promise<CodexRemoveResult>;
   };
+  readonly grok: {
+    readonly configure: typeof configureGrok;
+    readonly inspect: typeof inspectGrok;
+    readonly remove: typeof removeGrok;
+    readonly deps: GrokDeps;
+    readonly resolveExecutable: () => Promise<string>;
+  };
 };
 
-type AgentListTargetBase = {
+export type PluginAgentListTargetResult = {
   readonly target: AgentPluginTarget;
   readonly host: AgentHost;
   readonly authorization: 'not_checked' | AgentInstallationSummary['authorization'] | 'missing';
   readonly schemaCompatibility: 'not_checked' | 'compatible' | 'incompatible';
+} & (
+  | {
+      readonly integration: 'unresolved';
+      readonly reason: 'host_missing' | 'path_unavailable';
+    }
+  | ({ readonly integration: LocalIntegrationStatus['integration'] } & Omit<LocalIntegrationStatus, 'integration'> & {
+        readonly endpointMatches?: boolean;
+      })
+);
+
+export type GrokAgentListTargetResult = {
+  readonly target: 'grok';
+  readonly host: AgentHost;
+  readonly integrationKind: 'auth-command';
+  readonly integration: GrokInspection['integration'] | 'unresolved';
+  readonly configuration: GrokInspection['configuration'];
+  readonly marker?: GrokMarker;
+  readonly fields: readonly string[];
+  readonly authorization: 'not_checked' | AgentInstallationSummary['authorization'] | 'missing';
+  readonly catalog: 'host_managed';
+  readonly schemaCompatibility: 'not_applicable';
+  readonly endpointMatches?: boolean;
 };
 
-export type AgentListTargetResult = AgentListTargetBase &
-  (
-    | {
-        readonly integration: 'unresolved';
-        readonly reason: 'host_missing' | 'path_unavailable';
-      }
-    | ({ readonly integration: LocalIntegrationStatus['integration'] } & Omit<LocalIntegrationStatus, 'integration'> & {
-          readonly endpointMatches?: boolean;
-        })
-  );
+export type AgentListTargetResult = PluginAgentListTargetResult | GrokAgentListTargetResult;
 
 export type AgentAuthorizationListItem = AgentInstallationSummary & {
   readonly local: 'configured' | 'orphaned';
@@ -101,14 +133,33 @@ export type PluginAgentConfigureResult = {
   readonly reloadRequired: true;
 };
 
+export type GrokAgentConfigureResult = {
+  readonly target: 'grok';
+  readonly host: AgentHost;
+  readonly installed: true;
+  readonly status: 'installed' | 'updated' | 'newer';
+  readonly server: 'reachable' | 'unreachable';
+  readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
+  readonly loginCommand: 'grok login';
+  readonly reloadRequired: true;
+};
+
 export type PluginAgentRemoveResult = {
   readonly target: AgentPluginTarget;
   readonly installationId: string;
   readonly revokeStatus: AgentRevokeStatus;
 };
 
-export type AgentConfigureResult = PluginAgentConfigureResult | CodexConfigureResult;
-export type AgentRemoveResult = PluginAgentRemoveResult | CodexRemoveResult;
+export type GrokAgentRemoveResult = {
+  readonly target: 'grok';
+  readonly installationId: string;
+  readonly revokeStatus: AgentRevokeStatus;
+  readonly skippedFields?: readonly string[];
+  readonly retainedFiles?: readonly string[];
+};
+
+export type AgentConfigureResult = PluginAgentConfigureResult | CodexConfigureResult | GrokAgentConfigureResult;
+export type AgentRemoveResult = PluginAgentRemoveResult | CodexRemoveResult | GrokAgentRemoveResult;
 
 export type AgentRevokeResult = {
   readonly installationId: string;
@@ -133,7 +184,8 @@ export const createAgentCommandDeps = (cliDeps: CliDeps): AgentCommandDeps => {
   const hosts = hostDeps();
   return {
     detectHost: (target) => detectAgentHost(target, hosts),
-    resolveLocation: (target) => resolveAgentLocation(target, hosts),
+    resolveLocation: ((target: AgentTarget) =>
+      resolveAgentLocation(target, hosts)) as AgentCommandDeps['resolveLocation'],
     inspect: inspectManagedInstallation,
     resolveEndpoint: resolveAgentEndpoint,
     install: installManagedIntegration,
@@ -149,166 +201,34 @@ export const createAgentCommandDeps = (cliDeps: CliDeps): AgentCommandDeps => {
       list: listCodexAgent,
       remove: removeCodexAgent,
     },
+    grok: {
+      configure: configureGrok,
+      inspect: inspectGrok,
+      remove: removeGrok,
+      deps: {
+        now: () => Date.now(),
+        randomUUID: () => crypto.randomUUID(),
+        policy: loadGrokPolicy,
+        revoke: revokeAgentInstallation,
+      },
+      resolveExecutable: () => resolveGrokExecutable(),
+    },
   };
 };
 
-const commandDeps = (deps?: AgentCommandDeps): AgentCommandDeps => deps ?? createAgentCommandDeps(defaultCliDeps);
+export const commandDeps = (deps?: AgentCommandDeps): AgentCommandDeps =>
+  deps ?? createAgentCommandDeps(defaultCliDeps);
 
-const parseTarget = (target: string): AgentPluginTarget => AgentPluginTargetSchema.parse(target);
+const parsePluginTarget = (target: string): AgentPluginTarget => AgentPluginTargetSchema.parse(target);
 
 const loginCommand = (target: AgentPluginTarget): PluginAgentConfigureResult['loginCommand'] =>
   target === 'opencode' ? 'opencode auth login --provider aio-proxy' : '/login aio-proxy';
 
-const requireDetectedHost = async (target: AgentPluginTarget, deps: AgentCommandDeps): Promise<AgentHost> => {
+export const requireDetectedHost = async (target: AgentTarget, deps: AgentCommandDeps): Promise<AgentHost> => {
   const host = await deps.detectHost(target);
   if (!host.detected) throw new Error(`${target} is not installed`);
   return host;
 };
-
-const resolveConfiguredEndpoint = async (deps: AgentCommandDeps): Promise<string | undefined> => {
-  try {
-    return await deps.resolveEndpoint();
-  } catch {
-    return undefined;
-  }
-};
-
-const endpointMatches = (
-  markerEndpoint: string,
-  configured: string | undefined,
-): { readonly endpointMatches?: boolean } => {
-  if (configured === undefined) return {};
-  try {
-    void new URL(markerEndpoint);
-    return { endpointMatches: markerEndpoint === configured };
-  } catch {
-    return {};
-  }
-};
-
-const listTarget = async (
-  target: AgentPluginTarget,
-  configuredEndpoint: string | undefined,
-  deps: AgentCommandDeps,
-): Promise<AgentListTargetResult> => {
-  const host = await deps.detectHost(target);
-  const base: AgentListTargetBase = {
-    target,
-    host,
-    authorization: 'not_checked',
-    schemaCompatibility: 'not_checked',
-  };
-  if (!host.detected) return { ...base, integration: 'unresolved', reason: 'host_missing' };
-  let location: AgentPluginLocation;
-  try {
-    location = await deps.resolveLocation(target);
-  } catch {
-    return { ...base, integration: 'unresolved', reason: 'path_unavailable' };
-  }
-  let status: LocalIntegrationStatus;
-  try {
-    status = await deps.inspect(location, deps.now);
-  } catch {
-    return { ...base, integration: 'unresolved', reason: 'path_unavailable' };
-  }
-  return {
-    ...base,
-    ...status,
-    ...(status.marker === undefined ? {} : endpointMatches(status.marker.endpoint, configuredEndpoint)),
-  };
-};
-
-const localMarkerKey = (installationId: string, target: AgentTarget): string => `${installationId}:${target}`;
-
-const applyCheckedMarker = (
-  row: AgentListTargetResult,
-  authorization: AgentListTargetResult['authorization'],
-  schemaCompatibility: AgentListTargetResult['schemaCompatibility'],
-): AgentListTargetResult => {
-  if (row.integration !== 'managed' || row.marker === undefined) return row;
-  return { ...row, authorization, schemaCompatibility };
-};
-
-const applySnapshot = (
-  targets: readonly AgentListTargetResult[],
-  snapshot: AgentAdminSnapshot,
-): readonly AgentListTargetResult[] => {
-  const schemaCompatibility = snapshot.catalogSchemaVersions.includes(1) ? 'compatible' : 'incompatible';
-  return targets.map((row) => {
-    if (row.integration !== 'managed' || row.marker === undefined) return row;
-    const { marker } = row;
-    const match = snapshot.installations.find(
-      (item) => item.installationId === marker.installationId && item.target === marker.agent,
-    );
-    return applyCheckedMarker(row, match?.authorization ?? 'missing', schemaCompatibility);
-  });
-};
-
-const authorizationItems = (
-  targets: readonly AgentListTargetResult[],
-  snapshot: AgentAdminSnapshot,
-  codex: CodexListResult,
-): readonly AgentAuthorizationListItem[] => {
-  const configured = new Set(
-    targets.flatMap((row) =>
-      row.integration === 'managed' && row.marker !== undefined
-        ? [localMarkerKey(row.marker.installationId, row.marker.agent)]
-        : [],
-    ),
-  );
-  if (codex.installationId !== undefined) configured.add(localMarkerKey(codex.installationId, 'codex'));
-  return snapshot.installations.map((item) => ({
-    ...item,
-    local: configured.has(localMarkerKey(item.installationId, item.target)) ? 'configured' : 'orphaned',
-  }));
-};
-
-export async function agentList(
-  options: { readonly check?: boolean; readonly authorizations?: boolean; readonly json?: boolean },
-  deps?: AgentCommandDeps,
-): Promise<AgentListResult> {
-  void options.json;
-  const resolved = commandDeps(deps);
-  const configuredEndpoint = await resolveConfiguredEndpoint(resolved);
-  let codex: CodexListResult;
-  try {
-    codex = await resolved.codex.list(options.check === true);
-  } catch {
-    codex = {
-      target: 'codex',
-      integration: 'static-config',
-      configPath: '',
-      activeProviderId: '',
-      status: 'conflict',
-      connection: 'not_checked',
-      changedPaths: [],
-    };
-  }
-  const targets: AgentListTargetResult[] = [];
-  for (const target of AGENT_TARGETS) {
-    targets.push(await listTarget(target, configuredEndpoint, resolved));
-  }
-
-  const online = options.check === true || options.authorizations === true;
-  if (!online) return { targets, server: 'not_checked', codex };
-
-  if (configuredEndpoint === undefined) return { targets, server: 'unreachable', codex };
-  let snapshot: AgentAdminSnapshot;
-  try {
-    snapshot = await resolved.readSnapshot(configuredEndpoint);
-  } catch {
-    return { targets, server: 'unreachable', codex };
-  }
-
-  return {
-    targets: applySnapshot(targets, snapshot),
-    server: 'reachable',
-    deviceAuthorization: snapshot.deviceAuthorization,
-    catalogSchemaVersions: snapshot.catalogSchemaVersions,
-    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot, codex) } : {}),
-    codex,
-  };
-}
 
 export async function agentConfigure(
   target: string,
@@ -322,7 +242,32 @@ export async function agentConfigure(
   const resolved = commandDeps(deps);
   if (target === 'codex') return resolved.codex.configure(options);
   if (options.restoreMigration !== undefined) throw new Error('--restore-migration is only supported for codex');
-  const parsed = parseTarget(target);
+  if (target === 'grok') {
+    const host = await requireDetectedHost('grok', resolved);
+    const location = await resolved.resolveLocation('grok');
+    const endpoint = await resolved.resolveEndpoint();
+    const installed = await resolved.grok.configure(
+      {
+        root: location.hostRoot,
+        endpoint,
+        executable: await resolved.grok.resolveExecutable(),
+        adapterVersion: resolved.adapterVersion,
+      },
+      resolved.grok.deps,
+    );
+    const snapshot = await resolved.readSnapshot(endpoint).catch(() => undefined);
+    return {
+      target: 'grok',
+      host,
+      installed: true,
+      status: installed.status,
+      server: snapshot === undefined ? 'unreachable' : 'reachable',
+      ...(snapshot === undefined ? {} : { deviceAuthorization: snapshot.deviceAuthorization }),
+      loginCommand: 'grok login',
+      reloadRequired: true,
+    };
+  }
+  const parsed = parsePluginTarget(target);
   const host = await requireDetectedHost(parsed, resolved);
   const location = await resolved.resolveLocation(parsed);
   const existing = await resolved.inspect(location, resolved.now);
@@ -364,7 +309,18 @@ export async function agentConfigure(
 export async function agentRemove(target: string, deps?: AgentCommandDeps): Promise<AgentRemoveResult> {
   const resolved = commandDeps(deps);
   if (target === 'codex') return resolved.codex.remove();
-  const parsed = parseTarget(target);
+  if (target === 'grok') {
+    const location = await resolved.resolveLocation('grok');
+    const removed = await resolved.grok.remove(location.hostRoot, resolved.adapterVersion, resolved.grok.deps);
+    return {
+      target: 'grok',
+      installationId: removed.installationId,
+      revokeStatus: removed.revokeStatus,
+      ...(removed.skippedFields.length === 0 ? {} : { skippedFields: removed.skippedFields }),
+      ...(removed.retainedFiles.length === 0 ? {} : { retainedFiles: removed.retainedFiles }),
+    };
+  }
+  const parsed = parsePluginTarget(target);
   await requireDetectedHost(parsed, resolved);
   const location = await resolved.resolveLocation(parsed);
   const status = await resolved.inspect(location, resolved.now);

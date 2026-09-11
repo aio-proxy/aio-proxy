@@ -381,7 +381,17 @@
         "keys_retained": "프록시 키는 유지되었습니다.",
         "restore_option": "작업 UUID로 Codex 마이그레이션 복원",
         "pending_recovery": "이전 Codex 구성 작업이 보류 중입니다. 계속하기 전에 복구할까요?"
-      }
+      },
+      "grok_login": "다음 명령으로 로그인하세요: grok login",
+      "grok_models": "grok models로 모델을 나열한 다음 grok -m <model-id>로 세션을 시작하세요.",
+      "configuration_modified": "Grok 구성이 수정되었습니다: {fields}.",
+      "configuration_missing": "Grok 구성이 없습니다.",
+      "recovery_required": "Grok 구성을 복구해야 합니다: {fields}.",
+      "host_managed_catalog": "host_managed",
+      "grok_close_settings": "Grok 설정이 열려 있으면 닫아 AIO Proxy 구성을 다시 불러오세요.",
+      "grok_login_required": "Grok 로그인이 필요합니다.",
+      "grok_policy_conflict": "Grok 라우팅 충돌: {fields}.",
+      "grok_retained_files": "유지된 파일: {files}."
     }
   },
   "oauth": {

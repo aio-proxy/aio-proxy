@@ -1,8 +1,12 @@
 import { expect, mock, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { AgentPluginTarget } from '@aio-proxy/types';
 
+import { configureGrok } from '../agent/grok';
+import { grokFixture } from '../agent/grok/test-fixture';
 import type { AgentPluginLocation } from '../agent/hosts';
 import {
   AgentPostUpgradePayloadSchema,
@@ -148,6 +152,33 @@ test('a present Grok marker still produces no Grok asset read or install calls',
   expect(capturedTargets).toEqual(['opencode', 'pi', 'omp']);
   expect(f.install.mock.calls.some((call) => call[0]!.location.target === 'grok')).toBe(false);
   expect(readAssets.mock.calls.some((call) => call[0] === 'grok')).toBe(false);
+});
+
+test('post-upgrade after Grok configure still does not write Grok config or read Grok assets', async () => {
+  const g = await grokFixture();
+  try {
+    await configureGrok(g.input, g.deps);
+    const configPath = join(g.root, 'config.toml');
+    const before = createHash('sha256')
+      .update(Buffer.from(await Bun.file(configPath).arrayBuffer()))
+      .digest('hex');
+    const f = postUpgradeFixture({ targets: ['opencode', 'pi', 'omp'] });
+    const readAssets = mock(async (target: AgentPluginTarget) => {
+      expect(target).not.toBe('grok');
+      return new Map([['index.js', new TextEncoder().encode('adapter')]]);
+    });
+    f.deps.readAssets = readAssets;
+    await runAgentPostUpgrade(f.payload, f.deps);
+    expect(
+      createHash('sha256')
+        .update(Buffer.from(await Bun.file(configPath).arrayBuffer()))
+        .digest('hex'),
+    ).toBe(before);
+    expect(readAssets.mock.calls.some((call) => call[0] === 'grok')).toBe(false);
+    expect(f.install.mock.calls.some((call) => call[0]!.location.target === 'grok')).toBe(false);
+  } finally {
+    await g.cleanup();
+  }
 });
 
 test('payload schema rejects a Grok target even when a Grok marker path is present', () => {
