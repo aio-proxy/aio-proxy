@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { classifyChange, recoverGrokOwnership } from './ownership';
+import { adoptRecoveredOwnership, classifyChange, encodeGrokOwnership, recoverGrokOwnership } from './ownership';
 import { equalGrokLeaf } from './toml';
 import type { FieldChange, GrokOwnership, LeafValue } from './types';
 
@@ -101,6 +101,34 @@ test('recover drops pending when every field is still before', () => {
   expect(recovered.ownership.pending).toBeUndefined();
   expect(recovered.ownership.leaves).toEqual(baseOwnership().leaves);
   expect(recovered.ownership.createdTables).toEqual([['endpoints']]);
+});
+
+test('recover keeps pending when a first-install is still entirely before', () => {
+  const pending = {
+    operation: 'configure' as const,
+    changes: [change(['auth', 'auth_provider_label'], absent, value('AIO Proxy'))],
+    nextLeaves: [owned(['auth', 'auth_provider_label'], absent, value('AIO Proxy'))],
+    nextCreatedTables: [['auth']],
+  };
+  const ownership: GrokOwnership = {
+    ...baseOwnership(pending),
+    leaves: [],
+    createdTables: [],
+  };
+  const recovered = recoverGrokOwnership('', ownership);
+  expect(recovered.conflicts).toEqual([]);
+  expect(recovered.ownership.pending).toEqual(pending);
+  expect(recovered.ownership.leaves).toEqual([]);
+  const adopted = adoptRecoveredOwnership(ownership, encodeGrokOwnership(ownership), recovered);
+  expect(adopted.persist).toBe(false);
+  expect(adopted.ownership.pending).toEqual(pending);
+  const dropped = {
+    ownership: { ...ownership, pending: undefined },
+    conflicts: [] as const,
+  };
+  const blocked = adoptRecoveredOwnership(ownership, encodeGrokOwnership(ownership), dropped);
+  expect(blocked.persist).toBe(false);
+  expect(blocked.ownership.pending).toEqual(pending);
 });
 
 test('recover keeps determined leaves and reports third values without treating before as written', () => {

@@ -213,8 +213,14 @@ export function recoverGrokOwnership(
   }
 
   if (conflicts.length === 0 && beforeCount === pending.changes.length) {
+    if (ownership.leaves.length > 0) {
+      return {
+        ownership: committedOwnership(ownership, ownership.leaves, ownership.createdTables),
+        conflicts: [],
+      };
+    }
     return {
-      ownership: committedOwnership(ownership, ownership.leaves, ownership.createdTables),
+      ownership: committedOwnership(ownership, ownership.leaves, ownership.createdTables, pending),
       conflicts: [],
     };
   }
@@ -249,4 +255,49 @@ export function recoverGrokOwnership(
     ownership: committedOwnership(ownership, determined, tables, remainingTransaction(pending, classifications)),
     conflicts: [],
   };
+}
+
+const sameOwnedLeaves = (left: readonly OwnedLeaf[], right: readonly OwnedLeaf[]): boolean =>
+  left.length === right.length &&
+  left.every(
+    (leaf, index) =>
+      pathKey(leaf.path) === pathKey(right[index]!.path) &&
+      equalGrokLeaf(leaf.original, right[index]!.original) &&
+      equalGrokLeaf(leaf.written, right[index]!.written),
+  );
+
+const sameCreatedTables = (left: readonly GrokPath[], right: readonly GrokPath[]): boolean =>
+  left.length === right.length && left.every((path, index) => pathKey(path) === pathKey(right[index]!));
+
+function shouldPersistRecoveredOwnership(
+  previous: GrokOwnership,
+  previousEncoded: string,
+  recovered: { readonly ownership: GrokOwnership; readonly conflicts: readonly string[] },
+): boolean {
+  const next = recovered.ownership;
+  if (encodeGrokOwnership(next) === previousEncoded) return false;
+  if (next.pending !== undefined || recovered.conflicts.length > 0) return true;
+  const pending = previous.pending;
+  if (pending === undefined) return true;
+  if (
+    sameOwnedLeaves(next.leaves, pending.nextLeaves) &&
+    sameCreatedTables(next.createdTables, pending.nextCreatedTables)
+  ) {
+    return true;
+  }
+  return previous.leaves.length > 0;
+}
+
+export function adoptRecoveredOwnership(
+  previous: GrokOwnership,
+  previousEncoded: string,
+  recovered: { readonly ownership: GrokOwnership; readonly conflicts: readonly string[] },
+): { readonly ownership: GrokOwnership; readonly persist: boolean } {
+  if (shouldPersistRecoveredOwnership(previous, previousEncoded, recovered)) {
+    return { ownership: recovered.ownership, persist: true };
+  }
+  if (previous.pending !== undefined && recovered.ownership.pending === undefined && previous.leaves.length === 0) {
+    return { ownership: previous, persist: false };
+  }
+  return { ownership: recovered.ownership, persist: false };
 }

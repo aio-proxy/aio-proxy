@@ -18,7 +18,7 @@ import {
   withGrokLock,
 } from './lifecycle';
 import {
-  encodeGrokOwnership,
+  adoptRecoveredOwnership,
   isNewerAdapter,
   parseGrokMarker,
   parseGrokOwnership,
@@ -143,8 +143,9 @@ export async function withGrokInstallation<T>(
       if ('newer' in loaded) throw new Error('Grok configuration is newer');
       if (loaded.marker.installationId !== input.installationId) throw new Error('installation id mismatch');
       const recovered = recoverGrokOwnership(configTextOrEmpty(loaded.config), loaded.ownership);
-      let ownership = recovered.ownership;
-      if (encodeGrokOwnership(ownership) !== loaded.ownershipFile.text) {
+      const adopted = adoptRecoveredOwnership(loaded.ownership, loaded.ownershipFile.text, recovered);
+      const ownership = adopted.ownership;
+      if (adopted.persist) {
         await persistOwnership(lock, paths, ownership, loaded.ownershipFile, input.budget);
       }
       if (recovered.conflicts.length > 0) {

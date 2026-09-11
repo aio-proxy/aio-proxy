@@ -88,6 +88,84 @@ test('inspect reports pending ownership without recovering it', async () => {
   }
 });
 
+test('first-install all-before crash stays recovery_required after recover persist', async () => {
+  const f = await grokFixture();
+  try {
+    await writeFile(join(f.root, 'config.toml'), '[ui]\ntheme="dark"\n');
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'marker') throw new Error('crash after marker');
+        },
+      }),
+    ).rejects.toThrow(/crash after marker/);
+    const ownershipPath = join(f.root, 'aio-proxy', 'ownership.json');
+    const pendingOnDisk = await readFile(ownershipPath, 'utf8');
+    expect(pendingOnDisk).toContain('"pending"');
+    const inspected = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(inspected.configuration).toBe('recovery_required');
+    expect(inspected.configuration).not.toBe('current');
+    const marker = JSON.parse(await readFile(join(f.root, 'aio-proxy', '.aio-proxy-managed.json'), 'utf8')) as {
+      installationId: string;
+    };
+    await expect(
+      withGrokInstallation(
+        {
+          root: f.root,
+          installationId: marker.installationId,
+          adapterVersion: f.input.adapterVersion,
+          budget: budget(),
+          policy: f.deps.policy,
+        },
+        async () => 'must not run',
+      ),
+    ).rejects.toThrow(/recovery/);
+    const afterAuth = JSON.parse(await readFile(ownershipPath, 'utf8')) as {
+      pending?: unknown;
+      leaves?: unknown[];
+    };
+    expect(afterAuth.pending).toBeDefined();
+    const afterInspect = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(afterInspect.configuration).toBe('recovery_required');
+    expect(afterInspect.configuration).not.toBe('current');
+    expect(afterInspect.fields.length).toBeGreaterThan(0);
+    expect(afterAuth.leaves ?? []).toEqual([]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('configure does not persist a first-install all-before rollback before policy fails', async () => {
+  const f = await grokFixture();
+  try {
+    await writeFile(join(f.root, 'config.toml'), '[ui]\ntheme="dark"\n');
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'marker') throw new Error('crash after marker');
+        },
+      }),
+    ).rejects.toThrow(/crash after marker/);
+    await expect(
+      configureGrok(f.input, {
+        ...f.deps,
+        policy: async () => ({ env: { GROK_MODELS_BASE_URL: 'https://api.x.ai/v1' }, sources: [] }),
+      }),
+    ).rejects.toThrow(/routing conflict/);
+    const ownership = JSON.parse(await readFile(join(f.root, 'aio-proxy', 'ownership.json'), 'utf8')) as {
+      pending?: unknown;
+      leaves?: unknown[];
+    };
+    expect(ownership.pending).toBeDefined();
+    const inspected = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(inspected.configuration).toBe('recovery_required');
+    expect(inspected.configuration).not.toBe('current');
+    expect(ownership.leaves ?? []).toEqual([]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('mixed after/before recovery stays recovery_required until configure finishes', async () => {
   const f = await grokFixture();
   try {
@@ -178,6 +256,62 @@ test('third-value recovery stays recovery_required with conflict fields', async 
       ),
     ).rejects.toThrow();
     expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('recovery_required');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a crash after committed ownership recovers a current install', async () => {
+  const f = await grokFixture();
+  try {
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'ownership_committed') throw new Error('crash after committed ownership');
+        },
+      }),
+    ).rejects.toThrow(/crash after committed ownership/);
+    const ownership = JSON.parse(await readFile(join(f.root, 'aio-proxy', 'ownership.json'), 'utf8')) as {
+      pending?: unknown;
+      leaves?: unknown[];
+    };
+    expect(ownership).not.toHaveProperty('pending');
+    expect((ownership.leaves ?? []).length).toBeGreaterThan(0);
+    const inspected = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(inspected.configuration).toBe('current');
+    expect(inspected.fields).toEqual([]);
+    const recovered = await configureGrok(f.input, f.deps);
+    expect(recovered.status).toBe('updated');
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a crash after marker version recover keeps the new adapter version current', async () => {
+  const f = await grokFixture();
+  try {
+    const first = await configureGrok(f.input, f.deps);
+    await expect(
+      configureGrokForTest({ ...f.input, adapterVersion: '0.22.0' }, f.deps, {
+        failpoint: (point) => {
+          if (point === 'marker_version') throw new Error('crash after marker version');
+        },
+      }),
+    ).rejects.toThrow(/crash after marker version/);
+    const marker = JSON.parse(await readFile(join(f.root, 'aio-proxy', '.aio-proxy-managed.json'), 'utf8')) as {
+      adapterVersion: string;
+      installationId: string;
+    };
+    expect(marker.adapterVersion).toBe('0.22.0');
+    expect(marker.installationId).toBe(first.marker.installationId);
+    const inspected = await inspectGrok(f.root, '0.22.0');
+    expect(inspected.configuration).toBe('current');
+    expect(inspected.marker?.adapterVersion).toBe('0.22.0');
+    const recovered = await configureGrok({ ...f.input, adapterVersion: '0.22.0' }, f.deps);
+    expect(recovered.status).toBe('updated');
+    expect(recovered.marker.adapterVersion).toBe('0.22.0');
+    expect((await inspectGrok(f.root, '0.22.0')).configuration).toBe('current');
   } finally {
     await f.cleanup();
   }

@@ -28,7 +28,7 @@ import {
   type GrokConfigureTestDeps,
   type ManagedState,
 } from './lifecycle';
-import { encodeGrokOwnership, isCanonicalLoopbackOrigin, recoverGrokOwnership } from './ownership';
+import { adoptRecoveredOwnership, isCanonicalLoopbackOrigin, recoverGrokOwnership } from './ownership';
 import { checkGrokPolicy } from './policy';
 import { configureGrokToml, equalGrokLeaf } from './toml';
 import type { GrokConfigureInput, GrokDeadline, GrokDeps, GrokMarker, GrokOwnership, TomlEdit } from './types';
@@ -67,9 +67,10 @@ async function configureExisting(
   if (loaded.marker.endpoint !== input.endpoint) throw new Error('Grok endpoint changed');
   const configText = configTextOrEmpty(loaded.config);
   const recovered = recoverGrokOwnership(configText, loaded.ownership);
-  let ownership = recovered.ownership;
+  const adopted = adoptRecoveredOwnership(loaded.ownership, loaded.ownershipFile.text, recovered);
+  let ownership = adopted.ownership;
   let ownershipFile = loaded.ownershipFile;
-  if (encodeGrokOwnership(ownership) !== loaded.ownershipFile.text) {
+  if (adopted.persist) {
     ownershipFile = await persistOwnership(lock, paths, ownership, ownershipFile, budget);
   }
   if (recovered.conflicts.length > 0) {
