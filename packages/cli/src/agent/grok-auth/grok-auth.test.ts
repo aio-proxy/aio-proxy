@@ -741,18 +741,17 @@ test('a network refresh failure keeps the refresh token and skips device login',
     expect(f.calls.device).toBe(1);
     const after = await readCredentialFile(f.root);
     expect(after.refreshToken).toBe(before.refreshToken);
-    expect(after.status).toBe('ready');
+    expect(after.status).toBe('refreshing');
     expect(f.stdout).toHaveLength(1);
   } finally {
     await f.cleanup();
   }
 });
 
-test('a delayed retry after a network refresh failure still uses the refresh token', async () => {
+test('a delayed retry after a network refresh failure invalidates the journal', async () => {
   const f = await authFixture();
   try {
     await grokAuth(f.input, f.deps);
-    const before = await readCredentialFile(f.root);
     await expect(
       grokAuth(f.input, {
         ...f.deps,
@@ -765,16 +764,21 @@ test('a delayed retry after a network refresh failure still uses the refresh tok
           }),
       }),
     ).rejects.toMatchObject({ code: 'network' });
+    expect((await readCredentialFile(f.root)).status).toBe('refreshing');
     const later = Date.now() + 31_000;
-    await grokAuth(f.input, {
-      ...f.deps,
-      now: () => later,
-      transport: () => countingTransport(f),
-    });
+    await expect(
+      grokAuth(
+        { ...f.input, expired: true },
+        {
+          ...f.deps,
+          now: () => later,
+          transport: () => countingTransport(f),
+        },
+      ),
+    ).rejects.toBeInstanceOf(GrokAuthError);
     expect(f.calls.device).toBe(1);
-    expect(f.calls.refresh).toBe(2);
-    expect((await readCredentialFile(f.root)).refreshToken).toBe(REFRESHED.refresh_token);
-    expect(before.refreshToken).not.toBe(REFRESHED.refresh_token);
+    expect(f.calls.refresh).toBe(1);
+    expect((await readCredentialFile(f.root)).status).toBe('needs_login');
   } finally {
     await f.cleanup();
   }
