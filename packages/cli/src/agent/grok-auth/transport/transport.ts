@@ -7,8 +7,8 @@ import {
   type AgentRuntimeRequestOptions,
 } from '@aio-proxy/agent-provider-runtime';
 
-import type { GrokDeadline, GrokMarker } from '../grok';
-import type { GrokTransport } from './types';
+import type { GrokDeadline, GrokMarker } from '../../grok';
+import type { GrokTransport } from '../types';
 
 export function createGrokTransport(
   marker: GrokMarker,

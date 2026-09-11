@@ -2,8 +2,8 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText, remainingReadMs } from './read-bounded';
-import type { GrokDeadline, GrokPolicySource, GrokVisiblePolicy } from './types';
+import { MAX_GROK_FILE_BYTES, readOpenFileText, remainingReadMs } from '../read-bounded';
+import type { GrokDeadline, GrokPolicySource, GrokVisiblePolicy } from '../types';
 
 const UNVERIFIABLE = 'Grok visible policy unverifiable';
 const ETC_MANAGED = '/etc/grok/managed_config.toml';

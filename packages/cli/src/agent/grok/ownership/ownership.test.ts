@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { equalGrokLeaf } from '../toml';
+import type { FieldChange, GrokOwnership, LeafValue } from '../types';
 import {
   adoptRecoveredOwnership,
   classifyChange,
@@ -7,8 +9,6 @@ import {
   isCompletedGrokRemoval,
   recoverGrokOwnership,
 } from './ownership';
-import { equalGrokLeaf } from './toml';
-import type { FieldChange, GrokOwnership, LeafValue } from './types';
 
 const absent: LeafValue = { present: false };
 const value = (text: string): LeafValue => ({ present: true, value: text, raw: `"${text}"` });

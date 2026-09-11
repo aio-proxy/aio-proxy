@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { AgentRuntimeError } from '@aio-proxy/agent-provider-runtime';
 import type { AgentDeviceCodeResponse, AgentTokenResponse } from '@aio-proxy/types';
 
-import type { GrokDeadline, GrokMarker } from '../grok';
+import type { GrokDeadline, GrokMarker } from '../../grok';
 import { createGrokTransport } from './transport';
 
 const MARKER = {

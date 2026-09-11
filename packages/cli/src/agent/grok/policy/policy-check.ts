@@ -1,6 +1,6 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { GrokPolicySource, GrokPolicySourceRole, GrokVisiblePolicy } from './types';
+import type { GrokPolicySource, GrokPolicySourceRole, GrokVisiblePolicy } from '../types';
 
 const UNVERIFIABLE = 'Grok visible policy unverifiable';
 const AUTH_LABEL = 'AIO Proxy';

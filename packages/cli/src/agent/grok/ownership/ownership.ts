@@ -2,8 +2,8 @@ import { AgentManagedMarkerSchema, AgentRevokeStatusSchema, type AgentRevokeStat
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
-import { equalGrokLeaf, readGrokLeaf } from './toml';
-import type { FieldChange, GrokMarker, GrokOwnership, GrokPath, GrokTransaction, LeafValue, OwnedLeaf } from './types';
+import { equalGrokLeaf, readGrokLeaf } from '../toml';
+import type { FieldChange, GrokMarker, GrokOwnership, GrokPath, GrokTransaction, LeafValue, OwnedLeaf } from '../types';
 
 const isIpv4Address = (host: string): boolean => {
   const octets = host.split('.');

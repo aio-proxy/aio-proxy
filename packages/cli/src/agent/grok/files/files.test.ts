@@ -3,8 +3,8 @@ import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { MAX_GROK_FILE_BYTES } from '../read-bounded';
 import { grokPaths, isGrokOwnedTmpName, readGrokFile, removeGrokOwnedTemporaryFiles, replaceGrokFile } from './files';
-import { MAX_GROK_FILE_BYTES } from './read-bounded';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
 

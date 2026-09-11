@@ -1,8 +1,8 @@
 import type { AgentTokenResponse } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { GrokContext, GrokMarker } from '../grok';
-import type { GrokCredential } from './types';
+import type { GrokContext, GrokMarker } from '../../grok';
+import type { GrokCredential } from '../types';
 
 const revisionSchema = z.number().refine((value) => Number.isSafeInteger(value) && value >= 0);
 const BindingSchema = {

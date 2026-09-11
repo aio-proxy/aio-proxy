@@ -1,7 +1,7 @@
-import { editTomlFields, inspectTomlPaths, readTomlField, type TomlFieldEdit } from '../toml-document';
-import type { FieldChange, GrokPath, LeafValue, OwnedLeaf, TomlEdit } from './types';
+import { editTomlFields, inspectTomlPaths, readTomlField, type TomlFieldEdit } from '../../toml-document';
+import type { FieldChange, GrokPath, LeafValue, OwnedLeaf, TomlEdit } from '../types';
 
-export type { FieldChange, GrokPath, LeafValue, OwnedLeaf, TomlEdit } from './types';
+export type { FieldChange, GrokPath, LeafValue, OwnedLeaf, TomlEdit } from '../types';
 
 const SYNTAX = { tomlVersion: '1.0' as const };
 const SCALAR_TYPE_ERROR = 'TOML field must be a string or boolean';

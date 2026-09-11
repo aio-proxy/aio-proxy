@@ -3,7 +3,7 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { grokAuthCommand } from './grok';
+import { grokAuthCommand } from '../grok';
 import { checkGrokPolicy, readGrokPolicy } from './policy';
 
 const ENDPOINT = 'http://127.0.0.1:9317';

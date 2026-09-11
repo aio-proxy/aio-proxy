@@ -4,11 +4,11 @@ import { join } from 'node:path';
 
 import type { AgentTokenResponse } from '@aio-proxy/types';
 
-import { configureGrok, withGrokInstallation, type GrokContext, type GrokMarker } from '../grok';
-import { grokFixture } from '../grok/test-fixture';
+import { configureGrok, withGrokInstallation, type GrokContext, type GrokMarker } from '../../grok';
+import { grokFixture } from '../../grok/test-fixture';
+import { createGrokTransport } from '../transport';
+import type { GrokCredential } from '../types';
 import { beginGrokRefresh, grokRefreshRecoverable, parseGrokCredential, saveGrokToken } from './credential';
-import { createGrokTransport } from './transport';
-import type { GrokCredential } from './types';
 
 const MARKER = {
   format: 1,
@@ -80,7 +80,7 @@ test('refresh replay is bounded by the first attempt, not each restart', () => {
 
 test('client replay window stays inside the core identity 30 second case', async () => {
   const coreTest = await Bun.file(
-    new URL('../../../../core/src/agent-identity/agent-identity.test.ts', import.meta.url),
+    new URL('../../../../../core/src/agent-identity/agent-identity.test.ts', import.meta.url),
   ).text();
   expect(coreTest).toContain('replays one rotation result for 30 seconds without creating another token');
   expect(coreTest).toContain('f.setNow(30_999)');

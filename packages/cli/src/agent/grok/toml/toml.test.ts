@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { inspectTomlPaths } from '../toml-document';
+import { inspectTomlPaths } from '../../toml-document';
 import { configureGrokToml, equalGrokLeaf, readGrokLeaf, restoreGrokToml } from './toml';
 
 const ENDPOINT = 'http://127.0.0.1:9317';

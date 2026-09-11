@@ -3,8 +3,8 @@ import { constants, type Stats } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText } from './read-bounded';
-import type { GrokDeadline } from './types';
+import { MAX_GROK_FILE_BYTES, readOpenFileText } from '../read-bounded';
+import type { GrokDeadline } from '../types';
 
 export type GrokFileSnapshot = {
   readonly text: string;
