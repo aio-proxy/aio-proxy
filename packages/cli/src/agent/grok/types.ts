@@ -58,7 +58,7 @@ export type GrokDeps = {
   readonly now: () => number;
   readonly randomUUID: () => string;
   readonly policy: (root: string, budget?: GrokDeadline) => Promise<GrokVisiblePolicy>;
-  readonly revoke: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
+  readonly revoke: (endpoint: string, installationId: string, budget?: GrokDeadline) => Promise<AgentRevokeStatus>;
 };
 export type GrokInspection = {
   readonly integrationKind: 'auth-command';

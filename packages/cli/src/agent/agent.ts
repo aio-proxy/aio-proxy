@@ -203,7 +203,8 @@ export const createAgentCommandDeps = (cliDeps: CliDeps): AgentCommandDeps => {
         now: () => Date.now(),
         randomUUID: () => crypto.randomUUID(),
         policy: loadGrokPolicy,
-        revoke: revokeAgentInstallation,
+        revoke: (endpoint, installationId, budget) =>
+          revokeAgentInstallation(endpoint, installationId, globalThis.fetch, budget),
       },
       resolveExecutable: () => resolveGrokExecutable(),
     },

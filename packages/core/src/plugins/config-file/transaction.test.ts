@@ -101,6 +101,26 @@ describe('AtomicConfigFile', () => {
     expect(statSync(path).mtimeMs).toBe(before);
   });
 
+  test('a cancelled transaction still releases the config lock', async () => {
+    const { path } = fixture('{"one":1}\n');
+    const config = new AtomicConfigFile(path);
+    const controller = new AbortController();
+    await expect(
+      config.replace(
+        async (current) => {
+          controller.abort();
+          return { ...current, two: 2 };
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow();
+    expect(existsSync(`${path}.lock`)).toBe(false);
+    const started = Date.now();
+    await config.replace((current) => ({ ...current, recovered: true }));
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ one: 1, recovered: true });
+  });
+
   test('provider digests are stable across recursive object key order', async () => {
     const { path } = fixture(JSON.stringify({ providers: { demo: { z: 1, nested: { b: 2, a: 1 } } } }));
     const config = new AtomicConfigFile(path);

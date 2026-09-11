@@ -36,11 +36,15 @@ export const revokeAgentInstallation = async (
   endpoint: string,
   installationId: string,
   fetchFn: typeof fetch = globalThis.fetch,
+  budget?: { readonly deadline: number; readonly signal: AbortSignal },
 ): Promise<AgentRevokeStatus> => {
   const id = AgentRevokeResponseSchema.shape.installationId.parse(installationId);
+  const timeoutMs = budget === undefined ? 3_000 : Math.max(0, budget.deadline - Date.now());
+  if (timeoutMs === 0) throw new Error('agent admin revoke timed out');
+  budget?.signal.throwIfAborted();
   const response = await fetchFn(`${endpoint}/admin/agent-installations/${encodeURIComponent(id)}/revoke`, {
     method: 'POST',
-    signal: AbortSignal.timeout(3_000),
+    signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(budget === undefined ? [] : [budget.signal])]),
     redirect: 'error',
   });
   if (!response.ok) throw new Error(`agent admin revoke failed (${response.status})`);

@@ -133,7 +133,7 @@ async function removeManaged(
   let revokeStatus: AgentRevokeStatus;
   let skippedFields: readonly string[] = [];
   if (ownership.revokeStatus === undefined) {
-    revokeStatus = await deps.revoke(marker.endpoint, marker.installationId);
+    revokeStatus = await deps.revoke(marker.endpoint, marker.installationId, budget);
     await saveOwnership(revokedOwnership(ownership, revokeStatus));
     await testDeps?.failpoint?.('revoked');
   } else {

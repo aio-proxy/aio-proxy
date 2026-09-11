@@ -823,6 +823,26 @@ test('invalid endpoints are rejected without echoing untrusted values', async ()
   }
 });
 
+test('remove passes the remaining operation budget into revoke', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    let revokeBudget: { readonly deadline: number; readonly signal: AbortSignal } | undefined;
+    await removeGrok(f.root, f.input.adapterVersion, {
+      ...f.deps,
+      revoke: async (_endpoint, _installationId, budget) => {
+        revokeBudget = budget;
+        return 'revoked';
+      },
+    });
+    expect(revokeBudget).toBeDefined();
+    expect(revokeBudget!.deadline).toBeGreaterThan(Date.now());
+    expect(revokeBudget!.signal.aborted).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('failed revoke keeps retryable state and prevents helper use', async () => {
   const f = await grokFixture();
   try {
