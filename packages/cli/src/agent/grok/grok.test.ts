@@ -4,6 +4,7 @@ import { chmod, link, mkdir, readFile, rm, stat, symlink, unlink, writeFile } fr
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import * as grokFiles from './files';
 import {
   configureGrok,
   configureGrokForTest,
@@ -738,6 +739,37 @@ test('a failed first install only removes files this run created', async () => {
   }
 });
 
+test('a hung marker probe after configure failure keeps the original error', async () => {
+  const f = await grokFixture();
+  const realInspect = grokFiles.inspectPath;
+  const marker = join(f.root, 'aio-proxy', '.aio-proxy-managed.json');
+  let hangMarker = false;
+  const inspect = spyOn(grokFiles, 'inspectPath').mockImplementation(async (path, budget) => {
+    if (hangMarker && path === marker) {
+      if (budget === undefined) await Bun.sleep(3_000);
+      throw new Error('Grok path unverifiable');
+    }
+    return realInspect(path, budget);
+  });
+  try {
+    const started = performance.now();
+    await expect(
+      configureGrokForTest(f.input, f.deps, {
+        failpoint: (point) => {
+          if (point === 'ownership_pending') {
+            hangMarker = true;
+            throw new Error('boom');
+          }
+        },
+      }),
+    ).rejects.toThrow(/boom/);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  } finally {
+    inspect.mockRestore();
+    await f.cleanup();
+  }
+});
+
 test('invalid endpoints are rejected without echoing untrusted values', async () => {
   const f = await grokFixture();
   try {
@@ -1383,6 +1415,37 @@ test('remove does not overwrite an unrelated removal-journal path', async () => 
     await expect(removeGrok(f.root, f.input.adapterVersion, f.deps)).rejects.toThrow(/already exists|removal journal/);
     expect(await readFile(journal, 'utf8')).toBe('keep this user file\n');
     expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(true);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a hung private-directory probe after remove stays within the lifecycle budget', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const realInspect = grokFiles.inspectPath;
+    const privateDir = join(f.root, 'aio-proxy');
+    let missingPrivateDir = 0;
+    const inspect = spyOn(grokFiles, 'inspectPath').mockImplementation(async (path, budget) => {
+      const current = await realInspect(path, budget);
+      if (path === privateDir && current === undefined) {
+        missingPrivateDir += 1;
+        if (missingPrivateDir >= 2 && budget === undefined) {
+          await Bun.sleep(3_000);
+          throw new Error('Grok path unverifiable');
+        }
+      }
+      return current;
+    });
+    try {
+      const started = performance.now();
+      await expect(removeGrok(f.root, f.input.adapterVersion, f.deps)).resolves.toMatchObject({ retainedFiles: [] });
+      expect(performance.now() - started).toBeLessThan(1_000);
+      expect(await Bun.file(privateDir).exists()).toBe(false);
+    } finally {
+      inspect.mockRestore();
+    }
   } finally {
     await f.cleanup();
   }

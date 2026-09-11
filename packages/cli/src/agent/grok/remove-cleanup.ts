@@ -125,7 +125,7 @@ export async function cleanupPrivateDir(
   }
   await removeMatchingDir(privateDir, budget);
   const leftover = await unknownRetainedNames(paths, privateDir, budget);
-  if (leftover.length === 0 && (await inspectPath(paths.privateDir)) === undefined) {
+  if (leftover.length === 0 && (await inspectPath(paths.privateDir, budget)) === undefined) {
     await clearRemovalJournal(lock, paths, budget);
   } else if (leftover.length > 0) {
     await restoreOwnershipFromRemovalJournal(lock, paths, budget);

@@ -155,6 +155,7 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
   cases.push(await probeUnimplementedHelperUrl(fixture.endpoint));
   const configure = await fixture.run([options.cliBinary, 'agent', 'configure', 'grok']);
   cases.push(fromChild('configure', configure));
+  let grokSpawned = false;
   if (configure.exitCode !== 0) {
     cases.push(
       notRun('approve', 'configure failed'),
@@ -164,6 +165,7 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
       notRun('stream-and-tool', 'configure failed'),
     );
   } else {
+    grokSpawned = true;
     await fixture.wrapAuthCommand();
     const loginChild = fixture.start([options.grokBinary, 'login']);
     const loginStarted = Date.now();
@@ -201,7 +203,7 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
     }
   }
   cases.push(loopbackRecorderCase(fixture.records));
-  cases.push(sandboxExecCase(fixture.sandboxExec, fixture.sandboxExec !== null));
+  cases.push(sandboxExecCase(fixture.sandboxExec, grokSpawned));
   cases.push(...namedNotRunGates(process.platform));
   return cases;
 }

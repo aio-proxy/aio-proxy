@@ -216,7 +216,13 @@ async function configureFirst(
     await clearConsumedRemovalJournal(lock, paths, budget);
     return { marker, status: 'installed' };
   } catch (error) {
-    if (!markerWritten && (await inspectPath(paths.marker)) !== undefined) markerWritten = true;
+    if (!markerWritten) {
+      try {
+        if ((await inspectPath(paths.marker, budget)) !== undefined) markerWritten = true;
+      } catch {
+        // A hung or unverifiable marker probe must not replace the original failure.
+      }
+    }
     if (!markerWritten && reuse === undefined) {
       for (const identity of created.reverse()) await removeMatchingFile(identity, budget);
       if (privateDir !== undefined) await removeMatchingDir(privateDir, budget);

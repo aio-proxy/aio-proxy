@@ -575,6 +575,9 @@ test('journey configures before login, approves via Dashboard, and does not trea
 test('a failed configure does not spawn Grok login or model commands', async () => {
   const root = await scratch('aio-grok-compat-configure-fail-');
   try {
+    const source = await readFile(join(import.meta.dir, 'grok-compat.ts'), 'utf8');
+    expect(source).not.toContain('fixture.sandboxExec !== null');
+    expect(source).toContain('sandboxExecCase(fixture.sandboxExec, grokSpawned)');
     const { options, log } = await optionsFor(root, { version: '1.0.24' }, { configureExit: 7 });
     const report = await runGrokCompatibility(options);
     const calls = await readLog(log);
@@ -584,6 +587,7 @@ test('a failed configure does not spawn Grok login or model commands', async () 
     expect(report.cases.find((item) => item.name === 'configure')?.passed).toBe(false);
     expect(report.cases.find((item) => item.name === 'login')?.detail).toMatch(/^not_run:/);
     expect(report.cases.find((item) => item.name === 'models')?.detail).toMatch(/^not_run:/);
+    expect(report.cases.find((item) => item.name === 'macos-sandbox-egress')?.detail).toMatch(/^not_run:/);
     expect(compatScriptShouldFail(report)).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
