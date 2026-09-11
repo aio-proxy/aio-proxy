@@ -1,4 +1,5 @@
 import {
+  collectMissingTemplateEnv,
   parsePluginSchema,
   type EntityBody,
   type JsonValue,
@@ -38,6 +39,15 @@ const oauthProviderRecord = (body: EntityBody): Record<string, JsonValue> | unde
  * another device has no local account yet, so its separately published account object is imported
  * first: without that the prerequisite check below would reject the Provider forever.
  */
+function missingTemplateEnv(raw: Record<string, JsonValue>): readonly string[] {
+  // A body whose templates cannot even be parsed is rejected by the schema check below, not here.
+  try {
+    return collectMissingTemplateEnv(raw);
+  } catch {
+    return [];
+  }
+}
+
 export function createActivationCheck(input: ActivationCheckInput) {
   return async (raw: Record<string, JsonValue>, body: EntityBody) => {
     let credentialValid = true;
@@ -89,7 +99,10 @@ export function createActivationCheck(input: ActivationCheckInput) {
       apply: async () => {},
       dependencies: {
         installedPackages: input.pluginVersions(),
-        missingEnv: [],
+        // An unresolved `{{env.NAME}}` resolves to an empty string, so a synchronized Provider
+        // would replace a working configuration with an unauthenticated one on a device that
+        // never defined the variable. Stay pending until it does.
+        missingEnv: missingTemplateEnv(raw),
         oauthVerified: credentialValid,
         credentialValid,
         ...(oauthEvidence === undefined ? {} : { oauthEvidence }),
