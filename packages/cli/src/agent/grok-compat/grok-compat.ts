@@ -31,7 +31,7 @@ function parseGrokVersion(output: string): string | undefined {
 
 export function redactCompatText(text: string): string {
   return text
-    .replace(/aio_agent_[A-Za-z0-9_]+/gu, '[redacted]')
+    .replace(/aio_agent_(?:at|rt)_[A-Za-z0-9_-]*/gu, '[redacted]')
     .replace(/(access_token|refresh_token|user_code)(\s*[:=]\s*"?)[^"\s,}\\]*/giu, '$1$2[redacted]')
     .replace(/access_token|refresh_token|user_code/giu, '[redacted]');
 }

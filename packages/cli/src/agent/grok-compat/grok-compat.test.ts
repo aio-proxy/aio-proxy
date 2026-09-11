@@ -5,7 +5,13 @@ import { dirname, join } from 'node:path';
 
 import { approveDashboardAuthorization } from './dashboard-approve';
 import { createGrokCompatFixture, GrokCompatProxyError, spawnArgv } from './fixture';
-import { compatScriptShouldFail, runGrokCompatibility, sandboxExecCase, type GrokCompatOptions } from './grok-compat';
+import {
+  compatScriptShouldFail,
+  redactCompatText,
+  runGrokCompatibility,
+  sandboxExecCase,
+  type GrokCompatOptions,
+} from './grok-compat';
 import {
   HELPER_STDOUT_KEYS,
   helperStdoutContractCase,
@@ -240,6 +246,12 @@ test('marks a nonzero child as a failed case and exits the script nonzero', asyn
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('redacts base64url tokens that contain hyphens', () => {
+  const hyphenAt = `aio_agent_at_v1_-${'a'.repeat(42)}`;
+  const hyphenRt = `aio_agent_rt_v1_${'b'.repeat(20)}-${'c'.repeat(22)}`;
+  expect(redactCompatText(`stdout=${hyphenAt} stderr=${hyphenRt}`)).toBe('stdout=[redacted] stderr=[redacted]');
 });
 
 test('redacts access tokens, refresh tokens, and user_code from the report', async () => {
