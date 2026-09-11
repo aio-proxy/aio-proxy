@@ -3,7 +3,13 @@ import { constants, type Stats } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText, withHandleBudget, withReadBudget } from '../read-bounded';
+import {
+  DEFAULT_GROK_READ_MS,
+  MAX_GROK_FILE_BYTES,
+  readOpenFileText,
+  withHandleBudget,
+  withReadBudget,
+} from '../read-bounded';
 import type { GrokDeadline } from '../types';
 
 export type GrokFileSnapshot = {
@@ -159,6 +165,11 @@ export async function tryReadGrokPrivateFile(
 
 const pathUnverifiable = (): Error => new Error('Grok path unverifiable');
 
+const cleanupBudget = (): GrokDeadline => ({
+  deadline: Date.now() + DEFAULT_GROK_READ_MS,
+  signal: AbortSignal.timeout(DEFAULT_GROK_READ_MS),
+});
+
 export async function syncDirectory(path: string, budget?: GrokDeadline): Promise<void> {
   const handle = await withReadBudget(budget, pathUnverifiable, () => open(path, 'r'));
   try {
@@ -254,7 +265,7 @@ export async function replaceGrokFile(
     temporary = undefined;
     await syncDirectory(dirname(path), budget);
   } finally {
-    if (temporary !== undefined) await removeMatchingFile(temporary, budget);
+    if (temporary !== undefined) await removeMatchingFile(temporary, cleanupBudget());
   }
 }
 

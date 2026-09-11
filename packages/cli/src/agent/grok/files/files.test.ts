@@ -183,6 +183,42 @@ test('a stalled Grok file write close does not outlive the budget', async () => 
   }
 });
 
+test('replaceGrokFile removes the temporary file after the write budget expires', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-tmp-timeout-'));
+  const path = join(root, 'config.toml');
+  const realOpen = fsPromises.open.bind(fsPromises);
+  const open = spyOn(fsPromises, 'open').mockImplementation(async (target, flags, mode) => {
+    const handle = await realOpen(target, flags, mode);
+    if (String(target).includes('.aio-')) {
+      Object.defineProperty(handle, 'writeFile', {
+        configurable: true,
+        value: () => new Promise(() => {}),
+      });
+    }
+    return handle;
+  });
+  try {
+    await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
+    const expected = await readGrokFile(path);
+    const started = Date.now();
+    await expect(
+      replaceGrokFile(
+        path,
+        '[ui]\ntheme = "light"\n',
+        expected,
+        { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) },
+        async () => {},
+      ),
+    ).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect((await readdir(root)).filter((name) => name.includes('.aio-'))).toEqual([]);
+    expect(await readFile(path, 'utf8')).toBe('[ui]\ntheme = "dark"\n');
+  } finally {
+    open.mockRestore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('replaceGrokFile removes the temporary file when the write fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-grok-tmp-cleanup-'));
   const path = join(root, 'config.toml');
