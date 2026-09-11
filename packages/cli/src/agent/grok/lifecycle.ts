@@ -190,6 +190,17 @@ export async function readRemovalJournal(
   return readGrokPrivateFile(paths.removalJournal, 'removal journal', budget);
 }
 
+function isOwnedRemovalJournal(existingText: string, nextText: string): boolean {
+  try {
+    const existing = parseGrokOwnership(existingText);
+    const next = parseGrokOwnership(nextText);
+    if (!(isCompletedGrokRemoval(existing) || isBootstrapGrokJournal(existing))) return false;
+    return existing.installationId === next.installationId && existing.endpoint === next.endpoint;
+  } catch {
+    return false;
+  }
+}
+
 export async function persistRemovalJournal(
   lock: FileLock,
   paths: GrokPaths,
@@ -197,6 +208,9 @@ export async function persistRemovalJournal(
   budget: GrokDeadline,
 ): Promise<void> {
   const existing = await readRemovalJournal(paths, budget);
+  if (existing !== undefined && !isOwnedRemovalJournal(existing.text, text)) {
+    throw new Error('Grok removal journal already exists');
+  }
   await replaceOwnedFile(lock, paths.removalJournal, text, existing, budget);
 }
 

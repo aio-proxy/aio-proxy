@@ -213,7 +213,11 @@ async function removeGrokInternal(
         try {
           const ownership = parseGrokOwnership(ownershipForRebind.text);
           if (isIncompleteRebind(ownership, parseGrokMarker(markerFile.text))) {
-            return narrowBootstrapRemoval(lock, paths, privateDir, budget, testDeps);
+            return narrowBootstrapRemoval(lock, paths, privateDir, budget, testDeps, {
+              path: paths.marker,
+              dev: markerFile.dev,
+              ino: markerFile.ino,
+            });
           }
         } catch {
           // loadManaged reports foreign or invalid leftovers.

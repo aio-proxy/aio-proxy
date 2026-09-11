@@ -105,11 +105,13 @@ export async function cleanupPrivateDir(
   }
   const retained = await unknownRetainedNames(paths, privateDir);
   if (retained.length > 0) return retained;
-  await unlinkKnownFile(lock, marker, budget);
-  await testDeps?.failpoint?.('marker_removed');
   if (ownership !== undefined) {
     const current = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
     if (current !== undefined) await persistRemovalJournal(lock, paths, current.text, budget);
+  }
+  await unlinkKnownFile(lock, marker, budget);
+  await testDeps?.failpoint?.('marker_removed');
+  if (ownership !== undefined) {
     await unlinkKnownFile(lock, ownership, budget);
     await testDeps?.failpoint?.('ownership_removed');
   }
@@ -170,6 +172,7 @@ export async function narrowBootstrapRemoval(
   privateDir: GrokFileIdentity,
   budget: GrokDeadline,
   testDeps?: GrokRemoveTestDeps,
+  marker?: GrokFileIdentity,
 ): Promise<GrokRemoveResult> {
   const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
   if (ownershipFile === undefined) return conflictExisting();
@@ -179,7 +182,7 @@ export async function narrowBootstrapRemoval(
     lock,
     paths,
     privateDir,
-    undefined,
+    marker,
     { path: paths.ownership, dev: ownershipFile.dev, ino: ownershipFile.ino },
     budget,
     testDeps,

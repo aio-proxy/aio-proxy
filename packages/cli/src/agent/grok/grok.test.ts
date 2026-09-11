@@ -1020,9 +1020,12 @@ test('a crash while rebinding a retained install stays recoverable', async () =>
       }),
       { mode: 0o600 },
     );
+    await rm(join(g.root, 'aio-proxy', 'notes.txt'));
     const removed = await removeGrok(g.root, g.input.adapterVersion, g.deps);
     expect(removed.revokeStatus).toBe('missing');
+    expect(removed.retainedFiles).toEqual([]);
     expect(g.revoked).toEqual([]);
+    expect(await Bun.file(join(g.root, 'aio-proxy')).exists()).toBe(false);
   } finally {
     await g.cleanup();
   }
@@ -1247,6 +1250,20 @@ test('remove finishes when only a root removal journal remains', async () => {
     expect(finished.revokeStatus).toBe('revoked');
     expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
     expect(await Bun.file(join(f.root, '.aio-proxy-removal.json')).exists()).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('remove does not overwrite an unrelated removal-journal path', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const journal = join(f.root, '.aio-proxy-removal.json');
+    await writeFile(journal, 'keep this user file\n', { mode: 0o600 });
+    await expect(removeGrok(f.root, f.input.adapterVersion, f.deps)).rejects.toThrow(/already exists|removal journal/);
+    expect(await readFile(journal, 'utf8')).toBe('keep this user file\n');
+    expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(true);
   } finally {
     await f.cleanup();
   }
