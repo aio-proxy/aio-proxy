@@ -15,9 +15,9 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 
 import { resolveDashboardText } from '@/lib/localized-text';
-import { usePreviewSync, useSyncBackends, useSyncStatus, useDisconnectSync, useRetrySync } from '@/lib/sync';
 import { SyncPreviewDialog } from '@/modules/settings/components/sync-preview-dialog';
 
+import { usePreviewSync, useSyncBackends, useSyncStatus, useDisconnectSync, useRetrySync } from '../../hooks/use-sync';
 import { SyncHistoryDialog } from '../sync-history-dialog';
 
 const initialOptions = (fields: readonly DashboardOAuthFormField[]): Record<string, unknown> =>

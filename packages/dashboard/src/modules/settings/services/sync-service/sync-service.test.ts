@@ -2,7 +2,7 @@ import { afterEach, expect, rs, test } from '@rstest/core';
 
 import { clearDashboardAuthToken } from '@/lib/dashboard-auth-token';
 
-import { previewSync, syncBackendsQueryOptions, syncQueryOptions } from './service';
+import { previewSync, syncBackendsQueryOptions, syncQueryOptions } from './sync-service';
 
 afterEach(() => {
   rs.restoreAllMocks();

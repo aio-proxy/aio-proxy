@@ -58,11 +58,21 @@ function safeArchiveEntry(entry: string): void {
 }
 
 async function run(command: string, args: readonly string[], cwd?: string): Promise<string> {
+  return (await runStreams(command, args, cwd)).stdout;
+}
+
+// `codesign --display` writes its details to stderr on a real macOS install, so the
+// signing checks must read both streams (matches scripts/sign-native.ts).
+async function runStreams(
+  command: string,
+  args: readonly string[],
+  cwd?: string,
+): Promise<{ stdout: string; stderr: string }> {
   const child = Bun.spawn([command, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
   const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
   if ((await child.exited) !== 0)
     throw new NativeArtifactError(`${command} rejected the native artifact: ${stderr.trim()}`);
-  return stdout;
+  return { stdout, stderr };
 }
 
 async function sha256File(path: string): Promise<string> {
@@ -107,8 +117,8 @@ async function verifyBundle(appPath: string, manifest: NativeManifest, executabl
   if (Number.parseFloat(String(parsed.LSMinimumSystemVersion ?? '0')) < 14)
     throw new NativeArtifactError('Native bundle requires an unsupported macOS version');
   await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
-  const details = await run('codesign', ['--display', '--verbose=4', appPath]);
-  if (!details.includes(`TeamIdentifier=${manifest.teamId}`))
+  const details = await runStreams('codesign', ['--display', '--verbose=4', appPath]);
+  if (!`${details.stderr}${details.stdout}`.includes(`TeamIdentifier=${manifest.teamId}`))
     throw new NativeArtifactError('Native signing team is invalid');
   await run('spctl', ['--assess', '--type', 'execute', '--verbose=4', appPath]);
 }

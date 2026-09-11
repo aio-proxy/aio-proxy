@@ -28,9 +28,12 @@ const preview: SyncPreview = {
 
 const mocks = rs.hoisted(() => ({ applySync: rs.fn() }));
 
-rs.mock('@/lib/sync', () => ({
-  SyncRequestError: class SyncRequestError extends Error {},
+rs.mock('../../hooks/use-sync', () => ({
   useApplySync: () => ({ mutate: mocks.applySync, isPending: false, error: null, reset: rs.fn() }),
+}));
+
+rs.mock('../../services/sync-service', () => ({
+  SyncRequestError: class SyncRequestError extends Error {},
 }));
 
 interface PreviewStateHarnessProps {

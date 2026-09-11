@@ -1,4 +1,4 @@
-import type { SyncFailureCode, SyncSession } from '@aio-proxy/plugin-sdk';
+import { SyncBackendError, type SyncFailureCode, type SyncSession } from '@aio-proxy/plugin-sdk';
 
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const FAILURE_CODES = new Set<SyncFailureCode>([
@@ -68,13 +68,12 @@ export function assertConnectResult(result: unknown): NativeConnectResult {
   return value as NativeConnectResult;
 }
 
-export class NativeSessionError extends Error {
-  override readonly name = 'SyncBackendError';
-  constructor(
-    readonly code: SyncFailureCode,
-    message: string = code,
-  ) {
-    super(message);
+// Must extend the SDK class, not merely carry its name: core gates backoff and the
+// outcome-unknown reread/reconcile branches on `instanceof SyncBackendError`. The SDK
+// is a peer dependency so the plugin and host share one class identity.
+export class NativeSessionError extends SyncBackendError {
+  constructor(code: SyncFailureCode, message: string = code) {
+    super(code, message);
   }
 }
 

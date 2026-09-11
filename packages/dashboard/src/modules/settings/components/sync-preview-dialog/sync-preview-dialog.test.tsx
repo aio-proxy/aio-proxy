@@ -122,3 +122,28 @@ test('clears override paths when closing before reopening a new preview', async 
   fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
   await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, [['models', 'timeout']]));
 });
+
+test('applies an empty first-connect preview', () => {
+  const connectPreview: SyncPreview = { ...preview, previewId: 'preview-connect', kind: 'connect', rows: [] };
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={connectPreview} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  expect(
+    screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }).hasAttribute('disabled'),
+  ).toBe(false);
+});
+
+test('keeps apply disabled for an empty decision-bearing preview', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={{ ...preview, rows: [] }} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  expect(
+    screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }).hasAttribute('disabled'),
+  ).toBe(true);
+});

@@ -16,7 +16,8 @@ import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
-import { SyncRequestError, useApplySync } from '@/lib/sync';
+import { useApplySync } from '../../hooks/use-sync';
+import { SyncRequestError } from '../../services/sync-service';
 
 const SECRET_KEY = /(?:secret|token|password|credential|api[-_]?key|private[-_]?key|authorization)/iu;
 const EMPTY_ROWS: readonly SyncPreviewRow[] = [];
@@ -94,6 +95,11 @@ const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): v
   'previewId' in value &&
   typeof value.previewId === 'string' &&
   value.previewId.trim().length > 0;
+
+// A first connect has no binding yet, so its preview legitimately carries zero rows and
+// an empty decision set is a valid apply. Only the decision-bearing kinds need a row.
+const hasApplicableDecisions = (preview: SyncPreview | null, rows: readonly SyncPreviewRow[]): boolean =>
+  preview !== null && (rows.length > 0 || preview.kind === 'connect');
 
 interface StalePreviewAlertArgs {
   readonly stale: boolean;
@@ -194,7 +200,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const stale = applyMutation.error instanceof SyncRequestError && applyMutation.error.code === 'preview-stale';
   const pending = applyMutation.isPending || isRefreshingOverrides;
   const rows = preview?.rows ?? EMPTY_ROWS;
-  const submitDisabled = pending || preview === null || rows.length === 0 || needsFreshPreview;
+  const submitDisabled = pending || needsFreshPreview || !hasApplicableDecisions(preview, rows);
 
   const options = new Set(rows.flatMap((row) => row.choices));
 

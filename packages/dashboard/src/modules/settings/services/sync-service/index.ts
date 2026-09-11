@@ -11,15 +11,4 @@ export {
   syncBackendsQueryOptions,
   syncQueryOptions,
   SyncRequestError,
-} from './service';
-export {
-  useApplySync,
-  useCancelSyncDetach,
-  useDisconnectSync,
-  useDetachSync,
-  usePreviewSync,
-  useRetrySync,
-  useSetSyncRange,
-  useSyncBackends,
-  useSyncStatus,
-} from './hooks';
+} from './sync-service';

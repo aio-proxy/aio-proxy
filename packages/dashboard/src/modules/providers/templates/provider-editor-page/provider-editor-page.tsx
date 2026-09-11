@@ -5,7 +5,8 @@ import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { SyncRequestError, useDetachSync, usePreviewSync, useSetSyncRange, useSyncStatus } from '@/lib/sync';
+import { useDetachSync, usePreviewSync, useSetSyncRange, useSyncStatus } from '@/modules/settings/hooks/use-sync';
+import { SyncRequestError } from '@/modules/settings/services/sync-service';
 
 import { SyncPreviewDialog } from '../../../settings/components/sync-preview-dialog';
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';

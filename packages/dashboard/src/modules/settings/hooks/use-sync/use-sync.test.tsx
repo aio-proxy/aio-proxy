@@ -5,11 +5,11 @@ import type { ReactNode } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 
-import { usePreviewSync } from './hooks';
+import { usePreviewSync } from './use-sync';
 
 const mocks = rs.hoisted(() => ({ previewSync: rs.fn() }));
 
-rs.mock('./service', () => ({ previewSync: mocks.previewSync }));
+rs.mock('../../services/sync-service', () => ({ previewSync: mocks.previewSync }));
 
 test('invalidates sync, provider, and settings queries after a preview succeeds', async () => {
   mocks.previewSync.mockReset().mockResolvedValue({
