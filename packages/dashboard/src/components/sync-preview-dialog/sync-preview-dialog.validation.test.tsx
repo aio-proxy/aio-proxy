@@ -40,7 +40,7 @@ const noop = () => {};
 
 interface PreviewStateHarnessProps {
   readonly initialPreview: SyncPreview;
-  onPreviewOverrides(paths: readonly string[][]): Promise<SyncPreview>;
+  onPreviewOverrides(objectId: string, paths: readonly string[][]): Promise<SyncPreview>;
   onRetry?(): Promise<SyncPreview>;
   onApplied?(): void;
   onOpenChange?(open: boolean): void;
@@ -54,8 +54,8 @@ const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({
   onOpenChange,
 }) => {
   const [current, setCurrent] = useState(initialPreview);
-  const refresh = async (paths: readonly string[][]) => {
-    const next = await onPreviewOverrides(paths);
+  const refresh = async (objectId: string, paths: readonly string[][]) => {
+    const next = await onPreviewOverrides(objectId, paths);
     setCurrent(next);
     return next;
   };
@@ -133,7 +133,7 @@ test('applies the preview ID returned after adding an override', async () => {
     <QueryClientProvider client={new QueryClient()}>
       <PreviewStateHarness
         initialPreview={preview}
-        onPreviewOverrides={async (paths) => {
+        onPreviewOverrides={async (_objectId, paths) => {
           expect(paths).toEqual([['limits', 'timeout']]);
           return replacement;
         }}
@@ -248,7 +248,7 @@ test('requests an exact fresh preview after removing a pin and keeps submit disa
     resolveRemoval = resolve;
   });
   const onPreviewOverrides = rs.fn();
-  onPreviewOverrides.mockImplementation((paths: readonly string[][]): Promise<SyncPreview> =>
+  onPreviewOverrides.mockImplementation((_objectId: string, paths: readonly string[][]): Promise<SyncPreview> =>
     paths.length === 0 ? removalPromise : Promise.resolve(replacement),
   );
   render(
@@ -271,7 +271,7 @@ test('requests an exact fresh preview after removing a pin and keeps submit disa
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /Pending|Apply reviewed changes|应用审核后的变更/u })).toBeDisabled(),
   );
-  expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, []);
+  expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', []);
   await waitFor(() => expect(screen.getByText(/Review the preview again|移除固定项后需要重新审核/u)).toBeTruthy());
   resolveRemoval(replacement);
   await waitFor(() =>
@@ -310,12 +310,12 @@ test('retries a failed removal with the same empty override path set', async () 
 
   fireEvent.click(remove);
   await waitFor(() => expect(screen.getByText(/Could not refresh the preview|无法刷新预览/u)).toBeTruthy());
-  expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, []);
+  expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', []);
   expect(screen.getByRole('button', { name: /Retry preview|重试预览/u })).not.toBeDisabled();
   expect(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u })).toBeDisabled();
 
   fireEvent.click(screen.getByRole('button', { name: /Retry preview|重试预览/u }));
-  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(3, []));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(3, 'object-work', []));
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u })).not.toBeDisabled(),
   );

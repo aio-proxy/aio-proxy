@@ -409,6 +409,28 @@ test('excluded identities receive cloud deletion signals', async () => {
   });
 });
 
+test('an exclusion landing during a remote application is not overwritten by the snapshot mode', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'second' }, true);
+    await a.engine.reconcile(a.signal);
+
+    const gate = b.pauseRemoteApplication();
+    const pending = b.engine.reconcile(b.signal);
+    await gate.entered;
+    const row = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work');
+    b.repo.putEntity(b.binding.id, { ...row!, mode: 'excluded' });
+    gate.release();
+    await pending;
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')).toMatchObject({
+      mode: 'excluded',
+    });
+  });
+});
+
 test('a queued put is dropped instead of resurrecting a remotely deleted head', async () => {
   await withTwoSyncDevices(async ({ a }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);

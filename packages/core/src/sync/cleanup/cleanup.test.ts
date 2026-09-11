@@ -294,7 +294,7 @@ test('history keeps revisions younger than 30 days and current revisions at any 
   ).toContain('current');
 });
 
-test('history cancels pending reservations and leaves no secret payload behind', async () => {
+test('history cancels a reservation abandoned past retention and leaves no secret payload behind', async () => {
   const backend = createMemorySyncBackend();
   const session = backend.connect();
   const signal = new AbortController().signal;
@@ -316,13 +316,44 @@ test('history cancels pending reservations and leaves no secret payload behind',
     }),
     signal,
   );
-  await collectHistory(createSyncObjectStore(session), item.objectId, 0, signal);
+  await collectHistory(createSyncObjectStore(session), item.objectId, 31 * 24 * 60 * 60 * 1000, signal);
   expect(head(backend, item.objectId)).toMatchObject({ reserved: [], cancelling: [] });
   const marker = decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
   expect(marker).toMatchObject({ state: 'erased', reason: 'abandoned' });
   expect(
     new TextDecoder().decode(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value),
   ).not.toContain('pending-secret');
+});
+
+test('history leaves another device mid-publication able to finish its reserved operation', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'live-secret');
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, 0);
+  await store.session.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+  await store.session.compareAndSwap(
+    revisionKey(item.objectId, item.operationId),
+    null,
+    encode({
+      protocol: 1,
+      state: 'payload',
+      objectId: item.objectId,
+      epoch: 0,
+      operationId: item.operationId,
+      body: item.body,
+      publishedSequence: null,
+      writtenAt: 0,
+    }),
+    signal,
+  );
+
+  await collectHistory(store, item.objectId, 0, signal);
+
+  expect(head(backend, item.objectId).reserved).toEqual([item.operationId]);
+  const published = await publishEntity(store, item, signal);
+  expect(published.sequence).toBe(1);
+  expect(head(backend, item.objectId).current).toBe(item.operationId);
 });
 
 test('receipt finalization retries an unknown cleanup write', async () => {

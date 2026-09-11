@@ -50,12 +50,17 @@ function upsertEntity(
   mode: LocalEntity['mode'],
   pendingReason: string | null,
   baseline: string | null,
-): void {
+): LocalEntity['mode'] {
+  // `mode` comes from the snapshot this pass took before it awaited the network. A `sync leave`
+  // landing during that await is a user decision, so never hand an excluded row back to `included`
+  // and republish what they excluded. Re-inclusion only ever comes from an applied preview.
+  const latest = input.repo.entities(input.bindingId).find((entity) => entity.objectId === head.objectId);
+  const effective = latest?.mode === 'excluded' ? 'excluded' : mode;
   input.repo.putEntity(input.bindingId, {
     objectId: head.objectId,
     logicalKey: head.logicalKey,
     kind: head.kind,
-    mode,
+    mode: effective,
     epoch: head.epoch,
     desired: body,
     baseline,
@@ -63,6 +68,7 @@ function upsertEntity(
     pendingReason,
     oauth: existing?.oauth,
   });
+  return effective;
 }
 
 async function readCurrent(
@@ -192,7 +198,7 @@ export async function reconcileRemote(
           const activation = await input.local.applyRemote(objectId, null, tombstoneRevision);
           input.assertGeneration(generation);
           if (!activation.applied) {
-            upsertEntity(
+            const written = upsertEntity(
               input,
               existing,
               head,
@@ -206,7 +212,7 @@ export async function reconcileRemote(
               objectId,
               logicalKey: head.logicalKey,
               kind: head.kind,
-              mode: existing.mode,
+              mode: written,
               epoch: head.epoch,
               desired: null,
               baseline: existing.baseline,
@@ -217,13 +223,21 @@ export async function reconcileRemote(
           }
         }
         input.assertGeneration(generation);
-        upsertEntity(input, existing, head, null, existing?.mode ?? 'excluded', null, tombstoneRevision);
+        const written = upsertEntity(
+          input,
+          existing,
+          head,
+          null,
+          existing?.mode ?? 'excluded',
+          null,
+          tombstoneRevision,
+        );
         known.set(objectId, {
           ...existing,
           objectId,
           logicalKey: head.logicalKey,
           kind: head.kind,
-          mode: existing?.mode ?? 'excluded',
+          mode: written,
           epoch: head.epoch,
           desired: null,
           baseline: tombstoneRevision,
@@ -323,7 +337,7 @@ export async function reconcileRemote(
         activation = { applied: false, pending: reason };
       }
       const pending = activation.applied ? null : (activation.pending ?? 'invalid-config');
-      upsertEntity(
+      const written = upsertEntity(
         input,
         existing,
         head,
@@ -337,7 +351,7 @@ export async function reconcileRemote(
         objectId,
         logicalKey: head.logicalKey,
         kind: head.kind,
-        mode,
+        mode: written,
         epoch: head.epoch,
         desired: body,
         baseline: activation.applied ? record.operationId : (existing?.baseline ?? null),

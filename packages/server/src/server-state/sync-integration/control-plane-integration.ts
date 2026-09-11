@@ -50,6 +50,10 @@ export function createSyncControlPlaneIntegration(
       return binding === null ? [] : integration.syncRepository.entities(binding.id);
     },
     session: () => integration.lifecycle?.session(),
+    withFence: async (run) => {
+      const syncPort = integration.syncPort;
+      return syncPort === undefined ? run() : syncPort.withFence(run);
+    },
     onEngineStatus: integration.onEngineStatus,
     committedSource: async () => {
       const syncPort = integration.syncPort;

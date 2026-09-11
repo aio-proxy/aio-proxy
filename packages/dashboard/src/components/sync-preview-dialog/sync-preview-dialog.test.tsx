@@ -84,7 +84,27 @@ test('requests a new overrides preview when pinning a local option', async () =>
   fireEvent.change(path, { target: { value: 'limits.timeout' } });
   fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
 
-  await waitFor(() => expect(onPreviewOverrides).toHaveBeenCalledWith([['limits', 'timeout']]));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenCalledWith('object-work', [['limits', 'timeout']]));
+});
+
+test('pins a local option on the row it was entered under, not the first row', async () => {
+  const twoRows: SyncPreview = {
+    ...preview,
+    rows: [preview.rows[0]!, { ...preview.rows[0]!, objectId: 'object-home', logicalKey: 'home' }],
+  };
+  const onPreviewOverrides = rs
+    .fn()
+    .mockResolvedValue({ ...twoRows, previewId: 'preview-overrides', kind: 'overrides' });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={twoRows} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+    </QueryClientProvider>,
+  );
+  const paths = screen.getAllByLabelText(/Option path|选项路径/u);
+  fireEvent.change(paths[1]!, { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getAllByRole('button', { name: /Pin local option|固定本地选项/u })[1]!);
+
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenCalledWith('object-home', [['limits', 'timeout']]));
 });
 
 test('clears override paths when closing before reopening a new preview', async () => {
@@ -99,7 +119,7 @@ test('clears override paths when closing before reopening a new preview', async 
   const path = screen.getByLabelText(/Option path|选项路径/u);
   fireEvent.change(path, { target: { value: 'limits.timeout' } });
   fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
-  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(1, [['limits', 'timeout']]));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(1, 'object-work', [['limits', 'timeout']]));
 
   view.rerender(
     <QueryClientProvider client={new QueryClient()}>
@@ -120,7 +140,7 @@ test('clears override paths when closing before reopening a new preview', async 
   const reopenedPath = screen.getByLabelText(/Option path|选项路径/u);
   fireEvent.change(reopenedPath, { target: { value: 'models.timeout' } });
   fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
-  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, [['models', 'timeout']]));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', [['models', 'timeout']]));
 });
 
 test('applies an empty first-connect preview', () => {

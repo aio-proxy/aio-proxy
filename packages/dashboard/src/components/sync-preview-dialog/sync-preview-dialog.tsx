@@ -22,6 +22,7 @@ import { SyncPreviewRenameField } from './sync-preview-rename-field';
 
 const SECRET_KEY = /(?:secret|token|password|credential|api[-_]?key|private[-_]?key|authorization)/iu;
 const EMPTY_ROWS: readonly SyncPreviewRow[] = [];
+const EMPTY_PATHS: readonly string[][] = [];
 const PROVIDER_ID_PATTERN = /^[A-Za-z0-9._-]+$/u;
 const providerIdSchema = z.string().trim().min(1).regex(PROVIDER_ID_PATTERN);
 const decisionSchema = z.object({
@@ -31,7 +32,7 @@ const decisionSchema = z.object({
 });
 const previewFormSchema = z.object({
   decisions: z.record(z.string(), decisionSchema),
-  overrides: z.array(z.array(z.string().min(1))),
+  overrides: z.record(z.string(), z.array(z.array(z.string().min(1)))),
 });
 
 export const redactPreviewValue = (value: unknown): unknown => {
@@ -55,7 +56,7 @@ const displayValue = (value: unknown): string => {
 
 interface PreviewFormValues {
   readonly decisions: Record<string, SyncApplyInput['decisions'][number]>;
-  readonly overrides: readonly string[][];
+  readonly overrides: Record<string, readonly string[][]>;
 }
 
 export interface SyncPreviewDialogProps {
@@ -64,14 +65,15 @@ export interface SyncPreviewDialogProps {
   onOpenChange(open: boolean): void;
   onApplied?(): void;
   onRetry?(): Promise<SyncPreview>;
-  onPreviewOverrides?(paths: readonly string[][]): Promise<SyncPreview>;
+  /** An override belongs to one entity, so the row the paths were pinned on names the target. */
+  onPreviewOverrides?(objectId: string, paths: readonly string[][]): Promise<SyncPreview>;
 }
 
 const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
   decisions: Object.fromEntries(
     (preview?.rows ?? []).map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
   ),
-  overrides: [],
+  overrides: {},
 });
 
 const choiceLabel = (choice: SyncPreviewRow['choices'][number]): string => {
@@ -152,13 +154,19 @@ const stalePreviewAlert = ({
   );
 };
 
+// An override preview replaces the whole dialog, so only one row can have a failure in flight.
+interface OverrideError {
+  readonly objectId: string;
+  readonly kind: 'invalid' | 'refresh';
+}
+
 const clearOverrideDraft = (
-  overridesRef: { current: readonly string[][] },
+  overridesRef: { current: Record<string, readonly string[][]> },
   setNeedsFreshPreview: (value: boolean) => void,
-  setOverrideError: (value: 'invalid' | 'refresh' | undefined) => void,
+  setOverrideError: (value: OverrideError | undefined) => void,
   setIsRefreshingOverrides: (value: boolean) => void,
 ) => {
-  overridesRef.current = [];
+  overridesRef.current = {};
   setNeedsFreshPreview(false);
   setOverrideError(undefined);
   setIsRefreshingOverrides(false);
@@ -175,10 +183,10 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const applyMutation = useApplySync();
   const [needsFreshPreview, setNeedsFreshPreview] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [overrideError, setOverrideError] = useState<'invalid' | 'refresh' | undefined>();
+  const [overrideError, setOverrideError] = useState<OverrideError | undefined>();
   const [retryError, setRetryError] = useState(false);
   const [isRefreshingOverrides, setIsRefreshingOverrides] = useState(false);
-  const overridesRef = useRef<readonly string[][]>([]);
+  const overridesRef = useRef<Record<string, readonly string[][]>>({});
   // The operation the dialog was opened for. Pinning an override previews that override on its
   // own, so this is what has to come back once the override is applied.
   const openedKindRef = useRef<SyncPreview['kind'] | undefined>(undefined);
@@ -207,27 +215,27 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
 
   const options = new Set(rows.flatMap((row) => row.choices));
 
-  const requestOverridesPreview = async (paths: readonly string[][]) => {
+  const requestOverridesPreview = async (objectId: string, paths: readonly string[][]) => {
     setNeedsFreshPreview(true);
     setOverrideError(undefined);
     if (onPreviewOverrides === undefined) {
-      setOverrideError('refresh');
+      setOverrideError({ objectId, kind: 'refresh' });
       return;
     }
     setIsRefreshingOverrides(true);
     const replacement = await Promise.resolve()
-      .then(() => onPreviewOverrides(paths))
+      .then(() => onPreviewOverrides(objectId, paths))
       .catch(() => undefined);
     if (replacement !== undefined && isValidReplacementPreview(replacement, 'overrides')) {
       setNeedsFreshPreview(false);
     } else {
-      setOverrideError('refresh');
+      setOverrideError({ objectId, kind: 'refresh' });
     }
     setIsRefreshingOverrides(false);
   };
 
-  const setOverridePaths = (paths: readonly string[][]) => {
-    overridesRef.current = paths;
+  const setOverridePaths = (objectId: string, paths: readonly string[][]) => {
+    overridesRef.current = { ...overridesRef.current, [objectId]: paths };
     rerenderOverrides((version) => version + 1);
   };
 
@@ -368,6 +376,27 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                     <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted p-2">{displayValue(row.cloud)}</pre>
                   </div>
                 </div>
+                {preview.kind === 'purge' ? null : (
+                  <form.Field name="overrides">
+                    {(field) => (
+                      <div className="mt-3">
+                        <SyncPreviewOverrideField
+                          paths={overridesRef.current[row.objectId] ?? EMPTY_PATHS}
+                          pending={pending}
+                          error={overrideError?.objectId === row.objectId ? overrideError.kind : undefined}
+                          needsFreshPreview={needsFreshPreview}
+                          canPreview={onPreviewOverrides !== undefined}
+                          onInvalidPath={() => setOverrideError({ objectId: row.objectId, kind: 'invalid' })}
+                          onPathsChange={(next) => {
+                            setOverridePaths(row.objectId, next);
+                            field.handleChange({ ...field.state.value, [row.objectId]: next });
+                            void requestOverridesPreview(row.objectId, next);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </form.Field>
+                )}
               </div>
             ))}
             {preview.retainedSharedPlugins.length > 0 ? (
@@ -376,25 +405,6 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
             {rows.some((row) => row.dependencies.length > 0 || row.secretChange !== 'none') ? (
               <p className="rounded-lg border p-3 text-sm">{m['dashboard.sync.required_plugin_data']()}</p>
             ) : null}
-            {preview.kind === 'purge' ? null : (
-              <form.Field name="overrides">
-                {(field) => (
-                  <SyncPreviewOverrideField
-                    paths={overridesRef.current}
-                    pending={pending}
-                    error={overrideError}
-                    needsFreshPreview={needsFreshPreview}
-                    canPreview={onPreviewOverrides !== undefined}
-                    onInvalidPath={() => setOverrideError('invalid')}
-                    onPathsChange={(next) => {
-                      setOverridePaths(next);
-                      field.handleChange(next);
-                      void requestOverridesPreview(next);
-                    }}
-                  />
-                )}
-              </form.Field>
-            )}
             <p className="text-xs text-muted-foreground">{m['dashboard.sync.preview_no_secrets']()}</p>
           </div>
         )}

@@ -10,18 +10,48 @@ import {
   updateHead,
 } from './cleanup';
 
-async function cancelReservations(store: SyncObjectStore, objectId: string, signal: AbortSignal): Promise<void> {
+// Routine maintenance runs on whichever device happens to be awake, so a reservation it finds may
+// belong to another device that is mid-publication. Abandoning that one makes `publishEntity()`
+// reject the uploader's persisted operation ID forever and blocks its outbox, so only reclaim a
+// reservation the cloud state itself proves dead. Deletion and purge still cancel everything: the
+// object is going away either way.
+async function staleReservation(
+  store: SyncObjectStore,
+  objectId: string,
+  operationId: string,
+  cutoff: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const value = await store.session.read(revisionKey(objectId, operationId), signal);
+  // No revision yet means the publisher is between reserving and writing its payload — a window of
+  // milliseconds that proves nothing. A payload still unpublished a retention period later does.
+  if (value.kind === 'absent') return false;
+  const record = decodeRevision(value.value);
+  if (record.state !== 'payload') return true;
+  return (record.writtenAt ?? value.modifiedAt) < cutoff;
+}
+
+async function cancelReservations(
+  store: SyncObjectStore,
+  objectId: string,
+  cutoff: number,
+  signal: AbortSignal,
+): Promise<void> {
   for (;;) {
     const current = await readHeadOrThrow(store, objectId, signal);
     if (current.head.state === 'purged') return;
-    if (current.head.reserved.length > 0) {
+    const stale: string[] = [];
+    for (const operationId of current.head.reserved) {
+      if (await staleReservation(store, objectId, operationId, cutoff, signal)) stale.push(operationId);
+    }
+    if (stale.length > 0) {
       await updateHead(
         store,
         objectId,
         (head) => ({
           ...head,
-          reserved: [],
-          cancelling: [...new Set([...head.cancelling, ...head.reserved])],
+          reserved: head.reserved.filter((id) => !stale.includes(id)),
+          cancelling: [...new Set([...head.cancelling, ...stale])],
         }),
         signal,
       );
@@ -75,9 +105,9 @@ export async function collectHistory(
   const initial = await store.readHead(objectId, signal);
   if (initial === null || initial.head.state === 'purged') return;
   await confirmReceipts(store, objectId, signal);
-  await cancelReservations(store, objectId, signal);
-  const head = await readHeadOrThrow(store, objectId, signal);
   const cutoff = serverNow - HISTORY_RETENTION_MS;
+  await cancelReservations(store, objectId, cutoff, signal);
+  const head = await readHeadOrThrow(store, objectId, signal);
   const pending = new Set([...head.head.reserved, ...head.head.cancelling]);
   const current = head.head.current;
   for (const operationId of head.head.history) {

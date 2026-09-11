@@ -73,6 +73,11 @@ export type SyncControlPlaneOptions = {
   /** The committed configuration a join projects local-only bodies from. */
   readonly committedSource?: () => Promise<CommittedSource>;
   readonly session?: () => SyncSession | undefined;
+  /**
+   * The mutation fence `applyRemote` holds. Excluding a Provider outside it can land between the
+   * entity snapshot that call takes and the row it writes back, silently re-including the Provider.
+   */
+  readonly withFence?: <T>(run: () => Promise<T>) => Promise<T>;
   readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
   readonly lifecycle?: Partial<Pick<ServerSyncLifecycle, 'start'>> &
     Pick<ServerSyncLifecycle, 'activate' | 'reconcile' | 'close'>;
@@ -395,7 +400,8 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     async setRange(providerId, included) {
       if (included !== false) throw new TypeError('sync range can only exclude a provider');
       rangeRevision += 1;
-      return setRange(operationInput(), providerId);
+      const run = async () => setRange(operationInput(), providerId);
+      return options.withFence === undefined ? run() : options.withFence(run);
     },
     async detach(providerId, loginSessionId) {
       if (options.detach === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');

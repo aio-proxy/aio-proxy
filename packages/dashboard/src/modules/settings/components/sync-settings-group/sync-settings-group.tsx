@@ -388,9 +388,7 @@ export const SyncSettingsGroup: React.FC = () => {
         onPreviewOverrides={
           preview?.kind === 'purge'
             ? undefined
-            : async (paths) => {
-                const objectId = preview?.rows[0]?.objectId;
-                if (objectId === undefined) throw new Error('SYNC_PREVIEW_OBJECT_MISSING');
+            : async (objectId, paths) => {
                 // An override is its own operation, so the operation it was pinned from stays
                 // remembered for the dialog to regenerate once these paths are applied.
                 const input: SyncPreviewInput = { kind: 'overrides', objectId, paths: paths.map((path) => [...path]) };
