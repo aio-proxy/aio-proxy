@@ -143,6 +143,14 @@ export const isCompletedGrokRemoval = (
   ownership.pending === undefined &&
   ownership.revokeStatus !== undefined;
 
+export const isBootstrapGrokJournal = (ownership: GrokOwnership): boolean =>
+  ownership.status === 'active' &&
+  ownership.pending?.operation === 'configure' &&
+  ownership.leaves.length === 0 &&
+  ownership.createdTables.length === 0 &&
+  ownership.cleanupComplete !== true &&
+  ownership.revokeStatus === undefined;
+
 export function classifyChange(current: LeafValue, change: FieldChange): 'before' | 'after' | 'conflict' {
   if (equalGrokLeaf(current, change.after)) return 'after';
   if (equalGrokLeaf(current, change.before)) return 'before';

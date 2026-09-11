@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test';
 import * as fsPromises from 'node:fs/promises';
-import { chmod, link, mkdir, readFile, stat, symlink, unlink, writeFile } from 'node:fs/promises';
+import { chmod, link, mkdir, readFile, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +13,7 @@ import {
   withGrokInstallation,
 } from './grok';
 import * as grokPublic from './index';
+import { encodeGrokOwnership } from './ownership';
 import { grokFixture } from './test-fixture';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
@@ -1009,6 +1010,7 @@ const REMOVE_CRASH_POINTS = [
   'ownership_committed',
   'cleanup_complete',
   'marker_removed',
+  'ownership_removed',
 ] as const;
 
 test('remove retries after each stage crash including marker-gone completed ownership', async () => {
@@ -1075,6 +1077,113 @@ test('a private directory without a completed removal record is not taken over',
     expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
     expect(f.revoked).toEqual([]);
     await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/already exists/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('configure and remove recover a pending first-install journal without a marker', async () => {
+  const f = await grokFixture();
+  try {
+    await mkdir(join(f.root, 'aio-proxy'), { mode: 0o700 });
+    await writeFile(
+      join(f.root, 'aio-proxy', 'ownership.json'),
+      encodeGrokOwnership({
+        format: 1,
+        agent: 'grok',
+        installationId: f.deps.randomUUID(),
+        endpoint: f.input.endpoint,
+        status: 'active',
+        leaves: [],
+        createdTables: [],
+        pending: { operation: 'configure', changes: [], nextLeaves: [], nextCreatedTables: [] },
+      }),
+      { mode: 0o600 },
+    );
+    const installed = await configureGrok(f.input, f.deps);
+    expect(installed.status).toBe('installed');
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+
+  const g = await grokFixture();
+  try {
+    await mkdir(join(g.root, 'aio-proxy'), { mode: 0o700 });
+    await writeFile(
+      join(g.root, 'aio-proxy', 'ownership.json'),
+      encodeGrokOwnership({
+        format: 1,
+        agent: 'grok',
+        installationId: g.deps.randomUUID(),
+        endpoint: g.input.endpoint,
+        status: 'active',
+        leaves: [],
+        createdTables: [],
+        pending: { operation: 'configure', changes: [], nextLeaves: [], nextCreatedTables: [] },
+      }),
+      { mode: 0o600 },
+    );
+    const removed = await removeGrok(g.root, g.input.adapterVersion, g.deps);
+    expect(removed.revokeStatus).toBe('missing');
+    expect(g.revoked).toEqual([]);
+    expect(await Bun.file(join(g.root, 'aio-proxy')).exists()).toBe(false);
+  } finally {
+    await g.cleanup();
+  }
+});
+
+test('remove restores the journal when a file appears before rmdir', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const notes = join(f.root, 'aio-proxy', 'notes.txt');
+    const finished = await removeGrokForTest(f.root, f.input.adapterVersion, f.deps, {
+      failpoint: async (point) => {
+        if (point === 'ownership_removed') await writeFile(notes, 'keep me\n', { mode: 0o600 });
+      },
+    });
+    expect(finished.retainedFiles).toContain('notes.txt');
+    expect(await readFile(notes, 'utf8')).toBe('keep me\n');
+    expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
+    expect(JSON.parse(await readFile(join(f.root, 'aio-proxy', 'ownership.json'), 'utf8')).cleanupComplete).toBe(true);
+    const again = await configureGrok(f.input, f.deps);
+    expect(again.status).toBe('installed');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('remove finishes when only a root removal journal remains', async () => {
+  const f = await grokFixture();
+  try {
+    const installed = await configureGrok(f.input, f.deps);
+    await writeFile(
+      join(f.root, '.aio-proxy-removal.json'),
+      encodeGrokOwnership({
+        format: 1,
+        agent: 'grok',
+        installationId: installed.marker.installationId,
+        endpoint: f.input.endpoint,
+        status: 'removing',
+        leaves: [],
+        createdTables: [],
+        cleanupComplete: true,
+        revokeStatus: 'revoked',
+      }),
+      { mode: 0o600 },
+    );
+    await rm(join(f.root, 'aio-proxy'), { recursive: true, force: true });
+    const finished = await removeGrok(f.root, f.input.adapterVersion, {
+      ...f.deps,
+      revoke: async () => {
+        throw new Error('must not revoke again');
+      },
+    });
+    expect(finished.installationId).toBe(installed.marker.installationId);
+    expect(finished.revokeStatus).toBe('revoked');
+    expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
+    expect(await Bun.file(join(f.root, '.aio-proxy-removal.json')).exists()).toBe(false);
   } finally {
     await f.cleanup();
   }

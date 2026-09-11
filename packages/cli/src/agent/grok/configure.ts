@@ -17,6 +17,7 @@ import {
 } from './files';
 import { grokAuthCommand } from './grok-command';
 import {
+  clearRemovalJournal,
   commitGrokEdit,
   configTextOrEmpty,
   createBudget,
@@ -24,12 +25,14 @@ import {
   persistMarker,
   persistOwnership,
   requireCurrent,
+  restoreOwnershipFromRemovalJournal,
   withGrokLock,
   type GrokConfigureTestDeps,
   type ManagedState,
 } from './lifecycle';
 import {
   adoptRecoveredOwnership,
+  isBootstrapGrokJournal,
   isCanonicalLoopbackOrigin,
   isCompletedGrokRemoval,
   parseGrokOwnership,
@@ -202,15 +205,19 @@ async function configureGrokInternal(
       assertSafeRoot(rootStat);
       const privateStat = await inspectPath(paths.privateDir);
       if (privateStat === undefined) {
+        await clearRemovalJournal(lock, paths, budget);
         return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config, budget), testDeps);
       }
       assertSafePrivateDir(privateStat);
       const markerFile = await readGrokPrivateFile(paths.marker, 'marker', budget);
-      const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
+      const ownershipFile =
+        (await readGrokPrivateFile(paths.ownership, 'ownership', budget)) ??
+        (await restoreOwnershipFromRemovalJournal(lock, paths, budget));
       if (markerFile === undefined) {
         if (ownershipFile !== undefined) {
           try {
-            if (isCompletedGrokRemoval(parseGrokOwnership(ownershipFile.text))) {
+            const ownership = parseGrokOwnership(ownershipFile.text);
+            if (isCompletedGrokRemoval(ownership) || isBootstrapGrokJournal(ownership)) {
               return configureFirst(
                 lock,
                 paths,

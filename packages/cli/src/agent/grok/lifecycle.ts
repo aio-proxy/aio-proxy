@@ -6,6 +6,7 @@ import {
   readGrokFile,
   readGrokPrivateFile,
   replaceGrokFile,
+  unlinkGrokFile,
   type GrokFileSnapshot,
   type GrokPaths,
   type ReplaceGrokFileTestDeps,
@@ -178,6 +179,44 @@ export async function persistMarker(
   const saved = await readGrokPrivateFile(paths.marker, 'marker', budget);
   if (saved === undefined) throw new Error('Grok marker invalid');
   return saved;
+}
+
+export async function readRemovalJournal(
+  paths: GrokPaths,
+  budget: GrokDeadline,
+): Promise<GrokFileSnapshot | undefined> {
+  return readGrokPrivateFile(paths.removalJournal, 'removal journal', budget);
+}
+
+export async function persistRemovalJournal(
+  lock: FileLock,
+  paths: GrokPaths,
+  text: string,
+  budget: GrokDeadline,
+): Promise<void> {
+  const existing = await readRemovalJournal(paths, budget);
+  await replaceOwnedFile(lock, paths.removalJournal, text, existing, budget);
+}
+
+export async function clearRemovalJournal(lock: FileLock, paths: GrokPaths, budget: GrokDeadline): Promise<void> {
+  const existing = await readRemovalJournal(paths, budget);
+  if (existing === undefined) return;
+  await lock.withOwnershipFence(async (assertOwnership) => {
+    await unlinkGrokFile(paths.removalJournal, existing, budget, assertOwnership, 'removal journal');
+  });
+}
+
+export async function restoreOwnershipFromRemovalJournal(
+  lock: FileLock,
+  paths: GrokPaths,
+  budget: GrokDeadline,
+): Promise<GrokFileSnapshot | undefined> {
+  const existing = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
+  if (existing !== undefined) return existing;
+  const journal = await readRemovalJournal(paths, budget);
+  if (journal === undefined) return undefined;
+  await replaceOwnedFile(lock, paths.ownership, journal.text, undefined, budget);
+  return readGrokPrivateFile(paths.ownership, 'ownership', budget);
 }
 
 export async function commitGrokEdit(

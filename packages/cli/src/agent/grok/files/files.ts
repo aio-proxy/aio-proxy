@@ -25,6 +25,7 @@ export type GrokPaths = {
   readonly ownership: string;
   readonly credential: string;
   readonly lock: string;
+  readonly removalJournal: string;
 };
 export type ReplaceGrokFileTestDeps = {
   readonly beforeRename?: () => Promise<void>;
@@ -43,6 +44,7 @@ export const grokPaths = (root: string): GrokPaths => {
     ownership: join(privateDir, 'ownership.json'),
     credential: join(privateDir, 'credential.json'),
     lock: join(root, '.aio-proxy.lock'),
+    removalJournal: join(root, '.aio-proxy-removal.json'),
   };
 };
 

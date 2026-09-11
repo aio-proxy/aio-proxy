@@ -3,6 +3,7 @@ export {
   encodeGrokMarker,
   encodeGrokOwnership,
   isCanonicalLoopbackOrigin,
+  isBootstrapGrokJournal,
   isCompletedGrokRemoval,
   isNewerAdapter,
   parseGrokMarker,

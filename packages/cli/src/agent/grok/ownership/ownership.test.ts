@@ -6,6 +6,7 @@ import {
   adoptRecoveredOwnership,
   classifyChange,
   encodeGrokOwnership,
+  isBootstrapGrokJournal,
   isCompletedGrokRemoval,
   recoverGrokOwnership,
 } from './ownership';
@@ -228,6 +229,32 @@ test('completed removal requires removing status, no pending, cleanupComplete, a
   expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing', cleanupComplete: true })).toBe(false);
   expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing' })).toBe(false);
   expect(isCompletedGrokRemoval(baseOwnership())).toBe(false);
+});
+
+test('a first-install journal is pending configure with no committed leaves', () => {
+  expect(
+    isBootstrapGrokJournal({
+      format: 1,
+      agent: 'grok',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      endpoint: 'http://127.0.0.1:9317',
+      status: 'active',
+      leaves: [],
+      createdTables: [],
+      pending: { operation: 'configure', changes: [], nextLeaves: [], nextCreatedTables: [] },
+    }),
+  ).toBe(true);
+  expect(isBootstrapGrokJournal(baseOwnership())).toBe(false);
+  expect(
+    isBootstrapGrokJournal({
+      ...baseOwnership({
+        operation: 'configure',
+        changes: [],
+        nextLeaves: [],
+        nextCreatedTables: [],
+      }),
+    }),
+  ).toBe(false);
 });
 
 test('encode rejects cleanupComplete while pending remains', () => {

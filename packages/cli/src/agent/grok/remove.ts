@@ -7,17 +7,11 @@ import {
   captureIdentity,
   grokPaths,
   inspectPath,
-  listGrokDirectoryNames,
   readGrokFile,
   readGrokPrivateFile,
-  removeGrokOwnedTemporaryFiles,
-  removeMatchingDir,
-  removeMatchingFile,
-  tryReadGrokPrivateFile,
   unlinkGrokFile,
   type GrokFileIdentity,
   type GrokPaths,
-  type ReplaceGrokFileTestDeps,
 } from './files';
 import {
   commitGrokEdit,
@@ -25,139 +19,32 @@ import {
   createBudget,
   loadManaged,
   persistOwnership,
+  restoreOwnershipFromRemovalJournal,
   withGrokLock,
   type ManagedState,
 } from './lifecycle';
-import { adoptRecoveredOwnership, isCompletedGrokRemoval, parseGrokOwnership, recoverGrokOwnership } from './ownership';
-import { equalGrokLeaf, restoreGrokToml } from './toml';
+import {
+  adoptRecoveredOwnership,
+  isBootstrapGrokJournal,
+  isCompletedGrokRemoval,
+  parseGrokOwnership,
+  recoverGrokOwnership,
+} from './ownership';
+import {
+  cleanupPrivateDir,
+  conflictExisting,
+  finishRootRemovalJournal,
+  narrowBootstrapRemoval,
+  narrowCompletedRemoval,
+  skippedFieldsFromOwnership,
+  type GrokRemoveFailPoint,
+  type GrokRemoveResult,
+  type GrokRemoveTestDeps,
+} from './remove-cleanup';
+import { restoreGrokToml } from './toml';
 import type { GrokDeadline, GrokDeps, GrokOwnership, TomlEdit } from './types';
 
-export type GrokRemoveFailPoint =
-  | 'removing'
-  | 'revoked'
-  | 'credential'
-  | 'ownership_pending'
-  | 'config'
-  | 'ownership_committed'
-  | 'cleanup_complete'
-  | 'marker_removed';
-
-export type GrokRemoveTestDeps = ReplaceGrokFileTestDeps & {
-  readonly failpoint?: (point: GrokRemoveFailPoint) => void | Promise<void>;
-};
-
-export type GrokRemoveResult = {
-  readonly installationId: string;
-  readonly revokeStatus: AgentRevokeStatus;
-  readonly skippedFields: readonly string[];
-  readonly retainedFiles: readonly string[];
-};
-
-const conflictExisting = (): never => {
-  throw new Error('Grok private directory already exists');
-};
-
-async function credentialAbsent(paths: GrokPaths, budget: GrokDeadline): Promise<boolean> {
-  const snapshot = await readGrokPrivateFile(paths.credential, 'credential', budget);
-  return snapshot === undefined || snapshot.text.trim() === '';
-}
-
-async function unlinkKnownFile(
-  lock: FileLock,
-  identity: GrokFileIdentity | undefined,
-  budget: GrokDeadline,
-): Promise<void> {
-  if (identity === undefined) return;
-  await lock.withOwnershipFence(async (assertFenced) => {
-    budget.signal.throwIfAborted();
-    await assertFenced();
-    await removeMatchingFile(identity);
-  });
-}
-
-const REMOVAL_JOURNAL_NAMES = new Set(['.aio-proxy-managed.json', 'ownership.json']);
-
-async function retainedPrivateNames(paths: GrokPaths, privateDir: GrokFileIdentity): Promise<readonly string[]> {
-  const current = await inspectPath(paths.privateDir);
-  if (current === undefined || current.dev !== privateDir.dev || current.ino !== privateDir.ino) return [];
-  return [...(await listGrokDirectoryNames(paths.privateDir))].sort();
-}
-
-async function unknownRetainedNames(paths: GrokPaths, privateDir: GrokFileIdentity): Promise<readonly string[]> {
-  return (await retainedPrivateNames(paths, privateDir)).filter((name) => !REMOVAL_JOURNAL_NAMES.has(name));
-}
-
-async function cleanupPrivateDir(
-  lock: FileLock,
-  paths: GrokPaths,
-  privateDir: GrokFileIdentity,
-  marker: GrokFileIdentity | undefined,
-  ownership: GrokFileIdentity | undefined,
-  budget: GrokDeadline,
-  testDeps?: GrokRemoveTestDeps,
-): Promise<readonly string[]> {
-  await removeGrokOwnedTemporaryFiles(paths);
-  const leftoverCredential = await tryReadGrokPrivateFile(paths.credential, 'credential', budget);
-  if (leftoverCredential !== undefined) {
-    await unlinkKnownFile(
-      lock,
-      { path: paths.credential, dev: leftoverCredential.dev, ino: leftoverCredential.ino },
-      budget,
-    );
-  }
-  const retained = await unknownRetainedNames(paths, privateDir);
-  if (retained.length > 0) return retained;
-  await unlinkKnownFile(lock, marker, budget);
-  await testDeps?.failpoint?.('marker_removed');
-  await unlinkKnownFile(lock, ownership, budget);
-  await removeMatchingDir(privateDir);
-  return unknownRetainedNames(paths, privateDir);
-}
-
-function requireCompletedOwnership(text: string): GrokOwnership {
-  let ownership: GrokOwnership;
-  try {
-    ownership = parseGrokOwnership(text);
-  } catch {
-    return conflictExisting();
-  }
-  if (!isCompletedGrokRemoval(ownership)) return conflictExisting();
-  return ownership;
-}
-
-async function narrowCompletedRemoval(
-  lock: FileLock,
-  paths: GrokPaths,
-  privateDir: GrokFileIdentity,
-  budget: GrokDeadline,
-  testDeps?: GrokRemoveTestDeps,
-): Promise<GrokRemoveResult> {
-  const ownershipFile = await readGrokPrivateFile(paths.ownership, 'ownership', budget);
-  if (ownershipFile === undefined) return conflictExisting();
-  const ownership = requireCompletedOwnership(ownershipFile.text);
-  if (!(await credentialAbsent(paths, budget))) return conflictExisting();
-  const retainedFiles = await cleanupPrivateDir(
-    lock,
-    paths,
-    privateDir,
-    undefined,
-    { path: paths.ownership, dev: ownershipFile.dev, ino: ownershipFile.ino },
-    budget,
-    testDeps,
-  );
-  return {
-    installationId: ownership.installationId,
-    revokeStatus: ownership.revokeStatus,
-    skippedFields: skippedFieldsFromOwnership(ownership),
-    retainedFiles,
-  };
-}
-
-function skippedFieldsFromOwnership(ownership: GrokOwnership): readonly string[] {
-  return ownership.leaves
-    .filter((leaf) => !equalGrokLeaf(leaf.written, leaf.original))
-    .map((leaf) => leaf.path.join('.'));
-}
+export type { GrokRemoveFailPoint, GrokRemoveResult, GrokRemoveTestDeps };
 
 function removingOwnership(ownership: GrokOwnership): GrokOwnership {
   return {
@@ -297,11 +184,24 @@ async function removeGrokInternal(
       if (rootStat === undefined) throw new Error('Grok root is not a directory');
       assertSafeRoot(rootStat);
       const privateStat = await inspectPath(paths.privateDir);
-      if (privateStat === undefined) throw new Error('Grok installation missing');
+      if (privateStat === undefined) return finishRootRemovalJournal(lock, paths, budget);
       assertSafePrivateDir(privateStat);
       const privateDir = await captureIdentity(paths.privateDir);
       const markerFile = await readGrokPrivateFile(paths.marker, 'marker', budget);
       if (markerFile === undefined) {
+        const ownershipFile =
+          (await readGrokPrivateFile(paths.ownership, 'ownership', budget)) ??
+          (await restoreOwnershipFromRemovalJournal(lock, paths, budget));
+        if (ownershipFile !== undefined) {
+          try {
+            const ownership = parseGrokOwnership(ownershipFile.text);
+            if (isBootstrapGrokJournal(ownership)) {
+              return narrowBootstrapRemoval(lock, paths, privateDir, budget, testDeps);
+            }
+          } catch {
+            return conflictExisting();
+          }
+        }
         return narrowCompletedRemoval(lock, paths, privateDir, budget, testDeps);
       }
       const loaded = await loadManaged(paths, adapterVersion, budget);
