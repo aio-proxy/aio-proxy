@@ -150,7 +150,7 @@ function loopbackRecorderCase(fixture: GrokCompatFixture): GrokCompatCase {
   );
 }
 
-function sandboxExecCase(sandboxExec: string | null, grokSpawned: boolean): GrokCompatCase {
+export function sandboxExecCase(sandboxExec: string | null, grokSpawned: boolean): GrokCompatCase {
   if (sandboxExec === null) return notRun('macos-sandbox-egress', 'egress isolation not available');
   if (!grokSpawned) return notRun('macos-sandbox-egress', 'sandbox-exec present but Grok was not spawned under it');
   return passed('macos-sandbox-egress', `grok invoked under ${sandboxExec}`);
@@ -191,9 +191,7 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
     ),
   );
   cases.push(loopbackRecorderCase(fixture));
-  const sandboxExec = Bun.which('sandbox-exec');
-  // Journey does not wrap Grok in sandbox-exec; presence of the binary is not evidence.
-  cases.push(sandboxExecCase(sandboxExec, false));
+  cases.push(sandboxExecCase(fixture.sandboxExec, fixture.sandboxExec !== null));
   cases.push(...namedNotRunGates(process.platform));
   return cases;
 }

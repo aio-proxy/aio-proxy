@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 
 import { approveDashboardAuthorization } from './dashboard-approve';
 import { createGrokCompatFixture, GrokCompatProxyError } from './fixture';
-import { compatScriptShouldFail, runGrokCompatibility, type GrokCompatOptions } from './grok-compat';
+import { compatScriptShouldFail, runGrokCompatibility, sandboxExecCase, type GrokCompatOptions } from './grok-compat';
 import {
   HELPER_STDOUT_KEYS,
   helperStdoutContractCase,
@@ -281,6 +281,24 @@ test('missing Grok binary fails instead of claiming pass', async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('sandbox case reports the wrap that actually spawned Grok', () => {
+  expect(sandboxExecCase(null, false)).toMatchObject({
+    name: 'macos-sandbox-egress',
+    passed: false,
+    detail: expect.stringMatching(/^not_run:/),
+  });
+  expect(sandboxExecCase('/usr/bin/sandbox-exec', false)).toMatchObject({
+    name: 'macos-sandbox-egress',
+    passed: false,
+    detail: expect.stringMatching(/^not_run:/),
+  });
+  expect(sandboxExecCase('/usr/bin/sandbox-exec', true)).toMatchObject({
+    name: 'macos-sandbox-egress',
+    passed: true,
+    detail: expect.stringContaining('/usr/bin/sandbox-exec'),
+  });
 });
 
 test('index.ts is export-only and does not start the script', async () => {

@@ -18,7 +18,13 @@ export type TomlEdit = {
   readonly skipped: readonly string[];
 };
 export type GrokDeadline = { readonly deadline: number; readonly signal: AbortSignal };
-export type GrokPolicySource = { readonly path: string; readonly text: string; readonly kind: 'toml' | 'json' };
+export type GrokPolicySourceRole = 'managed' | 'overlay' | 'requirements';
+export type GrokPolicySource = {
+  readonly path: string;
+  readonly text: string;
+  readonly kind: 'toml' | 'json';
+  readonly role?: GrokPolicySourceRole;
+};
 export type GrokVisiblePolicy = {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly sources: readonly GrokPolicySource[];

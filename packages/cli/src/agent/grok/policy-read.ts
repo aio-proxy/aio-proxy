@@ -105,7 +105,7 @@ const readMacOsMdm = async (budget?: GrokDeadline): Promise<GrokPolicySource | u
   const converted = await captureTimed(['plutil', '-convert', 'json', '-o', '-', '-'], exported.stdout, budget);
   if (converted === 'absent') throw new Error(UNVERIFIABLE);
   parsePolicyText(converted.stdout, 'json');
-  return { path: MDM_DOMAIN, text: converted.stdout, kind: 'json' };
+  return { path: MDM_DOMAIN, text: converted.stdout, kind: 'json', role: 'requirements' };
 };
 
 const overlayKind = (path: string): GrokPolicySource['kind'] => (path.endsWith('.json') ? 'json' : 'toml');
@@ -124,24 +124,24 @@ export async function readGrokPolicy(
   for (const file of files) {
     budget?.signal.throwIfAborted();
     const source = await readOptionalFile(file.path, file.kind);
-    if (source !== undefined) sources.push(source);
+    if (source !== undefined) sources.push({ ...source, role: 'managed' });
   }
 
   const inline = env['GROK_CONFIG'];
   const overlayPath = env['GROK_CONFIG_PATH'];
   if (inline !== undefined && inline !== '') {
     parsePolicyText(inline, 'json');
-    sources.push({ path: 'GROK_CONFIG', text: inline, kind: 'json' });
+    sources.push({ path: 'GROK_CONFIG', text: inline, kind: 'json', role: 'overlay' });
   } else if (overlayPath !== undefined && overlayPath !== '') {
     budget?.signal.throwIfAborted();
     const source = await readOptionalFile(overlayPath, overlayKind(overlayPath));
-    if (source !== undefined) sources.push(source);
+    if (source !== undefined) sources.push({ ...source, role: 'overlay' });
   }
 
   for (const path of [join(root, 'requirements.toml'), ETC_REQUIREMENTS]) {
     budget?.signal.throwIfAborted();
     const source = await readOptionalFile(path, 'toml');
-    if (source !== undefined) sources.push(source);
+    if (source !== undefined) sources.push({ ...source, role: 'requirements' });
   }
   budget?.signal.throwIfAborted();
   const mdm = await readMacOsMdm(budget);

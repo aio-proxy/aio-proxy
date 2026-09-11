@@ -1,6 +1,6 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { GrokPolicySource, GrokVisiblePolicy } from './types';
+import type { GrokPolicySource, GrokPolicySourceRole, GrokVisiblePolicy } from './types';
 
 const UNVERIFIABLE = 'Grok visible policy unverifiable';
 const AUTH_LABEL = 'AIO Proxy';
@@ -81,13 +81,19 @@ const parseSource = (source: GrokPolicySource): unknown => {
   }
 };
 
-const isRequirements = (path: string): boolean => path.endsWith('requirements.toml') || path === 'ai.x.grok';
-const isManaged = (path: string): boolean => path.endsWith('managed_config.toml');
-const isOverlay = (path: string): boolean => !isManaged(path) && !isRequirements(path);
-const valuesIn = (
-  parsed: readonly { readonly path: string; readonly value: unknown }[],
-  match: (path: string) => boolean,
-): unknown[] => parsed.filter((source) => match(source.path)).map((source) => source.value);
+const ETC_MANAGED = '/etc/grok/managed_config.toml';
+
+const sourceRole = (source: Pick<GrokPolicySource, 'path' | 'role'>): GrokPolicySourceRole => {
+  if (source.role !== undefined) return source.role;
+  if (source.path === ETC_MANAGED) return 'managed';
+  if (source.path.endsWith('requirements.toml') || source.path === 'ai.x.grok') return 'requirements';
+  return 'overlay';
+};
+
+type ParsedSource = { readonly path: string; readonly value: unknown; readonly role: GrokPolicySourceRole };
+
+const valuesIn = (parsed: readonly ParsedSource[], role: GrokPolicySourceRole): unknown[] =>
+  parsed.filter((source) => source.role === role).map((source) => source.value);
 
 const firstString = (
   root: unknown,
@@ -122,13 +128,13 @@ const rejectMergedAliases = (
 };
 
 const sourcedField = (
-  parsed: readonly { readonly path: string; readonly value: unknown }[],
+  parsed: readonly ParsedSource[],
   paths: readonly (readonly string[])[],
-  match: (path: string) => boolean,
+  role: GrokPolicySourceRole,
 ): { path: string; value: string } | undefined => {
   let found: { path: string; value: string } | undefined;
   for (const source of parsed) {
-    if (!match(source.path)) continue;
+    if (source.role !== role) continue;
     const field = firstString(source.value, paths);
     if (field !== undefined) found = field;
   }
@@ -243,12 +249,16 @@ export function checkGrokPolicy(
   } catch {
     throw new Error(UNVERIFIABLE);
   }
-  const parsed = policy.sources.map((source) => ({ path: source.path, value: parseSource(source) }));
+  const parsed = policy.sources.map((source) => ({
+    path: source.path,
+    value: parseSource(source),
+    role: sourceRole(source),
+  }));
   const layers = [
-    ...valuesIn(parsed, isManaged),
+    ...valuesIn(parsed, 'managed'),
     user,
-    ...valuesIn(parsed, (path) => !isManaged(path) && !isRequirements(path)),
-    ...valuesIn(parsed, isRequirements),
+    ...valuesIn(parsed, 'overlay'),
+    ...valuesIn(parsed, 'requirements'),
   ];
   const expectedOrigin = originOf(endpoint);
   if (expectedOrigin === undefined) throw new Error('invalid endpoint');
@@ -257,7 +267,7 @@ export function checkGrokPolicy(
   for (const field of MANAGED_FIELDS) {
     const desired = field.desired(endpoint, command);
     rejectMergedAliases([user, ...parsed.map((source) => source.value)], field.paths, conflicts);
-    const pin = sourcedField(parsed, field.paths, isRequirements);
+    const pin = sourcedField(parsed, field.paths, 'requirements');
     if (pin !== undefined) {
       if (pin.value !== desired) pushUnique(conflicts, pin.path);
       continue;
@@ -267,7 +277,7 @@ export function checkGrokPolicy(
       if (envValue !== desired) pushUnique(conflicts, field.paths[0]!.join('.'));
       continue;
     }
-    const overlay = sourcedField(parsed, field.paths, isOverlay);
+    const overlay = sourcedField(parsed, field.paths, 'overlay');
     if (overlay !== undefined && overlay.value !== desired) {
       pushUnique(conflicts, overlay.path);
     }

@@ -69,6 +69,7 @@ export type GrokCompatFixture = {
   readonly helperCaptureDir: string;
   readonly records: readonly GrokCompatHttpRecord[];
   readonly proxyLogs: { readonly stdout: string; readonly stderr: string };
+  readonly sandboxExec: string | null;
   wrapAuthCommand(): Promise<void>;
   run(argv: readonly string[], timeoutMs?: number): Promise<GrokCompatCommandResult>;
   start(argv: readonly string[]): GrokCompatChild;
@@ -312,6 +313,7 @@ export async function createGrokCompatFixture(options: GrokCompatOptions): Promi
     helperCaptureDir,
     records,
     proxyLogs: proxy.logs,
+    sandboxExec: sandbox,
     async wrapAuthCommand() {
       const configPath = join(grokHome, 'config.toml');
       const text = await Bun.file(configPath).text();

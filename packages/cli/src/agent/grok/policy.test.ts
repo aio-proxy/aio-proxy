@@ -274,8 +274,26 @@ test('GROK_CONFIG_PATH overlay is collected when present', async () => {
   try {
     await writeFile(overlay, '{"ui":{"theme":"dark"}}\n', { mode: 0o600 });
     const visible = await readGrokPolicy(root, { GROK_CONFIG_PATH: overlay });
-    expect(visible.sources).toEqual([{ path: overlay, text: '{"ui":{"theme":"dark"}}\n', kind: 'json' }]);
+    expect(visible.sources).toEqual([
+      { path: overlay, text: '{"ui":{"theme":"dark"}}\n', kind: 'json', role: 'overlay' },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('GROK_CONFIG_PATH named managed_config.toml is an overlay conflict', () => {
+  const text = `[endpoints]\nmodels_list_url = "${ENDPOINT}/v1/models"\n`;
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [
+      {
+        path: '/var/tmp/overlay/managed_config.toml',
+        kind: 'toml',
+        text: '[endpoints]\nmodels_list_url = "https://api.x.ai/v1/models"\n',
+      },
+    ],
+  });
+  expect(conflicts).toContain('endpoints.models_list_url');
+  expect(conflicts.join(',')).not.toContain('https://api.x.ai');
 });
