@@ -106,6 +106,20 @@ async function freeLoopbackPort(): Promise<number> {
   });
 }
 
+export async function waitForLocalHealth(port: number, deadline: number, live: () => boolean): Promise<boolean> {
+  while (live() && Date.now() < deadline) {
+    const remaining = Math.max(0, deadline - Date.now());
+    if (remaining === 0) return false;
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(remaining) })).ok) {
+        return true;
+      }
+    } catch {}
+    await Bun.sleep(50);
+  }
+  return false;
+}
+
 async function startProxy(
   cliBinary: string,
   env: Record<string, string>,
@@ -142,14 +156,9 @@ async function startProxy(
     return code;
   });
   const deadline = Date.now() + 15_000;
-  while (live && Date.now() < deadline) {
-    try {
-      if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) {
-        void reading;
-        return { child, logs, abort };
-      }
-    } catch {}
-    await Bun.sleep(50);
+  if (await waitForLocalHealth(port, deadline, () => live)) {
+    void reading;
+    return { child, logs, abort };
   }
   try {
     child.kill();

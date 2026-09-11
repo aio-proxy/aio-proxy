@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,7 +7,7 @@ import { requireCurrent } from '../grok/lifecycle';
 import { parseGrokOwnership } from '../grok/ownership';
 import { awaitChild, startArgv } from './compat-child';
 import { approveDashboardAuthorization } from './dashboard-approve';
-import { createGrokCompatFixture, GrokCompatProxyError, spawnArgv } from './fixture';
+import { createGrokCompatFixture, GrokCompatProxyError, spawnArgv, waitForLocalHealth } from './fixture';
 import {
   compatScriptShouldFail,
   loopbackRecorderCase,
@@ -489,6 +489,33 @@ test('fixture isolates HOME, GROK_HOME, and AIO_PROXY_HOME and writes hooks-off 
     if (previousGrok === undefined) delete process.env['GROK_XAI_API_BASE_URL'];
     else process.env['GROK_XAI_API_BASE_URL'] = previousGrok;
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a hung proxy health probe fails within the remaining startup deadline', async () => {
+  const realFetch = globalThis.fetch.bind(globalThis);
+  const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    if (String(input).includes('/health')) {
+      return new Promise((_, reject) => {
+        const signal = init?.signal;
+        if (signal === undefined) return;
+        signal.addEventListener(
+          'abort',
+          () => {
+            reject(signal.reason ?? new Error('aborted'));
+          },
+          { once: true },
+        );
+      });
+    }
+    return realFetch(input, init);
+  });
+  try {
+    const started = Date.now();
+    expect(await waitForLocalHealth(1, Date.now() + 80, () => true)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    fetchSpy.mockRestore();
   }
 });
 
