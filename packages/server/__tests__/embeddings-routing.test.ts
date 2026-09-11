@@ -78,13 +78,13 @@ describe('embeddings HTTP dispatch matrix', () => {
     expect(embed.calls.raw).toBe(1);
     expect(embed.calls.model).toBe(0);
     expect(embed.forwarded[0] && new URL(embed.forwarded[0].url).pathname).toBe('/v1beta/models/m:embedContent');
-    expect(await embed.forwarded[0]?.json()).toMatchObject({ model: 'models/m' });
+    expect(embed.forwarded[0]?.body).toMatchObject({ model: 'models/m' });
 
     const batch = provider(ProviderProtocol.Gemini, 'gemini-batch');
     const batchResponse = await request(GEMINI_BATCH_EMBED, [batch.value]);
     expect(batchResponse.status).toBe(200);
     expect(batch.forwarded[0] && new URL(batch.forwarded[0].url).pathname).toBe('/v1beta/models/m:batchEmbedContents');
-    expect(await batch.forwarded[0]?.json()).toMatchObject({
+    expect(batch.forwarded[0]?.body).toMatchObject({
       requests: [{ model: 'models/m' }, { model: 'models/m' }],
     });
   });
@@ -141,6 +141,7 @@ describe('embeddings HTTP dispatch matrix', () => {
 });
 
 type Calls = { model: number; raw: number; embed: number };
+type Forwarded = { readonly url: string; readonly body: unknown };
 type ResolveInput = {
   readonly protocol: ProviderProtocol;
   readonly modelId: string;
@@ -157,14 +158,20 @@ function provider(
   } = {},
 ): {
   readonly calls: Calls;
-  readonly forwarded: Request[];
+  readonly forwarded: Forwarded[];
   readonly value: RuntimeProviderInstance;
 } {
   const calls: Calls = { model: 0, raw: 0, embed: 0 };
-  const forwarded: Request[] = [];
+  const forwarded: Forwarded[] = [];
   const invokeRaw = async (request: Request) => {
     calls.raw += 1;
-    forwarded.push(request);
+    let body: unknown;
+    try {
+      body = await request.clone().json();
+    } catch {
+      body = undefined;
+    }
+    forwarded.push({ url: request.url, body });
     return new Response(`raw:${protocol}`);
   };
   return {

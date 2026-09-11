@@ -293,6 +293,7 @@
       "status_description": "Show the background service status",
       "installed": "Service installed at {path}",
       "uninstalled": "Service removed from {path}",
+      "auto_install_failed": "Automatic service installation or startup failed: {reason}. Run `aio-proxy service install --user`, then `aio-proxy service start` after resolving the error.",
       "command_failed": "Service command failed: {command} (exit {code})",
       "unsupported_platform": "The service command does not support this platform: {platform}",
       "system_unsupported": "System-scope install is not yet supported; install as a per-user service instead",

@@ -181,6 +181,7 @@ function toBillableUsage(
       };
     }
     case ProviderProtocol.OpenAIImage:
+    case ProviderProtocol.OpenAIVideo:
       return usage;
     default: {
       const _exhaustive: never = accounting.protocol;

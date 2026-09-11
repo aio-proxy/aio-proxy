@@ -3,6 +3,7 @@ import {
   RequestBodyTooLargeError,
   releaseMultipartSpool,
   RouterModelNotFoundError,
+  transferMultipartSpool,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import type { ProviderProtocol } from '@aio-proxy/types';
@@ -11,7 +12,7 @@ import { context } from '@opentelemetry/api';
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
 import { requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
-import type { ProviderRouteSource } from '../../runtime';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
@@ -22,6 +23,11 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
+  readonly onSuccessfulAttempt?: (info: {
+    readonly provider: RuntimeProviderInstance;
+    readonly modelId: string;
+    readonly response: Response;
+  }) => void | Promise<void>;
 };
 
 export async function handleProtocolRequest<TRequest, TContext>(
@@ -55,7 +61,12 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
   let releaseRetainedBody = false;
   try {
     try {
+      // Create pre-parse retains a multipart spool on this Request. Debug
+      // observation wraps a new identity; move the spool or the second parse
+      // rereads an already-consumed body.
+      const inbound = rawRequest;
       rawRequest = observeInboundRequest(rawRequest, inboundProtocol);
+      transferMultipartSpool(inbound, rawRequest);
     } catch (error) {
       await cancelRetainedRequestBody(rawRequest, error);
       throw error;
@@ -128,6 +139,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       session,
       source,
       streamRequested,
+      ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
     });
   } catch (error) {
     const cancelled = isInboundAbort(error, rawRequest.signal);
@@ -224,6 +236,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
   readonly streamRequested: boolean;
+  readonly onSuccessfulAttempt?: HandleProtocolRequestOptions<TRequest, TContext>['onSuccessfulAttempt'];
 }): Promise<Response> {
   const {
     adapter,
@@ -277,6 +290,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
       session,
       source,
       streamRequested,
+      ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
     });
   } catch (error) {
     if (!(error instanceof RouterModelNotFoundError)) throw error;
@@ -299,9 +313,18 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
 // inbound capability". Each protocol's error mapper turns its own sentinel into
 // the protocol-shaped 501; `transform_dispatch` is the language default.
 function noCandidateFeature(capability: InboundCapability): string {
-  if (capability === 'image') return 'images';
-  if (capability === 'speech' || capability === 'transcription') return 'audio';
-  return 'transform_dispatch';
+  switch (capability) {
+    case 'image':
+      return 'images';
+    case 'speech':
+    case 'transcription':
+      return 'audio';
+    case 'video':
+      return 'video';
+    case 'language':
+    case 'embedding':
+      return 'transform_dispatch';
+  }
 }
 
 function rejectRequest(options: {

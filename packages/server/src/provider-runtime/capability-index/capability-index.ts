@@ -73,6 +73,9 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
     if (finiteIds.has(id) && synthesizesEmbedding(input) && !imageOnly) capabilities.add('embedding');
     if (finiteIds.has(id) && protocolServed.has('speech')) capabilities.add('speech');
     if (finiteIds.has(id) && protocolServed.has('transcription')) capabilities.add('transcription');
+    if (finiteIds.has(id) && protocolServed.has('video')) capabilities.add('video');
+    if (metadataHasVideoOutput(input.upstreamMetadata?.[id])) capabilities.add('video');
+    if (catalogOnlyVideoOutput(input, id)) capabilities.add('video');
     if (capabilities.size > 0) index[id] = capabilities;
   }
   return index;
@@ -100,6 +103,7 @@ const PROTOCOL_CAPABILITIES: Readonly<Record<ProviderProtocol, readonly InboundC
   // upstream rejects the mismatched one. Granting neither would leave an
   // audio-only provider unroutable.
   [ProviderProtocol.OpenAIAudio]: ['speech', 'transcription'],
+  [ProviderProtocol.OpenAIVideo]: ['video'],
 };
 
 // The optional chain is load-bearing despite the total Record type: a protocol
@@ -178,8 +182,21 @@ export function supportsTranscription(index: ModelCapabilityIndex, modelId: stri
   return index[modelId]?.has('transcription') === true;
 }
 
+export function supportsVideo(index: ModelCapabilityIndex, modelId: string): boolean {
+  return index[modelId]?.has('video') === true;
+}
+
 export function metadataHasImageOutput(metadata: ModelMetadata | RuntimeModelMetadata | undefined): boolean {
   return metadata?.capabilities?.modalities?.output?.includes('image') === true;
+}
+
+export function metadataHasVideoOutput(metadata: ModelMetadata | RuntimeModelMetadata | undefined): boolean {
+  return metadata?.capabilities?.modalities?.output?.includes('video') === true;
+}
+
+function catalogOnlyVideoOutput(input: CapabilityIndexInput, id: string): boolean {
+  if (input.upstreamMetadata?.[id]?.capabilities?.modalities?.output !== undefined) return false;
+  return metadataHasVideoOutput(input.catalogMetadata?.[id]);
 }
 
 // Provider-agnostic transport plumbing: does ANY router policy declare image

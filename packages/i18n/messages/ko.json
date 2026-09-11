@@ -292,6 +292,7 @@
       "status_description": "백그라운드 서비스 상태 표시",
       "installed": "서비스가 {path}에 설치되었습니다",
       "uninstalled": "서비스가 {path}에서 제거되었습니다",
+      "auto_install_failed": "서비스 자동 설치 또는 시작에 실패했습니다: {reason}. 오류를 해결한 후 `aio-proxy service install --user`와 `aio-proxy service start`를 실행하세요.",
       "command_failed": "서비스 명령이 실패했습니다: {command} (종료 코드 {code})",
       "unsupported_platform": "이 서비스 명령은 현재 플랫폼을 지원하지 않습니다: {platform}",
       "system_unsupported": "시스템 범위 설치는 아직 지원되지 않습니다. 대신 사용자별 서비스로 설치하세요",

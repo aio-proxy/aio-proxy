@@ -292,6 +292,7 @@
       "status_description": "檢視背景服務狀態",
       "installed": "服務已安裝至 {path}",
       "uninstalled": "服務已從 {path} 移除",
+      "auto_install_failed": "自動安裝或啟動背景服務失敗：{reason}。解決上述錯誤後，請執行 `aio-proxy service install --user`，再執行 `aio-proxy service start`。",
       "command_failed": "服務命令執行失敗：{command}（結束代碼 {code}）",
       "unsupported_platform": "service 命令不支援目前平台：{platform}",
       "system_unsupported": "暫不支援系統層級安裝，請改用使用者層級服務安裝",

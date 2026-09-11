@@ -44,6 +44,7 @@ export const pluginProtocol = {
   'gemini-interactions': 'gemini-interactions',
   'openai-image': 'openai-image',
   'openai-audio': 'openai-audio',
+  'openai-video': 'openai-video',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
 export function catalogModelIds(

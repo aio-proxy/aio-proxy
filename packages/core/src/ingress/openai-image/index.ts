@@ -3,6 +3,7 @@ export {
   parseOpenAIImageEditsMultipart,
   releaseMultipartSpool,
   replaySpooledMultipartRaw,
+  transferMultipartSpool,
 } from './multipart';
 export {
   CPA_DEFAULT_IMAGE_MODEL,

@@ -7,6 +7,7 @@ export {
   supportsLanguage,
   supportsSpeech,
   supportsTranscription,
+  supportsVideo,
 } from './capability-index';
 export type { CapabilityIndexInput } from './capability-index';
 export {

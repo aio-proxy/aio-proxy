@@ -8,6 +8,7 @@ import {
   supportsLanguage,
   supportsSpeech,
   supportsTranscription,
+  supportsVideo,
 } from '../../../../provider-runtime';
 import type { ModelCapabilityIndex, RuntimeProviderInstance } from '../../../../runtime';
 import { publicSlug } from '../../public-slug';
@@ -30,6 +31,7 @@ export function filterCandidatesByCapability<
     if (capability === 'speech' || capability === 'transcription') {
       return candidateSupportsAudio(candidate, capability);
     }
+    if (capability === 'video') return supportsVideo(candidate.provider.capabilityIndex, candidate.modelId);
     return supportsLanguage(candidate.provider.capabilityIndex, candidate.modelId);
   });
 }
