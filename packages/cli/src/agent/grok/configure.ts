@@ -7,8 +7,10 @@ import {
   createPrivateDir,
   grokPaths,
   inspectPath,
+  isRecoverableBootstrapPrivateDir,
   readGrokFile,
   readGrokPrivateFile,
+  removeGrokOwnedTemporaryFiles,
   removeMatchingDir,
   removeMatchingFile,
   type GrokFileIdentity,
@@ -180,7 +182,17 @@ async function configureFirst(
   let markerWritten = false;
   try {
     if (reuse === undefined) {
-      privateDir = await createPrivateDir(paths.privateDir);
+      const existing = await inspectPath(paths.privateDir);
+      if (existing === undefined) {
+        privateDir = await createPrivateDir(paths.privateDir);
+      } else {
+        assertSafePrivateDir(existing);
+        if (!(await isRecoverableBootstrapPrivateDir(paths.privateDir))) {
+          throw new Error('Grok private directory already exists');
+        }
+        await removeGrokOwnedTemporaryFiles(paths);
+        privateDir = { path: paths.privateDir, dev: existing.dev, ino: existing.ino };
+      }
       await testDeps?.failpoint?.('private_dir');
     }
     await persistOwnership(lock, paths, pending, reuse?.ownership, budget);
@@ -272,7 +284,7 @@ async function configureGrokInternal(
             // Foreign or invalid leftover ownership is not taken over.
           }
         }
-        throw new Error('Grok private directory already exists');
+        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config, budget), testDeps);
       }
       if (ownershipFile !== undefined) {
         try {

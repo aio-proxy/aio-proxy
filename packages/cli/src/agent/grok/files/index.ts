@@ -7,6 +7,7 @@ export {
   inspectPath,
   isFsCode,
   isGrokOwnedTmpName,
+  isRecoverableBootstrapPrivateDir,
   listGrokDirectoryNames,
   readGrokCredentialText,
   readGrokFile,

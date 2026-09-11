@@ -7,6 +7,7 @@ import {
   captureIdentity,
   grokPaths,
   inspectPath,
+  isRecoverableBootstrapPrivateDir,
   readGrokFile,
   readGrokPrivateFile,
   unlinkGrokFile,
@@ -203,6 +204,23 @@ async function removeGrokInternal(
           } catch {
             return conflictExisting();
           }
+        }
+        if (await isRecoverableBootstrapPrivateDir(paths.privateDir)) {
+          const retainedFiles = await cleanupPrivateDir(
+            lock,
+            paths,
+            privateDir,
+            undefined,
+            undefined,
+            budget,
+            testDeps,
+          );
+          return {
+            installationId: '00000000-0000-0000-0000-000000000000',
+            revokeStatus: 'missing',
+            skippedFields: [],
+            retainedFiles,
+          };
         }
         return narrowCompletedRemoval(lock, paths, privateDir, budget, testDeps);
       }

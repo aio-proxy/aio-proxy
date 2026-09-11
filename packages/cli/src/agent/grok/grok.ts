@@ -9,6 +9,7 @@ import {
   assertSafeRoot,
   grokPaths,
   inspectPath,
+  isRecoverableBootstrapPrivateDir,
   readGrokCredentialText,
   readGrokFile,
   readGrokPrivateFile,
@@ -127,7 +128,10 @@ async function inspectManagedRoot(root: string, adapterVersion: string): Promise
   if (privateStat === undefined) return absentInspection();
   assertSafePrivateDir(privateStat);
   const markerFile = await readGrokPrivateFile(paths.marker, 'marker');
-  if (markerFile === undefined) return conflictInspection();
+  if (markerFile === undefined) {
+    if (await isRecoverableBootstrapPrivateDir(paths.privateDir)) return absentInspection();
+    return conflictInspection();
+  }
   const markerKind = peekManagedFormat(markerFile.text);
   if (markerKind === 'newer') {
     return { integrationKind: 'auth-command', integration: 'newer', configuration: 'missing', fields: [] };

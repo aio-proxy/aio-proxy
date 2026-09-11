@@ -92,8 +92,35 @@ test('a private directory without a marker is a conflict and is not taken over',
   const f = await grokFixture();
   try {
     await mkdir(join(f.root, 'aio-proxy'), { mode: 0o700 });
+    await writeFile(join(f.root, 'aio-proxy', 'notes.txt'), 'keep\n', { mode: 0o600 });
     await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/already exists/);
     expect(await inspectGrok(f.root, f.input.adapterVersion)).toMatchObject({ integration: 'conflict' });
+    expect(await readFile(join(f.root, 'aio-proxy', 'notes.txt'), 'utf8')).toBe('keep\n');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('an empty private directory left before the bootstrap journal is recovered', async () => {
+  const f = await grokFixture();
+  try {
+    await mkdir(join(f.root, 'aio-proxy'), { mode: 0o700 });
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).integration).toBe('absent');
+    const installed = await configureGrok(f.input, f.deps);
+    expect(installed.status).toBe('installed');
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).configuration).toBe('current');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('remove deletes an empty private directory left before the bootstrap journal', async () => {
+  const f = await grokFixture();
+  try {
+    await mkdir(join(f.root, 'aio-proxy'), { mode: 0o700 });
+    const removed = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(removed.revokeStatus).toBe('missing');
+    expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
   } finally {
     await f.cleanup();
   }

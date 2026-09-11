@@ -304,3 +304,13 @@ export async function removeGrokOwnedTemporaryFiles(paths: GrokPaths): Promise<v
   }
   await removeOwnedGrokTmp(paths.root, 'config.toml');
 }
+
+export async function isRecoverableBootstrapPrivateDir(privateDir: string): Promise<boolean> {
+  const names = await listGrokDirectoryNames(privateDir);
+  for (const name of names) {
+    if (!OWNED_PRIVATE_BASENAMES.some((basename) => isGrokOwnedTmpName(name, basename))) return false;
+    const stats = await inspectPath(join(privateDir, name));
+    if (stats === undefined || stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) return false;
+  }
+  return true;
+}
