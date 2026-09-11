@@ -2,7 +2,7 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText, remainingReadMs } from '../read-bounded';
+import { MAX_GROK_FILE_BYTES, readBoundedStream, readOpenFileText, remainingReadMs } from '../read-bounded';
 import type { GrokDeadline, GrokPolicySource, GrokVisiblePolicy } from '../types';
 
 const UNVERIFIABLE = 'Grok visible policy unverifiable';
@@ -108,9 +108,16 @@ const captureTimed = async (
     stderr: 'pipe',
     signal,
   });
+  const bound = {
+    maxBytes: MAX_GROK_FILE_BYTES,
+    budget,
+    limitError: () => new Error(UNVERIFIABLE),
+  };
   try {
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
+    const [stdout, stderr] = await Promise.all([
+      readBoundedStream(proc.stdout, bound),
+      readBoundedStream(proc.stderr, bound),
+    ]);
     const code = await proc.exited;
     if (code === 0) return { stdout };
     if (isMissingDomain(stderr)) return 'absent';

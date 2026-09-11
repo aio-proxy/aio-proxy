@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText, type ReadableFileHandle } from './read-bounded';
+import { MAX_GROK_FILE_BYTES, readBoundedStream, readOpenFileText, type ReadableFileHandle } from './read-bounded';
 
 test('an oversized handle is rejected before reading', async () => {
   let reads = 0;
@@ -66,4 +66,20 @@ test('abort closes the handle so a stalled read fails within the budget', async 
   ).rejects.toThrow('limit');
   expect(Date.now() - started).toBeLessThan(1_000);
   expect(closed).toBeGreaterThan(0);
+});
+
+test('a stream is rejected once it exceeds the byte cap', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(8).fill(97));
+      controller.enqueue(new Uint8Array(8).fill(98));
+      controller.close();
+    },
+  });
+  await expect(
+    readBoundedStream(stream, {
+      maxBytes: 10,
+      limitError: () => new Error('limit'),
+    }),
+  ).rejects.toThrow('limit');
 });

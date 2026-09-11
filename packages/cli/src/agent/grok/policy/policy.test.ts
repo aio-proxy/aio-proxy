@@ -1,9 +1,10 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { grokAuthCommand } from '../grok';
+import { MAX_GROK_FILE_BYTES } from '../read-bounded';
 import { checkGrokPolicy, readGrokPolicy } from './policy';
 
 const ENDPOINT = 'http://127.0.0.1:9317';
@@ -231,6 +232,38 @@ test('an unreadable policy file cannot be ignored', async () => {
   } finally {
     await chmod(path, 0o600).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an oversized macOS policy command is unverifiable before the full output is kept', async () => {
+  const original = process.platform;
+  Object.defineProperty(process, 'platform', { value: 'darwin' });
+  const which = spyOn(Bun, 'which').mockImplementation((command) =>
+    command === 'defaults' || command === 'plutil' ? `/bin/${command}` : null,
+  );
+  const spawn = spyOn(Bun, 'spawn').mockImplementation((() => ({
+    stdout: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(MAX_GROK_FILE_BYTES + 1));
+        controller.close();
+      },
+    }),
+    stderr: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    }),
+    exited: Promise.resolve(0),
+    kill() {},
+  })) as typeof Bun.spawn);
+  try {
+    const started = Date.now();
+    await expect(readGrokPolicy('/tmp', {})).rejects.toThrow(/unverifiable/i);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  } finally {
+    spawn.mockRestore();
+    which.mockRestore();
+    Object.defineProperty(process, 'platform', { value: original });
   }
 });
 

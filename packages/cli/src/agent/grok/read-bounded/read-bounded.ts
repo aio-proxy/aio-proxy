@@ -57,3 +57,49 @@ export async function readOpenFileText(
     signal.removeEventListener('abort', cancel);
   }
 }
+
+export async function readBoundedStream(
+  stream: ReadableStream<Uint8Array> | undefined,
+  options: {
+    readonly maxBytes: number;
+    readonly budget?: GrokDeadline;
+    readonly limitError: () => Error;
+  },
+): Promise<string> {
+  if (stream === undefined) return '';
+  const timeoutMs = remainingReadMs(options.budget);
+  if (timeoutMs === 0) throw options.limitError();
+  options.budget?.signal.throwIfAborted();
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(timeoutMs),
+    ...(options.budget === undefined ? [] : [options.budget.signal]),
+  ]);
+  const reader = stream.getReader();
+  const onAbort = (): void => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
+  if (signal.aborted) onAbort();
+  const decoder = new TextDecoder();
+  let text = '';
+  let bytes = 0;
+  try {
+    while (true) {
+      if (signal.aborted) throw options.limitError();
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value === undefined) continue;
+      bytes += value.byteLength;
+      if (bytes > options.maxBytes) throw options.limitError();
+      text += decoder.decode(value, { stream: true });
+    }
+    if (signal.aborted) throw options.limitError();
+    text += decoder.decode();
+    return text;
+  } catch (error) {
+    if (signal.aborted) throw options.limitError();
+    throw error;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
