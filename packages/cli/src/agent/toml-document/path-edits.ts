@@ -151,7 +151,10 @@ const lastImplicitSibling = (
     const prefix = path.slice(0, index);
     if (findTable(document, prefix) !== undefined || findInlineContainer(document, prefix) !== undefined) continue;
     const siblings = document.values.filter(
-      (value) => isPrefix(prefix, value.path) && value.path.length > prefix.length,
+      (value) =>
+        value.container.type === 'TOMLTopLevelTable' &&
+        isPrefix(prefix, value.path) &&
+        value.path.length > prefix.length,
     );
     if (siblings.length === 0) continue;
     const last = siblings.reduce((current, value) =>

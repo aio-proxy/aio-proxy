@@ -264,6 +264,29 @@ test('inserts siblings into an implicit dotted-key table without a new header', 
   expect(parsed.endpoints.models_base_url).toBe('http://127.0.0.1:9/v1');
 });
 
+test('creates a new header beside an explicit nested sibling table', () => {
+  const source = '[model_providers.other]\nname = "keep"\n';
+  const result = editTomlFields(
+    source,
+    [
+      { path: ['model_providers', 'proxy.team', 'name'], next: { present: true, value: 'aio-proxy' } },
+      { path: ['model_providers', 'proxy.team', 'base_url'], next: { present: true, value: 'url' } },
+    ],
+    { tomlVersion: '1.1' },
+  );
+  expect(result.text).toContain('[model_providers.other]\nname = "keep"\n');
+  expect(result.text).not.toContain('name = "keep"\nmodel_providers.');
+  const parsed = Bun.TOML.parse(result.text) as {
+    readonly model_providers: {
+      readonly other: { readonly name: string };
+      readonly 'proxy.team': { readonly name: string; readonly base_url: string };
+    };
+  };
+  expect(parsed.model_providers.other.name).toBe('keep');
+  expect(parsed.model_providers['proxy.team'].name).toBe('aio-proxy');
+  expect(parsed.model_providers['proxy.team'].base_url).toBe('url');
+});
+
 test('collects dotted implicit parent paths without joining segments', () => {
   const inspected = inspectTomlPaths('model_providers.proxy.name = "x"\n', { tomlVersion: '1.1' });
   expect(inspected.fieldPaths).toContainEqual(['model_providers', 'proxy', 'name']);
