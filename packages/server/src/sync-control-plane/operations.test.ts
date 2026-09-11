@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import type { EntityBody, LocalEntity } from '@aio-proxy/core';
 import type { SyncPreviewInput } from '@aio-proxy/types';
 
-import { applyPreview, SyncOperationError, type OperationInput } from './operations';
+import { applyPreview, assertDecisions, SyncOperationError, type OperationInput } from './operations';
 import type { PreviewCandidate, PreviewFence, PreviewRecord, RemoteEntity } from './preview';
 
 const fence: PreviewFence = {
@@ -104,6 +104,25 @@ function record(input: SyncPreviewInput, rows: readonly PreviewCandidate[], extr
     ...extra,
   } satisfies PreviewRecord;
 }
+
+function localOnly(objectId: string, logicalKey: string): PreviewCandidate {
+  const base = candidate(objectId, 'provider', logicalKey);
+  return { ...base, cloud: null, row: { ...base.row, change: 'add', cloud: null, choices: ['local'] } };
+}
+
+test('connecting may leave out a decision only for a row with nothing on the cloud side', () => {
+  const connect: SyncPreviewInput = { kind: 'connect', plugin: '@example/backend', capability: 'cloud', options: {} };
+
+  // Connect's default is "every object excluded until it is joined", so a local-only row is skipped.
+  expect(() => assertDecisions(record(connect, [localOnly('provider-a', 'work')]), [])).not.toThrow();
+  // A row carrying cloud state would be imported unreviewed by the post-swap reconciliation.
+  expect(() => assertDecisions(record(connect, [candidate('provider-a', 'provider', 'work')]), [])).toThrow(
+    SyncOperationError,
+  );
+  expect(() =>
+    assertDecisions(record({ kind: 'join', providerId: 'work' }, [localOnly('provider-a', 'work')]), []),
+  ).toThrow(SyncOperationError);
+});
 
 test('a plugin purge refuses to erase the transitive dependents the preview listed', async () => {
   const scenario = harness();

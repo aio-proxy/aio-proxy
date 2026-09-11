@@ -5,7 +5,7 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { PreviewFence, PreviewRecord, RemoteEntity } from './preview';
+import type { PreviewCandidate, PreviewFence, PreviewRecord, RemoteEntity } from './preview';
 import { SyncPreviewError, sameFence } from './preview';
 
 export class SyncOperationError extends Error {
@@ -211,10 +211,16 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
     throw new SyncOperationError('upgrade-required');
   // Applying consumes the preview, so an omitted decision would silently skip its row and still
   // report success. Overrides are worse: their paths persist before the decision loop below.
-  // Connecting is not exempt: it applies its decisions like any other kind, and skipping a row
-  // there lets the post-swap reconciliation import that cloud object with no explicit choice. A
-  // blank backend has no rows, so its empty decision set still passes.
-  if (selected.size !== rowIds.size) throw new SyncOperationError('upgrade-required');
+  // Connecting is the one exception, and only for a row with nothing on the cloud side: it joins
+  // nothing, so leaving it out is how connect's documented default — every object excluded until
+  // it is joined — is expressed. A row carrying cloud state still needs an explicit choice,
+  // because the post-swap reconciliation would otherwise import it unreviewed.
+  const joinable =
+    record.input.kind !== 'connect'
+      ? () => true
+      : (candidate: PreviewCandidate) => candidate.cloud !== null || (candidate.restoreBody ?? null) !== null;
+  if (record.rows.some((candidate) => !selected.has(candidate.row.objectId) && joinable(candidate)))
+    throw new SyncOperationError('upgrade-required');
   for (const candidate of record.rows) {
     const decision = selected.get(candidate.row.objectId);
     if (decision === undefined) continue;
