@@ -4,6 +4,7 @@ import {
   MAX_GROK_FILE_BYTES,
   readBoundedStream,
   readOpenFileText,
+  withHandleBudget,
   withReadBudget,
   type ReadableFileHandle,
 } from './read-bounded';
@@ -55,6 +56,26 @@ test('an expired budget is rejected before reading', async () => {
     }),
   ).rejects.toThrow('limit');
   expect(reads).toBe(0);
+});
+
+test('a stalled handle operation fails without awaiting close', async () => {
+  let closed = 0;
+  const started = Date.now();
+  await expect(
+    withHandleBudget(
+      {
+        close: async () => {
+          closed += 1;
+          await new Promise(() => {});
+        },
+      },
+      { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) },
+      () => new Error('limit'),
+      () => new Promise<never>(() => {}),
+    ),
+  ).rejects.toThrow('limit');
+  expect(Date.now() - started).toBeLessThan(1_000);
+  expect(closed).toBeGreaterThan(0);
 });
 
 test('abort closes the handle so a stalled read fails within the budget', async () => {

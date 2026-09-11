@@ -3,7 +3,7 @@ import { constants, type Stats } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { MAX_GROK_FILE_BYTES, readOpenFileText, withReadBudget } from '../read-bounded';
+import { MAX_GROK_FILE_BYTES, readOpenFileText, withHandleBudget, withReadBudget } from '../read-bounded';
 import type { GrokDeadline } from '../types';
 
 export type GrokFileSnapshot = {
@@ -224,12 +224,12 @@ export async function replaceGrokFile(
   try {
     const handle = await withReadBudget(budget, unverifiable, () => open(temporaryPath, WRITE_FLAGS, 0o600));
     try {
-      await withReadBudget(budget, unverifiable, () => handle.writeFile(text));
-      await withReadBudget(budget, unverifiable, () => handle.sync());
-      const stats = await withReadBudget(budget, unverifiable, () => handle.stat());
+      await withHandleBudget(handle, budget, unverifiable, () => handle.writeFile(text));
+      await withHandleBudget(handle, budget, unverifiable, () => handle.sync());
+      const stats = await withHandleBudget(handle, budget, unverifiable, () => handle.stat());
       temporary = { path: temporaryPath, dev: stats.dev, ino: stats.ino };
     } finally {
-      await handle.close();
+      void handle.close().catch(() => undefined);
     }
     if (expected !== undefined) {
       await withReadBudget(budget, unverifiable, () => chmod(temporaryPath, expected.mode & 0o777));
