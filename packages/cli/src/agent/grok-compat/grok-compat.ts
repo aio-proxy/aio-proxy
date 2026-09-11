@@ -108,7 +108,7 @@ function namedNotRunGates(platform: string): GrokCompatCase[] {
 async function probeUnimplementedHelperUrl(endpoint: string): Promise<GrokCompatCase> {
   const url = `${endpoint}/__grok_unavailable/managed-config`;
   try {
-    const response = await fetch(url, { redirect: 'manual' });
+    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(LOGIN_WAIT_MS) });
     const location = response.headers.get('location') ?? '';
     if (response.status !== 404) {
       return failed('helper-404', `expected 404 from ${url}, got ${String(response.status)}`);
@@ -155,40 +155,50 @@ async function runJourney(fixture: GrokCompatFixture, options: GrokCompatOptions
   cases.push(await probeUnimplementedHelperUrl(fixture.endpoint));
   const configure = await fixture.run([options.cliBinary, 'agent', 'configure', 'grok']);
   cases.push(fromChild('configure', configure));
-  if (configure.exitCode === 0) await fixture.wrapAuthCommand();
-  const loginChild = fixture.start([options.grokBinary, 'login']);
-  const loginStarted = Date.now();
-  const loginSignal = AbortSignal.timeout(LOGIN_WAIT_MS);
-  try {
-    const verification = await waitForVerificationUrl({
-      captureDir: fixture.helperCaptureDir,
-      stderr: () => loginChild.stderr(),
-      timeoutMs: LOGIN_WAIT_MS,
-      finished: () => loginChild.finished(),
-    });
-    await approveDashboardAuthorization({
-      endpoint: fixture.endpoint,
-      password: fixture.dashboardPassword,
-      verificationUrl: verification.url,
-      signal: loginSignal,
-    });
-    cases.push(passed('approve', 'Dashboard login/CSRF/approve succeeded'));
-  } catch (error) {
-    loginChild.kill();
-    cases.push(failed('approve', error instanceof Error ? error.message : String(error)));
-  }
-  const login = await awaitChild(loginChild, Math.max(0, LOGIN_WAIT_MS - (Date.now() - loginStarted)));
-  cases.push(fromChild('login', login));
-  cases.push(await helperStdoutContractCase(fixture.helperCaptureDir, login.stderr));
-  cases.push(fromChild('models', await fixture.run([options.grokBinary, 'models'])));
-  const prompt = await fixture.run(
-    [options.grokBinary, '-p', '--no-session', '-m', 'compat-grok-model', 'compat'],
-    60_000,
-  );
-  if (prompt.exitCode === 0 && !prompt.stdout.includes('compat-ok')) {
-    cases.push(failed('stream-and-tool', 'prompt exited 0 without the terminal compat-ok text'));
+  if (configure.exitCode !== 0) {
+    cases.push(
+      notRun('approve', 'configure failed'),
+      notRun('login', 'configure failed'),
+      notRun('helper-stdout-contract', 'configure failed'),
+      notRun('models', 'configure failed'),
+      notRun('stream-and-tool', 'configure failed'),
+    );
   } else {
-    cases.push(fromChild('stream-and-tool', prompt));
+    await fixture.wrapAuthCommand();
+    const loginChild = fixture.start([options.grokBinary, 'login']);
+    const loginStarted = Date.now();
+    const loginSignal = AbortSignal.timeout(LOGIN_WAIT_MS);
+    try {
+      const verification = await waitForVerificationUrl({
+        captureDir: fixture.helperCaptureDir,
+        stderr: () => loginChild.stderr(),
+        timeoutMs: LOGIN_WAIT_MS,
+        finished: () => loginChild.finished(),
+      });
+      await approveDashboardAuthorization({
+        endpoint: fixture.endpoint,
+        password: fixture.dashboardPassword,
+        verificationUrl: verification.url,
+        signal: loginSignal,
+      });
+      cases.push(passed('approve', 'Dashboard login/CSRF/approve succeeded'));
+    } catch (error) {
+      loginChild.kill();
+      cases.push(failed('approve', error instanceof Error ? error.message : String(error)));
+    }
+    const login = await awaitChild(loginChild, Math.max(0, LOGIN_WAIT_MS - (Date.now() - loginStarted)));
+    cases.push(fromChild('login', login));
+    cases.push(await helperStdoutContractCase(fixture.helperCaptureDir, login.stderr));
+    cases.push(fromChild('models', await fixture.run([options.grokBinary, 'models'])));
+    const prompt = await fixture.run(
+      [options.grokBinary, '-p', '--no-session', '-m', 'compat-grok-model', 'compat'],
+      60_000,
+    );
+    if (prompt.exitCode === 0 && !prompt.stdout.includes('compat-ok')) {
+      cases.push(failed('stream-and-tool', 'prompt exited 0 without the terminal compat-ok text'));
+    } else {
+      cases.push(fromChild('stream-and-tool', prompt));
+    }
   }
   cases.push(loopbackRecorderCase(fixture.records));
   cases.push(sandboxExecCase(fixture.sandboxExec, fixture.sandboxExec !== null));

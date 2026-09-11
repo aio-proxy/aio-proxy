@@ -100,6 +100,7 @@ process.exit(1);
 type FakeCliOptions = {
   readonly version?: string;
   readonly serve?: boolean;
+  readonly configureExit?: number;
   readonly helperObject?: Record<string, unknown>;
 };
 
@@ -108,6 +109,7 @@ async function fakeCli(root: string, options: FakeCliOptions = {}): Promise<stri
   const log = join(root, 'calls.log');
   const version = options.version ?? '0.21.0';
   const serve = options.serve !== false;
+  const configureExit = options.configureExit ?? 0;
   const helperObject = options.helperObject ?? { access_token: SECRET_AT, expires_in: 900 };
   await writeExecutable(
     binary,
@@ -144,6 +146,7 @@ if (argv[0] === 'run') {
   await Bun.sleep(1 << 30);
 }
 if (argv[0] === 'agent' && argv[1] === 'configure' && argv[2] === 'grok') {
+  if (${String(configureExit)} !== 0) process.exit(${String(configureExit)});
   const grokHome = process.env.GROK_HOME;
   if (grokHome === undefined) process.exit(1);
   const self = process.argv[1] ?? '';
@@ -508,6 +511,7 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(source.indexOf("'agent', 'configure', 'grok'")).toBeLessThan(source.indexOf("grokBinary, 'login'"));
     expect(source).toContain('approveDashboardAuthorization');
     expect(source).toContain('signal: loginSignal');
+    expect(source).toContain("fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(LOGIN_WAIT_MS) })");
     expect(source.indexOf('AbortSignal.timeout(LOGIN_WAIT_MS)')).toBeLessThan(source.indexOf('awaitChild(loginChild'));
     expect(source).toContain('awaitChild(loginChild');
     expect(source).not.toMatch(/--installation-id['\s,]*missing/u);
@@ -536,6 +540,24 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(compatScriptShouldFail(report)).toBe(true);
     const script = await runScript(options);
     expect(script.exitCode).not.toBe(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a failed configure does not spawn Grok login or model commands', async () => {
+  const root = await scratch('aio-grok-compat-configure-fail-');
+  try {
+    const { options, log } = await optionsFor(root, { version: '1.0.24' }, { configureExit: 7 });
+    const report = await runGrokCompatibility(options);
+    const calls = await readLog(log);
+    expect(calls).toContain('cli agent configure grok');
+    expect(calls).not.toContain('grok login');
+    expect(calls).not.toContain('grok models');
+    expect(report.cases.find((item) => item.name === 'configure')?.passed).toBe(false);
+    expect(report.cases.find((item) => item.name === 'login')?.detail).toMatch(/^not_run:/);
+    expect(report.cases.find((item) => item.name === 'models')?.detail).toMatch(/^not_run:/);
+    expect(compatScriptShouldFail(report)).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

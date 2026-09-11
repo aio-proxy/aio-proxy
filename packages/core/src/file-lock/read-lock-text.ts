@@ -84,7 +84,9 @@ export function startLockHeartbeat(
     busy = true;
     const now = new Date();
     void withLockHandleDeadline(handle, tickOptions, () => handle.utimes(now, now))
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'lock record read timed out') skipClose = true;
+      })
       .finally(() => {
         busy = false;
       });
