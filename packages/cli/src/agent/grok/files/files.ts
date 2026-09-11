@@ -219,18 +219,21 @@ export async function replaceGrokFile(
   testDeps?: ReplaceGrokFileTestDeps,
 ): Promise<void> {
   const temporaryPath = path + '.aio-' + randomUUID();
+  const unverifiable = (): Error => new Error('Grok file unverifiable');
   let temporary: GrokFileIdentity | undefined;
   try {
-    const handle = await open(temporaryPath, WRITE_FLAGS, 0o600);
+    const handle = await withReadBudget(budget, unverifiable, () => open(temporaryPath, WRITE_FLAGS, 0o600));
     try {
-      await handle.writeFile(text);
-      await handle.sync();
-      const stats = await handle.stat();
+      await withReadBudget(budget, unverifiable, () => handle.writeFile(text));
+      await withReadBudget(budget, unverifiable, () => handle.sync());
+      const stats = await withReadBudget(budget, unverifiable, () => handle.stat());
       temporary = { path: temporaryPath, dev: stats.dev, ino: stats.ino };
     } finally {
       await handle.close();
     }
-    if (expected !== undefined) await chmod(temporaryPath, expected.mode & 0o777);
+    if (expected !== undefined) {
+      await withReadBudget(budget, unverifiable, () => chmod(temporaryPath, expected.mode & 0o777));
+    }
     await testDeps?.beforeRename?.();
     // Last check plus rename is not CAS against an uncooperative writer.
     // Configure while Grok is not also saving settings.
@@ -241,9 +244,9 @@ export async function replaceGrokFile(
       throw new Error('Grok file changed during update. Configure while Grok is not also saving settings.');
     }
     budget.signal.throwIfAborted();
-    await rename(temporaryPath, path);
+    await withReadBudget(budget, unverifiable, () => rename(temporaryPath, path));
     temporary = undefined;
-    await syncDirectory(dirname(path));
+    await withReadBudget(budget, unverifiable, () => syncDirectory(dirname(path)));
   } finally {
     if (temporary !== undefined) await removeMatchingFile(temporary);
   }
