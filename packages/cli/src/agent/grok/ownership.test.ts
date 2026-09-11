@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { classifyChange, recoverGrokOwnership } from './ownership';
+import { equalGrokLeaf } from './toml';
 import type { FieldChange, GrokOwnership, LeafValue } from './types';
 
 const absent: LeafValue = { present: false };
@@ -60,11 +61,17 @@ test('recover persists mixed after and before without marking before as written'
     ownership,
   );
   expect(recovered.conflicts).toEqual([]);
-  expect(recovered.ownership.pending).toBeUndefined();
+  expect(recovered.ownership.pending).toEqual({
+    operation: 'configure',
+    changes: [change(['auth', 'auth_provider_label'], value('Cloud'), value('AIO Proxy'))],
+    nextLeaves: pending.nextLeaves,
+    nextCreatedTables: pending.nextCreatedTables,
+  });
   expect(recovered.ownership.leaves).toEqual([
     owned(['auth', 'auth_provider_label'], value('Cloud'), value('Cloud')),
     owned(['endpoints', 'models_base_url'], absent, value('http://127.0.0.1:9317/v1')),
   ]);
+  expect(recovered.ownership.leaves[0]?.written).toEqual(value('Cloud'));
 });
 
 test('recover adopts nextLeaves when every pending field is after', () => {
@@ -118,11 +125,12 @@ test('recover keeps determined leaves and reports third values without treating 
     ownership,
   );
   expect(recovered.conflicts).toEqual(['auth.auth_provider_label']);
-  expect(recovered.ownership.pending).toBeUndefined();
+  expect(recovered.ownership.pending).toEqual(pending);
   expect(recovered.ownership.leaves).toEqual([
     owned(['auth', 'auth_provider_label'], value('Cloud'), value('Cloud')),
     owned(['endpoints', 'models_base_url'], absent, value('http://127.0.0.1:9317/v1')),
   ]);
+  expect(equalGrokLeaf(recovered.ownership.leaves[0]!.written, value('AIO Proxy'))).toBe(false);
 });
 
 test('recover does not retake a removed leaf that already matches after', () => {

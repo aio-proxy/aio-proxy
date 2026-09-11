@@ -81,12 +81,16 @@ async function inspectManagedRoot(root: string, adapterVersion: string): Promise
   if (ownershipKind === 'invalid') return conflictInspection(marker);
   const ownership = parseGrokOwnership(ownershipFile.text);
   if (ownership.pending !== undefined) {
+    const config = await readGrokFile(paths.config);
+    const recovered = recoverGrokOwnership(configTextOrEmpty(config), ownership);
+    const pending = recovered.ownership.pending ?? ownership.pending;
     return {
       integrationKind: 'auth-command',
       integration: 'managed',
       marker,
       configuration: 'recovery_required',
-      fields: ownership.pending.changes.map((change) => change.path.join('.')),
+      fields:
+        recovered.conflicts.length > 0 ? recovered.conflicts : pending.changes.map((change) => change.path.join('.')),
     };
   }
   const config = await readGrokFile(paths.config);
@@ -147,6 +151,7 @@ export async function withGrokInstallation<T>(
         throw new Error('Grok configuration modified: ' + recovered.conflicts.join(', '));
       }
       if (ownership.status !== 'active') throw new Error('Grok installation is removing');
+      if (ownership.pending !== undefined) throw new Error('Grok configuration requires recovery');
       const config = await readGrokFile(paths.config);
       if (config === undefined) throw new Error('Grok configuration missing');
       requireCurrent(config.text, ownership);

@@ -146,6 +146,7 @@ function committedOwnership(
   ownership: GrokOwnership,
   leaves: readonly OwnedLeaf[],
   createdTables: readonly GrokPath[],
+  pending?: GrokTransaction,
 ): GrokOwnership {
   return {
     format: 1,
@@ -155,7 +156,29 @@ function committedOwnership(
     status: ownership.status,
     leaves,
     createdTables,
-    ...(ownership.cleanupComplete === true ? { cleanupComplete: true } : {}),
+    ...(pending === undefined ? {} : { pending }),
+    ...(pending === undefined && ownership.cleanupComplete === true ? { cleanupComplete: true } : {}),
+  };
+}
+
+function remainingTransaction(
+  pending: GrokTransaction,
+  classifications: readonly {
+    readonly change: FieldChange;
+    readonly result: 'before' | 'after' | 'conflict';
+    readonly current?: LeafValue;
+  }[],
+): GrokTransaction {
+  const changes: FieldChange[] = [];
+  for (const entry of classifications) {
+    if (entry.result !== 'before' || entry.current === undefined) continue;
+    changes.push({ path: entry.change.path, before: entry.current, after: entry.change.after });
+  }
+  return {
+    operation: pending.operation,
+    changes,
+    nextLeaves: pending.nextLeaves,
+    nextCreatedTables: pending.nextCreatedTables,
   };
 }
 
@@ -174,7 +197,7 @@ export function recoverGrokOwnership(
     if (current === undefined) {
       return { change, result: 'conflict' as const };
     }
-    return { change, result: classifyChange(current, change) };
+    return { change, result: classifyChange(current, change), current };
   });
   const conflicts = classifications
     .filter((entry) => entry.result === 'conflict')
@@ -214,12 +237,16 @@ export function recoverGrokOwnership(
     if (!seen.has(pathKey(leaf.path))) determined.push(leaf);
   }
 
+  const tables = afterCount > 0 ? pending.nextCreatedTables : ownership.createdTables;
+  if (conflicts.length > 0) {
+    return {
+      ownership: committedOwnership(ownership, determined, tables, pending),
+      conflicts,
+    };
+  }
+
   return {
-    ownership: committedOwnership(
-      ownership,
-      determined,
-      afterCount > 0 ? pending.nextCreatedTables : ownership.createdTables,
-    ),
-    conflicts,
+    ownership: committedOwnership(ownership, determined, tables, remainingTransaction(pending, classifications)),
+    conflicts: [],
   };
 }
