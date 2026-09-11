@@ -1215,6 +1215,11 @@ test('remove restores the journal when a file appears before rmdir', async () =>
     expect(JSON.parse(await readFile(join(f.root, 'aio-proxy', 'ownership.json'), 'utf8')).cleanupComplete).toBe(true);
     const again = await configureGrok(f.input, f.deps);
     expect(again.status).toBe('installed');
+    expect(await Bun.file(join(f.root, '.aio-proxy-removal.json')).exists()).toBe(false);
+    await rm(notes);
+    const removed = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(removed.retainedFiles).toEqual([]);
+    expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
   } finally {
     await f.cleanup();
   }

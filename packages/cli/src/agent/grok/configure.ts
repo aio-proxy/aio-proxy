@@ -17,6 +17,7 @@ import {
 } from './files';
 import { grokAuthCommand } from './grok-command';
 import {
+  clearConsumedRemovalJournal,
   clearOwnedRemovalJournal,
   commitGrokEdit,
   configTextOrEmpty,
@@ -200,6 +201,7 @@ async function configureFirst(
       budget,
       testDeps,
     );
+    await clearConsumedRemovalJournal(lock, paths, budget);
     return { marker, status: 'installed' };
   } catch (error) {
     if (!markerWritten && reuse === undefined) {

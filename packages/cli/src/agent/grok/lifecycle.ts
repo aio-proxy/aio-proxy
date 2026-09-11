@@ -222,6 +222,23 @@ export async function clearRemovalJournal(lock: FileLock, paths: GrokPaths, budg
   });
 }
 
+export async function clearConsumedRemovalJournal(
+  lock: FileLock,
+  paths: GrokPaths,
+  budget: GrokDeadline,
+): Promise<void> {
+  const existing = await readRemovalJournal(paths, budget);
+  if (existing === undefined) return;
+  try {
+    const ownership = parseGrokOwnership(existing.text);
+    if (isCompletedGrokRemoval(ownership) || isBootstrapGrokJournal(ownership)) {
+      await clearRemovalJournal(lock, paths, budget);
+    }
+  } catch {
+    // Foreign or invalid leftover journals are not taken over.
+  }
+}
+
 export async function clearOwnedRemovalJournal(lock: FileLock, paths: GrokPaths, budget: GrokDeadline): Promise<void> {
   const existing = await readRemovalJournal(paths, budget);
   if (existing === undefined) return;
