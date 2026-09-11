@@ -1,9 +1,17 @@
-import { expect, test } from 'bun:test';
-import { chmod, link, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
+import { expect, spyOn, test } from 'bun:test';
+import * as fsPromises from 'node:fs/promises';
+import { chmod, link, mkdir, readFile, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { configureGrok, configureGrokForTest, inspectGrok, withGrokInstallation } from './grok';
+import {
+  configureGrok,
+  configureGrokForTest,
+  inspectGrok,
+  removeGrok,
+  removeGrokForTest,
+  withGrokInstallation,
+} from './grok';
 import * as grokPublic from './index';
 import { grokFixture } from './test-fixture';
 
@@ -32,9 +40,11 @@ test('configure preserves the first baseline and refuses user drift', async () =
 
 test('public grok index does not export test-only write hooks', () => {
   expect('configureGrokForTest' in grokPublic).toBe(false);
+  expect('removeGrokForTest' in grokPublic).toBe(false);
   expect('replaceGrokFile' in grokPublic).toBe(false);
   expect('beforeRename' in grokPublic).toBe(false);
   expect(typeof grokPublic.readGrokObservation).toBe('function');
+  expect(typeof grokPublic.removeGrok).toBe('function');
 });
 
 test('first configure refuses policy conflicts before creating the private directory', async () => {
@@ -588,6 +598,271 @@ test('invalid endpoints are rejected without echoing untrusted values', async ()
     await expect(configureGrok({ ...f.input, endpoint: 'https://api.x.ai' }, f.deps)).rejects.toThrow(
       /invalid endpoint/,
     );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('failed revoke keeps retryable state and prevents helper use', async () => {
+  const f = await grokFixture();
+  try {
+    const installed = await configureGrok(f.input, f.deps);
+    await expect(
+      removeGrok(f.root, f.input.adapterVersion, {
+        ...f.deps,
+        revoke: async () => {
+          throw new Error('offline');
+        },
+      }),
+    ).rejects.toThrow('offline');
+    const local = await inspectGrok(f.root, f.input.adapterVersion);
+    expect(local.marker?.installationId).toBe(installed.marker.installationId);
+    expect(local.configuration).toBe('recovery_required');
+    await expect(
+      withGrokInstallation(
+        {
+          root: f.root,
+          installationId: installed.marker.installationId,
+          adapterVersion: f.input.adapterVersion,
+          budget: { deadline: Date.now() + 1_000, signal: AbortSignal.timeout(1_000) },
+        },
+        async () => 'must not run',
+      ),
+    ).rejects.toThrow(/remov/);
+    await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(f.revoked[0]?.endpoint).toBe(f.input.endpoint);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+const helperInput = (
+  root: string,
+  installationId: string,
+  adapterVersion: string,
+  policy: typeof grokPublic.loadGrokPolicy,
+) => ({
+  root,
+  installationId,
+  adapterVersion,
+  budget: budget(),
+  policy,
+});
+
+test('remove revokes the original endpoint for only this installation', async () => {
+  const f = await grokFixture();
+  try {
+    const installed = await configureGrok(f.input, f.deps);
+    const result = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(result.installationId).toBe(installed.marker.installationId);
+    expect(result.revokeStatus).toBe('revoked');
+    expect(f.revoked).toEqual([{ endpoint: f.input.endpoint, installationId: installed.marker.installationId }]);
+    expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
+    expect((await inspectGrok(f.root, f.input.adapterVersion)).integration).toBe('absent');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('unlogged remove accepts a missing revoke and restores owned fields', async () => {
+  const f = await grokFixture();
+  try {
+    await writeFile(join(f.root, 'config.toml'), '[ui]\ntheme="dark"\n', { mode: 0o640 });
+    await configureGrok(f.input, f.deps);
+    const result = await removeGrok(f.root, f.input.adapterVersion, {
+      ...f.deps,
+      revoke: async (endpoint, installationId) => {
+        f.revoked.push({ endpoint, installationId });
+        return 'missing';
+      },
+    });
+    expect(result.revokeStatus).toBe('missing');
+    expect(result.skippedFields).toEqual([]);
+    expect(await readFile(join(f.root, 'config.toml'), 'utf8')).toBe('[ui]\ntheme="dark"\n');
+    expect(await Bun.file(join(f.root, 'aio-proxy', 'credential.json')).exists()).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('failed revoke keeps credential, marker, and removing without reverting to active', async () => {
+  const f = await grokFixture();
+  try {
+    const installed = await configureGrok(f.input, f.deps);
+    await withGrokInstallation(
+      helperInput(f.root, installed.marker.installationId, f.input.adapterVersion, f.deps.policy),
+      async (context) => {
+        await context.writeCredential({ token: 'secret' });
+      },
+    );
+    await expect(
+      removeGrok(f.root, f.input.adapterVersion, {
+        ...f.deps,
+        revoke: async () => {
+          throw new Error('offline');
+        },
+      }),
+    ).rejects.toThrow('offline');
+    expect(await readFile(join(f.root, 'aio-proxy', 'credential.json'), 'utf8')).toContain('secret');
+    expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(true);
+    const ownership = JSON.parse(await readFile(join(f.root, 'aio-proxy', 'ownership.json'), 'utf8')) as {
+      status?: string;
+      cleanupComplete?: unknown;
+    };
+    expect(ownership.status).toBe('removing');
+    expect(ownership.cleanupComplete).toBeUndefined();
+    await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/remov/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('field drift is skipped and a missing config is not created', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    const config = join(f.root, 'config.toml');
+    await writeFile(config, (await readFile(config, 'utf8')).replace('"AIO Proxy"', '"Mine"'));
+    const drifted = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(drifted.skippedFields).toContain('auth.auth_provider_label');
+    expect(await readFile(config, 'utf8')).toContain('"Mine"');
+    expect(await Bun.file(config).exists()).toBe(true);
+    const g = await grokFixture();
+    try {
+      await configureGrok(g.input, g.deps);
+      await unlink(join(g.root, 'config.toml'));
+      const missing = await removeGrok(g.root, g.input.adapterVersion, g.deps);
+      expect(missing.revokeStatus).toBe('revoked');
+      expect(await Bun.file(join(g.root, 'config.toml')).exists()).toBe(false);
+    } finally {
+      await g.cleanup();
+    }
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('unknown private files are retained and owned tmp is removed', async () => {
+  const f = await grokFixture();
+  try {
+    await configureGrok(f.input, f.deps);
+    await writeFile(join(f.root, 'aio-proxy', 'notes.txt'), 'keep me\n', { mode: 0o600 });
+    const tmp = join(f.root, 'aio-proxy', `ownership.json.aio-${crypto.randomUUID()}`);
+    await writeFile(tmp, 'tmp\n', { mode: 0o600 });
+    const result = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    expect(result.retainedFiles).toEqual(['notes.txt']);
+    expect(await readFile(join(f.root, 'aio-proxy', 'notes.txt'), 'utf8')).toBe('keep me\n');
+    expect(await Bun.file(tmp).exists()).toBe(false);
+    expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(false);
+    expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('remove does not read or change Grok auth.json', async () => {
+  const f = await grokFixture();
+  const openSpy = spyOn(fsPromises, 'open');
+  const readSpy = spyOn(fsPromises, 'readFile');
+  try {
+    await configureGrok(f.input, f.deps);
+    const authPath = join(f.root, 'auth.json');
+    await writeFile(authPath, '{"token":"keep"}\n', { mode: 0o600 });
+    const before = await stat(authPath);
+    const beforeText = await readFile(authPath, 'utf8');
+    openSpy.mockClear();
+    readSpy.mockClear();
+    await removeGrok(f.root, f.input.adapterVersion, f.deps);
+    const touched = [...openSpy.mock.calls, ...readSpy.mock.calls].some((args) => String(args[0]) === authPath);
+    expect(touched).toBe(false);
+    const after = await stat(authPath);
+    expect(await readFile(authPath, 'utf8')).toBe(beforeText);
+    expect(after.mode).toBe(before.mode);
+    expect(after.ino).toBe(before.ino);
+    expect(after.mtimeNs).toBe(before.mtimeNs);
+  } finally {
+    openSpy.mockRestore();
+    readSpy.mockRestore();
+    await f.cleanup();
+  }
+});
+
+const REMOVE_CRASH_POINTS = [
+  'removing',
+  'revoked',
+  'credential',
+  'ownership_pending',
+  'config',
+  'ownership_committed',
+  'cleanup_complete',
+  'marker_removed',
+] as const;
+
+test('remove retries after each stage crash including marker-gone completed ownership', async () => {
+  for (const point of REMOVE_CRASH_POINTS) {
+    const f = await grokFixture();
+    try {
+      const installed = await configureGrok(f.input, f.deps);
+      await withGrokInstallation(
+        helperInput(f.root, installed.marker.installationId, f.input.adapterVersion, f.deps.policy),
+        async (context) => {
+          await context.writeCredential({ token: 'secret' });
+        },
+      );
+      const configBefore = await readFile(join(f.root, 'config.toml'), 'utf8');
+      await expect(
+        removeGrokForTest(f.root, f.input.adapterVersion, f.deps, {
+          failpoint: (seen) => {
+            if (seen === point) throw new Error(`crash at ${point}`);
+          },
+        }),
+      ).rejects.toThrow(`crash at ${point}`);
+      const credentialExists = await Bun.file(join(f.root, 'aio-proxy', 'credential.json')).exists();
+      if (point === 'removing' || point === 'revoked') expect(credentialExists).toBe(true);
+      else expect(credentialExists).toBe(false);
+      if (point === 'marker_removed') {
+        expect(await Bun.file(join(f.root, 'aio-proxy', '.aio-proxy-managed.json')).exists()).toBe(false);
+        expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
+        expect(await readFile(join(f.root, 'config.toml'), 'utf8')).not.toBe(configBefore);
+        await expect(
+          withGrokInstallation(
+            helperInput(f.root, installed.marker.installationId, f.input.adapterVersion, f.deps.policy),
+            async () => 'must not run',
+          ),
+        ).rejects.toThrow();
+        await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/already exists/);
+      }
+      const retried = await removeGrok(f.root, f.input.adapterVersion, f.deps);
+      expect(retried.installationId).toBe(installed.marker.installationId);
+      expect(retried.revokeStatus).toBe('revoked');
+      expect(await Bun.file(join(f.root, 'aio-proxy')).exists()).toBe(false);
+    } finally {
+      await f.cleanup();
+    }
+  }
+});
+
+test('a private directory without a completed removal record is not taken over', async () => {
+  const f = await grokFixture();
+  try {
+    await mkdir(join(f.root, 'aio-proxy'), { mode: 0o700 });
+    await writeFile(
+      join(f.root, 'aio-proxy', 'ownership.json'),
+      `${JSON.stringify({
+        format: 1,
+        agent: 'grok',
+        installationId: f.deps.randomUUID(),
+        endpoint: f.input.endpoint,
+        status: 'active',
+        leaves: [],
+        createdTables: [],
+      })}\n`,
+      { mode: 0o600 },
+    );
+    await expect(removeGrok(f.root, f.input.adapterVersion, f.deps)).rejects.toThrow(/already exists/);
+    expect(await Bun.file(join(f.root, 'aio-proxy', 'ownership.json')).exists()).toBe(true);
+    expect(f.revoked).toEqual([]);
+    await expect(configureGrok(f.input, f.deps)).rejects.toThrow(/already exists/);
   } finally {
     await f.cleanup();
   }

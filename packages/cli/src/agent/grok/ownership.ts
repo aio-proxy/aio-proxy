@@ -125,6 +125,9 @@ export const encodeGrokMarker = (marker: GrokMarker): string => `${JSON.stringif
 export const encodeGrokOwnership = (ownership: GrokOwnership): string =>
   `${JSON.stringify(GrokOwnershipSchema.parse(ownership))}\n`;
 
+export const isCompletedGrokRemoval = (ownership: GrokOwnership): boolean =>
+  ownership.status === 'removing' && ownership.cleanupComplete === true && ownership.pending === undefined;
+
 export function classifyChange(current: LeafValue, change: FieldChange): 'before' | 'after' | 'conflict' {
   if (equalGrokLeaf(current, change.after)) return 'after';
   if (equalGrokLeaf(current, change.before)) return 'before';

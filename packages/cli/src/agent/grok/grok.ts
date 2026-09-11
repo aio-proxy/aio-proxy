@@ -37,6 +37,7 @@ import type { GrokAuthObservation, GrokContext, GrokDeadline, GrokDeps, GrokInsp
 
 export { configureGrok, configureGrokForTest, type GrokConfigureTestDeps } from './configure';
 export { grokAuthCommand, loadGrokPolicy } from './grok-command';
+export { removeGrok, removeGrokForTest, type GrokRemoveResult, type GrokRemoveTestDeps } from './remove';
 
 const revisionSchema = z.number().refine((value) => Number.isSafeInteger(value) && value >= 0);
 const GrokObservationSchema = z
@@ -136,6 +137,15 @@ async function inspectManagedRoot(root: string, adapterVersion: string): Promise
       configuration: 'recovery_required',
       fields:
         recovered.conflicts.length > 0 ? recovered.conflicts : pending.changes.map((change) => change.path.join('.')),
+    };
+  }
+  if (ownership.status === 'removing') {
+    return {
+      integrationKind: 'auth-command',
+      integration: 'managed',
+      marker,
+      configuration: 'recovery_required',
+      fields: [],
     };
   }
   const config = await readGrokFile(paths.config);

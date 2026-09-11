@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
-import { chmod, link, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { readGrokFile, replaceGrokFile } from './files';
+import { grokPaths, isGrokOwnedTmpName, readGrokFile, removeGrokOwnedTemporaryFiles, replaceGrokFile } from './files';
 
 const budget = () => ({ deadline: Date.now() + 5_000, signal: AbortSignal.timeout(5_000) });
 
@@ -49,6 +49,29 @@ test('readGrokFile distinguishes missing from empty and rejects symlink and hard
     await expect(readGrokFile(target)).rejects.toThrow(/hardlink/);
     await chmod(empty, 0o644);
     expect((await readGrokFile(empty))?.text).toBe('');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('owned tmp names are sibling aio uuid files and leftover tmp is removed without touching unknown files', async () => {
+  const tmpName = `ownership.json.aio-${crypto.randomUUID()}`;
+  expect(isGrokOwnedTmpName(tmpName, 'ownership.json')).toBe(true);
+  expect(isGrokOwnedTmpName('notes.txt', 'ownership.json')).toBe(false);
+  expect(isGrokOwnedTmpName('ownership.json.aio-not-a-uuid', 'ownership.json')).toBe(false);
+  const root = await mkdtemp(join(tmpdir(), 'aio-grok-tmp-'));
+  try {
+    const paths = grokPaths(root);
+    await mkdir(paths.privateDir, { mode: 0o700 });
+    const leftover = join(paths.privateDir, tmpName);
+    await writeFile(leftover, 'tmp\n', { mode: 0o600 });
+    await writeFile(join(paths.privateDir, 'notes.txt'), 'keep\n', { mode: 0o600 });
+    const configTmp = join(root, `config.toml.aio-${crypto.randomUUID()}`);
+    await writeFile(configTmp, 'cfg-tmp\n', { mode: 0o600 });
+    await removeGrokOwnedTemporaryFiles(paths);
+    expect(await Bun.file(leftover).exists()).toBe(false);
+    expect(await Bun.file(configTmp).exists()).toBe(false);
+    expect(await readFile(join(paths.privateDir, 'notes.txt'), 'utf8')).toBe('keep\n');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test';
 
-import { adoptRecoveredOwnership, classifyChange, encodeGrokOwnership, recoverGrokOwnership } from './ownership';
+import {
+  adoptRecoveredOwnership,
+  classifyChange,
+  encodeGrokOwnership,
+  isCompletedGrokRemoval,
+  recoverGrokOwnership,
+} from './ownership';
 import { equalGrokLeaf } from './toml';
 import type { FieldChange, GrokOwnership, LeafValue } from './types';
 
@@ -208,4 +214,25 @@ test('recover does not retake a removed leaf that already matches after', () => 
   const recovered = recoverGrokOwnership('[auth]\nauth_provider_label = "Cloud"\n', baseOwnership(pending));
   expect(recovered.conflicts).toEqual([]);
   expect(recovered.ownership.leaves).toEqual([]);
+});
+
+test('completed removal requires removing status, no pending, and cleanupComplete', () => {
+  expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing', cleanupComplete: true })).toBe(true);
+  expect(isCompletedGrokRemoval({ ...baseOwnership(), status: 'removing' })).toBe(false);
+  expect(isCompletedGrokRemoval(baseOwnership())).toBe(false);
+});
+
+test('encode rejects cleanupComplete while pending remains', () => {
+  expect(() =>
+    encodeGrokOwnership({
+      ...baseOwnership({
+        operation: 'remove',
+        changes: [],
+        nextLeaves: [],
+        nextCreatedTables: [],
+      }),
+      status: 'removing',
+      cleanupComplete: true,
+    }),
+  ).toThrow();
 });

@@ -4,6 +4,7 @@ export {
   inspectGrok,
   loadGrokPolicy,
   readGrokObservation,
+  removeGrok,
   withGrokInstallation,
 } from './grok';
 export type {

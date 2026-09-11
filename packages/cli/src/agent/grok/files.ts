@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { constants, type Stats } from 'node:fs';
-import { chmod, lstat, mkdir, open, rename, rmdir, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { GrokDeadline } from './types';
@@ -229,10 +229,11 @@ export async function unlinkGrokFile(
   expected: GrokFileSnapshot | undefined,
   budget: GrokDeadline,
   assertOwnership: () => Promise<void>,
+  kind = 'credential',
 ): Promise<void> {
   budget.signal.throwIfAborted();
   await assertOwnership();
-  const current = await readGrokPrivateFile(path, 'credential');
+  const current = await readGrokPrivateFile(path, kind);
   if (!sameGrokSnapshot(expected, current)) {
     throw new Error('Grok file changed during update. Configure while Grok is not also saving settings.');
   }
@@ -240,4 +241,38 @@ export async function unlinkGrokFile(
   budget.signal.throwIfAborted();
   await unlink(path);
   await syncDirectory(dirname(path));
+}
+
+const TMP_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const OWNED_PRIVATE_BASENAMES = ['.aio-proxy-managed.json', 'ownership.json', 'credential.json'] as const;
+
+export function isGrokOwnedTmpName(name: string, basename: string): boolean {
+  const prefix = `${basename}.aio-`;
+  return name.startsWith(prefix) && TMP_UUID.test(name.slice(prefix.length));
+}
+
+export async function listGrokDirectoryNames(directory: string): Promise<readonly string[]> {
+  try {
+    return await readdir(directory);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return [];
+    throw error;
+  }
+}
+
+export async function removeOwnedGrokTmp(directory: string, basename: string): Promise<void> {
+  for (const name of await listGrokDirectoryNames(directory)) {
+    if (!isGrokOwnedTmpName(name, basename)) continue;
+    const path = join(directory, name);
+    const stats = await inspectPath(path);
+    if (stats === undefined || stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) continue;
+    await removeMatchingFile({ path, dev: stats.dev, ino: stats.ino });
+  }
+}
+
+export async function removeGrokOwnedTemporaryFiles(paths: GrokPaths): Promise<void> {
+  for (const basename of OWNED_PRIVATE_BASENAMES) {
+    await removeOwnedGrokTmp(paths.privateDir, basename);
+  }
+  await removeOwnedGrokTmp(paths.root, 'config.toml');
 }

@@ -204,7 +204,6 @@ export async function commitGrokEdit(
       nextLeaves: edit.leaves,
       nextCreatedTables: edit.createdTables,
     },
-    ...(ownership.cleanupComplete === true ? { cleanupComplete: true } : {}),
   };
   let pendingFile = ownershipFile;
   if (encodeGrokOwnership(pending) !== ownershipFile.text) {
