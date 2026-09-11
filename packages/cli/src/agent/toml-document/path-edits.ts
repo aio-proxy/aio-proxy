@@ -124,11 +124,17 @@ export const hasArrayTableAncestor = (document: InspectedDocument, path: readonl
 const sourceInsertionPrefix = (source: string, position: number, ending: string): string =>
   position > 0 && source[position - 1] !== '\n' ? ending : '';
 
-const lineDelete = (source: string, range: readonly [number, number]): SourceEdit => ({
-  start: lineStart(source, range[0]),
-  end: textAfterLine(source, range[1]),
-  text: '',
-});
+const trailingLineComment = (afterValue: string): string | undefined => {
+  const comment = /^[ \t]*(#[^\n]*)(\r?\n)?$/u.exec(afterValue);
+  if (comment?.[1] === undefined) return undefined;
+  return `${comment[1]}${comment[2] ?? ''}`;
+};
+
+const lineDelete = (source: string, range: readonly [number, number]): SourceEdit => {
+  const start = lineStart(source, range[0]);
+  const end = textAfterLine(source, range[1]);
+  return { start, end, text: trailingLineComment(source.slice(range[1], end)) ?? '' };
+};
 
 const tableInsertionPoint = (source: string, table: AST.TOMLTable, tables: readonly AST.TOMLTable[]): number => {
   const nextTable = tables.find((candidate) => candidate.range[0] > table.range[0]);

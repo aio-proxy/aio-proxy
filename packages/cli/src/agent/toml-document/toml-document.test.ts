@@ -180,6 +180,16 @@ test('restores the original scalar literal from raw and rejects injected stateme
   ).toThrow(/invalid toml value literal/i);
 });
 
+test('deleting a field keeps a same-line trailing comment', () => {
+  const source = '[endpoints]\nmodels_base_url = "http://127.0.0.1:9317/v1" # keep this\nkeep = "yes"\n';
+  const result = editTomlFields(source, [{ path: ['endpoints', 'models_base_url'], next: { present: false } }], {
+    tomlVersion: '1.0',
+  });
+  expect(result.text).toContain('# keep this');
+  expect(result.text).toContain('keep = "yes"');
+  expect(result.text).not.toContain('models_base_url');
+});
+
 test('does not rewrite an unchanged literal when raw is omitted', () => {
   const source = "label = 'Cloud'\n";
   const result = editTomlFields(source, [{ path: ['label'], next: { present: true, value: 'Cloud' } }], {
