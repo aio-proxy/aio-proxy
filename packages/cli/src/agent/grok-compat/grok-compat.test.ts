@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { approveDashboardAuthorization } from './dashboard-approve';
-import { createGrokCompatFixture, GrokCompatProxyError } from './fixture';
+import { createGrokCompatFixture, GrokCompatProxyError, spawnArgv } from './fixture';
 import { compatScriptShouldFail, runGrokCompatibility, sandboxExecCase, type GrokCompatOptions } from './grok-compat';
 import {
   HELPER_STDOUT_KEYS,
@@ -421,6 +421,28 @@ test('helper recorder persists redacted stdout without the bearer', async () => 
     const captured = await readFile(join(capture, 'stdout'), 'utf8');
     expect(captured).not.toContain(SECRET_AT);
     expect(JSON.parse(captured)).toEqual({ access_token: 'redacted', expires_in: 900 });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('compat spawn returns after timeout when SIGTERM is ignored and a descendant holds pipes', async () => {
+  const root = await scratch('aio-grok-compat-timeout-');
+  const hang = join(root, 'hang');
+  try {
+    await writeExecutable(
+      hang,
+      `#!/bin/sh
+trap '' TERM
+sleep 15 &
+wait
+`,
+    );
+    const started = Date.now();
+    const result = await spawnArgv([hang], { PATH: process.env['PATH'] ?? '/usr/bin:/bin' }, root, 400);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/timed out/i);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

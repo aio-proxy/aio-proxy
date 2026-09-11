@@ -3,9 +3,21 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import {
+  COMPAT_KILL_GRACE_MS,
+  COMPAT_STREAM_SLACK_MS,
+  consumeStream,
+  escalateKill,
+  spawnArgv,
+  startArgv,
+  type GrokCompatChild,
+  type GrokCompatCommandResult,
+} from './compat-child';
 import { wrapAuthProviderCommand } from './helper-capture';
 import { listenLoopbackUpstream, type GrokCompatHttpRecord } from './loopback-upstream';
 import type { GrokCompatOptions } from './types';
+
+export { spawnArgv, type GrokCompatChild, type GrokCompatCommandResult } from './compat-child';
 
 const HOOKS_OFF = `[compat.claude]
 hooks = false
@@ -35,21 +47,7 @@ const ENV_ALLOWLIST = [
 
 export const HELPER_RECORDER = new URL('./helper-recorder.ts', import.meta.url).pathname;
 
-export type GrokCompatCommandResult = {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-};
-
 export type { GrokCompatHttpRecord } from './loopback-upstream';
-
-export type GrokCompatChild = {
-  readonly result: Promise<GrokCompatCommandResult>;
-  stdout(): string;
-  stderr(): string;
-  finished(): boolean;
-  kill(): void;
-};
 
 export class GrokCompatProxyError extends Error {
   constructor(
@@ -105,23 +103,15 @@ async function freeLoopbackPort(): Promise<number> {
   });
 }
 
-async function consumeStream(stream: ReadableStream<Uint8Array> | undefined, sink: { text: string }): Promise<void> {
-  if (stream === undefined) return;
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value !== undefined) sink.text += decoder.decode(value, { stream: true });
-  }
-  sink.text += decoder.decode();
-}
-
 async function startProxy(
   cliBinary: string,
   env: Record<string, string>,
   port: number,
-): Promise<{ readonly child: ReturnType<typeof Bun.spawn>; readonly logs: { stdout: string; stderr: string } }> {
+): Promise<{
+  readonly child: ReturnType<typeof Bun.spawn>;
+  readonly logs: { stdout: string; stderr: string };
+  readonly abort: AbortController;
+}> {
   const stdoutSink = { text: '' };
   const stderrSink = { text: '' };
   const logs = {
@@ -132,13 +122,17 @@ async function startProxy(
       return stderrSink.text;
     },
   };
+  const abort = new AbortController();
   const child = Bun.spawn([cliBinary, 'run', '--host', '127.0.0.1', '--port', String(port)], {
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
     env,
   });
-  const reading = Promise.all([consumeStream(child.stdout, stdoutSink), consumeStream(child.stderr, stderrSink)]);
+  const reading = Promise.all([
+    consumeStream(child.stdout, stdoutSink, abort.signal),
+    consumeStream(child.stderr, stderrSink, abort.signal),
+  ]);
   let live = true;
   const exited = child.exited.then((code) => {
     live = false;
@@ -149,7 +143,7 @@ async function startProxy(
     try {
       if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) {
         void reading;
-        return { child, logs };
+        return { child, logs, abort };
       }
     } catch {}
     await Bun.sleep(50);
@@ -157,76 +151,17 @@ async function startProxy(
   try {
     child.kill();
   } catch {}
-  await exited.catch(() => undefined);
+  escalateKill(() => {
+    try {
+      child.kill('SIGKILL');
+    } catch {}
+  }, abort);
+  await Promise.race([exited.catch(() => undefined), Bun.sleep(COMPAT_KILL_GRACE_MS + COMPAT_STREAM_SLACK_MS)]);
   await reading.catch(() => undefined);
   throw new GrokCompatProxyError(
     `aio-proxy failed to start on 127.0.0.1:${port} stdout=${logs.stdout} stderr=${logs.stderr}`,
     logs,
   );
-}
-
-function startArgv(
-  argv: readonly string[],
-  env: Record<string, string>,
-  cwd: string,
-  prefix?: readonly string[],
-): GrokCompatChild {
-  const command = argv[0];
-  const stdoutSink = { text: '' };
-  const stderrSink = { text: '' };
-  if (command === undefined) {
-    return {
-      result: Promise.resolve({ exitCode: 1, stdout: '', stderr: 'missing command' }),
-      stdout: () => '',
-      stderr: () => 'missing command',
-      finished: () => true,
-      kill() {},
-    };
-  }
-  const launched = prefix === undefined ? [command, ...argv.slice(1)] : [...prefix, command, ...argv.slice(1)];
-  const child = Bun.spawn([launched[0]!, ...launched.slice(1)], {
-    cwd,
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env,
-  });
-  let done = false;
-  const result = Promise.all([
-    consumeStream(child.stdout, stdoutSink),
-    consumeStream(child.stderr, stderrSink),
-    child.exited,
-  ]).then(([, , exitCode]) => ({ exitCode, stdout: stdoutSink.text, stderr: stderrSink.text }));
-  void result.finally(() => {
-    done = true;
-  });
-  return {
-    result,
-    stdout: () => stdoutSink.text,
-    stderr: () => stderrSink.text,
-    finished: () => done,
-    kill() {
-      try {
-        child.kill();
-      } catch {}
-    },
-  };
-}
-
-async function spawnArgv(
-  argv: readonly string[],
-  env: Record<string, string>,
-  cwd: string,
-  timeoutMs: number,
-  prefix?: readonly string[],
-): Promise<GrokCompatCommandResult> {
-  const child = startArgv(argv, env, cwd, prefix);
-  const timer = setTimeout(() => child.kill(), timeoutMs);
-  try {
-    return await child.result;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
@@ -326,7 +261,15 @@ export async function createGrokCompatFixture(options: GrokCompatOptions): Promi
       try {
         proxy.child.kill();
       } catch {}
-      await proxy.child.exited.catch(() => undefined);
+      escalateKill(() => {
+        try {
+          proxy.child.kill('SIGKILL');
+        } catch {}
+      }, proxy.abort);
+      await Promise.race([
+        proxy.child.exited.catch(() => undefined),
+        Bun.sleep(COMPAT_KILL_GRACE_MS + COMPAT_STREAM_SLACK_MS),
+      ]);
       model.stop();
       await rm(root, { recursive: true, force: true });
     },
