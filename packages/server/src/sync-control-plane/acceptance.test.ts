@@ -388,6 +388,22 @@ test('invalid plugin updates fail without changing the configured public options
   });
 }, 30_000);
 
+// A backend that is unreachable while the service boots used to abort startup entirely, taking
+// model traffic and the Dashboard recovery actions down with it.
+test('a backend that is offline at startup leaves the server running and reconnects on refresh', async () => {
+  await withTwoServerSyncFixtures(async (fixture) => {
+    await setProvider(fixture.a, 'work', fixture.providerMarker);
+    await fixture.a.reconcile();
+    fixture.backend.setOnline(false);
+    await fixture.restart('a');
+    expect(fixture.a.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(true);
+    expect(fixture.a.state.sync!.status().state).toBe('offline');
+    await expect(fixture.a.state.sync!.retry()).rejects.toThrow();
+    fixture.backend.setOnline(true);
+    expect((await fixture.a.state.sync!.retry()).state).toBe('idle');
+  });
+}, 30_000);
+
 test('a shared backend outage leaves local configuration intact until refresh recovers', async () => {
   await withTwoServerSyncFixtures(async (fixture) => {
     await setProvider(fixture.a, 'work', fixture.providerMarker);

@@ -57,7 +57,8 @@ export type SyncControlPlaneOptions = {
   readonly localEntities?: () => readonly LocalEntity[];
   readonly session?: () => SyncSession | undefined;
   readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
-  readonly lifecycle?: Pick<ServerSyncLifecycle, 'activate' | 'reconcile' | 'close'>;
+  readonly lifecycle?: Partial<Pick<ServerSyncLifecycle, 'start'>> &
+    Pick<ServerSyncLifecycle, 'activate' | 'reconcile' | 'close'>;
   readonly applyLocal: OperationInput['applyLocal'];
   readonly applyCloud?: (
     candidate: EntityBody | null,
@@ -191,7 +192,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     repo: options.repo,
     registry: options.registry,
     now,
-    state: () => state,
+    // A bound backend the lifecycle never connected to is offline, not idle.
+    state: () =>
+      state === 'idle' && options.session !== undefined && binding() !== null && options.session() === undefined
+        ? 'offline'
+        : state,
     lastSuccessAt: () => lastSuccessAt,
     backendOptions: options.backendOptions,
     binding,
@@ -355,6 +360,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     },
     async retry() {
       state = 'syncing';
+      // A startup restore whose backend was offline left the lifecycle unstarted, so retry is
+      // the reconnect path, not just a reconcile.
+      await options.lifecycle?.start?.();
+      if (options.session !== undefined && binding() !== null && options.session() === undefined) {
+        state = 'offline';
+        throw new SyncOperationError('backend-unavailable');
+      }
       options.lifecycle?.activate();
       await options.lifecycle?.reconcile?.();
       state = 'idle';

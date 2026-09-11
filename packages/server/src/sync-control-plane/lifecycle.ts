@@ -168,7 +168,12 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       session = undefined;
       input.onCoordinator?.(undefined);
       input.onSharing?.(undefined);
-      throw error;
+      // An explicit connect must surface its failure. Restoring a persisted binding must not:
+      // a routine backend outage would otherwise abort server startup, taking model traffic and
+      // the Dashboard recovery actions down with it. Every check above already returns instead
+      // of throwing on that path. Stay unstarted so a later retry reconnects.
+      if (input.initialBinding !== undefined) throw error;
+      started = false;
     }
   }
 

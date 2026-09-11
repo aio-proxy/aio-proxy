@@ -219,6 +219,9 @@ function createAcceptanceMemoryBackend(): AcceptanceMemoryBackend {
     displayName: 'Acceptance memory',
     options: { schema: zod.object({}), form: [] },
     async connect() {
+      // A real backend cannot hand out a session while it is unreachable, and the server has to
+      // survive that at startup.
+      if (!online) throw new SyncBackendError('offline', 'Acceptance backend is offline');
       const sessionIdentity = identityId;
       const session: SyncSession = {
         identityId: sessionIdentity,
