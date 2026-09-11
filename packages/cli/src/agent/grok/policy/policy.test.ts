@@ -371,6 +371,31 @@ test('GROK_CONFIG overlay with an external model is a field conflict', () => {
   expect(text).toBe('[ui]\ntheme = "dark"\n');
 });
 
+test('a non-string overlay managed field is a conflict', () => {
+  const text = '[ui]\ntheme = "dark"\n';
+  const overlay = JSON.stringify({ endpoints: { models_base_url: false } });
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [{ path: 'GROK_CONFIG', kind: 'json', text: overlay }],
+  });
+  expect(conflicts).toContain('endpoints.models_base_url');
+});
+
+test('a non-string requirements pin is a conflict', () => {
+  const text = '[ui]\ntheme = "dark"\n';
+  const conflicts = checkGrokPolicy(text, ENDPOINT, COMMAND, {
+    env: {},
+    sources: [
+      {
+        path: '/etc/grok/requirements.toml',
+        kind: 'toml',
+        text: 'endpoints = { models_base_url = false }\n',
+      },
+    ],
+  });
+  expect(conflicts).toContain('endpoints.models_base_url');
+});
+
 test('GROK_CONFIG overlay with a foreign models_base_url is a field conflict', () => {
   const text = '[ui]\ntheme = "dark"\n';
   const overlay = JSON.stringify({ endpoints: { models_base_url: 'https://api.x.ai/v1' } });

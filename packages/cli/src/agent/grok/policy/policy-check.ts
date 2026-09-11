@@ -95,21 +95,26 @@ type ParsedSource = { readonly path: string; readonly value: unknown; readonly r
 const valuesIn = (parsed: readonly ParsedSource[], role: GrokPolicySourceRole): unknown[] =>
   parsed.filter((source) => source.role === role).map((source) => source.value);
 
-const firstString = (
-  root: unknown,
-  paths: readonly (readonly string[])[],
-): { path: string; value: string } | undefined => {
+type ManagedLookup =
+  | { readonly path: string; readonly value: string }
+  | { readonly path: string; readonly invalid: true };
+
+const lookupManaged = (root: unknown, paths: readonly (readonly string[])[]): ManagedLookup | undefined => {
   for (const path of paths) {
-    const value = asString(lookup(root, path));
-    if (value !== undefined) return { path: path.join('.'), value };
+    const raw = lookup(root, path);
+    if (raw === undefined) continue;
+    if (typeof raw !== 'string') return { path: path.join('.'), invalid: true };
+    return { path: path.join('.'), value: raw };
   }
   return undefined;
 };
 
 const presentAliases = (root: unknown, paths: readonly (readonly string[])[]): { path: string; value: string }[] =>
-  paths
-    .map((path) => ({ path: path.join('.'), value: asString(lookup(root, path)) }))
-    .filter((entry): entry is { path: string; value: string } => entry.value !== undefined);
+  paths.flatMap((path) => {
+    const raw = lookup(root, path);
+    if (raw === undefined) return [];
+    return [{ path: path.join('.'), value: typeof raw === 'string' ? raw : '' }];
+  });
 
 const rejectMergedAliases = (
   roots: readonly unknown[],
@@ -131,15 +136,18 @@ const sourcedField = (
   parsed: readonly ParsedSource[],
   paths: readonly (readonly string[])[],
   role: GrokPolicySourceRole,
-): { path: string; value: string } | undefined => {
-  let found: { path: string; value: string } | undefined;
+): ManagedLookup | undefined => {
+  let found: ManagedLookup | undefined;
   for (const source of parsed) {
     if (source.role !== role) continue;
-    const field = firstString(source.value, paths);
+    const field = lookupManaged(source.value, paths);
     if (field !== undefined) found = field;
   }
   return found;
 };
+
+const conflictsWithDesired = (field: ManagedLookup, desired: string): boolean =>
+  'invalid' in field || field.value !== desired;
 
 const originOf = (value: string): string | undefined => {
   try {
@@ -269,7 +277,7 @@ export function checkGrokPolicy(
     rejectMergedAliases([user, ...parsed.map((source) => source.value)], field.paths, conflicts);
     const pin = sourcedField(parsed, field.paths, 'requirements');
     if (pin !== undefined) {
-      if (pin.value !== desired) pushUnique(conflicts, pin.path);
+      if (conflictsWithDesired(pin, desired)) pushUnique(conflicts, pin.path);
       continue;
     }
     const envValue = policy.env[field.env];
@@ -278,7 +286,7 @@ export function checkGrokPolicy(
       continue;
     }
     const overlay = sourcedField(parsed, field.paths, 'overlay');
-    if (overlay !== undefined && overlay.value !== desired) {
+    if (overlay !== undefined && conflictsWithDesired(overlay, desired)) {
       pushUnique(conflicts, overlay.path);
     }
   }
