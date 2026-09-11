@@ -1,0 +1,216 @@
+import type { FileLock } from '@aio-proxy/core';
+
+import {
+  assertSafePrivateDir,
+  assertSafeRoot,
+  captureIdentity,
+  createPrivateDir,
+  grokPaths,
+  inspectPath,
+  readGrokFile,
+  readGrokPrivateFile,
+  removeMatchingDir,
+  removeMatchingFile,
+  type GrokFileIdentity,
+  type GrokFileSnapshot,
+  type GrokPaths,
+} from './files';
+import { grokAuthCommand } from './grok-command';
+import {
+  commitGrokEdit,
+  configTextOrEmpty,
+  createBudget,
+  loadManaged,
+  persistMarker,
+  persistOwnership,
+  requireCurrent,
+  withGrokLock,
+  type GrokConfigureTestDeps,
+  type ManagedState,
+} from './lifecycle';
+import { encodeGrokOwnership, isCanonicalLoopbackOrigin, recoverGrokOwnership } from './ownership';
+import { checkGrokPolicy } from './policy';
+import { configureGrokToml, equalGrokLeaf } from './toml';
+import type { GrokConfigureInput, GrokDeadline, GrokDeps, GrokMarker, GrokOwnership, TomlEdit } from './types';
+
+export type { GrokConfigureTestDeps } from './lifecycle';
+
+function hasConfigChanges(edit: TomlEdit): boolean {
+  return edit.changes.some((change) => !equalGrokLeaf(change.before, change.after));
+}
+
+function prepareEdit(
+  text: string,
+  input: GrokConfigureInput,
+  installationId: string,
+  previous?: { readonly leaves: GrokOwnership['leaves']; readonly createdTables: GrokOwnership['createdTables'] },
+): { readonly command: string; readonly edit: TomlEdit } {
+  const command = grokAuthCommand(input.executable, installationId);
+  return { command, edit: configureGrokToml(text, input.endpoint, command, previous) };
+}
+
+async function mustReadOwnership(paths: GrokPaths): Promise<GrokFileSnapshot> {
+  const saved = await readGrokPrivateFile(paths.ownership, 'ownership');
+  if (saved === undefined) throw new Error('Grok ownership missing');
+  return saved;
+}
+
+async function configureExisting(
+  lock: FileLock,
+  paths: GrokPaths,
+  input: GrokConfigureInput,
+  deps: GrokDeps,
+  budget: GrokDeadline,
+  loaded: ManagedState,
+  testDeps?: GrokConfigureTestDeps,
+): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
+  if (loaded.marker.endpoint !== input.endpoint) throw new Error('Grok endpoint changed');
+  const configText = configTextOrEmpty(loaded.config);
+  const recovered = recoverGrokOwnership(configText, loaded.ownership);
+  let ownership = recovered.ownership;
+  let ownershipFile = loaded.ownershipFile;
+  if (encodeGrokOwnership(ownership) !== loaded.ownershipFile.text) {
+    ownershipFile = await persistOwnership(lock, paths, ownership, ownershipFile, budget);
+  }
+  if (recovered.conflicts.length > 0) {
+    throw new Error('Grok configuration modified: ' + recovered.conflicts.join(', '));
+  }
+  if (ownership.status !== 'active') throw new Error('Grok installation is removing');
+  requireCurrent(configText, ownership);
+  const { command, edit } = prepareEdit(configText, input, loaded.marker.installationId, {
+    leaves: ownership.leaves,
+    createdTables: ownership.createdTables,
+  });
+  const visible = await deps.policy(input.root, budget);
+  const conflicts = checkGrokPolicy(edit.text, input.endpoint, command, visible);
+  if (conflicts.length > 0) throw new Error('Grok routing conflict: ' + conflicts.join(', '));
+  const versionChanged = loaded.marker.adapterVersion !== input.adapterVersion;
+  if (!hasConfigChanges(edit) && !versionChanged) {
+    return { marker: loaded.marker, status: 'updated' };
+  }
+  let marker = loaded.marker;
+  if (hasConfigChanges(edit)) {
+    await commitGrokEdit(lock, paths, 'configure', edit, ownership, loaded.config, ownershipFile, budget, testDeps);
+  }
+  if (versionChanged) {
+    marker = { ...marker, adapterVersion: input.adapterVersion };
+    await persistMarker(lock, paths, marker, loaded.markerFile, budget);
+    await testDeps?.failpoint?.('marker_version');
+  }
+  return { marker, status: 'updated' };
+}
+
+async function configureFirst(
+  lock: FileLock,
+  paths: GrokPaths,
+  input: GrokConfigureInput,
+  deps: GrokDeps,
+  budget: GrokDeadline,
+  config: GrokFileSnapshot | undefined,
+  testDeps?: GrokConfigureTestDeps,
+): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
+  const installationId = deps.randomUUID();
+  const { command, edit } = prepareEdit(configTextOrEmpty(config), input, installationId);
+  const visible = await deps.policy(input.root, budget);
+  const conflicts = checkGrokPolicy(edit.text, input.endpoint, command, visible);
+  if (conflicts.length > 0) throw new Error('Grok routing conflict: ' + conflicts.join(', '));
+  const marker: GrokMarker = {
+    format: 1,
+    managedBy: 'aio-proxy',
+    agent: 'grok',
+    installationId,
+    adapterVersion: input.adapterVersion,
+    endpoint: input.endpoint,
+  };
+  const pending: GrokOwnership = {
+    format: 1,
+    agent: 'grok',
+    installationId,
+    endpoint: input.endpoint,
+    status: 'active',
+    leaves: [],
+    createdTables: [],
+    pending: {
+      operation: 'configure',
+      changes: edit.changes,
+      nextLeaves: edit.leaves,
+      nextCreatedTables: edit.createdTables,
+    },
+  };
+  const created: GrokFileIdentity[] = [];
+  let privateDir: GrokFileIdentity | undefined;
+  let markerWritten = false;
+  try {
+    privateDir = await createPrivateDir(paths.privateDir);
+    await testDeps?.failpoint?.('private_dir');
+    await persistOwnership(lock, paths, pending, undefined, budget);
+    created.push(await captureIdentity(paths.ownership));
+    await testDeps?.failpoint?.('ownership_pending');
+    await persistMarker(lock, paths, marker, undefined, budget);
+    created.push(await captureIdentity(paths.marker));
+    markerWritten = true;
+    await testDeps?.failpoint?.('marker');
+    await commitGrokEdit(
+      lock,
+      paths,
+      'configure',
+      edit,
+      pending,
+      config,
+      await mustReadOwnership(paths),
+      budget,
+      testDeps,
+    );
+    return { marker, status: 'installed' };
+  } catch (error) {
+    if (!markerWritten) {
+      for (const identity of created.reverse()) await removeMatchingFile(identity);
+      if (privateDir !== undefined) await removeMatchingDir(privateDir);
+    }
+    throw error;
+  }
+}
+
+async function configureGrokInternal(
+  input: GrokConfigureInput,
+  deps: GrokDeps,
+  testDeps?: GrokConfigureTestDeps,
+): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
+  if (!isCanonicalLoopbackOrigin(input.endpoint)) throw new Error('invalid endpoint');
+  const budget = createBudget(deps.now);
+  const paths = grokPaths(input.root);
+  return withGrokLock(input.root, budget, async (lock) =>
+    lock.withOwnership(async () => {
+      budget.signal.throwIfAborted();
+      const rootStat = await inspectPath(paths.root);
+      if (rootStat === undefined) throw new Error('Grok root is not a directory');
+      assertSafeRoot(rootStat);
+      const privateStat = await inspectPath(paths.privateDir);
+      if (privateStat === undefined) {
+        return configureFirst(lock, paths, input, deps, budget, await readGrokFile(paths.config), testDeps);
+      }
+      assertSafePrivateDir(privateStat);
+      const loaded = await loadManaged(paths, input.adapterVersion);
+      if ('newer' in loaded) {
+        if (loaded.newer === undefined) throw new Error('Grok configuration is newer');
+        return { marker: loaded.newer, status: 'newer' };
+      }
+      return configureExisting(lock, paths, input, deps, budget, loaded, testDeps);
+    }),
+  );
+}
+
+export async function configureGrok(
+  input: GrokConfigureInput,
+  deps: GrokDeps,
+): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
+  return configureGrokInternal(input, deps);
+}
+
+export async function configureGrokForTest(
+  input: GrokConfigureInput,
+  deps: GrokDeps,
+  testDeps: GrokConfigureTestDeps,
+): Promise<{ readonly marker: GrokMarker; readonly status: 'installed' | 'updated' | 'newer' }> {
+  return configureGrokInternal(input, deps, testDeps);
+}

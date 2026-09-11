@@ -1,0 +1,237 @@
+import { randomUUID } from 'node:crypto';
+import { constants, type Stats } from 'node:fs';
+import { chmod, lstat, mkdir, open, rename, rmdir, unlink } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
+import type { GrokDeadline } from './types';
+
+export type GrokFileSnapshot = {
+  readonly text: string;
+  readonly dev: number;
+  readonly ino: number;
+  readonly mode: number;
+};
+export type GrokFileIdentity = {
+  readonly path: string;
+  readonly dev: number;
+  readonly ino: number;
+};
+export type GrokPaths = {
+  readonly root: string;
+  readonly config: string;
+  readonly privateDir: string;
+  readonly marker: string;
+  readonly ownership: string;
+  readonly credential: string;
+  readonly lock: string;
+};
+export type ReplaceGrokFileTestDeps = {
+  readonly beforeRename?: () => Promise<void>;
+};
+
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL;
+
+export const grokPaths = (root: string): GrokPaths => {
+  const privateDir = join(root, 'aio-proxy');
+  return {
+    root,
+    config: join(root, 'config.toml'),
+    privateDir,
+    marker: join(privateDir, '.aio-proxy-managed.json'),
+    ownership: join(privateDir, 'ownership.json'),
+    credential: join(privateDir, 'credential.json'),
+    lock: join(root, '.aio-proxy.lock'),
+  };
+};
+
+export const isFsCode = (error: unknown, code: string): boolean =>
+  error instanceof Error && 'code' in error && error.code === code;
+
+export async function inspectPath(path: string): Promise<Stats | undefined> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return undefined;
+    throw error;
+  }
+}
+
+const currentUid = (): number | undefined => process.getuid?.();
+
+const reject = (message: string): never => {
+  throw new Error(message);
+};
+
+const assertOwnedByCurrentUser = (stats: Stats, kind: string): void => {
+  const uid = currentUid();
+  if (uid !== undefined && stats.uid !== uid) reject(`Grok ${kind} has unexpected owner`);
+};
+
+export function assertSafeRoot(stats: Stats): void {
+  if (stats.isSymbolicLink()) reject('Grok root is a symlink');
+  if (!stats.isDirectory()) reject('Grok root is not a directory');
+}
+
+export function assertSafePrivateDir(stats: Stats): void {
+  if (stats.isSymbolicLink()) reject('Grok private directory is a symlink');
+  if (!stats.isDirectory()) reject('Grok private directory is not a directory');
+  assertOwnedByCurrentUser(stats, 'private directory');
+  if ((stats.mode & 0o022) !== 0) reject('Grok private directory is group or world writable');
+}
+
+function assertSafeFile(stats: Stats, kind: string, privateFile: boolean): void {
+  if (stats.isSymbolicLink()) reject(`Grok ${kind} is a symlink`);
+  if (!stats.isFile()) reject(`Grok ${kind} is not a regular file`);
+  if (stats.nlink !== 1) reject(`Grok ${kind} is a hardlink`);
+  if (!privateFile) return;
+  assertOwnedByCurrentUser(stats, kind);
+  if ((stats.mode & 0o077) !== 0) reject(`Grok ${kind} has unsafe permissions`);
+}
+
+async function readGrokSnapshot(
+  path: string,
+  kind: string,
+  privateFile: boolean,
+): Promise<GrokFileSnapshot | undefined> {
+  const link = await inspectPath(path);
+  if (link === undefined) return undefined;
+  assertSafeFile(link, kind, privateFile);
+  let handle;
+  try {
+    handle = await open(path, READ_FLAGS);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return undefined;
+    if (isFsCode(error, 'ELOOP') || isFsCode(error, 'EPERM')) reject(`Grok ${kind} is a symlink`);
+    throw error;
+  }
+  try {
+    const file = await handle.stat();
+    if (file.dev !== link.dev || file.ino !== link.ino) reject(`Grok ${kind} changed during read`);
+    assertSafeFile(file, kind, privateFile);
+    const text = await handle.readFile('utf8');
+    return { text, dev: file.dev, ino: file.ino, mode: file.mode };
+  } finally {
+    await handle.close();
+  }
+}
+
+export const readGrokFile = (path: string): Promise<GrokFileSnapshot | undefined> =>
+  readGrokSnapshot(path, 'configuration', false);
+
+export const readGrokPrivateFile = (path: string, kind: string): Promise<GrokFileSnapshot | undefined> =>
+  readGrokSnapshot(path, kind, true);
+
+export async function syncDirectory(path: string): Promise<void> {
+  const handle = await open(path, 'r');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function removeMatchingFile(identity: GrokFileIdentity): Promise<void> {
+  const current = await inspectPath(identity.path);
+  if (current === undefined) return;
+  if (current.dev !== identity.dev || current.ino !== identity.ino) return;
+  await unlink(identity.path);
+}
+
+export async function removeMatchingDir(identity: GrokFileIdentity): Promise<void> {
+  const current = await inspectPath(identity.path);
+  if (current === undefined) return;
+  if (current.dev !== identity.dev || current.ino !== identity.ino) return;
+  try {
+    await rmdir(identity.path);
+  } catch (error) {
+    if (isFsCode(error, 'ENOTEMPTY') || isFsCode(error, 'ENOENT')) return;
+    throw error;
+  }
+}
+
+export async function captureIdentity(path: string): Promise<GrokFileIdentity> {
+  const stats = await lstat(path);
+  return { path, dev: stats.dev, ino: stats.ino };
+}
+
+export async function createPrivateDir(path: string): Promise<GrokFileIdentity> {
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if (isFsCode(error, 'EEXIST')) reject('Grok private directory already exists');
+    throw error;
+  }
+  const stats = await lstat(path);
+  assertSafePrivateDir(stats);
+  return { path, dev: stats.dev, ino: stats.ino };
+}
+
+export const sameGrokSnapshot = (
+  expected: GrokFileSnapshot | undefined,
+  current: GrokFileSnapshot | undefined,
+): boolean =>
+  expected === undefined
+    ? current === undefined
+    : current !== undefined &&
+      current.dev === expected.dev &&
+      current.ino === expected.ino &&
+      current.text === expected.text &&
+      current.mode === expected.mode;
+
+export async function replaceGrokFile(
+  path: string,
+  text: string,
+  expected: GrokFileSnapshot | undefined,
+  budget: GrokDeadline,
+  assertOwnership: () => Promise<void>,
+  testDeps?: ReplaceGrokFileTestDeps,
+): Promise<void> {
+  const temporaryPath = path + '.aio-' + randomUUID();
+  let temporary: GrokFileIdentity | undefined;
+  try {
+    const handle = await open(temporaryPath, WRITE_FLAGS, 0o600);
+    try {
+      await handle.writeFile(text);
+      await handle.sync();
+      const stats = await handle.stat();
+      temporary = { path: temporaryPath, dev: stats.dev, ino: stats.ino };
+    } finally {
+      await handle.close();
+    }
+    if (expected !== undefined) await chmod(temporaryPath, expected.mode & 0o777);
+    await testDeps?.beforeRename?.();
+    // Last check plus rename is not CAS against an uncooperative writer.
+    // Configure while Grok is not also saving settings.
+    budget.signal.throwIfAborted();
+    await assertOwnership();
+    const current = await readGrokFile(path);
+    if (!sameGrokSnapshot(expected, current)) {
+      throw new Error('Grok file changed during update. Configure while Grok is not also saving settings.');
+    }
+    budget.signal.throwIfAborted();
+    await rename(temporaryPath, path);
+    temporary = undefined;
+    await syncDirectory(dirname(path));
+  } finally {
+    if (temporary !== undefined) await removeMatchingFile(temporary);
+  }
+}
+
+export async function unlinkGrokFile(
+  path: string,
+  expected: GrokFileSnapshot | undefined,
+  budget: GrokDeadline,
+  assertOwnership: () => Promise<void>,
+): Promise<void> {
+  budget.signal.throwIfAborted();
+  await assertOwnership();
+  const current = await readGrokPrivateFile(path, 'credential');
+  if (!sameGrokSnapshot(expected, current)) {
+    throw new Error('Grok file changed during update. Configure while Grok is not also saving settings.');
+  }
+  if (current === undefined) return;
+  budget.signal.throwIfAborted();
+  await unlink(path);
+  await syncDirectory(dirname(path));
+}
