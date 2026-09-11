@@ -176,7 +176,7 @@ export function migrateSyncTestDb(sqlite: Database): void {
 
 type Method = 'read' | 'compareAndSwap';
 type FaultMode = 'before' | 'after';
-type FailureCode = 'offline' | 'quota';
+type FailureCode = 'offline' | 'quota' | 'identity-changed';
 type Gate = { readonly entered: Promise<void>; readonly release: () => void; readonly wait: () => Promise<void> };
 
 export type MemorySyncBackend = {

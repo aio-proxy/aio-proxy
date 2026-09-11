@@ -23,7 +23,7 @@ function digestConfig(value: Record<string, JsonValue>, path: string): string {
 type Method = 'read' | 'compareAndSwap';
 type Gate = { readonly entered: Promise<void>; readonly release: () => void; readonly wait: () => Promise<void> };
 type FaultMode = 'before' | 'after';
-type FailureCode = 'offline' | 'quota';
+type FailureCode = 'offline' | 'quota' | 'identity-changed';
 
 type TwoDeviceOptions = {
   readonly watch?: boolean;

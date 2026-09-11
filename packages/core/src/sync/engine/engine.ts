@@ -1,6 +1,6 @@
 import { SyncBackendError, type SyncSession } from '@aio-proxy/plugin-sdk';
 
-import { collectHistory, deleteEntity, purgeEntity, readServerTime, restoreEntity } from '../cleanup';
+import { collectHistory, deleteEntity, purgeEntity, readServerTime } from '../cleanup';
 import { recoverLocalCommits } from '../local-commit';
 import { decodeHead, entityKey, SyncProtocolError, type EntityHead } from '../protocol';
 import { publishEntity, createSyncObjectStore } from '../publication';
@@ -107,10 +107,14 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         const head = await store.readHead(operation.objectId, signal);
         assertGeneration(generation);
         if (head !== null && head.head.state !== 'active') {
-          await restoreEntity(store, operation.objectId, operation.body, operation.operationId, signal);
-        } else {
-          await publishEntity(store, operation, signal);
+          // A tombstone exists to defeat stale edits: another device deleted this object while the
+          // put was queued. Resurrecting it here would bypass the review a restore requires, so the
+          // stale write is dropped and remote reconciliation applies the deletion locally. The
+          // configuration is still recoverable through an explicit restore preview.
+          input.repo.acknowledge(input.binding.id, operation.operationId);
+          continue;
         }
+        await publishEntity(store, operation, signal);
       } else {
         const head = await store.readHead(operation.objectId, signal);
         assertGeneration(generation);
@@ -190,6 +194,21 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     return input.session.dispose().catch(() => undefined);
   }
 
+  // Terminal: the session is gone and no schedule may resurrect it. Reported as
+  // `identity-changed` rather than `stopped` so the caller can distinguish "needs reconnect" from
+  // an ordinary shutdown.
+  function stopForIdentityChange(): Promise<void> {
+    if (stopPromise !== undefined) return stopPromise;
+    stopped = true;
+    ownedController.abort();
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    unsubscribe?.();
+    unsubscribe = undefined;
+    stopPromise = disposeSession().then(() => status('identity-changed'));
+    return stopPromise;
+  }
+
   function coalescedReconcile(signal: AbortSignal): Promise<void> {
     if (stopped) return Promise.resolve();
     if (running !== undefined) return running;
@@ -200,6 +219,12 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         if (isBackendFailure(error) && (error.code === 'offline' || error.code === 'quota')) {
           backoff = Math.min(MAX_BACKOFF_MS, nextBackoffMs(backoff, pollMs));
           status(error.code);
+          return;
+        }
+        // The backend disposed the session when the signed-in identity changed. Retrying against it
+        // can only fail, so the engine stops and reports the state the user has to act on.
+        if (isBackendFailure(error) && error.code === 'identity-changed') {
+          void stopForIdentityChange();
           return;
         }
         status('error');

@@ -33,6 +33,15 @@ function decodeHeadForKey(value: Uint8Array, objectId: string): EntityHead {
   return head;
 }
 
+const TOMBSTONE_BASELINE_PREFIX = 'deleted:';
+
+// A deleted row keeps its kind and logical key so credential coordination can still find it, but it
+// no longer claims that identity. Counting it as a collision would pin `provider-id-conflict` on the
+// one surviving object forever, since discovery already sees a single active identity.
+function tombstoned(entity: LocalEntity): boolean {
+  return entity.desired === null && (entity.baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
+}
+
 function upsertEntity(
   input: RemoteReconcileInput,
   existing: LocalEntity | undefined,
@@ -168,10 +177,13 @@ export async function reconcileRemote(
       const existing = known.get(objectId);
       const conflicting = [...known.values()].find(
         (candidate) =>
-          candidate.objectId !== objectId && candidate.kind === head.kind && candidate.logicalKey === head.logicalKey,
+          candidate.objectId !== objectId &&
+          candidate.kind === head.kind &&
+          candidate.logicalKey === head.logicalKey &&
+          !tombstoned(candidate),
       );
       if (head.state !== 'active') {
-        const tombstoneRevision = `deleted:${head.epoch}`;
+        const tombstoneRevision = `${TOMBSTONE_BASELINE_PREFIX}${head.epoch}`;
         // Excluded entities get the deletion signal too, for credential coordination. The local
         // port gates the destructive half on `mode === 'included'`, so a `sync leave` copy of the
         // Provider and its account survive this call.
@@ -240,6 +252,7 @@ export async function reconcileRemote(
           (candidate, index, all) =>
             candidate.kind === head.kind &&
             candidate.logicalKey === head.logicalKey &&
+            !tombstoned(candidate) &&
             all.findIndex((item) => item.objectId === candidate.objectId) === index,
         );
         for (const candidate of candidates) {

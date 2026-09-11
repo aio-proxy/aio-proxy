@@ -222,6 +222,36 @@ test('a late colliding cloud object quarantines both identities without deleting
   });
 });
 
+test('a tombstoned row does not collide with the object that takes over its Provider ID', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    await deleteEntity(createSyncObjectStore(a.session), 'provider-work', 0, a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-work')?.desired).toBeNull();
+    await publishEntity(
+      createSyncObjectStore(a.session),
+      {
+        operationId: 'recreated-op',
+        objectId: 'provider-recreated',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'work', value: { kind: 'api', apiKey: 'again' }, dependencies: [] },
+        commitId: 'fixture-recreated',
+      },
+      a.signal,
+    );
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-recreated')).toMatchObject({
+      mode: 'included',
+      pendingReason: null,
+    });
+  });
+});
+
 test('watch hints coalesce while one remote application is in flight', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     const gate = b.pauseRemoteApplication();
@@ -379,7 +409,7 @@ test('excluded identities receive cloud deletion signals', async () => {
   });
 });
 
-test('local publication is acknowledged and re-add restores a remotely deleted head', async () => {
+test('a queued put is dropped instead of resurrecting a remotely deleted head', async () => {
   await withTwoSyncDevices(async ({ a }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
     await a.engine.reconcile(a.signal);
@@ -388,9 +418,12 @@ test('local publication is acknowledged and re-add restores a remotely deleted h
     await a.commitProvider('work', { kind: 'api', apiKey: 'restored' }, true);
     await a.engine.reconcile(a.signal);
     expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    // The tombstone survives the stale write, and the deletion is what reconciliation applies
+    // locally. Bringing the configuration back is only possible through an explicit restore.
     const head = await createSyncObjectStore(a.session).readHead('provider-work', a.signal);
-    expect(head?.head.state).toBe('active');
-    expect(head?.head.epoch).toBe(1);
+    expect(head?.head.state).toBe('deleted');
+    expect(head?.head.epoch).toBe(0);
+    expect(a.remoteApplyCalls().some((call) => call.objectId === 'provider-work' && call.body === null)).toBe(true);
   });
 });
 
@@ -469,6 +502,27 @@ test('stop remains successful when session disposal fails', async () => {
     };
     await expect(b.engine.stop()).resolves.toBeUndefined();
   });
+});
+
+test('an identity change stops the engine and reports the reconnect state', async () => {
+  await withTwoSyncDevices(
+    async ({ a, b }) => {
+      await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+      await a.engine.reconcile(a.signal);
+      b.failNext('read', 'before', 'identity-changed');
+      const changed = b.waitForStatus('identity-changed');
+      b.engine.start();
+      await changed;
+      // The backend already dropped the session, so nothing may be scheduled against it again.
+      expect(b.disposeCount()).toBe(1);
+      const applied = b.remoteApplyCalls().length;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(b.remoteApplyCalls().length).toBe(applied);
+      await b.engine.stop();
+      expect(b.disposeCount()).toBe(1);
+    },
+    { watch: false },
+  );
 });
 
 test('failed watch initialization disposes the session and repeated stop is safe', async () => {
