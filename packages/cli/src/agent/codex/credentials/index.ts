@@ -1,1 +1,1 @@
-export { CredentialError, inspectProxyKeys, type CredentialErrorCode } from './credentials';
+export { CredentialError, inspectProxyKeys, probeProxyApiKey, type CredentialErrorCode } from './credentials';

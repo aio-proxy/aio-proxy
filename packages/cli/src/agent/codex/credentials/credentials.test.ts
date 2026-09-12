@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { AtomicConfigFile } from '@aio-proxy/core';
 
-import { CredentialError, inspectProxyKeys } from './credentials';
+import { CredentialError, inspectProxyKeys, probeProxyApiKey } from './credentials';
 
 const fixture = async (value: unknown): Promise<{ readonly root: string; readonly path: string }> => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-key-'));
@@ -157,6 +157,29 @@ test('selection becomes stale when an authored extra field changes', async () =>
     });
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects redirects when probing a static API key', async () => {
+  const destination = Bun.serve({
+    port: 0,
+    fetch: () => Response.json({ object: 'list', data: [] }),
+  });
+  const loopback = Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response(null, {
+        status: 307,
+        headers: { location: `http://127.0.0.1:${destination.port}/v1/models` },
+      }),
+  });
+  try {
+    await expect(probeProxyApiKey({ endpoint: `http://127.0.0.1:${loopback.port}`, token: 'sk-test' })).resolves.toBe(
+      'offline',
+    );
+  } finally {
+    loopback.stop(true);
+    destination.stop(true);
   }
 });
 

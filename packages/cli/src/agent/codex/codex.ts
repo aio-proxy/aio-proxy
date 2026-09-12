@@ -13,7 +13,7 @@ import { writeCodexAuthToken } from './command-auth';
 import { resolveCodexAuthCommand } from './command-location';
 import { readCodexDocument, validateCodexProviderId } from './config-document';
 import type { CodexLocation, CodexListResult, CodexRemoveResult } from './contracts';
-import { inspectProxyKeys } from './credentials';
+import { inspectProxyKeys, probeProxyApiKey } from './credentials';
 import { listCodexLifecycle, removeCodexLifecycle } from './lifecycle';
 import { resolveCodexLocation } from './location';
 import { inspectCodexConfig, recoverCodexConfigOperation } from './managed-config';
@@ -83,20 +83,7 @@ const createCredentialDeps = (endpoint: string) => {
     file,
     loadEnvironment: () => loadServiceEnv(path),
     readEnvironment: () => ({ ...process.env }),
-    check: async (token: string): Promise<'ok' | 'offline' | 'unauthorized' | 'invalid_response'> => {
-      try {
-        const response = await fetch(`${endpoint.replace(/\/+$/u, '')}/v1/models`, {
-          headers: { authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(3_000),
-        });
-        if (response.status === 401 || response.status === 403) return 'unauthorized';
-        if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
-        const body: unknown = await response.json().catch(() => undefined);
-        return body !== null && typeof body === 'object' && !Array.isArray(body) ? 'ok' : 'invalid_response';
-      } catch {
-        return 'offline';
-      }
-    },
+    check: (token: string) => probeProxyApiKey({ endpoint, token }),
   };
 };
 

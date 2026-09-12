@@ -30,6 +30,27 @@ type CredentialState = {
 
 const asCredentialError = (code: CredentialErrorCode): CredentialError => new CredentialError(code);
 
+export async function probeProxyApiKey(input: {
+  readonly endpoint: string;
+  readonly token: string;
+  readonly signal?: AbortSignal;
+  readonly fetch?: typeof fetch;
+}): Promise<CredentialStatus> {
+  try {
+    const response = await (input.fetch ?? fetch)(`${input.endpoint.replace(/\/+$/u, '')}/v1/models`, {
+      headers: { authorization: `Bearer ${input.token}` },
+      signal: input.signal ?? AbortSignal.timeout(3_000),
+      redirect: 'error',
+    });
+    if (response.status === 401 || response.status === 403) return 'unauthorized';
+    if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
+    const body: unknown = await response.json().catch(() => undefined);
+    return body !== null && typeof body === 'object' && !Array.isArray(body) ? 'ok' : 'invalid_response';
+  } catch {
+    return 'offline';
+  }
+}
+
 function authoredKeys(raw: Record<string, unknown>): readonly AuthoredKey[] {
   const server = raw['server'];
   if (server === undefined) return [];
