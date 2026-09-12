@@ -32,10 +32,6 @@ rs.mock('@/hooks/use-sync', () => ({
   useApplySync: () => ({ mutate: mocks.applySync, isPending: false, error: null, reset: rs.fn() }),
 }));
 
-rs.mock('@/modules/settings/services/sync-service', () => ({
-  SyncRequestError: class SyncRequestError extends Error {},
-}));
-
 const noop = () => {};
 
 interface PreviewStateHarnessProps {

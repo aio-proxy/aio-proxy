@@ -12,20 +12,10 @@ import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
+import { SyncRequestError } from '@/lib/sync-request-error';
 
 const dashboardClient = createDashboardClient();
 const syncClient = dashboardClient.dashboard.api.sync;
-
-export class SyncRequestError extends Error {
-  override readonly name = 'SyncRequestError';
-
-  constructor(
-    readonly code: string,
-    readonly status: number,
-  ) {
-    super(code);
-  }
-}
 
 const readSyncResponse = async <T>(response: unknown): Promise<T> => {
   const typedResponse = response as {

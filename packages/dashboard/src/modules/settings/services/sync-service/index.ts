@@ -8,5 +8,4 @@ export {
   setSyncRange,
   syncBackendsQueryOptions,
   syncQueryOptions,
-  SyncRequestError,
 } from './sync-service';
