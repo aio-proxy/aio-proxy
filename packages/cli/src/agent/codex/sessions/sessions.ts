@@ -105,7 +105,7 @@ export const checkCodexOffline = checkOffline;
 const codexProcessPattern = /^(?:\S*\/)?codex(?:-cli)?(?:\s|$)/i;
 
 export function isCodexWriterProcess(pid: number, command: string): boolean {
-  return pid !== process.pid && codexProcessPattern.test(command);
+  return pid !== process.pid && codexProcessPattern.test(command.replaceAll('\0', ' '));
 }
 
 async function managedProvider(location: CodexLocation): Promise<string> {

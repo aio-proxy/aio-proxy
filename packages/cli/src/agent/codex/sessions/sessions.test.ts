@@ -542,6 +542,8 @@ test('does not treat the current configure command as a Codex writer', () => {
   expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex')).toBe(true);
   expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex-cli')).toBe(true);
   expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex app-server')).toBe(true);
+  expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex\0app-server\0')).toBe(true);
+  expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/codex-cli\0')).toBe(true);
 });
 
 test('does not reclaim an expired lease held by a live process', async () => {
