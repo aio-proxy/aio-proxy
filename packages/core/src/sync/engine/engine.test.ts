@@ -243,6 +243,49 @@ test('conflicting cloud object IDs are all excluded before any provider is appli
   });
 });
 
+test('a duplicate resolved during the pass leaves the surviving object synchronized', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    const store = createSyncObjectStore(a.session);
+    for (const suffix of ['a', 'b']) {
+      await publishEntity(
+        store,
+        {
+          operationId: `conflict-${suffix}-op`,
+          objectId: `provider-conflict-${suffix}`,
+          epoch: 0,
+          kind: 'put',
+          body: { kind: 'provider', logicalKey: 'conflict', value: { kind: 'api', key: suffix }, dependencies: [] },
+          commitId: `fixture-${suffix}`,
+        },
+        a.signal,
+      );
+    }
+
+    // The other device deletes one of the duplicates after discovery recorded both heads. Trusting
+    // that snapshot would quarantine the survivor, and no later pass restores inclusion.
+    const read = b.session.read.bind(b.session);
+    let resolved = false;
+    b.session.read = async (key, signal) => {
+      const value = await read(key, signal);
+      if (!resolved && key === entityKey('provider-conflict-b')) {
+        resolved = true;
+        await deleteEntity(store, 'provider-conflict-b', 0, a.signal);
+      }
+      return value;
+    };
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-conflict-a')).toMatchObject({
+      mode: 'included',
+      pendingReason: null,
+    });
+    expect(b.remoteApplyCalls()).toContainEqual(
+      expect.objectContaining({ objectId: 'provider-conflict-a', body: { kind: 'api', key: 'a' } }),
+    );
+  });
+});
+
 test('a late colliding cloud object quarantines both identities without deleting the active Provider', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);

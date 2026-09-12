@@ -113,6 +113,39 @@ async function readCurrent(
   return record;
 }
 
+// Another device can resolve a duplicate identity between the discovery pass and the main pass, by
+// deleting one of the heads that claimed it. Quarantining on that stale snapshot would exclude the
+// one surviving object, and a later pass clears the pending reason without ever restoring inclusion,
+// leaving a now-unambiguous Provider silently unsynchronized. So confirm a sibling still claims the
+// identity before trusting the snapshot. Only reached for a discovered collision, never on the
+// ordinary path.
+async function identityStillClaimed(
+  input: RemoteReconcileInput,
+  members: Iterable<string>,
+  head: EntityHead,
+  signal: AbortSignal,
+): Promise<boolean> {
+  for (const member of members) {
+    if (member === head.objectId) continue;
+    const value = await input.session.read(entityKey(member), signal);
+    if (value.kind === 'absent') continue;
+    try {
+      const other = decodeHeadForKey(value.value, member);
+      if (
+        other.state === 'active' &&
+        other.current !== null &&
+        other.kind === head.kind &&
+        other.logicalKey === head.logicalKey
+      ) {
+        return true;
+      }
+    } catch {
+      // The main pass preserves malformed/unknown records as read-only; they claim no identity.
+    }
+  }
+  return false;
+}
+
 // eslint-disable-next-line max-lines-per-function
 export async function reconcileRemote(
   input: RemoteReconcileInput,
@@ -278,7 +311,10 @@ export async function reconcileRemote(
       }
       if (record === null || record.state !== 'payload') continue;
       const body = record.body;
-      if (conflictObjects.has(objectId) || conflicting !== undefined) {
+      const duplicated =
+        conflictObjects.has(objectId) &&
+        (await identityStillClaimed(input, identities.get(`${head.kind}\0${head.logicalKey}`) ?? [], head, signal));
+      if (duplicated || conflicting !== undefined) {
         const candidates = [...known.values(), ...(existing === undefined ? [] : [existing])].filter(
           (candidate, index, all) =>
             candidate.kind === head.kind &&
