@@ -691,3 +691,30 @@ test('a queued operation superseded by a remote restore is dropped instead of we
     expect(head?.head).toMatchObject({ epoch: 1, state: 'active' });
   });
 });
+
+test('overrides pinned while a remote application is in flight survive the write-back', async () => {
+  const overrides = [{ path: ['apiKey'], value: 'device-local' }];
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+
+    await a.commitProvider('work', { kind: 'api', apiKey: 'second' }, true);
+    await a.engine.reconcile(a.signal);
+
+    // The pass snapshots the rows before it awaits the network, so an override Apply landing during
+    // that await is invisible to it. Replaying the snapshot would unpin the path and let this very
+    // update overwrite the value the user asked to keep device-local.
+    const gate = b.pauseRemoteApplication();
+    const reconcile = b.engine.reconcile(b.signal);
+    await gate.entered;
+    const row = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work');
+    b.repo.putEntity(b.binding.id, { ...row!, overrides });
+    gate.release();
+    await reconcile;
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')?.overrides).toEqual(
+      overrides,
+    );
+  });
+});

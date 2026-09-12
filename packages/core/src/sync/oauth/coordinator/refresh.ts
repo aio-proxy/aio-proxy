@@ -45,13 +45,9 @@ export async function claimReady(
   context: CoordinatorContext,
   current: LiveAccount,
   version: string,
+  claim: RefreshClaim,
   signal: AbortSignal,
 ): Promise<{ account: LiveAccount; version: string } | null> {
-  const claim: RefreshClaim = {
-    operationId: crypto.randomUUID(),
-    ownerDeviceId: context.binding.deviceId,
-    baseGeneration: current.generation,
-  };
   const claimed: LiveAccount = { ...current, phase: 'refreshing', claim };
   const bytes = encode(claimed);
   try {
@@ -72,21 +68,15 @@ export async function claimReady(
   }
 }
 
-async function releaseUnstartedClaim(
-  context: CoordinatorContext,
-  claimed: { account: LiveAccount; version: string },
-  signal: AbortSignal,
-): Promise<void> {
-  const ready: LiveAccount = { ...claimed.account, phase: 'ready', claim: null };
+/** Retire a journal row nothing can publish, so it stops reading as a retained shared-OAuth hold. */
+export function discardJournal(context: CoordinatorContext, operationId: string): void {
   try {
-    await context.store.session.compareAndSwap(
-      accountKey(claimed.account.objectId),
-      claimed.version,
-      encode(ready),
-      signal,
-    );
+    const row = context.repo.oauthJournals(context.binding.id).find((item) => item.operationId === operationId);
+    if (row === undefined) return;
+    context.repo.writeOAuthJournal(context.binding.id, { ...row, phase: 'complete' });
+    context.repo.clearOAuthJournal(context.binding.id, operationId);
   } catch {
-    // A failed release leaves the claim as a fence and recovery can inspect it.
+    // A stale journal is harmless and can be retried on the next recovery pass.
   }
 }
 
@@ -285,26 +275,33 @@ export async function refreshAccount<C>(
   if (current.account.phase !== 'ready')
     throw new SyncOAuthError('refresh-deferred', 'A shared OAuth refresh is already active');
   const original = await input.validate(current.account.payload.credential);
-  const claimed = await claimReady(context, current.account, current.version, signal);
-  if (claimed === null) {
-    return refreshAfterReread(context, input, signal);
-  }
-  await input.validate(claimed.account.payload.credential);
+  const claim: RefreshClaim = {
+    operationId: crypto.randomUUID(),
+    ownerDeviceId: context.binding.deviceId,
+    baseGeneration: current.account.generation,
+  };
   const journal: OAuthJournalRow = {
-    operationId: claimed.account.claim!.operationId,
+    operationId: claim.operationId,
     objectId: input.objectId,
-    epoch: claimed.account.epoch,
-    baseGeneration: claimed.account.generation,
+    epoch: current.account.epoch,
+    baseGeneration: claim.baseGeneration,
     phase: 'started',
     payload: null,
   };
+  // Journal before claiming. A claim published without local evidence can be stranded in
+  // `refreshing` by a lost release, and recovery would have no operation left to fence — which
+  // blocks every later refresh and the fresh login that is supposed to take the account over.
   try {
     context.repo.writeOAuthJournal(context.binding.id, journal);
   } catch {
-    context.pendingResults.delete(journal.operationId);
-    await releaseUnstartedClaim(context, claimed, signal);
     throw new SyncOAuthError('refresh-deferred', 'Could not durably record the OAuth refresh');
   }
+  const claimed = await claimReady(context, current.account, current.version, claim, signal);
+  if (claimed === null) {
+    discardJournal(context, journal.operationId);
+    return refreshAfterReread(context, input, signal);
+  }
+  await input.validate(claimed.account.payload.credential);
   context.activeOperations.add(journal.operationId);
   let result: { value: C; metadata?: { accountLabel?: string; expiresAt?: number } };
   try {

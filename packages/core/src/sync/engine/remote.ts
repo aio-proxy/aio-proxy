@@ -74,7 +74,10 @@ function upsertEntity(
     epoch: head.epoch,
     desired: body,
     baseline,
-    overrides: existing?.overrides ?? [],
+    // `existing` predates this pass's awaits too. An override Apply landing during one writes the
+    // row's newly pinned paths, and replaying the snapshot would silently unpin them — the next
+    // remote update then overwrites values the user asked to keep device-local.
+    overrides: latest === undefined ? (existing?.overrides ?? []) : latest.overrides,
     pendingReason,
     // `existing` predates this pass's awaits. Importing a shared account during one writes the
     // row's OAuth ownership, and handing the snapshot back would erase it: the account exists from

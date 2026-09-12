@@ -1,17 +1,21 @@
 import { SyncBackendError } from '@aio-proxy/plugin-sdk';
 
+import type { OAuthJournalRow } from '../../repository';
 import { SyncOAuthError, type LiveAccount } from '../protocol';
-import { readCurrent, publishResult, fenceClaim, type CoordinatorContext } from './refresh';
+import { readCurrent, publishResult, fenceClaim, discardJournal, type CoordinatorContext } from './refresh';
 
-function discardJournal(context: CoordinatorContext, operationId: string): void {
-  try {
-    const row = context.repo.oauthJournals(context.binding.id).find((item) => item.operationId === operationId);
-    if (row === undefined) return;
-    context.repo.writeOAuthJournal(context.binding.id, { ...row, phase: 'complete' });
-    context.repo.clearOAuthJournal(context.binding.id, operationId);
-  } catch {
-    // A stale journal is harmless and can be retried on the next recovery pass.
-  }
+/**
+ * Whether the account has moved past anything this `started` journal could ever publish: a later
+ * login replaced it at a newer epoch, a newer generation was published, or the operation already
+ * completed. `publishResult` refuses all three, so the row is dead — and a dead row left in place
+ * reads as a retained shared-OAuth hold that blocks detach and backend replacement forever.
+ */
+function supersededClaim(current: LiveAccount, journal: OAuthJournalRow): boolean {
+  return (
+    current.epoch !== journal.epoch ||
+    current.generation > journal.baseGeneration ||
+    current.lastCompletedOperationId === journal.operationId
+  );
 }
 
 export async function recoverAccount(
@@ -51,6 +55,7 @@ export async function recoverAccount(
         discardJournal(context, journal.operationId);
         throw new SyncOAuthError('result-uncertain', 'The OAuth process stopped before recording a result');
       }
+      if (supersededClaim(current.account as LiveAccount, journal)) discardJournal(context, journal.operationId);
       continue;
     }
     try {

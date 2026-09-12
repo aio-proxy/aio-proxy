@@ -1,6 +1,16 @@
 import { expect, test } from 'bun:test';
 
+import { retainsSharedOAuth } from '../protocol';
 import { withSharedOAuthDevices } from '../test-support';
+
+function remotePhase(f: {
+  backend: { readAll: () => ReadonlyMap<string, { kind: string }> };
+  objectId: string;
+}): string {
+  const stored = f.backend.readAll().get(`s/v1/default/account/${f.objectId}`);
+  if (stored?.kind !== 'present') throw new Error('missing account fixture');
+  return JSON.parse(new TextDecoder().decode((stored as { value: Uint8Array }).value)).phase;
+}
 
 test('two devices exchange once and recover the durable result', async () => {
   await withSharedOAuthDevices(async (f) => {
@@ -202,7 +212,7 @@ test('an unserializable exchange result quarantines the claim instead of strandi
   });
 });
 
-test('a journal failure before exchange releases the unstarted claim', async () => {
+test('a journal failure before exchange leaves the account unclaimed', async () => {
   await withSharedOAuthDevices(async (f) => {
     const original = f.repoA.writeOAuthJournal;
     f.repoA.writeOAuthJournal = () => {
@@ -353,5 +363,85 @@ test('recovery fences a refreshing claim whose terminal transition never landed'
     expect((await f.b.recover(f.objectId, f.signal))?.phase).toBe('uncertain');
     expect((await f.a.recover(f.objectId, f.signal))?.phase).toBe('uncertain');
     expect(f.repoA.oauthJournals('oauth-a')).toEqual([]);
+  });
+});
+
+test('a journal failure whose claim release is also lost still allows a later refresh', async () => {
+  await withSharedOAuthDevices(async (f) => {
+    let phaseAtJournalWrite: string | undefined;
+    const original = f.repoA.writeOAuthJournal;
+    let attempts = 0;
+    f.repoA.writeOAuthJournal = (bindingId, row) => {
+      attempts++;
+      if (attempts > 1) {
+        original.call(f.repoA, bindingId, row);
+        return;
+      }
+      phaseAtJournalWrite = remotePhase(f);
+      // Under a claim-before-journal ordering the claim is already published here, so make its
+      // best-effort release fail too — that is the outage that strands the account permanently.
+      if (phaseAtJournalWrite === 'refreshing') f.backend.failNext('compareAndSwap', 'before');
+      throw new Error('database unavailable');
+    };
+    const input = {
+      objectId: f.objectId,
+      epoch: 0,
+      generation: 0,
+      exchange: async () => ({ value: { token: 'new' } }),
+      validate: async (value: unknown) => f.schema.parse(value),
+    };
+    await expect(f.a.refresh(input, f.signal)).rejects.toMatchObject({ code: 'refresh-deferred' });
+    // Durable local evidence has to exist before the remote claim, or nothing can fence it later.
+    expect(phaseAtJournalWrite).toBe('ready');
+    expect(remotePhase(f)).toBe('ready');
+    // The stranded claim used to block every later refresh and fresh login forever.
+    const retried = await f.a.refresh(input, f.signal);
+    expect(retried.status).toBe('updated');
+    expect(retried.account.generation).toBe(1);
+  });
+});
+
+test('recovery discards a started journal superseded by a newer login epoch', async () => {
+  await withSharedOAuthDevices(async (f) => {
+    await expect(
+      f.a.refresh(
+        {
+          objectId: f.objectId,
+          epoch: 0,
+          generation: 0,
+          exchange: async () => {
+            throw new Error('network timeout');
+          },
+          validate: async (value: unknown) => f.schema.parse(value),
+        },
+        f.signal,
+      ),
+    ).rejects.toMatchObject({ code: 'result-uncertain' });
+    expect(f.repoA.oauthJournals('oauth-a')[0]?.phase).toBe('started');
+    const session = f.backend.connect();
+    try {
+      const current = f.backend.readAll().get(`s/v1/default/account/${f.objectId}`);
+      if (current?.kind !== 'present') throw new Error('missing account fixture');
+      const next = {
+        ...JSON.parse(new TextDecoder().decode(current.value)),
+        epoch: 1,
+        generation: 0,
+        payload: { credential: { token: 'login' }, options: {}, secrets: {}, fingerprint: 'new-login' },
+        claim: null,
+        phase: 'ready',
+        lastCompletedOperationId: null,
+      };
+      await session.compareAndSwap(
+        `s/v1/default/account/${f.objectId}`,
+        current.version,
+        new TextEncoder().encode(JSON.stringify(next)),
+        f.signal,
+      );
+    } finally {
+      await session.dispose();
+    }
+    expect((await f.a.recover(f.objectId, f.signal))?.epoch).toBe(1);
+    // A retained journal reads as shared ownership, which failed disconnect and replacement forever.
+    expect(retainsSharedOAuth({ objectId: f.objectId }, f.repoA.oauthJournals('oauth-a'))).toBe(false);
   });
 });
