@@ -300,9 +300,11 @@ export async function removeCodexAgent(): Promise<CodexRemoveResult> {
   });
 }
 
+const helperProcessStartedAt = (): number => Date.now() - process.uptime() * 1_000;
+
 export async function runCodexAuthCommand(
   installationId: string,
-  startedAt = Date.now(),
+  startedAt = helperProcessStartedAt(),
   writeToken: (token: string) => Promise<void> = (token) =>
     new Promise<void>((resolve, reject) => {
       process.stdout.write(formatAgentToken({ accessToken: token, expiresIn: 0 }, 'raw'), (error) =>

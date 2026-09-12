@@ -38,10 +38,10 @@ const setupError = (code: string): Error => new Error(code);
 
 const modeOf = (inspection: ConfigInspection): CodexAuthMode | undefined => inspection.authMode;
 
-async function commandInstallationNeedsAuthorization(
+async function commandAuthorizationNeed(
   installation: CodexCommandInstallation,
   context: CodexSetupContext,
-): Promise<boolean> {
+): Promise<{ readonly forceRefresh: boolean } | undefined> {
   const credential = await readCredential(context.location);
   if (
     installation.status === 'pending' ||
@@ -49,18 +49,17 @@ async function commandInstallationNeedsAuthorization(
     credential.status === 'reauthorize' ||
     credential.accessExpiresAt <= Date.now()
   )
-    return true;
-  if (installation.status !== 'active') return false;
+    return { forceRefresh: false };
+  if (installation.status !== 'active') return undefined;
   const checked = await inspectCodexCommandCredential({
     location: context.location,
     check: true,
     signal: context.signal,
   });
-  return (
-    checked.credentialStatus === 'expired' ||
-    checked.credentialStatus === 'reauthorize' ||
-    checked.connection === 'unauthorized'
-  );
+  if (checked.connection === 'unauthorized') return { forceRefresh: true };
+  if (checked.credentialStatus === 'expired' || checked.credentialStatus === 'reauthorize')
+    return { forceRefresh: false };
+  return undefined;
 }
 
 async function revokeAndClear(
@@ -179,13 +178,15 @@ async function commitCommand(
     installationId: prepared.marker.installationId,
     providerId,
   });
-  if (await commandInstallationNeedsAuthorization(prepared, context)) {
+  const authorization = await commandAuthorizationNeed(prepared, context);
+  if (authorization !== undefined) {
     await authorizeCodexInstallation(
       {
         location: context.location,
         installation: prepared,
         signal: context.signal,
         onDevice: context.onDevice,
+        forceRefresh: authorization.forceRefresh,
       },
       lease,
     );
@@ -241,9 +242,16 @@ async function recoverComplete(
   const identity = await readCodexCommandIdentity(context.location);
   if (identity?.marker.installationId !== operation.installationId || identity.marker.endpoint !== context.endpoint)
     return false;
-  if (await commandInstallationNeedsAuthorization(identity, context)) {
+  const authorization = await commandAuthorizationNeed(identity, context);
+  if (authorization !== undefined) {
     await authorizeCodexInstallation(
-      { location: context.location, installation: identity, signal: context.signal, onDevice: context.onDevice },
+      {
+        location: context.location,
+        installation: identity,
+        signal: context.signal,
+        onDevice: context.onDevice,
+        forceRefresh: authorization.forceRefresh,
+      },
       lease,
     );
   }

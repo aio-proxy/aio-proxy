@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,6 +31,15 @@ test('enforces the helper startup budget before reading credentials', async () =
   await expect(runCodexAuthCommand('11111111-1111-4111-8111-111111111111', Date.now() - 5_000)).rejects.toThrow(
     'CODEX_AUTH_TIMEOUT',
   );
+});
+
+test('counts the helper budget from process launch instead of main entry', async () => {
+  const uptime = spyOn(process, 'uptime').mockReturnValue(5);
+  try {
+    await expect(runCodexAuthCommand('11111111-1111-4111-8111-111111111111')).rejects.toThrow('CODEX_AUTH_TIMEOUT');
+  } finally {
+    uptime.mockRestore();
+  }
 });
 
 test('requires an independent decision before recovering a pending auth journal', async () => {

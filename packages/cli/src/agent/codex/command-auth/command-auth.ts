@@ -144,6 +144,7 @@ async function authorizeOwned(
     readonly signal: AbortSignal;
     readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
     readonly pollDeviceAuthorization?: typeof pollDeviceAuthorization;
+    readonly forceRefresh?: boolean;
   },
   lease: CodexLease,
 ): Promise<void> {
@@ -166,7 +167,8 @@ async function authorizeOwned(
       cached.installationId === current.marker.installationId &&
       cached.endpoint === current.marker.endpoint
     ) {
-      if (cached.status === 'ready' && cached.accessExpiresAt > Date.now() + 1_000) return;
+      if (cached.status === 'ready' && cached.accessExpiresAt > Date.now() + 1_000 && input.forceRefresh !== true)
+        return;
       if (cached.status === 'refreshing' && !isRecentRefresh(cached.refreshStartedAt, Date.now())) {
         await writeCredential(input.location, { ...cached, status: 'reauthorize', refreshStartedAt: undefined });
       } else if (cached.status === 'ready' || isRecentRefresh(cached.refreshStartedAt, Date.now())) {
@@ -275,6 +277,7 @@ export async function authorizeCodexInstallation(
     readonly signal: AbortSignal;
     readonly onDevice: (device: AgentDeviceCodeResponse) => Promise<void>;
     readonly pollDeviceAuthorization?: typeof pollDeviceAuthorization;
+    readonly forceRefresh?: boolean;
   },
   lease: CodexLease,
 ): Promise<void> {

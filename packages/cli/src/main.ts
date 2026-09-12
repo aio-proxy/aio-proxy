@@ -243,11 +243,10 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 };
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
-  const startedAt = Date.now();
   try {
     const installationId = codexAuthInvocation(process.argv.slice(2));
     if (installationId !== undefined) {
-      await runCodexAuthCommand(installationId, startedAt);
+      await runCodexAuthCommand(installationId);
       return;
     }
     await setLocale(resolveLocaleFromArgv(process.argv));
