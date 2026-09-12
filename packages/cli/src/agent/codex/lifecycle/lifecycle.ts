@@ -74,7 +74,7 @@ export async function listCodexLifecycle(
         }).catch(() => ({ credentialStatus: 'reauthorize' as const, connection: 'not_checked' as const }));
   const authMode = inspection.authMode ?? (identity === undefined ? undefined : 'command');
   const connection =
-    input.check && identity === undefined && authMode === 'keep-chatgpt'
+    input.check && identity === undefined && authMode === 'keep-chatgpt' && inspection.status === 'managed'
       ? ((await input.checkStatic?.(inspection.baseUrl, inspection.bearerToken)) ?? 'not_checked')
       : input.check
         ? (credential?.connection ?? 'not_checked')

@@ -51,6 +51,39 @@ test('lists static authentication without checking the proxy and removes it idem
   }
 });
 
+test('list --check does not send a keep-chatgpt key to a drifted endpoint', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  try {
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://127.0.0.1:9317/v1',
+      auth: { mode: 'keep-chatgpt', token: 'aio-proxy-local' },
+    });
+    const configured = await readFile(location.configPath, 'utf8');
+    await Bun.write(location.configPath, configured.replace('http://127.0.0.1:9317/v1', 'http://127.0.0.1:9999/v1'));
+    const probed: { readonly baseUrl?: string; readonly token?: string }[] = [];
+    await expect(
+      listCodexLifecycle({
+        location,
+        check: true,
+        checkStatic: async (baseUrl, token) => {
+          probed.push({ baseUrl, token });
+          return 'ok';
+        },
+      }),
+    ).resolves.toMatchObject({
+      status: 'modified',
+      authMode: 'keep-chatgpt',
+      connection: 'not_checked',
+    });
+    expect(probed).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('list --check probes the stored keep-chatgpt token instead of public health', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
   const location = resolveCodexLocation(root, { HOME: root });
