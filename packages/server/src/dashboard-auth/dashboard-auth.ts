@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { sessionKeyPath } from '@aio-proxy/core';
@@ -106,8 +106,11 @@ export function createDashboardAuthentication(
  */
 function deviceSessionKey(): string {
   const path = sessionKeyPath();
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const existing = existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
+  const stored = (): string => (existsSync(path) ? readFileSync(path, 'utf8').trim() : '');
+  // Three passes, because clearing a stale empty file costs one: read, clear, create, and the
+  // racer that loses the re-created file still needs a pass to read the winner's key.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = stored();
     if (existing !== '') return existing;
     mkdirSync(dirname(path), { recursive: true });
     const generated = randomBytes(32).toString('base64url');
@@ -115,7 +118,10 @@ function deviceSessionKey(): string {
       writeFileSync(path, `${generated}\n`, { flag: 'wx', mode: 0o600 });
       return generated;
     } catch {
-      // Lost the race, or the file appeared empty and is now being written by someone else.
+      // Either another process won the race — the next pass reads its key — or provisioning was
+      // interrupted and left an empty file, which `wx` can never replace, so every login would
+      // throw until someone deleted it by hand. Only the empty file is ours to clear.
+      if (stored() === '') rmSync(path, { force: true });
     }
   }
   throw new Error('unable to establish a device session key');

@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { createServer as createBaseServer, createServerTestHome } from '#server-test-lifecycle';
 
+import { createDashboardAuthentication } from './dashboard-auth';
 import { loopbackServer } from './test-support';
 
 const origin = 'http://127.0.0.1:22078';
@@ -190,4 +194,23 @@ describe('dashboard authentication', () => {
     );
     expect(accepted.status).toBe(200);
   });
+});
+
+test('an interrupted provisioning left an empty session key, and login still signs', async () => {
+  const original = process.env.AIO_PROXY_HOME;
+  const home = mkdtempSync(join(tmpdir(), 'aio-session-key-'));
+  try {
+    process.env.AIO_PROXY_HOME = home;
+    writeFileSync(join(home, 'session-key'), '  \n');
+    const hash = await Bun.password.hash('correct horse');
+
+    const result = await createDashboardAuthentication(() => hash).login('correct horse', 'client-1');
+
+    expect(result.status).toBe('authenticated');
+    expect(readFileSync(join(home, 'session-key'), 'utf8').trim()).not.toBe('');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+    if (original === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = original;
+  }
 });
