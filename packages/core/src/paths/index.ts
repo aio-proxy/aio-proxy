@@ -1,1 +1,1 @@
-export { aioHome, configPath, dbPath, packagesDir, tmpDir, updateCheckPath } from './paths';
+export { aioHome, configPath, dbPath, packagesDir, sessionKeyPath, tmpDir, updateCheckPath } from './paths';

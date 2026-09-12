@@ -158,4 +158,36 @@ describe('dashboard authentication', () => {
     expect(retryAfter).toBeGreaterThan(0);
     expect(retryAfter).toBeLessThanOrEqual(60);
   });
+
+  // `service-access` publishes the Argon2 hash to the sync backend, so signing sessions with it
+  // alone let a read-only breach of that backend mint a token for every Dashboard API.
+  test('a session forged from the published password hash alone is rejected', async () => {
+    const hash = await Bun.password.hash('correct horse');
+    const app = await createServer({ config: { server: { password: hash }, providers: {} } });
+
+    const expiresAt = Date.now() + 60 * 60 * 1_000;
+    const payload = `v1.${expiresAt}.${crypto.randomUUID()}`;
+    const forged = `${payload}.${new Bun.CryptoHasher('sha256', hash)
+      .update(payload)
+      .digest('base64')
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replace(/=+$/u, '')}`;
+
+    const refused = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${forged}`, host: 'proxy.example:22078' } },
+      loopbackServer,
+    );
+    expect(refused.status).toBe(401);
+
+    // The real login still works, so the rejection is the key change and not a broken signer.
+    const token = await tokenFrom(await login(app, 'correct horse'));
+    const accepted = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${token}`, host: 'proxy.example:22078' } },
+      loopbackServer,
+    );
+    expect(accepted.status).toBe(200);
+  });
 });

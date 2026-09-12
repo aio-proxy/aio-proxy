@@ -1,4 +1,8 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import { sessionKeyPath } from '@aio-proxy/core';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const FAILURE_WINDOW_MS = 60_000;
@@ -22,8 +26,19 @@ export function createDashboardAuthentication(
   passwordHash: () => string | undefined,
   now: () => number = Date.now,
   available: () => boolean = () => true,
+  deviceKey: () => string = deviceSessionKey,
 ): DashboardAuthentication {
   const failures = new Map<string, FailureWindow>();
+  let resolvedDeviceKey: string | undefined;
+
+  // The password hash alone must never be the signing key: `service-access` publishes it to the
+  // sync backend, so a read-only breach there would be enough to mint a bearer token for every
+  // Dashboard API without ever cracking the password. The device key is not synced, and keeping
+  // the hash in the key as well is what rotates every live session when the password changes.
+  function signingKey(hash: string): string {
+    resolvedDeviceKey ??= deviceKey();
+    return `${resolvedDeviceKey}.${hash}`;
+  }
 
   function enabled(): boolean {
     return passwordHash() !== undefined;
@@ -45,7 +60,7 @@ export function createDashboardAuthentication(
     failures.delete(clientId);
     const expiresAt = now() + SESSION_TTL_MS;
     const payload = `v1.${expiresAt}.${crypto.randomUUID()}`;
-    return { status: 'authenticated', expiresAt, token: `${payload}.${sign(hash, payload)}` };
+    return { status: 'authenticated', expiresAt, token: `${payload}.${sign(signingKey(hash), payload)}` };
   }
 
   function verify(token: string | undefined): boolean {
@@ -58,7 +73,7 @@ export function createDashboardAuthentication(
     const signature = parts[3];
     if (signature === undefined) return false;
     const payload = parts.slice(0, 3).join('.');
-    return signaturesEqual(signature, sign(hash, payload));
+    return signaturesEqual(signature, sign(signingKey(hash), payload));
   }
 
   function retryAfter(clientId: string, timestamp: number): number | undefined {
@@ -82,6 +97,28 @@ export function createDashboardAuthentication(
   }
 
   return { available, enabled, login, verify };
+}
+
+/**
+ * Read the device-local signing key, creating it on first use. `wx` plus the retry is what keeps a
+ * CLI and a server racing on first start from each minting a key and invalidating the other's
+ * sessions — the loser of the race reads the winner's file on the second pass.
+ */
+function deviceSessionKey(): string {
+  const path = sessionKeyPath();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const existing = existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
+    if (existing !== '') return existing;
+    mkdirSync(dirname(path), { recursive: true });
+    const generated = randomBytes(32).toString('base64url');
+    try {
+      writeFileSync(path, `${generated}\n`, { flag: 'wx', mode: 0o600 });
+      return generated;
+    } catch {
+      // Lost the race, or the file appeared empty and is now being written by someone else.
+    }
+  }
+  throw new Error('unable to establish a device session key');
 }
 
 function sign(key: string, payload: string): string {
