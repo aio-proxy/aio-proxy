@@ -36,6 +36,9 @@ test('restart reconciles a published first share before any OAuth runtime can ex
     deviceId: 'device',
     sessionGeneration: 1,
     options: {},
+    // Seeded directly rather than through a connect: this is an established binding whose reviewed
+    // Apply already completed, so a restart may reconcile it.
+    connectPending: false,
   };
   repo.writeBinding(binding);
   const objectId = '00000000-0000-4000-8000-000000000001';

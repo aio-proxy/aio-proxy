@@ -15,6 +15,11 @@ export const syncBinding = sqliteTable(
     options: text('options_json', { mode: 'json' }).$type<unknown>().notNull(),
     active: integer('active').notNull().default(0),
     latestConfirmedCommit: integer('latest_confirmed_commit').notNull().default(0),
+    // A binding row is only ever inserted by a connect whose reviewed decisions have not run yet,
+    // so it is born pending and stays that way until the control plane finishes that Apply. The
+    // flag is durable from the instant the binding exists, which is what a crash mid-Apply needs:
+    // the restored lifecycle must not reconcile a backend the user never finished reviewing.
+    connectPending: integer('connect_pending').notNull().default(1),
   },
   (table) => [
     check('sync_binding_space_check', sql`${table.spaceId} = 'default'`),

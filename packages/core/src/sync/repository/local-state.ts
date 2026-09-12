@@ -16,6 +16,7 @@ type BindingRow = {
   session_generation: number;
   options_json: unknown;
   active: number;
+  connect_pending: number;
 };
 
 type EntityRow = {
@@ -33,7 +34,14 @@ type EntityRow = {
 
 type LocalStateRepository = Pick<
   SyncRepository,
-  'readBinding' | 'bindings' | 'clearBinding' | 'writeBinding' | 'entities' | 'putEntity' | 'putEntities'
+  | 'readBinding'
+  | 'bindings'
+  | 'clearBinding'
+  | 'writeBinding'
+  | 'setConnectPending'
+  | 'entities'
+  | 'putEntity'
+  | 'putEntities'
 >;
 
 export function createSyncLocalStateRepository(
@@ -52,7 +60,12 @@ export function createSyncLocalStateRepository(
       deviceId: row.device_id,
       sessionGeneration: row.session_generation,
       options: parseJsonValue(row.options_json),
+      connectPending: row.connect_pending === 1,
     };
+  }
+
+  function setConnectPending(bindingId: string, pending: boolean): void {
+    sqlite.run('UPDATE sync_binding SET connect_pending = ? WHERE id = ?', [pending ? 1 : 0, bindingId]);
   }
 
   function writeEntity(bindingId: string, entity: LocalEntity): void {
@@ -92,7 +105,7 @@ export function createSyncLocalStateRepository(
       const row = sqlite
         .query<BindingRow, []>(
           `SELECT id, plugin, capability, plugin_version, identity_id, space_id, device_id,
-                  session_generation, options_json, active
+                  session_generation, options_json, active, connect_pending
              FROM sync_binding WHERE active = 1 LIMIT 1`,
         )
         .get();
@@ -114,7 +127,7 @@ export function createSyncLocalStateRepository(
         const existing = sqlite
           .query<BindingRow, [string]>(
             `SELECT id, plugin, capability, plugin_version, identity_id, space_id, device_id,
-                    session_generation, options_json, active
+                    session_generation, options_json, active, connect_pending
                FROM sync_binding WHERE id = ?`,
           )
           .get(binding.id);
@@ -155,7 +168,15 @@ export function createSyncLocalStateRepository(
             binding.sessionGeneration,
             stringifyJson(binding.options),
           );
+        // Left to the column default on insert (pending) and preserved on update: a new row belongs
+        // to a connect whose reviewed Apply has not run yet, and rewriting an existing binding must
+        // not silently declare that Apply finished.
+        if (binding.connectPending !== undefined) setConnectPending(binding.id, binding.connectPending);
       });
+    },
+
+    setConnectPending(bindingId, pending) {
+      transaction(() => setConnectPending(bindingId, pending));
     },
 
     entities(bindingId) {

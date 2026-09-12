@@ -484,6 +484,9 @@ test('configured service exposes the real sync control plane to CLI mutations', 
     deviceId: 'configured-device',
     sessionGeneration: 1,
     options: {},
+    // Seeded directly rather than through a connect: this is an established binding whose reviewed
+    // Apply already completed, so the service may bind and reconcile it.
+    connectPending: false,
   });
   repo.putEntity('configured-binding', {
     objectId: 'provider-work',

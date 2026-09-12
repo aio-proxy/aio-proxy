@@ -25,6 +25,10 @@ const binding = (id: string): LocalBinding => ({
   deviceId: `device-${id}`,
   sessionGeneration: 1,
   options: { local: true },
+  // A binding row is only ever inserted by a connect, and that connect's reviewed Apply has not run
+  // yet at insert time — so this is what a freshly written binding reads back as, including after a
+  // restart, which is what makes an interrupted connect survive the process that started it.
+  connectPending: true,
 });
 
 const entity = (objectId: string): LocalEntity => ({
@@ -60,6 +64,24 @@ test('confirmed remote imports do not enter the outbox after restart', () => {
   repo.confirm('b', 'remote-commit', []);
   expect(createSyncRepository(db).outbox('b')).toEqual([]);
   expect(repo.pendingCommits('b')).toEqual([]);
+  db.close();
+});
+
+test('restoring a previous binding restores whether its connect Apply had finished', () => {
+  const db = new Database(':memory:');
+  migrateSyncTestDb(db);
+  const repo = createSyncRepository(db);
+  repo.writeBinding(binding('old'));
+  repo.setConnectPending('old', false);
+  const previous = repo.readBinding()!;
+
+  // A backend swap that fails partway rewrites the binding row it read back. Dropping the flag here
+  // would wedge an already-applied binding into `preview-required` for good, and carrying the wrong
+  // one would declare an unfinished connect done and let the engine reconcile it.
+  repo.writeBinding(binding('new'));
+  repo.writeBinding(previous);
+
+  expect(repo.readBinding()).toMatchObject({ id: 'old', connectPending: false });
   db.close();
 });
 

@@ -152,15 +152,17 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   const candidates = new Map<string, SyncConnectCandidate>();
   const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let rangeRevision = 0;
-  let state: SyncConnectionState = 'idle';
   let stateBeforePreview: SyncConnectionState = 'idle';
   let lastSuccessAt: number | null = null;
   // `commit()` installs the new binding before the reviewed decisions land, so a publication that
   // fails partway leaves rows included on a baseline the backend has already moved past. The engine
   // is deliberately not started then — but nothing else may start it either, or reconciliation
   // imports the very revision the user chose to overwrite. Only a fresh connect preview re-reviews
-  // every row against the bound backend, so that is the one thing that clears this.
-  let connectApplyIncomplete = false;
+  // every row against the bound backend, so that is the one thing that clears this. The binding row
+  // carries the same fact durably (it is written pending and cleared here), because the process can
+  // also exit mid-apply and a restarted service would otherwise reconcile that backend on sight.
+  let connectApplyIncomplete = binding()?.connectPending === true;
+  let state: SyncConnectionState = connectApplyIncomplete ? 'preview-required' : 'idle';
 
   // `preview-required` means a preview is waiting on the user. Remember what it displaced so a
   // preview that is consumed or expires without applying can hand the state back instead of
@@ -302,10 +304,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   ): Promise<void> => {
     assertDecisions(record, decisions);
     const remote = await candidate.refresh();
-    const observed: PreviewFence = {
-      ...record.fence,
-      remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
-    };
+    // The cloud half is re-read above, but the reviewed rows were projected from local state too: a
+    // configuration change between preview and Apply would otherwise publish the superseded body or
+    // overwrite the intervening edit with a cloud value, and the commit guard is disabled below.
+    const local = captureLocal();
+    const observed = await currentFence(remote, local.localCommitId, local.binding);
     if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
     await candidate.commit();
     // Deferring the engine exists precisely so reconciliation never sees these objects before the
@@ -316,6 +319,10 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     connectApplyIncomplete = true;
     await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
     candidate.activate();
+    // The binding row was written pending by the connect that created it, so this is what tells a
+    // restarted service the reviewed Apply actually finished and the backend may be reconciled.
+    const bound = binding();
+    if (bound !== null) options.repo.setConnectPending?.(bound.id, false);
     connectApplyIncomplete = false;
   };
 

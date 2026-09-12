@@ -146,6 +146,9 @@ export function createServerSyncFixture(input: {
     deviceId: 'test-device',
     sessionGeneration: 1,
     options: {},
+    // Seeded directly rather than through a connect: this stands for a binding whose Apply already
+    // completed, so it is not awaiting one.
+    connectPending: false,
   });
   const file = new AtomicConfigFile(configPath);
   const queue: FifoQueue = createFifoQueue();
@@ -375,6 +378,7 @@ export async function withTwoServerSyncFixtures(
       deviceId: `acceptance-device-${device}`,
       sessionGeneration: 1,
       options: {},
+      connectPending: false,
     };
     repository.writeBinding(binding);
     repository.putEntity(

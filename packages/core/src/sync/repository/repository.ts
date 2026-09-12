@@ -18,6 +18,13 @@ export interface LocalBinding {
   deviceId: string;
   sessionGeneration: number;
   options: JsonValue;
+  /**
+   * The reviewed connect Apply that created this binding has not finished. A binding row is only
+   * ever inserted by a connect, so it is born pending and `writeBinding` leaves it that way unless
+   * the caller passes an explicit value; nothing may reconcile against the backend until the
+   * control plane clears it. Reads always populate it.
+   */
+  connectPending?: boolean;
 }
 
 export interface LocalOverride {
@@ -80,6 +87,8 @@ export interface SyncRepository {
   bindings(): LocalBinding[];
   clearBinding?(): void;
   writeBinding(binding: LocalBinding): void;
+  /** Records whether the reviewed connect Apply that created the binding still has to finish. */
+  setConnectPending?(bindingId: string, pending: boolean): void;
   entities(bindingId: string): LocalEntity[];
   putEntity(bindingId: string, entity: LocalEntity): void;
   putEntities?(bindingId: string, entities: readonly LocalEntity[]): void;

@@ -88,6 +88,12 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     try {
       const binding = input.initialBinding ?? input.repo.readBinding();
       if (binding === null) return giveUp('Synchronization binding is missing');
+      // A connect whose reviewed decisions never landed leaves its binding active but unfinished.
+      // A restored lifecycle has no handover to wait for, so starting here would reconcile and
+      // import the very objects the user never got to review. Only a fresh connect preview, which
+      // re-reviews every row against the bound backend, clears the flag.
+      if (input.initialBinding === undefined && binding.connectPending === true)
+        return giveUp('Synchronization connect did not complete');
       bindingId = binding.id;
       bindingGeneration = binding.sessionGeneration;
       const backend = input.registry().resolveSync(binding.plugin, binding.capability);

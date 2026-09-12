@@ -104,6 +104,9 @@ test('startup unwinding awaits disposal of a bound backend', async () => {
     deviceId: 'device',
     sessionGeneration: 1,
     options: {},
+    // Seeded directly rather than through a connect: this is an established binding whose reviewed
+    // Apply already completed, so startup may bind it.
+    connectPending: false,
   });
   database.close();
 

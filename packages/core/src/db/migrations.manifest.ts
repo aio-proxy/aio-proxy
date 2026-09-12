@@ -10,6 +10,7 @@ import migration7Sql from "./migrations/0007_confused_puck.sql?raw";
 import migration8Sql from "./migrations/0008_config_sync.sql?raw";
 import migration9Sql from "./migrations/0009_glamorous_orphan.sql?raw";
 import migration10Sql from "./migrations/0010_goofy_gambit.sql?raw";
+import migration11Sql from "./migrations/0011_peaceful_timeslip.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -82,6 +83,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0010_goofy_gambit.sql",
         sha256: "4b76ab3552286d79d84dc6626bc93472402199200b95902d668f9ae7ae1bf81d",
         sql: migration10Sql
+    },
+    {
+        version: 12,
+        file: "0011_peaceful_timeslip.sql",
+        sha256: "eeb5157f349c073ebb0055c7e411aa53f1e43d48e96ee6b7c85c2705ae46a203",
+        sql: migration11Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;
