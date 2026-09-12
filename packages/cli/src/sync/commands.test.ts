@@ -688,8 +688,10 @@ test('configured service exposes the real sync control plane to CLI mutations', 
         body: JSON.stringify({ previewId: concurrentPreviewBodyB.previewId, decisions: [] }),
       }),
     ]);
-    expect(concurrentApplyA.status).toBe(200);
-    expect(concurrentApplyB.status).toBe(200);
+    // Applies are serialized, so the later connect re-reads the binding and commit history the
+    // first one replaced and is rejected instead of overwriting that reviewed decision. Its
+    // candidate session is still closed, so the winning connection is the only one left watching.
+    expect([concurrentApplyA.status, concurrentApplyB.status].sort()).toEqual([200, 409]);
     expect(backend.connectionCount()).toBe(4);
     expect(backend.disposeCount()).toBe(3);
     expect(backend.activeWatchCount()).toBe(1);
