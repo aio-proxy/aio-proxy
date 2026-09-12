@@ -421,7 +421,7 @@ export async function inspectCodexCommandCredential(input: {
     } catch {
       return { credentialStatus: 'ready', connection: 'invalid_response' };
     }
-    const connection = body !== null && typeof body === 'object' && !Array.isArray(body) ? 'ok' : 'invalid_response';
+    const connection = isPlainObject(body) ? 'ok' : 'invalid_response';
     return { credentialStatus: 'ready', connection };
   } catch (error) {
     return { credentialStatus: 'ready', connection: connectionFromError(error) };

@@ -733,6 +733,52 @@ test('read-only inspection does not rotate credentials and rejects symlink crede
   ).rejects.toThrow(/symbolic|unsafe|symlink/i);
 });
 
+test('read-only inspection rejects a class-instance model response', async () => {
+  const f = await fixture();
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    ({
+      ok: true,
+      status: 200,
+      json: async () => new (class Catalog {})(),
+    }) as Response) as typeof fetch;
+  try {
+    let installationId = '';
+    await withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location: f.location, providerId: 'aio-proxy', endpoint: f.marker.endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location: f.location,
+          providerId: 'aio-proxy',
+          baseUrl: `${f.marker.endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+      await writeCredential(f.location, {
+        format: 1,
+        installationId,
+        endpoint: f.marker.endpoint,
+        revision: 1,
+        accessToken: ACCESS,
+        refreshToken: REFRESH,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+      await activateCodexCommandInstallation(f.location, installationId, lease);
+    });
+    await expect(
+      inspectCodexCommandCredential({ location: f.location, check: true, signal: AbortSignal.timeout(10_000) }),
+    ).resolves.toEqual({ credentialStatus: 'ready', connection: 'invalid_response' });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('read-only inspection rejects array model responses', async () => {
   const f = await fixture();
   const previousFetch = globalThis.fetch;
