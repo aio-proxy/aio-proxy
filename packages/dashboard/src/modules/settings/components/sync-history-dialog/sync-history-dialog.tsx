@@ -15,7 +15,7 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import { useQuery } from '@tanstack/react-query';
 import {
   columnFilteringFeature,
@@ -66,7 +66,10 @@ export const SyncHistoryDialog: React.FC<SyncHistoryDialogProps> = ({ objectId, 
       visibleColumns: { operationId: true, writtenAt: true, current: true } as Record<string, boolean>,
     },
   });
-  const { filter, visibleColumns } = form.state.values;
+  // `form.state` is a non-reactive getter, so reading it here would leave the table rendering the
+  // visibility and filter of the previous commit until some other parent state happened to change.
+  const filter = useStore(form.store, (state) => state.values.filter);
+  const visibleColumns = useStore(form.store, (state) => state.values.visibleColumns);
   const columns = useMemo(
     () =>
       HISTORY_COLUMN_HELPER.columns([
@@ -142,9 +145,7 @@ export const SyncHistoryDialog: React.FC<SyncHistoryDialogProps> = ({ objectId, 
       globalFilter: filter,
       sorting,
       pagination,
-      columnVisibility: Object.fromEntries(
-        Object.entries(visibleColumns).map(([columnId, visible]) => [columnId, visible]),
-      ),
+      columnVisibility: visibleColumns,
     },
     onGlobalFilterChange: (next) => form.setFieldValue('filter', String(next ?? '')),
     onSortingChange: setSorting,

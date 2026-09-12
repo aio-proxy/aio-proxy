@@ -29,3 +29,23 @@ test('provides filtering, sorting, pagination, and column visibility controls', 
   fireEvent.click(screen.getByRole('button', { name: /Operation|操作/u }));
   expect(screen.getByText('operation-a')).toBeTruthy();
 });
+
+test('hiding a column takes effect on the table immediately', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());
+  expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+
+  fireEvent.click(screen.getByRole('button', { name: /Columns|列/u }));
+  // Base UI routes a checkbox click through a hidden input that happy-dom bounces back off the
+  // wrapping label, so clicking the label is the one gesture that nets a single toggle.
+  fireEvent.click(screen.getByText(/Show operation|显示操作/u));
+
+  // The table reads visibility out of form state. Reading it through the non-reactive `form.state`
+  // getter left the column on screen until some unrelated parent state happened to change.
+  await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(2));
+});
