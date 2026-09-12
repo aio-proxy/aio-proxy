@@ -69,6 +69,9 @@ export function createRecovery(options: {
   const reconciliationTimers = new Set<ReturnType<typeof setTimeout>>();
   let generation = 0;
   let closed = false;
+  // A recovered publication reads the sync backend while holding the shared FIFO, so shutdown must
+  // be able to end it instead of waiting out its own timeout behind the config transaction.
+  const lifecycle = new AbortController();
 
   function scheduleReconciliation(operations: readonly PendingAccountOperation[], expected = generation): void {
     if (closed || expected !== generation) return;
@@ -107,6 +110,7 @@ export function createRecovery(options: {
           deleteMarkerOnProviderPresent: 'retain',
           now: options.scheduler.now,
           withProviderGate: options.withProviderGate,
+          signal: lifecycle.signal,
         },
         { factory: options.diagnostics, logger: options.logger },
       );
@@ -155,6 +159,7 @@ export function createRecovery(options: {
             deleteMarkerOnProviderPresent: 'retain',
             now: options.scheduler.now,
             withProviderGate: options.withProviderGate,
+            signal: lifecycle.signal,
           },
           { factory: options.diagnostics, logger: options.logger },
         ),
@@ -166,6 +171,7 @@ export function createRecovery(options: {
     close() {
       if (closed) return;
       closed = true;
+      lifecycle.abort(new Error('SERVER_CLOSED'));
       generation++;
       timer?.clear();
       timer = undefined;

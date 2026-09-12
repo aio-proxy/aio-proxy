@@ -7,6 +7,8 @@ import {
   emptyCatalog,
   expect,
   fixture,
+  loginOAuthAccount,
+  options,
   ORPHAN_ACCOUNT_GRACE_MS,
   PENDING_OPERATION_TTL_MS,
   RECOVERY_DRAIN_RETRY_MS,
@@ -260,4 +262,44 @@ test('orphan cleanup preserves referenced, young, and pending accounts', async (
   });
   expect(state.repository.readAccount('person')).not.toBeNull();
   expect(state.repository.readAccount('pending')).not.toBeNull();
+});
+
+// Startup recovery awaits this publication before the server finishes coming up, so a stalled
+// backend read must be cancellable. A private controller would leave the callback waiting forever.
+test('a recovered publication is cancelled by the lifecycle signal and stays pending', async () => {
+  const state = fixture();
+  await expect(
+    loginOAuthAccount(
+      options(state, {
+        beforeAccountOperationComplete: async () => {
+          throw new Error('remote acknowledgement unavailable');
+        },
+      }),
+    ),
+  ).rejects.toThrow('remote acknowledgement unavailable');
+  const lifecycle = new AbortController();
+  const now = PENDING_OPERATION_TTL_MS + 1;
+  let observed: AbortSignal | undefined;
+  const result = await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'server',
+    canDeleteAccount: () => true,
+    signal: lifecycle.signal,
+    now: () => now,
+    beforeAccountOperationComplete: async (_operation, signal) => {
+      observed = signal;
+      await new Promise<void>((resolve, reject) => {
+        if (signal.aborted) reject(signal.reason as Error);
+        signal.addEventListener('abort', () => reject(signal.reason as Error), { once: true });
+        // A backend read that never settles: only cancellation can end this publication.
+        const timer = setTimeout(resolve, 1_000);
+        timer.unref?.();
+        lifecycle.abort(new Error('SERVER_CLOSED'));
+      });
+    },
+  });
+  expect(observed?.aborted).toBe(true);
+  expect(result.nextRunAt).toBe(now + RECOVERY_DRAIN_RETRY_MS);
+  // A cancelled publication is retried, never compensated: the backend may already hold the account.
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'new' });
 });

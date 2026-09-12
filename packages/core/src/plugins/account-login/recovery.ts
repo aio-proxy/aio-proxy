@@ -21,6 +21,17 @@ export const ORPHAN_ACCOUNT_GRACE_MS = 30 * 60_000;
 export const RECOVERY_DRAIN_RETRY_MS = 5_000;
 export const ABSENT_PROVIDER_DIGEST = 'absent';
 
+const RECOVERY_PUBLICATION_TIMEOUT_MS = 60_000;
+
+// Startup recovery awaits this publication before the server finishes coming up, and later runs hold
+// the config transaction and the shared FIFO, so a backend read or CAS that never settles hangs the
+// service. The callback only ever gets a signal that the lifecycle or the bound will end.
+const publicationSignal = (lifecycle: AbortSignal | undefined): AbortSignal =>
+  AbortSignal.any([
+    ...(lifecycle === undefined ? [] : [lifecycle]),
+    AbortSignal.timeout(RECOVERY_PUBLICATION_TIMEOUT_MS),
+  ]);
+
 export type DeleteOAuthAccountOptions = {
   readonly providerId: string;
   readonly config: AtomicConfigFile;
@@ -38,6 +49,7 @@ export type RecoverPendingAccountOperationsOptions =
         signal: AbortSignal,
       ) => Promise<void>;
       readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+      readonly signal?: AbortSignal;
       readonly now?: () => number;
     };
 
@@ -158,7 +170,7 @@ export async function recoverPendingAccountOperations(
         try {
           repository.markAccountOperationPublishing(operation.operationId);
           await withGate(operation.providerId, () =>
-            options.beforeAccountOperationComplete!(operation, new AbortController().signal),
+            options.beforeAccountOperationComplete!(operation, publicationSignal(options.signal)),
           );
         } catch {
           nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
