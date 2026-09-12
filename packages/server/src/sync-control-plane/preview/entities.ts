@@ -81,10 +81,21 @@ export async function listRemoteEntities(
     if (head.objectId !== objectId) throw new SyncPreviewError('not-connected');
     if (head.state === 'purging') throw new SyncPreviewError('not-connected');
     let body: EntityBody | null = null;
+    // A delete only flips `state`; `current` keeps pointing at the last payload. Reporting that
+    // payload as the live cloud body would make the preview offer local/cloud on an entity the
+    // remote deleted, so the tombstone is surfaced as an absent body and the payload stays
+    // reachable through `revisions`/`restoreBody` for a restore.
+    const tombstone = head.state === 'deleted' || head.state === 'purged';
     const revisions: Record<string, EntityBody | null> = {};
     for (const operationId of [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])]) {
       const revision = await session.read(revisionKey(objectId, operationId), signal);
-      if (revision.kind === 'absent') continue;
+      // A live head's current revision must exist — reconciliation calls its absence invalid data.
+      // Reporting the object as bodiless instead would let the preview offer a local publication
+      // over the corrupted head. Older history may legitimately be gone, and so may a tombstone's.
+      if (revision.kind === 'absent') {
+        if (operationId === head.current && !tombstone) throw new SyncPreviewError('not-connected');
+        continue;
+      }
       const record = decodeRevision(revision.value);
       if (record.objectId !== objectId) throw new SyncPreviewError('not-connected');
       if (record.state === 'payload') {
@@ -96,11 +107,6 @@ export async function listRemoteEntities(
     if (head.current !== null) {
       body = revisions[head.current] ?? null;
     }
-    // A delete only flips `state`; `current` keeps pointing at the last payload. Reporting that
-    // payload as the live cloud body would make the preview offer local/cloud on an entity the
-    // remote deleted, so the tombstone is surfaced as an absent body and the payload stays
-    // reachable through `revisions`/`restoreBody` for a restore.
-    const tombstone = head.state === 'deleted' || head.state === 'purged';
     result.push({
       objectId,
       logicalKey: head.logicalKey,

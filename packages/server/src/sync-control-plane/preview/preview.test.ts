@@ -6,6 +6,7 @@ import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
 import { createSyncControlPlane } from '../control-plane';
 import { SyncOperationError, assertDecisions } from '../operations';
 import { listRemoteEntities } from './entities';
+import { SyncPreviewError } from './errors';
 import { applyOverrides } from './overrides';
 import { buildPreview } from './preview';
 
@@ -1339,6 +1340,36 @@ test('a tombstoned remote head reports no live body so the preview offers a rest
     expiresAt: 0,
   });
   expect(built.preview.rows[0]).toMatchObject({ change: 'delete', choices: ['restore'], cloud: null });
+});
+
+// Reconciliation calls a live head whose current revision is gone invalid data. Reporting the
+// object as bodiless here instead would let a connect or join preview publish over that head.
+test('a live remote head whose current revision is missing fails the preview', async () => {
+  const objectId = 'provider-work';
+  const head = encode({
+    protocol: 1,
+    objectId,
+    kind: 'provider',
+    logicalKey: 'work',
+    epoch: 1,
+    sequence: 1,
+    state: 'active',
+    current: 'operation-1',
+    history: ['operation-1'],
+    reserved: [],
+    cancelling: [],
+    receipts: {},
+    cleanupComplete: true,
+  });
+  const session = {
+    list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+    read: async (key: string) =>
+      key === entityKey(objectId)
+        ? { kind: 'present' as const, value: head, version: 'v1', modifiedAt: 1 }
+        : { kind: 'absent' as const },
+  } as unknown as SyncSession;
+
+  await expect(listRemoteEntities(session, AbortSignal.timeout(5_000))).rejects.toBeInstanceOf(SyncPreviewError);
 });
 
 test('only Provider identity collisions demand a replacement ID', () => {
