@@ -103,6 +103,9 @@ test('watcher-enabled remote import has no local echo; discovery and purge leave
       await fixture.b.reconcile();
       await waitUntil(() => !cloudText(fixture).includes(a.providerMarker), 'purge left Provider bytes in the cloud');
 
+      // A purge leaves erased markers under the retained revision keys. Advertising them as history
+      // would offer a restore whose Apply can only delete, because a marker has no body to restore.
+      expect(await fixture.a.state.sync!.history('provider-work')).toEqual([]);
       expect(fixture.b.state.currentConfig().providers.some((provider) => provider.id === 'work')).toBe(true);
       expect(cloudText(fixture).includes(a.pluginMarker)).toBe(true);
     },

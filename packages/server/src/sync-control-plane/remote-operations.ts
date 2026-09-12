@@ -134,12 +134,16 @@ export async function readHistory(
     if (value.kind === 'absent') continue;
     const record = decodeRevision(value.value);
     if (record.objectId !== objectId) throw new SyncOperationError('operation-pending');
-    if (record.state === 'payload' && (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey))
+    // A purge leaves `erased` markers under the retained revision keys. Every operation returned
+    // here is advertised as restorable, but a marker resolves to a null body, so previewing one
+    // offers a decision whose Apply falls through to deletion instead of restoring anything.
+    if (record.state !== 'payload') continue;
+    if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
       throw new SyncOperationError('operation-pending');
     items.push({
       operationId,
       objectId,
-      writtenAt: record.state === 'payload' ? (record.writtenAt ?? value.modifiedAt) : value.modifiedAt,
+      writtenAt: record.writtenAt ?? value.modifiedAt,
       current: head.current === operationId,
     });
   }
