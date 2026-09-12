@@ -57,7 +57,8 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
         mode: result.authMode,
       }),
     );
-  if (result.connection === 'offline') lines.push(m['cli.agent.codex.offline']());
+  if (result.connection === 'offline' || result.connection === 'invalid_response')
+    lines.push(m['cli.agent.codex.offline']());
   if (result.migrationAction !== 'restore') {
     lines.push(m['cli.agent.codex.reopen']());
     if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());

@@ -264,6 +264,22 @@ test('Codex migration restore output does not claim success when partial', () =>
   expect(text).not.toContain('configuration unchanged');
 });
 
+test('Codex configure output reports an unverified connection for a failed command probe', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'configured',
+    providerId: 'aio-proxy',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'invalid_response',
+    credential: 'agent',
+    authMode: 'command',
+    migration: { status: 'not_requested' },
+  }).join('\n');
+  expect(text).toContain('could not be verified');
+  expect(text).not.toContain('configuration unchanged');
+});
+
 test('Codex authorization cancellation does not claim a zero-write operation', () => {
   const text = renderAgentConfigure({
     target: 'codex',

@@ -33,15 +33,20 @@ import {
 } from './journal';
 
 const terminalRevocations = new Set<AgentRevokeStatus>(['revoked', 'expired', 'missing']);
+const COMMAND_PROBE_TIMEOUT_MS = 3_000;
 
 const setupError = (code: string): Error => new Error(code);
 
 const modeOf = (inspection: ConfigInspection): CodexAuthMode | undefined => inspection.authMode;
 
+type CommandAuthorizationDecision =
+  | { readonly authorize: { readonly forceRefresh: boolean } }
+  | { readonly connection: CodexSetupCommit['connection'] };
+
 async function commandAuthorizationNeed(
   installation: CodexCommandInstallation,
   context: CodexSetupContext,
-): Promise<{ readonly forceRefresh: boolean } | undefined> {
+): Promise<CommandAuthorizationDecision> {
   const credential = await readCredential(context.location);
   if (
     installation.status === 'pending' ||
@@ -49,17 +54,19 @@ async function commandAuthorizationNeed(
     credential.status === 'reauthorize' ||
     credential.accessExpiresAt <= Date.now()
   )
-    return { forceRefresh: false };
-  if (installation.status !== 'active') return undefined;
+    return { authorize: { forceRefresh: false } };
+  if (installation.status !== 'active') return { connection: 'ok' };
   const checked = await inspectCodexCommandCredential({
     location: context.location,
     check: true,
-    signal: context.signal,
+    signal: AbortSignal.any([context.signal, AbortSignal.timeout(COMMAND_PROBE_TIMEOUT_MS)]),
   });
-  if (checked.connection === 'unauthorized') return { forceRefresh: true };
+  if (checked.connection === 'unauthorized') return { authorize: { forceRefresh: true } };
   if (checked.credentialStatus === 'expired' || checked.credentialStatus === 'reauthorize')
-    return { forceRefresh: false };
-  return undefined;
+    return { authorize: { forceRefresh: false } };
+  if (checked.connection === 'offline' || checked.connection === 'invalid_response')
+    return { connection: checked.connection };
+  return { connection: 'ok' };
 }
 
 async function revokeAndClear(
@@ -179,14 +186,14 @@ async function commitCommand(
     providerId,
   });
   const authorization = await commandAuthorizationNeed(prepared, context);
-  if (authorization !== undefined) {
+  if ('authorize' in authorization) {
     await authorizeCodexInstallation(
       {
         location: context.location,
         installation: prepared,
         signal: context.signal,
         onDevice: context.onDevice,
-        forceRefresh: authorization.forceRefresh,
+        forceRefresh: authorization.authorize.forceRefresh,
       },
       lease,
     );
@@ -214,7 +221,7 @@ async function commitCommand(
     ...commit,
     authMode: 'command',
     credential: 'agent',
-    connection: 'ok',
+    connection: 'authorize' in authorization ? 'ok' : authorization.connection,
     installationId: prepared.marker.installationId,
   };
 }
@@ -243,14 +250,14 @@ async function recoverComplete(
   if (identity?.marker.installationId !== operation.installationId || identity.marker.endpoint !== context.endpoint)
     return false;
   const authorization = await commandAuthorizationNeed(identity, context);
-  if (authorization !== undefined) {
+  if ('authorize' in authorization) {
     await authorizeCodexInstallation(
       {
         location: context.location,
         installation: identity,
         signal: context.signal,
         onDevice: context.onDevice,
-        forceRefresh: authorization.forceRefresh,
+        forceRefresh: authorization.authorize.forceRefresh,
       },
       lease,
     );

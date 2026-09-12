@@ -117,7 +117,7 @@ export type CodexSetupSelection = {
 export type CodexSetupCommit = ConfigCommit & {
   readonly authMode: CodexAuthMode;
   readonly credential: 'placeholder' | 'existing' | 'agent';
-  readonly connection: 'ok' | 'offline' | 'not_checked';
+  readonly connection: 'ok' | 'offline' | 'invalid_response' | 'not_checked';
   readonly installationId?: string;
 };
 

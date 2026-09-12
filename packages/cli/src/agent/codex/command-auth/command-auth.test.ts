@@ -111,6 +111,63 @@ test.serial('persists pending identity before device authorization and never emi
   }
 });
 
+test.serial('authorizes a command installation while the managed config is still keep-chatgpt', async () => {
+  const f = await fixture();
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (async (input) => {
+    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    if (path === '/oauth/device/code')
+      return Response.json({
+        device_code: DEVICE,
+        user_code: 'ABCD-EFGH',
+        verification_uri: `${f.marker.endpoint}/dashboard/agents/authorize`,
+        verification_uri_complete: `${f.marker.endpoint}/dashboard/agents/authorize#code=ABCD-EFGH`,
+        expires_in: 600,
+        interval: 5,
+      });
+    return Response.json({
+      token_type: 'Bearer',
+      access_token: ACCESS,
+      refresh_token: REFRESH,
+      expires_in: 900,
+    });
+  }) as typeof fetch;
+  try {
+    await withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) => {
+      await configureCodexConfig(
+        {
+          location: f.location,
+          providerId: 'keep-id',
+          baseUrl: `${f.marker.endpoint}/v1`,
+          auth: { mode: 'keep-chatgpt', token: 'aio-proxy-local' },
+        },
+        lease,
+      );
+      const installation = await prepareCodexCommandInstallation(
+        { location: f.location, providerId: 'command-id', endpoint: f.marker.endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      let delivered = false;
+      await authorizeCodexInstallation(
+        {
+          location: f.location,
+          installation,
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            delivered = true;
+          },
+          pollDeviceAuthorization: instantDevicePoll,
+        },
+        lease,
+      );
+      expect(delivered).toBe(true);
+      await expect(readCredential(f.location)).resolves.toMatchObject({ status: 'ready', accessToken: ACCESS });
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('listing an unconfigured Codex home does not create its managed directory', async () => {
   const f = await fixture();
   expect(await readCodexCommandIdentity(f.location)).toBeUndefined();

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -497,6 +497,284 @@ test('reauthorizes an active command identity during operation recovery', async 
     await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({ status: 'active' });
     await expect(readCredential(location)).resolves.toMatchObject({ status: 'reauthorize' });
     await expect(Bun.file(authOperationPath(location)).exists()).resolves.toBe(true);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('switches keep-chatgpt to command by authorizing before rewriting config', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/oauth/device/code')
+        return Response.json({
+          device_code: 'e'.repeat(43),
+          user_code: 'ABCD-EFGH',
+          verification_uri: `${endpoint}/dashboard/agents/authorize`,
+          verification_uri_complete: `${endpoint}/dashboard/agents/authorize#code=ABCD-EFGH`,
+          expires_in: 600,
+          interval: 5,
+        });
+      if (path === '/oauth/token')
+        return Response.json({
+          token_type: 'Bearer',
+          access_token: `aio_agent_at_v1_${'c'.repeat(43)}`,
+          refresh_token: `aio_agent_rt_v1_${'d'.repeat(43)}`,
+          expires_in: 900,
+        });
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
+    await import('../managed-config').then(({ configureCodexConfig }) =>
+      configureCodexConfig({
+        location,
+        providerId: 'keep-id',
+        baseUrl: `${endpoint}/v1`,
+        auth: { mode: 'keep-chatgpt', token: 'aio-proxy-local' },
+      }),
+    );
+    let devicePrompts = 0;
+    await expect(
+      commitCodexSetup(
+        { providerId: 'command-id', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            devicePrompts += 1;
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ authMode: 'command', connection: 'ok' });
+    expect(devicePrompts).toBe(1);
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({
+      providerId: 'command-id',
+      authMode: 'command',
+    });
+    await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({
+      providerId: 'command-id',
+      status: 'active',
+    });
+    await expect(Bun.file(authOperationPath(location)).exists()).resolves.toBe(false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('recovers a keep-chatgpt to command switch after authorization was interrupted', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/oauth/device/code')
+        return Response.json({
+          device_code: 'e'.repeat(43),
+          user_code: 'ABCD-EFGH',
+          verification_uri: `${endpoint}/dashboard/agents/authorize`,
+          verification_uri_complete: `${endpoint}/dashboard/agents/authorize#code=ABCD-EFGH`,
+          expires_in: 600,
+          interval: 5,
+        });
+      if (path === '/oauth/token')
+        return Response.json({
+          token_type: 'Bearer',
+          access_token: `aio_agent_at_v1_${'c'.repeat(43)}`,
+          refresh_token: `aio_agent_rt_v1_${'d'.repeat(43)}`,
+          expires_in: 900,
+        });
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
+    await import('../managed-config').then(({ configureCodexConfig }) =>
+      configureCodexConfig({
+        location,
+        providerId: 'keep-id',
+        baseUrl: `${endpoint}/v1`,
+        auth: { mode: 'keep-chatgpt', token: 'aio-proxy-local' },
+      }),
+    );
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'command-id', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+    });
+    await writeAuthOperation(location, {
+      configPath: location.configPath,
+      kind: 'switch',
+      fromMode: 'keep-chatgpt',
+      targetMode: 'command',
+      phase: 'prepared',
+      installationId,
+      providerId: 'command-id',
+    });
+    const bin = join(root, 'bin');
+    await mkdir(bin, { recursive: true, mode: 0o755 });
+    await writeFile(join(bin, 'aiop'), '#!/bin/sh\necho "aiop 0.21.0"\n', { mode: 0o755 });
+    const previousPath = process.env['PATH'];
+    process.env['PATH'] = `${bin}:${previousPath ?? ''}`;
+    let devicePrompts = 0;
+    try {
+      await expect(
+        recoverCodexAuthOperation(
+          {
+            location,
+            endpoint,
+            adapterVersion: '0.21.0',
+            signal: AbortSignal.timeout(10_000),
+            onDevice: async () => {
+              devicePrompts += 1;
+            },
+          },
+          'complete',
+        ),
+      ).resolves.toBe('completed');
+      expect(devicePrompts).toBe(1);
+      await expect(inspectCodexConfig(location)).resolves.toMatchObject({
+        providerId: 'command-id',
+        authMode: 'command',
+      });
+      await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({ status: 'active' });
+    } finally {
+      process.env['PATH'] = previousPath;
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preserves a failed command probe instead of reporting a verified connection', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/v1/models') return Response.json([]);
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      await import('../managed-config').then(({ configureCodexConfig }) =>
+        configureCodexConfig(
+          {
+            location,
+            providerId: 'aio-proxy',
+            baseUrl: `${endpoint}/v1`,
+            auth: { mode: 'command', installationId: installation.marker.installationId, command: 'aiop' },
+          },
+          lease,
+        ),
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId: installation.marker.installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+      await activateCodexCommandInstallation(location, installation.marker.installationId, lease);
+    });
+    let devicePrompts = 0;
+    await expect(
+      commitCodexSetup(
+        { providerId: 'aio-proxy', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            devicePrompts += 1;
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ authMode: 'command', connection: 'invalid_response' });
+    expect(devicePrompts).toBe(0);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('bounds the active-credential probe separately from the device-login signal', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path !== '/v1/models') throw new Error(`unexpected ${path}`);
+      const signal = input instanceof Request ? input.signal : init?.signal;
+      await new Promise<never>((_, reject) => {
+        const abort = () => {
+          reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+        };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener('abort', abort, { once: true });
+      });
+      throw new Error('unreachable');
+    }) as typeof fetch;
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      await import('../managed-config').then(({ configureCodexConfig }) =>
+        configureCodexConfig(
+          {
+            location,
+            providerId: 'aio-proxy',
+            baseUrl: `${endpoint}/v1`,
+            auth: { mode: 'command', installationId: installation.marker.installationId, command: 'aiop' },
+          },
+          lease,
+        ),
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId: installation.marker.installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+      await activateCodexCommandInstallation(location, installation.marker.installationId, lease);
+    });
+    const startedAt = Date.now();
+    await expect(
+      commitCodexSetup(
+        { providerId: 'aio-proxy', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(600_000),
+          onDevice: async () => {
+            throw new Error('unexpected authorization');
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ connection: 'offline' });
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
   } finally {
     globalThis.fetch = previousFetch;
     await rm(root, { recursive: true, force: true });

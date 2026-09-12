@@ -20,7 +20,7 @@ export type CodexConfigureResult = {
   readonly status: 'configured' | 'unchanged' | 'cancelled';
   readonly providerId?: string;
   readonly configPath: string;
-  readonly connection: 'ok' | 'offline' | 'not_checked';
+  readonly connection: 'ok' | 'offline' | 'invalid_response' | 'not_checked';
   readonly credential: 'none' | 'placeholder' | 'existing' | 'agent';
   readonly authMode?: CodexAuthMode;
   readonly installationId?: string;
