@@ -49,6 +49,12 @@ export const syncQueryOptions = () =>
   queryOptions({
     queryKey: queryKeys.sync,
     queryFn: async (): Promise<SyncStatus> => readSyncResponse<SyncStatus>(await syncClient.$get()),
+    // Scheduled reconciliation changes the connection state, the imported Providers and their
+    // pending reasons with no mutation from this Dashboard, and the client disables refetch on
+    // focus, so a parked Settings page would keep showing the snapshot it loaded with. Half the
+    // engine's 60s poll bounds that staleness; the endpoint answers from in-memory server state.
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 
 export const syncBackendsQueryOptions = () =>
