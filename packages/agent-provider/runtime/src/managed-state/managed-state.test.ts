@@ -1,8 +1,10 @@
 import { afterEach, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import type { AgentCatalogV1, AgentManagedMarker, AgentManagedStateV1 } from '@aio-proxy/types';
 
@@ -91,4 +93,35 @@ test('atomic state failure leaves the prior bytes and successful replacement is 
   expect(await Bun.file(f.statePath).bytes()).toEqual(before);
   await writeManagedState(f.statePath, freshState(CATALOG, 2_000));
   expect((await stat(f.statePath)).mode & 0o777).toBe(0o600);
+});
+
+test('reads managed marker and state when hosted by node', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-runtime-'));
+  runtimeRoots.push(root);
+  writeFileSync(join(root, '.aio-proxy-managed.json'), `${JSON.stringify(RUNTIME_MARKER)}\n`);
+  writeFileSync(join(root, '.aio-proxy-state.json'), `${JSON.stringify(freshState(CATALOG, 1_000))}\n`);
+  const built = await Bun.build({
+    entrypoints: [join(import.meta.dir, 'managed-state.ts')],
+    target: 'node',
+  });
+  expect(built.success).toBe(true);
+  const bundlePath = join(root, 'managed-state.mjs');
+  await Bun.write(bundlePath, await built.outputs[0]!.text());
+  const result = spawnSync(
+    'node',
+    [
+      '--input-type=module',
+      '-e',
+      `
+        import { readManagedInstallation, readManagedState } from ${JSON.stringify(pathToFileURL(bundlePath).href)};
+        const installation = await readManagedInstallation(${JSON.stringify(pathToFileURL(join(root, 'plugin.js')).href)}, 'opencode');
+        if (installation.rootDir !== ${JSON.stringify(root)}) throw new Error('root');
+        const state = await readManagedState(installation.statePath);
+        if (state?.status !== 'fresh') throw new Error('state');
+      `,
+    ],
+    { encoding: 'utf8' },
+  );
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
 });
