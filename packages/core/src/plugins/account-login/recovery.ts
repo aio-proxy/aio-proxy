@@ -157,7 +157,12 @@ export async function recoverPendingAccountOperations(
       // through, and no login can slip between this drain's publication and its completion.
       const ran = await tryGate(operation.providerId, async () => {
         const { phase, digest: targetDigest } = syncDigestPhase(operation.targetDigest);
-        const currentEntry = providers[operation.providerId];
+        // A Provider ID is user data, so a pending operation can name `toString`. Reading the entry
+        // without an own check resolves the prototype's function once the entry is deleted, and
+        // digesting that throws — failing recovery for good instead of compensating the operation.
+        const currentEntry = Object.hasOwn(providers, operation.providerId)
+          ? providers[operation.providerId]
+          : undefined;
         const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
         // Publication happens only after the config rename, so a still-staged operation whose provider
         // entry never landed never reached the backend. That is indistinguishable from a login still

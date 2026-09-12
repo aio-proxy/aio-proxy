@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import type { EntityBody, LocalEntity, LocalBinding, SyncRepository } from '@aio-proxy/core';
-import { retainsSharedOAuth } from '@aio-proxy/core';
+import type { EntityBody, LocalEntity, LocalBinding, PluginRepository, SyncRepository } from '@aio-proxy/core';
+import { isTombstonedEntity, retainsSharedOAuth } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -70,6 +70,11 @@ export type OperationInput = {
    */
   readonly shareOAuth?: (providerId: string) => Promise<void>;
   /**
+   * This device's accounts, read to tell whether an OAuth Provider a decision joins still needs its
+   * credential imported.
+   */
+  readonly accounts?: Pick<PluginRepository, 'readAccount'>;
+  /**
    * The control plane's range revision, bumped by every `setRange`. Applying reads it again after
    * each publication because a completed Leave is invisible to the configuration commit fence.
    */
@@ -128,7 +133,12 @@ function assertProviderIdentitiesFree(record: PreviewRecord, selected: ReadonlyM
     if (held !== undefined && held !== objectId) throw new SyncOperationError('upgrade-required');
     holders.set(key, objectId);
   };
-  for (const entity of record.local) if (entity.kind === 'provider') claim(entity.objectId, entity.logicalKey);
+  // Deleting an object frees its Provider ID, so another device may already publish a live object
+  // under it while the local tombstone is still retained. Claiming both sides of that handover would
+  // reject every decision as a collision on an ID no local row owns any more — the same rule
+  // reconciliation applies, and the same one the remote loop below applies to its own tombstones.
+  for (const entity of record.local)
+    if (entity.kind === 'provider' && !isTombstonedEntity(entity)) claim(entity.objectId, entity.logicalKey);
   for (const entity of record.remote)
     // A tombstone holds no identity: its Provider ID is exactly what a rename is free to take.
     if (entity.kind === 'provider' && entity.tombstone !== true) claim(entity.objectId, entity.logicalKey);
@@ -297,6 +307,12 @@ export async function applyPreview(
       const left =
         (input.rangeRevision?.() ?? record.fence.rangeRevision) !== record.fence.rangeRevision &&
         latest.mode === 'excluded';
+      // Applying an OAuth Provider carries its configuration only: the separately published account
+      // object is imported by reconciliation's activation check, and a row left with the cloud
+      // baseline and no pending reason is exactly what that pass skips. Holding it at the state it is
+      // actually in keeps the row eligible, so the credential arrives instead of the Provider sitting
+      // unauthorized until some later publication moves the head.
+      const unverified = isOAuthProvider(selectedBody) && input.accounts?.readAccount(selectedBody.logicalKey) === null;
       input.repo.putEntity(binding.id, {
         ...latest,
         mode: left ? 'excluded' : 'included',
@@ -304,7 +320,7 @@ export async function applyPreview(
         // The preview's `remote.revision` predates this publication, so recording it would leave
         // the row permanently behind its own write and make the next reconcile see phantom drift.
         baseline: publishedRevision ?? remote?.revision ?? latest.baseline,
-        pendingReason: null,
+        pendingReason: unverified ? 'oauth-unverified' : null,
       });
     };
     try {

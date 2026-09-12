@@ -69,8 +69,17 @@ export function seedAuthoredEntities(
   repo: SyncRepository,
   bindingId: string,
   raw: Record<string, JsonValue>,
+  /**
+   * Identities that already exist on the cloud side of a connect the caller is still applying. Those
+   * rows arrive under the cloud object's own ID once the reviewed decisions land, so seeding one here
+   * too would leave two rows for one kind and logical key — which the first reconciliation reports as
+   * an identity conflict between the authored object and its own cloud copy.
+   */
+  reserved: readonly { readonly kind: string; readonly logicalKey: string }[] = [],
 ): LocalEntity[] {
-  const existing = new Set(repo.entities(bindingId).map((entity) => `${entity.kind}\0${entity.logicalKey}`));
+  const existing = new Set(
+    [...repo.entities(bindingId), ...reserved].map((entity) => `${entity.kind}\0${entity.logicalKey}`),
+  );
   const seeded: LocalEntity[] = [];
   for (const identity of authoredEntityIdentities(raw)) {
     const key = `${identity.kind}\0${identity.logicalKey}`;

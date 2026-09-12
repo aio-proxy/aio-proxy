@@ -9,7 +9,13 @@ import {
   AtomicConfigFile,
   createPluginRepository,
   createSyncRepository,
+  encode,
   encodeCandidate,
+  entityKey,
+  newHead,
+  publish,
+  reserve,
+  revisionKey,
   type JsonValue,
   type LocalCommitPort,
   type PluginRegistrySnapshot,
@@ -55,9 +61,14 @@ test('remote apply rejects a stale digest without overwriting an external edit',
   }
 });
 
-function candidateFixture(home: string, list: (signal: AbortSignal) => Promise<{ keys: string[] }>) {
+function candidateFixture(
+  home: string,
+  list: (signal: AbortSignal) => Promise<{ keys: string[] }>,
+  cloud: Record<string, JsonValue> = {},
+  initial: JsonValue = { providers: {} },
+) {
   const configPath = join(home, 'config.jsonc');
-  writeFileSync(configPath, encodeCandidate({ providers: {} }, configPath));
+  writeFileSync(configPath, encodeCandidate(initial, configPath));
   const db = openDb({ home });
   const signals: AbortSignal[] = [];
   let disposed = 0;
@@ -68,7 +79,12 @@ function candidateFixture(home: string, list: (signal: AbortSignal) => Promise<{
       signals.push(signal);
       return list(signal);
     },
-    read: () => Promise.resolve({ kind: 'absent' as const }),
+    read: (key: string) =>
+      Promise.resolve(
+        Object.hasOwn(cloud, key)
+          ? { kind: 'value' as const, value: encode(cloud[key]), version: 'v1', modifiedAt: 1 }
+          : { kind: 'absent' as const },
+      ),
     dispose: () => {
       disposed += 1;
       return Promise.resolve();
@@ -166,6 +182,49 @@ test('a carried row is rebased onto the protocol state the candidate backend hol
     const bindingId = repo.readBinding()!.id;
     expect(bindingId).not.toBe('binding-old');
     expect(repo.entities(bindingId)).toMatchObject([{ objectId: 'object-1', epoch: 0, baseline: null }]);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// A first connection has no binding rows, so the connect preview lists the cloud's `work` object
+// alone and its reviewed decision imports that object's own row. Seeding a second row for the
+// identically named authored Provider makes the first reconciliation quarantine both as a
+// provider-id conflict, on a device that only ever authored one `work`.
+test('a first connection seeds no duplicate for an identity the candidate already holds', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-seed-'));
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { kind: 'api' }, dependencies: [] };
+  const fixture = candidateFixture(
+    home,
+    () => Promise.resolve({ keys: [entityKey('object-cloud')] }),
+    {
+      [entityKey('object-cloud')]: publish(reserve(newHead('object-cloud', body), 'op-1', 0), 'op-1', 0) as never,
+      [revisionKey('object-cloud', 'op-1')]: {
+        protocol: 1,
+        state: 'payload',
+        objectId: 'object-cloud',
+        epoch: 0,
+        operationId: 'op-1',
+        body,
+        publishedSequence: 1,
+        writtenAt: 1,
+      } as never,
+    },
+    { providers: { work: { kind: 'api', baseUrl: 'https://work.example.test' } }, router: { models: { 'gpt-5': {} } } },
+  );
+  try {
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    await candidate.commit();
+
+    const repo = createSyncRepository(fixture.db.sqlite);
+    // Everything else the configuration authors is still seeded; only `work` waits for its cloud row.
+    expect(
+      repo
+        .entities(repo.readBinding()!.id)
+        .map((entity) => `${entity.kind}/${entity.logicalKey}`)
+        .sort(),
+    ).toEqual(['model-rule/gpt-5', 'routing-defaults/routing-defaults']);
   } finally {
     fixture.db.close();
     rmSync(home, { recursive: true, force: true });

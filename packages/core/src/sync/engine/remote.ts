@@ -37,8 +37,9 @@ const TOMBSTONE_BASELINE_PREFIX = 'deleted:';
 
 // A deleted row keeps its kind and logical key so credential coordination can still find it, but it
 // no longer claims that identity. Counting it as a collision would pin `provider-id-conflict` on the
-// one surviving object forever, since discovery already sees a single active identity.
-function tombstoned(entity: LocalEntity): boolean {
+// one surviving object forever, since discovery already sees a single active identity. Exported so
+// the control plane's identity checks apply the same rule reconciliation does.
+export function isTombstonedEntity(entity: LocalEntity): boolean {
   return entity.desired === null && (entity.baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
 }
 
@@ -202,7 +203,7 @@ export async function reconcileRemote(
           candidate.objectId !== objectId &&
           candidate.kind === head.kind &&
           candidate.logicalKey === head.logicalKey &&
-          !tombstoned(candidate),
+          !isTombstonedEntity(candidate),
       );
       if (head.state !== 'active') {
         const tombstoneRevision = `${TOMBSTONE_BASELINE_PREFIX}${head.epoch}`;
@@ -282,7 +283,7 @@ export async function reconcileRemote(
           (candidate, index, all) =>
             candidate.kind === head.kind &&
             candidate.logicalKey === head.logicalKey &&
-            !tombstoned(candidate) &&
+            !isTombstonedEntity(candidate) &&
             all.findIndex((item) => item.objectId === candidate.objectId) === index,
         );
         for (const candidate of candidates) {

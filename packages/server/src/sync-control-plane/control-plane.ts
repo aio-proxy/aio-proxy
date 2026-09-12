@@ -228,6 +228,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     persistOverrides: options.persistOverrides,
     persistProviderIdentity: options.persistProviderIdentity,
     shareOAuth: options.shareOAuth,
+    accounts: options.accounts,
     rangeRevision: () => rangeRevision,
     purge,
     now,

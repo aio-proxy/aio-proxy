@@ -333,3 +333,32 @@ test('a drain running inside the config queue defers instead of deadlocking with
   finishLogin();
   await login;
 });
+
+test('an operation whose Provider ID names a prototype member is recovered, not stuck', async () => {
+  const state = fixture();
+  // A Provider ID is user data, so `toString` is a legal one — and once its entry is deleted the
+  // configuration has no own property for it, which is exactly the state recovery has to digest.
+  const stale = state.repository.stageAccountOperation({
+    kind: 'create',
+    targetDigest: 'wrong',
+    account: {
+      providerId: 'toString',
+      plugin: '@example/oauth',
+      capability: 'default',
+      fingerprint: 'f',
+      options: {},
+      secrets: {},
+      credential: { token: 'x' },
+      catalog: { kind: 'replace', value: { catalog: emptyCatalog(), refreshedAt: 0 } },
+    },
+  });
+  state.sqlite.query('UPDATE oauth_pending_operation SET created_at = 0 WHERE operation_id = ?').run(stale.operationId);
+
+  await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'cli',
+    now: () => PENDING_OPERATION_TTL_MS + 1,
+  });
+
+  expect(state.repository.readAccount('toString')).toBeNull();
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
+});

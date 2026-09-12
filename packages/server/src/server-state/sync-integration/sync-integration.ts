@@ -246,8 +246,16 @@ export function createSyncIntegration(
           // Carrying the previous binding's rows over covers a backend switch, but a first
           // connection has none. Without a row per authored object the new binding starts blind:
           // status lists no Provider and a join has nothing to select. Seeding is excluded-only,
-          // so connecting still publishes nothing until the user joins.
-          seedAuthoredEntities(syncRepository, binding.id, authored);
+          // so connecting still publishes nothing until the user joins. An identity the candidate
+          // already holds is left out: the reviewed decision for that row imports it under the
+          // cloud object's own ID, and a seeded twin would collide with it. Only rows carrying cloud
+          // state count, since those are exactly the ones a decision is mandatory for.
+          seedAuthoredEntities(
+            syncRepository,
+            binding.id,
+            authored,
+            candidateRemote.filter((entity) => entity.body !== null || (entity.restoreBody ?? null) !== null),
+          );
           syncPort = next!.port;
           lifecycle = next!.lifecycle;
           runtime.sync = lifecycle;

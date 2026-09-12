@@ -200,6 +200,28 @@ test('duplicate and unknown decision object IDs are rejected', async () => {
   expect(scenario.appliedLocal).toBe(0);
 });
 
+test('a local tombstone does not collide with the cloud object that took over its Provider ID', async () => {
+  const scenario = harness();
+  const rows = [candidate('provider-new', 'provider', 'work')];
+  // Deleting the old object freed `work`, another device published a new one under it, and this
+  // device still retains the tombstone — so both rows legitimately name the same Provider ID.
+  const tombstone: LocalEntity = {
+    ...localEntity('provider-old', 'provider', 'work'),
+    desired: null,
+    baseline: 'deleted:1',
+  };
+
+  await applyPreview(
+    scenario.input,
+    record({ kind: 'join', providerId: 'work' }, rows, {
+      local: [tombstone, localEntity('provider-new', 'provider', 'work')],
+    }),
+    [{ objectId: 'provider-new', choice: 'cloud' }],
+  );
+
+  expect(scenario.appliedLocal).toBe(1);
+});
+
 test('an override preview does not persist its paths when the row decision is missing', async () => {
   const scenario = harness();
   const rows = [candidate('object-a', 'provider', 'work')];
@@ -453,4 +475,36 @@ test('a join still marks the row included while the range is unchanged', async (
   ]);
 
   expect(written[0]).toMatchObject({ mode: 'included' });
+});
+
+// Applying writes the Provider's configuration only. Its credential is imported by reconciliation's
+// activation check, which skips a row already holding the cloud baseline with nothing pending — so a
+// join that clears the pending reason leaves the Provider unauthorized on this device for good.
+test('joining an OAuth Provider without a local account keeps the credential import due', async () => {
+  const oauth = (): EntityBody => ({
+    kind: 'provider',
+    logicalKey: 'work',
+    value: { kind: 'oauth', plugin: '@example/plugin', capability: 'chat' },
+    dependencies: [],
+  });
+  const rows = [{ ...candidate('provider-a', 'provider', 'work'), local: oauth(), cloud: oauth() }];
+  const join = async (readAccount: () => never, choice: SyncDecision['choice']): Promise<LocalEntity | undefined> => {
+    const written: LocalEntity[] = [];
+    const scenario = harness({
+      repo: { putEntity: (_binding: string, entity: LocalEntity) => written.push(entity) } as never,
+      localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+      accounts: { readAccount },
+    });
+    await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+      { objectId: 'provider-a', choice },
+    ]);
+    return written[0];
+  };
+
+  expect(await join(() => null as never, 'cloud')).toMatchObject({ pendingReason: 'oauth-unverified' });
+  // Publishing a local body has the same gap: `share()` reports `pending` for a Provider this device
+  // holds no account for, so nothing imports the credential the other device published.
+  expect(await join(() => null as never, 'local')).toMatchObject({ pendingReason: 'oauth-unverified' });
+  // An authorized Provider needs no import, and holding it pending would report it as unverified.
+  expect(await join(() => ({ providerId: 'work' }) as never, 'cloud')).toMatchObject({ pendingReason: null });
 });
