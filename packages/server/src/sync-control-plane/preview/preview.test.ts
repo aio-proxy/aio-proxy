@@ -4,7 +4,7 @@ import { encode, entityKey, revisionKey } from '@aio-proxy/core';
 import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { createSyncControlPlane } from '../control-plane';
-import { SyncOperationError } from '../operations';
+import { SyncOperationError, assertDecisions } from '../operations';
 import { listRemoteEntities } from './entities';
 import { applyOverrides } from './overrides';
 import { buildPreview } from './preview';
@@ -645,8 +645,9 @@ test('preview redacts Provider header values whose names do not match a secret p
   expect(JSON.stringify(preview)).not.toContain('hide-me');
 });
 
-test('restore apply forwards the requested operation id', async () => {
+test('restore apply publishes the historical body under a fresh operation id', async () => {
   let restoredOperationId = '';
+  let restoredBody: unknown;
   const control = createSyncControlPlane({
     repo: {
       readBinding: () => null,
@@ -692,8 +693,9 @@ test('restore apply forwards the requested operation id', async () => {
     ],
     applyLocal: async () => {},
     applyCloud: async () => {},
-    restore: async (_objectId, _body, operationId) => {
+    restore: async (_objectId, body, operationId) => {
       restoredOperationId = operationId;
+      restoredBody = body;
     },
     persistOverrides: async () => {},
     purge: async () => {},
@@ -707,7 +709,11 @@ test('restore apply forwards the requested operation id', async () => {
   });
   const preview = await control.preview({ kind: 'restore', objectId: 'object', operationId: 'old' });
   await control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'object', choice: 'restore' }] });
-  expect(restoredOperationId).toBe('old');
+  // Publishing under the restored operation id reads as an idempotent replay: it returns success
+  // without moving `head.current`, so the restore silently does nothing.
+  expect(restoredOperationId).not.toBe('old');
+  expect(restoredOperationId).toStartWith('restore:object:');
+  expect(restoredBody).toMatchObject({ value: { value: 'old' } });
 });
 
 test('same-id resolution persists the new provider ID and rewires model references atomically', async () => {
@@ -788,10 +794,12 @@ test('same-id resolution persists the new provider ID and rewires model referenc
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
     previewId: preview.previewId,
+    // Every row of the collision group names an identity, but only one may take the replacement:
+    // giving both the same ID would publish two heads under one Provider ID.
     decisions: preview.rows.map((row) => ({
       objectId: row.objectId,
       choice: (row.choices.includes('local') ? 'local' : 'cloud') as 'local' | 'cloud',
-      newProviderId: 'work-renamed',
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
     })),
   });
   const rows = persisted[0] as Array<{
@@ -881,10 +889,12 @@ test('same-id resolution falls back to repository bulk persistence when no integ
   const preview = await control.preview({ kind: 'join', providerId: 'work' });
   await control.apply({
     previewId: preview.previewId,
+    // Every row of the collision group names an identity, but only one may take the replacement:
+    // giving both the same ID would publish two heads under one Provider ID.
     decisions: preview.rows.map((row) => ({
       objectId: row.objectId,
       choice: (row.choices.includes('local') ? 'local' : 'cloud') as 'local' | 'cloud',
-      newProviderId: 'work-renamed',
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
     })),
   });
   expect(persisted.find((row) => row.logicalKey === 'work-renamed')).toBeDefined();
@@ -1260,6 +1270,61 @@ test('only Provider identity collisions demand a replacement ID', () => {
   expect(rows.get('plugin-a')).toMatchObject({ change: 'conflict' });
   expect(rows.get('plugin-a')?.requiresProviderId).toBeUndefined();
   expect(built.record.rows.find((c) => c.row.objectId === 'plugin-a')?.requiresProviderId).toBeUndefined();
+});
+
+test('replacement Provider IDs that are still taken are refused before any write', () => {
+  const entity = (objectId: string, logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind: 'provider' as const, logicalKey, value: {}, dependencies: [] },
+    baseline: 'baseline',
+    overrides: [],
+    pendingReason: null,
+  });
+  const { record } = buildPreview({
+    request: { kind: 'full' },
+    local: [entity('provider-a', 'work'), entity('provider-b', 'work'), entity('provider-c', 'spare')],
+    remote: [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'outside-the-preview',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'cloud-revision',
+        body: { kind: 'provider', logicalKey: 'outside-the-preview', value: {}, dependencies: [] },
+      },
+    ],
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+  const decide = (a: string, b: string) => {
+    const replacement: Record<string, string> = { 'provider-a': a, 'provider-b': b };
+    return record.rows.map((candidate) => ({
+      objectId: candidate.row.objectId,
+      choice: candidate.row.choices[0]!,
+      ...(replacement[candidate.row.objectId] === undefined
+        ? {}
+        : { newProviderId: replacement[candidate.row.objectId]! }),
+    }));
+  };
+  // Applying two heads under one Provider ID overwrites the matching local entry, and the next
+  // reconciliation quarantines the very collision this flow exists to resolve.
+  expect(() => assertDecisions(record, decide('renamed', 'renamed'))).toThrow(SyncOperationError);
+  // A replacement can also land on a Provider the preview never listed, local or cloud-only.
+  expect(() => assertDecisions(record, decide('renamed', 'spare'))).toThrow(SyncOperationError);
+  expect(() => assertDecisions(record, decide('renamed', 'outside-the-preview'))).toThrow(SyncOperationError);
+  // One row keeps the contested ID, the other takes a free one.
+  expect(() => assertDecisions(record, decide('work', 'renamed'))).not.toThrow();
 });
 
 test('connect previews the candidate backend and applies the reviewed decisions', async () => {

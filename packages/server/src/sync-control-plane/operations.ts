@@ -246,6 +246,27 @@ export async function assertFresh(input: OperationInput, expected: PreviewFence)
 export type SyncDecision = { objectId: string; choice: 'local' | 'cloud' | 'restore'; newProviderId?: string };
 
 /**
+ * A replacement Provider ID resolves a collision only if it is free once every decision lands.
+ * `providerIdentityRows` sees one row and the local entities alone, so two cloud-only rows can claim
+ * the same replacement and a replacement can land on a Provider the preview never listed — after
+ * which applying publishes two heads under one Provider ID, overwrites the matching local entry, and
+ * the next reconciliation quarantines the same collision the flow was supposed to clear.
+ */
+function assertProviderIdentitiesFree(record: PreviewRecord, selected: ReadonlyMap<string, SyncDecision>): void {
+  const holders = new Map<string, string>();
+  const claim = (objectId: string, logicalKey: string): void => {
+    const key = selected.get(objectId)?.newProviderId ?? logicalKey;
+    const held = holders.get(key);
+    if (held !== undefined && held !== objectId) throw new SyncOperationError('upgrade-required');
+    holders.set(key, objectId);
+  };
+  for (const entity of record.local) if (entity.kind === 'provider') claim(entity.objectId, entity.logicalKey);
+  for (const entity of record.remote)
+    // A tombstone holds no identity: its Provider ID is exactly what a rename is free to take.
+    if (entity.kind === 'provider' && entity.tombstone !== true) claim(entity.objectId, entity.logicalKey);
+}
+
+/**
  * The purely-local half of applying: does this decision set match the reviewed rows? It touches no
  * repository and no backend, so callers can reject a malformed request before anything is committed.
  */
@@ -272,6 +293,7 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
       throw new SyncOperationError('upgrade-required');
     if (!candidate.row.choices.includes(decision.choice)) throw new SyncOperationError('upgrade-required');
   }
+  assertProviderIdentitiesFree(record, selected);
 }
 
 export async function applyPreview(
@@ -361,16 +383,30 @@ export async function applyPreview(
     if (identityRows !== undefined && current !== undefined) await persistProviderIdentity(input, identityRows);
     let published = false;
     let publishedRevision: string | null = null;
+    const recordJoin = (): void => {
+      if (identityRows !== undefined || current === undefined || typeof input.repo.putEntity !== 'function') return;
+      // `current` is the preview snapshot, taken before persistOverrides() wrote this row's paths
+      // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
+      // the fence. Re-read the row and carry over only the fields applying actually decides.
+      const latest = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId) ?? current;
+      input.repo.putEntity(binding.id, {
+        ...latest,
+        mode: 'included',
+        desired: selectedBody,
+        // The preview's `remote.revision` predates this publication, so recording it would leave
+        // the row permanently behind its own write and make the next reconcile see phantom drift.
+        baseline: publishedRevision ?? remote?.revision ?? latest.baseline,
+        pendingReason: null,
+      });
+    };
     try {
       if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
-        let operationId: string;
-        if (decision.choice === 'restore') {
-          operationId =
-            record.input.kind === 'restore' ? record.input.operationId : `restore:${candidate.row.objectId}`;
-        } else {
-          if (record.input.kind !== 'restore') throw new SyncOperationError('upgrade-required');
-          operationId = `restore:${record.input.operationId}:${randomUUID()}`;
-        }
+        // Restoring republishes a historical body as a new revision, so it needs an operation ID no
+        // head has a receipt for. Reusing the one being restored reads as an idempotent replay:
+        // publishing reports success without moving `head.current`, the local row then records the
+        // historical body against the still-current remote baseline, and reconciliation sees no
+        // discrepancy — a restore that silently did nothing.
+        const operationId = `restore:${candidate.row.objectId}:${randomUUID()}`;
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
       } else if (decision.choice === 'cloud') {
         // Importing alone would leave the head under the old Provider ID, and the next
@@ -395,6 +431,11 @@ export async function applyPreview(
         publishedRevision = (await input.applyCloud(selectedBody, current, remote?.version ?? null)) ?? null;
         published = true;
       }
+      // Sharing refuses a row the repository still has excluded and reports `pending`, which the
+      // integration drops: the Provider would go out without its account and hold every peer at
+      // `oauth-unverified` until this service restarts. The publication has already landed here, so
+      // recording the reviewed join before sharing is also the truthful order.
+      recordJoin();
       // Publishing an OAuth Provider carries only its configuration. Until its account object is
       // published too, every other device sees the Provider and holds it at `oauth-unverified`,
       // and nothing else seeds it for a Provider that was authorized before sync was enabled.
@@ -407,21 +448,6 @@ export async function applyPreview(
         });
       }
       throw error;
-    }
-    if (identityRows === undefined && current !== undefined && typeof input.repo.putEntity === 'function') {
-      // `current` is the preview snapshot, taken before persistOverrides() wrote this row's paths
-      // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
-      // the fence. Re-read the row and carry over only the fields applying actually decides.
-      const latest = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId) ?? current;
-      input.repo.putEntity(binding.id, {
-        ...latest,
-        mode: 'included',
-        desired: selectedBody,
-        // The preview's `remote.revision` predates this publication, so recording it would leave
-        // the row permanently behind its own write and make the next reconcile see phantom drift.
-        baseline: publishedRevision ?? remote?.revision ?? latest.baseline,
-        pendingReason: null,
-      });
     }
   }
   return input.status();
