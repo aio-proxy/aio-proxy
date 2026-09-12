@@ -2,6 +2,61 @@ import { expect, test } from 'bun:test';
 
 import { createSyncControlPlane } from './control-plane';
 
+const BINDING = {
+  id: 'binding-1',
+  plugin: 'p',
+  capability: 'c',
+  identityId: 'i',
+  spaceId: 's',
+  deviceId: 'd',
+  sessionGeneration: 1,
+  options: {},
+};
+
+test('an override preview loads the authored source so a local-only object has a body to pin', async () => {
+  const excluded = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'excluded' as const,
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const control = createSyncControlPlane({
+    repo: { readBinding: () => BINDING, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [
+      excluded('local-fresh', 'provider', 'fresh'),
+      excluded('local-plugin', 'plugin-business', '@example/business'),
+    ],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    committedSource: async () => ({
+      raw: {
+        plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],
+        providers: { fresh: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } } },
+      },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map([['@example/business', '1.2.3']]),
+    }),
+  } as never);
+
+  const preview = await control.preview({ kind: 'overrides', objectId: 'local-fresh', paths: [['options', 'region']] });
+
+  // A local-only object has no published body, so without the authored source the row is null and
+  // applying the override persists `undefined` for the very path it was meant to keep.
+  expect(preview.rows[0]).toMatchObject({ objectId: 'local-fresh', local: { options: { region: 'eu' } } });
+});
+
 test('disconnect clears the persisted binding so the next start does not reconnect', async () => {
   let cleared = 0;
   let closed = 0;

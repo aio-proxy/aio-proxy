@@ -360,7 +360,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       const previewId = createPreviewToken(24, options.randomBytes);
       const expiresAt = now() + previewTtlMs;
       const remote = snapshotRemoteEntities(await remoteEntities());
-      const source = input.kind === 'join' ? await options.committedSource?.() : undefined;
+      // An override pins a path of the authored body, exactly as a join publishes one, so both need
+      // the committed source. Without it a local-only or excluded object previews a null body and
+      // the override persists `undefined` for the path it was meant to keep.
+      const source =
+        input.kind === 'join' || input.kind === 'overrides' ? await options.committedSource?.() : undefined;
       const built = buildPreview({
         request: input,
         local: local.entities,
