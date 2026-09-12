@@ -32,7 +32,7 @@ export interface OAuthSharingService {
    */
   receive(
     providerId: string,
-    resolved: { readonly adapter: OAuthAdapter; readonly pluginVersion: string },
+    resolved: { readonly adapter: OAuthAdapter; readonly plugin: string; readonly pluginVersion: string },
     signal: AbortSignal,
   ): Promise<StoredAccount | null>;
   replaceShared(providerId: string, candidate: AccountWrite, signal: AbortSignal): Promise<void>;

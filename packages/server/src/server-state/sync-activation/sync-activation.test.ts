@@ -8,6 +8,7 @@ import type {
   PluginRepository,
   SyncRepository,
 } from '@aio-proxy/core';
+import { z } from 'zod';
 
 import { createActivationCheck } from './sync-activation';
 
@@ -127,4 +128,66 @@ test('an OAuth account import is aborted by the reconciliation signal', async ()
   );
 
   expect(received).toBe(controller.signal);
+});
+
+// The import writes the account's ownership onto the row, so a snapshot taken before that await
+// reads as unowned. Handing it to the evidence check holds the Provider unverified forever: the
+// account now exists, so the import never runs again.
+test('activates an OAuth Provider whose account the import just wrote ownership for', async () => {
+  const account = { plugin: '@example/oauth', capability: 'chat', credential: { token: 'secret' }, revision: 3 };
+  let row = {
+    kind: 'provider',
+    logicalKey: 'work',
+    desired: null,
+    pendingReason: 'oauth-unverified',
+    oauth: undefined,
+  } as unknown as LocalEntity;
+  const check = createActivationCheck({
+    repo: {
+      readBinding: () => ({ id: 'binding' }),
+      // `entities()` reads persisted state, so each call is a fresh snapshot rather than a handle
+      // on the row the import mutates.
+      entities: () => [{ ...row }],
+    } as unknown as SyncRepository,
+    accounts: { readAccount: () => null } as unknown as PluginRepository,
+    plugins: () =>
+      ({
+        registry: {
+          resolveOAuth: () => ({
+            id: 'chat',
+            credentials: z.object({ token: z.string() }),
+            credentialSync: { formatVersion: 1, multiDevice: { evidenceId: 'evidence-1' } },
+          }),
+        },
+      }) as unknown as PluginRegistrySnapshot,
+    pluginVersions: () => new Map([['@example/oauth', '1.0.0']]),
+    sharing: () =>
+      ({
+        receive: () => {
+          row = {
+            ...row,
+            pendingReason: null,
+            oauth: {
+              mode: 'shared',
+              localRevision: account.revision,
+              pluginVersion: '1.0.0',
+              formatVersion: 1,
+              multiDeviceEvidenceId: 'evidence-1',
+            },
+          } as unknown as LocalEntity;
+          return Promise.resolve(account);
+        },
+      }) as never,
+  });
+
+  const pending = await check(
+    runningConfig,
+    {
+      ...providerBody({ kind: 'oauth', plugin: '@example/oauth', capability: 'chat' }),
+      dependencies: [{ objectId: 'object-1', packageName: '@example/oauth', version: '1.0.0' }],
+    },
+    new AbortController().signal,
+  );
+
+  expect(pending).toBeUndefined();
 });

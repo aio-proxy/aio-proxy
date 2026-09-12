@@ -113,12 +113,13 @@ export function createActivationCheck(input: ActivationCheckInput) {
     const missingEnv = templateEnv(body);
     if (missingEnv === 'invalid-config') return missingEnv;
     const binding = input.repo.readBinding();
-    const localEntity =
+    const readLocalEntity = () =>
       binding === null
         ? undefined
         : input.repo
             .entities(binding.id)
             .find((entity) => entity.kind === body.kind && entity.logicalKey === body.logicalKey);
+    let localEntity = readLocalEntity();
     // Only once the reference resolves: a variable this device never defined carries no secret to
     // redirect, and `missing-env` is the more useful answer for it.
     if (missingEnv.length === 0 && !secretDestinationApproved(body, localEntity?.desired)) return 'secret-conflict';
@@ -134,12 +135,16 @@ export function createActivationCheck(input: ActivationCheckInput) {
           : input.plugins().registry.resolveOAuth(plugin, capability);
       const pluginVersion = plugin === undefined ? undefined : input.pluginVersions().get(plugin);
       let account: StoredAccount | null = input.accounts.readAccount(body.logicalKey);
-      if (account === null && adapter !== undefined && pluginVersion !== undefined) {
+      if (account === null && plugin !== undefined && adapter !== undefined && pluginVersion !== undefined) {
         account =
           (await input
             .sharing()
-            ?.receive(body.logicalKey, { adapter, pluginVersion }, signal)
+            ?.receive(body.logicalKey, { adapter, plugin, pluginVersion }, signal)
             .catch(() => null)) ?? null;
+        // The import writes the account's ownership onto this row, so the snapshot taken before
+        // that await reads as unowned. Handing it to the evidence check below would hold the
+        // Provider unverified, and the account now exists so the import never runs again.
+        if (account !== null) localEntity = readLocalEntity();
       }
       if (
         plugin === undefined ||
