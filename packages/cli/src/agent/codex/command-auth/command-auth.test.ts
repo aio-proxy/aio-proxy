@@ -285,6 +285,17 @@ test.serial('refreshes concurrently under the installation lock and persists rot
     expect(delivered.length).toBeGreaterThanOrEqual(1);
     expect(new Set(delivered).size).toBe(1);
     expect(refreshCount - refreshAfterSetup).toBe(1);
+    const deliveredState = await readCredential(f.location);
+    expect(deliveredState).toBeDefined();
+    await writeCredential(f.location, { ...deliveredState!, deliveredAt: Date.now() - 60_000 });
+    const refreshAfterBurst = refreshCount;
+    await writeCodexAuthToken({
+      location: f.location,
+      installationId,
+      signal: AbortSignal.timeout(10_000),
+      writeToken: async () => undefined,
+    });
+    expect(refreshCount - refreshAfterBurst).toBe(1);
     let refreshedAfterUnauthorized = '';
     await writeCodexAuthToken({
       location: f.location,

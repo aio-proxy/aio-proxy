@@ -5,6 +5,10 @@ import { withCodexInstallation, type CodexLease } from '../storage/installation-
 import { assertManagedInstallation, boundFetch, isRecentRefresh, readIdentity } from './command-auth';
 import { readCredential, writeCredential, type CredentialState } from './credential-store';
 
+const BURST_REPLAY_WINDOW_MS = 5_000;
+const isRecentBurstDelivery = (deliveredAt: number | undefined, now: number): boolean =>
+  deliveredAt !== undefined && deliveredAt <= now && now - deliveredAt <= BURST_REPLAY_WINDOW_MS;
+
 async function withLease<T>(
   location: CodexLocation,
   signal: AbortSignal,
@@ -45,11 +49,15 @@ async function writeTokenOwned(
       await writeCredential(input.location, { ...current, status: 'reauthorize', refreshStartedAt: undefined });
       throw new Error('Codex credential refresh replay_lost; reauthorize required');
     }
-    // Waiters record the lock predecessor. A helper that acquires after that owner
-    // released infers the same burst from the credential those waiters would replay.
+    // Waiters record the lock predecessor. Infer only when that owner released
+    // during this helper burst so a later call still refreshes.
     const observedOwner =
       input.observedOwner ??
-      (current.deliveredBy !== undefined && current.deliveredBy !== lease.owner ? current.deliveredBy : undefined);
+      (current.deliveredBy !== undefined &&
+      current.deliveredBy !== lease.owner &&
+      isRecentBurstDelivery(current.deliveredAt, now)
+        ? current.deliveredBy
+        : undefined);
     if (
       input.forceRefresh !== true &&
       current.status === 'ready' &&
