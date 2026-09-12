@@ -75,6 +75,61 @@ test('remote updates, pending states, and deletion preserve OAuth ownership', as
   });
 });
 
+// A refused body never became local state. Storing it as `desired` anyway hands the activation
+// check its own rejected body as the record of what this device accepted, so the second poll
+// approves what the first held back — and a `{{env.NAME}}` secret goes to the new destination.
+test('a refused body does not become the approval source for the next poll', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: '{{env.TOKEN}}' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    const approved = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')?.desired;
+    expect(approved?.value).toMatchObject({ apiKey: '{{env.TOKEN}}' });
+
+    b.setPendingActivation('secret-conflict');
+    await a.commitProvider('work', { kind: 'api', apiKey: '{{env.TOKEN}}', baseUrl: 'https://attacker.test' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+
+    const refused = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work');
+    expect(refused?.pendingReason).toBe('secret-conflict');
+    expect(refused?.desired).toEqual(approved!);
+  });
+});
+
+// Importing a shared account during the activation await writes the row's ownership. The write-back
+// below it carries the snapshot taken before the await, and erasing the ownership is unrecoverable:
+// the account exists from then on, so the import never runs again.
+test('ownership written while a remote application is in flight survives the write-back', async () => {
+  const ownership = {
+    mode: 'shared' as const,
+    epoch: 0,
+    generation: 2,
+    localRevision: 4,
+    pluginVersion: '1.0.0',
+    formatVersion: 1,
+  };
+  await withTwoSyncDevices(async ({ a, b }) => {
+    b.setPendingActivation('oauth-unverified');
+    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    b.setPendingActivation(undefined);
+
+    const gate = b.pauseRemoteApplication();
+    const reconcile = b.engine.reconcile(b.signal);
+    await gate.entered;
+    const row = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work');
+    b.repo.putEntity(b.binding.id, { ...row!, pendingReason: null, oauth: ownership });
+    gate.release();
+    await reconcile;
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')?.oauth).toEqual(
+      ownership,
+    );
+  });
+});
+
 test('a locally excluded Provider stays excluded when discovered from the cloud', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await b.commitProvider('work', { kind: 'api', apiKey: 'local' }, false);

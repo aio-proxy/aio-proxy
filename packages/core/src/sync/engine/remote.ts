@@ -66,7 +66,10 @@ function upsertEntity(
     baseline,
     overrides: existing?.overrides ?? [],
     pendingReason,
-    oauth: existing?.oauth,
+    // `existing` predates this pass's awaits. Importing a shared account during one writes the
+    // row's OAuth ownership, and handing the snapshot back would erase it: the account exists from
+    // then on, so the import never runs again and the Provider stays unverified forever.
+    oauth: latest === undefined ? existing?.oauth : latest.oauth,
   });
   return effective;
 }
@@ -337,11 +340,15 @@ export async function reconcileRemote(
         activation = { applied: false, pending: reason };
       }
       const pending = activation.applied ? null : (activation.pending ?? 'invalid-config');
+      // A body this device refused never became local state. The activation check reads `desired`
+      // as the set of destinations this device already accepted, so storing a rejected body here
+      // would let the next poll compare it with itself and approve what it just held back.
+      const applied = activation.applied ? body : (existing?.desired ?? null);
       const written = upsertEntity(
         input,
         existing,
         head,
-        body,
+        applied,
         mode,
         pending,
         activation.applied ? record.operationId : (existing?.baseline ?? null),
@@ -353,7 +360,7 @@ export async function reconcileRemote(
         kind: head.kind,
         mode: written,
         epoch: head.epoch,
-        desired: body,
+        desired: applied,
         baseline: activation.applied ? record.operationId : (existing?.baseline ?? null),
         overrides: existing?.overrides ?? [],
         pendingReason: pending,
