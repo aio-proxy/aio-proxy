@@ -322,7 +322,7 @@ export async function reconcileRemote(
         if (input.local.checkRemote === undefined) {
           activation = await input.local.applyRemote(objectId, body, record.operationId);
         } else {
-          const pending = await input.local.checkRemote(body);
+          const pending = await input.local.checkRemote(body, signal);
           input.assertGeneration(generation);
           activation =
             pending === undefined

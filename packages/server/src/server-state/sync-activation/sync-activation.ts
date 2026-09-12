@@ -109,7 +109,7 @@ function secretDestinationApproved(body: EntityBody, approved: EntityBody | null
 }
 
 export function createActivationCheck(input: ActivationCheckInput) {
-  return async (raw: Record<string, JsonValue>, body: EntityBody) => {
+  return async (raw: Record<string, JsonValue>, body: EntityBody, signal: AbortSignal) => {
     const missingEnv = templateEnv(body);
     if (missingEnv === 'invalid-config') return missingEnv;
     const binding = input.repo.readBinding();
@@ -138,7 +138,7 @@ export function createActivationCheck(input: ActivationCheckInput) {
         account =
           (await input
             .sharing()
-            ?.receive(body.logicalKey, { adapter, pluginVersion }, new AbortController().signal)
+            ?.receive(body.logicalKey, { adapter, pluginVersion }, signal)
             .catch(() => null)) ?? null;
       }
       if (

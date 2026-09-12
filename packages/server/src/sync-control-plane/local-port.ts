@@ -44,7 +44,11 @@ export type LocalPortInput = {
     pluginSecret?: PluginSecretChange,
     expectedDigest?: string,
   ) => Promise<void>;
-  readonly checkActivation?: (raw: Record<string, JsonValue>, body: EntityBody) => Promise<PendingReason | undefined>;
+  readonly checkActivation?: (
+    raw: Record<string, JsonValue>,
+    body: EntityBody,
+    signal: AbortSignal,
+  ) => Promise<PendingReason | undefined>;
   readonly entities?: () => ReturnType<SyncRepository['entities']>;
   readonly pluginVersions?: () => ReadonlyMap<string, string>;
 };
@@ -382,9 +386,9 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
       const pending = new Set(input.accounts.listPendingAccountOperations().map((operation) => operation.operationId));
       return ids.every((id) => !pending.has(id));
     },
-    async checkRemote(body) {
+    async checkRemote(body, signal) {
       if (input.checkActivation === undefined) return undefined;
-      return input.checkActivation((await input.configFile.read()) as Record<string, JsonValue>, body);
+      return input.checkActivation((await input.configFile.read()) as Record<string, JsonValue>, body, signal);
     },
     async committedSource() {
       return source(input, (await input.configFile.read()) as Record<string, JsonValue>);

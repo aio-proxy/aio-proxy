@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type {
   EntityBody,
+  JsonValue,
   LocalEntity,
   PluginRegistrySnapshot,
   PluginRepository,
@@ -18,8 +19,8 @@ const providerBody = (value: EntityBody['value']): EntityBody => ({
 });
 
 /** `approved` is what this device already accepted for `work`, if anything. */
-const checkWith = (approved?: EntityBody) =>
-  createActivationCheck({
+const checkWith = (approved?: EntityBody) => {
+  const check = createActivationCheck({
     repo: {
       readBinding: () => ({ id: 'binding' }),
       entities: () => (approved === undefined ? [] : [{ ...approved, desired: approved } as unknown as LocalEntity]),
@@ -29,6 +30,8 @@ const checkWith = (approved?: EntityBody) =>
     pluginVersions: () => new Map(),
     sharing: () => undefined,
   });
+  return (raw: Record<string, JsonValue>, body: EntityBody) => check(raw, body, new AbortController().signal);
+};
 
 // The running configuration is healthy while the arriving Provider is not: reading the wrong one
 // lets an unresolvable reference activate as an empty string.
@@ -96,4 +99,32 @@ test('holds a remote Provider that repoints an approved secret through a nested 
   });
 
   expect(await withEnv(() => checkWith(approved)(runningConfig, body))).toBe('secret-conflict');
+});
+
+// `close()` aborts the engine controller and then waits for the running reconciliation, so an
+// independent controller here lets disconnect, backend replacement or shutdown hang on `receive()`.
+test('an OAuth account import is aborted by the reconciliation signal', async () => {
+  let received: AbortSignal | undefined;
+  const check = createActivationCheck({
+    repo: { readBinding: () => null } as unknown as SyncRepository,
+    accounts: { readAccount: () => null } as unknown as PluginRepository,
+    plugins: () => ({ registry: { resolveOAuth: () => ({ credentials: {} }) } }) as unknown as PluginRegistrySnapshot,
+    pluginVersions: () => new Map([['@example/oauth', '1.0.0']]),
+    sharing: () =>
+      ({
+        receive: (_key: string, _context: unknown, signal: AbortSignal) => {
+          received = signal;
+          return Promise.resolve(null);
+        },
+      }) as never,
+  });
+  const controller = new AbortController();
+
+  await check(
+    runningConfig,
+    providerBody({ kind: 'oauth', plugin: '@example/oauth', capability: 'chat' }),
+    controller.signal,
+  );
+
+  expect(received).toBe(controller.signal);
 });

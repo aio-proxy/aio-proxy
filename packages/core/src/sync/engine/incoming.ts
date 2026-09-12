@@ -19,6 +19,6 @@ export interface ActivationResult {
 
 export interface LocalSyncPort extends LocalCommitPort {
   /** Check a desired remote body before mutating the running configuration. */
-  checkRemote?(body: EntityBody): Promise<PendingReason | undefined>;
+  checkRemote?(body: EntityBody, signal: AbortSignal): Promise<PendingReason | undefined>;
   applyRemote(objectId: string, body: EntityBody | null, operationId: string): Promise<ActivationResult>;
 }
