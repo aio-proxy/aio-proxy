@@ -128,6 +128,49 @@ test('a connect attempt that fails mid-snapshot leaves no data directory behind'
   }
 });
 
+// Epoch and baseline name a head in the space being left. Carried into the new binding, the first
+// publication submits an epoch the candidate backend never issued and Apply fails `epoch-mismatch`,
+// while the carried baseline marks a remote revision applied that this binding has never seen.
+test('a carried row is rebased onto the protocol state the candidate backend holds', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-carry-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    const repo = createSyncRepository(fixture.db.sqlite);
+    repo.writeBinding({
+      id: 'binding-old',
+      plugin: 'p',
+      capability: 'c',
+      pluginVersion: '1.0.0',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    });
+    repo.putEntity('binding-old', {
+      objectId: 'object-1',
+      logicalKey: 'work',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 7,
+      desired: { kind: 'provider', logicalKey: 'work', value: {}, dependencies: [] },
+      baseline: 'revision-9',
+      overrides: [],
+      pendingReason: null,
+    });
+
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    await candidate.commit();
+
+    const bindingId = repo.readBinding()!.id;
+    expect(bindingId).not.toBe('binding-old');
+    expect(repo.entities(bindingId)).toMatchObject([{ objectId: 'object-1', epoch: 0, baseline: null }]);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 // A queued disconnect or backend replacement can land between a config edit's prepare and its
 // asynchronous confirm. Rereading the binding then looks the intent up in the wrong outbox, so the
 // saved edit silently never ships.

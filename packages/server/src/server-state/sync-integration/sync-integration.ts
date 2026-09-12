@@ -203,7 +203,11 @@ export function createSyncIntegration(
   syncPort = initial.port;
   lifecycle = initial.lifecycle;
 
-  const replaceBackend = async (binding: LocalBinding, preconnectedSession: SyncSession): Promise<() => void> => {
+  const replaceBackend = async (
+    binding: LocalBinding,
+    preconnectedSession: SyncSession,
+    candidateRemote: SyncConnectCandidate['remote'],
+  ): Promise<() => void> => {
     let next: ReturnType<typeof createLifecycle> | undefined;
     try {
       next = createLifecycle(binding, preconnectedSession, true);
@@ -219,8 +223,18 @@ export function createSyncIntegration(
         // Ownership is scoped to the space that holds the account object, and the replacement backend
         // has none. Nothing survives the guard above except an already detached row, so carry the
         // configuration only and let the new binding establish its own ownership.
+        // Epoch and baseline name a head in the space being left, so they are rebased onto whatever
+        // the candidate actually holds for that object: publishing with a carried epoch the new
+        // space never issued fails `epoch-mismatch`, and a carried baseline would mark a remote
+        // revision applied that this binding has never seen.
+        const candidateEpochs = new Map(candidateRemote.map((entity) => [entity.objectId, entity.epoch ?? 0]));
         const previousEntities = (previousBinding === null ? [] : syncRepository.entities(previousBinding.id)).map(
-          ({ oauth, ...entity }) => (oauth === undefined ? entity : { ...entity, pendingReason: null }),
+          ({ oauth, ...entity }) => ({
+            ...entity,
+            epoch: candidateEpochs.get(entity.objectId) ?? 0,
+            baseline: null,
+            ...(oauth === undefined ? {} : { pendingReason: null }),
+          }),
         );
         const previousLifecycle = lifecycle;
         const previousPort = syncPort;
@@ -323,7 +337,7 @@ export function createSyncIntegration(
               // either double-dispose or tear down the session that is now live.
               released = true;
               try {
-                activateBackend = await replaceBackend(binding, candidateSession);
+                activateBackend = await replaceBackend(binding, candidateSession, remote);
                 refreshCommitHooks();
               } catch (error) {
                 await discard();
