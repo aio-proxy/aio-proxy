@@ -12,6 +12,7 @@ import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CodexLocation } from '../contracts';
+import { isProxyModelCatalog } from '../credentials';
 import { inspectCodexConfig } from '../managed-config';
 import type { CodexLease } from '../storage/installation-lock';
 import { durableDelete, durableWrite, ensureManagedRoot, isFsCode, readRegularFile } from '../storage/storage';
@@ -421,7 +422,7 @@ export async function inspectCodexCommandCredential(input: {
     } catch {
       return { credentialStatus: 'ready', connection: 'invalid_response' };
     }
-    const connection = isPlainObject(body) ? 'ok' : 'invalid_response';
+    const connection = isProxyModelCatalog(body) ? 'ok' : 'invalid_response';
     return { credentialStatus: 'ready', connection };
   } catch (error) {
     return { credentialStatus: 'ready', connection: connectionFromError(error) };

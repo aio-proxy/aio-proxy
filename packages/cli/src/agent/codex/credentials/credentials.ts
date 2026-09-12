@@ -30,7 +30,7 @@ type CredentialState = {
 
 const asCredentialError = (code: CredentialErrorCode): CredentialError => new CredentialError(code);
 
-const isProxyModelCatalog = (body: unknown): boolean =>
+export const isProxyModelCatalog = (body: unknown): boolean =>
   isPlainObject(body) && body['object'] === 'list' && Array.isArray(body['data']);
 
 export async function probeProxyApiKey(input: {
