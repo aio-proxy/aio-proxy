@@ -34,11 +34,16 @@ export type OperationInput = {
     current: LocalEntity | undefined,
     objectId: string,
   ) => Promise<void>;
+  /**
+   * Resolves to the operation ID of the head it wrote, so the local row can record the revision it
+   * just published instead of the pre-publication one the preview snapshot carries. `void` covers
+   * the injected test doubles and the delete path, which have no new head to name.
+   */
   readonly applyCloud: (
     candidate: EntityBody | null,
     current: LocalEntity | undefined,
     expectedVersion: string | null,
-  ) => Promise<void>;
+  ) => Promise<string | null | void>;
   readonly restore: (
     objectId: string,
     candidate: EntityBody,
@@ -308,6 +313,7 @@ export async function applyPreview(
     const remote = remoteByObject.get(candidate.row.objectId);
     if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
     let published = false;
+    let publishedRevision: string | null = null;
     try {
       if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
         let operationId: string;
@@ -332,7 +338,7 @@ export async function applyPreview(
         if (identityRows.replacesPublished) await input.applyCloud(null, current, remote?.version ?? null);
         published = true;
       } else {
-        await input.applyCloud(selectedBody, current, remote?.version ?? null);
+        publishedRevision = (await input.applyCloud(selectedBody, current, remote?.version ?? null)) ?? null;
         published = true;
       }
       // Publishing an OAuth Provider carries only its configuration. Until its account object is
@@ -357,7 +363,9 @@ export async function applyPreview(
         ...latest,
         mode: 'included',
         desired: selectedBody,
-        baseline: remote?.revision ?? latest.baseline,
+        // The preview's `remote.revision` predates this publication, so recording it would leave
+        // the row permanently behind its own write and make the next reconcile see phantom drift.
+        baseline: publishedRevision ?? remote?.revision ?? latest.baseline,
         pendingReason: null,
       });
     }

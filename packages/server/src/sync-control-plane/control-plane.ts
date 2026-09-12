@@ -4,7 +4,6 @@ import {
   entityKey,
   revisionKey,
   type CommittedSource,
-  type EntityBody,
   type LocalBinding,
   type LocalEntity,
   type PluginRegistry,
@@ -82,11 +81,7 @@ export type SyncControlPlaneOptions = {
   readonly lifecycle?: Partial<Pick<ServerSyncLifecycle, 'start'>> &
     Pick<ServerSyncLifecycle, 'activate' | 'reconcile' | 'close'>;
   readonly applyLocal: OperationInput['applyLocal'];
-  readonly applyCloud?: (
-    candidate: EntityBody | null,
-    current: LocalEntity | undefined,
-    expectedVersion: string | null,
-  ) => Promise<void>;
+  readonly applyCloud?: OperationInput['applyCloud'];
   readonly restore?: OperationInput['restore'];
   readonly persistOverrides: OperationInput['persistOverrides'];
   readonly persistProviderIdentity?: OperationInput['persistProviderIdentity'];

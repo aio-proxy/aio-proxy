@@ -23,11 +23,12 @@ export type RemoteOperations = {
     expected: string | null,
   ) => Promise<void>;
   readonly purge: (objectId: string, expected: string | null) => Promise<void>;
+  /** Resolves to the new head's operation ID, which is the baseline the local row must record. */
   readonly publish: (
     body: EntityBody | null,
     current: LocalEntity | undefined,
     expected: string | null,
-  ) => Promise<void>;
+  ) => Promise<string | null>;
 };
 
 // The publication helpers gained an optional expected-version argument after their public
@@ -88,13 +89,14 @@ export function createRemoteOperations(session: SyncSession | undefined): Remote
       const objectId = current.objectId;
       if (body === null) {
         await conditional(() => deleteWithExpected(store, objectId, current.epoch, signal, expected));
-        return;
+        return null;
       }
+      const operationId = randomUUID();
       await conditional(() =>
         publishWithExpected(
           store,
           {
-            operationId: randomUUID(),
+            operationId,
             objectId,
             epoch: current.epoch,
             kind: 'put',
@@ -105,6 +107,7 @@ export function createRemoteOperations(session: SyncSession | undefined): Remote
           expected,
         ),
       );
+      return operationId;
     },
   };
 }
