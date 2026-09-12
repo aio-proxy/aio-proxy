@@ -3,13 +3,8 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Input } from '@aio-proxy/ui/components/input';
 import { X } from 'lucide-react';
 import { useState } from 'react';
-import { z } from 'zod';
 
-const overridePathSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/u);
+import { formatOverridePath, parseOverridePath } from './override-path';
 
 export interface SyncPreviewOverrideFieldProps {
   readonly paths: readonly string[][];
@@ -37,33 +32,36 @@ export const SyncPreviewOverrideField: React.FC<SyncPreviewOverrideFieldProps> =
 }) => {
   const [draft, setDraft] = useState('');
   const addPath = () => {
-    const parsed = overridePathSchema.safeParse(draft);
-    if (!parsed.success) {
+    const parsed = parseOverridePath(draft);
+    if (parsed === undefined) {
       onInvalidPath();
       return;
     }
     setDraft('');
-    onPathsChange([...paths, parsed.data.split('.')]);
+    onPathsChange([...paths, [...parsed]]);
   };
 
   return (
     <div className="rounded-lg border p-3">
       <p className="font-medium">{m['dashboard.sync.override_title']()}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        {paths.map((path) => (
-          <Button
-            key={path.join('.')}
-            type="button"
-            size="xs"
-            variant="outline"
-            disabled={pending}
-            onClick={() => onPathsChange(paths.filter((current) => current.join('.') !== path.join('.')))}
-            aria-label={`${m['dashboard.sync.override_remove']()} ${path.join('.')}`}
-          >
-            {path.join('.')}
-            <X aria-hidden="true" />
-          </Button>
-        ))}
+        {paths.map((path) => {
+          const label = formatOverridePath(path);
+          return (
+            <Button
+              key={label}
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={pending}
+              onClick={() => onPathsChange(paths.filter((current) => formatOverridePath(current) !== label))}
+              aria-label={`${m['dashboard.sync.override_remove']()} ${label}`}
+            >
+              {label}
+              <X aria-hidden="true" />
+            </Button>
+          );
+        })}
       </div>
       <div className="mt-3 flex gap-2">
         <Input
