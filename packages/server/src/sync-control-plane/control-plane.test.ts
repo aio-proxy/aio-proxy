@@ -457,3 +457,68 @@ test('a second non-connect apply cannot publish over the first reviewed decision
   await expect(secondApply).rejects.toMatchObject({ code: 'preview-stale' });
   expect(appliedAgainst).toEqual(['commit-1']);
 });
+
+test('disconnect waits for a connect apply already past its fence check', async () => {
+  let binding: Record<string, unknown> | null = { ...BINDING };
+  const events: string[] = [];
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  let disconnect: Promise<unknown> | undefined;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => binding,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      setConnectPending: () => {},
+      clearBinding: () => {
+        events.push('cleared');
+        binding = null;
+      },
+    } as never,
+    binding: () => binding as never,
+    localEntities: () => [],
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => {
+      events.push('applied');
+      await tick();
+    },
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [CLOUD_ROW],
+      refresh: async () => [CLOUD_ROW],
+      commit: async () => {
+        // The fence check has passed, so the teardown can no longer stop this candidate from
+        // installing its binding — `lifetime` is not the session it publishes through.
+        disconnect ??= control.disconnect();
+        await tick();
+        events.push('committed');
+        binding = { ...BINDING, id: 'swapped', sessionGeneration: 2 };
+      },
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    lifecycle: {
+      activate: () => {},
+      reconcile: async () => {},
+      close: async () => void events.push('closed'),
+    },
+  });
+
+  const preview = await control.preview(CONNECT);
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'cloud' }],
+  });
+
+  // Interleaved, the reviewed decisions land after the teardown reported success, leaving the new
+  // binding in place and synchronization running against a backend the user just disconnected.
+  expect(await disconnect).toMatchObject({ state: 'disconnected' });
+  expect(events).toEqual(['committed', 'applied', 'closed', 'cleared']);
+  expect(binding).toBeNull();
+});

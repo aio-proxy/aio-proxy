@@ -414,16 +414,22 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       return status();
     },
     async disconnect() {
-      const active = binding();
-      if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
-      lifetime.abort();
-      lifetime = new AbortController();
-      await options.lifecycle?.close();
-      // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
-      // so the next service start would read it and reconnect, silently undoing the disconnect.
-      options.repo.clearBinding?.();
-      state = 'disconnected';
-      connectApplyIncomplete = false;
+      // A connect Apply past its final fence check still installs a binding and publishes to it
+      // through the candidate's own session, which aborting `lifetime` does not reach. Interleaved,
+      // the teardown would close the old lifecycle, clear its binding and report success while
+      // synchronization came straight back up. The same FIFO puts it after that Apply.
+      await applies(async () => {
+        const active = binding();
+        if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
+        lifetime.abort();
+        lifetime = new AbortController();
+        await options.lifecycle?.close();
+        // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
+        // so the next service start would read it and reconnect, silently undoing the disconnect.
+        options.repo.clearBinding?.();
+        state = 'disconnected';
+        connectApplyIncomplete = false;
+      });
       return status();
     },
   };
