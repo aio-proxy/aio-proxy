@@ -371,7 +371,7 @@ export async function configureCodexConfig(
       if (marker?.providerId === providerId) createdTables = marker.createdTables;
       else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
       const authPath = ['model_providers', providerId, 'auth'] as const;
-      const hadAuthTable = hasCodexTable(text, authPath) || readManagedField(text, authPath).present;
+      const hadAuthTable = hasCodexTable(text, authPath);
       if (
         auth.mode === 'command' &&
         !hadAuthTable &&

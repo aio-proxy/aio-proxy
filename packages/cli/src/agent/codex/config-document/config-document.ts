@@ -213,7 +213,8 @@ export function readManagedField(text: string, path: readonly string[]): ValueSl
 }
 
 export function hasCodexTable(text: string, path: readonly string[]): boolean {
-  return findTable(inspectDocument(parseDocument(text)), path) !== undefined;
+  const document = inspectDocument(parseDocument(text));
+  return findTable(document, path) !== undefined || findInlineContainer(document, path) !== undefined;
 }
 
 export function readCodexDocument(text: string): CodexDocument {

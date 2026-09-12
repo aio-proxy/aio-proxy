@@ -39,7 +39,19 @@ export const applySourceEdits = (source: string, edits: readonly SourceEdit[]): 
       merged.push(edit);
     }
   }
-  const ordered = merged.sort((left, right) => right.start - left.start);
+  const deletions = merged
+    .filter((edit) => edit.text === '' && edit.start < edit.end)
+    .map((edit) => ({ ...edit }))
+    .sort((left, right) => left.start - right.start);
+  const coalesced: typeof deletions = [];
+  for (const deletion of deletions) {
+    const previous = coalesced.at(-1);
+    if (previous !== undefined && deletion.start <= previous.end) previous.end = Math.max(previous.end, deletion.end);
+    else coalesced.push(deletion);
+  }
+  const ordered = [...merged.filter((edit) => edit.text !== '' || edit.start === edit.end), ...coalesced].sort(
+    (left, right) => right.start - left.start,
+  );
   for (let index = 1; index < ordered.length; index += 1) {
     if (ordered[index]!.end > ordered[index - 1]!.start) {
       throw new Error('Overlapping TOML source edits');

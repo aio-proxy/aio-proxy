@@ -192,6 +192,30 @@ test('rejects a provider ID containing a control character before trimming', () 
   expect(() => validateCodexProviderId('proxy\n')).toThrow(/control/i);
 });
 
+test('switches an inline command provider to keep-chatgpt without overlapping edits', () => {
+  const original = 'model_providers = { other = { name = "keep" } }\n';
+  const command = editCodexDocument(
+    original,
+    codexProviderEdits('aio-proxy', 'http://proxy/v1', {
+      mode: 'command',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      command: '/tmp/AIO Proxy/bin/aiop',
+    }),
+  );
+  const actual = editCodexDocument(command, codexProviderEdits('aio-proxy', 'http://proxy/v1', keep('token')));
+  expect(Bun.TOML.parse(actual).model_providers).toEqual({
+    other: { name: 'keep' },
+    'aio-proxy': {
+      name: 'AIO Proxy',
+      base_url: 'http://proxy/v1',
+      wire_api: 'responses',
+      requires_openai_auth: true,
+      experimental_bearer_token: 'token',
+      auth: {},
+    },
+  });
+});
+
 test('coalesces edits for an inline provider with an inline auth table', () => {
   const original =
     'model = "keep-model"\n' +

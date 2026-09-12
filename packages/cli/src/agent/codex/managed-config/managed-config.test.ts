@@ -306,6 +306,64 @@ test('does not take over an unmarked provider or remove user auth fields', async
   }
 });
 
+test('reconfigures command authentication on an inline provider', async () => {
+  const f = await fixture('model_provider = "openai"\nmodel_providers = { other = { name = "keep" } }\n');
+  try {
+    const auth = {
+      mode: 'command' as const,
+      installationId: '11111111-1111-4111-8111-111111111111',
+      command: '/tmp/AIO Proxy/bin/aiop',
+    };
+    await configureCodexConfig({ location: f.location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth });
+    await configureCodexConfig({ location: f.location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v2', auth });
+    const parsed = Bun.TOML.parse(await Bun.file(f.location.configPath).text()) as Record<string, any>;
+    expect(parsed.model_providers.other).toEqual({ name: 'keep' });
+    expect(parsed.model_providers['aio-proxy'].base_url).toBe('http://proxy/v2');
+    expect(parsed.model_providers['aio-proxy'].auth.command).toBe(auth.command);
+    expect(JSON.parse(await Bun.file(f.location.markerPath).text())).toMatchObject({
+      format: 2,
+      authMode: 'command',
+      installationId: auth.installationId,
+    });
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('switches an inline command provider back to keep-chatgpt', async () => {
+  const f = await fixture('model_provider = "openai"\nmodel_providers = { other = { name = "keep" } }\n');
+  try {
+    const auth = {
+      mode: 'command' as const,
+      installationId: '11111111-1111-4111-8111-111111111111',
+      command: '/tmp/AIO Proxy/bin/aiop',
+    };
+    await configureCodexConfig({ location: f.location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth });
+    expect(Bun.TOML.parse(await Bun.file(f.location.configPath).text())).toMatchObject({
+      model_providers: {
+        other: { name: 'keep' },
+        'aio-proxy': { auth: { command: auth.command } },
+      },
+    });
+    await configureCodexConfig({
+      location: f.location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://proxy/v1',
+      auth: keep('token'),
+    });
+    const parsed = Bun.TOML.parse(await Bun.file(f.location.configPath).text()) as Record<string, any>;
+    expect(parsed.model_providers.other).toEqual({ name: 'keep' });
+    expect(parsed.model_providers['aio-proxy'].auth).toBeUndefined();
+    expect(parsed.model_providers['aio-proxy'].experimental_bearer_token).toBe('token');
+    expect(JSON.parse(await Bun.file(f.location.markerPath).text())).toMatchObject({
+      format: 2,
+      authMode: 'keep-chatgpt',
+    });
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test('removes an owned inline provider while preserving neighboring providers', async () => {
   const f = await fixture('model_provider = "openai"\nmodel_providers = { other = { name = "keep" } }\n');
   try {
