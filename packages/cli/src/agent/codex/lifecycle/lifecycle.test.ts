@@ -234,3 +234,56 @@ test('blocks removal when command identity is unreadable', async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('blocks command removal when the managed config is conflicted', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  const endpoint = 'http://127.0.0.1:9317';
+  try {
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'aio-proxy',
+          baseUrl: `${endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+    });
+    await Bun.write(location.markerPath, '{not-json');
+    const revoked: { endpoint: string; installationId: string }[] = [];
+    await expect(
+      removeCodexLifecycle({
+        location,
+        revoke: async (boundEndpoint, boundInstallationId) => {
+          revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+          return 'revoked';
+        },
+      }),
+    ).resolves.toMatchObject({ status: 'blocked', authorization: 'pending' });
+    expect(revoked).toEqual([]);
+    await expect(readCredential(location)).resolves.toMatchObject({ installationId });
+    await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({
+      marker: { installationId },
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

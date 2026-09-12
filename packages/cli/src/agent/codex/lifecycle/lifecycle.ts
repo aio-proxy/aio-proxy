@@ -95,6 +95,8 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     } catch {
       return blockedResult(input.location, 'pending');
     }
+    if (inspection.status === 'conflict')
+      return blockedResult(input.location, identity === undefined ? undefined : 'pending');
     const credential = await readCredential(input.location);
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];
