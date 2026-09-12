@@ -23,3 +23,16 @@ export function loadServiceEnv(configPath: string, env: Record<string, string | 
     if (!Object.hasOwn(env, key)) env[key] = value;
   }
 }
+
+export function readServiceEnvironment(
+  configPath: string,
+  base: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string | undefined> {
+  const env = { ...base };
+  const file = serviceEnvFile(configPath);
+  if (!existsSync(file)) return env;
+  for (const [key, value] of Object.entries(parseEnv(readFileSync(file, 'utf8')))) {
+    env[key] = value;
+  }
+  return env;
+}

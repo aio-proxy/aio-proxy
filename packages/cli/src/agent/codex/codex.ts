@@ -6,7 +6,7 @@ import { m } from '@aio-proxy/i18n';
 import { checkbox, confirm, input, select } from '@inquirer/prompts';
 
 import packageJson from '../../../package.json' with { type: 'json' };
-import { loadServiceEnv } from '../../service-env';
+import { readServiceEnvironment } from '../../service-env';
 import { formatAgentToken } from '../command-auth/token-output';
 import { resolveAgentEndpoint } from '../control-plane';
 import { writeCodexAuthToken } from './command-auth';
@@ -81,8 +81,8 @@ const createCredentialDeps = (endpoint: string) => {
   const file = new AtomicConfigFile(path);
   return {
     file,
-    loadEnvironment: () => loadServiceEnv(path),
-    readEnvironment: () => ({ ...process.env }),
+    loadEnvironment() {},
+    readEnvironment: () => readServiceEnvironment(path),
     check: (token: string) => probeProxyApiKey({ endpoint, token }),
   };
 };

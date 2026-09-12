@@ -113,6 +113,8 @@ test('the shared control address resolves host and port templates from service.e
       },
       async () => {
         await expect(resolveControlAddress({})).resolves.toEqual({ host: '127.0.0.9', port: '9417' });
+        expect(process.env.AGENT_BIND_HOST).toBeUndefined();
+        expect(process.env.AGENT_BIND_PORT).toBeUndefined();
       },
     );
   } finally {
