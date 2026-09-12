@@ -290,8 +290,7 @@ export async function readJournal(
     const text = snapshot.text;
     const value: unknown = JSON.parse(text);
     if (
-      typeof value !== 'object' ||
-      value === null ||
+      !isPlainObject(value) ||
       (value as { format?: unknown }).format !== 1 ||
       (value as { operationId?: unknown }).operationId !== operationId ||
       !Array.isArray((value as { entries?: unknown }).entries) ||
