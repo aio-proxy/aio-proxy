@@ -9,8 +9,15 @@ import {
   assertNoRetainedOAuth,
   SyncOperationError,
   type OperationInput,
+  type SyncDecision,
 } from './operations';
-import type { PreviewCandidate, PreviewFence, PreviewRecord, RemoteEntity } from './preview';
+import {
+  SyncPreviewError,
+  type PreviewCandidate,
+  type PreviewFence,
+  type PreviewRecord,
+  type RemoteEntity,
+} from './preview';
 
 const fence: PreviewFence = {
   bindingId: 'binding',
@@ -280,6 +287,46 @@ test('connecting excludes a row the decisions left out instead of carrying its o
     { objectId: 'provider-a', mode: 'excluded' },
     { objectId: 'provider-b', mode: 'included' },
   ]);
+});
+
+// The fence is checked once, before rows that each take a network round trip. A configuration
+// commit landing in that window is not in the reviewed bodies: publishing one anyway marks the row
+// synchronized against a body the user never edited, and nothing republishes what they did.
+test('applying stops on a configuration commit that lands mid-apply, but not on its own', async () => {
+  const rows = [candidate('object-a', 'provider', 'work'), candidate('object-b', 'provider', 'home')];
+  const join: SyncPreviewInput = { kind: 'join', providerId: 'work' };
+  const decisions = (choice: 'local' | 'cloud'): SyncDecision[] =>
+    rows.map(({ row }) => ({ objectId: row.objectId, choice }));
+  const repo = (commitId: () => string) => ({
+    putEntity: () => {},
+    latestConfirmedCommit: () => ({ commitId: commitId() }),
+  });
+
+  // Importing a cloud body writes the local configuration, so applying advances the very commit it
+  // compares against. Reading that back as drift would fail every multi-row apply on its own row.
+  let own = 'commit-1';
+  const imported: string[] = [];
+  const mine = harness({
+    repo: repo(() => own) as never,
+    applyLocal: async (_body, _current, objectId) => {
+      imported.push(objectId);
+      own = `remote:${objectId}`;
+    },
+  });
+  await applyPreview(mine.input, record(join, rows), decisions('cloud'));
+  expect(imported).toEqual(['object-a', 'object-b']);
+
+  let foreign = 'commit-1';
+  const published: string[] = [];
+  const drifted = harness({
+    repo: repo(() => foreign) as never,
+    applyCloud: async (_body, current) => {
+      published.push(current!.objectId);
+      foreign = 'edited-while-publishing';
+    },
+  });
+  await expect(applyPreview(drifted.input, record(join, rows), decisions('local'))).rejects.toThrow(SyncPreviewError);
+  expect(published).toEqual(['object-a']);
 });
 
 test('retiring a binding is refused while any row still holds a shared credential', () => {

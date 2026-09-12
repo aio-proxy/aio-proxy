@@ -7,7 +7,7 @@ import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { PreviewFence, PreviewRecord, RemoteEntity } from './preview';
-import { SyncPreviewError, sameFence } from './preview';
+import { latestCommitId, SyncPreviewError, sameFence } from './preview';
 
 export class SyncOperationError extends Error {
   override readonly name = 'SyncOperationError';
@@ -296,6 +296,31 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
   assertProviderIdentitiesFree(record, selected);
 }
 
+/**
+ * The reviewed fence is checked once, but applying then runs network I/O per row, and a
+ * configuration commit landing in that window would be overwritten without a word: a cloud choice
+ * overlays the reviewed body on the newer one, and a local choice publishes the reviewed body and
+ * marks the row included — so the newer edit, committed while the row was still excluded, is never
+ * enqueued for publication and no later reconciliation looks for it. Holding the mutation fence
+ * across the whole apply is not on offer, because `applyLocal` re-enters that same non-re-entrant
+ * queue and would deadlock. Re-reading the confirmed local commit immediately before each mutation
+ * is: every commit this apply makes itself is adopted as the new baseline, so only a foreign one
+ * stops it. Connect is exempt for the same reason its fence is neutralized — the swap replaces the
+ * binding's commit history wholesale, so there is nothing stable to compare against.
+ */
+function localCommitGuard(input: OperationInput, record: PreviewRecord, binding: LocalBinding) {
+  let expected = record.input.kind === 'connect' ? undefined : latestCommitId(input.repo, binding);
+  return {
+    assertUnchanged(): void {
+      if (expected !== undefined && latestCommitId(input.repo, binding) !== expected)
+        throw new SyncPreviewError('preview-stale');
+    },
+    adopt(): void {
+      if (expected !== undefined) expected = latestCommitId(input.repo, binding);
+    },
+  };
+}
+
 export async function applyPreview(
   input: OperationInput,
   record: PreviewRecord,
@@ -329,6 +354,7 @@ export async function applyPreview(
     return input.status();
   }
   assertDecisions(record, decisions);
+  const commits = localCommitGuard(input, record, binding);
   if (record.input.kind === 'overrides') {
     const objectId = record.input.objectId;
     const current = localByObject.get(objectId);
@@ -336,6 +362,7 @@ export async function applyPreview(
     // synchronization row's `desired` is the published body, so it is null for a local-only object
     // and would record every pinned path as a deletion of the value the user asked to keep.
     const authored = record.rows.find((candidate) => candidate.row.objectId === objectId)?.local ?? null;
+    commits.assertUnchanged();
     await input.persistOverrides(objectId, record.input.paths, current, authored);
   }
   for (const candidate of record.rows) {
@@ -380,7 +407,11 @@ export async function applyPreview(
     // A remote-only row has nothing authored to rewire — applyLocal writes the imported body under
     // the new ID — and rewiring would rename whichever local Provider still holds the old one,
     // which in a collision is a different object.
-    if (identityRows !== undefined && current !== undefined) await persistProviderIdentity(input, identityRows);
+    commits.assertUnchanged();
+    if (identityRows !== undefined && current !== undefined) {
+      await persistProviderIdentity(input, identityRows);
+      commits.adopt();
+    }
     let published = false;
     let publishedRevision: string | null = null;
     const recordJoin = (): void => {
@@ -415,8 +446,10 @@ export async function applyPreview(
         if (identityRows !== undefined) {
           await input.applyCloud(selectedBody, identityRows.renamed, null);
           if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
+          commits.assertUnchanged();
         }
         await input.applyLocal(selectedBody, current, identityRows?.renamed.objectId ?? candidate.row.objectId);
+        commits.adopt();
       } else if (identityRows !== undefined) {
         // The renamed object is published first so the configuration is never absent from the cloud,
         // then the identity it vacated is deleted. A fresh object has no expected version.
