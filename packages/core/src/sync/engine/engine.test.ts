@@ -486,6 +486,33 @@ test('an exclusion landing during a remote application is not overwritten by the
   });
 });
 
+// Joining an existing local body can publish without changing the config file, so a pass that
+// snapshotted the row as excluded must not write that stale decision back over the new baseline.
+test('a join landing during reconciliation is not overwritten by the snapshot mode', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await b.commitProvider('work', { kind: 'api', apiKey: 'local' }, false);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')?.mode).toBe('excluded');
+
+    const discovery = b.gateNext('read');
+    const pending = b.engine.reconcile(b.signal);
+    await discovery.entered;
+    const main = b.gateNext('read');
+    discovery.release();
+    await main.entered;
+    const row = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work');
+    b.repo.putEntity(b.binding.id, { ...row!, mode: 'included', baseline: 'joined' });
+    main.release();
+    await pending;
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')).toMatchObject({
+      mode: 'included',
+    });
+  });
+});
+
 test('a queued put is dropped instead of resurrecting a remotely deleted head', async () => {
   await withTwoSyncDevices(async ({ a }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);

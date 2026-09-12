@@ -42,6 +42,19 @@ function tombstoned(entity: LocalEntity): boolean {
   return entity.desired === null && (entity.baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
 }
 
+// `mode` replays the snapshot this pass took before it awaited the network, unless the pass decided
+// to change it itself (a conflict quarantine). A `sync leave` or `sync join` landing during that
+// await is a user decision with a freshly published baseline, so the replay must not undo it.
+function effectiveMode(
+  latest: LocalEntity | undefined,
+  existing: LocalEntity | undefined,
+  mode: LocalEntity['mode'],
+): LocalEntity['mode'] {
+  if (latest === undefined) return mode;
+  if (mode === existing?.mode) return latest.mode;
+  return latest.mode === 'excluded' ? 'excluded' : mode;
+}
+
 function upsertEntity(
   input: RemoteReconcileInput,
   existing: LocalEntity | undefined,
@@ -51,11 +64,8 @@ function upsertEntity(
   pendingReason: string | null,
   baseline: string | null,
 ): LocalEntity['mode'] {
-  // `mode` comes from the snapshot this pass took before it awaited the network. A `sync leave`
-  // landing during that await is a user decision, so never hand an excluded row back to `included`
-  // and republish what they excluded. Re-inclusion only ever comes from an applied preview.
   const latest = input.repo.entities(input.bindingId).find((entity) => entity.objectId === head.objectId);
-  const effective = latest?.mode === 'excluded' ? 'excluded' : mode;
+  const effective = effectiveMode(latest, existing, mode);
   input.repo.putEntity(input.bindingId, {
     objectId: head.objectId,
     logicalKey: head.logicalKey,
