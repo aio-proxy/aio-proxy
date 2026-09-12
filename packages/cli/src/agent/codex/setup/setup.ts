@@ -206,6 +206,20 @@ async function commitCommand(
       } else {
         await revokeAndClear(context, lease, orphan.installationId);
       }
+    } else if (inspection.authMode === 'command' && inspection.installationId !== undefined) {
+      if (inspection.baseUrl !== undefined && inspection.baseUrl !== codexBaseUrl(context.endpoint))
+        throw setupError('CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED');
+      existing = await restoreCodexCommandInstallation(
+        {
+          location: context.location,
+          providerId: inspection.providerId ?? providerId,
+          endpoint: context.endpoint,
+          adapterVersion: context.adapterVersion,
+          installationId: inspection.installationId,
+          status: 'pending',
+        },
+        lease,
+      );
     }
   }
   await validateCodexConfig(

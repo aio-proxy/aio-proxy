@@ -422,6 +422,79 @@ test('reuses an orphan command credential instead of preparing a new installatio
   }
 });
 
+test('restores a marker-only command installation instead of preparing a new identity', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/oauth/device/code')
+        return Response.json({
+          device_code: 'd'.repeat(43),
+          user_code: 'ABCD-EFGH',
+          verification_uri: `${endpoint}/dashboard/agents/authorize`,
+          verification_uri_complete: `${endpoint}/dashboard/agents/authorize#code=ABCD-EFGH`,
+          expires_in: 600,
+          interval: 5,
+        });
+      if (path === '/oauth/token')
+        return Response.json({
+          token_type: 'Bearer',
+          access_token: `aio_agent_at_v1_${'a'.repeat(43)}`,
+          refresh_token: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+          expires_in: 900,
+        });
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'custom', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await import('../managed-config').then(({ configureCodexConfig }) =>
+        configureCodexConfig(
+          {
+            location,
+            providerId: 'custom',
+            baseUrl: `${endpoint}/v1`,
+            auth: { mode: 'command', installationId, command: 'aiop' },
+          },
+          lease,
+        ),
+      );
+    });
+    await rm(join(location.managedRoot, 'codex-command.json'));
+    await expect(Bun.file(join(location.managedRoot, 'codex-credential.json')).exists()).resolves.toBe(false);
+    let devicePrompts = 0;
+    await expect(
+      commitCodexSetup(
+        { providerId: 'custom', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            devicePrompts += 1;
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ authMode: 'command', installationId });
+    expect(devicePrompts).toBe(1);
+    await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({
+      status: 'active',
+      marker: { installationId },
+    });
+    await expect(readCredential(location)).resolves.toMatchObject({ installationId });
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rebinds a renamed command identity before recovering authorization', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';
