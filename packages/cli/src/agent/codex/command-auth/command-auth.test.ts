@@ -266,6 +266,8 @@ test.serial('refreshes concurrently under the installation lock and persists rot
       );
       await activateCodexCommandInstallation(f.location, installation.marker.installationId, lease);
     });
+    const ready = await readCredential(f.location);
+    await writeCredential(f.location, { ...ready!, accessExpiresAt: Date.now() - 1 });
     const refreshAfterSetup = refreshCount;
     const delivered: string[] = [];
     await Promise.all(
@@ -295,7 +297,7 @@ test.serial('refreshes concurrently under the installation lock and persists rot
       signal: AbortSignal.timeout(10_000),
       writeToken: async () => undefined,
     });
-    expect(refreshCount - refreshAfterBurst).toBe(1);
+    expect(refreshCount - refreshAfterBurst).toBe(0);
     let refreshedAfterUnauthorized = '';
     await writeCodexAuthToken({
       location: f.location,
@@ -319,6 +321,84 @@ test.serial('refreshes concurrently under the installation lock and persists rot
       }),
     ).rejects.toThrow('Codex token delivery failed');
     expect(await readFile(join(f.location.managedRoot, 'codex-credential.json'), 'utf8')).toContain(ROTATED_ACCESS);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test.serial('reuses an unexpired access token across independent helper cycles', async () => {
+  const f = await fixture();
+  const previousFetch = globalThis.fetch;
+  let refreshCount = 0;
+  globalThis.fetch = (async (input) => {
+    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    if (path === '/oauth/token') refreshCount += 1;
+    return Response.json(
+      path === '/oauth/device/code'
+        ? {
+            device_code: DEVICE,
+            user_code: 'ABCD-EFGH',
+            verification_uri: `${f.marker.endpoint}/dashboard/agents/authorize`,
+            verification_uri_complete: `${f.marker.endpoint}/dashboard/agents/authorize#code=ABCD-EFGH`,
+            expires_in: 600,
+            interval: 5,
+          }
+        : {
+            token_type: 'Bearer',
+            access_token: refreshCount > 0 ? ROTATED_ACCESS : ACCESS,
+            refresh_token: refreshCount > 0 ? ROTATED_REFRESH : REFRESH,
+            expires_in: 900,
+          },
+    );
+  }) as typeof fetch;
+  try {
+    let installationId = '';
+    await withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location: f.location, providerId: 'aio-proxy', endpoint: f.marker.endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location: f.location,
+          providerId: 'aio-proxy',
+          baseUrl: `${f.marker.endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: '/tmp/AIO Proxy/bin/aiop' },
+        },
+        lease,
+      );
+      await writeCredential(f.location, {
+        format: 1,
+        installationId,
+        endpoint: f.marker.endpoint,
+        revision: 1,
+        accessToken: ACCESS,
+        refreshToken: REFRESH,
+        accessExpiresAt: Date.now() + 600_000,
+        status: 'ready',
+        deliveredBy: 'prior-helper',
+        deliveredRevision: 1,
+        deliveredAt: Date.now() - 60_000,
+      });
+      await activateCodexCommandInstallation(f.location, installationId, lease);
+    });
+    const delivered: string[] = [];
+    await writeCodexAuthToken({
+      location: f.location,
+      installationId,
+      signal: AbortSignal.timeout(10_000),
+      writeToken: async (token) => {
+        delivered.push(token);
+      },
+    });
+    expect(refreshCount).toBe(0);
+    expect(delivered).toEqual([ACCESS]);
+    await expect(readCredential(f.location)).resolves.toMatchObject({
+      accessToken: ACCESS,
+      refreshToken: REFRESH,
+      revision: 1,
+    });
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -397,6 +477,8 @@ test.serial('coordinates refresh delivery across two helper processes', async ()
       );
       await activateCodexCommandInstallation(location, installationId, lease);
     });
+    const ready = await readCredential(location);
+    await writeCredential(location, { ...ready!, accessExpiresAt: Date.now() - 1 });
     const commandAuthPath = join(import.meta.dir, 'token-delivery.ts');
     const locationPath = join(import.meta.dir, '../location/index.ts');
     const script = `
@@ -553,6 +635,8 @@ test.serial('reuses one refresh when three helpers observe the same lock owner',
         lease,
         writeToken: async () => undefined,
       });
+      const ready = await readCredential(location);
+      await writeCredential(location, { ...ready!, accessExpiresAt: Date.now() - 1 });
       helpers = ['a', 'b', 'c'].map((id) => run(id));
       const startedAt = Date.now();
       while ((await readdir(readyDir)).length < 3) {

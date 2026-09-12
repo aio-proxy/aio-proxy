@@ -5,10 +5,6 @@ import { withCodexInstallation, type CodexLease } from '../storage/installation-
 import { assertManagedInstallation, boundFetch, isRecentRefresh, readIdentity } from './command-auth';
 import { readCredential, writeCredential, type CredentialState } from './credential-store';
 
-const BURST_REPLAY_WINDOW_MS = 5_000;
-const isRecentBurstDelivery = (deliveredAt: number | undefined, now: number): boolean =>
-  deliveredAt !== undefined && deliveredAt <= now && now - deliveredAt <= BURST_REPLAY_WINDOW_MS;
-
 async function withLease<T>(
   location: CodexLocation,
   signal: AbortSignal,
@@ -26,7 +22,6 @@ async function writeTokenOwned(
     readonly signal: AbortSignal;
     readonly writeToken: (token: string) => Promise<void>;
     readonly forceRefresh?: boolean;
-    readonly observedOwner?: string;
   },
   lease: CodexLease,
 ): Promise<void> {
@@ -49,29 +44,13 @@ async function writeTokenOwned(
       await writeCredential(input.location, { ...current, status: 'reauthorize', refreshStartedAt: undefined });
       throw new Error('Codex credential refresh replay_lost; reauthorize required');
     }
-    // Waiters record the lock predecessor. Infer only when that owner released
-    // during this helper burst so a later call still refreshes.
-    const observedOwner =
-      input.observedOwner ??
-      (current.deliveredBy !== undefined &&
-      current.deliveredBy !== lease.owner &&
-      isRecentBurstDelivery(current.deliveredAt, now)
-        ? current.deliveredBy
-        : undefined);
-    if (
-      input.forceRefresh !== true &&
-      current.status === 'ready' &&
-      current.accessExpiresAt > now + 1_000 &&
-      current.deliveredBy !== undefined &&
-      current.deliveredRevision === current.revision &&
-      observedOwner !== undefined &&
-      current.deliveredBy === observedOwner
-    ) {
+    if (input.forceRefresh !== true && current.status === 'ready' && current.accessExpiresAt > now + 1_000) {
       await input.writeToken(current.accessToken);
       await assertOwned();
       await writeCredential(input.location, {
         ...current,
         deliveredRevision: current.revision,
+        deliveredBy: current.deliveredBy ?? lease.owner,
         deliveredAt: now,
       });
       return;
@@ -134,10 +113,5 @@ export async function writeCodexAuthToken(input: {
   readonly forceRefresh?: boolean;
   readonly lease?: CodexLease;
 }): Promise<void> {
-  return withLease(input.location, input.signal, input.lease, (lease) =>
-    writeTokenOwned(
-      { ...input, ...(lease.predecessor === undefined ? {} : { observedOwner: lease.predecessor }) },
-      lease,
-    ),
-  );
+  return withLease(input.location, input.signal, input.lease, (lease) => writeTokenOwned(input, lease));
 }
