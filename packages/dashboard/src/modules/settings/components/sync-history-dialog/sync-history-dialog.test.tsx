@@ -10,7 +10,7 @@ const history: readonly SyncHistoryItem[] = [
   { operationId: 'operation-a', objectId: 'object-work', writtenAt: 1_000, current: true },
 ];
 
-rs.mock('@/lib/sync-service', () => ({
+rs.mock('@/modules/settings/services/sync-service', () => ({
   syncHistoryQueryOptions: () => ({ queryKey: ['sync', 'history', 'object-work'], queryFn: async () => history }),
 }));
 

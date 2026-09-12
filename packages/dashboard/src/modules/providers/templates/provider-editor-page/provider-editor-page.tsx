@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { PageContainer } from '@/components/page-container';
 import { SyncPreviewDialog } from '@/components/sync-preview-dialog';
 import { useDetachSync, usePreviewSync, useSetSyncRange, useSyncStatus } from '@/hooks/use-sync';
-import { SyncRequestError } from '@/lib/sync-service';
+import { SyncRequestError } from '@/modules/settings/services/sync-service';
 
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';
 import { ConnectionSection } from '../../components/provider-editor/connection-section';

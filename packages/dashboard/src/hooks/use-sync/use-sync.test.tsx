@@ -9,7 +9,7 @@ import { usePreviewSync } from './use-sync';
 
 const mocks = rs.hoisted(() => ({ previewSync: rs.fn() }));
 
-rs.mock('@/lib/sync-service', () => ({ previewSync: mocks.previewSync }));
+rs.mock('@/modules/settings/services/sync-service', () => ({ previewSync: mocks.previewSync }));
 
 test('invalidates sync, provider, and settings queries after a preview succeeds', async () => {
   mocks.previewSync.mockReset().mockResolvedValue({

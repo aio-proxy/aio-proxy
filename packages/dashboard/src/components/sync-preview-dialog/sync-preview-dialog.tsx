@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { useApplySync } from '@/hooks/use-sync';
-import { SyncRequestError } from '@/lib/sync-service';
+import { SyncRequestError } from '@/modules/settings/services/sync-service';
 
 import { SyncPreviewOverrideField } from './sync-preview-override-field';
 import { SyncPreviewRenameField } from './sync-preview-rename-field';

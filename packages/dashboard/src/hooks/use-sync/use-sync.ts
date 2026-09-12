@@ -11,7 +11,7 @@ import {
   setSyncRange,
   syncBackendsQueryOptions,
   syncQueryOptions,
-} from '@/lib/sync-service';
+} from '@/modules/settings/services/sync-service';
 
 export const useSyncStatus = () => useQuery(syncQueryOptions());
 export const useSyncBackends = () => useQuery(syncBackendsQueryOptions());
