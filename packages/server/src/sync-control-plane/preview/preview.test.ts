@@ -9,6 +9,7 @@ import { listRemoteEntities } from './entities';
 import { SyncPreviewError } from './errors';
 import { applyOverrides } from './overrides';
 import { buildPreview } from './preview';
+import { redactEntityValue } from './redact';
 
 const providerBody = (value: Record<string, JsonValue>) => ({
   kind: 'provider' as const,
@@ -2176,4 +2177,21 @@ test('a preview shows an option named __proto__ instead of dropping it from the 
   expect(Object.hasOwn(local, '__proto__')).toBe(true);
   expect(local['endpoint']).toBe('https://plugin.example.test');
   expect('region' in {}).toBe(false);
+});
+
+test('redaction reaches nested records whose own key is the sensitive one', () => {
+  const value = redactEntityValue(
+    providerBody({
+      account: { id: 'acct-1', nested: { label: 'expose-me' } },
+      headers: { 'X-Trace': 'expose-me' },
+      options: { baseURL: 'https://kept.example' },
+      // An own `__proto__` key must survive as a property rather than reach the prototype setter.
+      ['__proto__' as string]: { note: 'kept' },
+    }),
+    new Set(),
+  );
+
+  expect(JSON.stringify(value)).not.toContain('expose-me');
+  expect(value).toMatchObject({ account: '[redacted]', headers: '[redacted]' });
+  expect(Object.hasOwn(value as object, '__proto__')).toBe(true);
 });

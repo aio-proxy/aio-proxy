@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { sessionKeyPath } from '@aio-proxy/core';
@@ -100,6 +100,43 @@ export function createDashboardAuthentication(
 }
 
 /**
+ * Clear a stale empty key file, which `wx` can never replace, so provisioning interrupted between
+ * create and write does not make every login throw until someone deletes it by hand. `rmSync` on a
+ * path merely observed to be empty would delete a real key another process created in the gap, so
+ * the file is moved aside first: rename is atomic, and whatever lands at the scratch path is ours
+ * alone to inspect. Returns the winner's key when the file turned out to have been repaired
+ * already, and that key is put back before it is handed out.
+ */
+function clearEmptyKeyFile(path: string): string {
+  const scratch = `${path}.${randomBytes(8).toString('hex')}`;
+  try {
+    renameSync(path, scratch);
+  } catch {
+    return '';
+  }
+  let moved = '';
+  try {
+    moved = readFileSync(scratch, 'utf8').trim();
+  } catch {
+    // Unreadable is as good as empty: nothing here can be handed out as a key.
+  }
+  if (moved === '') {
+    rmSync(scratch, { force: true });
+    return '';
+  }
+  try {
+    writeFileSync(path, `${moved}\n`, { flag: 'wx', mode: 0o600 });
+    rmSync(scratch, { force: true });
+  } catch {
+    // A third process already published a key. Its file is the one to keep, so drop the copy
+    // rather than clobbering it, and let the next pass read whatever is now on disk.
+    rmSync(scratch, { force: true });
+    return '';
+  }
+  return moved;
+}
+
+/**
  * Read the device-local signing key, creating it on first use. `wx` plus the retry is what keeps a
  * CLI and a server racing on first start from each minting a key and invalidating the other's
  * sessions — the loser of the race reads the winner's file on the second pass.
@@ -119,9 +156,11 @@ function deviceSessionKey(): string {
       return generated;
     } catch {
       // Either another process won the race — the next pass reads its key — or provisioning was
-      // interrupted and left an empty file, which `wx` can never replace, so every login would
-      // throw until someone deleted it by hand. Only the empty file is ours to clear.
-      if (stored() === '') rmSync(path, { force: true });
+      // interrupted and left an empty file, which `wx` can never replace.
+      if (stored() === '') {
+        const repaired = clearEmptyKeyFile(path);
+        if (repaired !== '') return repaired;
+      }
     }
   }
   throw new Error('unable to establish a device session key');

@@ -49,3 +49,26 @@ test('hiding a column takes effect on the table immediately', async () => {
   // getter left the column on screen until some unrelated parent state happened to change.
   await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(2));
 });
+
+test('drops the previous target filter so the next object does not read as empty', async () => {
+  const view = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());
+
+  const filter = screen.getByLabelText(/Filter history|筛选历史/u);
+  fireEvent.change(filter, { target: { value: 'matches-nothing' } });
+  await waitFor(() => expect(screen.queryByText('operation-a')).toBeNull());
+
+  // The dialog stays mounted between targets, so without a reset the new object's revisions stay
+  // hidden behind the previous object's filter and the dialog reports it as having no history.
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncHistoryDialog objectId="object-other" open onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());
+  expect((screen.getByLabelText(/Filter history|筛选历史/u) as HTMLInputElement).value).toBe('');
+});

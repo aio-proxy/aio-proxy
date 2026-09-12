@@ -70,6 +70,16 @@ export const SyncHistoryDialog: React.FC<SyncHistoryDialogProps> = ({ objectId, 
   // visibility and filter of the previous commit until some other parent state happened to change.
   const filter = useStore(form.store, (state) => state.values.filter);
   const visibleColumns = useStore(form.store, (state) => state.values.visibleColumns);
+  // The dialog stays mounted between targets, so the previous Provider's filter and page would hide
+  // the next one's revisions and report it as empty. Sorting and column visibility survive because
+  // they read as preferences rather than a stale view. Closing is not a target change: `objectId`
+  // drops to null while the content is still fading out, and resetting there would be visible.
+  const [target, setTarget] = useState(objectId);
+  if (objectId !== null && objectId !== target) {
+    setTarget(objectId);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
+    form.setFieldValue('filter', '');
+  }
   const columns = useMemo(
     () =>
       HISTORY_COLUMN_HELPER.columns([

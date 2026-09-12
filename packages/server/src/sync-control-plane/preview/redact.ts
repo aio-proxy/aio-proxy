@@ -2,10 +2,12 @@ import type { EntityBody } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreviewRow } from '@aio-proxy/types';
 
-// `headers` is listed as a whole: any header name can carry a credential (`Authorization`,
-// `Cookie`, a vendor-specific name), so the map is redacted rather than matched key by key.
+// `headers` and `account` are listed as whole records: any child name can carry a credential
+// (`Authorization`, `Cookie`, a vendor-specific name, an OAuth refresh token), so the map is
+// redacted wholesale rather than matched key by key. The bare `secret`/`credential` alternatives
+// already cover `secrets`, `pluginSecret`, and `credentials` by substring.
 export const SECRET_KEY =
-  /(?:secret|password|passwd|token|credential|api[-_]?key|refresh|access[-_]?key|^headers$|(?:^|\.)headers\.)/iu;
+  /(?:secret|password|passwd|token|credential|api[-_]?key|refresh|access[-_]?key|^(?:headers|account)$|(?:^|\.)(?:headers|account)\.)/iu;
 
 function redact(value: JsonValue, key = '', secretKeys: ReadonlySet<string> = new Set()): JsonValue {
   if (SECRET_KEY.test(key) || secretKeys.has(key)) return '[redacted]';
@@ -22,12 +24,7 @@ function redact(value: JsonValue, key = '', secretKeys: ReadonlySet<string> = ne
 export function redactEntityValue(body: EntityBody, secretKeys: ReadonlySet<string>): JsonValue {
   const wholeRecord = body.kind === 'plugin-business' && /(?:secret|credential)/iu.test(body.logicalKey);
   if (wholeRecord) return '[redacted]';
-  const redactRecord = (value: JsonValue, key = ''): JsonValue => {
-    if (/^(?:account|credential|credentials|secret|secrets|pluginSecret|pluginSecrets)$/iu.test(key))
-      return '[redacted]';
-    return redact(value, key, secretKeys);
-  };
-  return redactRecord(structuredClone(body.value));
+  return redact(structuredClone(body.value), '', secretKeys);
 }
 
 function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = new Set()): Record<string, JsonValue> {

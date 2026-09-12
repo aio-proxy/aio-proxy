@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -208,6 +208,9 @@ test('an interrupted provisioning left an empty session key, and login still sig
 
     expect(result.status).toBe('authenticated');
     expect(readFileSync(join(home, 'session-key'), 'utf8').trim()).not.toBe('');
+    // The repair moves the empty file aside before deleting it, so that a racer's real key is
+    // handed back rather than unlinked. The scratch copy must not survive as a second key file.
+    expect(readdirSync(home).filter((entry) => entry.startsWith('session-key'))).toEqual(['session-key']);
   } finally {
     rmSync(home, { recursive: true, force: true });
     if (original === undefined) delete process.env.AIO_PROXY_HOME;
