@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { runCodexWizard } from './index';
+import { runCodexWizard } from './wizard';
 
 test('skips Key prompt and leaves history when migration is declined', async () => {
   const events: string[] = [];
