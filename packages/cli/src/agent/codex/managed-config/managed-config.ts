@@ -276,7 +276,7 @@ function changedFields(marker: CodexMarker, text: string): readonly (readonly st
   );
 }
 
-function makeFields(text: string, providerId: string, edits: readonly FieldEdit[], prior?: CodexMarker): OwnedField[] {
+function makeFields(text: string, edits: readonly FieldEdit[], prior?: CodexMarker): OwnedField[] {
   return edits.map((edit) => ({
     path: edit.path,
     before:
@@ -375,7 +375,7 @@ export async function configureCodexConfig(
       const edits = codexProviderEdits(providerId, baseUrl, auth);
       const editedText = editCodexDocument(workingText, edits);
       const nextText = marker?.providerId === providerId ? removeCreatedTables(editedText, marker) : editedText;
-      const fields = makeFields(text, providerId, edits, marker?.providerId === providerId ? marker : undefined);
+      const fields = makeFields(workingText, edits, marker?.providerId === providerId ? marker : undefined);
       if (marker?.providerId === providerId) createdTables = marker.createdTables;
       else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
       const authPath = ['model_providers', providerId, 'auth'] as const;

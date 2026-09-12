@@ -94,6 +94,19 @@ test('reconfigure keeps the original before values', async () => {
   }
 });
 
+test('renaming a managed provider restores the original active provider', async () => {
+  const { root, location } = await fixture();
+  try {
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://old/v1', auth: keep('key') });
+    await configureCodexConfig({ location, providerId: 'custom.proxy', baseUrl: 'http://new/v1', auth: keep('key') });
+    await removeCodexConfig(location);
+    const result = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, unknown>;
+    expect(result['model_provider']).toBe('openai');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('round-trips command authentication and upgrades the marker to V2', async () => {
   const { root, location } = await fixture('# keep\nmodel = "custom-model"\nmodel_provider = "openai"\n');
   try {

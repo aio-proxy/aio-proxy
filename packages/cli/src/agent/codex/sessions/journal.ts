@@ -1,6 +1,8 @@
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { processIsAlive, processStarttime } from '@aio-proxy/core';
+
 import type { CodexLocation } from '../contracts';
 import { assertNoSymlinkParents, durableWrite, isFsCode, readRegularFile, syncParent } from '../managed-config/storage';
 
@@ -30,7 +32,12 @@ export type SessionMigrationJournal = {
   readonly ownerToken: string;
 };
 
-type LeaseOwner = { readonly pid: number; readonly token: string; readonly expiresAt: number };
+type LeaseOwner = {
+  readonly pid: number;
+  readonly starttime?: string;
+  readonly token: string;
+  readonly expiresAt: number;
+};
 export type SessionLock = {
   readonly token: string;
   readonly renew: () => Promise<void>;
@@ -57,7 +64,12 @@ const parseOwner = (value: unknown): LeaseOwner | undefined => {
     validToken(owner.token) &&
     typeof owner.expiresAt === 'number' &&
     Number.isFinite(owner.expiresAt)
-    ? { pid: owner.pid, token: owner.token, expiresAt: owner.expiresAt }
+    ? {
+        pid: owner.pid,
+        ...(typeof owner.starttime === 'string' ? { starttime: owner.starttime } : {}),
+        token: owner.token,
+        expiresAt: owner.expiresAt,
+      }
     : undefined;
 };
 
@@ -86,14 +98,11 @@ const validEntry = (value: unknown): value is JournalEntry => {
   );
 };
 
-function processAlive(pid: number): boolean {
-  if (pid === process.pid) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error instanceof Error && 'code' in error && error.code !== 'ESRCH';
-  }
+async function ownerIsCurrentProcess(owner: LeaseOwner): Promise<boolean> {
+  if (!processIsAlive(owner.pid)) return false;
+  if (owner.starttime === undefined) return true;
+  const current = await processStarttime(owner.pid);
+  return current === null || current === owner.starttime;
 }
 
 async function readLease(location: CodexLocation): Promise<LeaseOwner | undefined> {
@@ -134,7 +143,7 @@ async function reclaimExpiredLock(
     owner.pid !== observed.pid ||
     owner.expiresAt !== observed.expiresAt ||
     owner.expiresAt > Date.now() ||
-    processAlive(owner.pid)
+    (await ownerIsCurrentProcess(owner))
   ) {
     await restoreQuarantinedLock(location, quarantine);
     return false;
@@ -185,7 +194,13 @@ export async function acquireSessionLock(location: CodexLocation): Promise<Sessi
   await assertNoSymlinkParents(migrationRoot(location));
   await mkdir(migrationRoot(location), { recursive: true, mode: 0o700 });
   const token = crypto.randomUUID();
-  const owner: LeaseOwner = { pid: process.pid, token, expiresAt: Date.now() + leaseDurationMs };
+  const starttime = await processStarttime(process.pid);
+  const owner: LeaseOwner = {
+    pid: process.pid,
+    ...(starttime === null ? {} : { starttime }),
+    token,
+    expiresAt: Date.now() + leaseDurationMs,
+  };
   for (;;) {
     try {
       await mkdir(lockPath(location), { recursive: false, mode: 0o700 });
@@ -200,7 +215,7 @@ export async function acquireSessionLock(location: CodexLocation): Promise<Sessi
           throw new Error('another Codex session migration is in progress');
         continue;
       }
-      if (processAlive(current.pid) || current.expiresAt > Date.now())
+      if ((await ownerIsCurrentProcess(current)) || current.expiresAt > Date.now())
         throw new Error('another Codex session migration is in progress');
       await reclaimExpiredLock(location, current, token);
     }

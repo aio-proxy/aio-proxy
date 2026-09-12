@@ -8,11 +8,12 @@ import { readCredential, writeCredential, type CredentialState } from './credent
 
 async function withLease<T>(
   location: CodexLocation,
+  signal: AbortSignal,
   lease: CodexLease | undefined,
   operation: (owned: CodexLease) => Promise<T>,
 ): Promise<T> {
   if (lease !== undefined) return lease.withOwnership(async () => operation(lease));
-  return withCodexInstallation(location, AbortSignal.timeout(15_000), operation);
+  return withCodexInstallation(location, signal, operation);
 }
 
 async function writeTokenOwned(
@@ -126,7 +127,7 @@ export async function writeCodexAuthToken(input: {
     input.lease === undefined
       ? (await observeProcessFileLock(`${input.location.home}/.aio-proxy.lock`))?.owner
       : undefined;
-  return withLease(input.location, input.lease, (lease) =>
+  return withLease(input.location, input.signal, input.lease, (lease) =>
     writeTokenOwned({ ...input, ...(observedOwner === undefined ? {} : { observedOwner }) }, lease),
   );
 }

@@ -176,3 +176,15 @@ test('removes an orphan credential without attempting remote revocation', async 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('blocks removal when command identity is unreadable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  try {
+    await Bun.write(join(location.managedRoot, 'codex-command.json'), '{not-json');
+    await expect(removeCodexLifecycle({ location })).resolves.toMatchObject({ status: 'blocked' });
+    expect(await Bun.file(join(location.managedRoot, 'codex-command.json')).exists()).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

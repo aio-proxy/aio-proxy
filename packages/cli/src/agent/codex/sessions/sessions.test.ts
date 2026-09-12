@@ -476,6 +476,27 @@ test('does not reclaim an expired lease held by a live process', async () => {
   }
 });
 
+test('reclaims an expired lease whose PID has been reused', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-reused-pid-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await mkdir(join(location.managedRoot, 'migrations', '.lock'), { recursive: true });
+    await writeFile(
+      join(location.managedRoot, 'migrations', '.lock', 'owner.json'),
+      JSON.stringify({
+        pid: process.pid,
+        starttime: 'previous-process-incarnation',
+        token: '00000000-0000-4000-8000-000000000000',
+        expiresAt: 1,
+      }),
+    );
+    const lock = await acquireSessionLock(location);
+    await lock.release();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('blocks restore when the journal file is replaced by a symlink', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-journal-link-'));
   try {

@@ -89,7 +89,12 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
   const signal = input.signal ?? defaultSignal();
   return withCodexInstallation(input.location, signal, async (lease) => {
     const inspection = await inspectCodexConfig(input.location);
-    const identity = await readCodexCommandIdentity(input.location).catch(() => undefined);
+    let identity: Awaited<ReturnType<typeof readCodexCommandIdentity>>;
+    try {
+      identity = await readCodexCommandIdentity(input.location);
+    } catch {
+      return blockedResult(input.location, 'pending');
+    }
     const credentialInstallationId = await readCodexCommandCredentialInstallationId(input.location);
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];

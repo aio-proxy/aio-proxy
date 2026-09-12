@@ -117,6 +117,37 @@ test('listing an unconfigured Codex home does not create its managed directory',
   expect(await Bun.file(f.location.managedRoot).exists()).toBe(false);
 });
 
+test('uses the helper deadline while waiting for the installation lock', async () => {
+  const f = await fixture();
+  let release!: () => void;
+  let locked!: () => void;
+  const acquired = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const held = withCodexInstallation(f.location, AbortSignal.timeout(10_000), async () => {
+    locked();
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  });
+  try {
+    await acquired;
+    const deadline = AbortSignal.timeout(25);
+    await expect(
+      writeCodexAuthToken({
+        location: f.location,
+        installationId: crypto.randomUUID(),
+        signal: deadline,
+        writeToken: async () => undefined,
+      }),
+    ).rejects.toThrow();
+    expect(deadline.aborted).toBe(true);
+  } finally {
+    release();
+    await held;
+  }
+});
+
 test.serial('refreshes concurrently under the installation lock and persists rotation before delivery', async () => {
   const f = await fixture();
   const previousFetch = globalThis.fetch;
