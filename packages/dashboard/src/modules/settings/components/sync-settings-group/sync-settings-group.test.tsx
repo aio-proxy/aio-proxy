@@ -13,6 +13,14 @@ const mocks = rs.hoisted(() => ({
   },
 }));
 
+// The router is mounted with basepath '/dashboard', so a real <Link to="/plugins"> resolves there;
+// a raw anchor would not.
+rs.mock('@tanstack/react-router', () => ({
+  Link: ({ to, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
+    <a href={`/dashboard${to}`} {...props} />
+  ),
+}));
+
 rs.mock('@/hooks/use-sync', () => ({
   useSyncStatus: () => ({ data: mocks.state.status, isLoading: false, isError: false }),
   useSyncBackends: () => ({ data: mocks.state.backends, isLoading: false, isError: false }),
@@ -77,6 +85,7 @@ test('shows the explicit local plugin action when no backend is installed', () =
   renderGroup([], null);
   expect(screen.getByTestId('settings-sync-group')).toBeTruthy();
   expect(screen.getByText(/CloudKit is not installed|未安装 CloudKit/u)).toBeTruthy();
+  expect(screen.getByRole('link').getAttribute('href')).toBe('/dashboard/plugins');
 });
 
 test('connects the picked backend instead of the first registered one', () => {

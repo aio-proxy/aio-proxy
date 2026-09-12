@@ -16,6 +16,7 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import { useForm, useStore } from '@tanstack/react-form';
 import type { AnyFieldApi } from '@tanstack/react-form';
+import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
@@ -267,7 +268,7 @@ export const SyncSettingsGroup: React.FC = () => {
             <div className="space-y-2 rounded-lg border p-3">
               <p className="text-sm">{m['dashboard.sync.backend_missing']()}</p>
               <code className="block text-xs text-muted-foreground">@aio-proxy/plugin-cloudkit</code>
-              <Button render={<a href="/plugins" />} variant="outline" size="sm">
+              <Button render={<Link to="/plugins" />} variant="outline" size="sm">
                 {m['dashboard.sync.install_plugin']()}
               </Button>
             </div>
