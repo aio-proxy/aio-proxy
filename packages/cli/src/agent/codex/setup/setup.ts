@@ -257,9 +257,20 @@ async function recoverComplete(
   lease: CodexLease,
 ): Promise<boolean> {
   if (operation.targetMode !== 'command' || operation.installationId === undefined) return false;
-  const identity = await readCodexCommandIdentity(context.location);
+  let identity = await readCodexCommandIdentity(context.location);
   if (identity?.marker.installationId !== operation.installationId || identity.marker.endpoint !== context.endpoint)
     return false;
+  if (identity.providerId !== operation.providerId) {
+    const inspection = await inspectCodexConfig(context.location);
+    if (
+      inspection.authMode === 'command' &&
+      inspection.installationId === identity.marker.installationId &&
+      inspection.providerId === operation.providerId
+    ) {
+      await rebindCodexCommandInstallation(context.location, operation.installationId, operation.providerId, lease);
+      identity = (await readCodexCommandIdentity(context.location)) ?? identity;
+    }
+  }
   const authorization = await commandAuthorizationNeed(identity, context);
   if ('authorize' in authorization) {
     await authorizeCodexInstallation(

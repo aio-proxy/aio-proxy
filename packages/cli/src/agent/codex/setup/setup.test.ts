@@ -295,6 +295,99 @@ test('cleans an orphan credential during a normal keep-chatgpt transition', asyn
   }
 });
 
+test('rebinds a renamed command identity before recovering authorization', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const { configureCodexConfig } = await import('../managed-config');
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'old-id', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'old-id',
+          baseUrl: `${endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+      await activateCodexCommandInstallation(location, installationId, lease);
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'new-id',
+          baseUrl: `${endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+    });
+    await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({ providerId: 'old-id' });
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({ providerId: 'new-id', authMode: 'command' });
+    await writeAuthOperation(location, {
+      configPath: location.configPath,
+      kind: 'switch',
+      fromMode: 'command',
+      targetMode: 'command',
+      phase: 'config-written',
+      installationId,
+      providerId: 'new-id',
+    });
+    const bin = join(root, 'bin');
+    await mkdir(bin, { recursive: true, mode: 0o755 });
+    await writeFile(join(bin, 'aiop'), '#!/bin/sh\necho "aiop 0.21.0"\n', { mode: 0o755 });
+    const previousPath = process.env['PATH'];
+    process.env['PATH'] = `${bin}:${previousPath ?? ''}`;
+    try {
+      await expect(
+        recoverCodexAuthOperation(
+          {
+            location,
+            endpoint,
+            adapterVersion: '0.21.0',
+            signal: AbortSignal.timeout(10_000),
+            onDevice: async () => {
+              throw new Error('unexpected device authorization');
+            },
+          },
+          'complete',
+        ),
+      ).resolves.toBe('completed');
+      await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({
+        providerId: 'new-id',
+        status: 'active',
+      });
+      await expect(Bun.file(authOperationPath(location)).exists()).resolves.toBe(false);
+    } finally {
+      process.env['PATH'] = previousPath;
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rebinds a command installation when the managed Provider ID changes', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';
