@@ -1,8 +1,4 @@
 import {
-  decodeHead,
-  decodeRevision,
-  entityKey,
-  revisionKey,
   type CommittedSource,
   type LocalBinding,
   type LocalEntity,
@@ -16,7 +12,6 @@ import type {
   SyncBackendView,
   SyncConnectionState,
   SyncControlPlane,
-  SyncHistoryItem,
   SyncPreviewInput,
   SyncStatus,
 } from '@aio-proxy/types';
@@ -43,28 +38,11 @@ import {
   type PreviewRecord,
   type RemoteEntity,
 } from './preview';
-import { createRemoteOperations } from './remote-operations';
+import { createPreviewStore, type SyncConnectCandidate } from './preview-store';
+import { createRemoteOperations, readHistory } from './remote-operations';
 import { createStatus } from './status';
 
-/**
- * A candidate backend opened for previewing but not yet bound. Connecting has to read the
- * candidate's cloud state before the swap — otherwise the preview cannot show what connecting would
- * import, and applying it would start reconciling against objects the user never reviewed.
- */
-export type SyncConnectCandidate = {
-  readonly remote: readonly RemoteEntity[];
-  /** Re-reads the candidate's cloud state through its own session, before it is bound. */
-  readonly refresh: () => Promise<readonly RemoteEntity[]>;
-  /** Swaps the binding onto the candidate backend, leaving its engine deferred. */
-  readonly commit: () => Promise<void>;
-  /**
-   * Starts the committed backend's engine. Reconciliation imports remote objects under its default
-   * inclusion behavior, so it must not run until the reviewed decisions have been applied.
-   */
-  readonly activate: () => void;
-  /** Releases the candidate when its preview is replaced, expires, or fails to apply. */
-  readonly dispose: () => Promise<void>;
-};
+export type { SyncConnectCandidate } from './preview-store';
 
 export type SyncControlPlaneOptions = {
   readonly repo: SyncRepository;
@@ -149,9 +127,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   const applyCloud =
     options.applyCloud ??
     (async (...args: Parameters<NonNullable<OperationInput['applyCloud']>>) => remoteOps!().publish(...args));
-  const previews = new Map<string, PreviewRecord>();
-  const candidates = new Map<string, SyncConnectCandidate>();
-  const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const previews = createPreviewStore({ now, onExpire: () => releasePreviewState() });
   let rangeRevision = 0;
   let stateBeforePreview: SyncConnectionState = 'idle';
   let lastSuccessAt: number | null = null;
@@ -176,41 +152,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     // An incomplete connect apply is still the user's turn: the binding switched but the engine is
     // held, so reporting `idle` would claim a working backend that is not reconciling.
     if (connectApplyIncomplete) state = 'preview-required';
-    else if (state === 'preview-required' && previews.size === 0) state = stateBeforePreview;
-  };
-
-  const takeCandidate = (previewId: string): SyncConnectCandidate | undefined => {
-    const timer = expiryTimers.get(previewId);
-    if (timer !== undefined) clearTimeout(timer);
-    expiryTimers.delete(previewId);
-    const candidate = candidates.get(previewId);
-    candidates.delete(previewId);
-    return candidate;
-  };
-
-  // `expiresAt` is only read when the user submits Apply, so closing the dialog or abandoning a CLI
-  // preview would otherwise leave the record in `previews` until shutdown, pinning `preview-required`
-  // and suppressing background engine outcomes long after the advertised TTL.
-  const retainPreview = (previewId: string, expiresAt: number): void => {
-    const timer = setTimeout(
-      () => {
-        previews.delete(previewId);
-        releasePreviewState();
-        void takeCandidate(previewId)
-          ?.dispose()
-          .catch(() => {});
-      },
-      Math.max(0, expiresAt - now()),
-    );
-    timer.unref?.();
-    expiryTimers.set(previewId, timer);
-  };
-
-  // A connect candidate additionally holds an open backend session — for CloudKit, a native helper
-  // process — which the same expiry has to dispose.
-  const retainCandidate = (previewId: string, candidate: SyncConnectCandidate, expiresAt: number): void => {
-    candidates.set(previewId, candidate);
-    retainPreview(previewId, expiresAt);
+    else if (state === 'preview-required' && previews.size() === 0) state = stateBeforePreview;
   };
 
   const statuses = createStatus({
@@ -341,12 +283,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           options: parsed.data as Extract<SyncPreviewInput, { kind: 'connect' }>['options'],
         };
         // A pending candidate the user walked away from still holds an open backend session.
-        for (const pending of [...candidates.keys()]) {
-          previews.delete(pending);
-          await takeCandidate(pending)
-            ?.dispose()
-            .catch(() => {});
-        }
+        await previews.disposePending();
         // The replacement may still fail to connect, and then no preview is left to expire or
         // apply: hand the state back now rather than pinning `preview-required` for good.
         releasePreviewState();
@@ -365,8 +302,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             expiresAt,
             registry: options.registry?.(),
           });
-          previews.set(previewId, built.record);
-          retainCandidate(previewId, candidate, expiresAt);
+          previews.retain(previewId, built.record, expiresAt, candidate);
           enterPreviewRequired();
           return built.preview;
         } catch (error) {
@@ -394,16 +330,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         registry: options.registry?.(),
         ...(source === undefined ? {} : { source }),
       });
-      previews.set(previewId, built.record);
-      retainPreview(previewId, expiresAt);
+      previews.retain(previewId, built.record, expiresAt);
       enterPreviewRequired();
       return built.preview;
     },
     async apply(input: SyncApplyInput) {
-      const record = previews.get(input.previewId);
+      const { record, candidate } = previews.take(input.previewId);
       if (record === undefined) throw new SyncPreviewError('preview-stale');
-      previews.delete(input.previewId);
-      const candidate = takeCandidate(input.previewId);
       try {
         if (now() >= record.expiresAt) {
           await candidate?.dispose().catch(() => {});
@@ -446,33 +379,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       return status();
     },
     async history(objectId) {
-      const session = options.session?.();
-      if (session === undefined) return [];
-      const signal = lifetime.signal;
-      const headValue = await session.read(entityKey(objectId), signal);
-      if (headValue.kind === 'absent') return [];
-      const head = decodeHead(headValue.value);
-      if (head.objectId !== objectId || head.state === 'purging') throw new SyncOperationError('operation-pending');
-      const operationIds = [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])];
-      const items: SyncHistoryItem[] = [];
-      for (const operationId of operationIds) {
-        const value = await session.read(revisionKey(objectId, operationId), signal);
-        if (value.kind === 'absent') continue;
-        const record = decodeRevision(value.value);
-        if (record.objectId !== objectId) throw new SyncOperationError('operation-pending');
-        if (
-          record.state === 'payload' &&
-          (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
-        )
-          throw new SyncOperationError('operation-pending');
-        items.push({
-          operationId,
-          objectId,
-          writtenAt: record.state === 'payload' ? (record.writtenAt ?? value.modifiedAt) : value.modifiedAt,
-          current: head.current === operationId,
-        });
-      }
-      return items;
+      return readHistory(options.session?.(), objectId, lifetime.signal);
     },
     async retry() {
       // Retry is a reconnect, not a way around a review: a connect apply that failed after the

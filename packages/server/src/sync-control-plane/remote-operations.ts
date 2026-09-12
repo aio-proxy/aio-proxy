@@ -2,15 +2,20 @@ import { randomUUID } from 'node:crypto';
 
 import {
   createSyncObjectStore,
+  decodeHead,
+  decodeRevision,
   deleteEntity,
+  entityKey,
   publishEntity,
   purgeEntity,
   restoreEntity,
+  revisionKey,
   SyncProtocolError,
   type EntityBody,
   type LocalEntity,
 } from '@aio-proxy/core';
 import type { SyncSession } from '@aio-proxy/plugin-sdk';
+import type { SyncHistoryItem } from '@aio-proxy/types';
 
 import { SyncOperationError } from './operations';
 
@@ -109,4 +114,34 @@ export function createRemoteOperations(session: SyncSession | undefined, signal:
       return operationId;
     },
   };
+}
+
+/** The revisions the bound backend still holds for one object, newest state flagged as `current`. */
+export async function readHistory(
+  session: SyncSession | undefined,
+  objectId: string,
+  signal: AbortSignal,
+): Promise<SyncHistoryItem[]> {
+  if (session === undefined) return [];
+  const headValue = await session.read(entityKey(objectId), signal);
+  if (headValue.kind === 'absent') return [];
+  const head = decodeHead(headValue.value);
+  if (head.objectId !== objectId || head.state === 'purging') throw new SyncOperationError('operation-pending');
+  const operationIds = [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])];
+  const items: SyncHistoryItem[] = [];
+  for (const operationId of operationIds) {
+    const value = await session.read(revisionKey(objectId, operationId), signal);
+    if (value.kind === 'absent') continue;
+    const record = decodeRevision(value.value);
+    if (record.objectId !== objectId) throw new SyncOperationError('operation-pending');
+    if (record.state === 'payload' && (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey))
+      throw new SyncOperationError('operation-pending');
+    items.push({
+      operationId,
+      objectId,
+      writtenAt: record.state === 'payload' ? (record.writtenAt ?? value.modifiedAt) : value.modifiedAt,
+      current: head.current === operationId,
+    });
+  }
+  return items;
 }
