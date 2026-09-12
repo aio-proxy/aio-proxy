@@ -1,7 +1,7 @@
+export { inspectCodexConfig } from './inspect';
 export {
   configureCodexConfig,
   validateCodexConfig,
-  inspectCodexConfig,
   recoverCodexConfigOperation,
   removeCodexConfig,
 } from './managed-config';
