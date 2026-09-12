@@ -339,3 +339,26 @@ test('keeps a local-only provider authored and never turns filtering into cloud 
   expect(result.entities.size).toBe(1);
   expect(result.local.providers).toEqual({ personal: { kind: 'api', apiKey: 'local-key' } });
 });
+
+// The routing-defaults body is flat, but `retry` is authored under `server`. Overlaying it onto
+// `router` writes a key nothing reads and leaves the remote retry policy in force.
+test('a pinned routing default overlays the section it was authored in', () => {
+  const routing = {
+    ...includedEntity('routing', 'routing-defaults', 'routing-defaults'),
+    overrides: [
+      { path: ['retry'], value: { attempts: 1 } },
+      { path: ['modelContextAggregation'], value: 'local' },
+    ],
+  };
+
+  const result = overlayLocal(
+    { server: { retry: { attempts: 9 } }, router: { modelContextAggregation: 'remote', models: {} } },
+    {},
+    [routing],
+  );
+
+  expect(result).toEqual({
+    server: { retry: { attempts: 1 } },
+    router: { modelContextAggregation: 'local', models: {} },
+  });
+});

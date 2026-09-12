@@ -367,7 +367,7 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
   return { entities: entitiesOut, accounts: accountsOut, local: localProjection(source, entities, selectedProviders) };
 }
 
-function entityPath(entity: LocalEntity): string[] {
+function entityPath(entity: LocalEntity, overridePath: readonly string[]): string[] {
   switch (entity.kind) {
     case 'provider':
       return ['providers', entity.logicalKey];
@@ -378,7 +378,10 @@ function entityPath(entity: LocalEntity): string[] {
     case 'service-access':
       return ['server'];
     case 'routing-defaults':
-      return ['router'];
+      // The published body is flat, but `retry` is authored under `server` while
+      // `modelContextAggregation` is authored under `router`. Sending both to one section writes the
+      // pinned value to a key nothing reads and leaves the remote value active.
+      return [overridePath[0] === 'retry' ? 'server' : 'router'];
   }
 }
 
@@ -401,7 +404,8 @@ export function overlayLocal(
       const plugins = overlayPluginOverrides(result['plugins'], entity.logicalKey, entity.overrides);
       if (plugins !== undefined) result['plugins'] = plugins;
     } else {
-      overlayEntityOverrides(result, entityPath(entity), entity.overrides);
+      for (const override of entity.overrides)
+        overlayEntityOverrides(result, entityPath(entity, override.path), [override]);
     }
   }
   return result;
