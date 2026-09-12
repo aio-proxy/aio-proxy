@@ -7,8 +7,8 @@ import {
   readCredential,
   retireCodexCommandInstallation,
 } from '../command-auth';
-import type { CodexListResult, CodexLocation, CodexRemoveResult } from '../contracts';
-import { inspectCodexConfig, removeCodexConfig } from '../managed-config';
+import type { CodexListResult, CodexLocation, CodexMarker, CodexRemoveResult } from '../contracts';
+import { inspectCodexConfig, readManagedCodexMarker, removeCodexConfig } from '../managed-config';
 import { clearAuthOperation, writeAuthOperation } from '../setup/journal';
 import { withCodexInstallation } from '../storage/installation-lock';
 
@@ -44,7 +44,20 @@ const authorizationFromCredential = (
 export async function listCodexLifecycle(
   input: CodexLifecycleDeps & { readonly check: boolean },
 ): Promise<CodexListResult> {
-  const inspection = await inspectCodexConfig(input.location);
+  let inspection: Awaited<ReturnType<typeof inspectCodexConfig>>;
+  try {
+    inspection = await inspectCodexConfig(input.location);
+  } catch {
+    return {
+      target: 'codex',
+      integration: 'static-config',
+      configPath: input.location.configPath,
+      activeProviderId: '',
+      status: 'conflict',
+      connection: 'not_checked',
+      changedPaths: [],
+    };
+  }
   const identity = await readCodexCommandIdentity(input.location).catch(() => undefined);
   const credential =
     identity === undefined
@@ -101,9 +114,12 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];
     const installationId = identity?.marker.installationId ?? credential?.installationId ?? inspection.installationId;
-    const endpoint = identity?.marker.endpoint ?? credential?.endpoint ?? endpointFromBaseUrl(inspection.baseUrl);
-    if (installationId !== undefined && endpoint === undefined) return blockedResult(input.location, 'pending');
+    const endpoint =
+      identity?.marker.endpoint ??
+      credential?.endpoint ??
+      endpointFromBaseUrl(await appliedMarkerBaseUrl(input.location));
     if (installationId !== undefined) {
+      if (endpoint === undefined) return blockedResult(input.location, 'pending');
       const operation = await writeAuthOperation(input.location, {
         configPath: input.location.configPath,
         kind: 'remove',
@@ -138,6 +154,24 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     };
   });
 }
+
+const appliedMarkerBaseUrl = async (location: CodexLocation): Promise<string | undefined> => {
+  let marker: CodexMarker | undefined;
+  try {
+    marker = await readManagedCodexMarker(location);
+  } catch {
+    return undefined;
+  }
+  if (marker === undefined) return undefined;
+  const field = marker.fields.find(
+    (item) =>
+      item.path.length === 3 &&
+      item.path[0] === 'model_providers' &&
+      item.path[1] === marker.providerId &&
+      item.path[2] === 'base_url',
+  );
+  return field?.applied.present === true && typeof field.applied.value === 'string' ? field.applied.value : undefined;
+};
 
 const endpointFromBaseUrl = (baseUrl: string | undefined): string | undefined => {
   if (baseUrl === undefined) return undefined;
