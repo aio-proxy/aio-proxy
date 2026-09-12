@@ -1,12 +1,14 @@
 import { expect, test } from 'bun:test';
 
 import type { EntityBody, LocalEntity } from '@aio-proxy/core';
+import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreviewInput } from '@aio-proxy/types';
 
 import {
   applyPreview,
   assertDecisions,
   assertNoRetainedOAuth,
+  rewireProviderReferences,
   SyncOperationError,
   type OperationInput,
   type SyncDecision,
@@ -327,6 +329,46 @@ test('applying stops on a configuration commit that lands mid-apply, but not on 
   });
   await expect(applyPreview(drifted.input, record(join, rows), decisions('local'))).rejects.toThrow(SyncPreviewError);
   expect(published).toEqual(['object-a']);
+});
+
+// The guard above runs before the publication, and a single-row apply has no next row to catch a
+// commit that lands during it. Recording the join anyway reports the reviewed body as synchronized
+// while the edit the user made during exclusion is never published.
+test('a single-row apply records no join when a configuration commit lands during its publication', async () => {
+  const rows = [candidate('object-a', 'provider', 'work')];
+  const stored: LocalEntity[] = [];
+  let commitId = 'commit-1';
+  const scenario = harness({
+    localEntities: () => [localEntity('object-a', 'provider', 'work')],
+    repo: {
+      putEntity: (_binding: string, entity: LocalEntity) => void stored.push(entity),
+      latestConfirmedCommit: () => ({ commitId }),
+    } as never,
+    applyCloud: async () => {
+      commitId = 'edited-while-publishing';
+    },
+  });
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+      { objectId: 'object-a', choice: 'local' },
+    ]),
+  ).rejects.toThrow(SyncPreviewError);
+  expect(stored).toEqual([]);
+});
+
+// A Provider ID is user data, so `__proto__` is a valid replacement. Plain assignment reaches the
+// legacy prototype setter instead of creating an entry, and deleting the old key right after left
+// the rewritten rule pointing at neither ID — then persisted and published that way.
+test('rewiring onto a Provider named __proto__ keeps the reference as an own entry', () => {
+  const rule = JSON.parse('{"providers":{"work":{"priority":10}},"accounts":{"work":{"id":"a"}}}') as JsonValue;
+
+  const rewired = rewireProviderReferences(rule, 'work', '__proto__') as Record<string, Record<string, JsonValue>>;
+
+  expect(Object.hasOwn(rewired['providers']!, '__proto__')).toBe(true);
+  expect(rewired['providers']!['__proto__']).toEqual({ priority: 10 });
+  expect(Object.hasOwn(rewired['accounts']!, '__proto__')).toBe(true);
+  expect(Object.hasOwn(rewired['providers']!, 'work')).toBe(false);
 });
 
 test('retiring a binding is refused while any row still holds a shared credential', () => {

@@ -111,22 +111,22 @@ function sameJson(left: unknown, right: unknown): boolean {
 export function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
   if (Array.isArray(value)) return value.map((entry) => rewireProviderReferences(entry, oldProviderId, newProviderId));
   if (!isPlainObject(value)) return value;
-  const result: Record<string, JsonValue> = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (key === 'providers' || key === 'accounts') {
-      if (!isPlainObject(child)) throw new SyncOperationError('upgrade-required');
-      const references = { ...(child as Record<string, JsonValue>) };
-      if (Object.hasOwn(references, oldProviderId)) {
-        if (Object.hasOwn(references, newProviderId)) throw new SyncOperationError('upgrade-required');
-        references[newProviderId] = references[oldProviderId]!;
-        delete references[oldProviderId];
+  // A Provider ID is user data, so it can be `__proto__`: plain assignment reaches the legacy
+  // prototype setter and drops the entry, on the replacement and on every hop that rebuilds the map.
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]): [string, JsonValue] => {
+      if (key === 'providers' || key === 'accounts') {
+        if (!isPlainObject(child)) throw new SyncOperationError('upgrade-required');
+        const source = child as Record<string, JsonValue>;
+        if (Object.hasOwn(source, oldProviderId) && Object.hasOwn(source, newProviderId))
+          throw new SyncOperationError('upgrade-required');
+        const moved = Object.entries(source).map(([id, ref]) => [id === oldProviderId ? newProviderId : id, ref]);
+        return [key, rewireProviderReferences(Object.fromEntries(moved), oldProviderId, newProviderId)];
       }
-      result[key] = rewireProviderReferences(references, oldProviderId, newProviderId);
-    } else if ((key === 'providerId' || key === 'accountProviderId') && child === oldProviderId) {
-      result[key] = newProviderId;
-    } else result[key] = rewireProviderReferences(child, oldProviderId, newProviderId);
-  }
-  return result;
+      if ((key === 'providerId' || key === 'accountProviderId') && child === oldProviderId) return [key, newProviderId];
+      return [key, rewireProviderReferences(child, oldProviderId, newProviderId)];
+    }),
+  );
 }
 
 function isOAuthProvider(body: EntityBody | null): body is EntityBody {
@@ -416,6 +416,8 @@ export async function applyPreview(
     let publishedRevision: string | null = null;
     const recordJoin = (): void => {
       if (identityRows !== undefined || current === undefined || typeof input.repo.putEntity !== 'function') return;
+      // A commit landing during the publication has no next row to catch it, and joining buries it.
+      commits.assertUnchanged();
       // `current` is the preview snapshot, taken before persistOverrides() wrote this row's paths
       // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
       // the fence. Re-read the row and carry over only the fields applying actually decides.
