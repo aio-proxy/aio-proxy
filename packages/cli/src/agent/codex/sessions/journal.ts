@@ -2,6 +2,7 @@ import { lstat, mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { processOwnerIsCurrent, processStarttime } from '@aio-proxy/core';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CodexLocation } from '../contracts';
 import { assertNoSymlinkParents, durableWrite, isFsCode, readRegularFile, syncParent } from '../managed-config/storage';
@@ -59,7 +60,7 @@ const quarantinePath = (location: CodexLocation, token: string): string =>
 
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 const parseOwner = (value: unknown): LeaseOwner | undefined => {
-  if (typeof value !== 'object' || value === null) return undefined;
+  if (!isPlainObject(value)) return undefined;
   const owner = value as Partial<LeaseOwner>;
   return typeof owner.pid === 'number' &&
     Number.isInteger(owner.pid) &&
