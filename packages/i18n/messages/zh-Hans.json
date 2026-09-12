@@ -236,6 +236,7 @@
       "status_description": "查看后台服务状态",
       "installed": "服务已安装至 {path}",
       "uninstalled": "服务已从 {path} 移除",
+      "auto_install_failed": "自动安装或启动后台服务失败：{reason}。解决上述错误后，请运行 `aio-proxy service install --user`，再运行 `aio-proxy service start`。",
       "command_failed": "服务命令执行失败：{command}（退出码 {code}）",
       "unsupported_platform": "service 命令不支持当前平台：{platform}",
       "system_unsupported": "暂不支持系统级安装，请改用用户级服务安装",

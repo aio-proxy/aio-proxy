@@ -2,6 +2,7 @@ import type { RawRetryFrame, RawRetryVerdict } from '@aio-proxy/core';
 import { createParser } from 'eventsource-parser';
 
 import { createIdleTimer, MAX_PASSTHROUGH_JSON_BYTES, STREAM_IDLE_TIMEOUT_MS } from '../../../../usage-capture';
+import { cancelRetainedRequestBody } from '../../request';
 
 const MAX_PREFLIGHT_REPLAY_BYTES = 1024 * 1024;
 
@@ -262,7 +263,13 @@ export async function resolveRawRetry<TRequest, TContext>(
     const retryRequest = await hook.rewrite(retrySource, input.request, input.context, rejection);
     if (retryRequest === undefined) return undefined;
     void failed.body?.cancel().catch(() => undefined);
-    return await input.invoke(retryRequest);
+    try {
+      return await input.invoke(retryRequest);
+    } finally {
+      // Rewrite builds a third Request (encrypted-content retry). The caller
+      // only cancels `upstream` and `retrySource`.
+      await cancelRetainedRequestBody(retryRequest, 'raw retry request body no longer needed');
+    }
   };
 
   if (response.status === 400) {

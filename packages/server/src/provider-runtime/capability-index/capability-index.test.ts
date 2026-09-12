@@ -10,6 +10,7 @@ import {
   supportsLanguage,
   supportsSpeech,
   supportsTranscription,
+  supportsVideo,
 } from './capability-index';
 
 // Index membership rules:
@@ -280,6 +281,43 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsTranscription(index, 'gpt-5')).toBe(true);
   });
 
+  test('primary openai-video marks finite ids as video only', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIVideo,
+      models: ['sora-2', 'sora-2-pro'],
+    });
+    for (const id of ['sora-2', 'sora-2-pro']) {
+      expect(supportsVideo(index, id)).toBe(true);
+      expect(supportsLanguage(index, id)).toBe(false);
+      expect(supportsImage(index, id)).toBe(false);
+    }
+  });
+
+  test('an extra openai-video endpoint grants video to every finite id', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      models: ['sora-2', 'gpt-5'],
+      extraProtocols: [ProviderProtocol.OpenAIVideo],
+      upstreamMetadata: {
+        'sora-2': { capabilities: { modalities: { output: ['video'] } } },
+      },
+    });
+    expect(supportsVideo(index, 'sora-2')).toBe(true);
+    expect(supportsVideo(index, 'gpt-5')).toBe(true);
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+  });
+
+  test('text output metadata never grants video', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      models: ['sora-2'],
+      upstreamMetadata: {
+        'sora-2': { capabilities: { modalities: { output: ['text'] } } },
+      },
+    });
+    expect(supportsVideo(index, 'sora-2')).toBe(false);
+  });
+
   test('a provider with no audio endpoint never grants speech or transcription', () => {
     const index = buildModelCapabilityIndex({
       primaryProtocol: ProviderProtocol.OpenAICompatible,
@@ -340,7 +378,7 @@ describe('buildModelCapabilityIndex', () => {
     // pool, where a chat request would be dispatched to an endpoint that cannot
     // answer it. Expectations are hard-coded rather than read back from the
     // table so this fails if the table stops being the source of truth.
-    const unregistered = 'openai-video' as ProviderProtocol;
+    const unregistered = 'unregistered-protocol' as ProviderProtocol;
     expect(buildModelCapabilityIndex({ primaryProtocol: unregistered, models: ['v1'] })).toEqual({});
     expect(
       buildModelCapabilityIndex({

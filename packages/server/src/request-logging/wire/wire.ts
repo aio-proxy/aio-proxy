@@ -1,3 +1,4 @@
+import { ProviderProtocol } from '@aio-proxy/types';
 import { createParser } from 'eventsource-parser';
 
 import type { ResponseBodyObservation } from '../../response-observation';
@@ -74,11 +75,10 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         ...debug.identity,
         ...requestMetadata(request),
       });
-      const delegated = requestWithObservedBody(
-        request,
-        { ...debug.identity, direction: 'upstream_request' },
-        debug.logger,
-      );
+      const hideVideoBodies = scope?.sourceProtocol === ProviderProtocol.OpenAIVideo;
+      const delegated = hideVideoBodies
+        ? request
+        : requestWithObservedBody(request, { ...debug.identity, direction: 'upstream_request' }, debug.logger);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
       const response = await fetcher(delegated, decompress === undefined ? undefined : { decompress });
       const bodyObservation = safely(() =>
@@ -93,11 +93,15 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
       });
       return responseWithObservedBody(response, {
         ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
-        debug: {
-          identity: { ...debug.identity, direction: 'upstream_response' },
-          logger: debug.logger,
-          signal: request.signal,
-        },
+        ...(hideVideoBodies
+          ? {}
+          : {
+              debug: {
+                identity: { ...debug.identity, direction: 'upstream_response' },
+                logger: debug.logger,
+                signal: request.signal,
+              },
+            }),
       });
     } catch (error) {
       logServerEvent(debug.logger, {
@@ -121,6 +125,9 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
     inboundProtocol,
     ...requestMetadata(request),
   });
+  // Videos create can carry `input_reference` data URLs and multipart bytes.
+  // Snapshot headers stay; body chunks do not.
+  if (inboundProtocol === ProviderProtocol.OpenAIVideo) return request;
   return requestWithObservedBody(request, { requestId: scope.requestId, direction: 'inbound' }, scope.logger);
 }
 

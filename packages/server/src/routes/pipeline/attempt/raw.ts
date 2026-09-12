@@ -1,9 +1,13 @@
+import { isRecord } from '@aio-proxy/shared';
+
 import { attributeName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
+import { withoutCallerCredentialsOnRequest } from '../../../server/api-key-auth';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { publicSlug } from '../public-slug';
+import { cancelRetainedRequestBody } from '../request';
 import { retainResponseBody } from '../stream';
 import type { OpenSpan } from '../tracing';
 import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot, RawCapableAttemptLoopContext } from './context';
@@ -29,7 +33,11 @@ export async function attemptRawCandidate<TRequest, TContext>(
     slot.candidate.modelId,
     slot.candidate.provider.upstreamMetadata?.[slot.candidate.modelId],
   );
-  const upstream = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
+  const rewritten = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
+  // Keyless proxies leave caller secrets on the inbound request. Video raw is a
+  // plugin-shaped passthrough, so strip after rewrite and before invoke — the
+  // same copy pinned follow-ups already use. Language/image/audio stay as-is.
+  const upstream = adapter.capability === 'video' ? withoutCallerCredentialsOnRequest(rewritten) : rewritten;
   return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan, options);
 }
 
@@ -75,18 +83,35 @@ export async function completeRawAttempt<TRequest, TContext>(
   // the first invoke consumes the body.
   const hook = 'rawRetry' in adapter ? adapter.rawRetry : undefined;
   const retrySource = hook === undefined ? undefined : upstream.clone();
-  const response = await resolveRawRetry({
-    hook,
-    retrySource,
-    request: ctx.request,
-    context: ctx.context,
-    response: await invokeRaw(upstream),
-    streamRequested: ctx.streamRequested,
-    guards: { signal: ctx.rawRequest.signal },
-    invoke: invokeRaw,
-  });
+  let response: Response;
+  try {
+    response = await resolveRawRetry({
+      hook,
+      retrySource,
+      request: ctx.request,
+      context: ctx.context,
+      response: await invokeRaw(upstream),
+      streamRequested: ctx.streamRequested,
+      guards: { signal: ctx.rawRequest.signal },
+      invoke: invokeRaw,
+    });
+  } catch (error) {
+    // Video credential-strip (and any other rewrite) may own the body on
+    // `upstream`, not `rawRequest`. Cancel the object we invoked.
+    void releaseInvokedRawBodies(upstream, retrySource, error);
+    throw error;
+  }
+  // A plugin can return 4xx/5xx or a cached 2xx without reading. Parse already
+  // cloned, so this copy can hold a full tee branch until GC — including across
+  // fallback, which clones from the original again. Do not await: `upstream` is
+  // often a tee of `ctx.rawRequest`, and that sibling is cancelled only after
+  // this function returns.
+  void releaseInvokedRawBodies(upstream, retrySource, 'raw request body no longer needed');
 
-  const fallback = hasNext && shouldFallbackStatus(response.status);
+  // Unpinned edits/extensions 404 is source-not-found: the next video-capable
+  // provider may own that id. Create and language/image 404s stay terminal.
+  const fallback =
+    hasNext && (shouldFallbackStatus(response.status) || shouldFallbackVideoSource404(ctx, response.status));
   if (fallback || response.status < 200 || response.status >= 400) {
     const cooldownMs = cooldownTtlMs(response.status, response.headers.get('retry-after'), ctx.retryAfterCapMs);
     if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
@@ -153,6 +178,24 @@ export async function completeRawAttempt<TRequest, TContext>(
   );
   deferRelease();
   return { kind: 'return', response: captured.value };
+}
+
+export async function releaseInvokedRawBodies(
+  upstream: Request,
+  retrySource: Request | undefined,
+  reason: unknown,
+): Promise<void> {
+  const pending = [cancelRetainedRequestBody(upstream, reason)];
+  if (retrySource !== undefined) pending.push(cancelRetainedRequestBody(retrySource, reason));
+  await Promise.all(pending);
+}
+
+function shouldFallbackVideoSource404<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  status: number,
+): boolean {
+  if (ctx.adapter.capability !== 'video' || status !== 404 || !isRecord(ctx.context)) return false;
+  return ctx.context['operation'] === 'edits' || ctx.context['operation'] === 'extensions';
 }
 
 function withEventStreamContentType(response: Response, streamRequested: boolean): Response {

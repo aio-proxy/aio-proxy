@@ -14,10 +14,15 @@ import { handleProtocolRequest } from './index';
 
 describe('shared protocol pipeline diagnostics', () => {
   test('logs one safe diagnostic when background mode is downgraded', async () => {
+    let forwarded: unknown;
     const provider = rawProvider({
       id: 'responses',
       modelId: REQUESTED_MODEL,
       protocol: ProviderProtocol.OpenAIResponse,
+      invoke: async (request) => {
+        forwarded = await request.clone().json();
+        return Response.json({ provider: 'responses' });
+      },
     });
     const route = defineProviderRouteSource([provider]);
 
@@ -42,7 +47,7 @@ describe('shared protocol pipeline diagnostics', () => {
         effectiveMode: 'synchronous',
       },
     ]);
-    expect(await provider.calls.raw[0]?.json()).toEqual({ model: REQUESTED_MODEL, input: 'hello' });
+    expect(forwarded).toEqual({ model: REQUESTED_MODEL, input: 'hello' });
     expect(route.recording.finals).toEqual([expect.objectContaining({ outcome: 'success' })]);
   });
 

@@ -93,10 +93,9 @@ export function managedUnitPath(os: NodeJS.Platform = platform()): string | unde
   return undefined;
 }
 
-// Whether a managed unit file exists for the current platform. `serviceRestart`
-// invokes launchctl/systemctl unconditionally, which errors when the daemon was
-// started manually (`aio-proxy run`) with no installed unit; callers that only
-// want to restart a managed daemon should gate on this first. Returns false on
+// Whether a managed unit file exists for the current platform. Callers that only
+// want to restart a managed daemon should gate on this first, since a manually
+// started daemon (`aio-proxy run`) has no installed unit. Returns false on
 // unsupported platforms rather than throwing, since "no managed service" is the
 // honest answer there too.
 export function isManagedServiceInstalled(): boolean {
@@ -195,14 +194,30 @@ export async function serviceUninstall(print: Printer = console.log): Promise<vo
   print(m['cli.service.uninstalled']({ path: target }));
 }
 
-export async function serviceStart(): Promise<void> {
-  const os = requirePlatform();
-  if (os === 'darwin') {
-    // RunAtLoad=true means `load -w` also starts the job.
-    await runManager(['launchctl', 'load', '-w', launchdPlistPath()]);
-    return;
+type ServiceStartIo = Pick<ServiceRestartIo, 'platform' | 'unitInstalled' | 'unitPath' | 'runManager' | 'install'>;
+
+export async function serviceStart(io: ServiceStartIo = {}): Promise<void> {
+  const os = io.platform ?? requirePlatform();
+  if (os !== 'darwin' && os !== 'linux') {
+    throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: os }));
   }
-  await runManager(['systemctl', '--user', 'start', SYSTEMD_UNIT_NAME]);
+  const run = io.runManager ?? runManager;
+  const installed = (io.unitInstalled ?? isManagedServiceInstalled)();
+  try {
+    if (!installed) await (io.install ?? serviceInstall)({});
+    if (os === 'darwin') {
+      // RunAtLoad=true means `load -w` also starts the job.
+      await run(['launchctl', 'load', '-w', io.unitPath ?? launchdPlistPath()]);
+      return;
+    }
+    await run(['systemctl', '--user', 'start', SYSTEMD_UNIT_NAME]);
+  } catch (error) {
+    if (installed) throw error;
+    throw new CliExit(
+      error instanceof CliExit ? error.code : EXIT.unrecoverable,
+      m['cli.service.auto_install_failed']({ reason: error instanceof Error ? error.message : String(error) }),
+    );
+  }
 }
 
 export async function serviceStop(): Promise<void> {
@@ -219,6 +234,7 @@ export type ServiceRestartIo = {
   readonly env?: NodeJS.ProcessEnv;
   readonly isTTY?: boolean;
   readonly unitInstalled?: () => boolean;
+  readonly install?: typeof serviceInstall;
   readonly unitPath?: string;
   readonly exec?: string;
   readonly writeManagedUnit?: typeof writeManagedUnit;
@@ -251,16 +267,17 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
   const unitInstalled = io.unitInstalled ?? isManagedServiceInstalled;
   const writeUnit = io.writeManagedUnit ?? writeManagedUnit;
   const run = io.runManager ?? runManager;
+  if (!unitInstalled()) {
+    await serviceStart({ ...io, platform: os, unitInstalled: () => false });
+    return;
+  }
   // Rewrite an already-installed unit with a freshly resolved exec first. A unit
   // installed by an earlier release (or before a `brew upgrade` retargeted the
   // launcher symlink) can hold a stale ExecStart pointing at a deleted binary; on
   // darwin a plain stop/start would then relaunch nothing, so restart must migrate
-  // it. Only migrate when a unit exists — restart must not create one (that is
-  // install's job), or it would leave a partial, un-enabled unit behind.
-  if (unitInstalled()) {
-    if (io.exec === undefined) await writeUnit(os);
-    else await writeUnit(os, io.exec);
-  }
+  // it. Missing units use the full install/start path above, including enable.
+  if (io.exec === undefined) await writeUnit(os);
+  else await writeUnit(os, io.exec);
   if (os === 'darwin') {
     const plist = io.unitPath ?? launchdPlistPath();
     if (isDarwinLaunchdJob(env, isTTY)) {

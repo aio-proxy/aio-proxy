@@ -1,0 +1,14 @@
+---
+'aio-proxy': minor
+'@aio-proxy/core': minor
+'@aio-proxy/server': minor
+'@aio-proxy/types': minor
+'@aio-proxy/dashboard': minor
+'@aio-proxy/plugin-sdk': minor
+---
+
+Add official OpenAI Videos ports: create, retrieve, content, delete, remix, edits, and extensions.
+Omitted `model` defaults to `sora-2`; convert is not implemented. Follow-ups stay on the creating
+provider (`404` after restart); omitted `model` keeps the source job; unpinned edit/extension 404s fail over.
+Edits/extensions are JSON only; list and character ports are `501`; generations is not registered.
+Videos raw does not forward caller credentials. The API table lists Codex Live/Realtime ports (no media relay).

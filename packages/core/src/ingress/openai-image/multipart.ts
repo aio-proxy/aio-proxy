@@ -38,7 +38,7 @@ const EDITS_MULTIPART_SPEC: MultipartStreamSpec = {
   syntaxError: () => new SyntaxError('Invalid OpenAI Images multipart request'),
 };
 
-export { releaseMultipartSpool, replaySpooledMultipartRaw } from '../multipart';
+export { releaseMultipartSpool, replaySpooledMultipartRaw, transferMultipartSpool } from '../multipart';
 
 export {
   EDITS_MULTIPART_AGGREGATE_LIMIT,
