@@ -29,7 +29,7 @@ import {
   SyncOperationError,
   type SyncConnectCandidate,
 } from '../../sync-control-plane';
-import { createSyncCommitHooks } from '../../sync-control-plane/commit';
+import { createSyncCommitHooks, type SyncCommitHooks } from '../../sync-control-plane/commit';
 import type { PluginSecretChange } from '../../sync-control-plane/local-port';
 import { commitConfig, type ServerRuntime } from '../lifecycle';
 import { createActivationCheck } from '../sync-activation';
@@ -51,6 +51,7 @@ export function createSyncIntegration(
   if (configFile === undefined || options.configPath === undefined) {
     return {
       syncRepository,
+      preparedCommits: new Map<string, SyncCommitHooks>(),
       syncBinding: null,
       syncPort: undefined,
       configFile: undefined,
@@ -348,6 +349,10 @@ export function createSyncIntegration(
 
   const integration = {
     syncRepository,
+    // Confirmation is asynchronous, so a queued disconnect or backend replacement can land between
+    // `prepare` and `confirm`. Rereading the binding would then look the intent up in the wrong
+    // outbox (or none) and silently strand it, so each commit keeps the hooks it was prepared with.
+    preparedCommits: new Map<string, SyncCommitHooks>(),
     get syncBinding() {
       return syncRepository.readBinding();
     },
@@ -379,23 +384,33 @@ export function syncCommitOption(integration: ReturnType<typeof createSyncIntegr
       const binding = integration.syncBinding;
       const port = integration.syncPort;
       if (binding === null || port === undefined) return `sync-disabled:${crypto.randomUUID()}`;
-      return createSyncCommitHooks({
+      const hooks = createSyncCommitHooks({
         path: integration.configPath!,
         repo: integration.syncRepository,
         bindingId: binding.id,
         port,
-      }).prepare(...args);
+      });
+      const commitId = hooks.prepare(...args);
+      // A mutation that throws before confirming never reclaims its entry. Dropping the oldest past
+      // this cap is safe: `recoverLocalCommits` owns any intent left prepared in the repository.
+      // ponytail: fixed cap, swap for an explicit abandon hook if config writes ever fail in bulk.
+      if (integration.preparedCommits.size >= 64) {
+        const oldest = integration.preparedCommits.keys().next();
+        if (!oldest.done) integration.preparedCommits.delete(oldest.value);
+      }
+      integration.preparedCommits.set(commitId, hooks);
+      return commitId;
     },
-    confirm: (commitId: string) => {
-      const binding = integration.syncBinding;
-      const port = integration.syncPort;
-      if (binding === null || port === undefined) return Promise.resolve();
-      return createSyncCommitHooks({
-        path: integration.configPath!,
-        repo: integration.syncRepository,
-        bindingId: binding.id,
-        port,
-      }).confirm(commitId);
+    confirm: async (commitId: string) => {
+      const hooks = integration.preparedCommits.get(commitId);
+      // A commit prepared while sync was disabled has no hooks, and neither does one left over from
+      // a previous process; both are the recovery pass's job, not this one's.
+      if (hooks === undefined) return;
+      try {
+        await hooks.confirm(commitId);
+      } finally {
+        integration.preparedCommits.delete(commitId);
+      }
     },
   };
 }

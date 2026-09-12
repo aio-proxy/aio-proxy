@@ -8,13 +8,16 @@ import {
   AtomicConfigExpectedDigestError,
   AtomicConfigFile,
   createPluginRepository,
+  createSyncRepository,
   encodeCandidate,
+  type JsonValue,
+  type LocalCommitPort,
   type PluginRegistrySnapshot,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 
 import type { ServerRuntime } from '../lifecycle';
-import { createSyncIntegration } from './sync-integration';
+import { createSyncIntegration, syncCommitOption } from './sync-integration';
 
 test('remote apply rejects a stale digest without overwriting an external edit', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-integration-'));
@@ -121,6 +124,57 @@ test('a connect attempt that fails mid-snapshot leaves no data directory behind'
     expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
   } finally {
     fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// A queued disconnect or backend replacement can land between a config edit's prepare and its
+// asynchronous confirm. Rereading the binding then looks the intent up in the wrong outbox, so the
+// saved edit silently never ships.
+test('a commit confirms into the binding it was prepared on after the backend is replaced', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-commit-binding-'));
+  const configPath = join(home, 'config.jsonc');
+  const before = { providers: {} };
+  const after = { providers: { work: { kind: 'api', baseUrl: 'https://example.test' } } };
+  writeFileSync(configPath, encodeCandidate(after, configPath));
+  const db = openDb({ home });
+  try {
+    const repo = createSyncRepository(db.sqlite);
+    const port = (raw: Record<string, JsonValue>): LocalCommitPort => ({
+      withFence: (run) => run(),
+      rawDigest: async () => createHash('sha256').update(encodeCandidate(raw, configPath)).digest('hex'),
+      accountOperationsSettled: () => true,
+      committedSource: async () => ({
+        raw,
+        accounts: new Map(),
+        pluginSecrets: new Map(),
+        pluginVersions: new Map(),
+      }),
+    });
+    let active = 'binding-a';
+    const integration = {
+      syncRepository: repo,
+      preparedCommits: new Map(),
+      configPath,
+      get syncBinding() {
+        return { id: active };
+      },
+      get syncPort() {
+        return port(active === 'binding-a' ? after : before);
+      },
+    } as unknown as Parameters<typeof syncCommitOption>[0];
+
+    const hooks = syncCommitOption(integration)!;
+    const commitId = hooks.prepare(before, after);
+    expect(repo.pendingCommits('binding-a')).toHaveLength(1);
+
+    active = 'binding-b';
+    await hooks.confirm(commitId);
+
+    expect(repo.pendingCommits('binding-a')).toEqual([]);
+    expect(repo.latestConfirmedCommit('binding-a')?.commitId).toBe(commitId);
+  } finally {
+    db.close();
     rmSync(home, { recursive: true, force: true });
   }
 });
