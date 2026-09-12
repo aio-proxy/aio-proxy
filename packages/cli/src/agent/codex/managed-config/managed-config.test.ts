@@ -279,6 +279,26 @@ test('uses private modes for managed directory and marker', async () => {
   }
 });
 
+test('does not take over a provider declared with dotted leaf assignments', async () => {
+  const { root, location } = await fixture('model_provider = "openai"\nmodel_providers.proxy.name = "Custom"\n');
+  try {
+    await expect(
+      configureCodexConfig({
+        location,
+        providerId: 'proxy',
+        baseUrl: 'http://proxy/v1',
+        auth: keep('key'),
+      }),
+    ).rejects.toThrow('not managed');
+    expect(await Bun.file(location.configPath).text()).toBe(
+      'model_provider = "openai"\nmodel_providers.proxy.name = "Custom"\n',
+    );
+    await expect(Bun.file(location.markerPath).exists()).resolves.toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('does not take over an unmarked provider or remove user auth fields', async () => {
   const first = await fixture('model_provider = "aio-proxy"\n[model_providers.aio-proxy]\nname = "user"\n');
   try {

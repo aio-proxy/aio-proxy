@@ -225,23 +225,17 @@ export function readCodexDocument(text: string): CodexDocument {
   const providerIds = new Set<string>();
   for (const table of document.tables) {
     const path = table.resolvedKey.map(String);
-    if (path.length === 2 && path[0] === 'model_providers') providerIds.add(path[1]!);
+    if (path.length >= 2 && path[0] === 'model_providers') providerIds.add(path[1]!);
   }
   const root = findValue(document, ['model_providers']);
   if (root?.keyValue.value.type === 'TOMLInlineTable') {
     for (const member of root.keyValue.value.body) {
       const parts = keyParts(member.key);
-      if (parts.length === 1) providerIds.add(parts[0]!);
+      if (parts.length >= 1) providerIds.add(parts[0]!);
     }
   }
   for (const value of document.values) {
-    if (
-      value.path.length === 2 &&
-      value.path[0] === 'model_providers' &&
-      value.keyValue.value.type === 'TOMLInlineTable'
-    ) {
-      providerIds.add(value.path[1]!);
-    }
+    if (value.path.length >= 2 && value.path[0] === 'model_providers') providerIds.add(value.path[1]!);
   }
   return { text, activeProviderId, providerIds: [...providerIds] };
 }

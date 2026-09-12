@@ -150,6 +150,8 @@ test('discovers providers from standard, root-table, inline, and dotted assignme
   expect(readCodexDocument('model_providers = { proxy = { name = "x" } }\n').providerIds).toEqual(['proxy']);
   expect(readCodexDocument('[model_providers]\nproxy = { name = "x" }\n').providerIds).toEqual(['proxy']);
   expect(readCodexDocument('model_providers.proxy = { name = "x" }\n').providerIds).toEqual(['proxy']);
+  expect(readCodexDocument('model_providers.proxy.name = "Custom"\n').providerIds).toEqual(['proxy']);
+  expect(readCodexDocument('[model_providers.proxy.auth]\ncommand = "user"\n').providerIds).toEqual(['proxy']);
 });
 
 test('deletes standard provider scalar fields while preserving unrelated fields and tables', () => {
