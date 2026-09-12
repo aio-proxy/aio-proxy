@@ -45,15 +45,22 @@ async function writeTokenOwned(
       throw new Error('Codex credential refresh replay_lost; reauthorize required');
     }
     if (input.forceRefresh !== true && current.status === 'ready' && current.accessExpiresAt > now + 1_000) {
-      await input.writeToken(current.accessToken);
-      await assertOwned();
-      await writeCredential(input.location, {
-        ...current,
-        deliveredRevision: current.revision,
-        deliveredBy: current.deliveredBy ?? lease.owner,
-        deliveredAt: now,
+      const probe = await probeAccessToken({
+        endpoint: identity.marker.endpoint,
+        accessToken: current.accessToken,
+        signal: input.signal,
       });
-      return;
+      if (probe !== 'unauthorized') {
+        await input.writeToken(current.accessToken);
+        await assertOwned();
+        await writeCredential(input.location, {
+          ...current,
+          deliveredRevision: current.revision,
+          deliveredBy: current.deliveredBy ?? lease.owner,
+          deliveredAt: now,
+        });
+        return;
+      }
     }
     const requestStartedAt = Date.now();
     await writeCredential(input.location, { ...current, status: 'refreshing', refreshStartedAt: requestStartedAt });
@@ -103,6 +110,24 @@ async function writeTokenOwned(
       throw error instanceof AgentRuntimeError ? new Error('Codex credential refresh failed') : error;
     }
   });
+}
+
+async function probeAccessToken(input: {
+  readonly endpoint: string;
+  readonly accessToken: string;
+  readonly signal: AbortSignal;
+}): Promise<'ok' | 'unauthorized' | 'invalid'> {
+  try {
+    const response = await fetch(new URL('/v1/models', input.endpoint), {
+      headers: { authorization: `Bearer ${input.accessToken}` },
+      redirect: 'error',
+      signal: AbortSignal.any([input.signal, AbortSignal.timeout(1_000)]),
+    });
+    if (response.status === 401) return 'unauthorized';
+    return 'ok';
+  } catch {
+    return 'invalid';
+  }
 }
 
 export async function writeCodexAuthToken(input: {

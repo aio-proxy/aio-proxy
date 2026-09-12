@@ -326,6 +326,69 @@ test.serial('refreshes concurrently under the installation lock and persists rot
   }
 });
 
+test.serial('refreshes after a probe rejects a still-cached access token', async () => {
+  const f = await fixture();
+  const previousFetch = globalThis.fetch;
+  let refreshCount = 0;
+  globalThis.fetch = (async (input) => {
+    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    if (path === '/v1/models') return new Response('unauthorized', { status: 401 });
+    if (path === '/oauth/token') refreshCount += 1;
+    return Response.json({
+      token_type: 'Bearer',
+      access_token: ROTATED_ACCESS,
+      refresh_token: ROTATED_REFRESH,
+      expires_in: 900,
+    });
+  }) as typeof fetch;
+  try {
+    let installationId = '';
+    await withCodexInstallation(f.location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location: f.location, providerId: 'aio-proxy', endpoint: f.marker.endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location: f.location,
+          providerId: 'aio-proxy',
+          baseUrl: `${f.marker.endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: '/tmp/AIO Proxy/bin/aiop' },
+        },
+        lease,
+      );
+      await writeCredential(f.location, {
+        format: 1,
+        installationId,
+        endpoint: f.marker.endpoint,
+        revision: 1,
+        accessToken: ACCESS,
+        refreshToken: REFRESH,
+        accessExpiresAt: Date.now() + 600_000,
+        status: 'ready',
+        deliveredBy: 'prior-helper',
+        deliveredRevision: 1,
+        deliveredAt: Date.now() - 60_000,
+      });
+      await activateCodexCommandInstallation(f.location, installationId, lease);
+    });
+    const delivered: string[] = [];
+    await writeCodexAuthToken({
+      location: f.location,
+      installationId,
+      signal: AbortSignal.timeout(10_000),
+      writeToken: async (token) => {
+        delivered.push(token);
+      },
+    });
+    expect(refreshCount).toBe(1);
+    expect(delivered).toEqual([ROTATED_ACCESS]);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test.serial('reuses an unexpired access token across independent helper cycles', async () => {
   const f = await fixture();
   const previousFetch = globalThis.fetch;
