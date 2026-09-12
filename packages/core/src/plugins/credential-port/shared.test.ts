@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { zod } from '@aio-proxy/plugin-sdk';
 import type { Diagnostic } from '@aio-proxy/types';
+import { delay } from 'es-toolkit/promise';
 
 import { openDb } from '../../db';
 import type { SharedOAuthCoordinator, SharedRefreshInput, SharedRefreshResult } from '../../sync/oauth/coordinator';
@@ -97,7 +98,14 @@ function sharedFixture(
     formatVersion: 1,
     generation: 0,
     phase: 'ready',
-    payload: { credential: { token: 'old' }, options: {}, secrets: {}, fingerprint: 'fingerprint' },
+    payload: {
+      credential: { token: 'old' },
+      options: {},
+      secrets: {},
+      fingerprint: 'fingerprint',
+      label: 'Old',
+      expiresAt: 1,
+    },
     claim: null,
     lastCompletedOperationId: null,
     ...options.recovered,
@@ -154,10 +162,13 @@ const diagnostic: Diagnostic = {
   occurredAt: '2026-07-15T00:00:00.000Z',
 };
 
-test('detach-pending shared ownership blocks before coordinator recovery or exchange', async () => {
+const unusedExchange = async () => ({ value: { token: 'unused' } });
+
+test('detach-pending shared ownership blocks reads and refreshes before coordinator recovery', async () => {
   const fixture = sharedFixture({ mode: 'detach-pending' });
   try {
     await expect(sharedPort(fixture).read()).rejects.toMatchObject({ code: 'detach-pending' });
+    await expect(sharedPort(fixture).refresh(1, unusedExchange)).rejects.toMatchObject({ code: 'detach-pending' });
     expect(fixture.counts.recover).toBe(0);
     expect(fixture.counts.refresh).toBe(0);
   } finally {
@@ -165,11 +176,34 @@ test('detach-pending shared ownership blocks before coordinator recovery or exch
   }
 });
 
-test('imports a remote epoch replacement even when credential bytes are unchanged', async () => {
+// Reads sit on the model request path, so they answer from the local snapshot. A device whose sync
+// backend is offline or stalled keeps serving requests it already holds a valid credential for.
+test('a coordinator recovery that never settles still serves the local credential to readers', async () => {
+  const fixture = sharedFixture();
+  try {
+    const port = createSharedCredentialPort({
+      providerId: 'provider-1',
+      objectId: 'object-1',
+      binding: fixture.binding,
+      coordinator: { ...fixture.coordinator, recover: () => new Promise(() => {}) },
+      repo: fixture.repo,
+      accounts: fixture.accounts,
+      schema: zod.object({ token: zod.string() }),
+    });
+    await expect(Promise.race([port.read(), delay(50).then(() => 'still pending' as const)])).resolves.toEqual({
+      value: { token: 'old' },
+      revision: 1,
+    });
+  } finally {
+    fixture.handle.close();
+  }
+});
+
+test('refresh imports a newer remote epoch and supersedes even when credential bytes are unchanged', async () => {
   const fixture = sharedFixture({ recovered: { epoch: 1 } });
   try {
-    const snapshot = await sharedPort(fixture).read();
-    expect(snapshot).toEqual({ value: { token: 'old' }, revision: 2 });
+    const result = await sharedPort(fixture).refresh(1, unusedExchange);
+    expect(result).toEqual({ status: 'superseded', snapshot: { value: { token: 'old' }, revision: 2 } });
     expect(fixture.repo.entities(fixture.binding.id)[0]?.oauth).toMatchObject({
       epoch: 1,
       generation: 0,
@@ -180,7 +214,7 @@ test('imports a remote epoch replacement even when credential bytes are unchange
   }
 });
 
-test('imports remote metadata, clears stale diagnostics, and notifies rebuild callbacks', async () => {
+test('refresh imports remote metadata, clears stale diagnostics, and notifies rebuild callbacks', async () => {
   const fixture = sharedFixture({
     recovered: {
       epoch: 1,
@@ -202,7 +236,7 @@ test('imports remote metadata, clears stale diagnostics, and notifies rebuild ca
     await sharedPort(fixture, {
       onDiagnosticChanged: () => diagnosticChanges++,
       onCredentialChanged: () => credentialChanges++,
-    }).read();
+    }).refresh(1, unusedExchange);
     expect(fixture.accounts.readAccount('provider-1')).toMatchObject({ label: 'New', expiresAt: 2 });
     expect(fixture.accounts.readDiagnostics('provider-1')).toEqual([]);
     expect(diagnosticChanges).toBe(1);
@@ -215,7 +249,7 @@ test('imports remote metadata, clears stale diagnostics, and notifies rebuild ca
 test('preserves login-required as a permanent shared refresh error', async () => {
   const fixture = sharedFixture({ recovered: { phase: 'login-required' } });
   try {
-    await expect(sharedPort(fixture).read()).rejects.toMatchObject({ code: 'login-required' });
+    await expect(sharedPort(fixture).refresh(1, unusedExchange)).rejects.toMatchObject({ code: 'login-required' });
   } finally {
     fixture.handle.close();
   }
@@ -234,7 +268,7 @@ test('refuses a purged local account without consulting the coordinator', async 
 test('does not exchange when importing a remote account incompatible with the local plugin', async () => {
   const fixture = sharedFixture({ recovered: { plugin: '@other/plugin' } });
   try {
-    await expect(sharedPort(fixture).read()).rejects.toThrow('Credential account is unavailable');
+    await expect(sharedPort(fixture).refresh(1, unusedExchange)).rejects.toThrow('Credential account is unavailable');
     expect(fixture.accounts.readAccount('provider-1')).toMatchObject({ credential: { token: 'old' }, revision: 1 });
     expect(fixture.counts.refresh).toBe(0);
   } finally {
@@ -266,7 +300,7 @@ test('rolls back the local account import when ownership persistence fails', asy
         repo: failingRepo,
         accounts: fixture.accounts,
         schema: zod.object({ token: zod.string() }),
-      }).read(),
+      }).refresh(1, unusedExchange),
     ).rejects.toThrow('sync write failed');
     expect(fixture.accounts.readAccount('provider-1')).toMatchObject({ credential: { token: 'old' }, revision: 1 });
     expect(fixture.repo.entities(fixture.binding.id)[0]?.oauth).toMatchObject({

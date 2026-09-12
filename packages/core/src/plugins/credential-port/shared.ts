@@ -136,7 +136,19 @@ export function applySyncedAccount(input: {
 }
 
 export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): CredentialPort<C> {
-  const readShared = async (): Promise<CredentialSnapshot<C>> => {
+  // A read is on the model request path and must never wait on the sync backend: an offline or
+  // stalled CloudKit would fail requests this device can already serve. Every local ownership
+  // check still runs, so a credential this device no longer owns is still refused. A credential
+  // another device rotated or invalidated is caught when the local one expires and the runtime
+  // calls `refresh`, which still coordinates remotely.
+  const readLocal = async (): Promise<CredentialSnapshot<C>> => {
+    const local = input.accounts.readAccount(input.providerId);
+    if (local === null) throw new CredentialAccountMissingError();
+    validateOwnership(input, entityFor(input), local);
+    return { value: await validated(input.schema, local.credential), revision: local.revision };
+  };
+
+  const readCoordinated = async (): Promise<CredentialSnapshot<C>> => {
     const local = input.accounts.readAccount(input.providerId);
     if (local === null) throw new CredentialAccountMissingError();
     const entity = entityFor(input);
@@ -178,9 +190,9 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
   };
 
   return {
-    read: readShared,
+    read: readLocal,
     async refresh(expectedRevision, exchange) {
-      const current = await readShared();
+      const current = await readCoordinated();
       if (current.revision !== expectedRevision) return { status: 'superseded', snapshot: current };
       const local = input.accounts.readAccount(input.providerId);
       if (local === null) throw new CredentialAccountMissingError();
