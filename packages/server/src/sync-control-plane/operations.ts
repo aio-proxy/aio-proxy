@@ -180,6 +180,29 @@ function providerIdentityRows(
   };
 }
 
+/**
+ * The entity a rename needs when the colliding object lives only in the cloud. Its identity group
+ * is entirely remote, so there is nothing local to rename — but the rename still has to reach the
+ * backend, or the immutable head keeps the old Provider ID and the next reconciliation quarantines
+ * the same collision again.
+ */
+function remoteIdentityEntity(objectId: string, remote: RemoteEntity | undefined): LocalEntity | undefined {
+  if (remote?.body == null || remote.kind !== 'provider') return undefined;
+  return {
+    objectId,
+    logicalKey: remote.logicalKey,
+    kind: 'provider',
+    mode: 'included',
+    // Deleting the head it vacates is an epoch-exact operation, so the remote epoch is the one
+    // field that cannot be defaulted away.
+    epoch: remote.epoch ?? 0,
+    desired: remote.body,
+    baseline: remote.revision,
+    overrides: [],
+    pendingReason: null,
+  };
+}
+
 async function persistProviderIdentity(input: OperationInput, rows: ProviderIdentityRows): Promise<void> {
   if (input.persistProviderIdentity !== undefined) {
     await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
@@ -290,7 +313,9 @@ export async function applyPreview(
       continue;
     }
     const current = localByObject.get(candidate.row.objectId);
+    const remote = remoteByObject.get(candidate.row.objectId);
     let identityRows: ProviderIdentityRows | undefined;
+    let identityBase: LocalEntity | undefined;
     let selectedBody =
       decision.choice === 'local'
         ? candidate.local
@@ -301,17 +326,23 @@ export async function applyPreview(
             : (candidate.restoreBody ?? remoteByObject.get(candidate.row.objectId)?.body ?? null);
     if (decision.newProviderId !== undefined && selectedBody !== null) {
       selectedBody = { ...selectedBody, logicalKey: decision.newProviderId };
-      if (current !== undefined)
+      identityBase = current ?? remoteIdentityEntity(candidate.row.objectId, remote);
+      // Every row of a collision group names an identity, including the one that keeps the
+      // contested ID. That is not a rename: republishing it as a new object would delete the head
+      // it still holds.
+      if (identityBase !== undefined && identityBase.logicalKey !== decision.newProviderId)
         identityRows = providerIdentityRows(
-          current,
+          identityBase,
           selectedBody,
           decision.newProviderId,
           record.local,
-          remoteByObject.get(candidate.row.objectId)?.body != null,
+          remote?.body != null,
         );
     }
-    const remote = remoteByObject.get(candidate.row.objectId);
-    if (identityRows !== undefined) await persistProviderIdentity(input, identityRows);
+    // A remote-only row has nothing authored to rewire — applyLocal writes the imported body under
+    // the new ID — and rewiring would rename whichever local Provider still holds the old one,
+    // which in a collision is a different object.
+    if (identityRows !== undefined && current !== undefined) await persistProviderIdentity(input, identityRows);
     let published = false;
     let publishedRevision: string | null = null;
     try {
@@ -326,7 +357,14 @@ export async function applyPreview(
         }
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
       } else if (decision.choice === 'cloud') {
-        await input.applyLocal(selectedBody, current, candidate.row.objectId);
+        // Importing alone would leave the head under the old Provider ID, and the next
+        // reconciliation would restore that ID and quarantine the same collision again. Publish the
+        // renamed object first, then bind the local row to the object the cloud now agrees with.
+        if (identityRows !== undefined) {
+          await input.applyCloud(selectedBody, identityRows.renamed, null);
+          if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
+        }
+        await input.applyLocal(selectedBody, current, identityRows?.renamed.objectId ?? candidate.row.objectId);
       } else if (identityRows !== undefined) {
         // The renamed object is published first so the configuration is never absent from the cloud,
         // then the identity it vacated is deleted. A fresh object has no expected version.
@@ -335,7 +373,7 @@ export async function applyPreview(
           identityRows.renamed,
           identityRows.replacesPublished ? null : (remote?.version ?? null),
         );
-        if (identityRows.replacesPublished) await input.applyCloud(null, current, remote?.version ?? null);
+        if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
         published = true;
       } else {
         publishedRevision = (await input.applyCloud(selectedBody, current, remote?.version ?? null)) ?? null;
@@ -346,7 +384,7 @@ export async function applyPreview(
       // and nothing else seeds it for a Provider that was authorized before sync was enabled.
       if (published && isOAuthProvider(selectedBody)) await input.shareOAuth?.(selectedBody.logicalKey);
     } catch (error) {
-      if (identityRows !== undefined) {
+      if (identityRows !== undefined && current !== undefined) {
         await persistProviderIdentity(input, {
           ...identityRows,
           entities: identityRows.entities.map((entity) => ({ ...entity, pendingReason: 'result-uncertain' })),

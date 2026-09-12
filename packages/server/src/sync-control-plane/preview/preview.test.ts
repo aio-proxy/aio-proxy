@@ -987,6 +987,100 @@ test('renaming a published Provider publishes a new object and deletes the ident
   expect(published).toContainEqual({ objectId: 'provider-local', logicalKey: null, expected: 'v9' });
 });
 
+test('renaming a collision known only to the cloud republishes it and deletes the head it vacated', async () => {
+  const published: { objectId: string; logicalKey: string | null; expected: string | null; epoch: number }[] = [];
+  const imported: string[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    // A first connection to a space two other devices published `work` into: neither colliding
+    // object exists locally, so nothing here can be renamed through the local row.
+    localEntities: () => [],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-a',
+        logicalKey: 'work',
+        kind: 'provider',
+        epoch: 2,
+        version: 'v1',
+        revision: 'revision-a',
+        body: providerBody({ value: 'a' }),
+      },
+      {
+        objectId: 'provider-b',
+        logicalKey: 'work',
+        kind: 'provider',
+        epoch: 4,
+        version: 'v2',
+        revision: 'revision-b',
+        body: providerBody({ value: 'b' }),
+      },
+    ],
+    applyLocal: async (_body, _current, objectId) => {
+      imported.push(objectId);
+    },
+    applyCloud: async (body, current, expected) => {
+      published.push({
+        objectId: current!.objectId,
+        logicalKey: body?.logicalKey ?? null,
+        expected,
+        epoch: current!.epoch,
+      });
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async () => {
+      throw new Error('a remote-only rename has no authored Provider to rewire');
+    },
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: 'cloud' as const,
+      newProviderId: row.objectId === 'provider-b' ? 'work-renamed' : 'work',
+    })),
+  });
+
+  const renamed = published.find((call) => call.logicalKey === 'work-renamed');
+  expect(renamed).toBeDefined();
+  expect(renamed!.objectId).not.toBe('provider-b');
+  expect(renamed!.expected).toBeNull();
+  // The vacated head is deleted at its own epoch, which only the remote snapshot knows.
+  expect(published).toContainEqual({ objectId: 'provider-b', logicalKey: null, expected: 'v2', epoch: 4 });
+  // The row that keeps the contested ID is not a rename, so its head is left alone.
+  expect(published.every((call) => call.objectId !== 'provider-a')).toBe(true);
+  // The local row binds to the object the cloud now holds the renamed configuration under.
+  expect(imported).toEqual(['provider-a', renamed!.objectId]);
+});
+
 test('manual cloud apply records the current revision operation ID instead of its storage version', async () => {
   const local = {
     objectId: 'provider-work',

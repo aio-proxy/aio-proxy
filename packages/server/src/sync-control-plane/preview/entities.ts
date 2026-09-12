@@ -7,6 +7,8 @@ export type RemoteEntity = {
   readonly objectId: string;
   readonly logicalKey: string;
   readonly kind: string;
+  /** The head's epoch, which a delete has to name exactly. Absent only in injected snapshots. */
+  readonly epoch?: number;
   readonly version: string | null;
   /** Current protocol revision operation ID; this is the sync baseline identity. */
   readonly revision: string | null;
@@ -101,6 +103,7 @@ export async function listRemoteEntities(session: SyncSession | undefined): Prom
       objectId,
       logicalKey: head.logicalKey,
       kind: head.kind,
+      epoch: head.epoch,
       version: value.version,
       revision: head.current,
       body: tombstone ? null : body,
