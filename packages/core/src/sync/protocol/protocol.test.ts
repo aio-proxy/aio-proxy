@@ -30,6 +30,33 @@ test('protocol decoders reject newer versions without changing source bytes', ()
   expect(() => decodeHead(encode({ protocol: 2 }))).toThrow(/upgrade-required/);
 });
 
+test('a singleton entity under a noncanonical logical key is refused', () => {
+  const canonical = newHead(crypto.randomUUID(), {
+    kind: 'service-access',
+    logicalKey: 'service-access',
+    value: { password: 'argon2-hash' },
+    dependencies: [],
+  });
+  expect(decodeHead(encode(canonical))).toEqual(canonical);
+  // Any other key dodges the excluded canonical row: the object reads as unknown, defaults to
+  // included, and still lands `password`/`apiKeys` on this device.
+  expect(() => decodeHead(encode({ ...canonical, logicalKey: 'shadow' }))).toThrow(SyncProtocolError);
+  expect(() =>
+    decodeRevision(
+      encode({
+        protocol: 1,
+        state: 'payload',
+        objectId: canonical.objectId,
+        epoch: 0,
+        operationId: 'a',
+        body: { kind: 'service-access', logicalKey: 'shadow', value: {}, dependencies: [] },
+        publishedSequence: null,
+        writtenAt: null,
+      }),
+    ),
+  ).toThrow(SyncProtocolError);
+});
+
 test('duplicate reservations and publications are idempotent', () => {
   let head = newHead(crypto.randomUUID(), { kind: 'provider', logicalKey: 'work', value: {}, dependencies: [] });
   head = reserve(head, 'a', 0);
