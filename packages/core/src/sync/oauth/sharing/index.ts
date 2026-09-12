@@ -1,2 +1,2 @@
 export { createOAuthSharingService, type OAuthSharingService, type OAuthSharingServiceInput } from './sharing';
-export { createOAuthProviderGate, type OAuthProviderGate } from './gate';
+export { createOAuthProviderGate, type OAuthProviderGate, PROVIDER_GATE_BUSY } from './gate';

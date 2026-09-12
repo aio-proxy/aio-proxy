@@ -1,3 +1,4 @@
+import { createOAuthProviderGate, PROVIDER_GATE_BUSY } from '../../sync/oauth/sharing';
 import {
   ABSENT_PROVIDER_DIGEST,
   configOf,
@@ -302,4 +303,33 @@ test('a recovered publication is cancelled by the lifecycle signal and stays pen
   // A cancelled publication is retried, never compensated: the backend may already hold the account.
   expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
   expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'new' });
+});
+
+test('a drain running inside the config queue defers instead of deadlocking with a login that holds the gate', async () => {
+  const state = fixture();
+  await createAccount(state);
+  const marker = await deleteOAuthAccount({
+    providerId: 'person',
+    config: state.config,
+    repository: state.repository,
+  });
+  state.sqlite
+    .query('UPDATE oauth_pending_operation SET created_at = 0 WHERE operation_id = ?')
+    .run(marker.operationId);
+  const gate = createOAuthProviderGate();
+  // The login owns the Provider and is waiting for the configuration queue this drain is holding.
+  let finishLogin!: () => void;
+  const login = gate.run('person', () => new Promise<void>((resolve) => (finishLogin = resolve)));
+  const now = PENDING_OPERATION_TTL_MS + 1;
+  const drained = await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'server',
+    canDeleteAccount: () => true,
+    now: () => now,
+    withProviderGate: (providerId, run) => gate.run(providerId, run),
+    tryProviderGate: async (providerId, run) => (await gate.tryRun(providerId, run)) !== PROVIDER_GATE_BUSY,
+  });
+  expect(drained.nextRunAt).toBe(now + RECOVERY_DRAIN_RETRY_MS);
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  finishLogin();
+  await login;
 });

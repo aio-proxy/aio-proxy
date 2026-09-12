@@ -7,7 +7,7 @@ import type { RecoveryScheduler } from '../types';
 export function recoverBeforeInitialSnapshot(
   runtime: Pick<
     ServerRuntime,
-    'configFile' | 'repository' | 'diagnostics' | 'pluginLogger' | 'queue' | 'withProviderGate'
+    'configFile' | 'repository' | 'diagnostics' | 'pluginLogger' | 'queue' | 'withProviderGate' | 'tryProviderGate'
   >,
   recoverAccounts: typeof recoverPendingAccountOperations,
   scheduler: RecoveryScheduler,
@@ -21,5 +21,6 @@ export function recoverBeforeInitialSnapshot(
     scheduler,
     enqueue: runtime.queue,
     withProviderGate: runtime.withProviderGate,
+    tryProviderGate: runtime.tryProviderGate,
   });
 }

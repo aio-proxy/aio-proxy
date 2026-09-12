@@ -73,6 +73,8 @@ export type ServerRuntime = {
     schema: ZodType<unknown>,
   ) => CredentialPort<unknown> | undefined;
   readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  /** Runs only when the Provider is free; see `tryProviderGate` on the recovery options. */
+  readonly tryProviderGate: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
 };
 
 /**
@@ -309,6 +311,7 @@ export async function startRecovery(
     enqueue: runtime.queue,
     canDeleteAccount: runtime.manager.canDeleteAccount,
     withProviderGate: runtime.withProviderGate,
+    tryProviderGate: runtime.tryProviderGate,
     reloadNow: (operations) => reloadNow(runtime, operations),
   });
   runtime.recovery = recovery;

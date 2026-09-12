@@ -33,6 +33,8 @@ export async function recoverBeforeSnapshot(options: {
   readonly scheduler: RecoveryScheduler;
   readonly enqueue: FifoQueue;
   readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  /** Runs only when the Provider is free; see `tryProviderGate` on the recovery options. */
+  readonly tryProviderGate: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
 }): Promise<void> {
   if (options.configFile === undefined) return;
   await options.enqueue(() =>
@@ -45,6 +47,7 @@ export async function recoverBeforeSnapshot(options: {
         deleteMarkerOnProviderPresent: 'retain',
         now: options.scheduler.now,
         withProviderGate: options.withProviderGate,
+        tryProviderGate: options.tryProviderGate,
       },
       { factory: options.diagnostics, logger: options.logger },
     ),
@@ -62,6 +65,8 @@ export function createRecovery(options: {
   readonly enqueue: FifoQueue;
   readonly canDeleteAccount: (providerId: string) => boolean;
   readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  /** Runs only when the Provider is free; see `tryProviderGate` on the recovery options. */
+  readonly tryProviderGate: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
   readonly reloadNow: (operations?: readonly PendingAccountOperation[]) => Promise<ConfigReloadResult>;
 }) {
   let timer: RecoveryTimer | undefined;
@@ -110,6 +115,7 @@ export function createRecovery(options: {
           deleteMarkerOnProviderPresent: 'retain',
           now: options.scheduler.now,
           withProviderGate: options.withProviderGate,
+          tryProviderGate: options.tryProviderGate,
           signal: lifecycle.signal,
         },
         { factory: options.diagnostics, logger: options.logger },
@@ -159,6 +165,7 @@ export function createRecovery(options: {
             deleteMarkerOnProviderPresent: 'retain',
             now: options.scheduler.now,
             withProviderGate: options.withProviderGate,
+            tryProviderGate: options.tryProviderGate,
             signal: lifecycle.signal,
           },
           { factory: options.diagnostics, logger: options.logger },

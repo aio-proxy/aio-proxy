@@ -6,6 +6,7 @@ import {
   createAgentIdentityService,
   createEmbeddedBuiltIns,
   createOAuthProviderGate,
+  PROVIDER_GATE_BUSY,
   createPluginDiagnosticFactory,
   createPluginRepository,
   createSyncRepository,
@@ -229,6 +230,7 @@ async function initializeServerState(
     remoteConfigFence: undefined,
     resolveSharedCredential,
     withProviderGate: providerGate.run,
+    tryProviderGate: async (providerId, run) => (await providerGate.tryRun(providerId, run)) !== PROVIDER_GATE_BUSY,
   };
 
   let syncIntegration: ReturnType<typeof createSyncIntegration> | undefined;

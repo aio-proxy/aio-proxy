@@ -22,6 +22,7 @@ export { applySyncedAccount } from './account-import';
 export {
   createOAuthProviderGate,
   type OAuthProviderGate,
+  PROVIDER_GATE_BUSY,
   createOAuthSharingService,
   type OAuthSharingService,
   type OAuthSharingServiceInput,

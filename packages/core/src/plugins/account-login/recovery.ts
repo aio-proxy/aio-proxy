@@ -49,6 +49,13 @@ export type RecoverPendingAccountOperationsOptions =
         signal: AbortSignal,
       ) => Promise<void>;
       readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+      /**
+       * Run only if the Provider's gate is free, answering `false` instead of waiting. A login takes
+       * that gate before enqueueing its configuration commit, and this drain runs inside that same
+       * queue, so waiting here would deadlock the two against each other and wedge the queue for
+       * every later mutation. Skipping just defers the operation to the next drain.
+       */
+      readonly tryProviderGate?: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
       readonly signal?: AbortSignal;
       readonly now?: () => number;
     };
@@ -130,6 +137,11 @@ export async function recoverPendingAccountOperations(
     options.mode === 'server' && options.withProviderGate !== undefined
       ? options.withProviderGate(providerId, run)
       : run();
+  // Without a non-blocking gate there is nothing to defer to, so the caller's own ordering stands.
+  const tryGate = (providerId: string, run: () => Promise<void>): Promise<boolean> =>
+    options.mode === 'server' && options.tryProviderGate !== undefined
+      ? options.tryProviderGate(providerId, run)
+      : run().then(() => true);
   await config.transaction(async (current) => {
     const rawProviders = current['providers'];
     if (rawProviders !== undefined && !isPlainObject(rawProviders)) {
@@ -141,67 +153,77 @@ export async function recoverPendingAccountOperations(
     }
     const providers = rawProviders ?? {};
     for (const operation of repository.listPendingAccountOperations()) {
-      const { phase, digest: targetDigest } = syncDigestPhase(operation.targetDigest);
-      const currentEntry = providers[operation.providerId];
-      const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
-      // Publication happens only after the config rename, so a still-staged operation whose provider
-      // entry never landed never reached the backend. That is indistinguishable from a login still
-      // mid-commit, so it waits out the TTL and then compensates like any other interrupted write.
-      // Retaining it instead pins the pending row for good, blocking every later account operation
-      // for this provider and exempting the orphaned account from cleanup.
-      const interruptedBeforeCommit = phase === 'staged' && observedDigest !== targetDigest;
-      const deadline = operation.createdAt + PENDING_OPERATION_TTL_MS;
-      if (now < deadline && (phase === 'none' || interruptedBeforeCommit)) {
-        nextRunAt = earlier(nextRunAt, deadline);
-        continue;
-      }
-      if (options.mode === 'cli' && operation.kind === 'delete') continue;
-      if (phase !== 'none' && !interruptedBeforeCommit) {
-        // A config digest cannot prove that a credential was committed remotely. Once publication is
-        // attempted the operation is only ever retried, never compensated.
-        if (
-          observedDigest !== targetDigest ||
-          options.mode !== 'server' ||
-          options.beforeAccountOperationComplete === undefined
-        ) {
-          nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
-          continue;
+      // One acquisition per operation: the gate is reentrant, so the calls below pass straight
+      // through, and no login can slip between this drain's publication and its completion.
+      const ran = await tryGate(operation.providerId, async () => {
+        const { phase, digest: targetDigest } = syncDigestPhase(operation.targetDigest);
+        const currentEntry = providers[operation.providerId];
+        const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
+        // Publication happens only after the config rename, so a still-staged operation whose provider
+        // entry never landed never reached the backend. That is indistinguishable from a login still
+        // mid-commit, so it waits out the TTL and then compensates like any other interrupted write.
+        // Retaining it instead pins the pending row for good, blocking every later account operation
+        // for this provider and exempting the orphaned account from cleanup.
+        const interruptedBeforeCommit = phase === 'staged' && observedDigest !== targetDigest;
+        const deadline = operation.createdAt + PENDING_OPERATION_TTL_MS;
+        if (now < deadline && (phase === 'none' || interruptedBeforeCommit)) {
+          nextRunAt = earlier(nextRunAt, deadline);
+          return;
         }
-        try {
-          repository.markAccountOperationPublishing(operation.operationId);
-          await withGate(operation.providerId, () =>
-            options.beforeAccountOperationComplete!(operation, publicationSignal(options.signal)),
-          );
-        } catch {
-          nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
-          continue;
-        }
-      }
-      if (observedDigest === targetDigest) {
-        if (operation.kind === 'delete') {
-          if (options.mode !== 'server') continue;
-          if (!options.canDeleteAccount(operation.providerId)) {
+        if (options.mode === 'cli' && operation.kind === 'delete') return;
+        if (phase !== 'none' && !interruptedBeforeCommit) {
+          // A config digest cannot prove that a credential was committed remotely. Once publication is
+          // attempted the operation is only ever retried, never compensated.
+          if (
+            observedDigest !== targetDigest ||
+            options.mode !== 'server' ||
+            options.beforeAccountOperationComplete === undefined
+          ) {
             nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
-            continue;
+            return;
           }
-          await withGate(operation.providerId, async () => repository.finalizeDeleteOperation(operation.operationId));
-        } else {
-          await withGate(operation.providerId, async () => repository.completeAccountOperation(operation.operationId));
+          try {
+            repository.markAccountOperationPublishing(operation.operationId);
+            await withGate(operation.providerId, () =>
+              options.beforeAccountOperationComplete!(operation, publicationSignal(options.signal)),
+            );
+          } catch {
+            nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
+            return;
+          }
         }
-      } else if (operation.kind === 'delete') {
-        if (options.mode === 'server' && options.deleteMarkerOnProviderPresent === 'retain') {
-          nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
-        } else {
-          await withGate(operation.providerId, async () => repository.completeAccountOperation(operation.operationId));
+        if (observedDigest === targetDigest) {
+          if (operation.kind === 'delete') {
+            if (options.mode !== 'server') return;
+            if (!options.canDeleteAccount(operation.providerId)) {
+              nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
+              return;
+            }
+            await withGate(operation.providerId, async () => repository.finalizeDeleteOperation(operation.operationId));
+          } else {
+            await withGate(operation.providerId, async () =>
+              repository.completeAccountOperation(operation.operationId),
+            );
+          }
+        } else if (operation.kind === 'delete') {
+          if (options.mode === 'server' && options.deleteMarkerOnProviderPresent === 'retain') {
+            nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
+          } else {
+            await withGate(operation.providerId, async () =>
+              repository.completeAccountOperation(operation.operationId),
+            );
+          }
+        } else if (
+          (await withGate(operation.providerId, async () =>
+            repository.compensateAccountOperation(operation.operationId),
+          )) === 'superseded'
+        ) {
+          safeSupersededDiagnostic(operation.providerId, repository, diagnostics?.factory, diagnostics?.logger, now);
         }
-      } else if (
-        (await withGate(operation.providerId, async () =>
-          repository.compensateAccountOperation(operation.operationId),
-        )) === 'superseded'
-      ) {
-        safeSupersededDiagnostic(operation.providerId, repository, diagnostics?.factory, diagnostics?.logger, now);
-      }
+      });
+      if (!ran) nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
     }
+
     const pendingProviderIds = new Set(
       repository.listPendingAccountOperations().map((operation) => operation.providerId),
     );
@@ -217,7 +239,10 @@ export async function recoverPendingAccountOperations(
         nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
         continue;
       }
-      await withGate(account.providerId, async () => repository.deleteAccount(account.providerId));
+      // Same ordering rule as the drain above: an orphan whose Provider is mid-login is left for the
+      // next pass rather than waited on from inside the configuration queue.
+      const ran = await tryGate(account.providerId, async () => repository.deleteAccount(account.providerId));
+      if (!ran) nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
     }
     return { next: current, result: undefined };
   });
