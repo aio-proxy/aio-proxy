@@ -88,6 +88,29 @@ async function releaseUnstartedClaim(
   }
 }
 
+/**
+ * Park a claim its exchange can never resolve: `uncertain` when the outcome was lost,
+ * `login-required` when the result exists but is unusable. Both phases let a fresh login take the
+ * account over, which a claim left in `refreshing` would block on every device forever.
+ */
+async function fenceClaim(
+  context: CoordinatorContext,
+  claimed: { account: LiveAccount; version: string },
+  phase: 'uncertain' | 'login-required',
+  signal: AbortSignal,
+): Promise<void> {
+  try {
+    await context.store.session.compareAndSwap(
+      accountKey(claimed.account.objectId),
+      claimed.version,
+      encode({ ...claimed.account, phase }),
+      signal,
+    );
+  } catch {
+    // The refreshing claim remains a fence when its terminal phase cannot be published.
+  }
+}
+
 export function toJsonExchangeResult<C>(result: ExchangeResult<C>): JsonValue {
   const value: Record<string, JsonValue> = { value: result.value as JsonValue };
   if (result.metadata?.accountLabel !== undefined) value['metadata'] = { accountLabel: result.metadata.accountLabel };
@@ -284,23 +307,14 @@ export async function refreshAccount<C>(
   try {
     result = await input.exchange(original, signal);
   } catch {
-    try {
-      const uncertain = { ...claimed.account, phase: 'uncertain' as const };
-      await context.store.session.compareAndSwap(
-        accountKey(input.objectId),
-        claimed.version,
-        encode(uncertain),
-        signal,
-      );
-    } catch {
-      // The refreshing claim remains a fence when its uncertain marker cannot be published.
-    }
+    await fenceClaim(context, claimed, 'uncertain', signal);
     throw new SyncOAuthError('result-uncertain', 'The OAuth exchange outcome is unknown');
   }
   let payload: JsonValue;
   try {
     payload = toJsonExchangeResult(result);
   } catch {
+    await fenceClaim(context, claimed, 'login-required', signal);
     throw new SyncOAuthError('unverified', 'The OAuth result is not serializable');
   }
   const resultJournal = { ...journal, phase: 'result' as const, payload };

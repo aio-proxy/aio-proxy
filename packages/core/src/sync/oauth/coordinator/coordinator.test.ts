@@ -185,6 +185,23 @@ test('validation failure remains quarantined during recovery', async () => {
   });
 });
 
+test('an unserializable exchange result quarantines the claim instead of stranding it', async () => {
+  await withSharedOAuthDevices(async (f) => {
+    const input = {
+      objectId: f.objectId,
+      epoch: 0,
+      generation: 0,
+      exchange: async () => ({ value: { token: 'new' }, metadata: { expiresAt: Number.POSITIVE_INFINITY } }),
+      validate: async (value: unknown) => f.schema.parse(value),
+    };
+    await expect(f.a.refresh(input, f.signal)).rejects.toMatchObject({ code: 'unverified' });
+    const stored = f.backend.readAll().get(`s/v1/default/account/${f.objectId}`);
+    // A claim left in `refreshing` blocks recovery and a fresh login on every device forever.
+    expect(JSON.parse(new TextDecoder().decode(stored!.value)).phase).toBe('login-required');
+    expect((await f.a.recover(f.objectId, f.signal))?.phase).toBe('login-required');
+  });
+});
+
 test('a journal failure before exchange releases the unstarted claim', async () => {
   await withSharedOAuthDevices(async (f) => {
     const original = f.repoA.writeOAuthJournal;
