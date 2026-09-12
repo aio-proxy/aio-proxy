@@ -1,10 +1,11 @@
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { lstat, mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { processOwnerIsCurrent, processStarttime } from '@aio-proxy/core';
 
 import type { CodexLocation } from '../contracts';
 import { assertNoSymlinkParents, durableWrite, isFsCode, readRegularFile, syncParent } from '../managed-config/storage';
+import { withCodexInstallation } from '../storage/installation-lock';
 
 export type JournalEntry = {
   readonly id: string;
@@ -44,6 +45,7 @@ export type SessionLock = {
   readonly release: () => Promise<void>;
 };
 const leaseDurationMs = 10 * 60 * 1000;
+const ownerlessStaleMs = 2_000;
 
 const migrationRoot = (location: CodexLocation): string => join(location.managedRoot, 'migrations');
 export const operationPath = (location: CodexLocation, operationId: string): string =>
@@ -161,6 +163,12 @@ async function restoreQuarantinedLock(location: CodexLocation, quarantine: strin
 }
 
 async function reclaimOwnerlessLock(location: CodexLocation, contenderToken: string): Promise<boolean> {
+  try {
+    const metadata = await lstat(lockPath(location));
+    if (Date.now() - metadata.mtimeMs < ownerlessStaleMs) return false;
+  } catch {
+    return false;
+  }
   const quarantine = quarantinePath(location, contenderToken);
   try {
     await rename(lockPath(location), quarantine);
@@ -233,6 +241,20 @@ export async function acquireSessionLock(location: CodexLocation): Promise<Sessi
     await syncParent(lockPath(location));
   };
   return { token, renew, release };
+}
+
+export async function withSessionMigration<T>(
+  location: CodexLocation,
+  operation: (lock: SessionLock) => Promise<T>,
+): Promise<T> {
+  return withCodexInstallation(location, AbortSignal.timeout(15_000), async () => {
+    const lock = await acquireSessionLock(location);
+    try {
+      return await operation(lock);
+    } finally {
+      await lock.release();
+    }
+  });
 }
 
 export async function createOperation(location: CodexLocation, journal: SessionMigrationJournal): Promise<void> {

@@ -75,11 +75,22 @@ async function revokeAndClear(
   expectedInstallationId?: string,
 ): Promise<AgentRevokeStatus> {
   const identity = await readCodexCommandIdentity(context.location);
+  const credential = await readCredential(context.location);
   if (identity === undefined) {
     if (expectedInstallationId === undefined) {
-      if ((await readCodexCommandCredentialInstallationId(context.location)) !== undefined)
-        throw setupError('CODEX_AUTH_INSTALLATION_MISSING');
+      if (credential !== undefined) throw setupError('CODEX_AUTH_INSTALLATION_MISSING');
       return 'missing';
+    }
+    if (credential !== undefined) {
+      if (credential.installationId !== expectedInstallationId) throw setupError('CODEX_AUTH_INSTALLATION_MISMATCH');
+      const status =
+        context.revoke === undefined ? 'missing' : await context.revoke(credential.endpoint, credential.installationId);
+      if (!terminalRevocations.has(status)) throw setupError('CODEX_AUTH_REVOKE_BLOCKED');
+      await clearCodexCommandInstallation(
+        { location: context.location, installationId: expectedInstallationId, revocation: status },
+        lease,
+      );
+      return status;
     }
     await clearCodexCommandInstallation(
       { location: context.location, installationId: expectedInstallationId, revocation: 'missing' },

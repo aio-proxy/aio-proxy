@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -35,6 +35,12 @@ test('accepts the published npm launcher while rejecting arbitrary javascript en
   await writeFile(launcher, '#!/usr/bin/env node\nconsole.log("aio-proxy 0.21.0")\n');
   await chmod(launcher, 0o755);
   await expect(resolveCodexAuthCommand({ candidates: [launcher] })).resolves.toBe(launcher);
+  const aiopLauncher = join(packageRoot, 'bin', 'aiop.js');
+  await writeFile(aiopLauncher, '#!/usr/bin/env node\nconsole.log("aiop 0.21.0")\n');
+  await chmod(aiopLauncher, 0o755);
+  const alias = join(root, 'stable path', 'aiop');
+  await symlink(aiopLauncher, alias);
+  await expect(resolveCodexAuthCommand({ candidates: [alias] })).resolves.toBe(alias);
   const source = join(root, 'src', 'aio-proxy.js');
   await mkdir(join(root, 'src'), { recursive: true });
   await writeFile(source, '#!/usr/bin/env node\nconsole.log("aio-proxy 0.21.0")\n');

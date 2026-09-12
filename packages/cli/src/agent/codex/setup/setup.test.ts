@@ -199,6 +199,7 @@ test('recovers a keep-chatgpt transition after identity deletion leaves an orpha
       installationId,
     });
     await rm(join(location.managedRoot, 'codex-command.json'));
+    const revoked: { endpoint: string; installationId: string }[] = [];
     await expect(
       recoverCodexAuthOperation(
         {
@@ -207,10 +208,15 @@ test('recovers a keep-chatgpt transition after identity deletion leaves an orpha
           adapterVersion: '0.21.0',
           signal: AbortSignal.timeout(10_000),
           onDevice: async () => undefined,
+          revoke: async (boundEndpoint, boundInstallationId) => {
+            revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+            return 'revoked';
+          },
         },
         'complete',
       ),
     ).resolves.toBe('completed');
+    expect(revoked).toEqual([{ endpoint, installationId }]);
     await expect(readCredential(location)).resolves.toBeUndefined();
     await expect(Bun.file(credentialPath(location)).exists()).resolves.toBe(false);
     await expect(inspectCodexConfig(location)).resolves.toMatchObject({ status: 'absent' });
@@ -254,6 +260,7 @@ test('cleans an orphan credential during a normal keep-chatgpt transition', asyn
       });
     });
     await rm(join(location.managedRoot, 'codex-command.json'));
+    const revoked: { endpoint: string; installationId: string }[] = [];
     await expect(
       commitCodexSetup(
         {
@@ -273,9 +280,14 @@ test('cleans an orphan credential during a normal keep-chatgpt transition', asyn
           adapterVersion: '0.21.0',
           signal: AbortSignal.timeout(10_000),
           onDevice: async () => undefined,
+          revoke: async (boundEndpoint, boundInstallationId) => {
+            revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+            return 'revoked';
+          },
         },
       ),
     ).resolves.toMatchObject({ authMode: 'keep-chatgpt' });
+    expect(revoked).toEqual([{ endpoint, installationId }]);
     await expect(readCredential(location)).resolves.toBeUndefined();
     await expect(inspectCodexConfig(location)).resolves.toMatchObject({ authMode: 'keep-chatgpt' });
   } finally {

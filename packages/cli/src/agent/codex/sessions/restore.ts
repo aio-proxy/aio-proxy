@@ -6,12 +6,12 @@ import { basename, dirname, join } from 'node:path';
 import type { CodexLocation, MigrationResult } from '../contracts';
 import { assertNoSymlinkParents, inspectRegularFile, syncParent } from '../managed-config/storage';
 import {
-  acquireSessionLock,
   operationPath,
   readJournal,
   type JournalEntry,
   type SessionMigrationJournal,
   updateJournal,
+  withSessionMigration,
 } from './journal';
 import { fingerprintBytes, inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
 import { checkCodexOffline } from './sessions';
@@ -151,8 +151,7 @@ async function rollbackFiles(plans: readonly RestoreFilePlan[]): Promise<void> {
 }
 
 export async function restoreCodexMigration(location: CodexLocation, operationId: string): Promise<MigrationResult> {
-  const lock = await acquireSessionLock(location);
-  try {
+  return withSessionMigration(location, async (lock) => {
     if ((await checkCodexOffline(location)) !== 'ok') return blocked();
     let journal: SessionMigrationJournal | undefined;
     try {
@@ -254,7 +253,5 @@ export async function restoreCodexMigration(location: CodexLocation, operationId
       db?.close();
     }
     return { status: 'completed', migrated: journal.entries.length - conflicts, skipped: 0, conflicts, operationId };
-  } finally {
-    await lock.release();
-  }
+  });
 }

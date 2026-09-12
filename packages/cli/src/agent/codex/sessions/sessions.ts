@@ -8,12 +8,12 @@ import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget,
 import { readManagedCodexMarker } from '../managed-config';
 import { inspectRegularFile, readRegularFile, syncParent } from '../managed-config/storage';
 import {
-  acquireSessionLock,
   createOperation,
   operationPath,
   type JournalEntry,
   type SessionMigrationJournal,
   updateJournal,
+  withSessionMigration,
   writeBackup,
 } from './journal';
 import { fingerprintBytes, rewriteLegacyProvider } from './legacy-rollout';
@@ -282,8 +282,7 @@ export async function migrateCodexSessions(input: {
 }): Promise<MigrationResult> {
   const { location, targets, targetProviderId } = input;
   if (targets.length === 0) return { status: 'completed', migrated: 0, skipped: 0, conflicts: 0 };
-  const lock = await acquireSessionLock(location);
-  try {
+  return withSessionMigration(location, async (lock) => {
     await lock.renew();
     const offline = await checkOffline(location);
     if (offline !== 'ok') return resultBlocked();
@@ -426,7 +425,5 @@ export async function migrateCodexSessions(input: {
         recoveryPath: recoveryPathFor(operationId),
       };
     }
-  } finally {
-    await lock.release();
-  }
+  });
 }

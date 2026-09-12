@@ -1,10 +1,11 @@
 import { Database } from 'bun:sqlite';
 import { afterEach, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveCodexLocation } from '../location';
+import { withCodexInstallation } from '../storage/installation-lock';
 import { acquireSessionLock } from './journal';
 import { inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
 import { restoreCodexMigration } from './restore';
@@ -444,10 +445,81 @@ test('reclaims a lock directory left without an owner record', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-ownerless-'));
   try {
     const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
-    await mkdir(join(location.managedRoot, 'migrations', '.lock'), { recursive: true });
+    const lockDir = join(location.managedRoot, 'migrations', '.lock');
+    await mkdir(lockDir, { recursive: true });
+    const stale = new Date(Date.now() - 5_000);
+    await utimes(lockDir, stale, stale);
     const lock = await acquireSessionLock(location);
     expect(lock.token).not.toBe('');
     await lock.release();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('does not reclaim a lock directory that is still being initialized', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-init-lock-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await mkdir(join(location.managedRoot, 'migrations', '.lock'), { recursive: true });
+    await expect(acquireSessionLock(location)).rejects.toThrow('another Codex session migration is in progress');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('serializes two session lock acquirers when no lock exists yet', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-create-lock-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    const outcomes = await Promise.allSettled([acquireSessionLock(location), acquireSessionLock(location)]);
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+    const lock = outcomes.find((outcome) => outcome.status === 'fulfilled');
+    if (lock?.status === 'fulfilled') await lock.value.release();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('holds the installation lock for the duration of a session migration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-install-lock-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await prepareMarker(location);
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'history.jsonl');
+    await writeFile(rolloutPath, rollout('source-proxy'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'legacy', 0, rolloutPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    let release!: () => void;
+    let holding!: () => void;
+    const held = withCodexInstallation(location, AbortSignal.timeout(15_000), async () => {
+      holding();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    await new Promise<void>((resolve) => {
+      holding = resolve;
+    });
+    const migrating = migrateCodexSessions({
+      location,
+      targets: preview.targets,
+      targetProviderId: 'aio-proxy',
+    });
+    await expect(
+      Promise.race([migrating.then(() => 'done'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 250))]),
+    ).resolves.toBe('waiting');
+    release();
+    await held;
+    await expect(migrating).resolves.toMatchObject({ status: 'completed' });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

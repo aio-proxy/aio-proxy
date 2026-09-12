@@ -11,12 +11,12 @@ const candidateNames = new Set(['aiop', 'aio-proxy']);
 
 function isPublishedLauncher(path: string): boolean {
   const normalized = normalize(path).replaceAll('\\', '/');
-  return /(?:^|\/)(?:node_modules\/)?aio-proxy\/bin\/aio-proxy\.js$/u.test(normalized);
+  return /(?:^|\/)(?:node_modules\/)?aio-proxy\/bin\/(?:aio-proxy|aiop)\.js$/u.test(normalized);
 }
 
 function isAllowedName(path: string): boolean {
   const name = basename(path);
-  return candidateNames.has(name) || (name === 'aio-proxy.js' && isPublishedLauncher(path));
+  return candidateNames.has(name) || ((name === 'aio-proxy.js' || name === 'aiop.js') && isPublishedLauncher(path));
 }
 
 function isDevelopmentPath(path: string): boolean {
