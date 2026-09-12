@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { prepareCodexCommandInstallation, readCodexCommandIdentity } from '../command-auth';
 import { credentialPath, readCredential, writeCredential } from '../command-auth/credential-store';
 import { resolveCodexLocation } from '../location';
-import { configureCodexConfig } from '../managed-config';
+import { configureCodexConfig, inspectCodexConfig } from '../managed-config';
 import { authOperationPath } from '../setup/journal';
 import { withCodexInstallation } from '../storage/installation-lock';
 import { listCodexLifecycle, removeCodexLifecycle } from './lifecycle';
@@ -401,6 +401,60 @@ test('blocks command removal when the managed config is conflicted', async () =>
         },
       }),
     ).resolves.toMatchObject({ status: 'blocked', authorization: 'pending' });
+    expect(revoked).toEqual([]);
+    await expect(readCredential(location)).resolves.toMatchObject({ installationId });
+    await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({
+      marker: { installationId },
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('blocks removal when config recovery is invalid before revoking credentials', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  const endpoint = 'http://127.0.0.1:9317';
+  try {
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'aio-proxy',
+          baseUrl: `${endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+    });
+    await writeFile(join(location.managedRoot, 'config-operation.json'), '{not-json');
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({ status: 'managed', authMode: 'command' });
+    const revoked: { endpoint: string; installationId: string }[] = [];
+    await expect(
+      removeCodexLifecycle({
+        location,
+        revoke: async (boundEndpoint, boundInstallationId) => {
+          revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+          return 'revoked';
+        },
+      }),
+    ).resolves.toMatchObject({ status: 'blocked' });
     expect(revoked).toEqual([]);
     await expect(readCredential(location)).resolves.toMatchObject({ installationId });
     await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({

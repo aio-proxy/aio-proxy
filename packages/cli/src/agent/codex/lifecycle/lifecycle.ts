@@ -8,7 +8,12 @@ import {
   retireCodexCommandInstallation,
 } from '../command-auth';
 import type { CodexListResult, CodexLocation, CodexRemoveResult } from '../contracts';
-import { inspectCodexConfig, readManagedCodexEndpoint, removeCodexConfig } from '../managed-config';
+import {
+  inspectCodexConfig,
+  readManagedCodexEndpoint,
+  recoverCodexConfigOperation,
+  removeCodexConfig,
+} from '../managed-config';
 import { clearAuthOperation, writeAuthOperation } from '../setup/journal';
 import { withCodexInstallation } from '../storage/installation-lock';
 
@@ -110,6 +115,11 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     }
     if (inspection.status === 'conflict')
       return blockedResult(input.location, identity === undefined ? undefined : 'pending');
+    try {
+      await recoverCodexConfigOperation(input.location, undefined, lease);
+    } catch {
+      return blockedResult(input.location, identity === undefined ? undefined : 'pending');
+    }
     const credential = await readCredential(input.location);
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];
