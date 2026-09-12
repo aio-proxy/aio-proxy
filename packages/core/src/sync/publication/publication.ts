@@ -87,6 +87,16 @@ export function assertSize(store: SyncObjectStore, bytes: Uint8Array): void {
   }
 }
 
+/**
+ * The encoded body alone is over the backend's limit, so `publishEntity` can only ever throw
+ * `quota` for this operation. Callers use it to tell that permanent condition apart from a
+ * transient `quota` the backend itself raises, which retrying does resolve.
+ */
+export function exceedsValueLimit(store: SyncObjectStore, operation: OutboxOperation): boolean {
+  if (operation.kind !== 'put' || operation.body === null) return false;
+  return encodePayload(operation).byteLength > store.session.maxValueBytes;
+}
+
 async function readRevision(
   store: SyncObjectStore,
   operation: OutboxOperation,

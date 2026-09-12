@@ -718,3 +718,62 @@ test('overrides pinned while a remote application is in flight survive the write
     );
   });
 });
+
+test('leaving the synchronized range drops the writes queued while the backend was offline', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'k' }, true);
+    await a.commitProvider('spare', { kind: 'api', apiKey: 's' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+
+    // Queued while the backend was unreachable: an edit to one Provider and the removal of another.
+    await a.commitProvider('work', { kind: 'api', apiKey: 'device-local' }, true);
+    await a.removeProvider('spare');
+    const queued = a.repo.outbox(a.binding.id);
+    expect(queued.some((operation) => operation.kind === 'put' && operation.objectId === 'provider-work')).toBe(true);
+    expect(queued.some((operation) => operation.kind === 'delete' && operation.objectId === 'provider-spare')).toBe(
+      true,
+    );
+
+    // `sync leave` on both: the edit must stay off the backend and the cloud copy must survive.
+    for (const objectId of ['provider-work', 'provider-spare']) {
+      const row = a.repo.entities(a.binding.id).find((entity) => entity.objectId === objectId);
+      a.repo.putEntity(a.binding.id, { ...row!, mode: 'excluded' });
+    }
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    const published = b.remoteApplyCalls().filter((call) => call.objectId === 'provider-work');
+    expect(published.map((call) => call.body)).toEqual([{ kind: 'api', apiKey: 'k' }]);
+    expect(b.remoteApplyCalls().filter((call) => call.objectId === 'provider-spare' && call.body === null)).toEqual([]);
+  });
+});
+
+test('an outbox entry over the backend value limit yields to every later object', async () => {
+  await withTwoSyncDevices(
+    async ({ a, b }) => {
+      await a.commitProvider('huge', { kind: 'api', apiKey: 'x'.repeat(2048) }, true);
+      await a.commitProvider('small', { kind: 'api', apiKey: 'k' }, true);
+      // The oversized entry is queued first and can never publish, but it must not hold the queue:
+      // the later Provider reaches the backend and remote reconciliation still runs.
+      await a.engine.reconcile(a.signal);
+      await b.engine.reconcile(b.signal);
+      expect(b.repo.entities(b.binding.id).map((entity) => entity.logicalKey)).toEqual(['small']);
+      expect(a.repo.outbox(a.binding.id).map((operation) => operation.objectId)).toEqual(['provider-huge']);
+
+      // Shrinking the configuration mints a newer operation, which supersedes the oversized one.
+      await a.commitProvider('huge', { kind: 'api', apiKey: 'fits' }, true);
+      await a.engine.reconcile(a.signal);
+      await b.engine.reconcile(b.signal);
+      expect(a.repo.outbox(a.binding.id)).toEqual([]);
+      expect(
+        b.repo
+          .entities(b.binding.id)
+          .map((entity) => entity.logicalKey)
+          .sort(),
+      ).toEqual(['huge', 'small']);
+    },
+    { maxValueBytes: 1024 },
+  );
+});

@@ -27,6 +27,7 @@ type FailureCode = 'offline' | 'quota' | 'identity-changed';
 
 type TwoDeviceOptions = {
   readonly watch?: boolean;
+  readonly maxValueBytes?: number;
 };
 
 function createGate(): Gate {
@@ -166,10 +167,20 @@ export async function withTwoSyncDevices(
           return { applied: true };
         },
       };
+      // Spread only when a test overrides something: others mutate `device.session` in place and
+      // rely on the engine holding that same object.
+      const engineSession = (): SyncSession => {
+        if (options.watch !== false && options.maxValueBytes === undefined) return session;
+        return {
+          ...session,
+          ...(options.watch === false ? { watch: undefined } : {}),
+          ...(options.maxValueBytes === undefined ? {} : { maxValueBytes: options.maxValueBytes }),
+        };
+      };
       const makeEngine = (): SyncEngine =>
         createSyncEngine({
           binding,
-          session: options.watch === false ? { ...session, watch: undefined } : session,
+          session: engineSession(),
           repo,
           local,
           onStatus(status) {

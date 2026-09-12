@@ -3,7 +3,7 @@ import { SyncBackendError, type SyncSession } from '@aio-proxy/plugin-sdk';
 import { collectHistory, deleteEntity, purgeEntity, readServerTime } from '../cleanup';
 import { recoverLocalCommits } from '../local-commit';
 import { decodeHead, entityKey, SyncProtocolError, type EntityHead } from '../protocol';
-import { publishEntity, createSyncObjectStore } from '../publication';
+import { publishEntity, createSyncObjectStore, exceedsValueLimit } from '../publication';
 import type { LocalBinding, SyncRepository } from '../repository';
 import type { LocalSyncPort } from './incoming';
 import { reconcileRemote } from './remote';
@@ -84,10 +84,35 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     return head;
   }
 
-  async function drainOutbox(generation: number, signal: AbortSignal): Promise<void> {
-    for (const operation of input.repo.outbox(input.binding.id)) {
+  async function drainOutbox(generation: number, signal: AbortSignal): Promise<boolean> {
+    const operations = input.repo.outbox(input.binding.id);
+    // Index of the last queued operation per object. An entry that a newer one replaces carries a
+    // body nothing needs any more, which is what makes dropping an unpublishable one safe.
+    const newest = new Map(operations.map((operation, index) => [operation.objectId, index]));
+    let unpublishable = false;
+    for (const [index, operation] of operations.entries()) {
       signal.throwIfAborted();
       assertGeneration(generation);
+      // The object left the synchronized range after this was queued — while the backend was
+      // unreachable, most likely. Publishing the queued body would upload configuration the user
+      // moved back to local, and running the queued delete would remove the cloud copy that
+      // leaving deliberately retains. Re-read per operation: leaving is not fenced against a drain.
+      const entity = input.repo.entities(input.binding.id).find((row) => row.objectId === operation.objectId);
+      if (entity?.mode === 'excluded') {
+        input.repo.acknowledge(input.binding.id, operation.operationId);
+        continue;
+      }
+      // A body over the backend's value limit throws `quota` deterministically, and a failed entry
+      // is never acknowledged, so retrying it first on every pass wedges every later object — and
+      // remote reconciliation behind it — on a row that can never publish. A newer operation for
+      // the same object supersedes it outright; the newest one stays queued, since shrinking the
+      // configuration is what produces its replacement, and the pass reports `quota` instead of
+      // `online` for as long as it is there.
+      if (exceedsValueLimit(store, operation)) {
+        if (newest.get(operation.objectId) === index) unpublishable = true;
+        else input.repo.acknowledge(input.binding.id, operation.operationId);
+        continue;
+      }
       const head = await store.readHead(operation.objectId, signal);
       assertGeneration(generation);
       // A newer epoch means another device deleted and restored this object while the operation sat
@@ -115,6 +140,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
       assertGeneration(generation);
       input.repo.acknowledge(input.binding.id, operation.operationId);
     }
+    return unpublishable;
   }
 
   async function maintenance(signal: AbortSignal): Promise<void> {
@@ -142,7 +168,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
       assertCurrent: () => assertGeneration(generation),
     });
     assertGeneration(generation);
-    await drainOutbox(generation, signal);
+    const unpublishable = await drainOutbox(generation, signal);
     await reconcileRemote(
       {
         bindingId: input.binding.id,
@@ -157,7 +183,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     assertGeneration(generation);
     await maintenance(signal);
     backoff = 0;
-    status('online');
+    status(unpublishable ? 'quota' : 'online');
   }
 
   function schedule(delay: number): void {
