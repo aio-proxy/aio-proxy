@@ -60,6 +60,31 @@ test('an already-issued credential port blocks exchange after adapter evidence c
   );
 });
 
+// A sync row this device cannot read says nothing about ownership. Reporting "no shared port"
+// would let the ordinary local path rotate a credential other devices still follow.
+test('an unreadable sync repository blocks the credential instead of falling back to the local one', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      const repo = {
+        ...f.repo,
+        entities: () => {
+          throw new Error('malformed persisted sync row');
+        },
+      };
+      const port = createSharedCredentialResolver(
+        repo,
+        f.accounts,
+        () => undefined,
+      )(f.providerId, f.adapter.credentials);
+
+      expect(port).toBeDefined();
+      await expect(port!.read()).rejects.toThrow('could not be read');
+      await expect(port!.refresh(1, async () => ({ token: 'unsafe' }))).rejects.toThrow('could not be read');
+    },
+    { shared: true },
+  );
+});
+
 test('switching bindings cannot turn retained shared credentials into a local account', async () => {
   await withOAuthSharingFixture(
     async (f) => {

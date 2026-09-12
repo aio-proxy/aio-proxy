@@ -88,18 +88,26 @@ export function createSharedCredentialResolver(
   }
   return (providerId, schema, callbacks) => {
     // The credential port re-runs this resolver on every read, so it also runs after the server
-    // that owns the repository is closed. An unreadable repository is the same answer as an
-    // absent binding: no shared ownership is knowable, so leave the plain port alone.
-    const attempt = (): CredentialPort<unknown> | undefined => {
+    // that owns the repository is closed. A repository this device cannot read says nothing about
+    // ownership, and answering `undefined` would hand the Provider to the local refresh path — one
+    // that rotates the credential alone while other devices still follow the shared account.
+    const attempt = (): CredentialPort<unknown> | undefined | 'unreadable' => {
       try {
         return resolve(providerId, schema, callbacks);
       } catch {
-        return undefined;
+        return 'unreadable';
       }
     };
-    if (attempt() === undefined) return undefined;
+    const unreadable = () => blocked('result-uncertain', 'The shared OAuth ownership could not be read');
+    const first = attempt();
+    if (first === undefined) return undefined;
+    if (first === 'unreadable') return unreadable();
     // Ports can outlive a plugin reload, binding switch or ownership transition.
-    const current = () => attempt() ?? blocked('detach-pending', 'The shared OAuth ownership changed');
+    const current = () => {
+      const port = attempt();
+      if (port === 'unreadable') return unreadable();
+      return port ?? blocked('detach-pending', 'The shared OAuth ownership changed');
+    };
     return { read: () => current().read(), refresh: (revision, exchange) => current().refresh(revision, exchange) };
   };
 }
