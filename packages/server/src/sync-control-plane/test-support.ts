@@ -119,6 +119,8 @@ export function createServerSyncFixture(input: {
   readonly accounts: PluginRepository;
   readonly registry: () => PluginRegistry;
   readonly config?: Record<string, unknown>;
+  /** Simulates a sync plugin that is not installed yet, so a restored binding cannot resolve it. */
+  readonly backendAvailable?: () => boolean;
 }): ServerSyncFixture {
   const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-server-sync-'));
   const configPath = join(directory, 'config.jsonc');
@@ -129,7 +131,11 @@ export function createServerSyncFixture(input: {
   const events: string[] = [];
   const backend = memoryBackend(events);
   const registry = input.registry();
-  const wrappedRegistry: PluginRegistry = { ...registry, resolveSync: () => backend, syncCapabilities: () => [] };
+  const wrappedRegistry: PluginRegistry = {
+    ...registry,
+    resolveSync: () => (input.backendAvailable?.() === false ? undefined : backend),
+    syncCapabilities: () => [],
+  };
   repo.writeBinding({
     id: 'test-binding',
     plugin: '@example/sync',

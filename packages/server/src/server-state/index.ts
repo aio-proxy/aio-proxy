@@ -363,8 +363,9 @@ async function initializeServerState(
     syncCommit,
     () => oauthSharing,
     // Connecting a backend after startup must start coordinating logins, and a device that never
-    // connects one must keep logging in without waiting for a service it will never have.
-    () => syncRepository.bindings().length > 0,
+    // connects one — or that has disconnected — must keep logging in without waiting for a service
+    // it does not have. Retired rows stay in `bindings()` forever, so only the active one counts.
+    () => syncRepository.readBinding() !== null,
   );
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');

@@ -77,29 +77,25 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     if (started || closed) return;
     started = true;
     let connected: SyncSession | undefined = input.preconnectedSession;
+    // An explicit connect must surface why it failed. Restoring a persisted binding must not: the
+    // plugin can be missing or the options stale, and the documented retry calls start() again on
+    // this same lifecycle. Nothing was connected yet, so stay unstarted or that retry no-ops and
+    // the session stays offline until the whole server restarts.
+    const giveUp = (message: string): void => {
+      if (input.initialBinding !== undefined) throw new Error(message);
+      started = false;
+    };
     try {
       const binding = input.initialBinding ?? input.repo.readBinding();
-      if (binding === null) {
-        if (input.initialBinding !== undefined) throw new Error('Synchronization binding is missing');
-        return;
-      }
+      if (binding === null) return giveUp('Synchronization binding is missing');
       bindingId = binding.id;
       bindingGeneration = binding.sessionGeneration;
       const backend = input.registry().resolveSync(binding.plugin, binding.capability);
-      if (backend === undefined) {
-        if (input.initialBinding !== undefined) throw new Error('Synchronization backend is unavailable');
-        return;
-      }
+      if (backend === undefined) return giveUp('Synchronization backend is unavailable');
       const configFile = input.configFile;
-      if (configFile === undefined) {
-        if (input.initialBinding !== undefined) throw new Error('Synchronization config is unavailable');
-        return;
-      }
+      if (configFile === undefined) return giveUp('Synchronization config is unavailable');
       const parsedOptions = backend.options.schema.safeParse(binding.options);
-      if (!parsedOptions.success) {
-        if (input.initialBinding !== undefined) throw new Error('Invalid synchronization backend options');
-        return;
-      }
+      if (!parsedOptions.success) return giveUp('Invalid synchronization backend options');
       const dataDirectory = join(dirname(input.configPath), '.sync', binding.id);
       await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
       await chmod(dataDirectory, 0o700);
@@ -170,10 +166,8 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       session = undefined;
       input.onCoordinator?.(undefined);
       input.onSharing?.(undefined);
-      // An explicit connect must surface its failure. Restoring a persisted binding must not:
-      // a routine backend outage would otherwise abort server startup, taking model traffic and
-      // the Dashboard recovery actions down with it. Every check above already returns instead
-      // of throwing on that path. Stay unstarted so a later retry reconnects.
+      // A routine backend outage must not abort server startup, taking model traffic and the
+      // Dashboard recovery actions down with it.
       if (input.initialBinding !== undefined) throw error;
       started = false;
     }

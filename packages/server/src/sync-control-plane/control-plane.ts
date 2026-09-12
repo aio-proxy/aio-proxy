@@ -295,13 +295,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     };
     if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
     await candidate.commit();
-    // The swap is done, so the engine has to run whether or not the decisions all land; a thrown
-    // apply must not leave the bound backend without reconciliation until the next restart.
-    try {
-      await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
-    } finally {
-      candidate.activate();
-    }
+    // Deferring the engine exists precisely so reconciliation never sees these objects before the
+    // reviewed decisions land. A writer can still move a head after the final refresh, and then a
+    // local-choice publication throws with its row left included on the old baseline — starting the
+    // engine anyway would import the very revision the user chose to overwrite. Staying unreconciled
+    // until the caller retries is the safe half of that trade.
+    await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
+    candidate.activate();
   };
 
   return {

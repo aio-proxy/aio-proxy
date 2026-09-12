@@ -1369,6 +1369,79 @@ test('connect previews the candidate backend and applies the reviewed decisions'
   expect(activatedAfter).toEqual(['work', 'cloud-object']);
 });
 
+test('a decision that fails to land leaves the candidate engine stopped', async () => {
+  let activated = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'local-object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 2,
+        desired: providerBody({ plugin: '@example/oauth', capability: 'main' }),
+        baseline: 'old-backend-revision',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {
+      throw new Error('expected version conflict');
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => void (activated = true),
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'local-object', choice: 'local' }] }),
+  ).rejects.toThrow('expected version conflict');
+  // The row stays included on its old baseline, so starting the engine here would import whatever a
+  // writer put in the candidate backend after the final refresh — the revision the user overwrote.
+  expect(activated).toBe(false);
+});
+
 test('a failed replacement connect stops pinning preview-required', async () => {
   let attempt = 0;
   const control = createSyncControlPlane({
