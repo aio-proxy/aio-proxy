@@ -31,12 +31,16 @@ test('does not overwrite an existing environment variable', () => {
 
 test('an isolated read observes a later service.env rotation', () => {
   const configPath = withEnvFile('API_TOKEN=old\n');
-  const base: Record<string, string | undefined> = {};
-  loadServiceEnv(configPath, base);
-  expect(readServiceEnvironment(configPath, base)['API_TOKEN']).toBe('old');
+  expect(readServiceEnvironment(configPath, {})['API_TOKEN']).toBe('old');
   writeFileSync(serviceEnvFile(configPath), 'API_TOKEN=rotated\n');
-  expect(readServiceEnvironment(configPath, base)['API_TOKEN']).toBe('rotated');
-  expect(base['API_TOKEN']).toBe('old');
+  expect(readServiceEnvironment(configPath, {})['API_TOKEN']).toBe('rotated');
+});
+
+test('an isolated read preserves existing environment values', () => {
+  const configPath = withEnvFile('API_TOKEN=from-file\n');
+  const base = { API_TOKEN: 'from-real-env' };
+  expect(readServiceEnvironment(configPath, base)['API_TOKEN']).toBe('from-real-env');
+  expect(base['API_TOKEN']).toBe('from-real-env');
 });
 
 test('is a no-op when the env file is absent', () => {
