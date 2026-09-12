@@ -43,7 +43,10 @@ import { createLocalSyncPort } from './local-port';
 
 type MemoryStore = Map<string, { value: Uint8Array; version: string; modifiedAt: number }>;
 
-function memoryBackend(events: string[]): SyncBackendDefinition<Record<string, never>> & { connectCount(): number } {
+function memoryBackend(
+  events: string[],
+  identity: () => string,
+): SyncBackendDefinition<Record<string, never>> & { connectCount(): number } {
   const values: MemoryStore = new Map();
   let version = 0;
   let connections = 0;
@@ -60,7 +63,7 @@ function memoryBackend(events: string[]): SyncBackendDefinition<Record<string, n
     async connect() {
       connections++;
       const session: SyncSession = {
-        identityId: 'memory-identity',
+        identityId: identity(),
         spaceId: 'default',
         maxValueBytes: 1_000_000,
         async read(key, signal) {
@@ -121,6 +124,8 @@ export function createServerSyncFixture(input: {
   readonly config?: Record<string, unknown>;
   /** Simulates a sync plugin that is not installed yet, so a restored binding cannot resolve it. */
   readonly backendAvailable?: () => boolean;
+  /** Read per connect, so a test can sign the backend into another identity and back again. */
+  readonly backendIdentity?: () => string;
 }): ServerSyncFixture {
   const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-server-sync-'));
   const configPath = join(directory, 'config.jsonc');
@@ -129,7 +134,7 @@ export function createServerSyncFixture(input: {
   const db = openDb({ home: directory });
   const repo = createSyncRepository(db.sqlite);
   const events: string[] = [];
-  const backend = memoryBackend(events);
+  const backend = memoryBackend(events, () => input.backendIdentity?.() ?? 'memory-identity');
   const registry = input.registry();
   const wrappedRegistry: PluginRegistry = {
     ...registry,

@@ -131,9 +131,10 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       if (closed || currentBindingMismatch || sessionMismatch) {
         await connected.dispose().catch(() => {});
         connected = undefined;
-        if (!closed && input.initialBinding !== undefined && sessionMismatch)
-          throw new Error('Synchronization session does not match binding');
-        return;
+        if (closed) return;
+        // Nothing was connected, so a restored lifecycle stays retryable: the user can sign the
+        // backend back into the bound identity and Retry, which calls start() on this same object.
+        return giveUp('Synchronization session does not match binding');
       }
       session = connected;
       const store = createSyncObjectStore(connected);

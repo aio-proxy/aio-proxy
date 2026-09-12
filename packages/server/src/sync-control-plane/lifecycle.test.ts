@@ -33,6 +33,32 @@ const repository = {
   compareAndSwapCredential: () => null,
 } as never;
 
+test('a restored binding reconnects once the backend is signed back into the bound identity', async () => {
+  let identity = 'other-identity';
+  const fixture = createServerSyncFixture({
+    accounts: repository,
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    backendIdentity: () => identity,
+  });
+  try {
+    await fixture.lifecycle.start();
+    expect(fixture.lifecycle.session()).toBeUndefined();
+    expect(fixture.events()).toEqual(['connected', 'disposed']);
+    // Signing the backend back in and taking the documented retry path calls start() on this same
+    // lifecycle, so the mismatch must not consume the one-shot start guard.
+    identity = 'memory-identity';
+    await fixture.lifecycle.start();
+    expect(fixture.lifecycle.session()?.identityId).toBe('memory-identity');
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('a restored binding whose plugin is missing starts once the plugin is installed', async () => {
   let available = false;
   const fixture = createServerSyncFixture({
