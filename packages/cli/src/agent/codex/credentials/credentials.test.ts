@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { AtomicConfigFile } from '@aio-proxy/core';
 
+import { readServiceEnvironment } from '../../../service-env';
 import { CredentialError, inspectProxyKeys, probeProxyApiKey } from './credentials';
 
 const fixture = async (value: unknown): Promise<{ readonly root: string; readonly path: string }> => {
@@ -73,6 +74,28 @@ test('existing template keys resolve privately and expose only an opaque choice'
       kind: 'existing',
       label: 'CI',
       verified: true,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('selection becomes stale when a service.env template value rotates', async () => {
+  const { root, path } = await fixture({
+    providers: {},
+    server: { apiKeys: [{ key: '{{env.TEST_KEY}}', label: 'CI' }] },
+  });
+  try {
+    await Bun.write(join(root, 'service.env'), 'TEST_KEY=sk-old\n');
+    const snapshot = await inspectProxyKeys({
+      file: new AtomicConfigFile(path),
+      loadEnvironment() {},
+      readEnvironment: () => readServiceEnvironment(path),
+      check: async () => 'offline',
+    });
+    await Bun.write(join(root, 'service.env'), 'TEST_KEY=sk-rotated\n');
+    await expect(snapshot.resolve({ kind: 'existing', id: snapshot.choices[0]!.id })).rejects.toMatchObject({
+      code: 'CREDENTIAL_SELECTION_STALE',
     });
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -158,6 +181,16 @@ test('selection becomes stale when an authored extra field changes', async () =>
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('rejects an empty object catalog when probing a static API key', async () => {
+  await expect(
+    probeProxyApiKey({
+      endpoint: 'http://127.0.0.1:9',
+      token: 'sk-test',
+      fetch: async () => Response.json({}),
+    }),
+  ).resolves.toBe('invalid_response');
 });
 
 test('rejects a class-instance catalog when probing a static API key', async () => {

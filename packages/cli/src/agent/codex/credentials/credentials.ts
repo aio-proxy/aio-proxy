@@ -30,6 +30,9 @@ type CredentialState = {
 
 const asCredentialError = (code: CredentialErrorCode): CredentialError => new CredentialError(code);
 
+const isProxyModelCatalog = (body: unknown): boolean =>
+  isPlainObject(body) && body['object'] === 'list' && Array.isArray(body['data']);
+
 export async function probeProxyApiKey(input: {
   readonly endpoint: string;
   readonly token: string;
@@ -45,7 +48,7 @@ export async function probeProxyApiKey(input: {
     if (response.status === 401 || response.status === 403) return 'unauthorized';
     if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
     const body: unknown = await response.json().catch(() => undefined);
-    return isPlainObject(body) ? 'ok' : 'invalid_response';
+    return isProxyModelCatalog(body) ? 'ok' : 'invalid_response';
   } catch {
     return 'offline';
   }
