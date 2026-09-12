@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { isPluginRequirement } from '../protocol';
+import { isPluginRequirement, type JsonValue } from '../protocol';
 import { includedEntity, storedAccount } from '../test-support';
 import { overlayLocal, projectCommitted } from './projection';
 
@@ -361,4 +361,25 @@ test('a pinned routing default overlays the section it was authored in', () => {
     server: { retry: { attempts: 1 } },
     router: { modelContextAggregation: 'local', models: {} },
   });
+});
+
+// `__proto__` is a valid Provider ID and model name. A plain assignment for that key hits the
+// prototype setter, so the excluded entry would silently vanish from what is written back to disk.
+test('excluded prototype-named entries survive the device-local projection', () => {
+  const provider = { ...includedEntity('p-proto', 'provider', '__proto__'), mode: 'excluded' as const };
+  const model = { ...includedEntity('m-proto', 'model-rule', '__proto__'), mode: 'excluded' as const };
+  const raw = JSON.parse(
+    '{"providers":{"__proto__":{"kind":"api","apiKey":"local"}},"router":{"models":{"__proto__":{"providers":{}}}}}',
+  ) as Record<string, JsonValue>;
+
+  const result = projectCommitted({ raw, accounts: new Map(), pluginSecrets: new Map(), pluginVersions: new Map() }, [
+    provider,
+    model,
+  ]);
+
+  const providers = result.local['providers'] as Record<string, JsonValue>;
+  const models = (result.local['router'] as Record<string, JsonValue>)['models'] as Record<string, JsonValue>;
+  expect(Object.hasOwn(providers, '__proto__')).toBe(true);
+  expect(Object.getOwnPropertyDescriptor(providers, '__proto__')?.value).toEqual({ kind: 'api', apiKey: 'local' });
+  expect(Object.hasOwn(models, '__proto__')).toBe(true);
 });

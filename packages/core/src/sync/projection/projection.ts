@@ -38,6 +38,12 @@ function own(value: JsonRecord | undefined, key: string): boolean {
   return value !== undefined && Object.hasOwn(value, key);
 }
 
+// `__proto__` is a valid Provider ID and model name, and a plain assignment for that key invokes the
+// prototype setter instead of creating an own property, silently dropping the entry.
+function setKey(target: JsonRecord, key: string, value: JsonValue): void {
+  Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
+}
+
 function identityKey(kind: LocalEntity['kind'], logicalKey: string): string {
   return `${kind}\0${logicalKey}`;
 }
@@ -240,9 +246,9 @@ function localProjection(
     const entity = entities.find((candidate) => candidate.kind === 'provider' && candidate.logicalKey === providerId);
     if (entity?.mode === 'included') {
       const provider = asRecord(value);
-      if (own(provider, 'proxy')) localProviders[providerId] = { proxy: cloneJson(provider!['proxy']) };
+      if (own(provider, 'proxy')) setKey(localProviders, providerId, { proxy: cloneJson(provider!['proxy']) });
     } else {
-      localProviders[providerId] = cloneJson(value);
+      setKey(localProviders, providerId, cloneJson(value));
     }
   }
   if (own(raw, 'providers')) local['providers'] = localProviders;
@@ -253,9 +259,9 @@ function localProjection(
     const entity = entities.find((candidate) => candidate.kind === 'model-rule' && candidate.logicalKey === model);
     if (entity?.mode === 'included') {
       const partial = localModelPolicy(value, selected);
-      if (partial !== undefined) localModels[model] = partial;
+      if (partial !== undefined) setKey(localModels, model, partial);
     } else {
-      localModels[model] = cloneJson(value);
+      setKey(localModels, model, cloneJson(value));
     }
   }
   const router = asRecord(local['router']) ?? {};
