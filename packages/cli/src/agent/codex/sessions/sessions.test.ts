@@ -440,6 +440,19 @@ test('recovers a stale migration lease and blocks when the offline check is unav
   }
 });
 
+test('reclaims a lock directory left without an owner record', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-ownerless-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    await mkdir(join(location.managedRoot, 'migrations', '.lock'), { recursive: true });
+    const lock = await acquireSessionLock(location);
+    expect(lock.token).not.toBe('');
+    await lock.release();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('does not treat the current configure command as a Codex writer', () => {
   expect(isCodexWriterProcess(process.pid, '/usr/local/bin/aio-proxy agent configure codex')).toBe(false);
   expect(isCodexWriterProcess(process.pid + 1, '/usr/local/bin/aio-proxy agent configure codex')).toBe(false);

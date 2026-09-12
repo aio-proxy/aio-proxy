@@ -8,6 +8,7 @@ import {
   prepareCodexCommandInstallation,
   rebindCodexCommandInstallation,
   readCodexCommandCredentialInstallationId,
+  readCredential,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
 } from '../command-auth';
@@ -19,7 +20,7 @@ import type {
   CodexSetupSelection,
   ConfigInspection,
 } from '../contracts';
-import { configureCodexConfig, inspectCodexConfig, removeCodexConfig } from '../managed-config';
+import { configureCodexConfig, inspectCodexConfig, removeCodexConfig, validateCodexConfig } from '../managed-config';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
 import {
   authOperationPath,
@@ -80,6 +81,15 @@ async function commitKeepChatgpt(
   const identity = await readCodexCommandIdentity(context.location);
   const credentialInstallationId = await readCodexCommandCredentialInstallationId(context.location);
   const installationId = identity?.marker.installationId ?? credentialInstallationId;
+  await validateCodexConfig(
+    {
+      location: context.location,
+      providerId,
+      baseUrl: codexBaseUrl(context.endpoint),
+      auth: { mode: 'keep-chatgpt', token: credential.token },
+    },
+    lease,
+  );
   const fromMode = modeOf(inspection);
   if (installationId !== undefined) {
     const operation = await writeAuthOperation(context.location, {
@@ -142,7 +152,13 @@ async function commitCommand(
     installationId: prepared.marker.installationId,
     providerId,
   });
-  if (prepared.status === 'pending') {
+  const credential = await readCredential(context.location);
+  if (
+    prepared.status === 'pending' ||
+    credential === undefined ||
+    credential.status === 'reauthorize' ||
+    credential.accessExpiresAt <= Date.now()
+  ) {
     await authorizeCodexInstallation(
       {
         location: context.location,

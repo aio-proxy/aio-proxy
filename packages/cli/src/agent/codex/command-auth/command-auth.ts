@@ -149,7 +149,10 @@ async function authorizeOwned(
 ): Promise<void> {
   await lease.withOwnershipFence(async (assertOwned: () => Promise<void>) => {
     const current = await readIdentity(input.location);
-    if (current?.marker.installationId !== input.installation.marker.installationId || current.status !== 'pending')
+    if (
+      current?.marker.installationId !== input.installation.marker.installationId ||
+      (current.status !== 'pending' && current.status !== 'active')
+    )
       throw new Error('Codex command installation is not pending');
     await assertManagedInstallation(input.location, current);
     const cached = await readCredential(input.location);
@@ -200,13 +203,14 @@ async function authorizeOwned(
         }
       }
     }
-    const device = await requestDeviceAuthorization(input.installation.marker, { signal: input.signal });
+    const fetch = boundFetch(input.installation.marker.endpoint, input.signal);
+    const device = await requestDeviceAuthorization(input.installation.marker, { signal: input.signal, fetch });
     await assertOwned();
     await input.onDevice(device);
     const tokenResponse = await (input.pollDeviceAuthorization ?? pollDeviceAuthorization)(
       input.installation.marker,
       device,
-      { signal: input.signal },
+      { signal: input.signal, fetch },
     );
     await assertOwned();
     const state: CredentialState = {

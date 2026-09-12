@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
+import { lstat, readdir, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { validateCodexProviderId } from '../config-document';
@@ -122,7 +122,7 @@ async function scanLegacy(allowedRoots: readonly string[]): Promise<StateSnapsho
         continue;
       }
       if (!entry.isFile() || !/\.jsonl$/i.test(entry.name)) continue;
-      const bytes = new Uint8Array(await readFile(path));
+      const bytes = await Bun.file(path).bytes();
       try {
         const meta = inspectLegacyMetadata(bytes);
         if (!isValidProviderId(meta.providerId)) throw new Error('invalid provider metadata');
@@ -209,7 +209,7 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
       }
       try {
         const path = await safeFile(rollout, allowedRoots);
-        const bytes = new Uint8Array(await readFile(path));
+        const bytes = await Bun.file(path).bytes();
         const metadata = inspectLegacyMetadata(bytes);
         if (metadata.id !== id) throw new Error('index rollout id does not match session_meta');
         if (metadata.providerId !== provider) throw new Error('index provider does not match rollout metadata');

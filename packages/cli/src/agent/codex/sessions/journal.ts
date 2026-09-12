@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { CodexLocation } from '../contracts';
@@ -98,7 +98,7 @@ function processAlive(pid: number): boolean {
 
 async function readLease(location: CodexLocation): Promise<LeaseOwner | undefined> {
   try {
-    return parseOwner(JSON.parse(await readFile(ownerPath(location), 'utf8')));
+    return parseOwner(JSON.parse(await Bun.file(ownerPath(location)).text()));
   } catch {
     return undefined;
   }
@@ -123,7 +123,7 @@ async function reclaimExpiredLock(
   }
   let owner: LeaseOwner | undefined;
   try {
-    owner = parseOwner(JSON.parse(await readFile(join(quarantine, 'owner.json'), 'utf8')));
+    owner = parseOwner(JSON.parse(await Bun.file(join(quarantine, 'owner.json')).text()));
   } catch {
     await restoreQuarantinedLock(location, quarantine);
     return false;
@@ -158,6 +158,29 @@ async function restoreQuarantinedLock(location: CodexLocation, quarantine: strin
   }
 }
 
+async function reclaimOwnerlessLock(location: CodexLocation, contenderToken: string): Promise<boolean> {
+  const quarantine = quarantinePath(location, contenderToken);
+  try {
+    await rename(lockPath(location), quarantine);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return false;
+    throw error;
+  }
+  try {
+    await Bun.file(join(quarantine, 'owner.json')).text();
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) {
+      await rm(quarantine, { recursive: true, force: true });
+      await syncParent(quarantine);
+      return true;
+    }
+    await restoreQuarantinedLock(location, quarantine);
+    return false;
+  }
+  await restoreQuarantinedLock(location, quarantine);
+  return false;
+}
+
 export async function acquireSessionLock(location: CodexLocation): Promise<SessionLock> {
   await assertNoSymlinkParents(migrationRoot(location));
   await mkdir(migrationRoot(location), { recursive: true, mode: 0o700 });
@@ -172,7 +195,12 @@ export async function acquireSessionLock(location: CodexLocation): Promise<Sessi
     } catch (error) {
       if (!isFsCode(error, 'EEXIST')) throw error;
       const current = await readLease(location);
-      if (current === undefined || processAlive(current.pid) || current.expiresAt > Date.now())
+      if (current === undefined) {
+        if (!(await reclaimOwnerlessLock(location, token)))
+          throw new Error('another Codex session migration is in progress');
+        continue;
+      }
+      if (processAlive(current.pid) || current.expiresAt > Date.now())
         throw new Error('another Codex session migration is in progress');
       await reclaimExpiredLock(location, current, token);
     }

@@ -10,4 +10,5 @@ export {
   retireCodexCommandInstallation,
   type CodexCommandInstallation,
 } from './command-auth';
+export { readCredential } from './credential-store';
 export { writeCodexAuthToken } from './token-delivery';

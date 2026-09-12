@@ -1,4 +1,4 @@
-import { open, readFile, rename as nodeRename, rm, type FileHandle } from 'node:fs/promises';
+import { open, rename as nodeRename, rm, type FileHandle } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,7 +29,7 @@ export async function readManagedInstallation(
     const markerPath = join(rootDir, '.aio-proxy-managed.json');
     let body: unknown;
     try {
-      body = JSON.parse(await readFile(markerPath, 'utf8'));
+      body = JSON.parse(await Bun.file(markerPath).text());
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue;
       throw new AgentRuntimeError('invalid_response');
@@ -48,7 +48,7 @@ export async function readManagedInstallation(
 
 export async function readManagedState(statePath: string): Promise<AgentManagedStateV1 | null> {
   try {
-    const parsed = AgentManagedStateV1Schema.safeParse(JSON.parse(await readFile(statePath, 'utf8')));
+    const parsed = AgentManagedStateV1Schema.safeParse(JSON.parse(await Bun.file(statePath).text()));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

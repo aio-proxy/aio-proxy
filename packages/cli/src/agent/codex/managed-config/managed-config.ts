@@ -289,7 +289,12 @@ function makeFields(text: string, providerId: string, edits: readonly FieldEdit[
 export async function inspectCodexConfig(location: CodexLocation): Promise<ConfigInspection> {
   const current = await readText(location);
   if (current === undefined) return { status: 'absent', activeProviderId: '', changedPaths: [] };
-  const document = readCodexDocument(current.text);
+  let document: ReturnType<typeof readCodexDocument>;
+  try {
+    document = readCodexDocument(current.text);
+  } catch {
+    return { status: 'conflict', activeProviderId: '', changedPaths: [] };
+  }
   let marker: CodexMarker | undefined;
   try {
     marker = await readMarker(location);
@@ -320,6 +325,7 @@ export async function configureCodexConfig(
     readonly providerId: string;
     readonly baseUrl: string;
     readonly auth: CodexAuthConfig;
+    readonly validateOnly?: boolean;
   },
   lease?: CodexLease,
 ): Promise<ConfigCommit> {
@@ -382,6 +388,7 @@ export async function configureCodexConfig(
         createdTables = [...createdTables, authPath];
       const nextMarker = markerFor(location, providerId, fields, createdTables, auth);
       validateMarker(nextMarker, location);
+      if (input.validateOnly) return { status: 'unchanged', providerId };
       if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
         await chmodChecked(location.configPath, 0o600);
         await chmodChecked(location.markerPath, 0o600);
@@ -407,6 +414,13 @@ export async function configureCodexConfig(
       return { status: 'configured', providerId };
     }),
   );
+}
+
+export function validateCodexConfig(
+  input: Parameters<typeof configureCodexConfig>[0],
+  lease?: CodexLease,
+): Promise<ConfigCommit> {
+  return configureCodexConfig({ ...input, validateOnly: true }, lease);
 }
 
 export async function removeCodexConfig(location: CodexLocation, lease?: CodexLease): Promise<ConfigRemoval> {

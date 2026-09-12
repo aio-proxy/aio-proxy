@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { constants } from 'node:fs';
-import { lstat, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { lstat, open, realpath, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
 import type { CodexLocation, MigrationResult } from '../contracts';
@@ -71,8 +71,7 @@ async function assertJournalPaths(location: CodexLocation, journal: SessionMigra
 
 async function replaceFile(path: string, originalFingerprint: string, bytes: Uint8Array): Promise<void> {
   if ((await inspectRegularFile(path)) === undefined) throw new Error('rollout disappeared');
-  if (fingerprintBytes(new Uint8Array(await readFile(path))) !== originalFingerprint)
-    throw new Error('rollout changed');
+  if (fingerprintBytes(await Bun.file(path).bytes()) !== originalFingerprint) throw new Error('rollout changed');
   const temporary = join(dirname(path), `.${path.split('/').at(-1)}.${crypto.randomUUID()}.tmp`);
   const handle = await open(
     temporary,
@@ -88,8 +87,7 @@ async function replaceFile(path: string, originalFingerprint: string, bytes: Uin
   try {
     const stat = await lstat(path);
     if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('unsafe rollout path');
-    if (fingerprintBytes(new Uint8Array(await readFile(path))) !== originalFingerprint)
-      throw new Error('rollout changed');
+    if (fingerprintBytes(await Bun.file(path).bytes()) !== originalFingerprint) throw new Error('rollout changed');
     await rename(temporary, path);
     await syncParent(path);
   } catch (error) {
@@ -103,7 +101,7 @@ async function planFiles(entries: readonly JournalEntry[]): Promise<{ plans: Res
   const plans: RestoreFilePlan[] = [];
   let conflicts = 0;
   for (const entry of entries) {
-    const backup = new Uint8Array(await readFile(entry.backup));
+    const backup = await Bun.file(entry.backup).bytes();
     try {
       const metadata = inspectLegacyMetadata(backup);
       if (
@@ -118,7 +116,7 @@ async function planFiles(entries: readonly JournalEntry[]): Promise<{ plans: Res
       conflicts += 1;
       continue;
     }
-    const current = new Uint8Array(await readFile(entry.path));
+    const current = await Bun.file(entry.path).bytes();
     let metadata;
     try {
       metadata = inspectLegacyMetadata(current);

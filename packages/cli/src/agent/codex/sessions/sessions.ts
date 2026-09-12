@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { constants } from 'node:fs';
-import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { lstat, open, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { validateCodexProviderId } from '../config-document';
@@ -77,9 +77,10 @@ const defaultOfflineCheck = async (
     for (const entry of proc) {
       if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
       if (Number(entry.name) === process.pid) continue;
-      const command = await readFile(`/proc/${entry.name}/cmdline`).catch(() => undefined);
-      if (command !== undefined && isCodexWriterProcess(Number(entry.name), command.toString('utf8')))
-        return 'codex_active';
+      const command = await Bun.file(`/proc/${entry.name}/cmdline`)
+        .text()
+        .catch(() => undefined);
+      if (command !== undefined && isCodexWriterProcess(Number(entry.name), command)) return 'codex_active';
     }
     return 'ok';
   } catch {
@@ -193,7 +194,7 @@ const previewDiagnostic = (error: unknown): string => {
 async function replaceFile(path: string, originalFingerprint: string, bytes: Uint8Array): Promise<void> {
   const stat = await inspectRegularFile(path);
   if (stat === undefined) throw new Error('rollout disappeared');
-  const current = new Uint8Array(await readFile(path));
+  const current = await Bun.file(path).bytes();
   if (fingerprintBytes(current) !== originalFingerprint) throw new Error('rollout changed during migration');
   const temporary = join(dirname(path), `.${path.split('/').at(-1)}.${crypto.randomUUID()}.tmp`);
   const handle = await open(
@@ -210,7 +211,7 @@ async function replaceFile(path: string, originalFingerprint: string, bytes: Uin
   try {
     const beforeRename = await lstat(path);
     if (beforeRename.isSymbolicLink() || !beforeRename.isFile()) throw new Error('rollout path became unsafe');
-    if (fingerprintBytes(new Uint8Array(await readFile(path))) !== originalFingerprint)
+    if (fingerprintBytes(await Bun.file(path).bytes()) !== originalFingerprint)
       throw new Error('rollout changed before replacement');
     await rename(temporary, path);
     await syncParent(path);
@@ -223,9 +224,9 @@ async function replaceFile(path: string, originalFingerprint: string, bytes: Uin
 async function rollbackFiles(entries: readonly JournalEntry[]): Promise<void> {
   for (const entry of entries) {
     try {
-      const bytes = new Uint8Array(await readFile(entry.path));
+      const bytes = await Bun.file(entry.path).bytes();
       if (fingerprintBytes(bytes) !== entry.appliedFingerprint) continue;
-      const backup = new Uint8Array(await readFile(entry.backup));
+      const backup = await Bun.file(entry.backup).bytes();
       await replaceFile(entry.path, entry.appliedFingerprint, backup);
     } catch {
       // Keep the journal as the durable recovery source if rollback cannot complete.
@@ -319,7 +320,7 @@ export async function migrateCodexSessions(input: {
     try {
       if (testDeps.beforeLog !== undefined) await testDeps.beforeLog();
       for (const session of selected) {
-        const original = new Uint8Array(await readFile(session.rolloutPath));
+        const original = await Bun.file(session.rolloutPath).bytes();
         if (fingerprintBytes(original) !== session.revision) throw new Error('rollout changed during preflight');
         const applied = rewriteLegacyProvider(original, session.id, session.sourceProviderId, targetProviderId);
         const backup = join(operationDir, 'backups', `${entries.length}.jsonl`);
@@ -350,7 +351,7 @@ export async function migrateCodexSessions(input: {
           );
         for (let index = 0; index < selected.length; index += 1) {
           const entry = entries[index]!;
-          const original = new Uint8Array(await readFile(entry.backup));
+          const original = await Bun.file(entry.backup).bytes();
           const applied = rewriteLegacyProvider(original, entry.id, entry.sourceProviderId, targetProviderId);
           await replaceFile(entry.path, entry.originalFingerprint, applied);
           entries[index] = { ...entry, status: 'applied' };

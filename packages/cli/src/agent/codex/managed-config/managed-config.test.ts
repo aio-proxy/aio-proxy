@@ -39,6 +39,15 @@ test('remove restores managed fields and retains a later model choice', async ()
   }
 });
 
+test('reports malformed TOML as a conflict instead of throwing', async () => {
+  const { root, location } = await fixture('model_provider = [\n');
+  try {
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({ status: 'conflict', activeProviderId: '' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preserves a user change to base_url and reports modified state', async () => {
   const { root, location } = await fixture();
   try {

@@ -1,5 +1,6 @@
 export {
   configureCodexConfig,
+  validateCodexConfig,
   inspectCodexConfig,
   recoverCodexConfigOperation,
   removeCodexConfig,
