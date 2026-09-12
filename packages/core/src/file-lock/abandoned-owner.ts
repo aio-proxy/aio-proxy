@@ -1,5 +1,5 @@
 import type { Stats } from 'node:fs';
-import { readFile, stat, unlink } from 'node:fs/promises';
+import { stat, unlink } from 'node:fs/promises';
 
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -36,7 +36,7 @@ export async function reclaimAbandonedOwner(path: string, assertFence: () => Pro
   const abandoned = abandonedOwners.get(path);
   if (abandoned === undefined) return false;
   try {
-    const [text, metadata] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
+    const [text, metadata] = await Promise.all([Bun.file(path).text(), stat(path)]);
     if (
       ownerFrom(text) !== abandoned.owner ||
       text !== abandoned.text ||
@@ -47,7 +47,7 @@ export async function reclaimAbandonedOwner(path: string, assertFence: () => Pro
       return false;
     }
     await assertFence();
-    const [currentText, currentMetadata] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
+    const [currentText, currentMetadata] = await Promise.all([Bun.file(path).text(), stat(path)]);
     if (
       ownerFrom(currentText) !== abandoned.owner ||
       currentText !== abandoned.text ||

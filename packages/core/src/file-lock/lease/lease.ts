@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { constants, type Stats } from 'node:fs';
-import { mkdir, open, readFile, lstat, unlink } from 'node:fs/promises';
+import { mkdir, open, lstat, unlink } from 'node:fs/promises';
 import { dirname, join, parse, resolve } from 'node:path';
 
 import { clearAbandonedOwner, reclaimAbandonedOwner, rememberAbandonedOwner } from '../abandoned-owner';
@@ -75,7 +75,7 @@ async function assertSafePath(path: string): Promise<void> {
 async function ownerIsStale(path: string): Promise<{ stale: boolean; text?: string; identity?: Stats }> {
   let text: string;
   try {
-    text = await readFile(path, 'utf8');
+    text = await Bun.file(path).text();
   } catch (error) {
     if (isNodeError(error, 'ENOENT')) return { stale: true };
     throw error;
@@ -110,11 +110,11 @@ async function removeIfUnchanged(
   assertFence: () => Promise<void>,
 ): Promise<boolean> {
   try {
-    const [currentText, current] = await Promise.all([readFile(path, 'utf8'), lstat(path)]);
+    const [currentText, current] = await Promise.all([Bun.file(path).text(), lstat(path)]);
     if (current.isSymbolicLink() || current.nlink > 1 || currentText !== text || !sameIdentity(identity, current))
       return false;
     await assertFence();
-    const [latestText, latest] = await Promise.all([readFile(path, 'utf8'), lstat(path)]);
+    const [latestText, latest] = await Promise.all([Bun.file(path).text(), lstat(path)]);
     if (latestText !== text || latest.isSymbolicLink() || latest.nlink > 1 || !sameIdentity(identity, latest))
       return false;
     await unlink(path);
@@ -193,7 +193,7 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
   const verify = async () => {
     if (released) throw new Error('Process lock ownership lost');
     try {
-      const [text, current] = await Promise.all([readFile(path, 'utf8'), lstat(path)]);
+      const [text, current] = await Promise.all([Bun.file(path).text(), lstat(path)]);
       if (text !== content || current.isSymbolicLink() || current.nlink > 1 || !sameIdentity(identity!, current))
         throw new Error('Process lock ownership lost');
     } catch (error) {
