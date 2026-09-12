@@ -22,7 +22,14 @@ import type {
 } from '@aio-proxy/types';
 
 import type { ServerSyncLifecycle } from './lifecycle';
-import { applyPreview, assertDecisions, setRange, SyncOperationError, type OperationInput } from './operations';
+import {
+  applyPreview,
+  assertDecisions,
+  assertNoRetainedOAuth,
+  setRange,
+  SyncOperationError,
+  type OperationInput,
+} from './operations';
 import {
   buildPreview,
   createPreviewToken,
@@ -456,6 +463,8 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       return status();
     },
     async disconnect() {
+      const active = binding();
+      if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
       await options.lifecycle?.close();
       // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
       // so the next service start would read it and reconnect, silently undoing the disconnect.

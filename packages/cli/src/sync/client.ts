@@ -78,6 +78,8 @@ function mapError(code: string | undefined, status: number, url: string): SyncCl
       return new SyncCliError('backend-unavailable', m['cli.sync.backend_unavailable']());
     case 'dependency-in-use':
       return new SyncCliError('dependency-in-use', m['cli.sync.dependency_in_use']());
+    case 'detach-required':
+      return new SyncCliError('detach-required', m['cli.sync.detach_required']());
     case 'operation-pending':
       return new SyncCliError('operation-pending', m['cli.sync.operation_pending']());
     case 'upgrade-required':

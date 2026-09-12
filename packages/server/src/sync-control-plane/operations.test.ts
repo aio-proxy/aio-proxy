@@ -3,7 +3,13 @@ import { expect, test } from 'bun:test';
 import type { EntityBody, LocalEntity } from '@aio-proxy/core';
 import type { SyncPreviewInput } from '@aio-proxy/types';
 
-import { applyPreview, assertDecisions, SyncOperationError, type OperationInput } from './operations';
+import {
+  applyPreview,
+  assertDecisions,
+  assertNoRetainedOAuth,
+  SyncOperationError,
+  type OperationInput,
+} from './operations';
 import type { PreviewCandidate, PreviewFence, PreviewRecord, RemoteEntity } from './preview';
 
 const fence: PreviewFence = {
@@ -274,4 +280,26 @@ test('connecting excludes a row the decisions left out instead of carrying its o
     { objectId: 'provider-a', mode: 'excluded' },
     { objectId: 'provider-b', mode: 'included' },
   ]);
+});
+
+test('retiring a binding is refused while any row still holds a shared credential', () => {
+  const repo = (entities: LocalEntity[], journalObjectIds: string[] = []) =>
+    ({
+      entities: () => entities,
+      oauthJournals: () => journalObjectIds.map((objectId) => ({ objectId })),
+    }) as never;
+  const row = (objectId: string, mode?: 'shared' | 'detach-pending' | 'independent'): LocalEntity => ({
+    ...localEntity(objectId, 'provider', objectId),
+    ...(mode === undefined
+      ? {}
+      : { oauth: { mode, epoch: 0, generation: 1, localRevision: 1, pluginVersion: '1.0.0', formatVersion: 1 } }),
+  });
+
+  expect(() => assertNoRetainedOAuth(repo([row('a'), row('b', 'shared')]), 'binding')).toThrow(SyncOperationError);
+  expect(() => assertNoRetainedOAuth(repo([row('b', 'detach-pending')]), 'binding')).toThrow(SyncOperationError);
+  // An interrupted share may already have published the credential, so a journal row blocks even
+  // though no ownership was recorded before the crash.
+  expect(() => assertNoRetainedOAuth(repo([row('a')], ['a']), 'binding')).toThrow(SyncOperationError);
+  // A detached Provider owns its credential alone, so nothing follows it across the retire.
+  expect(() => assertNoRetainedOAuth(repo([row('a'), row('b', 'independent')]), 'binding')).not.toThrow();
 });

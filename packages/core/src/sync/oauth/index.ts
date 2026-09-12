@@ -1,6 +1,7 @@
 export {
   canActivateSyncedAccount,
   decodeAccount,
+  retainsSharedOAuth,
   type AccountPayload,
   type AccountRecord,
   type LiveAccount,

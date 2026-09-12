@@ -64,6 +64,24 @@ export interface OAuthOwnership {
   multiDeviceEvidenceId?: string;
 }
 
+/**
+ * Whether this row still speaks for a credential other devices may be following: it holds
+ * ownership that is not `independent`, or an OAuth operation is journalled against its object and
+ * may have published the credential before it was interrupted. Either way the local credential
+ * port must not rotate the refresh token on its own, and the binding must not be retired while the
+ * hold stands — nothing can target an inactive lifecycle, so a surviving hold could never be
+ * detached.
+ */
+export function retainsSharedOAuth(
+  entity: { readonly objectId: string; readonly oauth?: OAuthOwnership },
+  journals: readonly { readonly objectId: string }[],
+): boolean {
+  return (
+    (entity.oauth !== undefined && entity.oauth.mode !== 'independent') ||
+    journals.some((row) => row.objectId === entity.objectId)
+  );
+}
+
 const accountPayloadSchema = z.object({
   credential: z.unknown(),
   options: z.unknown(),

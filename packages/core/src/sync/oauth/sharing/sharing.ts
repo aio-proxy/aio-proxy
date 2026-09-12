@@ -5,6 +5,7 @@ import type { AccountWrite, PluginRepository, StoredAccount } from '../../../plu
 import { accountKey } from '../../protocol';
 import type { SyncObjectStore } from '../../publication';
 import type { LocalBinding, LocalEntity, SyncRepository } from '../../repository';
+import { retainsSharedOAuth } from '../protocol';
 import { accountBytes, entityFor, payloadFor, readRemote, verifyDetach } from './detach';
 import { asJournalPayload, sameJson, sameRemote } from './journal';
 import { importRemoteAccount } from './receive';
@@ -90,8 +91,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
                   (old) =>
                     old.kind === 'provider' &&
                     old.logicalKey === providerId &&
-                    ((old.oauth !== undefined && old.oauth.mode !== 'independent') ||
-                      input.repo.oauthJournals(binding.id).some((row) => row.objectId === old.objectId)),
+                    retainsSharedOAuth(old, input.repo.oauthJournals(binding.id)),
                 ),
           )
       ) {

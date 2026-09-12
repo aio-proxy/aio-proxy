@@ -96,6 +96,7 @@
       "not_connected": "設定同步未連線",
       "backend_unavailable": "同步後端無法使用",
       "dependency_in_use": "操作遭相依提供商阻擋",
+      "detach_required": "請先用 `aio-proxy sync detach` 解除共享 OAuth 提供商的連結，再中斷連線或切換後端",
       "operation_pending": "已有同步操作正在處理",
       "upgrade_required": "同步後端需要升級",
       "invalid_request": "同步請求無效",

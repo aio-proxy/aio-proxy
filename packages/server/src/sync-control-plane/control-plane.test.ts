@@ -41,6 +41,50 @@ test('disconnect clears the persisted binding so the next start does not reconne
   expect(status.state).toBe('disconnected');
 });
 
+test('disconnect refuses to retire a binding that still owns a shared credential', async () => {
+  const binding = { id: 'binding-1' };
+  let cleared = 0;
+  let closed = 0;
+  const shared = {
+    objectId: 'account-1',
+    oauth: { mode: 'shared', epoch: 0, generation: 1, localRevision: 1, pluginVersion: '1.0.0', formatVersion: 1 },
+  };
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => binding,
+      entities: () => [shared],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      clearBinding: () => {
+        cleared += 1;
+      },
+    } as never,
+    binding: () => binding as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    lifecycle: {
+      activate: () => {},
+      reconcile: async () => {},
+      close: async () => {
+        closed += 1;
+      },
+    },
+  });
+
+  // Ownership names an account object in this backend's space, so a retired binding can never
+  // detach it — and dropping the record would let the plain local port rotate a refresh token the
+  // other devices still hold. Nothing is torn down before the user detaches.
+  await expect(control.disconnect()).rejects.toMatchObject({ code: 'detach-required' });
+  expect(closed).toBe(0);
+  expect(cleared).toBe(0);
+});
 test('background engine outcomes move the publicly reported state', async () => {
   const binding = {
     id: 'binding-1',

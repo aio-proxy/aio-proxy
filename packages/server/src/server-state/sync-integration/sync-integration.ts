@@ -22,6 +22,7 @@ import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { createFifoQueue, type FifoQueue } from '../../fifo-queue';
 import {
+  assertNoRetainedOAuth,
   createLocalSyncPort,
   createServerSyncLifecycle,
   listRemoteEntities,
@@ -209,11 +210,14 @@ export function createSyncIntegration(
       const authored = (await configFile.read()) as Record<string, JsonValue>;
       await queue(async () => {
         const previousBinding = syncRepository.readBinding();
-        // Ownership is scoped to the space that holds the account object. The replacement backend
-        // has none, so a copied `shared` row would claim an object that does not exist there and
-        // leave the Provider blocked. Carry the configuration only; the new binding re-establishes
-        // OAuth ownership through its own recovery, which still refuses while the old binding owns
-        // the credential.
+        // Retiring a binding that still holds a shared OAuth credential strands it: ownership names
+        // an account object in the old backend's space, so detaching can no longer target it, and
+        // the Provider stays blocked on this and every later binding. Refuse before anything is
+        // committed and let the user detach on the backend that owns the credential.
+        if (previousBinding !== null) assertNoRetainedOAuth(syncRepository, previousBinding.id);
+        // Ownership is scoped to the space that holds the account object, and the replacement backend
+        // has none. Nothing survives the guard above except an already detached row, so carry the
+        // configuration only and let the new binding establish its own ownership.
         const previousEntities = (previousBinding === null ? [] : syncRepository.entities(previousBinding.id)).map(
           ({ oauth, ...entity }) => (oauth === undefined ? entity : { ...entity, pendingReason: null }),
         );

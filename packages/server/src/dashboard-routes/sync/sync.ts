@@ -31,6 +31,7 @@ type SyncErrorCode =
   | 'invalid-request'
   | 'not-connected'
   | 'dependency-in-use'
+  | 'detach-required'
   | 'operation-pending'
   | 'upgrade-required'
   | 'backend-unavailable';

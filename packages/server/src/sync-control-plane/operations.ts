@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { EntityBody, LocalEntity, LocalBinding, SyncRepository } from '@aio-proxy/core';
+import { retainsSharedOAuth } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -14,12 +15,27 @@ export class SyncOperationError extends Error {
     readonly code:
       | 'not-connected'
       | 'dependency-in-use'
+      | 'detach-required'
       | 'operation-pending'
       | 'upgrade-required'
       | 'backend-unavailable',
   ) {
     super(code);
   }
+}
+
+/**
+ * Refuses to retire a binding whose rows still hold a shared OAuth credential. Ownership is scoped
+ * to the account object in that backend's space, so once the binding is inactive nothing can target
+ * it: a hold left behind blocks the Provider on every later binding with no operation able to
+ * resolve it, while erasing it would drop the only durable record that other devices follow this
+ * credential and let the local port rotate the refresh token out from under them. Detaching before
+ * the binding goes away is the one resolution that is safe both ways.
+ */
+export function assertNoRetainedOAuth(repo: SyncRepository, bindingId: string): void {
+  const journals = repo.oauthJournals(bindingId);
+  if (repo.entities(bindingId).some((entity) => retainsSharedOAuth(entity, journals)))
+    throw new SyncOperationError('detach-required');
 }
 
 export type OperationInput = {

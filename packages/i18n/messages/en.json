@@ -96,6 +96,7 @@
       "not_connected": "Configuration sync is not connected",
       "backend_unavailable": "The sync backend is unavailable",
       "dependency_in_use": "The operation is blocked by a dependent Provider",
+      "detach_required": "Detach the shared OAuth Provider with `aio-proxy sync detach` before disconnecting or switching backends",
       "operation_pending": "A sync operation is already pending",
       "upgrade_required": "The sync backend requires an upgrade",
       "invalid_request": "The sync request is invalid",

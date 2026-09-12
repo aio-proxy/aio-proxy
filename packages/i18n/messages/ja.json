@@ -96,6 +96,7 @@
       "not_connected": "設定同期が接続されていません",
       "backend_unavailable": "同期バックエンドを利用できません",
       "dependency_in_use": "依存するプロバイダーがあるため操作できません",
+      "detach_required": "`aio-proxy sync detach` で共有中の OAuth プロバイダーを切り離してから、接続解除またはバックエンド切り替えを行ってください",
       "operation_pending": "同期操作がすでに保留中です",
       "upgrade_required": "同期バックエンドのアップグレードが必要です",
       "invalid_request": "同期リクエストが無効です",

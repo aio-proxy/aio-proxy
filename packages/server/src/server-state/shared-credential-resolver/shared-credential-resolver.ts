@@ -1,6 +1,7 @@
 import {
   createSharedCredentialPort,
   type CredentialPortCallbacks,
+  retainsSharedOAuth,
   SyncOAuthError,
   type PluginRepository,
   type SharedOAuthCoordinator,
@@ -44,9 +45,7 @@ export function createSharedCredentialResolver(
     if (
       owned.some(
         ({ bindingId, entity }) =>
-          bindingId !== binding?.id &&
-          ((entity.oauth !== undefined && entity.oauth.mode !== 'independent') ||
-            syncRepository.oauthJournals(bindingId).some((row) => row.objectId === entity.objectId)),
+          bindingId !== binding?.id && retainsSharedOAuth(entity, syncRepository.oauthJournals(bindingId)),
       )
     ) {
       return blocked('detach-pending', 'The shared OAuth ownership is unresolved across synchronization bindings');

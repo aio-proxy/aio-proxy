@@ -83,7 +83,7 @@ test('binding switches preserve old rows while exposing one active binding', () 
   db.close();
 });
 
-test('disconnecting releases the retired binding OAuth ownership and journal', () => {
+test('disconnecting keeps the retired binding OAuth ownership and journal', () => {
   const db = new Database(':memory:');
   migrateSyncTestDb(db);
   const repo = createSyncRepository(db);
@@ -103,10 +103,11 @@ test('disconnecting releases the retired binding OAuth ownership and journal', (
 
   repo.clearBinding!();
 
-  // Nothing can target an inactive lifecycle, so ownership or a journal surviving here would block
-  // every later binding at `detach-pending` with no operation able to resolve it.
-  expect(repo.entities('old')[0]?.oauth).toBeUndefined();
-  expect(repo.oauthJournals('old')).toEqual([]);
+  // Ownership is the only durable record that other devices follow this credential. Erasing it
+  // would let the ordinary local port rotate the refresh token with no cloud coordination and
+  // invalidate the other devices; the retire paths refuse instead, so it survives here.
+  expect(repo.entities('old')[0]?.oauth?.mode).toBe('shared');
+  expect(repo.oauthJournals('old')).toHaveLength(1);
   expect(repo.readBinding()).toBeNull();
   db.close();
 });

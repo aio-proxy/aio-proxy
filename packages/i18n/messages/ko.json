@@ -96,6 +96,7 @@
       "not_connected": "구성 동기화가 연결되지 않았습니다",
       "backend_unavailable": "동기화 백엔드를 사용할 수 없습니다",
       "dependency_in_use": "종속 프로바이더가 있어 작업이 차단되었습니다",
+      "detach_required": "`aio-proxy sync detach`로 공유 중인 OAuth 프로바이더를 분리한 뒤 연결을 해제하거나 백엔드를 전환하세요",
       "operation_pending": "동기화 작업이 이미 보류 중입니다",
       "upgrade_required": "동기화 백엔드 업그레이드가 필요합니다",
       "invalid_request": "동기화 요청이 잘못되었습니다",
