@@ -17,6 +17,7 @@ import {
 import { openDb } from '@aio-proxy/core/db';
 
 import type { ServerRuntime } from '../lifecycle';
+import { createSyncControlPlaneIntegration } from './control-plane-integration';
 import { createSyncIntegration, syncCommitOption } from './sync-integration';
 
 test('remote apply rejects a stale digest without overwriting an external edit', async () => {
@@ -218,6 +219,47 @@ test('a commit confirms into the binding it was prepared on after the backend is
     expect(repo.latestConfirmedCommit('binding-a')?.commitId).toBe(commitId);
   } finally {
     db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// A stalled backend read inside `share()`/`detach()` keeps holding the Provider gate, so an orphaned
+// signal lets a disconnect or a shutdown leave every later login and refresh for that Provider stuck.
+test('account sharing work is cancelled by the lifecycle that owns it', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-share-signal-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    await candidate.commit();
+    const lifecycle = fixture.integration.lifecycle!;
+    expect(lifecycle.signal.aborted).toBe(false);
+
+    let captured: AbortSignal | undefined;
+    const plane = createSyncControlPlaneIntegration(
+      {
+        manager: { current: () => ({ plugins: { registry: {} } }) },
+        repository: { readAccount: () => ({ providerId: 'person', plugin: 'p', capability: 'c' }) },
+      } as unknown as ServerRuntime,
+      {
+        ...fixture.integration,
+        sharing: () => ({
+          detach: (_providerId: string, _account: unknown, signal: AbortSignal) => {
+            captured = signal;
+            // A backend call that never settles: only cancellation can end it.
+            return new Promise<void>(() => {});
+          },
+        }),
+      } as unknown as ReturnType<typeof createSyncIntegration>,
+      { get: () => ({ status: 'succeeded', providerId: 'person' }) } as never,
+    )!;
+    void plane.detach('person', 'login-1').catch(() => {});
+    await Promise.resolve();
+
+    expect(captured?.aborted).toBe(false);
+    await lifecycle.close();
+    expect(captured?.aborted).toBe(true);
+  } finally {
+    fixture.db.close();
     rmSync(home, { recursive: true, force: true });
   }
 });

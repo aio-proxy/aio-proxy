@@ -141,7 +141,8 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   // re-arms, since this control plane is created once and survives connect/disconnect cycles.
   let lifetime = new AbortController();
   const remoteEntities = options.remoteEntities ?? (() => listRemoteEntities(options.session?.(), lifetime.signal));
-  const remoteOps = options.session === undefined ? undefined : () => createRemoteOperations(options.session!());
+  const remoteOps =
+    options.session === undefined ? undefined : () => createRemoteOperations(options.session!(), lifetime.signal);
   const restore =
     options.restore ?? (async (...args: Parameters<OperationInput['restore']>) => remoteOps!().restore(...args));
   const purge = options.purge ?? (async (...args: Parameters<OperationInput['purge']>) => remoteOps!().purge(...args));

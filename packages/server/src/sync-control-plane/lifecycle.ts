@@ -28,6 +28,8 @@ export interface ServerSyncLifecycle {
   close(): Promise<void>;
   onCommitted(input: { commitId: string; origin: 'local' | 'remote' }): Promise<void>;
   session(): SyncSession | undefined;
+  /** Aborted by `abort()` and `close()`, so backend work started for this binding cannot outlive it. */
+  readonly signal: AbortSignal;
 }
 
 export type ServerSyncLifecycleInput = {
@@ -224,5 +226,6 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
     close,
     onCommitted,
     session: () => session,
+    signal: controller.signal,
   };
 }

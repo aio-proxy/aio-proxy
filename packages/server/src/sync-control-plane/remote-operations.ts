@@ -73,10 +73,9 @@ async function conditional<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 /** The default remote half of the control plane operations, written straight through a session. */
-export function createRemoteOperations(session: SyncSession | undefined): RemoteOperations {
+export function createRemoteOperations(session: SyncSession | undefined, signal: AbortSignal): RemoteOperations {
   if (session === undefined) throw new SyncOperationError('not-connected');
   const store = createSyncObjectStore(session);
-  const signal = new AbortController().signal;
   return {
     async restore(objectId, body, operationId, _current, expected) {
       await conditional(() => restoreWithExpected(store, objectId, body, operationId, signal, expected));

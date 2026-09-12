@@ -88,9 +88,13 @@ export function createSyncControlPlaneIntegration(
       integration.syncRepository.putEntity(binding.id, { ...current, overrides });
     },
     shareOAuth: async (providerId) => {
-      // 'pending' is journalled by the sharing service and finished by its recovery pass, so the
-      // published configuration is not rolled back for it.
-      await integration.sharing()?.share(providerId, new AbortController().signal);
+      const lifecycle = integration.lifecycle;
+      if (lifecycle === undefined) return;
+      // Bound to the lifecycle that owns the sharing service, so a stalled backend read cannot keep
+      // holding the Provider gate after a disconnect, a backend swap, or shutdown. 'pending' is
+      // journalled by the sharing service and finished by its recovery pass, so the published
+      // configuration is not rolled back for it.
+      await integration.sharing()?.share(providerId, lifecycle.signal);
     },
     connect: integration.connectBackend,
     detach: async (providerId, loginSessionId) => {
@@ -99,8 +103,10 @@ export function createSyncControlPlaneIntegration(
         throw new SyncOperationError('operation-pending');
       const sharing = integration.sharing();
       const account = runtime.repository.readAccount(providerId);
-      if (sharing === undefined || account === null) throw new SyncOperationError('backend-unavailable');
-      await sharing.detach(providerId, accountCandidate(account), new AbortController().signal);
+      const lifecycle = integration.lifecycle;
+      if (sharing === undefined || account === null || lifecycle === undefined)
+        throw new SyncOperationError('backend-unavailable');
+      await sharing.detach(providerId, accountCandidate(account), lifecycle.signal);
     },
     cancelDetach: async (providerId) => {
       const sharing = integration.sharing();
