@@ -239,9 +239,22 @@ async function publishReserved(
     const next = publish(current.head, operation.operationId, operation.epoch);
     const bytes = encode(next);
     assertSize(store, bytes);
-    const result = await store.session.compareAndSwap(entityKey(operation.objectId), current.version, bytes, signal);
-    if (result.kind === 'written')
-      return { head: next, modifiedAt: result.modifiedAt, sequence: next.receipts[operation.operationId]! };
+    try {
+      const result = await store.session.compareAndSwap(entityKey(operation.objectId), current.version, bytes, signal);
+      if (result.kind === 'written')
+        return { head: next, modifiedAt: result.modifiedAt, sequence: next.receipts[operation.operationId]! };
+    } catch (error) {
+      // This CAS is what makes the payload current, so an unknown outcome that actually committed
+      // lets every peer activate the change while this device reports failure. `publish()` is the
+      // only writer of this receipt and the loop proved it absent above, so seeing it on the reread
+      // means the write landed. Control-plane publications mint a fresh operation ID per attempt,
+      // unlike outbox retries, so nothing else would ever reconcile the difference.
+      if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
+      const after = await store.readHead(operation.objectId, signal);
+      const landed = after === null ? undefined : await existingReceipt(store, after.head, operation, signal);
+      if (after === null || landed === undefined) throw error;
+      return { head: after.head, modifiedAt: after.modifiedAt, sequence: landed.sequence };
+    }
   }
 }
 
