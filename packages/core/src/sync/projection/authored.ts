@@ -16,6 +16,26 @@ function pluginPackages(value: JsonValue | undefined): string[] {
   });
 }
 
+function oauthProviderPackages(value: JsonValue | undefined): string[] {
+  const providers = record(value);
+  if (providers === undefined) return [];
+  return Object.values(providers).flatMap((provider) => {
+    const entry = record(provider);
+    return entry?.['kind'] === 'oauth' && typeof entry['plugin'] === 'string' ? [entry['plugin']] : [];
+  });
+}
+
+/**
+ * Every plugin package the configuration requires: those listed in `plugins`, plus the one an OAuth
+ * Provider names. `aio-proxy login` writes only the Provider entry, so its plugin never reaches the
+ * `plugins` array — and without an object of its own there is nothing for the Provider to depend on,
+ * which drops the Provider from the projection and publishes neither its configuration nor its
+ * account.
+ */
+export function authoredPluginPackages(raw: Record<string, JsonValue>): Set<string> {
+  return new Set([...pluginPackages(raw['plugins']), ...oauthProviderPackages(raw['providers'])]);
+}
+
 /**
  * Every object the authored configuration declares, as (kind, logicalKey) identities. This is the
  * inverse of the authored-object check used to detect deletions, so the two must agree: an identity
@@ -29,7 +49,7 @@ export function authoredEntityIdentities(
     identities.push({ kind: 'provider', logicalKey: providerId });
   for (const model of Object.keys(record(record(raw['router'])?.['models']) ?? {}))
     identities.push({ kind: 'model-rule', logicalKey: model });
-  for (const packageName of pluginPackages(raw['plugins']))
+  for (const packageName of authoredPluginPackages(raw))
     identities.push({ kind: 'plugin-business', logicalKey: packageName });
   // The two singleton kinds have no authored key of their own, so they use their kind as the
   // logical key — the same identity the published head carries.

@@ -275,7 +275,7 @@ test('omits a selected OAuth provider when its dedicated account is absent', () 
   expect(result.entities.has('plugin-demo')).toBe(true);
 });
 
-test('keeps missing dependency projection pending without allocating an identity', () => {
+test('publishes an AI SDK provider whose package is no authored plugin, and waits for one that is', () => {
   const provider = includedEntity('p-sdk', 'provider', 'sdk');
   const source = {
     raw: { providers: { sdk: { kind: 'ai-sdk', packageName: '@ai-sdk/missing' } } },
@@ -283,21 +283,40 @@ test('keeps missing dependency projection pending without allocating an identity
     pluginSecrets: new Map(),
     pluginVersions: new Map(),
   };
+  // An AI SDK package has no descriptor and no registry version, so demanding an object for it would
+  // keep the Provider unpublished forever.
   const result = projectCommitted(source, [provider]);
-  expect([...result.entities.keys()]).toEqual([]);
+  expect(result.entities.get('p-sdk')?.dependencies).toEqual([]);
   expect([...result.accounts.keys()]).toEqual([]);
   expect([...result.entities.keys(), ...result.accounts.keys()]).not.toContain('generated');
 
+  // Listing the package in `plugins` makes it an object the Provider must name, so its version has to
+  // arrive before either can be published.
   const plugin = includedEntity('plugin-sdk', 'plugin-business', '@ai-sdk/missing');
-  const missingVersion = projectCommitted(
-    {
-      ...source,
-      accounts: new Map(),
-    },
-    [provider, plugin],
-  );
+  const missingVersion = projectCommitted(source, [provider, plugin]);
   expect([...missingVersion.entities.keys()]).toEqual([]);
   expect([...missingVersion.entities.keys(), ...missingVersion.accounts.keys()]).not.toContain('generated');
+});
+
+test('keeps an OAuth provider pending until its plugin version is known', () => {
+  const provider = includedEntity('p-work', 'provider', 'work');
+  const plugin = includedEntity('plugin-demo', 'plugin-business', '@example/business');
+  const source = {
+    raw: { providers: { work: { kind: 'oauth', plugin: '@example/business', capability: 'first' } } },
+    accounts: new Map([['work', storedAccount('work', 'token')]]),
+    pluginSecrets: new Map(),
+    pluginVersions: new Map<string, string>(),
+  };
+  // Another device cannot verify the credential without the plugin the body names, so an OAuth
+  // Provider never takes the AI SDK shortcut of publishing with no dependency.
+  expect([...projectCommitted(source, [provider, plugin]).entities.keys()]).toEqual([]);
+  const known = projectCommitted({ ...source, pluginVersions: new Map([['@example/business', '1.0.0']]) }, [
+    provider,
+    plugin,
+  ]);
+  expect(known.entities.get('p-work')?.dependencies).toEqual([
+    { objectId: 'plugin-demo', packageName: '@example/business', version: '1.0.0' },
+  ]);
 });
 
 test('keeps a local-only provider authored and never turns filtering into cloud deletion', () => {

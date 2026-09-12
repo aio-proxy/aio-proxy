@@ -77,7 +77,16 @@ function providerDependency(
         ? provider['packageName']
         : undefined;
   if (typeof packageName !== 'string') return null;
-  return packageDependency(packageName, identities, versions);
+  const dependency = packageDependency(packageName, identities, versions);
+  // An AI SDK provider package is not a plugin: it has no descriptor, no settings and no registry
+  // version, and `plugin add` deliberately keeps it out of the `plugins` array. Requiring an object
+  // for it would drop the Provider from the projection and publish nothing at all. A package the
+  // user did list in `plugins` keeps the strict gate, and so does every OAuth Provider — another
+  // device cannot verify its credential without the plugin version the body names. The receiving
+  // device resolves the package on first use, so a missing one surfaces there as a provider error.
+  if (dependency === undefined && provider['kind'] === 'ai-sdk')
+    return identities.has(identityKey('plugin-business', packageName)) ? undefined : null;
+  return dependency;
 }
 
 /**

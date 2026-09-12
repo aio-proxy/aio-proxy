@@ -1,4 +1,4 @@
-export { authoredEntityIdentities, seedAuthoredEntities } from './authored';
+export { authoredEntityIdentities, authoredPluginPackages, seedAuthoredEntities } from './authored';
 export {
   overlayLocal,
   projectCommitted,

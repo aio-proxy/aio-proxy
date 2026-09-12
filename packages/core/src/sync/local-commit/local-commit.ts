@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import type { CommittedSource } from '../projection';
-import { projectCommitted, seedAuthoredEntities } from '../projection';
+import { authoredPluginPackages, projectCommitted, seedAuthoredEntities } from '../projection';
 import type { LocalEntity } from '../repository';
 import type { CommitIntent, OutboxOperation, SyncRepository } from '../repository';
 
@@ -44,11 +44,9 @@ function authoredEntity(source: CommittedSource, entity: LocalEntity): boolean {
       );
     }
     case 'plugin-business': {
-      const plugins = source.raw['plugins'];
-      return (
-        Array.isArray(plugins) &&
-        plugins.some((entry) => entry === entity.logicalKey || (Array.isArray(entry) && entry[0] === entity.logicalKey))
-      );
+      // An OAuth Provider's plugin is authored by the Provider entry alone, so reading only the
+      // `plugins` array here would take the seeded row for a removal and publish its deletion.
+      return authoredPluginPackages(source.raw).has(entity.logicalKey);
     }
     case 'service-access':
       return hasRecord(source.raw, 'server');
