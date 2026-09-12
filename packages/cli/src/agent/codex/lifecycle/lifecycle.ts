@@ -3,8 +3,8 @@ import type { AgentRevokeStatus } from '@aio-proxy/types';
 import {
   clearCodexCommandInstallation,
   inspectCodexCommandCredential,
-  readCodexCommandCredentialInstallationId,
   readCodexCommandIdentity,
+  readCredential,
   retireCodexCommandInstallation,
 } from '../command-auth';
 import type { CodexListResult, CodexLocation, CodexRemoveResult } from '../contracts';
@@ -95,10 +95,10 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     } catch {
       return blockedResult(input.location, 'pending');
     }
-    const credentialInstallationId = await readCodexCommandCredentialInstallationId(input.location);
+    const credential = await readCredential(input.location);
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];
-    const installationId = identity?.marker.installationId ?? credentialInstallationId;
+    const installationId = identity?.marker.installationId ?? credential?.installationId;
     if (installationId !== undefined) {
       const operation = await writeAuthOperation(input.location, {
         configPath: input.location.configPath,
@@ -110,12 +110,10 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
       });
       try {
         let status: AgentRevokeStatus = 'missing';
-        if (identity !== undefined) {
-          if (identity.status === 'active')
-            await retireCodexCommandInstallation(input.location, identity.marker.installationId, lease);
-          if (input.revoke !== undefined)
-            status = await input.revoke(identity.marker.endpoint, identity.marker.installationId);
-        }
+        if (identity?.status === 'active')
+          await retireCodexCommandInstallation(input.location, identity.marker.installationId, lease);
+        const endpoint = identity?.marker.endpoint ?? credential?.endpoint;
+        if (input.revoke !== undefined && endpoint !== undefined) status = await input.revoke(endpoint, installationId);
         authorization = status;
         if (!terminalRevocations.has(status)) return blockedResult(input.location, authorization);
         await writeAuthOperation(input.location, { ...operation, phase: 'revoked' });
