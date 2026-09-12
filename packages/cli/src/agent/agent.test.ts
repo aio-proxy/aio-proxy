@@ -360,6 +360,24 @@ test('local-only list makes authorization and schema checks explicit', async () 
   expect(f.readSnapshot).not.toHaveBeenCalled();
 });
 
+test('list isolates a failed Codex inspection from other integrations', async () => {
+  const f = commandFixture({ localInstallationIds: [INSTALLATION] });
+  const result = await agentList(
+    {},
+    {
+      ...f.deps,
+      codex: {
+        ...f.deps.codex,
+        list: async () => {
+          throw new Error('Refusing symbolic link: /tmp/codex/config.toml');
+        },
+      },
+    },
+  );
+  expect(result.codex).toMatchObject({ status: 'conflict', connection: 'not_checked' });
+  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp']);
+});
+
 test('list reports an undetected host as unresolved without resolving its path', async () => {
   const f = commandFixture({ missingTargets: ['opencode'] });
   const result = await agentList({}, f.deps);

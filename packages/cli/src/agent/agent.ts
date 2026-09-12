@@ -264,7 +264,20 @@ export async function agentList(
   void options.json;
   const resolved = commandDeps(deps);
   const configuredEndpoint = await resolveConfiguredEndpoint(resolved);
-  const codex = await resolved.codex.list(options.check === true);
+  let codex: CodexListResult;
+  try {
+    codex = await resolved.codex.list(options.check === true);
+  } catch {
+    codex = {
+      target: 'codex',
+      integration: 'static-config',
+      configPath: '',
+      activeProviderId: '',
+      status: 'conflict',
+      connection: 'not_checked',
+      changedPaths: [],
+    };
+  }
   const targets: AgentListTargetResult[] = [];
   for (const target of AGENT_TARGETS) {
     targets.push(await listTarget(target, configuredEndpoint, resolved));
