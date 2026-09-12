@@ -85,6 +85,41 @@ test('recovery blocks a pending command operation when its endpoint changed', as
   }
 });
 
+test('completes a leftover remove journal during configure recovery', async () => {
+  const { root, location } = await fixture();
+  const installationId = crypto.randomUUID();
+  try {
+    await writeAuthOperation(location, {
+      configPath: location.configPath,
+      kind: 'remove',
+      fromMode: 'command',
+      phase: 'revoked',
+      installationId,
+      providerId: 'aio-proxy',
+    });
+    await expect(
+      recoverCodexAuthOperation(
+        {
+          location,
+          endpoint: 'http://127.0.0.1:9317',
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            throw new Error('unexpected authorization');
+          },
+          revoke: async () => {
+            throw new Error('unexpected revoke');
+          },
+        },
+        'complete',
+      ),
+    ).resolves.toBe('completed');
+    await expect(Bun.file(authOperationPath(location)).exists()).resolves.toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('reports an unknown authentication journal state as blocked', async () => {
   const { root, location } = await fixture();
   try {

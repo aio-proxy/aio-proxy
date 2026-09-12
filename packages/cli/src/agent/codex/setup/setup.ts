@@ -364,6 +364,21 @@ async function recoverComplete(
   return true;
 }
 
+async function recoverRemove(
+  context: CodexSetupContext,
+  operation: Extract<AuthOperation, { kind: 'remove' }>,
+  lease: CodexLease,
+): Promise<boolean> {
+  try {
+    await revokeAndClear(context, lease, operation.installationId);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'CODEX_AUTH_INSTALLATION_MISSING') throw error;
+  }
+  await removeCodexConfig(context.location, lease);
+  await clearAuthOperation(context.location);
+  return true;
+}
+
 async function recoverKeepChatgpt(
   context: CodexSetupContext,
   operation: AuthOperation,
@@ -394,6 +409,8 @@ export async function recoverCodexAuthOperation(
     if (operation === undefined) return 'none';
     if (action === 'complete') {
       try {
+        if (operation.kind === 'remove')
+          return (await recoverRemove(context, operation, lease)) ? 'completed' : 'blocked';
         if (operation.targetMode === 'keep-chatgpt')
           return (await recoverKeepChatgpt(context, operation, lease)) ? 'completed' : 'blocked';
         return (await recoverComplete(context, operation, lease)) ? 'completed' : 'blocked';
