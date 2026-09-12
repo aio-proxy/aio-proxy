@@ -281,21 +281,13 @@ export async function agentList(
     return { targets, server: 'unreachable', codex };
   }
 
-  const codexAuthorization =
-    codex.installationId === undefined
-      ? undefined
-      : (snapshot.installations.find((item) => item.installationId === codex.installationId && item.target === 'codex')
-          ?.authorization ?? 'missing');
-  const checkedCodex: CodexListResult =
-    codex.installationId === undefined ? codex : { ...codex, authorization: codexAuthorization };
-
   return {
     targets: applySnapshot(targets, snapshot),
     server: 'reachable',
     deviceAuthorization: snapshot.deviceAuthorization,
     catalogSchemaVersions: snapshot.catalogSchemaVersions,
-    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot, checkedCodex) } : {}),
-    codex: checkedCodex,
+    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot, codex) } : {}),
+    codex,
   };
 }
 

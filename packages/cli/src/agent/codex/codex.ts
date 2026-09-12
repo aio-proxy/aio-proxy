@@ -165,9 +165,13 @@ const createPrompts = (): CodexPrompts => ({
 
 const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
 
-const connectionStatus = async (endpoint: string): Promise<CodexListResult['connection']> => {
+const connectionStatus = async (baseUrl: string): Promise<CodexListResult['connection']> => {
   try {
-    const response = await fetch(`${endpoint.replace(/\/+$/u, '')}/health`, {
+    const healthUrl = new URL(baseUrl);
+    healthUrl.pathname = `${healthUrl.pathname.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '')}/health`;
+    healthUrl.search = '';
+    healthUrl.hash = '';
+    const response = await fetch(healthUrl, {
       signal: AbortSignal.timeout(3_000),
     });
     if (response.status === 401 || response.status === 403) return 'unauthorized';
@@ -178,14 +182,6 @@ const connectionStatus = async (endpoint: string): Promise<CodexListResult['conn
       : 'invalid_response';
   } catch {
     return 'offline';
-  }
-};
-
-const resolveEndpointSafely = async (): Promise<string | undefined> => {
-  try {
-    return await resolveAgentEndpoint();
-  } catch {
-    return undefined;
   }
 };
 
@@ -286,13 +282,10 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
 
 export async function listCodexAgent(check = false): Promise<CodexListResult> {
   const location = configuredLocation();
-  const endpoint = check ? await resolveEndpointSafely() : undefined;
   return listCodexLifecycle({
     location,
     check,
-    ...(endpoint === undefined
-      ? { checkStatic: async () => 'offline' as const }
-      : { checkStatic: () => connectionStatus(endpoint) }),
+    checkStatic: (baseUrl) => (baseUrl === undefined ? Promise.resolve('offline' as const) : connectionStatus(baseUrl)),
   });
 }
 

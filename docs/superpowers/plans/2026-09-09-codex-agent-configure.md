@@ -52,7 +52,6 @@
 
 | 文件                                                              | 增量职责                                                                         |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `packages/cli/scripts/verify-codex-command-auth.ts`               | 新增隔离原生 command 契约实验；现有迁移实验不重写                                |
 | `packages/types/src/agent-integration/`                           | 总授权 target 增加 Codex，插件 target 显式分离                                   |
 | `packages/core/src/agent-identity/identity-repository.ts`         | 从持久存储恢复 Codex target                                                      |
 | `packages/server/src/server/server.ts` 与 `server.models.test.ts` | 已认证 Codex 普通/Codex 目录分流                                                 |
@@ -73,24 +72,9 @@
 
 ## Task 1：补充原生 command 兼容证据
 
-**Files:** Create `packages/cli/scripts/verify-codex-command-auth.ts`；Modify `docs/superpowers/specs/2026-09-09-codex-contract-verification.md`。参考现有 `packages/cli/scripts/verify-codex-contract.ts` 的隔离进程与 JSON-RPC 操作，既有历史夹具不改。
+**Files:** Modify `docs/superpowers/specs/2026-09-09-codex-contract-verification.md`。在一次性隔离实验中使用 JSON-RPC 操作，既有历史夹具不改；实验代码不作为仓库脚本保留。
 
-**Interfaces:** 新脚本导出下面的实验接口，报告仅包含布尔结论、版本、平台与脱敏错误。仅执行显式传入的 Codex 可执行文件。
-
-```ts
-export type CommandAuthProbe = {
-  readonly version: string;
-  readonly platform: string;
-  readonly rawTokenAccepted: boolean;
-  readonly incompatibleConfigRejected: boolean;
-  readonly refreshAfter401: boolean;
-  readonly refreshInvocationObserved: boolean;
-  readonly staticAccountType: 'chatgpt' | null;
-  readonly commandAccountType: 'chatgpt' | null;
-  readonly authFilesUnchanged: boolean;
-};
-export declare function verifyCodexCommandAuth(executable: string): Promise<CommandAuthProbe>;
-```
+**Interfaces:** 一次性实验只记录布尔结论、版本、平台与脱敏错误，仅执行显式传入的 Codex 可执行文件。
 
 - [ ] **Step 1：建立合成实验输入。** 用临时 HOME/CODEX_HOME、假 JWT、本地服务和临时 helper，不访问真实凭据。helper 使用独立参数数组，覆盖空格路径。只记录 token 是否与预期相等，不记录 header。
 
@@ -109,31 +93,16 @@ const rawHelper = String.raw`process.stdout.write("probe-command-token\n");`;
 
 - [ ] **Step 2：跑真实原生契约。** 普通启动验证 `auth + requires_openai_auth = true` 拒绝加载；分别用静态和 command 配置调用 app-server `account/read`。向本地模型请求第一次返回 401，观察 helper 再次执行及第二次请求的 token；单独用缩短的实验刷新间隔观察 helper 是否再次执行，不能据此宣称新 token 已发送或用于请求，生产配置保持 300000。设置全部实验进程的总期限并清理子进程。
 
-Run: `rtk proxy bun packages/cli/scripts/verify-codex-command-auth.ts /opt/homebrew/bin/codex`
-
 Expected: 对实际版本逐项记录结果；未实现 helper 前，这只是宿主契约实验，不宣称生产功能通过。若 raw token 或 401 路径不符合文档，停止 command 产品接线并记录具体证据，不修改生产认证字段来绕过冲突。
 
-- [ ] **Step 3：将通过条件写入脚本并复跑。** 新增报告小节区分旧静态实验、新原生 command 实验与尚未运行的真实 AIO Proxy 链路。
-
-```ts
-import { strict as assert } from 'node:assert';
-const result = await verifyCodexCommandAuth(process.argv[2]!);
-assert.equal(result.rawTokenAccepted, true);
-assert.equal(result.incompatibleConfigRejected, true);
-assert.equal(result.refreshAfter401, true);
-assert.equal(result.refreshInvocationObserved, true);
-assert.equal(result.staticAccountType, 'chatgpt');
-assert.equal(result.commandAccountType, null);
-assert.equal(result.authFilesUnchanged, true);
-```
+- [ ] **Step 3：记录通过条件并复跑。** 新增报告小节区分旧静态实验、新原生 command 实验与尚未运行的真实 AIO Proxy 链路。
 
 同时记录 JSON 并非 Codex bearer 输出协议、空值/超时/非零退出的失败方式，不据此宣称 Computer Use 或所有插件兼容。版本基线仍明确为实测 `0.146.0`，不凭空定义最低版本。
 
-- [ ] **Step 4：提交实验与报告。**
+- [ ] **Step 4：提交报告。**
 
 ```bash
-rtk git add packages/cli/scripts/verify-codex-command-auth.ts docs/superpowers/specs/2026-09-09-codex-contract-verification.md
-rtk git commit -m "test(cli): verify Codex command authentication contract" -m "Co-authored-by: Codex <noreply@openai.com>"
+rtk git add docs/superpowers/specs/2026-09-09-codex-contract-verification.md
 ```
 
 ## Task 2：接通 Codex Agent 身份与原生模型目录
@@ -714,7 +683,7 @@ Commit subject: `feat(cli): offer ChatGPT preservation in Codex setup`，附规�
 
 ## Task 7：双模式端到端验收与发布说明
 
-**Files:** Modify `C/codex.test.ts`、相关 command-auth/lifecycle 集成测试、`packages/cli/scripts/verify-codex-command-auth.ts`、`docs/superpowers/specs/2026-09-09-codex-contract-verification.md`、`npm/aio-proxy/README.md`、`.changeset/codex-static-config.md`；发布二进制验证使用已有 `packages/cli/scripts/build-binary.ts` 和包脚本。
+**Files:** Modify `C/codex.test.ts`、相关 command-auth/lifecycle 集成测试、`docs/superpowers/specs/2026-09-09-codex-contract-verification.md`、`npm/aio-proxy/README.md`、`.changeset/codex-static-config.md`；发布二进制验证使用已有 `packages/cli/scripts/build-binary.ts` 和包脚本。
 
 **Interfaces:** 产品命令为 `agent configure codex`、`agent list [--check] [--authorizations] [--json]`、`agent remove codex`、`agent auth codex --installation-id <uuid>`、`agent revoke <installation-id>` 和原 `--restore-migration`。不新增静态 Key 创建命令或登录命令。
 
@@ -734,7 +703,6 @@ command：configure + device approve → auth helper → list --check → revoke
 
 ```bash
 rtk proxy bun run --filter @aio-proxy/cli build:binary
-rtk proxy bun packages/cli/scripts/verify-codex-command-auth.ts /opt/homebrew/bin/codex
 rtk proxy bun run preflight
 ```
 

@@ -25,7 +25,16 @@ test('lists static authentication without checking the proxy and removes it idem
       authMode: 'keep-chatgpt',
       connection: 'not_checked',
     });
-    await expect(listCodexLifecycle({ location, check: true, checkStatic: async () => 'ok' })).resolves.toMatchObject({
+    await expect(
+      listCodexLifecycle({
+        location,
+        check: true,
+        checkStatic: async (baseUrl) => {
+          expect(baseUrl).toBe('http://127.0.0.1:9317/v1');
+          return 'ok';
+        },
+      }),
+    ).resolves.toMatchObject({
       authMode: 'keep-chatgpt',
       connection: 'ok',
     });

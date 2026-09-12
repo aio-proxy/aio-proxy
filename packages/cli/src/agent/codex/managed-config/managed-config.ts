@@ -186,18 +186,6 @@ export async function recoverCodexConfigOperation(
   );
 }
 
-async function checkCodexInstalled(): Promise<void> {
-  let child: ReturnType<typeof Bun.spawn>;
-  try {
-    child = Bun.spawn(['codex', '--version'], { stdout: 'pipe', stderr: 'pipe' });
-  } catch {
-    throw new Error('Codex installation is missing');
-  }
-  const output = await new Response(child.stdout as ReadableStream<Uint8Array>).text();
-  const exit = await child.exited;
-  if (exit !== 0 || !/^codex-cli\s+\d+\.\d+\.\d+\b/m.test(output)) throw new Error('Codex installation is missing');
-}
-
 function findAuthenticationConflict(
   text: string,
   providerId: string,
@@ -335,7 +323,6 @@ export async function configureCodexConfig(
   },
   lease?: CodexLease,
 ): Promise<ConfigCommit> {
-  await checkCodexInstalled();
   return withInstallationLease(input.location, lease, async (ownedLease) =>
     runExclusive(input.location.markerPath, async () => {
       const { location, providerId, baseUrl, auth } = input;

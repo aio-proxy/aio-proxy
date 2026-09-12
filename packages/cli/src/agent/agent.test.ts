@@ -234,6 +234,29 @@ test('authorizations marks configured and orphaned server identities', async () 
   expect(f.readSnapshot).toHaveBeenCalledTimes(1);
 });
 
+test('preserves Codex authorization from its stored endpoint when the current endpoint snapshot differs', async () => {
+  const f = commandFixture({ serverInstallations: [] });
+  const deps: AgentCommandDeps = {
+    ...f.deps,
+    codex: {
+      ...f.deps.codex,
+      list: async () => ({
+        target: 'codex',
+        integration: 'static-config',
+        configPath: '/tmp/codex/config.toml',
+        activeProviderId: 'aio-proxy',
+        status: 'managed',
+        connection: 'ok',
+        authorization: 'active',
+        installationId: INSTALLATION,
+        changedPaths: [],
+      }),
+    },
+  };
+  const result = await agentList({ check: true }, deps);
+  expect(result.codex).toMatchObject({ installationId: INSTALLATION, authorization: 'active' });
+});
+
 test('list --check returns the complete per-target and server capability contract', async () => {
   const f = commandFixture({
     localInstallationIds: [INSTALLATION],

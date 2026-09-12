@@ -8,6 +8,6 @@ export {
   readCodexCommandCredentialInstallationId,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
-  writeCodexAuthToken,
   type CodexCommandInstallation,
 } from './command-auth';
+export { writeCodexAuthToken } from './token-delivery';
