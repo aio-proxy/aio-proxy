@@ -351,10 +351,13 @@ async function initializeServerState(
       if (fence !== undefined && runtime.configFile !== undefined && options.configPath !== undefined) {
         const current = (await runtime.configFile.read()) as Record<string, import('@aio-proxy/plugin-sdk').JsonValue>;
         const digest = createHash('sha256').update(encodeCandidate(current, options.configPath)).digest('hex');
-        if (digest === fence.digest) {
-          runtime.remoteConfigFence = undefined;
-          return reloadNow(runtime, [], true);
-        }
+        // Observing any digest disarms the fence, including one that does not match. A local edit
+        // that superseded the remote write before this ran makes the fence provably stale, and
+        // leaving it armed would misread a later undo of that edit as the remote write itself —
+        // skipping its sync commit and stranding the cloud on the intervening configuration. The
+        // cost of disarming early is at worst a redundant republish of a body the cloud already has.
+        runtime.remoteConfigFence = undefined;
+        if (digest === fence.digest) return reloadNow(runtime, [], true);
       }
       return reloadNow(runtime);
     });

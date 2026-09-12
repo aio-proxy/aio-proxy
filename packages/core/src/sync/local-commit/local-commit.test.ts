@@ -177,6 +177,37 @@ test('an unknown raw digest remains pending for a later recovery', async () => {
   });
 });
 
+test('a prepared intent overtaken by a later confirmed commit is retired', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    const overtaking = { providers: { work: { kind: 'api', baseUrl: 'https://moved.test' } } };
+    // A Provider deletion whose account operation is still draining stays prepared across recovery.
+    prepareLocalCommit(f.repo, f.bindingId, { ...f.intent, accountOperationIds: ['account-operation'] });
+    f.control.setAccountOperationsSettled(false);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toHaveLength(1);
+
+    // An unrelated mutation then commits and confirms, so the file matches neither of the older
+    // intent's digests and no later file state ever can.
+    await file.replace(() => overtaking);
+    prepareLocalCommit(f.repo, f.bindingId, {
+      ...f.intent,
+      commitId: 'overtaking-commit',
+      beforeDigest: f.intent.afterDigest,
+      afterDigest: createHash('sha256').update(encodeCandidate(overtaking, f.configPath)).digest('hex'),
+      rawAfter: overtaking,
+    });
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.latestConfirmedCommit(f.bindingId)?.commitId).toBe('overtaking-commit');
+
+    f.control.setAccountOperationsSettled(true);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.outbox(f.bindingId).map((operation) => operation.commitId)).toEqual(['overtaking-commit']);
+  });
+});
+
 test('an unsettled account operation remains pending until settlement', async () => {
   await withSyncCommitFixture(async (f) => {
     const file = new AtomicConfigFile(f.configPath);
