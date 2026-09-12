@@ -6,4 +6,4 @@ export {
   removeCodexConfig,
 } from './managed-config';
 
-export { readMarker as readManagedCodexMarker } from './marker';
+export { readAppliedEndpoint as readManagedCodexEndpoint, readMarker as readManagedCodexMarker } from './marker';

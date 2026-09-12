@@ -295,6 +295,65 @@ test('cleans an orphan credential during a normal keep-chatgpt transition', asyn
   }
 });
 
+test('revokes a marker-only command installation when switching to keep-chatgpt', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  try {
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'custom', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await import('../managed-config').then(({ configureCodexConfig }) =>
+        configureCodexConfig(
+          {
+            location,
+            providerId: 'custom',
+            baseUrl: `${endpoint}/v1`,
+            auth: { mode: 'command', installationId, command: 'aiop' },
+          },
+          lease,
+        ),
+      );
+    });
+    await rm(join(location.managedRoot, 'codex-command.json'));
+    await expect(Bun.file(join(location.managedRoot, 'codex-credential.json')).exists()).resolves.toBe(false);
+    const revoked: { endpoint: string; installationId: string }[] = [];
+    await expect(
+      commitCodexSetup(
+        {
+          providerId: 'custom',
+          auth: {
+            mode: 'keep-chatgpt',
+            selection: { kind: 'none' },
+            keys: {
+              choices: [],
+              resolve: async () => ({ token: 'aio-proxy-local', kind: 'placeholder', verified: false }),
+            },
+          },
+        },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => undefined,
+          revoke: async (boundEndpoint, boundInstallationId) => {
+            revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+            return 'revoked';
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ authMode: 'keep-chatgpt' });
+    expect(revoked).toEqual([{ endpoint, installationId }]);
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({ authMode: 'keep-chatgpt' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rebinds a renamed command identity before recovering authorization', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';

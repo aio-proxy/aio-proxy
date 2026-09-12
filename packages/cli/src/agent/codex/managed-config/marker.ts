@@ -113,4 +113,38 @@ export async function deleteMarker(location: CodexLocation): Promise<void> {
   await durableDelete(location.markerPath, current);
 }
 
+export function appliedProviderBaseUrl(marker: CodexMarker): string | undefined {
+  const field = marker.fields.find(
+    (item) =>
+      item.path.length === 3 &&
+      item.path[0] === 'model_providers' &&
+      item.path[1] === marker.providerId &&
+      item.path[2] === 'base_url',
+  );
+  return field?.applied.present === true && typeof field.applied.value === 'string' ? field.applied.value : undefined;
+}
+
+export function endpointFromBaseUrl(baseUrl: string | undefined): string | undefined {
+  if (baseUrl === undefined) return undefined;
+  try {
+    const url = new URL(baseUrl);
+    url.pathname = url.pathname.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '');
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/+$/u, '') || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function readAppliedEndpoint(location: CodexLocation): Promise<string | undefined> {
+  let marker: CodexMarker | undefined;
+  try {
+    marker = await readMarker(location);
+  } catch {
+    return undefined;
+  }
+  return marker === undefined ? undefined : endpointFromBaseUrl(appliedProviderBaseUrl(marker));
+}
+
 export type { ValueSlot, OwnedField };

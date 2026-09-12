@@ -22,7 +22,13 @@ import type {
   CodexSetupSelection,
   ConfigInspection,
 } from '../contracts';
-import { configureCodexConfig, inspectCodexConfig, removeCodexConfig, validateCodexConfig } from '../managed-config';
+import {
+  configureCodexConfig,
+  inspectCodexConfig,
+  readManagedCodexEndpoint,
+  removeCodexConfig,
+  validateCodexConfig,
+} from '../managed-config';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
 import {
   authOperationPath,
@@ -92,11 +98,15 @@ async function revokeAndClear(
       );
       return status;
     }
+    const endpoint = await readManagedCodexEndpoint(context.location);
+    if (endpoint === undefined) throw setupError('CODEX_AUTH_INSTALLATION_MISSING');
+    const status = context.revoke === undefined ? 'missing' : await context.revoke(endpoint, expectedInstallationId);
+    if (!terminalRevocations.has(status)) throw setupError('CODEX_AUTH_REVOKE_BLOCKED');
     await clearCodexCommandInstallation(
-      { location: context.location, installationId: expectedInstallationId, revocation: 'missing' },
+      { location: context.location, installationId: expectedInstallationId, revocation: status },
       lease,
     );
-    return 'missing';
+    return status;
   }
   if (expectedInstallationId !== undefined && identity.marker.installationId !== expectedInstallationId)
     throw setupError('CODEX_AUTH_INSTALLATION_MISMATCH');
@@ -124,7 +134,7 @@ async function commitKeepChatgpt(
   const credential = await selection.keys.resolve(selection.selection);
   const identity = await readCodexCommandIdentity(context.location);
   const credentialInstallationId = await readCodexCommandCredentialInstallationId(context.location);
-  const installationId = identity?.marker.installationId ?? credentialInstallationId;
+  const installationId = identity?.marker.installationId ?? credentialInstallationId ?? inspection.installationId;
   await validateCodexConfig(
     {
       location: context.location,

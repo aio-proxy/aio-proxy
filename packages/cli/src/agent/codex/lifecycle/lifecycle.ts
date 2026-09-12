@@ -7,8 +7,8 @@ import {
   readCredential,
   retireCodexCommandInstallation,
 } from '../command-auth';
-import type { CodexListResult, CodexLocation, CodexMarker, CodexRemoveResult } from '../contracts';
-import { inspectCodexConfig, readManagedCodexMarker, removeCodexConfig } from '../managed-config';
+import type { CodexListResult, CodexLocation, CodexRemoveResult } from '../contracts';
+import { inspectCodexConfig, readManagedCodexEndpoint, removeCodexConfig } from '../managed-config';
 import { clearAuthOperation, writeAuthOperation } from '../setup/journal';
 import { withCodexInstallation } from '../storage/installation-lock';
 
@@ -115,9 +115,7 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     let authorization: CodexRemoveResult['authorization'];
     const installationId = identity?.marker.installationId ?? credential?.installationId ?? inspection.installationId;
     const endpoint =
-      identity?.marker.endpoint ??
-      credential?.endpoint ??
-      endpointFromBaseUrl(await appliedMarkerBaseUrl(input.location));
+      identity?.marker.endpoint ?? credential?.endpoint ?? (await readManagedCodexEndpoint(input.location));
     if (installationId !== undefined) {
       if (endpoint === undefined) return blockedResult(input.location, 'pending');
       const operation = await writeAuthOperation(input.location, {
@@ -154,37 +152,6 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     };
   });
 }
-
-const appliedMarkerBaseUrl = async (location: CodexLocation): Promise<string | undefined> => {
-  let marker: CodexMarker | undefined;
-  try {
-    marker = await readManagedCodexMarker(location);
-  } catch {
-    return undefined;
-  }
-  if (marker === undefined) return undefined;
-  const field = marker.fields.find(
-    (item) =>
-      item.path.length === 3 &&
-      item.path[0] === 'model_providers' &&
-      item.path[1] === marker.providerId &&
-      item.path[2] === 'base_url',
-  );
-  return field?.applied.present === true && typeof field.applied.value === 'string' ? field.applied.value : undefined;
-};
-
-const endpointFromBaseUrl = (baseUrl: string | undefined): string | undefined => {
-  if (baseUrl === undefined) return undefined;
-  try {
-    const url = new URL(baseUrl);
-    url.pathname = url.pathname.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '');
-    url.search = '';
-    url.hash = '';
-    return url.toString().replace(/\/+$/u, '') || undefined;
-  } catch {
-    return undefined;
-  }
-};
 
 const blockedResult = (
   location: CodexLocation,
