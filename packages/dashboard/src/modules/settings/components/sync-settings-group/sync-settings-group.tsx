@@ -60,6 +60,7 @@ const renderSyncBackendField = (field: DashboardOAuthFormField, form: SyncReactF
     <form.Field name="options">
       {(optionsField) => {
         const values = (optionsField.state.value ?? {}) as Record<string, unknown>;
+        if (field.when !== undefined && values[field.when.key] !== field.when.equals) return null;
         const value = values[field.key];
         // Deleting rather than spreading around the key: `connect` submits exactly this object, so a
         // cleared field has to leave, not keep whatever was typed before it.
@@ -234,6 +235,13 @@ export const SyncSettingsGroup: React.FC = () => {
     previewMutation.mutate(input, { onSuccess: setPreview });
   };
 
+  // A preview the dialog asked for can resolve after the user dismissed the dialog. Replacing only a
+  // preview that is still open keeps an abandoned result from reopening it.
+  const replaceOpenPreview = (next: SyncPreview): SyncPreview => {
+    setPreview((current) => (current === null ? null : next));
+    return next;
+  };
+
   const statusLabel = status.data === undefined ? undefined : statusCopy(status.data.state);
   const selectedProvider = providers.find((provider) => provider.providerId === selectedProviderId);
   const providerObjectId = selectedProvider?.objectId ?? null;
@@ -374,9 +382,7 @@ export const SyncSettingsGroup: React.FC = () => {
         }}
         onRetry={async () => {
           if (lastPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
-          const next = await previewMutation.mutateAsync(lastPreviewInput);
-          setPreview(next);
-          return next;
+          return replaceOpenPreview(await previewMutation.mutateAsync(lastPreviewInput));
         }}
         onPreviewOverrides={
           preview?.kind === 'purge'
@@ -385,9 +391,7 @@ export const SyncSettingsGroup: React.FC = () => {
                 // An override is its own operation, so the operation it was pinned from stays
                 // remembered for the dialog to regenerate once these paths are applied.
                 const input: SyncPreviewInput = { kind: 'overrides', objectId, paths: paths.map((path) => [...path]) };
-                const next = await previewMutation.mutateAsync(input);
-                setPreview(next);
-                return next;
+                return replaceOpenPreview(await previewMutation.mutateAsync(input));
               }
         }
       />
