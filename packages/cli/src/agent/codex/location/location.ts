@@ -2,6 +2,8 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, normalize, resolve } from 'node:path';
 
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import type { CodexLocation } from '../contracts';
 
 const expandHome = (value: string, home: string): string => {
@@ -25,7 +27,7 @@ const readConfiguredSqliteHome = (configPath: string, codexHome: string, userHom
     const stat = lstatSync(configPath);
     if (!stat.isFile() || stat.isSymbolicLink()) return undefined;
     const parsed: unknown = Bun.TOML.parse(readFileSync(configPath, 'utf8'));
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    if (!isPlainObject(parsed)) return undefined;
     const value = (parsed as { sqlite_home?: unknown }).sqlite_home;
     return typeof value === 'string' ? resolveStoragePath(value, codexHome, userHome) : undefined;
   } catch {
