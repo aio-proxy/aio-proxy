@@ -211,6 +211,22 @@ function prepareNewRemoteState(
   };
 }
 
+// A prepared deletion whose configuration write already landed can be confirmed by startup recovery
+// from the on-disk digest alone, before the account deletion and the ownership-clearing row write
+// ever ran. Recovery re-checks the plugin-secret half before confirming, but nothing replays these:
+// the shared account would outlive its deleted Provider and the stale ownership would pin
+// `detach-required` on a tombstone that can never detach. Both writes below are idempotent.
+function finishTombstone(
+  input: LocalPortInput,
+  currentEntity: ReturnType<SyncRepository['entities']>[number] | undefined,
+): void {
+  if (currentEntity?.mode !== 'included' || currentEntity.kind !== 'provider') return;
+  input.accounts.deleteAccount(currentEntity.logicalKey);
+  if (currentEntity.oauth === undefined) return;
+  const { oauth: _oauth, ...cleared } = currentEntity;
+  input.repo.putEntity(input.bindingId, cleared);
+}
+
 export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
   const withFence = <T>(run: () => Promise<T>): Promise<T> => input.enqueue(run);
   const entities = () => input.entities?.() ?? input.repo.entities(input.bindingId);
@@ -250,7 +266,10 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
         const currentEntity = currentEntities.find((entity) => entity.objectId === objectId);
         const remoteCommitId = `remote:${objectId}:${operationId}`;
         const existingCommit = input.repo.readCommit(input.bindingId, remoteCommitId);
-        if (existingCommit?.phase === 'confirmed') return { applied: true };
+        if (existingCommit?.phase === 'confirmed') {
+          if (body === null) finishTombstone(input, currentEntity);
+          return { applied: true };
+        }
 
         const currentDigest = digest(current, input.configPath);
         let candidate: Record<string, JsonValue>;
@@ -322,6 +341,9 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
             ? currentEntity
             : undefined;
         if (tombstoned !== undefined) input.accounts.deleteAccount(tombstoned.logicalKey);
+        // `currentEntities` predates the configuration write above. An override Apply runs outside
+        // this fence, so replaying that snapshot would silently unpin paths it just persisted.
+        const latestEntity = entities().find((entity) => entity.objectId === objectId);
         const nextEntity = {
           objectId,
           logicalKey:
@@ -331,7 +353,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           epoch: currentEntities.find((entity) => entity.objectId === objectId)?.epoch ?? 0,
           desired: body,
           baseline: null,
-          overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
+          overrides: latestEntity?.overrides ?? currentEntity?.overrides ?? [],
           pendingReason: null,
           // The account this ownership names was just deleted, so carrying it onto the tombstone
           // would pin `detach-required` on a row that can never detach — and sharing would keep

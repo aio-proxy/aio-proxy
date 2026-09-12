@@ -2133,3 +2133,47 @@ test('a __proto__ revision operation id stays an own entry of the reported histo
   expect(Object.hasOwn(remote[0]?.revisions ?? {}, '__proto__')).toBe(true);
   expect(({} as { kind?: string }).kind).toBeUndefined();
 });
+
+test('a preview shows an option named __proto__ instead of dropping it from the reviewed row', () => {
+  // Plugin options are arbitrary authored data, and JSON.parse makes `__proto__` an own member.
+  // Apply uses the original body, so a key the redactor silently drops is a change the user
+  // approves without ever having been shown it.
+  const options = JSON.parse('{"__proto__":{"region":"eu"},"endpoint":"https://plugin.example.test"}') as Record<
+    string,
+    JsonValue
+  >;
+  const built = buildPreview({
+    request: { kind: 'purge', scope: 'plugin', objectId: '@example/plugin' },
+    local: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        mode: 'included',
+        epoch: 1,
+        desired: { kind: 'plugin-business', logicalKey: '@example/plugin', value: options, dependencies: [] },
+        baseline: 'a',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        version: 'a',
+        revision: 'plugin-a-revision',
+        body: { kind: 'plugin-business', logicalKey: '@example/plugin', value: {}, dependencies: [] },
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-proto-option',
+    expiresAt: 1,
+  });
+
+  const local = built.preview.rows[0]?.local as Record<string, JsonValue>;
+  expect(Object.hasOwn(local, '__proto__')).toBe(true);
+  expect(local['endpoint']).toBe('https://plugin.example.test');
+  expect('region' in {}).toBe(false);
+});

@@ -304,3 +304,79 @@ test('an unfinished connect apply is remembered across a restart by the binding 
   expect(cleared).toEqual([['binding-1', false]]);
   expect(control.status().state).toBe('idle');
 });
+
+test('a second connect apply cannot swap the binding while the first is still publishing', async () => {
+  // Applying takes the preview out of the store, so `disposePending()` no longer sees the Apply in
+  // flight and a second connect preview can be reviewed and applied over it.
+  let binding: Record<string, unknown> = { ...BINDING };
+  const committed: string[] = [];
+  const cleared: [string, boolean][] = [];
+  const publishedAgainst: string[] = [];
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const candidate = (id: string) => ({
+    remote: [CLOUD_ROW],
+    // Suspends each Apply before its fence check, so the second preview is reviewed and applied
+    // while the first is still in flight and both read the original binding into their fences.
+    refresh: async () => {
+      await tick();
+      return [CLOUD_ROW];
+    },
+    commit: async () => {
+      committed.push(id);
+      binding = { ...BINDING, id, sessionGeneration: committed.length + 1 };
+    },
+    activate: () => {},
+    dispose: async () => {},
+  });
+  let next = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => binding,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      setConnectPending: (id: string, pending: boolean) => void cleared.push([id, pending]),
+    } as never,
+    binding: () => binding as never,
+    localEntities: () => [],
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => {
+      // Where the reviewed decisions land: the binding in force here must be the one they were
+      // reviewed against, not one a competing Apply swapped in underneath.
+      publishedAgainst.push(binding['id'] as string);
+      await tick();
+    },
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => candidate(`swapped-${(next += 1)}`),
+  });
+
+  const first = await control.preview(CONNECT);
+  const firstApply = control.apply({
+    previewId: first.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'cloud' }],
+  });
+  // The first Apply is parked in refresh(), before its fence check and its swap.
+  await Promise.resolve();
+
+  const second = await control.preview(CONNECT);
+  const secondApply = control.apply({
+    previewId: second.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'cloud' }],
+  });
+
+  await firstApply;
+  // The second swap would otherwise replace and close the first lifecycle mid-publication, leaving
+  // the first Apply writing its reviewed choices to a backend the user never reviewed them against.
+  await expect(secondApply).rejects.toMatchObject({ code: 'preview-stale' });
+  expect(committed).toEqual(['swapped-1']);
+  expect(publishedAgainst).toEqual(['swapped-1']);
+  // Clearing `connectPending` is what tells a restarted service the review finished, so the second
+  // Apply must not clear it for a binding whose own Apply never ran.
+  expect(cleared).toEqual([['swapped-1', false]]);
+});

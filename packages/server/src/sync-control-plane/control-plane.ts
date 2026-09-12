@@ -16,6 +16,7 @@ import type {
   SyncStatus,
 } from '@aio-proxy/types';
 
+import { createFifoQueue } from '../fifo-queue';
 import type { ServerSyncLifecycle } from './lifecycle';
 import {
   applyPreview,
@@ -235,6 +236,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   const status = (): SyncStatus => statuses.status();
   const backends = (): SyncBackendView[] => statuses.backends();
 
+  // Applying takes the preview out of the store, so `disposePending()` can no longer see an Apply
+  // already in flight and two connect Applies can overlap. `commit()` serializes only its own swap,
+  // so without this the second swap replaces and closes the first lifecycle while the first call is
+  // still inside applyPreview(): it would publish its reviewed choices to the second backend and
+  // clear that binding's `connectPending` before its own Apply had landed. Serialized, the later
+  // Apply re-reads the swapped binding into its fence and is correctly rejected as stale.
+  const connectApplies = createFifoQueue();
+
   // The swap replaces the binding along with its commit history, so the binding and local-commit
   // halves of the reviewed fence describe a world that will no longer exist. The cloud half is what
   // the decisions were actually made against: re-read it through the candidate's own session while
@@ -346,7 +355,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         if (record.input.kind === 'connect') {
           if (candidate === undefined) throw new SyncPreviewError('preview-stale');
           try {
-            await applyConnect(candidate, record, input.decisions);
+            await connectApplies(() => applyConnect(candidate, record, input.decisions));
           } catch (error) {
             await candidate.dispose().catch(() => {});
             throw error;

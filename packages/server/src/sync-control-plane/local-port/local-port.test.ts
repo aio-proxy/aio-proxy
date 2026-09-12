@@ -902,3 +902,161 @@ test('a remotely deleted shared OAuth Provider leaves no ownership blocking disc
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// Startup recovery confirms a prepared commit from the on-disk digest alone. A crash between the
+// configuration write and the account deletion therefore leaves a confirmed commit whose remaining
+// side effects never ran, and the replay short-circuits on that confirmation.
+test('a recovered deletion still removes the account and the ownership blocking disconnect', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-oauth-recover-'));
+  const configPath = join(directory, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: body.value } }, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  let deleted: string | undefined;
+  const accounts = {
+    readPluginSecret: () => null,
+    readAccount: () => null,
+    listPendingAccountOperations: () => [],
+    deleteAccount: (providerId: string) => {
+      deleted = providerId;
+    },
+  } as unknown as PluginRepository;
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  repo.putEntity(binding.id, {
+    objectId: 'object',
+    logicalKey: 'work',
+    kind: 'provider',
+    mode: 'included',
+    epoch: 0,
+    desired: body,
+    baseline: 'remote-1',
+    overrides: [],
+    pendingReason: null,
+    oauth: { mode: 'shared', epoch: 0, generation: 2, localRevision: 1, pluginVersion: '1.0.0', formatVersion: 1 },
+  });
+  const file = new AtomicConfigFile(configPath);
+  const port = (generation: number) =>
+    createLocalSyncPort({
+      configPath,
+      configFile: file,
+      repo,
+      accounts,
+      bindingId: binding.id,
+      bindingGeneration: generation,
+      enqueue: createFifoQueue(),
+      registry: () => ({
+        resolveOAuth: () => undefined,
+        oauthCapabilities: () => [],
+        resolveSync: () => undefined,
+        syncCapabilities: () => [],
+      }),
+      applyCandidate: async (candidate) => {
+        await file.replace(() => candidate);
+        // The process dies here: the configuration write landed, the prepared commit is on disk,
+        // and neither the account deletion nor the row write below it ever ran.
+        repo.writeBinding({ ...binding, sessionGeneration: 2 });
+      },
+    });
+
+  try {
+    await expect(port(1).applyRemote('object', null, 'remote-2')).rejects.toThrow('binding is stale');
+    expect(deleted).toBeUndefined();
+
+    // Restart: recovery sees the on-disk digest match the prepared commit and confirms it.
+    const restarted = port(2);
+    await recoverLocalCommits(repo, binding.id, restarted);
+    expect(repo.readCommit(binding.id, 'remote:object:remote-2')?.phase).toBe('confirmed');
+
+    // The row still has no tombstone baseline, so reconciliation drives the same deletion again.
+    expect((await restarted.applyRemote('object', null, 'remote-2')).applied).toBe(true);
+    expect(deleted).toBe('work');
+    expect(repo.entities(binding.id)[0]?.oauth).toBeUndefined();
+    expect(() => assertNoRetainedOAuth(repo, binding.id)).not.toThrow();
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('overrides pinned during the configuration write survive the remote entity write-back', async () => {
+  const overrides = [{ path: ['baseUrl'], value: 'https://device.local/v1' }];
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-overrides-'));
+  const configPath = join(directory, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: body.value } }, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  const accounts = {
+    readPluginSecret: () => null,
+    readAccount: () => null,
+    listPendingAccountOperations: () => [],
+    deleteAccount: () => {},
+  } as unknown as PluginRepository;
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  const row = {
+    objectId: 'object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 0,
+    desired: body,
+    baseline: 'remote-1',
+    overrides: [],
+    pendingReason: null,
+  };
+  repo.putEntity(binding.id, row);
+  const file = new AtomicConfigFile(configPath);
+  const port = createLocalSyncPort({
+    configPath,
+    configFile: file,
+    repo,
+    accounts,
+    bindingId: binding.id,
+    bindingGeneration: binding.sessionGeneration,
+    enqueue: createFifoQueue(),
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    applyCandidate: async (candidate) => {
+      await file.replace(() => candidate);
+      // An override Apply runs on the control plane, outside this fence, so it lands while the
+      // configuration write is in flight and after this call snapshotted the rows.
+      repo.putEntity(binding.id, { ...row, overrides });
+    },
+  });
+
+  try {
+    const next = { ...body, value: { ...body.value, baseUrl: 'https://cloud.example.test/v1' } };
+    expect((await port.applyRemote('object', next, 'remote-2')).applied).toBe(true);
+    // Replaying the pre-write snapshot would unpin the path, letting the next remote update replace
+    // a value the user asked to keep device-local.
+    expect(repo.entities(binding.id)[0]?.overrides).toEqual(overrides);
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
