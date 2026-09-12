@@ -393,6 +393,19 @@ export function createSyncIntegration(
 
 export function syncCommitOption(integration: ReturnType<typeof createSyncIntegration>) {
   if (integration.configPath === undefined) return undefined;
+  const confirmWith =
+    (method: 'confirm' | 'confirmWithinFence') =>
+    async (commitId: string): Promise<void> => {
+      const hooks = integration.preparedCommits.get(commitId);
+      // A commit prepared while sync was disabled has no hooks, and neither does one left over from
+      // a previous process; both are the recovery pass's job, not this one's.
+      if (hooks === undefined) return;
+      try {
+        await hooks[method](commitId);
+      } finally {
+        integration.preparedCommits.delete(commitId);
+      }
+    };
   return {
     prepare: (...args: Parameters<ReturnType<typeof createSyncCommitHooks>['prepare']>) => {
       const binding = integration.syncBinding;
@@ -415,17 +428,8 @@ export function syncCommitOption(integration: ReturnType<typeof createSyncIntegr
       integration.preparedCommits.set(commitId, hooks);
       return commitId;
     },
-    confirm: async (commitId: string) => {
-      const hooks = integration.preparedCommits.get(commitId);
-      // A commit prepared while sync was disabled has no hooks, and neither does one left over from
-      // a previous process; both are the recovery pass's job, not this one's.
-      if (hooks === undefined) return;
-      try {
-        await hooks.confirm(commitId);
-      } finally {
-        integration.preparedCommits.delete(commitId);
-      }
-    },
+    confirm: confirmWith('confirm'),
+    confirmWithinFence: confirmWith('confirmWithinFence'),
   };
 }
 

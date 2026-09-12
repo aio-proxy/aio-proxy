@@ -17,6 +17,8 @@ export type SyncCommitHooks = {
     origin?: 'local' | 'remote',
   ) => string;
   readonly confirm: (commitId: string) => Promise<void>;
+  /** Confirm from a caller that already holds the local commit fence. */
+  readonly confirmWithinFence: (commitId: string) => Promise<void>;
 };
 
 export function createSyncCommitHooks(input: {
@@ -44,6 +46,15 @@ export function createSyncCommitHooks(input: {
     },
     confirm(commitId) {
       return confirmLocalCommit(input.repo, input.bindingId, commitId, input.port);
+    },
+    // The fence is the configuration mutation queue, which is not reentrant. A mutation that
+    // confirms inside its own queue slot already has the exclusivity the fence provides, and
+    // queueing again from there would wait on the slot the caller is holding.
+    confirmWithinFence(commitId) {
+      return confirmLocalCommit(input.repo, input.bindingId, commitId, {
+        ...input.port,
+        withFence: (run) => run(),
+      });
     },
   };
 }

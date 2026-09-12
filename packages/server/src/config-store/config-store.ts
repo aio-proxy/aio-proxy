@@ -76,6 +76,13 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const confirm = async (commitId: string | undefined): Promise<void> => {
     if (syncCapture !== undefined && commitId !== undefined) await syncCapture.confirm(commitId);
   };
+  // Confirmation reads the configuration back and only retires the intent whose digest it finds, so
+  // it has to run in the same queue slot as the write it belongs to. Confirming after the slot lets
+  // the next queued mutation commit its own file first, and the intent left behind matches neither
+  // digest any recovery pass looks for, so it stays prepared forever.
+  const confirmWithinFence = async (commitId: string | undefined): Promise<void> => {
+    if (syncCapture !== undefined && commitId !== undefined) await syncCapture.confirmWithinFence(commitId);
+  };
   const finalizeAccountOperations = (
     operations: readonly PendingAccountOperation[],
     retired: RetiredProviderSnapshot | undefined,
@@ -211,23 +218,22 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
           const { [providerId]: _removed, ...remaining } = providers;
           return remaining;
         });
-        return commitId;
-      }).then(async (commitId) => {
-        await confirm(commitId);
+        await confirmWithinFence(commitId);
       }),
     file,
     mutateConfig: (fn) =>
-      enqueue(() => mutateConfigNow(fn)).then(async (commitId) => {
-        await confirm(commitId);
+      enqueue(async () => {
+        await confirmWithinFence(await mutateConfigNow(fn));
       }),
     mutateConfigWithProviderMutation: (fn, beforeOperation, operation) =>
-      enqueue(() => mutateConfigWithProviderMutationNow(fn, beforeOperation, operation)).then(async (result) => {
-        await confirm(result.commitId);
+      enqueue(async () => {
+        const result = await mutateConfigWithProviderMutationNow(fn, beforeOperation, operation);
+        await confirmWithinFence(result.commitId);
         return result.value;
       }),
     mutateProviders: (fn) =>
-      enqueue(() => mutateProvidersNow(fn)).then(async (commitId) => {
-        await confirm(commitId);
+      enqueue(async () => {
+        await confirmWithinFence(await mutateProvidersNow(fn));
       }),
   };
 }
