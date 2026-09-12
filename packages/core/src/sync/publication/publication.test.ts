@@ -78,11 +78,25 @@ test('unknown CAS result retries the same operation without another revision', a
   const signal = new AbortController().signal;
   const operation = makeOperation();
   backend.failNext('compareAndSwap', 'after');
-  await expect(publishEntity(store, operation, signal)).rejects.toMatchObject({ code: 'outcome-unknown' });
   const first = await publishEntity(store, operation, signal);
   const retried = await publishEntity(store, operation, signal);
   expect(retried).toEqual(first);
   expect((await store.readHead(operation.objectId, signal))?.head.sequence).toBe(1);
+});
+
+// A create-only publication is what Connect runs: reporting the recovered head as someone else's
+// would consume the preview and the operation ID while leaving an active head with no revision.
+test('an uncertain head creation is recovered instead of failing a create-only publication', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const operation = makeOperation();
+  backend.failNext('compareAndSwap', 'after');
+
+  const published = await publishEntity(store, operation, signal, null);
+
+  expect(published.operationId).toBe(operation.operationId);
+  expect((await store.readHead(operation.objectId, signal))?.head.current).toBe(operation.operationId);
 });
 
 test('conditional publication rejects a changed head before reserving a revision', async () => {
@@ -114,9 +128,9 @@ test('conditional publication rejects a changed head before reserving a revision
 });
 
 test('outcome-unknown at every publication CAS position is recoverable with one operation', async () => {
-  // Positions 2 and 4 are head CAS writes that now resolve in place instead of rejecting, so each
+  // Positions 1, 2 and 4 are head CAS writes that resolve in place instead of rejecting, so each
   // has its own test below.
-  for (const position of [1, 3, 5]) {
+  for (const position of [3, 5]) {
     const backend = createMemorySyncBackend();
     const operation = makeOperation();
     const session = failAtCompareAndSwap(backend.connect(), position);

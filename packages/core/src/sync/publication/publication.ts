@@ -149,18 +149,30 @@ async function ensureHead(
   signal: AbortSignal,
 ): Promise<{ readonly version: string; readonly created: boolean }> {
   assertPut(operation);
+  let attempted: EntityHead | undefined;
   for (;;) {
     signal.throwIfAborted();
     const current = await store.readHead(operation.objectId, signal);
     if (current !== null) {
       assertHeadIdentity(current.head, operation);
-      return { version: current.version, created: false };
+      // An uncertain write is recoverable by read, so a head identical to the one this call just
+      // attempted is that write landing. Reporting it as someone else's head would fail a
+      // create-only publish with `upgrade-required` and strand an active head with no revision.
+      return { version: current.version, created: attempted !== undefined && isEqual(current.head, attempted) };
     }
     const next = newHead(operation.objectId, operation.body);
     const bytes = encode(next);
     assertSize(store, bytes);
-    const result = await store.session.compareAndSwap(entityKey(operation.objectId), null, bytes, signal);
-    if (result.kind === 'written') return { version: result.version, created: true };
+    try {
+      const result = await store.session.compareAndSwap(entityKey(operation.objectId), null, bytes, signal);
+      if (result.kind === 'written') return { version: result.version, created: true };
+    } catch (error) {
+      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') {
+        attempted = next;
+        continue;
+      }
+      throw error;
+    }
   }
 }
 
