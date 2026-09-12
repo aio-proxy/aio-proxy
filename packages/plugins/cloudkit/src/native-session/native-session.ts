@@ -216,8 +216,14 @@ class NativeSession implements SyncSession {
     if (this.#disposePromise) return this.#disposePromise;
     this.#disposed = true;
     this.#disposePromise = (async () => {
+      // The helper acknowledges dispose with this request's own id, and that reply lands while
+      // earlier work is still pending. Drop it like a cancelled reply, or #handle reads the
+      // expected acknowledgement as corruption and fails in-flight mutations as invalid-data
+      // instead of the outcome-unknown that forces a reread.
+      const id = `${this.#generation}-${++this.#sequence}`;
+      this.#cancelled.add(id);
       try {
-        this.#send({ id: `${this.#generation}-${++this.#sequence}`, op: 'dispose', input: {} });
+        this.#send({ id, op: 'dispose', input: {} });
       } catch {
         // Process shutdown below is authoritative.
       }

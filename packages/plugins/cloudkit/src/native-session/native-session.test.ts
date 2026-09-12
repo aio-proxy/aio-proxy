@@ -181,7 +181,61 @@ test('a helper that dies mid-frame reports invalid data even when its exit is ob
   await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'invalid-data' });
 });
 
-// A dead helper makes the next stdin write throw EPIPE, which used to escape read() verbatim:
+// The helper acknowledges dispose with that request's own id. Treating the expected reply as
+// corruption used to fail an in-flight CAS as invalid-data, skipping the outcome-unknown reread
+// that reconciles a mutation which may already have committed remotely.
+test('an in-flight mutation survives disposal as outcome unknown, not protocol corruption', async () => {
+  let push!: (chunk: string) => void;
+  let closeStdout!: () => void;
+  const stdout = new ReadableStream<Uint8Array>({
+    start(controller) {
+      push = (chunk) => controller.enqueue(new TextEncoder().encode(chunk));
+      closeStdout = () => controller.close();
+    },
+  });
+  let markExited!: () => void;
+  const exited = new Promise<number>((resolve) => {
+    markExited = () => resolve(0);
+  });
+  const session = await connectNative({
+    executable: 'unused',
+    containerId: 'test',
+    signal: new AbortController().signal,
+    spawn: () => ({
+      stdin: {
+        write(data: string) {
+          const request = JSON.parse(data) as { id: string; op: string };
+          if (request.op === 'connect')
+            push(
+              `${JSON.stringify({
+                id: request.id,
+                ok: true,
+                result: { identityId: 'fake', spaceId: 'default', maxValueBytes: 1024, protocol: 1, version: 'fake' },
+              })}\n`,
+            );
+          // The CAS is never answered: it is still in flight when dispose is acknowledged.
+          if (request.op === 'dispose') {
+            push(`${JSON.stringify({ id: request.id, ok: true, result: null })}\n`);
+            setTimeout(() => {
+              closeStdout();
+              markExited();
+            }, 5);
+          }
+          return data.length;
+        },
+      },
+      stdout,
+      stderr: new ReadableStream<Uint8Array>({ start: (controller) => controller.close() }),
+      exited,
+      kill: () => {},
+    }),
+  });
+  const mutation = session
+    .compareAndSwap('k', null, new Uint8Array([1]), new AbortController().signal)
+    .catch((error: unknown) => error);
+  await session.dispose();
+  expect(await mutation).toMatchObject({ code: 'outcome-unknown' });
+});
 // callers switch on the session's own error codes, and a raw Error carries none of them.
 test('a write to a dead helper is classified by the stdout it left behind, not by EPIPE', async () => {
   let push!: (chunk: string) => void;
