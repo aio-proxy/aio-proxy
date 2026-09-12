@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -8,6 +7,7 @@ import { checkbox, confirm, input, select } from '@inquirer/prompts';
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { loadServiceEnv } from '../../service-env';
+import { formatAgentToken } from '../command-auth/token-output';
 import { resolveAgentEndpoint } from '../control-plane';
 import { writeCodexAuthToken } from './command-auth';
 import { resolveCodexAuthCommand } from './command-location';
@@ -67,7 +67,7 @@ const configuredLocation = (): CodexLocation => resolveCodexLocation(join(homedi
 
 const occupiedIds = async (location: CodexLocation): Promise<readonly string[]> => {
   try {
-    const config = await readFile(location.configPath, 'utf8');
+    const config = await Bun.file(location.configPath).text();
     const ids = readCodexDocument(config).providerIds;
     const managed = (await inspectCodexConfig(location)).providerId;
     return ids.filter((id) => id !== managed);
@@ -305,7 +305,9 @@ export async function runCodexAuthCommand(
   startedAt = Date.now(),
   writeToken: (token: string) => Promise<void> = (token) =>
     new Promise<void>((resolve, reject) => {
-      process.stdout.write(`${token}\n`, (error) => (error === undefined ? resolve() : reject(error)));
+      process.stdout.write(formatAgentToken({ accessToken: token, expiresIn: 0 }, 'raw'), (error) =>
+        error === undefined ? resolve() : reject(error),
+      );
     }),
 ): Promise<void> {
   if (!uuidPattern.test(installationId)) throw new Error('Codex installation id must be a UUID');
