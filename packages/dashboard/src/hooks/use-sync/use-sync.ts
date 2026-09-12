@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import {
   applySync,
-  cancelSyncDetach,
   disconnectSync,
   detachSync,
   previewSync,
@@ -24,37 +23,14 @@ const invalidateSync = async (queryClient: ReturnType<typeof useQueryClient>) =>
   ]);
 };
 
-export const usePreviewSync = () => {
+const useSyncMutation = <Input, Output>(mutationFn: (input: Input) => Promise<Output>) => {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: previewSync, onSuccess: () => invalidateSync(queryClient) });
+  return useMutation({ mutationFn, onSuccess: () => invalidateSync(queryClient) });
 };
 
-export const useApplySync = () => {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: applySync, onSuccess: () => invalidateSync(queryClient) });
-};
-
-export const useSetSyncRange = () => {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: setSyncRange, onSuccess: () => invalidateSync(queryClient) });
-};
-
-export const useDetachSync = () => {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: detachSync, onSuccess: () => invalidateSync(queryClient) });
-};
-
-export const useCancelSyncDetach = () => {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: cancelSyncDetach, onSuccess: () => invalidateSync(queryClient) });
-};
-
-export const useRetrySync = () => {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: retrySync, onSuccess: () => invalidateSync(queryClient) });
-};
-
-export const useDisconnectSync = () => {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: disconnectSync, onSuccess: () => invalidateSync(queryClient) });
-};
+export const usePreviewSync = () => useSyncMutation(previewSync);
+export const useApplySync = () => useSyncMutation(applySync);
+export const useSetSyncRange = () => useSyncMutation(setSyncRange);
+export const useDetachSync = () => useSyncMutation(detachSync);
+export const useRetrySync = () => useSyncMutation(retrySync);
+export const useDisconnectSync = () => useSyncMutation(disconnectSync);

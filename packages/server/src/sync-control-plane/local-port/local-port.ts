@@ -17,6 +17,7 @@ import {
   prepareLocalCommit,
 } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import type { ConfigStore } from '../../config-store';
 import type { FifoQueue } from '../../fifo-queue';
@@ -58,14 +59,10 @@ function digest(raw: Record<string, JsonValue>, path: string): string {
   return createHash('sha256').update(encodeCandidate(raw, path)).digest('hex');
 }
 
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function secretMatches(snapshot: ReturnType<PluginRepository['readPluginSecret']>, expected: JsonValue | undefined) {
   return expected === undefined
     ? snapshot === null
-    : snapshot !== null && sameJson(snapshot.value as JsonValue, expected);
+    : snapshot !== null && isEqual(snapshot.value as JsonValue, expected);
 }
 
 function restorePluginSecret(
@@ -86,7 +83,7 @@ function restorePluginSecret(
       return false;
     }
   }
-  if (sameJson(current.value, previous.value)) return true;
+  if (isEqual(current.value, previous.value)) return true;
   try {
     accounts.writePluginSecret(plugin, current.revision, previous.value);
     return true;
@@ -290,7 +287,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
               )
                 return { applied: false, pending: 'secret-conflict' as const };
               secretChanged = previousSecret !== null;
-            } else if (previousSecret === null || !sameJson(previousSecret.value, secretChange.value)) {
+            } else if (previousSecret === null || !isEqual(previousSecret.value, secretChange.value)) {
               input.accounts.writePluginSecret(
                 secretChange.plugin,
                 previousSecret?.revision ?? null,

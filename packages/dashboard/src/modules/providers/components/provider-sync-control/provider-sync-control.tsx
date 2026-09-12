@@ -26,13 +26,12 @@ const actionErrorCopy = (error: unknown, action: ProviderSyncAction): string => 
 };
 
 const credentialCopy = (state: ProviderSyncView): string | undefined => {
-  if (state.credentialState === 'detach-pending') return m['dashboard.sync.uncertain_login']();
-  if (state.credentialState === 'refresh-deferred') return m['dashboard.sync.offline']();
-  if (state.credentialState === 'result-uncertain' || state.credentialState === 'login-required') {
+  const code = state.credentialState;
+  if (code === 'detach-pending' || code === 'result-uncertain' || code === 'login-required')
     return m['dashboard.sync.uncertain_login']();
-  }
-  if (state.credentialState === 'unverified') return m['dashboard.sync.credential_pending']();
-  if (state.credentialState === 'independent') return m['dashboard.sync.independent_unconfirmed']();
+  if (code === 'refresh-deferred') return m['dashboard.sync.offline']();
+  if (code === 'unverified') return m['dashboard.sync.credential_pending']();
+  if (code === 'independent') return m['dashboard.sync.independent_unconfirmed']();
   return undefined;
 };
 

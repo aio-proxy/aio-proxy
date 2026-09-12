@@ -1,26 +1,27 @@
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 
-import { CLOUDKIT_BUNDLE_ID, directoryDigest, sha256File, validateManifest, type ArtifactManifest } from './artifact';
+import {
+  CLOUDKIT_BUNDLE_ID,
+  directoryDigest,
+  sha256File,
+  spawnText,
+  validateManifest,
+  type ArtifactManifest,
+  type CommandResult,
+} from './artifact';
 
 const packageRoot = resolve(import.meta.dir, '..');
 const nativeRoot = join(packageRoot, 'native');
 const nativeDist = join(packageRoot, 'dist', 'native');
 
-type CommandResult = { readonly stdout: string; readonly stderr: string };
-
 async function run(command: string, args: readonly string[], cwd?: string): Promise<CommandResult> {
-  const process = Bun.spawn([command, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
-  const [stdout, stderr] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-  ]);
-  const exitCode = await process.exited;
-  if (exitCode !== 0) {
-    const detail = stderr.trim().split(/\r?\n/u).slice(-3).join(' ');
+  const result = await spawnText(command, args, cwd);
+  if (result.exitCode !== 0) {
+    const detail = result.stderr.trim().split(/\r?\n/u).slice(-3).join(' ');
     throw new Error(`${command} failed${detail === '' ? '' : `: ${detail}`}`);
   }
-  return { stdout, stderr };
+  return result;
 }
 
 export function resolveBundleVersion(version: string | undefined): string {

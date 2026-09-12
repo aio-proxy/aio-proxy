@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { isEqual } from 'es-toolkit/predicate';
+
 import type { CommittedSource } from '../projection';
 import { authoredPluginPackages, projectCommitted, seedAuthoredEntities } from '../projection';
 import type { LocalEntity } from '../repository';
@@ -12,16 +14,6 @@ export interface LocalCommitPort {
   rawDigest(): Promise<string>;
   accountOperationsSettled(ids: readonly string[]): boolean;
   committedSource(): Promise<CommittedSource>;
-}
-
-function sameSourceRevisions(
-  left: Readonly<Record<string, number>> | undefined,
-  right: Readonly<Record<string, number>> | undefined,
-): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  const leftEntries = Object.entries(left).sort(([a], [b]) => a.localeCompare(b));
-  const rightEntries = Object.entries(right).sort(([a], [b]) => a.localeCompare(b));
-  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
 }
 
 function operationId(commitId: string, objectId: string): string {
@@ -59,10 +51,7 @@ function pluginSecretsMatch(source: CommittedSource, intent: CommitIntent): bool
   return (intent.pluginSecrets ?? []).every((change) => {
     const present = source.pluginSecrets.has(change.plugin);
     const expectedPresent = change.after !== undefined;
-    return (
-      present === expectedPresent &&
-      (!present || JSON.stringify(source.pluginSecrets.get(change.plugin)) === JSON.stringify(change.after))
-    );
+    return present === expectedPresent && (!present || isEqual(source.pluginSecrets.get(change.plugin), change.after));
   });
 }
 
@@ -126,7 +115,7 @@ async function confirmLocalCommitUnderFence(
   // object ID, so minting a second row here would read back as an identity collision.
   if (intent.origin === 'local') seedAuthoredEntities(repo, bindingId, source.raw);
   if (!pluginSecretsMatch(source, intent)) return;
-  if (intent.sourceRevisions !== undefined && !sameSourceRevisions(intent.sourceRevisions, source.sourceRevisions)) {
+  if (intent.sourceRevisions !== undefined && !isEqual(intent.sourceRevisions, source.sourceRevisions)) {
     return;
   }
 
@@ -142,7 +131,7 @@ async function confirmLocalCommitUnderFence(
     canDeduplicate &&
     latest !== null &&
     latest.afterDigest === intent.afterDigest &&
-    sameSourceRevisions(latest.sourceRevisions, sourceRevisions)
+    isEqual(latest.sourceRevisions, sourceRevisions)
   ) {
     port.assertCurrent?.();
     repo.discard(bindingId, commitId);

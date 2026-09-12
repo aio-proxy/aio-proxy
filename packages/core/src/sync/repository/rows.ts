@@ -12,16 +12,7 @@ import type {
   PluginSecretCommit,
 } from './repository';
 
-const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.null(),
-    z.boolean(),
-    z.number().finite(),
-    z.string(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-);
+const jsonValueSchema = z.json() as z.ZodType<JsonValue>;
 
 const dependencySchema = z.object({ objectId: z.string(), packageName: z.string(), version: z.string() });
 const entityKindSchema = z.enum(['provider', 'model-rule', 'plugin-business', 'service-access', 'routing-defaults']);
@@ -53,10 +44,6 @@ export function stringifyJson(value: JsonValue): string {
   const encoded = JSON.stringify(value);
   if (encoded === undefined) throw new TypeError('Expected a JSON value');
   return encoded;
-}
-
-export function stringifyOptionalJson(value: JsonValue | null): string | null {
-  return value === null ? null : stringifyJson(value);
 }
 
 export function parseJson<T>(value: unknown, schema: z.ZodType<T>): T {

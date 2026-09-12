@@ -1,6 +1,6 @@
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
 
-import type { AccountWrite, PluginRepository } from '../../../plugins/repository';
+import type { AccountWrite } from '../../../plugins/repository';
 import { accountKey, encode } from '../../protocol';
 import type { DeletedAccount } from '../../protocol';
 import type { SyncObjectStore } from '../../publication';
@@ -60,34 +60,6 @@ export async function verifyDetach(
   return canDetach({ shared, candidate: candidate.credential, signal });
 }
 
-export function independentOwnership(account: LiveAccount, localRevision: number) {
-  return {
-    mode: 'independent' as const,
-    epoch: account.epoch,
-    generation: account.generation,
-    localRevision,
-    pluginVersion: account.pluginVersion,
-    formatVersion: account.formatVersion,
-  };
-}
-
-export function sharedOwnership(account: LiveAccount, localRevision: number) {
-  return {
-    mode: 'shared' as const,
-    epoch: account.epoch,
-    generation: account.generation,
-    localRevision,
-    pluginVersion: account.pluginVersion,
-    formatVersion: account.formatVersion,
-  };
-}
-
 export function accountBytes(account: LiveAccount): Uint8Array {
   return encode(account);
 }
-
-export type DetachContext = {
-  readonly binding: LocalBinding;
-  readonly repo: SyncRepository;
-  readonly accounts: PluginRepository;
-};

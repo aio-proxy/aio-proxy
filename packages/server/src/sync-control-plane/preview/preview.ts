@@ -13,7 +13,7 @@ import {
 } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreview, SyncPreviewInput, SyncPreviewRow } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 
 import { snapshotLocalEntities, snapshotRemoteEntities, type RemoteEntity } from './entities';
 import { SyncPreviewError } from './errors';
@@ -46,10 +46,6 @@ export type PreviewCandidate = {
   readonly requiresProviderId?: boolean;
 };
 
-function equal(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 // A tombstoned entity reports no live body, but its last payload still names the objects it linked
 // to; dependency traversal has to see them so a rejoin or purge covers the whole graph.
 function remoteDependencies(entity: RemoteEntity | undefined): readonly { readonly objectId: string }[] {
@@ -81,7 +77,7 @@ function rowFor(
         ? remote?.tombstone === true
           ? 'delete'
           : 'add'
-        : equal(local, cloud)
+        : isEqual(local, cloud)
           ? 'update'
           : 'conflict';
   // Only a tombstone resolved a past revision for `restore` to publish. Every other row compares two
@@ -260,7 +256,7 @@ export function buildPreview(input: {
     for (const entity of localSnapshot)
       if (entity.mode === 'included' && !ids.has(entity.objectId)) {
         const next = joined.get(entity.objectId);
-        if (next !== undefined && !equal(next, entity.desired)) ids.add(entity.objectId);
+        if (next !== undefined && !isEqual(next, entity.desired)) ids.add(entity.objectId);
       }
   const candidateIds =
     input.request.kind === 'purge' ? [...ids].filter((objectId) => remoteByObject.has(objectId)) : [...ids];

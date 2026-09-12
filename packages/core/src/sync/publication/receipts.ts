@@ -1,13 +1,5 @@
-import { SyncBackendError } from '@aio-proxy/plugin-sdk';
-
 import { decodeRevision, encode, revisionKey, SyncProtocolError, type EntityHead } from '../protocol';
-import type { SyncObjectStore } from './publication';
-
-function assertSize(store: SyncObjectStore, bytes: Uint8Array): void {
-  if (bytes.byteLength > store.session.maxValueBytes) {
-    throw new SyncBackendError('quota', 'sync object exceeds backend limit');
-  }
-}
+import { assertSize, type SyncObjectStore } from './publication';
 
 export async function finalizeReceipt(
   store: SyncObjectStore,

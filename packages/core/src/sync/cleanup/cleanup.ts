@@ -12,21 +12,11 @@ import {
   type EntityHead,
   type RevisionRecord,
 } from '../protocol';
-import { finalizeReceipt, type SyncObjectStore } from '../publication';
+import { assertSize, finalizeReceipt, type SyncObjectStore } from '../publication';
 
 const SPACE_KEY = 's/v1/default/space';
 
 export const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-
-function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-export function assertSize(store: SyncObjectStore, bytes: Uint8Array): void {
-  if (bytes.byteLength > store.session.maxValueBytes) {
-    throw new SyncBackendError('quota', 'sync object exceeds backend limit');
-  }
-}
 
 export async function readHeadOrThrow(
   store: SyncObjectStore,
@@ -71,14 +61,6 @@ export async function updateHead(
       throw error;
     }
   }
-}
-
-export function revisionIdentity(
-  objectId: string,
-  operationId: string,
-  epoch: number,
-): { objectId: string; operationId: string; epoch: number } {
-  return { objectId, operationId, epoch };
 }
 
 function assertRevisionIdentity(
@@ -217,7 +199,7 @@ export async function ensureAccountTombstone(
     if (head.head.epoch > epoch || (head.head.epoch === epoch && head.head.state === 'active')) return;
     if (head.head.epoch < epoch) throw new SyncProtocolError('epoch-mismatch', 'epoch-mismatch');
     const current = await store.session.read(key, signal);
-    if (current.kind === 'present' && sameBytes(current.value, bytes)) return;
+    if (current.kind === 'present' && isEqual(current.value, bytes)) return;
     if (current.kind === 'present') {
       const identity = accountIdentity(current.value);
       if (identity !== undefined) {
@@ -422,7 +404,7 @@ export async function readServerTime(store: SyncObjectStore, signal: AbortSignal
     } catch (error) {
       if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
       const confirmed = await store.session.read(SPACE_KEY, signal);
-      if (confirmed.kind === 'present' && sameBytes(confirmed.value, nonceBytes)) return confirmed.modifiedAt;
+      if (confirmed.kind === 'present' && isEqual(confirmed.value, nonceBytes)) return confirmed.modifiedAt;
     }
   }
 }

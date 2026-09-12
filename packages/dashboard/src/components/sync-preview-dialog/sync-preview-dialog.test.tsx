@@ -123,7 +123,7 @@ test('clears override paths when closing before reopening a new preview', async 
 
   view.rerender(
     <QueryClientProvider client={new QueryClient()}>
-      <SyncPreviewDialog open={false} preview={null} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+      <SyncPreviewDialog preview={null} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
     </QueryClientProvider>,
   );
   view.rerender(
@@ -155,24 +155,24 @@ test('ignores an override preview that was superseded while in flight', async ()
         }),
     )
     .mockImplementation(() => new Promise<SyncPreview>(() => {}));
-  const renderAt = (open: boolean, current: SyncPreview | null) => (
+  const renderAt = (current: SyncPreview | null) => (
     <QueryClientProvider client={new QueryClient()}>
-      <SyncPreviewDialog open={open} preview={current} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+      <SyncPreviewDialog preview={current} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
     </QueryClientProvider>
   );
   const pin = (value: string) => {
     fireEvent.change(screen.getByLabelText(/Option path|选项路径/u), { target: { value } });
     fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
   };
-  const view = render(renderAt(true, preview));
+  const view = render(renderAt(preview));
 
   pin('limits.timeout');
   await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(1, 'object-work', [['limits', 'timeout']]));
 
   // Closing resets the draft, which is what frees the pin controls while the first request is
   // still live and lets a second one overlap it.
-  view.rerender(renderAt(false, null));
-  view.rerender(renderAt(true, { ...preview, previewId: 'preview-reopen' }));
+  view.rerender(renderAt(null));
+  view.rerender(renderAt({ ...preview, previewId: 'preview-reopen' }));
   pin('models.retries');
   await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', [['models', 'retries']]));
 

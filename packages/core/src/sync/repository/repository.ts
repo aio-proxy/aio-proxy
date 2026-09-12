@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import type { OAuthOwnership } from '../oauth';
 import type { EntityBody, EntityKind } from '../protocol';
@@ -132,21 +133,17 @@ type OutboxRow = {
   commit_id: string;
 };
 
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function sameCommitIntent(left: CommitIntent, right: CommitIntent): boolean {
   return (
     left.commitId === right.commitId &&
     left.origin === right.origin &&
     left.beforeDigest === right.beforeDigest &&
     left.afterDigest === right.afterDigest &&
-    sameJson(left.rawAfter, right.rawAfter) &&
-    sameJson(left.accountOperationIds, right.accountOperationIds) &&
-    sameJson(left.remoteOperations, right.remoteOperations) &&
-    sameJson(left.pluginSecrets, right.pluginSecrets) &&
-    sameJson(left.sourceRevisions, right.sourceRevisions)
+    isEqual(left.rawAfter, right.rawAfter) &&
+    isEqual(left.accountOperationIds, right.accountOperationIds) &&
+    isEqual(left.remoteOperations, right.remoteOperations) &&
+    isEqual(left.pluginSecrets, right.pluginSecrets) &&
+    isEqual(left.sourceRevisions, right.sourceRevisions)
   );
 }
 
@@ -156,7 +153,7 @@ function sameOutboxOperation(left: OutboxOperation, right: OutboxOperation): boo
     left.objectId === right.objectId &&
     left.epoch === right.epoch &&
     left.kind === right.kind &&
-    sameJson(left.body, right.body) &&
+    isEqual(left.body, right.body) &&
     left.commitId === right.commitId
   );
 }

@@ -18,7 +18,7 @@
     "build": "rslib && bun scripts/clean-dist.ts",
     "pack-native": "bun scripts/pack-native.ts",
     "test": "bun run test:unit",
-    "test:unit": "bun test ./src"
+    "test:unit": "bun test ./src ./scripts"
   },
   "peerDependencies": {
     "@aio-proxy/plugin-sdk": "workspace:*"

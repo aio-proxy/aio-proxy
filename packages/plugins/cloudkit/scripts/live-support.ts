@@ -40,6 +40,15 @@ export async function installedArtifactDigest(): Promise<string | undefined> {
   return digest === manifest.appSha256 ? digest : undefined;
 }
 
+// Every setup step reports the same way: a LiveSetupError marks the run blocked rather than failed.
+async function setupStep<T>(fallback: string, step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (error) {
+    throw new LiveSetupError(error instanceof Error ? error.message : fallback);
+  }
+}
+
 export async function connectInstalledPair(): Promise<InstalledPair> {
   if (process.platform !== 'darwin') throw new LiveSetupError('live CloudKit conformance requires macOS');
   const containerId = process.env.APPLE_CLOUDKIT_CONTAINER_ID?.trim();
@@ -48,21 +57,13 @@ export async function connectInstalledPair(): Promise<InstalledPair> {
   if (!/^iCloud\.[A-Za-z0-9.-]+$/u.test(containerId))
     throw new LiveSetupError('APPLE_CLOUDKIT_CONTAINER_ID is invalid');
 
-  let packageManifest: { readonly version?: unknown };
-  let nativeManifest: ArtifactManifest;
-  try {
-    packageManifest = await readJson<{ readonly version?: unknown }>(join(packageRoot, 'package.json'));
-    nativeManifest = await readJson<ArtifactManifest>(join(packageRoot, 'dist', 'native', 'manifest.json'));
-  } catch (error) {
-    throw new LiveSetupError(error instanceof Error ? error.message : 'installed manifest is unavailable');
-  }
+  const { packageManifest, nativeManifest } = await setupStep('installed manifest is unavailable', async () => ({
+    packageManifest: await readJson<{ readonly version?: unknown }>(join(packageRoot, 'package.json')),
+    nativeManifest: await readJson<ArtifactManifest>(join(packageRoot, 'dist', 'native', 'manifest.json')),
+  }));
   if (packageManifest.version !== nativeManifest.artifactVersion)
     throw new LiveSetupError('installed artifact version does not match the package manifest');
-  try {
-    validateManifest(nativeManifest);
-  } catch (error) {
-    throw new LiveSetupError(error instanceof Error ? error.message : 'installed manifest is invalid');
-  }
+  await setupStep('installed manifest is invalid', async () => validateManifest(nativeManifest));
   if (nativeManifest.signing?.containerId !== containerId)
     throw new LiveSetupError('requested container does not match signed artifact metadata');
   if (nativeManifest.bundleIdentifier !== bundleId || nativeManifest.signatureStatus !== 'verified')
@@ -71,54 +72,27 @@ export async function connectInstalledPair(): Promise<InstalledPair> {
   const appPath = join(cacheRoot(), nativeManifest.artifactVersion, basename(nativeManifest.appRelativePath));
   const executable = executablePathForApp(nativeManifest, appPath);
   if (!(await Bun.file(executable).exists())) throw new LiveSetupError('verified native artifact is not installed');
-  try {
-    await verifyBundle(appPath, nativeManifest, true);
-  } catch (error) {
-    throw new LiveSetupError(error instanceof Error ? error.message : 'installed artifact verification failed');
-  }
+  await setupStep('installed artifact verification failed', () => verifyBundle(appPath, nativeManifest, true));
+
   const signal = new AbortController().signal;
-  let a: SyncSession;
+  const a = await setupStep('native session could not connect', () =>
+    connectNative({ executable, containerId, signal }),
+  );
   try {
-    a = await connectNative({ executable, containerId, signal });
-  } catch (error) {
-    throw new LiveSetupError(error instanceof Error ? error.message : 'native session could not connect');
-  }
-  try {
-    let b: SyncSession;
-    try {
-      b = await connectNative({ executable, containerId, signal });
-    } catch (error) {
-      throw new LiveSetupError(error instanceof Error ? error.message : 'second native session could not connect');
-    }
-    if (a === b) throw new Error('live sessions must be backed by distinct native processes');
-    let cleanupPromise: Promise<void> | undefined;
+    const b = await setupStep('second native session could not connect', () =>
+      connectNative({ executable, containerId, signal }),
+    );
+    if (a === b) throw new LiveSetupError('live sessions must be backed by distinct native processes');
     return {
       a,
       b,
+      // The conformance harness calls this once and aggregates whatever it throws.
       async cleanup() {
-        if (cleanupPromise !== undefined) return cleanupPromise;
-        cleanupPromise = (async () => {
-          const errors: unknown[] = [];
-          for (const session of [a, b]) {
-            let disposed = false;
-            for (let attempt = 0; attempt < 2 && !disposed; attempt += 1) {
-              try {
-                await session.dispose();
-                disposed = true;
-              } catch (error) {
-                if (attempt === 1) errors.push(error);
-              }
-            }
-          }
-          if (errors.length > 0) throw new AggregateError(errors, 'native session cleanup failed');
-        })();
-        return cleanupPromise;
+        await Promise.all([a, b].map((session) => session.dispose()));
       },
     };
   } catch (error) {
     await a.dispose().catch(() => undefined);
-    throw error instanceof LiveSetupError
-      ? error
-      : new LiveSetupError(error instanceof Error ? error.message : 'native sessions could not connect');
+    throw error;
   }
 }

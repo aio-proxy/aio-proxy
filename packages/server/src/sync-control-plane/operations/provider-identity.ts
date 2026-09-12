@@ -1,6 +1,6 @@
 import type { EntityBody, LocalEntity } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
-import { isPlainObject } from 'es-toolkit/predicate';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 
 import type { RemoteEntity } from '../preview';
 import { SyncOperationError } from './errors';
@@ -14,10 +14,6 @@ export type ProviderIdentityRows = {
   /** Whether the old object still exists remotely and has to be removed after the rename lands. */
   readonly replacesPublished: boolean;
 };
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
 
 /**
  * Moves every reference to `oldProviderId` onto `newProviderId`: the keys of `providers`/`accounts`
@@ -104,7 +100,7 @@ export function providerIdentityRows(
     // Persist only rows whose provider identity or structured references changed. This lets a
     // repository that predates bulk persistence handle a provider-only rename atomically while
     // still refusing a multi-row mapping that it cannot write as one transaction.
-    entities: mapped.filter((entity, index) => !sameJson(entity, entities[index])),
+    entities: mapped.filter((entity, index) => !isEqual(entity, entities[index])),
   };
 }
 

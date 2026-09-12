@@ -3,7 +3,7 @@ import { expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { providerPurgePreviewInput, SyncSettingsGroup } from './sync-settings-group';
+import { SyncSettingsGroup } from './sync-settings-group';
 
 const mocks = rs.hoisted(() => ({
   previewMutate: rs.fn(),
@@ -128,8 +128,4 @@ test('submits a typed secret and the authored option type', () => {
     },
     { onSuccess: expect.any(Function) },
   );
-});
-
-test('builds provider purge previews from the selected Provider ID', () => {
-  expect(providerPurgePreviewInput('work')).toEqual({ kind: 'purge', scope: 'provider', objectId: 'work' });
 });

@@ -27,25 +27,3 @@ export function asJournalPayload(value: JsonValue | null): SharingJournalPayload
 export function journalJson(payload: SharingJournalPayload): JsonValue {
   return payload as unknown as JsonValue;
 }
-
-export function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-export function sameRemote(left: LiveAccount, right: LiveAccount): boolean {
-  return (
-    left.protocol === right.protocol &&
-    left.objectId === right.objectId &&
-    left.epoch === right.epoch &&
-    left.plugin === right.plugin &&
-    left.capability === right.capability &&
-    left.pluginVersion === right.pluginVersion &&
-    left.formatVersion === right.formatVersion &&
-    left.multiDeviceEvidenceId === right.multiDeviceEvidenceId &&
-    left.generation === right.generation &&
-    left.phase === right.phase &&
-    sameJson(left.payload, right.payload) &&
-    sameJson(left.claim, right.claim) &&
-    left.lastCompletedOperationId === right.lastCompletedOperationId
-  );
-}

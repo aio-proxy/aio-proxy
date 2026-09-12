@@ -11,8 +11,7 @@ import {
   type SyncRepository,
 } from '../../packages/core/src/index';
 import type { OAuthSyncEvidence } from '../../packages/core/src/sync/oauth/adapter-conformance';
-import type { OAuthAdapter, SyncBackendDefinition, SyncSession } from '../../packages/plugin-sdk/src';
-import { BackendSetupError, loadSyncBackendDescriptor } from '../verify-oauth-sync-backend';
+import type { OAuthAdapter, PluginDescriptor, SyncBackendDefinition, SyncSession } from '../../packages/plugin-sdk/src';
 import { AssertionError, BlockedError, matchesOAuthAdapter, type LiveFailureCode } from './assertion-results';
 import { copiedAccount, discover, readRemote } from './ports';
 import { assertSharedRefresh } from './refresh-assertions';
@@ -119,6 +118,17 @@ function putEntity(repo: SyncRepository, local: LocalBinding, account: LiveAccou
       ...(account.multiDeviceEvidenceId === undefined ? {} : { multiDeviceEvidenceId: account.multiDeviceEvidenceId }),
     },
   });
+}
+
+// CloudKit is the only bundled sync backend; OAUTH_SYNC_BACKEND_MODULE points the live run at another build.
+async function loadSyncBackendDescriptor(plugin: string): Promise<PluginDescriptor> {
+  const moduleName = process.env['OAUTH_SYNC_BACKEND_MODULE']?.trim();
+  if (moduleName === undefined && plugin !== '@aio-proxy/plugin-cloudkit')
+    throw new BlockedError('setup-backend-required');
+  const source = moduleName ?? new URL('../../packages/plugins/cloudkit/src/index.ts', import.meta.url).href;
+  const imported = (await import(source)) as { readonly default?: PluginDescriptor };
+  if (imported.default === undefined) throw new BlockedError('setup-backend-unavailable');
+  return imported.default;
 }
 
 export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResult> {
@@ -260,9 +270,7 @@ export async function runOAuthSyncLive(input: LiveRunInput): Promise<LiveRunResu
       sourceDb.close();
     }
   } catch (error) {
-    if (error instanceof BlockedError) failureCode ??= error.code;
-    else if (error instanceof AssertionError) failureCode ??= error.code;
-    else if (error instanceof BackendSetupError) failureCode ??= error.code;
+    if (error instanceof BlockedError || error instanceof AssertionError) failureCode ??= error.code;
     else failureCode ??= 'setup-backend-unavailable';
   } finally {
     await Promise.all(sessions.map((session) => session.dispose().catch(() => {})));

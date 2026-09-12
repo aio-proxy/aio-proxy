@@ -1,6 +1,5 @@
 export {
   useApplySync,
-  useCancelSyncDetach,
   useDisconnectSync,
   useDetachSync,
   usePreviewSync,

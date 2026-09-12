@@ -42,7 +42,6 @@ interface PreviewStateHarnessProps {
   readonly initialPreview: SyncPreview;
   onPreviewOverrides(objectId: string, paths: readonly string[][]): Promise<SyncPreview>;
   onRetry?(): Promise<SyncPreview>;
-  onApplied?(): void;
   onOpenChange?(open: boolean): void;
 }
 
@@ -50,7 +49,6 @@ const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({
   initialPreview,
   onPreviewOverrides,
   onRetry,
-  onApplied,
   onOpenChange,
 }) => {
   const [current, setCurrent] = useState(initialPreview);
@@ -69,10 +67,8 @@ const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({
         };
   return (
     <SyncPreviewDialog
-      open
       preview={current}
       onOpenChange={onOpenChange ?? noop}
-      onApplied={onApplied}
       onRetry={retry}
       onPreviewOverrides={refresh}
     />
@@ -159,7 +155,6 @@ test('brings the join operation back instead of closing after applying a pinned 
   mocks.applySync.mockReset();
   const overridesPreview: SyncPreview = { ...preview, previewId: 'preview-overrides', kind: 'overrides' };
   const onRetry = rs.fn().mockResolvedValue({ ...preview, previewId: 'preview-join-refreshed' });
-  const onApplied = rs.fn();
   const onOpenChange = rs.fn();
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -167,7 +162,6 @@ test('brings the join operation back instead of closing after applying a pinned 
         initialPreview={preview}
         onPreviewOverrides={async () => overridesPreview}
         onRetry={onRetry}
-        onApplied={onApplied}
         onOpenChange={onOpenChange}
       />
     </QueryClientProvider>,
@@ -188,7 +182,6 @@ test('brings the join operation back instead of closing after applying a pinned 
 
   // The join decisions were never sent, so the dialog owes the user a second explicit apply.
   await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
-  expect(onApplied).not.toHaveBeenCalled();
   expect(onOpenChange).not.toHaveBeenCalledWith(false);
   await waitFor(() => expect(screen.queryByRole('button', { name: /Remove local option/u })).toBeNull());
 });

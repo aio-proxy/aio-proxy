@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { SyncApplyInput, SyncPreview, SyncPreviewRow } from '@aio-proxy/types';
+import { SyncPreviewSchema, type SyncApplyInput, type SyncPreview, type SyncPreviewRow } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import {
   Dialog,
@@ -12,7 +12,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
 import { omit } from 'es-toolkit/object';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { useApplySync } from '@/hooks/use-sync';
@@ -36,7 +36,7 @@ const previewFormSchema = z.object({
   overrides: z.record(z.string(), z.array(z.array(z.string().min(1)))),
 });
 
-export const redactPreviewValue = (value: unknown): unknown => {
+const redactPreviewValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(redactPreviewValue);
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
@@ -61,10 +61,8 @@ interface PreviewFormValues {
 }
 
 export interface SyncPreviewDialogProps {
-  readonly open: boolean;
   readonly preview: SyncPreview | null;
   onOpenChange(open: boolean): void;
-  onApplied?(): void;
   onRetry?(): Promise<SyncPreview>;
   /** An override belongs to one entity, so the row the paths were pinned on names the target. */
   onPreviewOverrides?(objectId: string, paths: readonly string[][]): Promise<SyncPreview>;
@@ -97,71 +95,7 @@ const renameError = (value: string | undefined): 'required' | 'invalid' | undefi
 };
 
 const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): value is SyncPreview =>
-  value !== null &&
-  typeof value === 'object' &&
-  'kind' in value &&
-  value.kind === kind &&
-  'previewId' in value &&
-  typeof value.previewId === 'string' &&
-  value.previewId.trim().length > 0;
-
-// A first connect has no binding yet, so its preview legitimately carries zero rows and
-// an empty decision set is a valid apply. Only the decision-bearing kinds need a row.
-const hasApplicableDecisions = (preview: SyncPreview | null, rows: readonly SyncPreviewRow[]): boolean =>
-  preview !== null && (rows.length > 0 || preview.kind === 'connect');
-
-interface StalePreviewAlertArgs {
-  readonly stale: boolean;
-  readonly pending: boolean;
-  readonly preview: SyncPreview | null;
-  readonly onRetry: SyncPreviewDialogProps['onRetry'];
-  readonly applyMutation: ReturnType<typeof useApplySync>;
-  readonly retryError: boolean;
-  setRetryError(value: boolean): void;
-  setNeedsFreshPreview(value: boolean): void;
-}
-
-const stalePreviewAlert = ({
-  stale,
-  pending,
-  preview,
-  onRetry,
-  applyMutation,
-  retryError,
-  setRetryError,
-  setNeedsFreshPreview,
-}: StalePreviewAlertArgs): React.ReactNode => {
-  if (!stale) return null;
-  return (
-    <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
-      <p>{m['dashboard.sync.preview_stale_retry']()}</p>
-      <Button
-        type="button"
-        size="sm"
-        className="mt-2"
-        onClick={async () => {
-          setRetryError(false);
-          const replacement =
-            onRetry === undefined
-              ? undefined
-              : await Promise.resolve()
-                  .then(() => onRetry())
-                  .catch(() => undefined);
-          if (replacement !== undefined && isValidReplacementPreview(replacement, preview?.kind ?? 'join')) {
-            applyMutation.reset();
-            setNeedsFreshPreview(false);
-          } else {
-            setRetryError(true);
-          }
-        }}
-        disabled={pending}
-      >
-        {m['dashboard.sync.preview_retry']()}
-      </Button>
-      {retryError ? <p role="alert">{m['dashboard.sync.preview_retry_failed']()}</p> : null}
-    </div>
-  );
-};
+  SyncPreviewSchema.safeParse(value).success && (value as SyncPreview).kind === kind;
 
 // An override preview replaces the whole dialog, so only one row can have a failure in flight.
 interface OverrideError {
@@ -169,28 +103,13 @@ interface OverrideError {
   readonly kind: 'invalid' | 'refresh';
 }
 
-const clearOverrideDraft = (
-  overridesRef: { current: Record<string, readonly string[][]> },
-  previewGenerationRef: { current: number },
-  setNeedsFreshPreview: (value: boolean) => void,
-  setOverrideError: (value: OverrideError | undefined) => void,
-  setIsRefreshingOverrides: (value: boolean) => void,
-) => {
-  overridesRef.current = {};
-  previewGenerationRef.current += 1;
-  setNeedsFreshPreview(false);
-  setOverrideError(undefined);
-  setIsRefreshingOverrides(false);
-};
-
 export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
-  open,
   preview,
   onOpenChange,
-  onApplied,
   onRetry,
   onPreviewOverrides,
 }) => {
+  const open = preview !== null;
   const applyMutation = useApplySync();
   const [needsFreshPreview, setNeedsFreshPreview] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -207,16 +126,22 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const [, rerenderOverrides] = useState(0);
   const form = useForm({ defaultValues: initialValues(preview), validators: { onChange: previewFormSchema } });
 
+  // Every setter and ref below is render-stable, so the effect can depend on this directly.
+  const clearOverrideDraft = useCallback(() => {
+    overridesRef.current = {};
+    previewGenerationRef.current += 1;
+    setNeedsFreshPreview(false);
+    setOverrideError(undefined);
+    setIsRefreshingOverrides(false);
+  }, []);
+
   useEffect(() => {
     if (!open || preview === null) {
       openedKindRef.current = undefined;
-      clearOverrideDraft(
-        overridesRef,
-        previewGenerationRef,
-        setNeedsFreshPreview,
-        setOverrideError,
-        setIsRefreshingOverrides,
-      );
+      // The parent keeps this component mounted across closes, so the draft has to be cleared
+      // from the prop change rather than from an event: the dialog also closes without one.
+      // oxlint-disable-next-line react/set-state-in-effect
+      clearOverrideDraft();
       form.reset(initialValues(preview));
       return;
     }
@@ -226,12 +151,15 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
       ...initialValues(preview),
       overrides: existingOverrides,
     });
-  }, [form, open, preview]);
+  }, [clearOverrideDraft, form, open, preview]);
 
   const stale = applyMutation.error instanceof SyncRequestError && applyMutation.error.code === 'preview-stale';
   const pending = applyMutation.isPending || isRefreshingOverrides;
   const rows = preview?.rows ?? EMPTY_ROWS;
-  const submitDisabled = pending || needsFreshPreview || !hasApplicableDecisions(preview, rows);
+  // A first connect has no binding yet, so its preview legitimately carries zero rows and
+  // an empty decision set is a valid apply. Only the decision-bearing kinds need a row.
+  const submitDisabled =
+    pending || needsFreshPreview || preview === null || (rows.length === 0 && preview.kind !== 'connect');
 
   const options = new Set(rows.flatMap((row) => row.choices));
 
@@ -292,20 +220,13 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
           // that operation back for its own explicit apply rather than reporting it done: its
           // decisions were never sent, and it now has to be previewed against the new overrides.
           if (preview.kind === 'overrides' && openedKindRef.current !== 'overrides' && onRetry !== undefined) {
-            clearOverrideDraft(
-              overridesRef,
-              previewGenerationRef,
-              setNeedsFreshPreview,
-              setOverrideError,
-              setIsRefreshingOverrides,
-            );
+            clearOverrideDraft();
             applyMutation.reset();
             void Promise.resolve()
               .then(() => onRetry())
               .catch(() => setRetryError(true));
             return;
           }
-          onApplied?.();
           onOpenChange(false);
         },
       },
@@ -319,16 +240,35 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
           <DialogTitle>{m['dashboard.sync.preview_title']()}</DialogTitle>
           <DialogDescription>{m['dashboard.sync.preview_description']()}</DialogDescription>
         </DialogHeader>
-        {stalePreviewAlert({
-          stale,
-          pending,
-          preview,
-          onRetry,
-          applyMutation,
-          retryError,
-          setRetryError,
-          setNeedsFreshPreview,
-        })}
+        {stale ? (
+          <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <p>{m['dashboard.sync.preview_stale_retry']()}</p>
+            <Button
+              type="button"
+              size="sm"
+              className="mt-2"
+              onClick={async () => {
+                setRetryError(false);
+                const replacement =
+                  onRetry === undefined
+                    ? undefined
+                    : await Promise.resolve()
+                        .then(() => onRetry())
+                        .catch(() => undefined);
+                if (replacement !== undefined && isValidReplacementPreview(replacement, preview?.kind ?? 'join')) {
+                  applyMutation.reset();
+                  setNeedsFreshPreview(false);
+                } else {
+                  setRetryError(true);
+                }
+              }}
+              disabled={pending}
+            >
+              {m['dashboard.sync.preview_retry']()}
+            </Button>
+            {retryError ? <p role="alert">{m['dashboard.sync.preview_retry_failed']()}</p> : null}
+          </div>
+        ) : null}
         {applyMutation.isError && !stale ? <p role="alert">{m['dashboard.sync.apply_failed']()}</p> : null}
         {preview === null || rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{m['dashboard.sync.preview_empty']()}</p>

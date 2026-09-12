@@ -1,4 +1,4 @@
-import type { SyncCAS, SyncRead, SyncSession } from '@aio-proxy/plugin-sdk';
+import type { SyncCAS, SyncFailureCode, SyncRead, SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { readFrames } from './frame-reader';
 import {
@@ -86,7 +86,7 @@ class NativeSession implements SyncSession {
     const reading = this.#readLoop();
     this.#reading = reading;
     void this.#stderrLoop();
-    void this.#child.exited.then(() => reading).then(() => this.#failAll(false, 'native process exited'));
+    void this.#child.exited.then(() => reading).then(() => this.#failAll('native process exited'));
   }
 
   setMetadata(value: { identityId: string; spaceId: string; maxValueBytes: number }): void {
@@ -111,14 +111,14 @@ class NativeSession implements SyncSession {
     }
     return {
       kind: 'present',
-      value: decodeBase64(value.valueBase64),
+      value: Uint8Array.fromBase64(value.valueBase64),
       version: value.version,
       modifiedAt: value.modifiedAt,
     };
   }
 
   async compareAndSwap(key: string, expected: string | null, value: Uint8Array, signal: AbortSignal): Promise<SyncCAS> {
-    const result = await this.request('cas', { key, expected, valueBase64: encodeBase64(value) }, signal, true);
+    const result = await this.request('cas', { key, expected, valueBase64: value.toBase64() }, signal, true);
     if (!result || typeof result !== 'object')
       throw new NativeSessionError('invalid-data', 'invalid native CAS result');
     const output = result as Record<string, unknown>;
@@ -208,7 +208,7 @@ class NativeSession implements SyncSession {
           // different retry semantics, so wait for the read loop to classify rather than racing
           // it with a raw EPIPE. #readLoop never rejects and a closed pipe ends it, so this
           // settles; the loop's own failAll usually gets there first.
-          void this.#reading.then(() => this.#failAll(false, 'native input closed'));
+          void this.#reading.then(() => this.#failAll('native input closed'));
           return;
         }
         release();
@@ -237,7 +237,7 @@ class NativeSession implements SyncSession {
         this.#child.kill('SIGTERM');
         if (!(await this.#waitForExit(2000))) this.#child.kill('SIGKILL');
       }
-      this.#failAll(false, 'native session disposed');
+      this.#failAll('native session disposed');
       this.#stop = undefined;
     })();
     return this.#disposePromise;
@@ -256,7 +256,7 @@ class NativeSession implements SyncSession {
       for await (const frame of readFrames(this.#child.stdout)) {
         this.#handle(parseNativeReply(frame));
       }
-      this.#failAll(false, 'native output ended');
+      this.#failAll('native output ended');
     } catch {
       this.#fenceProtocol('native output was invalid');
     }
@@ -281,7 +281,7 @@ class NativeSession implements SyncSession {
       else {
         this.#generation += 1;
         this.#identityChanged = true;
-        this.#failAll(false, 'CloudKit identity changed', 'identity-changed');
+        this.#failAll('CloudKit identity changed', 'identity-changed');
         void this.dispose();
       }
       return;
@@ -289,9 +289,7 @@ class NativeSession implements SyncSession {
     const pending = this.#pending.get(reply.id);
     if (!pending) {
       if (this.#cancelled.delete(reply.id)) return;
-      this.#protocolFailed = true;
-      this.#failAllWithCode('invalid-data', 'unexpected or duplicate native reply');
-      this.#child.kill('SIGTERM');
+      this.#fenceProtocol('unexpected or duplicate native reply');
       return;
     }
     this.#pending.delete(reply.id);
@@ -300,35 +298,26 @@ class NativeSession implements SyncSession {
     else pending.reject(new NativeSessionError(reply.error.code));
   }
 
-  #failAll(mutationUnknown: boolean, message: string, code?: 'identity-changed'): void {
+  // Every failure path drains the same map, and forgets the cancelled ids that can no
+  // longer be matched against a reply. Only the code an in-flight entry earns differs.
+  #rejectAll(message: string, codeFor: (pending: { readonly mutation: boolean }) => SyncFailureCode): void {
     for (const [id, pending] of this.#pending) {
       this.#pending.delete(id);
       pending.release();
-      pending.reject(
-        new NativeSessionError(code ?? (mutationUnknown || pending.mutation ? 'outcome-unknown' : 'offline'), message),
-      );
+      pending.reject(new NativeSessionError(codeFor(pending), message));
     }
     this.#cancelled.clear();
   }
 
-  #failAllWithCode(code: 'offline' | 'invalid-data', message: string): void {
-    if (this.#protocolFailed && code !== 'invalid-data') return;
-    for (const [id, pending] of this.#pending) {
-      this.#pending.delete(id);
-      pending.release();
-      pending.reject(new NativeSessionError(code, message));
-    }
-    this.#cancelled.clear();
+  #failAll(message: string, code?: 'identity-changed'): void {
+    this.#rejectAll(message, (pending) => code ?? (pending.mutation ? 'outcome-unknown' : 'offline'));
   }
 
+  // A broken protocol leaves an in-flight mutation's outcome genuinely unknown, so it must
+  // force a reread rather than report invalid-data.
   #fenceProtocol(message: string): void {
     this.#protocolFailed = true;
-    for (const [id, pending] of this.#pending) {
-      this.#pending.delete(id);
-      pending.release();
-      pending.reject(new NativeSessionError(pending.mutation ? 'outcome-unknown' : 'invalid-data', message));
-    }
-    this.#cancelled.clear();
+    this.#rejectAll(message, (pending) => (pending.mutation ? 'outcome-unknown' : 'invalid-data'));
     this.#child.kill('SIGTERM');
   }
 
@@ -338,15 +327,4 @@ class NativeSession implements SyncSession {
       new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeout)),
     ]);
   }
-}
-
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-function encodeBase64(value: Uint8Array): string {
-  let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }

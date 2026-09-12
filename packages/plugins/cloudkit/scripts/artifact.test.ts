@@ -5,7 +5,6 @@ import { join } from 'node:path';
 
 import {
   assertNoSymlinkEscape,
-  CLOUDKIT_SIGNING_STEPS,
   executablePathForApp,
   validateEffectiveEntitlements,
   validateManifest,
@@ -40,7 +39,7 @@ describe('CloudKit artifact gates', () => {
     ).toThrow('APPLE_CLOUDKIT_CONTAINER_ID');
   });
 
-  test('validates effective entitlements and preserves signing order', () => {
+  test('validates effective entitlements', () => {
     const input = {
       teamId: 'TEAM123',
       containerId: 'iCloud.dev.aioproxy',
@@ -48,8 +47,9 @@ describe('CloudKit artifact gates', () => {
       environment: 'Production',
     };
     validateEffectiveEntitlements(profile.Entitlements, input);
-    expect(CLOUDKIT_SIGNING_STEPS.indexOf('nested-code')).toBeLessThan(CLOUDKIT_SIGNING_STEPS.indexOf('bundle'));
-    expect(CLOUDKIT_SIGNING_STEPS.indexOf('staple')).toBeLessThan(CLOUDKIT_SIGNING_STEPS.indexOf('archive-final'));
+    expect(() => validateEffectiveEntitlements(profile.Entitlements, { ...input, environment: 'Development' })).toThrow(
+      'iCloud environment',
+    );
   });
 
   test('accepts macOS Developer ID profile entitlement names and wildcard CloudKit services', () => {

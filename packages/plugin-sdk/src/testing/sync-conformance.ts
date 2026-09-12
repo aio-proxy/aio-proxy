@@ -1,3 +1,5 @@
+import { isEqual } from 'es-toolkit/predicate';
+
 import { SyncBackendError, type SyncSession } from '../sync';
 
 export type SyncConformancePair = {
@@ -9,10 +11,6 @@ export type SyncConformancePair = {
 
 function assertion(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Sync backend conformance failed: ${message}`);
-}
-
-function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export async function exerciseSyncBackend(factory: () => Promise<SyncConformancePair>): Promise<void> {
@@ -35,7 +33,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
 
     const read = await pair.a.read(key, signal);
     assertion(read.kind === 'present', 'a created value can be read');
-    assertion(sameBytes(read.value, value), 'read returns the written bytes');
+    assertion(isEqual(read.value, value), 'read returns the written bytes');
     createdKeys.add(key);
     const stale = await pair.b.compareAndSwap(key, read.version, new TextEncoder().encode('replacement'), signal);
     assertion(stale.kind === 'written', 'current version writes');
@@ -54,7 +52,7 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
       }
       assertion(uncertain, 'unknown write outcomes are surfaced');
       const recovered = await pair.a.read(uncertainKey, signal);
-      assertion(recovered.kind === 'present' && sameBytes(recovered.value, value), 'unknown writes are recoverable');
+      assertion(recovered.kind === 'present' && isEqual(recovered.value, value), 'unknown writes are recoverable');
     }
 
     const listA = `${prefix}list-a`;

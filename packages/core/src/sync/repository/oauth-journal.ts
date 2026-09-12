@@ -1,5 +1,7 @@
 import { Database } from 'bun:sqlite';
 
+import { isEqual } from 'es-toolkit/predicate';
+
 import type { OAuthJournalRow } from './repository';
 import { parseOAuthJournalRow, stringifyJson } from './rows';
 
@@ -16,10 +18,6 @@ type Transaction = <T>(callback: () => T) => T;
 
 function phaseOrder(phase: OAuthJournalRow['phase']): number {
   return phase === 'started' ? 0 : phase === 'result' ? 1 : 2;
-}
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function ensureFullSynchronous(sqlite: Database): void {
@@ -58,12 +56,12 @@ export function createOAuthJournalRepository(sqlite: Database, transaction: Tran
           const nextOrder = phaseOrder(row.phase);
           if (nextOrder < currentOrder) throw new Error(`Stale sync OAuth journal phase: ${row.operationId}`);
           if (nextOrder === currentOrder) {
-            if (!sameJson(stored.payload, row.payload)) {
+            if (!isEqual(stored.payload, row.payload)) {
               throw new Error(`Conflicting sync OAuth journal result: ${row.operationId}`);
             }
             return;
           }
-          if (stored.phase === 'result' && !sameJson(stored.payload, row.payload)) {
+          if (stored.phase === 'result' && !isEqual(stored.payload, row.payload)) {
             throw new Error(`Conflicting sync OAuth journal result: ${row.operationId}`);
           }
           sqlite

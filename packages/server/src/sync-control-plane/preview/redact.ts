@@ -2,8 +2,6 @@ import type { EntityBody } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreviewRow } from '@aio-proxy/types';
 
-import { clone } from './entities';
-
 // `headers` is listed as a whole: any header name can carry a credential (`Authorization`,
 // `Cookie`, a vendor-specific name), so the map is redacted rather than matched key by key.
 export const SECRET_KEY =
@@ -26,7 +24,7 @@ export function redactEntityValue(body: EntityBody, secretKeys: ReadonlySet<stri
       return '[redacted]';
     return redact(value, key, secretKeys);
   };
-  return redactRecord(clone(body.value));
+  return redactRecord(structuredClone(body.value));
 }
 
 function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = new Set()): Record<string, JsonValue> {

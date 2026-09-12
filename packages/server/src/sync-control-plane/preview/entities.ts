@@ -1,5 +1,5 @@
 import { decodeHead, decodeRevision, entityKey, revisionKey, type EntityBody, type LocalEntity } from '@aio-proxy/core';
-import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
+import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { SyncPreviewError } from './errors';
 
@@ -18,15 +18,11 @@ export type RemoteEntity = {
   readonly restoreBody?: EntityBody | null;
 };
 
-export function clone(value: JsonValue): JsonValue {
-  return JSON.parse(JSON.stringify(value)) as JsonValue;
-}
-
 function snapshotBody(body: EntityBody | null | undefined): EntityBody | null | undefined {
   if (body === null || body === undefined) return body;
   return {
     ...body,
-    value: clone(body.value),
+    value: structuredClone(body.value),
     dependencies: body.dependencies.map((dependency) => ({ ...dependency })),
   };
 }
@@ -51,7 +47,7 @@ export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntit
     desired: snapshotBody(entity.desired) ?? null,
     overrides: entity.overrides.map((override) => ({
       ...override,
-      ...(override.value === undefined ? {} : { value: clone(override.value) }),
+      ...(override.value === undefined ? {} : { value: structuredClone(override.value) }),
     })),
     oauth: entity.oauth === undefined ? undefined : { ...entity.oauth },
   }));

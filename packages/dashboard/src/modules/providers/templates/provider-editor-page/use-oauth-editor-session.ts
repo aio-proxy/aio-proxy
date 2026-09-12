@@ -117,6 +117,8 @@ export const useOAuthEditorSession = (
         try {
           await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
           next = oauthFromEditView(
+            // Inlined rather than reusing providerEditViewQueryOptions: this call only needs the
+            // raw payload, and the shared options' Hono-inferred result blows TS2589 in fetchQuery.
             await queryClient.fetchQuery({
               queryKey: queryKeys.providerEditView(session.providerId),
               queryFn: async (): Promise<unknown> => fetchProviderEditView(session.providerId),

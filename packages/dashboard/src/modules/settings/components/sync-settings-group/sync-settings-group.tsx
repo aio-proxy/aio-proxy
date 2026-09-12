@@ -42,12 +42,6 @@ const EMPTY_BACKENDS: readonly SyncBackendView[] = [];
 const syncBackendKey = (backend: { readonly plugin: string; readonly capability: string }): string =>
   JSON.stringify([backend.plugin, backend.capability]);
 
-export const providerPurgePreviewInput = (providerId: string): Extract<SyncPreviewInput, { kind: 'purge' }> => ({
-  kind: 'purge',
-  scope: 'provider',
-  objectId: providerId,
-});
-
 const statusCopy = (state: string): string => {
   const key = `dashboard.sync.status_${state}` as keyof typeof m;
   const message = m[key];
@@ -235,7 +229,7 @@ export const SyncSettingsGroup: React.FC = () => {
 
   const previewProviderPurge = () => {
     if (selectedProviderId === '') return;
-    const input = providerPurgePreviewInput(selectedProviderId);
+    const input: SyncPreviewInput = { kind: 'purge', scope: 'provider', objectId: selectedProviderId };
     setLastPreviewInput(input);
     previewMutation.mutate(input, { onSuccess: setPreview });
   };
@@ -374,12 +368,10 @@ export const SyncSettingsGroup: React.FC = () => {
         </CardContent>
       </Card>
       <SyncPreviewDialog
-        open={preview !== null}
         preview={preview}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
         }}
-        onApplied={() => setPreview(null)}
         onRetry={async () => {
           if (lastPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
           const next = await previewMutation.mutateAsync(lastPreviewInput);

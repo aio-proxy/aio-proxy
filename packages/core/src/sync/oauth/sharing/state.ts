@@ -1,11 +1,12 @@
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import type { AccountWrite, StoredAccount } from '../../../plugins/repository';
 import { parsePluginSchema } from '../../../plugins/schema';
 import type { OAuthJournalRow } from '../../repository';
 import type { LiveAccount, OAuthOwnership } from '../protocol';
 import { entityFor, payloadFor } from './detach';
-import { asJournalPayload, journalJson, sameJson, type SharingJournalPayload } from './journal';
+import { asJournalPayload, journalJson, type SharingJournalPayload } from './journal';
 import type { OAuthSharingServiceInput } from './sharing';
 
 export function accountWrite(account: StoredAccount): AccountWrite {
@@ -29,9 +30,9 @@ export function accountMatches(current: StoredAccount, candidate: AccountWrite):
     current.plugin === candidate.plugin &&
     current.capability === candidate.capability &&
     current.fingerprint === candidate.fingerprint &&
-    sameJson(current.options, candidate.options) &&
-    sameJson(current.secrets, candidate.secrets) &&
-    sameJson(current.credential, candidate.credential) &&
+    isEqual(current.options, candidate.options) &&
+    isEqual(current.secrets, candidate.secrets) &&
+    isEqual(current.credential, candidate.credential) &&
     current.label === candidate.label &&
     current.expiresAt === candidate.expiresAt
   );

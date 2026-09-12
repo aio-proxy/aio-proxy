@@ -1,15 +1,6 @@
 import { z } from 'zod';
 
-const JsonValueSchema: z.ZodType = z.lazy(() =>
-  z.union([
-    z.null(),
-    z.boolean(),
-    z.number().finite(),
-    z.string(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-);
+const JsonValueSchema: z.ZodType = z.json();
 
 // `service-access` and `routing-defaults` have no authored key of their own, so their identity is
 // fixed to their kind (see authoredEntityIdentities). Any other logical key would dodge the

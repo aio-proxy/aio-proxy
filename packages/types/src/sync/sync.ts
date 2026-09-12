@@ -164,6 +164,3 @@ export type SyncControlPlane = {
   readonly retry: () => Promise<SyncStatus>;
   readonly disconnect: () => Promise<SyncStatus>;
 };
-
-// Keep the public aliases tied to the SDK JSON contract for consumers that do not use Zod.
-export type SyncJsonValue = z.output<typeof json>;

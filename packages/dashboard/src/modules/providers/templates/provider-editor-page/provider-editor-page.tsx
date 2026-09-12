@@ -285,12 +285,10 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         />
       </form>
       <SyncPreviewDialog
-        open={syncPreview !== null}
         preview={syncPreview}
         onOpenChange={(open) => {
           if (!open) setSyncPreview(null);
         }}
-        onApplied={() => setSyncPreview(null)}
         onRetry={async () => {
           if (lastSyncPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
           return previewInput(lastSyncPreviewInput);

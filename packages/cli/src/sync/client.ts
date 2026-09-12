@@ -93,8 +93,7 @@ function mapError(code: string | undefined, status: number, url: string): SyncCl
 
 const parseResponse = async (response: Response): Promise<unknown> => response.json().catch(() => undefined);
 
-const stripFinalLineEnding = (value: string): string =>
-  value.endsWith('\r\n') ? value.slice(0, -2) : value.endsWith('\n') ? value.slice(0, -1) : value;
+const stripFinalLineEnding = (value: string): string => value.replace(/\r?\n$/u, '');
 
 export function createSyncClient(deps: SyncCliDeps): SyncClient {
   const requestJson = async (path: string, init: RequestInit = {}): Promise<unknown> => {
@@ -120,86 +119,34 @@ export function createSyncClient(deps: SyncCliDeps): SyncClient {
     return result.data;
   };
 
+  const send = (path: string, body: unknown, method = 'POST'): Promise<unknown> =>
+    requestJson(
+      path,
+      mutation({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    );
+
   return {
     async status() {
       return parse(SyncStatusSchema, await requestJson('/dashboard/api/sync'));
     },
     async preview(input) {
-      const body = parse(SyncPreviewInputSchema, input);
-      return parse(
-        SyncPreviewSchema,
-        await requestJson(
-          '/dashboard/api/sync/preview',
-          mutation({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          }),
-        ),
-      );
+      return parse(SyncPreviewSchema, await send('/dashboard/api/sync/preview', parse(SyncPreviewInputSchema, input)));
     },
     async apply(input) {
-      const body = parse(SyncApplyInputSchema, input);
-      return parse(
-        SyncStatusSchema,
-        await requestJson(
-          '/dashboard/api/sync/apply',
-          mutation({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          }),
-        ),
-      );
+      return parse(SyncStatusSchema, await send('/dashboard/api/sync/apply', parse(SyncApplyInputSchema, input)));
     },
     async range(providerId) {
-      return parse(
-        SyncStatusSchema,
-        await requestJson(
-          '/dashboard/api/sync/range',
-          mutation({
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId, included: false }),
-          }),
-        ),
-      );
+      return parse(SyncStatusSchema, await send('/dashboard/api/sync/range', { providerId, included: false }, 'PUT'));
     },
     async history(objectId) {
-      const body = await requestJson(`/dashboard/api/sync/history/${encodeURIComponent(objectId)}`);
-      if (typeof body !== 'object' || body === null || !Array.isArray(Reflect.get(body, 'items')))
-        throw new SyncCliError('invalid-response', m['cli.sync.invalid_response']());
-      const items = Reflect.get(body, 'items') as unknown[];
-      const parsed = items.map((item) => SyncHistoryItemSchema.safeParse(item));
-      if (parsed.some((item) => !item.success))
-        throw new SyncCliError('invalid-response', m['cli.sync.invalid_response']());
-      return parsed.map((item) => (item as { success: true; data: SyncHistoryItem }).data);
+      const path = `/dashboard/api/sync/history/${encodeURIComponent(objectId)}`;
+      return parse(z.object({ items: z.array(SyncHistoryItemSchema) }), await requestJson(path)).items;
     },
     async detach(providerId, loginSessionId) {
-      return parse(
-        SyncStatusSchema,
-        await requestJson(
-          '/dashboard/api/sync/detach',
-          mutation({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId, loginSessionId }),
-          }),
-        ),
-      );
+      return parse(SyncStatusSchema, await send('/dashboard/api/sync/detach', { providerId, loginSessionId }));
     },
     async cancelDetach(providerId) {
-      return parse(
-        SyncStatusSchema,
-        await requestJson(
-          '/dashboard/api/sync/detach/cancel',
-          mutation({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId }),
-          }),
-        ),
-      );
+      return parse(SyncStatusSchema, await send('/dashboard/api/sync/detach/cancel', { providerId }));
     },
     async retry() {
       return parse(SyncStatusSchema, await requestJson('/dashboard/api/sync/retry', mutation({ method: 'POST' })));
@@ -239,7 +186,7 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
     endpoint = base;
     return endpoint;
   };
-  const readStdin = options.readPasswordStdin ?? (async () => stripFinalLineEnding(await Bun.stdin.text()));
+  const readStdin = async () => stripFinalLineEnding(await (options.readPasswordStdin?.() ?? Bun.stdin.text()));
   const readPassword =
     options.readPassword ?? (async () => password({ message: m['cli.sync.password_prompt'](), mask: '*' }));
   const write = options.write ?? console.log;
@@ -276,7 +223,7 @@ export function createDefaultSyncCliDeps(options: DefaultSyncCliDepsOptions = {}
       if (sessionBody?.status === 'disabled') return undefined;
       if (sessionBody?.status === 'unavailable')
         throw new SyncCliError('service-not-running', m['cli.sync.service_not_running']({ url: base }), true);
-      const secret = options.passwordStdin === true ? stripFinalLineEnding(await readStdin()) : await readPassword();
+      const secret = options.passwordStdin === true ? await readStdin() : await readPassword();
       if (secret.length === 0) throw new SyncCliError('authentication-required', m['cli.sync.password_required']());
       let login: Response;
       try {
@@ -319,5 +266,3 @@ export async function readJsonFile(path: string): Promise<unknown> {
     throw new SyncCliError('invalid-file', m['cli.sync.invalid_file']({ path }));
   }
 }
-
-export type { SyncClient };

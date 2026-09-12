@@ -40,8 +40,8 @@ export function renderSyncPreview(preview: SyncPreview, json: boolean): string {
         choices: row.choices.join(', '),
       }),
     );
-    lines.push(`  ${m['cli.sync.preview_local']()}: ${JSON.stringify(safeRowValue(row.local))}`);
-    lines.push(`  ${m['cli.sync.preview_cloud']()}: ${JSON.stringify(safeRowValue(row.cloud))}`);
+    lines.push(`  ${m['cli.sync.preview_local']()}: ${JSON.stringify(redactSyncValue(row.local))}`);
+    lines.push(`  ${m['cli.sync.preview_cloud']()}: ${JSON.stringify(redactSyncValue(row.cloud))}`);
     lines.push(
       `  ${m['cli.sync.preview_dependencies']()}: ${row.dependencies.length === 0 ? m['cli.sync.no_backend']() : row.dependencies.join(', ')}`,
     );
@@ -49,8 +49,4 @@ export function renderSyncPreview(preview: SyncPreview, json: boolean): string {
   if (preview.retainedSharedPlugins.length > 0)
     lines.push(m['cli.sync.retained_plugins']({ plugins: preview.retainedSharedPlugins.join(', ') }));
   return lines.join('\n');
-}
-
-function safeRowValue(value: SyncPreview['rows'][number]['local']): unknown {
-  return redactSyncValue(value);
 }

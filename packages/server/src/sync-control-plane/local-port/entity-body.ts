@@ -14,10 +14,6 @@ function setKey(target: Record<string, JsonValue>, key: string, value: JsonValue
   Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
 }
 
-function copyRaw(raw: Record<string, JsonValue>): Record<string, JsonValue> {
-  return JSON.parse(JSON.stringify(raw)) as Record<string, JsonValue>;
-}
-
 // The allowlists projectCommitted publishes for these kinds. A shared body always carries the
 // complete set, so a key the body omits was deleted on the other device and must be deleted here
 // too — spreading the body would silently keep a revoked password or API key working.
@@ -62,7 +58,7 @@ export function applyBody(
   body: EntityBody | null,
   entities: ReturnType<SyncRepository['entities']>,
 ): Record<string, JsonValue> {
-  const next = copyRaw(raw);
+  const next = structuredClone(raw);
   if (body === null) return next;
   switch (body.kind) {
     case 'provider': {
@@ -120,7 +116,7 @@ export function removeBody(
   entity: ReturnType<SyncRepository['entities']>[number],
   entities: ReturnType<SyncRepository['entities']>,
 ): Record<string, JsonValue> {
-  const next = copyRaw(raw);
+  const next = structuredClone(raw);
   switch (entity.kind) {
     case 'provider': {
       const providers = record(next['providers']);

@@ -62,16 +62,8 @@ function valueAt(
   return { value: current, traversedArray: false };
 }
 
-function clone(value: JsonValue): JsonValue {
-  return JSON.parse(JSON.stringify(value)) as JsonValue;
-}
-
-function copyValue(value: JsonValue | null): JsonValue | null {
-  return value === null ? null : clone(value);
-}
-
 export function applyOverrides(local: EntityBody, cloud: EntityBody | null, paths: readonly string[][]): EntityBody {
-  const result = copyValue(cloud?.value ?? local.value);
+  const result = structuredClone(cloud?.value ?? local.value);
   if (result === null || Array.isArray(result) || !isPlainObject(result)) throw new SyncPreviewError('invalid-request');
   for (const path of paths) {
     if (path.length === 0 || path.some((segment) => segment === '' || forbiddenOverrideSegment(segment)))
@@ -95,7 +87,7 @@ export function applyOverrides(local: EntityBody, cloud: EntityBody | null, path
       parent = record[segment]!;
     }
     if (!isPlainObject(parent)) throw new SyncPreviewError('invalid-request');
-    (parent as Record<string, JsonValue>)[path.at(-1)!] = clone(localLookup.value);
+    (parent as Record<string, JsonValue>)[path.at(-1)!] = structuredClone(localLookup.value);
   }
   return { ...local, ...(cloud ?? {}), value: result };
 }

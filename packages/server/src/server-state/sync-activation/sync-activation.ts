@@ -10,6 +10,7 @@ import {
   type StoredAccount,
   type SyncRepository,
 } from '@aio-proxy/core';
+import { isEqual } from 'es-toolkit/predicate';
 
 import {
   checkPrerequisites,
@@ -101,10 +102,6 @@ function destinations(value: JsonValue, found: Set<string> = new Set()): Readonl
   return found;
 }
 
-function sameSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  return left.size === right.size && [...left].every((item) => right.has(item));
-}
-
 /**
  * An environment reference is a device-only secret: the published body keeps `{{env.NAME}}` (or the
  * legacy `$NAME` API key) unresolved, but this device expands it and the transport sends the real
@@ -119,8 +116,8 @@ function secretDestinationApproved(body: EntityBody, approved: EntityBody | null
     if (envReferences(body).size === 0) return true;
     if (approved === null || approved === undefined) return false;
     return (
-      sameSet(envReferences(body), envReferences(approved)) &&
-      sameSet(destinations(body.value), destinations(approved.value))
+      isEqual(envReferences(body), envReferences(approved)) &&
+      isEqual(destinations(body.value), destinations(approved.value))
     );
   } catch {
     return false;

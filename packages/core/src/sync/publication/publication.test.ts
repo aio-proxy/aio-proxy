@@ -573,6 +573,9 @@ test('quota and offline failures are returned without a retry loop', async () =>
   });
   const stored = oversizedBackend.readAll();
   expect(revisionKeys(oversizedBackend, oversized.objectId)).toHaveLength(0);
+  // Maintenance never reclaims a reservation whose revision is absent and the oversized outbox
+  // entry is retried first on every pass, so a head reserved here would wedge the binding.
+  expect((await oversizedSession.read(entityKey(oversized.objectId), signal)).kind).toBe('absent');
   expect([...stored.keys()].every((key) => !key.startsWith('s/v1/default/account/'))).toBe(true);
   expect([...stored.values()].every((value) => !new TextDecoder().decode(value.value).includes(marker))).toBe(true);
 });

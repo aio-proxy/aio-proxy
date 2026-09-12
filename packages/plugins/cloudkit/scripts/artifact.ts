@@ -3,16 +3,6 @@ import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const CLOUDKIT_BUNDLE_ID = 'dev.aioproxy';
-export const CLOUDKIT_SIGNING_STEPS = [
-  'nested-code',
-  'bundle',
-  'verify',
-  'archive',
-  'notarize',
-  'staple',
-  'archive-final',
-] as const;
-export type CloudKitSigningStep = (typeof CLOUDKIT_SIGNING_STEPS)[number];
 
 export type ArtifactManifest = {
   readonly artifactVersion: string;
@@ -223,6 +213,17 @@ export async function assertNoSymlinkEscape(root: string, target: string, label:
 export function executablePathForApp(manifest: ArtifactManifest, appRoot: string): string {
   const executableFromApp = relative(resolve(manifest.appRelativePath), resolve(manifest.executableRelativePath));
   return join(appRoot, executableFromApp);
+}
+
+export type CommandResult = { readonly stdout: string; readonly stderr: string; readonly exitCode: number };
+
+// Both pipes must be drained concurrently before awaiting exit, or a tool that fills
+// one buffer blocks forever. Callers keep their own failure message: the build reports
+// tool stderr, the probe and signer deliberately do not echo it.
+export async function spawnText(command: string, args: readonly string[], cwd?: string): Promise<CommandResult> {
+  const child = Bun.spawn([command, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  return { stdout, stderr, exitCode: await child.exited };
 }
 
 export function sha256(data: Uint8Array): string {

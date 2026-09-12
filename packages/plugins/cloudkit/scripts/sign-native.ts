@@ -8,10 +8,12 @@ import {
   directoryDigest,
   executablePathForApp,
   sha256File,
+  spawnText,
   validateEffectiveEntitlements,
   validateManifest,
   validateProfileMetadata,
   type ArtifactManifest,
+  type CommandResult,
 } from './artifact';
 
 const packageRoot = resolve(import.meta.dir, '..');
@@ -25,16 +27,11 @@ const requiredInputs = [
 ] as const;
 
 type PlistValue = string | readonly PlistValue[] | { readonly [key: string]: PlistValue };
-type CommandResult = { readonly stdout: string; readonly stderr: string };
 
 async function run(command: string, args: readonly string[]): Promise<CommandResult> {
-  const child = Bun.spawn([command, ...args], { stdout: 'pipe', stderr: 'pipe' });
-  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-  const exitCode = await child.exited;
-  if (exitCode !== 0) {
-    throw new Error(`${command} failed; inspect the local signing tool diagnostics`);
-  }
-  return { stdout, stderr };
+  const result = await spawnText(command, args);
+  if (result.exitCode !== 0) throw new Error(`${command} failed; inspect the local signing tool diagnostics`);
+  return result;
 }
 
 function requiredValue(name: (typeof requiredInputs)[number]): string {

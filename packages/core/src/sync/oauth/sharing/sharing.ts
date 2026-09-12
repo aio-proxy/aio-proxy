@@ -1,5 +1,6 @@
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import { SyncBackendError } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import type { AccountWrite, PluginRepository, StoredAccount } from '../../../plugins/repository';
 import { accountKey } from '../../protocol';
@@ -7,7 +8,7 @@ import type { SyncObjectStore } from '../../publication';
 import type { LocalBinding, LocalEntity, SyncRepository } from '../../repository';
 import { retainsSharedOAuth } from '../protocol';
 import { accountBytes, entityFor, payloadFor, readRemote, verifyDetach } from './detach';
-import { asJournalPayload, sameJson, sameRemote } from './journal';
+import { asJournalPayload } from './journal';
 import { importRemoteAccount } from './receive';
 import {
   abandonedOwnedRemote,
@@ -120,7 +121,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         pending?.payload.next ?? liveAccount(entity.objectId, candidate, resolved, 0, tombstone?.deleted.epoch ?? 0);
       if (
         next === null ||
-        !sameJson(pending?.payload.candidate ?? candidate, candidate) ||
+        !isEqual(pending?.payload.candidate ?? candidate, candidate) ||
         !compatibleRemote(next, candidate, resolved)
       )
         return 'pending';
@@ -141,7 +142,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         if (
           'unknown' in remote ||
           !compatibleRemote(remote.account, candidate, resolved) ||
-          !sameRemote(remote.account, next)
+          !isEqual(remote.account, next)
         ) {
           setPending(input, providerId, 'pending-plugin-update');
           return 'pending';
@@ -161,7 +162,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       } catch (error) {
         if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
         const observed = await readRemote(input.store, next.objectId, signal);
-        if (observed === null || 'unknown' in observed || 'deleted' in observed || !sameRemote(observed.account, next))
+        if (observed === null || 'unknown' in observed || 'deleted' in observed || !isEqual(observed.account, next))
           return 'pending';
       }
       applyLocal(input, providerId, candidate, next, row, 'shared');
@@ -177,7 +178,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       const resolved = await validatedAdapter(input, providerId, candidate);
       if (resolved === undefined) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
       const pending = findJournal(input, providerId, 'replace');
-      if (pending !== undefined && !sameJson(pending.payload.candidate, candidate)) {
+      if (pending !== undefined && !isEqual(pending.payload.candidate, candidate)) {
         throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
       }
       const remote = await readRemote(input.store, entity.objectId, signal);
@@ -192,11 +193,11 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       if (pending !== undefined) {
         const expected = pending.payload.next;
         if (expected === null) throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
-        if (sameRemote(remote.account, expected)) {
+        if (isEqual(remote.account, expected)) {
           applyLocal(input, providerId, candidate, expected, pending.row, 'shared');
           return;
         }
-        if (pending.payload.base === null || !sameRemote(remote.account, pending.payload.base)) {
+        if (pending.payload.base === null || !isEqual(remote.account, pending.payload.base)) {
           throw new Error('SYNC_OAUTH_REPLACEMENT_CONFLICT');
         }
       }
@@ -242,7 +243,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       const journaled = findJournal(input, providerId, 'detach');
       // A pending row means that candidate already failed the independence check, so re-verifying it
       // can only fail again. Retire it and let the newer authorization be the candidate instead.
-      const stale = journaled !== undefined && !sameJson(journaled.payload.candidate, candidate);
+      const stale = journaled !== undefined && !isEqual(journaled.payload.candidate, candidate);
       if (stale) finishJournal(input, journaled.row);
       const existing = stale ? undefined : journaled;
       const remote = await readRemote(input.store, entity.objectId, signal);
@@ -256,7 +257,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         !(readyOwnedRemote(entity.oauth, remote.account) || abandonedOwnedRemote(entity.oauth, remote.account))
       )
         return 'pending';
-      if (existing?.payload.base !== null && !sameRemote(existing?.payload.base ?? remote.account, remote.account)) {
+      if (existing?.payload.base !== null && !isEqual(existing?.payload.base ?? remote.account, remote.account)) {
         return 'pending';
       }
       const row =
@@ -282,7 +283,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       const current = entityFor(input.repo, input.binding, providerId);
       if (
         durable === undefined ||
-        !sameJson(durable.payload, row.payload) ||
+        !isEqual(durable.payload, row.payload) ||
         current?.objectId !== row.objectId ||
         current.oauth?.mode !== 'detach-pending' ||
         current.oauth.epoch !== row.epoch ||
@@ -374,7 +375,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         !('deleted' in remote) &&
         compatibleRemote(remote.account, candidate, resolved) &&
         readyOwnedRemote(entity.oauth, remote.account) &&
-        sameJson(remote.account.payload, payloadFor(candidate))
+        isEqual(remote.account.payload, payloadFor(candidate))
       )
         return;
     }

@@ -9,15 +9,16 @@ import {
   directoryDigest,
   executablePathForApp,
   sha256File,
+  spawnText,
   validateEffectiveEntitlements,
   validateManifest,
   validateProfileMetadata,
   type ArtifactManifest,
+  type CommandResult,
 } from './artifact';
 
 const packageRoot = resolve(import.meta.dir, '..');
 const nativeDist = join(packageRoot, 'dist', 'native');
-const expectedBundleId = CLOUDKIT_BUNDLE_ID;
 const failureCodes = new Set([
   'offline',
   'quota',
@@ -38,14 +39,10 @@ type ProbeSuccess = {
 type ProbeFailure = { readonly ok: false; readonly error: { readonly code: string } };
 export type ProbeResult = ProbeSuccess | ProbeFailure;
 
-type NativeManifest = ArtifactManifest;
-type CommandResult = { readonly stdout: string; readonly stderr: string };
-
 async function run(command: string, args: readonly string[]): Promise<CommandResult> {
-  const child = Bun.spawn([command, ...args], { stdout: 'pipe', stderr: 'pipe' });
-  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-  if ((await child.exited) !== 0) throw new Error(`${command} failed; inspect local artifact diagnostics`);
-  return { stdout, stderr };
+  const result = await spawnText(command, args);
+  if (result.exitCode !== 0) throw new Error(`${command} failed; inspect local artifact diagnostics`);
+  return result;
 }
 
 export function parseProbeResult(output: string): ProbeResult {
@@ -64,7 +61,7 @@ export function parseProbeResult(output: string): ProbeResult {
       record.account !== 'available' ||
       typeof record.identityId !== 'string' ||
       !/^sha256:[a-f0-9]{64}$/u.test(record.identityId) ||
-      record.bundleId !== expectedBundleId
+      record.bundleId !== CLOUDKIT_BUNDLE_ID
     ) {
       throw new Error('Native probe success response is invalid');
     }
@@ -72,7 +69,7 @@ export function parseProbeResult(output: string): ProbeResult {
       ok: true,
       account: 'available',
       identityId: record.identityId,
-      bundleId: expectedBundleId,
+      bundleId: CLOUDKIT_BUNDLE_ID,
     };
   }
   if (record.ok === false && record.error !== null && typeof record.error === 'object') {
@@ -84,24 +81,17 @@ export function parseProbeResult(output: string): ProbeResult {
   throw new Error('Native probe returned an invalid structured probe error');
 }
 
+// A wedged native binary must not be able to exhaust this process's memory, so cap each pipe.
 async function readBounded(stream: ReadableStream<Uint8Array>, limit: number): Promise<string> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+  const decoder = new TextDecoder();
+  let text = '';
   let size = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    size += result.value.byteLength;
+  for await (const chunk of stream) {
+    size += chunk.byteLength;
     if (size > limit) throw new Error('Native probe output exceeded its bound');
-    chunks.push(result.value);
+    text += decoder.decode(chunk, { stream: true });
   }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
+  return text + decoder.decode();
 }
 
 async function runProbe(
@@ -109,18 +99,13 @@ async function runProbe(
   containerId: string,
 ): Promise<{ readonly result: ProbeResult; readonly exitCode: number }> {
   const child = Bun.spawn([executable, '--probe'], { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
-  child.stdin.write(`${JSON.stringify({ containerId, expectedBundleId })}\n`);
+  child.stdin.write(`${JSON.stringify({ containerId, expectedBundleId: CLOUDKIT_BUNDLE_ID })}\n`);
   child.stdin.end();
-  const [stdout, stderr] = await Promise.all([
-    readBounded(child.stdout, 1024 * 1024),
-    readBounded(child.stderr, 1024 * 1024),
-  ]);
-  void stderr;
+  const [stdout] = await Promise.all([readBounded(child.stdout, 1024 * 1024), readBounded(child.stderr, 1024 * 1024)]);
   const exitCode = await child.exited;
-  if (stdout.trim() === '') {
+  if (exitCode !== 0 || stdout.trim() === '') {
     return { result: { ok: false, error: { code: 'unsupported' } }, exitCode };
   }
-  if (exitCode !== 0) return { result: { ok: false, error: { code: 'unsupported' } }, exitCode };
   return { result: parseProbeResult(stdout), exitCode };
 }
 
@@ -131,28 +116,18 @@ async function decodePlist(path: string, tempRoot: string): Promise<Record<strin
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-export async function verifyBundle(appPath: string, manifest: NativeManifest, signed: boolean): Promise<void> {
+export async function verifyBundle(appPath: string, manifest: ArtifactManifest, signed: boolean): Promise<void> {
   validateManifest(manifest);
   await assertNoSymlinkEscape(dirname(appPath), appPath, 'installed app');
   const infoPath = join(appPath, 'Contents', 'Info.plist');
   if (!(await Bun.file(infoPath).exists())) throw new Error('Installed native bundle is missing Info.plist');
-  const infoProcess = Bun.spawn(['plutil', '-convert', 'json', '-o', '-', '--', infoPath], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [infoOutput, infoError] = await Promise.all([
-    new Response(infoProcess.stdout).text(),
-    new Response(infoProcess.stderr).text(),
-  ]);
-  if ((await infoProcess.exited) !== 0) {
-    void infoError;
-    throw new Error('Installed native bundle Info.plist cannot be decoded');
-  }
-  const info = JSON.parse(infoOutput) as {
+  const decoded = await spawnText('plutil', ['-convert', 'json', '-o', '-', '--', infoPath]);
+  if (decoded.exitCode !== 0) throw new Error('Installed native bundle Info.plist cannot be decoded');
+  const info = JSON.parse(decoded.stdout) as {
     readonly CFBundleIdentifier?: unknown;
     readonly LSMinimumSystemVersion?: unknown;
   };
-  if (info.CFBundleIdentifier !== expectedBundleId) throw new Error('Installed native bundle identifier is invalid');
+  if (info.CFBundleIdentifier !== CLOUDKIT_BUNDLE_ID) throw new Error('Installed native bundle identifier is invalid');
   const minimumSystem = Number.parseFloat(String(info.LSMinimumSystemVersion ?? '0'));
   if (!Number.isFinite(minimumSystem) || minimumSystem < 14)
     throw new Error('Installed bundle has an invalid macOS deployment floor');
@@ -176,15 +151,14 @@ export async function verifyBundle(appPath: string, manifest: NativeManifest, si
   ) {
     throw new Error('Signed manifest is missing final artifact binding');
   }
-  if (manifest.signing.bundleIdentifier !== expectedBundleId || manifest.notarizationStatus !== 'accepted') {
+  if (manifest.signing.bundleIdentifier !== CLOUDKIT_BUNDLE_ID || manifest.notarizationStatus !== 'accepted') {
     throw new Error('Signed manifest has invalid notarization or bundle status');
   }
   const archivePath = resolve(packageRoot, manifest.archiveRelativePath);
   await assertNoSymlinkEscape(packageRoot, archivePath, 'archive');
   if ((await sha256File(archivePath)) !== manifest.archiveSha256)
     throw new Error('Signed archive digest does not match manifest');
-  const codeSignature = await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
-  void codeSignature;
+  await run('codesign', ['--verify', '--strict', '--verbose=2', appPath]);
   const details = await run('codesign', ['--display', '--verbose=4', appPath]);
   if (
     !details.stderr.includes(`TeamIdentifier=${manifest.signing.teamId}`) &&
@@ -201,7 +175,7 @@ export async function verifyBundle(appPath: string, manifest: NativeManifest, si
     validateEffectiveEntitlements(entitlements, {
       teamId: manifest.signing.teamId,
       containerId: manifest.signing.containerId,
-      bundleId: expectedBundleId,
+      bundleId: CLOUDKIT_BUNDLE_ID,
       environment: manifest.signing.environment,
     });
     const embeddedProfile = join(appPath, 'Contents', 'embedded.provisionprofile');
@@ -213,7 +187,7 @@ export async function verifyBundle(appPath: string, manifest: NativeManifest, si
     const profileResult = validateProfileMetadata(profile, {
       teamId: manifest.signing.teamId,
       containerId: manifest.signing.containerId,
-      bundleId: expectedBundleId,
+      bundleId: CLOUDKIT_BUNDLE_ID,
     });
     if (profileResult.environment !== manifest.signing.environment) {
       throw new Error('Embedded provisioning profile environment does not match manifest');
@@ -226,7 +200,7 @@ export async function verifyBundle(appPath: string, manifest: NativeManifest, si
 }
 
 async function stageBundle(
-  manifest: NativeManifest,
+  manifest: ArtifactManifest,
 ): Promise<{ readonly appPath: string; readonly stagingRoot: string; readonly versionRoot: string }> {
   const dataRoot = process.env.AIO_PROXY_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'aio-proxy');
   const cacheRoot =
@@ -280,7 +254,7 @@ export async function swapInstallation(
 }
 
 function evidence(
-  manifest: NativeManifest,
+  manifest: ArtifactManifest,
   containerId: string,
   direct: ProbeResult | { readonly status: string },
   signatureStatus: string,
@@ -291,7 +265,7 @@ function evidence(
     host: { os: process.platform, osVersion, architecture: process.arch },
     bundleVersion: manifest.artifactVersion,
     teamId: manifest.signing?.teamId ?? 'unverified',
-    bundleId: expectedBundleId,
+    bundleId: CLOUDKIT_BUNDLE_ID,
     containerId,
     environment: manifest.signing?.environment ?? 'unverified',
     signatureStatus,
@@ -314,8 +288,8 @@ async function main(): Promise<void> {
   const manifestPath = join(nativeDist, 'manifest.json');
   if (!(await Bun.file(manifestPath).exists()))
     throw new Error('Native build manifest is missing; run build-native.ts first');
-  const manifest = (await Bun.file(manifestPath).json()) as NativeManifest;
-  if (manifest.bundleIdentifier !== expectedBundleId || typeof manifest.artifactVersion !== 'string') {
+  const manifest = (await Bun.file(manifestPath).json()) as ArtifactManifest;
+  if (manifest.bundleIdentifier !== CLOUDKIT_BUNDLE_ID || typeof manifest.artifactVersion !== 'string') {
     throw new Error('Native build manifest is invalid');
   }
   validateManifest(manifest);

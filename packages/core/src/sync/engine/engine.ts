@@ -32,21 +32,6 @@ function isBackendFailure(error: unknown): error is SyncBackendError {
   return error instanceof SyncBackendError;
 }
 
-function combineSignals(first: AbortSignal, second: AbortSignal): { signal: AbortSignal; dispose: () => void } {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  if (first.aborted || second.aborted) controller.abort();
-  first.addEventListener('abort', abort, { once: true });
-  second.addEventListener('abort', abort, { once: true });
-  return {
-    signal: controller.signal,
-    dispose() {
-      first.removeEventListener('abort', abort);
-      second.removeEventListener('abort', abort);
-    },
-  };
-}
-
 // eslint-disable-next-line max-lines-per-function
 export function createSyncEngine(input: EngineInput): SyncEngine {
   const pollMs = Math.max(1, input.pollMs ?? DEFAULT_POLL_MS);
@@ -149,35 +134,30 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
   }
 
   async function reconcileOnce(externalSignal: AbortSignal): Promise<void> {
-    const combined = combineSignals(externalSignal, ownedController.signal);
-    const signal = combined.signal;
-    try {
-      assertCurrent();
-      const generation = input.binding.sessionGeneration;
-      await recoverLocalCommits(input.repo, input.binding.id, {
-        ...input.local,
-        assertCurrent: () => assertGeneration(generation),
-      });
-      assertGeneration(generation);
-      await drainOutbox(generation, signal);
-      await reconcileRemote(
-        {
-          bindingId: input.binding.id,
-          session: input.session,
-          repo: input.repo,
-          local: input.local,
-          assertGeneration,
-        },
-        generation,
-        signal,
-      );
-      assertGeneration(generation);
-      await maintenance(signal);
-      backoff = 0;
-      status('online');
-    } finally {
-      combined.dispose();
-    }
+    const signal = AbortSignal.any([externalSignal, ownedController.signal]);
+    assertCurrent();
+    const generation = input.binding.sessionGeneration;
+    await recoverLocalCommits(input.repo, input.binding.id, {
+      ...input.local,
+      assertCurrent: () => assertGeneration(generation),
+    });
+    assertGeneration(generation);
+    await drainOutbox(generation, signal);
+    await reconcileRemote(
+      {
+        bindingId: input.binding.id,
+        session: input.session,
+        repo: input.repo,
+        local: input.local,
+        assertGeneration,
+      },
+      generation,
+      signal,
+    );
+    assertGeneration(generation);
+    await maintenance(signal);
+    backoff = 0;
+    status('online');
   }
 
   function schedule(delay: number): void {

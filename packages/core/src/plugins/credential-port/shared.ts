@@ -1,4 +1,5 @@
 import type { CredentialPort, CredentialSnapshot, ZodType } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import type { SharedOAuthCoordinator } from '../../sync/oauth/coordinator';
 import type { LiveAccount, OAuthOwnership } from '../../sync/oauth/protocol';
@@ -56,10 +57,6 @@ async function validated<C>(schema: ZodType<C>, value: unknown): Promise<C> {
   return result.value;
 }
 
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function applyCallbacks<C>(input: SharedCredentialInput<C>, hadRefreshDiagnostic: boolean): void {
   if (hadRefreshDiagnostic) input.onDiagnosticChanged?.();
   input.onCredentialChanged?.();
@@ -73,12 +70,12 @@ function needsImport(ownership: OAuthOwnership, local: StoredAccount, remote: Li
     ownership.formatVersion !== remote.formatVersion ||
     local.plugin !== remote.plugin ||
     local.capability !== remote.capability ||
-    !sameJson(local.fingerprint, remote.payload.fingerprint) ||
-    !sameJson(local.options, remote.payload.options) ||
-    !sameJson(local.secrets, remote.payload.secrets) ||
-    !sameJson(local.credential, remote.payload.credential) ||
-    !sameJson(local.label, remote.payload.label) ||
-    !sameJson(local.expiresAt, remote.payload.expiresAt)
+    !isEqual(local.fingerprint, remote.payload.fingerprint) ||
+    !isEqual(local.options, remote.payload.options) ||
+    !isEqual(local.secrets, remote.payload.secrets) ||
+    !isEqual(local.credential, remote.payload.credential) ||
+    !isEqual(local.label, remote.payload.label) ||
+    !isEqual(local.expiresAt, remote.payload.expiresAt)
   );
 }
 
