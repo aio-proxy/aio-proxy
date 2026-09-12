@@ -185,6 +185,21 @@ test('first share supersedes a tombstone left at the account key by a restore', 
   });
 });
 
+test('an excluded Provider is never shared by startup recovery or by a later login', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    const entity = f.repo.entities('oauth-sharing').find((row) => row.logicalKey === f.providerId)!;
+    f.repo.putEntity('oauth-sharing', { ...entity, mode: 'excluded' });
+
+    await f.sharing.recover(f.signal);
+    await f.sharing.synchronizeLogin(f.providerId, f.accountWrite, f.signal);
+
+    // The user declined to put this Provider in the cloud, so neither path may upload its credential.
+    expect(f.remote()).toBeNull();
+    expect(f.ownership()).toBeUndefined();
+    expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+  });
+});
+
 test('first share requires adapter multi-device evidence and preserves local configuration', async () => {
   await withOAuthSharingFixture(async (f) => {
     f.replaceAdapter(oauthAdapterFixture({ credentialSync: { formatVersion: 1 } }));

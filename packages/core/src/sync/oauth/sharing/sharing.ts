@@ -4,7 +4,7 @@ import { SyncBackendError } from '@aio-proxy/plugin-sdk';
 import type { AccountWrite, PluginRepository, StoredAccount } from '../../../plugins/repository';
 import { accountKey } from '../../protocol';
 import type { SyncObjectStore } from '../../publication';
-import type { LocalBinding, SyncRepository } from '../../repository';
+import type { LocalBinding, LocalEntity, SyncRepository } from '../../repository';
 import { accountBytes, entityFor, payloadFor, readRemote, verifyDetach } from './detach';
 import { asJournalPayload, sameJson, sameRemote } from './journal';
 import { importRemoteAccount } from './receive';
@@ -52,11 +52,26 @@ export interface OAuthSharingServiceInput {
 
 // eslint-disable-next-line max-lines-per-function
 export function createOAuthSharingService(input: OAuthSharingServiceInput): OAuthSharingService {
+  /**
+   * An excluded Provider is one the user declined to put in the cloud, so its credential must never
+   * reach the backend — not through startup recovery, not through a later login. Ownership that
+   * already exists is different: excluding a row locally does not retract the remote account, and a
+   * share fenced by a journal row must still finish or its ownership is stranded.
+   */
+  function sharable(entity: LocalEntity, providerId: string): boolean {
+    return (
+      entity.mode === 'included' ||
+      (entity.oauth !== undefined && entity.oauth.mode !== 'independent') ||
+      findJournal(input, providerId, 'share') !== undefined
+    );
+  }
+
   async function share(providerId: string, signal: AbortSignal): Promise<'shared' | 'pending'> {
     return input.withProviderGate(providerId, async () => {
       const local = input.accounts.readAccount(providerId);
       const entity = entityFor(input.repo, input.binding, providerId);
       if (local === null || entity === undefined || input.repo.readBinding()?.id !== input.binding.id) return 'pending';
+      if (!sharable(entity, providerId)) return 'pending';
       const candidate = accountWrite(local);
       const resolved = await validatedAdapter(input, providerId, candidate);
       if (resolved === undefined) {
@@ -341,6 +356,9 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
     // the user produces one. Publishing it as the shared credential would make the shared and
     // candidate credentials identical, so canDetach could never approve the detachment again.
     if (entity.oauth?.mode === 'detach-pending') return;
+    // Login on an excluded Provider is a purely local event; blocking it on a share that must not
+    // happen would make the Provider unusable.
+    if (!sharable(entity, providerId)) return;
     if (entity.oauth === undefined || entity.oauth.mode === 'independent' || entity.oauth.mode === 'share-pending') {
       if ((await share(providerId, signal)) !== 'shared') throw new Error('SYNC_OAUTH_SHARE_PENDING');
       return;
