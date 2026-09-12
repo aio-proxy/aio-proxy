@@ -59,7 +59,6 @@ async function writeTokenOwned(
       await assertOwned();
       await writeCredential(input.location, {
         ...current,
-        deliveredBy: lease.owner,
         deliveredRevision: current.revision,
         deliveredAt: now,
       });

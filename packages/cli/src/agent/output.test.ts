@@ -232,6 +232,38 @@ test('Codex migration restore output does not claim configuration changed', () =
   expect(text).not.toContain('Reopen Codex');
 });
 
+test('Codex migration restore output does not claim success when blocked', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'unchanged',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'not_checked',
+    credential: 'none',
+    migration: { status: 'blocked', migrated: 0, skipped: 0, conflicts: 0 },
+    migrationAction: 'restore',
+  }).join('\n');
+  expect(text).toContain('requires offline recovery');
+  expect(text).not.toContain('history ownership restored');
+  expect(text).not.toContain('configuration unchanged');
+});
+
+test('Codex migration restore output does not claim success when partial', () => {
+  const text = renderAgentConfigure({
+    target: 'codex',
+    integration: 'static-config',
+    status: 'unchanged',
+    configPath: '/tmp/codex/config.toml',
+    connection: 'not_checked',
+    credential: 'none',
+    migration: { status: 'partial', migrated: 1, skipped: 0, conflicts: 1 },
+    migrationAction: 'restore',
+  }).join('\n');
+  expect(text).toContain('partially completed');
+  expect(text).not.toContain('history ownership restored');
+  expect(text).not.toContain('configuration unchanged');
+});
+
 test('Codex authorization cancellation does not claim a zero-write operation', () => {
   const text = renderAgentConfigure({
     target: 'codex',

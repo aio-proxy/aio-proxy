@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmod, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -360,6 +360,142 @@ test.serial('coordinates refresh delivery across two helper processes', async ()
     expect(second).toBe(accessOne);
     expect(refreshCount).toBeGreaterThanOrEqual(1);
     expect(refreshCount).toBeLessThanOrEqual(2);
+    expect(JSON.parse(await readFile(join(location.managedRoot, 'codex-credential.json'), 'utf8')).refreshToken).toBe(
+      refreshOne,
+    );
+  } finally {
+    server.stop(true);
+  }
+});
+
+test.serial('reuses one refresh when three helpers observe the same lock owner', async () => {
+  const root = join(tmpdir(), `aio-codex-burst-owner-${crypto.randomUUID()}`);
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const readyDir = join(root, 'helper-ready');
+  const goPath = join(root, 'helper-go');
+  await mkdir(readyDir, { recursive: true, mode: 0o700 });
+  let refreshCount = 0;
+  const accessOne = `aio_agent_at_v1_${'e'.repeat(43)}`;
+  const refreshOne = `aio_agent_rt_v1_${'f'.repeat(43)}`;
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const path = new URL(request.url).pathname;
+      if (path === '/oauth/device/code') {
+        return Response.json({
+          device_code: DEVICE,
+          user_code: 'ABCD-EFGH',
+          verification_uri: `${new URL(request.url).origin}/dashboard/agents/authorize`,
+          verification_uri_complete: `${new URL(request.url).origin}/dashboard/agents/authorize#code=ABCD-EFGH`,
+          expires_in: 600,
+          interval: 5,
+        });
+      }
+      if (path !== '/oauth/token') return new Response('missing', { status: 404 });
+      const form = await request.text();
+      if (form.includes('device_code='))
+        return Response.json({ token_type: 'Bearer', access_token: ACCESS, refresh_token: REFRESH, expires_in: 900 });
+      refreshCount++;
+      return Response.json({
+        token_type: 'Bearer',
+        access_token: accessOne,
+        refresh_token: refreshOne,
+        expires_in: 900,
+      });
+    },
+  });
+  try {
+    const location = resolveCodexLocation(root, { HOME: root });
+    const commandAuthPath = join(import.meta.dir, 'token-delivery.ts');
+    const locationPath = join(import.meta.dir, '../location/index.ts');
+    const script = `
+      const { existsSync } = await import('node:fs');
+      const { writeFile } = await import('node:fs/promises');
+      const { writeCodexAuthToken } = await import(${JSON.stringify(commandAuthPath)});
+      const { resolveCodexLocation } = await import(${JSON.stringify(locationPath)});
+      await writeFile(${JSON.stringify(readyDir)} + '/' + (process.env.HELPER_ID ?? 'x'), 'ready');
+      while (!existsSync(${JSON.stringify(goPath)})) await new Promise((resolve) => setTimeout(resolve, 10));
+      const location = resolveCodexLocation(${JSON.stringify(root)}, { HOME: ${JSON.stringify(root)} });
+      await writeCodexAuthToken({
+        location,
+        installationId: process.env.INSTALLATION_ID ?? '',
+        signal: AbortSignal.timeout(10000),
+        writeToken: async (token) => process.stdout.write(token + '\\n'),
+      });
+    `;
+    let installationId = '';
+    let helpers: Promise<string>[] = [];
+    const run = (id: string) => {
+      const child = Bun.spawn([process.execPath, '-e', script], {
+        cwd: join(import.meta.dir, '../../../../../../'),
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, HELPER_ID: id, INSTALLATION_ID: installationId },
+      });
+      return (async () => {
+        const [stdout, stderr, exit] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ]);
+        if (exit !== 0) throw new Error(`helper ${id} failed: ${stderr}`);
+        return stdout.trim();
+      })();
+    };
+    await withCodexInstallation(location, AbortSignal.timeout(15_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        {
+          location,
+          providerId: 'aio-proxy',
+          endpoint: `http://127.0.0.1:${server.port}`,
+          adapterVersion: '0.21.0',
+        },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'aio-proxy',
+          baseUrl: `http://127.0.0.1:${server.port}/v1`,
+          auth: {
+            mode: 'command',
+            installationId,
+            command: '/tmp/AIO Proxy/bin/aiop',
+          },
+        },
+        lease,
+      );
+      await authorizeCodexInstallation(
+        {
+          location,
+          installation,
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => undefined,
+          pollDeviceAuthorization: instantDevicePoll,
+        },
+        lease,
+      );
+      await activateCodexCommandInstallation(location, installationId, lease);
+      await writeCodexAuthToken({
+        location,
+        installationId,
+        signal: AbortSignal.timeout(10_000),
+        lease,
+        writeToken: async () => undefined,
+      });
+      helpers = ['a', 'b', 'c'].map((id) => run(id));
+      const startedAt = Date.now();
+      while ((await readdir(readyDir)).length < 3) {
+        if (Date.now() - startedAt > 10_000) throw new Error('helpers did not become ready');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await writeFile(goPath, 'go');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+    const tokens = await Promise.all(helpers);
+    expect(new Set(tokens)).toEqual(new Set([accessOne]));
+    expect(refreshCount).toBe(1);
     expect(JSON.parse(await readFile(join(location.managedRoot, 'codex-credential.json'), 'utf8')).refreshToken).toBe(
       refreshOne,
     );

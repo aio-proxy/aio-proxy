@@ -38,7 +38,11 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
     ];
   const lines = [
     result.migrationAction === 'restore'
-      ? m['cli.agent.codex.restore']()
+      ? result.migration.status === 'blocked'
+        ? m['cli.agent.codex.migration_blocked']()
+        : result.migration.status === 'partial'
+          ? m['cli.agent.codex.migration_partial']()
+          : m['cli.agent.codex.restore']()
       : m['cli.agent.codex.configured']({
           status: result.status,
           providerId: result.providerId ?? '-',
@@ -54,10 +58,14 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
       }),
     );
   if (result.connection === 'offline') lines.push(m['cli.agent.codex.offline']());
-  if (result.migrationAction !== 'restore') lines.push(m['cli.agent.codex.reopen']());
-  if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());
-  else if (result.migration.status === 'blocked') lines.push(m['cli.agent.codex.migration_blocked']());
-  else if (result.migration.status === 'completed') lines.push(m['cli.agent.codex.migration_complete']());
+  if (result.migrationAction !== 'restore') {
+    lines.push(m['cli.agent.codex.reopen']());
+    if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());
+    else if (result.migration.status === 'blocked') lines.push(m['cli.agent.codex.migration_blocked']());
+    else if (result.migration.status === 'completed') lines.push(m['cli.agent.codex.migration_complete']());
+  } else if (result.migration.status === 'completed') {
+    lines.push(m['cli.agent.codex.migration_complete']());
+  }
   return lines;
 };
 
