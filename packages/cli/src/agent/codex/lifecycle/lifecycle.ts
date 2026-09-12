@@ -100,7 +100,9 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     const credential = await readCredential(input.location);
     const providerId = inspection.providerId ?? identity?.providerId ?? 'aio-proxy';
     let authorization: CodexRemoveResult['authorization'];
-    const installationId = identity?.marker.installationId ?? credential?.installationId;
+    const installationId = identity?.marker.installationId ?? credential?.installationId ?? inspection.installationId;
+    const endpoint = identity?.marker.endpoint ?? credential?.endpoint ?? endpointFromBaseUrl(inspection.baseUrl);
+    if (installationId !== undefined && endpoint === undefined) return blockedResult(input.location, 'pending');
     if (installationId !== undefined) {
       const operation = await writeAuthOperation(input.location, {
         configPath: input.location.configPath,
@@ -114,8 +116,7 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
         let status: AgentRevokeStatus = 'missing';
         if (identity?.status === 'active')
           await retireCodexCommandInstallation(input.location, identity.marker.installationId, lease);
-        const endpoint = identity?.marker.endpoint ?? credential?.endpoint;
-        if (input.revoke !== undefined && endpoint !== undefined) status = await input.revoke(endpoint, installationId);
+        if (input.revoke !== undefined) status = await input.revoke(endpoint, installationId);
         authorization = status;
         if (!terminalRevocations.has(status)) return blockedResult(input.location, authorization);
         await writeAuthOperation(input.location, { ...operation, phase: 'revoked' });
@@ -137,6 +138,19 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
     };
   });
 }
+
+const endpointFromBaseUrl = (baseUrl: string | undefined): string | undefined => {
+  if (baseUrl === undefined) return undefined;
+  try {
+    const url = new URL(baseUrl);
+    url.pathname = url.pathname.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '');
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/+$/u, '') || undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const blockedResult = (
   location: CodexLocation,
