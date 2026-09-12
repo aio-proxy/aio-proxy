@@ -3,6 +3,8 @@ import { constants } from 'node:fs';
 import { lstat, open, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget, SessionGroup } from '../contracts';
 import { readManagedCodexMarker } from '../managed-config';
@@ -121,11 +123,7 @@ async function managedProvider(location: CodexLocation): Promise<string> {
   } catch {
     throw new Error('managed_config_missing_or_invalid');
   }
-  if (
-    typeof config !== 'object' ||
-    config === null ||
-    (config as { model_provider?: unknown }).model_provider !== marker.providerId
-  )
+  if (!isPlainObject(config) || config['model_provider'] !== marker.providerId)
     throw new Error('managed_config_invalid');
   if (!isValidProviderId(marker.providerId)) throw new Error('managed_marker_invalid');
   return marker.providerId;
