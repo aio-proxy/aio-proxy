@@ -1,3 +1,4 @@
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { ValueSlot } from '../config-document';
@@ -95,6 +96,7 @@ export async function readMarker(location: CodexLocation): Promise<CodexMarker |
   } catch {
     throw new Error('Codex marker is invalid');
   }
+  if (!isPlainObject(parsed)) throw new Error('Codex marker is invalid');
   try {
     return validateMarker(parsed, location);
   } catch {

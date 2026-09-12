@@ -41,6 +41,17 @@ test('remove restores managed fields and retains a later model choice', async ()
   }
 });
 
+test('reports a non-object managed marker as a conflict', async () => {
+  const { root, location } = await fixture();
+  try {
+    await mkdir(location.managedRoot, { recursive: true, mode: 0o700 });
+    await Bun.write(location.markerPath, '[1]\n');
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({ status: 'conflict' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('reports malformed TOML as a conflict instead of throwing', async () => {
   const { root, location } = await fixture('model_provider = [\n');
   try {
