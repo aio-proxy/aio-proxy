@@ -485,7 +485,6 @@
       "override_preview_retry": "重试预览",
       "rename_provider": "新的 Provider ID",
       "rename_provider_required": "请输入新的 Provider ID 以解决此冲突。",
-      "rename_provider_invalid": "Provider ID 只能包含字母、数字、连字符、下划线或点。",
       "history": "查看历史",
       "history_title": "同步历史",
       "history_empty": "没有可用的同步历史。",

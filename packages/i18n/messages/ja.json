@@ -485,7 +485,6 @@
       "override_preview_retry": "プレビューを再試行",
       "rename_provider": "新しい Provider ID",
       "rename_provider_required": "この競合を解決するには新しい Provider ID を入力してください。",
-      "rename_provider_invalid": "Provider ID には英数字、ハイフン、アンダースコア、ドットを使用してください。",
       "history": "履歴を表示",
       "history_title": "同期履歴",
       "history_empty": "同期履歴はありません。",

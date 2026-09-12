@@ -485,7 +485,6 @@
       "override_preview_retry": "미리보기 다시 시도",
       "rename_provider": "새 Provider ID",
       "rename_provider_required": "이 충돌을 해결하려면 새 Provider ID를 입력하세요.",
-      "rename_provider_invalid": "Provider ID에는 문자, 숫자, 하이픈, 밑줄 또는 점만 사용할 수 있습니다.",
       "history": "기록 보기",
       "history_title": "동기화 기록",
       "history_empty": "사용할 수 있는 동기화 기록이 없습니다.",

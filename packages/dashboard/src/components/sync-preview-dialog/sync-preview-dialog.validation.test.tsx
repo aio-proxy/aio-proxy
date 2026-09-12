@@ -71,7 +71,7 @@ const PreviewStateHarness: React.FC<PreviewStateHarnessProps> = ({
   );
 };
 
-test('requires a valid replacement Provider ID before applying an identity conflict', () => {
+test('requires a valid replacement Provider ID before applying an identity conflict', async () => {
   mocks.applySync.mockReset();
   const collision: SyncPreview = {
     ...preview,
@@ -85,11 +85,11 @@ test('requires a valid replacement Provider ID before applying an identity confl
 
   fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
 
-  expect(screen.getByText(/Enter a new Provider ID|请输入新的 Provider ID/u)).toBeTruthy();
+  await waitFor(() => expect(screen.getByText(/Enter a new Provider ID|请输入新的 Provider ID/u)).toBeTruthy());
   expect(mocks.applySync).not.toHaveBeenCalled();
 });
 
-test('applies a same-object Provider conflict under its existing ID', () => {
+test('applies a same-object Provider conflict under its existing ID', async () => {
   mocks.applySync.mockReset();
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -100,9 +100,11 @@ test('applies a same-object Provider conflict under its existing ID', () => {
   expect(screen.queryByLabelText(/New Provider ID|新的 Provider ID/u)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
 
-  expect(mocks.applySync).toHaveBeenCalledWith(
-    { previewId: 'preview-conflict', decisions: [{ objectId: 'object-work', choice: 'local' }] },
-    { onSuccess: expect.any(Function) },
+  await waitFor(() =>
+    expect(mocks.applySync).toHaveBeenCalledWith(
+      { previewId: 'preview-conflict', decisions: [{ objectId: 'object-work', choice: 'local' }] },
+      { onSuccess: expect.any(Function) },
+    ),
   );
 });
 
@@ -138,12 +140,14 @@ test('applies the preview ID returned after adding an override', async () => {
 
   await waitFor(() => expect(screen.getAllByText(/timeout/u).length).toBeGreaterThan(0));
   fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
-  expect(mocks.applySync).toHaveBeenCalledWith(
-    {
-      previewId: 'preview-overrides',
-      decisions: [{ objectId: 'object-work', choice: 'local' }],
-    },
-    { onSuccess: expect.any(Function) },
+  await waitFor(() =>
+    expect(mocks.applySync).toHaveBeenCalledWith(
+      {
+        previewId: 'preview-overrides',
+        decisions: [{ objectId: 'object-work', choice: 'local' }],
+      },
+      { onSuccess: expect.any(Function) },
+    ),
   );
 });
 
@@ -172,6 +176,7 @@ test('brings the join operation back instead of closing after applying a pinned 
   });
 
   fireEvent.click(apply);
+  await waitFor(() => expect(mocks.applySync).toHaveBeenCalledTimes(1));
   const [applyInput, handlers] = mocks.applySync.mock.calls[0] as [{ previewId: string }, { onSuccess(): void }];
   expect(applyInput.previewId).toBe('preview-overrides');
   handlers.onSuccess();
@@ -182,7 +187,7 @@ test('brings the join operation back instead of closing after applying a pinned 
   await waitFor(() => expect(screen.queryByRole('button', { name: /Remove local option/u })).toBeNull());
 });
 
-test('keeps purge previews purge-only while the dialog is open', () => {
+test('keeps purge previews purge-only while the dialog is open', async () => {
   mocks.applySync.mockReset();
   const purgePreview: SyncPreview = {
     ...preview,
@@ -201,9 +206,11 @@ test('keeps purge previews purge-only while the dialog is open', () => {
   fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
 
   expect(onPreviewOverrides).not.toHaveBeenCalled();
-  expect(mocks.applySync).toHaveBeenCalledWith(
-    { previewId: 'preview-purge', decisions: [{ objectId: 'object-work', choice: 'local' }] },
-    { onSuccess: expect.any(Function) },
+  await waitFor(() =>
+    expect(mocks.applySync).toHaveBeenCalledWith(
+      { previewId: 'preview-purge', decisions: [{ objectId: 'object-work', choice: 'local' }] },
+      { onSuccess: expect.any(Function) },
+    ),
   );
 });
 
@@ -310,7 +317,7 @@ test('retries a failed removal with the same empty override path set', async () 
   );
 });
 
-test('a connect preview leaves an optional row out of the decisions until the user opts in', () => {
+test('a connect preview leaves an optional row out of the decisions until the user opts in', async () => {
   mocks.applySync.mockReset();
   const row = (objectId: string, logicalKey: string, extra: Partial<SyncPreview['rows'][number]>) => ({
     objectId,
@@ -345,8 +352,10 @@ test('a connect preview leaves an optional row out of the decisions until the us
   expect(screen.getByLabelText('work').textContent).toMatch(/Don't join|不加入|参加しない|참여 안 함/u);
   fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
 
-  expect(mocks.applySync).toHaveBeenCalledWith(
-    { previewId: 'preview-connect', decisions: [{ objectId: 'cloud-only', choice: 'cloud' }] },
-    { onSuccess: expect.any(Function) },
+  await waitFor(() =>
+    expect(mocks.applySync).toHaveBeenCalledWith(
+      { previewId: 'preview-connect', decisions: [{ objectId: 'cloud-only', choice: 'cloud' }] },
+      { onSuccess: expect.any(Function) },
+    ),
   );
 });

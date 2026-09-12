@@ -24,8 +24,9 @@ import { SyncPreviewRenameField } from './sync-preview-rename-field';
 const SECRET_KEY = /(?:secret|token|password|credential|api[-_]?key|private[-_]?key|authorization)/iu;
 const EMPTY_ROWS: readonly SyncPreviewRow[] = [];
 const EMPTY_PATHS: readonly string[][] = [];
-const PROVIDER_ID_PATTERN = /^[A-Za-z0-9._-]+$/u;
-const providerIdSchema = z.string().trim().min(1).regex(PROVIDER_ID_PATTERN);
+// Matches `newProviderId` in the sync contract and `id` in the Provider contract: any nonempty
+// string. A narrower client alphabet would reject IDs the Provider editor itself accepts.
+const providerIdSchema = z.string().trim().min(1);
 const decisionSchema = z.object({
   objectId: z.string().min(1),
   choice: z.enum(['local', 'cloud', 'restore']),
@@ -34,6 +35,7 @@ const decisionSchema = z.object({
 const previewFormSchema = z.object({
   decisions: z.record(z.string(), decisionSchema),
   overrides: z.record(z.string(), z.array(z.array(z.string().min(1)))),
+  renames: z.record(z.string(), z.string()),
 });
 
 const redactPreviewValue = (value: unknown): unknown => {
@@ -58,6 +60,7 @@ const displayValue = (value: unknown): string => {
 interface PreviewFormValues {
   readonly decisions: Record<string, SyncApplyInput['decisions'][number]>;
   readonly overrides: Record<string, readonly string[][]>;
+  readonly renames: Record<string, string>;
 }
 
 export interface SyncPreviewDialogProps {
@@ -80,6 +83,7 @@ const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
       .map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
   ),
   overrides: {},
+  renames: {},
 });
 
 const choiceLabel = (choice: SyncPreviewRow['choices'][number] | typeof EXCLUDE): string => {
@@ -89,10 +93,17 @@ const choiceLabel = (choice: SyncPreviewRow['choices'][number] | typeof EXCLUDE)
   return m['dashboard.sync.preview_choice_local']();
 };
 
-const renameError = (value: string | undefined): 'required' | 'invalid' | undefined => {
-  if (providerIdSchema.safeParse(value).success) return undefined;
-  return value === undefined || value.trim() === '' ? 'required' : 'invalid';
-};
+// An excluded connect row is not being carried anywhere, so it has no identity to collide with and
+// demanding a new Provider ID for it would leave Apply blocked with no way to satisfy it.
+const missingRenames = (values: PreviewFormValues, rows: readonly SyncPreviewRow[]): readonly string[] =>
+  rows
+    .filter(
+      (row) =>
+        row.requiresProviderId === true &&
+        values.decisions[row.objectId] !== undefined &&
+        !providerIdSchema.safeParse(values.renames[row.objectId]).success,
+    )
+    .map((row) => row.objectId);
 
 const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): value is SyncPreview =>
   SyncPreviewSchema.safeParse(value).success && (value as SyncPreview).kind === kind;
@@ -112,7 +123,6 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const open = preview !== null;
   const applyMutation = useApplySync();
   const [needsFreshPreview, setNeedsFreshPreview] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
   const [overrideError, setOverrideError] = useState<OverrideError | undefined>();
   const [retryError, setRetryError] = useState(false);
   const [isRefreshingOverrides, setIsRefreshingOverrides] = useState(false);
@@ -124,7 +134,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   // own, so this is what has to come back once the override is applied.
   const openedKindRef = useRef<SyncPreview['kind'] | undefined>(undefined);
   const [, rerenderOverrides] = useState(0);
-  const form = useForm({ defaultValues: initialValues(preview), validators: { onChange: previewFormSchema } });
+  const rows = preview?.rows ?? EMPTY_ROWS;
 
   // Every setter and ref below is render-stable, so the effect can depend on this directly.
   const clearOverrideDraft = useCallback(() => {
@@ -134,6 +144,20 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
     setOverrideError(undefined);
     setIsRefreshingOverrides(false);
   }, []);
+
+  const form = useForm({
+    defaultValues: initialValues(preview),
+    validators: {
+      onChange: previewFormSchema,
+      // Reported against `renames` so each collision row can render its own message from the
+      // field rather than from a second copy of the rule held next to the dialog.
+      onSubmit: ({ value }) => {
+        const missing = missingRenames(value, rows);
+        return missing.length === 0 ? undefined : { fields: { renames: missing } };
+      },
+    },
+    onSubmit: ({ value }) => submit(value),
+  });
 
   useEffect(() => {
     if (!open || preview === null) {
@@ -155,7 +179,6 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
 
   const stale = applyMutation.error instanceof SyncRequestError && applyMutation.error.code === 'preview-stale';
   const pending = applyMutation.isPending || isRefreshingOverrides;
-  const rows = preview?.rows ?? EMPTY_ROWS;
   // A first connect has no binding yet, so its preview legitimately carries zero rows and
   // an empty decision set is a valid apply. Only the decision-bearing kinds need a row.
   const submitDisabled =
@@ -191,27 +214,13 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
     rerenderOverrides((version) => version + 1);
   };
 
-  const apply = () => {
+  // Reached only after the form's own validators pass, so the rename requirement is already met.
+  function submit(values: PreviewFormValues) {
     if (preview === null || submitDisabled) return;
-    const values = form.state.values;
-    const parsed = previewFormSchema.safeParse(values);
-    // An excluded connect row is not being carried anywhere, so it has no identity to collide with
-    // and demanding a new Provider ID for it would leave Apply blocked with no way to satisfy it.
-    const requiredRename = rows.find(
-      (row) =>
-        row.requiresProviderId === true &&
-        values.decisions[row.objectId] !== undefined &&
-        !providerIdSchema.safeParse(values.decisions[row.objectId]?.newProviderId).success,
-    );
-    if (!parsed.success || requiredRename !== undefined) {
-      setValidationError(requiredRename?.objectId ?? 'form');
-      return;
-    }
-    const decisions = Object.values(parsed.data.decisions).map((decision) => ({
-      ...decision,
-      ...(decision.newProviderId === undefined ? {} : { newProviderId: decision.newProviderId.trim() }),
-    }));
-    setValidationError(null);
+    const decisions = Object.values(values.decisions).map((decision) => {
+      const rename = values.renames[decision.objectId]?.trim();
+      return { ...decision, ...(rename === undefined || rename === '' ? {} : { newProviderId: rename }) };
+    });
     applyMutation.mutate(
       { previewId: preview.previewId, decisions },
       {
@@ -231,7 +240,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
         },
       },
     );
-  };
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -329,25 +338,16 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                     rename. A plain local/cloud conflict on a single object is resolvable under its
                     existing ID, and the server rejects nothing there. */}
                 {row.requiresProviderId === true ? (
-                  <form.Field name="decisions">
-                    {(field) => {
-                      const decision = field.state.value[row.objectId];
-                      return (
-                        <SyncPreviewRenameField
-                          value={decision?.newProviderId}
-                          error={validationError === row.objectId ? renameError(decision?.newProviderId) : undefined}
-                          onValueChange={(newProviderId) =>
-                            field.handleChange({
-                              ...field.state.value,
-                              [row.objectId]: {
-                                ...(decision ?? { objectId: row.objectId, choice: 'local' }),
-                                newProviderId,
-                              },
-                            })
-                          }
-                        />
-                      );
-                    }}
+                  <form.Field name="renames">
+                    {(field) => (
+                      <SyncPreviewRenameField
+                        value={field.state.value[row.objectId] ?? ''}
+                        missing={field.state.meta.errors.flat().includes(row.objectId)}
+                        onValueChange={(newProviderId) =>
+                          field.handleChange({ ...field.state.value, [row.objectId]: newProviderId })
+                        }
+                      />
+                    )}
                   </form.Field>
                 ) : null}
                 <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
@@ -396,7 +396,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             {m['dashboard.sync.preview_cancel']()}
           </Button>
-          <Button type="button" onClick={apply} disabled={submitDisabled}>
+          <Button type="button" onClick={() => void form.handleSubmit()} disabled={submitDisabled}>
             {pending ? m['dashboard.sync.pending']() : m['dashboard.sync.preview_apply']()}
           </Button>
         </DialogFooter>

@@ -485,7 +485,6 @@
       "override_preview_retry": "Retry preview",
       "rename_provider": "New Provider ID",
       "rename_provider_required": "Enter a new Provider ID to resolve this conflict.",
-      "rename_provider_invalid": "Provider ID must contain letters, numbers, hyphens, underscores, or dots.",
       "history": "View history",
       "history_title": "Sync history",
       "history_empty": "No sync history is available.",
