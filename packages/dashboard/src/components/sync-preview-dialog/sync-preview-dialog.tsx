@@ -171,11 +171,13 @@ interface OverrideError {
 
 const clearOverrideDraft = (
   overridesRef: { current: Record<string, readonly string[][]> },
+  previewGenerationRef: { current: number },
   setNeedsFreshPreview: (value: boolean) => void,
   setOverrideError: (value: OverrideError | undefined) => void,
   setIsRefreshingOverrides: (value: boolean) => void,
 ) => {
   overridesRef.current = {};
+  previewGenerationRef.current += 1;
   setNeedsFreshPreview(false);
   setOverrideError(undefined);
   setIsRefreshingOverrides(false);
@@ -196,6 +198,9 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const [retryError, setRetryError] = useState(false);
   const [isRefreshingOverrides, setIsRefreshingOverrides] = useState(false);
   const overridesRef = useRef<Record<string, readonly string[][]>>({});
+  // Bumped by every override preview request and by every draft reset, so a request that was
+  // superseded while in flight can tell that its result no longer describes the pinned paths.
+  const previewGenerationRef = useRef(0);
   // The operation the dialog was opened for. Pinning an override previews that override on its
   // own, so this is what has to come back once the override is applied.
   const openedKindRef = useRef<SyncPreview['kind'] | undefined>(undefined);
@@ -205,7 +210,13 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   useEffect(() => {
     if (!open || preview === null) {
       openedKindRef.current = undefined;
-      clearOverrideDraft(overridesRef, setNeedsFreshPreview, setOverrideError, setIsRefreshingOverrides);
+      clearOverrideDraft(
+        overridesRef,
+        previewGenerationRef,
+        setNeedsFreshPreview,
+        setOverrideError,
+        setIsRefreshingOverrides,
+      );
       form.reset(initialValues(preview));
       return;
     }
@@ -225,6 +236,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   const options = new Set(rows.flatMap((row) => row.choices));
 
   const requestOverridesPreview = async (objectId: string, paths: readonly string[][]) => {
+    const generation = (previewGenerationRef.current += 1);
     setNeedsFreshPreview(true);
     setOverrideError(undefined);
     if (onPreviewOverrides === undefined) {
@@ -235,6 +247,9 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
     const replacement = await Promise.resolve()
       .then(() => onPreviewOverrides(objectId, paths))
       .catch(() => undefined);
+    // A superseded request previewed paths the user has since changed or abandoned. Accepting it
+    // would mark the current pins as reviewed and let Apply persist the older path set.
+    if (previewGenerationRef.current !== generation) return;
     if (replacement !== undefined && isValidReplacementPreview(replacement, 'overrides')) {
       setNeedsFreshPreview(false);
     } else {
@@ -277,7 +292,13 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
           // that operation back for its own explicit apply rather than reporting it done: its
           // decisions were never sent, and it now has to be previewed against the new overrides.
           if (preview.kind === 'overrides' && openedKindRef.current !== 'overrides' && onRetry !== undefined) {
-            clearOverrideDraft(overridesRef, setNeedsFreshPreview, setOverrideError, setIsRefreshingOverrides);
+            clearOverrideDraft(
+              overridesRef,
+              previewGenerationRef,
+              setNeedsFreshPreview,
+              setOverrideError,
+              setIsRefreshingOverrides,
+            );
             applyMutation.reset();
             void Promise.resolve()
               .then(() => onRetry())

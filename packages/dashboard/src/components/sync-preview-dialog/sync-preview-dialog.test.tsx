@@ -1,7 +1,7 @@
 import type { SyncPreview } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { SyncPreviewDialog } from './sync-preview-dialog';
 
@@ -141,6 +141,47 @@ test('clears override paths when closing before reopening a new preview', async 
   fireEvent.change(reopenedPath, { target: { value: 'models.timeout' } });
   fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
   await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', [['models', 'timeout']]));
+});
+
+test('ignores an override preview that was superseded while in flight', async () => {
+  const overridesPreview: SyncPreview = { ...preview, previewId: 'preview-overrides', kind: 'overrides' };
+  let resolveStale!: (value: SyncPreview) => void;
+  const onPreviewOverrides = rs
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<SyncPreview>((resolve) => {
+          resolveStale = resolve;
+        }),
+    )
+    .mockImplementation(() => new Promise<SyncPreview>(() => {}));
+  const renderAt = (open: boolean, current: SyncPreview | null) => (
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open={open} preview={current} onOpenChange={rs.fn()} onPreviewOverrides={onPreviewOverrides} />
+    </QueryClientProvider>
+  );
+  const pin = (value: string) => {
+    fireEvent.change(screen.getByLabelText(/Option path|选项路径/u), { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  };
+  const view = render(renderAt(true, preview));
+
+  pin('limits.timeout');
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(1, 'object-work', [['limits', 'timeout']]));
+
+  // Closing resets the draft, which is what frees the pin controls while the first request is
+  // still live and lets a second one overlap it.
+  view.rerender(renderAt(false, null));
+  view.rerender(renderAt(true, { ...preview, previewId: 'preview-reopen' }));
+  pin('models.retries');
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', [['models', 'retries']]));
+
+  await act(async () => {
+    resolveStale(overridesPreview);
+  });
+  expect(
+    screen.getByRole('button', { name: /Pending|Apply reviewed changes|应用审核后的变更/u }).hasAttribute('disabled'),
+  ).toBe(true);
 });
 
 test('applies an empty first-connect preview', () => {
