@@ -6,23 +6,12 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { PreviewFence, PreviewRecord, RemoteEntity } from './preview';
-import { latestCommitId, SyncPreviewError, sameFence } from './preview';
+import type { PreviewFence, PreviewRecord, RemoteEntity } from '../preview';
+import { latestCommitId, SyncPreviewError, sameFence } from '../preview';
+import { SyncOperationError } from './errors';
+import { providerIdentityRows, remoteIdentityEntity, type ProviderIdentityRows } from './provider-identity';
 
-export class SyncOperationError extends Error {
-  override readonly name = 'SyncOperationError';
-  constructor(
-    readonly code:
-      | 'not-connected'
-      | 'dependency-in-use'
-      | 'detach-required'
-      | 'operation-pending'
-      | 'upgrade-required'
-      | 'backend-unavailable',
-  ) {
-    super(code);
-  }
-}
+export { SyncOperationError } from './errors';
 
 /**
  * Refuses to retire a binding whose rows still hold a shared OAuth credential. Ownership is scoped
@@ -80,6 +69,11 @@ export type OperationInput = {
    * sharing service and completed by its recovery pass, so it is not an error here.
    */
   readonly shareOAuth?: (providerId: string) => Promise<void>;
+  /**
+   * The control plane's range revision, bumped by every `setRange`. Applying reads it again after
+   * each publication because a completed Leave is invisible to the configuration commit fence.
+   */
+  readonly rangeRevision?: () => number;
   readonly persistProviderIdentity?: (
     oldProviderId: string,
     newProviderId: string,
@@ -88,135 +82,9 @@ export type OperationInput = {
   readonly now?: () => number;
 };
 
-type ProviderIdentityRows = {
-  readonly oldProviderId: string;
-  readonly newProviderId: string;
-  readonly entities: readonly LocalEntity[];
-  /** The renamed row itself, which carries a fresh object identity once the old one was published. */
-  readonly renamed: LocalEntity;
-  /** Whether the old object still exists remotely and has to be removed after the rename lands. */
-  readonly replacesPublished: boolean;
-};
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-/**
- * Moves every reference to `oldProviderId` onto `newProviderId`: the keys of `providers`/`accounts`
- * maps and the `providerId`/`accountProviderId` scalars that name them. Shared by the entity bodies
- * a rename publishes and the authored configuration those bodies are projected from, so the two can
- * never disagree about which Provider ID a rule points at.
- */
-export function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
-  if (Array.isArray(value)) return value.map((entry) => rewireProviderReferences(entry, oldProviderId, newProviderId));
-  if (!isPlainObject(value)) return value;
-  // A Provider ID is user data, so it can be `__proto__`: plain assignment reaches the legacy
-  // prototype setter and drops the entry, on the replacement and on every hop that rebuilds the map.
-  return Object.fromEntries(
-    Object.entries(value).map(([key, child]): [string, JsonValue] => {
-      if (key === 'providers' || key === 'accounts') {
-        if (!isPlainObject(child)) throw new SyncOperationError('upgrade-required');
-        const source = child as Record<string, JsonValue>;
-        if (Object.hasOwn(source, oldProviderId) && Object.hasOwn(source, newProviderId))
-          throw new SyncOperationError('upgrade-required');
-        const moved = Object.entries(source).map(([id, ref]) => [id === oldProviderId ? newProviderId : id, ref]);
-        return [key, rewireProviderReferences(Object.fromEntries(moved), oldProviderId, newProviderId)];
-      }
-      if ((key === 'providerId' || key === 'accountProviderId') && child === oldProviderId) return [key, newProviderId];
-      return [key, rewireProviderReferences(child, oldProviderId, newProviderId)];
-    }),
-  );
-}
-
 function isOAuthProvider(body: EntityBody | null): body is EntityBody {
   if (body === null || body.kind !== 'provider' || !isPlainObject(body.value)) return false;
   return (body.value as Record<string, JsonValue>)['kind'] === 'oauth';
-}
-
-function validateStructuredReferenceMaps(value: JsonValue): void {
-  if (Array.isArray(value)) {
-    for (const entry of value) validateStructuredReferenceMaps(entry);
-    return;
-  }
-  if (!isPlainObject(value)) return;
-  for (const [key, child] of Object.entries(value)) {
-    if ((key === 'providers' || key === 'accounts') && !isPlainObject(child))
-      throw new SyncOperationError('upgrade-required');
-    validateStructuredReferenceMaps(child);
-  }
-}
-
-function providerIdentityRows(
-  current: LocalEntity,
-  selected: EntityBody,
-  newProviderId: string,
-  entities: readonly LocalEntity[],
-  published: boolean,
-): ProviderIdentityRows {
-  if (current.kind !== 'provider' || selected.kind !== 'provider' || newProviderId === '')
-    throw new SyncOperationError('upgrade-required');
-  validateStructuredReferenceMaps(selected.value);
-  if (
-    entities.some(
-      (entity) =>
-        entity.objectId !== current.objectId && entity.kind === 'provider' && entity.logicalKey === newProviderId,
-    )
-  )
-    throw new SyncOperationError('upgrade-required');
-  // A published head's logical key is immutable, so the rename cannot be pushed through the same
-  // object. The renamed configuration becomes a new object and the old one is deleted afterwards,
-  // which is also what clears the colliding identity out of the cloud.
-  const renamed: LocalEntity = {
-    ...current,
-    logicalKey: newProviderId,
-    desired: { ...selected, logicalKey: newProviderId },
-    ...(published ? { objectId: crypto.randomUUID(), epoch: 0, baseline: null } : {}),
-  };
-  const mapped = entities.map((entity) => {
-    if (entity.objectId === current.objectId) return renamed;
-    if (entity.desired?.kind !== 'model-rule') return entity;
-    return {
-      ...entity,
-      desired: {
-        ...entity.desired,
-        value: rewireProviderReferences(entity.desired.value, current.logicalKey, newProviderId),
-      },
-    };
-  });
-  return {
-    oldProviderId: current.logicalKey,
-    newProviderId,
-    renamed,
-    replacesPublished: published,
-    // Persist only rows whose provider identity or structured references changed. This lets a
-    // repository that predates bulk persistence handle a provider-only rename atomically while
-    // still refusing a multi-row mapping that it cannot write as one transaction.
-    entities: mapped.filter((entity, index) => !sameJson(entity, entities[index])),
-  };
-}
-
-/**
- * The entity a rename needs when the colliding object lives only in the cloud. Its identity group
- * is entirely remote, so there is nothing local to rename — but the rename still has to reach the
- * backend, or the immutable head keeps the old Provider ID and the next reconciliation quarantines
- * the same collision again.
- */
-function remoteIdentityEntity(objectId: string, remote: RemoteEntity | undefined): LocalEntity | undefined {
-  if (remote?.body == null || remote.kind !== 'provider') return undefined;
-  return {
-    objectId,
-    logicalKey: remote.logicalKey,
-    kind: 'provider',
-    mode: 'included',
-    // Deleting the head it vacates is an epoch-exact operation, so the remote epoch is the one
-    // field that cannot be defaulted away.
-    epoch: remote.epoch ?? 0,
-    desired: remote.body,
-    baseline: remote.revision,
-    overrides: [],
-    pendingReason: null,
-  };
 }
 
 async function persistProviderIdentity(input: OperationInput, rows: ProviderIdentityRows): Promise<void> {
@@ -422,9 +290,16 @@ export async function applyPreview(
       // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
       // the fence. Re-read the row and carry over only the fields applying actually decides.
       const latest = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId) ?? current;
+      // A `sync leave` completing while this publication was in flight stores the row excluded and
+      // bumps the range revision. The commit fence cannot see it — `setRange` writes no
+      // configuration commit — so forcing `included` back here would silently undo a Leave the user
+      // already got a success for. The publication itself still happened, so only the mode defers.
+      const left =
+        (input.rangeRevision?.() ?? record.fence.rangeRevision) !== record.fence.rangeRevision &&
+        latest.mode === 'excluded';
       input.repo.putEntity(binding.id, {
         ...latest,
-        mode: 'included',
+        mode: left ? 'excluded' : 'included',
         desired: selectedBody,
         // The preview's `remote.revision` predates this publication, so recording it would leave
         // the row permanently behind its own write and make the next reconcile see phantom drift.
@@ -441,6 +316,13 @@ export async function applyPreview(
         // discrepancy — a restore that silently did nothing.
         const operationId = `restore:${candidate.row.objectId}:${randomUUID()}`;
         await input.restore(candidate.row.objectId, selectedBody, operationId, current, remote?.version ?? null);
+        // The restored body is a cloud body, so it has to reach the configuration file the same way
+        // a cloud choice does. Recording it only on the row would leave the file holding the
+        // pre-restore value (or nothing, after a deletion) until some later reconciliation, and any
+        // configuration commit in that window projects the stale file over the restore.
+        publishedRevision = operationId;
+        await input.applyLocal(selectedBody, current, candidate.row.objectId);
+        commits.adopt();
       } else if (decision.choice === 'cloud') {
         // Importing alone would leave the head under the old Provider ID, and the next
         // reconciliation would restore that ID and quarantine the same collision again. Publish the

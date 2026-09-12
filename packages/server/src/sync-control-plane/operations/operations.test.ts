@@ -5,21 +5,21 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreviewInput } from '@aio-proxy/types';
 
 import {
-  applyPreview,
-  assertDecisions,
-  assertNoRetainedOAuth,
-  rewireProviderReferences,
-  SyncOperationError,
-  type OperationInput,
-  type SyncDecision,
-} from './operations';
-import {
   SyncPreviewError,
   type PreviewCandidate,
   type PreviewFence,
   type PreviewRecord,
   type RemoteEntity,
-} from './preview';
+} from '../preview';
+import {
+  applyPreview,
+  assertDecisions,
+  assertNoRetainedOAuth,
+  SyncOperationError,
+  type OperationInput,
+  type SyncDecision,
+} from './operations';
+import { rewireProviderReferences } from './provider-identity';
 
 const fence: PreviewFence = {
   bindingId: 'binding',
@@ -391,4 +391,61 @@ test('retiring a binding is refused while any row still holds a shared credentia
   expect(() => assertNoRetainedOAuth(repo([row('a')], ['a']), 'binding')).toThrow(SyncOperationError);
   // A detached Provider owns its credential alone, so nothing follows it across the retire.
   expect(() => assertNoRetainedOAuth(repo([row('a'), row('b', 'independent')]), 'binding')).not.toThrow();
+});
+
+test('restoring a revision writes it to the local configuration, not just the row', async () => {
+  const written: LocalEntity[] = [];
+  let restoredOperationId = '';
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => written.push(entity) } as never,
+    localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+    restore: async (_objectId, _candidateBody, operationId) => {
+      restoredOperationId = operationId;
+    },
+  });
+  const row = candidate('provider-a', 'provider', 'work');
+  const rows = [{ ...row, row: { ...row.row, choices: ['restore' as const] } }];
+
+  await applyPreview(scenario.input, record({ kind: 'restore', objectId: 'provider-a', operationId: 'r0' }, rows), [
+    { objectId: 'provider-a', choice: 'restore' },
+  ]);
+
+  // Without this the configuration file keeps the pre-restore value and the next local commit
+  // projects it back over the revision the user just restored.
+  expect(scenario.appliedLocal).toBe(1);
+  // Recording the pre-restore remote revision would leave the row behind its own publication.
+  expect(written[0]).toMatchObject({ baseline: restoredOperationId });
+});
+
+test('a leave that completes during a publication is not undone by the recorded join', async () => {
+  const written: LocalEntity[] = [];
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => written.push(entity) } as never,
+    localEntities: () => [{ ...localEntity('provider-a', 'provider', 'work'), mode: 'excluded' }],
+    // `setRange` writes no configuration commit, so the commit fence cannot see the Leave.
+    rangeRevision: () => fence.rangeRevision + 1,
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+    { objectId: 'provider-a', choice: 'local' },
+  ]);
+
+  expect(written[0]).toMatchObject({ mode: 'excluded', pendingReason: null });
+});
+
+test('a join still marks the row included while the range is unchanged', async () => {
+  const written: LocalEntity[] = [];
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => written.push(entity) } as never,
+    localEntities: () => [{ ...localEntity('provider-a', 'provider', 'work'), mode: 'excluded' }],
+    rangeRevision: () => fence.rangeRevision,
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+    { objectId: 'provider-a', choice: 'local' },
+  ]);
+
+  expect(written[0]).toMatchObject({ mode: 'included' });
 });
