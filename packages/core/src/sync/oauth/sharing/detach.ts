@@ -2,6 +2,7 @@ import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
 
 import type { AccountWrite, PluginRepository } from '../../../plugins/repository';
 import { accountKey, encode } from '../../protocol';
+import type { DeletedAccount } from '../../protocol';
 import type { SyncObjectStore } from '../../publication';
 import type { LocalBinding, LocalEntity, SyncRepository } from '../../repository';
 import { decodeAccount, type LiveAccount } from '../protocol';
@@ -23,11 +24,18 @@ export function payloadFor(candidate: AccountWrite): LiveAccount['payload'] {
   };
 }
 
+/**
+ * A tombstone is reported separately rather than as `null`: the key is present, so a caller that
+ * treats it as absent and compare-and-swaps against `null` can never write. Only `share()` acts on
+ * it — everyone else reads it exactly as they read an absent account.
+ */
 export async function readRemote(
   store: SyncObjectStore,
   objectId: string,
   signal: AbortSignal,
-): Promise<{ account: LiveAccount; version: string } | { unknown: true } | null> {
+): Promise<
+  { account: LiveAccount; version: string } | { deleted: DeletedAccount; version: string } | { unknown: true } | null
+> {
   const value = await store.session.read(accountKey(objectId), signal);
   if (value.kind === 'absent') return null;
   let account: ReturnType<typeof decodeAccount>;
@@ -36,7 +44,8 @@ export async function readRemote(
   } catch {
     return { unknown: true };
   }
-  if (account.phase === 'deleted' || account.objectId !== objectId) return null;
+  if (account.objectId !== objectId) return null;
+  if (account.phase === 'deleted') return { deleted: account, version: value.version };
   return { account, version: value.version };
 }
 

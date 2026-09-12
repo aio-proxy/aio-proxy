@@ -95,14 +95,21 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         }
         return entity.oauth.mode === 'shared' ? 'shared' : 'pending';
       }
-      const next = pending?.payload.next ?? liveAccount(entity.objectId, candidate, resolved, 0);
+      // Read before minting so a tombstone left by a restore or a purged-then-restored entity is
+      // superseded at its own epoch. Minting at epoch 0 and compare-and-swapping against an absent
+      // key can never match a present tombstone, which stalls sharing for good. Reading ahead of the
+      // journal is safe where a write would not be: a lost read reply leaves nothing behind.
+      const remote = await readRemote(input.store, entity.objectId, signal);
+      const tombstone = remote !== null && 'deleted' in remote ? remote : undefined;
+      const next =
+        pending?.payload.next ?? liveAccount(entity.objectId, candidate, resolved, 0, tombstone?.deleted.epoch ?? 0);
       if (
         next === null ||
         !sameJson(pending?.payload.candidate ?? candidate, candidate) ||
         !compatibleRemote(next, candidate, resolved)
       )
         return 'pending';
-      // Fence ownership before the first remote read/write, including conflicts and lost replies.
+      // Fence ownership before the first remote write, including conflicts and lost replies.
       const row =
         pending?.row ??
         writeJournal(
@@ -115,8 +122,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         pendingReason: 'share-pending',
         oauth: ownership(next, local.revision, 'share-pending'),
       });
-      const remote = await readRemote(input.store, entity.objectId, signal);
-      if (remote !== null) {
+      if (remote !== null && !('deleted' in remote)) {
         if (
           'unknown' in remote ||
           !compatibleRemote(remote.account, candidate, resolved) ||
@@ -132,7 +138,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       try {
         const result = await input.store.session.compareAndSwap(
           accountKey(next.objectId),
-          null,
+          tombstone?.version ?? null,
           accountBytes(next),
           signal,
         );
@@ -140,7 +146,8 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       } catch (error) {
         if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
         const observed = await readRemote(input.store, next.objectId, signal);
-        if (observed === null || 'unknown' in observed || !sameRemote(observed.account, next)) return 'pending';
+        if (observed === null || 'unknown' in observed || 'deleted' in observed || !sameRemote(observed.account, next))
+          return 'pending';
       }
       applyLocal(input, providerId, candidate, next, row, 'shared');
       return 'shared';
@@ -159,7 +166,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
       }
       const remote = await readRemote(input.store, entity.objectId, signal);
-      if (remote === null || 'unknown' in remote) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+      if (remote === null || 'unknown' in remote || 'deleted' in remote) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
       if (!compatibleRemote(remote.account, candidate, resolved)) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
       // A fresh authorization is the documented recovery from an abandoned refresh, so it takes
       // over the stale claim on a new epoch instead of waiting for a `ready` that never comes.
@@ -227,6 +234,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       if (
         remote === null ||
         'unknown' in remote ||
+        'deleted' in remote ||
         !compatibleRemote(remote.account, candidate, resolved) ||
         // Detaching reads the shared credential but never republishes it, so an abandoned refresh
         // is no reason to strand this device on an account it is trying to stop following.
@@ -345,6 +353,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       if (
         remote !== null &&
         !('unknown' in remote) &&
+        !('deleted' in remote) &&
         compatibleRemote(remote.account, candidate, resolved) &&
         readyOwnedRemote(entity.oauth, remote.account) &&
         sameJson(remote.account.payload, payloadFor(candidate))

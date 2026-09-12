@@ -164,6 +164,27 @@ test('first share waits for a local rotation and publishes only the rotated cred
   });
 });
 
+test('first share supersedes a tombstone left at the account key by a restore', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    const key = `s/v1/default/account/${f.objectId}`;
+    const session = f.backend.connect();
+    // What `ensureAccountActiveFence` leaves behind: the key is present, so compare-and-swapping
+    // against an absent key can never write and sharing would stall on `pending` for good.
+    await session.compareAndSwap(
+      key,
+      null,
+      new TextEncoder().encode(JSON.stringify({ protocol: 1, phase: 'deleted', objectId: f.objectId, epoch: 1 })),
+      f.signal,
+    );
+    await session.dispose();
+
+    expect(await f.sharing.share(f.providerId, f.signal)).toBe('shared');
+    expect(f.remote()).toMatchObject({ epoch: 1, generation: 0, phase: 'ready' });
+    expect(f.ownership()).toMatchObject({ mode: 'shared', epoch: 1 });
+    expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+  });
+});
+
 test('first share requires adapter multi-device evidence and preserves local configuration', async () => {
   await withOAuthSharingFixture(async (f) => {
     f.replaceAdapter(oauthAdapterFixture({ credentialSync: { formatVersion: 1 } }));

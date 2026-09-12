@@ -25,7 +25,7 @@ export async function importRemoteAccount(
     const entity = entityFor(input.repo, input.binding, providerId);
     if (entity === undefined || input.repo.readBinding()?.id !== input.binding.id) return null;
     const remote = await readRemote(input.store, entity.objectId, signal);
-    if (remote === null || 'unknown' in remote) return null;
+    if (remote === null || 'unknown' in remote || 'deleted' in remote) return null;
     const account = remote.account;
     if (!canActivateSyncedAccount(resolved.adapter, resolved.pluginVersion, account)) return null;
     if (!(await parsePluginSchema(resolved.adapter.credentials, account.payload.credential)).ok) return null;
