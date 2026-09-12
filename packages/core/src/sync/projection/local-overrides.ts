@@ -14,6 +14,19 @@ function asRecord(value: JsonValue | undefined): JsonRecord | undefined {
   return value !== undefined && isPlainObject(value) ? (value as JsonRecord) : undefined;
 }
 
+/**
+ * A Provider ID, model name or override segment is user data, so it can be `__proto__`. Plain
+ * assignment for that key reaches the legacy prototype setter instead of creating an own property,
+ * and a plain read resolves `Object.prototype`, which traversal would then write into.
+ */
+export function setKey(target: JsonRecord, key: string, value: JsonValue): void {
+  Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
+}
+
+function ownValue(target: JsonRecord, key: string): JsonValue | undefined {
+  return Object.hasOwn(target, key) ? target[key] : undefined;
+}
+
 function cloneRecord(value: JsonValue | undefined): JsonRecord {
   const record = asRecord(value);
   return record === undefined ? {} : (cloneJson(record) as JsonRecord);
@@ -25,7 +38,7 @@ export function mergeJson(left: JsonValue | undefined, right: JsonValue | undefi
   if (rightRecord === undefined) return cloneJson(right);
   const result = cloneRecord(left);
   for (const [key, value] of Object.entries(rightRecord)) {
-    result[key] = mergeJson(result[key], value) as JsonValue;
+    setKey(result, key, mergeJson(ownValue(result, key), value) as JsonValue);
   }
   return result;
 }
@@ -51,18 +64,18 @@ function setPath(root: JsonRecord, path: readonly string[], value: JsonValue): v
   if (path.length === 0) throw new TypeError('An override path must not be empty');
   let current = root;
   for (const segment of path.slice(0, -1)) {
-    const next = current[segment];
-    if (!isPlainObject(next)) current[segment] = {};
-    current = current[segment] as JsonRecord;
+    const next = ownValue(current, segment);
+    if (!isPlainObject(next)) setKey(current, segment, {});
+    current = ownValue(current, segment) as JsonRecord;
   }
-  current[path.at(-1)!] = cloneJson(value);
+  setKey(current, path.at(-1)!, cloneJson(value));
 }
 
 function deletePath(root: JsonRecord, path: readonly string[]): void {
   if (path.length === 0) throw new TypeError('An override path must not be empty');
-  let current: JsonRecord | undefined = root;
+  let current: JsonRecord = root;
   for (const segment of path.slice(0, -1)) {
-    const next = current[segment];
+    const next = ownValue(current, segment);
     if (!isPlainObject(next)) return;
     current = next as JsonRecord;
   }

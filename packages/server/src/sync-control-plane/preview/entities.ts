@@ -86,7 +86,10 @@ export async function listRemoteEntities(
     // remote deleted, so the tombstone is surfaced as an absent body and the payload stays
     // reachable through `revisions`/`restoreBody` for a restore.
     const tombstone = head.state === 'deleted' || head.state === 'purged';
-    const revisions: Record<string, EntityBody | null> = {};
+    // The remote names its own operation IDs, so one can be `__proto__`. A Map keeps that an
+    // ordinary entry instead of reaching the prototype setter, and `Object.fromEntries` turns it
+    // into an own property of the reported record.
+    const revisions = new Map<string, EntityBody | null>();
     for (const operationId of [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])]) {
       const revision = await session.read(revisionKey(objectId, operationId), signal);
       // A live head's current revision must exist — reconciliation calls its absence invalid data.
@@ -101,11 +104,11 @@ export async function listRemoteEntities(
       if (record.state === 'payload') {
         if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
           throw new SyncPreviewError('not-connected');
-        revisions[operationId] = record.body;
-      } else revisions[operationId] = null;
+        revisions.set(operationId, record.body);
+      } else revisions.set(operationId, null);
     }
     if (head.current !== null) {
-      body = revisions[head.current] ?? null;
+      body = revisions.get(head.current) ?? null;
     }
     result.push({
       objectId,
@@ -116,9 +119,9 @@ export async function listRemoteEntities(
       revision: head.current,
       body: tombstone ? null : body,
       tombstone,
-      revisions,
+      revisions: Object.fromEntries(revisions),
       restoreBody:
-        body ?? [...Object.values(revisions)].reverse().find((revision): revision is EntityBody => revision !== null),
+        body ?? [...revisions.values()].reverse().find((revision): revision is EntityBody => revision !== null),
     });
   }
   return result;

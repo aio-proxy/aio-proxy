@@ -2014,3 +2014,122 @@ test('a tombstoned duplicate does not collide with the live object holding the i
   expect(live?.change).not.toBe('conflict');
   expect(live?.requiresProviderId).toBeUndefined();
 });
+
+// The remote names its own operation IDs and a restore request carries one straight through, so
+// both sides are untrusted. A plain lookup for `__proto__` resolves `Object.prototype`, which the
+// undefined check would accept as a restorable revision.
+test('a __proto__ restore operation id is refused instead of resolving Object.prototype', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: providerBody({ value: 'local' }),
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'current' }),
+        revisions: { old: providerBody({ value: 'old' }) },
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  await expect(
+    control.preview({ kind: 'restore', objectId: 'object', operationId: '__proto__' }),
+  ).rejects.toBeInstanceOf(SyncPreviewError);
+});
+
+test('a __proto__ revision operation id stays an own entry of the reported history', async () => {
+  const objectId = 'provider-work';
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { value: 'cloud' }, dependencies: [] };
+  const stored = new Map<string, Uint8Array>([
+    [
+      entityKey(objectId),
+      encode({
+        protocol: 1,
+        objectId,
+        kind: 'provider',
+        logicalKey: 'work',
+        epoch: 1,
+        sequence: 1,
+        state: 'active',
+        current: '__proto__',
+        history: ['__proto__'],
+        reserved: [],
+        cancelling: [],
+        receipts: {},
+        cleanupComplete: true,
+      }),
+    ],
+    [
+      revisionKey(objectId, '__proto__'),
+      encode({
+        protocol: 1,
+        state: 'payload',
+        objectId,
+        epoch: 1,
+        operationId: '__proto__',
+        body,
+        publishedSequence: 1,
+        writtenAt: 1,
+      }),
+    ],
+  ]);
+  const session = {
+    list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+    read: async (key: string) => {
+      const value = stored.get(key);
+      return value === undefined
+        ? { kind: 'absent' as const }
+        : { kind: 'present' as const, value, version: 'v1', modifiedAt: 1 };
+    },
+  } as unknown as SyncSession;
+
+  const remote = await listRemoteEntities(session, AbortSignal.timeout(5_000));
+
+  expect(remote[0]?.body).toMatchObject(body);
+  expect(Object.hasOwn(remote[0]?.revisions ?? {}, '__proto__')).toBe(true);
+  expect(({} as { kind?: string }).kind).toBeUndefined();
+});

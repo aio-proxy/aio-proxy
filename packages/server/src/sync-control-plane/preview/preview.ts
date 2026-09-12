@@ -271,7 +271,12 @@ export function buildPreview(input: {
         const remoteEntity = remoteByObject.get(objectId);
         let remote: EntityBody | null;
         if (input.request.kind === 'restore') {
-          const restored = remoteEntity?.revisions?.[input.request.operationId];
+          // A requested operation ID is untrusted input: a plain lookup for `__proto__` would
+          // resolve `Object.prototype` and pass as a restorable revision.
+          const history = remoteEntity?.revisions;
+          const operationId = input.request.operationId;
+          const restored =
+            history !== undefined && Object.hasOwn(history, operationId) ? history[operationId] : undefined;
           if (restored === undefined) throw new SyncPreviewError('not-connected');
           remote = restored;
         } else remote = remoteEntity?.body ?? null;
