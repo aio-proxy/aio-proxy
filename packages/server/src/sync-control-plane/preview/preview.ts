@@ -80,8 +80,10 @@ function rowFor(
   const choices: SyncPreviewRow['choices'] =
     change === 'delete'
       ? ['restore']
-      : change === 'conflict'
-        ? ['local', 'cloud', 'restore']
+      : // A conflict has a live head on both sides, so there is no tombstone revision to restore.
+        // Offering it anyway only produces `invalid-data` from `restoreEntity`.
+        change === 'conflict'
+        ? ['local', 'cloud']
         : local === null
           ? ['cloud']
           : cloud === null
@@ -229,8 +231,6 @@ export function buildPreview(input: {
   const identityConflictKeys = new Set(
     [...identityGroups].filter(([, objectIds]) => objectIds.size > 1).map(([groupKey]) => groupKey),
   );
-  const candidateIds =
-    input.request.kind === 'purge' ? [...ids].filter((objectId) => remoteByObject.has(objectId)) : [...ids];
   // A local-only object has no published body, so its stored `desired` is null and the join would
   // preview and publish nothing. Project the authored configuration as if the selected set were
   // already included: that yields the exact bodies applying the local choice will publish,
@@ -255,6 +255,17 @@ export function buildPreview(input: {
             projected.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity,
           ),
         ).entities;
+  // Joining an object can rewrite the projected body of one already included — a model rule whose
+  // Provider reference only resolves once that Provider joins. Those rows are not in `ids`, so
+  // without this they keep their stale published body and the cloud is left internally inconsistent.
+  if (input.request.kind === 'join' && joined !== undefined)
+    for (const entity of localSnapshot)
+      if (entity.mode === 'included' && !ids.has(entity.objectId)) {
+        const next = joined.get(entity.objectId);
+        if (next !== undefined && !equal(next, entity.desired)) ids.add(entity.objectId);
+      }
+  const candidateIds =
+    input.request.kind === 'purge' ? [...ids].filter((objectId) => remoteByObject.has(objectId)) : [...ids];
   const candidates = candidateIds
     .map((objectId) =>
       (() => {
@@ -311,11 +322,22 @@ export function buildPreview(input: {
         row: {
           ...candidate.row,
           change: 'conflict' as const,
-          choices: ['local', 'cloud', 'restore'] as SyncPreviewRow['choices'],
+          choices: ['local', 'cloud'] as SyncPreviewRow['choices'],
           ...(renameable ? { requiresProviderId: true } : {}),
         },
       };
-    });
+    })
+    .map((candidate) =>
+      // A restore preview resolves one past revision and reports it as the cloud side, so a
+      // conflicting row there really can be rolled back. Every other preview compares two live
+      // heads, where `restoreEntity` demands a deleted or purged head and rejects the choice.
+      input.request.kind !== 'restore' || candidate.row.change !== 'conflict'
+        ? candidate
+        : {
+            ...candidate,
+            row: { ...candidate.row, choices: ['local', 'cloud', 'restore'] as SyncPreviewRow['choices'] },
+          },
+    );
   const retainedSharedPlugins =
     input.request.kind === 'purge'
       ? [

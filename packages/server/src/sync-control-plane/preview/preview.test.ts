@@ -176,6 +176,77 @@ test('a local-only join projects authored bodies and pulls in the business plugi
   ]);
 });
 
+test('joining a provider republishes the already-included model rules that reference it', () => {
+  const authored = {
+    providers: { fresh: { kind: 'api', baseURL: 'https://fresh.test' }, work: { kind: 'api' } },
+    router: { models: { 'gpt-5': { providers: { fresh: { weight: 2 }, work: { weight: 1 } } } } },
+  } satisfies Record<string, JsonValue>;
+  const entity = (objectId: string, kind: 'provider' | 'model-rule', logicalKey: string, included: boolean) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: included ? ('included' as const) : ('excluded' as const),
+    epoch: 0,
+    desired: included ? { kind, logicalKey, value: { providers: { work: { weight: 1 } } }, dependencies: [] } : null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'fresh' },
+    local: [
+      entity('local-fresh', 'provider', 'fresh', false),
+      entity('local-work', 'provider', 'work', true),
+      entity('local-rule', 'model-rule', 'gpt-5', true),
+    ],
+    remote: [],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-join-dependents',
+    expiresAt: 1,
+    source: { raw: authored, accounts: new Map(), pluginSecrets: new Map(), pluginVersions: new Map() },
+  });
+  // The rule is already included, so it is not part of the join request, but its published body
+  // filters providers to the included set. Leaving it out would keep `fresh` missing from the
+  // cloud's copy of the rule while the Provider itself is published.
+  const rule = built.preview.rows.find((row) => row.objectId === 'local-rule');
+  expect(rule?.local).toMatchObject({ providers: { fresh: { weight: 2 }, work: { weight: 1 } } });
+});
+
+test('a conflict outside a restore preview does not offer the restore choice', () => {
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 0,
+        desired: providerBody({ value: 'local' }),
+        baseline: 'stale',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'current',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-conflict-choices',
+    expiresAt: 1,
+  });
+  // Both heads are live, so `restoreEntity` would reject the choice with `invalid-data`. Offering
+  // it only gives the dialog a button that cannot work.
+  expect(built.preview.rows[0]).toMatchObject({ change: 'conflict', choices: ['local', 'cloud'] });
+});
+
 test('an override on a local-only object pins the authored value rather than the empty published one', () => {
   const authored = {
     plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],
