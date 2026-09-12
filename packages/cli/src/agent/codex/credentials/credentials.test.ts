@@ -160,6 +160,21 @@ test('selection becomes stale when an authored extra field changes', async () =>
   }
 });
 
+test('rejects a class-instance catalog when probing a static API key', async () => {
+  await expect(
+    probeProxyApiKey({
+      endpoint: 'http://127.0.0.1:9',
+      token: 'sk-test',
+      fetch: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => new (class Catalog {})(),
+        }) as Response,
+    }),
+  ).resolves.toBe('invalid_response');
+});
+
 test('rejects redirects when probing a static API key', async () => {
   const destination = Bun.serve({
     port: 0,
