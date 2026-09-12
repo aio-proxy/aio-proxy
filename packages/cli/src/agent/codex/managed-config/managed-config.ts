@@ -304,11 +304,13 @@ export async function inspectCodexConfig(location: CodexLocation): Promise<Confi
   if (marker === undefined) return { status: 'absent', activeProviderId: document.activeProviderId, changedPaths: [] };
   const changedPaths = changedFields(marker, current.text);
   const base = readManagedField(current.text, providerPath(marker.providerId, 'base_url'));
+  const token = readManagedField(current.text, providerPath(marker.providerId, 'experimental_bearer_token'));
   return {
     status: changedPaths.length === 0 ? 'managed' : 'modified',
     providerId: marker.providerId,
     activeProviderId: document.activeProviderId,
     baseUrl: base.present && typeof base.value === 'string' ? base.value : undefined,
+    ...(token.present && typeof token.value === 'string' ? { bearerToken: token.value } : {}),
     ...(marker.format === 2
       ? {
           authMode: marker.authMode,

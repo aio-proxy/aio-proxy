@@ -51,6 +51,49 @@ test('lists static authentication without checking the proxy and removes it idem
   }
 });
 
+test('list --check probes the stored keep-chatgpt token instead of public health', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  const previousFetch = globalThis.fetch;
+  try {
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://127.0.0.1:9317/v1',
+      auth: { mode: 'keep-chatgpt', token: 'stale-key' },
+    });
+    const seen: { path: string; authorization?: string }[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      seen.push({ path: url.pathname, authorization: headers.get('authorization') ?? undefined });
+      if (url.pathname === '/health') return Response.json({ status: 'ok' });
+      if (url.pathname === '/v1/models') return new Response('unauthorized', { status: 401 });
+      throw new Error(`unexpected ${url.pathname}`);
+    }) as typeof fetch;
+    await expect(
+      listCodexLifecycle({
+        location,
+        check: true,
+        checkStatic: async (baseUrl, token) => {
+          if (baseUrl === undefined || token === undefined) return 'offline';
+          const endpoint = baseUrl.replace(/\/v1\/?$/u, '');
+          const response = await fetch(`${endpoint}/v1/models`, {
+            headers: { authorization: `Bearer ${token}` },
+            redirect: 'error',
+            signal: AbortSignal.timeout(3_000),
+          });
+          return response.status === 401 ? 'unauthorized' : 'ok';
+        },
+      }),
+    ).resolves.toMatchObject({ connection: 'unauthorized' });
+    expect(seen).toEqual([{ path: '/v1/models', authorization: 'Bearer stale-key' }]);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('blocks command removal after revoke failure and keeps retry state', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
   const location = resolveCodexLocation(root, { HOME: root });

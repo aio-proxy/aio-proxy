@@ -152,24 +152,11 @@ const createPrompts = (): CodexPrompts => ({
 
 const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
 
-const connectionStatus = async (baseUrl: string): Promise<CodexListResult['connection']> => {
-  try {
-    const healthUrl = new URL(baseUrl);
-    healthUrl.pathname = `${healthUrl.pathname.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '')}/health`;
-    healthUrl.search = '';
-    healthUrl.hash = '';
-    const response = await fetch(healthUrl, {
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (response.status === 401 || response.status === 403) return 'unauthorized';
-    if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
-    const body: unknown = await response.json().catch(() => undefined);
-    return typeof body === 'object' && body !== null && (body as { readonly status?: unknown }).status === 'ok'
-      ? 'ok'
-      : 'invalid_response';
-  } catch {
-    return 'offline';
-  }
+const connectionStatus = async (baseUrl?: string, token?: string): Promise<CodexListResult['connection']> => {
+  if (baseUrl === undefined) return 'offline';
+  if (token === undefined || token.length === 0) return 'unauthorized';
+  const endpoint = baseUrl.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '');
+  return probeProxyApiKey({ endpoint, token });
 };
 
 const authContext = (location: CodexLocation, endpoint: string) => ({
@@ -272,7 +259,7 @@ export async function listCodexAgent(check = false): Promise<CodexListResult> {
   return listCodexLifecycle({
     location,
     check,
-    checkStatic: (baseUrl) => (baseUrl === undefined ? Promise.resolve('offline' as const) : connectionStatus(baseUrl)),
+    checkStatic: connectionStatus,
   });
 }
 

@@ -72,6 +72,7 @@ export type ConfigInspection = {
   readonly providerId?: string;
   readonly activeProviderId: string;
   readonly baseUrl?: string;
+  readonly bearerToken?: string;
   readonly authMode?: CodexAuthMode;
   readonly installationId?: string;
   readonly changedPaths: readonly (readonly string[])[];

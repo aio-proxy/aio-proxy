@@ -16,7 +16,7 @@ export type CodexLifecycleDeps = {
   readonly location: CodexLocation;
   readonly endpoint?: string;
   readonly signal?: AbortSignal;
-  readonly checkStatic?: (baseUrl?: string) => Promise<CodexListResult['connection']>;
+  readonly checkStatic?: (baseUrl?: string, token?: string) => Promise<CodexListResult['connection']>;
   readonly revoke?: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
 };
 
@@ -70,7 +70,7 @@ export async function listCodexLifecycle(
   const authMode = inspection.authMode ?? (identity === undefined ? undefined : 'command');
   const connection =
     input.check && identity === undefined && authMode === 'keep-chatgpt'
-      ? ((await input.checkStatic?.(inspection.baseUrl)) ?? 'not_checked')
+      ? ((await input.checkStatic?.(inspection.baseUrl, inspection.bearerToken)) ?? 'not_checked')
       : input.check
         ? (credential?.connection ?? 'not_checked')
         : 'not_checked';
