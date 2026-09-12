@@ -59,7 +59,10 @@ export async function listRemoteEntities(
   session: SyncSession | undefined,
   signal: AbortSignal,
 ): Promise<RemoteEntity[]> {
-  if (session === undefined) return [];
+  // A bound backend that never connected is offline, not empty. Read as an empty cloud, a purge
+  // preview lists no rows at all — and applying it then erases nothing, reports success, and leaves
+  // the configuration, its history and the account in place.
+  if (session === undefined) throw new SyncPreviewError('not-connected');
   const keys: string[] = [];
   let cursor: string | undefined;
   do {

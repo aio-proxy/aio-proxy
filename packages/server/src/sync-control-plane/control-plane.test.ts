@@ -522,3 +522,30 @@ test('disconnect waits for a connect apply already past its fence check', async 
   expect(events).toEqual(['committed', 'applied', 'closed', 'cleared']);
   expect(binding).toBeNull();
 });
+
+test('a preview against a bound backend that never connected fails instead of reading as empty', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    // The persisted binding survived a restart the backend was offline for, so the lifecycle holds
+    // no session yet.
+    session: () => undefined,
+    applyLocal: async () => {},
+    persistOverrides: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+  } as never);
+
+  // An empty cloud snapshot would leave the purge preview with no rows, and applying it erases
+  // nothing while still reporting success.
+  await expect(control.preview({ kind: 'purge', scope: 'provider', objectId: 'shared' })).rejects.toMatchObject({
+    code: 'not-connected',
+  });
+  expect(control.status().state).toBe('offline');
+});

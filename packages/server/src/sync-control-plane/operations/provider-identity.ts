@@ -16,43 +16,67 @@ export type ProviderIdentityRows = {
 };
 
 /**
- * Moves every reference to `oldProviderId` onto `newProviderId`: the keys of `providers`/`accounts`
- * maps and the `providerId`/`accountProviderId` scalars that name them. Shared by the entity bodies
- * a rename publishes and the authored configuration those bodies are projected from, so the two can
- * never disagree about which Provider ID a rule points at.
+ * Renames one Provider ID key of a schema-owned reference map, or returns undefined when there is
+ * nothing to move. A Provider ID is user data, so it can be `__proto__`: plain assignment reaches
+ * the legacy prototype setter and drops the entry, on the replacement and on every hop that
+ * rebuilds the map.
  */
-export function rewireProviderReferences(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
-  if (Array.isArray(value)) return value.map((entry) => rewireProviderReferences(entry, oldProviderId, newProviderId));
-  if (!isPlainObject(value)) return value;
-  // A Provider ID is user data, so it can be `__proto__`: plain assignment reaches the legacy
-  // prototype setter and drops the entry, on the replacement and on every hop that rebuilds the map.
+function renameProviderKey(
+  value: JsonValue | undefined,
+  oldProviderId: string,
+  newProviderId: string,
+): JsonValue | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const source = value as Record<string, JsonValue>;
+  if (!Object.hasOwn(source, oldProviderId)) return undefined;
+  // Renaming onto an ID this map already lists would drop one of the two entries.
+  if (Object.hasOwn(source, newProviderId)) throw new SyncOperationError('upgrade-required');
   return Object.fromEntries(
-    Object.entries(value).map(([key, child]): [string, JsonValue] => {
-      if (key === 'providers' || key === 'accounts') {
-        if (!isPlainObject(child)) throw new SyncOperationError('upgrade-required');
-        const source = child as Record<string, JsonValue>;
-        if (Object.hasOwn(source, oldProviderId) && Object.hasOwn(source, newProviderId))
-          throw new SyncOperationError('upgrade-required');
-        const moved = Object.entries(source).map(([id, ref]) => [id === oldProviderId ? newProviderId : id, ref]);
-        return [key, rewireProviderReferences(Object.fromEntries(moved), oldProviderId, newProviderId)];
-      }
-      if ((key === 'providerId' || key === 'accountProviderId') && child === oldProviderId) return [key, newProviderId];
-      return [key, rewireProviderReferences(child, oldProviderId, newProviderId)];
-    }),
+    Object.entries(source).map(([id, reference]) => [id === oldProviderId ? newProviderId : id, reference]),
   );
 }
 
-function validateStructuredReferenceMaps(value: JsonValue): void {
-  if (Array.isArray(value)) {
-    for (const entry of value) validateStructuredReferenceMaps(entry);
-    return;
+/**
+ * A model rule's published body is its authored policy, whose `providers` map is keyed by Provider
+ * ID. Nothing else in the body names a Provider.
+ */
+function rewireModelPolicy(value: JsonValue, oldProviderId: string, newProviderId: string): JsonValue {
+  if (!isPlainObject(value)) return value;
+  const policy = value as Record<string, JsonValue>;
+  const providers = renameProviderKey(policy['providers'], oldProviderId, newProviderId);
+  return providers === undefined ? value : { ...policy, providers };
+}
+
+/**
+ * Moves every authored reference to `oldProviderId` onto `newProviderId`. The configuration schema
+ * names a Provider in exactly two places — the `providers` map at the root and the `providers` map
+ * of each `router.models` rule — so only those are rewritten. Plugin and provider options are
+ * opaque: rewriting a `providerId` that merely looks like ours would silently change an upstream
+ * identifier, and refusing a `providers` option that is not a map would fail the rename outright.
+ */
+export function rewireProviderReferences(
+  authored: Record<string, JsonValue>,
+  oldProviderId: string,
+  newProviderId: string,
+): Record<string, JsonValue> {
+  const result: Record<string, JsonValue> = { ...authored };
+  const providers = renameProviderKey(authored['providers'], oldProviderId, newProviderId);
+  if (providers !== undefined) result['providers'] = providers;
+  const router = authored['router'];
+  const models = isPlainObject(router) ? (router as Record<string, JsonValue>)['models'] : undefined;
+  if (isPlainObject(models)) {
+    result['router'] = {
+      ...(router as Record<string, JsonValue>),
+      // A model name is user data too, so the map is rebuilt entry-wise for the same reason.
+      models: Object.fromEntries(
+        Object.entries(models as Record<string, JsonValue>).map(([model, policy]) => [
+          model,
+          rewireModelPolicy(policy, oldProviderId, newProviderId),
+        ]),
+      ),
+    };
   }
-  if (!isPlainObject(value)) return;
-  for (const [key, child] of Object.entries(value)) {
-    if ((key === 'providers' || key === 'accounts') && !isPlainObject(child))
-      throw new SyncOperationError('upgrade-required');
-    validateStructuredReferenceMaps(child);
-  }
+  return result;
 }
 
 export function providerIdentityRows(
@@ -64,7 +88,6 @@ export function providerIdentityRows(
 ): ProviderIdentityRows {
   if (current.kind !== 'provider' || selected.kind !== 'provider' || newProviderId === '')
     throw new SyncOperationError('upgrade-required');
-  validateStructuredReferenceMaps(selected.value);
   if (
     entities.some(
       (entity) =>
@@ -88,7 +111,7 @@ export function providerIdentityRows(
       ...entity,
       desired: {
         ...entity.desired,
-        value: rewireProviderReferences(entity.desired.value, current.logicalKey, newProviderId),
+        value: rewireModelPolicy(entity.desired.value, current.logicalKey, newProviderId),
       },
     };
   });

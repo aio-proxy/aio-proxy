@@ -1,6 +1,5 @@
 import type { AtomicConfigFile, LocalEntity, SyncRepository } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/shared';
 
 import { rewireProviderReferences, SyncOperationError } from '../../sync-control-plane';
 
@@ -32,7 +31,6 @@ export async function renameProviderIdentity(
   if (binding === null || input.repo.putEntities === undefined) throw new SyncOperationError('upgrade-required');
   const authored = (await input.configFile.read()) as Record<string, JsonValue>;
   const renamed = rewireProviderReferences(authored, oldProviderId, newProviderId);
-  if (!isRecord(renamed)) throw new SyncOperationError('upgrade-required');
-  await input.applyCandidate(renamed as Record<string, JsonValue>, 'remote', `rename:${crypto.randomUUID()}`);
+  await input.applyCandidate(renamed, 'remote', `rename:${crypto.randomUUID()}`);
   input.repo.putEntities(binding.id, entities);
 }

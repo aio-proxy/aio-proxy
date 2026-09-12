@@ -12,8 +12,10 @@ test('renaming a Provider rewrites the authored configuration and its references
   const configPath = join(home, 'config.jsonc');
   const authored = {
     providers: { work: { kind: 'api', baseUrl: 'https://work.example.test' }, other: { kind: 'api' } },
-    models: { 'gpt-5': { providers: { work: { priority: 10 } } } },
-    routing: [{ providerId: 'work' }],
+    router: { models: { 'gpt-5': { providers: { work: { priority: 10 } } } } },
+    // Plugin options are opaque, so a key that merely looks like a Provider reference names
+    // something upstream and must survive the rename untouched.
+    plugins: [['@example/business', { providerId: 'work', providers: 'all' }]],
   };
   writeFileSync(configPath, encodeCandidate(authored, configPath));
   const rows: LocalEntity[] = [
@@ -55,8 +57,8 @@ test('renaming a Provider rewrites the authored configuration and its references
       personal: { kind: 'api', baseUrl: 'https://work.example.test' },
       other: { kind: 'api' },
     });
-    expect(applied?.['models']).toEqual({ 'gpt-5': { providers: { personal: { priority: 10 } } } });
-    expect(applied?.['routing']).toEqual([{ providerId: 'personal' }]);
+    expect(applied?.['router']).toEqual({ models: { 'gpt-5': { providers: { personal: { priority: 10 } } } } });
+    expect(applied?.['plugins']).toEqual([['@example/business', { providerId: 'work', providers: 'all' }]]);
     // A local-origin commit would enqueue a second publication of what applyPreview already wrote.
     expect(origin).toBe('remote');
     expect(written).toEqual(rows);

@@ -361,14 +361,19 @@ test('a single-row apply records no join when a configuration commit lands durin
 // legacy prototype setter instead of creating an entry, and deleting the old key right after left
 // the rewritten rule pointing at neither ID — then persisted and published that way.
 test('rewiring onto a Provider named __proto__ keeps the reference as an own entry', () => {
-  const rule = JSON.parse('{"providers":{"work":{"priority":10}},"accounts":{"work":{"id":"a"}}}') as JsonValue;
+  const authored = JSON.parse(
+    '{"providers":{"work":{"kind":"api"}},"router":{"models":{"gpt-5":{"providers":{"work":{"priority":10}}}}}}',
+  ) as Record<string, JsonValue>;
 
-  const rewired = rewireProviderReferences(rule, 'work', '__proto__') as Record<string, Record<string, JsonValue>>;
+  const rewired = rewireProviderReferences(authored, 'work', '__proto__') as Record<string, Record<string, JsonValue>>;
 
   expect(Object.hasOwn(rewired['providers']!, '__proto__')).toBe(true);
-  expect(rewired['providers']!['__proto__']).toEqual({ priority: 10 });
-  expect(Object.hasOwn(rewired['accounts']!, '__proto__')).toBe(true);
   expect(Object.hasOwn(rewired['providers']!, 'work')).toBe(false);
+  const models = (rewired['router']!['models'] as Record<string, Record<string, JsonValue>>)['gpt-5']!;
+  const rulePolicies = models['providers'] as Record<string, JsonValue>;
+  expect(Object.hasOwn(rulePolicies, '__proto__')).toBe(true);
+  expect(Object.hasOwn(rulePolicies, 'work')).toBe(false);
+  expect(rulePolicies['__proto__']).toEqual({ priority: 10 });
 });
 
 test('retiring a binding is refused while any row still holds a shared credential', () => {
