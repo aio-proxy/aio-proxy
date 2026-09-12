@@ -176,6 +176,19 @@ async function commitCommand(
   const existing = await readCodexCommandIdentity(context.location);
   if (existing !== undefined && existing.marker.endpoint !== context.endpoint)
     throw setupError('CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED');
+  await validateCodexConfig(
+    {
+      location: context.location,
+      providerId,
+      baseUrl: codexBaseUrl(context.endpoint),
+      auth: {
+        mode: 'command',
+        installationId: existing?.marker.installationId ?? crypto.randomUUID(),
+        command: selection.command,
+      },
+    },
+    lease,
+  );
   const prepared =
     existing ??
     (await prepareCodexCommandInstallation(

@@ -608,6 +608,43 @@ test('reauthorizes an active command identity during operation recovery', async 
   }
 });
 
+test('rejects a drifted keep-chatgpt config before command authorization', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  try {
+    await import('../managed-config').then(({ configureCodexConfig }) =>
+      configureCodexConfig({
+        location,
+        providerId: 'keep-id',
+        baseUrl: `${endpoint}/v1`,
+        auth: { mode: 'keep-chatgpt', token: 'aio-proxy-local' },
+      }),
+    );
+    const configured = await readFile(location.configPath, 'utf8');
+    await writeFile(location.configPath, configured.replace('AIO Proxy', 'User Edited'));
+    let devicePrompts = 0;
+    await expect(
+      commitCodexSetup(
+        { providerId: 'command-id', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            devicePrompts += 1;
+          },
+        },
+      ),
+    ).rejects.toThrow();
+    expect(devicePrompts).toBe(0);
+    await expect(readCodexCommandIdentity(location)).resolves.toBeUndefined();
+    await expect(Bun.file(authOperationPath(location)).exists()).resolves.toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('switches keep-chatgpt to command by authorizing before rewriting config', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';

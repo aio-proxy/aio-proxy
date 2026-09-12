@@ -249,7 +249,7 @@ function assertManagedInspection(
     if (requireManaged) throw new Error('Codex managed configuration is missing');
     return;
   }
-  if (!requireManaged && inspection.authMode === 'keep-chatgpt') return;
+  if (!requireManaged && inspection.authMode === 'keep-chatgpt' && inspection.status === 'managed') return;
   if (
     inspection.status !== 'managed' ||
     inspection.providerId !== identity.providerId ||
