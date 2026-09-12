@@ -657,3 +657,28 @@ test('a conditional delete recognizes its own head write after an unknown outcom
   expect(swallowed).toBe(true);
   expect(head(backend, item.objectId)).toMatchObject({ state: 'deleted', cleanupComplete: true });
 });
+
+// Restoring an older revision of an entity whose head is still active needs an operation ID no
+// receipt knows: reusing the one being restored reads as an idempotent replay and publishes nothing.
+test('an older revision of a live entity restores under a fresh operation id', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const first = operation(crypto.randomUUID(), crypto.randomUUID(), 'first');
+  const second = operation(first.objectId, crypto.randomUUID(), 'second');
+  await publishEntity(store, first, signal);
+  await publishEntity(store, second, signal);
+  const live = (await store.readHead(first.objectId, signal))!;
+  expect(live.head).toMatchObject({ state: 'active', current: second.operationId });
+
+  const restored = await restoreEntity(store, first.objectId, first.body, crypto.randomUUID(), signal, live.version);
+
+  expect(head(backend, first.objectId).current).toBe(restored.operationId);
+  expect(
+    new TextDecoder().decode(backend.readAll().get(revisionKey(first.objectId, restored.operationId))!.value),
+  ).toContain('first');
+  // A head that moved under the caller must not be overwritten blind.
+  await expect(
+    restoreEntity(store, first.objectId, first.body, crypto.randomUUID(), signal, live.version),
+  ).rejects.toThrow('head version changed');
+});

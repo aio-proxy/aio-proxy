@@ -19,14 +19,12 @@ export async function restoreEntity(
       throw new SyncProtocolError('invalid-data', 'head logical identity mismatch');
     }
     if (current.head.state === 'active') {
-      if (
-        !current.head.receipts[operationId] &&
-        !current.head.reserved.includes(operationId) &&
-        current.head.current !== operationId &&
-        !current.head.history.includes(operationId)
-      ) {
-        throw new SyncProtocolError('invalid-data', 'restore requires deleted or purged head');
-      }
+      // Restoring a past revision of an entity that is still live is a normal put at the current
+      // epoch, so the operation ID is fresh by design — reusing the one being restored would read as
+      // an idempotent replay and silently do nothing. `expectedVersion` is what keeps this from
+      // blindly overwriting a head that moved, so an active head demands one.
+      if (expectedVersion === undefined)
+        throw new SyncProtocolError('invalid-data', 'restoring an active head requires an expected version');
       const operation: OutboxOperation = {
         operationId,
         objectId,

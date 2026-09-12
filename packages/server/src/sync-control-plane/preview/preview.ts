@@ -80,8 +80,8 @@ function rowFor(
   const choices: SyncPreviewRow['choices'] =
     change === 'delete'
       ? ['restore']
-      : // A conflict has a live head on both sides, so there is no tombstone revision to restore.
-        // Offering it anyway only produces `invalid-data` from `restoreEntity`.
+      : // A conflict has a live head on both sides, so this preview resolved no past revision for
+        // `restore` to publish. Offering it anyway would just republish the cloud body.
         change === 'conflict'
         ? ['local', 'cloud']
         : local === null
@@ -330,7 +330,7 @@ export function buildPreview(input: {
     .map((candidate) =>
       // A restore preview resolves one past revision and reports it as the cloud side, so a
       // conflicting row there really can be rolled back. Every other preview compares two live
-      // heads, where `restoreEntity` demands a deleted or purged head and rejects the choice.
+      // heads and resolved no past revision, so it has nothing for `restore` to publish.
       input.request.kind !== 'restore' || candidate.row.change !== 'conflict'
         ? candidate
         : {
