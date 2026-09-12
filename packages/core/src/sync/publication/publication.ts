@@ -1,4 +1,5 @@
 import { SyncBackendError, type SyncSession } from '@aio-proxy/plugin-sdk';
+import { isEqual } from 'es-toolkit/predicate';
 
 import {
   decodeHead,
@@ -110,18 +111,35 @@ async function casHead(
   signal: AbortSignal,
   expectedVersion?: string,
 ): Promise<{ head: EntityHead; modifiedAt: number }> {
+  // An unknown outcome that actually committed strands the reservation it wrote: control-plane
+  // publications mint a fresh operation ID per attempt, so nothing ever retries that one, and
+  // maintenance only reclaims a reservation whose payload revision exists — this one has none.
+  // The head would keep the dead entry until repeated attempts exhaust its size limit. Recognizing
+  // our own transition on the reread consumes the reservation in place; a write that never landed
+  // just retries, since reserving is idempotent per operation ID.
+  let attempted: EntityHead | undefined;
   for (;;) {
     signal.throwIfAborted();
     const current = await store.readHead(objectId, signal);
     if (current === null) throw new SyncProtocolError('invalid-data', 'missing head');
+    if (attempted !== undefined && isEqual(current.head, attempted))
+      return { head: current.head, modifiedAt: current.modifiedAt };
     if (expectedVersion !== undefined && current.version !== expectedVersion)
       throw new SyncProtocolError('upgrade-required', 'head version changed');
     const next = change(current.head);
     if (next === current.head) return { head: current.head, modifiedAt: current.modifiedAt };
     const bytes = encode(next);
     assertSize(store, bytes);
-    const result = await store.session.compareAndSwap(entityKey(objectId), current.version, bytes, signal);
-    if (result.kind === 'written') return { head: next, modifiedAt: result.modifiedAt };
+    try {
+      const result = await store.session.compareAndSwap(entityKey(objectId), current.version, bytes, signal);
+      if (result.kind === 'written') return { head: next, modifiedAt: result.modifiedAt };
+    } catch (error) {
+      if (error instanceof SyncBackendError && error.code === 'outcome-unknown') {
+        attempted = next;
+        continue;
+      }
+      throw error;
+    }
   }
 }
 
@@ -271,7 +289,10 @@ export async function publishEntity(
     if (expectedVersion !== null && ensured.version !== expectedVersion)
       throw new SyncProtocolError('upgrade-required', 'head version changed');
   }
-  const firstExpected = expectedVersion === null || ensured.created ? undefined : expectedVersion;
+  // The fence carries the version this call validated, including the head it just created: between
+  // that creation and the reservation another device can publish onto the new head, and reserving
+  // unfenced would make a stale local choice current instead of reporting the conflict.
+  const firstExpected = expectedVersion === undefined ? undefined : ensured.version;
   for (;;) {
     signal.throwIfAborted();
     const current = await store.readHead(operation.objectId, signal);

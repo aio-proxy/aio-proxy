@@ -114,9 +114,9 @@ test('conditional publication rejects a changed head before reserving a revision
 });
 
 test('outcome-unknown at every publication CAS position is recoverable with one operation', async () => {
-  // Position 4 is the head CAS that makes the payload current; it now resolves in place instead of
-  // rejecting, so it has its own test below.
-  for (const position of [1, 2, 3, 5]) {
+  // Positions 2 and 4 are head CAS writes that now resolve in place instead of rejecting, so each
+  // has its own test below.
+  for (const position of [1, 3, 5]) {
     const backend = createMemorySyncBackend();
     const operation = makeOperation();
     const session = failAtCompareAndSwap(backend.connect(), position);
@@ -128,6 +128,28 @@ test('outcome-unknown at every publication CAS position is recoverable with one 
     expect(await publishEntity(store, operation, signal)).toEqual(result);
     expect(revisionKeys(backend, operation.objectId)).toEqual([revisionKey(operation.objectId, operation.operationId)]);
     expect((await store.readHead(operation.objectId, signal))?.head.sequence).toBe(1);
+  }
+});
+
+test('an unknown outcome at the reservation CAS consumes the reservation instead of stranding it', async () => {
+  const signal = new AbortController().signal;
+  // A control-plane publication mints a fresh operation ID per attempt, so a reservation this
+  // device gives up on is never retried, and maintenance only reclaims a reservation whose payload
+  // revision exists. Both outcomes must therefore leave the head with nothing reserved.
+  for (const mode of ['after', 'before'] as const) {
+    const backend = createMemorySyncBackend();
+    const operation = makeOperation();
+    const store = createSyncObjectStore(failAtCompareAndSwap(backend.connect(), 2, mode));
+    expect(await publishEntity(store, operation, signal, null)).toEqual({
+      operationId: operation.operationId,
+      sequence: 1,
+    });
+    expect((await store.readHead(operation.objectId, signal))?.head).toMatchObject({
+      current: operation.operationId,
+      reserved: [],
+      sequence: 1,
+    });
+    expect(revisionKeys(backend, operation.objectId)).toEqual([revisionKey(operation.objectId, operation.operationId)]);
   }
 });
 
@@ -156,6 +178,26 @@ test('an unknown outcome at the publish CAS reports a landed head and still fail
   const lostStore = createSyncObjectStore(failAtCompareAndSwap(lostBackend.connect(), 4, 'before'));
   await expect(publishEntity(lostStore, lost, signal, null)).rejects.toMatchObject({ code: 'outcome-unknown' });
   expect((await lostStore.readHead(lost.objectId, signal))?.head.current).toBeNull();
+});
+
+test('a conditional publication onto an absent head fences its reservation with the created head', async () => {
+  const backend = createMemorySyncBackend();
+  const mine = makeOperation();
+  const theirs = makeOperation({
+    objectId: mine.objectId,
+    body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'theirs' }, dependencies: [] },
+  });
+  const signal = new AbortController().signal;
+  const afterCreate = backend.gateAfterNext('compareAndSwap');
+  const conditional = publishEntity(createSyncObjectStore(backend.connect()), mine, signal, null);
+  await afterCreate.entered;
+  const raced = await publishEntity(createSyncObjectStore(backend.connect()), theirs, signal);
+  afterCreate.release();
+  await expect(conditional).rejects.toMatchObject({ code: 'upgrade-required' });
+  expect(raced.sequence).toBe(1);
+  const head = (await createSyncObjectStore(backend.connect()).readHead(mine.objectId, signal))!;
+  expect(head.head).toMatchObject({ current: theirs.operationId, reserved: [], sequence: 1 });
+  expect(revisionKeys(backend, mine.objectId)).toEqual([revisionKey(mine.objectId, theirs.operationId)]);
 });
 
 test('concurrent clients publish complete entity bodies in CAS order', async () => {
