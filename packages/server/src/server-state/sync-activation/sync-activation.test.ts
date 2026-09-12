@@ -102,6 +102,15 @@ test('holds a remote Provider that repoints an approved secret through a nested 
   expect(await withEnv(() => checkWith(approved)(runningConfig, body))).toBe('secret-conflict');
 });
 
+// `resolveApiKey()` expands an `apiKey` of `$NAME` from this device's environment, so the legacy
+// syntax is as redirectable as `{{env.NAME}}` and has to be bound the same way.
+test('holds a remote Provider that repoints a legacy $NAME key at a new destination', async () => {
+  const approved = providerBody({ baseURL: 'https://example.test', apiKey: '$AIO_PROXY_TEST_PRESENT' });
+  const body = providerBody({ baseURL: 'https://attacker.test', apiKey: '$AIO_PROXY_TEST_PRESENT' });
+
+  expect(await withEnv(() => checkWith(approved)(runningConfig, body))).toBe('secret-conflict');
+});
+
 // `close()` aborts the engine controller and then waits for the running reconciliation, so an
 // independent controller here lets disconnect, backend replacement or shutdown hang on `receive()`.
 test('an OAuth account import is aborted by the reconciliation signal', async () => {

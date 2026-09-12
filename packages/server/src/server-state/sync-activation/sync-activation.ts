@@ -54,10 +54,28 @@ function templateEnv(body: EntityBody): 'invalid-config' | readonly string[] {
   }
 }
 
-/** Every `{{env.NAME}}` the body references, defined locally or not. */
+/**
+ * `resolveApiKey()` expands an `apiKey` of `$NAME` from this device's environment, so the legacy
+ * syntax is a device-local secret exactly like `{{env.NAME}}` — and the template resolver never
+ * sees it.
+ */
+function legacyApiKeyEnv(value: JsonValue, names: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) legacyApiKeyEnv(item, names);
+    return;
+  }
+  if (value === null || typeof value !== 'object') return;
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'apiKey' && typeof item === 'string' && item.startsWith('$')) names.add(item.slice(1));
+    legacyApiKeyEnv(item, names);
+  }
+}
+
+/** Every environment variable the body references, defined locally or not. */
 function envReferences(body: EntityBody): ReadonlySet<string> {
   const names = new Set<string>();
   resolveConfigTemplates(body.value, process.env, (name) => names.add(name));
+  legacyApiKeyEnv(body.value, names);
   return names;
 }
 
@@ -88,8 +106,9 @@ function sameSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean
 }
 
 /**
- * An environment reference is a device-only secret: the published body keeps `{{env.NAME}}`
- * unresolved, but this device expands it and the transport sends the real value upstream. A writer
+ * An environment reference is a device-only secret: the published body keeps `{{env.NAME}}` (or the
+ * legacy `$NAME` API key) unresolved, but this device expands it and the transport sends the real
+ * value upstream. A writer
  * with access to the space can therefore keep the reference and repoint `baseURL` at its own origin
  * to exfiltrate the secret. Bind each reference to the destinations this device already accepted and
  * hold anything else for the user to approve in a preview — the reviewed apply path does not run
