@@ -18,6 +18,22 @@ function supersededClaim(current: LiveAccount, journal: OAuthJournalRow): boolea
   );
 }
 
+/**
+ * Whether the account proves this `started` journal's claim never landed: publishing it moves the
+ * phase off `ready`, and a fence only ever parks it in `uncertain` or `login-required`, so a `ready`
+ * account still at the row's own baseline can only mean the claim CAS did not apply. The exchange
+ * never ran, and a row left in place reads as a retained shared-OAuth hold that blocks detach and
+ * backend replacement forever. A claim attempt still in flight in this process has proved nothing.
+ */
+function unclaimedRow(context: CoordinatorContext, current: LiveAccount, journal: OAuthJournalRow): boolean {
+  return (
+    current.phase === 'ready' &&
+    current.epoch === journal.epoch &&
+    current.generation === journal.baseGeneration &&
+    !context.activeOperations.has(journal.operationId)
+  );
+}
+
 export async function recoverAccount(
   context: CoordinatorContext,
   objectId: string,
@@ -55,7 +71,12 @@ export async function recoverAccount(
         discardJournal(context, journal.operationId);
         throw new SyncOAuthError('result-uncertain', 'The OAuth process stopped before recording a result');
       }
-      if (supersededClaim(current.account as LiveAccount, journal)) discardJournal(context, journal.operationId);
+      if (
+        unclaimedRow(context, current.account as LiveAccount, journal) ||
+        supersededClaim(current.account as LiveAccount, journal)
+      ) {
+        discardJournal(context, journal.operationId);
+      }
       continue;
     }
     try {

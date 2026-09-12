@@ -445,3 +445,27 @@ test('recovery discards a started journal superseded by a newer login epoch', as
     expect(retainsSharedOAuth({ objectId: f.objectId }, f.repoA.oauthJournals('oauth-a'))).toBe(false);
   });
 });
+
+test('recovery retires a started journal whose claim never reached the backend', async () => {
+  await withSharedOAuthDevices(async (f) => {
+    const input = {
+      objectId: f.objectId,
+      epoch: 0,
+      generation: 0,
+      exchange: async () => ({ value: { token: 'new' } }),
+      validate: async (value: unknown) => f.schema.parse(value),
+    };
+    // The journal is written before the claim so a lost release can still be fenced, which leaves
+    // the row behind when the claim itself never lands.
+    f.backend.failNext('compareAndSwap', 'before');
+    await expect(f.a.refresh(input, f.signal)).rejects.toMatchObject({ code: 'offline' });
+    expect(f.repoA.oauthJournals('oauth-a')[0]?.phase).toBe('started');
+    expect(remotePhase(f)).toBe('ready');
+
+    expect((await f.a.recover(f.objectId, f.signal))?.phase).toBe('ready');
+    // A ready account still at the row's own baseline proves the claim never applied. Retained, the
+    // orphan reads as shared ownership and failed every later detach and backend replacement.
+    expect(retainsSharedOAuth({ objectId: f.objectId }, f.repoA.oauthJournals('oauth-a'))).toBe(false);
+    expect((await f.a.refresh(input, f.signal)).status).toBe('updated');
+  });
+});

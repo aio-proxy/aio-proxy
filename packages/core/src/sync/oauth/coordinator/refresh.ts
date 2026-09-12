@@ -291,12 +291,21 @@ export async function refreshAccount<C>(
   // Journal before claiming. A claim published without local evidence can be stranded in
   // `refreshing` by a lost release, and recovery would have no operation left to fence — which
   // blocks every later refresh and the fresh login that is supposed to take the account over.
+  // Recovery retires a `started` row whose claim is nowhere in the account, so the attempt has to be
+  // visible to a concurrent pass from before the row exists — otherwise it retires this journal
+  // while the claim is still in flight, and a lost release would then have nothing left to fence.
+  context.activeOperations.add(claim.operationId);
+  let claimed: Awaited<ReturnType<typeof claimReady>>;
   try {
-    context.repo.writeOAuthJournal(context.binding.id, journal);
-  } catch {
-    throw new SyncOAuthError('refresh-deferred', 'Could not durably record the OAuth refresh');
+    try {
+      context.repo.writeOAuthJournal(context.binding.id, journal);
+    } catch {
+      throw new SyncOAuthError('refresh-deferred', 'Could not durably record the OAuth refresh');
+    }
+    claimed = await claimReady(context, current.account, current.version, claim, signal);
+  } finally {
+    context.activeOperations.delete(claim.operationId);
   }
-  const claimed = await claimReady(context, current.account, current.version, claim, signal);
   if (claimed === null) {
     discardJournal(context, journal.operationId);
     return refreshAfterReread(context, input, signal);
