@@ -54,7 +54,7 @@ async function runVersion(path: string, spawn: typeof Bun.spawn): Promise<boolea
       void child.stderr?.cancel().catch(() => {});
       return false;
     }
-    return result.status === 0 && /(?:aiop|aio-proxy)(?:-cli)?\s+\d+\.\d+\.\d+/iu.test(result.output);
+    return result.status === 0 && /^(?:(?:aiop|aio-proxy)(?:-cli)?\s+)?\d+\.\d+\.\d+\s*$/iu.test(result.output);
   } catch {
     return false;
   }

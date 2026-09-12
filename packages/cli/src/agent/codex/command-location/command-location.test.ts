@@ -11,6 +11,14 @@ async function executableRoot(): Promise<string> {
   return root;
 }
 
+test('accepts a launcher whose --version prints only the version number', async () => {
+  const root = await executableRoot();
+  const path = join(root, 'stable path', 'aiop');
+  await writeFile(path, '#!/bin/sh\nprintf "0.21.0\\n"\n');
+  await chmod(path, 0o755);
+  await expect(resolveCodexAuthCommand({ candidates: [path] })).resolves.toBe(path);
+});
+
 test('accepts installed aiop and aio-proxy aliases, including spaces in the path', async () => {
   const root = await executableRoot();
   const path = join(root, 'stable path', 'aiop');
