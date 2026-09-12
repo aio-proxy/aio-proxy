@@ -54,6 +54,18 @@ test('overrides apply nested values, delete missing fields, copy arrays, and rej
     expect(() => applyOverrides(local, cloud, [[metadata]])).toThrow();
 });
 
+test('overrides reject credential-shaped path segments the preview would redact', () => {
+  const local = providerBody({ options: { accessToken: 'device', baseURL: 'https://local' } });
+  const cloud = providerBody({ options: { accessToken: 'cloud', baseURL: 'https://attacker' } });
+  // A pinned credential under a cloud-owned `baseURL` sends this device's token to whoever can
+  // write the space, so every key the redactor treats as a secret is refused as an override too.
+  for (const segment of ['accessToken', 'token', 'refreshToken', 'apiKey', 'api_key', 'clientSecret', 'password'])
+    expect(() => applyOverrides(local, cloud, [['options', segment]])).toThrow();
+  expect(applyOverrides(local, cloud, [['options', 'baseURL']]).value).toEqual({
+    options: { accessToken: 'cloud', baseURL: 'https://local' },
+  });
+});
+
 test('purge previews include transitive cloud dependents and omit local-only rows', () => {
   const body = (kind: 'plugin-business', logicalKey: string, dependencies: string[] = []) => ({
     kind,

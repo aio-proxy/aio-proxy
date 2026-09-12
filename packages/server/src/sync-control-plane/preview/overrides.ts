@@ -3,16 +3,20 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { SyncPreviewError } from './errors';
+import { SECRET_KEY } from './redact';
 
 /**
- * `headers`, `authorization` and `cookie` are listed for the reason the preview redactor already
- * gives: any header name can carry a credential. Pinning one locally while the cloud still owns
- * `baseURL` would let whoever can write the space point the device's own bearer token at an origin
- * of their choosing — the credential the user deliberately kept off the backend is exactly the one
- * they do not have. Credential-bearing paths are published or not shared at all, never half-local.
+ * Structural keys an override must never pin. Credential-shaped names are handled by the redactor's
+ * own `SECRET_KEY` classification instead of being re-listed here: an exact-name list misses
+ * `accessToken`, `options.refreshToken` and every other key the preview already redacts, and pinning
+ * one locally while the cloud still owns `baseURL` would let whoever can write the space point the
+ * device's own bearer token at an origin of their choosing — the credential the user deliberately
+ * kept off the backend is exactly the one they do not have. `headers`, `authorization` and `cookie`
+ * stay listed for the reason the redactor gives: any header name can carry a credential.
+ * Credential-bearing paths are published or not shared at all, never half-local.
  */
 const FORBIDDEN_OVERRIDE =
-  /^(?:proxy|credentials?|apiKey|headers?|authorization|cookie|password|backend|connection|account|secret|secrets|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
+  /^(?:proxy|headers?|authorization|cookie|backend|connection|account|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
 
 const FORBIDDEN_PROVIDER_REFERENCE = new Set([
   'providerid',
@@ -29,6 +33,7 @@ const FORBIDDEN_PROVIDER_REFERENCE = new Set([
 
 function forbiddenOverrideSegment(segment: string): boolean {
   return (
+    SECRET_KEY.test(segment) ||
     FORBIDDEN_OVERRIDE.test(segment) ||
     FORBIDDEN_PROVIDER_REFERENCE.has(segment.replaceAll(/[^a-z0-9]/giu, '').toLowerCase())
   );
