@@ -6,6 +6,7 @@ import { createPluginStateRepository } from './plugin-state';
 import type { PluginRepository } from './types';
 
 export * from './types';
+export * from './sync-digest';
 
 export function createPluginRepository(sqlite: Database): PluginRepository {
   return {

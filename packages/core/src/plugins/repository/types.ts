@@ -113,6 +113,12 @@ export type PluginRepository = {
   readonly deleteAccount: (providerId: string) => void;
   readonly stageAccountOperation: (input: StageAccountOperationInput) => PendingAccountOperation;
   readonly completeAccountOperation: (operationId: string) => void;
+  /**
+   * Durably records that a synced operation is about to publish its credential, so a recovery
+   * after a crash mid-publication retains it instead of compensating away an account the backend
+   * may already hold. A no-op for an operation that is not synced or has already been marked.
+   */
+  readonly markAccountOperationPublishing: (operationId: string) => void;
   readonly compensateAccountOperation: (operationId: string) => 'compensated' | 'superseded';
   readonly finalizeDeleteOperation: (operationId: string) => 'deleted' | 'superseded';
   readonly listPendingAccountOperations: () => readonly PendingAccountOperation[];

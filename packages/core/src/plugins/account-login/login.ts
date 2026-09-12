@@ -276,7 +276,13 @@ async function persistOAuthAccount(input: {
     }
     throw error;
   }
-  await options.beforeAccountOperationComplete?.(staged, deadline.signal);
+  if (options.beforeAccountOperationComplete !== undefined) {
+    // The rename landed, so the credential is about to leave for the backend. Record that durably
+    // first: a crash mid-publication must not read back as an interrupted write and compensate away
+    // an account the backend may already hold.
+    options.repository.markAccountOperationPublishing(staged.operationId);
+    await options.beforeAccountOperationComplete(staged, deadline.signal);
+  }
   options.repository.completeAccountOperation(staged.operationId);
   if (options.syncCommit !== undefined && commitId !== undefined) await options.syncCommit.confirm(commitId);
   return { providerId: staged.providerId };

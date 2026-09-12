@@ -5,6 +5,7 @@ import { parseRuntimeConfig } from '../../config';
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from '../config-file';
 import type { DiagnosticFactory, PluginLogSink } from '../diagnostic/index';
 import type { PendingAccountOperation, PluginRepository } from '../repository/index';
+import { syncDigestPhase } from '../repository/index';
 import { AccountCleanupPendingError } from './errors';
 import {
   accountMatches,
@@ -128,19 +129,24 @@ export async function recoverPendingAccountOperations(
     }
     const providers = rawProviders ?? {};
     for (const operation of repository.listPendingAccountOperations()) {
+      const { phase, digest: targetDigest } = syncDigestPhase(operation.targetDigest);
+      const currentEntry = providers[operation.providerId];
+      const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
+      // Publication happens only after the config rename, so a still-staged operation whose provider
+      // entry never landed never reached the backend. That is indistinguishable from a login still
+      // mid-commit, so it waits out the TTL and then compensates like any other interrupted write.
+      // Retaining it instead pins the pending row for good, blocking every later account operation
+      // for this provider and exempting the orphaned account from cleanup.
+      const interruptedBeforeCommit = phase === 'staged' && observedDigest !== targetDigest;
       const deadline = operation.createdAt + PENDING_OPERATION_TTL_MS;
-      if (now < deadline && !operation.targetDigest.startsWith('oauth-sync:')) {
+      if (now < deadline && (phase === 'none' || interruptedBeforeCommit)) {
         nextRunAt = earlier(nextRunAt, deadline);
         continue;
       }
       if (options.mode === 'cli' && operation.kind === 'delete') continue;
-      const currentEntry = providers[operation.providerId];
-      const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
-      const needsSync = operation.targetDigest.startsWith('oauth-sync:');
-      const targetDigest = needsSync ? operation.targetDigest.slice('oauth-sync:'.length) : operation.targetDigest;
-      if (needsSync) {
-        // A config digest cannot prove that a credential was committed remotely. Do not
-        // compensate after publication either: retain the operation until exact reconciliation.
+      if (phase !== 'none' && !interruptedBeforeCommit) {
+        // A config digest cannot prove that a credential was committed remotely. Once publication is
+        // attempted the operation is only ever retried, never compensated.
         if (
           observedDigest !== targetDigest ||
           options.mode !== 'server' ||
@@ -150,6 +156,7 @@ export async function recoverPendingAccountOperations(
           continue;
         }
         try {
+          repository.markAccountOperationPublishing(operation.operationId);
           await withGate(operation.providerId, () =>
             options.beforeAccountOperationComplete!(operation, new AbortController().signal),
           );

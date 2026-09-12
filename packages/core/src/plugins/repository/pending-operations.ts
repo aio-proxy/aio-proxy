@@ -15,6 +15,7 @@ import {
   type RollbackSnapshot,
   storedAccount,
 } from './rows';
+import { SYNC_PUBLISHED_PREFIX, syncDigestPhase } from './sync-digest';
 import type { AccountWrite } from './types';
 import { type PendingAccountOperation, PendingAccountOperationConflictError, type PluginRepository } from './types';
 
@@ -190,6 +191,7 @@ export function createPendingOperationsRepository(
   PluginRepository,
   | 'stageAccountOperation'
   | 'completeAccountOperation'
+  | 'markAccountOperationPublishing'
   | 'compensateAccountOperation'
   | 'finalizeDeleteOperation'
   | 'listPendingAccountOperations'
@@ -275,6 +277,15 @@ export function createPendingOperationsRepository(
     },
     completeAccountOperation(operationId) {
       sqlite.query('DELETE FROM oauth_pending_operation WHERE operation_id = ?').run(operationId);
+    },
+    markAccountOperationPublishing(operationId) {
+      const pending = selectPending.get(operationId);
+      if (pending === null) return;
+      const { phase, digest } = syncDigestPhase(pending.target_digest);
+      if (phase !== 'staged') return;
+      sqlite
+        .query('UPDATE oauth_pending_operation SET target_digest = ? WHERE operation_id = ?')
+        .run(`${SYNC_PUBLISHED_PREFIX}${digest}`, operationId);
     },
     compensateAccountOperation(operationId) {
       return compensateAccountOperation(deps, operationId);

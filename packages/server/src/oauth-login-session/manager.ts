@@ -10,6 +10,7 @@ import {
   type PluginRegistry,
   type PluginRepository,
   ProviderAccountAlreadyExistsError,
+  syncDigestPhase,
 } from '@aio-proxy/core';
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardOAuthSession, DashboardOAuthSessionStart } from '@aio-proxy/types';
@@ -159,7 +160,7 @@ const runLoginSession = async (
       if (
         deps.repository
           .listPendingAccountOperations()
-          .some((operation) => operation.targetDigest.startsWith('oauth-sync:'))
+          .some((operation) => syncDigestPhase(operation.targetDigest).phase !== 'none')
       )
         deps.onAccountOperationPending?.();
     } catch {}
