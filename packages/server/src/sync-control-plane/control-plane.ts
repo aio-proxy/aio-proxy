@@ -379,7 +379,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       if (included !== false) throw new TypeError('sync range can only exclude a provider');
       rangeRevision += 1;
       const run = async () => setRange(operationInput(), providerId);
-      return options.withFence === undefined ? run() : options.withFence(run);
+      // An Apply awaits its remote write outside the mutation fence, and the reviewed import it runs
+      // afterwards deliberately bypasses the excluded-row guard, because it writes into a row whose
+      // inclusion it records immediately after. Excluding the Provider in that window would therefore
+      // still land the cloud body in the configuration after Leave reported success — the range check
+      // in the reviewed path only holds the row's mode back. The same FIFO orders Leave against the
+      // whole Apply, so it either invalidates the reviewed fence or takes effect once the import is
+      // done. A preview captured before this bump is stale either way.
+      return applies(() => (options.withFence === undefined ? run() : options.withFence(run)));
     },
     async detach(providerId, loginSessionId) {
       if (options.detach === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');

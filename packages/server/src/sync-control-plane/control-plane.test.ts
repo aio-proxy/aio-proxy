@@ -551,3 +551,68 @@ test('a preview against a bound backend that never connected fails instead of re
   // Empty history on an unreachable backend reads as "the recovery revisions are gone".
   await expect(control.history('shared')).rejects.toMatchObject({ code: 'not-connected' });
 });
+
+test('a leave waits for an apply whose reviewed import is already in flight', async () => {
+  // The reviewed import bypasses the excluded-row guard by design — it writes into a row whose
+  // inclusion is recorded right after it — so an exclusion landing while the Apply awaits its remote
+  // write would still put the cloud body into the configuration after Leave reported success. The
+  // reviewed fence is long past by then, and the range check only holds the row's mode back.
+  const events: string[] = [];
+  const body = (value: string) => ({
+    kind: 'provider' as const,
+    logicalKey: 'shared',
+    value: { value },
+    dependencies: [],
+  });
+  let row = {
+    objectId: 'cloud-object',
+    logicalKey: 'shared',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: body('local'),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  let leaving: Promise<unknown> = Promise.resolve();
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [row],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: (_bindingId: string, entity: typeof row) => {
+        row = entity;
+      },
+      latestConfirmedCommit: () => ({ commitId: 'commit-1' }),
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [row],
+    remoteEntities: async () => [{ ...CLOUD_ROW, body: body('current'), revisions: { old: body('old') } }],
+    registry: REGISTRY,
+    restore: async () => {
+      // The window the reviewed fence no longer covers: past every check, waiting on the backend.
+      // Awaiting the Leave here would deadlock on the very queue under test, and a separate request
+      // does not await it either.
+      leaving = control.setRange('shared', false).then(() => events.push('leave'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    },
+    applyLocal: async () => {
+      events.push('import');
+    },
+    applyCloud: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+  } as never);
+
+  const preview = await control.preview({ kind: 'restore', objectId: 'cloud-object', operationId: 'old' });
+  await control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'cloud-object', choice: 'restore' }] });
+  await leaving;
+
+  expect(events).toEqual(['import', 'leave']);
+  // The Leave still lands: serializing it only decides when.
+  expect(row.mode).toBe('excluded');
+});
