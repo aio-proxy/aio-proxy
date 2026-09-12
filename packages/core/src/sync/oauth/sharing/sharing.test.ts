@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { zod } from '@aio-proxy/plugin-sdk';
+
 import { oauthAdapterFixture, withOAuthSharingFixture } from '../test-support';
 
 test('a login during a pending detachment stays local so the next attempt can prove independence', async () => {
@@ -314,6 +316,40 @@ test('a fresh login replaces a shared account an abandoned refresh left uncertai
       expect(f.currentCredential()).toEqual({ token: 'new-login' });
       expect(f.ownership()).toMatchObject({ mode: 'shared', epoch: 1, generation: 1 });
       expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+    },
+    { shared: true },
+  );
+});
+
+test('a fresh login replaces a shared account a rejected refresh result quarantined', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      const coordinator = (await import('../coordinator')).createSharedOAuthCoordinator({
+        binding: f.repo.readBinding()!,
+        store: (await import('../../publication')).createSyncObjectStore(f.backend.connect()),
+        repo: f.repo,
+      });
+      const schema = zod.object({ token: zod.string() });
+      await expect(
+        coordinator.refresh(
+          {
+            objectId: f.objectId,
+            epoch: 0,
+            generation: 0,
+            exchange: async () => ({ value: { revoked: true } }),
+            validate: async (value: unknown) => schema.parse(value),
+          },
+          f.signal,
+        ),
+      ).rejects.toMatchObject({ code: 'unverified' });
+      expect(f.remote()).toMatchObject({ phase: 'login-required', epoch: 0, generation: 0 });
+
+      const candidate = { ...f.accountWrite, credential: { token: 'new-login' } };
+      await f.sharing.synchronizeLogin(f.providerId, candidate, f.signal);
+
+      expect(f.remote()).toMatchObject({ phase: 'ready', claim: null, epoch: 1, generation: 1 });
+      expect(f.currentCredential()).toEqual({ token: 'new-login' });
+      expect(f.ownership()).toMatchObject({ mode: 'shared', epoch: 1, generation: 1 });
     },
     { shared: true },
   );

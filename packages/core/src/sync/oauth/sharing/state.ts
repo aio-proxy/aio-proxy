@@ -145,13 +145,15 @@ export function readyOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount)
 }
 
 /**
- * An interrupted refresh leaves the shared account `uncertain` behind a claim that nothing clears
- * on its own, so a device still owning that exact generation has to be allowed to recover from it.
- * The recovery paths take over rather than resume: replacing advances the epoch, which is what
- * makes a late-landing result from the abandoned exchange fail instead of resurrect the account.
+ * An abandoned refresh leaves the shared account behind a claim that nothing clears on its own:
+ * `uncertain` when the exchange outcome was lost, `login-required` when its result failed
+ * validation. Neither phase returns to `ready` by itself, so a device still owning that exact
+ * generation has to be allowed to recover from both. The recovery paths take over rather than
+ * resume: replacing advances the epoch, which is what makes a late-landing result from the
+ * abandoned exchange fail instead of resurrect the account.
  */
-export function uncertainOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
-  return remote.phase === 'uncertain' && ownedRemote(ownership, remote);
+export function abandonedOwnedRemote(ownership: OAuthOwnership, remote: LiveAccount): boolean {
+  return (remote.phase === 'uncertain' || remote.phase === 'login-required') && ownedRemote(ownership, remote);
 }
 
 export function liveAccount(

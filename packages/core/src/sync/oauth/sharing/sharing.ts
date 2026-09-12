@@ -9,6 +9,7 @@ import { accountBytes, entityFor, payloadFor, readRemote, verifyDetach } from '.
 import { asJournalPayload, sameJson, sameRemote } from './journal';
 import { importRemoteAccount } from './receive';
 import {
+  abandonedOwnedRemote,
   accountWrite,
   applyLocal,
   compatibleRemote,
@@ -18,7 +19,6 @@ import {
   ownership,
   readyOwnedRemote,
   setPending,
-  uncertainOwnedRemote,
   validatedAdapter,
   writeJournal,
 } from './state';
@@ -162,8 +162,8 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       if (remote === null || 'unknown' in remote) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
       if (!compatibleRemote(remote.account, candidate, resolved)) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
       // A fresh authorization is the documented recovery from an abandoned refresh, so it takes
-      // over the uncertain claim on a new epoch instead of waiting for a `ready` that never comes.
-      const abandoned = uncertainOwnedRemote(entity.oauth, remote.account);
+      // over the stale claim on a new epoch instead of waiting for a `ready` that never comes.
+      const abandoned = abandonedOwnedRemote(entity.oauth, remote.account);
       if (pending === undefined && !abandoned && !readyOwnedRemote(entity.oauth, remote.account)) {
         throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
       }
@@ -230,7 +230,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         !compatibleRemote(remote.account, candidate, resolved) ||
         // Detaching reads the shared credential but never republishes it, so an abandoned refresh
         // is no reason to strand this device on an account it is trying to stop following.
-        !(readyOwnedRemote(entity.oauth, remote.account) || uncertainOwnedRemote(entity.oauth, remote.account))
+        !(readyOwnedRemote(entity.oauth, remote.account) || abandonedOwnedRemote(entity.oauth, remote.account))
       )
         return 'pending';
       if (existing?.payload.base !== null && !sameRemote(existing?.payload.base ?? remote.account, remote.account)) {
