@@ -122,7 +122,9 @@ export async function readHistory(
   objectId: string,
   signal: AbortSignal,
 ): Promise<SyncHistoryItem[]> {
-  if (session === undefined) return [];
+  // An unavailable backend is not an object without retained revisions: reporting empty history for
+  // one reads as "the recovery data is gone" on a cloud that still holds every revision.
+  if (session === undefined) throw new SyncOperationError('not-connected');
   const headValue = await session.read(entityKey(objectId), signal);
   if (headValue.kind === 'absent') return [];
   const head = decodeHead(headValue.value);

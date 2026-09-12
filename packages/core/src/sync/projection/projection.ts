@@ -331,6 +331,10 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
       dependencies = dependency === null ? [] : [dependency];
       if (account !== undefined) accountsOut.set(entity.objectId, accountCopy(account));
     } else if (entity.kind === 'model-rule') {
+      // A model name is user data, so a published rule can be named `toString`. Reading it without an
+      // own check resolves the prototype's function once the rule is deleted from the configuration,
+      // and projecting that throws instead of emitting the deletion the commit needs.
+      if (!own(rawModels, entity.logicalKey)) continue;
       const model = rawModels[entity.logicalKey];
       if (model === undefined) continue;
       value = selectedModelPolicy(model, selectedProviders);

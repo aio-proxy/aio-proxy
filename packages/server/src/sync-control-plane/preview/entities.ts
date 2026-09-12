@@ -99,10 +99,16 @@ export async function listRemoteEntities(
         continue;
       }
       const record = decodeRevision(revision.value);
-      if (record.objectId !== objectId) throw new SyncPreviewError('not-connected');
+      // A record stored under one operation key while naming another is corrupt however it got there.
+      if (record.objectId !== objectId || record.operationId !== operationId)
+        throw new SyncPreviewError('not-connected');
       if (record.state === 'payload') {
         if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
           throw new SyncPreviewError('not-connected');
+        // Reconciliation rejects a live current revision whose epoch is not the head's. Accepting it
+        // here would let a reviewed Apply install a body and adopt its baseline behind the engine's
+        // corruption check. Retained history legitimately predates the current epoch.
+        if (operationId === head.current && record.epoch !== head.epoch) throw new SyncPreviewError('not-connected');
         revisions.set(operationId, record.body);
       } else revisions.set(operationId, null);
     }

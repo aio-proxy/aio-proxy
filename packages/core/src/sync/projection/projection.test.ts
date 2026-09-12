@@ -363,6 +363,20 @@ test('a pinned routing default overlays the section it was authored in', () => {
   });
 });
 
+// A model name is user data, so a published rule can be named `toString`. Once that rule leaves the
+// configuration the projection has to report it as gone; reading the name off the prototype instead
+// projected a function and threw, leaving the commit unconfirmed and the cloud rule alive.
+test('an included rule named after a prototype member projects its deletion', () => {
+  const rule = includedEntity('m-tostring', 'model-rule', 'toString');
+
+  const result = projectCommitted(
+    { raw: { router: { models: {} } }, accounts: new Map(), pluginSecrets: new Map(), pluginVersions: new Map() },
+    [rule],
+  );
+
+  expect(result.entities.has('m-tostring')).toBe(false);
+});
+
 // `__proto__` is a valid Provider ID and model name. A plain assignment for that key hits the
 // prototype setter, so the excluded entry would silently vanish from what is written back to disk.
 test('excluded prototype-named entries survive the device-local projection', () => {

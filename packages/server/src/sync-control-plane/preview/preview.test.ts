@@ -1387,6 +1387,45 @@ test('a live remote head whose current revision is missing fails the preview', a
   await expect(listRemoteEntities(session, AbortSignal.timeout(5_000))).rejects.toBeInstanceOf(SyncPreviewError);
 });
 
+// Reconciliation rejects a current revision that names another operation or another epoch. Accepting
+// one here would let a reviewed Apply install that body and adopt its baseline, putting a head the
+// engine calls corrupt past the corruption check.
+test('a current revision whose recorded identity does not match its key fails the preview', async () => {
+  const objectId = 'provider-work';
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { value: 'cloud' }, dependencies: [] };
+  const head = encode({
+    protocol: 1,
+    objectId,
+    kind: 'provider',
+    logicalKey: 'work',
+    epoch: 1,
+    sequence: 1,
+    state: 'active',
+    current: 'operation-1',
+    history: [],
+    reserved: [],
+    cancelling: [],
+    receipts: {},
+    cleanupComplete: true,
+  });
+  const sessionFor = (revision: Record<string, unknown>) =>
+    ({
+      list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+      read: async (key: string) => ({
+        kind: 'present' as const,
+        value: key === entityKey(objectId) ? head : encode({ protocol: 1, state: 'payload', body, ...revision }),
+        version: 'v1',
+        modifiedAt: 1,
+      }),
+    }) as unknown as SyncSession;
+  const signal = AbortSignal.timeout(5_000);
+
+  const foreignOperation = { objectId, epoch: 1, operationId: 'operation-2', publishedSequence: 1, writtenAt: 1 };
+  await expect(listRemoteEntities(sessionFor(foreignOperation), signal)).rejects.toBeInstanceOf(SyncPreviewError);
+  const staleEpoch = { objectId, epoch: 0, operationId: 'operation-1', publishedSequence: 1, writtenAt: 1 };
+  await expect(listRemoteEntities(sessionFor(staleEpoch), signal)).rejects.toBeInstanceOf(SyncPreviewError);
+});
+
 test('only Provider identity collisions demand a replacement ID', () => {
   const entity = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string, value: JsonValue) => ({
     objectId,

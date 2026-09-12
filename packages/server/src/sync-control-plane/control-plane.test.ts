@@ -548,4 +548,6 @@ test('a preview against a bound backend that never connected fails instead of re
     code: 'not-connected',
   });
   expect(control.status().state).toBe('offline');
+  // Empty history on an unreachable backend reads as "the recovery revisions are gone".
+  await expect(control.history('shared')).rejects.toMatchObject({ code: 'not-connected' });
 });
