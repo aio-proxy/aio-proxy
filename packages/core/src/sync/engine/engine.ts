@@ -102,6 +102,14 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         input.repo.acknowledge(input.binding.id, operation.operationId);
         continue;
       }
+      // A delete a later operation replaces must not be published: the tombstone it leaves defeats
+      // that operation's put at the state check below, so an object deleted and re-added while the
+      // backend was unreachable would be dropped again by the next remote reconciliation. The end
+      // state the outbox describes is the newest operation's.
+      if (operation.kind === 'delete' && newest.get(operation.objectId) !== index) {
+        input.repo.acknowledge(input.binding.id, operation.operationId);
+        continue;
+      }
       // A body over the backend's value limit throws `quota` deterministically, and a failed entry
       // is never acknowledged, so retrying it first on every pass wedges every later object — and
       // remote reconciliation behind it — on a row that can never publish. A newer operation for
