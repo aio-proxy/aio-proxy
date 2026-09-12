@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, jest, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,13 +7,13 @@ import { zod } from '@aio-proxy/plugin-sdk';
 import type { Diagnostic } from '@aio-proxy/types';
 
 import { openDb } from '../../db';
-import type { SharedOAuthCoordinator } from '../../sync/oauth/coordinator';
+import type { SharedOAuthCoordinator, SharedRefreshInput, SharedRefreshResult } from '../../sync/oauth/coordinator';
 import type { LiveAccount } from '../../sync/oauth/protocol';
 import { createOAuthProviderGate } from '../../sync/oauth/sharing';
 import { createSyncRepository, type LocalBinding, type SyncRepository } from '../../sync/repository';
 import type { PluginRepository } from '../repository';
 import { createPluginRepository } from '../repository';
-import { createCredentialPort } from './credential-port';
+import { createCredentialPort, CredentialRefreshTimeoutError } from './credential-port';
 import { createSharedCredentialPort } from './shared';
 import { credentialPortOptions, createFixtureScope } from './test-support';
 
@@ -362,5 +362,49 @@ test('local and shared refresh paths wait for the common Provider gate', async (
     expect(exchanges).toBe(1);
   } finally {
     scope.cleanup();
+  }
+});
+
+test('a hung shared refresh exchange aborts at the 30 second deadline', async () => {
+  const fixture = sharedFixture();
+  let adapterSignal: AbortSignal | undefined;
+  try {
+    const port = createSharedCredentialPort({
+      providerId: 'provider-1',
+      objectId: 'object-1',
+      binding: fixture.binding,
+      coordinator: {
+        recover: fixture.coordinator.recover,
+        confirm: fixture.coordinator.confirm,
+        async refresh<C>(input: SharedRefreshInput<C>, signal: AbortSignal): Promise<SharedRefreshResult<C>> {
+          await input.exchange(await input.validate({ token: 'old' }), signal);
+          throw new Error('the hung exchange must reject before the coordinator publishes');
+        },
+      },
+      repo: fixture.repo,
+      accounts: fixture.accounts,
+      schema: zod.object({ token: zod.string() }),
+    });
+    const current = await port.read();
+    jest.useFakeTimers();
+    const refreshing = port.refresh(current.revision, (_snapshot, signal) => {
+      adapterSignal = signal;
+      return new Promise(() => {});
+    });
+    jest.advanceTimersByTime(0);
+    for (let index = 0; index < 100 && adapterSignal === undefined; index++) await Promise.resolve();
+    expect(adapterSignal?.aborted).toBe(false);
+
+    jest.advanceTimersByTime(30_000);
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+
+    // Assert the abort before awaiting: without a deadline the refresh never settles at all.
+    expect(adapterSignal?.aborted).toBe(true);
+    await expect(Promise.race([refreshing, Promise.resolve('still pending')])).rejects.toBeInstanceOf(
+      CredentialRefreshTimeoutError,
+    );
+  } finally {
+    jest.useRealTimers();
+    fixture.handle.close();
   }
 });

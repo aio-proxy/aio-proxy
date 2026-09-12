@@ -1,7 +1,7 @@
 import { SyncBackendError } from '@aio-proxy/plugin-sdk';
 
 import { SyncOAuthError, type LiveAccount } from '../protocol';
-import { readCurrent, publishResult, type CoordinatorContext } from './refresh';
+import { readCurrent, publishResult, fenceClaim, type CoordinatorContext } from './refresh';
 
 function discardJournal(context: CoordinatorContext, operationId: string): void {
   try {
@@ -41,6 +41,14 @@ export async function recoverAccount(
   for (const journal of journals) {
     if (journal.phase === 'started') {
       if (current.account.phase === 'refreshing' && current.account.claim?.operationId === journal.operationId) {
+        // The exchange is gone — the process exited, or its terminal fence never landed — so
+        // nothing will ever publish this result. Retry the fence here; leaving the claim in
+        // `refreshing` locks every device out, including a fresh login.
+        if (context.activeOperations.has(journal.operationId)) {
+          throw new SyncOAuthError('result-uncertain', 'The OAuth refresh is still running');
+        }
+        await fenceClaim(context, { account: current.account, version: current.version }, 'uncertain', signal);
+        discardJournal(context, journal.operationId);
         throw new SyncOAuthError('result-uncertain', 'The OAuth process stopped before recording a result');
       }
       continue;

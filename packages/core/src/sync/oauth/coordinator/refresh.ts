@@ -11,6 +11,8 @@ export type CoordinatorContext = {
   readonly store: SyncObjectStore;
   readonly repo: SyncRepository;
   readonly pendingResults: Map<string, PendingResult>;
+  /** Operations whose exchange is still running in this process, so recovery must not fence them. */
+  readonly activeOperations: Set<string>;
 };
 
 export type PendingResult = {
@@ -93,7 +95,7 @@ async function releaseUnstartedClaim(
  * `login-required` when the result exists but is unusable. Both phases let a fresh login take the
  * account over, which a claim left in `refreshing` would block on every device forever.
  */
-async function fenceClaim(
+export async function fenceClaim(
   context: CoordinatorContext,
   claimed: { account: LiveAccount; version: string },
   phase: 'uncertain' | 'login-required',
@@ -303,12 +305,15 @@ export async function refreshAccount<C>(
     await releaseUnstartedClaim(context, claimed, signal);
     throw new SyncOAuthError('refresh-deferred', 'Could not durably record the OAuth refresh');
   }
+  context.activeOperations.add(journal.operationId);
   let result: { value: C; metadata?: { accountLabel?: string; expiresAt?: number } };
   try {
     result = await input.exchange(original, signal);
   } catch {
     await fenceClaim(context, claimed, 'uncertain', signal);
     throw new SyncOAuthError('result-uncertain', 'The OAuth exchange outcome is unknown');
+  } finally {
+    context.activeOperations.delete(journal.operationId);
   }
   let payload: JsonValue;
   try {

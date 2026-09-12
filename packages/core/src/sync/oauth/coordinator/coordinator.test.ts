@@ -332,3 +332,26 @@ test('a late exchange result is journaled and recovered after caller timeout', a
     expect(recovered?.payload.credential).toEqual({ token: 'late' });
   });
 });
+
+test('recovery fences a refreshing claim whose terminal transition never landed', async () => {
+  await withSharedOAuthDevices(async (f) => {
+    const input = {
+      objectId: f.objectId,
+      epoch: 0,
+      generation: 0,
+      exchange: async () => {
+        // The outage that kills the exchange also kills the fence that should follow it.
+        f.backend.failNext('compareAndSwap', 'before');
+        throw new Error('network outage');
+      },
+      validate: async (value: unknown) => f.schema.parse(value),
+    };
+    await expect(f.a.refresh(input, f.signal)).rejects.toMatchObject({ code: 'result-uncertain' });
+    expect((await f.b.recover(f.objectId, f.signal))?.phase).toBe('refreshing');
+    await expect(f.a.recover(f.objectId, f.signal)).rejects.toMatchObject({ code: 'result-uncertain' });
+    // The retried fence is what lets a fresh login take the Provider over again.
+    expect((await f.b.recover(f.objectId, f.signal))?.phase).toBe('uncertain');
+    expect((await f.a.recover(f.objectId, f.signal))?.phase).toBe('uncertain');
+    expect(f.repoA.oauthJournals('oauth-a')).toEqual([]);
+  });
+});

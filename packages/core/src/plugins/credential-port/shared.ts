@@ -6,7 +6,11 @@ import { SyncOAuthError } from '../../sync/oauth/protocol';
 import type { LocalBinding, LocalEntity, SyncRepository } from '../../sync/repository';
 import type { PluginRepository, StoredAccount } from '../repository';
 import { parsePluginSchema } from '../schema';
-import { CredentialAccountMissingError, CredentialValidationError } from './credential-port';
+import {
+  CredentialAccountMissingError,
+  CredentialValidationError,
+  withRefreshExchangeDeadline,
+} from './credential-port';
 
 export type SharedCredentialCallbacks = {
   readonly onDiagnosticChanged?: () => void;
@@ -187,7 +191,12 @@ export function createSharedCredentialPort<C>(input: SharedCredentialInput<C>): 
           objectId: input.objectId,
           epoch: ownership.epoch,
           generation: ownership.generation,
-          exchange: (value, signal) => exchange({ value, revision: expectedRevision }, signal),
+          // Bound only the adapter exchange, never the coordinator signal: a hung refresh has to
+          // fail fast *and* leave the coordinator able to fence its claim as `uncertain`.
+          exchange: (value, signal) =>
+            withRefreshExchangeDeadline((deadline) =>
+              exchange({ value, revision: expectedRevision }, AbortSignal.any([signal, deadline])),
+            ),
           validate: (value) => validated(input.schema, value),
         },
         new AbortController().signal,

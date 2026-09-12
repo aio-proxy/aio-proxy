@@ -44,6 +44,7 @@ export function createSharedOAuthCoordinator(input: SharedOAuthCoordinatorInput)
     store: input.store,
     repo: input.repo,
     pendingResults: new Map(),
+    activeOperations: new Set(),
   };
   return {
     refresh<C>(request: SharedRefreshInput<C>, signal: AbortSignal) {

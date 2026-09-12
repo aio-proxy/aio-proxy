@@ -127,6 +127,31 @@ function singleFlight<Credential>(
   return flight;
 }
 
+/**
+ * The single 30-second bound on an adapter refresh exchange. An adapter that ignores its signal
+ * still has to lose the race, so the deadline both aborts and rejects.
+ */
+export async function withRefreshExchangeDeadline<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  onTimeout?: () => void,
+): Promise<T> {
+  const controller = new AbortController();
+  let rejectDeadline = (_error: Error) => {};
+  const deadline = new Promise<never>((_resolve, reject) => {
+    rejectDeadline = reject;
+  });
+  const timeout = setTimeout(() => {
+    rejectDeadline(new CredentialRefreshTimeoutError());
+    controller.abort(new CredentialRefreshTimeoutError());
+    onTimeout?.();
+  }, REFRESH_EXCHANGE_TIMEOUT_MS);
+  try {
+    return await Promise.race([Promise.resolve().then(() => run(controller.signal)), deadline]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 type RefreshLeaseGuard = {
   readonly race: <T>(operation: Promise<T>) => Promise<T>;
   readonly exchange: <T>(run: (signal: AbortSignal) => Promise<T>) => Promise<T>;
@@ -158,19 +183,13 @@ function createRefreshLeaseGuard(renewLease: () => boolean): RefreshLeaseGuard {
       return Promise.race([operation, leaseLoss]);
     },
     async exchange(run) {
-      let rejectDeadline = (_error: Error) => {};
-      const deadline = new Promise<never>((_resolve, reject) => {
-        rejectDeadline = reject;
-      });
-      const timeout = setTimeout(() => {
-        rejectDeadline(new CredentialRefreshTimeoutError());
-        controller.abort();
-      }, REFRESH_EXCHANGE_TIMEOUT_MS);
-      try {
-        return await Promise.race([Promise.resolve().then(() => run(controller.signal)), leaseLoss, deadline]);
-      } finally {
-        clearTimeout(timeout);
-      }
+      return Promise.race([
+        withRefreshExchangeDeadline(
+          () => run(controller.signal),
+          () => controller.abort(),
+        ),
+        leaseLoss,
+      ]);
     },
     close() {
       stopped = true;
