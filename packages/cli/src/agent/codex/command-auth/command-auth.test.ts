@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmod, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -717,6 +717,19 @@ test.serial('reuses one refresh when three helpers observe the same lock owner',
     );
   } finally {
     server.stop(true);
+  }
+});
+
+test('rejects a non-object persisted credential', async () => {
+  const f = await fixture();
+  try {
+    await mkdir(f.location.managedRoot, { recursive: true, mode: 0o700 });
+    const path = join(f.location.managedRoot, 'codex-credential.json');
+    await writeFile(path, '[1]\n', { mode: 0o600 });
+    await chmod(path, 0o600);
+    await expect(readCredential(f.location)).rejects.toThrow(/invalid/i);
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
   }
 });
 

@@ -1,6 +1,7 @@
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { CodexLocation } from '../contracts';
@@ -45,6 +46,7 @@ export async function readCredential(location: CodexLocation): Promise<Credentia
   } catch {
     throw new Error('Invalid Codex credential state');
   }
+  if (!isPlainObject(value)) throw new Error('Invalid Codex credential state');
   const parsed = CredentialSchema.safeParse(value);
   if (!parsed.success) throw new Error('Invalid Codex credential state');
   return parsed.data;
