@@ -289,11 +289,10 @@ test('synthetic OAuth copies a rotated account and fences a refresh outage as un
       await fixture.a.state.oauthCredentialRefresh.refresh('acceptance-oauth-provider', new AbortController().signal);
       expect(fixture.oauth.refreshInputs()).toEqual([{ token: 'shared-token', family: 'shared-family' }]);
 
+      // A read is served from the local snapshot, so B's refresh is the first coordinated step: it
+      // finds A's rotation already current and copies it instead of spending a second exchange.
       await fixture.b.state.oauthCredentialRefresh.refresh('acceptance-oauth-provider', new AbortController().signal);
-      expect(fixture.oauth.refreshInputs()).toEqual([
-        { token: 'shared-token', family: 'shared-family' },
-        { token: 'acceptance-refresh-1', family: 'shared-family' },
-      ]);
+      expect(fixture.oauth.refreshInputs()).toEqual([{ token: 'shared-token', family: 'shared-family' }]);
 
       const beforeOutage = cloudText(fixture);
       fixture.oauth.setOnline(false);
@@ -302,10 +301,12 @@ test('synthetic OAuth copies a rotated account and fences a refresh outage as un
       ).rejects.toThrow('OAuth credential refresh failed');
       const afterOutage = cloudText(fixture);
       expect(afterOutage).toContain('"phase":"uncertain"');
-      expect(afterOutage).toContain('"token":"acceptance-refresh-2"');
-      expect(afterOutage).not.toContain('"token":"acceptance-refresh-3"');
+      // The claim is fenced on the credential the outage could not replace, never on the token the
+      // exchange produced but could not commit.
+      expect(afterOutage).toContain('"token":"acceptance-refresh-1"');
+      expect(afterOutage).not.toContain('"token":"acceptance-refresh-2"');
       expect(afterOutage).not.toBe(beforeOutage);
-      expect(fixture.oauth.refreshInputs()).toHaveLength(2);
+      expect(fixture.oauth.refreshInputs()).toHaveLength(1);
     },
     {
       oauthCredentials: {
