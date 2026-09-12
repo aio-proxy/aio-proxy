@@ -9,7 +9,13 @@ import { withCodexInstallation } from '../storage/installation-lock';
 import { acquireSessionLock } from './journal';
 import { inspectLegacyMetadata, rewriteLegacyProvider } from './legacy-rollout';
 import { restoreCodexMigration } from './restore';
-import { inspectCodexSessions, isCodexWriterProcess, migrateCodexSessions, setSessionTestDeps } from './sessions';
+import {
+  checkCodexOffline,
+  inspectCodexSessions,
+  isCodexWriterProcess,
+  migrateCodexSessions,
+  setSessionTestDeps,
+} from './sessions';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const rollout = (provider: string, extra = '') =>
@@ -84,7 +90,12 @@ async function prepareMarker(
   );
 }
 
-afterEach(() => setSessionTestDeps({}));
+const originalSpawnSync = Bun.spawnSync;
+
+afterEach(() => {
+  setSessionTestDeps({});
+  Bun.spawnSync = originalSpawnSync;
+});
 
 test('changes only session Provider metadata, never matching conversation text', () => {
   const header = JSON.stringify({ type: 'session_meta', payload: { id, model_provider: 'old' } });
@@ -720,6 +731,32 @@ test('blocks missing verified schema and rollout paths outside configured storag
     expect(escaped.blocked).toContainEqual({ id, reason: 'index_rollout_mismatch' });
     expect(JSON.stringify(escaped)).not.toContain(root);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('continues the offline check when lsof is missing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-offline-'));
+  const commands: string[] = [];
+  Bun.spawnSync = ((command: string[]) => {
+    commands.push(command[0]!);
+    if (command[0] === 'lsof') {
+      throw Object.assign(new Error('Executable not found in $PATH: "lsof"'), { code: 'ENOENT' });
+    }
+    if (command[0] === 'ps') {
+      return { exitCode: 0, stdout: new TextEncoder().encode('1 /usr/bin/bash\n'), stderr: new Uint8Array() };
+    }
+    if (command[0] === 'fuser') {
+      return { exitCode: 1, stdout: new Uint8Array(), stderr: new Uint8Array() };
+    }
+    return originalSpawnSync(command);
+  }) as typeof Bun.spawnSync;
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    expect(await checkCodexOffline(location)).toBe('ok');
+    expect(commands).toContain('fuser');
+  } finally {
+    Bun.spawnSync = originalSpawnSync;
     await rm(root, { recursive: true, force: true });
   }
 });

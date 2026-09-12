@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget, SessionGroup } from '../contracts';
 import { readManagedCodexMarker } from '../managed-config';
-import { inspectRegularFile, readRegularFile, syncParent } from '../managed-config/storage';
+import { inspectRegularFile, isFsCode, readRegularFile, syncParent } from '../managed-config/storage';
 import {
   createOperation,
   operationPath,
@@ -40,6 +40,15 @@ const processRows = (output: string): ProcessRow[] =>
     return match === null ? [] : [{ pid: Number(match[1]), command: match[2]! }];
   });
 
+const tryOptionalCommand = (command: string[]) => {
+  try {
+    return Bun.spawnSync(command);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) return { exitCode: 127, stdout: '', stderr: '' };
+    throw error;
+  }
+};
+
 const defaultOfflineCheck = async (
   location: CodexLocation,
 ): Promise<'ok' | 'codex_active' | 'offline_check_unavailable'> => {
@@ -49,7 +58,7 @@ const defaultOfflineCheck = async (
     const output = new TextDecoder().decode(result.stdout);
     const processes = processRows(output);
     if (processes.some((process) => isCodexWriterProcess(process.pid, process.command))) return 'codex_active';
-    const lsof = Bun.spawnSync(['lsof', '+D', location.home, '-n', '-P']);
+    const lsof = tryOptionalCommand(['lsof', '+D', location.home, '-n', '-P']);
     if (lsof.exitCode !== 127) {
       if (lsof.exitCode !== 0 && lsof.exitCode !== 1) return 'offline_check_unavailable';
       const handles = new TextDecoder().decode(lsof.stdout);
@@ -59,7 +68,7 @@ const defaultOfflineCheck = async (
       }
       return 'ok';
     }
-    const fuser = Bun.spawnSync(['fuser', '-m', location.home]);
+    const fuser = tryOptionalCommand(['fuser', '-m', location.home]);
     if (fuser.exitCode !== 127) {
       if (fuser.exitCode !== 0 && fuser.exitCode !== 1) return 'offline_check_unavailable';
       if (fuser.exitCode === 0) {
