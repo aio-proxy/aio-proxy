@@ -11,7 +11,7 @@ import {
 import { credentialPath, readCredential, writeCredential } from '../command-auth/credential-store';
 import type { CodexSetupContext } from '../contracts';
 import { resolveCodexLocation } from '../location';
-import { inspectCodexConfig } from '../managed-config';
+import { configureCodexConfig, inspectCodexConfig } from '../managed-config';
 import { withCodexInstallation } from '../storage/installation-lock';
 import { authOperationPath, writeAuthOperation } from './journal';
 import { commitCodexSetup, recoverCodexAuthOperation } from './setup';
@@ -111,6 +111,57 @@ test('reports an unknown authentication journal state as blocked', async () => {
         'complete',
       ),
     ).resolves.toBe('blocked');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('recovery rejects a keep-chatgpt journal that carries an unrelated installation id', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const unrelatedId = crypto.randomUUID();
+  try {
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: `${endpoint}/v1`,
+      auth: { mode: 'keep-chatgpt', token: 'aio-proxy-local' },
+    });
+    await Bun.write(
+      authOperationPath(location),
+      `${JSON.stringify({
+        format: 1,
+        operationId: crypto.randomUUID(),
+        configPath: location.configPath,
+        kind: 'configure',
+        targetMode: 'keep-chatgpt',
+        phase: 'prepared',
+        installationId: unrelatedId,
+        providerId: 'aio-proxy',
+      })}\n`,
+    );
+    const revoked: { endpoint: string; installationId: string }[] = [];
+    await expect(
+      recoverCodexAuthOperation(
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => undefined,
+          revoke: async (boundEndpoint, boundInstallationId) => {
+            revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+            return 'revoked';
+          },
+        },
+        'complete',
+      ),
+    ).resolves.toBe('blocked');
+    expect(revoked).toEqual([]);
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({
+      status: 'managed',
+      authMode: 'keep-chatgpt',
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
