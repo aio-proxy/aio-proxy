@@ -9,6 +9,7 @@ import {
 } from '@aio-proxy/agent-provider-runtime';
 import type { AgentDeviceCodeResponse, AgentManagedMarker, AgentRevokeStatus } from '@aio-proxy/types';
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CodexLocation } from '../contracts';
 import { inspectCodexConfig } from '../managed-config';
@@ -59,20 +60,22 @@ export async function readIdentity(location: CodexLocation): Promise<Installatio
   const file = await readRegularFile(identityPath(location));
   if (file === undefined) return undefined;
   try {
-    const value = JSON.parse(file.text) as InstallationRecord;
+    const value: unknown = JSON.parse(file.text);
+    if (!isPlainObject(value)) throw new Error('invalid');
+    const identity = value as InstallationRecord;
     if (
-      value.format !== 1 ||
-      value.configPath !== location.configPath ||
-      !AgentManagedMarkerSchema.safeParse(value.marker).success ||
-      value.marker?.agent !== 'codex' ||
-      value.marker?.managedBy !== 'aio-proxy' ||
-      typeof value.marker.installationId !== 'string' ||
-      typeof value.marker.endpoint !== 'string' ||
-      !['pending', 'active', 'retiring'].includes(value.status) ||
-      typeof value.providerId !== 'string'
+      identity.format !== 1 ||
+      identity.configPath !== location.configPath ||
+      !AgentManagedMarkerSchema.safeParse(identity.marker).success ||
+      identity.marker?.agent !== 'codex' ||
+      identity.marker?.managedBy !== 'aio-proxy' ||
+      typeof identity.marker.installationId !== 'string' ||
+      typeof identity.marker.endpoint !== 'string' ||
+      !['pending', 'active', 'retiring'].includes(identity.status) ||
+      typeof identity.providerId !== 'string'
     )
       throw new Error('invalid');
-    return value;
+    return identity;
   } catch {
     throw new Error('Invalid Codex command identity');
   }
