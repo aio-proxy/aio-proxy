@@ -352,6 +352,51 @@ test('revokes from the marker applied endpoint when the live base_url drifted', 
   }
 });
 
+test('revokes from the managed marker when the config and command auth files are missing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
+  const location = resolveCodexLocation(root, { HOME: root });
+  const endpoint = 'http://127.0.0.1:9317';
+  try {
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await configureCodexConfig(
+        {
+          location,
+          providerId: 'aio-proxy',
+          baseUrl: `${endpoint}/v1`,
+          auth: { mode: 'command', installationId, command: 'aiop' },
+        },
+        lease,
+      );
+    });
+    await rm(join(location.managedRoot, 'codex-command.json'));
+    await rm(location.configPath);
+    await expect(inspectCodexConfig(location)).resolves.toMatchObject({
+      status: 'absent',
+      authMode: 'command',
+      installationId,
+    });
+    const revoked: { endpoint: string; installationId: string }[] = [];
+    await expect(
+      removeCodexLifecycle({
+        location,
+        revoke: async (boundEndpoint, boundInstallationId) => {
+          revoked.push({ endpoint: boundEndpoint, installationId: boundInstallationId });
+          return 'revoked';
+        },
+      }),
+    ).resolves.toMatchObject({ authorization: 'revoked' });
+    expect(revoked).toEqual([{ endpoint, installationId }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('revokes from the managed marker when command auth files are missing', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-lifecycle-'));
   const location = resolveCodexLocation(root, { HOME: root });

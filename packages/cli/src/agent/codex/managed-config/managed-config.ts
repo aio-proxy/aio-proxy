@@ -276,9 +276,32 @@ function makeFields(text: string, edits: readonly FieldEdit[], prior?: CodexMark
   }));
 }
 
+const inspectionAuth = (marker: CodexMarker): Pick<ConfigInspection, 'authMode' | 'installationId'> =>
+  marker.format === 2
+    ? {
+        authMode: marker.authMode,
+        ...(marker.authMode === 'command' ? { installationId: marker.installationId } : {}),
+      }
+    : { authMode: 'keep-chatgpt' };
+
 export async function inspectCodexConfig(location: CodexLocation): Promise<ConfigInspection> {
   const current = await readText(location);
-  if (current === undefined) return { status: 'absent', activeProviderId: '', changedPaths: [] };
+  if (current === undefined) {
+    let marker: CodexMarker | undefined;
+    try {
+      marker = await readMarker(location);
+    } catch {
+      return { status: 'conflict', activeProviderId: '', changedPaths: [] };
+    }
+    if (marker === undefined) return { status: 'absent', activeProviderId: '', changedPaths: [] };
+    return {
+      status: 'absent',
+      providerId: marker.providerId,
+      activeProviderId: '',
+      changedPaths: [],
+      ...inspectionAuth(marker),
+    };
+  }
   let document: ReturnType<typeof readCodexDocument>;
   try {
     document = readCodexDocument(current.text);
@@ -301,12 +324,7 @@ export async function inspectCodexConfig(location: CodexLocation): Promise<Confi
     activeProviderId: document.activeProviderId,
     baseUrl: base.present && typeof base.value === 'string' ? base.value : undefined,
     ...(token.present && typeof token.value === 'string' ? { bearerToken: token.value } : {}),
-    ...(marker.format === 2
-      ? {
-          authMode: marker.authMode,
-          ...(marker.authMode === 'command' ? { installationId: marker.installationId } : {}),
-        }
-      : { authMode: 'keep-chatgpt' }),
+    ...inspectionAuth(marker),
     changedPaths,
   };
 }
