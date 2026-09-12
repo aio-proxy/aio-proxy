@@ -1060,3 +1060,80 @@ test('overrides pinned during the configuration write survive the remote entity 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a remote apply racing a completed leave acknowledges the revision without writing the configuration', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-left-'));
+  const configPath = join(directory, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: body.value } }, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  const accounts = {
+    readPluginSecret: () => null,
+    readAccount: () => null,
+    listPendingAccountOperations: () => [],
+    deleteAccount: () => {},
+  } as unknown as PluginRepository;
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  const row = {
+    objectId: 'object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 0,
+    desired: body,
+    baseline: 'remote-1',
+    overrides: [],
+    pendingReason: null,
+  };
+  repo.putEntity(binding.id, row);
+  const file = new AtomicConfigFile(configPath);
+  const candidates: Record<string, JsonValue>[] = [];
+  const port = createLocalSyncPort({
+    configPath,
+    configFile: file,
+    repo,
+    accounts,
+    bindingId: binding.id,
+    bindingGeneration: binding.sessionGeneration,
+    enqueue: createFifoQueue(),
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    applyCandidate: async (candidate) => {
+      candidates.push(candidate);
+      await file.replace(() => candidate);
+    },
+  });
+
+  try {
+    const next = { ...body, value: { ...body.value, baseUrl: 'https://cloud.example.test/v1' } };
+    // `sync leave` lands while the activation check for this revision is still awaiting the backend,
+    // outside the fence this apply takes.
+    repo.putEntity(binding.id, { ...row, mode: 'excluded' });
+    expect((await port.applyRemote('object', next, 'remote-2')).applied).toBe(true);
+    expect(candidates).toEqual([]);
+    expect((await file.read()) as Record<string, JsonValue>).toEqual({ providers: { work: body.value } });
+
+    // The reviewed-decision import writes into a row whose inclusion is recorded right after this
+    // call, so it is still excluded here and must not be mistaken for a Leave.
+    expect((await port.applyRemote('object', next, 'remote-3', 'reviewed')).applied).toBe(true);
+    expect(candidates).toHaveLength(1);
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

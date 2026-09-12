@@ -69,7 +69,9 @@ export function createSyncControlPlaneIntegration(
     applyLocal: async (candidate, _current, objectId) => {
       const syncPort = integration.syncPort;
       if (syncPort === undefined) throw new SyncOperationError('not-connected');
-      const result = await syncPort.applyRemote(objectId, candidate, `control:${crypto.randomUUID()}`);
+      // `reviewed`: the row is still excluded while a join's import writes — its inclusion is
+      // recorded right after this call — so the port must not read that as a Leave to respect.
+      const result = await syncPort.applyRemote(objectId, candidate, `control:${crypto.randomUUID()}`, 'reviewed');
       if (!result.applied) throw new SyncOperationError('operation-pending');
     },
     persistOverrides: async (objectId, paths, current, authored) => {

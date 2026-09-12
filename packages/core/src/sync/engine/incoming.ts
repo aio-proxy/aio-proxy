@@ -20,5 +20,17 @@ export interface ActivationResult {
 export interface LocalSyncPort extends LocalCommitPort {
   /** Check a desired remote body before mutating the running configuration. */
   checkRemote?(body: EntityBody, signal: AbortSignal): Promise<PendingReason | undefined>;
-  applyRemote(objectId: string, body: EntityBody | null, operationId: string): Promise<ActivationResult>;
+  /**
+   * Applies an inbound body to the running configuration. A row the user has excluded is
+   * acknowledged without being written, because a `sync leave` can complete while this pass is still
+   * validating the body outside the mutation fence. `'reviewed'` marks the reviewed-decision path,
+   * which imports into a row whose inclusion it records immediately afterwards, so the row is still
+   * excluded when it writes.
+   */
+  applyRemote(
+    objectId: string,
+    body: EntityBody | null,
+    operationId: string,
+    intent?: 'reviewed',
+  ): Promise<ActivationResult>;
 }

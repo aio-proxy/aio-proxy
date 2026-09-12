@@ -258,7 +258,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
       return source(input, (await input.configFile.read()) as Record<string, JsonValue>);
     },
     assertCurrent,
-    async applyRemote(objectId, body, operationId) {
+    async applyRemote(objectId, body, operationId, intent) {
       return withFence(async () => {
         const current = (await input.configFile.read()) as Record<string, JsonValue>;
         assertCurrent();
@@ -270,6 +270,16 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           if (body === null) finishTombstone(input, currentEntity);
           return { applied: true };
         }
+        // A `sync leave` completing while the caller was still validating this body — the activation
+        // check awaits the backend outside this fence — leaves the reconciliation pass holding a
+        // snapshot that says `included`. Writing the body anyway would put the Provider's cloud
+        // configuration back after Leave reported success. Excluded is exactly the state that pass
+        // handles by acknowledging the revision without touching the configuration, so answer the
+        // same way rather than revisiting the row on every later poll. A commit already prepared for
+        // this revision is left to resolve: its write may be on disk, and its digest guard is what
+        // decides whether anything is written at all.
+        if (intent !== 'reviewed' && existingCommit === null && currentEntity?.mode === 'excluded')
+          return { applied: true };
 
         const currentDigest = digest(current, input.configPath);
         let candidate: Record<string, JsonValue>;
