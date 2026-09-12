@@ -124,6 +124,36 @@ export async function prepareCodexCommandInstallation(
   });
 }
 
+export async function restoreCodexCommandInstallation(
+  input: {
+    readonly location: CodexLocation;
+    readonly providerId: string;
+    readonly endpoint: string;
+    readonly adapterVersion: string;
+    readonly installationId: string;
+    readonly status: InstallationRecord['status'];
+  },
+  lease: CodexLease,
+): Promise<CodexCommandInstallation> {
+  return lease.withOwnership(async () => {
+    const current = await readIdentity(input.location);
+    if (current !== undefined) {
+      if (current.marker.installationId !== input.installationId || current.marker.endpoint !== input.endpoint)
+        throw new Error('Codex command installation is already bound to another provider');
+      return current;
+    }
+    const installation: CodexCommandInstallation = {
+      format: 1,
+      marker: markerFor(input.location, input.endpoint, input.installationId, input.adapterVersion),
+      configPath: input.location.configPath,
+      providerId: input.providerId,
+      status: input.status,
+    };
+    await writeIdentity(input.location, installation);
+    return installation;
+  });
+}
+
 export async function rebindCodexCommandInstallation(
   location: CodexLocation,
   installationId: string,

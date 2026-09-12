@@ -7,6 +7,7 @@ import {
   clearCodexCommandInstallation,
   prepareCodexCommandInstallation,
   rebindCodexCommandInstallation,
+  restoreCodexCommandInstallation,
   readCodexCommandCredentialInstallationId,
   readCredential,
   inspectCodexCommandCredential,
@@ -183,9 +184,30 @@ async function commitCommand(
   inspection: ConfigInspection,
   lease: CodexLease,
 ): Promise<CodexSetupCommit> {
-  const existing = await readCodexCommandIdentity(context.location);
+  let existing = await readCodexCommandIdentity(context.location);
   if (existing !== undefined && existing.marker.endpoint !== context.endpoint)
     throw setupError('CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED');
+  if (existing === undefined) {
+    const orphan = await readCredential(context.location);
+    if (orphan !== undefined) {
+      if (orphan.endpoint !== context.endpoint) throw setupError('CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED');
+      if (inspection.authMode === 'command' && inspection.installationId === orphan.installationId) {
+        existing = await restoreCodexCommandInstallation(
+          {
+            location: context.location,
+            providerId: inspection.providerId ?? providerId,
+            endpoint: orphan.endpoint,
+            adapterVersion: context.adapterVersion,
+            installationId: orphan.installationId,
+            status: orphan.status === 'ready' ? 'active' : 'pending',
+          },
+          lease,
+        );
+      } else {
+        await revokeAndClear(context, lease, orphan.installationId);
+      }
+    }
+  }
   await validateCodexConfig(
     {
       location: context.location,

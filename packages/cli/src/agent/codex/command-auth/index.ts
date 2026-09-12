@@ -5,6 +5,7 @@ export {
   inspectCodexCommandCredential,
   prepareCodexCommandInstallation,
   rebindCodexCommandInstallation,
+  restoreCodexCommandInstallation,
   readCodexCommandCredentialInstallationId,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,

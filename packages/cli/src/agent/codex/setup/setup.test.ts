@@ -354,6 +354,74 @@ test('revokes a marker-only command installation when switching to keep-chatgpt'
   }
 });
 
+test('reuses an orphan command credential instead of preparing a new installation', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
+    let installationId = '';
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'custom', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      installationId = installation.marker.installationId;
+      await import('../managed-config').then(({ configureCodexConfig }) =>
+        configureCodexConfig(
+          {
+            location,
+            providerId: 'custom',
+            baseUrl: `${endpoint}/v1`,
+            auth: { mode: 'command', installationId, command: 'aiop' },
+          },
+          lease,
+        ),
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId,
+        endpoint,
+        revision: 1,
+        accessToken: `aio_agent_at_v1_${'a'.repeat(43)}`,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+    });
+    await rm(join(location.managedRoot, 'codex-command.json'));
+    let devicePrompts = 0;
+    await expect(
+      commitCodexSetup(
+        { providerId: 'custom', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            devicePrompts += 1;
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ authMode: 'command', installationId });
+    expect(devicePrompts).toBe(0);
+    await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({
+      status: 'active',
+      marker: { installationId },
+    });
+    await expect(readCredential(location)).resolves.toMatchObject({ installationId });
+    await expect(Bun.file(authOperationPath(location)).exists()).resolves.toBe(false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('rebinds a renamed command identity before recovering authorization', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';
