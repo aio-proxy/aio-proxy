@@ -4,9 +4,15 @@ import { dirname, join } from 'node:path';
 import { processOwnerIsCurrent, processStarttime } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { CodexLocation } from '../contracts';
-import { assertNoSymlinkParents, durableWrite, isFsCode, readRegularFile, syncParent } from '../managed-config/storage';
-import { withCodexInstallation } from '../storage/installation-lock';
+import type { CodexLocation } from '../../contracts';
+import {
+  assertNoSymlinkParents,
+  durableWrite,
+  isFsCode,
+  readRegularFile,
+  syncParent,
+} from '../../managed-config/storage';
+import { withCodexInstallation } from '../../storage/installation-lock';
 
 export type JournalEntry = {
   readonly id: string;
@@ -274,6 +280,7 @@ export async function writeBackup(path: string, bytes: Uint8Array): Promise<void
   } finally {
     await handle.close();
   }
+  await syncParent(path);
 }
 
 export async function readJournal(
