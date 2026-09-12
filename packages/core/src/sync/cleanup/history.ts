@@ -1,5 +1,5 @@
 import { SyncProtocolError } from '../protocol';
-import { decodeRevision, revisionKey } from '../protocol';
+import { decodeRevision, receiptSequence, revisionKey } from '../protocol';
 import { type SyncObjectStore } from '../publication';
 import {
   HISTORY_RETENTION_MS,
@@ -61,7 +61,7 @@ async function cancelReservations(
     for (const operationId of current.head.cancelling) {
       const latest = await readHeadOrThrow(store, objectId, signal);
       const record = await finalizeRevisionReceiptIfPresent(store, latest.head, operationId, signal);
-      const sequence = latest.head.receipts[operationId] ?? record?.publishedSequence ?? undefined;
+      const sequence = receiptSequence(latest.head, operationId) ?? record?.publishedSequence ?? undefined;
       await eraseRevision(
         store,
         revisionKey(objectId, operationId),
@@ -87,7 +87,7 @@ async function confirmReceipts(store: SyncObjectStore, objectId: string, signal:
   for (const operationId of [
     ...new Set([...head.head.history, ...(head.head.current === null ? [] : [head.head.current])]),
   ]) {
-    if (head.head.receipts[operationId] === undefined) continue;
+    if (receiptSequence(head.head, operationId) === undefined) continue;
     const value = await store.session.read(revisionKey(objectId, operationId), signal);
     if (value.kind === 'absent') throw new SyncProtocolError('invalid-data', 'publication receipt has no revision');
     const record = decodeRevision(value.value);
@@ -115,12 +115,12 @@ export async function collectHistory(
     const value = await store.session.read(revisionKey(objectId, operationId), signal);
     if (value.kind === 'absent') throw new SyncProtocolError('invalid-data', 'history revision is missing');
     const record = decodeRevision(value.value);
-    const sequence = head.head.receipts[operationId] ?? record.publishedSequence ?? undefined;
+    const sequence = receiptSequence(head.head, operationId) ?? record.publishedSequence ?? undefined;
     if (record.state === 'erased') {
       await unlinkExpired(store, objectId, operationId, signal);
       continue;
     }
-    if (head.head.receipts[operationId] === undefined || record.publishedSequence === null) continue;
+    if (receiptSequence(head.head, operationId) === undefined || record.publishedSequence === null) continue;
     if (record.writtenAt === null || record.writtenAt >= cutoff) continue;
     await eraseRevision(
       store,

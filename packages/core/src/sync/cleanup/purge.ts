@@ -1,5 +1,5 @@
 import { SyncProtocolError, type EntityHead } from '../protocol';
-import { revisionKey } from '../protocol';
+import { receiptSequence, revisionKey } from '../protocol';
 import { beginPurge } from '../protocol/transitions';
 import { type SyncObjectStore } from '../publication';
 import {
@@ -15,7 +15,7 @@ import {
 async function eraseFrozenRevisions(store: SyncObjectStore, head: EntityHead, signal: AbortSignal): Promise<void> {
   for (const operationId of frozenRevisionIds(head)) {
     const record = await finalizeRevisionReceiptIfPresent(store, head, operationId, signal);
-    const sequence = head.receipts[operationId] ?? record?.publishedSequence ?? undefined;
+    const sequence = receiptSequence(head, operationId) ?? record?.publishedSequence ?? undefined;
     const epoch = record?.epoch ?? head.epoch;
     await eraseRevision(
       store,

@@ -6,6 +6,7 @@ export {
   entityKey,
   isPluginRequirement,
   providerReference,
+  receiptSequence,
   revisionKey,
   SyncProtocolError,
   type DeletedAccount,

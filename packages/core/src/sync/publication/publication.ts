@@ -8,6 +8,7 @@ import {
   entityKey,
   newHead,
   publish,
+  receiptSequence,
   reserve,
   revisionKey,
   SyncProtocolError,
@@ -187,7 +188,7 @@ async function existingReceipt(
   operation: OutboxOperation,
   signal: AbortSignal,
 ): Promise<PublishedRevision | undefined> {
-  const sequence = head.receipts[operation.operationId];
+  const sequence = receiptSequence(head, operation.operationId);
   if (sequence === undefined) return undefined;
   const revision = await readRevision(store, operation, signal);
   if (revision === null) throw new SyncProtocolError('invalid-data', 'publication receipt has no revision');

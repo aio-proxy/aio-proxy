@@ -6,6 +6,7 @@ import {
   decodeRevision,
   encode,
   entityKey,
+  receiptSequence,
   revisionKey,
   SyncProtocolError,
   type DeletedAccount,
@@ -86,7 +87,7 @@ export async function finalizeRevisionReceiptIfPresent(
   if (value.kind === 'absent') return null;
   const record = decodeRevision(value.value);
   assertRevisionIdentity(record, { objectId: head.objectId, operationId, epoch: record.epoch });
-  if (head.receipts[operationId] !== undefined && record.state === 'payload') {
+  if (receiptSequence(head, operationId) !== undefined && record.state === 'payload') {
     await finalizeReceiptRecoverable(store, head, operationId, signal);
     const refreshed = await store.session.read(revisionKey(head.objectId, operationId), signal);
     if (refreshed.kind === 'absent') throw new SyncProtocolError('invalid-data', 'publication receipt has no revision');
@@ -366,7 +367,7 @@ export async function deleteEntity(
     const ids = [...new Set([...frozen.head.reserved, ...frozen.head.cancelling])];
     for (const operationId of ids) {
       const record = await finalizeRevisionReceiptIfPresent(store, frozen.head, operationId, signal);
-      const sequence = frozen.head.receipts[operationId] ?? record?.publishedSequence ?? undefined;
+      const sequence = receiptSequence(frozen.head, operationId) ?? record?.publishedSequence ?? undefined;
       await eraseRevision(
         store,
         revisionKey(objectId, operationId),

@@ -682,3 +682,44 @@ test('an older revision of a live entity restores under a fresh operation id', a
     restoreEntity(store, first.objectId, first.body, crypto.randomUUID(), signal, live.version),
   ).rejects.toThrow('head version changed');
 });
+
+test('history treats an operation ID that names an Object prototype member as unpublished', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'live-secret');
+  const published = publish(reserve(newHead(item.objectId, item.body), item.operationId, 0), item.operationId, 0);
+  await store.session.compareAndSwap(
+    entityKey(item.objectId),
+    null,
+    encode({ ...published, history: ['toString'] }),
+    signal,
+  );
+  for (const operationId of [item.operationId, 'toString']) {
+    await store.session.compareAndSwap(
+      revisionKey(item.objectId, operationId),
+      null,
+      encode({
+        protocol: 1,
+        state: 'payload',
+        objectId: item.objectId,
+        epoch: 0,
+        operationId,
+        body: item.body,
+        publishedSequence: null,
+        writtenAt: 0,
+      }),
+      signal,
+    );
+  }
+
+  await collectHistory(store, item.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+
+  // The head carries no receipt for it, so maintenance must leave it alone instead of reading the
+  // inherited function off `receipts` and failing the whole pass.
+  expect(head(backend, item.objectId).history).toEqual(['toString']);
+  expect(decodeRevision(backend.readAll().get(revisionKey(item.objectId, 'toString'))!.value)).toMatchObject({
+    state: 'payload',
+    publishedSequence: null,
+  });
+});

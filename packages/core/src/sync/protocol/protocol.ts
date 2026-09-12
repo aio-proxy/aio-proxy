@@ -65,6 +65,14 @@ export interface EntityHead {
   cleanupComplete: boolean;
 }
 
+/**
+ * An operation ID is an unrestricted wire string, so `receipts['toString']` would otherwise resolve
+ * the inherited function and be mistaken for a publication sequence.
+ */
+export function receiptSequence(head: EntityHead, operationId: string): number | undefined {
+  return Object.hasOwn(head.receipts, operationId) ? head.receipts[operationId] : undefined;
+}
+
 export type RevisionRecord =
   | {
       protocol: 1;

@@ -1,4 +1,4 @@
-import { decodeRevision, encode, revisionKey, SyncProtocolError, type EntityHead } from '../protocol';
+import { decodeRevision, encode, receiptSequence, revisionKey, SyncProtocolError, type EntityHead } from '../protocol';
 import { assertSize, type SyncObjectStore } from './publication';
 
 export async function finalizeReceipt(
@@ -7,7 +7,7 @@ export async function finalizeReceipt(
   operationId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const sequence = head.receipts[operationId];
+  const sequence = receiptSequence(head, operationId);
   if (sequence === undefined) throw new SyncProtocolError('invalid-data', 'missing publication receipt');
   const key = revisionKey(head.objectId, operationId);
   for (;;) {
