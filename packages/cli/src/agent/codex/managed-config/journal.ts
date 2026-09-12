@@ -1,8 +1,11 @@
 import { open } from 'node:fs/promises';
 
 import { processOwnerIsCurrent, processStarttime } from '@aio-proxy/core';
+import { isPlainObject } from 'es-toolkit/predicate';
+import { z } from 'zod';
 
 import type { CodexLocation, CodexMarker } from '../contracts';
+import { validateMarker } from './marker';
 import { durableDelete, durableWrite, ensureManagedRoot, fingerprint, readRegularFile, syncParent } from './storage';
 
 export type JournalOwner = {
@@ -12,23 +15,86 @@ export type JournalOwner = {
   readonly starttime?: string;
 };
 
-export type ConfigJournal = {
-  readonly operation: 'configure' | 'remove';
+type JournalBase = {
   readonly originalExists: boolean;
   readonly beforeFingerprint?: string;
   readonly afterFingerprint?: string;
   readonly oldMarker?: CodexMarker;
-  readonly targetMarker?: CodexMarker;
   readonly stage: 'prepared' | 'config-written' | 'marker-written';
   readonly owner?: JournalOwner;
 };
+
+export type ConfigJournal =
+  | (JournalBase & { readonly operation: 'configure'; readonly targetMarker: CodexMarker })
+  | (JournalBase & { readonly operation: 'remove' });
+
+const invalidJournal = (): Error => new Error('Codex configuration journal is invalid');
+
+const JournalOwnerSchema = z.strictObject({
+  pid: z.number().int(),
+  token: z.string().min(1),
+  leaseUntil: z.number(),
+  starttime: z.string().optional(),
+});
+
+const journalBaseShape = {
+  originalExists: z.boolean(),
+  beforeFingerprint: z.string().optional(),
+  afterFingerprint: z.string().optional(),
+  oldMarker: z.unknown().optional(),
+  stage: z.enum(['prepared', 'config-written', 'marker-written']),
+  owner: JournalOwnerSchema.optional(),
+};
+
+const ConfigJournalSchema = z.discriminatedUnion('operation', [
+  z.strictObject({
+    operation: z.literal('configure'),
+    ...journalBaseShape,
+    targetMarker: z.unknown(),
+  }),
+  z.strictObject({
+    operation: z.literal('remove'),
+    ...journalBaseShape,
+  }),
+]);
+
+function parseConfigJournal(value: unknown, location: CodexLocation): ConfigJournal {
+  if (!isPlainObject(value)) throw invalidJournal();
+  const parsed = ConfigJournalSchema.safeParse(value);
+  if (!parsed.success) throw invalidJournal();
+  try {
+    const oldMarker = parsed.data.oldMarker === undefined ? undefined : validateMarker(parsed.data.oldMarker, location);
+    const base = {
+      originalExists: parsed.data.originalExists,
+      ...(parsed.data.beforeFingerprint === undefined ? {} : { beforeFingerprint: parsed.data.beforeFingerprint }),
+      ...(parsed.data.afterFingerprint === undefined ? {} : { afterFingerprint: parsed.data.afterFingerprint }),
+      ...(oldMarker === undefined ? {} : { oldMarker }),
+      stage: parsed.data.stage,
+      ...(parsed.data.owner === undefined ? {} : { owner: parsed.data.owner }),
+    };
+    if (parsed.data.operation === 'remove') return { ...base, operation: 'remove' as const };
+    return {
+      ...base,
+      operation: 'configure' as const,
+      targetMarker: validateMarker(parsed.data.targetMarker, location),
+    };
+  } catch {
+    throw invalidJournal();
+  }
+}
 
 const pathFor = (location: CodexLocation): string => `${location.managedRoot}/config-operation.json`;
 
 export async function readJournal(location: CodexLocation): Promise<ConfigJournal | undefined> {
   const current = await readRegularFile(pathFor(location));
   if (current === undefined) return undefined;
-  return JSON.parse(current.text) as ConfigJournal;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(current.text);
+  } catch {
+    throw invalidJournal();
+  }
+  return parseConfigJournal(parsed, location);
 }
 
 export async function startJournal(location: CodexLocation, journal: ConfigJournal): Promise<ConfigJournal> {
@@ -41,7 +107,7 @@ export async function startJournal(location: CodexLocation, journal: ConfigJourn
     leaseUntil: Date.now() + 30_000,
     ...(starttime === null ? {} : { starttime }),
   };
-  const record = { ...journal, owner };
+  const record = parseConfigJournal({ ...journal, owner }, location);
   const handle = await open(path, 'wx', 0o600);
   try {
     await handle.writeFile(`${JSON.stringify(record)}\n`, 'utf8');
@@ -63,7 +129,8 @@ export async function startJournal(location: CodexLocation, journal: ConfigJourn
 export async function updateJournal(location: CodexLocation, journal: ConfigJournal): Promise<void> {
   const current = await readRegularFile(pathFor(location));
   if (current === undefined) throw new Error('Codex operation journal disappeared');
-  await durableWrite(pathFor(location), `${JSON.stringify(journal)}\n`, 0o600, current);
+  const next = parseConfigJournal(journal, location);
+  await durableWrite(pathFor(location), `${JSON.stringify(next)}\n`, 0o600, current);
 }
 
 export async function clearJournal(location: CodexLocation): Promise<void> {

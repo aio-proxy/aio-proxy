@@ -152,7 +152,7 @@ async function recoverPending(location: CodexLocation, assertOwned?: () => Promi
   }
   if (afterMatches) {
     await assertOwned?.();
-    if (pending.targetMarker === undefined) await deleteMarker(location);
+    if (pending.operation === 'remove') await deleteMarker(location);
     else await writeMarker(location, pending.targetMarker);
     await assertOwned?.();
     await clearJournal(location);

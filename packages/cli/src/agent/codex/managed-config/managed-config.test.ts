@@ -7,7 +7,7 @@ import { processStarttime } from '@aio-proxy/core';
 
 import { resolveCodexLocation } from '../location';
 import { configureCodexConfig, inspectCodexConfig, recoverCodexConfigOperation, removeCodexConfig } from './index';
-import { startJournal } from './journal';
+import { fingerprint, startJournal } from './journal';
 import { readRegularFile, writeTomlAtomically } from './storage';
 
 const keep = (token: string) => ({ mode: 'keep-chatgpt' as const, token });
@@ -337,6 +337,33 @@ test('rejects a partial ownership marker instead of taking it over', async () =>
     await Bun.write(f.location.markerPath, `${JSON.stringify(marker)}\n`);
     await expect(inspectCodexConfig(f.location)).resolves.toMatchObject({ status: 'conflict' });
     await expect(removeCodexConfig(f.location)).rejects.toThrow('marker');
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects an unvalidated config journal instead of deleting the marker', async () => {
+  const f = await fixture();
+  try {
+    await configureCodexConfig({
+      location: f.location,
+      providerId: 'aio-proxy',
+      baseUrl: 'http://proxy/v1',
+      auth: keep('key'),
+    });
+    const text = await Bun.file(f.location.configPath).text();
+    await Bun.write(
+      join(f.location.managedRoot, 'config-operation.json'),
+      `${JSON.stringify({
+        operation: 'configure',
+        originalExists: true,
+        afterFingerprint: fingerprint(text),
+        stage: 'config-written',
+        owner: { pid: 999999999, token: 'dead-owner', leaseUntil: Date.now() - 1 },
+      })}\n`,
+    );
+    await expect(recoverCodexConfigOperation(f.location)).rejects.toThrow(/invalid|journal/i);
+    expect(await Bun.file(f.location.markerPath).exists()).toBe(true);
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }
