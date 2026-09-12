@@ -105,16 +105,21 @@ function record(input: SyncPreviewInput, rows: readonly PreviewCandidate[], extr
   } satisfies PreviewRecord;
 }
 
-function localOnly(objectId: string, logicalKey: string): PreviewCandidate {
+// `optional` is what buildPreview stamps on a connect row that joins nothing; no other kind gets it.
+function localOnly(objectId: string, logicalKey: string, optional = false): PreviewCandidate {
   const base = candidate(objectId, 'provider', logicalKey);
-  return { ...base, cloud: null, row: { ...base.row, change: 'add', cloud: null, choices: ['local'] } };
+  return {
+    ...base,
+    cloud: null,
+    row: { ...base.row, change: 'add', cloud: null, choices: ['local'], ...(optional ? { optional: true } : {}) },
+  };
 }
 
 test('connecting may leave out a decision only for a row with nothing on the cloud side', () => {
   const connect: SyncPreviewInput = { kind: 'connect', plugin: '@example/backend', capability: 'cloud', options: {} };
 
   // Connect's default is "every object excluded until it is joined", so a local-only row is skipped.
-  expect(() => assertDecisions(record(connect, [localOnly('provider-a', 'work')]), [])).not.toThrow();
+  expect(() => assertDecisions(record(connect, [localOnly('provider-a', 'work', true)]), [])).not.toThrow();
   // A row carrying cloud state would be imported unreviewed by the post-swap reconciliation.
   expect(() => assertDecisions(record(connect, [candidate('provider-a', 'provider', 'work')]), [])).toThrow(
     SyncOperationError,
@@ -248,7 +253,7 @@ test('applying an override keeps the paths it just persisted and concurrent OAut
 // left out of the connect decisions has not been joined on this backend, so keeping it included
 // reported it as synchronized and let the next local commit publish it.
 test('connecting excludes a row the decisions left out instead of carrying its old mode', async () => {
-  const rows = [localOnly('provider-a', 'work'), candidate('provider-b', 'provider', 'other')];
+  const rows = [localOnly('provider-a', 'work', true), candidate('provider-b', 'provider', 'other')];
   const stored: LocalEntity[] = [];
   const carried = [
     localEntity('provider-a', 'provider', 'work'),

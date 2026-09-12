@@ -466,6 +466,7 @@
       "preview_choice_local": "保留本機",
       "preview_choice_cloud": "使用雲端",
       "preview_choice_restore": "還原",
+      "preview_choice_exclude": "不加入",
       "preview_apply": "套用檢閱後的變更",
       "preview_cancel": "取消",
       "preview_stale_retry": "雲端已變更，請重新檢閱。",

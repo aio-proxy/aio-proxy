@@ -466,6 +466,7 @@
       "preview_choice_local": "Keep local",
       "preview_choice_cloud": "Use cloud",
       "preview_choice_restore": "Restore",
+      "preview_choice_exclude": "Don't join",
       "preview_apply": "Apply reviewed changes",
       "preview_cancel": "Cancel",
       "preview_stale_retry": "Cloud changed, review again.",

@@ -291,6 +291,15 @@ export function buildPreview(input: {
       })(),
     )
     .map((candidate) => {
+      // Connect may omit a row that joins nothing, and the dialog has to know which rows those are
+      // so it can leave them unselected. Deriving it client-side from `cloud` would miss a row
+      // whose only cloud state is a restorable revision, so publish the server's own rule here and
+      // let assertDecisions read it back instead of re-deriving it.
+      if (input.request.kind !== 'connect') return candidate;
+      if (candidate.cloud !== null || (candidate.restoreBody ?? null) !== null) return candidate;
+      return { ...candidate, row: { ...candidate.row, optional: true } };
+    })
+    .map((candidate) => {
       if (input.request.kind === 'purge') return candidate;
       if (!identityConflictKeys.has(`${candidate.row.kind}\0${candidate.row.logicalKey}`)) return candidate;
       // Only a Provider can be renamed out of an identity collision; other kinds have no rename

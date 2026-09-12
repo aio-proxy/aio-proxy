@@ -1222,6 +1222,91 @@ test('a failed replacement connect stops pinning preview-required', async () => 
   expect(control.status().state).not.toBe('preview-required');
 });
 
+test('a connect row that joins nothing is optional, and one carrying cloud state is not', async () => {
+  const remote = [
+    {
+      objectId: 'cloud-object',
+      logicalKey: 'shared',
+      kind: 'provider',
+      version: 'v1',
+      revision: 'op-1',
+      body: { kind: 'provider' as const, logicalKey: 'shared', value: { region: 'eu' }, dependencies: [] },
+    },
+  ];
+  const local = {
+    objectId: 'local-object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 2,
+    desired: providerBody({ plugin: '@example/oauth', capability: 'main' }),
+    baseline: 'old-backend-revision',
+    overrides: [],
+    pendingReason: null,
+  };
+  const published: (string | null)[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [local],
+    remoteEntities: async () => remote,
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async (candidate) => void published.push(candidate?.logicalKey ?? null),
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote,
+      refresh: async () => remote,
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const connect = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
+
+  const preview = await control.preview(connect);
+  // The dialog reads `optional` to decide which rows to leave unselected. Marking the carried
+  // local-only row as required would make it preselect `local` and republish the whole
+  // configuration to the new backend without the user ever choosing to.
+  expect(preview.rows.find((row) => row.objectId === 'local-object')?.optional).toBe(true);
+  expect(preview.rows.find((row) => row.objectId === 'cloud-object')?.optional).toBeUndefined();
+
+  // Omitting the cloud-bearing row is still rejected: reconciliation after the swap would import it
+  // unreviewed.
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'local-object', choice: 'local' }] }),
+  ).rejects.toMatchObject({ code: 'upgrade-required' });
+
+  const second = await control.preview(connect);
+  await control.apply({ previewId: second.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] });
+  expect(published).toEqual([]);
+});
+
 test('an abandoned connect preview disposes its candidate at expiry', async () => {
   let disposed = 0;
   let committed = false;

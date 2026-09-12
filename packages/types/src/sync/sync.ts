@@ -101,6 +101,11 @@ export const SyncPreviewRowSchema = z.strictObject({
   // Only set when two distinct objects claim the same Provider ID. A plain local/cloud conflict on
   // one object is resolvable under its existing ID, so the client must not demand a rename for it.
   requiresProviderId: z.boolean().optional(),
+  // Only set on a connect preview, for a row with nothing on the cloud side. Connect's default is
+  // that every object stays excluded until it is joined, so omitting such a row from the decisions
+  // is how that default is expressed — and the client must therefore not preselect a choice for
+  // it, or Apply would publish the whole carried configuration to the new backend unasked.
+  optional: z.boolean().optional(),
 });
 
 export const SyncPreviewSchema = z.strictObject({

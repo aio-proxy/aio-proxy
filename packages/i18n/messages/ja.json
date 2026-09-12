@@ -466,6 +466,7 @@
       "preview_choice_local": "ローカルを保持",
       "preview_choice_cloud": "クラウドを使用",
       "preview_choice_restore": "復元",
+      "preview_choice_exclude": "参加しない",
       "preview_apply": "確認した変更を適用",
       "preview_cancel": "キャンセル",
       "preview_stale_retry": "クラウドが変更されました。もう一度確認してください。",

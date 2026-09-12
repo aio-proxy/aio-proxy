@@ -320,3 +320,44 @@ test('retries a failed removal with the same empty override path set', async () 
     expect(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u })).not.toBeDisabled(),
   );
 });
+
+test('a connect preview leaves an optional row out of the decisions until the user opts in', () => {
+  mocks.applySync.mockReset();
+  const row = (objectId: string, logicalKey: string, extra: Partial<SyncPreview['rows'][number]>) => ({
+    objectId,
+    logicalKey,
+    kind: 'provider',
+    change: 'add' as const,
+    local: null,
+    cloud: null,
+    secretChange: 'none' as const,
+    dependencies: [],
+    choices: [] as SyncPreview['rows'][number]['choices'],
+    ...extra,
+  });
+  const connect: SyncPreview = {
+    previewId: 'preview-connect',
+    kind: 'connect',
+    expiresAt: Date.now() + 10_000,
+    retainedSharedPlugins: [],
+    rows: [
+      row('carried', 'work', { local: { name: 'work' }, choices: ['local'], optional: true }),
+      row('cloud-only', 'shared', { cloud: { name: 'shared' }, choices: ['cloud'] }),
+    ],
+  };
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={connect} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  // The carried row offers only `local`, so preselecting its first choice would republish every
+  // Provider, rule and secret to the candidate backend the moment Apply is pressed.
+  expect(screen.getByLabelText('work').textContent).toMatch(/Don't join|不加入|参加しない|참여 안 함/u);
+  fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
+
+  expect(mocks.applySync).toHaveBeenCalledWith(
+    { previewId: 'preview-connect', decisions: [{ objectId: 'cloud-only', choice: 'cloud' }] },
+    { onSuccess: expect.any(Function) },
+  );
+});

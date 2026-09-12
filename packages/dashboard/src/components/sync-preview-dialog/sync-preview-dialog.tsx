@@ -11,6 +11,7 @@ import {
 } from '@aio-proxy/ui/components/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
+import { omit } from 'es-toolkit/object';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
@@ -69,14 +70,22 @@ export interface SyncPreviewDialogProps {
   onPreviewOverrides?(objectId: string, paths: readonly string[][]): Promise<SyncPreview>;
 }
 
+// A connect row the server marked `optional` joins nothing, so omitting its decision is how the
+// user declines to carry it onto the new backend. The Select needs a value for that, and it must
+// not collide with a real choice.
+const EXCLUDE = 'exclude';
+
 const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
   decisions: Object.fromEntries(
-    (preview?.rows ?? []).map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
+    (preview?.rows ?? [])
+      .filter((row) => row.optional !== true)
+      .map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
   ),
   overrides: {},
 });
 
-const choiceLabel = (choice: SyncPreviewRow['choices'][number]): string => {
+const choiceLabel = (choice: SyncPreviewRow['choices'][number] | typeof EXCLUDE): string => {
+  if (choice === EXCLUDE) return m['dashboard.sync.preview_choice_exclude']();
   if (choice === 'cloud') return m['dashboard.sync.preview_choice_cloud']();
   if (choice === 'restore') return m['dashboard.sync.preview_choice_restore']();
   return m['dashboard.sync.preview_choice_local']();
@@ -243,9 +252,12 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
     if (preview === null || submitDisabled) return;
     const values = form.state.values;
     const parsed = previewFormSchema.safeParse(values);
+    // An excluded connect row is not being carried anywhere, so it has no identity to collide with
+    // and demanding a new Provider ID for it would leave Apply blocked with no way to satisfy it.
     const requiredRename = rows.find(
       (row) =>
         row.requiresProviderId === true &&
+        values.decisions[row.objectId] !== undefined &&
         !providerIdSchema.safeParse(values.decisions[row.objectId]?.newProviderId).success,
     );
     if (!parsed.success || requiredRename !== undefined) {
@@ -310,12 +322,20 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                   </div>
                   <form.Field name="decisions">
                     {(field) => {
-                      const current = field.state.value[row.objectId]?.choice ?? row.choices[0] ?? 'local';
+                      const current =
+                        field.state.value[row.objectId]?.choice ??
+                        (row.optional === true ? EXCLUDE : (row.choices[0] ?? 'local'));
                       return (
                         <Select
                           value={current}
                           onValueChange={(value) => {
-                            if (value === null || !options.has(value as SyncPreviewRow['choices'][number])) return;
+                            if (value === null) return;
+                            if (value === EXCLUDE) {
+                              if (row.optional !== true) return;
+                              field.handleChange(omit(field.state.value, [row.objectId]));
+                              return;
+                            }
+                            if (!options.has(value as SyncPreviewRow['choices'][number])) return;
                             field.handleChange({
                               ...field.state.value,
                               [row.objectId]: {
@@ -330,6 +350,9 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                             <SelectValue>{choiceLabel(current)}</SelectValue>
                           </SelectTrigger>
                           <SelectContent>
+                            {row.optional === true ? (
+                              <SelectItem value={EXCLUDE}>{choiceLabel(EXCLUDE)}</SelectItem>
+                            ) : null}
                             {row.choices.map((choice) => (
                               <SelectItem key={choice} value={choice}>
                                 {choiceLabel(choice)}

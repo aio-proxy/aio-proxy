@@ -466,6 +466,7 @@
       "preview_choice_local": "保留本地",
       "preview_choice_cloud": "使用云端",
       "preview_choice_restore": "恢复",
+      "preview_choice_exclude": "不加入",
       "preview_apply": "应用审核后的变更",
       "preview_cancel": "取消",
       "preview_stale_retry": "云端已变化，请重新审核。",
