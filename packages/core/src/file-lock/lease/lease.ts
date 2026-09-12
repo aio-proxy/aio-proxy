@@ -3,6 +3,8 @@ import { constants, type Stats } from 'node:fs';
 import { mkdir, open, lstat, unlink } from 'node:fs/promises';
 import { dirname, join, parse, resolve } from 'node:path';
 
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import { clearAbandonedOwner, reclaimAbandonedOwner, rememberAbandonedOwner } from '../abandoned-owner';
 import { abortableDelay } from '../delay';
 import { isNodeError } from '../fs';
@@ -32,8 +34,9 @@ export type ProcessFileLock = {
 
 const parseRecord = (text: string): LockRecord | undefined => {
   try {
-    const value = JSON.parse(text) as Record<string, unknown>;
+    const value: unknown = JSON.parse(text);
     if (
+      !isPlainObject(value) ||
       typeof value['pid'] !== 'number' ||
       !Number.isSafeInteger(value['pid']) ||
       typeof value['owner'] !== 'string' ||
