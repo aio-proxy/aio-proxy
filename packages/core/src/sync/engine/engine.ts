@@ -103,10 +103,15 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     for (const operation of input.repo.outbox(input.binding.id)) {
       signal.throwIfAborted();
       assertGeneration(generation);
+      const head = await store.readHead(operation.objectId, signal);
+      assertGeneration(generation);
+      // A newer epoch means another device deleted and restored this object while the operation sat
+      // in the outbox. Publishing or deleting against the stale epoch can only throw
+      // `epoch-mismatch`, and a failed entry is never acknowledged, so it would block every later
+      // pass forever. The restore replaced what this operation was editing, so it is obsolete.
+      const superseded = head !== null && head.head.epoch > operation.epoch;
       if (operation.kind === 'put' && operation.body !== null) {
-        const head = await store.readHead(operation.objectId, signal);
-        assertGeneration(generation);
-        if (head !== null && head.head.state !== 'active') {
+        if (superseded || (head !== null && head.head.state !== 'active')) {
           // A tombstone exists to defeat stale edits: another device deleted this object while the
           // put was queued. Resurrecting it here would bypass the review a restore requires, so the
           // stale write is dropped and remote reconciliation applies the deletion locally. The
@@ -116,9 +121,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         }
         await publishEntity(store, operation, signal);
       } else {
-        const head = await store.readHead(operation.objectId, signal);
-        assertGeneration(generation);
-        if (head === null || head.head.state === 'deleted' || head.head.state === 'purged') {
+        if (superseded || head === null || head.head.state === 'deleted' || head.head.state === 'purged') {
           input.repo.acknowledge(input.binding.id, operation.operationId);
           continue;
         }

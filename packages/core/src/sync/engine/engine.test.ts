@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { deleteEntity } from '../cleanup';
+import { deleteEntity, restoreEntity } from '../cleanup';
 import { encode, newHead, entityKey, revisionKey, type EntityBody } from '../protocol';
 import { createSyncObjectStore, publishEntity } from '../publication';
 import { withTwoSyncDevices } from '../test-support';
@@ -663,4 +663,31 @@ test('backoff remains bounded', () => {
   for (let index = 0; index < 20; index++) delay = nextBackoffMs(delay, 5);
   expect(delay).toBeLessThanOrEqual(MAX_BACKOFF_MS);
   expect(delay).toBeGreaterThanOrEqual(5);
+});
+
+// A stale operation that can only throw is never acknowledged, so it would wedge the outbox and
+// block every later pass — the drain has to recognize that the restore replaced what it was editing.
+test('a queued operation superseded by a remote restore is dropped instead of wedging the outbox', async () => {
+  await withTwoSyncDevices(async ({ a }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+    const store = createSyncObjectStore(a.session);
+    const body: EntityBody = {
+      kind: 'provider',
+      logicalKey: 'work',
+      value: { kind: 'api', apiKey: 'restored' },
+      dependencies: [],
+    };
+    await deleteEntity(store, 'provider-work', 0, a.signal);
+    await restoreEntity(store, 'provider-work', body, 'remote-restore', a.signal);
+    expect((await store.readHead('provider-work', a.signal))?.head.epoch).toBe(1);
+
+    a.queueDelete('provider-work', 0);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'stale' }, true);
+    await a.engine.reconcile(a.signal);
+
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    const head = await store.readHead('provider-work', a.signal);
+    expect(head?.head).toMatchObject({ epoch: 1, state: 'active' });
+  });
 });
