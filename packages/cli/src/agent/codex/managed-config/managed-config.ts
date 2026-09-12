@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import {
   codexProviderEdits,
   editCodexDocument,
@@ -83,6 +85,8 @@ const ownedPaths = (providerId: string): readonly (readonly string[])[] => [
   ...providerFields.map((field) => providerPath(providerId, field)),
 ];
 
+const asTable = (value: unknown): Record<string, unknown> | undefined => (isPlainObject(value) ? value : undefined);
+
 const markerFields = (marker: CodexMarker): readonly string[][] => marker.fields.map((field) => [...field.path]);
 
 const readText = async (location: CodexLocation) => readRegularFile(location.configPath);
@@ -91,13 +95,8 @@ const applyEditsSequentially = (text: string, edits: readonly FieldEdit[]): stri
   edits.reduce((current, edit) => editCodexDocument(current, [edit]), text);
 
 function providerObject(text: string, providerId: string): Record<string, unknown> | undefined {
-  const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
-  const providers = parsed['model_providers'];
-  if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
-  const provider = (providers as Record<string, unknown>)[providerId];
-  return provider && typeof provider === 'object' && !Array.isArray(provider)
-    ? (provider as Record<string, unknown>)
-    : undefined;
+  const providers = asTable(asTable(Bun.TOML.parse(text))?.['model_providers']);
+  return providers === undefined ? undefined : asTable(providers[providerId]);
 }
 
 function removeCreatedProvider(text: string, marker: CodexMarker): string {
@@ -114,17 +113,9 @@ function removeCreatedTables(text: string, marker: CodexMarker): string {
       result = removeCreatedProvider(result, marker);
       continue;
     }
-    const parsed = Bun.TOML.parse(result) as Record<string, unknown>;
-    const provider = parsed['model_providers'];
-    const providerValue =
-      provider && typeof provider === 'object' && !Array.isArray(provider)
-        ? (provider as Record<string, unknown>)[marker.providerId]
-        : undefined;
-    const auth =
-      providerValue && typeof providerValue === 'object' && !Array.isArray(providerValue)
-        ? (providerValue as Record<string, unknown>)['auth']
-        : undefined;
-    if (auth && typeof auth === 'object' && !Array.isArray(auth) && Object.keys(auth).length === 0)
+    const providerValue = asTable(asTable(Bun.TOML.parse(result))?.['model_providers'])?.[marker.providerId];
+    const auth = asTable(asTable(providerValue)?.['auth']);
+    if (auth !== undefined && Object.keys(auth).length === 0)
       result = editCodexDocument(result, [{ path, next: { present: false } }]);
   }
   return result;
@@ -192,15 +183,14 @@ function findAuthenticationConflict(
   allowManagedCommandFields = false,
 ): string | undefined {
   try {
-    const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
-    const providers = parsed['model_providers'];
-    if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
-    const provider = (providers as Record<string, unknown>)[providerId];
-    if (!provider || typeof provider !== 'object' || Array.isArray(provider)) return undefined;
-    for (const [key, value] of Object.entries(provider as Record<string, unknown>)) {
+    const provider = asTable(asTable(Bun.TOML.parse(text))?.['model_providers'])?.[providerId];
+    const table = asTable(provider);
+    if (table === undefined) return undefined;
+    for (const [key, value] of Object.entries(table)) {
       if (key === 'auth') {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return `model_providers.${providerId}.auth`;
-        for (const authKey of Object.keys(value as Record<string, unknown>)) {
+        const auth = asTable(value);
+        if (auth === undefined) return `model_providers.${providerId}.auth`;
+        for (const authKey of Object.keys(auth)) {
           if (!allowManagedCommandFields || !commandFields.includes(authKey as (typeof commandFields)[number]))
             return `model_providers.${providerId}.auth.${authKey}`;
         }
