@@ -247,6 +247,41 @@ test('a conflict outside a restore preview does not offer the restore choice', (
   expect(built.preview.rows[0]).toMatchObject({ change: 'conflict', choices: ['local', 'cloud'] });
 });
 
+test.each([[['headers']], [['headers', 'Authorization']], [['options', 'authorization']]])(
+  'an override on a credential-bearing header path is rejected: %p',
+  (path) => {
+    const request = () =>
+      buildPreview({
+        request: { kind: 'overrides', objectId: 'object', paths: [path] },
+        local: [
+          {
+            objectId: 'object',
+            logicalKey: 'work',
+            kind: 'provider',
+            mode: 'included',
+            epoch: 0,
+            desired: {
+              kind: 'provider',
+              logicalKey: 'work',
+              value: { baseURL: 'https://trusted.example/v1', headers: { Authorization: 'Bearer local' } },
+              dependencies: [],
+            },
+            baseline: 'revision',
+            overrides: [],
+            pendingReason: null,
+          },
+        ],
+        remote: [],
+        fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+        previewId: 'preview-header-override',
+        expiresAt: 1,
+      });
+    // Keeping the bearer local while the cloud still owns `baseURL` hands whoever can write the
+    // space a way to redirect it. Credential-bearing paths are published or not shared at all.
+    expect(request).toThrow('invalid-request');
+  },
+);
+
 test('an override on a local-only object pins the authored value rather than the empty published one', () => {
   const authored = {
     plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],

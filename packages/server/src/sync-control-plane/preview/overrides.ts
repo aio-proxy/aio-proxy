@@ -4,8 +4,15 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { SyncPreviewError } from './errors';
 
+/**
+ * `headers`, `authorization` and `cookie` are listed for the reason the preview redactor already
+ * gives: any header name can carry a credential. Pinning one locally while the cloud still owns
+ * `baseURL` would let whoever can write the space point the device's own bearer token at an origin
+ * of their choosing — the credential the user deliberately kept off the backend is exactly the one
+ * they do not have. Credential-bearing paths are published or not shared at all, never half-local.
+ */
 const FORBIDDEN_OVERRIDE =
-  /^(?:proxy|credentials?|apiKey|password|backend|connection|account|secret|secrets|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
+  /^(?:proxy|credentials?|apiKey|headers?|authorization|cookie|password|backend|connection|account|secret|secrets|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
 
 const FORBIDDEN_PROVIDER_REFERENCE = new Set([
   'providerid',
