@@ -16,6 +16,7 @@ import {
 import { openDb } from '@aio-proxy/core/db';
 
 import { createFifoQueue } from '../../fifo-queue';
+import { assertNoRetainedOAuth } from '../operations';
 import { createLocalSyncPort } from './local-port';
 
 const body: EntityBody = {
@@ -825,6 +826,77 @@ test('a remote model rule keeps the routes this device holds to locally excluded
     // Deleting the shared rule must not take the machine-local route with it.
     await port.applyRemote('model-object', null, 'remote-3');
     expect(routes()).toEqual({ providers: { home: { weight: 2 } } });
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// Deleting the Provider deletes the account the ownership names, so a tombstone that kept it would
+// pin `detach-required` on every disconnect and backend switch — and detaching needs the account
+// that is already gone.
+test('a remotely deleted shared OAuth Provider leaves no ownership blocking disconnect', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-oauth-delete-'));
+  const configPath = join(directory, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: body.value } }, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  let deleted: string | undefined;
+  const accounts = {
+    readPluginSecret: () => null,
+    readAccount: () => null,
+    listPendingAccountOperations: () => [],
+    deleteAccount: (providerId: string) => {
+      deleted = providerId;
+    },
+  } as unknown as PluginRepository;
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  repo.putEntity(binding.id, {
+    objectId: 'object',
+    logicalKey: 'work',
+    kind: 'provider',
+    mode: 'included',
+    epoch: 0,
+    desired: body,
+    baseline: 'remote-1',
+    overrides: [],
+    pendingReason: null,
+    oauth: { mode: 'shared', epoch: 0, generation: 2, localRevision: 1, pluginVersion: '1.0.0', formatVersion: 1 },
+  });
+  const file = new AtomicConfigFile(configPath);
+  const port = createLocalSyncPort({
+    configPath,
+    configFile: file,
+    repo,
+    accounts,
+    bindingId: binding.id,
+    bindingGeneration: binding.sessionGeneration,
+    enqueue: createFifoQueue(),
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    applyCandidate: async (candidate) => file.replace(() => candidate),
+  });
+
+  try {
+    expect((await port.applyRemote('object', null, 'remote-2')).applied).toBe(true);
+    expect(deleted).toBe('work');
+    expect(repo.entities(binding.id)[0]?.oauth).toBeUndefined();
+    expect(() => assertNoRetainedOAuth(repo, binding.id)).not.toThrow();
   } finally {
     database.close();
     rmSync(directory, { recursive: true, force: true });

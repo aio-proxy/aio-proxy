@@ -320,9 +320,11 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           return { applied: false, pending: 'invalid-config' as const };
         }
         assertCurrent();
-        if (body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider') {
-          input.accounts.deleteAccount(currentEntity.logicalKey);
-        }
+        const tombstoned =
+          body === null && currentEntity?.mode === 'included' && currentEntity.kind === 'provider'
+            ? currentEntity
+            : undefined;
+        if (tombstoned !== undefined) input.accounts.deleteAccount(tombstoned.logicalKey);
         const nextEntity = {
           objectId,
           logicalKey:
@@ -334,7 +336,10 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           baseline: null,
           overrides: currentEntities.find((entity) => entity.objectId === objectId)?.overrides ?? [],
           pendingReason: null,
-          ...(currentEntity?.oauth === undefined ? {} : { oauth: currentEntity.oauth }),
+          // The account this ownership names was just deleted, so carrying it onto the tombstone
+          // would pin `detach-required` on a row that can never detach — and sharing would keep
+          // seeing the stale ownership if the Provider is restored.
+          ...(currentEntity?.oauth === undefined || tombstoned !== undefined ? {} : { oauth: currentEntity.oauth }),
         };
         input.repo.putEntity(input.bindingId, nextEntity);
         await confirmLocalCommit(input.repo, input.bindingId, remoteCommitId, {
