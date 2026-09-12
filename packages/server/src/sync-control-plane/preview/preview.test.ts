@@ -66,6 +66,17 @@ test('overrides reject credential-shaped path segments the preview would redact'
   });
 });
 
+test('overrides refuse prototype-control segments instead of writing through Object.prototype', () => {
+  // JSON.parse is how an authored body reaches here, and it makes `__proto__` an own member: the
+  // path resolves against the local side, while the cloud side — which has no such member — resolves
+  // the inherited `Object.prototype` and takes the pinned leaf process-wide.
+  const local = providerBody(JSON.parse('{"__proto__":{"polluted":"yes"},"options":{}}') as Record<string, JsonValue>);
+  const cloud = providerBody({ options: {} });
+  for (const segment of ['__proto__', 'constructor', 'prototype'])
+    expect(() => applyOverrides(local, cloud, [[segment, 'polluted']])).toThrow();
+  expect('polluted' in {}).toBe(false);
+});
+
 test('purge previews include transitive cloud dependents and omit local-only rows', () => {
   const body = (kind: 'plugin-business', logicalKey: string, dependencies: string[] = []) => ({
     kind,
@@ -1101,6 +1112,91 @@ test('renaming a collision known only to the cloud republishes it and deletes th
   expect(published.every((call) => call.objectId !== 'provider-a')).toBe(true);
   // The local row binds to the object the cloud now holds the renamed configuration under.
   expect(imported).toEqual(['provider-a', renamed!.objectId]);
+});
+
+test('an identity collision offers each colliding object only the side it actually has', async () => {
+  const local = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  const published: (string | null)[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [local],
+      putEntity: () => {},
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [local],
+    // This device never published its `work` Provider and another device published a different
+    // object claiming that Provider ID, so neither colliding row exists on both sides.
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        epoch: 2,
+        version: 'v1',
+        revision: 'cloud-revision',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    // What the real remote half does: a publication needs a head to write through, so selecting the
+    // absent side of a one-sided row would fail as `operation-pending` instead of resolving anything.
+    applyCloud: async (body, current) => {
+      if (current === undefined) throw new SyncOperationError('operation-pending');
+      published.push(body?.logicalKey ?? null);
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  const rows = new Map(preview.rows.map((row) => [row.objectId, row]));
+  expect(rows.get('provider-local')).toMatchObject({ change: 'conflict', choices: ['local'] });
+  expect(rows.get('provider-cloud')).toMatchObject({ change: 'conflict', choices: ['cloud'] });
+  // The dialog defaults every row to its first choice, so the first choice has to be applicable.
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: row.choices[0]!,
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
+    })),
+  });
+  // Only the local object moved aside; the cloud-only row keeps the contested ID and is imported.
+  expect(published).toEqual(['work-renamed']);
 });
 
 test('manual cloud apply records the current revision operation ID instead of its storage version', async () => {

@@ -18,6 +18,15 @@ import { SECRET_KEY } from './redact';
 const FORBIDDEN_OVERRIDE =
   /^(?:proxy|headers?|authorization|cookie|backend|connection|account|plugin|capability|packageName|package|version|objectId|logicalKey|kind|epoch|dependencies|dependency|identity|provider|providerId|accountId)$/iu;
 
+/**
+ * Prototype-control keys are refused before anything is traversed. Reading one off a cloud body that
+ * has no own member of that name resolves the inherited `Object.prototype`, and the pinned leaf is
+ * then assigned onto it — polluting every object in the process instead of producing an own JSON
+ * property. Even as a path's last segment, plain assignment to `__proto__` reaches the legacy setter
+ * and swaps the result's prototype, so the pinned value silently vanishes from the published body.
+ */
+const PROTOTYPE_SEGMENT = /^(?:__proto__|constructor|prototype)$/iu;
+
 const FORBIDDEN_PROVIDER_REFERENCE = new Set([
   'providerid',
   'providerref',
@@ -34,6 +43,7 @@ const FORBIDDEN_PROVIDER_REFERENCE = new Set([
 function forbiddenOverrideSegment(segment: string): boolean {
   return (
     SECRET_KEY.test(segment) ||
+    PROTOTYPE_SEGMENT.test(segment) ||
     FORBIDDEN_OVERRIDE.test(segment) ||
     FORBIDDEN_PROVIDER_REFERENCE.has(segment.replaceAll(/[^a-z0-9]/giu, '').toLowerCase())
   );

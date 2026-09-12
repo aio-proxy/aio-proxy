@@ -56,6 +56,13 @@ function remoteDependencies(entity: RemoteEntity | undefined): readonly { readon
   return entity?.body?.dependencies ?? entity?.restoreBody?.dependencies ?? [];
 }
 
+// Selecting a side that carries no body is not a choice, it is a deletion: publishing a null body
+// deletes a head the cloud may never have had, and importing one drops the local row. So a choice is
+// only offered for a side that actually exists.
+function sidedChoices(local: EntityBody | null, cloud: EntityBody | null): SyncPreviewRow['choices'] {
+  return local === null ? ['cloud'] : cloud === null ? ['local'] : ['local', 'cloud'];
+}
+
 function rowFor(
   local: EntityBody | null,
   cloud: EntityBody | null,
@@ -77,18 +84,9 @@ function rowFor(
         : equal(local, cloud)
           ? 'update'
           : 'conflict';
-  const choices: SyncPreviewRow['choices'] =
-    change === 'delete'
-      ? ['restore']
-      : // A conflict has a live head on both sides, so this preview resolved no past revision for
-        // `restore` to publish. Offering it anyway would just republish the cloud body.
-        change === 'conflict'
-        ? ['local', 'cloud']
-        : local === null
-          ? ['cloud']
-          : cloud === null
-            ? ['local']
-            : ['local', 'cloud'];
+  // Only a tombstone resolved a past revision for `restore` to publish. Every other row compares two
+  // live heads, so `restore` there would just republish the cloud body.
+  const choices: SyncPreviewRow['choices'] = change === 'delete' ? ['restore'] : sidedChoices(local, cloud);
   return {
     local,
     cloud,
@@ -322,7 +320,10 @@ export function buildPreview(input: {
         row: {
           ...candidate.row,
           change: 'conflict' as const,
-          choices: ['local', 'cloud'] as SyncPreviewRow['choices'],
+          // A collision is reported as a conflict even when one of its objects lives on a single
+          // side. That row still has only one real body, so the missing side stays off the list:
+          // choosing it would publish or import a null and delete a head the rename needs.
+          choices: sidedChoices(candidate.local, candidate.cloud),
           ...(renameable ? { requiresProviderId: true } : {}),
         },
       };
@@ -330,12 +331,14 @@ export function buildPreview(input: {
     .map((candidate) =>
       // A restore preview resolves one past revision and reports it as the cloud side, so a
       // conflicting row there really can be rolled back. Every other preview compares two live
-      // heads and resolved no past revision, so it has nothing for `restore` to publish.
+      // heads and resolved no past revision, so it has nothing for `restore` to publish. Restore is
+      // added to the row's own choices rather than replacing them: a collision row forced to
+      // `conflict` still exists on one side only.
       input.request.kind !== 'restore' || candidate.row.change !== 'conflict'
         ? candidate
         : {
             ...candidate,
-            row: { ...candidate.row, choices: ['local', 'cloud', 'restore'] as SyncPreviewRow['choices'] },
+            row: { ...candidate.row, choices: [...candidate.row.choices, 'restore'] as SyncPreviewRow['choices'] },
           },
     );
   const retainedSharedPlugins =
