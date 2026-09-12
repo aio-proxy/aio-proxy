@@ -10,6 +10,7 @@ import {
   encodeCandidate,
   recoverLocalCommits,
   type EntityBody,
+  type JsonValue,
   type PluginRepository,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
@@ -702,4 +703,114 @@ test('a routing-defaults body writes model context aggregation under router, not
   expect((raw['router'] as Record<string, unknown>)['modelContextAggregation']).toEqual({ enabled: true });
   expect((raw['server'] as Record<string, unknown>)['retry']).toEqual({ attempts: 3 });
   expect(Object.hasOwn(raw['server'] as Record<string, unknown>, 'modelContextAggregation')).toBe(false);
+});
+
+// A published model rule carries only included Providers. Installing it verbatim used to delete the
+// route this device keeps to a Provider it excluded, and `projectCommitted` re-derives the local
+// remainder from the result, so the route never came back.
+test('a remote model rule keeps the routes this device holds to locally excluded Providers', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-model-'));
+  const configPath = join(directory, 'config.jsonc');
+  const config = {
+    providers: { shared: { kind: 'api' }, home: { kind: 'api' } },
+    router: { models: { 'gpt-5': { providers: { shared: { weight: 1 }, home: { weight: 2 } } } } },
+  };
+  writeFileSync(configPath, encodeCandidate(config, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  const rule: EntityBody = {
+    kind: 'model-rule',
+    logicalKey: 'gpt-5',
+    value: { providers: { shared: { weight: 1 } } },
+    dependencies: [],
+  };
+  repo.putEntities(binding.id, [
+    {
+      objectId: 'provider-shared',
+      logicalKey: 'shared',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: { kind: 'provider', logicalKey: 'shared', value: config.providers.shared, dependencies: [] },
+      baseline: 'remote-1',
+      overrides: [],
+      pendingReason: null,
+    },
+    {
+      objectId: 'provider-home',
+      logicalKey: 'home',
+      kind: 'provider',
+      mode: 'excluded',
+      epoch: 0,
+      desired: null,
+      baseline: null,
+      overrides: [],
+      pendingReason: null,
+    },
+    {
+      objectId: 'model-object',
+      logicalKey: 'gpt-5',
+      kind: 'model-rule',
+      mode: 'included',
+      epoch: 0,
+      desired: rule,
+      baseline: 'remote-1',
+      overrides: [],
+      pendingReason: null,
+    },
+  ]);
+  const file = new AtomicConfigFile(configPath);
+  const candidates: Record<string, JsonValue>[] = [];
+  const port = createLocalSyncPort({
+    configPath,
+    configFile: file,
+    repo,
+    accounts: {
+      readPluginSecret: () => null,
+      readAccount: () => null,
+      listPendingAccountOperations: () => [],
+    } as unknown as PluginRepository,
+    bindingId: binding.id,
+    bindingGeneration: binding.sessionGeneration,
+    enqueue: createFifoQueue(),
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    applyCandidate: async (candidate) => {
+      candidates.push(candidate);
+      await file.replace(() => candidate);
+    },
+  });
+
+  const routes = () => {
+    const last = candidates.at(-1) as { router: { models: Record<string, unknown> } };
+    return last.router.models['gpt-5'];
+  };
+
+  try {
+    await port.applyRemote('model-object', { ...rule, value: { providers: { shared: { weight: 9 } } } }, 'remote-2');
+    expect(routes()).toEqual({ providers: { shared: { weight: 9 }, home: { weight: 2 } } });
+
+    // Deleting the shared rule must not take the machine-local route with it.
+    await port.applyRemote('model-object', null, 'remote-3');
+    expect(routes()).toEqual({ providers: { home: { weight: 2 } } });
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

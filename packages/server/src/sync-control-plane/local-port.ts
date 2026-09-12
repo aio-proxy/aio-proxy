@@ -82,7 +82,31 @@ function replaceKeys(
   return target;
 }
 
-function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Record<string, JsonValue> {
+/**
+ * A published model rule carries only the Providers the other device included, so installing or
+ * deleting one verbatim would drop this device's routes to Providers it kept local. `projectCommitted`
+ * re-derives the local remainder from the result, so a route lost here is lost for good. Returns
+ * `undefined` when the rule holds nothing local and the shared portion is gone.
+ */
+function mergeLocalRoutes(
+  previous: JsonValue | undefined,
+  shared: JsonValue | undefined,
+  entities: ReturnType<SyncRepository['entities']>,
+): JsonValue | undefined {
+  const included = new Set(
+    entities.filter((entity) => entity.kind === 'provider' && entity.mode === 'included').map((e) => e.logicalKey),
+  );
+  const local = Object.entries(record(record(previous)['providers'])).filter(([id]) => !included.has(id));
+  if (local.length === 0) return shared;
+  const base = record(shared);
+  return { ...base, providers: { ...record(base['providers']), ...Object.fromEntries(local) } };
+}
+
+function applyBody(
+  raw: Record<string, JsonValue>,
+  body: EntityBody | null,
+  entities: ReturnType<SyncRepository['entities']>,
+): Record<string, JsonValue> {
   const next = copyRaw(raw);
   if (body === null) return next;
   switch (body.kind) {
@@ -100,7 +124,9 @@ function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Rec
     }
     case 'model-rule': {
       const router = record(next['router']);
-      router['models'] = { ...record(router['models']), [body.logicalKey]: body.value };
+      const models = record(router['models']);
+      models[body.logicalKey] = mergeLocalRoutes(models[body.logicalKey], body.value, entities) ?? body.value;
+      router['models'] = models;
       next['router'] = router;
       break;
     }
@@ -135,6 +161,7 @@ function applyBody(raw: Record<string, JsonValue>, body: EntityBody | null): Rec
 function removeBody(
   raw: Record<string, JsonValue>,
   entity: ReturnType<SyncRepository['entities']>[number],
+  entities: ReturnType<SyncRepository['entities']>,
 ): Record<string, JsonValue> {
   const next = copyRaw(raw);
   switch (entity.kind) {
@@ -147,7 +174,9 @@ function removeBody(
     case 'model-rule': {
       const router = record(next['router']);
       const models = record(router['models']);
-      delete models[entity.logicalKey];
+      const kept = mergeLocalRoutes(models[entity.logicalKey], undefined, entities);
+      if (kept === undefined) delete models[entity.logicalKey];
+      else models[entity.logicalKey] = kept;
       router['models'] = models;
       next['router'] = router;
       break;
@@ -295,7 +324,9 @@ function prepareNewRemoteState(
   const secretChange = pluginSecretChange(body, currentEntity);
   const previousSecret = secretChange === undefined ? null : input.accounts.readPluginSecret(secretChange.plugin);
   const shared =
-    body === null && currentEntity?.mode === 'included' ? removeBody(current, currentEntity) : applyBody(current, body);
+    body === null && currentEntity?.mode === 'included'
+      ? removeBody(current, currentEntity, currentEntities)
+      : applyBody(current, body, currentEntities);
   const projection = projectCommitted(source(input, shared), currentEntities);
   const candidate = overlayLocal(shared, projection.local, currentEntities);
   const afterDigest = digest(candidate, input.configPath);
