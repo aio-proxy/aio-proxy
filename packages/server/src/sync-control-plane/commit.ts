@@ -6,6 +6,7 @@ import {
   prepareLocalCommit,
   type JsonValue,
   type LocalCommitPort,
+  type PluginSecretCommit,
   type SyncRepository,
 } from '@aio-proxy/core';
 
@@ -15,6 +16,7 @@ export type SyncCommitHooks = {
     candidate: Record<string, unknown>,
     accountOperationIds?: readonly string[],
     origin?: 'local' | 'remote',
+    pluginSecrets?: readonly PluginSecretCommit[],
   ) => string;
   readonly confirm: (commitId: string) => Promise<void>;
   /** Confirm from a caller that already holds the local commit fence. */
@@ -32,7 +34,7 @@ export function createSyncCommitHooks(input: {
       .update(encodeCandidate(raw as Record<string, JsonValue>, input.path))
       .digest('hex');
   return {
-    prepare(before, candidate, accountOperationIds = [], origin = 'local') {
+    prepare(before, candidate, accountOperationIds = [], origin = 'local', pluginSecrets) {
       const commitId = crypto.randomUUID();
       prepareLocalCommit(input.repo, input.bindingId, {
         commitId,
@@ -41,6 +43,9 @@ export function createSyncCommitHooks(input: {
         afterDigest: digest(candidate),
         rawAfter: candidate as Record<string, JsonValue>,
         accountOperationIds: [...accountOperationIds],
+        // A secret lives outside the configuration file: without this the commit reads as a no-op
+        // and no device ever learns the new credential.
+        ...(pluginSecrets === undefined || pluginSecrets.length === 0 ? {} : { pluginSecrets: [...pluginSecrets] }),
       });
       return commitId;
     },

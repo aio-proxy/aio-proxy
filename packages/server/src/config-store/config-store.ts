@@ -5,7 +5,7 @@ import {
   type PendingAccountOperation,
   type PluginRepository,
 } from '@aio-proxy/core';
-import type { LocalCommitPort, SyncRepository } from '@aio-proxy/core';
+import type { LocalCommitPort, PluginSecretCommit, SyncRepository } from '@aio-proxy/core';
 
 import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from '../account-removal';
 import type { FifoQueue } from '../fifo-queue';
@@ -46,6 +46,8 @@ export type ConfigStore = {
   readonly deleteProvider: (providerId: string) => Promise<void>;
   readonly mutateConfig: (
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    /** Plugin secrets the mutation wrote, read after `fn` so the caller can report what it applied. */
+    pluginSecrets?: () => readonly PluginSecretCommit[] | undefined,
   ) => Promise<void>;
   readonly mutateConfigWithProviderMutation: <T>(
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
@@ -160,6 +162,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
 
   async function mutateConfigNow(
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    pluginSecrets?: () => readonly PluginSecretCommit[] | undefined,
   ): Promise<string | undefined> {
     if (file === undefined) throw new ConfigPathMissingError();
     let before: Record<string, unknown> | undefined;
@@ -173,7 +176,8 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
         verify: async (candidate) => void (await verifyCandidate(candidate)),
         beforeCommit: async (candidate) => {
-          if (syncCapture !== undefined && before !== undefined) commitId = syncCapture.prepare(before, candidate);
+          if (syncCapture !== undefined && before !== undefined)
+            commitId = syncCapture.prepare(before, candidate, [], 'local', pluginSecrets?.());
         },
       },
     );
@@ -221,9 +225,9 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         await confirmWithinFence(commitId);
       }),
     file,
-    mutateConfig: (fn) =>
+    mutateConfig: (fn, pluginSecrets) =>
       enqueue(async () => {
-        await confirmWithinFence(await mutateConfigNow(fn));
+        await confirmWithinFence(await mutateConfigNow(fn, pluginSecrets));
       }),
     mutateConfigWithProviderMutation: (fn, beforeOperation, operation) =>
       enqueue(async () => {

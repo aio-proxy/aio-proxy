@@ -58,6 +58,7 @@ export type SyncCommitFixture = {
     readonly setFence: (fence: LocalCommitPort['withFence']) => void;
     readonly setAccountOperationsSettled: (settled: boolean) => void;
     readonly setSourceRevisions: (revisions: Readonly<Record<string, number>> | undefined) => void;
+    readonly setPluginSecret: (plugin: string, value: unknown) => void;
     readonly reopen: () => SyncRepository;
   };
 };
@@ -105,6 +106,8 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
     let fence: LocalCommitPort['withFence'] = async <T>(action: () => Promise<T>) => action();
     let accountOperationsSettled = true;
     let sourceRevisions: Readonly<Record<string, number>> | undefined;
+    const pluginSecrets = new Map<string, unknown>();
+    const pluginVersions = new Map<string, string>();
     const control = {
       fenceCalls: () => fenceCalls,
       setFence(next: LocalCommitPort['withFence']) {
@@ -115,6 +118,10 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
       },
       setSourceRevisions(revisions: Readonly<Record<string, number>> | undefined) {
         sourceRevisions = revisions;
+      },
+      setPluginSecret(plugin: string, value: unknown) {
+        pluginSecrets.set(plugin, value);
+        pluginVersions.set(plugin, '1.0.0');
       },
       reopen() {
         db.close();
@@ -146,8 +153,8 @@ export async function withSyncCommitFixture(run: (fixture: SyncCommitFixture) =>
         return {
           raw: (await file.read()) as Record<string, JsonValue>,
           accounts: new Map(),
-          pluginSecrets: new Map(),
-          pluginVersions: new Map(),
+          pluginSecrets,
+          pluginVersions,
           ...(sourceRevisions === undefined ? {} : { sourceRevisions }),
         };
       },

@@ -3,9 +3,11 @@ import {
   ConfigSpecValidationError,
   type DiagnosticFactory,
   type PluginRepository,
+  type PluginSecretCommit,
   PluginSetupInvalidError,
   stagePluginDescriptor,
 } from '@aio-proxy/core';
+import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { DashboardPluginOptionsMutation } from '@aio-proxy/types';
 
 import { ConfigReloadRejectedError, type ConfigStore } from '../config-store';
@@ -57,23 +59,34 @@ export async function updatePluginOptions(
       }
 
       let appliedRevision: number | null = null;
+      let secretCommit: PluginSecretCommit | undefined;
       try {
-        await options.configStore.mutateConfig(async (current) => {
-          await assertOwnership();
-          const entry = findPluginEntry(current, mutation.packageName)?.entry;
-          const latestSecret = options.repository.readPluginSecret(mutation.packageName);
-          if (revisionOf(entry, latestSecret?.revision ?? null) !== mutation.revision) {
-            throw new PluginControlPlaneError('stale_revision', 409);
-          }
-          if (!sameValue(latestSecret?.value ?? {}, candidate.secrets)) {
-            appliedRevision = options.repository.writePluginSecret(
-              mutation.packageName,
-              latestSecret?.revision ?? null,
-              candidate.secrets,
-            ).revision;
-          }
-          return replacePlugin(current, mutation.packageName, candidate.publicValues);
-        });
+        await options.configStore.mutateConfig(
+          async (current) => {
+            await assertOwnership();
+            const entry = findPluginEntry(current, mutation.packageName)?.entry;
+            const latestSecret = options.repository.readPluginSecret(mutation.packageName);
+            if (revisionOf(entry, latestSecret?.revision ?? null) !== mutation.revision) {
+              throw new PluginControlPlaneError('stale_revision', 409);
+            }
+            if (!sameValue(latestSecret?.value ?? {}, candidate.secrets)) {
+              appliedRevision = options.repository.writePluginSecret(
+                mutation.packageName,
+                latestSecret?.revision ?? null,
+                candidate.secrets,
+              ).revision;
+              secretCommit = {
+                plugin: mutation.packageName,
+                ...(latestSecret === null ? {} : { before: latestSecret.value as JsonValue }),
+                after: candidate.secrets as JsonValue,
+              };
+            }
+            return replacePlugin(current, mutation.packageName, candidate.publicValues);
+          },
+          // Changing only secret fields leaves the configuration file byte-identical, so the commit
+          // has to carry the secret change or synchronization discards it as a no-op.
+          () => (secretCommit === undefined ? undefined : [secretCommit]),
+        );
       } catch (error) {
         if (appliedRevision === null) {
           const latest = options.repository.readPluginSecret(mutation.packageName);

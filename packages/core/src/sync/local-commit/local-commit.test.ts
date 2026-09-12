@@ -5,7 +5,7 @@ import * as fsPromises from 'node:fs/promises';
 import { AtomicConfigFile, AtomicConfigLockReleaseError } from '../../plugins/config-file';
 import { encodeCandidate } from '../../plugins/config-file/serialization';
 import type { SyncRepository } from '../repository';
-import { withSyncCommitFixture } from '../test-support';
+import { includedEntity, withSyncCommitFixture } from '../test-support';
 import { confirmLocalCommit, prepareLocalCommit, recoverLocalCommits } from './local-commit';
 
 test('a candidate rejected by verify never becomes an outgoing commit', async () => {
@@ -154,6 +154,44 @@ test('account operations without source revisions are never hidden by a watcher 
     expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
     expect(f.repo.outbox(f.bindingId)).toHaveLength(2);
     expect(f.repo.outbox(f.bindingId)[1]?.commitId).toBe(accountChange.commitId);
+  });
+});
+
+test('a plugin secret change publishes even though the configuration digest is unchanged', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    const plugin = '@example/business';
+    const config = { providers: {}, plugins: [plugin] } as Record<string, unknown>;
+    const digest = (value: Record<string, unknown>) =>
+      createHash('sha256').update(encodeCandidate(value, f.configPath)).digest('hex');
+    f.repo.putEntity(f.bindingId, includedEntity('plugin-business', 'plugin-business', plugin));
+    f.control.setPluginSecret(plugin, { token: 'old' });
+    prepareLocalCommit(f.repo, f.bindingId, {
+      ...f.intent,
+      commitId: 'plugin-baseline',
+      afterDigest: digest(config),
+      rawAfter: config,
+    });
+    await file.replace(() => config);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toHaveLength(1);
+
+    // Rotating the secret leaves the file byte-identical, so both digests match the confirmed commit.
+    f.control.setPluginSecret(plugin, { token: 'new' });
+    prepareLocalCommit(f.repo, f.bindingId, {
+      ...f.intent,
+      commitId: 'plugin-secret-rotation',
+      beforeDigest: digest(config),
+      afterDigest: digest(config),
+      rawAfter: config,
+      pluginSecrets: [{ plugin, before: { token: 'old' }, after: { token: 'new' } }],
+    });
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    const rotation = f.repo.outbox(f.bindingId).filter((operation) => operation.commitId === 'plugin-secret-rotation');
+    expect(rotation).toHaveLength(1);
+    expect(rotation[0]).toMatchObject({ objectId: 'plugin-business', kind: 'put' });
+    expect(rotation[0]?.body?.value).toMatchObject({ secret: { token: 'new' } });
   });
 });
 

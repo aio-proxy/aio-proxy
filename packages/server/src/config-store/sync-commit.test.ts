@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { AtomicConfigFile } from '@aio-proxy/core';
 
-import { withSyncCommitFixture } from '../../../core/src/sync/test-support';
+import { includedEntity, withSyncCommitFixture } from '../../../core/src/sync/test-support';
 import { createFifoQueue } from '../fifo-queue';
 import { createConfigStore } from './index';
 
@@ -78,6 +78,34 @@ test('overlapping config mutations each retire their own sync commit', async () 
 
     expect(fixture.repo.pendingCommits(fixture.bindingId)).toEqual([]);
     expect(new Set(fixture.repo.outbox(fixture.bindingId).map((operation) => operation.commitId)).size).toBe(2);
+  });
+});
+
+test('a secret-only mutation still publishes the plugin object', async () => {
+  await withSyncCommitFixture(async (fixture) => {
+    const store = createConfigStore({
+      getConfigPath: () => fixture.configPath,
+      file: new AtomicConfigFile(fixture.configPath),
+      repository: accounts,
+      syncCommit: { repo: fixture.repo, bindingId: fixture.bindingId, port: fixture.port },
+      verify: async () => undefined,
+    });
+    const plugin = '@example/business';
+    fixture.repo.putEntity(fixture.bindingId, includedEntity('plugin-business', 'plugin-business', plugin));
+    fixture.control.setPluginSecret(plugin, { token: 'old' });
+    await store.mutateConfig(() => ({ providers: {}, plugins: [plugin] }));
+    expect(fixture.repo.outbox(fixture.bindingId)).toHaveLength(1);
+
+    // Rewriting only the secret leaves the configuration file byte-identical.
+    fixture.control.setPluginSecret(plugin, { token: 'new' });
+    await store.mutateConfig(
+      (current) => ({ ...current }),
+      () => [{ plugin, before: { token: 'old' }, after: { token: 'new' } }],
+    );
+    expect(fixture.repo.pendingCommits(fixture.bindingId)).toEqual([]);
+    const published = fixture.repo.outbox(fixture.bindingId);
+    expect(published).toHaveLength(2);
+    expect(published[1]?.body?.value).toMatchObject({ secret: { token: 'new' } });
   });
 });
 

@@ -96,10 +96,14 @@ async function confirmLocalCommitUnderFence(
   if (!port.accountOperationsSettled(intent.accountOperationIds)) return;
   if ((await port.rawDigest()) !== intent.afterDigest) return;
   port.assertCurrent?.();
+  // A plugin secret lives outside the configuration file, so changing only a secret leaves both
+  // digests identical. Treating that as a watcher no-op would leave every other device on the old
+  // credential until an unrelated edit happened to publish the plugin object again.
   if (
     intent.beforeDigest === intent.afterDigest &&
     intent.accountOperationIds.length === 0 &&
     (intent.remoteOperations === undefined || intent.remoteOperations.length === 0) &&
+    (intent.pluginSecrets === undefined || intent.pluginSecrets.length === 0) &&
     intent.sourceRevisions === undefined
   ) {
     repo.discard(bindingId, commitId);
@@ -122,10 +126,13 @@ async function confirmLocalCommitUnderFence(
   const latest = repo.latestConfirmedCommit(bindingId);
   const sourceRevisions = source.sourceRevisions ?? intent.sourceRevisions;
   const canDeduplicate =
-    intent.accountOperationIds.length === 0 ||
-    (intent.sourceRevisions !== undefined &&
-      Object.keys(intent.sourceRevisions).length > 0 &&
-      source.sourceRevisions !== undefined);
+    // The digest cannot witness a secret change, so a commit carrying one is never a duplicate of
+    // the last confirmed commit even when both wrote the same configuration.
+    (intent.pluginSecrets === undefined || intent.pluginSecrets.length === 0) &&
+    (intent.accountOperationIds.length === 0 ||
+      (intent.sourceRevisions !== undefined &&
+        Object.keys(intent.sourceRevisions).length > 0 &&
+        source.sourceRevisions !== undefined));
   if (
     intent.origin === 'local' &&
     canDeduplicate &&
