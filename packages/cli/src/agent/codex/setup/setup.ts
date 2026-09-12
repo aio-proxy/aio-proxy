@@ -59,6 +59,7 @@ async function commandAuthorizationNeed(
     installation.status === 'pending' ||
     credential === undefined ||
     credential.status === 'reauthorize' ||
+    credential.status === 'refreshing' ||
     credential.accessExpiresAt <= Date.now()
   )
     return { authorize: { forceRefresh: false } };

@@ -762,6 +762,89 @@ test('refreshes a locally unexpired credential after the probe returns unauthori
   }
 });
 
+test('recovers a refreshing credential before activating the command installation', async () => {
+  const { root, location } = await fixture();
+  const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
+  const staleAccess = `aio_agent_at_v1_${'a'.repeat(43)}`;
+  const rotatedAccess = `aio_agent_at_v1_${'c'.repeat(43)}`;
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
+      if (path === '/oauth/device/code') throw new Error('unexpected device authorization');
+      return Response.json({
+        token_type: 'Bearer',
+        access_token: rotatedAccess,
+        refresh_token: `aio_agent_rt_v1_${'d'.repeat(43)}`,
+        expires_in: 900,
+      });
+    }) as typeof fetch;
+    await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
+      const installation = await prepareCodexCommandInstallation(
+        { location, providerId: 'aio-proxy', endpoint, adapterVersion: '0.21.0' },
+        lease,
+      );
+      await import('../managed-config').then(({ configureCodexConfig }) =>
+        configureCodexConfig(
+          {
+            location,
+            providerId: 'aio-proxy',
+            baseUrl: `${endpoint}/v1`,
+            auth: { mode: 'command', installationId: installation.marker.installationId, command: 'aiop' },
+          },
+          lease,
+        ),
+      );
+      await writeCredential(location, {
+        format: 1,
+        installationId: installation.marker.installationId,
+        endpoint,
+        revision: 1,
+        accessToken: staleAccess,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'ready',
+      });
+      await activateCodexCommandInstallation(location, installation.marker.installationId, lease);
+      await writeCredential(location, {
+        format: 1,
+        installationId: installation.marker.installationId,
+        endpoint,
+        revision: 1,
+        accessToken: staleAccess,
+        refreshToken: `aio_agent_rt_v1_${'b'.repeat(43)}`,
+        accessExpiresAt: Date.now() + 60_000,
+        status: 'refreshing',
+        refreshStartedAt: Date.now(),
+      });
+    });
+    let devicePrompts = 0;
+    await expect(
+      commitCodexSetup(
+        { providerId: 'aio-proxy', auth: { mode: 'command', command: 'aiop' } },
+        {
+          location,
+          endpoint,
+          adapterVersion: '0.21.0',
+          signal: AbortSignal.timeout(10_000),
+          onDevice: async () => {
+            devicePrompts += 1;
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ authMode: 'command' });
+    expect(devicePrompts).toBe(0);
+    await expect(readCredential(location)).resolves.toMatchObject({
+      status: 'ready',
+      accessToken: rotatedAccess,
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('reauthorizes an active command identity during operation recovery', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';
