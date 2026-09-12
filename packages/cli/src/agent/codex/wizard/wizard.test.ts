@@ -230,6 +230,52 @@ test('defaults a first multi-source migration selector to openai', async () => {
   expect(result.migration).toEqual({ status: 'declined' });
 });
 
+test('aborts commit when the proxy endpoint changes during prompts', async () => {
+  let committed = false;
+  const error = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => 'custom',
+      authMode: async () => 'keep-chatgpt',
+      key: async () => ({ kind: 'none' }),
+      sources: async () => [],
+      migrate: async () => false,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'openai', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => ({ token: 'placeholder', kind: 'placeholder', verified: false }),
+    }),
+    inspectSessions: async () => ({ groups: [], blocked: [], targets: [] }),
+    resolveCommand: async () => '/tmp/aiop',
+    resolveEndpoint: async () => 'http://127.0.0.1:9318',
+    commitSetup: async () => {
+      committed = true;
+      return {
+        status: 'configured',
+        providerId: 'custom',
+        authMode: 'keep-chatgpt',
+        credential: 'placeholder',
+        connection: 'not_checked',
+      };
+    },
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  }).catch((cause: unknown) => cause);
+
+  expect(error).toEqual(new Error('CODEX_SETUP_ENDPOINT_CHANGED'));
+  expect(committed).toBe(false);
+});
+
 test('propagates setup failures without attempting migration', async () => {
   const events: string[] = [];
   const error = await runCodexWizard({

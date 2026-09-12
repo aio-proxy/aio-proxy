@@ -54,6 +54,7 @@ export type WizardDeps = {
   readonly inspectKeys: () => Promise<KeySnapshot>;
   readonly inspectSessions: (providerId?: string) => Promise<MigrationPreview>;
   readonly resolveCommand: () => Promise<string>;
+  readonly resolveEndpoint?: () => Promise<string>;
   readonly commitSetup: (selection: CodexSetupSelection) => Promise<CodexSetupCommit>;
   readonly migrateSessions: (targets: readonly MigrationTarget[], providerId: string) => Promise<MigrationResult>;
 };
@@ -63,6 +64,10 @@ const cancelledError = (error: unknown): boolean => {
   const name = 'name' in error && typeof error.name === 'string' ? error.name : '';
   const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
   return /abort|(?:cancel|exit)prompt|(?:cancelled|canceled)/i.test(`${name} ${message}`);
+};
+
+export const assertCodexSetupEndpoint = (expected: string, current: string): void => {
+  if (current !== expected) throw new Error('CODEX_SETUP_ENDPOINT_CHANGED');
 };
 
 export const cancelledResult = (
@@ -156,6 +161,7 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
     const preview = await deps.inspectSessions(providerId);
     const previousProviderId = (inspection.providerId ?? inspection.activeProviderId) || 'openai';
     const migration = await migrationSelection(preview, providerId, previousProviderId, deps.prompts);
+    if (deps.resolveEndpoint !== undefined) assertCodexSetupEndpoint(deps.endpoint, await deps.resolveEndpoint());
     commitStarted = true;
     const commit = await deps.commitSetup({ providerId, auth });
     let migrationResult: MigrationResult | { readonly status: 'declined' | 'empty' | 'not_requested' } =

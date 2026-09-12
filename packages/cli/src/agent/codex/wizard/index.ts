@@ -1,4 +1,5 @@
 export {
+  assertCodexSetupEndpoint,
   cancelledResult,
   runCodexWizard,
   type CodexConfigureResult,

@@ -19,7 +19,7 @@ import { resolveCodexLocation } from './location';
 import { inspectCodexConfig, recoverCodexConfigOperation } from './managed-config';
 import { inspectCodexSessions, migrateCodexSessions, restoreCodexMigration } from './sessions';
 import { commitCodexSetup, recoverCodexAuthOperation } from './setup';
-import { runCodexWizard, type CodexConfigureResult, type CodexPrompts } from './wizard';
+import { assertCodexSetupEndpoint, runCodexWizard, type CodexConfigureResult, type CodexPrompts } from './wizard';
 
 export type { CodexConfigureResult } from './wizard';
 
@@ -218,6 +218,11 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
   if (!isTTY) return cancelledCodexResult(location, 'non_interactive');
   const version = await checkCodexInstalled();
   const endpoint = await resolveAgentEndpoint();
+  const currentEndpoint = async (): Promise<string> => {
+    const current = await resolveAgentEndpoint();
+    assertCodexSetupEndpoint(endpoint, current);
+    return current;
+  };
   const authOperation = await import('./setup/journal').then(({ readAuthOperation }) => readAuthOperation(location));
   const confirmRecovery = async (): Promise<boolean> => {
     return pendingRecovery(() => m['cli.agent.codex.pending_recovery']());
@@ -227,7 +232,7 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
       (confirm) => recoverCodexConfigOperation(location, confirm),
       authOperation !== undefined,
       confirmRecovery,
-      () => recoverCodexAuthOperation(authContext(location, endpoint), 'complete'),
+      async () => recoverCodexAuthOperation(authContext(location, await currentEndpoint()), 'complete'),
     );
     if (recovery === 'cancelled') return cancelledCodexResult(location);
   } catch (error) {
@@ -248,7 +253,8 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     },
     inspectSessions: (providerId) => inspectCodexSessions(location, providerId),
     resolveCommand: resolveCodexAuthCommand,
-    commitSetup: (selection) => commitCodexSetup(selection, authContext(location, endpoint)),
+    resolveEndpoint: resolveAgentEndpoint,
+    commitSetup: async (selection) => commitCodexSetup(selection, authContext(location, await currentEndpoint())),
     migrateSessions: (targets, providerId) => migrateCodexSessions({ location, targets, targetProviderId: providerId }),
   });
   return result.status === 'cancelled' ? result : { ...result, version, versionCompatibility: 'unverified' as const };
