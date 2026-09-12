@@ -59,9 +59,11 @@ export function snapshotLocalEntities(local: readonly LocalEntity[]): LocalEntit
 
 const ENTITY_PREFIX = 's/v1/default/entity/';
 
-export async function listRemoteEntities(session: SyncSession | undefined): Promise<RemoteEntity[]> {
+export async function listRemoteEntities(
+  session: SyncSession | undefined,
+  signal: AbortSignal,
+): Promise<RemoteEntity[]> {
   if (session === undefined) return [];
-  const signal = new AbortController().signal;
   const keys: string[] = [];
   let cursor: string | undefined;
   do {

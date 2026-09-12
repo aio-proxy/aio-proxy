@@ -136,7 +136,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       const current = binding();
       return current === null ? [] : options.repo.entities(current.id);
     });
-  const remoteEntities = options.remoteEntities ?? (() => listRemoteEntities(options.session?.()));
+  // Reads against the bound session outlive nothing but the binding, so a stalled `list`/`read`
+  // after network loss would otherwise hang until the process exits. Disconnecting aborts them and
+  // re-arms, since this control plane is created once and survives connect/disconnect cycles.
+  let lifetime = new AbortController();
+  const remoteEntities = options.remoteEntities ?? (() => listRemoteEntities(options.session?.(), lifetime.signal));
   const remoteOps = options.session === undefined ? undefined : () => createRemoteOperations(options.session!());
   const restore =
     options.restore ?? (async (...args: Parameters<OperationInput['restore']>) => remoteOps!().restore(...args));
@@ -421,7 +425,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     async history(objectId) {
       const session = options.session?.();
       if (session === undefined) return [];
-      const signal = new AbortController().signal;
+      const signal = lifetime.signal;
       const headValue = await session.read(entityKey(objectId), signal);
       if (headValue.kind === 'absent') return [];
       const head = decodeHead(headValue.value);
@@ -465,6 +469,8 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     async disconnect() {
       const active = binding();
       if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
+      lifetime.abort();
+      lifetime = new AbortController();
       await options.lifecycle?.close();
       // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
       // so the next service start would read it and reconnect, silently undoing the disconnect.

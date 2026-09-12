@@ -1201,7 +1201,7 @@ test('a tombstoned remote head reports no live body so the preview offers a rest
     },
   } as unknown as SyncSession;
 
-  const remote = await listRemoteEntities(session);
+  const remote = await listRemoteEntities(session, AbortSignal.timeout(5_000));
   expect(remote[0]).toMatchObject({ tombstone: true, body: null, restoreBody: body });
 
   const built = buildPreview({

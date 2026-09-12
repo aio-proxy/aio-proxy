@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -47,6 +47,80 @@ test('remote apply rejects a stale digest without overwriting an external edit',
     expect(runtime.remoteConfigFence).toBeUndefined();
   } finally {
     db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+function candidateFixture(home: string, list: (signal: AbortSignal) => Promise<{ keys: string[] }>) {
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: {} }, configPath));
+  const db = openDb({ home });
+  const signals: AbortSignal[] = [];
+  let disposed = 0;
+  const session = {
+    spaceId: 'default',
+    identityId: 'identity',
+    list: (_query: unknown, signal: AbortSignal) => {
+      signals.push(signal);
+      return list(signal);
+    },
+    read: () => Promise.resolve({ kind: 'absent' as const }),
+    dispose: () => {
+      disposed += 1;
+      return Promise.resolve();
+    },
+  };
+  const registry = {
+    resolveSync: () => ({
+      options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+      connect: () => Promise.resolve(session),
+    }),
+  };
+  const integration = createSyncIntegration(
+    { options: { configPath }, remoteConfigFence: undefined } as unknown as ServerRuntime,
+    db,
+    createPluginRepository(db.sqlite),
+    () => ({ plugins: new Map(), registry }) as unknown as PluginRegistrySnapshot,
+    new AtomicConfigFile(configPath),
+    { configPath } as never,
+    async <T>(run: () => Promise<T>) => run(),
+  );
+  return { db, integration, signals, disposed: () => disposed };
+}
+
+// The candidate holds `connectQueue` while it reads the cloud snapshot, so an un-owned signal would
+// leave a stalled backend blocking every later connect, and its per-attempt directory behind.
+test('a connect candidate aborts its backend reads and clears its data directory once it is done', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-candidate-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    const candidate = await fixture.integration.connectBackend({
+      plugin: 'p',
+      capability: 'c',
+      options: {},
+    });
+    const [signal] = fixture.signals;
+    expect(signal!.aborted).toBe(false);
+    expect(readdirSync(join(home, '.sync'))).toHaveLength(1);
+    await candidate.dispose();
+    expect(signal!.aborted).toBe(true);
+    expect(fixture.disposed()).toBe(1);
+    expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a connect attempt that fails mid-snapshot leaves no data directory behind', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-candidate-fail-'));
+  const fixture = candidateFixture(home, () => Promise.reject(new Error('network lost')));
+  try {
+    await expect(fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} })).rejects.toThrow();
+    expect(fixture.signals[0]!.aborted).toBe(true);
+    expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
+  } finally {
+    fixture.db.close();
     rmSync(home, { recursive: true, force: true });
   }
 });

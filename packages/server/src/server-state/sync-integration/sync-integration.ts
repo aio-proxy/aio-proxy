@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdir } from 'node:fs/promises';
+import { chmod, mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import {
@@ -280,15 +280,23 @@ export function createSyncIntegration(
       const dataDirectory = join(dirname(options.configPath!), '.sync', bindingId);
       await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
       await chmod(dataDirectory, 0o700);
+      // The candidate owns its backend work until `commit()` hands the session to a lifecycle: a
+      // stalled `connect`/`list` would otherwise sit in `connectQueue` forever and block every later
+      // connection attempt, and the per-attempt directory would pile up once the preview is dropped.
+      const lifetime = new AbortController();
+      const discard = async (): Promise<void> => {
+        lifetime.abort();
+        await rm(dataDirectory, { recursive: true, force: true }).catch(() => {});
+      };
       let session: SyncSession | undefined;
       try {
-        session = await backend.connect(normalizedOptions, { signal: new AbortController().signal, dataDirectory });
+        session = await backend.connect(normalizedOptions, { signal: lifetime.signal, dataDirectory });
         if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
         const current = syncRepository.readBinding();
         const candidateSession = session;
         // Read the candidate's cloud state before it is bound: this is the snapshot the preview
         // reviews, and reconciliation must not be the first thing that sees these objects.
-        const remote = await listRemoteEntities(candidateSession);
+        const remote = await listRemoteEntities(candidateSession, lifetime.signal);
         session = undefined;
         const binding: LocalBinding = {
           id: bindingId,
@@ -305,7 +313,7 @@ export function createSyncIntegration(
         let activateBackend: (() => void) | undefined;
         return {
           remote,
-          refresh: () => listRemoteEntities(candidateSession),
+          refresh: () => listRemoteEntities(candidateSession, lifetime.signal),
           commit: () =>
             connectQueue(async () => {
               // replaceBackend takes over the session either way: on success the new lifecycle owns
@@ -317,6 +325,7 @@ export function createSyncIntegration(
                 activateBackend = await replaceBackend(binding, candidateSession);
                 refreshCommitHooks();
               } catch (error) {
+                await discard();
                 if (error instanceof SyncOperationError) throw error;
                 throw new SyncOperationError('backend-unavailable');
               }
@@ -326,10 +335,12 @@ export function createSyncIntegration(
             if (released) return;
             released = true;
             await candidateSession.dispose().catch(() => {});
+            await discard();
           },
         };
       } catch (error) {
         await session?.dispose().catch(() => {});
+        await discard();
         if (error instanceof SyncOperationError) throw error;
         throw new SyncOperationError('backend-unavailable');
       }
