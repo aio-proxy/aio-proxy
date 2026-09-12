@@ -266,6 +266,7 @@ test.serial('refreshes concurrently under the installation lock and persists rot
       );
       await activateCodexCommandInstallation(f.location, installation.marker.installationId, lease);
     });
+    const refreshAfterSetup = refreshCount;
     const delivered: string[] = [];
     await Promise.all(
       [1, 2].map(() =>
@@ -283,6 +284,7 @@ test.serial('refreshes concurrently under the installation lock and persists rot
     );
     expect(delivered.length).toBeGreaterThanOrEqual(1);
     expect(new Set(delivered).size).toBe(1);
+    expect(refreshCount - refreshAfterSetup).toBe(1);
     let refreshedAfterUnauthorized = '';
     await writeCodexAuthToken({
       location: f.location,
@@ -415,8 +417,7 @@ test.serial('coordinates refresh delivery across two helper processes', async ()
     const [first, second] = await Promise.all([run(), run()]);
     expect(first).toBe(accessOne);
     expect(second).toBe(accessOne);
-    expect(refreshCount).toBeGreaterThanOrEqual(1);
-    expect(refreshCount).toBeLessThanOrEqual(2);
+    expect(refreshCount).toBe(1);
     expect(JSON.parse(await readFile(join(location.managedRoot, 'codex-credential.json'), 'utf8')).refreshToken).toBe(
       refreshOne,
     );

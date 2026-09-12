@@ -25,6 +25,23 @@ test('serializes two processes and exposes only the live owner', async () => {
   await expect(observeProcessFileLock(path)).resolves.toBeUndefined();
 });
 
+test('records the live owner waited on as predecessor', async () => {
+  const root = await temporaryRoot();
+  const path = join(root, '.lock');
+  const first = await acquireProcessFileLock(path);
+  expect(first.predecessor).toBeUndefined();
+  const pending = acquireProcessFileLock(path);
+  await Bun.sleep(80);
+  await first.release();
+  const second = await pending;
+  try {
+    expect(second.predecessor).toBe(first.owner);
+    expect(second.owner).not.toBe(first.owner);
+  } finally {
+    await second.release();
+  }
+});
+
 test('reclaims a dead owner but blocks a live owner with an old heartbeat', async () => {
   const root = await temporaryRoot();
   const path = join(root, '.lock');

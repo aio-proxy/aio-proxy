@@ -24,6 +24,7 @@ type LockRecord = {
 
 export type ProcessFileLock = {
   readonly owner: string;
+  readonly predecessor?: string;
   readonly withOwnership: <T>(action: (assertOwned: () => Promise<void>) => Promise<T>) => Promise<T>;
   readonly withOwnershipFence: <T>(action: (assertOwned: () => Promise<void>) => Promise<T>) => Promise<T>;
   readonly release: () => Promise<void>;
@@ -142,6 +143,7 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
   const deadline = Date.now() + WAIT_MS;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let identity: Stats | undefined;
+  let predecessor: string | undefined;
   while (Date.now() < deadline) {
     signal?.throwIfAborted();
     const acquired = await runWithRecoveryFence(
@@ -171,6 +173,11 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
           if (isNodeError(error, 'EEXIST')) {
             if (await reclaimAbandonedOwner(path, assertFence)) return null;
             const inspection = await ownerIsStale(path);
+            // Keep the first live owner waited on. Later holders may only be replaying that burst.
+            if (predecessor === undefined && !inspection.stale && inspection.text !== undefined) {
+              const record = parseRecord(inspection.text);
+              if (record !== undefined) predecessor = record.owner;
+            }
             if (inspection.stale && inspection.text !== undefined && inspection.identity !== undefined)
               return (await removeIfUnchanged(path, inspection.text, inspection.identity, assertFence)) ? null : false;
             return false;
@@ -207,6 +214,7 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
   };
   return {
     owner,
+    ...(predecessor === undefined ? {} : { predecessor }),
     async withOwnership(action) {
       await assertOwned();
       const result = await action(assertOwned);

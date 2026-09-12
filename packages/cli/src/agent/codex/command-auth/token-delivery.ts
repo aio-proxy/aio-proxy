@@ -1,5 +1,4 @@
 import { AgentRuntimeError, refreshAgentCredential } from '@aio-proxy/agent-provider-runtime';
-import { observeProcessFileLock } from '@aio-proxy/core';
 
 import type { CodexLocation } from '../contracts';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
@@ -46,14 +45,19 @@ async function writeTokenOwned(
       await writeCredential(input.location, { ...current, status: 'reauthorize', refreshStartedAt: undefined });
       throw new Error('Codex credential refresh replay_lost; reauthorize required');
     }
+    // Waiters record the lock predecessor. A helper that acquires after that owner
+    // released infers the same burst from the credential those waiters would replay.
+    const observedOwner =
+      input.observedOwner ??
+      (current.deliveredBy !== undefined && current.deliveredBy !== lease.owner ? current.deliveredBy : undefined);
     if (
       input.forceRefresh !== true &&
       current.status === 'ready' &&
       current.accessExpiresAt > now + 1_000 &&
       current.deliveredBy !== undefined &&
       current.deliveredRevision === current.revision &&
-      input.observedOwner !== undefined &&
-      current.deliveredBy === input.observedOwner
+      observedOwner !== undefined &&
+      current.deliveredBy === observedOwner
     ) {
       await input.writeToken(current.accessToken);
       await assertOwned();
@@ -122,11 +126,10 @@ export async function writeCodexAuthToken(input: {
   readonly forceRefresh?: boolean;
   readonly lease?: CodexLease;
 }): Promise<void> {
-  const observedOwner =
-    input.lease === undefined
-      ? (await observeProcessFileLock(`${input.location.home}/.aio-proxy.lock`))?.owner
-      : undefined;
   return withLease(input.location, input.signal, input.lease, (lease) =>
-    writeTokenOwned({ ...input, ...(observedOwner === undefined ? {} : { observedOwner }) }, lease),
+    writeTokenOwned(
+      { ...input, ...(lease.predecessor === undefined ? {} : { observedOwner: lease.predecessor }) },
+      lease,
+    ),
   );
 }
