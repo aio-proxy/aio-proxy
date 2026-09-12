@@ -79,6 +79,20 @@ test('overrides refuse prototype-control segments instead of writing through Obj
   expect('polluted' in {}).toBe(false);
 });
 
+test('overrides treat an inherited member name as an absent local value', () => {
+  // `toString` is a legal JSON key and not a prototype-control segment, so a cloud body may declare
+  // one. Reading it off a local body that does not would resolve `Object.prototype.toString`, and
+  // pinning a function is not a request the user can make — the absent local value means delete.
+  const local = providerBody({ options: {} });
+  const cloud = providerBody({ toString: 'cloud', options: { toString: 'nested' } });
+  expect(applyOverrides(local, cloud, [['toString'], ['options', 'toString']]).value).toEqual({ options: {} });
+  const pinned = providerBody({ toString: 'local', options: {} });
+  expect(applyOverrides(pinned, cloud, [['toString']]).value).toEqual({
+    toString: 'local',
+    options: { toString: 'nested' },
+  });
+});
+
 test('purge previews include transitive cloud dependents and omit local-only rows', () => {
   const body = (kind: 'plugin-business', logicalKey: string, dependencies: string[] = []) => ({
     kind,

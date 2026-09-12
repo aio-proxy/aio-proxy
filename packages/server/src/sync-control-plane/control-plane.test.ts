@@ -380,3 +380,80 @@ test('a second connect apply cannot swap the binding while the first is still pu
   // Apply must not clear it for a binding whose own Apply never ran.
   expect(cleared).toEqual([['swapped-1', false]]);
 });
+
+test('a second non-connect apply cannot publish over the first reviewed decision', async () => {
+  // Applying takes the preview out of the store, so two ordinary Applies can be in flight together.
+  // Both then pass their fence and commit checks — those run inside applyPreview — before either
+  // mutates anything, and the second would write its stale reviewed body over the first decision.
+  let commitId = 'commit-1';
+  const appliedAgainst: string[] = [];
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      latestConfirmedCommit: () => ({ commitId }),
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [
+      {
+        objectId: 'cloud-object',
+        logicalKey: 'shared',
+        kind: 'provider' as const,
+        mode: 'excluded' as const,
+        epoch: 0,
+        desired: null,
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    // Suspends each Apply before it reads its fence, so both are past `take()` and neither has
+    // written anything yet.
+    remoteEntities: async () => {
+      await tick();
+      return [CLOUD_ROW];
+    },
+    registry: REGISTRY,
+    // A cloud choice writes the reviewed body into the configuration, which is the commit the other
+    // Apply's fence is supposed to notice.
+    applyLocal: async () => {
+      // Suspending here too leaves the first Apply past its fence check and not yet committed, which
+      // is the window the second Apply must not be allowed to read.
+      await tick();
+      appliedAgainst.push(commitId);
+      commitId = `commit-${appliedAgainst.length + 1}`;
+    },
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    committedSource: async () => ({
+      raw: { providers: { shared: { kind: 'api', baseUrl: 'https://local.example.test' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+  } as never);
+
+  // The store holds a preview per ID, so two dialogs can be reviewed and then both submitted.
+  const first = await control.preview({ kind: 'join', providerId: 'shared' });
+  const second = await control.preview({ kind: 'join', providerId: 'shared' });
+  const firstApply = control.apply({
+    previewId: first.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'cloud' }],
+  });
+  const secondApply = control.apply({
+    previewId: second.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'cloud' }],
+  });
+
+  await firstApply;
+  await expect(secondApply).rejects.toMatchObject({ code: 'preview-stale' });
+  expect(appliedAgainst).toEqual(['commit-1']);
+});

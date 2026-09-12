@@ -237,12 +237,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   const backends = (): SyncBackendView[] => statuses.backends();
 
   // Applying takes the preview out of the store, so `disposePending()` can no longer see an Apply
-  // already in flight and two connect Applies can overlap. `commit()` serializes only its own swap,
-  // so without this the second swap replaces and closes the first lifecycle while the first call is
-  // still inside applyPreview(): it would publish its reviewed choices to the second backend and
-  // clear that binding's `connectPending` before its own Apply had landed. Serialized, the later
-  // Apply re-reads the swapped binding into its fence and is correctly rejected as stale.
-  const connectApplies = createFifoQueue();
+  // already in flight and two Applies can overlap. Both would then pass their fence and local-commit
+  // checks — those run inside applyPreview() — before either mutates anything, and the second would
+  // write its stale reviewed body over the first reviewed decision and still report success. For
+  // connect the overlap is worse: `commit()` serializes only its own swap, so the second swap
+  // replaces and closes the first lifecycle while the first call is still publishing to it.
+  // Serialized, the later Apply re-reads the committed state into its fence and is rejected as
+  // stale. This is not the configuration queue, so `applyLocal` may still re-enter that one.
+  const applies = createFifoQueue();
 
   // The swap replaces the binding along with its commit history, so the binding and local-commit
   // halves of the reviewed fence describe a world that will no longer exist. The cloud half is what
@@ -355,13 +357,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         if (record.input.kind === 'connect') {
           if (candidate === undefined) throw new SyncPreviewError('preview-stale');
           try {
-            await connectApplies(() => applyConnect(candidate, record, input.decisions));
+            await applies(() => applyConnect(candidate, record, input.decisions));
           } catch (error) {
             await candidate.dispose().catch(() => {});
             throw error;
           }
         } else {
-          await applyPreview(operationInput(), record, input.decisions);
+          await applies(() => applyPreview(operationInput(), record, input.decisions));
         }
       } catch (error) {
         // The preview was consumed, so there is nothing left for the user to decide on.

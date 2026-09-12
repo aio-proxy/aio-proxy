@@ -56,7 +56,10 @@ function valueAt(
   let current: JsonValue | undefined = value;
   for (const segment of path) {
     if (Array.isArray(current)) return { traversedArray: true };
-    if (!isPlainObject(current)) return { traversedArray: false };
+    // Own properties only: a segment such as `toString` that the cloud declares but this device does
+    // not would otherwise resolve the inherited `Object.prototype` member, so a path meant to delete
+    // the cloud field would try to `structuredClone` a function instead.
+    if (!isPlainObject(current) || !Object.hasOwn(current, segment)) return { traversedArray: false };
     current = (current as Record<string, JsonValue>)[segment];
   }
   return { value: current, traversedArray: false };
@@ -81,7 +84,7 @@ export function applyOverrides(local: EntityBody, cloud: EntityBody | null, path
     for (const segment of parentPath) {
       if (Array.isArray(parent) || !isPlainObject(parent)) throw new SyncPreviewError('invalid-request');
       const record = parent as Record<string, JsonValue>;
-      const child = record[segment];
+      const child = Object.hasOwn(record, segment) ? record[segment] : undefined;
       if (child === undefined) record[segment] = {};
       else if (Array.isArray(child) || !isPlainObject(child)) throw new SyncPreviewError('invalid-request');
       parent = record[segment]!;
