@@ -15,7 +15,7 @@ import {
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 
-import { createFifoQueue } from '../fifo-queue';
+import { createFifoQueue } from '../../fifo-queue';
 import { createLocalSyncPort } from './local-port';
 
 const body: EntityBody = {
@@ -671,6 +671,22 @@ test('a remote Provider revision keeps the device-local proxy instead of replaci
   const provider = (raw['providers'] as Record<string, Record<string, unknown>>)['work']!;
   expect(provider['proxy']).toBe('http://user:secret@proxy.test:8080');
   expect(provider['baseUrl']).toBe('https://cloud.test/v1');
+});
+
+// A Provider ID is user data, so `__proto__` is a valid one. Writing it with plain assignment hit
+// the legacy prototype setter, so the Provider never reached the file while the binding still
+// advanced past the revision and reported it as applied.
+test('a remote Provider named __proto__ reaches the serialized local configuration', async () => {
+  const raw = await applyRemoteBody(
+    'proto',
+    { providers: {} },
+    { objectId: 'object', logicalKey: '__proto__', kind: 'provider' },
+    { ...body, logicalKey: '__proto__' },
+  );
+
+  const providers = raw['providers'] as Record<string, unknown>;
+  expect(Object.hasOwn(providers, '__proto__')).toBe(true);
+  expect(providers['__proto__']).toEqual(body.value);
 });
 
 test('a shared access body deletes the credentials it omits and leaves unrelated server settings alone', async () => {
