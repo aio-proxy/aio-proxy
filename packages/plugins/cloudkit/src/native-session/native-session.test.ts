@@ -34,11 +34,15 @@ test('oversized native output is rejected and pending work settles', async () =>
   });
 });
 
-test('identity changes fence the session generation', async () => {
+test('identity changes fence the session generation and outlast the self-disposal', async () => {
   await withFakeNative('identity-change', async (executable) => {
     const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });
     await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'identity-changed' });
     await session.dispose();
+    // The identity can also change with nothing in flight, and then the self-disposal is all that
+    // is left of it. A later poll still has to say why: `cancelled` is the code the sync engine
+    // deliberately ignores, so reporting it here leaves synchronization silently dead.
+    await expect(session.read('k', new AbortController().signal)).rejects.toMatchObject({ code: 'identity-changed' });
   });
 });
 

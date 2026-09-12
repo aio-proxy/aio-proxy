@@ -71,6 +71,7 @@ class NativeSession implements SyncSession {
   #disposePromise: Promise<void> | undefined;
   #stop: (() => void) | undefined;
   #protocolFailed = false;
+  #identityChanged = false;
   #reading: Promise<void> = Promise.resolve();
 
   constructor(child: NativeChild) {
@@ -167,6 +168,11 @@ class NativeSession implements SyncSession {
     signal: AbortSignal,
     mutation: boolean,
   ): Promise<unknown> {
+    // The identity can change while nothing is in flight, and then `#failAll` has no request to
+    // reject. Keep the reason: `cancelled` is the code the engine deliberately ignores, so without
+    // this the next poll fails silently and synchronization stays dead until a restart.
+    if (this.#identityChanged)
+      return Promise.reject(new NativeSessionError('identity-changed', 'CloudKit identity changed'));
     if (this.#disposed) return Promise.reject(new NativeSessionError('cancelled', 'native session is disposed'));
     if (this.#protocolFailed)
       return Promise.reject(new NativeSessionError('invalid-data', 'native session protocol failed'));
@@ -274,6 +280,7 @@ class NativeSession implements SyncSession {
       if (reply.event === 'change-hint') this.#stop?.();
       else {
         this.#generation += 1;
+        this.#identityChanged = true;
         this.#failAll(false, 'CloudKit identity changed', 'identity-changed');
         void this.dispose();
       }
