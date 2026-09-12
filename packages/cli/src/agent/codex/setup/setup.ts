@@ -9,6 +9,7 @@ import {
   rebindCodexCommandInstallation,
   readCodexCommandCredentialInstallationId,
   readCredential,
+  inspectCodexCommandCredential,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
 } from '../command-auth';
@@ -153,12 +154,23 @@ async function commitCommand(
     providerId,
   });
   const credential = await readCredential(context.location);
-  if (
+  let needsAuthorization =
     prepared.status === 'pending' ||
     credential === undefined ||
     credential.status === 'reauthorize' ||
-    credential.accessExpiresAt <= Date.now()
-  ) {
+    credential.accessExpiresAt <= Date.now();
+  if (!needsAuthorization && prepared.status === 'active') {
+    const checked = await inspectCodexCommandCredential({
+      location: context.location,
+      check: true,
+      signal: context.signal,
+    });
+    needsAuthorization =
+      checked.credentialStatus === 'expired' ||
+      checked.credentialStatus === 'reauthorize' ||
+      checked.connection === 'unauthorized';
+  }
+  if (needsAuthorization) {
     await authorizeCodexInstallation(
       {
         location: context.location,

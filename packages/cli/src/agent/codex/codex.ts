@@ -92,7 +92,7 @@ const createCredentialDeps = (endpoint: string) => {
         if (response.status === 401 || response.status === 403) return 'unauthorized';
         if (!response.ok) return response.status >= 500 ? 'offline' : 'invalid_response';
         const body: unknown = await response.json().catch(() => undefined);
-        return body !== null && typeof body === 'object' ? 'ok' : 'invalid_response';
+        return body !== null && typeof body === 'object' && !Array.isArray(body) ? 'ok' : 'invalid_response';
       } catch {
         return 'offline';
       }
