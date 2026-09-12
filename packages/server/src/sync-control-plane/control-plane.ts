@@ -155,6 +155,12 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   let state: SyncConnectionState = 'idle';
   let stateBeforePreview: SyncConnectionState = 'idle';
   let lastSuccessAt: number | null = null;
+  // `commit()` installs the new binding before the reviewed decisions land, so a publication that
+  // fails partway leaves rows included on a baseline the backend has already moved past. The engine
+  // is deliberately not started then — but nothing else may start it either, or reconciliation
+  // imports the very revision the user chose to overwrite. Only a fresh connect preview re-reviews
+  // every row against the bound backend, so that is the one thing that clears this.
+  let connectApplyIncomplete = false;
 
   // `preview-required` means a preview is waiting on the user. Remember what it displaced so a
   // preview that is consumed or expires without applying can hand the state back instead of
@@ -164,7 +170,10 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     state = 'preview-required';
   };
   const releasePreviewState = (): void => {
-    if (state === 'preview-required' && previews.size === 0) state = stateBeforePreview;
+    // An incomplete connect apply is still the user's turn: the binding switched but the engine is
+    // held, so reporting `idle` would claim a working backend that is not reconciling.
+    if (connectApplyIncomplete) state = 'preview-required';
+    else if (state === 'preview-required' && previews.size === 0) state = stateBeforePreview;
   };
 
   const takeCandidate = (previewId: string): SyncConnectCandidate | undefined => {
@@ -303,9 +312,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     // reviewed decisions land. A writer can still move a head after the final refresh, and then a
     // local-choice publication throws with its row left included on the old baseline — starting the
     // engine anyway would import the very revision the user chose to overwrite. Staying unreconciled
-    // until the caller retries is the safe half of that trade.
+    // until a fresh connect preview re-reviews the backend is the safe half of that trade.
+    connectApplyIncomplete = true;
     await applyPreview({ ...operationInput(), fence: async () => record.fence }, record, decisions);
     candidate.activate();
+    connectApplyIncomplete = false;
   };
 
   return {
@@ -456,6 +467,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       return items;
     },
     async retry() {
+      // Retry is a reconnect, not a way around a review: a connect apply that failed after the
+      // binding switched left rows on a baseline the backend has moved past, and activating the
+      // engine here would import exactly what the user chose to overwrite. Only a new connect
+      // preview re-reviews those rows.
+      if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
       state = 'syncing';
       // A startup restore whose backend was offline left the lifecycle unstarted, so retry is
       // the reconnect path, not just a reconcile.
@@ -480,6 +496,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       // so the next service start would read it and reconnect, silently undoing the disconnect.
       options.repo.clearBinding?.();
       state = 'disconnected';
+      connectApplyIncomplete = false;
       return status();
     },
   };

@@ -1446,8 +1446,9 @@ test('connect previews the candidate backend and applies the reviewed decisions'
   expect(activatedAfter).toEqual(['work', 'cloud-object']);
 });
 
-test('a decision that fails to land leaves the candidate engine stopped', async () => {
+test('a decision that fails to land leaves the candidate engine stopped, and retry cannot start it', async () => {
   let activated = false;
+  let lifecycleActivated = false;
   const control = createSyncControlPlane({
     repo: {
       readBinding: () => null,
@@ -1503,6 +1504,11 @@ test('a decision that fails to land leaves the candidate engine stopped', async 
       activate: () => void (activated = true),
       dispose: async () => {},
     }),
+    lifecycle: {
+      activate: () => void (lifecycleActivated = true),
+      reconcile: async () => {},
+      close: async () => {},
+    },
   });
 
   const preview = await control.preview({
@@ -1517,6 +1523,11 @@ test('a decision that fails to land leaves the candidate engine stopped', async 
   // The row stays included on its old baseline, so starting the engine here would import whatever a
   // writer put in the candidate backend after the final refresh — the revision the user overwrote.
   expect(activated).toBe(false);
+  // `commit()` already switched the binding, so retry is not a harmless reconnect: it reaches the
+  // same engine. The recovery is a fresh connect preview that re-reviews every row.
+  await expect(control.retry()).rejects.toThrow('preview-stale');
+  expect(lifecycleActivated).toBe(false);
+  expect(control.status().state).toBe('preview-required');
 });
 
 test('a failed replacement connect stops pinning preview-required', async () => {
