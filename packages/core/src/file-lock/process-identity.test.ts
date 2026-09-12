@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test';
 
-import { processIsAlive } from './process-identity';
+import { processIsAlive, processOwnerIsCurrent, processStarttime } from './process-identity';
 
 test.serial('processIsAlive probes Windows PIDs for npm lock semantics', () => {
   const originalPlatform = process.platform;
@@ -33,4 +33,14 @@ test.serial('processIsAlive rethrows non-Error process.kill failures', () => {
   } finally {
     kill.mockRestore();
   }
+});
+
+test('processOwnerIsCurrent distinguishes a reused PID from the recorded incarnation', async () => {
+  expect(await processOwnerIsCurrent({ pid: 999_999_999, starttime: 'any' })).toBe(false);
+  expect(await processOwnerIsCurrent({ pid: process.pid })).toBe(true);
+  expect(await processOwnerIsCurrent({ pid: process.pid, starttime: 'unavailable' })).toBe(true);
+  expect(await processOwnerIsCurrent({ pid: process.pid, starttime: 'previous-incarnation' })).toBe(false);
+  const starttime = await processStarttime(process.pid);
+  expect(starttime).not.toBeNull();
+  expect(await processOwnerIsCurrent({ pid: process.pid, starttime })).toBe(true);
 });

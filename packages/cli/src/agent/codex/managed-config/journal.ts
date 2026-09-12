@@ -1,15 +1,16 @@
 import { open } from 'node:fs/promises';
 
+import { processOwnerIsCurrent, processStarttime } from '@aio-proxy/core';
+
 import type { CodexLocation, CodexMarker } from '../contracts';
-import {
-  durableDelete,
-  durableWrite,
-  ensureManagedRoot,
-  fingerprint,
-  isFsCode,
-  readRegularFile,
-  syncParent,
-} from './storage';
+import { durableDelete, durableWrite, ensureManagedRoot, fingerprint, readRegularFile, syncParent } from './storage';
+
+export type JournalOwner = {
+  readonly pid: number;
+  readonly token: string;
+  readonly leaseUntil: number;
+  readonly starttime?: string;
+};
 
 export type ConfigJournal = {
   readonly operation: 'configure' | 'remove';
@@ -19,7 +20,7 @@ export type ConfigJournal = {
   readonly oldMarker?: CodexMarker;
   readonly targetMarker?: CodexMarker;
   readonly stage: 'prepared' | 'config-written' | 'marker-written';
-  readonly owner?: { readonly pid: number; readonly token: string; readonly leaseUntil: number };
+  readonly owner?: JournalOwner;
 };
 
 const pathFor = (location: CodexLocation): string => `${location.managedRoot}/config-operation.json`;
@@ -33,7 +34,13 @@ export async function readJournal(location: CodexLocation): Promise<ConfigJourna
 export async function startJournal(location: CodexLocation, journal: ConfigJournal): Promise<ConfigJournal> {
   await ensureManagedRoot(location);
   const path = pathFor(location);
-  const owner = { pid: process.pid, token: crypto.randomUUID(), leaseUntil: Date.now() + 30_000 };
+  const starttime = await processStarttime(process.pid);
+  const owner: JournalOwner = {
+    pid: process.pid,
+    token: crypto.randomUUID(),
+    leaseUntil: Date.now() + 30_000,
+    ...(starttime === null ? {} : { starttime }),
+  };
   const record = { ...journal, owner };
   const handle = await open(path, 'wx', 0o600);
   try {
@@ -82,22 +89,15 @@ async function expireJournalOwner(location: CodexLocation, journal: ConfigJourna
 
 export const journalPath = pathFor;
 
-const activeOwners = new Map<string, { readonly pid: number; readonly token: string; readonly leaseUntil: number }>();
+const activeOwners = new Map<string, JournalOwner>();
 
-export function isLiveJournal(journal: ConfigJournal | undefined): boolean {
+export async function isLiveJournal(journal: ConfigJournal | undefined): Promise<boolean> {
   const owner = journal?.owner;
   if (owner === undefined || !Number.isInteger(owner.pid) || typeof owner.token !== 'string') return true;
   if (activeOwners.has(owner.token)) return true;
   if (owner.pid === process.pid) return owner.leaseUntil > Date.now();
-  if (owner.leaseUntil <= Date.now()) {
-    try {
-      process.kill(owner.pid, 0);
-      return true;
-    } catch (error) {
-      return !isFsCode(error, 'ESRCH');
-    }
-  }
-  return true;
+  if (owner.leaseUntil > Date.now()) return true;
+  return processOwnerIsCurrent(owner);
 }
 
 export { fingerprint };

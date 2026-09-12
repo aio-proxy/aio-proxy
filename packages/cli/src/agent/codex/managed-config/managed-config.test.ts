@@ -3,6 +3,8 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { processStarttime } from '@aio-proxy/core';
+
 import { resolveCodexLocation } from '../location';
 import { configureCodexConfig, inspectCodexConfig, recoverCodexConfigOperation, removeCodexConfig } from './index';
 import { startJournal } from './journal';
@@ -377,6 +379,70 @@ test('recovers a prepared journal owned by a dead process', async () => {
     await expect(removeCodexConfig(f.location)).resolves.toMatchObject({ status: 'absent' });
     expect(await Bun.file(journal).exists()).toBe(false);
   } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('recovers an expired journal whose PID has been reused', async () => {
+  const f = await fixture();
+  const journal = join(f.location.managedRoot, 'config-operation.json');
+  const child = Bun.spawn(['sleep', '60'], { stdout: 'ignore', stderr: 'ignore' });
+  try {
+    await mkdir(f.location.managedRoot, { recursive: true });
+    const text = await Bun.file(f.location.configPath).text();
+    await Bun.write(
+      journal,
+      `${JSON.stringify({
+        operation: 'remove',
+        originalExists: true,
+        beforeFingerprint: Bun.hash(text).toString(16),
+        afterFingerprint: 'different',
+        stage: 'prepared',
+        owner: {
+          pid: child.pid,
+          token: 'reused-owner',
+          leaseUntil: Date.now() - 1,
+          starttime: 'previous-process-incarnation',
+        },
+      })}\n`,
+    );
+    await expect(removeCodexConfig(f.location)).resolves.toMatchObject({ status: 'absent' });
+    expect(await Bun.file(journal).exists()).toBe(false);
+  } finally {
+    child.kill();
+    await child.exited;
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('does not recover an expired journal owned by another live process incarnation', async () => {
+  const f = await fixture();
+  const journal = join(f.location.managedRoot, 'config-operation.json');
+  const child = Bun.spawn(['sleep', '60'], { stdout: 'ignore', stderr: 'ignore' });
+  try {
+    const starttime = await processStarttime(child.pid);
+    await mkdir(f.location.managedRoot, { recursive: true });
+    await Bun.write(
+      journal,
+      `${JSON.stringify({
+        operation: 'remove',
+        originalExists: true,
+        beforeFingerprint: 'before',
+        afterFingerprint: 'after',
+        stage: 'prepared',
+        owner: {
+          pid: child.pid,
+          token: 'live-incarnation',
+          leaseUntil: Date.now() - 1,
+          ...(starttime === null ? {} : { starttime }),
+        },
+      })}\n`,
+    );
+    await expect(removeCodexConfig(f.location)).rejects.toThrow(/live|pending|owner/i);
+    expect(await Bun.file(journal).exists()).toBe(true);
+  } finally {
+    child.kill();
+    await child.exited;
     await rm(f.root, { recursive: true, force: true });
   }
 });

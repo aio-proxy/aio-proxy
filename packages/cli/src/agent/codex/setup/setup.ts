@@ -12,6 +12,7 @@ import {
   inspectCodexCommandCredential,
   readCodexCommandIdentity,
   retireCodexCommandInstallation,
+  type CodexCommandInstallation,
 } from '../command-auth';
 import { resolveCodexAuthCommand } from '../command-location';
 import type {
@@ -36,6 +37,31 @@ const terminalRevocations = new Set<AgentRevokeStatus>(['revoked', 'expired', 'm
 const setupError = (code: string): Error => new Error(code);
 
 const modeOf = (inspection: ConfigInspection): CodexAuthMode | undefined => inspection.authMode;
+
+async function commandInstallationNeedsAuthorization(
+  installation: CodexCommandInstallation,
+  context: CodexSetupContext,
+): Promise<boolean> {
+  const credential = await readCredential(context.location);
+  if (
+    installation.status === 'pending' ||
+    credential === undefined ||
+    credential.status === 'reauthorize' ||
+    credential.accessExpiresAt <= Date.now()
+  )
+    return true;
+  if (installation.status !== 'active') return false;
+  const checked = await inspectCodexCommandCredential({
+    location: context.location,
+    check: true,
+    signal: context.signal,
+  });
+  return (
+    checked.credentialStatus === 'expired' ||
+    checked.credentialStatus === 'reauthorize' ||
+    checked.connection === 'unauthorized'
+  );
+}
 
 async function revokeAndClear(
   context: CodexSetupContext,
@@ -153,24 +179,7 @@ async function commitCommand(
     installationId: prepared.marker.installationId,
     providerId,
   });
-  const credential = await readCredential(context.location);
-  let needsAuthorization =
-    prepared.status === 'pending' ||
-    credential === undefined ||
-    credential.status === 'reauthorize' ||
-    credential.accessExpiresAt <= Date.now();
-  if (!needsAuthorization && prepared.status === 'active') {
-    const checked = await inspectCodexCommandCredential({
-      location: context.location,
-      check: true,
-      signal: context.signal,
-    });
-    needsAuthorization =
-      checked.credentialStatus === 'expired' ||
-      checked.credentialStatus === 'reauthorize' ||
-      checked.connection === 'unauthorized';
-  }
-  if (needsAuthorization) {
+  if (await commandInstallationNeedsAuthorization(prepared, context)) {
     await authorizeCodexInstallation(
       {
         location: context.location,
@@ -232,7 +241,7 @@ async function recoverComplete(
   const identity = await readCodexCommandIdentity(context.location);
   if (identity?.marker.installationId !== operation.installationId || identity.marker.endpoint !== context.endpoint)
     return false;
-  if (identity.status === 'pending') {
+  if (await commandInstallationNeedsAuthorization(identity, context)) {
     await authorizeCodexInstallation(
       { location: context.location, installation: identity, signal: context.signal, onDevice: context.onDevice },
       lease,

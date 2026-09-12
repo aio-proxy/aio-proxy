@@ -139,7 +139,7 @@ async function recoverPending(location: CodexLocation, assertOwned?: () => Promi
   await ensureManagedRoot(location);
   const pending = await readJournal(location);
   if (pending === undefined) return;
-  if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
+  if (await isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
   const current = await readText(location);
   const currentFingerprint = current === undefined ? undefined : fingerprint(current.text);
   const beforeMatches =
@@ -177,7 +177,7 @@ export async function recoverCodexConfigOperation(
       if ((await inspectDirectory(location.managedRoot)) === undefined) return 'none';
       const pending = await readJournal(location);
       if (pending === undefined) return 'none';
-      if (isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
+      if (await isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
       if (confirmRecovery !== undefined && !(await confirmRecovery())) return 'declined';
       await ensureManagedRoot(location);
       await ownedLease.withOwnershipFence((assertOwned) => recoverPending(location, assertOwned));
