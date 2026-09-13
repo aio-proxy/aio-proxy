@@ -215,6 +215,50 @@ test('disposing the control plane aborts an Apply stalled in its pre-Apply re-re
   }
 });
 
+// A second Apply leaves the preview store the moment it is called and then waits its turn behind the
+// first, so between those two points two candidates are unreachable through the store at once and
+// shutdown has to release both — the queued one and the one actually refreshing.
+test('disposing the control plane releases both the executing and the queued Apply candidate', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-queued-'));
+  let reached!: () => void;
+  const refreshing = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let calls = 0;
+  const fixture = candidateFixture(home, (signal) => {
+    calls += 1;
+    // Only the first Apply's re-read stalls; the second preview still needs its own snapshot.
+    if (calls !== 2) return Promise.resolve({ keys: [] });
+    reached();
+    return new Promise<{ keys: string[] }>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('backend stalled')));
+    });
+  });
+  try {
+    const plane = createSyncControlPlaneIntegration(
+      {
+        manager: { current: () => ({ plugins: { registry: fixture.registry } }) },
+        repository: createPluginRepository(fixture.db.sqlite),
+      } as unknown as ServerRuntime,
+      fixture.integration,
+      { get: () => undefined } as never,
+    )!;
+
+    const first = await plane.preview({ kind: 'connect', plugin: 'p', capability: 'c', options: {} });
+    const stalled = plane.apply({ previewId: first.previewId, decisions: [] }).catch(() => {});
+    await refreshing;
+    const second = await plane.preview({ kind: 'connect', plugin: 'p', capability: 'c', options: {} });
+    const queued = plane.apply({ previewId: second.previewId, decisions: [] }).catch(() => {});
+
+    await plane.dispose();
+    expect(fixture.disposed()).toBe(2);
+    await Promise.all([stalled, queued]);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 // Epoch and baseline name a head in the space being left. Carried into the new binding, the first
 // publication submits an epoch the candidate backend never issued and Apply fails `epoch-mismatch`,
 // while the carried baseline marks a remote revision applied that this binding has never seen.

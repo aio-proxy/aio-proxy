@@ -231,9 +231,15 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
   // stale. This is not the configuration queue, so `applyLocal` may still re-enter that one.
   const applies = createFifoQueue();
 
-  // The candidate an Apply is working on: `take()` has removed it from the preview store, so nothing
-  // else can reach it to release its backend session.
-  let applying: SyncConnectCandidate | undefined;
+  // The candidates an Apply is working on: `take()` has removed them from the preview store, so
+  // nothing else can reach them to release their backend session. A set, not one handle: a second
+  // Apply is taken out of the store as soon as it is called and then waits its turn in the FIFO, so
+  // at shutdown both the executing candidate and the queued one need releasing.
+  const applying = new Set<SyncConnectCandidate>();
+  // Releasing those candidates yields, which frees the FIFO and lets the next queued Apply start on a
+  // candidate teardown has just disposed — it would bind the service to a dead backend session on the
+  // way out. Shutdown therefore refuses the swap outright rather than racing it.
+  let closing = false;
 
   // The swap replaces the binding along with its commit history, so the binding and local-commit
   // halves of the reviewed fence describe a world that will no longer exist. The cloud half is what
@@ -246,6 +252,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     record: PreviewRecord,
     decisions: SyncApplyInput['decisions'],
   ): Promise<void> => {
+    if (closing) throw new SyncOperationError('backend-unavailable');
     assertDecisions(record, decisions);
     const remote = await candidate.refresh();
     // The cloud half is re-read above, but the reviewed rows were projected from local state too: a
@@ -278,7 +285,8 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     // has already left the store, so it is tracked separately — disposing it aborts the refresh it
     // may be stalled in, which is what lets shutdown proceed instead of waiting out the bound.
     dispose: async () => {
-      await applying?.dispose().catch(() => {});
+      closing = true;
+      for (const candidate of applying) await candidate.dispose().catch(() => {});
       await previews.disposePending();
     },
     async preview(input) {
@@ -364,14 +372,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
         }
         if (record.input.kind === 'connect') {
           if (candidate === undefined) throw new SyncPreviewError('preview-stale');
-          applying = candidate;
+          applying.add(candidate);
           try {
             await applies(() => applyConnect(candidate, record, input.decisions));
           } catch (error) {
             await candidate.dispose().catch(() => {});
             throw error;
           } finally {
-            if (applying === candidate) applying = undefined;
+            applying.delete(candidate);
           }
         } else {
           // A preview captured before a connect apply failed reviews rows that now belong to another

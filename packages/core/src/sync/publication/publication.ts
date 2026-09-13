@@ -260,18 +260,27 @@ async function ensurePayload(
     signal.throwIfAborted();
     const current = await readRevision(store, operation, signal);
     if (current !== null) return current;
-    const result = await store.session.compareAndSwap(
-      revisionKey(operation.objectId, operation.operationId),
-      null,
-      bytes,
-      signal,
-    );
-    if (result.kind === 'written') {
-      return {
-        record: decodeRevision(bytes),
-        version: result.version,
-        modifiedAt: result.modifiedAt,
-      };
+    try {
+      const result = await store.session.compareAndSwap(
+        revisionKey(operation.objectId, operation.operationId),
+        null,
+        bytes,
+        signal,
+      );
+      if (result.kind === 'written') {
+        return {
+          record: decodeRevision(bytes),
+          version: result.version,
+          modifiedAt: result.modifiedAt,
+        };
+      }
+    } catch (error) {
+      // The head is already reserved by the time this runs, so letting an unknown outcome escape
+      // leaves a reservation whose revision is absent — the one state maintenance never reclaims,
+      // and a control-plane publication mints a fresh operation ID per attempt, so nothing retries
+      // it. This key belongs to this operation ID alone, so the reread at the top of the loop
+      // settles it either way: a write that landed is returned, one that did not is written again.
+      if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
     }
   }
 }

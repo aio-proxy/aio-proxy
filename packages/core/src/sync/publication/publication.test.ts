@@ -168,20 +168,41 @@ test('conditional publication rejects a revision published after its reservation
 });
 
 test('outcome-unknown at every publication CAS position is recoverable with one operation', async () => {
-  // Positions 1, 2 and 4 are head CAS writes that resolve in place instead of rejecting, so each
-  // has its own test below.
-  for (const position of [3, 5]) {
+  // Positions 1 to 4 are writes that resolve in place instead of rejecting, so each has its own test
+  // below. Position 5 attaches the receipt to a revision the head already publishes, so the
+  // reservation is long consumed and the next attempt reads its receipt back.
+  const backend = createMemorySyncBackend();
+  const operation = makeOperation();
+  const session = failAtCompareAndSwap(backend.connect(), 5);
+  const store = createSyncObjectStore(session);
+  const signal = new AbortController().signal;
+  await expect(publishEntity(store, operation, signal)).rejects.toMatchObject({ code: 'outcome-unknown' });
+  const result = await publishEntity(store, operation, signal);
+  expect(result).toEqual({ operationId: operation.operationId, sequence: 1 });
+  expect(await publishEntity(store, operation, signal)).toEqual(result);
+  expect(revisionKeys(backend, operation.objectId)).toEqual([revisionKey(operation.objectId, operation.operationId)]);
+  expect((await store.readHead(operation.objectId, signal))?.head.sequence).toBe(1);
+});
+
+test('an unknown outcome at the payload CAS finishes the publication instead of stranding its reservation', async () => {
+  const signal = new AbortController().signal;
+  // The reservation is already in the head at this point. Returning the error would leave it there
+  // for good: a control-plane publication never retries the operation ID, and maintenance only
+  // reclaims a reservation whose payload revision exists.
+  for (const mode of ['after', 'before'] as const) {
     const backend = createMemorySyncBackend();
     const operation = makeOperation();
-    const session = failAtCompareAndSwap(backend.connect(), position);
-    const store = createSyncObjectStore(session);
-    const signal = new AbortController().signal;
-    await expect(publishEntity(store, operation, signal)).rejects.toMatchObject({ code: 'outcome-unknown' });
-    const result = await publishEntity(store, operation, signal);
-    expect(result).toEqual({ operationId: operation.operationId, sequence: 1 });
-    expect(await publishEntity(store, operation, signal)).toEqual(result);
+    const store = createSyncObjectStore(failAtCompareAndSwap(backend.connect(), 3, mode));
+    expect(await publishEntity(store, operation, signal, null)).toEqual({
+      operationId: operation.operationId,
+      sequence: 1,
+    });
+    expect((await store.readHead(operation.objectId, signal))?.head).toMatchObject({
+      current: operation.operationId,
+      reserved: [],
+      sequence: 1,
+    });
     expect(revisionKeys(backend, operation.objectId)).toEqual([revisionKey(operation.objectId, operation.operationId)]);
-    expect((await store.readHead(operation.objectId, signal))?.head.sequence).toBe(1);
   }
 });
 
