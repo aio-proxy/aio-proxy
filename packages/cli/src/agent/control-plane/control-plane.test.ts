@@ -32,6 +32,26 @@ test('rejects a revoke terminal for a different installation', async () => {
   ).rejects.toThrow();
 });
 
+test('revoke fetch honors the remaining operation budget', async () => {
+  const started = Date.now();
+  await expect(
+    revokeAgentInstallation(
+      'http://127.0.0.1:9317',
+      INSTALLATION,
+      (_input, init) =>
+        new Promise((_, reject) => {
+          const signal = init?.signal;
+          if (signal === undefined) return;
+          const fail = () => reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
+          signal.addEventListener('abort', fail, { once: true });
+          if (signal.aborted) fail();
+        }),
+      { deadline: Date.now() + 80, signal: AbortSignal.timeout(80) },
+    ),
+  ).rejects.toThrow();
+  expect(Date.now() - started).toBeLessThan(1_000);
+});
+
 test.each([404, 500])('rejects revoke HTTP %s without fabricating a terminal status', async (status) => {
   await expect(
     revokeAgentInstallation('http://127.0.0.1:9317', INSTALLATION, async () => new Response('', { status })),

@@ -381,7 +381,18 @@
         "keys_retained": "プロキシキーは保持されました。",
         "restore_option": "操作 UUID で Codex 移行を復元",
         "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？"
-      }
+      },
+      "grok_login": "次のコマンドでサインインします: grok login",
+      "grok_models": "grok models でモデルを一覧し、grok -m <model-id> でセッションを開始します。",
+      "configuration_modified": "Grok 設定が変更されています: {fields}。",
+      "configuration_missing": "Grok 設定がありません。",
+      "recovery_required": "Grok 設定の復旧が必要です: {fields}。",
+      "host_managed_catalog": "host_managed",
+      "grok_close_settings": "Grok の設定画面が開いている場合は閉じて、AIO Proxy 設定を再読み込みしてください。",
+      "grok_login_required": "Grok へのログインが必要です。",
+      "grok_policy_conflict": "Grok のルーティング競合: {fields}。",
+      "grok_retained_files": "保持したファイル: {files}。",
+      "grok_skipped_fields": "スキップしたフィールド: {fields}。"
     }
   },
   "oauth": {

@@ -20,6 +20,26 @@ const fixture = () => {
   return { handle, repo: createAgentIdentityRepository(handle.sqlite) };
 };
 
+test('issue persists and decodes a Grok installation target', () => {
+  const { handle, repo } = fixture();
+  repo.issue({
+    installationId: INSTALLATION,
+    target: 'grok',
+    adapterVersion: '1.2.3',
+    familyId: 'family-grok',
+    accessHash: 'at-grok',
+    refreshHash: 'rt-grok',
+    now: 1_000,
+    accessExpiresAt: 901_000,
+    refreshExpiresAt: 7_776_001_000,
+  });
+  expect(repo.loadActiveAccess(2_000)).toEqual([expect.objectContaining({ tokenHash: 'at-grok', target: 'grok' })]);
+  expect(repo.listInstallations(2_000)).toEqual([
+    expect.objectContaining({ installationId: INSTALLATION, target: 'grok' }),
+  ]);
+  handle.close();
+});
+
 test('issue replaces only the current family for one installation', () => {
   const { handle, repo } = fixture();
   repo.issue({

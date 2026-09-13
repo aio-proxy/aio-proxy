@@ -5,10 +5,12 @@ import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from
 import { m } from '@aio-proxy/i18n';
 import { isRecord } from '@aio-proxy/shared';
 
-export const shouldPrintUpdateBanner = (command: string, argv: readonly string[]): boolean => {
-  if (command === 'upgrade' || command === 'update') return false;
-  if (command === 'auth' && argv.includes('codex')) return false;
+export const shouldPrintUpdateBanner = (commandChain: readonly string[], argv: readonly string[]): boolean => {
   if (argv.includes('--version') || argv.includes('-v')) return false;
+  if (commandChain.includes('upgrade') || commandChain.includes('update')) return false;
+  const authIndex = commandChain.indexOf('auth');
+  const agentIndex = commandChain.indexOf('agent');
+  if (authIndex !== -1 && agentIndex !== -1 && authIndex < agentIndex) return false;
   return true;
 };
 

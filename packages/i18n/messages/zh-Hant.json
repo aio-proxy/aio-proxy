@@ -381,7 +381,18 @@
         "keys_retained": "代理金鑰已保留。",
         "restore_option": "依操作 UUID 復原 Codex 移轉",
         "pending_recovery": "先前的 Codex 設定操作仍在等待處理。是否在繼續前復原？"
-      }
+      },
+      "grok_login": "使用以下命令登入：grok login",
+      "grok_models": "使用 grok models 列出模型，然後用 grok -m <model-id> 開始工作階段。",
+      "configuration_modified": "Grok 設定已被修改：{fields}。",
+      "configuration_missing": "Grok 設定缺失。",
+      "recovery_required": "Grok 設定需要復原：{fields}。",
+      "host_managed_catalog": "host_managed",
+      "grok_close_settings": "如果 Grok 設定已開啟，請關閉以便重新載入 AIO Proxy 設定。",
+      "grok_login_required": "需要 Grok 登入。",
+      "grok_policy_conflict": "Grok 路由衝突：{fields}。",
+      "grok_retained_files": "保留的檔案：{files}。",
+      "grok_skipped_fields": "略過的欄位：{fields}。"
     }
   },
   "oauth": {

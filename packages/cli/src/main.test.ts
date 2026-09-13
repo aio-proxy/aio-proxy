@@ -12,7 +12,7 @@ import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRev
 import type { AgentCliActions } from './agent/output';
 import { registerAgentCommands } from './agent/output';
 import { defaultCliDeps } from './dashboard-assets';
-import { buildProgram, invokedProgramName } from './main';
+import { buildProgram, invokedProgramName, writeStdoutLine } from './main';
 
 describe('cli', () => {
   test('prints package version when requested', () => {
@@ -269,17 +269,21 @@ const revokeResult: AgentRevokeResult = {
 };
 
 function agentProgram() {
-  const lines: string[] = [];
+  const printed: string[] = [];
+  const authCalls: Array<{ target: string; installationId: string }> = [];
   const actions: AgentCliActions = {
     list: mock(async () => listResult),
     configure: mock(async () => configureResult),
     remove: mock(async () => removeResult),
     revoke: mock(async () => revokeResult),
     authCodex: mock(async () => undefined),
+    auth: mock(async (target, options) => {
+      authCalls.push({ target, installationId: options.installationId });
+    }),
   };
   const program = new Command().name('aio-proxy').exitOverride();
-  registerAgentCommands(program, { actions, print: (line) => lines.push(line) });
-  return { actions, lines, program };
+  registerAgentCommands(program, { actions, print: (line) => printed.push(line) });
+  return { actions, lines: printed, printed, program, authCalls };
 }
 
 test.each([
@@ -317,6 +321,14 @@ test('agent auth codex forwards the installation id to the helper action', async
   expect(f.lines).toHaveLength(0);
 });
 
+test('agent auth grok dispatches without going through generic print', async () => {
+  const f = agentProgram();
+  const id = removeResult.installationId;
+  await f.program.parseAsync(['agent', 'auth', 'grok', '--installation-id', id], { from: 'user' });
+  expect(f.authCalls).toEqual([{ target: 'grok', installationId: id }]);
+  expect(f.printed).toEqual([]);
+});
+
 test('the real buildProgram registers public Agent commands and keeps the child action hidden', () => {
   const program = buildProgram();
   const agent = program.commands.find((command) => command.name() === 'agent');
@@ -332,7 +344,51 @@ test('agent configure and remove help render the supported target grammar', () =
   const program = buildProgram();
   const agent = program.commands.find((command) => command.name() === 'agent');
   const help = agent?.helpInformation() ?? '';
-  expect(help).toContain('configure [options] <opencode|pi|omp|codex>');
-  expect(help).toContain('remove <opencode|pi|omp|codex>');
+  expect(help).toContain('configure [options] <opencode|pi|omp|codex|grok>');
+  expect(help).toContain('remove <opencode|pi|omp|codex|grok>');
+  expect(help).toContain('auth');
   expect(help).not.toContain('<target>');
+});
+
+test.each([
+  ['invalid UUID', ['agent', 'auth', 'grok', '--installation-id', 'not-a-uuid']],
+  ['missing option', ['agent', 'auth', 'grok']],
+  ['bad target', ['agent', 'auth', 'opencode', '--installation-id', removeResult.installationId]],
+] as const)('agent auth %s leaves stdout empty and exits nonzero', async (_name, args) => {
+  const f = agentProgram();
+  const stdout: string[] = [];
+  f.program.configureOutput({
+    writeOut: (chunk) => stdout.push(chunk),
+    writeErr: () => undefined,
+  });
+  await expect(f.program.parseAsync([...args], { from: 'user' })).rejects.toThrow();
+  expect(f.printed).toEqual([]);
+  expect(stdout.join('')).toBe('');
+});
+
+test.each([
+  ['invalid UUID', ['agent', 'auth', 'grok', '--installation-id', 'not-a-uuid']],
+  ['missing option', ['agent', 'auth', 'grok']],
+  ['bad target', ['agent', 'auth', 'opencode', '--installation-id', removeResult.installationId]],
+] as const)('real CLI agent auth %s keeps stdout empty', (_name, args) => {
+  const result = runCli([...args]);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stdout.toString()).toBe('');
+});
+
+test('cached update notify does not pollute agent auth helper stdout', async () => {
+  const { writeUpdateCheckState } = await import('@aio-proxy/core');
+  await writeUpdateCheckState({ latest: '99.0.0', checkedAt: 1 });
+  const result = runCli(['agent', 'auth', 'grok', '--installation-id', 'not-a-uuid']);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stdout.toString()).toBe('');
+  expect(result.stderr.toString()).not.toContain('99.0.0 is available');
+});
+
+test('stdout writer rejects on write failure without implying a successful write', async () => {
+  await expect(
+    writeStdoutLine('token\n', (_chunk, callback) => {
+      callback(new Error('EPIPE'));
+    }),
+  ).rejects.toThrow('EPIPE');
 });

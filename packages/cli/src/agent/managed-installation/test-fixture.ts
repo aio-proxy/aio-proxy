@@ -5,7 +5,7 @@ import { join, relative } from 'node:path';
 
 import type { AgentCatalogV1, AgentManagedStateV1, AgentPluginTarget } from '@aio-proxy/types';
 
-import type { AgentLocation } from '../hosts';
+import type { AgentPluginLocation } from '../hosts';
 import { openCodeEntry } from './inspect';
 import type { ManagedInstallInput, ManagedInstallTestDeps } from './install';
 
@@ -69,7 +69,7 @@ export async function installFixture(
   fixtureRoots.push(root);
   const hostRoot = join(root, target === 'opencode' ? 'plugins' : 'extensions');
   const managedDir = join(hostRoot, 'aio-proxy');
-  const location: AgentLocation = {
+  const location: AgentPluginLocation = {
     target,
     hostRoot,
     managedDir,

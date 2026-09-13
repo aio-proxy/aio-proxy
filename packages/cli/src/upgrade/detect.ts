@@ -24,26 +24,53 @@ export const resolveUpgradeMethod = (binPath: string, dirs: UpgradeDirs): Upgrad
   return 'binary';
 };
 
-const runCapture = async (cmd: [string, ...string[]]): Promise<string | undefined> => {
-  const [exe] = cmd;
-  if (Bun.which(exe) === null) return undefined;
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'ignore' });
-  const out = await new Response(proc.stdout).text();
-  if ((await proc.exited) !== 0) return undefined;
-  const trimmed = out.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+export type LauncherProbeBudget = {
+  readonly deadline?: number;
+  readonly signal?: AbortSignal;
 };
 
-const brewBinDir = async (): Promise<string | undefined> => {
+const DEFAULT_LAUNCHER_PROBE_MS = 5_000;
+
+const runCapture = async (cmd: [string, ...string[]], probe: LauncherProbeBudget = {}): Promise<string | undefined> => {
+  const [exe] = cmd;
+  if (Bun.which(exe) === null) return undefined;
+  const timeoutMs = probe.deadline === undefined ? DEFAULT_LAUNCHER_PROBE_MS : Math.max(0, probe.deadline - Date.now());
+  if (timeoutMs === 0) return undefined;
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(timeoutMs),
+    ...(probe.signal === undefined ? [] : [probe.signal]),
+  ]);
+  if (signal.aborted) return undefined;
+  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'ignore', signal });
+  const timedOut = new Promise<never>((_, reject) => {
+    const onAbort = (): void => {
+      reject(new Error('launcher probe timed out'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+  try {
+    const out = await Promise.race([new Response(proc.stdout).text(), timedOut]);
+    if ((await Promise.race([proc.exited, timedOut])) !== 0) return undefined;
+    const trimmed = out.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  } catch {
+    proc.kill();
+    proc.kill('SIGKILL');
+    return undefined;
+  }
+};
+
+const brewBinDir = async (probe: LauncherProbeBudget = {}): Promise<string | undefined> => {
   for (const formula of [HOMEBREW_FORMULA, PACKAGE]) {
-    const prefix = await runCapture(['brew', '--prefix', formula]);
+    const prefix = await runCapture(['brew', '--prefix', formula], probe);
     if (prefix !== undefined) return join(prefix, 'bin');
   }
   return undefined;
 };
 
-const npmBinDir = async (): Promise<string | undefined> => {
-  const prefix = await runCapture(['npm', 'prefix', '-g']);
+const npmBinDir = async (probe: LauncherProbeBudget = {}): Promise<string | undefined> => {
+  const prefix = await runCapture(['npm', 'prefix', '-g'], probe);
   if (prefix === undefined) return undefined;
   return process.platform === 'win32' ? prefix : join(prefix, 'bin');
 };
@@ -225,6 +252,7 @@ const detectedPackageTarget = (method: NodeManager, binPath: string): UpgradeTar
 export const resolveUpgradeTargetFrom = async (
   binPath: string,
   env: NodeJS.ProcessEnv = process.env,
+  probe: LauncherProbeBudget = {},
 ): Promise<UpgradeTarget> => {
   const methodFromEnv = env['AIO_PROXY_UPGRADE_METHOD'];
   if (isPackageMethod(methodFromEnv)) return packageManagerTarget(methodFromEnv, binPath);
@@ -243,10 +271,10 @@ export const resolveUpgradeTargetFrom = async (
   const pnpm = siblingOwnedTarget(binPath, 'pnpm');
   if (pnpm !== undefined) return pnpm;
   const [brewDir, bunDir, npmDir, pnpmDir] = await Promise.all([
-    brewBinDir(),
-    runCapture(['bun', 'pm', 'bin', '-g']),
-    npmBinDir(),
-    runCapture(['pnpm', 'bin', '-g']),
+    brewBinDir(probe),
+    runCapture(['bun', 'pm', 'bin', '-g'], probe),
+    npmBinDir(probe),
+    runCapture(['pnpm', 'bin', '-g'], probe),
   ]);
   const method = resolveUpgradeMethod(binPath, compactDirs({ brew: brewDir, bun: bunDir, npm: npmDir, pnpm: pnpmDir }));
   // Prefix-dir containment is not Homebrew: npm's global prefix is often the

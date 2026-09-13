@@ -1,6 +1,5 @@
 export {
   agentConfigure,
-  agentList,
   agentRemove,
   agentRevoke,
   createAgentCommandDeps,
@@ -13,4 +12,7 @@ export {
   type AgentRemoveResult,
   type PluginAgentRemoveResult,
   type AgentRevokeResult,
+  type GrokAgentListTargetResult,
+  type PluginAgentListTargetResult,
 } from './agent';
+export { agentList } from './list';

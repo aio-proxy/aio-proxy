@@ -381,7 +381,18 @@
         "keys_retained": "Proxy keys were retained.",
         "restore_option": "Restore a Codex migration by operation UUID",
         "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?"
-      }
+      },
+      "grok_login": "Sign in with: grok login",
+      "grok_models": "List models with grok models, then start a session with grok -m <model-id>.",
+      "configuration_modified": "Grok configuration has been modified: {fields}.",
+      "configuration_missing": "Grok configuration is missing.",
+      "recovery_required": "Grok configuration requires recovery: {fields}.",
+      "host_managed_catalog": "host_managed",
+      "grok_close_settings": "Close Grok settings if they are open so AIO Proxy configuration reloads.",
+      "grok_login_required": "Grok login required.",
+      "grok_policy_conflict": "Grok routing conflict: {fields}.",
+      "grok_retained_files": "Retained files: {files}.",
+      "grok_skipped_fields": "Skipped fields: {fields}."
     }
   },
   "oauth": {
