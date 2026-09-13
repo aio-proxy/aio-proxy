@@ -82,5 +82,9 @@ export async function purgeEntity(
       (head) => (head.state === 'purging' ? { ...head, state: 'purged', cleanupComplete: true } : head),
       signal,
     );
+    // This epoch is finished, and the fence that guarded the first read is gone. Looping back would
+    // read whatever the object is now — including a new epoch another device restored while this
+    // purge was finalizing — and begin purging that restore.
+    return;
   }
 }

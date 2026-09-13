@@ -132,7 +132,10 @@ export const SyncApplyInputSchema = z.strictObject({
 });
 
 export const SyncRangeInputSchema = z.strictObject({ providerId: id, included: z.literal(false) });
-export const SyncDetachInputSchema = z.strictObject({ providerId: id, loginSessionId: id });
+// Detaching takes two calls. The first omits `loginSessionId` to mark the Provider `detach-pending`,
+// which is what stops the login that follows from being published as the shared credential; the
+// second names that login's session as proof the candidate is a fresh, independent authorization.
+export const SyncDetachInputSchema = z.strictObject({ providerId: id, loginSessionId: id.optional() });
 export const SyncCancelDetachInputSchema = z.strictObject({ providerId: id });
 
 export const SyncHistoryItemSchema = z.strictObject({
@@ -162,7 +165,7 @@ export type SyncControlPlane = {
   readonly preview: (input: SyncPreviewInput) => Promise<SyncPreview>;
   readonly apply: (input: SyncApplyInput) => Promise<SyncStatus>;
   readonly setRange: (providerId: string, included: false) => Promise<SyncStatus>;
-  readonly detach: (providerId: string, loginSessionId: string) => Promise<SyncStatus>;
+  readonly detach: (providerId: string, loginSessionId?: string) => Promise<SyncStatus>;
   readonly cancelDetach: (providerId: string) => Promise<SyncStatus>;
   readonly history: (objectId: string) => Promise<SyncHistoryItem[]>;
   readonly retry: () => Promise<SyncStatus>;

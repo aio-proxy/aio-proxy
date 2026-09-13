@@ -193,7 +193,7 @@ test('dashboard auth outage maps to the actionable service-unavailable error', a
   await expect(client.status()).rejects.toMatchObject({ code: 'service-not-running', transient: true });
 });
 
-test('detach polls the local OAuth session until it succeeds before sync control', async () => {
+test('detach marks the Provider pending before authorizing, then names the succeeded session', async () => {
   const calls: Array<{ path: string; body: string | undefined }> = [];
   const output: string[] = [];
   let polls = 0;
@@ -220,6 +220,7 @@ test('detach polls the local OAuth session until it succeeds before sync control
   });
   await program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json']);
   expect(calls).toEqual([
+    { path: '/dashboard/api/sync/detach', body: JSON.stringify({ providerId: 'work' }) },
     { path: '/dashboard/api/oauth/sessions', body: JSON.stringify({ targetProviderId: 'work' }) },
     { path: '/dashboard/api/oauth/sessions/11111111-1111-4111-8111-111111111111', body: undefined },
     { path: '/dashboard/api/oauth/sessions/11111111-1111-4111-8111-111111111111', body: undefined },
@@ -253,6 +254,7 @@ test('detach reports OAuth failure without handing a pending session to sync con
     code: 'oauth-login-failed',
   });
   expect(calls).toEqual([
+    '/dashboard/api/sync/detach',
     '/dashboard/api/oauth/sessions',
     '/dashboard/api/oauth/sessions/22222222-2222-4222-8222-222222222222',
   ]);

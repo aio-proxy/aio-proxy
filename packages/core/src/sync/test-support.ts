@@ -190,6 +190,8 @@ export type MemorySyncBackend = {
   readonly connect: () => SyncSession;
   readonly readAll: () => ReadonlyMap<string, SyncRead>;
   readonly advance: (ms: number) => void;
+  /** The clock writes are stamped with, so retention tests can express a real `serverNow`. */
+  readonly now: () => number;
   readonly failNext: (method: Method, mode: FaultMode, code?: FailureCode) => void;
   readonly connectionCount: () => number;
   readonly activeWatchCount: () => number;
@@ -263,7 +265,9 @@ export function createMemorySyncBackend(): MemorySyncBackend {
   const faults = new Map<Method, { mode: FaultMode; code: FailureCode }>();
   const gates = new Map<Method, Gate>();
   const afterGates = new Map<Method, Gate>();
-  let clock = 0;
+  // A storage service stamps wall-clock epoch milliseconds, and the retention window is derived by
+  // subtracting from it: starting at 0 dates every write to 1970, which is outside every window.
+  let clock = Date.now();
   let version = 0;
   let disposals = 0;
 
@@ -383,6 +387,9 @@ export function createMemorySyncBackend(): MemorySyncBackend {
     },
     advance(ms) {
       clock += ms;
+    },
+    now() {
+      return clock;
     },
     failNext(method, mode, code = 'offline') {
       faults.set(method, { mode, code });

@@ -46,6 +46,17 @@ export interface LocalEntity {
   oauth?: OAuthOwnership;
 }
 
+export const TOMBSTONE_BASELINE_PREFIX = 'deleted:';
+
+// A deleted row keeps its kind and logical key so credential coordination can still find it, but it
+// no longer claims that identity. Counting it as a collision would pin `provider-id-conflict` on the
+// one surviving object forever, since discovery already sees a single active identity, and counting
+// it as an authored row hands a re-created object the deleted head's row. It lives with the row type
+// because reconciliation, the authored projection, and the control plane all apply the same rule.
+export function isTombstonedEntity(entity: LocalEntity): boolean {
+  return entity.desired === null && (entity.baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
+}
+
 export interface OutboxOperation {
   operationId: string;
   objectId: string;

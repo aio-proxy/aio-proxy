@@ -13,6 +13,18 @@ function assertion(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Sync backend conformance failed: ${message}`);
 }
 
+// Only the scale is checkable here: seconds land below the floor and microseconds above the ceiling,
+// and either passes every other assertion while silently stretching or collapsing the retention
+// window the service derives from these values.
+const EPOCH_MS_FLOOR = Date.UTC(2001, 0, 1);
+
+function assertEpochMillis(value: number, message: string): void {
+  assertion(
+    Number.isFinite(value) && value >= EPOCH_MS_FLOOR && value <= Date.now() + 24 * 60 * 60 * 1000,
+    `${message} is epoch milliseconds (got ${value})`,
+  );
+}
+
 export async function exerciseSyncBackend(factory: () => Promise<SyncConformancePair>): Promise<void> {
   const pair = await factory();
   const prefix = `aio-proxy-conformance/${crypto.randomUUID()}/`;
@@ -30,9 +42,11 @@ export async function exerciseSyncBackend(factory: () => Promise<SyncConformance
     ]);
     assertion(created.filter((result) => result.kind === 'written').length === 1, 'only one create succeeds');
     assertion(created.filter((result) => result.kind === 'conflict').length === 1, 'one competing create conflicts');
+    for (const result of created) if (result.kind === 'written') assertEpochMillis(result.modifiedAt, 'write time');
 
     const read = await pair.a.read(key, signal);
     assertion(read.kind === 'present', 'a created value can be read');
+    assertEpochMillis(read.modifiedAt, 'read time');
     assertion(isEqual(read.value, value), 'read returns the written bytes');
     createdKeys.add(key);
     const stale = await pair.b.compareAndSwap(key, read.version, new TextEncoder().encode('replacement'), signal);

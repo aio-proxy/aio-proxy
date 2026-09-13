@@ -92,28 +92,54 @@ function isOAuthProvider(body: EntityBody | null): body is EntityBody {
   return (body.value as Record<string, JsonValue>)['kind'] === 'oauth';
 }
 
-async function persistProviderIdentity(input: OperationInput, rows: ProviderIdentityRows): Promise<void> {
-  if (input.persistProviderIdentity !== undefined) {
-    await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
-    return;
-  }
+/**
+ * Writes synchronization rows only. Marking a rename's outcome uncertain must not re-enter the
+ * identity hook: that hook renames the authored configuration and moves the OAuth account too, so
+ * running it again from a failure handler can commit the very rename whose error is about to be
+ * rethrown, leaving the caller told the apply was stale while the local rename actually landed.
+ */
+function persistRows(input: OperationInput, entities: readonly LocalEntity[]): void {
   const binding = input.binding();
   if (binding === null) throw new SyncPreviewError('not-connected');
   const repository = input.repo as SyncRepository & {
     readonly putEntities?: (bindingId: string, entities: readonly LocalEntity[]) => void;
   };
   if (typeof repository.putEntities === 'function') {
-    repository.putEntities(binding.id, rows.entities);
+    repository.putEntities(binding.id, entities);
     return;
   }
-  if (rows.entities.length !== 1 || typeof input.repo.putEntity !== 'function')
+  if (entities.length !== 1 || typeof input.repo.putEntity !== 'function')
     throw new SyncOperationError('upgrade-required');
-  input.repo.putEntity(binding.id, rows.entities[0]!);
+  input.repo.putEntity(binding.id, entities[0]!);
+}
+
+async function persistProviderIdentity(input: OperationInput, rows: ProviderIdentityRows): Promise<void> {
+  if (input.persistProviderIdentity !== undefined) {
+    await input.persistProviderIdentity(rows.oldProviderId, rows.newProviderId, rows.entities);
+    return;
+  }
+  persistRows(input, rows.entities);
 }
 
 export async function assertFresh(input: OperationInput, expected: PreviewFence): Promise<void> {
   const current = await input.fence();
   if (!sameFence(expected, current)) throw new SyncPreviewError('preview-stale');
+}
+
+/**
+ * The reviewed fence is taken once, but a multi-row apply makes network round trips per row, so a
+ * peer can publish or retire this object before its own decision is reached. Importing a cloud body
+ * writes it into the configuration unconditionally — unlike a publication, which is epoch-exact — so
+ * the head is read again immediately before the import and a moved one becomes a stale preview
+ * rather than a success that silently disagrees with the backend.
+ */
+async function assertRemoteHeadUnchanged(
+  input: OperationInput,
+  objectId: string,
+  reviewed: RemoteEntity | undefined,
+): Promise<void> {
+  const current = (await input.remoteEntities()).find((entity) => entity.objectId === objectId);
+  if ((current?.version ?? null) !== (reviewed?.version ?? null)) throw new SyncPreviewError('preview-stale');
 }
 
 export type SyncDecision = {
@@ -302,13 +328,18 @@ export async function applyPreview(
     let published = false;
     let publishedRevision: string | null = null;
     const recordJoin = (): void => {
-      if (identityRows !== undefined || current === undefined || typeof input.repo.putEntity !== 'function') return;
+      if (current === undefined || typeof input.repo.putEntity !== 'function') return;
+      // A rename republishes the configuration as a new object, so the row to join is the renamed
+      // one. Skipping it instead would report success while leaving the Provider outside
+      // synchronization — reconciliation had already quarantined the colliding row as `excluded`,
+      // and providerIdentityRows carries that mode onto the replacement.
+      const joined = identityRows?.renamed ?? current;
       // A commit landing during the publication has no next row to catch it, and joining buries it.
       commits.assertUnchanged();
       // `current` is the preview snapshot, taken before persistOverrides() wrote this row's paths
       // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
       // the fence. Re-read the row and carry over only the fields applying actually decides.
-      const latest = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId) ?? current;
+      const latest = input.localEntities().find((entity) => entity.objectId === joined.objectId) ?? joined;
       // A `sync leave` completing while this publication was in flight stores the row excluded and
       // bumps the range revision. The commit fence cannot see it — `setRange` writes no
       // configuration commit — so forcing `included` back here would silently undo a Leave the user
@@ -336,7 +367,8 @@ export async function applyPreview(
         desired: selectedBody,
         // The preview's `remote.revision` predates this publication, so recording it would leave
         // the row permanently behind its own write and make the next reconcile see phantom drift.
-        baseline: publishedRevision ?? remote?.revision ?? latest.baseline,
+        // After a rename it names the object the rename vacated, which this row no longer follows.
+        baseline: publishedRevision ?? (identityRows === undefined ? remote?.revision : null) ?? latest.baseline,
         pendingReason: unverified ? 'oauth-unverified' : null,
       });
     };
@@ -380,11 +412,12 @@ export async function applyPreview(
         await input.applyLocal(selectedBody, current, candidate.row.objectId);
         commits.adopt();
       } else if (decision.choice === 'cloud') {
+        await assertRemoteHeadUnchanged(input, candidate.row.objectId, remote);
         // Importing alone would leave the head under the old Provider ID, and the next
         // reconciliation would restore that ID and quarantine the same collision again. Publish the
         // renamed object first, then bind the local row to the object the cloud now agrees with.
         if (identityRows !== undefined) {
-          await input.applyCloud(selectedBody, identityRows.renamed, null);
+          publishedRevision = (await input.applyCloud(selectedBody, identityRows.renamed, null)) ?? null;
           if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
           commits.assertUnchanged();
         }
@@ -393,11 +426,12 @@ export async function applyPreview(
       } else if (identityRows !== undefined) {
         // The renamed object is published first so the configuration is never absent from the cloud,
         // then the identity it vacated is deleted. A fresh object has no expected version.
-        await input.applyCloud(
-          selectedBody,
-          identityRows.renamed,
-          identityRows.replacesPublished ? null : (remote?.version ?? null),
-        );
+        publishedRevision =
+          (await input.applyCloud(
+            selectedBody,
+            identityRows.renamed,
+            identityRows.replacesPublished ? null : (remote?.version ?? null),
+          )) ?? null;
         if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
         published = true;
       } else {
@@ -415,10 +449,10 @@ export async function applyPreview(
       if (published && isOAuthProvider(selectedBody)) await input.shareOAuth?.(selectedBody.logicalKey);
     } catch (error) {
       if (identityRows !== undefined && current !== undefined) {
-        await persistProviderIdentity(input, {
-          ...identityRows,
-          entities: identityRows.entities.map((entity) => ({ ...entity, pendingReason: 'result-uncertain' })),
-        });
+        persistRows(
+          input,
+          identityRows.entities.map((entity) => ({ ...entity, pendingReason: 'result-uncertain' })),
+        );
       }
       throw error;
     }

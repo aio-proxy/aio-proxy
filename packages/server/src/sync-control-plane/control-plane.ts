@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   type CommittedSource,
   type LocalBinding,
@@ -73,7 +75,7 @@ export type SyncControlPlaneOptions = {
   readonly persistProviderIdentity?: OperationInput['persistProviderIdentity'];
   readonly shareOAuth?: OperationInput['shareOAuth'];
   readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<SyncConnectCandidate>;
-  readonly detach?: (providerId: string, loginSessionId: string) => Promise<void>;
+  readonly detach?: (providerId: string, loginSessionId?: string) => Promise<void>;
   readonly cancelDetach?: (providerId: string) => Promise<void>;
   readonly purge?: OperationInput['purge'];
   /**
@@ -184,6 +186,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     if (mapped !== undefined) state = mapped;
   });
 
+  const authoredDigest = async (): Promise<string> => {
+    const source = await options.committedSource?.().catch(() => undefined);
+    return source === undefined ? '' : createHash('sha256').update(JSON.stringify(source.raw)).digest('hex');
+  };
+
   const currentFence = async (
     snapshot?: readonly RemoteEntity[],
     localCommitId?: string,
@@ -202,6 +209,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       // pass `sameFence()`, and let the reviewed join re-include the Provider Leave reported success
       // for. Applying uses the live value, so the fence rejects the preview instead.
       rangeRevision: capturedRangeRevision ?? rangeRevision,
+      // Before the first binding there is no commit history for `localCommitId` to name, so a
+      // configuration edit between preview and Apply would pass the fence: a `cloud` decision would
+      // overwrite the newer Provider, and a `local` decision would publish the reviewed body and
+      // record it as synchronized. The authored file is that history until a binding exists.
+      ...(current === null ? { sourceDigest: await authoredDigest() } : {}),
       remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
     };
   };

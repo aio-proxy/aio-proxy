@@ -3,7 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { PluginRepository } from '../../plugins/repository';
 import type { EntityKind } from '../protocol';
-import type { LocalEntity, SyncRepository } from '../repository';
+import { isTombstonedEntity, type LocalEntity, type SyncRepository } from '../repository';
 import type { CommittedSource } from './projection';
 
 function record(value: JsonValue | undefined): Record<string, JsonValue> | undefined {
@@ -104,7 +104,15 @@ export function seedAuthoredEntities(
   reserved: readonly { readonly kind: string; readonly logicalKey: string }[] = [],
 ): LocalEntity[] {
   const existing = new Set(
-    [...repo.entities(bindingId), ...reserved].map((entity) => `${entity.kind}\0${entity.logicalKey}`),
+    [
+      // A tombstone keeps its kind and logical key for credential coordination but no longer holds
+      // that identity, so re-authoring the object is a new object. Counting it here hands the
+      // re-created configuration the deleted head's row: the commit queues a put the engine drops
+      // against the tombstone, and reconciliation reads the recorded `deleted:` baseline as already
+      // applied — the row stays included, and nothing is ever published.
+      ...repo.entities(bindingId).filter((entity) => !isTombstonedEntity(entity)),
+      ...reserved,
+    ].map((entity) => `${entity.kind}\0${entity.logicalKey}`),
   );
   const seeded: LocalEntity[] = [];
   for (const identity of authoredEntityIdentities(raw)) {

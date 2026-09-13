@@ -7,6 +7,7 @@ import {
   type OAuthSharingService,
   type PluginRegistrySnapshot,
   type PluginRepository,
+  type PendingReason,
   type StoredAccount,
   type SyncRepository,
 } from '@aio-proxy/core';
@@ -134,9 +135,34 @@ function secretDestinationApproved(body: EntityBody, approved: EntityBody | null
 }
 
 export function createActivationCheck(input: ActivationCheckInput) {
-  return async (raw: Record<string, JsonValue>, body: EntityBody, signal: AbortSignal) => {
+  return async (
+    raw: Record<string, JsonValue>,
+    body: EntityBody,
+    signal: AbortSignal,
+    intent?: 'reviewed',
+  ): Promise<PendingReason | undefined> => {
     const missingEnv = templateEnv(body);
     if (missingEnv === 'invalid-config') return missingEnv;
+    // A reviewed import is the user's own decision about this body, so it carries the destination
+    // approval `secret-conflict` asks for, and its OAuth account is imported by the reconciliation
+    // that the join's `oauth-unverified` row keeps eligible. Neither excuses a prerequisite this
+    // device cannot meet: an unresolved `{{env.NAME}}` resolves to an empty string, so applying would
+    // commit an unauthenticated Provider — and the row would then carry the cloud baseline with no
+    // reason, which is exactly what reconciliation skips instead of retrying once the variable exists.
+    if (intent === 'reviewed') {
+      const reason = await checkPrerequisites({
+        raw,
+        body,
+        apply: async () => {},
+        dependencies: {
+          installedPackages: input.pluginVersions(),
+          missingEnv,
+          oauthVerified: true,
+          credentialValid: true,
+        },
+      });
+      return reason === 'oauth-unverified' ? undefined : reason;
+    }
     const binding = input.repo.readBinding();
     const readLocalEntity = () =>
       binding === null

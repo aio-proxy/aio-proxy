@@ -5,7 +5,11 @@ import { exerciseSyncBackend } from './sync-conformance';
 
 type Entry = Extract<SyncRead, { kind: 'present' }>;
 
-function createFixture(): { readonly a: SyncSession; readonly b: SyncSession; readonly cleanup: () => Promise<void> } {
+function createFixture(modifiedAt: number = Date.now()): {
+  readonly a: SyncSession;
+  readonly b: SyncSession;
+  readonly cleanup: () => Promise<void>;
+} {
   const values = new Map<string, Entry>();
   let nextVersion = 0;
   let cleanupMode = false;
@@ -32,8 +36,8 @@ function createFixture(): { readonly a: SyncSession; readonly b: SyncSession; re
         const current = values.get(key);
         if ((current?.version ?? null) !== expected) return { kind: 'conflict' };
         const version = `v${++nextVersion}`;
-        values.set(key, { kind: 'present', value: value.slice(), version, modifiedAt: 0 });
-        return { kind: 'written', version, modifiedAt: 0 };
+        values.set(key, { kind: 'present', value: value.slice(), version, modifiedAt });
+        return { kind: 'written', version, modifiedAt };
       },
       async list({ prefix, cursor }): Promise<{ keys: readonly string[]; nextCursor?: string }> {
         assertOpen();
@@ -60,6 +64,14 @@ function createFixture(): { readonly a: SyncSession; readonly b: SyncSession; re
 
   return { a: session('a'), b: session('b'), async cleanup() {} };
 }
+
+test('rejects a backend whose timestamps are not epoch milliseconds', async () => {
+  // A retention window measured in milliseconds is decades wide against seconds and minutes wide
+  // against microseconds, so both scales must fail before the backend ships.
+  for (const modifiedAt of [Math.floor(Date.now() / 1000), Date.now() * 1000]) {
+    await expect(exerciseSyncBackend(async () => createFixture(modifiedAt))).rejects.toThrow(/is epoch milliseconds/);
+  }
+});
 
 test('reports every unresolved fixture key after an earlier cleanup error', async () => {
   let caught: unknown;

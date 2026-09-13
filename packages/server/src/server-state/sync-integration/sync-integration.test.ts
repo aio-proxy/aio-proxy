@@ -339,6 +339,72 @@ test('pinning a path keeps ownership a login recorded after the preview', async 
   }
 });
 
+// A reviewed decision substitutes for destination approval, not for a prerequisite this device
+// cannot meet. An unresolved `{{env.NAME}}` resolves to an empty string, so importing the cloud body
+// would commit an unauthenticated Provider — and the joined row then carries the cloud baseline with
+// no pending reason, the one state reconciliation skips instead of retrying once the variable exists.
+test('a reviewed cloud import stops at an environment reference this device cannot resolve', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-reviewed-env-'));
+  const body = {
+    kind: 'provider' as const,
+    logicalKey: 'work',
+    value: { kind: 'api', baseUrl: 'https://work.example.test', apiKey: '{{env.AIO_PROXY_TEST_ABSENT}}' },
+    dependencies: [],
+  };
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [entityKey('object-cloud')] }), {
+    [entityKey('object-cloud')]: publish(reserve(newHead('object-cloud', body), 'op-1', 0), 'op-1', 0) as never,
+    [revisionKey('object-cloud', 'op-1')]: {
+      protocol: 1,
+      state: 'payload',
+      objectId: 'object-cloud',
+      epoch: 0,
+      operationId: 'op-1',
+      body,
+      publishedSequence: 1,
+      writtenAt: 1,
+    } as never,
+  });
+  try {
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    await candidate.commit();
+    const repo = createSyncRepository(fixture.db.sqlite);
+    repo.setConnectPending!(repo.readBinding()!.id, false);
+    let imported = 0;
+    const plane = createSyncControlPlaneIntegration(
+      {
+        manager: { current: () => ({ plugins: { registry: {} } }) },
+        repository: createPluginRepository(fixture.db.sqlite),
+      } as unknown as ServerRuntime,
+      {
+        ...fixture.integration,
+        // Counting the import is the assertion; the configuration write it would make needs a
+        // runtime this fixture does not build.
+        syncPort: {
+          ...fixture.integration.syncPort!,
+          applyRemote: () => {
+            imported += 1;
+            return Promise.resolve({ applied: true });
+          },
+        },
+      } as unknown as ReturnType<typeof createSyncIntegration>,
+      { get: () => undefined } as never,
+    )!;
+    const preview = await plane.preview({ kind: 'join', providerId: 'work' });
+
+    await expect(
+      plane.apply({
+        previewId: preview.previewId,
+        decisions: preview.rows.map((row) => ({ objectId: row.objectId, choice: 'cloud' as const })),
+      }),
+    ).rejects.toThrow('operation-pending');
+
+    expect(imported).toBe(0);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 // A stalled backend read inside `share()`/`detach()` keeps holding the Provider gate, so an orphaned
 // signal lets a disconnect or a shutdown leave every later login and refresh for that Provider stuck.
 test('account sharing work is cancelled by the lifecycle that owns it', async () => {

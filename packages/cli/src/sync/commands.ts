@@ -141,6 +141,10 @@ export function registerSyncCommands(program: Command, deps: SyncCliDeps): void 
     .description(m['cli.sync.detach_description']())
     .option('--json', m['cli.sync.option_json']())
     .action(async (providerId: string, options: OutputOptions, command: Command) => {
+      // Mark the detachment pending before authorizing: a login on a still-shared Provider is
+      // published as the shared credential, which would leave the candidate identical to it and no
+      // detachment could ever be approved.
+      await client.detach(providerId);
       const loginSessionId = await client.startDetachSession(providerId);
       emitStatus(await client.detach(providerId, loginSessionId), options, command);
     });

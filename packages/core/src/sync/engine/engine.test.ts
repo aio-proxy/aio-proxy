@@ -320,6 +320,49 @@ test('a late colliding cloud object quarantines both identities without deleting
   });
 });
 
+test('an identity conflict resolved on a later pass rejoins the surviving object', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    const store = createSyncObjectStore(a.session);
+    await publishEntity(
+      store,
+      {
+        operationId: 'collision-op',
+        objectId: 'provider-collision',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'work', value: { kind: 'api', apiKey: 'other' }, dependencies: [] },
+        commitId: 'fixture-collision',
+      },
+      a.signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-work')).toMatchObject({
+      mode: 'excluded',
+      pendingReason: 'provider-id-conflict',
+    });
+
+    // The duplicate is withdrawn from the other device, so the identity is unambiguous again and the
+    // quarantine has to lift on its own. A device that keeps the row excluded follows no later
+    // revision of the surviving object until the user rejoins it by hand.
+    await deleteEntity(store, 'provider-collision', 0, a.signal);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'rotated' }, true);
+    await a.engine.reconcile(a.signal);
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-work')).toMatchObject({
+      mode: 'included',
+      pendingReason: null,
+    });
+    expect(b.remoteApplyCalls()).toContainEqual(
+      expect.objectContaining({ objectId: 'provider-work', body: { kind: 'api', apiKey: 'rotated' } }),
+    );
+  });
+});
+
 test('a tombstoned row does not collide with the object that takes over its Provider ID', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);

@@ -264,6 +264,49 @@ test('a connect apply is refused when the configuration moved after the preview 
   expect(committed).toBe(0);
 });
 
+test('a first connect apply is refused when the configuration moved after the preview was reviewed', async () => {
+  let region = 'us';
+  let committed = 0;
+  const control = createSyncControlPlane({
+    // A first connect has no binding, so the binding and commit halves of the fence are empty for
+    // both the preview and the Apply: the authored file is the only local state to fence against.
+    repo: { readBinding: () => null, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [CLOUD_ROW],
+      refresh: async () => [CLOUD_ROW],
+      commit: async () => void (committed += 1),
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    committedSource: async () => ({
+      raw: { providers: { shared: { kind: 'api', protocol: 'openai-response', baseUrl: `https://${region}.test` } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+  } as never);
+
+  const preview = await control.preview(CONNECT);
+  // The user edits the Provider the review offered a choice for while the dialog sits open. Importing
+  // the cloud body would silently overwrite that edit, and publishing the reviewed local body would
+  // record the superseded configuration as synchronized.
+  region = 'eu';
+
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  expect(committed).toBe(0);
+});
+
 test('an unfinished connect apply is remembered across a restart by the binding row', async () => {
   // How a crash between the binding swap and the reviewed decisions leaves the database: the row
   // is written pending by the connect that created it and only a completed Apply clears it.

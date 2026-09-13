@@ -48,11 +48,18 @@ async function cancelReservations(
       await updateHead(
         store,
         objectId,
-        (head) => ({
-          ...head,
-          reserved: head.reserved.filter((id) => !stale.includes(id)),
-          cancelling: [...new Set([...head.cancelling, ...stale])],
-        }),
+        (head) => {
+          // The publisher may have resumed and published between the staleness read and this write.
+          // Cancelling an operation the head now points at erases the current revision's payload, so
+          // only reclaim IDs the head still lists as reserved.
+          const reclaimed = stale.filter((id) => head.reserved.includes(id));
+          if (reclaimed.length === 0) return head;
+          return {
+            ...head,
+            reserved: head.reserved.filter((id) => !reclaimed.includes(id)),
+            cancelling: [...new Set([...head.cancelling, ...reclaimed])],
+          };
+        },
         signal,
       );
       continue;

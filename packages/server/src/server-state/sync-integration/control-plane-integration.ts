@@ -85,6 +85,21 @@ export function createSyncControlPlaneIntegration(
     applyLocal: async (candidate, _current, objectId) => {
       const syncPort = integration.syncPort;
       if (syncPort === undefined) throw new SyncOperationError('not-connected');
+      // Explicit review substitutes for destination approval, not for a prerequisite this device
+      // cannot meet: an unresolved `{{env.NAME}}` would be committed as an empty string, replacing a
+      // working Provider with an unauthenticated one, and the row would then hold the cloud baseline
+      // with no pending reason — the one state reconciliation skips instead of retrying once the
+      // variable exists. Refuse the import and leave the row for a retry that can satisfy it.
+      if (
+        candidate !== null &&
+        (await integration.checkActivation(
+          (await integration.configFile!.read()) as Record<string, JsonValue>,
+          candidate,
+          integration.lifecycle?.signal ?? new AbortController().signal,
+          'reviewed',
+        )) !== undefined
+      )
+        throw new SyncOperationError('operation-pending');
       // `reviewed`: the row is still excluded while a join's import writes — its inclusion is
       // recorded right after this call — so the port must not read that as a Leave to respect.
       const result = await syncPort.applyRemote(objectId, candidate, `control:${crypto.randomUUID()}`, 'reviewed');
@@ -123,9 +138,15 @@ export function createSyncControlPlaneIntegration(
     },
     connect: integration.connectBackend,
     detach: async (providerId, loginSessionId) => {
-      const session = oauthLoginSessions.get(loginSessionId);
-      if (session?.status !== 'succeeded' || session.providerId !== providerId)
-        throw new SyncOperationError('operation-pending');
+      // Without a login session this is the first of the two detach calls: it only marks the row
+      // `detach-pending`, which is what keeps the login that follows from being published as the
+      // shared credential. Completing the detachment still needs a session that just succeeded,
+      // because that is the proof the candidate is an independent authorization.
+      if (loginSessionId !== undefined) {
+        const session = oauthLoginSessions.get(loginSessionId);
+        if (session?.status !== 'succeeded' || session.providerId !== providerId)
+          throw new SyncOperationError('operation-pending');
+      }
       const sharing = integration.sharing();
       const account = runtime.repository.readAccount(providerId);
       const lifecycle = integration.lifecycle;

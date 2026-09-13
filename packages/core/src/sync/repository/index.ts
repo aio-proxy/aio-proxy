@@ -1,5 +1,7 @@
 export {
   createSyncRepository,
+  isTombstonedEntity,
+  TOMBSTONE_BASELINE_PREFIX,
   type CommitIntent,
   type LocalBinding,
   type LocalEntity,

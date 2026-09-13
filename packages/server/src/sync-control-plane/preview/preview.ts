@@ -27,6 +27,11 @@ export type PreviewFence = {
   readonly localCommitId: string;
   readonly rangeRevision: number;
   readonly remoteVersions: Record<string, string | null>;
+  /**
+   * Digest of the authored configuration, carried only while no binding exists. A first connect has
+   * no commit history for `localCommitId` to name, so this is the local half of its fence.
+   */
+  readonly sourceDigest?: string;
 };
 
 export type PreviewRecord = {
@@ -116,6 +121,7 @@ export function sameFence(a: PreviewFence, b: PreviewFence): boolean {
     a.sessionGeneration === b.sessionGeneration &&
     a.localCommitId === b.localCommitId &&
     a.rangeRevision === b.rangeRevision &&
+    (a.sourceDigest ?? '') === (b.sourceDigest ?? '') &&
     JSON.stringify(Object.entries(a.remoteVersions).sort()) === JSON.stringify(Object.entries(b.remoteVersions).sort())
   );
 }

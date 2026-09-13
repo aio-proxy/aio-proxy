@@ -87,3 +87,25 @@ test('an existing row keeps its selection and object identity when the config is
   expect(seeded).toEqual([]);
   expect(repo.rows).toEqual([existing]);
 });
+
+test('re-authoring an identity whose only row is a tombstone seeds a fresh row and object ID', () => {
+  // Reconciling a remote deletion retains the row with a `deleted:` baseline. Reusing it for the
+  // re-created object publishes nothing: the put targets a deleted head, which the engine drops,
+  // while reconciliation reads that baseline as applied and leaves the row included forever.
+  const tombstone: LocalEntity = {
+    objectId: 'deleted-work',
+    logicalKey: 'work',
+    kind: 'provider',
+    mode: 'included',
+    epoch: 3,
+    desired: null,
+    baseline: 'deleted:3',
+    overrides: [],
+    pendingReason: null,
+  };
+  const repo = repository([tombstone]);
+  const seeded = seedAuthoredEntities(repo, 'binding', { providers: { work: { kind: 'api', apiKey: 'k' } } });
+  expect(seeded).toMatchObject([{ kind: 'provider', logicalKey: 'work', mode: 'excluded', baseline: null }]);
+  expect(seeded[0]?.objectId).not.toBe(tombstone.objectId);
+  expect(repo.rows).toContainEqual(tombstone);
+});

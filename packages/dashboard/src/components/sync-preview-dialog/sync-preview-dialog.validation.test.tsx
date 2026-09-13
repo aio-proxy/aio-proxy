@@ -1,8 +1,10 @@
 import type { SyncPreview } from '@aio-proxy/types';
-import { expect, rs, test } from '@rstest/core';
+import { afterEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
+
+import { SyncRequestError } from '@/lib/sync-request-error';
 
 import { SyncPreviewDialog } from './sync-preview-dialog';
 
@@ -26,11 +28,15 @@ const preview: SyncPreview = {
   ],
 };
 
-const mocks = rs.hoisted(() => ({ applySync: rs.fn() }));
+const mocks = rs.hoisted(() => ({ applySync: rs.fn(), applyError: null as Error | null }));
 
 rs.mock('@/hooks/use-sync', () => ({
-  useApplySync: () => ({ mutate: mocks.applySync, isPending: false, error: null, reset: rs.fn() }),
+  useApplySync: () => ({ mutate: mocks.applySync, isPending: false, error: mocks.applyError, reset: rs.fn() }),
 }));
+
+afterEach(() => {
+  mocks.applyError = null;
+});
 
 const noop = () => {};
 
@@ -185,6 +191,31 @@ test('brings the join operation back instead of closing after applying a pinned 
   await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
   expect(onOpenChange).not.toHaveBeenCalledWith(false);
   await waitFor(() => expect(screen.queryByRole('button', { name: /Remove local option/u })).toBeNull());
+});
+
+test('retries the pinned override, not the join, when applying the override went stale', async () => {
+  mocks.applySync.mockReset();
+  // The stale previewId is the override's: it is the operation on screen and the only one carrying
+  // the pins, so replaying the join it was pinned from would lose them.
+  mocks.applyError = new SyncRequestError('preview-stale', 409);
+  const overridesPreview: SyncPreview = { ...preview, previewId: 'preview-overrides', kind: 'overrides' };
+  const onPreviewOverrides = rs.fn().mockResolvedValue(overridesPreview);
+  const onRetry = rs.fn().mockResolvedValue({ ...preview, previewId: 'preview-join-refreshed' });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewStateHarness initialPreview={preview} onPreviewOverrides={onPreviewOverrides} onRetry={onRetry} />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.change(screen.getByLabelText(/Option path|选项路径/u), { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenCalledTimes(1));
+
+  fireEvent.click(screen.getByRole('button', { name: /Review again|重新审核|重新檢閱|もう一度確認|다시 검토/u }));
+
+  await waitFor(() => expect(onPreviewOverrides).toHaveBeenNthCalledWith(2, 'object-work', [['limits', 'timeout']]));
+  expect(onRetry).not.toHaveBeenCalled();
+  expect(screen.queryByText(/The latest preview could not be loaded|无法加载最新预览/u)).toBeNull();
 });
 
 test('keeps purge previews purge-only while the dialog is open', async () => {

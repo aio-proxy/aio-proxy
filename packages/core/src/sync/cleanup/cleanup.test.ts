@@ -223,6 +223,84 @@ test('a stale purge cannot overwrite a restored account after resuming', async (
   expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1 });
 });
 
+test('a purge that finalizes its epoch leaves a concurrent restore intact', async () => {
+  const backend = createMemorySyncBackend();
+  const seed = createSyncObjectStore(backend.connect());
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old-secret');
+  const signal = new AbortController().signal;
+  await publishEntity(seed, item, signal);
+  await deleteEntity(seed, item.objectId, item.epoch, signal);
+
+  const base = backend.connect();
+  let restored: string | undefined;
+  const racingSession: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expected, value, casSignal) {
+      const result = await base.compareAndSwap(key, expected, value, casSignal);
+      if (restored === undefined && key === entityKey(item.objectId) && decodeHead(value).state === 'purged') {
+        restored = (
+          await restoreEntity(createSyncObjectStore(backend.connect()), item.objectId, item.body, 'restore-op', signal)
+        ).operationId;
+      }
+      return result;
+    },
+  };
+  await purgeEntity(createSyncObjectStore(racingSession), item.objectId, signal);
+
+  expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1, current: restored });
+  expect(decodeRevision(backend.readAll().get(revisionKey(item.objectId, restored!))!.value)).toMatchObject({
+    state: 'payload',
+  });
+});
+
+test('history leaves a reservation the publisher finished while maintenance was deciding', async () => {
+  const backend = createMemorySyncBackend();
+  const seed = backend.connect();
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'resumed-secret');
+  await seed.compareAndSwap(
+    entityKey(item.objectId),
+    null,
+    encode(reserve(newHead(item.objectId, item.body), item.operationId, 0)),
+    signal,
+  );
+  await seed.compareAndSwap(
+    revisionKey(item.objectId, item.operationId),
+    null,
+    encode({
+      protocol: 1,
+      state: 'payload',
+      objectId: item.objectId,
+      epoch: 0,
+      operationId: item.operationId,
+      body: item.body,
+      publishedSequence: null,
+      writtenAt: 0,
+    }),
+    signal,
+  );
+
+  const base = backend.connect();
+  let raced = false;
+  const racingSession: SyncSession = {
+    ...base,
+    async read(key, readSignal) {
+      const value = await base.read(key, readSignal);
+      if (!raced && key === revisionKey(item.objectId, item.operationId)) {
+        raced = true;
+        await publishEntity(createSyncObjectStore(backend.connect()), item, signal);
+      }
+      return value;
+    },
+  };
+  await collectHistory(createSyncObjectStore(racingSession), item.objectId, backend.now(), signal);
+
+  expect(head(backend, item.objectId)).toMatchObject({ current: item.operationId, cancelling: [] });
+  expect(decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value)).toMatchObject({
+    state: 'payload',
+  });
+});
+
 test('ordinary deletion retains current history while scrubbing the account', async () => {
   const backend = createMemorySyncBackend();
   const store = createSyncObjectStore(backend.connect());
@@ -258,7 +336,7 @@ test('history keeps current and expires only old confirmed history', async () =>
   await publishEntity(store, first, signal);
   backend.advance(31 * 24 * 60 * 60 * 1000);
   await publishEntity(store, second, signal);
-  await collectHistory(store, first.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  await collectHistory(store, first.objectId, backend.now(), signal);
   const current = head(backend, first.objectId);
   expect(current.current).toBe(second.operationId);
   expect(current.history).toEqual([]);
@@ -275,11 +353,13 @@ test('history keeps revisions younger than 30 days and current revisions at any 
   await publishEntity(store, first, signal);
   backend.advance(29 * 24 * 60 * 60 * 1000);
   await publishEntity(store, second, signal);
-  await collectHistory(store, first.objectId, 29 * 24 * 60 * 60 * 1000, signal);
+  await collectHistory(store, first.objectId, backend.now(), signal);
   expect(head(backend, first.objectId).history).toEqual([first.operationId]);
-  await collectHistory(store, first.objectId, 30 * 24 * 60 * 60 * 1000, signal);
+  backend.advance(24 * 60 * 60 * 1000);
+  await collectHistory(store, first.objectId, backend.now(), signal);
   expect(head(backend, first.objectId).history).toEqual([first.operationId]);
-  await collectHistory(store, first.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  backend.advance(24 * 60 * 60 * 1000);
+  await collectHistory(store, first.objectId, backend.now(), signal);
   expect(head(backend, first.objectId).history).toEqual([]);
 
   const currentBackend = createMemorySyncBackend();
@@ -287,7 +367,7 @@ test('history keeps revisions younger than 30 days and current revisions at any 
   const current = operation(crypto.randomUUID(), crypto.randomUUID(), 'current');
   await publishEntity(currentStore, current, signal);
   currentBackend.advance(31 * 24 * 60 * 60 * 1000);
-  await collectHistory(currentStore, current.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  await collectHistory(currentStore, current.objectId, currentBackend.now(), signal);
   expect(head(currentBackend, current.objectId).current).toBe(current.operationId);
   expect(
     new TextDecoder().decode(currentBackend.readAll().get(revisionKey(current.objectId, current.operationId))!.value),
@@ -316,7 +396,8 @@ test('history cancels a reservation abandoned past retention and leaves no secre
     }),
     signal,
   );
-  await collectHistory(createSyncObjectStore(session), item.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  backend.advance(31 * 24 * 60 * 60 * 1000);
+  await collectHistory(createSyncObjectStore(session), item.objectId, backend.now(), signal);
   expect(head(backend, item.objectId)).toMatchObject({ reserved: [], cancelling: [] });
   const marker = decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
   expect(marker).toMatchObject({ state: 'erased', reason: 'abandoned' });
@@ -384,7 +465,7 @@ test('receipt finalization retries an unknown cleanup write', async () => {
   backend.failNext('compareAndSwap', 'after');
   await collectHistory(createSyncObjectStore(session), item.objectId, 0, signal);
   const revision = decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
-  expect(revision).toMatchObject({ state: 'payload', publishedSequence: 1, writtenAt: 0 });
+  expect(revision).toMatchObject({ state: 'payload', publishedSequence: 1, writtenAt: backend.now() });
 });
 
 test('an expired operation keeps its permanent publication receipt for retries', async () => {
@@ -395,7 +476,8 @@ test('an expired operation keeps its permanent publication receipt for retries',
   const signal = new AbortController().signal;
   const published = await publishEntity(store, first, signal);
   await publishEntity(store, second, signal);
-  await collectHistory(store, first.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  backend.advance(31 * 24 * 60 * 60 * 1000);
+  await collectHistory(store, first.objectId, backend.now(), signal);
   expect(await publishEntity(store, first, signal)).toEqual(published);
 });
 
@@ -584,7 +666,8 @@ test('restore retains the prior current in history so retention can expire it', 
   await deleteEntity(store, item.objectId, 0, signal);
   const restored = await restoreEntity(store, item.objectId, item.body, crypto.randomUUID(), signal);
   expect(head(backend, item.objectId).history).toContain(item.operationId);
-  await collectHistory(store, item.objectId, 31 * 24 * 60 * 60 * 1000, signal);
+  backend.advance(31 * 24 * 60 * 60 * 1000);
+  await collectHistory(store, item.objectId, backend.now(), signal);
   expect(head(backend, item.objectId).history).not.toContain(item.operationId);
   const old = new TextDecoder().decode(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value);
   expect(old).toMatch(/"state":"erased"/);

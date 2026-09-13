@@ -14,6 +14,7 @@ export {
 export { authoredEntityIdentities, committedSourceFrom, seedAuthoredEntities } from './projection';
 export {
   createSyncRepository,
+  isTombstonedEntity,
   type CommitIntent,
   type LocalBinding,
   type LocalEntity,

@@ -13,6 +13,8 @@ import {
   type PluginRegistrySnapshot,
   type PluginRepository,
   type JsonValue,
+  type EntityBody,
+  type PendingReason,
   type OAuthSharingService,
   type SharedOAuthCoordinator,
   type LocalBinding,
@@ -64,6 +66,12 @@ export function createSyncIntegration(
       lifecycle: undefined,
       sharing: () => undefined,
       configPath: options.configPath,
+      checkActivation: async (
+        _raw: Record<string, JsonValue>,
+        _body: EntityBody,
+        _signal: AbortSignal,
+        _intent?: 'reviewed',
+      ): Promise<PendingReason | undefined> => undefined,
       connectBackend: async () => {
         throw new SyncOperationError('backend-unavailable');
       },
@@ -396,6 +404,9 @@ export function createSyncIntegration(
     },
     sharing: () => sharing,
     configPath: options.configPath,
+    // Reconciliation reaches this through the port's `checkRemote`; a reviewed import has no port
+    // yet on a first connect, and calls it directly.
+    checkActivation,
     connectBackend,
     onEngineStatus(handle: (status: string) => void) {
       engineStatus = handle;

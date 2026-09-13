@@ -10,7 +10,7 @@ import {
   type EntityHead,
   type RevisionRecord,
 } from '../protocol';
-import type { LocalEntity, SyncRepository } from '../repository';
+import { isTombstonedEntity, TOMBSTONE_BASELINE_PREFIX, type LocalEntity, type SyncRepository } from '../repository';
 import type { LocalSyncPort, PendingReason } from './incoming';
 
 export interface RemoteReconcileInput {
@@ -31,16 +31,6 @@ function decodeHeadForKey(value: Uint8Array, objectId: string): EntityHead {
   const head = decodeHead(value);
   if (head.objectId !== objectId) throw new SyncProtocolError('invalid-data', 'head object identity mismatch');
   return head;
-}
-
-const TOMBSTONE_BASELINE_PREFIX = 'deleted:';
-
-// A deleted row keeps its kind and logical key so credential coordination can still find it, but it
-// no longer claims that identity. Counting it as a collision would pin `provider-id-conflict` on the
-// one surviving object forever, since discovery already sees a single active identity. Exported so
-// the control plane's identity checks apply the same rule reconciliation does.
-export function isTombstonedEntity(entity: LocalEntity): boolean {
-  return entity.desired === null && (entity.baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
 }
 
 // `mode` replays the snapshot this pass took before it awaited the network, unless the pass decided
@@ -230,7 +220,7 @@ export async function reconcileRemote(
         }
         continue;
       }
-      const existing = known.get(objectId);
+      let existing = known.get(objectId);
       const conflicting = [...known.values()].find(
         (candidate) =>
           candidate.objectId !== objectId &&
@@ -349,6 +339,19 @@ export async function reconcileRemote(
           pendingReason: 'provider-id-conflict',
         });
         continue;
+      }
+      // An exclusion carrying the conflict reason is this engine's own quarantine, never a user
+      // decision: every explicit exclusion path clears the reason as it writes. Reaching here proves
+      // the identity is unambiguous again, so inclusion is restored along with the reason. Clearing
+      // only the reason would leave the row looking deliberately left behind, and the branch below
+      // records the remote baseline without importing, so the row would follow no later revision
+      // until the user rejoined it by hand. The rejoin is written before the import because the
+      // local port declines to touch the configuration for a row still marked excluded.
+      if (existing?.mode === 'excluded' && existing.pendingReason === 'provider-id-conflict') {
+        input.assertGeneration(generation);
+        existing = { ...existing, mode: 'included', pendingReason: null };
+        input.repo.putEntity(input.bindingId, existing);
+        known.set(objectId, existing);
       }
       const mode = existing?.mode ?? 'included';
       if (mode === 'excluded') {

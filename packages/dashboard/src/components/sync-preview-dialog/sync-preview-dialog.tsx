@@ -134,12 +134,19 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   // The operation the dialog was opened for. Pinning an override previews that override on its
   // own, so this is what has to come back once the override is applied.
   const openedKindRef = useRef<SyncPreview['kind'] | undefined>(undefined);
+  // The override request the preview on screen was produced by. A stale apply has to re-request
+  // exactly this: `onRetry` replays the operation the dialog was opened for, and only an override
+  // preview carries the pinned paths.
+  const activeOverrideRef = useRef<{ readonly objectId: string; readonly paths: readonly string[][] } | undefined>(
+    undefined,
+  );
   const [, rerenderOverrides] = useState(0);
   const rows = preview?.rows ?? EMPTY_ROWS;
 
   // Every setter and ref below is render-stable, so the effect can depend on this directly.
   const clearOverrideDraft = useCallback(() => {
     overridesRef.current = {};
+    activeOverrideRef.current = undefined;
     previewGenerationRef.current += 1;
     setNeedsFreshPreview(false);
     setOverrideError(undefined);
@@ -203,6 +210,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
     // would mark the current pins as reviewed and let Apply persist the older path set.
     if (previewGenerationRef.current !== generation) return;
     if (replacement !== undefined && isValidReplacementPreview(replacement, 'overrides')) {
+      activeOverrideRef.current = { objectId, paths };
       setNeedsFreshPreview(false);
     } else {
       setOverrideError({ objectId, kind: 'refresh' });
@@ -259,11 +267,19 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
               className="mt-2"
               onClick={async () => {
                 setRetryError(false);
+                // An override preview is its own operation and its pins live here, so retry it from
+                // here. `onRetry` replays the operation the dialog was opened for, which is a
+                // different kind and would drop the pinned override.
+                const active = activeOverrideRef.current;
+                const request =
+                  preview?.kind === 'overrides' && active !== undefined && onPreviewOverrides !== undefined
+                    ? () => onPreviewOverrides(active.objectId, active.paths)
+                    : onRetry;
                 const replacement =
-                  onRetry === undefined
+                  request === undefined
                     ? undefined
                     : await Promise.resolve()
-                        .then(() => onRetry())
+                        .then(() => request())
                         .catch(() => undefined);
                 if (replacement !== undefined && isValidReplacementPreview(replacement, preview?.kind ?? 'join')) {
                   applyMutation.reset();

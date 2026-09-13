@@ -31,7 +31,8 @@ const checkWith = (approved?: EntityBody) => {
     pluginVersions: () => new Map(),
     sharing: () => undefined,
   });
-  return (raw: Record<string, JsonValue>, body: EntityBody) => check(raw, body, new AbortController().signal);
+  return (raw: Record<string, JsonValue>, body: EntityBody, intent?: 'reviewed') =>
+    check(raw, body, new AbortController().signal, intent);
 };
 
 // The running configuration is healthy while the arriving Provider is not: reading the wrong one
@@ -117,6 +118,21 @@ test('holds a remote Provider whose legacy $NAME key this device never defined',
   const body = providerBody({ baseURL: 'https://example.test', apiKey: '$AIO_PROXY_TEST_ABSENT' });
 
   expect(await checkWith(body)(runningConfig, body)).toBe('missing-env');
+});
+
+// A reviewed import is the user's own decision about this body, so it carries the approval
+// `secret-conflict` asks for and its account is imported by the reconciliation the join's
+// `oauth-unverified` row keeps eligible. A variable this device never defined is neither: applying
+// would resolve it to an empty string and commit an unauthenticated Provider.
+test('a reviewed import bypasses destination approval but not a reference this device cannot resolve', async () => {
+  const reviewed = (body: EntityBody) => checkWith()(runningConfig, body, 'reviewed');
+  const present = providerBody({ baseURL: 'https://example.test', apiKey: '{{env.AIO_PROXY_TEST_PRESENT}}' });
+
+  expect(await withEnv(() => reviewed(present))).toBeUndefined();
+  expect(await reviewed(providerBody({ kind: 'oauth', plugin: '@example/oauth', capability: 'chat' }))).toBeUndefined();
+  expect(
+    await reviewed(providerBody({ baseURL: 'https://example.test', apiKey: '{{env.AIO_PROXY_TEST_ABSENT}}' })),
+  ).toBe('missing-env');
 });
 
 // `close()` aborts the engine controller and then waits for the running reconciliation, so an

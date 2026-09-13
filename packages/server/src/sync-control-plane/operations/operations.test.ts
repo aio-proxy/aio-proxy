@@ -70,6 +70,11 @@ function remoteEntity(objectId: string, kind: EntityBody['kind'], logicalKey: st
   return { objectId, logicalKey, kind, version: 'v1', revision: 'r1', body: body(kind, logicalKey) };
 }
 
+// The backend the harness reports, kept in step with the heads each `record()` reviews: a cloud
+// import re-reads them before it writes, so a double that answers with nothing would read as a peer
+// having retired every object mid-apply.
+const remoteHeads: RemoteEntity[] = [];
+
 function harness(overrides: Partial<OperationInput> = {}): {
   input: OperationInput;
   purged: string[];
@@ -83,7 +88,7 @@ function harness(overrides: Partial<OperationInput> = {}): {
     repo: { putEntity: () => {} } as never,
     binding: () => ({ id: 'binding' }) as never,
     localEntities: () => [],
-    remoteEntities: async () => [],
+    remoteEntities: async () => remoteHeads,
     fence: async () => fence,
     status: () => ({ state: 'idle' }) as never,
     applyLocal: async () => {
@@ -91,13 +96,17 @@ function harness(overrides: Partial<OperationInput> = {}): {
     },
     applyCloud: async () => {},
     restore: async () => {},
-    purge: async (objectId) => {
-      purged.push(objectId);
-    },
     persistOverrides: async (objectId) => {
       persistedOverrides.push(objectId);
     },
     ...overrides,
+    purge: async (objectId, expectedVersion) => {
+      await (overrides.purge ?? (async () => purged.push(objectId)))(objectId, expectedVersion);
+      // An erase retires the head, and applying reads the backend again to confirm it: a double that
+      // kept answering with the live object would report every purge as still pending.
+      const index = remoteHeads.findIndex((entity) => entity.objectId === objectId);
+      if (index >= 0) remoteHeads.splice(index, 1);
+    },
   };
   return {
     input,
@@ -110,7 +119,7 @@ function harness(overrides: Partial<OperationInput> = {}): {
 }
 
 function record(input: SyncPreviewInput, rows: readonly PreviewCandidate[], extra: Partial<PreviewRecord> = {}) {
-  return {
+  const reviewed = {
     fence,
     input,
     local: rows.map((row) => localEntity(row.row.objectId, row.row.kind as EntityBody['kind'], row.row.logicalKey)),
@@ -119,6 +128,8 @@ function record(input: SyncPreviewInput, rows: readonly PreviewCandidate[], extr
     expiresAt: Number.MAX_SAFE_INTEGER,
     ...extra,
   } satisfies PreviewRecord;
+  remoteHeads.splice(0, remoteHeads.length, ...reviewed.remote);
+  return reviewed;
 }
 
 // `optional` is what buildPreview stamps on a connect row that joins nothing; no other kind gets it.
@@ -651,4 +662,70 @@ test('joining an OAuth Provider keeps the credential due until the row records o
     multiDeviceEvidenceId: 'evidence',
   };
   expect(await join(() => ({ providerId: 'work' }) as never, 'cloud', owned)).toMatchObject({ pendingReason: null });
+});
+
+// A rename republishes the configuration as a new object, so the row to join is the renamed one.
+// Joining the pre-rename row reported success while leaving the Provider outside synchronization:
+// reconciliation had already quarantined the colliding row, and the rename deletes the head it held.
+test('a rename records the join on the renamed row against the revision it just published', async () => {
+  const written: LocalEntity[] = [];
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => void written.push(entity) } as never,
+    persistProviderIdentity: async () => {},
+    applyCloud: async () => 'renamed-revision',
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+    { objectId: 'provider-a', choice: 'local', newProviderId: 'work-2' },
+  ]);
+
+  expect(written).toHaveLength(1);
+  expect(written[0]).toMatchObject({ logicalKey: 'work-2', mode: 'included', pendingReason: null });
+  // The reviewed remote revision names the object the rename vacated, and it is one publication old.
+  expect(written[0]).toMatchObject({ baseline: 'renamed-revision' });
+  expect(written[0]?.objectId).not.toBe('provider-a');
+});
+
+// The identity hook renames the authored configuration and moves the OAuth account with it. Running
+// it again from the failure handler commits the very rename whose error is about to be rethrown, so
+// the caller is told the apply was stale while the local rename actually landed.
+test('a failed rename marks its rows uncertain without re-running the identity hook', async () => {
+  const renames: string[] = [];
+  const written: LocalEntity[] = [];
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => void written.push(entity) } as never,
+    persistProviderIdentity: async (_oldProviderId, newProviderId) => void renames.push(newProviderId),
+    applyCloud: async () => {
+      throw new Error('backend unavailable');
+    },
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+      { objectId: 'provider-a', choice: 'local', newProviderId: 'work-2' },
+    ]),
+  ).rejects.toThrow('backend unavailable');
+
+  expect(renames).toEqual(['work-2']);
+  expect(written).toMatchObject([{ logicalKey: 'work-2', pendingReason: 'result-uncertain' }]);
+});
+
+// The reviewed fence is taken once and every row is a network round trip. Importing is not
+// epoch-exact, so a peer publishing this object in that window gets its body overwritten by the
+// reviewed one, and the row then records the reviewed revision as its baseline — drift the next
+// reconciliation cannot see.
+test('a cloud import stops when the head moved after the preview was reviewed', async () => {
+  const scenario = harness({
+    remoteEntities: async () => [{ ...remoteEntity('provider-a', 'provider', 'work'), version: 'v2' }],
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+      { objectId: 'provider-a', choice: 'cloud' },
+    ]),
+  ).rejects.toThrow(SyncPreviewError);
+  expect(scenario.appliedLocal).toBe(0);
 });

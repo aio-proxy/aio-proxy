@@ -2,9 +2,16 @@ import type { ConfigSpec } from '../config';
 import type { LocalizedText } from '../localized-text';
 
 export type SyncVersion = string;
+/**
+ * `modifiedAt` is the storage-assigned UTC time of that version in **epoch milliseconds**. The
+ * service subtracts a millisecond retention window from it to age out history, so returning Unix
+ * seconds keeps history for decades and microseconds erases it within the hour. Report the clock the
+ * storage service assigned, not a local clock or a logical counter.
+ */
 export type SyncRead =
   | { kind: 'absent' }
   | { kind: 'present'; value: Uint8Array; version: SyncVersion; modifiedAt: number };
+/** `modifiedAt` is epoch milliseconds, as on {@link SyncRead}. */
 export type SyncCAS = { kind: 'written'; version: SyncVersion; modifiedAt: number } | { kind: 'conflict' };
 export type SyncFailureCode =
   | 'offline'
