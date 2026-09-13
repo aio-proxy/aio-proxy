@@ -307,6 +307,87 @@ test('a first connect apply is refused when the configuration moved after the pr
   expect(committed).toBe(0);
 });
 
+// The connect-only options the two fence tests below share: no binding, one cloud row, and a
+// `committedSource` the test moves between reads.
+const firstConnectOptions = (committedSource: () => Promise<unknown>, committed: () => void) =>
+  ({
+    repo: { readBinding: () => null, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [CLOUD_ROW],
+      refresh: async () => [CLOUD_ROW],
+      commit: async () => void committed(),
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    committedSource,
+  }) as never;
+
+test('a first connect fences the exact configuration its rows were projected from', async () => {
+  let reads = 0;
+  let committed = 0;
+  // The edit lands after the read the rows were projected from but before the fence is built. Sampling
+  // the source twice would fence the newer digest, and the Apply — which reads live — would match it
+  // and publish rows describing the configuration the user has already replaced.
+  const control = createSyncControlPlane(
+    firstConnectOptions(
+      async () => {
+        reads += 1;
+        return {
+          raw: { providers: { shared: { kind: 'api', baseUrl: `https://${reads === 1 ? 'us' : 'eu'}.test` } } },
+          accounts: new Map(),
+          pluginSecrets: new Map(),
+          pluginVersions: new Map(),
+        };
+      },
+      () => void (committed += 1),
+    ),
+  );
+
+  const preview = await control.preview(CONNECT);
+
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  expect(committed).toBe(0);
+});
+
+test('a first connect apply is refused when only a plugin secret moved after the review', async () => {
+  let token = 'secret-1';
+  let committed = 0;
+  // Updating plugin options rewrites the repository-backed secret and leaves the configuration file
+  // byte-identical, and the reviewed `plugin-business` body carries that secret. Before a binding
+  // exists the mutation enqueues nothing either, so an Apply that accepted the stale preview would
+  // publish the old secret with no later publication to correct it.
+  const control = createSyncControlPlane(
+    firstConnectOptions(
+      async () => ({
+        raw: { plugins: [['@example/business', {}]], providers: { shared: { kind: 'api' } } },
+        accounts: new Map(),
+        pluginSecrets: new Map([['@example/business', { token }]]),
+        pluginVersions: new Map([['@example/business', '1.2.3']]),
+      }),
+      () => void (committed += 1),
+    ),
+  );
+
+  const preview = await control.preview(CONNECT);
+  token = 'secret-2';
+
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  expect(committed).toBe(0);
+});
+
 test('an unfinished connect apply is remembered across a restart by the binding row', async () => {
   // How a crash between the binding swap and the reviewed decisions leaves the database: the row
   // is written pending by the connect that created it and only a completed Apply clears it.

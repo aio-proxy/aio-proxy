@@ -42,6 +42,31 @@ const entitiesDigest = (entities: readonly LocalEntity[]): string =>
     .digest('hex');
 
 /**
+ * The authored state a preview's rows were projected from. The configuration file alone is not it:
+ * `projectCommitted()` reads the repository-backed plugin secret and installed version into the
+ * `plugin-business` body, and updating plugin options rewrites that secret while leaving the file
+ * byte-identical — before a binding exists that mutation also produces no outbox entry, so nothing
+ * later republishes the newer secret. Accounts contribute presence only, because an OAuth Provider
+ * with no credential projects no body at all: hashing the credential itself would let a background
+ * token refresh expire a preview the user is still reading.
+ */
+export function sourceDigest(source: CommittedSource | undefined): string {
+  if (source === undefined) return '';
+  const sorted = (entries: Iterable<readonly [string, unknown]>): unknown[] =>
+    [...entries].sort(([left], [right]) => left.localeCompare(right));
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        source.raw,
+        [...source.accounts.keys()].sort(),
+        sorted(source.pluginSecrets),
+        sorted(source.pluginVersions),
+      ]),
+    )
+    .digest('hex');
+}
+
+/**
  * Builds the fence a preview is reviewed against and re-checked by, and captures the local half it
  * is built from. Both live together because they must observe the same instant: a capture paired
  * with a fence read later would pass `sameFence()` against state the review never saw.
@@ -56,16 +81,22 @@ export function createFenceReader(input: FenceReaderInput): {
      * moving any other half of the fence.
      */
     reviewedEntities?: boolean,
+    /**
+     * The digest of the source the caller has already read, from {@link sourceDigest}. Connect's
+     * preview passes it so the fence names the exact configuration its rows were projected from:
+     * sampling `committedSource()` a second time here would record an edit that landed in between,
+     * and Apply would then observe that same newer digest and pass while its reviewed decisions
+     * still carry the older bodies.
+     */
+    reviewedSourceDigest?: string,
   ) => Promise<PreviewFence>;
   readonly captureLocal: () => LocalCapture;
 } {
-  const authoredDigest = async (): Promise<string> => {
-    const source = await input.committedSource?.().catch(() => undefined);
-    return source === undefined ? '' : createHash('sha256').update(JSON.stringify(source.raw)).digest('hex');
-  };
+  const authoredDigest = async (): Promise<string> =>
+    sourceDigest(await input.committedSource?.().catch(() => undefined));
 
   return {
-    async fence(capture, remote, reviewedEntities = false) {
+    async fence(capture, remote, reviewedEntities = false, reviewedSourceDigest) {
       const current = capture === undefined ? input.binding() : capture.binding;
       const snapshot = remote ?? (await input.remoteEntities());
       return {
@@ -82,7 +113,7 @@ export function createFenceReader(input: FenceReaderInput): {
         // configuration edit between preview and Apply would pass the fence: a `cloud` decision would
         // overwrite the newer Provider, and a `local` decision would publish the reviewed body and
         // record it as synchronized. The authored file is that history until a binding exists.
-        ...(current === null ? { sourceDigest: await authoredDigest() } : {}),
+        ...(current === null ? { sourceDigest: reviewedSourceDigest ?? (await authoredDigest()) } : {}),
         ...(reviewedEntities && capture !== undefined ? { entitiesDigest: entitiesDigest(capture.entities) } : {}),
         remoteVersions: Object.fromEntries(snapshot.map((entity) => [entity.objectId, entity.version])),
       };

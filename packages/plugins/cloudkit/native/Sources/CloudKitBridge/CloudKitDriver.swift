@@ -67,11 +67,19 @@ final class CloudKitDatabaseDriver: CloudKitDriver, @unchecked Sendable {
             }
             let box = QueryResultBox()
             operation.recordMatchedBlock = { _, result in
-                if case let .success(record) = result { box.append(record) }
+                switch result {
+                case let .success(record): box.append(record)
+                // A record CloudKit reports an error for is missing from the page, and the page itself
+                // still completes: listing it as a success hides that head from the connect review and
+                // leaves it unfenced, so a later reconciliation imports an object nobody approved.
+                case let .failure(error): box.fail(error)
+                }
             }
             operation.queryResultBlock = { result in
                 switch result {
-                case let .success(cursor): continuation.resume(returning: CloudKitQueryPage(records: box.records, cursor: cursor.flatMap { Self.encode($0) }))
+                case let .success(cursor):
+                    if let error = box.failure { continuation.resume(throwing: error) }
+                    else { continuation.resume(returning: CloudKitQueryPage(records: box.records, cursor: cursor.flatMap { Self.encode($0) })) }
                 case let .failure(error): continuation.resume(throwing: error)
                 }
             }
@@ -108,6 +116,10 @@ final class SavedRecordBox: @unchecked Sendable {
 private final class QueryResultBox: @unchecked Sendable {
     private let lock = NSLock()
     private var value: [CKRecord] = []
+    private var error: Error?
     func append(_ record: CKRecord) { lock.lock(); defer { lock.unlock() }; value.append(record) }
+    // The first error is the one reported: later ones are consequences of the same failed page.
+    func fail(_ failure: Error) { lock.lock(); defer { lock.unlock() }; if error == nil { error = failure } }
     var records: [CKRecord] { lock.lock(); defer { lock.unlock() }; return value }
+    var failure: Error? { lock.lock(); defer { lock.unlock() }; return error }
 }

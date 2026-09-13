@@ -17,7 +17,7 @@ import type {
 } from '@aio-proxy/types';
 
 import { createFifoQueue } from '../fifo-queue';
-import { createFenceReader } from './fence';
+import { createFenceReader, sourceDigest } from './fence';
 import type { ServerSyncLifecycle } from './lifecycle';
 import {
   applyPreview,
@@ -319,7 +319,10 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
             request,
             local: local.entities,
             remote,
-            fence: await currentFence(local, remote, true),
+            // The exact source read above, not a second sample: an edit landing between the two would
+            // fence the newer digest against rows projected from the older one, and the Apply — which
+            // reads live — would then match it and publish the superseded body.
+            fence: await currentFence(local, remote, true, sourceDigest(source)),
             previewId,
             expiresAt,
             registry: options.registry?.(),
