@@ -1,6 +1,11 @@
 import type { Database } from 'bun:sqlite';
 
-import type { AgentInstallationSummary, AgentRevokeStatus, AgentTarget } from '@aio-proxy/types';
+import {
+  AgentTargetSchema,
+  type AgentInstallationSummary,
+  type AgentRevokeStatus,
+  type AgentTarget,
+} from '@aio-proxy/types';
 
 type IssueRowsInput = {
   readonly installationId: string;
@@ -108,10 +113,7 @@ type InstallationListRow = {
 
 const toIso = (value: number): string => new Date(value).toISOString();
 
-const asAgentTarget = (value: string): AgentTarget => {
-  if (value === 'opencode' || value === 'pi' || value === 'omp' || value === 'codex') return value;
-  throw new Error(`invalid agent target: ${value}`);
-};
+const asAgentTarget = (value: string): AgentTarget => AgentTargetSchema.parse(value);
 
 function prepareStatements(sqlite: Database) {
   return {

@@ -1,6 +1,5 @@
 import { canonicalizeLoopbackHost } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
-import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
@@ -32,11 +31,10 @@ import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
 import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
 import { createOpenAIVideosRoutes, type VideosRouteSource } from '../routes/videos';
 import type { ServerState } from '../server-state';
-import { requireModelAuthentication, type AgentEnv } from './agent-auth';
-import { authenticationError } from './api-key-auth/api-key-auth';
+import { requireModelAuthentication } from './agent-auth';
 import { createDashboardArtifactRoutes } from './dashboard-artifacts';
 import { serverDefaults } from './defaults';
-import { agentCatalog, codexClientModels, listModels } from './list-models/index';
+import { listModelsHandler, parseAgentCatalogNegotiation } from './models-routing';
 
 const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const canonicalLoopbackOriginHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -163,71 +161,6 @@ const mountAdminControlPlane = (
       : context.json({ ok: false, error: result.error, stage: result.stage }, 409);
   });
 };
-
-type AgentCatalogQuery = ReturnType<typeof AgentCatalogQuerySchema.parse>;
-type ModelsEnv = {
-  Variables: AgentEnv['Variables'] & {
-    agentCatalogQuery: AgentCatalogQuery | null;
-  };
-};
-
-const agentQueryFields = ['agent', 'adapter_version', 'schema_version'] as const;
-
-const parseAgentCatalogNegotiation: MiddlewareHandler<ModelsEnv> = async (context, next) => {
-  const raw = Object.fromEntries(
-    agentQueryFields.flatMap((field) => {
-      const value = context.req.query(field);
-      return value === undefined ? [] : ([[field, value]] as const);
-    }),
-  );
-  if (Object.keys(raw).length === 0) {
-    context.set('agentCatalogQuery', null);
-    await next();
-    return;
-  }
-  if (raw['schema_version'] !== undefined && raw['schema_version'] !== '1') {
-    return context.json(
-      {
-        error: {
-          code: 'unsupported_schema',
-          message: `Agent catalog schema ${raw['schema_version']} is not supported.`,
-        },
-        supported_schema_versions: [1],
-      },
-      400,
-    );
-  }
-  const parsed = AgentCatalogQuerySchema.safeParse(raw);
-  if (!parsed.success) {
-    return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
-  }
-  context.set('agentCatalogQuery', parsed.data);
-  await next();
-};
-
-const listModelsHandler =
-  (state: ServerState): MiddlewareHandler<ModelsEnv> =>
-  async (context) => {
-    const query = context.get('agentCatalogQuery');
-    const grant = context.get('agentGrant');
-    if (query !== null && query !== undefined) {
-      if (grant === undefined) return authenticationError(context);
-      if (grant.target !== query.agent) {
-        return context.json({ error: { code: 'forbidden', message: 'Agent catalog target mismatch.' } }, 403);
-      }
-      return context.json(await agentCatalog(state, query.agent));
-    }
-    if (context.req.query('client_version') !== undefined) {
-      if (grant !== undefined && grant.target !== 'codex') {
-        return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
-      }
-      return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
-    }
-    if (grant !== undefined && grant.target !== 'codex') {
-      return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
-    }
-    return context.json(await listModels(state));
-  };
 
 /** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
  *  request recorder, no cooldown store. */

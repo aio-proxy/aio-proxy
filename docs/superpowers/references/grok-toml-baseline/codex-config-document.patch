@@ -1,0 +1,741 @@
+diff --git a/packages/cli/src/agent/codex/config-document/ast-edits.ts b/packages/cli/src/agent/codex/config-document/ast-edits.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/cli/src/agent/codex/config-document/ast-edits.ts
+@@ -0,0 +1,120 @@
++import type { AST } from 'toml-eslint-parser';
++
++export type SourceEdit = { readonly start: number; readonly end: number; readonly text: string };
++
++export const keyParts = (key: AST.TOMLKey): string[] =>
++  key.keys.map((part) => (part.type === 'TOMLBare' ? part.name : part.value));
++
++export const samePath = (left: readonly string[], right: readonly string[]): boolean =>
++  left.length === right.length && left.every((part, index) => part === right[index]);
++
++export const isPrefix = (prefix: readonly string[], path: readonly string[]): boolean =>
++  prefix.length <= path.length && prefix.every((part, index) => part === path[index]);
++
++export const encodeTomlKey = (value: string): string =>
++  /^[A-Za-z0-9_-]+$/.test(value) ? value : JSON.stringify(value);
++
++export const encodeTomlValue = (value: string | boolean): string =>
++  typeof value === 'string' ? JSON.stringify(value) : String(value);
++
++export const applySourceEdits = (source: string, edits: readonly SourceEdit[]): string => {
++  const merged: Array<{ start: number; end: number; text: string }> = [];
++  const insertionByStart = new Map<number, { start: number; end: number; text: string }>();
++  for (const edit of edits) {
++    if (edit.start === edit.end) {
++      const prior = insertionByStart.get(edit.start);
++      if (prior !== undefined) {
++        prior.text += edit.text;
++      } else {
++        const insertion = { ...edit };
++        insertionByStart.set(edit.start, insertion);
++        merged.push(insertion);
++      }
++    } else {
++      merged.push(edit);
++    }
++  }
++  const ordered = merged.sort((left, right) => right.start - left.start);
++  for (let index = 1; index < ordered.length; index += 1) {
++    if (ordered[index]!.end > ordered[index - 1]!.start) {
++      throw new Error('Overlapping TOML source edits');
++    }
++  }
++  let result = source;
++  for (const edit of ordered) result = `${result.slice(0, edit.start)}${edit.text}${result.slice(edit.end)}`;
++  return result;
++};
++
++export const lineEndingFor = (source: string): '\n' | '\r\n' => (source.includes('\r\n') ? '\r\n' : '\n');
++
++export const lineStart = (source: string, offset: number): number => {
++  const before = source.lastIndexOf('\n', Math.max(0, offset - 1));
++  return before < 0 ? 0 : before + 1;
++};
++
++export const lineEnd = (source: string, offset: number): number => {
++  const newline = source.indexOf('\n', offset);
++  return newline < 0 ? source.length : newline;
++};
++
++export const textAfterLine = (source: string, offset: number): number => {
++  const newline = source.indexOf('\n', offset);
++  return newline < 0 ? source.length : newline + 1;
++};
++
++export type InlineOperation =
++  | { readonly kind: 'replace'; readonly start: number; readonly end: number; readonly text: string }
++  | { readonly kind: 'insert'; readonly start: number; readonly text: string }
++  | { readonly kind: 'delete'; readonly start: number; readonly end: number };
++
++export const inlineMemberDelete = (
++  source: string,
++  members: readonly AST.TOMLKeyValue[],
++  target: AST.TOMLKeyValue,
++): InlineOperation => {
++  const index = members.indexOf(target);
++  if (index < 0) throw new Error('Inline TOML member is not in its parent table');
++  const next = members[index + 1];
++  if (next !== undefined) {
++    return { kind: 'delete', start: target.range[0], end: next.range[0] };
++  }
++  const previous = members[index - 1];
++  if (previous === undefined) return { kind: 'delete', start: target.range[0], end: target.range[1] };
++  let comma = target.range[0] - 1;
++  while (comma > previous.range[1] && /[ \t]/.test(source[comma]!)) comma -= 1;
++  if (source[comma] === ',') return { kind: 'delete', start: comma, end: target.range[1] };
++  return { kind: 'delete', start: target.range[0], end: target.range[1] };
++};
++
++export const applyInlineOperations = (
++  source: string,
++  range: readonly [number, number],
++  operations: readonly InlineOperation[],
++): SourceEdit => {
++  const insertText = new Map<number, string>();
++  const local: SourceEdit[] = [];
++  for (const operation of operations) {
++    if (operation.kind === 'insert') {
++      insertText.set(operation.start, `${insertText.get(operation.start) ?? ''}${operation.text}`);
++    } else {
++      local.push({
++        start: operation.start,
++        end: operation.end,
++        text: operation.kind === 'delete' ? '' : operation.text,
++      });
++    }
++  }
++  for (const [start, text] of insertText) local.push({ start, end: start, text });
++  return {
++    start: range[0],
++    end: range[1],
++    text: applySourceEdits(
++      source.slice(range[0], range[1]),
++      local.map((edit) => ({
++        ...edit,
++        start: edit.start - range[0],
++        end: edit.end - range[0],
++      })),
++    ),
++  };
++};
+diff --git a/packages/cli/src/agent/codex/config-document/config-document.test.ts b/packages/cli/src/agent/codex/config-document/config-document.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/cli/src/agent/codex/config-document/config-document.test.ts
+@@ -0,0 +1,188 @@
++import { expect, test } from 'bun:test';
++
++import {
++  codexProviderEdits,
++  editCodexDocument,
++  readCodexDocument,
++  readManagedField,
++  validateCodexProviderId,
++} from './index';
++
++test('switches Provider without rewriting model, comments or MCP', () => {
++  const original =
++    '# chosen by user\nmodel = "keep-model"\n' +
++    'approval_policy = "never"\n\n[mcp_servers.local]\ncommand = "local-mcp"\n';
++  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', 'test-key'));
++  const parsed = Bun.TOML.parse(actual);
++  expect(parsed.model).toBe('keep-model');
++  expect(parsed.model_provider).toBe('proxy.team');
++  expect(actual).toContain('# chosen by user\nmodel = "keep-model"');
++  expect(actual).toContain('[mcp_servers.local]\ncommand = "local-mcp"');
++  expect(parsed.model_providers).toEqual({
++    'proxy.team': {
++      name: 'aio-proxy',
++      base_url: 'http://127.0.0.1:9317/v1',
++      wire_api: 'responses',
++      requires_openai_auth: true,
++      experimental_bearer_token: 'test-key',
++    },
++  });
++  expect(editCodexDocument(actual, codexProviderEdits('proxy.team', 'http://127.0.0.1:9317/v1', 'test-key'))).toBe(
++    actual,
++  );
++});
++
++test('preserves unrelated model provider tables and updates an inline provider', () => {
++  const original =
++    'model_provider = "old"\n' +
++    'model_providers = { other = { name = "keep" }, old = { name = "old" } }\n' +
++    '[mcp_servers.local]\ncommand = "mcp"\n';
++  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'https://proxy/v1', 'tok'));
++  const parsed = Bun.TOML.parse(actual);
++  expect(parsed.model_providers.other).toEqual({ name: 'keep' });
++  expect(parsed.model_providers.old).toEqual({ name: 'old' });
++  expect(parsed.model_providers['proxy.team']).toEqual({
++    name: 'aio-proxy',
++    base_url: 'https://proxy/v1',
++    wire_api: 'responses',
++    requires_openai_auth: true,
++    experimental_bearer_token: 'tok',
++  });
++  expect(actual).toContain('model_providers = { other = { name = "keep" }, old = { name = "old" },');
++});
++
++test('adds missing fields to an existing inline provider in source order', () => {
++  const original = 'model_providers = { "proxy.team" = { name = "old" } }\n';
++  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', 'token'));
++  expect(Bun.TOML.parse(actual).model_providers['proxy.team']).toEqual({
++    name: 'aio-proxy',
++    base_url: 'url',
++    wire_api: 'responses',
++    requires_openai_auth: true,
++    experimental_bearer_token: 'token',
++  });
++  expect(actual).toContain(
++    'name = "aio-proxy", base_url = "url", wire_api = "responses", requires_openai_auth = true, experimental_bearer_token = "token"',
++  );
++});
++
++test('creates a valid document from an empty source', () => {
++  const actual = editCodexDocument('', codexProviderEdits('proxy.team', 'url', 'token'));
++  expect(Bun.TOML.parse(actual).model_provider).toBe('proxy.team');
++  expect(editCodexDocument(actual, codexProviderEdits('proxy.team', 'url', 'token'))).toBe(actual);
++});
++
++test('updates an existing quoted and dotted provider table without splitting its id', () => {
++  const original =
++    'model_provider = "proxy.team"\n\n' +
++    '[model_providers."proxy.team"]\n' +
++    'name = "old" # preserve this comment\n' +
++    'base_url = "old-url"\n' +
++    '[mcp_servers.local]\ncommand = "mcp"\n';
++  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'new-url', 'new-token'));
++  expect(actual).toContain('[model_providers."proxy.team"]');
++  expect(actual).toContain('name = "aio-proxy" # preserve this comment');
++  expect(Bun.TOML.parse(actual).model_providers['proxy.team'].base_url).toBe('new-url');
++});
++
++test('preserves comma strings, multiline strings, comments, and CRLF', () => {
++  const original =
++    '# header\r\nmodel = "keep, model" # model comment\r\n' +
++    'description = """line one\r\nline two"""\r\n\r\n' +
++    '[model_providers.other]\r\nname = "keep"\r\n';
++  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', 'token,with,commas'));
++  expect(actual).toContain('# header\r\nmodel = "keep, model" # model comment\r\n');
++  expect(actual).toContain('description = """line one\r\nline two"""\r\n');
++  expect(actual).toContain('[model_providers.other]\r\nname = "keep"\r\n');
++  expect(actual.includes('\n') && !actual.includes('\r\n')).toBe(false);
++  expect(Bun.TOML.parse(actual).model_providers['proxy.team'].experimental_bearer_token).toBe('token,with,commas');
++});
++
++test('deletes first, middle, and last inline members while retaining other source text', () => {
++  const original =
++    'model_providers = { first = { name = "one", remove = true }, keep = { remove = true, name = "two" }, last = { remove = true, name = "three" } }\n';
++  const first = editCodexDocument(original, [{ path: ['model_providers', 'first'], next: { present: false } }]);
++  const middle = editCodexDocument(original, [
++    { path: ['model_providers', 'keep', 'remove'], next: { present: false } },
++  ]);
++  const last = editCodexDocument(original, [{ path: ['model_providers', 'last'], next: { present: false } }]);
++  expect(Bun.TOML.parse(first).model_providers).toEqual({
++    keep: { remove: true, name: 'two' },
++    last: { remove: true, name: 'three' },
++  });
++  expect(Bun.TOML.parse(middle).model_providers.keep).toEqual({ name: 'two' });
++  expect(Bun.TOML.parse(last).model_providers).toEqual({
++    first: { name: 'one', remove: true },
++    keep: { remove: true, name: 'two' },
++  });
++});
++
++test('reports an existing managed field with an unsupported type', () => {
++  expect(() => readManagedField('model_provider = ["wrong"]\n', ['model_provider'])).toThrow(
++    /managed field.*string or boolean/i,
++  );
++});
++
++test('rejects duplicate TOML keys and invalid provider IDs', () => {
++  expect(() => readCodexDocument('model = "one"\nmodel = "two"\n')).toThrow(/duplicate|multiple times/i);
++  expect(() => validateCodexProviderId('   ')).toThrow();
++  expect(() => validateCodexProviderId('proxy\nteam')).toThrow();
++  expect(() => validateCodexProviderId('openai')).toThrow();
++  expect(validateCodexProviderId('  proxy.team  ')).toBe('proxy.team');
++});
++
++test('reads absent and present managed fields', () => {
++  expect(readManagedField('model_provider = "proxy.team"\n', ['model_provider'])).toEqual({
++    present: true,
++    value: 'proxy.team',
++  });
++  expect(readManagedField('', ['model_provider'])).toEqual({ present: false });
++  expect(readCodexDocument('model_provider = "proxy.team"\n').activeProviderId).toBe('proxy.team');
++});
++
++test('discovers providers from standard, root-table, inline, and dotted assignments', () => {
++  expect(readCodexDocument('[model_providers.proxy]\nname = "x"\n').providerIds).toEqual(['proxy']);
++  expect(readCodexDocument('model_providers = { proxy = { name = "x" } }\n').providerIds).toEqual(['proxy']);
++  expect(readCodexDocument('[model_providers]\nproxy = { name = "x" }\n').providerIds).toEqual(['proxy']);
++  expect(readCodexDocument('model_providers.proxy = { name = "x" }\n').providerIds).toEqual(['proxy']);
++});
++
++test('deletes standard provider scalar fields while preserving unrelated fields and tables', () => {
++  const original =
++    '# keep\n[model_providers.proxy]\n' +
++    'name = "aio-proxy" # first\n' +
++    'base_url = "url"\n' +
++    'wire_api = "responses" # middle\n' +
++    'requires_openai_auth = true\n' +
++    'experimental_bearer_token = "token" # last\n' +
++    'custom = "keep"\n\n' +
++    '[mcp_servers.local]\ncommand = "mcp"\n';
++  for (const path of ['name', 'wire_api', 'experimental_bearer_token']) {
++    const actual = editCodexDocument(original, [
++      { path: ['model_providers', 'proxy', path], next: { present: false } },
++    ]);
++    const parsed = Bun.TOML.parse(actual);
++    expect(parsed.model_providers.proxy.custom).toBe('keep');
++    expect(actual).toContain('[mcp_servers.local]\ncommand = "mcp"');
++    expect(actual).not.toContain(`${path} =`);
++  }
++});
++
++test('removes an explicitly managed provider table after deleting all managed fields', () => {
++  const original =
++    '# before\n[model_providers.proxy]\n' +
++    'name = "aio-proxy"\nbase_url = "url"\nwire_api = "responses"\n' +
++    'requires_openai_auth = true\nexperimental_bearer_token = "token"\n\n' +
++    '[mcp_servers.local]\ncommand = "mcp"\n';
++  const edits = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'].map((key) => ({
++    path: ['model_providers', 'proxy', key],
++    next: { present: false as const },
++  }));
++  const actual = editCodexDocument(original, edits);
++  expect(actual).toBe('# before\n\n[mcp_servers.local]\ncommand = "mcp"\n');
++  expect(readCodexDocument(actual).providerIds).toEqual([]);
++});
++
++test('rejects a provider ID containing a control character before trimming', () => {
++  expect(() => validateCodexProviderId('proxy\n')).toThrow(/control/i);
++});
+diff --git a/packages/cli/src/agent/codex/config-document/config-document.ts b/packages/cli/src/agent/codex/config-document/config-document.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/cli/src/agent/codex/config-document/config-document.ts
+@@ -0,0 +1,405 @@
++import { parseTOML, type AST } from 'toml-eslint-parser';
++
++import {
++  applyInlineOperations,
++  applySourceEdits,
++  encodeTomlKey,
++  encodeTomlValue,
++  inlineMemberDelete,
++  keyParts,
++  lineEndingFor,
++  lineStart,
++  samePath,
++  textAfterLine,
++  type InlineOperation,
++  type SourceEdit,
++} from './ast-edits';
++
++export type ManagedValue = string | boolean;
++export type ValueSlot = { readonly present: false } | { readonly present: true; readonly value: ManagedValue };
++export type FieldEdit = { readonly path: readonly string[]; readonly next: ValueSlot };
++export type CodexDocument = {
++  readonly text: string;
++  readonly activeProviderId: string;
++  readonly providerIds: readonly string[];
++};
++
++type Container = AST.TOMLTopLevelTable | AST.TOMLTable | AST.TOMLInlineTable;
++type LocatedValue = {
++  readonly keyValue: AST.TOMLKeyValue;
++  readonly path: readonly string[];
++  readonly container: Container;
++};
++
++const parseDocument = (text: string): AST.TOMLProgram => parseTOML(text, { tomlVersion: '1.1' });
++
++const walkKeyValues = (
++  values: readonly AST.TOMLKeyValue[],
++  prefix: readonly string[],
++  container: Container,
++  output: LocatedValue[],
++): void => {
++  for (const keyValue of values) {
++    const path = [...prefix, ...keyParts(keyValue.key)];
++    output.push({ keyValue, path, container });
++    if (keyValue.value.type === 'TOMLInlineTable') walkKeyValues(keyValue.value.body, path, keyValue.value, output);
++  }
++};
++
++const inspectDocument = (
++  ast: AST.TOMLProgram,
++): {
++  readonly values: readonly LocatedValue[];
++  readonly tables: readonly AST.TOMLTable[];
++  readonly topLevel: AST.TOMLTopLevelTable;
++} => {
++  const topLevel = ast.body[0]!;
++  const values: LocatedValue[] = [];
++  const tables = topLevel.body.filter((entry): entry is AST.TOMLTable => entry.type === 'TOMLTable');
++  walkKeyValues(
++    topLevel.body.filter((entry): entry is AST.TOMLKeyValue => entry.type === 'TOMLKeyValue'),
++    [],
++    topLevel,
++    values,
++  );
++  for (const table of tables) walkKeyValues(table.body, table.resolvedKey.map(String), table, values);
++  return { values, tables, topLevel };
++};
++
++const findValue = (document: ReturnType<typeof inspectDocument>, path: readonly string[]): LocatedValue | undefined =>
++  document.values.find((value) => samePath(value.path, path));
++
++const findTable = (document: ReturnType<typeof inspectDocument>, path: readonly string[]): AST.TOMLTable | undefined =>
++  document.tables.find((table) => samePath(table.resolvedKey.map(String), path));
++
++const findInlineContainer = (
++  document: ReturnType<typeof inspectDocument>,
++  path: readonly string[],
++): AST.TOMLInlineTable | undefined => {
++  const value = findValue(document, path);
++  return value?.keyValue.value.type === 'TOMLInlineTable' ? value.keyValue.value : undefined;
++};
++
++const valueFromNode = (node: AST.TOMLValue): ManagedValue | undefined => {
++  if (node.kind === 'string' || node.kind === 'boolean') return node.value as ManagedValue;
++  return undefined;
++};
++
++const managedValue = (value: LocatedValue): ManagedValue => {
++  if (value.keyValue.value.type !== 'TOMLValue') {
++    throw new Error(`Managed field ${value.path.join('.')} must be a TOML string or boolean`);
++  }
++  const result = valueFromNode(value.keyValue.value);
++  if (result === undefined) throw new Error(`Managed field ${value.path.join('.')} must be a TOML string or boolean`);
++  return result;
++};
++
++const topLevelInsertionPoint = (source: string, document: ReturnType<typeof inspectDocument>): number => {
++  const firstTable = document.tables[0];
++  return firstTable?.range[0] ?? source.length;
++};
++
++const sourceInsertionPrefix = (source: string, position: number, ending: string): string =>
++  position > 0 && source[position - 1] !== '\n' ? ending : '';
++
++const fieldLines = (fields: readonly (readonly [string, ManagedValue])[], ending: string): string =>
++  fields.map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`).join(ending) + ending;
++
++const tableInsertionPoint = (source: string, table: AST.TOMLTable, tables: readonly AST.TOMLTable[]): number => {
++  const nextTable = tables.find((candidate) => candidate.range[0] > table.range[0]);
++  if (nextTable !== undefined) return nextTable.range[0];
++  const last = table.body.at(-1);
++  return textAfterLine(source, last?.range[1] ?? table.range[1]);
++};
++
++const lineDelete = (source: string, range: readonly [number, number]): SourceEdit => ({
++  start: lineStart(source, range[0]),
++  end: textAfterLine(source, range[1]),
++  text: '',
++});
++
++const inlineInsert = (container: AST.TOMLInlineTable, key: string, value: ManagedValue): InlineOperation => ({
++  kind: 'insert',
++  start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
++  text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(key)} = ${encodeTomlValue(value)}`,
++});
++
++const standardTableBlock = (
++  source: string,
++  tables: readonly AST.TOMLTable[],
++  table: AST.TOMLTable,
++  fields: readonly (readonly [string, ManagedValue])[],
++): SourceEdit => {
++  const ending = lineEndingFor(source);
++  const start = tableInsertionPoint(source, table, tables);
++  return {
++    start,
++    end: start,
++    text: `${sourceInsertionPrefix(source, start, ending)}${fieldLines(fields, ending)}`,
++  };
++};
++
++const newProviderTable = (
++  source: string,
++  providerId: string,
++  fields: readonly (readonly [string, ManagedValue])[],
++): SourceEdit => {
++  const ending = lineEndingFor(source);
++  const prefix = source.length > 0 && !source.endsWith('\n') ? ending : '';
++  return {
++    start: source.length,
++    end: source.length,
++    text: `${prefix}[model_providers.${encodeTomlKey(providerId)}]${ending}${fieldLines(fields, ending)}`,
++  };
++};
++
++const newInlineProvider = (
++  container: AST.TOMLInlineTable,
++  providerId: string,
++  fields: readonly (readonly [string, ManagedValue])[],
++): InlineOperation => ({
++  kind: 'insert',
++  start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
++  text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(providerId)} = { ${fields
++    .map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`)
++    .join(', ')} }`,
++});
++
++const validateFinalDocument = (text: string): void => {
++  try {
++    Bun.TOML.parse(text);
++  } catch (error) {
++    throw new Error(
++      `Edited Codex configuration is invalid TOML: ${error instanceof Error ? error.message : String(error)}`,
++    );
++  }
++};
++
++export function readManagedField(text: string, path: readonly string[]): ValueSlot {
++  const document = inspectDocument(parseDocument(text));
++  const value = findValue(document, path);
++  return value === undefined ? { present: false } : { present: true, value: managedValue(value) };
++}
++
++export function readCodexDocument(text: string): CodexDocument {
++  const document = inspectDocument(parseDocument(text));
++  const active = findValue(document, ['model_provider']);
++  const activeProviderId = active === undefined ? '' : managedValue(active);
++  if (typeof activeProviderId !== 'string') throw new Error('model_provider must be a TOML string');
++  const providerIds = new Set<string>();
++  for (const table of document.tables) {
++    const path = table.resolvedKey.map(String);
++    if (path.length === 2 && path[0] === 'model_providers') providerIds.add(path[1]!);
++  }
++  const root = findValue(document, ['model_providers']);
++  if (root?.keyValue.value.type === 'TOMLInlineTable') {
++    for (const member of root.keyValue.value.body) {
++      const parts = keyParts(member.key);
++      if (parts.length === 1) providerIds.add(parts[0]!);
++    }
++  }
++  for (const value of document.values) {
++    if (
++      value.path.length === 2 &&
++      value.path[0] === 'model_providers' &&
++      value.keyValue.value.type === 'TOMLInlineTable'
++    ) {
++      providerIds.add(value.path[1]!);
++    }
++  }
++  return { text, activeProviderId, providerIds: [...providerIds] };
++}
++
++export function editCodexDocument(text: string, edits: readonly FieldEdit[]): string {
++  const document = inspectDocument(parseDocument(text));
++  const ending = lineEndingFor(text);
++  const sourceEdits: SourceEdit[] = [];
++  const inlineOperations = new Map<AST.TOMLInlineTable, InlineOperation[]>();
++  const tableFields = new Map<AST.TOMLTable, [string, ManagedValue][]>();
++  const topLevelFields: [string, ManagedValue][] = [];
++  const newProviders = new Map<string, [string, ManagedValue][]>();
++  const newInlineProviders = new Map<
++    AST.TOMLInlineTable,
++    { readonly providerId: string; readonly fields: [string, ManagedValue][] }
++  >();
++  const deletedPaths = new Set(edits.filter((edit) => !edit.next.present).map((edit) => edit.path.join('\u0000')));
++  const managedProviderFields = new Set([
++    'name',
++    'base_url',
++    'wire_api',
++    'requires_openai_auth',
++    'experimental_bearer_token',
++  ]);
++  const providerTableCleanup = new Set(
++    document.tables.filter((table) => {
++      const tablePath = table.resolvedKey.map(String);
++      if (tablePath.length !== 2 || tablePath[0] !== 'model_providers') return false;
++      if (table.body.length === 0) return deletedPaths.has(tablePath.join('\u0000'));
++      const allFieldsManaged = table.body.every((field) => {
++        const fieldPath = [...tablePath, ...keyParts(field.key)];
++        return fieldPath.length === 3 && managedProviderFields.has(fieldPath[2]!);
++      });
++      if (!allFieldsManaged) return false;
++      return (
++        deletedPaths.has(tablePath.join('\u0000')) ||
++        table.body.every((field) => {
++          const fieldPath = [...tablePath, ...keyParts(field.key)];
++          return (
++            fieldPath.length === 3 &&
++            managedProviderFields.has(fieldPath[2]!) &&
++            deletedPaths.has(fieldPath.join('\u0000'))
++          );
++        })
++      );
++    }),
++  );
++
++  const addInlineOperation = (container: AST.TOMLInlineTable, operation: InlineOperation): void => {
++    const existing = inlineOperations.get(container) ?? [];
++    existing.push(operation);
++    inlineOperations.set(container, existing);
++  };
++  const addTableField = (table: AST.TOMLTable, key: string, value: ManagedValue): void => {
++    const fields = tableFields.get(table) ?? [];
++    fields.push([key, value]);
++    tableFields.set(table, fields);
++  };
++
++  for (const edit of edits) {
++    if (edit.path.length === 0) throw new Error('Managed TOML field path cannot be empty');
++    const existing = findValue(document, edit.path);
++    if (existing !== undefined) {
++      if (!edit.next.present) {
++        if (existing.container.type === 'TOMLInlineTable') {
++          addInlineOperation(existing.container, inlineMemberDelete(text, existing.container.body, existing.keyValue));
++        } else if (existing.container.type === 'TOMLTable' && edit.path.length === 3) {
++          if (!providerTableCleanup.has(existing.container))
++            sourceEdits.push(lineDelete(text, existing.keyValue.range));
++        } else if (edit.path.length === 1 || edit.path[0] !== 'model_providers') {
++          sourceEdits.push(lineDelete(text, existing.keyValue.range));
++        } else {
++          throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
++        }
++      } else {
++        const oldValue = managedValue(existing);
++        if (oldValue !== edit.next.value) {
++          const operation: InlineOperation = {
++            kind: 'replace',
++            start: existing.keyValue.value.range[0],
++            end: existing.keyValue.value.range[1],
++            text: encodeTomlValue(edit.next.value),
++          };
++          if (existing.container.type === 'TOMLInlineTable') addInlineOperation(existing.container, operation);
++          else sourceEdits.push({ start: operation.start, end: operation.end, text: operation.text });
++        }
++      }
++      continue;
++    }
++    if (!edit.next.present) {
++      if (edit.path.length === 2 && edit.path[0] === 'model_providers') {
++        const providerTable = findTable(document, edit.path);
++        if (providerTable !== undefined && !providerTableCleanup.has(providerTable)) {
++          throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
++        }
++      }
++      continue;
++    }
++    const key = edit.path.at(-1)!;
++    const parentPath = edit.path.slice(0, -1);
++    const parentInline = findInlineContainer(document, parentPath);
++    if (parentInline !== undefined) {
++      addInlineOperation(parentInline, inlineInsert(parentInline, key, edit.next.value));
++      continue;
++    }
++    if (edit.path.length === 1) {
++      topLevelFields.push([key, edit.next.value]);
++      continue;
++    }
++    if (edit.path[0] !== 'model_providers' || edit.path.length !== 3) {
++      throw new Error(`Cannot create nested TOML field ${edit.path.join('.')}`);
++    }
++    const providerId = edit.path[1]!;
++    const providerPath = ['model_providers', providerId];
++    const providerInline = findInlineContainer(document, providerPath);
++    if (providerInline !== undefined) {
++      addInlineOperation(providerInline, inlineInsert(providerInline, key, edit.next.value));
++      continue;
++    }
++    const rootInline = findInlineContainer(document, ['model_providers']);
++    if (rootInline !== undefined) {
++      const existingInline = newInlineProviders.get(rootInline);
++      const fields = existingInline?.fields ?? [];
++      fields.push([key, edit.next.value]);
++      newInlineProviders.set(rootInline, { providerId, fields });
++      continue;
++    }
++    const providerTable = findTable(document, providerPath);
++    if (providerTable !== undefined) {
++      addTableField(providerTable, key, edit.next.value);
++      continue;
++    }
++    const fields = newProviders.get(providerId) ?? [];
++    fields.push([key, edit.next.value]);
++    newProviders.set(providerId, fields);
++  }
++
++  if (topLevelFields.length > 0) {
++    const position = topLevelInsertionPoint(text, document);
++    sourceEdits.push({
++      start: position,
++      end: position,
++      text: `${sourceInsertionPrefix(text, position, ending)}${fieldLines(topLevelFields, ending)}`,
++    });
++  }
++  for (const [table, fields] of tableFields) sourceEdits.push(standardTableBlock(text, document.tables, table, fields));
++  for (const [providerId, fields] of newProviders) sourceEdits.push(newProviderTable(text, providerId, fields));
++  for (const table of providerTableCleanup) {
++    const last = table.body.at(-1);
++    sourceEdits.push({
++      start: lineStart(text, table.range[0]),
++      end: textAfterLine(text, last?.range[1] ?? table.range[1]),
++      text: '',
++    });
++  }
++  for (const [container, { providerId, fields }] of newInlineProviders) {
++    addInlineOperation(container, newInlineProvider(container, providerId, fields));
++  }
++  for (const [container, operations] of inlineOperations) {
++    sourceEdits.push(applyInlineOperations(text, container.range, operations));
++  }
++  const result = applySourceEdits(text, sourceEdits);
++  validateFinalDocument(result);
++  return result;
++}
++
++export function codexProviderEdits(providerId: string, baseUrl: string, token: string): readonly FieldEdit[] {
++  const id = validateCodexProviderId(providerId);
++  const fields: Record<string, ManagedValue> = {
++    name: 'aio-proxy',
++    base_url: baseUrl,
++    wire_api: 'responses',
++    requires_openai_auth: true,
++    experimental_bearer_token: token,
++  };
++  return [
++    { path: ['model_provider'], next: { present: true, value: id } },
++    ...Object.entries(fields).map(([key, value]) => ({
++      path: ['model_providers', id, key],
++      next: { present: true as const, value },
++    })),
++  ];
++}
++
++export function validateCodexProviderId(value: string): string {
++  const hasControlCharacter = [...value].some((character) => {
++    const codePoint = character.codePointAt(0)!;
++    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
++  });
++  if (hasControlCharacter) throw new Error('Codex provider ID cannot contain control characters');
++  const id = value.trim();
++  if (id.length === 0) throw new Error('Codex provider ID cannot be empty');
++  if (new Set(['openai', 'ollama', 'lmstudio', 'amazon-bedrock']).has(id)) {
++    throw new Error(`Codex provider ID is reserved: ${id}`);
++  }
++  return id;
++}
+diff --git a/packages/cli/src/agent/codex/config-document/index.ts b/packages/cli/src/agent/codex/config-document/index.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/cli/src/agent/codex/config-document/index.ts
+@@ -0,0 +1,8 @@
++export {
++  codexProviderEdits,
++  editCodexDocument,
++  readCodexDocument,
++  readManagedField,
++  validateCodexProviderId,
++} from './config-document';
++export type { CodexDocument, FieldEdit, ManagedValue, ValueSlot } from './config-document';

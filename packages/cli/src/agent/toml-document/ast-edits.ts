@@ -23,6 +23,17 @@ export const encodeTomlValue = (value: TomlLeaf): string => {
 };
 
 export const applySourceEdits = (source: string, edits: readonly SourceEdit[]): string => {
+  for (const edit of edits) {
+    if (
+      !Number.isSafeInteger(edit.start) ||
+      !Number.isSafeInteger(edit.end) ||
+      edit.start < 0 ||
+      edit.end < edit.start ||
+      edit.end > source.length
+    ) {
+      throw new Error('Invalid TOML edit range');
+    }
+  }
   const merged: Array<{ start: number; end: number; text: string }> = [];
   const insertionByStart = new Map<number, { start: number; end: number; text: string }>();
   for (const edit of edits) {
@@ -39,19 +50,7 @@ export const applySourceEdits = (source: string, edits: readonly SourceEdit[]): 
       merged.push(edit);
     }
   }
-  const deletions = merged
-    .filter((edit) => edit.text === '' && edit.start < edit.end)
-    .map((edit) => ({ ...edit }))
-    .sort((left, right) => left.start - right.start);
-  const coalesced: typeof deletions = [];
-  for (const deletion of deletions) {
-    const previous = coalesced.at(-1);
-    if (previous !== undefined && deletion.start <= previous.end) previous.end = Math.max(previous.end, deletion.end);
-    else coalesced.push(deletion);
-  }
-  const ordered = [...merged.filter((edit) => edit.text !== '' || edit.start === edit.end), ...coalesced].sort(
-    (left, right) => right.start - left.start,
-  );
+  const ordered = merged.sort((left, right) => right.start - left.start);
   for (let index = 1; index < ordered.length; index += 1) {
     if (ordered[index]!.end > ordered[index - 1]!.start) {
       throw new Error('Overlapping TOML source edits');
@@ -69,11 +68,6 @@ export const lineStart = (source: string, offset: number): number => {
   return before < 0 ? 0 : before + 1;
 };
 
-export const lineEnd = (source: string, offset: number): number => {
-  const newline = source.indexOf('\n', offset);
-  return newline < 0 ? source.length : newline;
-};
-
 export const textAfterLine = (source: string, offset: number): number => {
   const newline = source.indexOf('\n', offset);
   return newline < 0 ? source.length : newline + 1;
@@ -84,23 +78,40 @@ export type InlineOperation =
   | { readonly kind: 'insert'; readonly start: number; readonly text: string }
   | { readonly kind: 'delete'; readonly start: number; readonly end: number };
 
-export const inlineMemberDelete = (
+const inlineMemberRangeDelete = (
   source: string,
   members: readonly AST.TOMLKeyValue[],
-  target: AST.TOMLKeyValue,
+  from: number,
+  to: number,
 ): InlineOperation => {
-  const index = members.indexOf(target);
-  if (index < 0) throw new Error('Inline TOML member is not in its parent table');
-  const next = members[index + 1];
+  const next = members[to + 1];
   if (next !== undefined) {
-    return { kind: 'delete', start: target.range[0], end: next.range[0] };
+    return { kind: 'delete', start: members[from]!.range[0], end: next.range[0] };
   }
-  const previous = members[index - 1];
-  if (previous === undefined) return { kind: 'delete', start: target.range[0], end: target.range[1] };
-  let comma = target.range[0] - 1;
+  const previous = members[from - 1];
+  const last = members[to]!;
+  if (previous === undefined) return { kind: 'delete', start: members[from]!.range[0], end: last.range[1] };
+  let comma = members[from]!.range[0] - 1;
   while (comma > previous.range[1] && /[ \t]/.test(source[comma]!)) comma -= 1;
-  if (source[comma] === ',') return { kind: 'delete', start: comma, end: target.range[1] };
-  return { kind: 'delete', start: target.range[0], end: target.range[1] };
+  if (source[comma] === ',') return { kind: 'delete', start: comma, end: last.range[1] };
+  return { kind: 'delete', start: members[from]!.range[0], end: last.range[1] };
+};
+
+export const inlineMemberDeletes = (
+  source: string,
+  members: readonly AST.TOMLKeyValue[],
+  targets: readonly AST.TOMLKeyValue[],
+): InlineOperation[] => {
+  const targetSet = new Set(targets);
+  const indices = members.flatMap((member, index) => (targetSet.has(member) ? [index] : []));
+  if (indices.length !== targets.length) throw new Error('Inline TOML member is not in its parent table');
+  const ranges: Array<[number, number]> = [];
+  for (const index of indices) {
+    const last = ranges.at(-1);
+    if (last !== undefined && last[1] === index - 1) last[1] = index;
+    else ranges.push([index, index]);
+  }
+  return ranges.map(([from, to]) => inlineMemberRangeDelete(source, members, from, to));
 };
 
 export const applyInlineOperations = (

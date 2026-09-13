@@ -1,19 +1,13 @@
 import { parseTOML, type AST } from 'toml-eslint-parser';
 
 import {
-  applyInlineOperations,
-  applySourceEdits,
-  encodeTomlKey,
-  encodeTomlValue,
-  inlineMemberDelete,
-  keyParts,
-  lineEndingFor,
-  lineStart,
-  samePath,
-  textAfterLine,
-  type InlineOperation,
-  type SourceEdit,
-} from './ast-edits';
+  editTomlFields,
+  hasTomlTable,
+  inspectTomlPaths,
+  readTomlField,
+  type TomlFieldEdit,
+  type TomlPath,
+} from '../../toml-document';
 
 export type ManagedValue = string | boolean | number | readonly string[];
 export type ValueSlot = { readonly present: false } | { readonly present: true; readonly value: ManagedValue };
@@ -24,458 +18,123 @@ export type CodexDocument = {
   readonly providerIds: readonly string[];
 };
 
-type Container = AST.TOMLTopLevelTable | AST.TOMLTable | AST.TOMLInlineTable;
-type LocatedValue = {
-  readonly keyValue: AST.TOMLKeyValue;
-  readonly path: readonly string[];
-  readonly container: Container;
-};
+const SYNTAX = { tomlVersion: '1.1' as const };
+const TYPE_ERROR = 'TOML field must be a string, boolean, finite integer, or string array';
 
-const parseDocument = (text: string): AST.TOMLProgram => parseTOML(text, { tomlVersion: '1.1' });
+const samePath = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && left.every((part, index) => part === right[index]);
 
-const walkKeyValues = (
-  values: readonly AST.TOMLKeyValue[],
-  prefix: readonly string[],
-  container: Container,
-  output: LocatedValue[],
-): void => {
-  for (const keyValue of values) {
-    const path = [...prefix, ...keyParts(keyValue.key)];
-    output.push({ keyValue, path, container });
-    if (keyValue.value.type === 'TOMLInlineTable') walkKeyValues(keyValue.value.body, path, keyValue.value, output);
-  }
-};
+const pathKey = (path: readonly string[]): string => JSON.stringify(path);
 
-const inspectDocument = (
-  ast: AST.TOMLProgram,
-): {
-  readonly values: readonly LocatedValue[];
-  readonly tables: readonly AST.TOMLTable[];
-  readonly topLevel: AST.TOMLTopLevelTable;
-} => {
-  const topLevel = ast.body[0]!;
-  const values: LocatedValue[] = [];
-  const tables = topLevel.body.filter((entry): entry is AST.TOMLTable => entry.type === 'TOMLTable');
-  walkKeyValues(
-    topLevel.body.filter((entry): entry is AST.TOMLKeyValue => entry.type === 'TOMLKeyValue'),
-    [],
-    topLevel,
-    values,
-  );
-  for (const table of tables) walkKeyValues(table.body, table.resolvedKey.map(String), table, values);
-  return { values, tables, topLevel };
-};
-
-const findValue = (document: ReturnType<typeof inspectDocument>, path: readonly string[]): LocatedValue | undefined =>
-  document.values.find((value) => samePath(value.path, path));
-
-const findTable = (document: ReturnType<typeof inspectDocument>, path: readonly string[]): AST.TOMLTable | undefined =>
-  document.tables.find((table) => samePath(table.resolvedKey.map(String), path));
-
-const findInlineContainer = (
-  document: ReturnType<typeof inspectDocument>,
-  path: readonly string[],
-): AST.TOMLInlineTable | undefined => {
-  const value = findValue(document, path);
-  return value?.keyValue.value.type === 'TOMLInlineTable' ? value.keyValue.value : undefined;
-};
-
-const valueFromNode = (node: AST.TOMLContentNode): ManagedValue | undefined => {
-  if (node.type === 'TOMLArray') {
-    const values: string[] = [];
-    for (const element of node.elements) {
-      if (element.type !== 'TOMLValue' || element.kind !== 'string') return undefined;
-      values.push(element.value as string);
-    }
-    return values;
-  }
-  if (node.type !== 'TOMLValue') return undefined;
-  if (node.kind === 'string' || node.kind === 'boolean') return node.value as ManagedValue;
-  if (node.kind === 'integer' && Number.isFinite(node.value)) return node.value as number;
-  return undefined;
-};
-
-const managedValue = (value: LocatedValue): ManagedValue => {
-  const result = valueFromNode(value.keyValue.value);
-  if (result === undefined)
-    throw new Error(
-      `Managed field ${value.path.join('.')} must be a string or boolean, finite integer, or string array`,
-    );
-  return result;
-};
-
-const topLevelInsertionPoint = (source: string, document: ReturnType<typeof inspectDocument>): number => {
-  const firstTable = document.tables[0];
-  return firstTable?.range[0] ?? source.length;
-};
-
-const sourceInsertionPrefix = (source: string, position: number, ending: string): string =>
-  position > 0 && source[position - 1] !== '\n' ? ending : '';
-
-const fieldLines = (fields: readonly (readonly [string, ManagedValue])[], ending: string): string =>
-  fields.map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`).join(ending) + ending;
-
-const tableInsertionPoint = (source: string, table: AST.TOMLTable, tables: readonly AST.TOMLTable[]): number => {
-  const nextTable = tables.find((candidate) => candidate.range[0] > table.range[0]);
-  if (nextTable !== undefined) return nextTable.range[0];
-  const last = table.body.at(-1);
-  return textAfterLine(source, last?.range[1] ?? table.range[1]);
-};
-
-const lineDelete = (source: string, range: readonly [number, number]): SourceEdit => ({
-  start: lineStart(source, range[0]),
-  end: textAfterLine(source, range[1]),
-  text: '',
-});
-
-const inlineInsert = (container: AST.TOMLInlineTable, key: string, value: ManagedValue): InlineOperation => ({
-  kind: 'insert',
-  start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
-  text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(key)} = ${encodeTomlValue(value)}`,
-});
-
-const standardTableBlock = (
-  source: string,
-  tables: readonly AST.TOMLTable[],
-  table: AST.TOMLTable,
-  fields: readonly (readonly [string, ManagedValue])[],
-  removedTables: ReadonlySet<AST.TOMLTable> = new Set(),
-): SourceEdit => {
-  const ending = lineEndingFor(source);
-  const nextTable = tables.find((candidate) => candidate.range[0] > table.range[0] && !removedTables.has(candidate));
-  const removedFollowing = tables
-    .filter((candidate) => candidate.range[0] > table.range[0] && removedTables.has(candidate))
-    .at(-1);
-  const start =
-    nextTable?.range[0] ??
-    (removedFollowing === undefined
-      ? tableInsertionPoint(source, table, tables)
-      : textAfterLine(source, removedFollowing.body.at(-1)?.range[1] ?? removedFollowing.range[1]));
-  return {
-    start,
-    end: start,
-    text: `${sourceInsertionPrefix(source, start, ending)}${fieldLines(fields, ending)}`,
-  };
-};
-
-const newProviderTable = (
-  source: string,
-  providerId: string,
-  fields: readonly (readonly [string, ManagedValue])[],
-  nestedTables: readonly (readonly [readonly string[], readonly (readonly [string, ManagedValue])[]])[] = [],
-): SourceEdit => {
-  const ending = lineEndingFor(source);
-  const prefix = source.length > 0 && !source.endsWith('\n') ? ending : '';
-  return {
-    start: source.length,
-    end: source.length,
-    text: `${prefix}[model_providers.${encodeTomlKey(providerId)}]${ending}${fieldLines(fields, ending)}${nestedTables
-      .map(
-        ([path, nestedFields]) =>
-          `${ending}[${path.map(encodeTomlKey).join('.')}]${ending}${fieldLines(nestedFields, ending)}`,
-      )
-      .join('')}`,
-  };
-};
-
-const newInlineProvider = (
-  container: AST.TOMLInlineTable,
-  providerId: string,
-  fields: readonly (readonly [string, ManagedValue])[],
-  nestedFields: readonly (readonly [string, ManagedValue])[] = [],
-): InlineOperation => ({
-  kind: 'insert',
-  start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
-  text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(providerId)} = { ${[
-    ...fields.map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`),
-    ...(nestedFields.length > 0
-      ? [
-          `auth = { ${nestedFields.map(([key, value]) => `${encodeTomlKey(key)} = ${encodeTomlValue(value)}`).join(', ')} }`,
-        ]
-      : []),
-  ].join(', ')} }`,
-});
-
-const validateFinalDocument = (text: string): void => {
-  try {
-    Bun.TOML.parse(text);
-  } catch (error) {
-    throw new Error(
-      `Edited Codex configuration is invalid TOML: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-};
+function parseCodexDocument(text: string): void {
+  parseTOML(text, { tomlVersion: '1.1' });
+}
 
 export function readManagedField(text: string, path: readonly string[]): ValueSlot {
-  const document = inspectDocument(parseDocument(text));
-  const value = findValue(document, path);
-  return value === undefined ? { present: false } : { present: true, value: managedValue(value) };
+  try {
+    const slot = readTomlField(text, path, SYNTAX);
+    return slot.present ? { present: true, value: slot.value } : { present: false };
+  } catch (error) {
+    if (error instanceof Error && error.message === TYPE_ERROR) {
+      throw new Error(`Managed field ${path.join('.')} must be a string or boolean, finite integer, or string array`);
+    }
+    throw error;
+  }
 }
 
 export function hasCodexTable(text: string, path: readonly string[]): boolean {
-  const document = inspectDocument(parseDocument(text));
-  return findTable(document, path) !== undefined || findInlineContainer(document, path) !== undefined;
+  parseCodexDocument(text);
+  return hasTomlTable(text, path, SYNTAX);
 }
 
 export function readCodexDocument(text: string): CodexDocument {
-  const document = inspectDocument(parseDocument(text));
-  const active = findValue(document, ['model_provider']);
-  const activeProviderId = active === undefined ? '' : managedValue(active);
-  if (typeof activeProviderId !== 'string') throw new Error('model_provider must be a TOML string');
+  parseCodexDocument(text);
+  const inspected = inspectTomlPaths(text, SYNTAX);
+  const active = readManagedField(text, ['model_provider']);
+  if (active.present && typeof active.value !== 'string') throw new Error('model_provider must be a TOML string');
   const providerIds = new Set<string>();
-  for (const table of document.tables) {
-    const path = table.resolvedKey.map(String);
+  for (const path of [...inspected.tablePaths, ...inspected.fieldPaths]) {
     if (path.length >= 2 && path[0] === 'model_providers') providerIds.add(path[1]!);
   }
-  const root = findValue(document, ['model_providers']);
-  if (root?.keyValue.value.type === 'TOMLInlineTable') {
-    for (const member of root.keyValue.value.body) {
-      const parts = keyParts(member.key);
-      if (parts.length >= 1) providerIds.add(parts[0]!);
-    }
-  }
-  for (const value of document.values) {
-    if (value.path.length >= 2 && value.path[0] === 'model_providers') providerIds.add(value.path[1]!);
-  }
-  return { text, activeProviderId, providerIds: [...providerIds] };
+  return {
+    text,
+    activeProviderId: active.present ? active.value : '',
+    providerIds: [...providerIds],
+  };
 }
 
-// The source-preserving edit planner necessarily keeps all edit locations in one scope.
-// oxlint-disable-next-line max-lines-per-function
-export function editCodexDocument(text: string, edits: readonly FieldEdit[]): string {
-  const document = inspectDocument(parseDocument(text));
-  const ending = lineEndingFor(text);
-  const sourceEdits: SourceEdit[] = [];
-  const inlineOperations = new Map<AST.TOMLInlineTable, InlineOperation[]>();
-  const tableFields = new Map<AST.TOMLTable, [string, ManagedValue][]>();
-  const topLevelFields: [string, ManagedValue][] = [];
-  const newProviders = new Map<string, [string, ManagedValue][]>();
-  const newNestedTables = new Map<string, { path: string[]; fields: [string, ManagedValue][] }>();
-  const newInlineProviders = new Map<
-    AST.TOMLInlineTable,
-    {
-      readonly providerId: string;
-      readonly fields: [string, ManagedValue][];
-      readonly nestedFields: [string, ManagedValue][];
-    }
-  >();
-  const newInlineNested = new Map<
-    AST.TOMLInlineTable,
-    { readonly key: string; readonly fields: [string, ManagedValue][] }
-  >();
-  const deletedPaths = new Set(edits.filter((edit) => !edit.next.present).map((edit) => edit.path.join('\u0000')));
-  const providerTableCleanup = new Set(
-    document.tables.filter((table) => {
-      const tablePath = table.resolvedKey.map(String);
-      if ((tablePath.length !== 2 && tablePath.length !== 3) || tablePath[0] !== 'model_providers') return false;
-      if (tablePath.length === 3 && !deletedPaths.has(tablePath.join('\u0000'))) return false;
-      if (table.body.length === 0) return deletedPaths.has(tablePath.join('\u0000'));
-      return (
-        deletedPaths.has(tablePath.join('\u0000')) ||
-        table.body.every((field) => {
-          const fieldPath = [...tablePath, ...keyParts(field.key)];
-          return deletedPaths.has(fieldPath.join('\u0000'));
-        })
-      );
-    }),
+function hasStandardTable(text: string, path: readonly string[]): boolean {
+  const topLevel = parseTOML(text, { tomlVersion: '1.1' }).body[0];
+  return (
+    topLevel?.body.some((entry) => entry.type === 'TOMLTable' && samePath(entry.resolvedKey.map(String), path)) === true
   );
+}
 
-  const addInlineOperation = (container: AST.TOMLInlineTable, operation: InlineOperation): void => {
-    const existing = inlineOperations.get(container) ?? [];
-    existing.push(operation);
-    inlineOperations.set(container, existing);
-  };
-  const addTableField = (table: AST.TOMLTable, key: string, value: ManagedValue): void => {
-    const fields = tableFields.get(table) ?? [];
-    fields.push([key, value]);
-    tableFields.set(table, fields);
-  };
+function assertProviderDeletes(text: string, edits: readonly FieldEdit[]): void {
+  const inspected = inspectTomlPaths(text, SYNTAX);
+  const deleted = new Set(edits.filter((edit) => !edit.next.present).map((edit) => pathKey(edit.path)));
+  for (const edit of edits) {
+    if (edit.next.present || edit.path.length !== 2 || edit.path[0] !== 'model_providers') continue;
+    if (!hasStandardTable(text, edit.path)) continue;
+    const leftover = inspected.fieldPaths.some(
+      (field) =>
+        field.length >= 3 && field[0] === edit.path[0] && field[1] === edit.path[1] && !deleted.has(pathKey(field)),
+    );
+    if (leftover) throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
+  }
+}
 
+function assertCreatable(text: string, edit: FieldEdit): void {
+  if (!edit.next.present) return;
+  const existing = inspectTomlPaths(text, SYNTAX).fieldPaths.some((path) => samePath(path, edit.path));
+  if (existing) return;
+  if (edit.path.length === 1) return;
+  if (edit.path[0] === 'model_providers' && (edit.path.length === 3 || edit.path.length === 4)) return;
+  throw new Error(`Cannot create nested TOML field ${edit.path.join('.')}`);
+}
+
+function fieldKeyParts(key: AST.TOMLKey): string[] {
+  return key.keys.map((part) => (part.type === 'TOMLBare' ? part.name : part.value));
+}
+
+function providerTablesToPrune(text: string, edits: readonly FieldEdit[]): readonly TomlPath[] {
+  const deleted = new Set(edits.filter((edit) => !edit.next.present).map((edit) => pathKey(edit.path)));
+  if (deleted.size === 0) return [];
+  const tables: TomlPath[] = [];
+  const seen = new Set<string>();
+  for (const entry of parseTOML(text, { tomlVersion: '1.1' }).body[0]?.body ?? []) {
+    if (entry.type !== 'TOMLTable') continue;
+    const tablePath = entry.resolvedKey.map(String);
+    if (tablePath[0] !== 'model_providers' || (tablePath.length !== 2 && tablePath.length !== 3)) continue;
+    const tableDeleted = deleted.has(pathKey(tablePath));
+    if (tablePath.length === 3 && !tableDeleted) continue;
+    const bodyCleared =
+      entry.body.length > 0 &&
+      entry.body.every((field) => deleted.has(pathKey([...tablePath, ...fieldKeyParts(field.key)])));
+    if (!tableDeleted && !bodyCleared) continue;
+    const key = pathKey(tablePath);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tables.push(tablePath);
+  }
+  return tables;
+}
+
+export function editCodexDocument(text: string, edits: readonly FieldEdit[]): string {
+  parseCodexDocument(text);
   for (const edit of edits) {
     if (edit.path.length === 0) throw new Error('Managed TOML field path cannot be empty');
-    const existing = findValue(document, edit.path);
-    if (existing !== undefined) {
-      if (!edit.next.present) {
-        if (existing.container.type === 'TOMLInlineTable') {
-          addInlineOperation(existing.container, inlineMemberDelete(text, existing.container.body, existing.keyValue));
-        } else if (existing.container.type === 'TOMLTable' && edit.path.length >= 3) {
-          if (!providerTableCleanup.has(existing.container))
-            sourceEdits.push(lineDelete(text, existing.keyValue.range));
-        } else if (edit.path.length === 1 || edit.path[0] !== 'model_providers') {
-          sourceEdits.push(lineDelete(text, existing.keyValue.range));
-        } else {
-          throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
-        }
-      } else {
-        const oldValue = managedValue(existing);
-        if (oldValue !== edit.next.value) {
-          const operation: InlineOperation = {
-            kind: 'replace',
-            start: existing.keyValue.value.range[0],
-            end: existing.keyValue.value.range[1],
-            text: encodeTomlValue(edit.next.value),
-          };
-          if (existing.container.type === 'TOMLInlineTable') addInlineOperation(existing.container, operation);
-          else sourceEdits.push({ start: operation.start, end: operation.end, text: operation.text });
-        }
-      }
-      continue;
-    }
-    if (!edit.next.present) {
-      if (edit.path.length === 2 && edit.path[0] === 'model_providers') {
-        const providerTable = findTable(document, edit.path);
-        if (providerTable !== undefined && !providerTableCleanup.has(providerTable)) {
-          throw new Error('Managed provider table cannot be deleted while preserving unrelated fields');
-        }
-      }
-      continue;
-    }
-    const key = edit.path.at(-1)!;
-    const parentPath = edit.path.slice(0, -1);
-    const parentInline = findInlineContainer(document, parentPath);
-    if (parentInline !== undefined) {
-      addInlineOperation(parentInline, inlineInsert(parentInline, key, edit.next.value));
-      continue;
-    }
-    if (edit.path.length === 1) {
-      topLevelFields.push([key, edit.next.value]);
-      continue;
-    }
-    if (edit.path[0] !== 'model_providers' || (edit.path.length !== 3 && edit.path.length !== 4)) {
-      throw new Error(`Cannot create nested TOML field ${edit.path.join('.')}`);
-    }
-    const providerId = edit.path[1]!;
-    const providerPath = ['model_providers', providerId];
-    const providerInline = findInlineContainer(document, providerPath);
-    if (providerInline !== undefined) {
-      if (edit.path.length === 4) {
-        const nested = newInlineNested.get(providerInline) ?? { key: 'auth', fields: [] };
-        newInlineNested.set(providerInline, { key: 'auth', fields: [...nested.fields, [key, edit.next.value]] });
-        continue;
-      }
-      addInlineOperation(providerInline, inlineInsert(providerInline, key, edit.next.value));
-      continue;
-    }
-    const parentTable = findTable(document, parentPath);
-    if (parentTable !== undefined) {
-      addTableField(parentTable, key, edit.next.value);
-      continue;
-    }
-    if (edit.path.length === 4) {
-      const rootInline = findInlineContainer(document, ['model_providers']);
-      if (rootInline !== undefined) {
-        const existingInline = newInlineProviders.get(rootInline);
-        newInlineProviders.set(rootInline, {
-          providerId,
-          fields: existingInline?.fields ?? [],
-          nestedFields: [...(existingInline?.nestedFields ?? []), [key, edit.next.value]],
-        });
-        continue;
-      }
-      const nestedKey = parentPath.join('\u0000');
-      const nested = newNestedTables.get(nestedKey) ?? { path: [...parentPath], fields: [] };
-      nested.fields.push([key, edit.next.value]);
-      newNestedTables.set(nestedKey, nested);
-      continue;
-    }
-    const rootInline = findInlineContainer(document, ['model_providers']);
-    if (rootInline !== undefined) {
-      const existingInline = newInlineProviders.get(rootInline);
-      const fields = existingInline?.fields ?? [];
-      fields.push([key, edit.next.value]);
-      newInlineProviders.set(rootInline, {
-        providerId,
-        fields,
-        nestedFields: existingInline?.nestedFields ?? [],
-      });
-      continue;
-    }
-    const providerTable = findTable(document, providerPath);
-    if (providerTable !== undefined) {
-      addTableField(providerTable, key, edit.next.value);
-      continue;
-    }
-    const fields = newProviders.get(providerId) ?? [];
-    fields.push([key, edit.next.value]);
-    newProviders.set(providerId, fields);
+    assertCreatable(text, edit);
   }
-
-  if (topLevelFields.length > 0) {
-    const position = topLevelInsertionPoint(text, document);
-    sourceEdits.push({
-      start: position,
-      end: position,
-      text: `${sourceInsertionPrefix(text, position, ending)}${fieldLines(topLevelFields, ending)}`,
-    });
-  }
-  for (const [table, fields] of tableFields)
-    sourceEdits.push(standardTableBlock(text, document.tables, table, fields, providerTableCleanup));
-  for (const [providerId, fields] of newProviders) {
-    const nested = [...newNestedTables.values()].filter(
-      ({ path }) => path.length === 3 && path[0] === 'model_providers' && path[1] === providerId,
-    );
-    sourceEdits.push(
-      newProviderTable(
-        text,
-        providerId,
-        fields,
-        nested.map(({ path, fields: nestedFields }) => [path, nestedFields]),
-      ),
-    );
-  }
-  for (const { path, fields } of newNestedTables.values()) {
-    if (newProviders.has(path[1]!)) continue;
-    const providerTable = findTable(document, path.slice(0, 2));
-    if (providerTable === undefined) throw new Error(`Cannot create nested TOML field ${path.join('.')}`);
-    const endingText = lineEndingFor(text);
-    const start = tableInsertionPoint(text, providerTable, document.tables);
-    sourceEdits.push({
-      start,
-      end: start,
-      text: `${sourceInsertionPrefix(text, start, endingText)}[${path.map(encodeTomlKey).join('.')}]${endingText}${fieldLines(fields, endingText)}`,
-    });
-  }
-  for (const table of providerTableCleanup) {
-    const last = table.body.at(-1);
-    sourceEdits.push({
-      start: lineStart(text, table.range[0]),
-      end: textAfterLine(text, last?.range[1] ?? table.range[1]),
-      text: '',
-    });
-  }
-  for (const [container, { providerId, fields, nestedFields }] of newInlineProviders) {
-    addInlineOperation(container, newInlineProvider(container, providerId, fields, nestedFields));
-  }
-  for (const [container, { key, fields }] of newInlineNested) {
-    addInlineOperation(container, {
-      kind: 'insert',
-      start: container.body.at(-1)?.range[1] ?? container.range[1] - 1,
-      text: `${container.body.length > 0 ? ', ' : ''}${encodeTomlKey(key)} = { ${fields
-        .map(([field, value]) => `${encodeTomlKey(field)} = ${encodeTomlValue(value)}`)
-        .join(', ')} }`,
-    });
-  }
-  const coalescedInlineOperations = new Map<AST.TOMLInlineTable, InlineOperation[]>();
-  for (const [container, operations] of inlineOperations) {
-    let scope = container;
-    for (const candidate of inlineOperations.keys()) {
-      if (
-        candidate !== container &&
-        candidate.range[0] <= scope.range[0] &&
-        candidate.range[1] >= scope.range[1] &&
-        candidate.range[1] - candidate.range[0] > scope.range[1] - scope.range[0]
-      ) {
-        scope = candidate;
-      }
-    }
-    const scoped = coalescedInlineOperations.get(scope) ?? [];
-    scoped.push(...operations);
-    coalescedInlineOperations.set(scope, scoped);
-  }
-  for (const [container, operations] of coalescedInlineOperations) {
-    sourceEdits.push(applyInlineOperations(text, container.range, operations));
-  }
-  const result = applySourceEdits(text, sourceEdits);
-  validateFinalDocument(result);
-  return result;
+  assertProviderDeletes(text, edits);
+  const mapped: TomlFieldEdit[] = edits.map((edit) =>
+    edit.next.present
+      ? { path: edit.path, next: { present: true, value: edit.next.value } }
+      : { path: edit.path, next: { present: false } },
+  );
+  return editTomlFields(text, mapped, {
+    tomlVersion: '1.1',
+    tableCreation: 'header',
+    removeEmptyTables: providerTablesToPrune(text, edits),
+  }).text;
 }

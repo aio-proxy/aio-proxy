@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test';
 
 import {
+  AgentCatalogQuerySchema,
   AgentCatalogV1Schema,
+  AgentDeviceCodeRequestSchema,
   AgentManagedMarkerSchema,
   AgentManagedStateV1Schema,
-  AgentTokenResponseSchema,
-  AgentCatalogQuerySchema,
-  AgentDeviceCodeRequestSchema,
   AgentPluginTargetSchema,
   AgentTargetSchema,
+  AgentTokenResponseSchema,
   hasReservedAgentTokenPrefix,
 } from './agent-integration';
 
@@ -184,7 +184,7 @@ test('recognizes both reserved Agent credential families', () => {
   expect(hasReservedAgentTokenPrefix('aio_agent_rt_v1_x')).toBe(true);
   expect(hasReservedAgentTokenPrefix('ordinary-static-key')).toBe(false);
   expect(AgentPluginTargetSchema.options).toEqual(['opencode', 'pi', 'omp']);
-  expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp', 'codex']);
+  expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp', 'codex', 'grok']);
 });
 
 test('accepts Codex device credentials while keeping catalog negotiation plugin-only', () => {
@@ -198,6 +198,16 @@ test('accepts Codex device credentials while keeping catalog negotiation plugin-
   ).toBe(true);
   expect(
     AgentCatalogQuerySchema.safeParse({ agent: 'codex', adapter_version: '0.21.0', schema_version: '1' }).success,
+  ).toBe(false);
+});
+
+test('catalog negotiation does not accept Grok as a plugin agent', () => {
+  expect(
+    AgentCatalogQuerySchema.safeParse({
+      agent: 'grok',
+      adapter_version: '1.2.3',
+      schema_version: '1',
+    }).success,
   ).toBe(false);
 });
 

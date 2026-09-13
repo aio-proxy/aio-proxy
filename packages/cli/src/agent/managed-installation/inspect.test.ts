@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { AgentCatalogV1, AgentManagedStateV1, AgentTarget } from '@aio-proxy/types';
+import type { AgentCatalogV1, AgentManagedStateV1, AgentPluginTarget } from '@aio-proxy/types';
 
-import type { AgentLocation } from '../hosts';
+import type { AgentPluginLocation } from '../hosts';
 import { inspectManagedInstallation } from './inspect';
 
 const INSPECT_INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
@@ -36,11 +36,11 @@ async function installationFixture(
   options: {
     readonly symlink?: 'managed directory' | 'marker' | 'OpenCode entry';
     readonly state?: AgentManagedStateV1;
-    readonly markerAgent?: AgentTarget;
+    readonly markerAgent?: AgentPluginTarget;
     readonly entryInstallationId?: string;
     readonly missingEntry?: boolean;
   } = {},
-): Promise<{ readonly location: AgentLocation }> {
+): Promise<{ readonly location: AgentPluginLocation }> {
   const root = await mkdtemp(join(tmpdir(), 'aio-proxy-agent-inspect-'));
   inspectRoots.push(root);
   const hostRoot = join(root, 'plugins');

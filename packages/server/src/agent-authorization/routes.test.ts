@@ -463,3 +463,94 @@ test('admin snapshot and revoke are loopback-only, idempotent, and secret-free',
   );
   expect(remote.status).toBe(404);
 });
+
+test('device endpoint accepts the Grok tuple and rejects cross-client use', async () => {
+  const f = await routeFixture();
+  const request = { ...DEVICE_REQUEST, agent: 'grok', client_id: 'aio-proxy-grok' };
+  expect((await f.app.request('/oauth/device/code', form(request), loopbackServer)).status).toBe(200);
+  expect(
+    (
+      await f.app.request(
+        '/oauth/device/code',
+        form({
+          ...request,
+          client_id: 'aio-proxy-pi',
+        }),
+        loopbackServer,
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await f.app.request(
+        '/oauth/device/code',
+        form({
+          ...request,
+          agent: 'grok-other',
+        }),
+        loopbackServer,
+      )
+    ).status,
+  ).toBe(400);
+});
+
+test('Grok device approval issues an ordinary models catalog and revoke withdraws it', async () => {
+  const f = await routeFixture({ apiKeys: [{ key: 'static' }], password: 'dashboard-password' });
+  const request = { ...DEVICE_REQUEST, agent: 'grok', client_id: 'aio-proxy-grok' };
+  const created = await (await f.app.request('/oauth/device/code', form(request), loopbackServer)).json();
+  const token = await f.login('dashboard-password');
+  const resolved = await f.app.request(
+    localUrl('/dashboard/api/agent-authorizations/resolve'),
+    json(
+      { userCode: created.user_code },
+      {
+        authorization: `Bearer ${token}`,
+        origin: LOCAL_ORIGIN,
+        'sec-fetch-site': 'same-origin',
+      },
+    ),
+    loopbackServer,
+  );
+  expect(resolved.status).toBe(200);
+  const details = await resolved.json();
+  const approved = await f.app.request(
+    localUrl(`/dashboard/api/agent-authorizations/${details.deviceId}/approve`),
+    json(
+      {},
+      {
+        authorization: `Bearer ${token}`,
+        origin: LOCAL_ORIGIN,
+        'sec-fetch-site': 'same-origin',
+      },
+    ),
+    loopbackServer,
+  );
+  expect(await approved.json()).toEqual({ status: 'approved' });
+  const issued = await (
+    await f.app.request(
+      '/oauth/token',
+      form({
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        client_id: 'aio-proxy-grok',
+        device_code: created.device_code,
+      }),
+      loopbackServer,
+    )
+  ).json();
+  const models = await f.app.request(
+    '/v1/models',
+    { headers: { authorization: `Bearer ${issued.access_token}` } },
+    loopbackServer,
+  );
+  expect(models.status).toBe(200);
+  const body = await models.json();
+  expect(body.object).toBe('list');
+  expect(Array.isArray(body.data)).toBe(true);
+  expect(body).not.toHaveProperty('schema_version');
+  expect(body).not.toHaveProperty('models');
+  expect(f.agentIdentity.revokeInstallation(request.installation_id)).toBe('revoked');
+  expect(
+    (await f.app.request('/v1/models', { headers: { authorization: `Bearer ${issued.access_token}` } }, loopbackServer))
+      .status,
+  ).not.toBe(200);
+});

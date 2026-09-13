@@ -266,6 +266,45 @@ test('cleanup retains consumed refresh evidence through its expiry and later rem
   expect(f.sqlite.query('SELECT * FROM agent_refresh_token WHERE token_hash = ?').get(oldHash)).toBeNull();
 });
 
+test('Grok identity persists across service instances and binds its client', () => {
+  const first = fixture({ now: 1_000 });
+  const issued = first.service.issueCredential({ ...INPUT, target: 'grok' });
+  const next = fixture({ sqlite: first.sqlite, now: 2_000 });
+  expect(next.service.authenticateAccessToken(issued.accessToken)).toMatchObject({ status: 'valid' });
+  const rotated = next.service.refreshCredential({
+    clientId: 'aio-proxy-grok',
+    refreshToken: issued.refreshToken,
+  });
+  expect(rotated.status).toBe('success');
+  expect(
+    next.service.refreshCredential({
+      clientId: 'aio-proxy-pi',
+      refreshToken: issued.refreshToken,
+    }).status,
+  ).not.toBe('success');
+});
+
+test('Grok rotation replay keeps the family until revoke withdraws the hot grant', () => {
+  const f = fixture({ now: 1_000 });
+  const issued = f.service.issueCredential({ ...INPUT, target: 'grok' });
+  const rotated = expectRefreshSuccess(
+    f.service.refreshCredential({
+      clientId: 'aio-proxy-grok',
+      refreshToken: issued.refreshToken,
+    }),
+  );
+  f.setNow(30_999);
+  expect(
+    f.service.refreshCredential({
+      clientId: 'aio-proxy-grok',
+      refreshToken: issued.refreshToken,
+    }),
+  ).toEqual(rotated);
+  expect(f.service.authenticateAccessToken(rotated.accessToken).status).toBe('valid');
+  expect(f.service.revokeInstallation(INPUT.installationId)).toBe('revoked');
+  expect(f.service.authenticateAccessToken(rotated.accessToken).status).toBe('invalid');
+});
+
 test('issues a credential when production defaults leave randomUUID unbound', () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-identity-'));
   roots.push(home);

@@ -71,6 +71,24 @@ test('adds missing fields to an existing inline provider in source order', () =>
   );
 });
 
+test('creates a header provider table beside an implicit dotted sibling', () => {
+  const original = 'model_providers.other.name = "keep"\n';
+  const actual = editCodexDocument(original, codexProviderEdits('proxy.team', 'url', keep('token')));
+  expect(actual).toContain('model_providers.other.name = "keep"');
+  expect(actual).toContain('[model_providers."proxy.team"]');
+  expect(actual).not.toContain('model_providers.proxy.team.name');
+  expect(Bun.TOML.parse(actual).model_providers).toEqual({
+    other: { name: 'keep' },
+    'proxy.team': {
+      name: 'AIO Proxy',
+      base_url: 'url',
+      wire_api: 'responses',
+      requires_openai_auth: true,
+      experimental_bearer_token: 'token',
+    },
+  });
+});
+
 test('creates a valid document from an empty source', () => {
   const actual = editCodexDocument('', codexProviderEdits('proxy.team', 'url', keep('token')));
   expect(Bun.TOML.parse(actual).model_provider).toBe('proxy.team');
@@ -173,6 +191,24 @@ test('deletes standard provider scalar fields while preserving unrelated fields 
     expect(actual).toContain('[mcp_servers.local]\ncommand = "mcp"');
     expect(actual).not.toContain(`${path} =`);
   }
+});
+
+test('keeps an existing auth table after clearing its managed fields', () => {
+  const original = '[model_providers.proxy]\nname = "AIO Proxy"\n[model_providers.proxy.auth]\ncommand = "aiop"\n';
+  const actual = editCodexDocument(original, [
+    { path: ['model_providers', 'proxy', 'auth', 'command'], next: { present: false } },
+  ]);
+  expect(actual).toContain('[model_providers.proxy.auth]');
+  expect(actual).not.toContain('command =');
+});
+
+test('removes an empty auth table only when the table path is deleted', () => {
+  const original = '[model_providers.proxy]\nname = "AIO Proxy"\n[model_providers.proxy.auth]\n';
+  const actual = editCodexDocument(original, [
+    { path: ['model_providers', 'proxy', 'auth'], next: { present: false } },
+  ]);
+  expect(actual).toContain('[model_providers.proxy]');
+  expect(actual).not.toContain('[model_providers.proxy.auth]');
 });
 
 test('removes an explicitly managed provider table after deleting all managed fields', () => {

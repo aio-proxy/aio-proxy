@@ -40,15 +40,37 @@ const parseRecord = (text: string): LockRecord | undefined => {
       typeof value['pid'] !== 'number' ||
       !Number.isSafeInteger(value['pid']) ||
       typeof value['owner'] !== 'string' ||
-      typeof value['createdAt'] !== 'number' ||
-      typeof value['starttime'] !== 'string'
+      typeof value['createdAt'] !== 'number'
     )
       return undefined;
-    return { pid: value['pid'], owner: value['owner'], createdAt: value['createdAt'], starttime: value['starttime'] };
+    if (value['starttime'] !== undefined && typeof value['starttime'] !== 'string') return undefined;
+    return {
+      pid: value['pid'],
+      owner: value['owner'],
+      createdAt: value['createdAt'],
+      starttime: typeof value['starttime'] === 'string' ? value['starttime'] : STARTTIME_UNAVAILABLE,
+    };
   } catch {
     return undefined;
   }
 };
+
+export const isProcessLockRecord = (text: string): boolean => parseRecord(text) !== undefined;
+
+async function withOptionalSignal<T>(signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
+  if (signal === undefined) return operation();
+  signal.throwIfAborted();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([operation(), aborted]);
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener('abort', onAbort);
+  }
+}
 
 async function assertSafePath(path: string): Promise<void> {
   const absolute = resolve(path);
@@ -219,9 +241,10 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
     owner,
     ...(predecessor === undefined ? {} : { predecessor }),
     async withOwnership(action) {
-      await assertOwned();
-      const result = await action(assertOwned);
-      await assertOwned();
+      const owned = () => withOptionalSignal(signal, assertOwned);
+      await owned();
+      const result = await action(owned);
+      await owned();
       return result;
     },
     withOwnershipFence: (action) =>
@@ -235,10 +258,11 @@ export async function acquireProcessFileLock(path: string, signal?: AbortSignal)
           ...(signal === undefined ? {} : { signal }),
         },
         async (assertFence) => {
-          const fenced = async () => {
-            await assertFence();
-            await assertOwned();
-          };
+          const fenced = () =>
+            withOptionalSignal(signal, async () => {
+              await assertFence();
+              await assertOwned();
+            });
           await fenced();
           return action(fenced);
         },

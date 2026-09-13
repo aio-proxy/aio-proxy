@@ -14,13 +14,19 @@ afterEach(() => {
   else process.env.AIO_PROXY_HOME = original;
 });
 
-test('skips the banner for upgrade, Codex auth, and version flags', () => {
-  expect(shouldPrintUpdateBanner('status', ['aio-proxy', 'status'])).toBe(true);
-  expect(shouldPrintUpdateBanner('upgrade', ['aio-proxy', 'upgrade'])).toBe(false);
-  expect(shouldPrintUpdateBanner('update', ['aio-proxy', 'update'])).toBe(false);
-  expect(shouldPrintUpdateBanner('auth', ['aio-proxy', 'agent', 'auth', 'codex'])).toBe(false);
-  expect(shouldPrintUpdateBanner('status', ['aio-proxy', '--version'])).toBe(false);
-  expect(shouldPrintUpdateBanner('run', ['aio-proxy', '-v'])).toBe(false);
+test('skips the banner for upgrade, update, and version flags', () => {
+  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status'])).toBe(true);
+  expect(shouldPrintUpdateBanner(['upgrade', 'aio-proxy'], ['aio-proxy', 'upgrade'])).toBe(false);
+  expect(shouldPrintUpdateBanner(['update', 'aio-proxy'], ['aio-proxy', 'update'])).toBe(false);
+  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', '--version'])).toBe(false);
+  expect(shouldPrintUpdateBanner(['run', 'aio-proxy'], ['aio-proxy', '-v'])).toBe(false);
+});
+
+test('skips the banner for agent auth via the Commander parent chain, not argv containing auth', () => {
+  expect(shouldPrintUpdateBanner(['auth', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'auth', 'grok'])).toBe(false);
+  expect(shouldPrintUpdateBanner(['auth', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'auth', 'codex'])).toBe(false);
+  expect(shouldPrintUpdateBanner(['list', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'list'])).toBe(true);
+  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status', '/tmp/auth/config'])).toBe(true);
 });
 
 test('prints a banner only when the persisted latest is newer', async () => {

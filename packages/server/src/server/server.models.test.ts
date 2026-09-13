@@ -25,6 +25,9 @@ describe('GET /v1/models client_version routing', () => {
   let pi: IssuedAgentCredential;
   let omp: IssuedAgentCredential;
   let codex: IssuedAgentCredential;
+  let grok: IssuedAgentCredential;
+  let grokInstallationId: string;
+  let identity: ReturnType<typeof createAgentIdentityService>;
   let closeIdentity: () => void = () => {};
 
   beforeEach(async () => {
@@ -58,7 +61,7 @@ describe('GET /v1/models client_version routing', () => {
       identityDb.close();
       rmSync(identityHome, { recursive: true, force: true });
     };
-    const identity = createAgentIdentityService(identityDb.sqlite, { randomUUID });
+    identity = createAgentIdentityService(identityDb.sqlite, { randomUUID });
     opencode = identity.issueCredential({
       installationId: randomUUID(),
       target: 'opencode',
@@ -78,6 +81,12 @@ describe('GET /v1/models client_version routing', () => {
       installationId: randomUUID(),
       target: 'codex',
       adapterVersion: '0.146.0',
+    });
+    grokInstallationId = randomUUID();
+    grok = identity.issueCredential({
+      installationId: grokInstallationId,
+      target: 'grok',
+      adapterVersion: '1.2.3',
     });
     app = await createBaseServer({ config, dbHome: dir, __test: { agentIdentity: identity } });
     lockedHome = mkdtempSync(join(tmpdir(), 'aio-proxy-locked-models-'));
@@ -240,5 +249,79 @@ describe('GET /v1/models client_version routing', () => {
     expect(body.object).toBe('list');
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.models).toBeUndefined();
+  });
+
+  test.each(['/v1/models', '/v1/models?client_version=0.146.0'])(
+    'Grok installation receives ordinary models at %s',
+    async (path) => {
+      for (const server of [app, lockedApp]) {
+        const response = await server.request(
+          path,
+          {
+            headers: { authorization: `Bearer ${grok.accessToken}` },
+          },
+          loopbackServer,
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.object).toBe('list');
+        expect(Array.isArray(body.data)).toBe(true);
+        expect(body.data.length).toBeGreaterThan(0);
+        expect(body).not.toHaveProperty('schema_version');
+        expect(body).not.toHaveProperty('models');
+      }
+    },
+  );
+
+  test.each(['opencode', 'pi', 'omp'] as const)(
+    '%s installation still requires catalog negotiation',
+    async (target) => {
+      const credential = target === 'opencode' ? opencode : target === 'pi' ? pi : omp;
+      expect(
+        (
+          await app.request(
+            '/v1/models',
+            { headers: { authorization: `Bearer ${credential.accessToken}` } },
+            loopbackServer,
+          )
+        ).status,
+      ).toBe(400);
+    },
+  );
+
+  test('Grok access tokens cannot negotiate a plugin catalog', async () => {
+    const response = await app.request(
+      '/v1/models?agent=opencode&adapter_version=1.2.3&schema_version=1',
+      { headers: { authorization: `Bearer ${grok.accessToken}` } },
+      loopbackServer,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  test.each(['/v1/models?agent=grok&adapter_version=1.2.3&schema_version=1', '/v1/models?agent=grok'] as const)(
+    'rejects Grok catalog negotiation at %s',
+    async (path) => {
+      const response = await app.request(
+        path,
+        { headers: { authorization: `Bearer ${grok.accessToken}` } },
+        loopbackServer,
+      );
+      expect(response.status).toBe(400);
+    },
+  );
+
+  test('revoked Grok access tokens cannot read the ordinary models catalog', async () => {
+    expect(identity.revokeInstallation(grokInstallationId)).toBe('revoked');
+    for (const server of [app, lockedApp]) {
+      expect(
+        (
+          await server.request(
+            '/v1/models',
+            { headers: { authorization: `Bearer ${grok.accessToken}` } },
+            loopbackServer,
+          )
+        ).status,
+      ).not.toBe(200);
+    }
   });
 });

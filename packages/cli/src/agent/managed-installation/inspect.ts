@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { AgentManagedMarkerSchema, AgentManagedStateV1Schema, type AgentManagedMarker } from '@aio-proxy/types';
 
-import type { AgentLocation } from '../hosts';
+import type { AgentPluginLocation } from '../hosts';
 
 const STALE_AFTER_MS = 600_000;
 
@@ -73,7 +73,7 @@ const readCatalog = async (
 };
 
 export async function inspectManagedInstallation(
-  location: AgentLocation,
+  location: AgentPluginLocation,
   now: () => number,
 ): Promise<LocalIntegrationStatus> {
   const directory = await inspectPath(location.managedDir);

@@ -4,6 +4,7 @@ import { ProviderAccountAlreadyExistsError } from '@aio-proxy/core';
 import { getLocale, setLocale } from '@aio-proxy/i18n';
 
 import { runCli } from '../__tests__/cli-test-helpers';
+import { GrokAuthError } from './agent/grok-auth';
 import { formatCliError } from './main';
 import { LoopbackPortUnavailableError } from './plugin-commands/loopback';
 import { ProviderCapabilityNotFoundError } from './plugin-commands/provider-login';
@@ -43,6 +44,44 @@ describe('cli rendering', () => {
       expect(loopback.message).toBe('The local callback listener could not use port 1455');
       expect(unknown.message).toBe('Unexpected internal error');
       expect(unknown.message).not.toContain('unknown plugin secret');
+    } finally {
+      await setLocale(originalLocale);
+    }
+  });
+
+  test('top-level rendering surfaces typed Grok authorization deadline errors', async () => {
+    const originalLocale = getLocale();
+    await setLocale('en');
+    try {
+      const deadline = formatCliError(new GrokAuthError('deadline'), 'en');
+      const configuration = formatCliError(new GrokAuthError('configuration'), 'en');
+      const temporary = formatCliError(new GrokAuthError('temporary'), 'en');
+
+      expect(deadline.message).toBe('Grok authorization timed out.');
+      expect(configuration.message).toBe(
+        'Grok authorization cannot continue because the configuration is not current.',
+      );
+      expect(temporary.message).toBe('Grok authorization failed temporarily. Retry.');
+      expect(deadline.message).not.toBe('Unexpected internal error');
+    } finally {
+      await setLocale(originalLocale);
+    }
+  });
+
+  test('top-level rendering surfaces Grok configuration-modified fields', async () => {
+    const originalLocale = getLocale();
+    await setLocale('en');
+    try {
+      const formatted = formatCliError(new Error('Grok configuration modified: models.default'), 'en');
+      const endpoint = formatCliError(new Error('Grok endpoint changed'), 'en');
+
+      expect(formatted.message).toBe('Grok configuration has been modified: models.default.');
+      expect(formatted.message).not.toBe('Unexpected internal error');
+      expect(endpoint.message).toBe(
+        'Grok is already configured for a different proxy endpoint. Remove the integration, then configure it again.',
+      );
+      expect(endpoint.message).not.toContain('19000');
+      expect(endpoint.message).not.toBe('Unexpected internal error');
     } finally {
       await setLocale(originalLocale);
     }

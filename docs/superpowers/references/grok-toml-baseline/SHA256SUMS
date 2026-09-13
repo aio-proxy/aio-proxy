@@ -1,0 +1,4 @@
+bd16afab29de97fe5eddba8affe62ec1788069cd861a59b3d230266a0acaa071  packages/cli/src/agent/codex/config-document/ast-edits.ts
+5a2f79f6344028cfe777498f1ea939924952e1a786b0dfdba2dc64c69389bd18  packages/cli/src/agent/codex/config-document/config-document.test.ts
+a67502593be97e97d65fb14717df82cdee2d4eccd074fd97a24f737c2a0d8dc2  packages/cli/src/agent/codex/config-document/config-document.ts
+f45acabeca31c58d95841e686fadafd8f42aff974b5173f53cc603d7d3535a96  packages/cli/src/agent/codex/config-document/index.ts

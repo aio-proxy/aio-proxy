@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
+import { homedir } from 'node:os';
 import { basename } from 'node:path';
 
 import { formatUserError, getLocale, m, resolveLocaleFromArgv, setLocale } from '@aio-proxy/i18n';
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 
 import packageJson from '../package.json' with { type: 'json' };
 import { agentConfigure, agentList, agentRemove, agentRevoke, createAgentCommandDeps } from './agent';
 import { runCodexAuthCommand } from './agent/codex';
+import { loadGrokPolicy } from './agent/grok';
+import { grokAuth, GrokAuthError, createGrokTransport } from './agent/grok-auth';
+import { resolveGrokRoot } from './agent/hosts';
 import { registerAgentCommands } from './agent/output';
 import { completionCommand } from './completion';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
@@ -23,7 +27,7 @@ import { statusCommand } from './status';
 import { createDefaultSyncCliDeps, type SyncCliDeps } from './sync';
 import { registerSyncCommands } from './sync/commands';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
-import { runUpgradeCommand } from './upgrade';
+import { runUpgradeCommand } from './upgrade/upgrade';
 
 export { readOrBootstrapConfig } from './run';
 
@@ -59,6 +63,28 @@ const registerProviderCommands = (program: Command): void => {
     .description(m['cli.provider.test.description']())
     .option('--url <url>', m['cli.provider.test.option_url_description']())
     .action(providerTest);
+};
+
+export function writeStdoutLine(
+  line: string,
+  write: (chunk: string, callback: (error?: Error | null) => void) => void = (chunk, callback) => {
+    process.stdout.write(chunk, callback);
+  },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    write(line, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+const commandChain = (command: Command): string[] => {
+  const names: string[] = [];
+  for (let current: Command | null | undefined = command; current; current = current.parent) {
+    names.push(current.name());
+  }
+  return names;
 };
 
 const registerServiceCommands = (program: Command): void => {
@@ -101,6 +127,64 @@ export const invokedProgramName = (
   return 'aio-proxy';
 };
 
+const bindAgentCommands = (program: Command, deps: CliDeps): void => {
+  const commandDeps = createAgentCommandDeps(deps);
+  registerAgentCommands(program, {
+    actions: {
+      list: (options) => agentList(options, commandDeps),
+      configure: (target, options) => agentConfigure(target, options, commandDeps),
+      remove: (target) => agentRemove(target, commandDeps),
+      revoke: (installationId) => agentRevoke(installationId, commandDeps),
+      authCodex: (installationId) => runCodexAuthCommand(installationId),
+      auth: async (target, options) => {
+        if (target === 'codex') {
+          await runCodexAuthCommand(options.installationId);
+          return;
+        }
+        if (target !== 'grok') throw new Error('Unsupported auth command target');
+        await grokAuth(
+          {
+            root: resolveGrokRoot(process.env, homedir()),
+            installationId: options.installationId,
+            adapterVersion: commandDeps.adapterVersion,
+            expired: process.env.GROK_AUTH_EXPIRED === '1',
+          },
+          {
+            now: Date.now,
+            policy: loadGrokPolicy,
+            transport: (marker, budget) => createGrokTransport(marker, budget),
+            stdout: writeStdoutLine,
+            stderr: (line) => {
+              process.stderr.write(line);
+            },
+          },
+        );
+      },
+    },
+    print: console.log,
+  });
+};
+
+const registerHiddenPostUpgrade = (program: Command, deps: CliDeps): void => {
+  program.command('__agent-post-upgrade', { hidden: true }).action(async () => {
+    const [{ createAgentCommandDeps }, { readAgentPostUpgradePayload, runAgentPostUpgrade }] = await Promise.all([
+      import('./agent'),
+      import('./upgrade/post-upgrade-agents'),
+    ]);
+    const payload = await readAgentPostUpgradePayload();
+    const agent = createAgentCommandDeps(deps);
+    const results = await runAgentPostUpgrade(payload, {
+      resolveLocation: agent.resolveLocation,
+      inspect: agent.inspect,
+      install: agent.install,
+      readAssets: agent.readAssets,
+      adapterVersion: VERSION,
+      now: agent.now,
+    });
+    console.log(JSON.stringify(results));
+  });
+};
+
 export const buildProgram = (
   deps: CliDeps = defaultCliDeps,
   programName = invokedProgramName(),
@@ -112,8 +196,13 @@ export const buildProgram = (
     .version(VERSION, '-v, --version', m['cli.version.description']())
     .option('--lang <locale>', m['cli.option.lang_description']());
 
+  program.configureOutput({
+    writeOut: (chunk) => process.stdout.write(chunk),
+    writeErr: (chunk) => process.stderr.write(chunk),
+  });
+
   program.hook('preAction', (_thisCommand, actionCommand) => {
-    if (!shouldPrintUpdateBanner(actionCommand.name(), process.argv)) return;
+    if (!shouldPrintUpdateBanner(commandChain(actionCommand), process.argv)) return;
     printUpdateBanner(VERSION);
   });
 
@@ -220,35 +309,8 @@ export const buildProgram = (
       await runUpgradeCommand(options);
     });
 
-  const commandDeps = createAgentCommandDeps(deps);
-  registerAgentCommands(program, {
-    actions: {
-      list: (options) => agentList(options, commandDeps),
-      configure: (target, options) => agentConfigure(target, options, commandDeps),
-      remove: (target) => agentRemove(target, commandDeps),
-      revoke: (installationId) => agentRevoke(installationId, commandDeps),
-      authCodex: (installationId) => runCodexAuthCommand(installationId),
-    },
-    print: console.log,
-  });
-
-  program.command('__agent-post-upgrade', { hidden: true }).action(async () => {
-    const [{ createAgentCommandDeps }, { readAgentPostUpgradePayload, runAgentPostUpgrade }] = await Promise.all([
-      import('./agent'),
-      import('./upgrade/post-upgrade-agents'),
-    ]);
-    const payload = await readAgentPostUpgradePayload();
-    const agent = createAgentCommandDeps(deps);
-    const results = await runAgentPostUpgrade(payload, {
-      resolveLocation: agent.resolveLocation,
-      inspect: agent.inspect,
-      install: agent.install,
-      readAssets: agent.readAssets,
-      adapterVersion: VERSION,
-      now: agent.now,
-    });
-    console.log(JSON.stringify(results));
-  });
+  bindAgentCommands(program, deps);
+  registerHiddenPostUpgrade(program, deps);
 
   return program;
 };
@@ -273,7 +335,26 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
 };
 
 export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
-  if (isKnownCliUserError(err)) {
+  if (err instanceof GrokAuthError) {
+    switch (err.code) {
+      case 'login_required':
+        return { message: m['cli.agent.grok_login_required']() };
+      case 'deadline':
+        return { message: m['cli.agent.grok_auth_deadline']() };
+      case 'configuration':
+        return { message: m['cli.agent.grok_auth_configuration']() };
+      case 'temporary':
+        return { message: m['cli.agent.grok_auth_temporary']() };
+    }
+  }
+  if (err instanceof Error) {
+    const conflict = /^Grok routing conflict: (.+)$/u.exec(err.message);
+    if (conflict?.[1] !== undefined) return { message: m['cli.agent.grok_policy_conflict']({ fields: conflict[1] }) };
+    const modified = /^Grok configuration modified: (.+)$/u.exec(err.message);
+    if (modified?.[1] !== undefined) return { message: m['cli.agent.configuration_modified']({ fields: modified[1] }) };
+    if (err.message === 'Grok endpoint changed') return { message: m['cli.agent.grok_endpoint_changed']() };
+  }
+  if (err instanceof CommanderError || isKnownCliUserError(err)) {
     return { message: err.message };
   }
   return formatUserError(err, locale);

@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { AgentPluginTargetSchema, type AgentPluginTarget } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { AgentLocation } from '../agent/hosts';
+import type { AgentPluginLocation } from '../agent/hosts';
 import { installManagedIntegration, type LocalIntegrationStatus } from '../agent/managed-installation';
 import type { UpgradeTarget } from './constants';
 
@@ -19,8 +19,8 @@ export type AgentPostUpgradeItemResult =
   | { readonly target: AgentPluginTarget; readonly status: 'updated' | 'absent' | 'newer' }
   | { readonly target: AgentPluginTarget; readonly status: 'warning'; readonly reason: string };
 export type AgentPostUpgradeDeps = {
-  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentLocation>;
-  readonly inspect: (location: AgentLocation, now: () => number) => Promise<LocalIntegrationStatus>;
+  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentPluginLocation>;
+  readonly inspect: (location: AgentPluginLocation, now: () => number) => Promise<LocalIntegrationStatus>;
   readonly install: typeof installManagedIntegration;
   readonly readAssets: (target: AgentPluginTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
   readonly adapterVersion: string;
@@ -116,7 +116,10 @@ export async function readAgentPostUpgradePayload(): Promise<AgentPostUpgradePay
 const resolvedPath = (value: string | undefined): string | undefined =>
   value === undefined ? undefined : resolve(value);
 
-const sameResolvedLocation = (location: AgentLocation, row: AgentPostUpgradePayload['targets'][number]): boolean =>
+const sameResolvedLocation = (
+  location: AgentPluginLocation,
+  row: AgentPostUpgradePayload['targets'][number],
+): boolean =>
   resolvedPath(location.managedDir) === resolvedPath(row.managedDir) &&
   resolvedPath(location.adjacentEntry) === resolvedPath(row.adjacentEntry);
 

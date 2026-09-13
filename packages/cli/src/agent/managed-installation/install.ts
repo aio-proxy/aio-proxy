@@ -8,7 +8,7 @@ import {
   type AgentPluginTarget,
 } from '@aio-proxy/types';
 
-import type { AgentLocation } from '../hosts';
+import type { AgentPluginLocation } from '../hosts';
 import {
   captureIdentity,
   inspectPath,
@@ -25,7 +25,7 @@ import {
 import { inspectManagedInstallation, openCodeEntry, type LocalIntegrationStatus } from './inspect';
 
 export type ManagedInstallInput = {
-  readonly location: AgentLocation;
+  readonly location: AgentPluginLocation;
   readonly endpoint: string;
   readonly adapterVersion: string;
   readonly requestedInstallationId: string;
@@ -150,7 +150,7 @@ const commitOpenCodeEntry = async (
   }
 };
 
-const repairOpenCodeEntry = async (location: AgentLocation, marker: AgentManagedMarker): Promise<void> => {
+const repairOpenCodeEntry = async (location: AgentPluginLocation, marker: AgentManagedMarker): Promise<void> => {
   const markerPath = join(location.managedDir, '.aio-proxy-managed.json');
   const markerStat = await lstat(markerPath);
   if (markerStat.isSymbolicLink() || !markerStat.isFile()) throw new Error('managed marker invalid');

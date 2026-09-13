@@ -42,6 +42,15 @@ test('records the live owner waited on as predecessor', async () => {
   }
 });
 
+test('reclaims a dead owner whose lock record omits starttime', async () => {
+  const root = await temporaryRoot();
+  const path = join(root, '.lock');
+  await writeFile(path, JSON.stringify({ pid: 99999999, owner: 'dead', createdAt: Date.now() }), { mode: 0o600 });
+  const reclaimed = await acquireProcessFileLock(path, AbortSignal.timeout(500));
+  await reclaimed.release();
+  await expect(observeProcessFileLock(path)).resolves.toBeUndefined();
+});
+
 test('reclaims a dead owner but blocks a live owner with an old heartbeat', async () => {
   const root = await temporaryRoot();
   const path = join(root, '.lock');
@@ -77,6 +86,25 @@ test('rejects unsafe lock symlinks and hard links', async () => {
   await expect(acquireProcessFileLock(hardlink, AbortSignal.timeout(50))).rejects.toThrow(/hard|identity|Timed out/i);
   expect((await lstat(hardlink)).nlink).toBeGreaterThanOrEqual(1);
   await chmod(root, 0o700);
+});
+
+test('ownership checks abort when the acquire signal fires', async () => {
+  const root = await temporaryRoot();
+  const path = join(root, '.lock');
+  const controller = new AbortController();
+  const lock = await acquireProcessFileLock(path, controller.signal);
+  const hung = spyOn(fsPromises, 'lstat').mockImplementation(() => new Promise(() => {}));
+  try {
+    const started = performance.now();
+    const pending = lock.withOwnership(async () => 'ok');
+    await Bun.sleep(20);
+    controller.abort(new Error('acquire signal'));
+    await expect(pending).rejects.toThrow('acquire signal');
+    expect(performance.now() - started).toBeLessThan(1_000);
+  } finally {
+    hung.mockRestore();
+    await lock.release().catch(() => undefined);
+  }
 });
 
 test('fence fails after replacement and cancellation aborts acquisition', async () => {

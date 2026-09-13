@@ -6,7 +6,7 @@ export const AGENT_ACCESS_TOKEN_PREFIX = 'aio_agent_at_v1_';
 export const AGENT_REFRESH_TOKEN_PREFIX = 'aio_agent_rt_v1_';
 export const AgentPluginTargetSchema = z.enum(['opencode', 'pi', 'omp']);
 export type AgentPluginTarget = z.output<typeof AgentPluginTargetSchema>;
-export const AgentTargetSchema = z.enum(['opencode', 'pi', 'omp', 'codex']);
+export const AgentTargetSchema = z.enum(['opencode', 'pi', 'omp', 'codex', 'grok']);
 export type AgentTarget = z.output<typeof AgentTargetSchema>;
 
 export const AGENT_CLIENT_ID = {
@@ -14,6 +14,7 @@ export const AGENT_CLIENT_ID = {
   pi: 'aio-proxy-pi',
   omp: 'aio-proxy-omp',
   codex: 'aio-proxy-codex',
+  grok: 'aio-proxy-grok',
 } as const satisfies Record<AgentTarget, string>;
 
 const SemverSchema = z
@@ -120,7 +121,13 @@ export const AgentCatalogQuerySchema = z.strictObject({
   schema_version: z.literal('1'),
 });
 
-const AgentClientIdSchema = z.enum(['aio-proxy-opencode', 'aio-proxy-pi', 'aio-proxy-omp', 'aio-proxy-codex']);
+const AgentClientIdSchema = z.enum([
+  'aio-proxy-opencode',
+  'aio-proxy-pi',
+  'aio-proxy-omp',
+  'aio-proxy-codex',
+  'aio-proxy-grok',
+]);
 export const AgentDeviceCodeRequestSchema = z.strictObject({
   client_id: AgentClientIdSchema,
   agent: AgentTargetSchema,
