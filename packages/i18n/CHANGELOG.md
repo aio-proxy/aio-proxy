@@ -1,5 +1,11 @@
 # @aio-proxy/i18n
 
+## 0.22.0
+
+### Patch Changes
+
+- [#347](https://github.com/aio-proxy/aio-proxy/pull/347) [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a) Thanks [@olivewind](https://github.com/olivewind)! - Automatically install and start a missing per-user background service when running service start or restart on macOS and Linux. If automatic setup fails, show the underlying error and manual recovery commands.
+
 ## 0.21.0
 
 No changes in this release.
