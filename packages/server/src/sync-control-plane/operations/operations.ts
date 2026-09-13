@@ -6,7 +6,7 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { PreviewFence, PreviewRecord, RemoteEntity } from '../preview';
+import type { PreviewCandidate, PreviewFence, PreviewRecord, RemoteEntity } from '../preview';
 import { latestCommitId, SyncPreviewError, sameFence } from '../preview';
 import { SyncOperationError } from './errors';
 import { providerIdentityRows, remoteIdentityEntity, type ProviderIdentityRows } from './provider-identity';
@@ -229,6 +229,27 @@ function localCommitGuard(input: OperationInput, binding: LocalBinding) {
   };
 }
 
+/**
+ * Which body the apply publishes and writes for a reviewed row. `restore` is the only choice that is
+ * not literally one of the two displayed sides: in a restore preview it is the resolved historical
+ * revision, projected as `cloud`. Everywhere else it is offered on one row only — a tombstoned head
+ * whose local side still has a body, a Provider a peer deleted while this device kept its
+ * configuration and is now rejoining. Reviving that with the retained historical revision would
+ * publish a body the preview never displayed and then write it over the authored configuration, so
+ * the reviewed local body is what the revive publishes.
+ */
+function reviewedBody(
+  record: PreviewRecord,
+  candidate: PreviewCandidate,
+  choice: SyncDecision['choice'],
+  remote: RemoteEntity | undefined,
+): EntityBody | null {
+  if (choice === 'local') return candidate.local;
+  if (choice === 'cloud') return candidate.cloud;
+  if (record.input.kind === 'restore') return candidate.cloud;
+  return candidate.local ?? candidate.restoreBody ?? remote?.body ?? null;
+}
+
 export async function applyPreview(
   input: OperationInput,
   record: PreviewRecord,
@@ -294,14 +315,7 @@ export async function applyPreview(
     const remote = remoteByObject.get(candidate.row.objectId);
     let identityRows: ProviderIdentityRows | undefined;
     let identityBase: LocalEntity | undefined;
-    let selectedBody =
-      decision.choice === 'local'
-        ? candidate.local
-        : decision.choice === 'cloud'
-          ? candidate.cloud
-          : record.input.kind === 'restore'
-            ? candidate.cloud
-            : (candidate.restoreBody ?? remoteByObject.get(candidate.row.objectId)?.body ?? null);
+    let selectedBody = reviewedBody(record, candidate, decision.choice, remote);
     if (decision.newProviderId !== undefined && selectedBody !== null) {
       selectedBody = { ...selectedBody, logicalKey: decision.newProviderId };
       identityBase = current ?? remoteIdentityEntity(candidate.row.objectId, remote);
@@ -339,7 +353,7 @@ export async function applyPreview(
     let published = false;
     let publishedRevision: string | null = null;
     const recordJoin = (): void => {
-      if (current === undefined || typeof input.repo.putEntity !== 'function') return;
+      if (typeof input.repo.putEntity !== 'function') return;
       // A rename republishes the configuration as a new object, so the row to join is the renamed
       // one. Skipping it instead would report success while leaving the Provider outside
       // synchronization — reconciliation had already quarantined the colliding row as `excluded`,
@@ -350,7 +364,12 @@ export async function applyPreview(
       // `current` is the preview snapshot, taken before persistOverrides() wrote this row's paths
       // and blind to OAuth ownership a concurrent login or refresh recorded — neither is part of
       // the fence. Re-read the row and carry over only the fields applying actually decides.
-      const latest = input.localEntities().find((entity) => entity.objectId === joined.objectId) ?? joined;
+      // An imported cloud-only object has no snapshot row at all; the import just created one, and
+      // bailing out here would leave that row at the defaults the port writes — no baseline, no
+      // pending reason — which for an OAuth Provider reads as a verified local credential.
+      const objectId = joined?.objectId ?? candidate.row.objectId;
+      const latest = input.localEntities().find((entity) => entity.objectId === objectId) ?? joined;
+      if (latest === undefined) return;
       // A `sync leave` completing while this publication was in flight stores the row excluded and
       // bumps the range revision. The commit fence cannot see it — `setRange` writes no
       // configuration commit — so forcing `included` back here would silently undo a Leave the user

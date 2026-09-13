@@ -145,7 +145,17 @@ export function registerSyncCommands(program: Command, deps: SyncCliDeps): void 
       // published as the shared credential, which would leave the candidate identical to it and no
       // detachment could ever be approved.
       await client.detach(providerId);
-      const loginSessionId = await client.startDetachSession(providerId);
+      let loginSessionId: string;
+      try {
+        loginSessionId = await client.startDetachSession(providerId);
+      } catch (error) {
+        // `detach-pending` is server state and it blocks every read of the shared credential while it
+        // stands. An authorization the user aborted brings no proof, so leaving the intent behind
+        // would keep the Provider blocked until someone reached for `sync detach-cancel`. Best
+        // effort: the authorization failure is what the user needs to see.
+        await client.cancelDetach(providerId).catch(() => undefined);
+        throw error;
+      }
       emitStatus(await client.detach(providerId, loginSessionId), options, command);
     });
 

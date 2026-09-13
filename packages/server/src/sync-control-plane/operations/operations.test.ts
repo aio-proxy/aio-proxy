@@ -666,6 +666,110 @@ test('joining an OAuth Provider keeps the credential due until the row records o
   expect(await join(() => ({ providerId: 'work' }) as never, 'cloud', owned)).toMatchObject({ pendingReason: null });
 });
 
+// A `sync leave` copy keeps the authored Provider while a peer deletes the cloud head, so the row
+// sits on a tombstone baseline with the configuration still on disk. Rejoining it reviews that
+// authored body as Local, and reviving the head is the only transition a tombstone accepts: publishing
+// the retained historical revision instead would send a body the preview never displayed and then
+// write it over the configuration the user kept.
+test('rejoining a tombstoned Provider revives the head with the reviewed local body', async () => {
+  const historical: EntityBody = {
+    kind: 'provider',
+    logicalKey: 'work',
+    value: { kind: 'api', baseUrl: 'https://deleted.example' },
+    dependencies: [],
+  };
+  const left = {
+    ...localEntity('provider-a', 'provider', 'work'),
+    mode: 'excluded' as const,
+    desired: null,
+    baseline: 'tombstone:1',
+  };
+  const { record: built } = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [left],
+    remote: [
+      {
+        objectId: 'provider-a',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: null,
+        body: null,
+        tombstone: true,
+        revisions: { r0: historical },
+        restoreBody: historical,
+      },
+    ],
+    fence,
+    previewId: 'preview',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+    source: {
+      raw: { providers: { work: { kind: 'api', baseUrl: 'https://authored.example' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    },
+  });
+  const restored: EntityBody[] = [];
+  const importedLocally: (EntityBody | null)[] = [];
+  const scenario = harness({
+    localEntities: () => [left],
+    restore: async (_objectId, candidateBody) => void restored.push(candidateBody),
+    applyLocal: async (candidateBody) => void importedLocally.push(candidateBody),
+  });
+  const decisions: SyncDecision[] = [{ objectId: 'provider-a', choice: 'restore' }];
+
+  expect(built.rows[0]?.row).toMatchObject({ change: 'delete', choices: ['restore'] });
+  assertDecisions(built, decisions);
+  await applyPreview(scenario.input, built, decisions);
+
+  const authored = { value: { kind: 'api', baseUrl: 'https://authored.example' } };
+  expect(restored).toMatchObject([authored]);
+  expect(importedLocally).toMatchObject([authored]);
+});
+
+// Connect and join can import an object this device holds no row for. The port creates one as part of
+// the import, with its own defaults — no baseline, nothing pending — and for an OAuth Provider that
+// reads as a verified local credential: reconciliation's activation check and the sharing service both
+// skip such a row, so the published account never arrives and the local refresh path rotates the
+// credential every other device follows.
+test('importing a cloud-only OAuth Provider records the join on the row the import created', async () => {
+  const oauthBody: EntityBody = {
+    kind: 'provider',
+    logicalKey: 'work',
+    value: { kind: 'oauth', plugin: '@example/plugin', capability: 'chat' },
+    dependencies: [],
+  };
+  const base = candidate('provider-a', 'provider', 'work');
+  const rows = [
+    {
+      ...base,
+      local: null,
+      cloud: oauthBody,
+      row: { ...base.row, change: 'add' as const, local: null, choices: ['cloud' as const] },
+    },
+  ];
+  const written: LocalEntity[] = [];
+  const imported: LocalEntity[] = [];
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => void written.push(entity) } as never,
+    localEntities: () => imported,
+    applyLocal: async (candidateBody, _current, objectId) => {
+      imported.push({ ...localEntity(objectId, 'provider', 'work'), desired: candidateBody, baseline: null });
+    },
+    accounts: { readAccount: () => null } as never,
+  });
+
+  await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows, { local: [] }), [
+    { objectId: 'provider-a', choice: 'cloud' },
+  ]);
+
+  expect(written).toHaveLength(1);
+  expect(written[0]).toMatchObject({ objectId: 'provider-a', mode: 'included', pendingReason: 'oauth-unverified' });
+  // A row left on no baseline reads as behind its own import, so the next reconcile sees phantom drift.
+  expect(written[0]).toMatchObject({ baseline: 'r1' });
+});
+
 // A rename republishes the configuration as a new object, so the row to join is the renamed one.
 // Joining the pre-rename row reported success while leaving the Provider outside synchronization:
 // reconciliation had already quarantined the colliding row, and the rename deletes the head it held.

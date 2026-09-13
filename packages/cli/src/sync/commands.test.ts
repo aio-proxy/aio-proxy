@@ -232,7 +232,7 @@ test('detach marks the Provider pending before authorizing, then names the succe
   expect(JSON.parse(output[0]!)).toMatchObject({ state: 'idle' });
 });
 
-test('detach reports OAuth failure without handing a pending session to sync control', async () => {
+test('detach reports OAuth failure and releases the pending detachment it marked', async () => {
   const calls: string[] = [];
   const program = new Command();
   registerSyncCommands(program, {
@@ -253,10 +253,13 @@ test('detach reports OAuth failure without handing a pending session to sync con
   await expect(program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json'])).rejects.toMatchObject({
     code: 'oauth-login-failed',
   });
+  // `detach-pending` blocks every read of the shared credential, so an authorization that brought no
+  // proof has to leave the Provider back at `shared` instead of stranding it there.
   expect(calls).toEqual([
     '/dashboard/api/sync/detach',
     '/dashboard/api/oauth/sessions',
     '/dashboard/api/oauth/sessions/22222222-2222-4222-8222-222222222222',
+    '/dashboard/api/sync/detach/cancel',
   ]);
 });
 
