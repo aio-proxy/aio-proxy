@@ -307,6 +307,46 @@ test('a first connect apply is refused when the configuration moved after the pr
   expect(committed).toBe(0);
 });
 
+test('a connect preview that finished opening after shutdown releases its backend session', async () => {
+  let disposed = 0;
+  let finishConnecting: (() => void) | undefined;
+  const control = createSyncControlPlane({
+    repo: { readBinding: () => null, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {
+      await new Promise<void>((resolve) => {
+        finishConnecting = resolve;
+      });
+      return {
+        remote: [],
+        refresh: async () => [],
+        commit: async () => {},
+        activate: () => {},
+        dispose: async () => void (disposed += 1),
+      };
+    },
+  });
+
+  const pending = control.preview(CONNECT);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Teardown sees neither an executing Apply nor a retained preview: the session it has to release
+  // does not exist yet. Retaining it afterwards would hold the backend — a native helper, for
+  // CloudKit — open until the preview TTL, with nothing left running to expire it.
+  await control.dispose();
+  finishConnecting!();
+
+  await expect(pending).rejects.toMatchObject({ code: 'backend-unavailable' });
+  expect(disposed).toBe(1);
+});
+
 // The connect-only options the two fence tests below share: no binding, one cloud row, and a
 // `committedSource` the test moves between reads.
 const firstConnectOptions = (committedSource: () => Promise<unknown>, committed: () => void) =>

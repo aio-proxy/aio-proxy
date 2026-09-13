@@ -306,6 +306,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
         releasePreviewState();
         const candidate = await options.connect(request);
         try {
+          // A candidate still opening is in neither `applying` nor the preview store, so shutdown
+          // cannot reach it: retaining one that finished after dispose() returned would leave its
+          // backend session — a native helper, for CloudKit — alive until the preview expires. The
+          // catch below releases it, which is also what a connection stalled past teardown gets.
+          if (closing) throw new SyncOperationError('backend-unavailable');
           const previewId = createPreviewToken(24, options.randomBytes);
           const expiresAt = now() + previewTtlMs;
           const local = captureLocal();
