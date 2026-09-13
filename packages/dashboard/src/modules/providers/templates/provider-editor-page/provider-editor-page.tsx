@@ -6,8 +6,7 @@ import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 import { SyncPreviewDialog } from '@/components/sync-preview-dialog';
-import { useDetachSync, usePreviewSync, useSetSyncRange, useSyncStatus } from '@/hooks/use-sync';
-import { SyncRequestError } from '@/lib/sync-request-error';
+import { usePreviewSync, useSetSyncRange, useSyncStatus } from '@/hooks/use-sync';
 
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';
 import { ConnectionSection } from '../../components/provider-editor/connection-section';
@@ -53,6 +52,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     setOptionsValid,
     setTransformsValid,
     save,
+    detach,
     saveBlocked,
     isReauthorizing,
     pending,
@@ -64,7 +64,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   const syncStatus = useSyncStatus();
   const previewMutation = usePreviewSync();
   const rangeMutation = useSetSyncRange();
-  const detachMutation = useDetachSync();
   const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null);
   const [lastSyncPreviewInput, setLastSyncPreviewInput] = useState<ProviderSyncPreviewInput>();
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
@@ -266,13 +265,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
                     .mutateAsync({ providerId: providerSync.providerId, included: false })
                     .then(() => undefined)
                 }
-                onDetach={() =>
-                  session?.id === undefined
-                    ? Promise.reject(new SyncRequestError('login-required', 401))
-                    : detachMutation
-                        .mutateAsync({ providerId: providerSync.providerId, loginSessionId: session.id })
-                        .then(() => undefined)
-                }
+                onDetach={() => detach()}
               />
             )}
           </aside>

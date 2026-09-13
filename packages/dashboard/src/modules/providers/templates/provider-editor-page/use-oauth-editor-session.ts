@@ -29,7 +29,7 @@ export const useOAuthEditorSession = (
   sessionId: string | undefined,
   onSessionIdChange: (sessionId: string | undefined) => void,
   providerId: string | undefined,
-  onSessionSucceeded?: (oauth?: DashboardOAuthProviderEdit) => void,
+  onSessionSucceeded?: (sessionId: string, oauth?: DashboardOAuthProviderEdit) => void,
 ) => {
   const navigate = useNavigate();
   const navigateEdit = useNavigate({ from: '/providers/$id/edit' });
@@ -128,7 +128,7 @@ export const useOAuthEditorSession = (
         } catch {
           next = undefined;
         }
-        onSessionSucceeded?.(next);
+        onSessionSucceeded?.(session.id, next);
       })();
     }
   }, [closeUnclaimedPopup, mode, navigate, navigateEdit, onSessionSucceeded, providerId, queryClient, session]);

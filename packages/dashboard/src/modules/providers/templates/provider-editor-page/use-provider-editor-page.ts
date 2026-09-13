@@ -17,6 +17,7 @@ import { useSelector } from '@tanstack/react-store';
 import { useCallback, useState } from 'react';
 
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
+import { useProviderDetach } from '../../hooks/use-provider-detach';
 import {
   type ProviderEditorInitial,
   type ProviderEditorShape,
@@ -352,14 +353,17 @@ export const useProviderEditorPage = ({
         }
       : undefined,
   );
+  const { start: startDetach, complete: completeDetach } = useProviderDetach(providerId);
   const onSessionSucceeded = useCallback(
-    (refreshed?: DashboardOAuthProviderEdit) => {
+    (succeededSessionId: string, refreshed?: DashboardOAuthProviderEdit) => {
       accountForm.setFieldValue('secrets', {});
       accountForm.setFieldValue('clearSecrets', []);
       if (refreshed !== undefined) accountForm.setFieldValue('publicValues', refreshed.publicValues);
       resetEditorAfterOAuthSuccess(form, initial, kind, refreshed);
+      // The fresh authorization a pending detachment was waiting for.
+      completeDetach(succeededSessionId);
     },
-    [accountForm, form, initial, kind],
+    [accountForm, completeDetach, form, initial, kind],
   );
   const {
     openPopup,
@@ -459,6 +463,9 @@ export const useProviderEditorPage = ({
     setOptionsValid,
     setTransformsValid,
     save,
+    // Detaching needs a fresh authorization between its two calls, and re-authorization is what
+    // produces one, so the same gated save path starts it.
+    detach: () => startDetach(() => save(true)),
     saveBlocked,
     isReauthorizing: startMutation.isPending,
     pending: isCreating || isUpdating || startMutation.isPending,
