@@ -211,6 +211,7 @@ export async function applyPreview(
   const selected = new Map(decisions.map((decision) => [decision.objectId, decision]));
   const localByObject = new Map(record.local.map((entity) => [entity.objectId, entity]));
   const remoteByObject = new Map(record.remote.map((entity) => [entity.objectId, entity]));
+  const commits = localCommitGuard(input, record, binding);
   if (record.input.kind === 'purge') {
     if (record.dependencyError) throw new SyncOperationError('dependency-in-use');
     const purge = record.input;
@@ -225,6 +226,11 @@ export async function applyPreview(
     for (const candidate of record.rows) {
       const remote = remoteByObject.get(candidate.row.objectId);
       if (remote === undefined) continue;
+      // Erasing is permanent and reconciliation applies the resulting tombstone to the
+      // configuration, so a commit landing after the preview was reviewed would be deleted by an
+      // erase it was never shown against. Same rule as every other mutation here, and a purge makes
+      // no local commit of its own to adopt.
+      commits.assertUnchanged();
       await input.purge(candidate.row.objectId, remote?.version ?? null);
       const verified = (await input.remoteEntities()).find((entity) => entity.objectId === candidate.row.objectId);
       if (verified !== undefined && verified.tombstone !== true) throw new SyncOperationError('operation-pending');
@@ -232,7 +238,6 @@ export async function applyPreview(
     return input.status();
   }
   assertDecisions(record, decisions);
-  const commits = localCommitGuard(input, record, binding);
   if (record.input.kind === 'overrides') {
     const objectId = record.input.objectId;
     const current = localByObject.get(objectId);

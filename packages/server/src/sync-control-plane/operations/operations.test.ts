@@ -170,6 +170,31 @@ test('a purge erases every cloud object for the requested identity', async () =>
   expect(scenario.purged).toEqual(['plugin-a', 'plugin-a-duplicate']);
 });
 
+// The reviewed fence is checked once, before the first erase, and erasing every object of an
+// identity is several round trips. Reconciliation applies the resulting tombstones to the
+// configuration, so a commit landing mid-purge would be deleted by an erase it was never shown
+// against — and erasing is not undoable.
+test('a configuration commit landing mid-purge stops the remaining erases', async () => {
+  let commitId = 'commit-1';
+  const purged: string[] = [];
+  const scenario = harness({
+    repo: { latestConfirmedCommit: () => ({ commitId }) } as never,
+    purge: async (objectId) => {
+      purged.push(objectId);
+      commitId = 'commit-2';
+    },
+  });
+  const rows = [
+    candidate('plugin-a', 'plugin-business', '@example/plugin'),
+    candidate('plugin-a-duplicate', 'plugin-business', '@example/plugin'),
+  ];
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'purge', scope: 'plugin', objectId: '@example/plugin' }, rows), []),
+  ).rejects.toThrow(SyncPreviewError);
+  expect(purged).toEqual(['plugin-a']);
+});
+
 test('an apply that omits a row decision is rejected before anything is mutated', async () => {
   const scenario = harness();
   const rows = [candidate('object-a', 'provider', 'work'), candidate('object-b', 'provider', 'home')];
