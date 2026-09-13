@@ -171,6 +171,50 @@ test('disposing the control plane releases a connect candidate left pending', as
   }
 });
 
+// Apply takes the candidate out of the preview store, so a shutdown while its pre-Apply re-read is
+// stalled cannot reach the backend session through the store any more: it would return with the
+// helper still running and the Apply still holding the serialized queue until its own bound expires.
+test('disposing the control plane aborts an Apply stalled in its pre-Apply re-read', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-inflight-'));
+  let reached!: () => void;
+  const refreshing = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let calls = 0;
+  const fixture = candidateFixture(home, (signal) => {
+    calls += 1;
+    if (calls === 1) return Promise.resolve({ keys: [] });
+    reached();
+    return new Promise<{ keys: string[] }>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('backend stalled')));
+    });
+  });
+  try {
+    const plane = createSyncControlPlaneIntegration(
+      {
+        manager: { current: () => ({ plugins: { registry: fixture.registry } }) },
+        repository: createPluginRepository(fixture.db.sqlite),
+      } as unknown as ServerRuntime,
+      fixture.integration,
+      { get: () => undefined } as never,
+    )!;
+
+    const preview = await plane.preview({ kind: 'connect', plugin: 'p', capability: 'c', options: {} });
+    // An empty cloud makes every reviewed row optional, so no decision is owed.
+    const apply = plane.apply({ previewId: preview.previewId, decisions: [] }).then(
+      () => 'applied',
+      () => 'failed',
+    );
+    await refreshing;
+    await plane.dispose();
+    expect(await apply).toBe('failed');
+    expect(fixture.disposed()).toBe(1);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 // Epoch and baseline name a head in the space being left. Carried into the new binding, the first
 // publication submits an epoch the candidate backend never issued and Apply fails `epoch-mismatch`,
 // while the carried baseline marks a remote revision applied that this binding has never seen.

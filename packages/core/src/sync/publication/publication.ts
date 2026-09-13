@@ -110,12 +110,37 @@ async function readRevision(
   return { record, version: value.version, modifiedAt: value.modifiedAt };
 }
 
+// The same stranding as below, but where the reread finds a head another device has moved on from:
+// the fence has to fail, so the reservation cannot be consumed in place and is handed to `cancelling`
+// for routine cleanup instead.
+// ponytail: bounded retries, best effort — a lost race leaves the entry for the next attempt, and
+// this must never mask the `upgrade-required` the caller has to see.
+async function cancelStrandedReservation(
+  store: SyncObjectStore,
+  objectId: string,
+  operationId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await store.readHead(objectId, signal);
+    if (current === null || !current.head.reserved.includes(operationId)) return;
+    const next: EntityHead = {
+      ...current.head,
+      reserved: current.head.reserved.filter((id) => id !== operationId),
+      cancelling: [...new Set([...current.head.cancelling, operationId])],
+    };
+    const result = await store.session.compareAndSwap(entityKey(objectId), current.version, encode(next), signal);
+    if (result.kind === 'written') return;
+  }
+}
+
 async function casHead(
   store: SyncObjectStore,
   objectId: string,
   change: (head: EntityHead) => EntityHead,
   signal: AbortSignal,
   expectedVersion?: string,
+  reservationId?: string,
 ): Promise<{ head: EntityHead; modifiedAt: number }> {
   // An unknown outcome that actually committed strands the reservation it wrote: control-plane
   // publications mint a fresh operation ID per attempt, so nothing ever retries that one, and
@@ -130,8 +155,12 @@ async function casHead(
     if (current === null) throw new SyncProtocolError('invalid-data', 'missing head');
     if (attempted !== undefined && isEqual(current.head, attempted))
       return { head: current.head, modifiedAt: current.modifiedAt };
-    if (expectedVersion !== undefined && current.version !== expectedVersion)
+    if (expectedVersion !== undefined && current.version !== expectedVersion) {
+      if (attempted !== undefined && reservationId !== undefined) {
+        await cancelStrandedReservation(store, objectId, reservationId, signal);
+      }
       throw new SyncProtocolError('upgrade-required', 'head version changed');
+    }
     const next = change(current.head);
     if (next === current.head) return { head: current.head, modifiedAt: current.modifiedAt };
     const bytes = encode(next);
@@ -353,6 +382,7 @@ export async function publishEntity(
       },
       signal,
       firstExpected,
+      operation.operationId,
     );
     const stored = await ensurePayload(store, operation, payload, signal);
     if (stored.record.state !== 'payload')

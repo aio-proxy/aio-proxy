@@ -231,6 +231,10 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
   // stale. This is not the configuration queue, so `applyLocal` may still re-enter that one.
   const applies = createFifoQueue();
 
+  // The candidate an Apply is working on: `take()` has removed it from the preview store, so nothing
+  // else can reach it to release its backend session.
+  let applying: SyncConnectCandidate | undefined;
+
   // The swap replaces the binding along with its commit history, so the binding and local-commit
   // halves of the reviewed fence describe a world that will no longer exist. The cloud half is what
   // the decisions were actually made against: re-read it through the candidate's own session while
@@ -270,8 +274,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     backends,
     status,
     // Only the pending candidates: the bound backend is the sync lifecycle's to close, and a preview
-    // record without one holds nothing but memory the process is about to drop.
-    dispose: () => previews.disposePending(),
+    // record without one holds nothing but memory the process is about to drop. A candidate mid-Apply
+    // has already left the store, so it is tracked separately — disposing it aborts the refresh it
+    // may be stalled in, which is what lets shutdown proceed instead of waiting out the bound.
+    dispose: async () => {
+      await applying?.dispose().catch(() => {});
+      await previews.disposePending();
+    },
     async preview(input) {
       if (input.kind === 'connect') {
         const backend = options.registry?.().resolveSync(input.plugin, input.capability);
@@ -355,11 +364,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
         }
         if (record.input.kind === 'connect') {
           if (candidate === undefined) throw new SyncPreviewError('preview-stale');
+          applying = candidate;
           try {
             await applies(() => applyConnect(candidate, record, input.decisions));
           } catch (error) {
             await candidate.dispose().catch(() => {});
             throw error;
+          } finally {
+            if (applying === candidate) applying = undefined;
           }
         } else {
           // A preview captured before a connect apply failed reviews rows that now belong to another

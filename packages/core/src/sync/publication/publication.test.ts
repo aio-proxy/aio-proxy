@@ -234,6 +234,44 @@ test('an unknown outcome at the publish CAS reports a landed head and still fail
   expect((await lostStore.readHead(lost.objectId, signal))?.head.current).toBeNull();
 });
 
+test('a reservation stranded by an unknown outcome is handed to cleanup when the fence fails', async () => {
+  const backend = createMemorySyncBackend();
+  const signal = new AbortController().signal;
+  const first = makeOperation();
+  await publishEntity(createSyncObjectStore(backend.connect()), first, signal);
+  const fence = (await createSyncObjectStore(backend.connect()).readHead(first.objectId, signal))!.version;
+  const mine = makeOperation({ objectId: first.objectId });
+  const other = makeOperation({ objectId: first.objectId });
+
+  const plain = backend.connect();
+  let intercepted = false;
+  const session: SyncSession = {
+    ...plain,
+    async compareAndSwap(key, expected, value, sig) {
+      const result = await plain.compareAndSwap(key, expected, value, sig);
+      if (intercepted || key !== entityKey(first.objectId)) return result;
+      intercepted = true;
+      // The reservation landed but its report was lost, and another device moves the head before the
+      // reread — so the fence can never be satisfied and this publication has to fail. Its own
+      // reservation is left in the head, where no retry (a fresh operation ID each time) and no
+      // maintenance pass (the payload revision is absent) would ever reclaim it.
+      const raw = backend.readAll().get(entityKey(first.objectId))!;
+      const bumped = reserve(decodeHead(raw.value!), other.operationId, other.epoch);
+      await plain.compareAndSwap(entityKey(first.objectId), raw.version!, encode(bumped), sig);
+      throw new SyncBackendError('outcome-unknown', 'Sync write outcome is unknown');
+    },
+  };
+
+  await expect(publishEntity(createSyncObjectStore(session), mine, signal, fence)).rejects.toMatchObject({
+    code: 'upgrade-required',
+  });
+
+  const head = decodeHead(backend.readAll().get(entityKey(first.objectId))!.value!);
+  expect(head.reserved).not.toContain(mine.operationId);
+  expect(head.cancelling).toContain(mine.operationId);
+  expect(head.reserved).toContain(other.operationId);
+});
+
 test('a conditional publication onto an absent head fences its reservation with the created head', async () => {
   const backend = createMemorySyncBackend();
   const mine = makeOperation();

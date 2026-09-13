@@ -136,6 +136,22 @@ async function identityStillClaimed(
   return false;
 }
 
+// The identity a remote object claims has to be checked against the rows the repository holds *now*,
+// not the snapshot this pass took before its network awaits: a local commit landing during one seeds
+// a new excluded row for its Provider, and a scan that misses it treats the remote object as
+// unopposed and imports over the just-authored configuration by logical key.
+function conflictingRow(input: RemoteReconcileInput, objectId: string, head: EntityHead): LocalEntity | undefined {
+  return input.repo
+    .entities(input.bindingId)
+    .find(
+      (row) =>
+        row.objectId !== objectId &&
+        row.kind === head.kind &&
+        row.logicalKey === head.logicalKey &&
+        !isTombstonedEntity(row),
+    );
+}
+
 // eslint-disable-next-line max-lines-per-function
 export async function reconcileRemote(
   input: RemoteReconcileInput,
@@ -221,13 +237,6 @@ export async function reconcileRemote(
         continue;
       }
       let existing = known.get(objectId);
-      const conflicting = [...known.values()].find(
-        (candidate) =>
-          candidate.objectId !== objectId &&
-          candidate.kind === head.kind &&
-          candidate.logicalKey === head.logicalKey &&
-          !isTombstonedEntity(candidate),
-      );
       if (head.state !== 'active') {
         const tombstoneRevision = `${TOMBSTONE_BASELINE_PREFIX}${head.epoch}`;
         // Excluded entities get the deletion signal too, for credential coordination. The local
@@ -301,6 +310,7 @@ export async function reconcileRemote(
       }
       if (record === null || record.state !== 'payload') continue;
       const body = record.body;
+      const conflicting = conflictingRow(input, objectId, head);
       const duplicated =
         conflictObjects.has(objectId) &&
         (await identityStillClaimed(input, identities.get(`${head.kind}\0${head.logicalKey}`) ?? [], head, signal));
@@ -351,9 +361,18 @@ export async function reconcileRemote(
       // until the user rejoined it by hand. The rejoin is written before the import because the
       // local port declines to touch the configuration for a row still marked excluded.
       if (existing?.mode === 'excluded' && existing.pendingReason === 'provider-id-conflict') {
-        input.assertGeneration(generation);
-        existing = { ...existing, mode: 'included', pendingReason: null };
-        input.repo.putEntity(input.bindingId, existing);
+        // `existing` predates this pass's awaits, and this branch writes the row directly instead of
+        // through `upsertEntity`'s live-row merge. A `sync leave` landing during one clears the
+        // quarantine as a user decision, so replaying the snapshot would silently rejoin the Provider
+        // and upload its later edits. Restore inclusion only while the live row still carries this
+        // engine's own quarantine.
+        const live = input.repo.entities(input.bindingId).find((row) => row.objectId === objectId);
+        if (live !== undefined) existing = live;
+        if (existing.mode === 'excluded' && existing.pendingReason === 'provider-id-conflict') {
+          input.assertGeneration(generation);
+          existing = { ...existing, mode: 'included', pendingReason: null };
+          input.repo.putEntity(input.bindingId, existing);
+        }
         known.set(objectId, existing);
       }
       const mode = existing?.mode ?? 'included';

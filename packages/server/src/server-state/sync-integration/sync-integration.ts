@@ -40,6 +40,9 @@ import type { ServerStateOptions } from '../types';
 /** Cloud artifact provisioning is minutes, not seconds; anything past this is a stalled backend. */
 const CONNECT_STARTUP_TIMEOUT_MS = 5 * 60_000;
 
+/** The pre-Apply re-read only lists what the preview already listed, and a user is waiting on it. */
+const CONNECT_REFRESH_TIMEOUT_MS = 60_000;
+
 // eslint-disable-next-line max-lines-per-function -- lifecycle replacement keeps one integration owner
 export function createSyncIntegration(
   runtime: ServerRuntime,
@@ -331,9 +334,8 @@ export function createSyncIntegration(
       };
       // `discard()` is only reachable once these two awaits settle, so an unresponsive backend would
       // hold `connectQueue` for the life of the service and every later connection attempt with it.
-      // The bound covers startup only: `refresh()` and `commit()` run after the preview exists and
-      // are bounded by the request that calls them. Generous, because a first connect legitimately
-      // provisions cloud artifacts — but finite, so a stall ends as a failed attempt.
+      // Generous, because a first connect legitimately provisions cloud artifacts — but finite, so a
+      // stall ends as a failed attempt.
       const startup = AbortSignal.any([lifetime.signal, AbortSignal.timeout(CONNECT_STARTUP_TIMEOUT_MS)]);
       let session: SyncSession | undefined;
       try {
@@ -360,7 +362,15 @@ export function createSyncIntegration(
         let activateBackend: (() => void) | undefined;
         return {
           remote,
-          refresh: () => listRemoteEntities(candidateSession, lifetime.signal),
+          // Apply awaits this re-read while holding the control plane's serialized queue, and the
+          // candidate has already been taken out of the preview store by then, so an unbounded stall
+          // would block Leave, Retry and Disconnect indefinitely. A re-list of state this candidate
+          // already listed once needs far less room than provisioning did.
+          refresh: () =>
+            listRemoteEntities(
+              candidateSession,
+              AbortSignal.any([lifetime.signal, AbortSignal.timeout(CONNECT_REFRESH_TIMEOUT_MS)]),
+            ),
           commit: () =>
             connectQueue(async () => {
               // replaceBackend takes over the session either way: on success the new lifecycle owns

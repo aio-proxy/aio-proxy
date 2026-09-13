@@ -406,6 +406,109 @@ test('an identity conflict resolved on a later pass rejoins the surviving object
   });
 });
 
+test('a leave landing during the pass that would rejoin a quarantined row is not undone', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    const store = createSyncObjectStore(a.session);
+    await publishEntity(
+      store,
+      {
+        operationId: 'collision-op',
+        objectId: 'provider-collision',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'work', value: { kind: 'api', apiKey: 'other' }, dependencies: [] },
+        commitId: 'fixture-collision',
+      },
+      a.signal,
+    );
+    await b.engine.reconcile(b.signal);
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-work')).toMatchObject({
+      mode: 'excluded',
+      pendingReason: 'provider-id-conflict',
+    });
+    await deleteEntity(store, 'provider-collision', 0, a.signal);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'rotated' }, true);
+    await a.engine.reconcile(a.signal);
+
+    // The identity is unambiguous again, so this pass would lift its own quarantine — but the user
+    // runs `sync leave` while it is reading, which excludes the row as a decision of their own by
+    // clearing the reason. Replaying the pre-await snapshot would rejoin the Provider behind their
+    // back and upload its later edits.
+    const read = b.session.read.bind(b.session);
+    let reads = 0;
+    b.session.read = async (key, signal) => {
+      const value = await read(key, signal);
+      if (key === entityKey('provider-work') && ++reads === 2) {
+        const row = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')!;
+        b.repo.putEntity(b.binding.id, { ...row, mode: 'excluded', pendingReason: null });
+      }
+      return value;
+    };
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-work')).toMatchObject({
+      mode: 'excluded',
+      pendingReason: null,
+    });
+    expect(b.remoteApplyCalls()).not.toContainEqual(
+      expect.objectContaining({ objectId: 'provider-work', body: { kind: 'api', apiKey: 'rotated' } }),
+    );
+  });
+});
+
+test('a Provider seeded during the pass still opposes a remote object with its identity', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.engine.reconcile(a.signal);
+    await publishEntity(
+      createSyncObjectStore(a.session),
+      {
+        operationId: 'remote-op',
+        objectId: 'provider-remote',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'work', value: { kind: 'api', apiKey: 'cloud' }, dependencies: [] },
+        commitId: 'fixture-remote',
+      },
+      a.signal,
+    );
+
+    // A local commit adds a Provider with the same ID after this pass snapshotted the repository but
+    // while it is still reading the cloud. Scanning the snapshot would call the remote object
+    // unopposed and import it over the Provider the user just authored, by logical key.
+    const read = b.session.read.bind(b.session);
+    let reads = 0;
+    b.session.read = async (key, signal) => {
+      const value = await read(key, signal);
+      if (key === entityKey('provider-remote') && ++reads === 2) {
+        b.repo.putEntity(b.binding.id, {
+          objectId: 'provider-work',
+          logicalKey: 'work',
+          kind: 'provider',
+          mode: 'excluded',
+          epoch: 0,
+          desired: null,
+          baseline: null,
+          overrides: [],
+          pendingReason: null,
+        });
+      }
+      return value;
+    };
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.repo.entities(b.binding.id).find((e) => e.objectId === 'provider-remote')).toMatchObject({
+      mode: 'excluded',
+      pendingReason: 'provider-id-conflict',
+    });
+    expect(b.remoteApplyCalls()).not.toContainEqual(expect.objectContaining({ objectId: 'provider-remote' }));
+  });
+});
+
 test('a tombstoned row does not collide with the object that takes over its Provider ID', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
