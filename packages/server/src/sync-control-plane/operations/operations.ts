@@ -213,18 +213,18 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
  * across the whole apply is not on offer, because `applyLocal` re-enters that same non-re-entrant
  * queue and would deadlock. Re-reading the confirmed local commit immediately before each mutation
  * is: every commit this apply makes itself is adopted as the new baseline, so only a foreign one
- * stops it. Connect is exempt for the same reason its fence is neutralized — the swap replaces the
- * binding's commit history wholesale, so there is nothing stable to compare against.
+ * stops it. Connect is no exception. Its reviewed fence names the binding the swap replaced, but the
+ * swap is already done when applying starts — a commit landing from here on is prepared against the
+ * new binding, so that binding's history (empty, on a first connect) is exactly what to compare.
  */
-function localCommitGuard(input: OperationInput, record: PreviewRecord, binding: LocalBinding) {
-  let expected = record.input.kind === 'connect' ? undefined : latestCommitId(input.repo, binding);
+function localCommitGuard(input: OperationInput, binding: LocalBinding) {
+  let expected = latestCommitId(input.repo, binding);
   return {
     assertUnchanged(): void {
-      if (expected !== undefined && latestCommitId(input.repo, binding) !== expected)
-        throw new SyncPreviewError('preview-stale');
+      if (latestCommitId(input.repo, binding) !== expected) throw new SyncPreviewError('preview-stale');
     },
     adopt(): void {
-      if (expected !== undefined) expected = latestCommitId(input.repo, binding);
+      expected = latestCommitId(input.repo, binding);
     },
   };
 }
@@ -241,7 +241,7 @@ export async function applyPreview(
   const selected = new Map(decisions.map((decision) => [decision.objectId, decision]));
   const localByObject = new Map(record.local.map((entity) => [entity.objectId, entity]));
   const remoteByObject = new Map(record.remote.map((entity) => [entity.objectId, entity]));
-  const commits = localCommitGuard(input, record, binding);
+  const commits = localCommitGuard(input, binding);
   if (record.input.kind === 'purge') {
     if (record.dependencyError) throw new SyncOperationError('dependency-in-use');
     const purge = record.input;
@@ -430,8 +430,11 @@ export async function applyPreview(
         if (identityRows !== undefined) {
           publishedRevision = (await input.applyCloud(selectedBody, identityRows.renamed, null)) ?? null;
           if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
-          commits.assertUnchanged();
         }
+        // The head check above lists and reads the whole backend, and the publication before it is
+        // another round trip. A commit landing in either window is overlaid by the import below and
+        // then buried by `adopt()`, so the guard runs here rather than before the network work.
+        commits.assertUnchanged();
         await input.applyLocal(selectedBody, current, identityRows?.renamed.objectId ?? candidate.row.objectId);
         commits.adopt();
       } else if (identityRows !== undefined) {

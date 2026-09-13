@@ -759,3 +759,52 @@ test('a cloud import stops when the head moved after the preview was reviewed', 
   ).rejects.toThrow(SyncPreviewError);
   expect(scenario.appliedLocal).toBe(0);
 });
+
+// That head check lists and reads the whole backend. A commit landing during it is overlaid by the
+// import and then adopted as the new baseline, so the edit is gone with nothing left to republish it.
+test('a cloud import stops on a configuration commit that lands while the head is re-read', async () => {
+  let commitId = 'commit-1';
+  const scenario = harness({
+    repo: { putEntity: () => {}, latestConfirmedCommit: () => ({ commitId }) } as never,
+    remoteEntities: async () => {
+      commitId = 'edited-while-reading-heads';
+      return [remoteEntity('provider-a', 'provider', 'work')];
+    },
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+      { objectId: 'provider-a', choice: 'cloud' },
+    ]),
+  ).rejects.toThrow(SyncPreviewError);
+  expect(scenario.appliedLocal).toBe(0);
+});
+
+// The swap is already done when a connect Apply reaches the rows, so commits land against the new
+// binding: exempting connect from the guard let a publication mark the row joined against the
+// reviewed body while the edit made in that window was never enqueued for publication.
+test('a connect apply stops on a configuration commit that lands after the swap', async () => {
+  const rows = [candidate('provider-a', 'provider', 'work')];
+  const stored: LocalEntity[] = [];
+  let commitId = 'commit-1';
+  const scenario = harness({
+    localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+    repo: {
+      putEntity: (_binding: string, entity: LocalEntity) => void stored.push(entity),
+      latestConfirmedCommit: () => ({ commitId }),
+    } as never,
+    applyCloud: async () => {
+      commitId = 'edited-after-the-swap';
+    },
+  });
+
+  await expect(
+    applyPreview(
+      scenario.input,
+      record({ kind: 'connect', plugin: '@example/backend', capability: 'cloud', options: {} }, rows),
+      [{ objectId: 'provider-a', choice: 'local' }],
+    ),
+  ).rejects.toThrow(SyncPreviewError);
+  expect(stored).toEqual([]);
+});

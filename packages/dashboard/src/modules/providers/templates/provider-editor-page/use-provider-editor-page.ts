@@ -14,7 +14,7 @@ import {
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import { useProviderDetach } from '../../hooks/use-provider-detach';
@@ -68,7 +68,7 @@ const startCreateAuthorization = (
   onError: () => void,
 ) => {
   const selected = capabilities.find((candidate) => capabilityKey(candidate) === accountValues.capabilityKey);
-  if (selected === undefined) return;
+  if (selected === undefined) return false;
   const account = oauthAccountSubmission(selected.form, accountDraft(accountValues));
   mutate(
     {
@@ -86,6 +86,7 @@ const startCreateAuthorization = (
     },
     { onError },
   );
+  return true;
 };
 
 const saveOAuthProvider = (
@@ -94,7 +95,7 @@ const saveOAuthProvider = (
   oauth: DashboardOAuthProviderEdit,
   forceReauthorize: boolean,
   updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
-  startReauthorize: (input: DashboardOAuthSessionStart, options: { onError: () => void }) => void,
+  startReauthorize: (input: DashboardOAuthSessionStart, options: { onError: () => void }) => boolean,
   onError: () => void,
 ) => {
   const account = oauthAccountSubmission(oauth.form, accountDraft(accountValues));
@@ -111,11 +112,12 @@ const saveOAuthProvider = (
   );
   if (action.kind === 'update') {
     updateProvider({ id: values.id, body: action.body });
-    return;
+    return false;
   }
-  startReauthorize(action.input, { onError });
+  return startReauthorize(action.input, { onError });
 };
 
+/** Whether an authorization was actually started, which is the only thing a detachment can wait on. */
 const saveEditor = (
   forceReauthorize: boolean,
   ctx: {
@@ -141,7 +143,7 @@ const saveEditor = (
     readonly navigate: (opts: { to: '/providers/$id/edit'; params: { id: string }; replace: true }) => unknown;
     readonly saveBlocked: boolean;
   },
-) => {
+): boolean => {
   const serializeMode = ctx.mode === ProviderFormMode.Create ? 'create' : 'edit';
   const wireValues = {
     ...ctx.values,
@@ -153,34 +155,33 @@ const saveEditor = (
           : serializeAlias(ctx.values.alias, serializeMode),
   };
   if (ctx.kind === 'oauth' && ctx.mode === ProviderFormMode.Create && !ctx.authorized) {
-    if (ctx.accountForm.state.isValid === false) return;
+    if (ctx.accountForm.state.isValid === false) return false;
     ctx.openPopup();
-    startCreateAuthorization(
+    return startCreateAuthorization(
       wireValues,
       ctx.accountValues,
       ctx.capabilities,
       ctx.startMutation.mutate,
       ctx.closeUnclaimedPopup,
     );
-    return;
   }
-  if (ctx.saveBlocked) return;
+  if (ctx.saveBlocked) return false;
   if (ctx.kind === 'oauth') {
-    if (ctx.oauth === undefined) return;
-    saveOAuthProvider(
+    if (ctx.oauth === undefined) return false;
+    return saveOAuthProvider(
       wireValues,
       ctx.accountValues,
       ctx.oauth,
       forceReauthorize,
       ctx.updateProvider,
       (input, options) => {
-        if (ctx.accountForm.state.isValid === false) return;
+        if (ctx.accountForm.state.isValid === false) return false;
         ctx.openPopup();
         ctx.startMutation.mutate(input, options);
+        return true;
       },
       ctx.closeUnclaimedPopup,
     );
-    return;
   }
   saveConfigProvider(
     ctx.mode,
@@ -190,6 +191,7 @@ const saveEditor = (
     ctx.updateProvider,
     (id) => void ctx.navigate({ to: '/providers/$id/edit', params: { id }, replace: true }),
   );
+  return false;
 };
 
 const saveConfigProvider = (
@@ -353,7 +355,7 @@ export const useProviderEditorPage = ({
         }
       : undefined,
   );
-  const { start: startDetach, complete: completeDetach } = useProviderDetach(providerId);
+  const { start: startDetach, complete: completeDetach, cancel: cancelDetach } = useProviderDetach(providerId);
   const onSessionSucceeded = useCallback(
     (succeededSessionId: string, refreshed?: DashboardOAuthProviderEdit) => {
       accountForm.setFieldValue('secrets', {});
@@ -382,6 +384,14 @@ export const useProviderEditorPage = ({
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const capabilitiesQuery = useQuery(oauthCapabilitiesQueryOptions());
+
+  // The authorization a pending detachment is waiting for can still fail after it was started, or be
+  // cancelled in the popup. Neither proves the credential independent, so the intent is dropped here
+  // rather than left for whatever re-authorization the user does next to complete.
+  const loginLost = startMutation.isError || session?.status === 'failed' || session?.status === 'cancelled';
+  useEffect(() => {
+    if (loginLost) cancelDetach();
+  }, [cancelDetach, loginLost]);
 
   const values = useSelector(form.store, (state) => state.values);
   const accountValues = useSelector(accountForm.store, (state) => state.values);

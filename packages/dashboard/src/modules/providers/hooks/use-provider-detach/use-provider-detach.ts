@@ -16,14 +16,23 @@ export const useProviderDetach = (providerId: string | undefined) => {
   const awaitingLogin = useRef(false);
 
   const start = useCallback(
-    async (startLogin: () => void) => {
+    async (startLogin: () => boolean) => {
       if (providerId === undefined) return;
       await mutateAsync({ providerId });
+      // Only a login that actually began can carry the proof. A save the editor refused — an invalid
+      // field, a blocking section — starts none, and recording the intent anyway would let the next
+      // unrelated re-authorization complete a detachment nobody asked for. Thrown rather than
+      // swallowed so the control that asked for it reports the failure where the user clicked.
+      if (!startLogin()) throw new Error('DETACH_LOGIN_NOT_STARTED');
       awaitingLogin.current = true;
-      startLogin();
     },
     [mutateAsync, providerId],
   );
+
+  // A login that failed or was cancelled brings no proof either, and the intent must not outlive it.
+  const cancel = useCallback(() => {
+    awaitingLogin.current = false;
+  }, []);
 
   const complete = useCallback(
     (loginSessionId: string) => {
@@ -39,5 +48,5 @@ export const useProviderDetach = (providerId: string | undefined) => {
     [mutate, providerId],
   );
 
-  return { start, complete };
+  return { start, complete, cancel };
 };

@@ -26,7 +26,7 @@ const renderDetach = () => {
 // the request refused, which is the state this pins against.
 test('detaching marks the Provider pending, asks for a login, then names that login as proof', async () => {
   mocks.detachSync.mockReset().mockResolvedValue({ state: 'idle', providers: [], backends: [] });
-  const startLogin = rs.fn();
+  const startLogin = rs.fn(() => true);
   const { result } = renderDetach();
 
   await result.current.start(startLogin);
@@ -55,10 +55,35 @@ test('one pending detachment is completed once, not by every later login', async
   mocks.detachSync.mockReset().mockResolvedValue({ state: 'idle', providers: [], backends: [] });
   const { result } = renderDetach();
 
-  await result.current.start(rs.fn());
+  await result.current.start(rs.fn(() => true));
   result.current.complete('first-login');
   result.current.complete('second-login');
 
   await waitFor(() => expect(mocks.detachSync).toHaveBeenCalledTimes(2));
   expect(detachCalls()[1]).toEqual({ providerId: 'work', loginSessionId: 'first-login' });
+});
+
+// An editor that refuses the save — an invalid field, a blocking section — starts no OAuth at all.
+// Recording the intent anyway reported the detachment as under way and let the next unrelated
+// re-authorization finish it.
+test('a save that starts no login fails the detach instead of waiting for an unrelated one', async () => {
+  mocks.detachSync.mockReset().mockResolvedValue({ state: 'idle', providers: [], backends: [] });
+  const { result } = renderDetach();
+
+  await expect(result.current.start(() => false)).rejects.toThrow();
+  result.current.complete('unrelated-login');
+
+  await waitFor(() => expect(detachCalls()).toEqual([{ providerId: 'work' }]));
+});
+
+// The same stale intent survived a login that started and then failed or was cancelled.
+test('a lost login leaves no detachment for a later one to complete', async () => {
+  mocks.detachSync.mockReset().mockResolvedValue({ state: 'idle', providers: [], backends: [] });
+  const { result } = renderDetach();
+
+  await result.current.start(rs.fn(() => true));
+  result.current.cancel();
+  result.current.complete('later-login');
+
+  await waitFor(() => expect(detachCalls()).toEqual([{ providerId: 'work' }]));
 });
