@@ -222,6 +222,31 @@ test('a local tombstone does not collide with the cloud object that took over it
   expect(scenario.appliedLocal).toBe(1);
 });
 
+test('a rename may take the Provider ID a local tombstone still carries', async () => {
+  // The preview offers the freed ID as a replacement because its collision check skips tombstones.
+  // Counting the tombstone here would reject the decision the user was just shown.
+  const persisted: LocalEntity[][] = [];
+  const scenario = harness({
+    persistProviderIdentity: async (_old, _new, entities) => persisted.push([...entities]),
+  });
+  const rows = [candidate('provider-new', 'provider', 'work')];
+  const tombstone: LocalEntity = {
+    ...localEntity('provider-old', 'provider', 'freed'),
+    desired: null,
+    baseline: 'deleted:1',
+  };
+
+  await applyPreview(
+    scenario.input,
+    record({ kind: 'join', providerId: 'work' }, rows, {
+      local: [tombstone, localEntity('provider-new', 'provider', 'work')],
+    }),
+    [{ objectId: 'provider-new', choice: 'local', newProviderId: 'freed' }],
+  );
+
+  expect(persisted[0]?.map((entity) => entity.logicalKey)).toEqual(['freed']);
+});
+
 test('an override preview does not persist its paths when the row decision is missing', async () => {
   const scenario = harness();
   const rows = [candidate('object-a', 'provider', 'work')];

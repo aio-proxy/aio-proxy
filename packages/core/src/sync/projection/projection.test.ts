@@ -169,7 +169,9 @@ test('excludes overridden local paths from the published body and keeps an untra
   });
 });
 
-test('does not copy a plugin secret for an AI SDK executable package', () => {
+test('shares neither an object nor a secret for an unauthored AI SDK executable package', () => {
+  // `plugin add` keeps an AI SDK package out of `plugins`, so its row is never an authored object:
+  // the Provider publishes without a dependency instead of naming an object nothing carries.
   const packageEntity = includedEntity('plugin-sdk', 'plugin-business', '@ai-sdk/example');
   const provider = includedEntity('p-sdk', 'provider', 'sdk');
   const result = projectCommitted(
@@ -182,11 +184,27 @@ test('does not copy a plugin secret for an AI SDK executable package', () => {
     [provider, packageEntity],
   );
 
-  expect(result.entities.get('plugin-sdk')?.value).toEqual({
-    packageName: '@ai-sdk/example',
-    version: '2.0.0',
-  });
+  expect(result.entities.has('plugin-sdk')).toBe(false);
+  expect(result.entities.get('p-sdk')?.dependencies).toEqual([]);
   expect(JSON.stringify(result)).not.toContain('must-not-share');
+});
+
+test('drops a plugin object the configuration no longer authors even while it stays installed', () => {
+  // Uninstalling is a separate step, so the package keeps a version after the edit. Projecting it
+  // from the installation map alone would republish an object the authored config has removed,
+  // which is what turns an authored removal into a delete for every peer.
+  const plugin = includedEntity('plugin-demo', 'plugin-business', '@example/business');
+  const result = projectCommitted(
+    {
+      raw: { providers: {} },
+      accounts: new Map(),
+      pluginSecrets: new Map([['@example/business', { token: 'plugin-secret' }]]),
+      pluginVersions: new Map([['@example/business', '1.0.0']]),
+    },
+    [plugin],
+  );
+
+  expect(result.entities.has('plugin-demo')).toBe(false);
 });
 
 test('rejects non JSON plugin secrets before projection', () => {
@@ -293,7 +311,10 @@ test('publishes an AI SDK provider whose package is no authored plugin, and wait
   // Listing the package in `plugins` makes it an object the Provider must name, so its version has to
   // arrive before either can be published.
   const plugin = includedEntity('plugin-sdk', 'plugin-business', '@ai-sdk/missing');
-  const missingVersion = projectCommitted(source, [provider, plugin]);
+  const missingVersion = projectCommitted({ ...source, raw: { ...source.raw, plugins: ['@ai-sdk/missing'] } }, [
+    provider,
+    plugin,
+  ]);
   expect([...missingVersion.entities.keys()]).toEqual([]);
   expect([...missingVersion.entities.keys(), ...missingVersion.accounts.keys()]).not.toContain('generated');
 });

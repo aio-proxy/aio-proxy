@@ -624,7 +624,7 @@ test('a preview against a bound backend that never connected fails instead of re
   await expect(control.history('shared')).rejects.toMatchObject({ code: 'not-connected' });
 });
 
-test('a leave waits for an apply whose reviewed import is already in flight', async () => {
+test('a leave waits for an apply whose reviewed import is already in flight, and stales previews queued behind it', async () => {
   // The reviewed import bypasses the excluded-row guard by design — it writes into a row whose
   // inclusion is recorded right after it — so an exclusion landing while the Apply awaits its remote
   // write would still put the cloud body into the configuration after Leave reported success. The
@@ -648,6 +648,7 @@ test('a leave waits for an apply whose reviewed import is already in flight', as
     pendingReason: null,
   };
   let leaving: Promise<unknown> = Promise.resolve();
+  let queued: { previewId: string } | undefined;
   const control = createSyncControlPlane({
     repo: {
       readBinding: () => BINDING,
@@ -670,6 +671,9 @@ test('a leave waits for an apply whose reviewed import is already in flight', as
       // does not await it either.
       leaving = control.setRange('shared', false).then(() => events.push('leave'));
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      // Taken while the row is still included and the Leave is only queued: its Apply must not be
+      // able to put the cloud body back once the exclusion lands.
+      queued = await control.preview({ kind: 'restore', objectId: 'cloud-object', operationId: 'old' });
     },
     applyLocal: async () => {
       events.push('import');
@@ -687,4 +691,7 @@ test('a leave waits for an apply whose reviewed import is already in flight', as
   expect(events).toEqual(['import', 'leave']);
   // The Leave still lands: serializing it only decides when.
   expect(row.mode).toBe('excluded');
+  await expect(
+    control.apply({ previewId: queued?.previewId ?? '', decisions: [{ objectId: 'cloud-object', choice: 'restore' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
 });

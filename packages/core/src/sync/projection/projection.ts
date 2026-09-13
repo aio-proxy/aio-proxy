@@ -5,6 +5,7 @@ import type { StoredAccount } from '../../plugins/repository';
 import type { EntityBody, Dependency } from '../protocol';
 import { providerReference } from '../protocol';
 import type { LocalEntity } from '../repository';
+import { authoredPluginPackages } from './authored';
 import { applyEntityOverrides, applyOverrides, cloneJson, mergeRaw, overlayEntityOverrides } from './local-overrides';
 import { localModelPolicy, selectedModelPolicy } from './model-overlays';
 
@@ -300,7 +301,12 @@ function localProjection(
 }
 
 export function projectCommitted(source: CommittedSource, entities: readonly LocalEntity[]): Projection {
-  const index = entityIndex(entities);
+  const authoredPlugins = authoredPluginPackages(source.raw);
+  // A plugin row the configuration no longer authors is a removal, so it is not a dependency target
+  // either: leaving it in the index would let a Provider name an object this projection drops.
+  const index = entityIndex(
+    entities.filter((entity) => entity.kind !== 'plugin-business' || authoredPlugins.has(entity.logicalKey)),
+  );
   const selectedProviders = includedProviderIds(entities);
   const rawProviders = recordAt(source.raw, 'providers');
   const rawModels = recordAt(source.raw, 'router', 'models');
@@ -344,6 +350,11 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
         .filter((provider): provider is LocalEntity => provider?.mode === 'included')
         .map(providerReference);
     } else if (entity.kind === 'plugin-business') {
+      // An embedded plugin is loaded whether or not the configuration authors it, so a version here
+      // is not authorship: projecting a body for a package the user removed from `plugins` publishes
+      // a put where the commit's deletion belongs, and every peer keeps or recreates the entry. The
+      // same authored set decides the deletion, so the two stay complementary.
+      if (!authoredPlugins.has(entity.logicalKey)) continue;
       const version = source.pluginVersions.get(entity.logicalKey);
       if (version === undefined) continue;
       const secretPresent =

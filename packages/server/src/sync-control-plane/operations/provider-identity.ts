@@ -1,4 +1,4 @@
-import type { EntityBody, LocalEntity } from '@aio-proxy/core';
+import { isTombstonedEntity, type EntityBody, type LocalEntity } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 
@@ -88,10 +88,16 @@ export function providerIdentityRows(
 ): ProviderIdentityRows {
   if (current.kind !== 'provider' || selected.kind !== 'provider' || newProviderId === '')
     throw new SyncOperationError('upgrade-required');
+  // A tombstone holds no Provider ID: deleting an object frees its identity, which is exactly what
+  // the reviewed collision may have chosen. The preview's own collision check already skips them, so
+  // counting them here rejects a decision it accepted.
   if (
     entities.some(
       (entity) =>
-        entity.objectId !== current.objectId && entity.kind === 'provider' && entity.logicalKey === newProviderId,
+        entity.objectId !== current.objectId &&
+        entity.kind === 'provider' &&
+        entity.logicalKey === newProviderId &&
+        !isTombstonedEntity(entity),
     )
   )
     throw new SyncOperationError('upgrade-required');

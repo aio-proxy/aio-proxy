@@ -385,8 +385,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     },
     async setRange(providerId, included) {
       if (included !== false) throw new TypeError('sync range can only exclude a provider');
-      rangeRevision += 1;
-      const run = async () => setRange(operationInput(), providerId);
+      const run = async () => {
+        // Bumped with the mutation, not when Leave was requested: a Leave queued behind an Apply
+        // would otherwise let a preview taken while the row is still included capture the new
+        // revision, pass `sameFence()` afterwards, and re-include the Provider Leave just excluded.
+        rangeRevision += 1;
+        return setRange(operationInput(), providerId);
+      };
       // An Apply awaits its remote write outside the mutation fence, and the reviewed import it runs
       // afterwards deliberately bypasses the excluded-row guard, because it writes into a row whose
       // inclusion it records immediately after. Excluding the Provider in that window would therefore
