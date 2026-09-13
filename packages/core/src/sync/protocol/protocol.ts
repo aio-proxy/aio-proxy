@@ -63,6 +63,12 @@ export interface EntityHead {
   cancelling: string[];
   receipts: Record<string, number>;
   cleanupComplete: boolean;
+  /**
+   * Server time a maintenance pass first found a reservation with no revision written yet, per
+   * operation ID. Advisory and maintenance-owned: losing an entry only restarts that clock, so a
+   * device on an older build dropping it on rewrite delays a reclaim instead of breaking one.
+   */
+  reservedAt?: Record<string, number>;
 }
 
 /**

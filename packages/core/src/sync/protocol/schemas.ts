@@ -35,6 +35,7 @@ const EntityHeadFields = z.object({
   cancelling: z.array(z.string()),
   receipts: z.record(z.string(), z.number().int().positive()),
   cleanupComplete: z.boolean(),
+  reservedAt: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
 
 export const EntityHeadSchema = EntityHeadFields.refine(canonicalSingletonIdentity, singletonIdentityIssue);

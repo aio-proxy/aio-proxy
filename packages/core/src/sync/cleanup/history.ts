@@ -1,5 +1,8 @@
+import { omit } from 'es-toolkit/object';
+import { isEqual } from 'es-toolkit/predicate';
+
 import { SyncProtocolError } from '../protocol';
-import { decodeRevision, receiptSequence, revisionKey } from '../protocol';
+import { decodeRevision, receiptSequence, revisionKey, type EntityHead } from '../protocol';
 import { type SyncObjectStore } from '../publication';
 import {
   HISTORY_RETENTION_MS,
@@ -15,25 +18,44 @@ import {
 // reject the uploader's persisted operation ID forever and blocks its outbox, so only reclaim a
 // reservation the cloud state itself proves dead. Deletion and purge still cancel everything: the
 // object is going away either way.
-async function staleReservation(
+async function reservationVerdict(
   store: SyncObjectStore,
   objectId: string,
   operationId: string,
   cutoff: number,
   signal: AbortSignal,
-): Promise<boolean> {
+): Promise<'live' | 'stale' | 'unstaged'> {
   const value = await store.session.read(revisionKey(objectId, operationId), signal);
-  // No revision yet means the publisher is between reserving and writing its payload — a window of
-  // milliseconds that proves nothing. A payload still unpublished a retention period later does.
-  if (value.kind === 'absent') return false;
+  // No revision yet is both a publisher between reserving and writing its payload — a window of
+  // milliseconds that proves nothing — and what a publisher interrupted in that window leaves
+  // behind forever. Indistinguishable from here, so age it from when maintenance first saw it.
+  if (value.kind === 'absent') return 'unstaged';
   const record = decodeRevision(value.value);
-  if (record.state !== 'payload') return true;
-  return (record.writtenAt ?? value.modifiedAt) < cutoff;
+  if (record.state !== 'payload') return 'stale';
+  return (record.writtenAt ?? value.modifiedAt) < cutoff ? 'stale' : 'live';
+}
+
+/** An operation ID is an unrestricted wire string, so an inherited key must not read as a stamp. */
+function stampedAt(head: EntityHead, operationId: string): number | undefined {
+  const stamps = head.reservedAt;
+  return stamps !== undefined && Object.hasOwn(stamps, operationId) ? stamps[operationId] : undefined;
+}
+
+// Stamps are rebuilt from the reservations still unstaged, so one write both ages the newcomers and
+// drops entries for operations that have since published, cancelled, or been reclaimed.
+function stampUnstaged(head: EntityHead, unstaged: string[], serverNow: number): EntityHead {
+  const stamps = Object.fromEntries(
+    unstaged.filter((id) => head.reserved.includes(id)).map((id) => [id, stampedAt(head, id) ?? serverNow]),
+  );
+  const next = Object.keys(stamps).length === 0 ? undefined : stamps;
+  if (isEqual(head.reservedAt, next)) return head;
+  return next === undefined ? omit(head, ['reservedAt']) : { ...head, reservedAt: next };
 }
 
 async function cancelReservations(
   store: SyncObjectStore,
   objectId: string,
+  serverNow: number,
   cutoff: number,
   signal: AbortSignal,
 ): Promise<void> {
@@ -41,8 +63,17 @@ async function cancelReservations(
     const current = await readHeadOrThrow(store, objectId, signal);
     if (current.head.state === 'purged') return;
     const stale: string[] = [];
+    const unstaged: string[] = [];
     for (const operationId of current.head.reserved) {
-      if (await staleReservation(store, objectId, operationId, cutoff, signal)) stale.push(operationId);
+      const verdict = await reservationVerdict(store, objectId, operationId, cutoff, signal);
+      if (verdict === 'live') continue;
+      if (verdict === 'stale') {
+        stale.push(operationId);
+        continue;
+      }
+      const since = stampedAt(current.head, operationId);
+      if (since !== undefined && since < cutoff) stale.push(operationId);
+      else unstaged.push(operationId);
     }
     if (stale.length > 0) {
       await updateHead(
@@ -64,6 +95,7 @@ async function cancelReservations(
       );
       continue;
     }
+    await updateHead(store, objectId, (head) => stampUnstaged(head, unstaged, serverNow), signal);
     if (current.head.cancelling.length === 0) return;
     for (const operationId of current.head.cancelling) {
       const latest = await readHeadOrThrow(store, objectId, signal);
@@ -113,7 +145,7 @@ export async function collectHistory(
   if (initial === null || initial.head.state === 'purged') return;
   await confirmReceipts(store, objectId, signal);
   const cutoff = serverNow - HISTORY_RETENTION_MS;
-  await cancelReservations(store, objectId, cutoff, signal);
+  await cancelReservations(store, objectId, serverNow, cutoff, signal);
   const head = await readHeadOrThrow(store, objectId, signal);
   const pending = new Set([...head.head.reserved, ...head.head.cancelling]);
   const current = head.head.current;

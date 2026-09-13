@@ -17,7 +17,14 @@ import {
 } from '../protocol';
 import { createSyncObjectStore, publishEntity } from '../publication';
 import { createMemorySyncBackend } from '../test-support';
-import { collectHistory, deleteEntity, purgeEntity, readServerTime, restoreEntity } from './index';
+import {
+  collectHistory,
+  deleteEntity,
+  HISTORY_RETENTION_MS,
+  purgeEntity,
+  readServerTime,
+  restoreEntity,
+} from './index';
 
 function operation(objectId: string, operationId = crypto.randomUUID(), value = 'secret') {
   return {
@@ -435,6 +442,25 @@ test('history leaves another device mid-publication able to finish its reserved 
   const published = await publishEntity(store, item, signal);
   expect(published.sequence).toBe(1);
   expect(head(backend, item.objectId).current).toBe(item.operationId);
+});
+
+test('history reclaims a reservation whose publisher never staged a payload', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'abandoned-secret');
+  const reserved = reserve(newHead(item.objectId, item.body), item.operationId, 0);
+  await store.session.compareAndSwap(entityKey(item.objectId), null, encode(reserved), signal);
+
+  // A publisher between reserving and staging its payload is live, so the first sighting only ages it.
+  await collectHistory(store, item.objectId, 1_000, signal);
+  expect(head(backend, item.objectId).reserved).toEqual([item.operationId]);
+
+  await collectHistory(store, item.objectId, 1_001 + HISTORY_RETENTION_MS, signal);
+  const reclaimed = head(backend, item.objectId);
+  expect(reclaimed.reserved).toEqual([]);
+  expect(reclaimed.cancelling).toEqual([]);
+  expect(reclaimed.reservedAt).toBeUndefined();
 });
 
 test('receipt finalization retries an unknown cleanup write', async () => {
