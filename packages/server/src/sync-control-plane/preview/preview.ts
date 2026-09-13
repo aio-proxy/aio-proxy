@@ -119,8 +119,11 @@ export function sameFence(a: PreviewFence, b: PreviewFence): boolean {
   );
 }
 
+// Hex, not base64url: the id is handed to the user to paste into `aio-proxy sync apply <previewId>`,
+// and a base64url token beginning with `-` is parsed there as an unknown option, so roughly one
+// preview in sixty-four could not be applied from the CLI at all.
 export function createPreviewToken(bytes = 24, source: (size: number) => Uint8Array = randomBytes): string {
-  return Buffer.from(source(bytes)).toString('base64url');
+  return Buffer.from(source(bytes)).toString('hex');
 }
 
 // eslint-disable-next-line max-lines-per-function -- preview assembly keeps one immutable snapshot for the fence

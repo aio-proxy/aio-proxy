@@ -8,7 +8,7 @@ import { SyncOperationError, assertDecisions } from '../operations';
 import { listRemoteEntities } from './entities';
 import { SyncPreviewError } from './errors';
 import { applyOverrides } from './overrides';
-import { buildPreview } from './preview';
+import { buildPreview, createPreviewToken } from './preview';
 import { redactEntityValue } from './redact';
 
 const providerBody = (value: Record<string, JsonValue>) => ({
@@ -16,6 +16,12 @@ const providerBody = (value: Record<string, JsonValue>) => ({
   logicalKey: 'work',
   value,
   dependencies: [],
+});
+
+test('a preview id is safe to paste as a CLI argument', () => {
+  // base64url put `-` at the front of one id in sixty-four, and `aio-proxy sync apply <previewId>`
+  // then rejected its own id as an unknown option. These bytes are one that used to.
+  expect(createPreviewToken(3, () => Uint8Array.from([0xfb, 0xff, 0xff]))).toMatch(/^[0-9a-f]+$/u);
 });
 
 test('overrides apply nested values, delete missing fields, copy arrays, and reject unsafe paths', () => {
