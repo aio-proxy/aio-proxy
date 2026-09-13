@@ -546,6 +546,8 @@
       "history_current": "Current",
       "history_yes": "Yes",
       "history_no": "No",
+      "history_restore": "Restore",
+      "history_restore_row": "Restore revision {operation}",
       "loading": "Loading sync status",
       "load_failed": "Sync status could not be loaded.",
       "connect_failed": "Sync connection could not be completed.",

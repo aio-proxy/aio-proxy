@@ -416,6 +416,14 @@ export const SyncSettingsGroup: React.FC = () => {
         onOpenChange={(open) => {
           if (!open) setHistoryObjectId(null);
         }}
+        onRestore={(operationId) => {
+          if (historyObjectId === null) return;
+          const input: SyncPreviewInput = { kind: 'restore', objectId: historyObjectId, operationId };
+          setLastPreviewInput(input);
+          // Both dialogs are modal, so the history has to give up focus before the preview takes it.
+          setHistoryObjectId(null);
+          previewMutation.mutate(input, { onSuccess: setPreview });
+        }}
       />
     </>
   );

@@ -52,9 +52,11 @@ export interface SyncHistoryDialogProps {
   readonly objectId: string | null;
   readonly open: boolean;
   onOpenChange(open: boolean): void;
+  /** Previewing the restore belongs to the parent: it owns the shared preview dialog this opens. */
+  onRestore(operationId: string): void;
 }
 
-export const SyncHistoryDialog: React.FC<SyncHistoryDialogProps> = ({ objectId, open, onOpenChange }) => {
+export const SyncHistoryDialog: React.FC<SyncHistoryDialogProps> = ({ objectId, open, onOpenChange, onRestore }) => {
   const query = useQuery(syncHistoryQueryOptions(objectId ?? ''));
   const [sorting, setSorting] = useState<{ id: string; desc: boolean }[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
@@ -144,8 +146,27 @@ export const SyncHistoryDialog: React.FC<SyncHistoryDialogProps> = ({ objectId, 
           cell: (context) =>
             context.getValue() ? m['dashboard.sync.history_yes']() : m['dashboard.sync.history_no'](),
         }),
+        HISTORY_COLUMN_HELPER.display({
+          id: 'restore',
+          header: () => m['dashboard.sync.history_restore'](),
+          // The revision already published is what restoring would produce, so it is not an action.
+          cell: (context) => (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={context.row.original.current}
+              aria-label={m['dashboard.sync.history_restore_row']({ operation: context.row.original.operationId })}
+              onClick={() => onRestore(context.row.original.operationId)}
+            >
+              {m['dashboard.sync.history_restore']()}
+            </Button>
+          ),
+        }),
       ]),
-    [],
+    // The parent's handler closes over which object the history belongs to, so a stale one would
+    // preview a restore of whatever Provider the dialog was opened on first.
+    [onRestore],
   );
   const table = useTable({
     data: query.data ?? EMPTY_HISTORY,

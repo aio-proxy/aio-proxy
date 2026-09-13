@@ -17,7 +17,7 @@ rs.mock('@/modules/settings/services/sync-service', () => ({
 test('provides filtering, sorting, pagination, and column visibility controls', async () => {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} />
+      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} onRestore={rs.fn()} />
     </QueryClientProvider>,
   );
 
@@ -30,15 +30,31 @@ test('provides filtering, sorting, pagination, and column visibility controls', 
   expect(screen.getByText('operation-a')).toBeTruthy();
 });
 
-test('hiding a column takes effect on the table immediately', async () => {
+test('hands a non-current revision to the restore preview and offers nothing on the published one', async () => {
+  const onRestore = rs.fn();
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} />
+      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} onRestore={onRestore} />
     </QueryClientProvider>,
   );
 
   await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());
-  expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+  // `operation-a` is the published revision: restoring it would produce what is already live.
+  expect((screen.getByRole('button', { name: /operation-a/u }) as HTMLButtonElement).disabled).toBe(true);
+
+  fireEvent.click(screen.getByRole('button', { name: /operation-b/u }));
+  expect(onRestore.mock.calls).toEqual([['operation-b']]);
+});
+
+test('hiding a column takes effect on the table immediately', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} onRestore={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());
+  expect(screen.getAllByRole('columnheader')).toHaveLength(4);
 
   fireEvent.click(screen.getByRole('button', { name: /Columns|列/u }));
   // Base UI routes a checkbox click through a hidden input that happy-dom bounces back off the
@@ -47,13 +63,13 @@ test('hiding a column takes effect on the table immediately', async () => {
 
   // The table reads visibility out of form state. Reading it through the non-reactive `form.state`
   // getter left the column on screen until some unrelated parent state happened to change.
-  await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(2));
+  await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(3));
 });
 
 test('drops the previous target filter so the next object does not read as empty', async () => {
   const view = render(
     <QueryClientProvider client={new QueryClient()}>
-      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} />
+      <SyncHistoryDialog objectId="object-work" open onOpenChange={rs.fn()} onRestore={rs.fn()} />
     </QueryClientProvider>,
   );
   await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());
@@ -66,7 +82,7 @@ test('drops the previous target filter so the next object does not read as empty
   // hidden behind the previous object's filter and the dialog reports it as having no history.
   view.rerender(
     <QueryClientProvider client={new QueryClient()}>
-      <SyncHistoryDialog objectId="object-other" open onOpenChange={rs.fn()} />
+      <SyncHistoryDialog objectId="object-other" open onOpenChange={rs.fn()} onRestore={rs.fn()} />
     </QueryClientProvider>,
   );
   await waitFor(() => expect(screen.getByText('operation-a')).toBeTruthy());

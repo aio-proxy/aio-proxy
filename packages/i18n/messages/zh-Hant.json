@@ -546,6 +546,8 @@
       "history_current": "目前",
       "history_yes": "是",
       "history_no": "否",
+      "history_restore": "還原",
+      "history_restore_row": "還原修訂 {operation}",
       "loading": "正在載入同步狀態",
       "load_failed": "無法載入同步狀態。",
       "connect_failed": "無法完成同步連線。",

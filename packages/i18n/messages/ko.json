@@ -546,6 +546,8 @@
       "history_current": "현재",
       "history_yes": "예",
       "history_no": "아니요",
+      "history_restore": "복원",
+      "history_restore_row": "리비전 {operation} 복원",
       "loading": "동기화 상태 로드 중",
       "load_failed": "동기화 상태를 로드할 수 없습니다.",
       "connect_failed": "동기화 연결을 완료할 수 없습니다.",
