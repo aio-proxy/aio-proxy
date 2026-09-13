@@ -106,6 +106,38 @@ describe('usage capture passthrough ttft', () => {
     expect(typeof ttftMs).toBe('number');
   });
 
+  test('records ttft from a buffered OpenAI Responses output_item.done with message text', async () => {
+    const captured = ssePassthrough(
+      'event: response.created\ndata: {"type":"response.created"}\n\n' +
+        'event: response.output_item.done\n' +
+        'data: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hi"}]}}\n\n' +
+        'event: response.completed\n' +
+        'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ProviderProtocol.OpenAIResponse,
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    const ttftMs = 'ttftMs' in completion ? completion.ttftMs : undefined;
+    expect(typeof ttftMs).toBe('number');
+  });
+
+  test('omits ttft for OpenAI Responses streams that only complete tool items', async () => {
+    const captured = ssePassthrough(
+      'event: response.output_item.done\n' +
+        'data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c1","name":"ls","arguments":"{}"}}\n\n' +
+        'event: response.completed\n' +
+        'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":3,"output_tokens":1}}}\n\n',
+      ProviderProtocol.OpenAIResponse,
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
+  });
+
   test('omits ttft when the stream carries no content delta', async () => {
     const captured = ssePassthrough(
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n' +
