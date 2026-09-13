@@ -1,0 +1,41 @@
+{
+  "fixtureKind": "inspection-only-synthetic-history",
+  "historyMode": "legacy",
+  "threads": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "model_provider": "source-proxy",
+      "model": "contract-model",
+      "archived": false,
+      "parent_thread_id": null,
+      "turns": [
+        {
+          "id": "66666666-6666-4666-8666-666666666666",
+          "user": "synthetic first turn",
+          "tool": { "name": "synthetic_tool", "call_id": "call_1", "arguments": {} },
+          "tool_output": "synthetic tool result",
+          "assistant": "synthetic first response"
+        },
+        {
+          "id": "77777777-7777-4777-8777-777777777777",
+          "user": "synthetic second turn",
+          "assistant": "synthetic second response"
+        }
+      ]
+    },
+    {
+      "id": "88888888-8888-4888-8888-888888888888",
+      "model_provider": "source-proxy",
+      "model": "contract-model",
+      "archived": true,
+      "parent_thread_id": "55555555-5555-4555-8555-555555555555",
+      "turns": [
+        {
+          "id": "99999999-9999-4999-8999-999999999999",
+          "user": "synthetic child turn",
+          "assistant": "synthetic child response"
+        }
+      ]
+    }
+  ]
+}

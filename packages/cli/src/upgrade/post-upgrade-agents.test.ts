@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 
-import type { AgentTarget } from '@aio-proxy/types';
+import type { AgentPluginTarget } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../agent/hosts';
 import {
@@ -12,7 +12,7 @@ import {
 } from './post-upgrade-agents';
 
 const POST_UPGRADE_INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
-const postUpgradeLocation = (target: AgentTarget): AgentLocation => {
+const postUpgradeLocation = (target: AgentPluginTarget): AgentLocation => {
   const hostRoot = `/tmp/${target}/${target === 'opencode' ? 'plugins' : 'extensions'}`;
   return {
     target,
@@ -24,8 +24,8 @@ const postUpgradeLocation = (target: AgentTarget): AgentLocation => {
 
 const postUpgradeFixture = (
   options: {
-    readonly targets?: readonly AgentTarget[];
-    readonly managed?: readonly AgentTarget[];
+    readonly targets?: readonly AgentPluginTarget[];
+    readonly managed?: readonly AgentPluginTarget[];
     readonly failure?: 'path mismatch' | 'marker conflict' | 'entry conflict';
   } = {},
 ) => {
@@ -104,6 +104,15 @@ test('post-upgrade never creates an absent integration', async () => {
   const f = postUpgradeFixture({ managed: [] });
   await runAgentPostUpgrade(f.payload, f.deps);
   expect(f.install).not.toHaveBeenCalled();
+});
+
+test('post-upgrade payload rejects Codex plugin entries', () => {
+  expect(
+    AgentPostUpgradePayloadSchema.safeParse({
+      format: 1,
+      targets: [{ target: 'codex', managedDir: '/tmp/codex/aio-proxy' }],
+    }).success,
+  ).toBe(false);
 });
 
 const validOpenCode = {

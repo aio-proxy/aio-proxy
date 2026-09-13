@@ -1,11 +1,11 @@
-import { link, lstat, mkdir, mkdtemp, readFile, rename, rmdir } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, rename, rmdir } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import {
   AgentManagedMarkerSchema,
   AgentManagedStateV1Schema,
   type AgentManagedMarker,
-  type AgentTarget,
+  type AgentPluginTarget,
 } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../hosts';
@@ -73,7 +73,7 @@ const writeStagingTree = async (
 
 const validateBackup = async (
   backupDir: string,
-  target: AgentTarget,
+  target: AgentPluginTarget,
   installationId: string,
   adapterVersion: string,
 ): Promise<'ok' | 'newer'> => {
@@ -88,7 +88,7 @@ const validateBackup = async (
   }
   let parsed: ReturnType<typeof AgentManagedMarkerSchema.safeParse>;
   try {
-    parsed = AgentManagedMarkerSchema.safeParse(JSON.parse(await readFile(markerPath, 'utf8')));
+    parsed = AgentManagedMarkerSchema.safeParse(JSON.parse(await Bun.file(markerPath).text()));
   } catch {
     throw new Error('managed marker invalid');
   }
@@ -98,14 +98,14 @@ const validateBackup = async (
   return isNewerAdapter(parsed.data.adapterVersion, adapterVersion) ? 'newer' : 'ok';
 };
 
-const copyValidState = async (backupDir: string, stagingDir: string, target: AgentTarget): Promise<void> => {
+const copyValidState = async (backupDir: string, stagingDir: string, target: AgentPluginTarget): Promise<void> => {
   const statePath = join(backupDir, '.aio-proxy-state.json');
   const stat = await inspectPath(statePath);
   if (stat === undefined || stat.isSymbolicLink() || !stat.isFile()) return;
-  const raw = await readFile(statePath);
+  const raw = await Bun.file(statePath).bytes();
   let parsed: ReturnType<typeof AgentManagedStateV1Schema.safeParse>;
   try {
-    parsed = AgentManagedStateV1Schema.safeParse(JSON.parse(raw.toString('utf8')));
+    parsed = AgentManagedStateV1Schema.safeParse(JSON.parse(new TextDecoder().decode(raw)));
   } catch {
     return;
   }
@@ -124,7 +124,7 @@ const commitOpenCodeEntry = async (
   if (existing !== undefined) {
     if (existing.isSymbolicLink()) throw new Error('entry is a symlink');
     if (!existing.isFile()) throw new Error('entry exists');
-    if ((await readFile(adjacentEntry)).equals(Buffer.from(openCodeEntry(installationId)))) return;
+    if (Buffer.from(await Bun.file(adjacentEntry).bytes()).equals(Buffer.from(openCodeEntry(installationId)))) return;
     throw new Error('entry conflict');
   }
 
@@ -159,7 +159,10 @@ const repairOpenCodeEntry = async (location: AgentLocation, marker: AgentManaged
   const entryStat = await inspectPath(adjacent);
   if (entryStat !== undefined) {
     if (entryStat.isSymbolicLink()) throw new Error('entry is a symlink');
-    if (!entryStat.isFile() || !(await readFile(adjacent)).equals(Buffer.from(openCodeEntry(marker.installationId)))) {
+    if (
+      !entryStat.isFile() ||
+      !Buffer.from(await Bun.file(adjacent).bytes()).equals(Buffer.from(openCodeEntry(marker.installationId)))
+    ) {
       throw new Error('entry conflict');
     }
     return;

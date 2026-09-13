@@ -23,3 +23,12 @@ export function loadServiceEnv(configPath: string, env: Record<string, string | 
     if (!Object.hasOwn(env, key)) env[key] = value;
   }
 }
+
+export function readServiceEnvironment(
+  configPath: string,
+  base: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string | undefined> {
+  const env = { ...base };
+  loadServiceEnv(configPath, env);
+  return env;
+}

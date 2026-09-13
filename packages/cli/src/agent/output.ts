@@ -2,6 +2,79 @@ import { m } from '@aio-proxy/i18n';
 import type { Command } from 'commander';
 
 import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
+import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
+
+const renderCodexList = (result: CodexListResult) => [
+  m['cli.agent.codex.list']({
+    configPath: result.configPath,
+    providerId: result.providerId ?? '-',
+    activeProviderId: result.activeProviderId || '-',
+    baseUrl: result.baseUrl ?? '-',
+    status: result.status,
+    connection: result.connection,
+    changedPaths: result.changedPaths.length === 0 ? '-' : result.changedPaths.map((path) => path.join('.')).join(', '),
+  }),
+  ...(result.authMode === undefined
+    ? []
+    : [
+        m['cli.agent.codex.list_auth']({
+          mode: result.authMode,
+          installationId: result.installationId ?? '-',
+          lifecycle: result.lifecycle ?? '-',
+          authorization: result.authorization ?? 'not_checked',
+          credentialStatus: result.credentialStatus ?? '-',
+        }),
+      ]),
+];
+
+const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
+  if (result.status === 'cancelled')
+    return [
+      result.reason === 'non_interactive'
+        ? m['cli.agent.codex.non_interactive']()
+        : result.reason === 'authorization_incomplete'
+          ? m['cli.agent.codex.authorization_incomplete']()
+          : m['cli.agent.codex.cancelled'](),
+    ];
+  const lines = [
+    result.migrationAction === 'restore'
+      ? result.migration.status === 'blocked'
+        ? m['cli.agent.codex.migration_blocked']()
+        : result.migration.status === 'partial'
+          ? m['cli.agent.codex.migration_partial']()
+          : m['cli.agent.codex.restore']()
+      : m['cli.agent.codex.configured']({
+          status: result.status,
+          providerId: result.providerId ?? '-',
+          configPath: result.configPath,
+        }),
+  ];
+  if (result.version !== undefined && result.versionCompatibility === 'unverified')
+    lines.push(m['cli.agent.codex.version_unverified']({ version: result.version }));
+  if (result.authMode !== undefined)
+    lines.push(
+      m['cli.agent.codex.auth_result']({
+        mode: result.authMode,
+      }),
+    );
+  if (result.connection === 'offline' || result.connection === 'invalid_response')
+    lines.push(m['cli.agent.codex.offline']());
+  if (result.migrationAction !== 'restore') {
+    lines.push(m['cli.agent.codex.reopen']());
+    if (result.migration.status === 'partial') lines.push(m['cli.agent.codex.migration_partial']());
+    else if (result.migration.status === 'blocked') lines.push(m['cli.agent.codex.migration_blocked']());
+    else if (result.migration.status === 'completed') lines.push(m['cli.agent.codex.migration_complete']());
+  } else if (result.migration.status === 'completed') {
+    lines.push(m['cli.agent.codex.migration_complete']());
+  }
+  return lines;
+};
+
+const renderCodexRemove = (result: CodexRemoveResult): string[] => [
+  m['cli.agent.codex.removed']({ configPath: result.configPath, status: result.status }),
+  ...(result.status === 'blocked' ? [m['cli.agent.codex.remove_blocked']()] : []),
+  m['cli.agent.codex.keys_retained'](),
+];
 
 export function renderAgentList(result: AgentListResult, json: boolean): string[] {
   if (json) return [JSON.stringify(result)];
@@ -55,10 +128,12 @@ export function renderAgentList(result: AgentListResult, json: boolean): string[
       }),
     );
   }
+  lines.push(...renderCodexList(result.codex));
   return lines;
 }
 
 export function renderAgentConfigure(result: AgentConfigureResult): string[] {
+  if (result.target === 'codex') return renderCodexConfigure(result);
   const lines = [
     result.status === 'newer'
       ? m['cli.agent.configure.newer']({ target: result.target })
@@ -82,9 +157,10 @@ export function renderAgentConfigure(result: AgentConfigureResult): string[] {
   return lines;
 }
 
-export const renderAgentRemove = (result: AgentRemoveResult): string[] => [
-  m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId }),
-];
+export const renderAgentRemove = (result: AgentRemoveResult): string[] =>
+  result.target === 'codex'
+    ? renderCodexRemove(result)
+    : [m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })];
 export const renderAgentRevoke = (result: AgentRevokeResult): string[] => [
   m['cli.agent.revoke.success']({ installationId: result.installationId, status: result.status }),
 ];
@@ -95,9 +171,10 @@ export type AgentCliActions = {
     readonly authorizations: boolean;
     readonly json: boolean;
   }) => Promise<AgentListResult>;
-  readonly configure: (target: string) => Promise<AgentConfigureResult>;
+  readonly configure: (target: string, options?: CodexConfigureOptions) => Promise<AgentConfigureResult>;
   readonly remove: (target: string) => Promise<AgentRemoveResult>;
   readonly revoke: (installationId: string) => Promise<AgentRevokeResult>;
+  readonly authCodex?: (installationId: string) => Promise<void>;
 };
 
 export function registerAgentCommands(
@@ -121,13 +198,31 @@ export function registerAgentCommands(
       };
       emit(renderAgentList(await input.actions.list(normalized), normalized.json));
     });
-  agent.command('configure <opencode|pi|omp>').action(async (target) => {
-    emit(renderAgentConfigure(await input.actions.configure(target)));
-  });
-  agent.command('remove <opencode|pi|omp>').action(async (target) => {
+  agent
+    .command('configure <opencode|pi|omp|codex>')
+    .option('--restore-migration <operation-id>', m['cli.agent.codex.restore_option']())
+    .action(async (target, options) => {
+      if (target !== 'codex' && options.restoreMigration !== undefined)
+        throw new Error('--restore-migration is only supported for codex');
+      emit(
+        renderAgentConfigure(
+          await input.actions.configure(target, {
+            ...(options.restoreMigration === undefined ? {} : { restoreMigration: options.restoreMigration }),
+          }),
+        ),
+      );
+    });
+  agent.command('remove <opencode|pi|omp|codex>').action(async (target) => {
     emit(renderAgentRemove(await input.actions.remove(target)));
   });
   agent.command('revoke <installation-id>').action(async (installationId) => {
     emit(renderAgentRevoke(await input.actions.revoke(installationId)));
   });
+  agent
+    .command('auth <codex>')
+    .requiredOption('--installation-id <uuid>', m['cli.agent.codex.auth_installation_option']())
+    .action(async (target, options) => {
+      if (target !== 'codex' || input.actions.authCodex === undefined) throw new Error('Codex auth is unavailable');
+      await input.actions.authCodex(options.installationId);
+    });
 }

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rename, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
-import type { AgentCatalogV1, AgentManagedStateV1, AgentTarget } from '@aio-proxy/types';
+import type { AgentCatalogV1, AgentManagedStateV1, AgentPluginTarget } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../hosts';
 import { openCodeEntry } from './inspect';
@@ -14,7 +14,7 @@ export const fixtureRoots: string[] = [];
 
 export { openCodeEntry };
 
-export const fixtureCatalog = (agent: AgentTarget): AgentCatalogV1 => ({
+export const fixtureCatalog = (agent: AgentPluginTarget): AgentCatalogV1 => ({
   schema_version: 1,
   agent,
   models: [
@@ -32,7 +32,7 @@ export const fixtureCatalog = (agent: AgentTarget): AgentCatalogV1 => ({
   ],
 });
 
-export const validState = (agent: AgentTarget = 'pi'): AgentManagedStateV1 => ({
+export const validState = (agent: AgentPluginTarget = 'pi'): AgentManagedStateV1 => ({
   format: 1,
   catalogSchema: 1,
   status: 'fresh',
@@ -56,7 +56,7 @@ export async function snapshotTree(root: string): Promise<Record<string, string>
 }
 
 export async function installFixture(
-  target: AgentTarget,
+  target: AgentPluginTarget,
   options: {
     readonly existing?: boolean;
     readonly state?: AgentManagedStateV1;
@@ -159,7 +159,7 @@ export async function displaceAndReplaceFile(path: string, displaced: string, co
   await writeFile(path, contents);
 }
 
-export async function removeFixture(target: AgentTarget, options: { readonly conflictingEntry?: boolean } = {}) {
+export async function removeFixture(target: AgentPluginTarget, options: { readonly conflictingEntry?: boolean } = {}) {
   const fixture = await installFixture(target, { existing: true });
   if (options.conflictingEntry === true && fixture.location.adjacentEntry !== undefined) {
     await writeFile(fixture.location.adjacentEntry, 'user-owned entry');

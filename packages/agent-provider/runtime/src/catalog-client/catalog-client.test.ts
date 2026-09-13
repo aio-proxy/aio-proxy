@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import type { AgentCatalogV1, AgentManagedMarker, AgentManagedStateV1 } from '@aio-proxy/types';
 
-import { refreshAgentCatalog } from './catalog-client';
+import { refreshAgentCatalog, type RefreshCatalogInput } from './catalog-client';
 
 const CATALOG: AgentCatalogV1 = {
   schema_version: 1,
@@ -129,6 +129,26 @@ test('wrong target never replaces state', async () => {
   const f = runtimeFixture({ lkg: CATALOG });
   await refreshAgentCatalog({ ...f.input, fetch: async () => Response.json({ ...CATALOG, agent: 'pi' }) });
   expect(f.readState().lkg).toEqual(CATALOG);
+});
+
+test('rejects a Codex marker before serializing a plugin catalog request', async () => {
+  const f = runtimeFixture();
+  let requests = 0;
+  const codexInput = {
+    ...f.input,
+    marker: { ...RUNTIME_MARKER, agent: 'codex' },
+  } as unknown as RefreshCatalogInput;
+
+  await expect(
+    refreshAgentCatalog({
+      ...codexInput,
+      fetch: async () => {
+        requests += 1;
+        return Response.json(CATALOG);
+      },
+    }),
+  ).rejects.toThrow('Agent catalog requires a plugin target');
+  expect(requests).toBe(0);
 });
 
 test('missing LKG remains missing after a failed refresh', async () => {

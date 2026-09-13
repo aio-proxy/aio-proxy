@@ -217,11 +217,14 @@ const listModelsHandler =
       }
       return context.json(await agentCatalog(state, query.agent));
     }
-    if (grant !== undefined) {
-      return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
-    }
     if (context.req.query('client_version') !== undefined) {
+      if (grant !== undefined && grant.target !== 'codex') {
+        return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
+      }
       return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
+    }
+    if (grant !== undefined && grant.target !== 'codex') {
+      return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
     }
     return context.json(await listModels(state));
   };

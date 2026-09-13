@@ -41,6 +41,7 @@ export const revokeAgentInstallation = async (
   const response = await fetchFn(`${endpoint}/admin/agent-installations/${encodeURIComponent(id)}/revoke`, {
     method: 'POST',
     signal: AbortSignal.timeout(3_000),
+    redirect: 'error',
   });
   if (!response.ok) throw new Error(`agent admin revoke failed (${response.status})`);
   const parsed = AgentRevokeResponseSchema.parse(await response.json());
