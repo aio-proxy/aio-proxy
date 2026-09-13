@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { chmod, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { acquireFileLock } from '@aio-proxy/core';
+import { acquireProcessFileLock } from '@aio-proxy/core';
 
 import * as grokPublic from '../grok';
 import { grokPaths, readGrokFile, replaceGrokFile } from '../grok/files';
@@ -154,7 +154,7 @@ test('completion-mark write failure exits nonzero, recovers the lock, and keeps 
     expect(saved.status).toBe('ready');
     expect(saved.deliveredBy).toBeUndefined();
     expect(saved.refreshToken).not.toBe(h.issued.refreshToken);
-    const recovered = await acquireFileLock(join(h.root, '.aio-proxy.lock'), { deadline: Date.now() + 2_000 });
+    const recovered = await acquireProcessFileLock(join(h.root, '.aio-proxy.lock'), AbortSignal.timeout(2_000));
     await recovered.release();
     expect(await first.stdout).toBeDefined();
   } finally {
@@ -172,7 +172,7 @@ test('kill before stdout exits nonzero, recovers the lock, and keeps the new ref
     expect(saved.refreshToken).not.toBe(h.issued.refreshToken);
     expect(await killChild(first)).not.toBe(0);
     expect(await first.stdout).not.toContain('access_token');
-    const recovered = await acquireFileLock(join(h.root, '.aio-proxy.lock'), { deadline: Date.now() + 2_000 });
+    const recovered = await acquireProcessFileLock(join(h.root, '.aio-proxy.lock'), AbortSignal.timeout(2_000));
     await recovered.release();
     const next = h.spawnHelperForTest(h.input);
     expect(await next.exit).toBe(0);
@@ -192,7 +192,7 @@ test('kill after output before the completion mark exits nonzero without treatin
     expect(saved.deliveredBy).toBeUndefined();
     expect(await killChild(first)).not.toBe(0);
     await first.stdout;
-    const recovered = await acquireFileLock(join(h.root, '.aio-proxy.lock'), { deadline: Date.now() + 2_000 });
+    const recovered = await acquireProcessFileLock(join(h.root, '.aio-proxy.lock'), AbortSignal.timeout(2_000));
     await recovered.release();
     expect((await readMeta(h.root)).refreshToken).toBe(saved.refreshToken);
   } finally {
@@ -444,7 +444,7 @@ test('a replaced lock inode cannot be unlinked by the former owner', async () =>
     await holder.deliveryCommitted;
     const lockPath = join(h.root, '.aio-proxy.lock');
     await unlink(lockPath);
-    const replacement = await acquireFileLock(lockPath, { deadline: Date.now() + 2_000 });
+    const replacement = await acquireProcessFileLock(lockPath, AbortSignal.timeout(2_000));
     holder.release();
     await holder.exit;
     expect(JSON.parse(await readFile(lockPath, 'utf8')).owner).toBe(replacement.owner);

@@ -1,4 +1,4 @@
-import type { FileLock } from '@aio-proxy/core';
+import type { ProcessFileLock } from '@aio-proxy/core';
 
 import {
   assertSafePrivateDir,
@@ -73,7 +73,7 @@ async function mustReadOwnership(paths: GrokPaths, budget: GrokDeadline): Promis
 }
 
 async function configureExisting(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   input: GrokConfigureInput,
   deps: GrokDeps,
@@ -141,7 +141,7 @@ const resumeConfigureInstallationId = (
 };
 
 async function configureFirst(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   input: GrokConfigureInput,
   deps: GrokDeps,

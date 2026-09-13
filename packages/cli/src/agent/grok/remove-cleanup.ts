@@ -1,4 +1,4 @@
-import type { FileLock } from '@aio-proxy/core';
+import type { ProcessFileLock } from '@aio-proxy/core';
 import type { AgentRevokeStatus } from '@aio-proxy/types';
 
 import {
@@ -61,7 +61,7 @@ async function credentialAbsent(paths: GrokPaths, budget: GrokDeadline): Promise
 }
 
 async function unlinkKnownFile(
-  lock: FileLock,
+  lock: ProcessFileLock,
   identity: GrokFileIdentity | undefined,
   budget: GrokDeadline,
 ): Promise<void> {
@@ -94,7 +94,7 @@ async function unknownRetainedNames(
 }
 
 export async function cleanupPrivateDir(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   privateDir: GrokFileIdentity,
   marker: GrokFileIdentity | undefined,
@@ -145,7 +145,7 @@ function requireCompletedOwnership(text: string): GrokOwnership {
 }
 
 export async function narrowCompletedRemoval(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   privateDir: GrokFileIdentity,
   budget: GrokDeadline,
@@ -175,7 +175,7 @@ export async function narrowCompletedRemoval(
 }
 
 export async function narrowBootstrapRemoval(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   privateDir: GrokFileIdentity,
   budget: GrokDeadline,
@@ -204,7 +204,7 @@ export async function narrowBootstrapRemoval(
 }
 
 export async function finishRootRemovalJournal(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   budget: GrokDeadline,
 ): Promise<GrokRemoveResult> {

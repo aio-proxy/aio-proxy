@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { acquireFileLock, type FileLock } from '@aio-proxy/core';
+import { acquireProcessFileLock, type ProcessFileLock } from '@aio-proxy/core';
 
 import {
   readGrokFile,
@@ -66,12 +66,9 @@ export const tryReadLeaf = (text: string, path: GrokPath) => {
 export async function withGrokLock<T>(
   root: string,
   budget: GrokDeadline,
-  action: (lock: FileLock) => Promise<T>,
+  action: (lock: ProcessFileLock) => Promise<T>,
 ): Promise<T> {
-  const lock = await acquireFileLock(join(root, '.aio-proxy.lock'), {
-    deadline: budget.deadline,
-    signal: budget.signal,
-  });
+  const lock = await acquireProcessFileLock(join(root, '.aio-proxy.lock'), budget.signal);
   try {
     return await action(lock);
   } finally {
@@ -80,7 +77,7 @@ export async function withGrokLock<T>(
 }
 
 export async function replaceOwnedFile(
-  lock: FileLock,
+  lock: ProcessFileLock,
   path: string,
   text: string,
   expected: GrokFileSnapshot | undefined,
@@ -165,7 +162,7 @@ export function requireCurrent(text: string, ownership: GrokOwnership): void {
 }
 
 export async function persistOwnership(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   ownership: GrokOwnership,
   expected: GrokFileSnapshot | undefined,
@@ -178,7 +175,7 @@ export async function persistOwnership(
 }
 
 export async function persistMarker(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   marker: GrokMarker,
   expected: GrokFileSnapshot | undefined,
@@ -211,7 +208,7 @@ function isOwnedRemovalJournal(existingText: string, nextText: string): boolean 
 }
 
 export async function persistRemovalJournal(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   text: string,
   budget: GrokDeadline,
@@ -223,7 +220,11 @@ export async function persistRemovalJournal(
   await replaceOwnedFile(lock, paths.removalJournal, text, existing, budget);
 }
 
-export async function clearRemovalJournal(lock: FileLock, paths: GrokPaths, budget: GrokDeadline): Promise<void> {
+export async function clearRemovalJournal(
+  lock: ProcessFileLock,
+  paths: GrokPaths,
+  budget: GrokDeadline,
+): Promise<void> {
   const existing = await readRemovalJournal(paths, budget);
   if (existing === undefined) return;
   await lock.withOwnershipFence(async (assertOwnership) => {
@@ -232,7 +233,7 @@ export async function clearRemovalJournal(lock: FileLock, paths: GrokPaths, budg
 }
 
 export async function clearConsumedRemovalJournal(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   budget: GrokDeadline,
 ): Promise<void> {
@@ -248,7 +249,11 @@ export async function clearConsumedRemovalJournal(
   }
 }
 
-export async function clearOwnedRemovalJournal(lock: FileLock, paths: GrokPaths, budget: GrokDeadline): Promise<void> {
+export async function clearOwnedRemovalJournal(
+  lock: ProcessFileLock,
+  paths: GrokPaths,
+  budget: GrokDeadline,
+): Promise<void> {
   const existing = await readRemovalJournal(paths, budget);
   if (existing === undefined) return;
   try {
@@ -264,7 +269,7 @@ export async function clearOwnedRemovalJournal(lock: FileLock, paths: GrokPaths,
 }
 
 export async function restoreOwnershipFromRemovalJournal(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   budget: GrokDeadline,
 ): Promise<GrokFileSnapshot | undefined> {
@@ -277,7 +282,7 @@ export async function restoreOwnershipFromRemovalJournal(
 }
 
 export async function commitGrokEdit(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   operation: 'configure' | 'remove',
   edit: TomlEdit,

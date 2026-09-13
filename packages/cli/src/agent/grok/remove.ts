@@ -1,4 +1,4 @@
-import type { FileLock } from '@aio-proxy/core';
+import type { ProcessFileLock } from '@aio-proxy/core';
 import type { AgentRevokeStatus } from '@aio-proxy/types';
 
 import {
@@ -91,7 +91,7 @@ function completedOwnership(ownership: GrokOwnership, revokeStatus: AgentRevokeS
 }
 
 async function removeManaged(
-  lock: FileLock,
+  lock: ProcessFileLock,
   paths: GrokPaths,
   privateDir: GrokFileIdentity,
   deps: GrokDeps,

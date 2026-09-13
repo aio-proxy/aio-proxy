@@ -3,7 +3,7 @@ import { chmod, readFile, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { AgentRuntimeError } from '@aio-proxy/agent-provider-runtime';
-import { acquireFileLock } from '@aio-proxy/core';
+import { acquireProcessFileLock } from '@aio-proxy/core';
 import { AgentDeviceCodeResponseSchema, AgentTokenResponseSchema } from '@aio-proxy/types';
 
 import { configureGrok, loadGrokPolicy, readGrokObservation, type GrokAuthObservation } from '../grok';
@@ -402,7 +402,7 @@ test('auth reuse with a later routing conflict produces no stdout', async () => 
   try {
     await grokAuth(f.input, f.deps);
     const current = await readCredentialFile(f.root);
-    const lock = await acquireFileLock(join(f.root, '.aio-proxy.lock'), { deadline: Date.now() + 5_000 });
+    const lock = await acquireProcessFileLock(join(f.root, '.aio-proxy.lock'), AbortSignal.timeout(5_000));
     const seen = Promise.withResolvers<void>();
     try {
       await writeCredentialFile(f.root, { ...current, deliveredBy: lock.owner });
@@ -531,7 +531,7 @@ test('silent overlapping helper refreshes instead of reusing the observed access
     await grokAuth(f.input, f.deps);
     const current = await readCredentialFile(f.root);
     const oldAccess = current.accessToken;
-    const lock = await acquireFileLock(join(f.root, '.aio-proxy.lock'), { deadline: Date.now() + 5_000 });
+    const lock = await acquireProcessFileLock(join(f.root, '.aio-proxy.lock'), AbortSignal.timeout(5_000));
     const seen = Promise.withResolvers<GrokAuthObservation>();
     try {
       await writeCredentialFile(f.root, { ...current, deliveredBy: lock.owner });
@@ -569,7 +569,7 @@ test('an overlapping lock owner reuses the same revision', async () => {
   try {
     await grokAuth(f.input, f.deps);
     const current = await readCredentialFile(f.root);
-    const lock = await acquireFileLock(join(f.root, '.aio-proxy.lock'), { deadline: Date.now() + 5_000 });
+    const lock = await acquireProcessFileLock(join(f.root, '.aio-proxy.lock'), AbortSignal.timeout(5_000));
     const seen = Promise.withResolvers<GrokAuthObservation>();
     try {
       await writeCredentialFile(f.root, { ...current, deliveredBy: lock.owner });
@@ -613,7 +613,7 @@ test('an overlapping helper does not reuse an access token with under one second
   try {
     await grokAuth(f.input, f.deps);
     const current = await readCredentialFile(f.root);
-    const lock = await acquireFileLock(join(f.root, '.aio-proxy.lock'), { deadline: Date.now() + 5_000 });
+    const lock = await acquireProcessFileLock(join(f.root, '.aio-proxy.lock'), AbortSignal.timeout(5_000));
     const seen = Promise.withResolvers<void>();
     try {
       await writeCredentialFile(f.root, {

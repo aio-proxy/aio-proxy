@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { observeFileLockOwner } from '@aio-proxy/core';
+import { observeProcessFileLock } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
@@ -52,30 +52,9 @@ const GrokObservationSchema = z
   })
   .passthrough();
 
-const LOCK_WRITE_GRACE_MS = 250;
-
-const isTemporaryLockObservation = (error: unknown): boolean =>
-  error instanceof Error && error.message.startsWith('temporary file lock observation failure');
-
-const isMalformedLockObservation = (error: unknown): boolean =>
-  error instanceof Error && error.message.startsWith('temporary file lock observation failure (malformed)');
-
 async function observeGrokLockOwner(root: string, budget: GrokDeadline): Promise<string | undefined> {
-  const path = join(root, '.aio-proxy.lock');
-  const started = Date.now();
-  while (true) {
-    budget.signal.throwIfAborted();
-    try {
-      return await observeFileLockOwner(path, budget);
-    } catch (error) {
-      if (!isTemporaryLockObservation(error)) throw error;
-      const remaining = budget.deadline - Date.now();
-      if (remaining <= 0) throw error;
-      // acquireFileLock creates the lock file before writing the JSON record.
-      if (isMalformedLockObservation(error) && Date.now() - started >= LOCK_WRITE_GRACE_MS) return undefined;
-      await Bun.sleep(Math.min(50 + Math.floor(Math.random() * 25), remaining));
-    }
-  }
+  budget.signal.throwIfAborted();
+  return (await observeProcessFileLock(join(root, '.aio-proxy.lock')))?.owner;
 }
 
 export async function readGrokObservation(
