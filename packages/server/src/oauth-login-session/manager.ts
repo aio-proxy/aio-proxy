@@ -1,13 +1,16 @@
 import {
   type AtomicConfigFile,
+  type AccountWrite,
   type DiagnosticFactory,
   type LoginOAuthAccountOptions,
   loginOAuthAccount,
   type OAuthProviderPatch,
+  type OAuthSharingService,
   type PluginLogSink,
   type PluginRegistry,
   type PluginRepository,
   ProviderAccountAlreadyExistsError,
+  syncDigestPhase,
 } from '@aio-proxy/core';
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardOAuthSession, DashboardOAuthSessionStart } from '@aio-proxy/types';
@@ -18,6 +21,7 @@ import { OAuthCallbackError } from './callback';
 type RegistryLease = { readonly registry: PluginRegistry; readonly release: () => void };
 type ProviderCommitCoordinator = NonNullable<LoginOAuthAccountOptions['coordinateProviderCommit']>;
 type ProviderCommitValidator = NonNullable<LoginOAuthAccountOptions['validateProviderCommit']>;
+type SyncCommitHooks = NonNullable<LoginOAuthAccountOptions['syncCommit']>;
 type InternalSession = {
   snapshot: DashboardOAuthSession;
   readonly controller: AbortController;
@@ -33,6 +37,16 @@ type LoginSessionDeps = {
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
   readonly validateProviderCommit: ProviderCommitValidator;
+  readonly syncCommit?: SyncCommitHooks;
+  readonly sharing?: () => OAuthSharingService | undefined;
+  /**
+   * Whether this login must coordinate with sync at all, asked per login. A device that connects a
+   * backend after startup starts requiring coordination without recreating the manager, and one that
+   * never connects keeps plain logins instead of failing them for a service it will never have.
+   */
+  readonly syncEnabled?: () => boolean;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  readonly onAccountOperationPending?: () => void;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
@@ -64,40 +78,69 @@ const runLoginSession = async (
   });
   session.authorization = authorization;
   try {
-    const result = await loginOAuthAccount({
-      ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
-      ...(input.capability === undefined ? {} : { capability: input.capability }),
-      ...(input.providerPatch === undefined
-        ? {}
-        : {
-            providerPatch: {
-              name: input.providerPatch.name,
-              enabled: input.providerPatch.enabled,
-              priority: input.providerPatch.priority,
-              weight: input.providerPatch.weight,
-              proxy: input.providerPatch.proxy,
-              alias: input.providerPatch.alias,
-              excludedModels: input.providerPatch.excludedModels,
-              transforms: input.providerPatch.transforms,
-            } satisfies OAuthProviderPatch,
-          }),
-      registry: lease.registry,
-      repository: deps.repository,
-      config: deps.configFile,
-      renderAccountOptions: async ({ currentSecrets }) => {
-        const secrets: Record<string, unknown> = { ...currentSecrets, ...input.secrets };
-        for (const key of input.clearSecrets) delete secrets[key];
-        return { publicValues: input.publicValues, secrets };
-      },
-      createAuthorization: () => authorization.port,
-      ...(deps.createFetch === undefined ? {} : { fetch: deps.createFetch(input) }),
-      diagnostics: deps.diagnostics,
-      logger: deps.logger,
-      coordinateProviderCommit: deps.coordinateProviderCommit,
-      validateProviderCommit: deps.validateProviderCommit,
-      onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
-      signal: session.controller.signal,
-    });
+    const login = () =>
+      loginOAuthAccount({
+        ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
+        ...(input.capability === undefined ? {} : { capability: input.capability }),
+        ...(input.providerPatch === undefined
+          ? {}
+          : {
+              providerPatch: {
+                name: input.providerPatch.name,
+                enabled: input.providerPatch.enabled,
+                priority: input.providerPatch.priority,
+                weight: input.providerPatch.weight,
+                proxy: input.providerPatch.proxy,
+                alias: input.providerPatch.alias,
+                excludedModels: input.providerPatch.excludedModels,
+                transforms: input.providerPatch.transforms,
+              } satisfies OAuthProviderPatch,
+            }),
+        registry: lease.registry,
+        repository: deps.repository,
+        config: deps.configFile,
+        renderAccountOptions: async ({ currentSecrets }) => {
+          const secrets: Record<string, unknown> = { ...currentSecrets, ...input.secrets };
+          for (const key of input.clearSecrets) delete secrets[key];
+          return { publicValues: input.publicValues, secrets };
+        },
+        createAuthorization: () => authorization.port,
+        ...(deps.createFetch === undefined ? {} : { fetch: deps.createFetch(input) }),
+        diagnostics: deps.diagnostics,
+        logger: deps.logger,
+        coordinateProviderCommit: deps.coordinateProviderCommit,
+        validateProviderCommit: deps.validateProviderCommit,
+        ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
+        ...(deps.sharing === undefined || deps.syncEnabled?.() === false
+          ? {}
+          : {
+              beforeAccountOperationComplete: async (operation, signal) => {
+                const sharing = deps.sharing?.();
+                if (sharing === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
+                const account = deps.repository.readAccount(operation.providerId);
+                if (account === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+                const candidate: AccountWrite = {
+                  providerId: account.providerId,
+                  plugin: account.plugin,
+                  capability: account.capability,
+                  fingerprint: account.fingerprint,
+                  options: account.options,
+                  secrets: account.secrets,
+                  credential: account.credential,
+                  ...(account.label === undefined ? {} : { label: account.label }),
+                  ...(account.expiresAt === undefined ? {} : { expiresAt: account.expiresAt }),
+                  catalog: { kind: 'preserve' },
+                };
+                await sharing.synchronizeLogin(operation.providerId, candidate, signal);
+              },
+            }),
+        onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
+        signal: session.controller.signal,
+      });
+    const result =
+      input.targetProviderId === undefined || deps.withProviderGate === undefined
+        ? await login()
+        : await deps.withProviderGate(input.targetProviderId, login);
     await deps.reload();
     const warning = deps.repository
       .readDiagnostics(result.providerId)
@@ -111,6 +154,16 @@ const runLoginSession = async (
       ...(warning === undefined ? {} : { warning }),
     });
   } catch (error) {
+    // Best-effort: a login that failed because the server is shutting down reads a closed
+    // database here, and losing the session's real failure status to that is never worth it.
+    try {
+      if (
+        deps.repository
+          .listPendingAccountOperations()
+          .some((operation) => syncDigestPhase(operation.targetDigest).phase !== 'none')
+      )
+        deps.onAccountOperationPending?.();
+    } catch {}
     if (error instanceof ProviderAccountAlreadyExistsError) {
       deps.publish(session, { id, status: 'succeeded', providerId: error.existingProviderId, duplicate: true });
     } else if (session.controller.signal.aborted) {
@@ -133,6 +186,11 @@ export const createOAuthLoginSessionManager = (options: {
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
   readonly validateProviderCommit: ProviderCommitValidator;
+  readonly syncCommit?: SyncCommitHooks;
+  readonly sharing?: () => OAuthSharingService | undefined;
+  readonly syncEnabled?: () => boolean;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  readonly onAccountOperationPending?: () => void;
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly now?: () => number;
@@ -188,7 +246,12 @@ export const createOAuthLoginSessionManager = (options: {
         logger: options.logger,
         coordinateProviderCommit: options.coordinateProviderCommit,
         validateProviderCommit: options.validateProviderCommit,
+        ...(options.syncCommit === undefined ? {} : { syncCommit: options.syncCommit }),
+        ...(options.sharing === undefined ? {} : { sharing: options.sharing }),
+        ...(options.syncEnabled === undefined ? {} : { syncEnabled: options.syncEnabled }),
+        ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
         reload: options.reload,
+        onAccountOperationPending: options.onAccountOperationPending,
         ...(options.createFetch === undefined ? {} : { createFetch: options.createFetch }),
         ...(options.completeUrl === undefined ? {} : { completeUrl: options.completeUrl }),
         publish,

@@ -7,7 +7,9 @@ import type {
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
+import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import type { Config } from '@aio-proxy/types';
+import type { SyncControlPlane } from '@aio-proxy/types';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import type { CatalogScheduler } from '../catalog-scheduler';
@@ -26,6 +28,8 @@ import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
+import type { ServerSyncLifecycle } from '../sync-control-plane';
+import type { SyncCommitHooks } from '../sync-control-plane/commit';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
 import type { QuotaIdentityTracker } from './quota-invalidation';
 import { createRecovery } from './recovery';
@@ -59,6 +63,18 @@ export type ServerRuntime = {
   quotaIdentity: QuotaIdentityTracker | undefined;
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
+  sync: ServerSyncLifecycle | undefined;
+  syncControl: SyncControlPlane | undefined;
+  syncCommit: SyncCommitHooks | undefined;
+  remoteConfigFence: { readonly digest: string; readonly operationId: string } | undefined;
+  prepareOAuth?: (plugins: import('@aio-proxy/core').PluginRegistrySnapshot) => Promise<void>;
+  readonly resolveSharedCredential: (
+    providerId: string,
+    schema: ZodType<unknown>,
+  ) => CredentialPort<unknown> | undefined;
+  readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  /** Runs only when the Provider is free; see `tryProviderGate` on the recovery options. */
+  readonly tryProviderGate: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
 };
 
 /**
@@ -100,6 +116,9 @@ export async function commitConfig(
     runtime.pluginLogger,
     () => queueRebuild(runtime),
     runtime.createRouter,
+    runtime.resolveSharedCredential,
+    runtime.withProviderGate,
+    runtime.prepareOAuth,
   );
   const before = (runtime.manager.current() as Snapshot).summaries;
   const retired = runtime.manager.swap(candidate);
@@ -116,6 +135,7 @@ export async function commitConfig(
 export function reloadNow(
   runtime: ServerRuntime,
   retainedOperations: readonly PendingAccountOperation[] = [],
+  remoteOrigin = false,
 ): Promise<ConfigReloadResult> {
   return reloadSnapshot({
     accountRemovals: runtime.accountRemovals,
@@ -127,6 +147,7 @@ export function reloadNow(
       ? {}
       : { onDashboardAuthHealthChanged: runtime.internalOptions.__dashboardAuthHealthChanged }),
     retainedOperations,
+    ...(remoteOrigin || runtime.syncCommit === undefined ? {} : { syncCommit: runtime.syncCommit }),
   });
 }
 
@@ -159,10 +180,59 @@ export type ServerStateParts = Pick<
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
   readonly databaseOwnership: DatabaseOwnershipLock;
+  readonly sync?: SyncControlPlane;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
   const { events, repository, options, logger } = runtime;
+  let schedulersStopped = false;
+  let resourcesClosed = false;
+  let closePromise: Promise<void> | undefined;
+  const failures: unknown[] = [];
+  const runClosers = (closers: readonly (() => void)[]): void => {
+    for (const close of closers) {
+      try {
+        close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  };
+  // Cancelling the timers stays synchronous even when sync teardown is not. close() is a
+  // synchronous contract, and a recovery or catalog run that rearms or logs while the sync
+  // lifecycle is still draining outlives the server it belongs to.
+  const stopSchedulers = (): void => {
+    if (schedulersStopped) return;
+    schedulersStopped = true;
+    runClosers([
+      () => parts.watcher?.close(),
+      () => runtime.scheduler.close(),
+      parts.closeRecovery,
+      () => parts.oauthLoginSessions.close(),
+      () => parts.realtimeCalls.close(),
+      () => parts.videoJobs.close(),
+    ]);
+  };
+  const closeRemainingResources = (): void => {
+    if (resourcesClosed) return;
+    resourcesClosed = true;
+    stopSchedulers();
+    runClosers([() => events.close(), () => dbHandle.close(), parts.databaseOwnership.release]);
+    if (failures[0] !== undefined) throw failures[0];
+  };
+  const closeAsync = async (): Promise<void> => {
+    if (closePromise !== undefined) return closePromise;
+    runtime.closed = true;
+    stopSchedulers();
+    closePromise = (async () => {
+      try {
+        await runtime.sync?.close();
+      } finally {
+        closeRemainingResources();
+      }
+    })();
+    return closePromise;
+  };
   return {
     agentIdentity: parts.agentIdentity,
     acquireProviderSnapshot: manager.acquire,
@@ -170,26 +240,20 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      const failures: unknown[] = [];
-      for (const close of [
-        () => parts.watcher?.close(),
-        () => runtime.scheduler.close(),
-        parts.closeRecovery,
-        () => parts.oauthLoginSessions.close(),
-        () => parts.realtimeCalls.close(),
-        () => parts.videoJobs.close(),
-        () => events.close(),
-        () => dbHandle.close(),
-        parts.databaseOwnership.release,
-      ]) {
-        try {
-          close();
-        } catch (error) {
-          failures.push(error);
-        }
+      stopSchedulers();
+      if (runtime.sync === undefined) {
+        closeRemainingResources();
+        closePromise = Promise.resolve();
+        return;
       }
-      if (failures[0] !== undefined) throw failures[0];
+      runtime.sync.abort();
+      closePromise = runtime.sync
+        .close()
+        .catch(() => {})
+        .then(() => closeRemainingResources());
+      void closePromise.catch(() => {});
     },
+    closeAsync,
     configPath: options.configPath,
     configStore: parts.configStore,
     currentProviderSnapshot: manager.current,
@@ -214,6 +278,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     traceStore: parts.traceStore,
     logger,
     requestRecorder: parts.requestRecorder,
+    sync: parts.sync,
     usageCapture: parts.usageCapture,
   };
 }
@@ -231,6 +296,7 @@ export async function startRecovery(
     readonly recoverAccounts: Parameters<typeof createRecovery>[0]['recoverAccounts'];
     readonly recoveryScheduler: Parameters<typeof createRecovery>[0]['scheduler'];
     readonly reconciliationRetryMs: number;
+    readonly syncCommit?: SyncCommitHooks;
   },
   registerStartupCleanup: (cleanup: () => void) => void,
 ): Promise<ConfigStore> {
@@ -244,6 +310,8 @@ export async function startRecovery(
     reconciliationRetryMs: deps.reconciliationRetryMs,
     enqueue: runtime.queue,
     canDeleteAccount: runtime.manager.canDeleteAccount,
+    withProviderGate: runtime.withProviderGate,
+    tryProviderGate: runtime.tryProviderGate,
     reloadNow: (operations) => reloadNow(runtime, operations),
   });
   runtime.recovery = recovery;
@@ -256,6 +324,7 @@ export async function startRecovery(
     enqueue: runtime.queue,
     onReconciliationNeeded: recovery.scheduleReconciliation,
     repository: runtime.repository,
+    ...(deps.syncCommit === undefined ? {} : { syncCommit: deps.syncCommit }),
     verify: (candidate) => commitConfig(runtime, parseRuntimeConfig(candidate), 'config-store'),
   });
 }
@@ -264,6 +333,9 @@ export function startLoginSessions(
   runtime: ServerRuntime,
   configStore: ConfigStore,
   reload: () => Promise<ConfigReloadResult>,
+  syncCommit?: SyncCommitHooks,
+  sharing?: () => import('@aio-proxy/core').OAuthSharingService | undefined,
+  syncEnabled?: () => boolean,
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
   const testHooks = internalOptions.__test;
@@ -292,6 +364,10 @@ export function startLoginSessions(
         }
         return commit();
       }),
+    ...(syncCommit === undefined ? {} : { syncCommit }),
+    ...(sharing === undefined ? {} : { sharing }),
+    ...(syncEnabled === undefined ? {} : { syncEnabled }),
+    withProviderGate: runtime.withProviderGate,
     validateProviderCommit: (capability, current) => {
       const plugins = (manager.current() as Snapshot).plugins;
       const builtIn = plugins.plugins.get(capability.plugin)?.builtIn === true;
@@ -312,6 +388,7 @@ export function startLoginSessions(
       return createRuntimeFetch({ control, model: control });
     },
     reload,
+    onAccountOperationPending: () => runtime.recovery?.schedule(Date.now() + 5_000),
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
     ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),
   });

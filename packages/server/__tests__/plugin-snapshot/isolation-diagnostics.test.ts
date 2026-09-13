@@ -177,9 +177,11 @@ test('a credential diagnostic raised after close does not rebuild the server sna
 
   try {
     expect(routerBuilds).toBe(1);
-    state.close();
+    // A closed server cannot answer for shared OAuth ownership, so the credential has to be read
+    // while it is still open. The late refusal below is the diagnostic that must not rebuild.
     const current = await credentialPort?.read();
     if (credentialPort === undefined || current === undefined) throw new Error('credential port was not created');
+    state.close();
     await credentialPort
       .refresh(current.revision, async () => {
         throw new Error('late refresh failure');

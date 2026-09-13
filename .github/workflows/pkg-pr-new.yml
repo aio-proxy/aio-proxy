@@ -1,0 +1,43 @@
+name: Package preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - run: bun install --frozen-lockfile --prefer-offline
+      - run: bun run build
+
+      # Every publishable library package, so a preview install of plugin-sdk resolves its
+      # workspace dependencies to this PR's code instead of silently falling back to the last
+      # release on npm. The launcher (`npm/aio-proxy`) and its `@aio-proxy/cli-*` platform
+      # packages stay out: they ship compiled binaries that only `build:binary` produces, and
+      # the darwin ones need codesigning on a macOS runner (see release.yml). `plugin-cloudkit`
+      # stays out for the same reason: `bun run build` runs only its rslib build, while at
+      # runtime it reads `dist/native/manifest.json` from the signed, notarized archive that
+      # `pack-native` produces on macOS. Publishing it here would ship a preview whose sync
+      # backend cannot connect.
+      - name: Publish preview packages
+        run: >
+          bun run pkg-pr-new publish
+          --bun
+          --peerDeps
+          --previewVersion
+          --commentWithSha
+          --no-compact
+          --no-template
+          ./packages/types
+          ./packages/shared
+          ./packages/plugin-sdk

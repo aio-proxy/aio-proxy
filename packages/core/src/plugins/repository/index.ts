@@ -6,9 +6,13 @@ import { createPluginStateRepository } from './plugin-state';
 import type { PluginRepository } from './types';
 
 export * from './types';
+export * from './sync-digest';
 
 export function createPluginRepository(sqlite: Database): PluginRepository {
   return {
+    withAccountTransaction<T>(run: () => T): T {
+      return sqlite.transaction(run)();
+    },
     ...createPluginStateRepository(sqlite),
     ...createAccountRepository(sqlite),
     ...createPendingOperationsRepository(sqlite),

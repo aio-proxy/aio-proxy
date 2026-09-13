@@ -27,7 +27,7 @@ export type {
 } from './ai-sdk-bridge';
 export { jsonSchema } from './ai-sdk-bridge';
 export { fileCacheStorage } from './cache/index';
-export { parseRuntimeConfig, resolveConfigTemplates } from './config/index';
+export { collectMissingTemplateEnv, parseRuntimeConfig, resolveConfigTemplates } from './config/index';
 export {
   type AnthropicMessageResponse,
   writeAnthropicMessagesResponse,
@@ -179,6 +179,7 @@ export {
 } from './models-dev/index';
 export type { ResolvedModelsDevEntry } from './models-dev/index';
 export { modelEffortValues, normalizeEffort } from './protocol/reasoning-effort/index';
+export * from './sync';
 export {
   fetchLatestNpmVersion,
   findInstalledNpmPackage,
@@ -192,7 +193,7 @@ export {
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
 export { canonicalizeLoopbackHost } from './network/index';
-export { aioHome, configPath, dbPath, packagesDir, updateCheckPath } from './paths/index';
+export { aioHome, configPath, dbPath, packagesDir, sessionKeyPath, updateCheckPath } from './paths/index';
 export {
   mergeUpdateCheckState,
   readUpdateCheckState,

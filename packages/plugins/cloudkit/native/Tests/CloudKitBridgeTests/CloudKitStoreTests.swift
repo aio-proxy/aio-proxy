@@ -1,0 +1,228 @@
+import CloudKit
+import CryptoKit
+#if canImport(XCTest)
+import XCTest
+@testable import CloudKitBridge
+
+final class CloudKitStoreTests: XCTestCase {
+    // A custom zone is not created for a user automatically, so a first-run device can only read
+    // or write once connect has made it. Verifying the account alone left every op on zoneNotFound.
+    func testConnectCreatesTheZoneBeforeAnyRecordWork() async throws {
+        let driver = FakeCloudKitDriver(zoneExists: false)
+        let store = CloudKitStore(driver: driver)
+        do {
+            _ = try await store.read(key: "k")
+            return XCTFail("read succeeded without the zone")
+        } catch let error as CKError {
+            XCTAssertEqual(error.code, .zoneNotFound)
+        }
+        _ = try await store.connect()
+        guard case .written = try await store.compareAndSwap(key: "k", expected: nil, value: Data("a".utf8)) else {
+            return XCTFail("write after connect did not succeed")
+        }
+        let page = try await store.list(prefix: "k", cursor: nil)
+        XCTAssertEqual(page.keys, ["k"])    }
+
+    func testOnlyOneConcurrentCreateWins() async throws {
+        let driver = FakeCloudKitDriver()
+        let a = CloudKitStore(driver: driver)
+        let b = CloudKitStore(driver: driver)
+        async let left = a.compareAndSwap(key: "k", expected: nil, value: Data("a".utf8))
+        async let right = b.compareAndSwap(key: "k", expected: nil, value: Data("b".utf8))
+        let results = try await [left, right]
+        XCTAssertEqual(results.filter { if case .written = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(results.filter { if case .conflict = $0 { return true }; return false }.count, 1)
+    }
+
+    func testStaleRemoveDoesNotDeleteNewerValue() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("old".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        guard case .written = try await store.compareAndSwap(key: "k", expected: version, value: Data("new".utf8)) else {
+            return XCTFail("replacement write did not succeed")
+        }
+        let removed = try await store.remove(key: "k", expected: version)
+        XCTAssertFalse(removed)
+        let read = try await store.read(key: "k")
+        guard case let .present(value) = read else {
+            return XCTFail("new value was removed")
+        }
+        XCTAssertEqual(value.bytes, Data("new".utf8))
+    }
+
+    func testRemoveThenExpectedNilCreateReusesBackingRecord() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("old".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        let removed = try await store.remove(key: "k", expected: version)
+        XCTAssertTrue(removed)
+        let afterRemove = try await store.read(key: "k")
+        XCTAssertEqual(afterRemove, .absent)
+        guard case let .written(newVersion, _) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("new".utf8)) else {
+            return XCTFail("recreate did not succeed")
+        }
+        XCTAssertFalse(newVersion.isEmpty)
+        guard case let .present(value) = try await store.read(key: "k") else {
+            return XCTFail("recreated value missing")
+        }
+        XCTAssertEqual(value.bytes, Data("new".utf8))
+    }
+
+    func testOnlyOneConcurrentTombstoneRecreationWins() async throws {
+        let driver = FakeCloudKitDriver()
+        let seed = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await seed.compareAndSwap(key: "k", expected: nil, value: Data("old".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        let removed = try await seed.remove(key: "k", expected: version)
+        XCTAssertTrue(removed)
+        let a = CloudKitStore(driver: driver)
+        let b = CloudKitStore(driver: driver)
+        async let left = a.compareAndSwap(key: "k", expected: nil, value: Data("a".utf8))
+        async let right = b.compareAndSwap(key: "k", expected: nil, value: Data("b".utf8))
+        let results = try await [left, right]
+        XCTAssertEqual(results.filter { if case .written = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(results.filter { if case .conflict = $0 { return true }; return false }.count, 1)
+    }
+
+    func testPostSaveTransportLossRecoversByRead() async throws {
+        let driver = FakeCloudKitDriver()
+        await driver.armPostSaveTransportLoss()
+        let store = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8)) else {
+            return XCTFail("write did not recover")
+        }
+        XCTAssertFalse(version.isEmpty)
+    }
+
+    // A removal whose conditional save commits but whose reply is lost must not surface as a
+    // transport failure: the caller's retry would see a key it cannot tell apart from one that
+    // was never removed. Only `outcomeUnknown` sends it down the mandatory reread path.
+    func testPostSaveTransportLossOnRemoveConfirmsTheTombstone() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        guard case let .written(version, _) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        await driver.armPostSaveTransportLoss()
+        XCTAssertTrue(try await store.remove(key: "k", expected: version))
+        XCTAssertEqual(try await store.read(key: "k"), .absent)
+    }
+
+    func testTransportLossThroughTheRecoveryReadIsOutcomeUnknown() async throws {
+        let driver = FakeCloudKitDriver()
+        await driver.armPostSaveTransportLoss(fetchAlsoFails: true)
+        let store = CloudKitStore(driver: driver)
+        do {
+            _ = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8))
+            XCTFail("write reported an outcome it could not observe")
+        } catch {
+            XCTAssertEqual(error as? StoreError, .outcomeUnknown)
+        }
+    }
+
+    func testModifiedAtUsesEpochMillisecondsForReadsAndWrites() async throws {
+        let driver = FakeCloudKitDriver()
+        let date = Date(timeIntervalSince1970: 1_700_000_000.125)
+        await driver.setNextModificationDate(date)
+        let store = CloudKitStore(driver: driver)
+
+        guard case let .written(_, writtenAt) = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8)) else {
+            return XCTFail("write did not succeed")
+        }
+        XCTAssertEqual(writtenAt, 1_700_000_000_125)
+        XCTAssertGreaterThan(writtenAt, Int64(date.timeIntervalSince1970))
+
+        guard case let .present(value) = try await store.read(key: "k") else {
+            return XCTFail("written value was not readable")
+        }
+        XCTAssertEqual(value.modifiedAt, writtenAt)
+        let historyRetentionMs: Int64 = 30 * 24 * 60 * 60 * 1_000
+        XCTAssertGreaterThan(writtenAt, historyRetentionMs)
+        XCTAssertEqual(writtenAt - historyRetentionMs, 1_697_408_000_125)
+    }
+
+    func testModifiedAtOverflowRemainsAnUnknownOutcome() async throws {
+        let driver = FakeCloudKitDriver()
+        await driver.setNextModificationDate(Date(timeIntervalSince1970: Double(Int64.max)))
+        do {
+            _ = try await CloudKitStore(driver: driver).compareAndSwap(key: "k", expected: nil, value: Data("v".utf8))
+            XCTFail("out-of-range modification date was accepted")
+        } catch StoreError.outcomeUnknown {
+        }
+    }
+
+    func testAccountIdentityChangeIsRejected() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        _ = try await store.list(prefix: "", cursor: nil)
+        await driver.changeIdentity()
+        do {
+            _ = try await store.list(prefix: "", cursor: nil)
+            XCTFail("identity change was accepted")
+        } catch StoreError.identityChanged {
+        }
+    }
+
+    func testListPaginatesAndHidesTombstones() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        for key in ["a/1", "a/2", "a/3", "a/4", "a/5"] {
+            _ = try await store.compareAndSwap(key: key, expected: nil, value: Data(key.utf8))
+        }
+        guard case let .written(version, _) = try await store.compareAndSwap(key: "a/2", expected: nil, value: Data("x".utf8)) else {
+            return XCTFail("initial write did not succeed")
+        }
+        let removed = try await store.remove(key: "a/2", expected: version)
+        XCTAssertTrue(removed)
+        let first = try await store.list(prefix: "a/", cursor: nil)
+        XCTAssertEqual(first.keys, ["a/1"])
+        let second = try await store.list(prefix: "a/", cursor: first.nextCursor)
+        XCTAssertEqual(second.keys, ["a/3", "a/4"])
+    }
+
+    func testMissingAccountIsPropagated() async throws {
+        let driver = FakeCloudKitDriver()
+        await driver.setAccountAvailable(false)
+        do {
+            _ = try await CloudKitStore(driver: driver).read(key: "k")
+            XCTFail("missing account was accepted")
+        } catch ProbeError.accountUnavailable {
+        }
+    }
+
+    func testMalformedCursorIsRejected() async throws {
+        do {
+            _ = try await CloudKitStore(driver: FakeCloudKitDriver()).list(prefix: "", cursor: "%%%")
+            XCTFail("malformed cursor was accepted")
+        } catch StoreError.invalidData {
+        }
+    }
+
+    // The identity leaves this component and is persisted in the local binding, so it must be the
+    // opaque digest and never the Apple account's record name.
+    func testAccountIdentityIsOpaque() throws {
+        let recordName = "_9f8c1e2d3a4b5c6d7e8f90a1b2c3d4e5"
+        let opaque = AccountIdentity.opaque(recordName)
+        let expected = SHA256.hash(data: Data(recordName.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(opaque, "sha256:" + expected)
+        XCTAssertFalse(opaque.contains(recordName))
+    }
+
+    func testPayloadAndFrameBounds() throws {
+        XCTAssertThrowsError(try AssetStore.makeAsset(Data(repeating: 0, count: AssetStore.maxPayload + 1))) { error in
+            XCTAssertEqual(error as? StoreError, .invalidData)
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 0, count: AssetStore.maxFrame + 1).write(to: url)
+        XCTAssertThrowsError(try AssetStore.data(from: CKAsset(fileURL: url))) { error in
+            XCTAssertEqual(error as? StoreError, .invalidData)
+        }
+    }
+}
+#endif

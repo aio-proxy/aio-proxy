@@ -4,6 +4,7 @@ import type {
   OAuthCredentialImportContext,
   OAuthCredentialImporter,
   OAuthLoginResult,
+  OAuthCredentialSync,
   OAuthQuotaItem,
   PluginApi,
   RuntimeContext,
@@ -42,6 +43,15 @@ void runtimeContext.modelFetch;
 
 declare const api: PluginApi;
 declare const adapter: OAuthAdapter<MyOptions, MyCredential>;
+const syncMetadata: OAuthCredentialSync<MyCredential> = {
+  formatVersion: 1,
+  multiDevice: { evidenceId: 'fixture' },
+  async canDetach({ shared, candidate, signal }) {
+    signal.throwIfAborted();
+    return shared.accessToken !== candidate.accessToken;
+  },
+};
+void syncMetadata;
 declare const credentials: CredentialPort<MyCredential>;
 
 api.oauth.register(adapter);

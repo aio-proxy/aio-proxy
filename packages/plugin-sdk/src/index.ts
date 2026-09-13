@@ -11,5 +11,6 @@ export * from './logger';
 export * from './oauth';
 export * from './plugin/index';
 export * from './runtime';
+export * from './sync';
 export { abortableSleep } from './abortable-sleep/index';
 export { dedupeQuotaItemIds } from './quota-items/index';

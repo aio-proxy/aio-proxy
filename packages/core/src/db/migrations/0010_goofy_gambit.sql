@@ -1,0 +1,1 @@
+ALTER TABLE `sync_commit` ADD `plugin_secrets_json` text;

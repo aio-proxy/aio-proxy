@@ -15,6 +15,7 @@ import type {
   DashboardOAuthCapability,
   DashboardOAuthProviderEdit,
   DashboardProviderSummary,
+  SyncControlPlane,
 } from '@aio-proxy/types';
 
 import type { CatalogRefreshOutcome } from '../catalog-scheduler';
@@ -85,10 +86,12 @@ export type ConfigReloadResult = { readonly ok: true; readonly diff: ConfigChang
 export type ServerState = ProviderRouteSource & {
   readonly agentIdentity: AgentIdentityService;
   readonly close: () => void;
+  readonly closeAsync: () => Promise<void>;
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
   readonly modelRouting: ModelRoutingControlPlane;
+  readonly sync?: SyncControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly oauthCredentialRefresh: OAuthCredentialRefreshOperations;
   /** Rediscovers one OAuth Provider's model catalog now, ignoring the catalog policy's TTL. */

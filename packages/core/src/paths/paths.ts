@@ -36,3 +36,12 @@ export function tmpDir(): string {
 export function updateCheckPath(): string {
   return join(aioHome(), 'update-check.json');
 }
+
+/**
+ * Device-local key used to sign Dashboard sessions. Deliberately a file under `~/.aio-proxy`
+ * rather than anything derived from config: the configuration is what sync publishes, and a
+ * session signing key that travelled to a backend would let a read-only breach mint tokens.
+ */
+export function sessionKeyPath(): string {
+  return join(aioHome(), 'session-key');
+}

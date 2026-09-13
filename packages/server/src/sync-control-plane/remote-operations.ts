@@ -1,0 +1,153 @@
+import { randomUUID } from 'node:crypto';
+
+import {
+  createSyncObjectStore,
+  decodeHead,
+  decodeRevision,
+  deleteEntity,
+  entityKey,
+  publishEntity,
+  purgeEntity,
+  restoreEntity,
+  revisionKey,
+  SyncProtocolError,
+  type EntityBody,
+  type LocalEntity,
+} from '@aio-proxy/core';
+import type { SyncSession } from '@aio-proxy/plugin-sdk';
+import type { SyncHistoryItem } from '@aio-proxy/types';
+
+import { SyncOperationError } from './operations';
+
+export type RemoteOperations = {
+  readonly restore: (
+    objectId: string,
+    body: EntityBody,
+    operationId: string,
+    current: LocalEntity | undefined,
+    expected: string | null,
+  ) => Promise<void>;
+  readonly purge: (objectId: string, expected: string | null) => Promise<void>;
+  /** Resolves to the new head's operation ID, which is the baseline the local row must record. */
+  readonly publish: (
+    body: EntityBody | null,
+    current: LocalEntity | undefined,
+    expected: string | null,
+  ) => Promise<string | null>;
+};
+
+// The publication helpers gained an optional expected-version argument after their public
+// signatures were fixed. Casting here keeps the conditional writes without widening the exported
+// core contract for every caller that does not fence.
+const restoreWithExpected = restoreEntity as unknown as (
+  store: Parameters<typeof restoreEntity>[0],
+  objectId: string,
+  body: EntityBody,
+  operationId: string,
+  signal: AbortSignal,
+  expected: string | null,
+) => Promise<unknown>;
+const purgeWithExpected = purgeEntity as unknown as (
+  store: Parameters<typeof purgeEntity>[0],
+  objectId: string,
+  signal: AbortSignal,
+  expected: string | null,
+) => Promise<unknown>;
+const deleteWithExpected = deleteEntity as unknown as (
+  store: Parameters<typeof deleteEntity>[0],
+  objectId: string,
+  epoch: number,
+  signal: AbortSignal,
+  expected: string | null,
+) => Promise<unknown>;
+const publishWithExpected = publishEntity as unknown as (
+  store: Parameters<typeof publishEntity>[0],
+  operation: Parameters<typeof publishEntity>[1],
+  signal: AbortSignal,
+  expected: string | null,
+) => Promise<unknown>;
+
+async function conditional<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof SyncProtocolError && error.code === 'upgrade-required')
+      throw new SyncOperationError('operation-pending');
+    throw error;
+  }
+}
+
+/** The default remote half of the control plane operations, written straight through a session. */
+export function createRemoteOperations(session: SyncSession | undefined, signal: AbortSignal): RemoteOperations {
+  if (session === undefined) throw new SyncOperationError('not-connected');
+  const store = createSyncObjectStore(session);
+  return {
+    async restore(objectId, body, operationId, _current, expected) {
+      await conditional(() => restoreWithExpected(store, objectId, body, operationId, signal, expected));
+    },
+    async purge(objectId, expected) {
+      await conditional(() => purgeWithExpected(store, objectId, signal, expected));
+    },
+    async publish(body, current, expected) {
+      if (current === undefined) throw new SyncOperationError('operation-pending');
+      const objectId = current.objectId;
+      if (body === null) {
+        await conditional(() => deleteWithExpected(store, objectId, current.epoch, signal, expected));
+        return null;
+      }
+      const operationId = randomUUID();
+      await conditional(() =>
+        publishWithExpected(
+          store,
+          {
+            operationId,
+            objectId,
+            epoch: current.epoch,
+            kind: 'put',
+            body,
+            commitId: `control:${randomUUID()}`,
+          },
+          signal,
+          expected,
+        ),
+      );
+      return operationId;
+    },
+  };
+}
+
+/** The revisions the bound backend still holds for one object, newest state flagged as `current`. */
+export async function readHistory(
+  session: SyncSession | undefined,
+  objectId: string,
+  signal: AbortSignal,
+): Promise<SyncHistoryItem[]> {
+  // An unavailable backend is not an object without retained revisions: reporting empty history for
+  // one reads as "the recovery data is gone" on a cloud that still holds every revision.
+  if (session === undefined) throw new SyncOperationError('not-connected');
+  const headValue = await session.read(entityKey(objectId), signal);
+  if (headValue.kind === 'absent') return [];
+  const head = decodeHead(headValue.value);
+  if (head.objectId !== objectId || head.state === 'purging') throw new SyncOperationError('operation-pending');
+  const operationIds = [...new Set([...head.history, ...(head.current === null ? [] : [head.current])])];
+  const items: SyncHistoryItem[] = [];
+  for (const operationId of operationIds) {
+    const value = await session.read(revisionKey(objectId, operationId), signal);
+    if (value.kind === 'absent') continue;
+    const record = decodeRevision(value.value);
+    if (record.objectId !== objectId) throw new SyncOperationError('operation-pending');
+    // A purge leaves `erased` markers under the retained revision keys. Every operation returned
+    // here is advertised as restorable, but a marker resolves to a null body, so previewing one
+    // offers a decision whose Apply falls through to deletion instead of restoring anything.
+    if (record.state !== 'payload') continue;
+    if (record.body.kind !== head.kind || record.body.logicalKey !== head.logicalKey)
+      throw new SyncOperationError('operation-pending');
+    items.push({
+      operationId,
+      objectId,
+      writtenAt: record.writtenAt ?? value.modifiedAt,
+      current: head.current === operationId,
+    });
+  }
+  return items;
+}

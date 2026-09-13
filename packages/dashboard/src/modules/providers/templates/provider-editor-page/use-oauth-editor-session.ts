@@ -16,7 +16,7 @@ import {
   startOAuthSession,
   submitOAuthCallback,
 } from '../../services/oauth-service';
-import { providerEditViewQueryOptions } from '../../services/providers-service';
+import { fetchProviderEditView } from '../../services/providers-service';
 
 const oauthFromEditView = (data: unknown): DashboardOAuthProviderEdit | undefined => {
   if (!isPlainObject(data) || 'error' in data) return undefined;
@@ -32,6 +32,7 @@ export const useOAuthEditorSession = (
   onSessionSucceeded?: (oauth?: DashboardOAuthProviderEdit) => void,
 ) => {
   const navigate = useNavigate();
+  const navigateEdit = useNavigate({ from: '/providers/$id/edit' });
   const queryClient = useQueryClient();
   const popup = useRef<Window | null>(null);
   const handledSuccess = useRef<string | undefined>(undefined);
@@ -96,7 +97,7 @@ export const useOAuthEditorSession = (
       session.providerId !== providerId
     ) {
       handledSuccess.current = session.id;
-      void navigate({ search: {}, replace: true });
+      void navigateEdit({ search: {}, replace: true });
     } else if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
       handledSuccess.current = session.id;
       setAuthorizedProviderId(session.providerId);
@@ -116,8 +117,11 @@ export const useOAuthEditorSession = (
         try {
           await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
           next = oauthFromEditView(
+            // Inlined rather than reusing providerEditViewQueryOptions: this call only needs the
+            // raw payload, and the shared options' Hono-inferred result blows TS2589 in fetchQuery.
             await queryClient.fetchQuery({
-              ...providerEditViewQueryOptions(session.providerId),
+              queryKey: queryKeys.providerEditView(session.providerId),
+              queryFn: async (): Promise<unknown> => fetchProviderEditView(session.providerId),
               staleTime: 0,
             }),
           );
@@ -127,7 +131,7 @@ export const useOAuthEditorSession = (
         onSessionSucceeded?.(next);
       })();
     }
-  }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, providerId, queryClient, session]);
+  }, [closeUnclaimedPopup, mode, navigate, navigateEdit, onSessionSucceeded, providerId, queryClient, session]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

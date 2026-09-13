@@ -95,6 +95,7 @@ export function createGitHubCopilotPlugin(
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
+    credentialSync: { formatVersion: 1 },
     credentials: zod
       .object({
         githubToken: zod.string(),

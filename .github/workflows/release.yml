@@ -46,22 +46,168 @@ jobs:
           echo "RELEASE_ASSETS_DIR=$RUNNER_TEMP/release-assets" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/release-assets"
 
-      - uses: actions/checkout@v7
+      # Every action in this workflow is SHA-pinned rather than tracking a major tag,
+      # because this job later puts the Developer ID certificate, its password and the
+      # notary key into the environment of steps that run checked-out scripts. An action
+      # that ran before them could rewrite build-native.ts/sign-native.ts, and a
+      # retargeted tag or compromised upstream account is enough to do it — the cleanup
+      # step cannot undo signing material that already left the runner. The other jobs
+      # hold GHCR and tap tokens, so they are pinned on the same rule. Bump the pins
+      # together; the trailing comment records the version each SHA resolved to.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # full history so the action can build the Version PR / changelog
           fetch-tags: true
           persist-credentials: false # avoid duplicate Authorization headers during changesets push
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '26' # bundles npm 11.17+, which supports OIDC trusted publishing
           registry-url: 'https://registry.npmjs.org'
 
       - run: bun install --frozen-lockfile --prefer-offline
+
+      # The standing Version PR also runs this workflow. Only a lockstep version
+      # newer than the registry is an actual publish, so do not ask for signing
+      # material while Changesets is merely maintaining that PR.
+      - name: Determine whether CloudKit is being published
+        id: cloudkit-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/plugins/cloudkit/package.json').version")"
+          published="$(npm view @aio-proxy/plugin-cloudkit version 2>/dev/null || true)"
+          should_prepare="$(node - "$version" "$published" <<'NODE'
+          const [current, published] = process.argv.slice(2);
+          const parse = (value) => value.split('-')[0].split('.').map((part) => Number.parseInt(part, 10));
+          const compare = (left, right) => {
+            const a = parse(left);
+            const b = parse(right);
+            for (let index = 0; index < 3; index += 1) {
+              if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
+            }
+            return 0;
+          };
+          process.stdout.write(published === '' || compare(current, published) > 0 ? 'true' : 'false');
+          NODE
+          )"
+          echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "APPLE_CLOUDKIT_RELEASE_REQUIRED=$should_prepare" >> "$GITHUB_ENV"
+
+      # This is intentionally a macOS-only release step. The native bundle is
+      # signed on the same host that builds it, then copied to a temporary path;
+      # scripts/release.ts restores that exact archive after the JS build cleans
+      # package dist directories and verifies its digest/version before packing.
+      - name: Build and sign CloudKit native artifact
+        if: steps.cloudkit-release.outputs.publishable == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          APPLE_CLOUDKIT_CONTAINER_ID: ${{ vars.APPLE_CLOUDKIT_CONTAINER_ID }}
+          APPLE_NOTARY_PROFILE: ${{ vars.APPLE_NOTARY_PROFILE }}
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROFILE_BASE64: ${{ secrets.APPLE_PROFILE_BASE64 }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          : "${APPLE_SIGN_IDENTITY:?APPLE_SIGN_IDENTITY is required}"
+          : "${APPLE_CLOUDKIT_CONTAINER_ID:?APPLE_CLOUDKIT_CONTAINER_ID is required}"
+          : "${APPLE_NOTARY_PROFILE:?APPLE_NOTARY_PROFILE is required}"
+          : "${APPLE_CERTIFICATE_BASE64:?APPLE_CERTIFICATE_BASE64 is required}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?APPLE_CERTIFICATE_PASSWORD is required}"
+          : "${APPLE_PROFILE_BASE64:?APPLE_PROFILE_BASE64 is required}"
+          : "${APPLE_NOTARY_KEY_BASE64:?APPLE_NOTARY_KEY_BASE64 is required}"
+          : "${APPLE_NOTARY_KEY_ID:?APPLE_NOTARY_KEY_ID is required}"
+          : "${APPLE_NOTARY_ISSUER_ID:?APPLE_NOTARY_ISSUER_ID is required}"
+
+          keychain="$RUNNER_TEMP/aio-cloudkit-signing.keychain-db"
+          certificate="$RUNNER_TEMP/aio-cloudkit-signing.p12"
+          certificate_password="$RUNNER_TEMP/aio-cloudkit-signing.password"
+          unlocked_certificate="$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem"
+          profile="$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile"
+          notary_key="$RUNNER_TEMP/aio-cloudkit-notary-key.p8"
+          manifest="packages/plugins/cloudkit/release-manifest.json"
+          manifest_backup="$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
+          signed_manifest="$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
+          cp "$manifest" "$manifest_backup"
+          restore_manifest() { cp "$manifest_backup" "$manifest"; }
+          trap restore_manifest EXIT
+
+          # Keep the temporary keychain password empty. The certificate password
+          # is supplied to OpenSSL through a protected file, so it never appears
+          # in an external command's argument list. Import the resulting PEM
+          # into the temporary keychain without a GUI prompt.
+          security create-keychain -p '' "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p '' "$keychain"
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$certificate"
+          printf '%s' "$APPLE_CERTIFICATE_PASSWORD" > "$certificate_password"
+          chmod 600 "$certificate" "$certificate_password"
+          openssl pkcs12 -in "$certificate" -passin file:"$certificate_password" -nodes -out "$unlocked_certificate"
+          chmod 600 "$unlocked_certificate"
+          security import "$unlocked_certificate" -k "$keychain" -f pem -T /usr/bin/codesign
+          security set-keychain-settings -lut 21600 "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          security set-key-partition-list -S apple-tool:,apple: -s -k '' "$keychain"
+          printf '%s' "$APPLE_PROFILE_BASE64" | base64 -D > "$profile"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 -D > "$notary_key"
+          chmod 600 "$notary_key"
+          xcrun notarytool store-credentials "$APPLE_NOTARY_PROFILE" \
+            --key "$notary_key" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --keychain "$keychain"
+
+          version="${{ steps.cloudkit-release.outputs.version }}"
+          signed_archive="$RUNNER_TEMP/AIOProxyCloudKit-$version.app.zip"
+          printf '{"version":"%s"}\n' "$version" > "$manifest"
+          export APPLE_PROFILE_PATH="$profile"
+          export APPLE_CLOUDKIT_NATIVE_VERSION="$version"
+          export APPLE_CLOUDKIT_SIGNED_ARCHIVE="$signed_archive"
+          echo "APPLE_PROFILE_PATH=$APPLE_PROFILE_PATH" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_NATIVE_VERSION=$APPLE_CLOUDKIT_NATIVE_VERSION" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_SIGNED_ARCHIVE=$APPLE_CLOUDKIT_SIGNED_ARCHIVE" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+          echo "APPLE_SIGN_IDENTITY=$APPLE_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "APPLE_CLOUDKIT_CONTAINER_ID=$APPLE_CLOUDKIT_CONTAINER_ID" >> "$GITHUB_ENV"
+          echo "APPLE_NOTARY_PROFILE=$APPLE_NOTARY_PROFILE" >> "$GITHUB_ENV"
+
+          bun packages/plugins/cloudkit/scripts/build-native.ts
+          bun packages/plugins/cloudkit/scripts/sign-native.ts
+          signed="$(find packages/plugins/cloudkit/dist/native -maxdepth 1 -name '*.app.zip' ! -name '*.submission.zip' -print -quit)"
+          test -n "$signed"
+          cp "$signed" "$signed_archive"
+          cp packages/plugins/cloudkit/dist/native/manifest.json "$signed_manifest"
+          echo "APPLE_CLOUDKIT_SIGNED_MANIFEST=$signed_manifest" >> "$GITHUB_ENV"
+
+      # Signing is done: build-native/sign-native are the only consumers of the
+      # keychain identity, the provisioning profile and the notary key, and the
+      # publish script needs nothing but the archive + signed manifest (the CLI
+      # binaries are ad-hoc signed). Destroy the key material HERE, before
+      # Changesets runs third-party publish code — scripts/release.ts runs
+      # `bun update`, so a compromised build dependency must not find a usable
+      # Developer ID on disk. `always()` also covers a signing step that failed
+      # after writing some of these files.
+      - name: Destroy CloudKit signing material
+        if: always() && steps.cloudkit-release.outputs.publishable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.password" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
+            "$RUNNER_TEMP/aio-cloudkit-notary-key.p8"
 
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
@@ -102,22 +248,40 @@ jobs:
           gh release upload "v$VERSION" "$RELEASE_ASSETS_DIR/"*.tgz --repo aio-proxy/aio-proxy
           gh release upload "v$VERSION" "$RELEASE_ASSETS_DIR/SHA256SUMS" --repo aio-proxy/aio-proxy
 
+      # Safety net only: signing material is already destroyed before Changesets.
+      # Repeat those deletions idempotently in case that step was skipped or died
+      # partway, and drop the archive/manifest now that the publish script has
+      # consumed them.
+      - name: Clean CloudKit release artifacts
+        if: always() && steps.cloudkit-release.outputs.publishable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          security delete-keychain "$RUNNER_TEMP/aio-cloudkit-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/aio-cloudkit-signing.p12" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.password" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.unlocked.pem" \
+            "$RUNNER_TEMP/aio-cloudkit-signing.provisionprofile" \
+            "$RUNNER_TEMP/aio-cloudkit-notary-key.p8" \
+            "$RUNNER_TEMP/aio-cloudkit-release-manifest.json" \
+            "$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
+
   docker:
     needs: release
     # Asset upload failure must not block Docker after npm has published.
     if: ${{ !cancelled() && needs.release.outputs.published == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Publish a multi-arch Docker image to GHCR. Bun cross-compiles both musl
       # targets from this amd64 runner, so buildx builds linux/amd64 and
       # linux/arm64 in one pass without QEMU emulating the build.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -125,7 +289,7 @@ jobs:
 
       - name: Docker metadata
         id: docker-meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/aio-proxy/aio-proxy
           tags: |
@@ -133,7 +297,7 @@ jobs:
             type=raw,value=${{ fromJSON(needs.release.outputs['published-packages'])[0].version }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -150,9 +314,9 @@ jobs:
     env:
       VERSION: ${{ fromJSON(needs.release.outputs['published-packages'])[0].version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 

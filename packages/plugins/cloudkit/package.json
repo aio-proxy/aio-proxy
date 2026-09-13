@@ -1,0 +1,33 @@
+{
+  "name": "@aio-proxy/plugin-cloudkit",
+  "version": "0.21.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rslib && bun scripts/clean-dist.ts",
+    "pack-native": "bun scripts/pack-native.ts",
+    "test": "bun run test:unit",
+    "test:unit": "bun test ./src ./scripts"
+  },
+  "peerDependencies": {
+    "@aio-proxy/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

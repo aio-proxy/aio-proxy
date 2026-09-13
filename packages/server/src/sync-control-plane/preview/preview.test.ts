@@ -1,0 +1,2250 @@
+import { expect, test } from 'bun:test';
+
+import { encode, entityKey, revisionKey } from '@aio-proxy/core';
+import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
+
+import { createSyncControlPlane } from '../control-plane';
+import { SyncOperationError, assertDecisions } from '../operations';
+import { listRemoteEntities } from './entities';
+import { SyncPreviewError } from './errors';
+import { applyOverrides } from './overrides';
+import { buildPreview } from './preview';
+import { redactEntityValue } from './redact';
+
+const providerBody = (value: Record<string, JsonValue>) => ({
+  kind: 'provider' as const,
+  logicalKey: 'work',
+  value,
+  dependencies: [],
+});
+
+test('overrides apply nested values, delete missing fields, copy arrays, and reject unsafe paths', () => {
+  const local = providerBody({ profile: { name: 'local' }, list: [{ id: 1 }] });
+  const cloud = providerBody({ profile: { name: 'cloud', keep: true }, list: [{ id: 2 }], removed: 'stale' });
+  expect(applyOverrides(local, cloud, [['profile', 'name'], ['removed']])).toMatchObject({
+    value: { profile: { name: 'local', keep: true }, list: [{ id: 2 }] },
+  });
+  expect(applyOverrides(local, cloud, [['list']]).value).toEqual({
+    profile: { name: 'cloud', keep: true },
+    list: [{ id: 1 }],
+    removed: 'stale',
+  });
+  expect(() => applyOverrides(local, cloud, [['list', '0', 'id']])).toThrow();
+  expect(() => applyOverrides(local, cloud, [['password']])).toThrow();
+  expect(() => applyOverrides(local, cloud, [['plugin']])).toThrow();
+  expect(() => applyOverrides(local, cloud, [['dependencies']])).toThrow();
+  for (const metadata of [
+    'package',
+    'dependency',
+    'identity',
+    'provider',
+    'packageName',
+    'providerId',
+    'providerID',
+    'provider_id',
+    'provider-id',
+    'providerRef',
+    'provider_reference_id',
+    'accountId',
+    'accountProviderId',
+    'accountProviderID',
+    'account_provider_id',
+    'account-provider-id',
+    'accountProviderRef',
+    'account-provider-reference-id',
+  ])
+    expect(() => applyOverrides(local, cloud, [[metadata]])).toThrow();
+});
+
+test('overrides reject credential-shaped path segments the preview would redact', () => {
+  const local = providerBody({ options: { accessToken: 'device', baseURL: 'https://local' } });
+  const cloud = providerBody({ options: { accessToken: 'cloud', baseURL: 'https://attacker' } });
+  // A pinned credential under a cloud-owned `baseURL` sends this device's token to whoever can
+  // write the space, so every key the redactor treats as a secret is refused as an override too.
+  for (const segment of ['accessToken', 'token', 'refreshToken', 'apiKey', 'api_key', 'clientSecret', 'password'])
+    expect(() => applyOverrides(local, cloud, [['options', segment]])).toThrow();
+  expect(applyOverrides(local, cloud, [['options', 'baseURL']]).value).toEqual({
+    options: { accessToken: 'cloud', baseURL: 'https://local' },
+  });
+});
+
+test('overrides refuse prototype-control segments instead of writing through Object.prototype', () => {
+  // JSON.parse is how an authored body reaches here, and it makes `__proto__` an own member: the
+  // path resolves against the local side, while the cloud side — which has no such member — resolves
+  // the inherited `Object.prototype` and takes the pinned leaf process-wide.
+  const local = providerBody(JSON.parse('{"__proto__":{"polluted":"yes"},"options":{}}') as Record<string, JsonValue>);
+  const cloud = providerBody({ options: {} });
+  for (const segment of ['__proto__', 'constructor', 'prototype'])
+    expect(() => applyOverrides(local, cloud, [[segment, 'polluted']])).toThrow();
+  expect('polluted' in {}).toBe(false);
+});
+
+test('overrides treat an inherited member name as an absent local value', () => {
+  // `toString` is a legal JSON key and not a prototype-control segment, so a cloud body may declare
+  // one. Reading it off a local body that does not would resolve `Object.prototype.toString`, and
+  // pinning a function is not a request the user can make — the absent local value means delete.
+  const local = providerBody({ options: {} });
+  const cloud = providerBody({ toString: 'cloud', options: { toString: 'nested' } });
+  expect(applyOverrides(local, cloud, [['toString'], ['options', 'toString']]).value).toEqual({ options: {} });
+  const pinned = providerBody({ toString: 'local', options: {} });
+  expect(applyOverrides(pinned, cloud, [['toString']]).value).toEqual({
+    toString: 'local',
+    options: { toString: 'nested' },
+  });
+});
+
+test('purge previews include transitive cloud dependents and omit local-only rows', () => {
+  const body = (kind: 'plugin-business', logicalKey: string, dependencies: string[] = []) => ({
+    kind,
+    logicalKey,
+    value: {},
+    dependencies: dependencies.map((objectId) => ({ objectId, packageName: 'plugin', version: '1' })),
+  });
+  const built = buildPreview({
+    request: { kind: 'purge', scope: 'plugin', objectId: '@example/plugin' },
+    local: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        mode: 'included',
+        epoch: 1,
+        desired: body('plugin-business', '@example/plugin', ['stale-local-reference']),
+        baseline: 'a',
+        overrides: [],
+        pendingReason: null,
+      },
+      {
+        objectId: 'local-only',
+        logicalKey: 'local',
+        kind: 'plugin-business',
+        mode: 'included',
+        epoch: 1,
+        desired: body('plugin-business', 'local', ['plugin-a']),
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        version: 'a',
+        revision: 'plugin-a-revision',
+        body: body('plugin-business', '@example/plugin'),
+      },
+      {
+        objectId: 'plugin-b',
+        logicalKey: 'dependent-b',
+        kind: 'plugin-business',
+        version: 'b',
+        revision: 'plugin-b-revision',
+        body: body('plugin-business', 'dependent-b', ['plugin-a']),
+      },
+      {
+        objectId: 'plugin-c',
+        logicalKey: 'dependent-c',
+        kind: 'plugin-business',
+        version: 'c',
+        revision: 'plugin-c-revision',
+        body: body('plugin-business', 'dependent-c', ['plugin-b']),
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview',
+    expiresAt: 1,
+  });
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['plugin-a', 'plugin-b', 'plugin-c']);
+  expect(built.record.dependencyError).toBe(false);
+});
+
+test('a local-only join projects authored bodies and pulls in the business plugin it depends on', () => {
+  const authored = {
+    plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],
+    providers: { fresh: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } } },
+  } satisfies Record<string, JsonValue>;
+  const excluded = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'excluded' as const,
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'fresh' },
+    local: [
+      excluded('local-fresh', 'provider', 'fresh'),
+      excluded('local-plugin', 'plugin-business', '@example/business'),
+    ],
+    remote: [],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-local-only',
+    expiresAt: 1,
+    source: {
+      raw: authored,
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map([['@example/business', '1.2.3']]),
+    },
+  });
+  // A never-published object stores no body, so without projecting the authored configuration the
+  // join would preview two empty rows and publish nothing.
+  expect(built.preview.rows).toEqual([
+    expect.objectContaining({
+      objectId: 'local-fresh',
+      logicalKey: 'fresh',
+      local: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } },
+      choices: ['local'],
+    }),
+    expect.objectContaining({
+      objectId: 'local-plugin',
+      logicalKey: '@example/business',
+      local: {
+        packageName: '@example/business',
+        version: '1.2.3',
+        options: { endpoint: 'https://plugin.example.test' },
+      },
+      choices: ['local'],
+    }),
+  ]);
+});
+
+test('joining a provider republishes the already-included model rules that reference it', () => {
+  const authored = {
+    providers: { fresh: { kind: 'api', baseURL: 'https://fresh.test' }, work: { kind: 'api' } },
+    router: { models: { 'gpt-5': { providers: { fresh: { weight: 2 }, work: { weight: 1 } } } } },
+  } satisfies Record<string, JsonValue>;
+  const entity = (objectId: string, kind: 'provider' | 'model-rule', logicalKey: string, included: boolean) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: included ? ('included' as const) : ('excluded' as const),
+    epoch: 0,
+    desired: included ? { kind, logicalKey, value: { providers: { work: { weight: 1 } } }, dependencies: [] } : null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'fresh' },
+    local: [
+      entity('local-fresh', 'provider', 'fresh', false),
+      entity('local-work', 'provider', 'work', true),
+      entity('local-rule', 'model-rule', 'gpt-5', true),
+    ],
+    remote: [],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-join-dependents',
+    expiresAt: 1,
+    source: { raw: authored, accounts: new Map(), pluginSecrets: new Map(), pluginVersions: new Map() },
+  });
+  // The rule is already included, so it is not part of the join request, but its published body
+  // filters providers to the included set. Leaving it out would keep `fresh` missing from the
+  // cloud's copy of the rule while the Provider itself is published.
+  const rule = built.preview.rows.find((row) => row.objectId === 'local-rule');
+  expect(rule?.local).toMatchObject({ providers: { fresh: { weight: 2 }, work: { weight: 1 } } });
+});
+
+test('a conflict outside a restore preview does not offer the restore choice', () => {
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 0,
+        desired: providerBody({ value: 'local' }),
+        baseline: 'stale',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'current',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-conflict-choices',
+    expiresAt: 1,
+  });
+  // Both heads are live, so `restoreEntity` would reject the choice with `invalid-data`. Offering
+  // it only gives the dialog a button that cannot work.
+  expect(built.preview.rows[0]).toMatchObject({ change: 'conflict', choices: ['local', 'cloud'] });
+});
+
+test.each([[['headers']], [['headers', 'Authorization']], [['options', 'authorization']]])(
+  'an override on a credential-bearing header path is rejected: %p',
+  (path) => {
+    const request = () =>
+      buildPreview({
+        request: { kind: 'overrides', objectId: 'object', paths: [path] },
+        local: [
+          {
+            objectId: 'object',
+            logicalKey: 'work',
+            kind: 'provider',
+            mode: 'included',
+            epoch: 0,
+            desired: {
+              kind: 'provider',
+              logicalKey: 'work',
+              value: { baseURL: 'https://trusted.example/v1', headers: { Authorization: 'Bearer local' } },
+              dependencies: [],
+            },
+            baseline: 'revision',
+            overrides: [],
+            pendingReason: null,
+          },
+        ],
+        remote: [],
+        fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+        previewId: 'preview-header-override',
+        expiresAt: 1,
+      });
+    // Keeping the bearer local while the cloud still owns `baseURL` hands whoever can write the
+    // space a way to redirect it. Credential-bearing paths are published or not shared at all.
+    expect(request).toThrow('invalid-request');
+  },
+);
+
+test('an override on a local-only object pins the authored value rather than the empty published one', () => {
+  const authored = {
+    plugins: [['@example/business', { endpoint: 'https://plugin.example.test' }]],
+    providers: { fresh: { kind: 'ai-sdk', packageName: '@example/business', options: { region: 'eu' } } },
+  } satisfies Record<string, JsonValue>;
+  const excluded = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'excluded' as const,
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'overrides', objectId: 'local-fresh', paths: [['options', 'region']] },
+    local: [
+      excluded('local-fresh', 'provider', 'fresh'),
+      excluded('local-plugin', 'plugin-business', '@example/business'),
+    ],
+    remote: [],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-overrides',
+    expiresAt: 1,
+    source: {
+      raw: authored,
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map([['@example/business', '1.2.3']]),
+    },
+  });
+
+  // The row carries the body applying the override persists. Falling back to the never-published
+  // `desired` would pin `undefined`, which deletes `region` from the authored configuration.
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['local-fresh']);
+  expect(built.record.rows[0]?.local?.value).toMatchObject({ options: { region: 'eu' } });
+});
+
+test('a join follows published dependency object IDs instead of matching logical keys', () => {
+  const cloud = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string, dependsOn?: string) => ({
+    objectId,
+    logicalKey,
+    kind,
+    version: 'v1',
+    revision: `${objectId}-revision`,
+    body: {
+      kind,
+      logicalKey,
+      value: {},
+      dependencies:
+        dependsOn === undefined ? [] : [{ objectId: dependsOn, packageName: '@example/business', version: '1.2.3' }],
+    },
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'fresh' },
+    local: [],
+    remote: [
+      cloud('cloud-fresh', 'provider', 'fresh', 'cloud-plugin'),
+      cloud('cloud-plugin', 'plugin-business', '@example/business', 'cloud-transitive'),
+      cloud('cloud-transitive', 'plugin-business', '@example/transitive'),
+      cloud('cloud-unrelated', 'provider', 'other'),
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-dependencies',
+    expiresAt: 1,
+  });
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['cloud-fresh', 'cloud-plugin', 'cloud-transitive']);
+});
+
+test('provider purge targets the Provider ID while returning its opaque cloud object row', () => {
+  const provider = (objectId: string, logicalKey: string) => ({
+    kind: 'provider' as const,
+    logicalKey,
+    value: { plugin: '@example/plugin' },
+    dependencies: [],
+    objectId,
+  });
+  const built = buildPreview({
+    request: { kind: 'purge', scope: 'provider', objectId: 'work' },
+    local: [
+      {
+        ...provider('local-work', 'work'),
+        mode: 'included',
+        epoch: 1,
+        desired: provider('local-work', 'work'),
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'cloud-work',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: provider('cloud-work', 'work'),
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-provider',
+    expiresAt: 1,
+  });
+
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['cloud-work']);
+});
+
+test('rejoin preview is one-use, expires, and redacts candidate values', async () => {
+  let remoteVersion = 'v1';
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    now: () => 1_000,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'work-refresh-secret' }, dependencies: [] },
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        get version() {
+          return remoteVersion;
+        },
+        revision: 'remote-revision',
+        body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'plugin-secret' }, dependencies: [] },
+      },
+    ],
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  expect(JSON.stringify(preview)).not.toContain('work-refresh-secret');
+  expect(JSON.stringify(preview)).not.toContain('plugin-secret');
+  remoteVersion = 'v2';
+  await expect(
+    control.apply({
+      previewId: preview.previewId,
+      decisions: preview.rows.map((row) => ({ objectId: row.objectId, choice: 'local' as const })),
+    }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  const fresh = await control.preview({ kind: 'join', providerId: 'work' });
+  const applied = await control.apply({
+    previewId: fresh.previewId,
+    decisions: fresh.rows.map((row) => ({ objectId: row.objectId, choice: 'local' as const })),
+  });
+  expect(applied).toMatchObject({ state: expect.any(String) });
+  await expect(control.apply({ previewId: fresh.previewId, decisions: [] })).rejects.toMatchObject({
+    code: 'preview-stale',
+  });
+});
+
+test('preview rejects a local commit that lands during snapshot capture', async () => {
+  let commitId = 'before';
+  let localReads = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      latestConfirmedCommit: () => ({ commitId }) as never,
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => {
+      localReads += 1;
+      if (localReads === 1) commitId = 'after';
+      return [];
+    },
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  await expect(control.preview({ kind: 'join', providerId: 'work' })).rejects.toMatchObject({ code: 'preview-stale' });
+});
+
+test('preview redacts account option fields whose names do not reveal that they are secrets', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: {
+          kind: 'provider',
+          logicalKey: 'work',
+          value: { plugin: '@example/oauth', capability: 'main', private: 'value-to-hide' },
+          dependencies: [],
+        },
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveOAuth: () => ({
+          account: {
+            options: {
+              schema: { safeParse: () => ({ success: true }) },
+              form: [{ type: 'secret', key: 'private', label: 'Private' }],
+            },
+          },
+        }),
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  expect(JSON.stringify(preview)).not.toContain('value-to-hide');
+});
+
+test('preview redacts Provider header values whose names do not match a secret pattern', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: {
+          kind: 'provider',
+          logicalKey: 'work',
+          value: { kind: 'api', headers: { Authorization: 'Bearer value-to-hide', Cookie: 'session=hide-me' } },
+          dependencies: [],
+        },
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    registry: () => ({ resolveOAuth: () => undefined }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+
+  expect(JSON.stringify(preview)).not.toContain('value-to-hide');
+  expect(JSON.stringify(preview)).not.toContain('hide-me');
+});
+
+test('restore apply publishes the historical body under a fresh operation id', async () => {
+  let restoredOperationId = '';
+  let restoredBody: unknown;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: providerBody({ value: 'local' }),
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'current' }),
+        revisions: { old: providerBody({ value: 'old' }) },
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async (_objectId, body, operationId) => {
+      restoredOperationId = operationId;
+      restoredBody = body;
+    },
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const preview = await control.preview({ kind: 'restore', objectId: 'object', operationId: 'old' });
+  await control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'object', choice: 'restore' }] });
+  // Publishing under the restored operation id reads as an idempotent replay: it returns success
+  // without moving `head.current`, so the restore silently does nothing.
+  expect(restoredOperationId).not.toBe('old');
+  expect(restoredOperationId).toStartWith('restore:object:');
+  expect(restoredBody).toMatchObject({ value: { value: 'old' } });
+});
+
+test('same-id resolution persists the new provider ID and rewires model references atomically', async () => {
+  const provider = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  const model = {
+    objectId: 'model-rule',
+    logicalKey: 'gpt',
+    kind: 'model-rule' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: {
+      kind: 'model-rule' as const,
+      logicalKey: 'gpt',
+      value: { providers: { work: { enabled: true } } },
+      dependencies: [],
+    },
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  const persisted: unknown[] = [];
+  const repo = {
+    readBinding: () => null,
+    entities: () => [provider, model],
+    putEntities: (_binding: string, entities: readonly unknown[]) => persisted.push(entities),
+    outbox: () => [],
+    pendingCommits: () => [],
+    oauthJournals: () => [],
+  } as never;
+  const control = createSyncControlPlane({
+    repo,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [provider, model],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async (_old, _new, entities) => persisted.push(entities),
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    // Every row of the collision group names an identity, but only one may take the replacement:
+    // giving both the same ID would publish two heads under one Provider ID.
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: (row.choices.includes('local') ? 'local' : 'cloud') as 'local' | 'cloud',
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
+    })),
+  });
+  const rows = persisted[0] as Array<{
+    logicalKey: string;
+    desired: { value: { providers: Record<string, unknown> } };
+  }>;
+  expect(rows.find((row) => row.logicalKey === 'work-renamed')).toBeDefined();
+  expect(rows.find((row) => row.desired?.value.providers?.['work-renamed'] !== undefined)).toBeDefined();
+});
+
+test('same-id resolution falls back to repository bulk persistence when no integration hook is provided', async () => {
+  const provider = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  const model = {
+    objectId: 'model-rule',
+    logicalKey: 'gpt',
+    kind: 'model-rule' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: {
+      kind: 'model-rule' as const,
+      logicalKey: 'gpt',
+      value: { providers: { work: { enabled: true } } },
+      dependencies: [],
+    },
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  let persisted: readonly (typeof provider | typeof model)[] = [];
+  const repo = {
+    readBinding: () => null,
+    entities: () => [provider, model],
+    putEntities: (_binding: string, entities: readonly (typeof provider | typeof model)[]) => {
+      persisted = entities;
+    },
+    outbox: () => [],
+    pendingCommits: () => [],
+    oauthJournals: () => [],
+  } as never;
+  const control = createSyncControlPlane({
+    repo,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [provider, model],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    // Every row of the collision group names an identity, but only one may take the replacement:
+    // giving both the same ID would publish two heads under one Provider ID.
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: (row.choices.includes('local') ? 'local' : 'cloud') as 'local' | 'cloud',
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
+    })),
+  });
+  expect(persisted.find((row) => row.logicalKey === 'work-renamed')).toBeDefined();
+  expect(
+    persisted.find(
+      (row) => row.desired?.value && 'providers' in row.desired.value && 'work-renamed' in row.desired.value.providers,
+    ),
+  ).toBeDefined();
+});
+
+test('renaming a published Provider publishes a new object and deletes the identity it vacated', async () => {
+  const provider = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 3,
+    desired: providerBody({ value: 'local' }),
+    baseline: 'local-revision',
+    overrides: [],
+    pendingReason: null,
+  };
+  const published: { objectId: string; logicalKey: string | null; expected: string | null }[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [provider],
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [provider],
+    // The local object is itself published under `work`, and another device published a second
+    // object claiming the same Provider ID. That is the collision the rename resolves.
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-local',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v9',
+        revision: 'local-revision',
+        body: providerBody({ value: 'published' }),
+      },
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async (body, current, expected) => {
+      published.push({ objectId: current!.objectId, logicalKey: body?.logicalKey ?? null, expected });
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: (row.objectId === 'provider-local' ? 'local' : 'cloud') as 'local' | 'cloud',
+      // Every row in the collision group must name an identity; the other device's object keeps
+      // the contested one, and only the local object moves aside.
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
+    })),
+  });
+
+  const renamed = published.find((call) => call.logicalKey === 'work-renamed');
+  expect(renamed).toBeDefined();
+  // A renamed body cannot be pushed through the old head, whose logical key is immutable.
+  expect(renamed!.objectId).not.toBe('provider-local');
+  expect(renamed!.expected).toBeNull();
+  // The vacated identity is removed so the cloud stops carrying two objects called `work`.
+  expect(published).toContainEqual({ objectId: 'provider-local', logicalKey: null, expected: 'v9' });
+});
+
+test('renaming a collision known only to the cloud republishes it and deletes the head it vacated', async () => {
+  const published: { objectId: string; logicalKey: string | null; expected: string | null; epoch: number }[] = [];
+  const imported: string[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    // A first connection to a space two other devices published `work` into: neither colliding
+    // object exists locally, so nothing here can be renamed through the local row.
+    localEntities: () => [],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-a',
+        logicalKey: 'work',
+        kind: 'provider',
+        epoch: 2,
+        version: 'v1',
+        revision: 'revision-a',
+        body: providerBody({ value: 'a' }),
+      },
+      {
+        objectId: 'provider-b',
+        logicalKey: 'work',
+        kind: 'provider',
+        epoch: 4,
+        version: 'v2',
+        revision: 'revision-b',
+        body: providerBody({ value: 'b' }),
+      },
+    ],
+    applyLocal: async (_body, _current, objectId) => {
+      imported.push(objectId);
+    },
+    applyCloud: async (body, current, expected) => {
+      published.push({
+        objectId: current!.objectId,
+        logicalKey: body?.logicalKey ?? null,
+        expected,
+        epoch: current!.epoch,
+      });
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async () => {
+      throw new Error('a remote-only rename has no authored Provider to rewire');
+    },
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: 'cloud' as const,
+      newProviderId: row.objectId === 'provider-b' ? 'work-renamed' : 'work',
+    })),
+  });
+
+  const renamed = published.find((call) => call.logicalKey === 'work-renamed');
+  expect(renamed).toBeDefined();
+  expect(renamed!.objectId).not.toBe('provider-b');
+  expect(renamed!.expected).toBeNull();
+  // The vacated head is deleted at its own epoch, which only the remote snapshot knows.
+  expect(published).toContainEqual({ objectId: 'provider-b', logicalKey: null, expected: 'v2', epoch: 4 });
+  // The row that keeps the contested ID is not a rename, so its head is left alone.
+  expect(published.every((call) => call.objectId !== 'provider-a')).toBe(true);
+  // The local row binds to the object the cloud now holds the renamed configuration under.
+  expect(imported).toEqual(['provider-a', renamed!.objectId]);
+});
+
+test('an identity collision offers each colliding object only the side it actually has', async () => {
+  const local = {
+    objectId: 'provider-local',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  const published: (string | null)[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [local],
+      putEntity: () => {},
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [local],
+    // This device never published its `work` Provider and another device published a different
+    // object claiming that Provider ID, so neither colliding row exists on both sides.
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'work',
+        kind: 'provider',
+        epoch: 2,
+        version: 'v1',
+        revision: 'cloud-revision',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    // What the real remote half does: a publication needs a head to write through, so selecting the
+    // absent side of a one-sided row would fail as `operation-pending` instead of resolving anything.
+    applyCloud: async (body, current) => {
+      if (current === undefined) throw new SyncOperationError('operation-pending');
+      published.push(body?.logicalKey ?? null);
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    persistProviderIdentity: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  const rows = new Map(preview.rows.map((row) => [row.objectId, row]));
+  expect(rows.get('provider-local')).toMatchObject({ change: 'conflict', choices: ['local'] });
+  expect(rows.get('provider-cloud')).toMatchObject({ change: 'conflict', choices: ['cloud'] });
+  // The dialog defaults every row to its first choice, so the first choice has to be applicable.
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: preview.rows.map((row) => ({
+      objectId: row.objectId,
+      choice: row.choices[0]!,
+      newProviderId: row.objectId === 'provider-local' ? 'work-renamed' : 'work',
+    })),
+  });
+  // Only the local object moved aside; the cloud-only row keeps the contested ID and is imported.
+  expect(published).toEqual(['work-renamed']);
+});
+
+test('manual cloud apply records the current revision operation ID instead of its storage version', async () => {
+  const local = {
+    objectId: 'provider-work',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 0,
+    desired: providerBody({ value: 'local' }),
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  let saved = local;
+  const repo = {
+    readBinding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default' as const,
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    entities: () => [saved],
+    putEntity: (_binding: string, entity: typeof local) => {
+      saved = entity;
+    },
+    outbox: () => [],
+    pendingCommits: () => [],
+    oauthJournals: () => [],
+  } as never;
+  const control = createSyncControlPlane({
+    repo,
+    localEntities: () => [saved],
+    remoteEntities: async () => [
+      {
+        objectId: 'provider-work',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'storage-version-7',
+        revision: 'remote-operation-7',
+        body: providerBody({ value: 'cloud' }),
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const preview = await control.preview({ kind: 'join', providerId: 'work' });
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: [{ objectId: 'provider-work', choice: 'local' }],
+  });
+  expect(saved.baseline).toBe('remote-operation-7');
+});
+
+test('a tombstoned remote head reports no live body so the preview offers a restore', async () => {
+  const objectId = 'provider-work';
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { value: 'cloud' }, dependencies: [] };
+  // A delete only flips `state`; `current` keeps pointing at the last payload revision.
+  const head = encode({
+    protocol: 1,
+    objectId,
+    kind: 'provider',
+    logicalKey: 'work',
+    epoch: 1,
+    sequence: 1,
+    state: 'deleted',
+    current: 'operation-1',
+    history: ['operation-1'],
+    reserved: [],
+    cancelling: [],
+    receipts: {},
+    cleanupComplete: true,
+  });
+  const revision = encode({
+    protocol: 1,
+    state: 'payload',
+    objectId,
+    epoch: 1,
+    operationId: 'operation-1',
+    body,
+    publishedSequence: 1,
+    writtenAt: 1,
+  });
+  const stored = new Map<string, Uint8Array>([
+    [entityKey(objectId), head],
+    [revisionKey(objectId, 'operation-1'), revision],
+  ]);
+  const session = {
+    list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+    read: async (key: string) => {
+      const value = stored.get(key);
+      return value === undefined
+        ? { kind: 'absent' as const }
+        : { kind: 'present' as const, value, version: 'v1', modifiedAt: 1 };
+    },
+  } as unknown as SyncSession;
+
+  const remote = await listRemoteEntities(session, AbortSignal.timeout(5_000));
+  expect(remote[0]).toMatchObject({ tombstone: true, body: null, restoreBody: body });
+
+  const built = buildPreview({
+    request: { kind: 'full' },
+    local: [
+      {
+        objectId,
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: body,
+        baseline: 'operation-1',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote,
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+  expect(built.preview.rows[0]).toMatchObject({ change: 'delete', choices: ['restore'], cloud: null });
+});
+
+// Reconciliation calls a live head whose current revision is gone invalid data. Reporting the
+// object as bodiless here instead would let a connect or join preview publish over that head.
+test('a live remote head whose current revision is missing fails the preview', async () => {
+  const objectId = 'provider-work';
+  const head = encode({
+    protocol: 1,
+    objectId,
+    kind: 'provider',
+    logicalKey: 'work',
+    epoch: 1,
+    sequence: 1,
+    state: 'active',
+    current: 'operation-1',
+    history: ['operation-1'],
+    reserved: [],
+    cancelling: [],
+    receipts: {},
+    cleanupComplete: true,
+  });
+  const session = {
+    list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+    read: async (key: string) =>
+      key === entityKey(objectId)
+        ? { kind: 'present' as const, value: head, version: 'v1', modifiedAt: 1 }
+        : { kind: 'absent' as const },
+  } as unknown as SyncSession;
+
+  await expect(listRemoteEntities(session, AbortSignal.timeout(5_000))).rejects.toBeInstanceOf(SyncPreviewError);
+});
+
+// Reconciliation rejects a current revision that names another operation or another epoch. Accepting
+// one here would let a reviewed Apply install that body and adopt its baseline, putting a head the
+// engine calls corrupt past the corruption check.
+test('a current revision whose recorded identity does not match its key fails the preview', async () => {
+  const objectId = 'provider-work';
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { value: 'cloud' }, dependencies: [] };
+  const head = encode({
+    protocol: 1,
+    objectId,
+    kind: 'provider',
+    logicalKey: 'work',
+    epoch: 1,
+    sequence: 1,
+    state: 'active',
+    current: 'operation-1',
+    history: [],
+    reserved: [],
+    cancelling: [],
+    receipts: {},
+    cleanupComplete: true,
+  });
+  const sessionFor = (revision: Record<string, unknown>) =>
+    ({
+      list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+      read: async (key: string) => ({
+        kind: 'present' as const,
+        value: key === entityKey(objectId) ? head : encode({ protocol: 1, state: 'payload', body, ...revision }),
+        version: 'v1',
+        modifiedAt: 1,
+      }),
+    }) as unknown as SyncSession;
+  const signal = AbortSignal.timeout(5_000);
+
+  const foreignOperation = { objectId, epoch: 1, operationId: 'operation-2', publishedSequence: 1, writtenAt: 1 };
+  await expect(listRemoteEntities(sessionFor(foreignOperation), signal)).rejects.toBeInstanceOf(SyncPreviewError);
+  const staleEpoch = { objectId, epoch: 0, operationId: 'operation-1', publishedSequence: 1, writtenAt: 1 };
+  await expect(listRemoteEntities(sessionFor(staleEpoch), signal)).rejects.toBeInstanceOf(SyncPreviewError);
+});
+
+test('only Provider identity collisions demand a replacement ID', () => {
+  const entity = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string, value: JsonValue) => ({
+    objectId,
+    logicalKey,
+    kind,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind, logicalKey, value, dependencies: [] },
+    baseline: 'baseline',
+    overrides: [],
+    pendingReason: null,
+  });
+  const built = buildPreview({
+    request: { kind: 'full' },
+    local: [
+      entity('provider-a', 'provider', 'work', { value: 'a' }),
+      entity('provider-b', 'provider', 'work', { value: 'b' }),
+      entity('plugin-a', 'plugin-business', '@example/plugin', { value: 'a' }),
+      entity('plugin-b', 'plugin-business', '@example/plugin', { value: 'b' }),
+    ],
+    remote: [],
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+  const rows = new Map(built.preview.rows.map((row) => [row.objectId, row]));
+  expect(rows.get('provider-a')).toMatchObject({ change: 'conflict', requiresProviderId: true });
+  // A plugin cannot be renamed, so requiring a Provider ID would leave the conflict unresolvable.
+  expect(rows.get('plugin-a')).toMatchObject({ change: 'conflict' });
+  expect(rows.get('plugin-a')?.requiresProviderId).toBeUndefined();
+  expect(built.record.rows.find((c) => c.row.objectId === 'plugin-a')?.requiresProviderId).toBeUndefined();
+});
+
+test('replacement Provider IDs that are still taken are refused before any write', () => {
+  const entity = (objectId: string, logicalKey: string) => ({
+    objectId,
+    logicalKey,
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind: 'provider' as const, logicalKey, value: {}, dependencies: [] },
+    baseline: 'baseline',
+    overrides: [],
+    pendingReason: null,
+  });
+  const { record } = buildPreview({
+    request: { kind: 'full' },
+    local: [entity('provider-a', 'work'), entity('provider-b', 'work'), entity('provider-c', 'spare')],
+    remote: [
+      {
+        objectId: 'provider-cloud',
+        logicalKey: 'outside-the-preview',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'cloud-revision',
+        body: { kind: 'provider', logicalKey: 'outside-the-preview', value: {}, dependencies: [] },
+      },
+    ],
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+  const decide = (a: string, b: string) => {
+    const replacement: Record<string, string> = { 'provider-a': a, 'provider-b': b };
+    return record.rows.map((candidate) => ({
+      objectId: candidate.row.objectId,
+      choice: candidate.row.choices[0]!,
+      ...(replacement[candidate.row.objectId] === undefined
+        ? {}
+        : { newProviderId: replacement[candidate.row.objectId]! }),
+    }));
+  };
+  // Applying two heads under one Provider ID overwrites the matching local entry, and the next
+  // reconciliation quarantines the very collision this flow exists to resolve.
+  expect(() => assertDecisions(record, decide('renamed', 'renamed'))).toThrow(SyncOperationError);
+  // A replacement can also land on a Provider the preview never listed, local or cloud-only.
+  expect(() => assertDecisions(record, decide('renamed', 'spare'))).toThrow(SyncOperationError);
+  expect(() => assertDecisions(record, decide('renamed', 'outside-the-preview'))).toThrow(SyncOperationError);
+  // One row keeps the contested ID, the other takes a free one.
+  expect(() => assertDecisions(record, decide('work', 'renamed'))).not.toThrow();
+});
+
+test('connect previews the candidate backend and applies the reviewed decisions', async () => {
+  const cloudBody = {
+    kind: 'provider' as const,
+    logicalKey: 'shared',
+    value: { plugin: '@example/oauth', capability: 'main' },
+    dependencies: [],
+  };
+  const remote = [
+    {
+      objectId: 'cloud-object',
+      logicalKey: 'shared',
+      kind: 'provider',
+      version: 'v1',
+      revision: 'op-1',
+      body: cloudBody,
+    },
+  ];
+  const local = {
+    objectId: 'local-object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 2,
+    desired: providerBody({ plugin: '@example/oauth', capability: 'main' }),
+    baseline: 'old-backend-revision',
+    overrides: [],
+    pendingReason: null,
+  };
+  let committed = false;
+  let disposed = false;
+  const published: (string | null)[] = [];
+  const imported: string[] = [];
+  let activatedAfter: (string | null)[] | undefined;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [local],
+    remoteEntities: async () => remote,
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async (_candidate, _current, objectId) => void imported.push(objectId),
+    applyCloud: async (candidate) => void published.push(candidate?.logicalKey ?? null),
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote,
+      refresh: async () => remote,
+      commit: async () => void (committed = true),
+      activate: () => void (activatedAfter = [...published, ...imported]),
+      dispose: async () => void (disposed = true),
+    }),
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+
+  // The candidate's cloud state has to be visible before the swap; otherwise connecting imports it
+  // without review.
+  expect(preview.rows.map((row) => row.objectId).sort()).toEqual(['cloud-object', 'local-object']);
+  expect(preview.rows.find((row) => row.objectId === 'cloud-object')?.choices).toEqual(['cloud']);
+
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: [
+      { objectId: 'local-object', choice: 'local' },
+      { objectId: 'cloud-object', choice: 'cloud' },
+    ],
+  });
+
+  expect(committed).toBe(true);
+  expect(disposed).toBe(false);
+  // Discarding the decisions would leave the new backend empty while status still reports the row
+  // as included.
+  expect(published).toEqual(['work']);
+  expect(imported).toEqual(['cloud-object']);
+  // Reconciliation imports remote objects under the engine's own inclusion defaults, so starting it
+  // between the swap and the decisions would transiently activate the cloud configuration.
+  expect(activatedAfter).toEqual(['work', 'cloud-object']);
+});
+
+test('a decision that fails to land leaves the candidate engine stopped, and retry cannot start it', async () => {
+  let activated = false;
+  let lifecycleActivated = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'local-object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 2,
+        desired: providerBody({ plugin: '@example/oauth', capability: 'main' }),
+        baseline: 'old-backend-revision',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {
+      throw new Error('expected version conflict');
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => void (activated = true),
+      dispose: async () => {},
+    }),
+    lifecycle: {
+      activate: () => void (lifecycleActivated = true),
+      reconcile: async () => {},
+      close: async () => {},
+    },
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'local-object', choice: 'local' }] }),
+  ).rejects.toThrow('expected version conflict');
+  // The row stays included on its old baseline, so starting the engine here would import whatever a
+  // writer put in the candidate backend after the final refresh — the revision the user overwrote.
+  expect(activated).toBe(false);
+  // `commit()` already switched the binding, so retry is not a harmless reconnect: it reaches the
+  // same engine. The recovery is a fresh connect preview that re-reviews every row.
+  await expect(control.retry()).rejects.toThrow('preview-stale');
+  expect(lifecycleActivated).toBe(false);
+  expect(control.status().state).toBe('preview-required');
+});
+
+test('a failed replacement connect stops pinning preview-required', async () => {
+  let attempt = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => {
+      attempt += 1;
+      if (attempt > 1) throw new SyncOperationError('backend-unavailable');
+      return { remote: [], refresh: async () => [], commit: async () => {}, dispose: async () => {} };
+    },
+  });
+  const connect = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
+
+  await control.preview(connect);
+  expect(control.status().state).toBe('preview-required');
+
+  // Starting a second connect discards the pending candidate, so a failure here leaves no preview
+  // to expire or apply — the state would stay pinned and keep suppressing engine outcomes.
+  await expect(control.preview(connect)).rejects.toMatchObject({ code: 'backend-unavailable' });
+  expect(control.status().state).not.toBe('preview-required');
+});
+
+test('a connect row that joins nothing is optional, and one carrying cloud state is not', async () => {
+  const remote = [
+    {
+      objectId: 'cloud-object',
+      logicalKey: 'shared',
+      kind: 'provider',
+      version: 'v1',
+      revision: 'op-1',
+      body: { kind: 'provider' as const, logicalKey: 'shared', value: { region: 'eu' }, dependencies: [] },
+    },
+  ];
+  const local = {
+    objectId: 'local-object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 2,
+    desired: providerBody({ plugin: '@example/oauth', capability: 'main' }),
+    baseline: 'old-backend-revision',
+    overrides: [],
+    pendingReason: null,
+  };
+  const published: (string | null)[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [local],
+    remoteEntities: async () => remote,
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async (candidate) => void published.push(candidate?.logicalKey ?? null),
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote,
+      refresh: async () => remote,
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+  const connect = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
+
+  const preview = await control.preview(connect);
+  // The dialog reads `optional` to decide which rows to leave unselected. Marking the carried
+  // local-only row as required would make it preselect `local` and republish the whole
+  // configuration to the new backend without the user ever choosing to.
+  expect(preview.rows.find((row) => row.objectId === 'local-object')?.optional).toBe(true);
+  expect(preview.rows.find((row) => row.objectId === 'cloud-object')?.optional).toBeUndefined();
+
+  // Omitting the cloud-bearing row is still rejected: reconciliation after the swap would import it
+  // unreviewed.
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'local-object', choice: 'local' }] }),
+  ).rejects.toMatchObject({ code: 'upgrade-required' });
+
+  const second = await control.preview(connect);
+  await control.apply({ previewId: second.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] });
+  expect(published).toEqual([]);
+});
+
+test('an abandoned connect preview disposes its candidate at expiry', async () => {
+  let disposed = 0;
+  let committed = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    previewTtlMs: 10,
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => void (committed = true),
+      activate: () => {},
+      dispose: async () => void (disposed += 1),
+    }),
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+  expect(disposed).toBe(0);
+
+  // Nothing reads `expiresAt` unless Apply is submitted, so without a sweep the backend session
+  // (a native helper process for CloudKit) would stay open until the process exits.
+  await Bun.sleep(40);
+  expect(disposed).toBe(1);
+  expect(control.status().state).not.toBe('preview-required');
+
+  await expect(control.apply({ previewId: preview.previewId, decisions: [] })).rejects.toMatchObject({
+    code: 'preview-stale',
+  });
+  expect(committed).toBe(false);
+  expect(disposed).toBe(1);
+});
+
+test('an abandoned join preview stops pinning preview-required at expiry', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'excluded',
+        epoch: 1,
+        desired: null,
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    previewTtlMs: 10,
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  await control.preview({ kind: 'join', providerId: 'work' });
+  expect(control.status().state).toBe('preview-required');
+
+  // Only connect previews were swept, so abandoning any other kind pinned `preview-required` for
+  // the rest of the process and kept background engine outcomes suppressed.
+  await Bun.sleep(40);
+  expect(control.status().state).not.toBe('preview-required');
+});
+
+test('connect validates decisions and fences the candidate before swapping the binding', async () => {
+  const cloudEntity = (version: string) => ({
+    objectId: 'cloud-object',
+    logicalKey: 'shared',
+    kind: 'provider',
+    version,
+    revision: 'op-1',
+    body: { kind: 'provider' as const, logicalKey: 'shared', value: {}, dependencies: [] },
+  });
+  let committed = 0;
+  let disposed = 0;
+  let cloudVersion = 'v1';
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [cloudEntity('v1')],
+      refresh: async () => [cloudEntity(cloudVersion)],
+      commit: async () => void (committed += 1),
+      activate: () => {},
+      dispose: async () => void (disposed += 1),
+    }),
+  });
+  const connect = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
+
+  // A decision naming a row the user never reviewed is rejected before the service switches
+  // backends: the preview is consumed, so a swap here could not be retried.
+  const malformed = await control.preview(connect);
+  await expect(
+    control.apply({ previewId: malformed.previewId, decisions: [{ objectId: 'unknown', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({ code: 'upgrade-required' });
+  expect(committed).toBe(0);
+  expect(disposed).toBe(1);
+
+  // Same for a candidate whose cloud state moved while the preview sat: the reviewed rows no
+  // longer describe it, so the binding must stay where it is.
+  const drifted = await control.preview(connect);
+  cloudVersion = 'v2';
+  await expect(
+    control.apply({ previewId: drifted.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({
+    code: 'preview-stale',
+  });
+  expect(committed).toBe(0);
+  expect(disposed).toBe(2);
+
+  // A connect preview with rows needs a choice for each: skipping one would leave the post-swap
+  // reconciliation to import that cloud object with no explicit review.
+  const skipped = await control.preview(connect);
+  cloudVersion = 'v1';
+  await expect(control.apply({ previewId: skipped.previewId, decisions: [] })).rejects.toMatchObject({
+    code: 'upgrade-required',
+  });
+  expect(committed).toBe(0);
+  expect(disposed).toBe(3);
+});
+
+test('a tombstoned duplicate does not collide with the live object holding the identity', () => {
+  const remoteEntity = (objectId: string, tombstone: boolean) => ({
+    objectId,
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    version: 'v1',
+    revision: `${objectId}-revision`,
+    ...(tombstone ? { tombstone: true, body: null } : { body: providerBody({ region: 'eu' }) }),
+  });
+  const built = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [],
+    // A purged predecessor of the same Provider ID is still in the remote snapshot. Counting it as a
+    // second claim on `provider\0work` made the surviving object a conflict demanding a rename to
+    // resolve a duplicate that no longer exists.
+    remote: [remoteEntity('live-object', false), remoteEntity('dead-object', true)],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview',
+    expiresAt: 1,
+  });
+  const live = built.preview.rows.find((row) => row.objectId === 'live-object');
+  expect(live?.change).not.toBe('conflict');
+  expect(live?.requiresProviderId).toBeUndefined();
+});
+
+// The remote names its own operation IDs and a restore request carries one straight through, so
+// both sides are untrusted. A plain lookup for `__proto__` resolves `Object.prototype`, which the
+// undefined check would accept as a restorable revision.
+test('a __proto__ restore operation id is refused instead of resolving Object.prototype', async () => {
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: providerBody({ value: 'local' }),
+        baseline: null,
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [
+      {
+        objectId: 'object',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'provider-revision',
+        body: providerBody({ value: 'current' }),
+        revisions: { old: providerBody({ value: 'old' }) },
+      },
+    ],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  await expect(
+    control.preview({ kind: 'restore', objectId: 'object', operationId: '__proto__' }),
+  ).rejects.toBeInstanceOf(SyncPreviewError);
+});
+
+test('a __proto__ revision operation id stays an own entry of the reported history', async () => {
+  const objectId = 'provider-work';
+  const body = { kind: 'provider' as const, logicalKey: 'work', value: { value: 'cloud' }, dependencies: [] };
+  const stored = new Map<string, Uint8Array>([
+    [
+      entityKey(objectId),
+      encode({
+        protocol: 1,
+        objectId,
+        kind: 'provider',
+        logicalKey: 'work',
+        epoch: 1,
+        sequence: 1,
+        state: 'active',
+        current: '__proto__',
+        history: ['__proto__'],
+        reserved: [],
+        cancelling: [],
+        receipts: {},
+        cleanupComplete: true,
+      }),
+    ],
+    [
+      revisionKey(objectId, '__proto__'),
+      encode({
+        protocol: 1,
+        state: 'payload',
+        objectId,
+        epoch: 1,
+        operationId: '__proto__',
+        body,
+        publishedSequence: 1,
+        writtenAt: 1,
+      }),
+    ],
+  ]);
+  const session = {
+    list: async () => ({ keys: [`s/v1/default/entity/${objectId}`] }),
+    read: async (key: string) => {
+      const value = stored.get(key);
+      return value === undefined
+        ? { kind: 'absent' as const }
+        : { kind: 'present' as const, value, version: 'v1', modifiedAt: 1 };
+    },
+  } as unknown as SyncSession;
+
+  const remote = await listRemoteEntities(session, AbortSignal.timeout(5_000));
+
+  expect(remote[0]?.body).toMatchObject(body);
+  expect(Object.hasOwn(remote[0]?.revisions ?? {}, '__proto__')).toBe(true);
+  expect(({} as { kind?: string }).kind).toBeUndefined();
+});
+
+test('a preview shows an option named __proto__ instead of dropping it from the reviewed row', () => {
+  // Plugin options are arbitrary authored data, and JSON.parse makes `__proto__` an own member.
+  // Apply uses the original body, so a key the redactor silently drops is a change the user
+  // approves without ever having been shown it.
+  const options = JSON.parse('{"__proto__":{"region":"eu"},"endpoint":"https://plugin.example.test"}') as Record<
+    string,
+    JsonValue
+  >;
+  const built = buildPreview({
+    request: { kind: 'purge', scope: 'plugin', objectId: '@example/plugin' },
+    local: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        mode: 'included',
+        epoch: 1,
+        desired: { kind: 'plugin-business', logicalKey: '@example/plugin', value: options, dependencies: [] },
+        baseline: 'a',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'plugin-a',
+        logicalKey: '@example/plugin',
+        kind: 'plugin-business',
+        version: 'a',
+        revision: 'plugin-a-revision',
+        body: { kind: 'plugin-business', logicalKey: '@example/plugin', value: {}, dependencies: [] },
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-proto-option',
+    expiresAt: 1,
+  });
+
+  const local = built.preview.rows[0]?.local as Record<string, JsonValue>;
+  expect(Object.hasOwn(local, '__proto__')).toBe(true);
+  expect(local['endpoint']).toBe('https://plugin.example.test');
+  expect('region' in {}).toBe(false);
+});
+
+test('redaction reaches nested records whose own key is the sensitive one', () => {
+  const value = redactEntityValue(
+    providerBody({
+      account: { id: 'acct-1', nested: { label: 'expose-me' } },
+      headers: { 'X-Trace': 'expose-me' },
+      options: { baseURL: 'https://kept.example' },
+      // An own `__proto__` key must survive as a property rather than reach the prototype setter.
+      ['__proto__' as string]: { note: 'kept' },
+    }),
+    new Set(),
+  );
+
+  expect(JSON.stringify(value)).not.toContain('expose-me');
+  expect(value).toMatchObject({ account: '[redacted]', headers: '[redacted]' });
+  expect(Object.hasOwn(value as object, '__proto__')).toBe(true);
+});

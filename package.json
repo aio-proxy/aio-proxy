@@ -61,7 +61,7 @@
     "lint:types": "oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test:unit": "bun test ./scripts && turbo run test:unit --filter=!@aio-proxy/website",
+    "test:unit": "turbo run test:unit --filter=!@aio-proxy/website && bun test ./scripts",
     "test:artifact": "turbo run test:artifact --filter=!@aio-proxy/website",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
     "test": "turbo run test test:artifact --filter=!@aio-proxy/website",
@@ -86,6 +86,7 @@
     "oxfmt": "^0.66.0",
     "oxlint": "^1.81.0",
     "oxlint-tsgolint": "^7.0.2001",
+    "pkg-pr-new": "0.0.88",
     "turbo": "^2.10.12",
     "typescript": "^7.0.2"
   },

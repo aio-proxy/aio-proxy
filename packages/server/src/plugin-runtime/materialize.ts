@@ -4,6 +4,7 @@ import { type Diagnostic, providerLoginCommand } from '@aio-proxy/types';
 
 import {
   OAuthPluginAccountPreparationError,
+  type PrepareOAuthPluginAccountOptions,
   type PreparedOAuthPluginAccount,
   prepareOAuthPluginAccount,
 } from '../plugin-account';
@@ -41,6 +42,29 @@ function runtimeDeadline<T>(task: Promise<T>): Promise<T> {
         reject(error);
       },
     );
+  });
+}
+
+function sharedResolver(options: MaterializePluginProviderOptions): PrepareOAuthPluginAccountOptions['resolveShared'] {
+  if (options.resolveShared === undefined) return undefined;
+  const adapter = options.plugins.registry.resolveOAuth(options.config.plugin, options.config.capability);
+  return (callbacks) =>
+    adapter === undefined ? undefined : options.resolveShared!(options.config.id, adapter.credentials, callbacks);
+}
+
+async function prepareRuntimeAccount(options: MaterializePluginProviderOptions): Promise<PreparedOAuthPluginAccount> {
+  const { config, plugins, repository } = options;
+  return prepareOAuthPluginAccount({
+    config,
+    plugins,
+    repository,
+    diagnostics: options.diagnostics,
+    logger: options.logger,
+    onDiagnosticChanged: options.onDiagnosticChanged,
+    credentialMode: 'runtime',
+    ...(options.pluginSecrets === undefined ? {} : { pluginSecrets: options.pluginSecrets }),
+    ...(sharedResolver(options) === undefined ? {} : { resolveShared: sharedResolver(options) }),
+    ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
   });
 }
 
@@ -162,7 +186,7 @@ export async function materializePluginProvider(
   const { config, plugins, repository } = options;
   let prepared: PreparedOAuthPluginAccount;
   try {
-    prepared = await prepareOAuthPluginAccount(options);
+    prepared = await prepareRuntimeAccount(options);
   } catch (error) {
     if (!(error instanceof OAuthPluginAccountPreparationError)) throw error;
     return failure(

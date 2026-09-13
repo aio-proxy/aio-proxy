@@ -14,6 +14,14 @@ function artifactFiles(directory: string): string[] {
   });
 }
 
+function isStaleMovedPluginImport(file: string, specifier: string): boolean {
+  if (file.startsWith(`${join(coreDist, 'sync/repository')}/`) && specifier === './repository.js') {
+    return false;
+  }
+
+  return /\/(?:account-login|repository|loader)(?:\.js)?$/u.test(specifier);
+}
+
 test('built package entry resolves moved plugin directories', () => {
   expect(existsSync(coreEntry)).toBe(true);
 
@@ -21,7 +29,7 @@ test('built package entry resolves moved plugin directories', () => {
     const source = readFileSync(file, 'utf8');
     return [...source.matchAll(/(?:from|import\()\s*["']([^"']+)["']/gu)]
       .map((match) => match[1])
-      .filter((specifier) => /\/(?:account-login|repository|loader)(?:\.js)?$/u.test(specifier))
+      .filter((specifier) => isStaleMovedPluginImport(file, specifier))
       .map((specifier) => `${file.slice(coreDist.length + 1)}: ${specifier}`);
   });
   expect(unresolved).toEqual([]);

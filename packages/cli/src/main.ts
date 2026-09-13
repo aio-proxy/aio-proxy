@@ -19,6 +19,8 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
+import { createDefaultSyncCliDeps, type SyncCliDeps } from './sync';
+import { registerSyncCommands } from './sync/commands';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade';
 
@@ -66,7 +68,11 @@ export const invokedProgramName = (
   return 'aio-proxy';
 };
 
-export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invokedProgramName()) => {
+export const buildProgram = (
+  deps: CliDeps = defaultCliDeps,
+  programName = invokedProgramName(),
+  syncDeps: SyncCliDeps = createDefaultSyncCliDeps({ passwordStdin: process.argv.includes('--password-stdin') }),
+) => {
   const program = new Command()
     .name(programName)
     .description(m['cli.root.description']())
@@ -178,6 +184,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .option('--yes', m['cli.plugin.prune_option_yes_description']())
     .action((options) => pluginPrune(options));
   registerServiceCommands(program);
+  registerSyncCommands(program, syncDeps);
 
   program
     .command('doctor')

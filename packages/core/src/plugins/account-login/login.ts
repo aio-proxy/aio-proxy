@@ -67,6 +67,7 @@ export type OAuthAccountWriteOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
+  readonly beforeAccountOperationComplete?: (operation: PendingAccountOperation, signal: AbortSignal) => Promise<void>;
   readonly validateProviderCommit?: (
     capability: OAuthCapabilityReference,
     current: Readonly<Record<string, unknown>>,
@@ -74,6 +75,14 @@ export type OAuthAccountWriteOptions = {
   readonly progress?: (message: LocalizedText) => void;
   readonly signal?: AbortSignal;
   readonly now?: () => number;
+  readonly syncCommit?: {
+    readonly prepare: (
+      before: Record<string, unknown>,
+      candidate: Record<string, unknown>,
+      accountOperationIds?: readonly string[],
+    ) => string;
+    readonly confirm: (commitId: string) => Promise<void>;
+  };
 };
 
 export type LoginOAuthAccountOptions = OAuthAccountWriteOptions & {
@@ -216,10 +225,13 @@ async function persistOAuthAccount(input: {
   });
   const state: StageState = {};
   let staged: PendingAccountOperation;
+  let before: Record<string, unknown> | undefined;
+  let commitId: string | undefined;
   try {
     const commit = () =>
       options.config.transaction(
         async (current) => {
+          before = current;
           await options.validateProviderCommit?.(initial.capability, current);
           return stageAccountWrite(
             current,
@@ -240,7 +252,18 @@ async function persistOAuthAccount(input: {
             state,
           );
         },
-        { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
+        {
+          validateCandidate: validateStagedOAuthWrite,
+          signal: deadline.signal,
+          ...(options.syncCommit === undefined
+            ? {}
+            : {
+                beforeCommit: async (candidate: Record<string, unknown>) => {
+                  if (before !== undefined && state.operation !== undefined)
+                    commitId = options.syncCommit!.prepare(before, candidate, [state.operation.operationId]);
+                },
+              }),
+        },
       );
     staged = await (options.coordinateProviderCommit === undefined
       ? commit()
@@ -253,6 +276,14 @@ async function persistOAuthAccount(input: {
     }
     throw error;
   }
+  if (options.beforeAccountOperationComplete !== undefined) {
+    // The rename landed, so the credential is about to leave for the backend. Record that durably
+    // first: a crash mid-publication must not read back as an interrupted write and compensate away
+    // an account the backend may already hold.
+    options.repository.markAccountOperationPublishing(staged.operationId);
+    await options.beforeAccountOperationComplete(staged, deadline.signal);
+  }
   options.repository.completeAccountOperation(staged.operationId);
+  if (options.syncCommit !== undefined && commitId !== undefined) await options.syncCommit.confirm(commitId);
   return { providerId: staged.providerId };
 }

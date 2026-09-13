@@ -54,6 +54,7 @@ export function createAccountRemovalCoordinator(options: {
   readonly enqueue?: FifoQueue;
   readonly canDeleteAccount?: (providerId: string) => boolean;
   readonly onRecoveryNeeded?: (nextRunAt: number) => void;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 }): AccountRemovalCoordinator {
   const stageRemoved: AccountRemovalCoordinator['stageRemoved'] = (previousProviders, nextProviders) => {
     if (options.file === undefined || options.repository === undefined) return [];
@@ -132,7 +133,11 @@ export function createAccountRemovalCoordinator(options: {
     return Promise.all(
       operations.map(async (operation) => {
         await retired?.whenProviderDrained(operation.providerId);
-        await (options.enqueue ?? ((fn) => fn()))(() => finalizeIfStillAbsent(operation));
+        await (options.enqueue ?? ((fn) => fn()))(() =>
+          options.withProviderGate === undefined
+            ? finalizeIfStillAbsent(operation)
+            : options.withProviderGate(operation.providerId, () => finalizeIfStillAbsent(operation)),
+        );
       }),
     )
       .then(() => undefined)
