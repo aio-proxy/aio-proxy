@@ -6,6 +6,7 @@ import type { SyncPreviewInput } from '@aio-proxy/types';
 
 import {
   SyncPreviewError,
+  buildPreview,
   type PreviewCandidate,
   type PreviewFence,
   type PreviewRecord,
@@ -467,6 +468,53 @@ test('restoring a revision writes it to the local configuration, not just the ro
   expect(scenario.appliedLocal).toBe(1);
   // Recording the pre-restore remote revision would leave the row behind its own publication.
   expect(written[0]).toMatchObject({ baseline: restoredOperationId });
+});
+
+// A deleted head leaves the local row bodiless, so a restore of it classifies as `add` and the row
+// offers `cloud` rather than `restore`. That choice still has to publish the historical revision:
+// importing it locally alone leaves the cloud head a tombstone, and the next reconciliation deletes
+// the entity again.
+test('restoring a deleted head publishes the revision through the choice the row offers', async () => {
+  const historical: EntityBody = { kind: 'provider', logicalKey: 'work', value: { value: 'past' }, dependencies: [] };
+  const deleted = { ...localEntity('provider-a', 'provider', 'work'), desired: null };
+  const { record: built } = buildPreview({
+    request: { kind: 'restore', objectId: 'provider-a', operationId: 'r0' },
+    local: [deleted],
+    remote: [
+      {
+        objectId: 'provider-a',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: null,
+        body: null,
+        tombstone: true,
+        revisions: { r0: historical },
+        restoreBody: historical,
+      },
+    ],
+    fence,
+    previewId: 'preview',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+  });
+  const restored: EntityBody[] = [];
+  const scenario = harness({
+    localEntities: () => [deleted],
+    restore: async (_objectId, candidateBody) => void restored.push(candidateBody),
+  });
+  const decisions: SyncDecision[] = built.rows.map((row) => ({
+    objectId: row.row.objectId,
+    choice: row.row.choices[0]!,
+  }));
+
+  expect(decisions).toEqual([{ objectId: 'provider-a', choice: 'cloud' }]);
+  assertDecisions(built, decisions);
+  await applyPreview(scenario.input, built, decisions);
+
+  expect(restored).toEqual([historical]);
+  // The restored body still has to reach the configuration file, or the next commit projects the
+  // deletion back over it.
+  expect(scenario.appliedLocal).toBe(1);
 });
 
 test('a leave that completes during a publication is not undone by the recorded join', async () => {
