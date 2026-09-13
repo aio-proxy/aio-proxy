@@ -308,7 +308,17 @@ export async function applyPreview(
       // Every row of a collision group names an identity, including the one that keeps the
       // contested ID. That is not a rename: republishing it as a new object would delete the head
       // it still holds.
-      if (identityBase !== undefined && identityBase.logicalKey !== decision.newProviderId)
+      if (identityBase !== undefined && identityBase.logicalKey !== decision.newProviderId) {
+        // Renaming a published head replaces it with a new object, and OAuth ownership names the
+        // account object under the old one. Carrying it over leaves `share()` reporting the
+        // credential as already shared while no account exists for the new object — the renamed
+        // Provider is then unusable on every other device — and dropping it would let the local
+        // port rotate a refresh token the devices following the old account still use. Detaching
+        // first is the one resolution that is safe both ways, so the rename asks for it. Read from
+        // the live rows: ownership a login recorded after the preview is no part of the fence.
+        const owner = input.localEntities().find((entity) => entity.objectId === identityBase!.objectId);
+        if (remote?.body != null && retainsSharedOAuth(owner ?? identityBase, input.repo.oauthJournals(binding.id)))
+          throw new SyncOperationError('detach-required');
         identityRows = providerIdentityRows(
           identityBase,
           selectedBody,
@@ -316,6 +326,7 @@ export async function applyPreview(
           record.local,
           remote?.body != null,
         );
+      }
     }
     // A remote-only row has nothing authored to rewire — applyLocal writes the imported body under
     // the new ID — and rewiring would rename whichever local Provider still holds the old one,

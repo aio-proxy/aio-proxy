@@ -85,7 +85,6 @@ function harness(overrides: Partial<OperationInput> = {}): {
   const persistedOverrides: string[] = [];
   const state = { appliedLocal: 0 };
   const input: OperationInput = {
-    repo: { putEntity: () => {} } as never,
     binding: () => ({ id: 'binding' }) as never,
     localEntities: () => [],
     remoteEntities: async () => remoteHeads,
@@ -100,6 +99,9 @@ function harness(overrides: Partial<OperationInput> = {}): {
       persistedOverrides.push(objectId);
     },
     ...overrides,
+    // Merged rather than replaced: every override below cares about one repository method, and the
+    // apply path reads more than one.
+    repo: { putEntity: () => {}, oauthJournals: () => [], ...overrides.repo } as never,
     purge: async (objectId, expectedVersion) => {
       await (overrides.purge ?? (async () => purged.push(objectId)))(objectId, expectedVersion);
       // An erase retires the head, and applying reads the backend again to confirm it: a double that
@@ -685,6 +687,34 @@ test('a rename records the join on the renamed row against the revision it just 
   // The reviewed remote revision names the object the rename vacated, and it is one publication old.
   expect(written[0]).toMatchObject({ baseline: 'renamed-revision' });
   expect(written[0]?.objectId).not.toBe('provider-a');
+});
+
+// Ownership names the account object under the head being replaced, so a rename can neither carry it
+// (the new object has no account, and `share()` short-circuits on ownership) nor drop it (the local
+// port would rotate a refresh token other devices follow).
+test('renaming a published Provider whose credential is shared asks for a detachment first', async () => {
+  const owned: LocalEntity['oauth'] = {
+    mode: 'shared',
+    epoch: 0,
+    generation: 0,
+    localRevision: 1,
+    pluginVersion: '1.0.0',
+    formatVersion: 1,
+  };
+  const renames: string[] = [];
+  const scenario = harness({
+    repo: { putEntity: () => {}, oauthJournals: () => [] } as never,
+    localEntities: () => [{ ...localEntity('provider-a', 'provider', 'work'), oauth: owned }],
+    persistProviderIdentity: async (_oldProviderId, newProviderId) => void renames.push(newProviderId),
+  });
+  const rows = [candidate('provider-a', 'provider', 'work')];
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+      { objectId: 'provider-a', choice: 'local', newProviderId: 'work-2' },
+    ]),
+  ).rejects.toThrow(SyncOperationError);
+  expect(renames).toEqual([]);
 });
 
 // The identity hook renames the authored configuration and moves the OAuth account with it. Running
