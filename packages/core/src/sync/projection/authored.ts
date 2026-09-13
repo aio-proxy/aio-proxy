@@ -78,7 +78,11 @@ export function committedSourceFrom(
       .filter((entry): entry is readonly [string, NonNullable<(typeof entry)[1]>] => entry[1] !== null),
   );
   const secrets = new Map(
-    pluginPackages(raw['plugins'])
+    // Every plugin the configuration requires, not only those listed in `plugins`: the projection
+    // publishes the business secret of a plugin an OAuth Provider names, and `aio-proxy login`
+    // writes no `plugins` entry for it. Omitting it here publishes the Provider without the secret
+    // another device needs to use it.
+    [...authoredPluginPackages(raw)]
       .map((plugin) => [plugin, accounts.readPluginSecret(plugin)?.value] as const)
       .filter((entry) => entry[1] !== undefined),
   );

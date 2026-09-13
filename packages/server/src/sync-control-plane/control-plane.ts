@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import {
   type CommittedSource,
   type LocalBinding,
@@ -19,6 +17,7 @@ import type {
 } from '@aio-proxy/types';
 
 import { createFifoQueue } from '../fifo-queue';
+import { createFenceReader } from './fence';
 import type { ServerSyncLifecycle } from './lifecycle';
 import {
   applyPreview,
@@ -31,13 +30,10 @@ import {
 import {
   buildPreview,
   createPreviewToken,
-  latestCommitId,
   listRemoteEntities,
   sameFence,
   snapshotRemoteEntities,
-  snapshotLocalEntities,
   SyncPreviewError,
-  type PreviewFence,
   type PreviewRecord,
   type RemoteEntity,
 } from './preview';
@@ -186,61 +182,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     if (mapped !== undefined) state = mapped;
   });
 
-  const authoredDigest = async (): Promise<string> => {
-    const source = await options.committedSource?.().catch(() => undefined);
-    return source === undefined ? '' : createHash('sha256').update(JSON.stringify(source.raw)).digest('hex');
-  };
-
-  const currentFence = async (
-    snapshot?: readonly RemoteEntity[],
-    localCommitId?: string,
-    bindingSnapshot?: LocalBinding | null,
-    capturedRangeRevision?: number,
-  ): Promise<PreviewFence> => {
-    const current = bindingSnapshot === undefined ? binding() : bindingSnapshot;
-    const remote = snapshot ?? (await remoteEntities());
-    return {
-      bindingId: current?.id ?? '',
-      sessionGeneration: current?.sessionGeneration ?? 0,
-      localCommitId: current === null ? '' : (localCommitId ?? latestCommitId(options.repo, current)),
-      // The revision the local rows were read at, not the one live when the fence is built: a Leave
-      // completing in between — the preview reads the committed source and the remote range over the
-      // network first — would otherwise pair the pre-Leave included row with the post-Leave revision,
-      // pass `sameFence()`, and let the reviewed join re-include the Provider Leave reported success
-      // for. Applying uses the live value, so the fence rejects the preview instead.
-      rangeRevision: capturedRangeRevision ?? rangeRevision,
-      // Before the first binding there is no commit history for `localCommitId` to name, so a
-      // configuration edit between preview and Apply would pass the fence: a `cloud` decision would
-      // overwrite the newer Provider, and a `local` decision would publish the reviewed body and
-      // record it as synchronized. The authored file is that history until a binding exists.
-      ...(current === null ? { sourceDigest: await authoredDigest() } : {}),
-      remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
-    };
-  };
-
-  const captureLocal = (): {
-    readonly binding: LocalBinding | null;
-    readonly entities: readonly LocalEntity[];
-    readonly localCommitId: string;
-    readonly rangeRevision: number;
-  } => {
-    const capturedBinding = binding();
-    // Read with the rows, in one synchronous block, so nothing can land between the two.
-    const capturedRangeRevision = rangeRevision;
-    if (capturedBinding === null)
-      return { binding: null, entities: [], localCommitId: '', rangeRevision: capturedRangeRevision };
-    const before = latestCommitId(options.repo, capturedBinding);
-    const entities = snapshotLocalEntities(localEntities());
-    const afterBinding = binding();
-    const after = afterBinding?.id === capturedBinding.id ? latestCommitId(options.repo, capturedBinding) : '';
-    if (afterBinding?.id !== capturedBinding.id || before !== after) throw new SyncPreviewError('preview-stale');
-    return {
-      binding: capturedBinding,
-      entities,
-      localCommitId: after,
-      rangeRevision: capturedRangeRevision,
-    };
-  };
+  const { fence: currentFence, captureLocal } = createFenceReader({
+    repo: options.repo,
+    binding,
+    localEntities,
+    remoteEntities,
+    ...(options.committedSource === undefined ? {} : { committedSource: options.committedSource }),
+    rangeRevision: () => rangeRevision,
+  });
 
   const operationInput = (): OperationInput => ({
     repo: options.repo,
@@ -291,7 +240,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     // configuration change between preview and Apply would otherwise publish the superseded body or
     // overwrite the intervening edit with a cloud value, and the commit guard is disabled below.
     const local = captureLocal();
-    const observed = await currentFence(remote, local.localCommitId, local.binding, local.rangeRevision);
+    const observed = await currentFence(local, remote, true);
     if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
     await candidate.commit();
     // Deferring the engine exists precisely so reconciliation never sees these objects before the
@@ -342,7 +291,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             request,
             local: local.entities,
             remote,
-            fence: await currentFence(remote, local.localCommitId, local.binding, local.rangeRevision),
+            fence: await currentFence(local, remote, true),
             previewId,
             expiresAt,
             registry: options.registry?.(),
@@ -375,7 +324,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         request: input,
         local: local.entities,
         remote,
-        fence: await currentFence(remote, local.localCommitId, local.binding, local.rangeRevision),
+        fence: await currentFence(local, remote),
         previewId,
         expiresAt,
         registry: options.registry?.(),

@@ -34,6 +34,21 @@ const initialOptions = (fields: readonly DashboardOAuthFormField[]): Record<stri
       'defaultValue' in field && field.defaultValue !== undefined ? [[field.key, field.defaultValue]] : [],
     ),
   );
+// A conditional field is part of the request only while its condition holds. The same rule decides
+// whether the control renders and whether its value is submitted, so a field the user filled in and
+// then switched away from cannot reach a strict backend schema as a hidden, unshown setting.
+const isFieldActive = (field: DashboardOAuthFormField, values: Record<string, unknown>): boolean =>
+  field.when === undefined || values[field.when.key] === field.when.equals;
+const activeOptions = (
+  fields: readonly DashboardOAuthFormField[],
+  values: Record<string, unknown>,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(values).filter(([key]) => {
+      const field = fields.find((entry) => entry.key === key);
+      return field === undefined || isFieldActive(field, values);
+    }),
+  );
 const syncOptionsSchema = z.record(z.string(), z.json());
 const EMPTY_PROVIDERS: readonly ProviderSyncView[] = [];
 const EMPTY_BACKENDS: readonly SyncBackendView[] = [];
@@ -60,7 +75,7 @@ const renderSyncBackendField = (field: DashboardOAuthFormField, form: SyncReactF
     <form.Field name="options">
       {(optionsField) => {
         const values = (optionsField.state.value ?? {}) as Record<string, unknown>;
-        if (field.when !== undefined && values[field.when.key] !== field.when.equals) return null;
+        if (!isFieldActive(field, values)) return null;
         const value = values[field.key];
         // Deleting rather than spreading around the key: `connect` submits exactly this object, so a
         // cleared field has to leave, not keep whatever was typed before it.
@@ -216,7 +231,7 @@ export const SyncSettingsGroup: React.FC = () => {
 
   const connect = () => {
     if (backend === undefined) return;
-    const options = syncOptionsSchema.safeParse(form.getFieldValue('options'));
+    const options = syncOptionsSchema.safeParse(activeOptions(backend.form, form.getFieldValue('options')));
     if (!options.success) return;
     const input: SyncPreviewInput = {
       kind: 'connect',

@@ -317,12 +317,15 @@ export async function reconcileRemote(
           // previously active Provider and its credential in place. Applying a remote deletion
           // here would destroy a local configuration that was never itself in conflict.
           input.assertGeneration(generation);
-          input.repo.putEntity(input.bindingId, {
-            ...candidate,
-            mode: 'excluded',
-            pendingReason: 'provider-id-conflict',
-          });
-          known.set(candidate.objectId, { ...candidate, mode: 'excluded', pendingReason: 'provider-id-conflict' });
+          // `candidate` comes from the snapshot taken before this pass's awaits, so writing it whole
+          // would erase overrides or OAuth ownership an override Apply or shared-credential import
+          // persisted in between. Only the quarantine is this write's to decide — and a row that has
+          // since been purged is not resurrected.
+          const current = input.repo.entities(input.bindingId).find((row) => row.objectId === candidate.objectId);
+          if (current === undefined) continue;
+          const quarantined = { ...current, mode: 'excluded' as const, pendingReason: 'provider-id-conflict' };
+          input.repo.putEntity(input.bindingId, quarantined);
+          known.set(candidate.objectId, quarantined);
         }
         input.assertGeneration(generation);
         upsertEntity(input, existing, head, body, 'excluded', 'provider-id-conflict', existing?.baseline ?? null);

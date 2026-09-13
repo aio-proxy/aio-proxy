@@ -37,6 +37,9 @@ import { commitConfig, type ServerRuntime } from '../lifecycle';
 import { createActivationCheck } from '../sync-activation';
 import type { ServerStateOptions } from '../types';
 
+/** Cloud artifact provisioning is minutes, not seconds; anything past this is a stalled backend. */
+const CONNECT_STARTUP_TIMEOUT_MS = 5 * 60_000;
+
 // eslint-disable-next-line max-lines-per-function -- lifecycle replacement keeps one integration owner
 export function createSyncIntegration(
   runtime: ServerRuntime,
@@ -326,15 +329,21 @@ export function createSyncIntegration(
         lifetime.abort();
         await rm(dataDirectory, { recursive: true, force: true }).catch(() => {});
       };
+      // `discard()` is only reachable once these two awaits settle, so an unresponsive backend would
+      // hold `connectQueue` for the life of the service and every later connection attempt with it.
+      // The bound covers startup only: `refresh()` and `commit()` run after the preview exists and
+      // are bounded by the request that calls them. Generous, because a first connect legitimately
+      // provisions cloud artifacts — but finite, so a stall ends as a failed attempt.
+      const startup = AbortSignal.any([lifetime.signal, AbortSignal.timeout(CONNECT_STARTUP_TIMEOUT_MS)]);
       let session: SyncSession | undefined;
       try {
-        session = await backend.connect(normalizedOptions, { signal: lifetime.signal, dataDirectory });
+        session = await backend.connect(normalizedOptions, { signal: startup, dataDirectory });
         if (session.spaceId !== 'default') throw new SyncOperationError('backend-unavailable');
         const current = syncRepository.readBinding();
         const candidateSession = session;
         // Read the candidate's cloud state before it is bound: this is the snapshot the preview
         // reviews, and reconciliation must not be the first thing that sees these objects.
-        const remote = await listRemoteEntities(candidateSession, lifetime.signal);
+        const remote = await listRemoteEntities(candidateSession, startup);
         session = undefined;
         const binding: LocalBinding = {
           id: bindingId,

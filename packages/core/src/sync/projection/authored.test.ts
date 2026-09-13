@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
 
+import type { PluginRepository } from '../../plugins/repository';
 import type { LocalEntity, SyncRepository } from '../repository';
 import { storedAccount } from '../test-support';
-import { seedAuthoredEntities } from './authored';
+import { committedSourceFrom, seedAuthoredEntities } from './authored';
 import { projectCommitted } from './projection';
 
 function repository(initial: readonly LocalEntity[] = []): SyncRepository & { rows: LocalEntity[] } {
@@ -68,6 +69,18 @@ test('an OAuth provider seeds the plugin object it depends on even with no autho
     packageName: '@example/oauth',
     version: '2.0.0',
   });
+});
+
+test('the committed source carries the business secret of a plugin only an OAuth provider names', () => {
+  // Without it the Provider publishes, and another device joins an installation it cannot use.
+  const source = committedSourceFrom(
+    { providers: { copilot: { kind: 'oauth', plugin: '@example/oauth', capability: 'chat' } } },
+    {
+      readAccount: () => null,
+      readPluginSecret: (plugin) => (plugin === '@example/oauth' ? { value: { token: 'business-secret' } } : null),
+    } as unknown as PluginRepository,
+  );
+  expect(source.pluginSecrets.get('@example/oauth')).toEqual({ token: 'business-secret' });
 });
 
 test('an existing row keeps its selection and object identity when the config is re-read', () => {

@@ -27,6 +27,12 @@ const EMPTY_PATHS: readonly string[][] = [];
 // Matches `newProviderId` in the sync contract and `id` in the Provider contract: any nonempty
 // string. A narrower client alphabet would reject IDs the Provider editor itself accepts.
 const providerIdSchema = z.string().trim().min(1);
+// A remote object ID is protocol data, so a row can legitimately be keyed `toString` or `__proto__`.
+// Reading a draft record by that key without an own check resolves the prototype's member instead of
+// `undefined` — rendering the row then throws on the inherited function and the preview cannot be
+// resolved at all.
+const at = <T,>(record: Record<string, T>, key: string): T | undefined =>
+  Object.hasOwn(record, key) ? record[key] : undefined;
 const decisionSchema = z.object({
   objectId: z.string().min(1),
   choice: z.enum(['local', 'cloud', 'restore', 'delete']),
@@ -101,8 +107,8 @@ const missingRenames = (values: PreviewFormValues, rows: readonly SyncPreviewRow
     .filter(
       (row) =>
         row.requiresProviderId === true &&
-        values.decisions[row.objectId] !== undefined &&
-        !providerIdSchema.safeParse(values.renames[row.objectId]).success,
+        at(values.decisions, row.objectId) !== undefined &&
+        !providerIdSchema.safeParse(at(values.renames, row.objectId)).success,
     )
     .map((row) => row.objectId);
 
@@ -142,6 +148,10 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   );
   const [, rerenderOverrides] = useState(0);
   const rows = preview?.rows ?? EMPTY_ROWS;
+  // The preview the transient state below belongs to. React Query's `reset` is observer-bound and
+  // render-stable, so the effect can depend on it without re-running on every mutation state change.
+  const previewIdRef = useRef<string | undefined>(undefined);
+  const resetApply = applyMutation.reset;
 
   // Every setter and ref below is render-stable, so the effect can depend on this directly.
   const clearOverrideDraft = useCallback(() => {
@@ -168,6 +178,16 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   });
 
   useEffect(() => {
+    // The component stays mounted across closes, so a failed Apply's error would otherwise be
+    // rendered over the next preview — offering Retry for an operation that was never applied.
+    // Transient state belongs to the preview that produced it, so it is dropped as soon as the
+    // dialog is showing a different one (or none).
+    if (previewIdRef.current !== preview?.previewId) {
+      previewIdRef.current = preview?.previewId;
+      resetApply();
+      // oxlint-disable-next-line react/set-state-in-effect
+      setRetryError(false);
+    }
     if (!open || preview === null) {
       openedKindRef.current = undefined;
       // The parent keeps this component mounted across closes, so the draft has to be cleared
@@ -183,7 +203,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
       ...initialValues(preview),
       overrides: existingOverrides,
     });
-  }, [clearOverrideDraft, form, open, preview]);
+  }, [clearOverrideDraft, form, open, preview, resetApply]);
 
   const stale = applyMutation.error instanceof SyncRequestError && applyMutation.error.code === 'preview-stale';
   const pending = applyMutation.isPending || isRefreshingOverrides;
@@ -227,7 +247,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   function submit(values: PreviewFormValues) {
     if (preview === null || submitDisabled) return;
     const decisions = Object.values(values.decisions).map((decision) => {
-      const rename = values.renames[decision.objectId]?.trim();
+      const rename = at(values.renames, decision.objectId)?.trim();
       return { ...decision, ...(rename === undefined || rename === '' ? {} : { newProviderId: rename }) };
     });
     applyMutation.mutate(
@@ -310,7 +330,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                   <form.Field name="decisions">
                     {(field) => {
                       const current =
-                        field.state.value[row.objectId]?.choice ??
+                        at(field.state.value, row.objectId)?.choice ??
                         (row.optional === true ? EXCLUDE : (row.choices[0] ?? 'local'));
                       return (
                         <Select
@@ -326,7 +346,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                             field.handleChange({
                               ...field.state.value,
                               [row.objectId]: {
-                                ...(field.state.value[row.objectId] ?? { objectId: row.objectId }),
+                                ...(at(field.state.value, row.objectId) ?? { objectId: row.objectId }),
                                 objectId: row.objectId,
                                 choice: value as SyncApplyInput['decisions'][number]['choice'],
                               },
@@ -358,7 +378,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                   <form.Field name="renames">
                     {(field) => (
                       <SyncPreviewRenameField
-                        value={field.state.value[row.objectId] ?? ''}
+                        value={at(field.state.value, row.objectId) ?? ''}
                         missing={field.state.meta.errors.flat().includes(row.objectId)}
                         onValueChange={(newProviderId) =>
                           field.handleChange({ ...field.state.value, [row.objectId]: newProviderId })
@@ -382,7 +402,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                     {(field) => (
                       <div className="mt-3">
                         <SyncPreviewOverrideField
-                          paths={overridesRef.current[row.objectId] ?? EMPTY_PATHS}
+                          paths={at(overridesRef.current, row.objectId) ?? EMPTY_PATHS}
                           pending={pending}
                           error={overrideError?.objectId === row.objectId ? overrideError.kind : undefined}
                           needsFreshPreview={needsFreshPreview}

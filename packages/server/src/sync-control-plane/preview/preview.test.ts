@@ -1966,6 +1966,161 @@ test('a connect row that joins nothing is optional, and one carrying cloud state
   expect(published).toEqual([]);
 });
 
+test('a connect preview reviews the committed configuration of a carried row, not its stale desired body', async () => {
+  // The row was edited locally but the outgoing backend never reconciled that publication, so
+  // `desired` still holds the last baseline it acknowledged. Reviewing that would label the
+  // superseded body "Local" and publish it to the replacement backend.
+  const local = {
+    objectId: 'local-object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 2,
+    desired: providerBody({ kind: 'api', baseUrl: 'https://stale.example' }),
+    baseline: 'old-backend-revision',
+    overrides: [],
+    pendingReason: null,
+  };
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [local],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => [local],
+    remoteEntities: async () => [],
+    committedSource: async () => ({
+      raw: { providers: { work: { kind: 'api', baseUrl: 'https://current.example' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+
+  expect(preview.rows.find((row) => row.objectId === 'local-object')?.local).toEqual({
+    kind: 'api',
+    baseUrl: 'https://current.example',
+  });
+});
+
+test('a connect Apply is stale once an override rewrites the row body it reviewed', async () => {
+  const rows = [
+    {
+      objectId: 'local-object',
+      logicalKey: 'work',
+      kind: 'provider' as const,
+      mode: 'included' as const,
+      epoch: 2,
+      desired: providerBody({ kind: 'api', baseUrl: 'https://current.example' }),
+      baseline: 'old-backend-revision',
+      overrides: [] as { path: string[]; value: JsonValue | undefined }[],
+      pendingReason: null,
+    },
+  ];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => rows,
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    localEntities: () => rows,
+    remoteEntities: async () => [],
+    committedSource: async () => ({
+      raw: { providers: { work: { kind: 'api', baseUrl: 'https://current.example' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+  // An override Apply landing here changes the body the reviewed `local` choice publishes without
+  // moving the binding, the commit ID or the range revision, so nothing else in the fence notices.
+  rows[0] = { ...rows[0]!, overrides: [{ path: ['baseUrl'], value: undefined }] };
+
+  await expect(
+    control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'local-object', choice: 'local' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+});
+
 test('an abandoned connect preview disposes its candidate at expiry', async () => {
   let disposed = 0;
   let committed = false;

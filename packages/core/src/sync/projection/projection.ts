@@ -314,6 +314,7 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
   const businessPluginPackages = new Set(pluginMap.keys());
   for (const entity of entities) {
     if (entity.kind !== 'provider' || entity.mode !== 'included') continue;
+    if (!own(rawProviders, entity.logicalKey)) continue;
     const provider = asRecord(rawProviders[entity.logicalKey]);
     if (provider?.['kind'] === 'oauth' && typeof provider['plugin'] === 'string') {
       businessPluginPackages.add(provider['plugin']);
@@ -327,6 +328,10 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
     let value: JsonValue | undefined;
     let dependencies: Dependency[] = [];
     if (entity.kind === 'provider') {
+      // A Provider ID is user data, so an included row can be keyed `__proto__`. Without an own
+      // check, deleting it from the configuration resolves `Object.prototype` — which passes as a
+      // plain object — and the commit republishes an empty body instead of emitting the deletion.
+      if (!own(rawProviders, entity.logicalKey)) continue;
       const provider = asRecord(rawProviders[entity.logicalKey]);
       if (provider === undefined) continue;
       const account = provider['kind'] === 'oauth' ? source.accounts.get(entity.logicalKey) : undefined;

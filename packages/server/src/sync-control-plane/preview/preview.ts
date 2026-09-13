@@ -32,6 +32,12 @@ export type PreviewFence = {
    * no commit history for `localCommitId` to name, so this is the local half of its fence.
    */
   readonly sourceDigest?: string;
+  /**
+   * Digest of the row state a reviewed decision publishes, carried only by connect. An override
+   * applied between preview and Apply rewrites the body a `local` choice sends while moving neither
+   * the commit ID nor the range revision, so nothing else in the fence would notice it.
+   */
+  readonly entitiesDigest?: string;
 };
 
 export type PreviewRecord = {
@@ -122,6 +128,7 @@ export function sameFence(a: PreviewFence, b: PreviewFence): boolean {
     a.localCommitId === b.localCommitId &&
     a.rangeRevision === b.rangeRevision &&
     (a.sourceDigest ?? '') === (b.sourceDigest ?? '') &&
+    (a.entitiesDigest ?? '') === (b.entitiesDigest ?? '') &&
     JSON.stringify(Object.entries(a.remoteVersions).sort()) === JSON.stringify(Object.entries(b.remoteVersions).sort())
   );
 }
@@ -154,11 +161,14 @@ export function buildPreview(input: {
       : [];
   const localSnapshot = snapshotLocalEntities([...input.local, ...minted]);
   const mintedIds = new Set(minted.map((entity) => entity.objectId));
-  // A minted row has no published body, so its authored one is projected exactly as a join would
-  // publish it. Only the minted rows are forced included: doing that for every carried row would
-  // turn a backend switch into a mass join of objects the user left excluded.
-  const mintedBodies =
-    minted.length === 0 || input.source === undefined
+  // Connect reviews the committed configuration as its local side, for carried rows as much as for
+  // minted ones: a local edit whose publication the old backend has not reconciled yet leaves
+  // `desired` holding the last remote baseline, so reviewing that would show a stale body as "Local"
+  // and applying it would publish the superseded configuration to the replacement backend. Only the
+  // minted rows are forced included: doing that for every carried row would turn a backend switch
+  // into a mass join of objects the user left excluded.
+  const connectBodies =
+    input.request.kind !== 'connect' || input.source === undefined
       ? undefined
       : projectCommitted(
           input.source,
@@ -293,7 +303,7 @@ export function buildPreview(input: {
     .map((objectId) =>
       (() => {
         const local =
-          joined?.get(objectId) ?? mintedBodies?.get(objectId) ?? localByObject.get(objectId)?.desired ?? null;
+          joined?.get(objectId) ?? connectBodies?.get(objectId) ?? localByObject.get(objectId)?.desired ?? null;
         const remoteEntity = remoteByObject.get(objectId);
         let remote: EntityBody | null;
         if (input.request.kind === 'restore') {

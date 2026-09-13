@@ -320,6 +320,49 @@ test('a late colliding cloud object quarantines both identities without deleting
   });
 });
 
+test('quarantining a colliding Provider keeps the override that landed during the pass', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+    const store = createSyncObjectStore(a.session);
+    await publishEntity(
+      store,
+      {
+        operationId: 'collision-op',
+        objectId: 'provider-collision',
+        epoch: 0,
+        kind: 'put',
+        body: { kind: 'provider', logicalKey: 'work', value: { kind: 'api', apiKey: 'other' }, dependencies: [] },
+        commitId: 'fixture-collision',
+      },
+      a.signal,
+    );
+
+    // An override Apply persists onto the row after the main pass snapshotted it — the discovery
+    // pass reads every head first, so the write has to land on the second read of this one. Writing
+    // that snapshot back whole to quarantine the row drops the value the user just pinned.
+    const read = b.session.read.bind(b.session);
+    let reads = 0;
+    b.session.read = async (key, signal) => {
+      const value = await read(key, signal);
+      if (key === entityKey('provider-collision') && ++reads === 2) {
+        const row = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')!;
+        b.repo.putEntity(b.binding.id, { ...row, overrides: [{ path: ['apiKey'], value: 'local' }] });
+      }
+      return value;
+    };
+
+    await b.engine.reconcile(b.signal);
+
+    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')).toMatchObject({
+      mode: 'excluded',
+      pendingReason: 'provider-id-conflict',
+      overrides: [{ path: ['apiKey'], value: 'local' }],
+    });
+  });
+});
+
 test('an identity conflict resolved on a later pass rejoins the surviving object', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     await a.commitProvider('work', { kind: 'api', apiKey: 'shared' }, true);

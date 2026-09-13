@@ -398,6 +398,20 @@ test('an included rule named after a prototype member projects its deletion', ()
   expect(result.entities.has('m-tostring')).toBe(false);
 });
 
+// `__proto__` is a valid Provider ID. Reading it off the prototype resolved `Object.prototype`,
+// which passes as a plain object, so deleting the Provider republished an empty body and left the
+// cloud object alive instead of emitting its deletion.
+test('an included provider named after a prototype member projects its deletion', () => {
+  const provider = includedEntity('p-proto', 'provider', '__proto__');
+
+  const result = projectCommitted(
+    { raw: { providers: {} }, accounts: new Map(), pluginSecrets: new Map(), pluginVersions: new Map() },
+    [provider],
+  );
+
+  expect(result.entities.has('p-proto')).toBe(false);
+});
+
 // `__proto__` is a valid Provider ID and model name. A plain assignment for that key hits the
 // prototype setter, so the excluded entry would silently vanish from what is written back to disk.
 test('excluded prototype-named entries survive the device-local projection', () => {
