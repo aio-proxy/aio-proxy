@@ -42,6 +42,8 @@ test('uses routing order and falls through candidates without count support', as
   const response = await fixture.anthropic();
 
   expect(await response.json()).toEqual({ input_tokens: 42 });
+  // An exact upstream count must not be marked as an estimate.
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
   expect(calls).toEqual(['real']);
   expect(fixture.recording.attempts).toEqual([
     expect.objectContaining({ outcome: 'success', providerId: 'real', statusCode: 200 }),
@@ -226,6 +228,8 @@ test('returns a standard estimate after real attempts fail', async () => {
   const response = await fixture.gemini(rawRequest);
 
   expect(await response.json()).toEqual({ totalTokens: expected });
+  // A trace is not reachable by an API caller, so the estimate is marked on the response itself.
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'success' })]);
 });
 
