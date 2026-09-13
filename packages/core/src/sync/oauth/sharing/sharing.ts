@@ -202,12 +202,17 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       }
       if (pending !== undefined) {
         const expected = pending.payload.next;
-        if (expected === null) throw new Error('SYNC_OAUTH_REPLACEMENT_PENDING');
-        if (isEqual(remote.account, expected)) {
+        if (expected !== null && isEqual(remote.account, expected)) {
           applyLocal(input, providerId, candidate, expected, pending.row, 'shared');
           return;
         }
-        if (pending.payload.base === null || !isEqual(remote.account, pending.payload.base)) {
+        // The journaled CAS can only resume against the base it was recorded from, so a space that
+        // holds neither that base nor this row's own result has been moved on by another device.
+        // Retire the row: retaining it would fail every retry — including the one startup recovery
+        // runs, which takes the whole session down with it — reject every later login as pending,
+        // and block detach forever.
+        if (expected === null || pending.payload.base === null || !isEqual(remote.account, pending.payload.base)) {
+          finishJournal(input, pending.row);
           throw new Error('SYNC_OAUTH_REPLACEMENT_CONFLICT');
         }
       }

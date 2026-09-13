@@ -63,12 +63,18 @@ export async function recoverAccount(
       if (current.account.phase === 'refreshing' && current.account.claim?.operationId === journal.operationId) {
         // The exchange is gone — the process exited, or its terminal fence never landed — so
         // nothing will ever publish this result. Retry the fence here; leaving the claim in
-        // `refreshing` locks every device out, including a fresh login.
+        // `refreshing` locks every device out, including a fresh login. Keep the journal until the
+        // fence is confirmed: it is the only row that can retry it on the next pass.
         if (context.activeOperations.has(journal.operationId)) {
           throw new SyncOAuthError('result-uncertain', 'The OAuth refresh is still running');
         }
-        await fenceClaim(context, { account: current.account, version: current.version }, 'uncertain', signal);
-        discardJournal(context, journal.operationId);
+        const fenced = await fenceClaim(
+          context,
+          { account: current.account, version: current.version },
+          'uncertain',
+          signal,
+        );
+        if (fenced) discardJournal(context, journal.operationId);
         throw new SyncOAuthError('result-uncertain', 'The OAuth process stopped before recording a result');
       }
       if (

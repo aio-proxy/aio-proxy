@@ -84,22 +84,36 @@ export function discardJournal(context: CoordinatorContext, operationId: string)
  * Park a claim its exchange can never resolve: `uncertain` when the outcome was lost,
  * `login-required` when the result exists but is unusable. Both phases let a fresh login take the
  * account over, which a claim left in `refreshing` would block on every device forever.
+ *
+ * Reports whether the claim is confirmed gone. The journal row is the only thing that can retry a
+ * fence the backend refused, so a caller that retires the row on an unconfirmed fence strands the
+ * claim in `refreshing` with nothing left to reference it.
  */
 export async function fenceClaim(
   context: CoordinatorContext,
   claimed: { account: LiveAccount; version: string },
   phase: 'uncertain' | 'login-required',
   signal: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await context.store.session.compareAndSwap(
+    const written = await context.store.session.compareAndSwap(
       accountKey(claimed.account.objectId),
       claimed.version,
       encode({ ...claimed.account, phase }),
       signal,
     );
+    if (written.kind === 'written') return true;
   } catch {
+    // An unknown outcome may still have committed, so only the reread below decides.
+  }
+  try {
+    const reread = await readCurrent(context, claimed.account.objectId, signal);
     // The refreshing claim remains a fence when its terminal phase cannot be published.
+    return !(
+      reread.account.phase === 'refreshing' && reread.account.claim?.operationId === claimed.account.claim?.operationId
+    );
+  } catch {
+    return false;
   }
 }
 

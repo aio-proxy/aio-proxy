@@ -276,6 +276,41 @@ test('shared replacement recovers an acknowledged CAS without rotating twice', a
   );
 });
 
+test('a replacement journal another device moved past is retired instead of replayed forever', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      const candidate = { ...f.accountWrite, credential: { token: 'replacement-token' } };
+      f.backend.failNext('compareAndSwap', 'before');
+      await expect(f.sharing.replaceShared(f.providerId, candidate, f.signal)).rejects.toThrow();
+      expect(f.repo.oauthJournals('oauth-sharing')).toHaveLength(1);
+      const stored = f.backend.readAll().get(`s/v1/default/account/${f.objectId}`);
+      if (stored?.kind !== 'present') throw new Error('missing remote fixture');
+      const remote = JSON.parse(new TextDecoder().decode(stored.value));
+      remote.generation = 7;
+      const session = f.backend.connect();
+      await session.compareAndSwap(
+        `s/v1/default/account/${f.objectId}`,
+        stored.version,
+        new TextEncoder().encode(JSON.stringify(remote)),
+        f.signal,
+      );
+      await session.dispose();
+
+      // The journaled CAS can never apply against this space again, so the row has to go: keeping it
+      // would replay the same conflict on every login and hold the Provider shared forever.
+      await expect(f.sharing.replaceShared(f.providerId, candidate, f.signal)).rejects.toThrow(
+        'SYNC_OAUTH_REPLACEMENT_CONFLICT',
+      );
+      expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+      expect(f.remote()).toMatchObject({ generation: 7 });
+      await expect(f.sharing.replaceShared(f.providerId, candidate, f.signal)).rejects.toThrow(
+        'SYNC_OAUTH_REPLACEMENT_PENDING',
+      );
+    },
+    { shared: true },
+  );
+});
+
 test('an incompatible existing remote account remains read-only', async () => {
   await withOAuthSharingFixture(
     async (f) => {

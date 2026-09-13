@@ -11,6 +11,7 @@ actor FakeCloudKitDriver: CloudKitDriver {
     private var identity = AccountIdentity(identifier: "fake-account")
     private var transportDown = false
     private var fetchFailsAfterSaveLoss = false
+    private var nextSaveRejection: CKError.Code?
     /// Mirrors a private database that has never had the custom zone created in it.
     private var zoneExists: Bool
 
@@ -26,6 +27,9 @@ actor FakeCloudKitDriver: CloudKitDriver {
         fetchFailsAfterSaveLoss = fetchAlsoFails
     }
     func setAccountAvailable(_ available: Bool) { accountAvailable = available }
+    /// A refusal the server decided: nothing is persisted, and an atomic modify reports it inside a
+    /// `partialFailure` keyed by the record, not as the top-level code.
+    func armSaveRejection(_ code: CKError.Code) { nextSaveRejection = code }
     func changeIdentity() { identity = AccountIdentity(identifier: UUID().uuidString) }
     func setNextModificationDate(_ date: Date) { nextModificationDate = date }
 
@@ -38,6 +42,10 @@ actor FakeCloudKitDriver: CloudKitDriver {
 
     func saveConditionally(record: CKRecord) async throws -> CKRecord {
         guard zoneExists else { throw CKError(.zoneNotFound) }
+        if let rejection = nextSaveRejection {
+            nextSaveRejection = nil
+            throw CKError(.partialFailure, userInfo: [CKPartialErrorsByItemIDKey: [record.recordID: CKError(rejection)]])
+        }
         if let current = records[record.recordID] {
             let expected = record[CloudKitStore.expectedVersionField] as? String
             let currentVersion = current["_fakeVersion"] as? String

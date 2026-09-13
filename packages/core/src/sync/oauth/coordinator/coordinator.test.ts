@@ -401,6 +401,33 @@ test('a journal failure whose claim release is also lost still allows a later re
   });
 });
 
+test('recovery keeps a started journal until its retried fence lands', async () => {
+  await withSharedOAuthDevices(async (f) => {
+    const input = {
+      objectId: f.objectId,
+      epoch: 0,
+      generation: 0,
+      exchange: async () => {
+        f.backend.failNext('compareAndSwap', 'before');
+        throw new Error('network outage');
+      },
+      validate: async (value: unknown) => f.schema.parse(value),
+    };
+    await expect(f.a.refresh(input, f.signal)).rejects.toMatchObject({ code: 'result-uncertain' });
+    // The outage lasts through the recovery pass, so this fence is refused too. Retiring the row
+    // here would leave the claim in `refreshing` with nothing left that can ever fence it.
+    f.backend.failNext('compareAndSwap', 'before');
+    await expect(f.a.recover(f.objectId, f.signal)).rejects.toMatchObject({ code: 'result-uncertain' });
+    expect(f.repoA.oauthJournals('oauth-a')[0]?.phase).toBe('started');
+    expect(remotePhase(f)).toBe('refreshing');
+
+    await expect(f.a.recover(f.objectId, f.signal)).rejects.toMatchObject({ code: 'result-uncertain' });
+
+    expect(remotePhase(f)).toBe('uncertain');
+    expect(f.repoA.oauthJournals('oauth-a')).toEqual([]);
+  });
+});
+
 test('recovery discards a started journal superseded by a newer login epoch', async () => {
   await withSharedOAuthDevices(async (f) => {
     await expect(

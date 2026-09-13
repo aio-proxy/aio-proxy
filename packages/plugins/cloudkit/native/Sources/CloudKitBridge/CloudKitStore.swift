@@ -91,9 +91,14 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         do {
             let saved = try await driver.saveConditionally(record: record)
             return try writtenResult(from: saved)
-        } catch let error as CKError where error.code == .serverRecordChanged {
-            return .conflict
         } catch {
+            let reported = Self.reportedError(error)
+            if reported?.code == .serverRecordChanged { return .conflict }
+            // A rejection the server decided proves nothing was applied, so it keeps its own code
+            // and reaches the caller as unauthorized or quota. Reporting `outcomeUnknown` instead
+            // sends the caller into an outcome recheck that can never resolve a condition only the
+            // user can clear.
+            if let reported, Self.definitivelyRejected(reported) { throw reported }
             // A conditional save that fails for any other reason may still have committed, so only
             // a reread proving our own bytes are in place rules that out. A reread that itself
             // fails proves nothing either, and must not degrade to the transport error: the caller
@@ -143,9 +148,10 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
         do {
             _ = try await driver.saveConditionally(record: record)
             return true
-        } catch let error as CKError where error.code == .serverRecordChanged {
-            return false
         } catch {
+            let reported = Self.reportedError(error)
+            if reported?.code == .serverRecordChanged { return false }
+            if let reported, Self.definitivelyRejected(reported) { throw reported }
             // As in `compareAndSwap`: the tombstone may have committed before the failure
             // surfaced. Reporting the transport error instead would make the caller retry
             // against a key it can no longer tell apart from one it never removed.
@@ -164,6 +170,27 @@ final class CloudKitStore: SyncStore, @unchecked Sendable {
 
     private func verifyIdentity() async throws {
         _ = try await accountIdentity()
+    }
+
+    /// The error CloudKit decided about the record itself. An atomic modify reports it inside
+    /// `partialFailure`, so the outer code says only that something in the batch failed.
+    private static func reportedError(_ error: Error) -> CKError? {
+        guard let error = error as? CKError else { return nil }
+        guard error.code == .partialFailure else { return error }
+        return error.partialErrorsByItemID?.values.compactMap { $0 as? CKError }.first ?? error
+    }
+
+    /// Whether the server refused the write outright, so no retry and no reread can find it
+    /// committed. Network, service, and rate-limit failures are deliberately absent: those can be a
+    /// lost reply to a write that did land, which is what `outcomeUnknown` exists to express.
+    private static func definitivelyRejected(_ error: CKError) -> Bool {
+        switch error.code {
+        case .notAuthenticated, .permissionFailure, .managedAccountRestricted, .quotaExceeded,
+             .badContainer, .badDatabase, .invalidArguments, .constraintViolation, .incompatibleVersion:
+            return true
+        default:
+            return false
+        }
     }
 
     private func acceptIdentity(_ identity: AccountIdentity) throws {

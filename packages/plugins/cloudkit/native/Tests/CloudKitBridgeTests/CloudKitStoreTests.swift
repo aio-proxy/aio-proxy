@@ -89,6 +89,22 @@ final class CloudKitStoreTests: XCTestCase {
         XCTAssertEqual(results.filter { if case .conflict = $0 { return true }; return false }.count, 1)
     }
 
+    // A refusal the server decided — no iCloud account, no permission, no quota — proves the write
+    // never applied, so it must keep its CloudKit code and reach the user as that failure. Degrading
+    // it to `outcomeUnknown` sends the caller into an outcome recheck it can never resolve.
+    func testDefinitiveSaveRejectionKeepsItsCloudKitCode() async throws {
+        let driver = FakeCloudKitDriver()
+        let store = CloudKitStore(driver: driver)
+        await driver.armSaveRejection(.quotaExceeded)
+        do {
+            _ = try await store.compareAndSwap(key: "k", expected: nil, value: Data("v".utf8))
+            return XCTFail("the rejection did not surface")
+        } catch let error as CKError {
+            XCTAssertEqual(error.code, .quotaExceeded)
+        }
+        XCTAssertEqual(try await store.read(key: "k"), .absent)
+    }
+
     func testPostSaveTransportLossRecoversByRead() async throws {
         let driver = FakeCloudKitDriver()
         await driver.armPostSaveTransportLoss()
