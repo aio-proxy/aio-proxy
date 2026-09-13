@@ -29,7 +29,7 @@ const EMPTY_PATHS: readonly string[][] = [];
 const providerIdSchema = z.string().trim().min(1);
 const decisionSchema = z.object({
   objectId: z.string().min(1),
-  choice: z.enum(['local', 'cloud', 'restore']),
+  choice: z.enum(['local', 'cloud', 'restore', 'delete']),
   newProviderId: providerIdSchema.optional(),
 });
 const previewFormSchema = z.object({
@@ -90,6 +90,7 @@ const choiceLabel = (choice: SyncPreviewRow['choices'][number] | typeof EXCLUDE)
   if (choice === EXCLUDE) return m['dashboard.sync.preview_choice_exclude']();
   if (choice === 'cloud') return m['dashboard.sync.preview_choice_cloud']();
   if (choice === 'restore') return m['dashboard.sync.preview_choice_restore']();
+  if (choice === 'delete') return m['dashboard.sync.preview_choice_delete']();
   return m['dashboard.sync.preview_choice_local']();
 };
 

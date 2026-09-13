@@ -116,7 +116,11 @@ export async function assertFresh(input: OperationInput, expected: PreviewFence)
   if (!sameFence(expected, current)) throw new SyncPreviewError('preview-stale');
 }
 
-export type SyncDecision = { objectId: string; choice: 'local' | 'cloud' | 'restore'; newProviderId?: string };
+export type SyncDecision = {
+  objectId: string;
+  choice: 'local' | 'cloud' | 'restore' | 'delete';
+  newProviderId?: string;
+};
 
 /**
  * A replacement Provider ID resolves a collision only if it is free once every decision lands.
@@ -336,8 +340,27 @@ export async function applyPreview(
         pendingReason: unverified ? 'oauth-unverified' : null,
       });
     };
+    // Retiring a head leaves nothing for this row to follow, so it stops synchronizing. Leaving it
+    // included would also hand reconciliation's tombstone pass a live row, and that pass deletes the
+    // authored object from the configuration file — while the identity's surviving head is exactly
+    // what the user chose to keep here.
+    const recordDeletion = (): void => {
+      if (current === undefined || typeof input.repo.putEntity !== 'function') return;
+      commits.assertUnchanged();
+      const latest = input.localEntities().find((entity) => entity.objectId === candidate.row.objectId) ?? current;
+      input.repo.putEntity(binding.id, { ...latest, mode: 'excluded', pendingReason: null });
+    };
     try {
-      if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
+      if (decision.choice === 'delete') {
+        // A cloud-only duplicate has no local row, and the delete is epoch-exact, so the head's own
+        // epoch is synthesized from the reviewed remote entity.
+        await input.applyCloud(
+          null,
+          current ?? remoteIdentityEntity(candidate.row.objectId, remote),
+          remote?.version ?? null,
+        );
+        recordDeletion();
+      } else if ((decision.choice === 'restore' || record.input.kind === 'restore') && selectedBody !== null) {
         // Restoring republishes a historical body as a new revision, so it needs an operation ID no
         // head has a receipt for. Reusing the one being restored reads as an idempotent replay:
         // publishing reports success without moving `head.current`, the local row then records the
@@ -385,7 +408,7 @@ export async function applyPreview(
       // integration drops: the Provider would go out without its account and hold every peer at
       // `oauth-unverified` until this service restarts. The publication has already landed here, so
       // recording the reviewed join before sharing is also the truthful order.
-      recordJoin();
+      if (decision.choice !== 'delete') recordJoin();
       // Publishing an OAuth Provider carries only its configuration. Until its account object is
       // published too, every other device sees the Provider and holds it at `oauth-unverified`,
       // and nothing else seeds it for a Provider that was authorized before sync was enabled.

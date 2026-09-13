@@ -504,6 +504,7 @@
       "preview_choice_local": "로컬 유지",
       "preview_choice_cloud": "클라우드 사용",
       "preview_choice_restore": "복원",
+      "preview_choice_delete": "클라우드 사본 삭제",
       "preview_choice_exclude": "참여 안 함",
       "preview_apply": "검토한 변경 사항 적용",
       "preview_cancel": "취소",

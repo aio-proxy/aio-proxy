@@ -339,6 +339,10 @@ export function buildPreview(input: {
       // Only a Provider can be renamed out of an identity collision; other kinds have no rename
       // path, so demanding a new Provider ID for them would make the conflict unresolvable.
       const renameable = candidate.row.kind === 'provider';
+      // Without a rename, picking a body resolves nothing: both heads still claim the identity and
+      // reconciliation quarantines them again. Retiring one head is the only escape, so offer it on
+      // every colliding row that has a live cloud head of its own.
+      const deletable = !renameable && candidate.cloud !== null;
       return {
         ...candidate,
         ...(renameable ? { requiresProviderId: true } : {}),
@@ -348,7 +352,10 @@ export function buildPreview(input: {
           // A collision is reported as a conflict even when one of its objects lives on a single
           // side. That row still has only one real body, so the missing side stays off the list:
           // choosing it would publish or import a null and delete a head the rename needs.
-          choices: sidedChoices(candidate.local, candidate.cloud),
+          choices: [
+            ...sidedChoices(candidate.local, candidate.cloud),
+            ...(deletable ? (['delete'] as const) : []),
+          ] as SyncPreviewRow['choices'],
           ...(renameable ? { requiresProviderId: true } : {}),
         },
       };

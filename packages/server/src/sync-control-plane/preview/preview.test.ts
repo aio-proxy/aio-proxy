@@ -1471,6 +1471,117 @@ test('only Provider identity collisions demand a replacement ID', () => {
   expect(built.record.rows.find((c) => c.row.objectId === 'plugin-a')?.requiresProviderId).toBeUndefined();
 });
 
+test('a collision in a kind that cannot be renamed offers retiring the duplicate head', async () => {
+  const ruleBody = (value: Record<string, JsonValue>) => ({
+    kind: 'model-rule' as const,
+    logicalKey: 'gpt-5',
+    value,
+    dependencies: [],
+  });
+  const published: { objectId: string; body: unknown; expected: string | null; epoch: number }[] = [];
+  const imported: string[] = [];
+  const stored: { objectId: string; mode: string }[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      putEntity: (_bindingId: string, entity: { objectId: string; mode: string }) => {
+        stored.push({ objectId: entity.objectId, mode: entity.mode });
+      },
+      putEntities: () => {},
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => ({
+      id: 'binding',
+      plugin: '@example/sync',
+      capability: 'memory',
+      pluginVersion: '1',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    }),
+    // Two devices published the same model rule concurrently. A model rule has no rename path, so
+    // picking a body resolves nothing: both heads keep claiming `gpt-5`.
+    localEntities: () => [
+      {
+        objectId: 'rule-b',
+        logicalKey: 'gpt-5',
+        kind: 'model-rule' as const,
+        mode: 'included' as const,
+        epoch: 4,
+        desired: ruleBody({ value: 'b' }),
+        baseline: 'revision-b',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remoteEntities: async () => [
+      {
+        objectId: 'rule-a',
+        logicalKey: 'gpt-5',
+        kind: 'model-rule',
+        epoch: 2,
+        version: 'v1',
+        revision: 'revision-a',
+        body: ruleBody({ value: 'a' }),
+      },
+      {
+        objectId: 'rule-b',
+        logicalKey: 'gpt-5',
+        kind: 'model-rule',
+        epoch: 4,
+        version: 'v2',
+        revision: 'revision-b',
+        body: ruleBody({ value: 'b' }),
+      },
+    ],
+    applyLocal: async (_body, _current, objectId) => {
+      imported.push(objectId);
+    },
+    applyCloud: async (body, current, expected) => {
+      published.push({ objectId: current!.objectId, body, expected, epoch: current!.epoch });
+    },
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [],
+      refresh: async () => [],
+      commit: async () => {},
+      activate: () => {},
+      dispose: async () => {},
+    }),
+  });
+
+  const preview = await control.preview({ kind: 'join', providerId: 'gpt-5' });
+  expect(preview.rows).toHaveLength(2);
+  for (const row of preview.rows) {
+    expect(row).toMatchObject({ change: 'conflict' });
+    expect(row.requiresProviderId).toBeUndefined();
+    expect(row.choices).toContain('delete');
+  }
+
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: [
+      { objectId: 'rule-a', choice: 'cloud' as const },
+      { objectId: 'rule-b', choice: 'delete' as const },
+    ],
+  });
+
+  // The retired head is deleted at its own epoch, and nothing is published or imported in its place:
+  // the identity now lives on the head the user kept.
+  expect(published).toEqual([{ objectId: 'rule-b', body: null, expected: 'v2', epoch: 4 }]);
+  expect(imported).toEqual(['rule-a']);
+  // The row stops synchronizing. Left included, reconciliation's tombstone pass would read the head
+  // it just retired as a deletion to replay and drop the rule from the configuration file.
+  expect(stored).toContainEqual({ objectId: 'rule-b', mode: 'excluded' });
+});
+
 test('replacement Provider IDs that are still taken are refused before any write', () => {
   const entity = (objectId: string, logicalKey: string) => ({
     objectId,

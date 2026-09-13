@@ -97,7 +97,11 @@ export const SyncPreviewRowSchema = z.strictObject({
   cloud: json.nullable(),
   secretChange: z.enum(['none', 'added', 'changed', 'removed']),
   dependencies: z.array(id),
-  choices: z.array(z.enum(['local', 'cloud', 'restore'])),
+  // `delete` retires the cloud head this row describes. It is offered only for an identity two live
+  // heads claim in a kind that cannot be renamed out of the collision — a model rule or a singleton
+  // published concurrently by two devices — where keeping either body still leaves both heads
+  // claiming the identity and reconciliation quarantining them again.
+  choices: z.array(z.enum(['local', 'cloud', 'restore', 'delete'])),
   // Only set when two distinct objects claim the same Provider ID. A plain local/cloud conflict on
   // one object is resolvable under its existing ID, so the client must not demand a rename for it.
   requiresProviderId: z.boolean().optional(),
@@ -118,7 +122,7 @@ export const SyncPreviewSchema = z.strictObject({
 
 export const SyncApplyDecisionSchema = z.strictObject({
   objectId: id,
-  choice: z.enum(['local', 'cloud', 'restore']),
+  choice: z.enum(['local', 'cloud', 'restore', 'delete']),
   newProviderId: id.optional(),
 });
 

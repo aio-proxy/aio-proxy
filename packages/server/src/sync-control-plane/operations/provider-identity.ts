@@ -134,17 +134,19 @@ export function providerIdentityRows(
 }
 
 /**
- * The entity a rename needs when the colliding object lives only in the cloud. Its identity group
- * is entirely remote, so there is nothing local to rename — but the rename still has to reach the
- * backend, or the immutable head keeps the old Provider ID and the next reconciliation quarantines
- * the same collision again.
+ * The entity a rename or a head deletion needs when the colliding object lives only in the cloud. Its
+ * identity group is entirely remote, so there is nothing local to rename — but the operation still has
+ * to reach the backend, or the immutable head keeps the old identity and the next reconciliation
+ * quarantines the same collision again.
  */
 export function remoteIdentityEntity(objectId: string, remote: RemoteEntity | undefined): LocalEntity | undefined {
-  if (remote?.body == null || remote.kind !== 'provider') return undefined;
+  if (remote?.body == null) return undefined;
   return {
     objectId,
     logicalKey: remote.logicalKey,
-    kind: 'provider',
+    // The head's own body, whose kind the entity snapshot already checked against the head: reading
+    // it here keeps the row typed without re-validating the wire value.
+    kind: remote.body.kind,
     mode: 'included',
     // Deleting the head it vacates is an epoch-exact operation, so the remote epoch is the one
     // field that cannot be defaulted away.
