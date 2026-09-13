@@ -96,8 +96,9 @@ function candidateFixture(
       connect: () => Promise.resolve(session),
     }),
   };
+  const runtime = { options: { configPath }, remoteConfigFence: undefined } as unknown as ServerRuntime;
   const integration = createSyncIntegration(
-    { options: { configPath }, remoteConfigFence: undefined } as unknown as ServerRuntime,
+    runtime,
     db,
     createPluginRepository(db.sqlite),
     () => ({ plugins: new Map(), registry }) as unknown as PluginRegistrySnapshot,
@@ -105,7 +106,7 @@ function candidateFixture(
     { configPath } as never,
     async <T>(run: () => Promise<T>) => run(),
   );
-  return { db, integration, signals, registry, disposed: () => disposed };
+  return { db, integration, runtime, signals, registry, disposed: () => disposed };
 }
 
 // The candidate holds `connectQueue` while it reads the cloud snapshot, so an un-owned signal would
@@ -296,6 +297,27 @@ test('a carried row is rebased onto the protocol state the candidate backend hol
     const bindingId = repo.readBinding()!.id;
     expect(bindingId).not.toBe('binding-old');
     expect(repo.entities(bindingId)).toMatchObject([{ objectId: 'object-1', epoch: 0, baseline: null }]);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Shutdown closes whatever `runtime.sync` held when it read it, so a swap allowed to finish after
+// that read would install a lifecycle — and for CloudKit a native helper — that nothing closes.
+test('a backend swap that reaches the fence after teardown began installs nothing', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-teardown-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    const previous = fixture.runtime.sync;
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    fixture.runtime.closed = true;
+
+    await expect(candidate.commit()).rejects.toThrow();
+
+    expect(createSyncRepository(fixture.db.sqlite).readBinding()).toBeNull();
+    expect(fixture.runtime.sync).toBe(previous);
+    expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
   } finally {
     fixture.db.close();
     rmSync(home, { recursive: true, force: true });

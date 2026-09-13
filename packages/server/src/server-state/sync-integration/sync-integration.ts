@@ -230,6 +230,11 @@ export function createSyncIntegration(
       await next.lifecycle.start();
       const authored = (await configFile.read()) as Record<string, JsonValue>;
       await queue(async () => {
+        // Teardown reads `runtime.sync` once and closes what it finds there, so a swap that installs
+        // after that read leaves a live lifecycle — for CloudKit a native helper — with nothing left
+        // to close it. The install below runs synchronously with this check, so refusing here is
+        // enough: shutdown either closes the new lifecycle or never sees it.
+        if (runtime.closed) throw new SyncOperationError('backend-unavailable');
         const previousBinding = syncRepository.readBinding();
         // Retiring a binding that still holds a shared OAuth credential strands it: ownership names
         // an account object in the old backend's space, so detaching can no longer target it, and
@@ -388,12 +393,16 @@ export function createSyncIntegration(
               }
             }),
           activate: () => activateBackend?.(),
-          dispose: async () => {
-            if (released) return;
-            released = true;
-            await candidateSession.dispose().catch(() => {});
-            await discard();
-          },
+          // Serialized against `commit()`, which sets `released` before its swap begins: an
+          // unqueued disposal would return while that handover was still in flight and let teardown
+          // finish around it. Queued, it waits for the swap to install or unwind.
+          dispose: () =>
+            connectQueue(async () => {
+              if (released) return;
+              released = true;
+              await candidateSession.dispose().catch(() => {});
+              await discard();
+            }),
         };
       } catch (error) {
         await session?.dispose().catch(() => {});
