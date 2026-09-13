@@ -311,8 +311,16 @@ export async function applyPreview(
       // object is imported by reconciliation's activation check, and a row left with the cloud
       // baseline and no pending reason is exactly what that pass skips. Holding it at the state it is
       // actually in keeps the row eligible, so the credential arrives instead of the Provider sitting
-      // unauthorized until some later publication moves the head.
-      const unverified = isOAuthProvider(selectedBody) && input.accounts?.readAccount(selectedBody.logicalKey) === null;
+      // unauthorized until some later publication moves the head. What verifies the row is its
+      // recorded ownership, not the mere presence of an account: a device that already had its own
+      // credential under this Provider ID shares nothing with the account published for this object,
+      // and the resolver hands an ownership-less row to the local refresh path, which rotates that
+      // credential out from under every device following the shared one. Sharing attaches, replaces,
+      // or proves it independent, and each of those records ownership.
+      const unverified =
+        isOAuthProvider(selectedBody) &&
+        input.accounts !== undefined &&
+        (latest.oauth === undefined || input.accounts.readAccount(selectedBody.logicalKey) === null);
       input.repo.putEntity(binding.id, {
         ...latest,
         mode: left ? 'excluded' : 'included',

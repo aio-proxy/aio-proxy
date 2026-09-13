@@ -502,10 +502,11 @@ test('a join still marks the row included while the range is unchanged', async (
   expect(written[0]).toMatchObject({ mode: 'included' });
 });
 
-// Applying writes the Provider's configuration only. Its credential is imported by reconciliation's
-// activation check, which skips a row already holding the cloud baseline with nothing pending — so a
-// join that clears the pending reason leaves the Provider unauthorized on this device for good.
-test('joining an OAuth Provider without a local account keeps the credential import due', async () => {
+// Applying writes the Provider's configuration only. Its credential is coordinated by
+// reconciliation's activation check and the sharing service, both of which skip a row already holding
+// the cloud baseline with nothing pending — so a join that clears the pending reason leaves the
+// Provider on an uncoordinated credential for good.
+test('joining an OAuth Provider keeps the credential due until the row records ownership', async () => {
   const oauth = (): EntityBody => ({
     kind: 'provider',
     logicalKey: 'work',
@@ -513,11 +514,17 @@ test('joining an OAuth Provider without a local account keeps the credential imp
     dependencies: [],
   });
   const rows = [{ ...candidate('provider-a', 'provider', 'work'), local: oauth(), cloud: oauth() }];
-  const join = async (readAccount: () => never, choice: SyncDecision['choice']): Promise<LocalEntity | undefined> => {
+  const join = async (
+    readAccount: () => never,
+    choice: SyncDecision['choice'],
+    oauth?: LocalEntity['oauth'],
+  ): Promise<LocalEntity | undefined> => {
     const written: LocalEntity[] = [];
     const scenario = harness({
       repo: { putEntity: (_binding: string, entity: LocalEntity) => written.push(entity) } as never,
-      localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+      localEntities: () => [
+        { ...localEntity('provider-a', 'provider', 'work'), ...(oauth === undefined ? {} : { oauth }) },
+      ],
       accounts: { readAccount },
     });
     await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
@@ -530,6 +537,22 @@ test('joining an OAuth Provider without a local account keeps the credential imp
   // Publishing a local body has the same gap: `share()` reports `pending` for a Provider this device
   // holds no account for, so nothing imports the credential the other device published.
   expect(await join(() => null as never, 'local')).toMatchObject({ pendingReason: 'oauth-unverified' });
-  // An authorized Provider needs no import, and holding it pending would report it as unverified.
-  expect(await join(() => ({ providerId: 'work' }) as never, 'cloud')).toMatchObject({ pendingReason: null });
+  // An account this device authorized on its own shares nothing with the account published for this
+  // object: the row holds no ownership, so the resolver leaves the credential on the local refresh
+  // path and it rotates away from every device following the shared one.
+  expect(await join(() => ({ providerId: 'work' }) as never, 'cloud')).toMatchObject({
+    pendingReason: 'oauth-unverified',
+  });
+  // Ownership recorded is the verification: holding that row pending would report a coordinated
+  // credential as unverified.
+  const owned: LocalEntity['oauth'] = {
+    mode: 'shared',
+    epoch: 0,
+    generation: 0,
+    localRevision: 1,
+    pluginVersion: '1.0.0',
+    formatVersion: 1,
+    multiDeviceEvidenceId: 'evidence',
+  };
+  expect(await join(() => ({ providerId: 'work' }) as never, 'cloud', owned)).toMatchObject({ pendingReason: null });
 });
