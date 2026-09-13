@@ -1,8 +1,10 @@
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import type { PluginRepository } from '../../plugins/repository';
 import type { EntityKind } from '../protocol';
 import type { LocalEntity, SyncRepository } from '../repository';
+import type { CommittedSource } from './projection';
 
 function record(value: JsonValue | undefined): Record<string, JsonValue> | undefined {
   return value !== undefined && isPlainObject(value) ? (value as Record<string, JsonValue>) : undefined;
@@ -57,6 +59,30 @@ export function authoredEntityIdentities(
   if (Object.hasOwn(raw, 'server') || Object.hasOwn(raw, 'router'))
     identities.push({ kind: 'routing-defaults', logicalKey: 'routing-defaults' });
   return identities;
+}
+
+/**
+ * The local half of what a projection reads: the authored file plus the device-local stores the
+ * bodies are built from. Callers that hold a bound `LocalSyncPort` get this from the port; a first
+ * connect has no port yet and builds it here, so the connect preview projects the same bodies the
+ * commit path would rather than a second encoding of them.
+ */
+export function committedSourceFrom(
+  raw: Record<string, JsonValue>,
+  accounts: Pick<PluginRepository, 'readAccount' | 'readPluginSecret'>,
+  pluginVersions: ReadonlyMap<string, string> = new Map(),
+): CommittedSource {
+  const stored = new Map(
+    Object.keys(record(raw['providers']) ?? {})
+      .map((providerId) => [providerId, accounts.readAccount(providerId)] as const)
+      .filter((entry): entry is readonly [string, NonNullable<(typeof entry)[1]>] => entry[1] !== null),
+  );
+  const secrets = new Map(
+    pluginPackages(raw['plugins'])
+      .map((plugin) => [plugin, accounts.readPluginSecret(plugin)?.value] as const)
+      .filter((entry) => entry[1] !== undefined),
+  );
+  return { raw, accounts: stored, pluginSecrets: secrets, pluginVersions };
 }
 
 /**

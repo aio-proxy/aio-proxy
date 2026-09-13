@@ -1,4 +1,11 @@
-import type { EntityBody, JsonValue, LocalEntity, LocalOverride, PluginRepository } from '@aio-proxy/core';
+import {
+  committedSourceFrom,
+  type EntityBody,
+  type JsonValue,
+  type LocalEntity,
+  type LocalOverride,
+  type PluginRepository,
+} from '@aio-proxy/core';
 
 import type { OAuthLoginSessionManager } from '../../oauth-login-session/manager';
 import { createSyncControlPlane, SyncOperationError } from '../../sync-control-plane';
@@ -57,7 +64,16 @@ export function createSyncControlPlaneIntegration(
     onEngineStatus: integration.onEngineStatus,
     committedSource: async () => {
       const syncPort = integration.syncPort;
-      if (syncPort === undefined) throw new SyncOperationError('not-connected');
+      // A first connect has no port — it is created with the binding the reviewed apply writes — and
+      // the preview still has to project the authored bodies, or an identity the candidate backend
+      // already holds is reviewed as a cloud-only add and imported over the configuration it
+      // collides with. Same source the port builds, from the same committed file.
+      if (syncPort === undefined)
+        return committedSourceFrom(
+          (await integration.configFile!.read()) as Record<string, JsonValue>,
+          runtime.repository,
+          integration.pluginVersions(),
+        );
       return syncPort.committedSource();
     },
     lifecycle: {

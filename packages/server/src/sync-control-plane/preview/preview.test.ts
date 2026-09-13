@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { encode, entityKey, revisionKey } from '@aio-proxy/core';
+import { encode, entityKey, revisionKey, type EntityBody } from '@aio-proxy/core';
 import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { createSyncControlPlane } from '../control-plane';
@@ -2048,6 +2048,107 @@ test('connect validates decisions and fences the candidate before swapping the b
   });
   expect(committed).toBe(0);
   expect(disposed).toBe(3);
+});
+
+test('a first connect reviews an authored object the candidate backend already holds', async () => {
+  const cloud = {
+    objectId: 'cloud-object',
+    logicalKey: 'work',
+    kind: 'provider',
+    version: 'v1',
+    revision: 'op-1',
+    body: providerBody({ kind: 'api', baseURL: 'https://cloud' }),
+  };
+  const published: { body: EntityBody | null; objectId: string | undefined }[] = [];
+  const imported: string[] = [];
+  let bound = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    // A first connect: no binding, so no rows either. The authored configuration is the only local
+    // side there is. `commit()` is what writes the binding the decisions then land under.
+    binding: () =>
+      bound
+        ? {
+            id: 'binding',
+            plugin: '@example/sync',
+            capability: 'memory',
+            pluginVersion: '1',
+            identityId: 'identity',
+            spaceId: 'default',
+            deviceId: 'device',
+            sessionGeneration: 1,
+            options: {},
+          }
+        : null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async (_candidate, _current, objectId) => void imported.push(objectId),
+    applyCloud: async (body, current) => void published.push({ body, objectId: current?.objectId }),
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [cloud],
+      refresh: async () => [cloud],
+      commit: async () => void (bound = true),
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    committedSource: async () => ({
+      raw: { providers: { work: { kind: 'api', baseURL: 'https://local' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+  } as never);
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+
+  // Reviewed as cloud-only, the sole choice is `cloud` and applying imports that body over the
+  // authored Provider without ever asking.
+  const row = preview.rows.find((entry) => entry.objectId === 'cloud-object');
+  expect(row?.change).toBe('conflict');
+  expect(row?.choices).toEqual(['local', 'cloud']);
+  expect(row?.local).not.toBeNull();
+
+  await control.apply({
+    previewId: preview.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'local' }],
+  });
+
+  // Keeping the local side publishes the authored body onto the cloud head — one object, at the ID
+  // the cloud already uses, so the binding does not end up with two rows for one Provider ID.
+  expect(published).toEqual([
+    {
+      body: {
+        kind: 'provider',
+        logicalKey: 'work',
+        value: { kind: 'api', baseURL: 'https://local' },
+        dependencies: [],
+      },
+      objectId: 'cloud-object',
+    },
+  ]);
+  expect(imported).toEqual([]);
 });
 
 test('a tombstoned duplicate does not collide with the live object holding the identity', () => {

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   AtomicConfigCommitUncertainError,
+  committedSourceFrom,
   type CommittedSource,
   confirmLocalCommit,
   type EntityBody,
@@ -106,24 +107,7 @@ function pluginSecretChange(
 }
 
 function source(input: LocalPortInput, raw: Record<string, JsonValue>): CommittedSource {
-  const accounts = new Map(
-    Object.keys(record(raw['providers']))
-      .map((providerId) => [providerId, input.accounts.readAccount(providerId)] as const)
-      .filter((entry): entry is readonly [string, NonNullable<(typeof entry)[1]>] => entry[1] !== null),
-  );
-  const plugins = Array.isArray(raw['plugins'])
-    ? raw['plugins'].flatMap((value) => {
-        const name = typeof value === 'string' ? value : Array.isArray(value) ? value[0] : undefined;
-        return typeof name === 'string' ? [name] : [];
-      })
-    : [];
-  const pluginSecrets = new Map(
-    plugins
-      .map((plugin) => [plugin, input.accounts.readPluginSecret(plugin)?.value] as const)
-      .filter((entry) => entry[1] !== undefined),
-  );
-  const versions = input.pluginVersions?.() ?? new Map<string, string>();
-  return { raw, accounts, pluginSecrets, pluginVersions: versions };
+  return committedSourceFrom(raw, input.accounts, input.pluginVersions?.());
 }
 
 type RemoteApplyState = {

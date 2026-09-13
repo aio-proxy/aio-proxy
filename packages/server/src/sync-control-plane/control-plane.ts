@@ -321,6 +321,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
           const expiresAt = now() + previewTtlMs;
           const local = captureLocal();
           const remote = snapshotRemoteEntities(candidate.remote);
+          // Reviewing the cloud side alone would offer `cloud` as the only choice for an identity the
+          // authored configuration also has, and applying would import over it. Before the first
+          // binding there are no rows to project from, so the committed configuration is the local
+          // side. A backend that cannot supply it is reviewed cloud-only rather than not at all.
+          const source = await options.committedSource?.().catch(() => undefined);
           const built = buildPreview({
             request,
             local: local.entities,
@@ -329,6 +334,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             previewId,
             expiresAt,
             registry: options.registry?.(),
+            ...(source === undefined ? {} : { source }),
           });
           previews.retain(previewId, built.record, expiresAt, candidate);
           enterPreviewRequired();

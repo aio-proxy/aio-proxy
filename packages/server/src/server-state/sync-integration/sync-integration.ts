@@ -55,6 +55,7 @@ export function createSyncIntegration(
       syncBinding: null,
       syncPort: undefined,
       configFile: undefined,
+      pluginVersions: () => new Map<string, string>(),
       syncApplyCandidate: async (
         _raw: Record<string, JsonValue>,
         _origin: 'local' | 'remote',
@@ -388,6 +389,7 @@ export function createSyncIntegration(
       return syncPort;
     },
     configFile,
+    pluginVersions,
     syncApplyCandidate,
     get lifecycle() {
       return lifecycle;

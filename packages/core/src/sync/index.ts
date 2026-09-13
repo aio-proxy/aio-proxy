@@ -11,7 +11,7 @@ export {
   type CommittedSource,
   type Projection,
 } from './projection';
-export { authoredEntityIdentities, seedAuthoredEntities } from './projection';
+export { authoredEntityIdentities, committedSourceFrom, seedAuthoredEntities } from './projection';
 export {
   createSyncRepository,
   type CommitIntent,

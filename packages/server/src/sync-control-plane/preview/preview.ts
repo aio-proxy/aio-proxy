@@ -15,6 +15,7 @@ import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreview, SyncPreviewInput, SyncPreviewRow } from '@aio-proxy/types';
 import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 
+import { authoredLocalEntities } from './connect-local';
 import { snapshotLocalEntities, snapshotRemoteEntities, type RemoteEntity } from './entities';
 import { SyncPreviewError } from './errors';
 import { applyOverrides } from './overrides';
@@ -138,8 +139,27 @@ export function buildPreview(input: {
   readonly accounts?: PluginRepository;
   readonly source?: CommittedSource;
 }): { readonly preview: SyncPreview; readonly record: PreviewRecord } {
-  const localSnapshot = snapshotLocalEntities(input.local);
   const remoteSnapshot = snapshotRemoteEntities(input.remote);
+  // Connect is the one preview whose local side may not exist yet, and the rows it mints have to be
+  // in the snapshot the record carries: applying reads its `current` row from there.
+  const minted =
+    input.request.kind === 'connect' && input.source !== undefined
+      ? authoredLocalEntities(input.source, input.local, remoteSnapshot)
+      : [];
+  const localSnapshot = snapshotLocalEntities([...input.local, ...minted]);
+  const mintedIds = new Set(minted.map((entity) => entity.objectId));
+  // A minted row has no published body, so its authored one is projected exactly as a join would
+  // publish it. Only the minted rows are forced included: doing that for every carried row would
+  // turn a backend switch into a mass join of objects the user left excluded.
+  const mintedBodies =
+    minted.length === 0 || input.source === undefined
+      ? undefined
+      : projectCommitted(
+          input.source,
+          localSnapshot.map((entity) =>
+            mintedIds.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity,
+          ),
+        ).entities;
   const localByObject = new Map(localSnapshot.map((entity) => [entity.objectId, entity]));
   const remoteByObject = new Map(remoteSnapshot.map((entity) => [entity.objectId, entity]));
   const ids = new Set<string>();
@@ -266,7 +286,8 @@ export function buildPreview(input: {
   const candidates = candidateIds
     .map((objectId) =>
       (() => {
-        const local = joined?.get(objectId) ?? localByObject.get(objectId)?.desired ?? null;
+        const local =
+          joined?.get(objectId) ?? mintedBodies?.get(objectId) ?? localByObject.get(objectId)?.desired ?? null;
         const remoteEntity = remoteByObject.get(objectId);
         let remote: EntityBody | null;
         if (input.request.kind === 'restore') {
