@@ -57,6 +57,37 @@ test('a verified candidate becomes one stable outgoing operation', async () => {
   });
 });
 
+test('a configuration edited outside any mutation republishes its objects', async () => {
+  await withSyncCommitFixture(async (f) => {
+    const file = new AtomicConfigFile(f.configPath);
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await file.replace(() => f.intent.rawAfter as Record<string, unknown>);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    const published = f.repo.outbox(f.bindingId);
+    expect(published).toHaveLength(1);
+    for (const operation of published) f.repo.acknowledge(f.bindingId, operation.operationId);
+
+    // A hand edit, or a mutation that died between its rename and its intent: the file is ahead of
+    // the last commit with nothing prepared to carry it.
+    await fsPromises.writeFile(
+      f.configPath,
+      encodeCandidate({ providers: { work: { kind: 'api', baseUrl: 'https://edited.test' } } }, f.configPath),
+    );
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toHaveLength(1);
+    expect(f.repo.outbox(f.bindingId)[0]?.body).toMatchObject({
+      logicalKey: 'work',
+      value: { baseUrl: 'https://edited.test' },
+    });
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+
+    // An untouched file publishes nothing on the next pass.
+    for (const operation of f.repo.outbox(f.bindingId)) f.repo.acknowledge(f.bindingId, operation.operationId);
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toEqual([]);
+  });
+});
+
 test('removing a previously published authored entity creates an explicit delete operation', async () => {
   await withSyncCommitFixture(async (f) => {
     const file = new AtomicConfigFile(f.configPath);

@@ -153,6 +153,39 @@ async function confirmLocalCommitUnderFence(
   );
 }
 
+// Local publication is intent-driven, so a configuration that reached the file without one leaves
+// every other device on the superseded objects until a later mutation happens to republish them.
+// Two paths produce that: an external edit the watcher reloads without rewriting the file, and a
+// mutation that died between its candidate's rename and the intent journaled after it. The file is
+// authoritative, and nothing was written for this intent, so one the pass cannot confirm — the file
+// moved again while it was read — is dropped rather than left prepared, matching a state that can
+// never come back; the next pass re-reads the drift. A digest cannot witness a plugin secret, so a
+// secret-only change is still the writer's own intent to journal.
+async function publishLocalDrift(repo: SyncRepository, bindingId: string, port: LocalCommitPort): Promise<void> {
+  const latest = repo.latestConfirmedCommit(bindingId);
+  // Queued operations are the newest state a drain is still carrying, and this pass drains after it.
+  // Recomputing puts from the file alongside them would order a put behind a delete the same drain
+  // is about to publish, and the outbox's newest-wins rule would drop that delete. Whatever drift
+  // survives the drain is still there for the next pass.
+  if (latest === null || repo.pendingCommits(bindingId).length > 0 || repo.outbox(bindingId).length > 0) return;
+  const afterDigest = await port.rawDigest();
+  port.assertCurrent?.();
+  if (afterDigest === latest.afterDigest) return;
+  const source = await port.committedSource();
+  port.assertCurrent?.();
+  const commitId = crypto.randomUUID();
+  prepareLocalCommit(repo, bindingId, {
+    commitId,
+    origin: 'local',
+    beforeDigest: latest.afterDigest,
+    afterDigest,
+    rawAfter: source.raw,
+    accountOperationIds: [],
+  });
+  await confirmLocalCommitUnderFence(repo, bindingId, commitId, port);
+  if (repo.readCommit(bindingId, commitId)?.phase !== 'confirmed') repo.discard(bindingId, commitId);
+}
+
 export async function recoverLocalCommits(
   repo: SyncRepository,
   bindingId: string,
@@ -176,6 +209,7 @@ export async function recoverLocalCommits(
         repo.discard(bindingId, intent.commitId);
       }
     }
+    await publishLocalDrift(repo, bindingId, port);
   });
 }
 
