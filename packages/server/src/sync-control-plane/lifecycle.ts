@@ -121,7 +121,12 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
           applyCandidate: input.applyCandidate,
           pluginVersions: input.pluginVersions,
         });
-      await recoverLocalCommits(input.repo, binding.id, port);
+      // A candidate's binding is only written when the swap installs it, so the port's staleness
+      // fence — which asks the repository which binding is live — rejects every read taken here.
+      // There is nothing to recover either: the id is new, so it carries no prepared commit and no
+      // confirmed baseline. The engine's first pass after activation runs this against the binding
+      // once it is live, which is what seeds the baseline for a connect that published no commit.
+      if (input.initialBinding === undefined) await recoverLocalCommits(input.repo, binding.id, port);
       connected ??= await backend.connect(parsedOptions.data, { signal: controller.signal, dataDirectory });
       const current = input.repo.readBinding();
       const currentBindingMismatch =
