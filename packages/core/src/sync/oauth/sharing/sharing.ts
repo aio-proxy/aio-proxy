@@ -55,6 +55,16 @@ export interface OAuthSharingServiceInput {
 // eslint-disable-next-line max-lines-per-function
 export function createOAuthSharingService(input: OAuthSharingServiceInput): OAuthSharingService {
   /**
+   * How many times cancellation has been requested per Provider. A cancellation deliberately runs
+   * outside the Provider gate — queued behind the detachment it cancels it would only ever take
+   * effect after that detachment finished — so the journal is what normally fences it. Before the
+   * journal exists there is nothing to find: the initial call awaits adapter validation and a remote
+   * read first, and a cancellation in that window reports success while the resuming detachment goes
+   * on to mark the row `detach-pending`. Comparing this counter is how that window is closed.
+   */
+  const cancellations = new Map<string, number>();
+
+  /**
    * An excluded Provider is one the user declined to put in the cloud, so its credential must never
    * reach the backend — not through startup recovery, not through a later login. Ownership that
    * already exists is different: excluding a row locally does not retract the remote account, and a
@@ -236,6 +246,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
     signal: AbortSignal,
   ): Promise<'independent' | 'pending'> {
     return input.withProviderGate(providerId, async () => {
+      const requested = cancellations.get(providerId) ?? 0;
       const entity = entityFor(input.repo, input.binding, providerId);
       if (entity?.oauth === undefined || entity.oauth.mode === 'independent') return 'pending';
       const resolved = await validatedAdapter(input, providerId, candidate);
@@ -260,6 +271,11 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       if (existing?.payload.base !== null && !isEqual(existing?.payload.base ?? remote.account, remote.account)) {
         return 'pending';
       }
+      // Nothing between here and `setPending` awaits, so a cancellation either lands before this
+      // check — and is honoured by abandoning the attempt — or afterwards, when the journal it needs
+      // is already durable. A stale `existing` row counts too: the cancellation that finished it ran
+      // after `findJournal` read it, so re-marking the row would strand it `detach-pending`.
+      if ((cancellations.get(providerId) ?? 0) !== requested) return 'pending';
       const row =
         existing?.row ??
         writeJournal(
@@ -298,6 +314,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
   }
 
   function cancelDetach(providerId: string): void {
+    cancellations.set(providerId, (cancellations.get(providerId) ?? 0) + 1);
     const pending = findJournal(input, providerId, 'detach');
     if (pending === undefined) return;
     input.repo.writeOAuthJournal(input.binding.id, pending.row);

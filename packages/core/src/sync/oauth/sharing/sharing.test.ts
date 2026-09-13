@@ -84,6 +84,46 @@ test('cancelling a suspended detachment fences its late verification result', as
   );
 });
 
+test('cancelling a detachment that has not journalled yet leaves the Provider shared', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      let admit!: () => void;
+      let validating!: () => void;
+      const held = new Promise<void>((resolve) => {
+        admit = resolve;
+      });
+      const reached = new Promise<void>((resolve) => {
+        validating = resolve;
+      });
+      f.replaceAdapter({
+        ...f.adapter,
+        // Suspends the detachment in adapter validation, before it journals anything.
+        credentials: zod.object({ token: zod.string() }).refine(async () => {
+          validating();
+          await held;
+          return true;
+        }),
+        credentialSync: {
+          formatVersion: 1,
+          multiDevice: { evidenceId: 'fixture-evidence' },
+          canDetach: async () => true,
+        },
+      });
+      const candidate = { ...f.accountWrite, credential: { token: 'independent-token' } };
+      const detaching = f.sharing.detach(f.providerId, candidate, f.signal);
+      await reached;
+      f.sharing.cancelDetach(f.providerId);
+      admit();
+
+      expect(await detaching).toBe('pending');
+      expect(f.ownership()?.mode).toBe('shared');
+      expect(f.currentCredential()).toEqual({ token: 'shared-token' });
+      expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+    },
+    { shared: true },
+  );
+});
+
 test('verified independent detachment survives a service restart', async () => {
   await withOAuthSharingFixture(
     async (f) => {
