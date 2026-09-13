@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import { AgentTargetSchema } from '@aio-proxy/types';
+import { AgentPluginTargetSchema } from '@aio-proxy/types';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
@@ -69,7 +69,7 @@ const captureManagedAgentTargets = async (): Promise<AgentPostUpgradePayload> =>
   const { createAgentCommandDeps } = await import('../agent');
   const agent = createAgentCommandDeps(defaultCliDeps);
   const targets: AgentPostUpgradePayload['targets'][number][] = [];
-  for (const target of AgentTargetSchema.options) {
+  for (const target of AgentPluginTargetSchema.options) {
     try {
       const location = await agent.resolveLocation(target);
       const status = await agent.inspect(location, agent.now);

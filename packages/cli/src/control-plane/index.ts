@@ -1,4 +1,5 @@
 export {
+  codexBaseUrl,
   controlBaseUrl,
   DEFAULT_CONTROL_HOST,
   DEFAULT_CONTROL_PORT,

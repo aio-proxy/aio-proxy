@@ -134,6 +134,39 @@ test('device endpoint is form-only, loopback-only, and binds the fixed client tu
   ).toBe(400);
 });
 
+test('device endpoint accepts Codex credentials and rejects mismatched client tuples', async () => {
+  const f = await routeFixture();
+  const codexRequest = {
+    client_id: 'aio-proxy-codex',
+    agent: 'codex',
+    installation_id: '11111111-1111-4111-8111-111111111111',
+    adapter_version: '0.146.0',
+  };
+  const valid = await f.app.request('/oauth/device/code', form(codexRequest), loopbackServer);
+  expect({ status: valid.status, body: await valid.clone().json() }).toEqual({
+    status: 200,
+    body: expect.objectContaining({ device_code: expect.any(String) }),
+  });
+  expect(
+    (
+      await f.app.request(
+        '/oauth/device/code',
+        form({ ...codexRequest, client_id: 'aio-proxy-opencode' }),
+        loopbackServer,
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await f.app.request(
+        '/oauth/device/code',
+        form({ ...codexRequest, agent: 'opencode', client_id: 'aio-proxy-codex' }),
+        loopbackServer,
+      )
+    ).status,
+  ).toBe(400);
+});
+
 test.each(['::', '[::]'] as const)(
   'IPv6 wildcard %s Device approval origin is accepted at the configured Agent endpoint',
   async (host) => {

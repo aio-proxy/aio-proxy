@@ -1,0 +1,1 @@
+export { resolveCodexLocation } from './location';

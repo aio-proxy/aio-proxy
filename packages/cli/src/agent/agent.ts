@@ -2,9 +2,10 @@ import { homedir } from 'node:os';
 
 import {
   AgentRevokeResponseSchema,
-  AgentTargetSchema,
+  AgentPluginTargetSchema,
   type AgentAdminSnapshot,
   type AgentInstallationSummary,
+  type AgentPluginTarget,
   type AgentRevokeStatus,
   type AgentTarget,
 } from '@aio-proxy/types';
@@ -12,6 +13,15 @@ import {
 import packageJson from '../../package.json' with { type: 'json' };
 import { defaultCliDeps, type CliDeps } from '../dashboard-assets';
 import { agentFiles } from './assets';
+import {
+  configureCodexAgent,
+  listCodexAgent,
+  removeCodexAgent,
+  type CodexConfigureOptions,
+  type CodexConfigureResult,
+  type CodexListResult,
+  type CodexRemoveResult,
+} from './codex';
 import { readAgentAdminSnapshot, resolveAgentEndpoint, revokeAgentInstallation } from './control-plane';
 import { detectAgentHost, resolveAgentLocation, type AgentHost, type AgentHostDeps, type AgentLocation } from './hosts';
 import {
@@ -24,22 +34,27 @@ import {
 const AGENT_TARGETS = ['opencode', 'pi', 'omp'] as const;
 
 export type AgentCommandDeps = {
-  readonly detectHost: (target: AgentTarget) => Promise<AgentHost>;
-  readonly resolveLocation: (target: AgentTarget) => Promise<AgentLocation>;
+  readonly detectHost: (target: AgentPluginTarget) => Promise<AgentHost>;
+  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentLocation>;
   readonly inspect: (location: AgentLocation, now: () => number) => Promise<LocalIntegrationStatus>;
   readonly resolveEndpoint: () => Promise<string>;
   readonly install: typeof installManagedIntegration;
   readonly remove: typeof removeManagedIntegration;
   readonly readSnapshot: (endpoint: string) => Promise<AgentAdminSnapshot>;
   readonly revoke: (endpoint: string, installationId: string) => Promise<AgentRevokeStatus>;
-  readonly readAssets: (target: AgentTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
+  readonly readAssets: (target: AgentPluginTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
   readonly adapterVersion: string;
   readonly randomUUID: () => `${string}-${string}-${string}-${string}-${string}`;
   readonly now: () => number;
+  readonly codex: {
+    readonly configure: (options?: CodexConfigureOptions) => Promise<CodexConfigureResult>;
+    readonly list: (check: boolean) => Promise<CodexListResult>;
+    readonly remove: () => Promise<CodexRemoveResult>;
+  };
 };
 
 type AgentListTargetBase = {
-  readonly target: AgentTarget;
+  readonly target: AgentPluginTarget;
   readonly host: AgentHost;
   readonly authorization: 'not_checked' | AgentInstallationSummary['authorization'] | 'missing';
   readonly schemaCompatibility: 'not_checked' | 'compatible' | 'incompatible';
@@ -66,10 +81,11 @@ export type AgentListResult = {
   readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
   readonly catalogSchemaVersions?: readonly number[];
   readonly authorizations?: readonly AgentAuthorizationListItem[];
+  readonly codex: CodexListResult;
 };
 
-export type AgentConfigureResult = {
-  readonly target: AgentTarget;
+export type PluginAgentConfigureResult = {
+  readonly target: AgentPluginTarget;
   readonly host: AgentHost;
   readonly installed: true;
   readonly status: 'installed' | 'updated' | 'newer';
@@ -79,11 +95,14 @@ export type AgentConfigureResult = {
   readonly reloadRequired: true;
 };
 
-export type AgentRemoveResult = {
-  readonly target: AgentTarget;
+export type PluginAgentRemoveResult = {
+  readonly target: AgentPluginTarget;
   readonly installationId: string;
   readonly revokeStatus: AgentRevokeStatus;
 };
+
+export type AgentConfigureResult = PluginAgentConfigureResult | CodexConfigureResult;
+export type AgentRemoveResult = PluginAgentRemoveResult | CodexRemoveResult;
 
 export type AgentRevokeResult = {
   readonly installationId: string;
@@ -119,17 +138,22 @@ export const createAgentCommandDeps = (cliDeps: CliDeps): AgentCommandDeps => {
     adapterVersion: packageJson.version,
     randomUUID: () => crypto.randomUUID(),
     now: () => Date.now(),
+    codex: {
+      configure: configureCodexAgent,
+      list: listCodexAgent,
+      remove: removeCodexAgent,
+    },
   };
 };
 
 const commandDeps = (deps?: AgentCommandDeps): AgentCommandDeps => deps ?? createAgentCommandDeps(defaultCliDeps);
 
-const parseTarget = (target: string): AgentTarget => AgentTargetSchema.parse(target);
+const parseTarget = (target: string): AgentPluginTarget => AgentPluginTargetSchema.parse(target);
 
-const loginCommand = (target: AgentTarget): AgentConfigureResult['loginCommand'] =>
+const loginCommand = (target: AgentPluginTarget): PluginAgentConfigureResult['loginCommand'] =>
   target === 'opencode' ? 'opencode auth login --provider aio-proxy' : '/login aio-proxy';
 
-const requireDetectedHost = async (target: AgentTarget, deps: AgentCommandDeps): Promise<AgentHost> => {
+const requireDetectedHost = async (target: AgentPluginTarget, deps: AgentCommandDeps): Promise<AgentHost> => {
   const host = await deps.detectHost(target);
   if (!host.detected) throw new Error(`${target} is not installed`);
   return host;
@@ -157,7 +181,7 @@ const endpointMatches = (
 };
 
 const listTarget = async (
-  target: AgentTarget,
+  target: AgentPluginTarget,
   configuredEndpoint: string | undefined,
   deps: AgentCommandDeps,
 ): Promise<AgentListTargetResult> => {
@@ -217,6 +241,7 @@ const applySnapshot = (
 const authorizationItems = (
   targets: readonly AgentListTargetResult[],
   snapshot: AgentAdminSnapshot,
+  codex: CodexListResult,
 ): readonly AgentAuthorizationListItem[] => {
   const configured = new Set(
     targets.flatMap((row) =>
@@ -225,6 +250,7 @@ const authorizationItems = (
         : [],
     ),
   );
+  if (codex.installationId !== undefined) configured.add(localMarkerKey(codex.installationId, 'codex'));
   return snapshot.installations.map((item) => ({
     ...item,
     local: configured.has(localMarkerKey(item.installationId, item.target)) ? 'configured' : 'orphaned',
@@ -238,20 +264,34 @@ export async function agentList(
   void options.json;
   const resolved = commandDeps(deps);
   const configuredEndpoint = await resolveConfiguredEndpoint(resolved);
+  let codex: CodexListResult;
+  try {
+    codex = await resolved.codex.list(options.check === true);
+  } catch {
+    codex = {
+      target: 'codex',
+      integration: 'static-config',
+      configPath: '',
+      activeProviderId: '',
+      status: 'conflict',
+      connection: 'not_checked',
+      changedPaths: [],
+    };
+  }
   const targets: AgentListTargetResult[] = [];
   for (const target of AGENT_TARGETS) {
     targets.push(await listTarget(target, configuredEndpoint, resolved));
   }
 
   const online = options.check === true || options.authorizations === true;
-  if (!online) return { targets, server: 'not_checked' };
+  if (!online) return { targets, server: 'not_checked', codex };
 
-  if (configuredEndpoint === undefined) return { targets, server: 'unreachable' };
+  if (configuredEndpoint === undefined) return { targets, server: 'unreachable', codex };
   let snapshot: AgentAdminSnapshot;
   try {
     snapshot = await resolved.readSnapshot(configuredEndpoint);
   } catch {
-    return { targets, server: 'unreachable' };
+    return { targets, server: 'unreachable', codex };
   }
 
   return {
@@ -259,12 +299,23 @@ export async function agentList(
     server: 'reachable',
     deviceAuthorization: snapshot.deviceAuthorization,
     catalogSchemaVersions: snapshot.catalogSchemaVersions,
-    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot) } : {}),
+    ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot, codex) } : {}),
+    codex,
   };
 }
 
-export async function agentConfigure(target: string, deps?: AgentCommandDeps): Promise<AgentConfigureResult> {
+export async function agentConfigure(
+  target: string,
+  optionsOrDeps?: CodexConfigureOptions | AgentCommandDeps,
+  suppliedDeps?: AgentCommandDeps,
+): Promise<AgentConfigureResult> {
+  const options =
+    suppliedDeps === undefined && optionsOrDeps !== undefined && !('detectHost' in optionsOrDeps) ? optionsOrDeps : {};
+  const deps =
+    suppliedDeps ?? (optionsOrDeps !== undefined && 'detectHost' in optionsOrDeps ? optionsOrDeps : undefined);
   const resolved = commandDeps(deps);
+  if (target === 'codex') return resolved.codex.configure(options);
+  if (options.restoreMigration !== undefined) throw new Error('--restore-migration is only supported for codex');
   const parsed = parseTarget(target);
   const host = await requireDetectedHost(parsed, resolved);
   const location = await resolved.resolveLocation(parsed);
@@ -282,7 +333,7 @@ export async function agentConfigure(target: string, deps?: AgentCommandDeps): P
     readAssets: () => resolved.readAssets(parsed),
   });
 
-  let server: AgentConfigureResult['server'] = 'unreachable';
+  let server: PluginAgentConfigureResult['server'] = 'unreachable';
   let deviceAuthorization: AgentAdminSnapshot['deviceAuthorization'] | undefined;
   try {
     const snapshot = await resolved.readSnapshot(endpoint);
@@ -306,6 +357,7 @@ export async function agentConfigure(target: string, deps?: AgentCommandDeps): P
 
 export async function agentRemove(target: string, deps?: AgentCommandDeps): Promise<AgentRemoveResult> {
   const resolved = commandDeps(deps);
+  if (target === 'codex') return resolved.codex.remove();
   const parsed = parseTarget(target);
   await requireDetectedHost(parsed, resolved);
   const location = await resolved.resolveLocation(parsed);

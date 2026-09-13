@@ -5,6 +5,9 @@ import {
   AgentManagedMarkerSchema,
   AgentManagedStateV1Schema,
   AgentTokenResponseSchema,
+  AgentCatalogQuerySchema,
+  AgentDeviceCodeRequestSchema,
+  AgentPluginTargetSchema,
   AgentTargetSchema,
   hasReservedAgentTokenPrefix,
 } from './agent-integration';
@@ -180,7 +183,22 @@ test('recognizes both reserved Agent credential families', () => {
   expect(hasReservedAgentTokenPrefix('aio_agent_at_v1_x')).toBe(true);
   expect(hasReservedAgentTokenPrefix('aio_agent_rt_v1_x')).toBe(true);
   expect(hasReservedAgentTokenPrefix('ordinary-static-key')).toBe(false);
-  expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp']);
+  expect(AgentPluginTargetSchema.options).toEqual(['opencode', 'pi', 'omp']);
+  expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp', 'codex']);
+});
+
+test('accepts Codex device credentials while keeping catalog negotiation plugin-only', () => {
+  expect(
+    AgentDeviceCodeRequestSchema.safeParse({
+      client_id: 'aio-proxy-codex',
+      agent: 'codex',
+      installation_id: '11111111-1111-4111-8111-111111111111',
+      adapter_version: '0.21.0',
+    }).success,
+  ).toBe(true);
+  expect(
+    AgentCatalogQuerySchema.safeParse({ agent: 'codex', adapter_version: '0.21.0', schema_version: '1' }).success,
+  ).toBe(false);
 });
 
 test.each(['aio_agent_at_legacy', 'aio_agent_rt_legacy', 'aio_agent_at_v1_', 'aio_agent_rt_v1_'] as const)(

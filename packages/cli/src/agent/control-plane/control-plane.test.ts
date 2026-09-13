@@ -38,6 +38,23 @@ test.each([404, 500])('rejects revoke HTTP %s without fabricating a terminal sta
   ).rejects.toThrow();
 });
 
+test('rejects revoke redirects instead of following them to another origin', async () => {
+  let redirect: RequestRedirect | undefined;
+  await expect(
+    revokeAgentInstallation('http://127.0.0.1:9317', INSTALLATION, async (input, init) => {
+      redirect = init?.redirect;
+      expect(String(input instanceof Request ? input.url : input)).toBe(
+        `http://127.0.0.1:9317/admin/agent-installations/${INSTALLATION}/revoke`,
+      );
+      return Response.json(
+        { installationId: INSTALLATION, status: 'revoked' },
+        { status: 307, headers: { location: 'http://evil.test/revoke' } },
+      );
+    }),
+  ).rejects.toThrow();
+  expect(redirect).toBe('error');
+});
+
 test.each(['127.example.test', '127.0.0.999', '127.1', '192.0.2.10'])(
   'rejects non-canonical/non-loopback host %s',
   (host) => expect(() => connectHost(host)).toThrow('loopback'),

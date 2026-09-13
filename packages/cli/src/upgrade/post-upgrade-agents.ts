@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path';
 
-import { AgentTargetSchema, type AgentTarget } from '@aio-proxy/types';
+import { AgentPluginTargetSchema, type AgentPluginTarget } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import type { AgentLocation } from '../agent/hosts';
@@ -10,19 +10,19 @@ import type { UpgradeTarget } from './constants';
 export type AgentPostUpgradePayload = {
   readonly format: 1;
   readonly targets: readonly {
-    readonly target: AgentTarget;
+    readonly target: AgentPluginTarget;
     readonly managedDir: string;
     readonly adjacentEntry?: string;
   }[];
 };
 export type AgentPostUpgradeItemResult =
-  | { readonly target: AgentTarget; readonly status: 'updated' | 'absent' | 'newer' }
-  | { readonly target: AgentTarget; readonly status: 'warning'; readonly reason: string };
+  | { readonly target: AgentPluginTarget; readonly status: 'updated' | 'absent' | 'newer' }
+  | { readonly target: AgentPluginTarget; readonly status: 'warning'; readonly reason: string };
 export type AgentPostUpgradeDeps = {
-  readonly resolveLocation: (target: AgentTarget) => Promise<AgentLocation>;
+  readonly resolveLocation: (target: AgentPluginTarget) => Promise<AgentLocation>;
   readonly inspect: (location: AgentLocation, now: () => number) => Promise<LocalIntegrationStatus>;
   readonly install: typeof installManagedIntegration;
-  readonly readAssets: (target: AgentTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
+  readonly readAssets: (target: AgentPluginTarget) => Promise<ReadonlyMap<string, Uint8Array>>;
   readonly adapterVersion: string;
   readonly now: () => number;
 };
@@ -38,7 +38,7 @@ export type AgentUpgradeHandoffDeps = {
 
 const PostUpgradeTargetSchema = z
   .strictObject({
-    target: AgentTargetSchema,
+    target: AgentPluginTargetSchema,
     managedDir: z.string().refine(isAbsolute, 'managedDir must be absolute'),
     adjacentEntry: z.string().refine(isAbsolute, 'adjacentEntry must be absolute').optional(),
   })
@@ -54,7 +54,7 @@ export const AgentPostUpgradePayloadSchema: z.ZodType<AgentPostUpgradePayload> =
     targets: z.array(PostUpgradeTargetSchema).max(3),
   })
   .superRefine((payload, context) => {
-    const seen = new Set<AgentTarget>();
+    const seen = new Set<AgentPluginTarget>();
     payload.targets.forEach((row, index) => {
       if (seen.has(row.target)) {
         context.addIssue({ code: 'custom', path: ['targets', index, 'target'], message: 'duplicate target' });
@@ -64,11 +64,11 @@ export const AgentPostUpgradePayloadSchema: z.ZodType<AgentPostUpgradePayload> =
   });
 
 const PostUpgradeItemResultSchema = z.discriminatedUnion('status', [
-  z.strictObject({ target: AgentTargetSchema, status: z.literal('updated') }),
-  z.strictObject({ target: AgentTargetSchema, status: z.literal('absent') }),
-  z.strictObject({ target: AgentTargetSchema, status: z.literal('newer') }),
+  z.strictObject({ target: AgentPluginTargetSchema, status: z.literal('updated') }),
+  z.strictObject({ target: AgentPluginTargetSchema, status: z.literal('absent') }),
+  z.strictObject({ target: AgentPluginTargetSchema, status: z.literal('newer') }),
   z.strictObject({
-    target: AgentTargetSchema,
+    target: AgentPluginTargetSchema,
     status: z.literal('warning'),
     reason: z.string().trim().min(1),
   }),

@@ -1,0 +1,7 @@
+[
+  { "case": "missing-session-id", "reject": "no unique session_meta.payload.id" },
+  { "case": "conflicting-provider", "reject": "multiple session_meta records disagree on model_provider" },
+  { "case": "unknown-history-mode", "reject": "history_mode is neither legacy nor paginated" },
+  { "case": "index-rollout-mismatch", "reject": "threads.rollout_path does not resolve to the selected rollout" },
+  { "case": "active-writer", "reject": "Codex process or open writer is detected before mutation" }
+]

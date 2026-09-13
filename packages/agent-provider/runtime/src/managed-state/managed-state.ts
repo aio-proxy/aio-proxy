@@ -8,7 +8,7 @@ import {
   type AgentCatalogV1,
   type AgentManagedMarker,
   type AgentManagedStateV1,
-  type AgentTarget,
+  type AgentPluginTarget,
 } from '@aio-proxy/types';
 
 import { AgentRuntimeError } from '../oauth-client';
@@ -17,12 +17,12 @@ export type ManagedInstallation = {
   readonly rootDir: string;
   readonly markerPath: string;
   readonly statePath: string;
-  readonly marker: AgentManagedMarker;
+  readonly marker: Omit<AgentManagedMarker, 'agent'> & { readonly agent: AgentPluginTarget };
 };
 
 export async function readManagedInstallation(
   importMetaUrl: string,
-  expectedTarget: AgentTarget,
+  expectedTarget: AgentPluginTarget,
 ): Promise<ManagedInstallation> {
   const entryDir = dirname(fileURLToPath(importMetaUrl));
   for (const rootDir of [entryDir, dirname(entryDir)]) {
@@ -40,7 +40,7 @@ export async function readManagedInstallation(
       rootDir,
       markerPath,
       statePath: join(rootDir, '.aio-proxy-state.json'),
-      marker: parsed.data,
+      marker: { ...parsed.data, agent: expectedTarget },
     };
   }
   throw new AgentRuntimeError('invalid_response');
@@ -57,7 +57,7 @@ export async function readManagedState(statePath: string): Promise<AgentManagedS
 
 export async function readLastKnownCatalog(
   statePath: string,
-  expectedTarget: AgentTarget,
+  expectedTarget: AgentPluginTarget,
 ): Promise<AgentCatalogV1 | null> {
   const state = await readManagedState(statePath);
   return state?.lkg?.agent === expectedTarget ? state.lkg : null;

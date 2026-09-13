@@ -1,4 +1,4 @@
-import type { AgentCatalogV1, AgentTarget } from '@aio-proxy/types';
+import type { AgentCatalogV1, AgentPluginTarget } from '@aio-proxy/types';
 
 import type { ServerState } from '../../../server-state';
 import {
@@ -8,7 +8,7 @@ import {
   resolveModelField,
 } from '../../model-resolution/index';
 
-export async function agentCatalog(state: ServerState, agent: AgentTarget): Promise<AgentCatalogV1> {
+export async function agentCatalog(state: ServerState, agent: AgentPluginTarget): Promise<AgentCatalogV1> {
   const resolved = await resolveEnabledModels(state);
   return {
     schema_version: 1,

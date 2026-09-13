@@ -84,6 +84,35 @@ test('issue cannot rebind an installation to another target or revoke its family
   handle.close();
 });
 
+test('Codex installation target survives closing and reopening the identity database', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-codex-repository-'));
+  roots.push(home);
+  const first = openDb({ home });
+  const firstRepo = createAgentIdentityRepository(first.sqlite);
+  firstRepo.issue({
+    installationId: INSTALLATION,
+    target: 'codex',
+    adapterVersion: '0.146.0',
+    familyId: 'codex-family',
+    accessHash: 'codex-at',
+    refreshHash: 'codex-rt',
+    now: 1_000,
+    accessExpiresAt: 901_000,
+    refreshExpiresAt: 7_776_001_000,
+  });
+  first.close();
+
+  const reopened = openDb({ home });
+  const reopenedRepo = createAgentIdentityRepository(reopened.sqlite);
+  expect(reopenedRepo.loadActiveAccess(2_000)).toEqual([
+    expect.objectContaining({ installationId: INSTALLATION, target: 'codex', tokenHash: 'codex-at' }),
+  ]);
+  expect(reopenedRepo.listInstallations(2_000)).toEqual([
+    expect.objectContaining({ installationId: INSTALLATION, target: 'codex', authorization: 'active' }),
+  ]);
+  reopened.close();
+});
+
 test('rotation consumes old refresh and inserts the successor atomically', () => {
   const { handle, repo } = fixture();
   repo.issue({

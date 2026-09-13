@@ -1,6 +1,6 @@
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 
-import { loadServiceEnv } from '../service-env';
+import { readServiceEnvironment } from '../service-env';
 
 export type Health = { readonly status?: string; readonly uptime?: number; readonly version?: string };
 
@@ -24,8 +24,7 @@ export async function resolveControlAddress(options: { readonly host?: string; r
   let configured: { host?: string; port?: number } = {};
   try {
     const path = configPath();
-    loadServiceEnv(path);
-    const config = parseRuntimeConfig(await new AtomicConfigFile(path).read());
+    const config = parseRuntimeConfig(await new AtomicConfigFile(path).read(), readServiceEnvironment(path));
     configured = { host: config.server.host, port: config.server.port };
   } catch {
     // Unreadable / malformed / not-yet-created config: keep the loopback defaults.
@@ -40,6 +39,8 @@ export async function resolveControlAddress(options: { readonly host?: string; r
 // the invalid http://::1:9317 (which would make every control-plane probe fail).
 export const controlBaseUrl = (host: string, port: string): string =>
   `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
+
+export const codexBaseUrl = (endpoint: string): string => `${endpoint.replace(/\/+$/u, '')}/v1`;
 
 // Probe the daemon's /health. Only accept a response that carries aio-proxy's
 // own `status: "ok"` marker, so an unrelated service answering /health on the

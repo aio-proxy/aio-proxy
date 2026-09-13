@@ -1,0 +1,15 @@
+export {
+  assertNoSymlinkParents,
+  chmodChecked,
+  durableDelete,
+  durableWrite,
+  ensureManagedRoot,
+  fingerprint,
+  inspectDirectory,
+  inspectRegularFile,
+  isFsCode,
+  readRegularFile,
+  syncParent,
+  writeTomlAtomically,
+  type FileSnapshot,
+} from '../managed-config/storage';

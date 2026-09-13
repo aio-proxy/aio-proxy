@@ -109,7 +109,7 @@ type InstallationListRow = {
 const toIso = (value: number): string => new Date(value).toISOString();
 
 const asAgentTarget = (value: string): AgentTarget => {
-  if (value === 'opencode' || value === 'pi' || value === 'omp') return value;
+  if (value === 'opencode' || value === 'pi' || value === 'omp' || value === 'codex') return value;
   throw new Error(`invalid agent target: ${value}`);
 };
 

@@ -1,6 +1,11 @@
 import { expect, mock, test } from 'bun:test';
 
-import type { AgentAdminSnapshot, AgentInstallationSummary, AgentRevokeStatus, AgentTarget } from '@aio-proxy/types';
+import type {
+  AgentAdminSnapshot,
+  AgentInstallationSummary,
+  AgentPluginTarget,
+  AgentRevokeStatus,
+} from '@aio-proxy/types';
 
 import { agentConfigure, agentList, agentRemove, agentRevoke, type AgentCommandDeps } from './agent';
 import type { AgentHost, AgentLocation } from './hosts';
@@ -17,7 +22,7 @@ const installation = (installationId: string): AgentInstallationSummary => ({
   accessExpiresAt: '2026-08-18T00:15:01.000Z',
 });
 
-const commandLocation = (target: AgentTarget): AgentLocation => {
+const commandLocation = (target: AgentPluginTarget): AgentLocation => {
   const hostRoot = `/tmp/${target}/${target === 'opencode' ? 'plugins' : 'extensions'}`;
   return {
     target,
@@ -33,11 +38,11 @@ function commandFixture(
     readonly serverHost?: string;
     readonly resolvedEndpoint?: string;
     readonly markerEndpoint?: string;
-    readonly target?: AgentTarget;
+    readonly target?: AgentPluginTarget;
     readonly hostSupport?: AgentHost['support'];
     readonly hostVersion?: string;
-    readonly missingTargets?: readonly AgentTarget[];
-    readonly pathFailureTargets?: readonly AgentTarget[];
+    readonly missingTargets?: readonly AgentPluginTarget[];
+    readonly pathFailureTargets?: readonly AgentPluginTarget[];
     readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
     readonly catalogSchemaVersions?: readonly number[];
     readonly revokeStatus?: AgentRevokeStatus;
@@ -49,7 +54,7 @@ function commandFixture(
   const missing = new Set(options.missingTargets ?? []);
   const pathFailures = new Set(options.pathFailureTargets ?? []);
   const localIds = options.localInstallationIds ?? (options.target === undefined ? [] : [INSTALLATION]);
-  const localByTarget = new Map<AgentTarget, string>();
+  const localByTarget = new Map<AgentPluginTarget, string>();
   if (options.target !== undefined && localIds[0] !== undefined) localByTarget.set(options.target, localIds[0]);
   else
     (['opencode', 'pi', 'omp'] as const).forEach((target, index) => {
@@ -124,6 +129,28 @@ function commandFixture(
     adapterVersion: '1.2.3',
     randomUUID: () => INSTALLATION,
     now: () => Date.parse('2026-08-18T00:05:00.000Z'),
+    codex: {
+      configure: async () => {
+        throw new Error('codex stub not configured');
+      },
+      list: async () => ({
+        target: 'codex',
+        integration: 'static-config',
+        configPath: '/tmp/codex/config.toml',
+        activeProviderId: 'openai',
+        status: 'absent',
+        connection: 'not_checked',
+        changedPaths: [],
+      }),
+      remove: async () => ({
+        target: 'codex',
+        integration: 'static-config',
+        configPath: '/tmp/codex/config.toml',
+        keysRetained: true,
+        status: 'absent',
+        preservedPaths: [],
+      }),
+    },
   };
   return { deps, events, install, remove, revoke, resolveEndpoint, readSnapshot };
 }
@@ -207,6 +234,29 @@ test('authorizations marks configured and orphaned server identities', async () 
   expect(f.readSnapshot).toHaveBeenCalledTimes(1);
 });
 
+test('preserves Codex authorization from its stored endpoint when the current endpoint snapshot differs', async () => {
+  const f = commandFixture({ serverInstallations: [] });
+  const deps: AgentCommandDeps = {
+    ...f.deps,
+    codex: {
+      ...f.deps.codex,
+      list: async () => ({
+        target: 'codex',
+        integration: 'static-config',
+        configPath: '/tmp/codex/config.toml',
+        activeProviderId: 'aio-proxy',
+        status: 'managed',
+        connection: 'ok',
+        authorization: 'active',
+        installationId: INSTALLATION,
+        changedPaths: [],
+      }),
+    },
+  };
+  const result = await agentList({ check: true }, deps);
+  expect(result.codex).toMatchObject({ installationId: INSTALLATION, authorization: 'active' });
+});
+
 test('list --check returns the complete per-target and server capability contract', async () => {
   const f = commandFixture({
     localInstallationIds: [INSTALLATION],
@@ -215,6 +265,7 @@ test('list --check returns the complete per-target and server capability contrac
     catalogSchemaVersions: [1],
   });
   const result = await agentList({ check: true }, f.deps);
+  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp']);
   expect(result).toMatchObject({
     server: 'reachable',
     deviceAuthorization: 'password_required',
@@ -307,6 +358,24 @@ test('local-only list makes authorization and schema checks explicit', async () 
     }),
   );
   expect(f.readSnapshot).not.toHaveBeenCalled();
+});
+
+test('list isolates a failed Codex inspection from other integrations', async () => {
+  const f = commandFixture({ localInstallationIds: [INSTALLATION] });
+  const result = await agentList(
+    {},
+    {
+      ...f.deps,
+      codex: {
+        ...f.deps.codex,
+        list: async () => {
+          throw new Error('Refusing symbolic link: /tmp/codex/config.toml');
+        },
+      },
+    },
+  );
+  expect(result.codex).toMatchObject({ status: 'conflict', connection: 'not_checked' });
+  expect(result.targets.map(({ target }) => target)).toEqual(['opencode', 'pi', 'omp']);
 });
 
 test('list reports an undetected host as unresolved without resolving its path', async () => {

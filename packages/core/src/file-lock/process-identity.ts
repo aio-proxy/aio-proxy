@@ -20,6 +20,21 @@ export function processIsAlive(pid: number): boolean {
   }
 }
 
+export type ProcessOwnerIdentity = {
+  readonly pid: number;
+  readonly starttime?: string | null;
+};
+
+const unverifiableStarttime = (starttime: string | null | undefined): boolean =>
+  starttime === undefined || starttime === null || starttime.length === 0 || starttime === 'unavailable';
+
+export async function processOwnerIsCurrent(owner: ProcessOwnerIdentity): Promise<boolean> {
+  if (!processIsAlive(owner.pid)) return false;
+  if (unverifiableStarttime(owner.starttime)) return true;
+  const current = await processStarttime(owner.pid);
+  return current === null || current === owner.starttime;
+}
+
 export async function withinProcessStarttimeDeadline<T>(
   promise: Promise<T>,
   timeoutMs: number,

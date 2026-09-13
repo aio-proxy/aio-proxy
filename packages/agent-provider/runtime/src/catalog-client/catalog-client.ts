@@ -1,16 +1,18 @@
 import {
   AgentCatalogErrorSchema,
   AgentCatalogV1Schema,
+  AgentPluginTargetSchema,
   type AgentAdapterFailure,
   type AgentCatalogV1,
   type AgentManagedMarker,
+  type AgentPluginTarget,
 } from '@aio-proxy/types';
 
 import { readManagedState, writeManagedState } from '../managed-state';
 import type { AgentRuntimeRequestOptions } from '../oauth-client';
 
 export type RefreshCatalogInput = AgentRuntimeRequestOptions & {
-  readonly marker: AgentManagedMarker;
+  readonly marker: Omit<AgentManagedMarker, 'agent'> & { readonly agent: AgentPluginTarget };
   readonly statePath: string;
   readonly accessToken: string;
 };
@@ -25,9 +27,11 @@ export type RefreshCatalogResult = {
 export const CATALOG_REFRESH_INTERVAL_MS = 300_000;
 
 export async function refreshAgentCatalog(input: RefreshCatalogInput): Promise<RefreshCatalogResult> {
+  const agent = AgentPluginTargetSchema.safeParse(input.marker.agent);
+  if (!agent.success) throw new Error('Agent catalog requires a plugin target');
   const url = new URL('/v1/models', input.marker.endpoint);
   url.search = new URLSearchParams({
-    agent: input.marker.agent,
+    agent: agent.data,
     adapter_version: input.marker.adapterVersion,
     schema_version: '1',
   }).toString();
@@ -57,7 +61,7 @@ export async function refreshAgentCatalog(input: RefreshCatalogInput): Promise<R
     return preserveLkg(input, 'invalid_json');
   }
   const parsed = AgentCatalogV1Schema.safeParse(body);
-  if (!parsed.success || parsed.data.agent !== input.marker.agent) return preserveLkg(input, 'invalid_catalog');
+  if (!parsed.success || parsed.data.agent !== agent.data) return preserveLkg(input, 'invalid_catalog');
   const timestamp = new Date((input.now ?? Date.now)()).toISOString();
   await writeManagedState(input.statePath, {
     format: 1,

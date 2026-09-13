@@ -1,0 +1,13 @@
+{
+  "executable": "codex-cli 0.146.0",
+  "schemaTitle": "CodexAppServerProtocolV2",
+  "upstreamRevision": null,
+  "definitions": {
+    "ThreadStartParams": ["modelProvider", "historyMode"],
+    "ThreadResumeParams": ["threadId", "modelProvider"],
+    "ThreadListParams": ["modelProviders", "useStateDbOnly"],
+    "ThreadMetadataUpdateParams": ["threadId", "isPinned", "gitInfo"]
+  },
+  "metadataUpdateProviderField": false,
+  "generatedBy": "codex app-server generate-json-schema --experimental"
+}

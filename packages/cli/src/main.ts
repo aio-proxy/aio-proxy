@@ -6,6 +6,7 @@ import { Command } from 'commander';
 
 import packageJson from '../package.json' with { type: 'json' };
 import { agentConfigure, agentList, agentRemove, agentRevoke, createAgentCommandDeps } from './agent';
+import { runCodexAuthCommand } from './agent/codex';
 import { registerAgentCommands } from './agent/output';
 import { completionCommand } from './completion';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
@@ -27,6 +28,38 @@ import { runUpgradeCommand } from './upgrade';
 export { readOrBootstrapConfig } from './run';
 
 const VERSION = packageJson.version;
+
+const codexAuthInvocation = (argv: readonly string[]): string | undefined => {
+  if (argv[0] !== 'agent' || argv[1] !== 'auth' || argv[2] !== 'codex') return undefined;
+  if (argv.length !== 5 || argv[3] !== '--installation-id') throw new Error('Codex auth requires --installation-id');
+  return argv[4];
+};
+
+const registerProviderCommands = (program: Command): void => {
+  const provider = program.command('provider').description(m['cli.provider.description']());
+  provider
+    .command('list')
+    .description(m['cli.provider.list.description']())
+    .option('--url <url>', m['cli.provider.list.option_url_description']())
+    .option('--filter <provider-id>', m['cli.provider.list.option_filter_description']())
+    .option('--probe', m['cli.provider.list.option_probe_description']())
+    .option('--installed', m['cli.provider.list.option_installed_description']())
+    .action(providerList);
+  provider
+    .command('login [capability]')
+    .description(m['cli.provider.login.description']())
+    .option('--provider <id>', m['cli.provider.login.option_provider_description']())
+    .action(providerLogin);
+  provider
+    .command('import [path]')
+    .description(m['cli.provider.import.description']())
+    .action((path) => providerImport(path));
+  provider
+    .command('test <provider-id>')
+    .description(m['cli.provider.test.description']())
+    .option('--url <url>', m['cli.provider.test.option_url_description']())
+    .action(providerTest);
+};
 
 const registerServiceCommands = (program: Command): void => {
   const service = program.command('service').description(m['cli.service.description']());
@@ -133,29 +166,7 @@ export const buildProgram = (
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
     .action((options) => dashboardCommand(options));
-  const provider = program.command('provider').description(m['cli.provider.description']());
-  provider
-    .command('list')
-    .description(m['cli.provider.list.description']())
-    .option('--url <url>', m['cli.provider.list.option_url_description']())
-    .option('--filter <provider-id>', m['cli.provider.list.option_filter_description']())
-    .option('--probe', m['cli.provider.list.option_probe_description']())
-    .option('--installed', m['cli.provider.list.option_installed_description']())
-    .action(providerList);
-  provider
-    .command('login [capability]')
-    .description(m['cli.provider.login.description']())
-    .option('--provider <id>', m['cli.provider.login.option_provider_description']())
-    .action(providerLogin);
-  provider
-    .command('import [path]')
-    .description(m['cli.provider.import.description']())
-    .action((path) => providerImport(path));
-  provider
-    .command('test <provider-id>')
-    .description(m['cli.provider.test.description']())
-    .option('--url <url>', m['cli.provider.test.option_url_description']())
-    .action(providerTest);
+  registerProviderCommands(program);
   const plugin = program.command('plugin').description(m['cli.plugin.description']());
   plugin
     .command('add <package>')
@@ -213,9 +224,10 @@ export const buildProgram = (
   registerAgentCommands(program, {
     actions: {
       list: (options) => agentList(options, commandDeps),
-      configure: (target) => agentConfigure(target, commandDeps),
+      configure: (target, options) => agentConfigure(target, options, commandDeps),
       remove: (target) => agentRemove(target, commandDeps),
       revoke: (installationId) => agentRevoke(installationId, commandDeps),
+      authCodex: (installationId) => runCodexAuthCommand(installationId),
     },
     print: console.log,
   });
@@ -243,6 +255,11 @@ export const buildProgram = (
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
+    const installationId = codexAuthInvocation(process.argv.slice(2));
+    if (installationId !== undefined) {
+      await runCodexAuthCommand(installationId);
+      return;
+    }
     await setLocale(resolveLocaleFromArgv(process.argv));
     validatePortArgv(process.argv);
     await buildProgram(deps).parseAsync(process.argv);

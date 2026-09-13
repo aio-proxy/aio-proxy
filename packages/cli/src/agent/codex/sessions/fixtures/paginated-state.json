@@ -1,0 +1,20 @@
+{
+  "threads": [
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "model_provider": "source-proxy",
+      "history_mode": "paginated",
+      "rollout_path": "/synthetic/codex/sessions/2026/09/09/rollout-33333333.jsonl",
+      "archived": false,
+      "parent_thread_id": null
+    },
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "model_provider": "source-proxy",
+      "history_mode": "paginated",
+      "rollout_path": "/synthetic/codex/sessions/2026/09/09/rollout-44444444.jsonl",
+      "archived": true,
+      "parent_thread_id": "33333333-3333-4333-8333-333333333333"
+    }
+  ]
+}
