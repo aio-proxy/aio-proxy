@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import {
   applySync,
+  cancelDetachSync,
   disconnectSync,
   detachSync,
   previewSync,
@@ -32,5 +33,6 @@ export const usePreviewSync = () => useSyncMutation(previewSync);
 export const useApplySync = () => useSyncMutation(applySync);
 export const useSetSyncRange = () => useSyncMutation(setSyncRange);
 export const useDetachSync = () => useSyncMutation(detachSync);
+export const useCancelDetachSync = () => useSyncMutation(cancelDetachSync);
 export const useRetrySync = () => useSyncMutation(retrySync);
 export const useDisconnectSync = () => useSyncMutation(disconnectSync);

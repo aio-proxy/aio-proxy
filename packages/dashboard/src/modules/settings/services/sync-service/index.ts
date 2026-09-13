@@ -1,5 +1,6 @@
 export {
   applySync,
+  cancelDetachSync,
   disconnectSync,
   detachSync,
   syncHistoryQueryOptions,

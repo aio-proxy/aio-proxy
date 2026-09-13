@@ -557,6 +557,7 @@
       "exclude_failed": "Provider を除外できませんでした。",
       "enable_failed": "Provider を追加できませんでした。",
       "detach_failed": "共有資格情報の接続を解除できませんでした。",
+      "detach_cancel_failed": "保留中の接続解除をキャンセルできませんでした。再試行するまで共有資格情報は利用できません。",
       "history_filter": "履歴を絞り込む",
       "history_filter_placeholder": "操作 ID で絞り込む",
       "history_columns": "列",

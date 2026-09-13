@@ -557,6 +557,7 @@
       "exclude_failed": "無法排除此 Provider。",
       "enable_failed": "無法納入此 Provider。",
       "detach_failed": "無法中斷共享憑證。",
+      "detach_cancel_failed": "無法取消待處理的中斷操作，重試之前共享憑證無法使用。",
       "history_filter": "篩選歷史",
       "history_filter_placeholder": "依操作 ID 篩選",
       "history_columns": "欄",

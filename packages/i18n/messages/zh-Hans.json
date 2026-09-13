@@ -557,6 +557,7 @@
       "exclude_failed": "无法排除此 Provider。",
       "enable_failed": "无法纳入此 Provider。",
       "detach_failed": "无法断开共享凭据。",
+      "detach_cancel_failed": "无法取消待处理的断开操作，重试之前共享凭据不可用。",
       "history_filter": "筛选历史",
       "history_filter_placeholder": "按操作 ID 筛选",
       "history_columns": "列",

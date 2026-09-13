@@ -557,6 +557,7 @@
       "exclude_failed": "Provider를 제외할 수 없습니다.",
       "enable_failed": "Provider를 포함할 수 없습니다.",
       "detach_failed": "공유 자격 증명의 연결을 해제할 수 없습니다.",
+      "detach_cancel_failed": "대기 중인 연결 해제를 취소할 수 없습니다. 다시 시도할 때까지 공유 자격 증명을 사용할 수 없습니다.",
       "history_filter": "기록 필터",
       "history_filter_placeholder": "작업 ID로 필터링",
       "history_columns": "열",

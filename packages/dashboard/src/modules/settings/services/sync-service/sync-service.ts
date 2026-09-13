@@ -1,6 +1,7 @@
 import type {
   SyncApplyInput,
   SyncBackendView,
+  SyncCancelDetachInput,
   SyncDetachInput,
   SyncHistoryItem,
   SyncPreview,
@@ -64,6 +65,9 @@ export const setSyncRange = async (input: SyncRangeInput): Promise<SyncStatus> =
 
 export const detachSync = async (input: SyncDetachInput): Promise<SyncStatus> =>
   readSyncResponse<SyncStatus>(await syncClient.detach.$post({ json: input }));
+
+export const cancelDetachSync = async (input: SyncCancelDetachInput): Promise<SyncStatus> =>
+  readSyncResponse<SyncStatus>(await syncClient.detach.cancel.$post({ json: input }));
 
 const historySync = async (objectId: string): Promise<readonly SyncHistoryItem[]> => {
   const response = await syncClient.history[':objectId'].$get({ param: { objectId } });
