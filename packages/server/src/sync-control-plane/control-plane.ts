@@ -93,8 +93,16 @@ const ENGINE_STATES: Readonly<Record<string, SyncConnectionState>> = {
   error: 'error',
 };
 
+/**
+ * The control plane as the service owns it. A connect preview the user walked away from is held here
+ * alone — its candidate backend has no binding and no lifecycle — so shutdown has to release it
+ * through this, or the session it holds open (for CloudKit, a native helper process) outlives the
+ * service and delays the next start.
+ */
+export type ServerSyncControlPlane = SyncControlPlane & { readonly dispose: () => Promise<void> };
+
 // eslint-disable-next-line max-lines-per-function -- this assembles the public operations over one fence owner
-export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncControlPlane {
+export function createSyncControlPlane(options: SyncControlPlaneOptions): ServerSyncControlPlane {
   if (
     options.applyLocal === undefined ||
     (options.applyCloud === undefined && options.session === undefined) ||
@@ -261,6 +269,9 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
   return {
     backends,
     status,
+    // Only the pending candidates: the bound backend is the sync lifecycle's to close, and a preview
+    // record without one holds nothing but memory the process is about to drop.
+    dispose: () => previews.disposePending(),
     async preview(input) {
       if (input.kind === 'connect') {
         const backend = options.registry?.().resolveSync(input.plugin, input.capability);

@@ -105,7 +105,7 @@ function candidateFixture(
     { configPath } as never,
     async <T>(run: () => Promise<T>) => run(),
   );
-  return { db, integration, signals, disposed: () => disposed };
+  return { db, integration, signals, registry, disposed: () => disposed };
 }
 
 // The candidate holds `connectQueue` while it reads the cloud snapshot, so an un-owned signal would
@@ -139,6 +139,32 @@ test('a connect attempt that fails mid-snapshot leaves no data directory behind'
     await expect(fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} })).rejects.toThrow();
     expect(fixture.signals[0]!.aborted).toBe(true);
     expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// The preview store holds the only reference to a reviewed candidate's backend session, so shutdown
+// has to dispose it: otherwise a connect preview the user walked away from keeps its helper process
+// alive until the preview TTL and delays the next service start.
+test('disposing the control plane releases a connect candidate left pending', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-dispose-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    const plane = createSyncControlPlaneIntegration(
+      {
+        manager: { current: () => ({ plugins: { registry: fixture.registry } }) },
+        repository: createPluginRepository(fixture.db.sqlite),
+      } as unknown as ServerRuntime,
+      fixture.integration,
+      { get: () => undefined } as never,
+    )!;
+
+    await plane.preview({ kind: 'connect', plugin: 'p', capability: 'c', options: {} });
+    expect(fixture.disposed()).toBe(0);
+    await plane.dispose();
+    expect(fixture.disposed()).toBe(1);
   } finally {
     fixture.db.close();
     rmSync(home, { recursive: true, force: true });

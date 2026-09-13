@@ -9,7 +9,6 @@ import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig }
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
 import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import type { Config } from '@aio-proxy/types';
-import type { SyncControlPlane } from '@aio-proxy/types';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import type { CatalogScheduler } from '../catalog-scheduler';
@@ -28,7 +27,7 @@ import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
-import type { ServerSyncLifecycle } from '../sync-control-plane';
+import type { ServerSyncControlPlane, ServerSyncLifecycle } from '../sync-control-plane';
 import type { SyncCommitHooks } from '../sync-control-plane/commit';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
 import type { QuotaIdentityTracker } from './quota-invalidation';
@@ -64,7 +63,7 @@ export type ServerRuntime = {
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
   sync: ServerSyncLifecycle | undefined;
-  syncControl: SyncControlPlane | undefined;
+  syncControl: ServerSyncControlPlane | undefined;
   syncCommit: SyncCommitHooks | undefined;
   remoteConfigFence: { readonly digest: string; readonly operationId: string } | undefined;
   prepareOAuth?: (plugins: import('@aio-proxy/core').PluginRegistrySnapshot) => Promise<void>;
@@ -180,7 +179,7 @@ export type ServerStateParts = Pick<
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
   readonly databaseOwnership: DatabaseOwnershipLock;
-  readonly sync?: SyncControlPlane;
+  readonly sync?: ServerSyncControlPlane;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
@@ -220,13 +219,18 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     runClosers([() => events.close(), () => dbHandle.close(), parts.databaseOwnership.release]);
     if (failures[0] !== undefined) throw failures[0];
   };
+  // A connect preview the user walked away from holds a candidate backend session no lifecycle owns
+  // — for CloudKit a native helper process — and only a replacing preview or the TTL releases it
+  // otherwise. It has to go on shutdown even when no backend was ever bound, or it outlives the
+  // service and delays the next start.
+  const disposePreviews = (): Promise<void> => parts.sync?.dispose().catch(() => {}) ?? Promise.resolve();
   const closeAsync = async (): Promise<void> => {
     if (closePromise !== undefined) return closePromise;
     runtime.closed = true;
     stopSchedulers();
     closePromise = (async () => {
       try {
-        await runtime.sync?.close();
+        await Promise.all([disposePreviews(), runtime.sync?.close()]);
       } finally {
         closeRemainingResources();
       }
@@ -241,16 +245,16 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
       if (runtime.closed) return;
       runtime.closed = true;
       stopSchedulers();
+      // Disposal is asynchronous, so it is chained onto `closePromise` rather than delaying the
+      // synchronous resource teardown this contract promises.
+      const pending = disposePreviews();
       if (runtime.sync === undefined) {
         closeRemainingResources();
-        closePromise = Promise.resolve();
+        closePromise = pending;
         return;
       }
       runtime.sync.abort();
-      closePromise = runtime.sync
-        .close()
-        .catch(() => {})
-        .then(() => closeRemainingResources());
+      closePromise = Promise.all([pending, runtime.sync.close().catch(() => {})]).then(() => closeRemainingResources());
       void closePromise.catch(() => {});
     },
     closeAsync,
