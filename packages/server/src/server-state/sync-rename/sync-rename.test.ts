@@ -3,9 +3,22 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { AtomicConfigFile, encodeCandidate, type JsonValue, type LocalEntity } from '@aio-proxy/core';
+import {
+  AtomicConfigFile,
+  createPluginRepository,
+  encodeCandidate,
+  type JsonValue,
+  type LocalEntity,
+} from '@aio-proxy/core';
+import { openDb } from '@aio-proxy/core/db';
 
 import { renameProviderIdentity } from './sync-rename';
+
+const unauthorized = {
+  withAccountTransaction: <T>(run: () => T) => run(),
+  readAccount: () => null,
+  renameAccount: () => false,
+};
 
 test('renaming a Provider rewrites the authored configuration and its references with the rows', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-rename-'));
@@ -43,6 +56,7 @@ test('renaming a Provider rewrites the authored configuration and its references
           readBinding: () => ({ id: 'binding' }),
           putEntities: (_bindingId: string, entities: readonly LocalEntity[]) => void (written = entities),
         } as never,
+        accounts: unauthorized,
         applyCandidate: async (raw, candidateOrigin) => {
           applied = raw;
           origin = candidateOrigin;
@@ -63,6 +77,50 @@ test('renaming a Provider rewrites the authored configuration and its references
     expect(origin).toBe('remote');
     expect(written).toEqual(rows);
   } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('renaming an authorized Provider moves its credential onto the new Provider ID', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-rename-'));
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: { kind: 'api' } } }, configPath));
+  const db = openDb({ home });
+  try {
+    const accounts = createPluginRepository(db.sqlite);
+    const pending = accounts.stageAccountOperation({
+      kind: 'create',
+      targetDigest: 'digest:create',
+      account: {
+        providerId: 'work',
+        plugin: '@aio-proxy/example',
+        capability: 'oauth',
+        fingerprint: 'work-fingerprint',
+        options: {},
+        secrets: {},
+        credential: { accessToken: 'token' },
+        catalog: { kind: 'preserve' },
+      },
+    });
+    accounts.completeAccountOperation(pending.operationId);
+    const before = accounts.readAccount('work');
+    await renameProviderIdentity(
+      {
+        configFile: new AtomicConfigFile(configPath),
+        repo: { readBinding: () => ({ id: 'binding' }), putEntities: () => {} } as never,
+        accounts,
+        applyCandidate: async () => {},
+      },
+      'work',
+      'personal',
+      [],
+    );
+    // A credential left under the old Provider ID reads as unauthorized under the new one, and
+    // a bumped revision would read as a different credential to the shared-ownership row.
+    expect(accounts.readAccount('work')).toBeNull();
+    expect(accounts.readAccount('personal')).toEqual({ ...before!, providerId: 'personal' });
+  } finally {
+    db.close();
     rmSync(home, { recursive: true, force: true });
   }
 });

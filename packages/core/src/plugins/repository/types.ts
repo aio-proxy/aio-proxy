@@ -111,6 +111,13 @@ export type PluginRepository = {
   readonly writeDiagnostic: (providerId: string, diagnostic: Diagnostic) => boolean;
   readonly clearDiagnostic: (providerId: string, code: DiagnosticCode) => boolean;
   readonly deleteAccount: (providerId: string) => void;
+  /**
+   * Moves an account, and everything else keyed by its Provider ID, onto `newProviderId` with both
+   * revisions intact: a re-created account reads as a different credential to a shared-ownership row
+   * and to a lease holder. False when the source is gone, the target is taken, or an account
+   * operation for either ID is still pending, whose recovery would name an ID that has moved.
+   */
+  readonly renameAccount: (oldProviderId: string, newProviderId: string) => boolean;
   readonly stageAccountOperation: (input: StageAccountOperationInput) => PendingAccountOperation;
   readonly completeAccountOperation: (operationId: string) => void;
   /**

@@ -282,6 +282,60 @@ test('a commit confirms into the binding it was prepared on after the backend is
   }
 });
 
+// An OAuth login writes this row's ownership outside the commit fence, so the preview snapshot the
+// user reviewed is already stale. Persisting the pinned paths from that snapshot reinstates the
+// superseded `oauth.localRevision`, and the next credential read rejects the Provider as
+// `detach-pending`.
+test('pinning a path keeps ownership a login recorded after the preview', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-overrides-'));
+  const fixture = candidateFixture(
+    home,
+    () => Promise.resolve({ keys: [] }),
+    {},
+    {
+      providers: { work: { kind: 'api', baseUrl: 'https://work.example.test' } },
+    },
+  );
+  try {
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    await candidate.commit();
+    const repo = createSyncRepository(fixture.db.sqlite);
+    const bindingId = repo.readBinding()!.id;
+    const row = repo.entities(bindingId).find((entity) => entity.logicalKey === 'work')!;
+    const plane = createSyncControlPlaneIntegration(
+      {
+        manager: { current: () => ({ plugins: { registry: {} } }) },
+        repository: createPluginRepository(fixture.db.sqlite),
+      } as unknown as ServerRuntime,
+      fixture.integration,
+      { get: () => undefined } as never,
+    )!;
+
+    const preview = await plane.preview({ kind: 'overrides', objectId: row.objectId, paths: [['baseUrl']] });
+    const oauth = {
+      mode: 'shared',
+      epoch: 0,
+      generation: 0,
+      localRevision: 7,
+      pluginVersion: '1.0.0',
+      formatVersion: 1,
+    } as const;
+    repo.putEntity(bindingId, { ...row, oauth });
+    // The publication itself needs a backend this fixture's session does not implement; the pinned
+    // paths are written before it, which is the whole window this guards.
+    await plane
+      .apply({ previewId: preview.previewId, decisions: [{ objectId: row.objectId, choice: 'local' }] })
+      .catch(() => {});
+
+    const latest = repo.entities(bindingId).find((entity) => entity.objectId === row.objectId)!;
+    expect(latest.overrides).toEqual([{ path: ['baseUrl'], value: 'https://work.example.test' }]);
+    expect(latest.oauth).toEqual(oauth);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 // A stalled backend read inside `share()`/`detach()` keeps holding the Provider gate, so an orphaned
 // signal lets a disconnect or a shutdown leave every later login and refresh for that Provider stuck.
 test('account sharing work is cancelled by the lifecycle that owns it', async () => {

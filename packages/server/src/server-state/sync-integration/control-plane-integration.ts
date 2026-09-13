@@ -87,7 +87,14 @@ export function createSyncControlPlaneIntegration(
         path: [...path],
         value: localOverrideValue(authored, path),
       }));
-      integration.syncRepository.putEntity(binding.id, { ...current, overrides });
+      // `current` is the reviewed snapshot, and the fence it was checked against covers neither an
+      // OAuth login nor a shared credential refresh: both write this row, and reinstating the
+      // ownership revision they superseded makes the next credential read reject the Provider as
+      // `detach-pending`. Only the overrides are this call's to decide, so only they are written
+      // onto the row as it stands — and a row that has since been purged is not resurrected.
+      const latest = integration.syncRepository.entities(binding.id).find((entity) => entity.objectId === objectId);
+      if (latest === undefined) throw new SyncOperationError('operation-pending');
+      integration.syncRepository.putEntity(binding.id, { ...latest, overrides });
     },
     shareOAuth: async (providerId) => {
       const lifecycle = integration.lifecycle;
@@ -120,6 +127,7 @@ export function createSyncControlPlaneIntegration(
         {
           configFile: integration.configFile!,
           repo: integration.syncRepository,
+          accounts: runtime.repository,
           applyCandidate: integration.syncApplyCandidate,
         },
         oldProviderId,

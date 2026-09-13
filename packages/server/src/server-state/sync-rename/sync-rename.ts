@@ -1,4 +1,4 @@
-import type { AtomicConfigFile, LocalEntity, SyncRepository } from '@aio-proxy/core';
+import type { AtomicConfigFile, LocalEntity, PluginRepository, SyncRepository } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
 import { rewireProviderReferences, SyncOperationError } from '../../sync-control-plane';
@@ -6,6 +6,7 @@ import { rewireProviderReferences, SyncOperationError } from '../../sync-control
 export type RenameProviderIdentityInput = {
   readonly configFile: AtomicConfigFile;
   readonly repo: SyncRepository;
+  readonly accounts: Pick<PluginRepository, 'withAccountTransaction' | 'readAccount' | 'renameAccount'>;
   readonly applyCandidate: (
     raw: Record<string, JsonValue>,
     origin: 'local' | 'remote',
@@ -28,9 +29,22 @@ export async function renameProviderIdentity(
   entities: readonly LocalEntity[],
 ): Promise<void> {
   const binding = input.repo.readBinding();
-  if (binding === null || input.repo.putEntities === undefined) throw new SyncOperationError('upgrade-required');
+  const putEntities = input.repo.putEntities;
+  if (binding === null || putEntities === undefined) throw new SyncOperationError('upgrade-required');
+  // An authorized Provider keeps its credential under its Provider ID, so the account has to move
+  // with the identity: the renamed Provider would otherwise read as unauthorized while the old
+  // credential is orphaned, and sharing cannot repair that because there is no account left to
+  // publish under the new ID.
+  const moves = input.accounts.readAccount(oldProviderId) !== null;
+  if (moves && input.accounts.readAccount(newProviderId) !== null) throw new SyncOperationError('upgrade-required');
   const authored = (await input.configFile.read()) as Record<string, JsonValue>;
   const renamed = rewireProviderReferences(authored, oldProviderId, newProviderId);
   await input.applyCandidate(renamed, 'remote', `rename:${crypto.randomUUID()}`);
-  input.repo.putEntities(binding.id, entities);
+  // One transaction: rows naming the new ID with the credential still under the old one is exactly
+  // the unauthorized state this move exists to prevent.
+  input.accounts.withAccountTransaction(() => {
+    if (moves && !input.accounts.renameAccount(oldProviderId, newProviderId))
+      throw new SyncOperationError('operation-pending');
+    putEntities(binding.id, entities);
+  });
 }
