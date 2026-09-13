@@ -350,6 +350,10 @@ export async function applyPreview(
         // pre-restore value (or nothing, after a deletion) until some later reconciliation, and any
         // configuration commit in that window projects the stale file over the restore.
         publishedRevision = operationId;
+        // The guard above ran before the restore's round trip. Importing the historical body
+        // overlays a commit that landed in that window, and the `adopt()` below takes the result as
+        // the new baseline, so the edit would be gone with nothing left to republish it.
+        commits.assertUnchanged();
         await input.applyLocal(selectedBody, current, candidate.row.objectId);
         commits.adopt();
       } else if (decision.choice === 'cloud') {

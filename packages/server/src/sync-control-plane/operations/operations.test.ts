@@ -495,6 +495,29 @@ test('restoring a revision writes it to the local configuration, not just the ro
   expect(written[0]).toMatchObject({ baseline: restoredOperationId });
 });
 
+// The restore's round trip is the window: the historical body is then written over whatever the file
+// holds, and the apply adopts that as the new baseline, so an edit committed while the restore was
+// in flight is lost with nothing left to republish it.
+test('a configuration commit landing during the restore is not overwritten by the historical body', async () => {
+  let commitId = 'commit-1';
+  const scenario = harness({
+    repo: { putEntity: () => {}, latestConfirmedCommit: () => ({ commitId }) } as never,
+    localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+    restore: async () => {
+      commitId = 'edited-while-restoring';
+    },
+  });
+  const row = candidate('provider-a', 'provider', 'work');
+  const rows = [{ ...row, row: { ...row.row, choices: ['restore' as const] } }];
+
+  await expect(
+    applyPreview(scenario.input, record({ kind: 'restore', objectId: 'provider-a', operationId: 'r0' }, rows), [
+      { objectId: 'provider-a', choice: 'restore' },
+    ]),
+  ).rejects.toThrow(SyncPreviewError);
+  expect(scenario.appliedLocal).toBe(0);
+});
+
 // A deleted head leaves the local row bodiless, so a restore of it classifies as `add` and the row
 // offers `cloud` rather than `restore`. That choice still has to publish the historical revision:
 // importing it locally alone leaves the cloud head a tombstone, and the next reconciliation deletes
