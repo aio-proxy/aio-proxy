@@ -1,5 +1,29 @@
 # @aio-proxy/cli
 
+## 0.22.0
+
+### Minor Changes
+
+- [#351](https://github.com/aio-proxy/aio-proxy/pull/351) [`c98e10c`](https://github.com/aio-proxy/aio-proxy/commit/c98e10c1decd66972d10561b3e0fdaa5aae84da0) Thanks [@baranwang](https://github.com/baranwang)! - Add interactive Codex setup with a customizable Provider ID and a choice to keep ChatGPT login via an existing proxy API key or use command authentication. Command authentication uses AIO Proxy device authorization and reuses a still-valid helper token. Setup preserves model settings and can migrate legacy history; removal respects user edits, revokes command credentials, and blocks when the config cannot be restored.
+
+- [#344](https://github.com/aio-proxy/aio-proxy/pull/344) [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f) Thanks [@baranwang](https://github.com/baranwang)! - Add Grok Build integration with native AIO Proxy login, automatic credential refresh, installation revocation, and safe configuration removal.
+
+### Patch Changes
+
+- [#347](https://github.com/aio-proxy/aio-proxy/pull/347) [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a) Thanks [@olivewind](https://github.com/olivewind)! - Automatically install and start a missing per-user background service when running service start or restart on macOS and Linux. If automatic setup fails, show the underlying error and manual recovery commands.
+- Updated dependencies [[`c98e10c`](https://github.com/aio-proxy/aio-proxy/commit/c98e10c1decd66972d10561b3e0fdaa5aae84da0), [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f), [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a), [`834f9b3`](https://github.com/aio-proxy/aio-proxy/commit/834f9b359f29b229e3930a0b435200d805361789), [`4c57408`](https://github.com/aio-proxy/aio-proxy/commit/4c574088a806967bab32485a7dc0e4d72affe899)]:
+  - @aio-proxy/types@0.22.0
+  - @aio-proxy/core@0.22.0
+  - @aio-proxy/server@0.22.0
+  - @aio-proxy/agent-provider-runtime@0.22.0
+  - @aio-proxy/i18n@0.22.0
+  - @aio-proxy/dashboard@0.22.0
+  - @aio-proxy/plugin-sdk@0.22.0
+  - @aio-proxy/opencode-provider@0.22.0
+  - @aio-proxy/pi-provider@0.22.0
+  - @aio-proxy/logger@0.22.0
+  - @aio-proxy/shared@0.22.0
+
 ## 0.21.0
 
 ### Patch Changes

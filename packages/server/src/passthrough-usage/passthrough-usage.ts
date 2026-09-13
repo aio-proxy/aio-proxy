@@ -2,7 +2,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
-import { hasContentDelta } from './content';
+import { hasContentDelta, hasTtftFallbackContent } from './content';
 import { countResponseItems, createResponseItemCounter, type ResponseItemCounts, withItemCounts } from './event-counts';
 import {
   anthropicTotalTokens,
@@ -133,6 +133,9 @@ export function createPassthroughSseUsageObserver(
       itemCounter.observe(event.event, parsed);
       responseId = completedResponseId(protocol, parsed) ?? responseId;
       if (hasContentDelta(protocol, event.event, parsed)) {
+        sawContent = true;
+        safely(callbacks.onContent);
+      } else if (!sawContent && hasTtftFallbackContent(protocol, event.event, parsed)) {
         sawContent = true;
         safely(callbacks.onContent);
       }

@@ -71,6 +71,35 @@ function openAIResponsesContent(eventType: string | undefined, value: unknown): 
   );
 }
 
+// Some Responses relays buffer the whole message or reasoning item and emit
+// it on output_item.done with no preceding *.delta frames. Use only when no
+// incremental content has been seen, so customary done-after-delta frames do
+// not invent a content gap. Empty shells and tool items still do not count.
+export function hasTtftFallbackContent(
+  protocol: ProviderProtocol,
+  eventType: string | undefined,
+  value: unknown,
+): boolean {
+  if (protocol !== ProviderProtocol.OpenAIResponse) return false;
+  const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
+  if (type !== 'response.output_item.done' || !isPlainObject(value)) return false;
+  return openAIResponsesItemHasGeneratedText(value['item']);
+}
+
+function openAIResponsesItemHasGeneratedText(item: unknown): boolean {
+  if (!isPlainObject(item)) return false;
+  const type = item['type'];
+  if (type === 'message') return partsHaveNonEmptyText(item['content']);
+  if (type === 'reasoning') {
+    return partsHaveNonEmptyText(item['content']) || partsHaveNonEmptyText(item['summary']);
+  }
+  return false;
+}
+
+function partsHaveNonEmptyText(parts: unknown): boolean {
+  return Array.isArray(parts) && parts.some((part) => isPlainObject(part) && nonEmptyString(part['text']));
+}
+
 function geminiContent(value: unknown): boolean {
   if (Array.isArray(value)) return value.some((entry) => geminiContent(entry));
   if (!isPlainObject(value) || !Array.isArray(value['candidates'])) return false;

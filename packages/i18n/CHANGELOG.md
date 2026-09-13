@@ -1,5 +1,15 @@
 # @aio-proxy/i18n
 
+## 0.22.0
+
+### Minor Changes
+
+- [#344](https://github.com/aio-proxy/aio-proxy/pull/344) [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f) Thanks [@baranwang](https://github.com/baranwang)! - Add Grok Build integration with native AIO Proxy login, automatic credential refresh, installation revocation, and safe configuration removal.
+
+### Patch Changes
+
+- [#347](https://github.com/aio-proxy/aio-proxy/pull/347) [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a) Thanks [@olivewind](https://github.com/olivewind)! - Automatically install and start a missing per-user background service when running service start or restart on macOS and Linux. If automatic setup fails, show the underlying error and manual recovery commands.
+
 ## 0.21.0
 
 No changes in this release.

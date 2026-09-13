@@ -182,6 +182,62 @@ describe('passthrough usage extraction', () => {
     ).toEqual({ inputTokens: 2, outputTokens: 3, totalTokens: 5, imageCount: 1, webSearchCount: 2 });
   });
 
+  test('Responses TTFT waits for text or reasoning, including buffered output_item.done', () => {
+    let content = 0;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onContent: () => {
+        content += 1;
+      },
+    });
+    observer.feed('event: response.created\ndata: {"type":"response.created"}\n\n');
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c1","name":"ls","arguments":"{}"}}\n\n',
+    );
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message","content":[]}}\n\n',
+    );
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}\n\n',
+    );
+    expect(content).toBe(0);
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hi"}]}}\n\n',
+    );
+    expect(content).toBe(1);
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"reasoning","summary":[{"type":"summary_text","text":"plan"}]}}\n\n',
+    );
+    expect(content).toBe(1);
+  });
+
+  test('counts buffered reasoning output_item.done with content text when summary is empty', () => {
+    let content = 0;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onContent: () => {
+        content += 1;
+      },
+    });
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"plan"}]}}\n\n',
+    );
+    expect(content).toBe(1);
+  });
+
+  test('does not treat output_item.done as content after a Responses text delta', () => {
+    let content = 0;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onContent: () => {
+        content += 1;
+      },
+    });
+    observer.feed('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n');
+    expect(content).toBe(1);
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hi"}]}}\n\n',
+    );
+    expect(content).toBe(1);
+  });
+
   test('Interactions TTFT waits for a non-empty text or thought payload', () => {
     let content = 0;
     const observer = createPassthroughSseUsageObserver(ProviderProtocol.GeminiInteractions, {
