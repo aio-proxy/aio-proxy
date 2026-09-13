@@ -125,6 +125,7 @@ export function createSyncControlPlaneIntegration(
     persistProviderIdentity: (oldProviderId, newProviderId, entities: readonly LocalEntity[]) =>
       renameProviderIdentity(
         {
+          configPath: integration.configPath!,
           configFile: integration.configFile!,
           repo: integration.syncRepository,
           accounts: runtime.repository,

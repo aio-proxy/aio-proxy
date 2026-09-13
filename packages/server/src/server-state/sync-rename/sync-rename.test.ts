@@ -13,6 +13,7 @@ import {
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 
+import { SyncPreviewError } from '../../sync-control-plane';
 import { renameProviderIdentity } from './sync-rename';
 
 const unauthorized = {
@@ -71,6 +72,7 @@ test('renaming a Provider rewrites the authored configuration and its references
     let written: readonly LocalEntity[] | undefined;
     await renameProviderIdentity(
       {
+        configPath,
         configFile: file,
         repo: {
           readBinding: () => ({ id: 'binding' }),
@@ -112,6 +114,7 @@ test('renaming an authorized Provider moves its credential onto the new Provider
     const before = authorize(accounts, 'work');
     await renameProviderIdentity(
       {
+        configPath,
         configFile: new AtomicConfigFile(configPath),
         repo: { readBinding: () => ({ id: 'binding' }), entities: () => [], putEntities: () => {} } as never,
         accounts,
@@ -147,6 +150,7 @@ test('a configuration commit that fails leaves the credential and the rows on th
     await expect(
       renameProviderIdentity(
         {
+          configPath,
           configFile: new AtomicConfigFile(configPath),
           repo: {
             readBinding: () => ({ id: 'binding' }),
@@ -163,6 +167,55 @@ test('a configuration commit that fails leaves the credential and the rows on th
         [{ ...row, logicalKey: 'personal' }],
       ),
     ).rejects.toThrow('candidate rejected');
+    expect(accounts.readAccount('personal')).toBeNull();
+    expect(accounts.readAccount('work')).toEqual(before);
+    expect(stored).toEqual([row]);
+  } finally {
+    db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// The configuration is read outside the lock and rewritten as a full-file snapshot, so an ordinary
+// edit landing before the write acquires the lock would be overwritten wholesale — and the outer
+// commit guard, which ran before this helper, adopts the resulting commit instead of reporting it.
+test('a configuration edit landing before the rename commits makes the preview stale', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-rename-fence-'));
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: { kind: 'api' } } }, configPath));
+  const db = openDb({ home });
+  try {
+    const accounts = createPluginRepository(db.sqlite);
+    const before = authorize(accounts, 'work');
+    const file = new AtomicConfigFile(configPath);
+    let stored: readonly LocalEntity[] = [row];
+    await expect(
+      renameProviderIdentity(
+        {
+          configPath,
+          configFile: file,
+          repo: {
+            readBinding: () => ({ id: 'binding' }),
+            entities: () => stored,
+            putEntities: (_bindingId: string, entities: readonly LocalEntity[]) => void (stored = entities),
+          } as never,
+          accounts,
+          applyCandidate: async (raw, _origin, _operationId, _pluginSecret, expectedDigest) => {
+            writeFileSync(
+              configPath,
+              encodeCandidate({ providers: { work: { kind: 'api' }, added: { kind: 'api' } } }, configPath),
+            );
+            await file.transaction(async () => ({ next: raw, result: undefined }), {
+              ...(expectedDigest === undefined ? {} : { expectedDigest }),
+            });
+          },
+        },
+        'work',
+        'personal',
+        [{ ...row, logicalKey: 'personal' }],
+      ),
+    ).rejects.toThrow(SyncPreviewError);
+    expect(await file.read()).toEqual({ providers: { work: { kind: 'api' }, added: { kind: 'api' } } });
     expect(accounts.readAccount('personal')).toBeNull();
     expect(accounts.readAccount('work')).toEqual(before);
     expect(stored).toEqual([row]);

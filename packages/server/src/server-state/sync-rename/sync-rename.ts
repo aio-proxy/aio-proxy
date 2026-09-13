@@ -1,9 +1,19 @@
-import type { AtomicConfigFile, LocalEntity, PluginRepository, SyncRepository } from '@aio-proxy/core';
+import { createHash } from 'node:crypto';
+
+import {
+  AtomicConfigExpectedDigestError,
+  encodeCandidate,
+  type AtomicConfigFile,
+  type LocalEntity,
+  type PluginRepository,
+  type SyncRepository,
+} from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
-import { rewireProviderReferences, SyncOperationError } from '../../sync-control-plane';
+import { rewireProviderReferences, SyncOperationError, SyncPreviewError } from '../../sync-control-plane';
 
 export type RenameProviderIdentityInput = {
+  readonly configPath: string;
   readonly configFile: AtomicConfigFile;
   readonly repo: SyncRepository;
   readonly accounts: Pick<PluginRepository, 'withAccountTransaction' | 'readAccount' | 'renameAccount'>;
@@ -11,6 +21,8 @@ export type RenameProviderIdentityInput = {
     raw: Record<string, JsonValue>,
     origin: 'local' | 'remote',
     operationId?: string,
+    pluginSecret?: { readonly plugin: string; readonly value: JsonValue | undefined },
+    expectedDigest?: string,
   ) => Promise<void>;
 };
 
@@ -38,6 +50,11 @@ export async function renameProviderIdentity(
   const moves = input.accounts.readAccount(oldProviderId) !== null;
   if (moves && input.accounts.readAccount(newProviderId) !== null) throw new SyncOperationError('upgrade-required');
   const authored = (await input.configFile.read()) as Record<string, JsonValue>;
+  // The read above is unlocked, and `renamed` is a full-file snapshot: a normal configuration edit
+  // landing before the write acquires the lock would be overwritten wholesale, with the outer commit
+  // guard adopting the result rather than reporting it. Fencing on the digest of what was read turns
+  // that race into a stale preview the user re-reviews.
+  const expectedDigest = createHash('sha256').update(encodeCandidate(authored, input.configPath)).digest('hex');
   const renamed = rewireProviderReferences(authored, oldProviderId, newProviderId);
   const objectIds = new Set(entities.map((entity) => entity.objectId));
   const restore = input.repo.entities(binding.id).filter((entity) => objectIds.has(entity.objectId));
@@ -53,7 +70,7 @@ export async function renameProviderIdentity(
     putEntities(binding.id, entities);
   });
   try {
-    await input.applyCandidate(renamed, 'remote', `rename:${crypto.randomUUID()}`);
+    await input.applyCandidate(renamed, 'remote', `rename:${crypto.randomUUID()}`, undefined, expectedDigest);
   } catch (error) {
     // A failed candidate leaves the authored configuration on the old Provider ID — the write is
     // rolled back with it — so the local half goes back too rather than stranding the credential and
@@ -62,6 +79,7 @@ export async function renameProviderIdentity(
       if (moves) input.accounts.renameAccount(newProviderId, oldProviderId);
       putEntities(binding.id, restore);
     });
+    if (error instanceof AtomicConfigExpectedDigestError) throw new SyncPreviewError('preview-stale');
     throw error;
   }
 }
