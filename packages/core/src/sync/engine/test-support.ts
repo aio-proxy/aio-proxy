@@ -68,12 +68,14 @@ export type TwoDevice = {
   readonly commitProvider: (id: string, body: JsonValue, included: boolean) => Promise<void>;
   readonly removeProvider: (id: string) => Promise<void>;
   readonly queueDelete: (objectId: string, epoch: number) => void;
+  readonly queuePut: (objectId: string, logicalKey: string, epoch: number, value: JsonValue) => void;
   readonly setPendingActivation: (reason: PendingReason | undefined) => void;
   readonly remoteApplyCalls: () => readonly { objectId: string; operationId: string; body: JsonValue | null }[];
   readonly waitForRemoteApply: (objectId: string) => Promise<void>;
   readonly gateNext: (method: Method) => { readonly entered: Promise<void>; readonly release: () => void };
   readonly pauseRemoteApplication: () => { readonly entered: Promise<void>; readonly release: () => void };
   readonly pauseLocalDigest: () => { readonly entered: Promise<void>; readonly release: () => void };
+  readonly pauseMutationFence: (skip?: number) => { readonly entered: Promise<void>; readonly release: () => void };
   readonly preparePendingProvider: (id: string, body: JsonValue) => Promise<void>;
   readonly waitForStatus: (status: string) => Promise<void>;
   readonly failNext: (method: Method, mode: FaultMode, code?: FailureCode) => void;
@@ -107,6 +109,7 @@ export async function withTwoSyncDevices(
       let pendingActivation: PendingReason | undefined;
       let remoteGate: Gate | undefined;
       let digestGate: Gate | undefined;
+      let fenceGate: Gate | undefined;
       const remoteCalls: { objectId: string; operationId: string; body: JsonValue | null }[] = [];
       const remoteApplyCounts = new Map<string, number>();
       const remoteApplyWaiters = new Map<string, Set<() => void>>();
@@ -115,6 +118,7 @@ export async function withTwoSyncDevices(
       let engine: SyncEngine;
       const local: LocalSyncPort = {
         async withFence<T>(action: () => Promise<T>) {
+          if (fenceGate !== undefined) await fenceGate.wait();
           return action();
         },
         async rawDigest() {
@@ -230,6 +234,14 @@ export async function withTwoSyncDevices(
         pauseLocalDigest() {
           const gate = createGate();
           digestGate = gate;
+          return { entered: gate.entered, release: gate.release };
+        },
+        pauseMutationFence(skip = 0) {
+          const gate = createGate();
+          // `skip` lets a test pause a specific acquisition: local-commit recovery takes the fence
+          // once per pass before the drain takes it per publication.
+          let remaining = skip;
+          fenceGate = { ...gate, wait: async () => (remaining-- > 0 ? undefined : gate.wait()) };
           return { entered: gate.entered, release: gate.release };
         },
         waitForStatus(status: string) {
@@ -348,6 +360,27 @@ export async function withTwoSyncDevices(
           });
           repo.confirm(binding.id, commitId, [
             { operationId: `${commitId}-operation`, objectId, epoch, kind: 'delete', body: null, commitId },
+          ]);
+        },
+        queuePut(objectId, logicalKey, epoch, value) {
+          const commitId = `${deviceId}-put-${++commitNumber}`;
+          prepareLocalCommit(repo, binding.id, {
+            commitId,
+            origin: 'local',
+            beforeDigest: 'put-before',
+            afterDigest: 'put-after',
+            rawAfter: {},
+            accountOperationIds: [],
+          });
+          repo.confirm(binding.id, commitId, [
+            {
+              operationId: `${commitId}-operation`,
+              objectId,
+              epoch,
+              kind: 'put',
+              body: { kind: 'provider', logicalKey, value, dependencies: [] },
+              commitId,
+            },
           ]);
         },
       } satisfies TwoDevice;

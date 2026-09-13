@@ -30,6 +30,20 @@ const REGISTRY = () =>
 
 const CONNECT = { kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} } as const;
 
+const LOCAL_ROW = {
+  objectId: 'local-object',
+  logicalKey: 'work',
+  kind: 'provider' as const,
+  mode: 'included' as const,
+  epoch: 0,
+  desired: { kind: 'provider' as const, logicalKey: 'work', value: { region: 'us' }, dependencies: [] },
+  baseline: null,
+  overrides: [],
+  pendingReason: null,
+};
+
+const OVERRIDES = { kind: 'overrides', objectId: 'local-object', paths: [['region']] } as const;
+
 test('an override preview loads the authored source so a local-only object has a body to pin', async () => {
   const excluded = (objectId: string, kind: 'provider' | 'plugin-business', logicalKey: string) => ({
     objectId,
@@ -303,6 +317,64 @@ test('an unfinished connect apply is remembered across a restart by the binding 
   // `preview-required` on a backend that is in fact fully applied.
   expect(cleared).toEqual([['binding-1', false]]);
   expect(control.status().state).toBe('idle');
+});
+
+// The binding is already swapped when the reviewed import fails, so every row sits on a baseline the
+// candidate backend has moved past. Reviewing or applying anything else against them would report
+// success and hand the state back to `idle` while the engine stays held, and a preview captured
+// before the failed connect describes rows that now belong to another binding entirely.
+test('a failed connect apply refuses every other preview until a fresh connect review', async () => {
+  let binding: Record<string, unknown> = { ...BINDING };
+  let importFails = true;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => binding,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      setConnectPending: () => {},
+    } as never,
+    binding: () => binding as never,
+    localEntities: () => [LOCAL_ROW],
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => {
+      if (importFails) throw new Error('import failed');
+    },
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [CLOUD_ROW],
+      refresh: async () => [CLOUD_ROW],
+      commit: async () => void (binding = { ...BINDING, id: 'binding-2', sessionGeneration: 2 }),
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    lifecycle: { activate: () => {}, reconcile: async () => {}, close: async () => {} },
+  });
+
+  const stale = await control.preview(OVERRIDES);
+  const connect = await control.preview(CONNECT);
+  await expect(
+    control.apply({ previewId: connect.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toThrow('import failed');
+
+  await expect(
+    control.apply({ previewId: stale.previewId, decisions: [{ objectId: 'local-object', choice: 'local' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  await expect(control.preview(OVERRIDES)).rejects.toMatchObject({
+    code: 'preview-stale',
+  });
+
+  // Only a completed connect review clears it, and then the ordinary previews work again.
+  importFails = false;
+  const retry = await control.preview(CONNECT);
+  await control.apply({ previewId: retry.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] });
+  expect((await control.preview(OVERRIDES)).previewId).toBeString();
 });
 
 test('a second connect apply cannot swap the binding while the first is still publishing', async () => {

@@ -325,6 +325,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       }
       const local = captureLocal();
       if (local.binding === null) throw new SyncPreviewError('not-connected');
+      // An incomplete connect apply switched the binding and left the engine held, so these rows sit
+      // on a baseline the backend has moved past and only a fresh connect review can clear them.
+      // Reviewing a join, restore, override, or purge against them would report success and hand the
+      // state back to `idle` while synchronization stays stopped.
+      if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
       const previewId = createPreviewToken(24, options.randomBytes);
       const expiresAt = now() + previewTtlMs;
       const remote = snapshotRemoteEntities(await remoteEntities());
@@ -364,6 +369,9 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             throw error;
           }
         } else {
+          // A preview captured before a connect apply failed reviews rows that now belong to another
+          // binding, and applying it would set the state to `idle` with the engine still held.
+          if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
           await applies(() => applyPreview(operationInput(), record, input.decisions));
         }
       } catch (error) {

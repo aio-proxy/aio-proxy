@@ -758,6 +758,40 @@ test('a queued delete superseded by a later put keeps the re-added object publis
   });
 });
 
+// The same collision, but the re-add is confirmed once the drain is already running: the pass's own
+// snapshot cannot contain it, so supersession has to be read from the outbox as it stands. A local
+// commit confirms inside the mutation fence, which the drain now holds for each publication, so the
+// window is the wait for that fence.
+test('a queued delete superseded by a put confirmed during the drain leaves no tombstone', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.engine.reconcile(a.signal);
+
+    a.queueDelete('provider-work', 0);
+    // Skips the acquisition local-commit recovery makes, so the drain is the one held.
+    const fence = a.pauseMutationFence(1);
+    const drain = a.engine.reconcile(a.signal);
+    await fence.entered;
+    a.queuePut('provider-work', 'work', 0, { kind: 'api', apiKey: 'again' });
+    fence.release();
+    await drain;
+
+    // The delete is dropped, the put it replaced stays queued for the next pass.
+    expect(a.repo.outbox(a.binding.id).map((operation) => operation.kind)).toEqual(['put']);
+    await a.engine.reconcile(a.signal);
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    expect((await createSyncObjectStore(a.session).readHead('provider-work', a.signal))?.head).toMatchObject({
+      epoch: 0,
+      state: 'active',
+    });
+    await b.engine.reconcile(b.signal);
+    expect(b.remoteApplyCalls()).toContainEqual(
+      expect.objectContaining({ objectId: 'provider-work', body: { kind: 'api', apiKey: 'again' } }),
+    );
+    expect(b.remoteApplyCalls().some((call) => call.objectId === 'provider-work' && call.body === null)).toBe(false);
+  });
+});
+
 test('overrides pinned while a remote application is in flight survive the write-back', async () => {
   const overrides = [{ path: ['apiKey'], value: 'device-local' }];
   await withTwoSyncDevices(async ({ a, b }) => {

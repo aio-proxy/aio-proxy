@@ -301,6 +301,9 @@ test('pinning a path keeps ownership a login recorded after the preview', async 
     await candidate.commit();
     const repo = createSyncRepository(fixture.db.sqlite);
     const bindingId = repo.readBinding()!.id;
+    // The connect wrote the binding pending; a reviewed connect apply is what clears it, and until it
+    // does the control plane refuses every other preview.
+    repo.setConnectPending!(bindingId, false);
     const row = repo.entities(bindingId).find((entity) => entity.logicalKey === 'work')!;
     const plane = createSyncControlPlaneIntegration(
       {

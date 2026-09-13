@@ -18,9 +18,9 @@ export type RenameProviderIdentityInput = {
  * Lands the local half of a Provider rename. The `sync_entity` rows alone are not the rename:
  * leaving `providers[oldProviderId]` and the rules pointing at it in the authored configuration
  * makes the next projection miss the renamed included row, so it would publish that row's deletion
- * and reseed the old ID as excluded. The authored configuration is rewritten first, as a
- * remote-origin commit so it enqueues no publication of its own — the cloud half of the rename
- * belongs to `applyPreview`.
+ * and reseed the old ID as excluded. The credential and the rows move first, then the authored
+ * configuration, as a remote-origin commit so it enqueues no publication of its own — the cloud half
+ * of the rename belongs to `applyPreview`.
  */
 export async function renameProviderIdentity(
   input: RenameProviderIdentityInput,
@@ -39,12 +39,29 @@ export async function renameProviderIdentity(
   if (moves && input.accounts.readAccount(newProviderId) !== null) throw new SyncOperationError('upgrade-required');
   const authored = (await input.configFile.read()) as Record<string, JsonValue>;
   const renamed = rewireProviderReferences(authored, oldProviderId, newProviderId);
-  await input.applyCandidate(renamed, 'remote', `rename:${crypto.randomUUID()}`);
-  // One transaction: rows naming the new ID with the credential still under the old one is exactly
-  // the unauthorized state this move exists to prevent.
+  const objectIds = new Set(entities.map((entity) => entity.objectId));
+  const restore = input.repo.entities(binding.id).filter((entity) => objectIds.has(entity.objectId));
+  // The credential and the rows move before the configuration is committed. `renameAccount` refuses
+  // while an account operation for either Provider ID is staged, and refusing after the commit would
+  // leave the file and the runtime on the new ID with the credential and the rows still on the old
+  // one — a split the consumed preview can no longer repair. One transaction, because rows naming
+  // the new ID with the credential still under the old one is exactly the unauthorized state this
+  // move exists to prevent.
   input.accounts.withAccountTransaction(() => {
     if (moves && !input.accounts.renameAccount(oldProviderId, newProviderId))
       throw new SyncOperationError('operation-pending');
     putEntities(binding.id, entities);
   });
+  try {
+    await input.applyCandidate(renamed, 'remote', `rename:${crypto.randomUUID()}`);
+  } catch (error) {
+    // A failed candidate leaves the authored configuration on the old Provider ID — the write is
+    // rolled back with it — so the local half goes back too rather than stranding the credential and
+    // the rows on an ID nothing authors. The collision stays unresolved and is offered again.
+    input.accounts.withAccountTransaction(() => {
+      if (moves) input.accounts.renameAccount(newProviderId, oldProviderId);
+      putEntities(binding.id, restore);
+    });
+    throw error;
+  }
 }

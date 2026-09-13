@@ -4,7 +4,7 @@ import { collectHistory, deleteEntity, purgeEntity, readServerTime } from '../cl
 import { recoverLocalCommits } from '../local-commit';
 import { decodeHead, entityKey, SyncProtocolError, type EntityHead } from '../protocol';
 import { publishEntity, createSyncObjectStore, exceedsValueLimit } from '../publication';
-import type { LocalBinding, SyncRepository } from '../repository';
+import type { LocalBinding, OutboxOperation, SyncRepository } from '../repository';
 import type { LocalSyncPort } from './incoming';
 import { reconcileRemote } from './remote';
 import { DEFAULT_POLL_MS, MAX_BACKOFF_MS, nextBackoffMs } from './scheduler';
@@ -84,69 +84,87 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     return head;
   }
 
-  async function drainOutbox(generation: number, signal: AbortSignal): Promise<boolean> {
-    const operations = input.repo.outbox(input.binding.id);
-    // Index of the last queued operation per object. An entry that a newer one replaces carries a
-    // body nothing needs any more, which is what makes dropping an unpublishable one safe.
-    const newest = new Map(operations.map((operation, index) => [operation.objectId, index]));
-    let unpublishable = false;
-    for (const [index, operation] of operations.entries()) {
-      signal.throwIfAborted();
-      assertGeneration(generation);
-      // The object left the synchronized range after this was queued — while the backend was
-      // unreachable, most likely. Publishing the queued body would upload configuration the user
-      // moved back to local, and running the queued delete would remove the cloud copy that
-      // leaving deliberately retains. Re-read per operation: leaving is not fenced against a drain.
-      const entity = input.repo.entities(input.binding.id).find((row) => row.objectId === operation.objectId);
-      if (entity?.mode === 'excluded') {
-        input.repo.acknowledge(input.binding.id, operation.operationId);
-        continue;
-      }
-      // A delete a later operation replaces must not be published: the tombstone it leaves defeats
-      // that operation's put at the state check below, so an object deleted and re-added while the
-      // backend was unreachable would be dropped again by the next remote reconciliation. The end
-      // state the outbox describes is the newest operation's.
-      if (operation.kind === 'delete' && newest.get(operation.objectId) !== index) {
-        input.repo.acknowledge(input.binding.id, operation.operationId);
-        continue;
-      }
-      // A body over the backend's value limit throws `quota` deterministically, and a failed entry
-      // is never acknowledged, so retrying it first on every pass wedges every later object — and
-      // remote reconciliation behind it — on a row that can never publish. A newer operation for
-      // the same object supersedes it outright; the newest one stays queued, since shrinking the
-      // configuration is what produces its replacement, and the pass reports `quota` instead of
-      // `online` for as long as it is there.
-      if (exceedsValueLimit(store, operation)) {
-        if (newest.get(operation.objectId) === index) unpublishable = true;
-        else input.repo.acknowledge(input.binding.id, operation.operationId);
-        continue;
-      }
-      const head = await store.readHead(operation.objectId, signal);
-      assertGeneration(generation);
-      // A newer epoch means another device deleted and restored this object while the operation sat
-      // in the outbox. Publishing or deleting against the stale epoch can only throw
-      // `epoch-mismatch`, and a failed entry is never acknowledged, so it would block every later
-      // pass forever. The restore replaced what this operation was editing, so it is obsolete.
-      const superseded = head !== null && head.head.epoch > operation.epoch;
-      if (operation.kind === 'put' && operation.body !== null) {
-        if (superseded || (head !== null && head.head.state !== 'active')) {
-          // A tombstone exists to defeat stale edits: another device deleted this object while the
-          // put was queued. Resurrecting it here would bypass the review a restore requires, so the
-          // stale write is dropped and remote reconciliation applies the deletion locally. The
-          // configuration is still recoverable through an explicit restore preview.
-          input.repo.acknowledge(input.binding.id, operation.operationId);
-          continue;
-        }
-        await publishEntity(store, operation, signal);
-      } else {
-        if (superseded || head === null || head.head.state === 'deleted' || head.head.state === 'purged') {
-          input.repo.acknowledge(input.binding.id, operation.operationId);
-          continue;
-        }
-        await deleteEntity(store, operation.objectId, operation.epoch, signal);
-      }
-      assertGeneration(generation);
+  /** Publishes one queued operation. Returns true when it stays queued and cannot be published. */
+  async function publishOperation(
+    operation: OutboxOperation,
+    generation: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    signal.throwIfAborted();
+    assertGeneration(generation);
+    // The object left the synchronized range after this was queued — while the backend was
+    // unreachable, most likely. Publishing the queued body would upload configuration the user
+    // moved back to local, and running the queued delete would remove the cloud copy that
+    // leaving deliberately retains.
+    const entity = input.repo.entities(input.binding.id).find((row) => row.objectId === operation.objectId);
+    if (entity?.mode === 'excluded') {
       input.repo.acknowledge(input.binding.id, operation.operationId);
+      return false;
+    }
+    // Supersession comes from the outbox as it stands, not from the pass's snapshot: a local commit
+    // confirmed during an earlier operation's network wait appends to it. An entry a newer one
+    // replaces carries a body nothing needs any more, which is what makes dropping an unpublishable
+    // one safe, and a delete must not be published at all: the tombstone it leaves defeats that
+    // newer put at the state check below, so an object deleted and re-added while the backend was
+    // unreachable would be dropped again by the next remote reconciliation. The end state the
+    // outbox describes is the newest operation's.
+    const queued = input.repo.outbox(input.binding.id).filter((entry) => entry.objectId === operation.objectId);
+    const newest = queued.at(-1)?.operationId === operation.operationId;
+    if (operation.kind === 'delete' && !newest) {
+      input.repo.acknowledge(input.binding.id, operation.operationId);
+      return false;
+    }
+    // A body over the backend's value limit throws `quota` deterministically, and a failed entry
+    // is never acknowledged, so retrying it first on every pass wedges every later object — and
+    // remote reconciliation behind it — on a row that can never publish. A newer operation for
+    // the same object supersedes it outright; the newest one stays queued, since shrinking the
+    // configuration is what produces its replacement, and the pass reports `quota` instead of
+    // `online` for as long as it is there.
+    if (exceedsValueLimit(store, operation)) {
+      if (!newest) input.repo.acknowledge(input.binding.id, operation.operationId);
+      return newest;
+    }
+    const head = await store.readHead(operation.objectId, signal);
+    assertGeneration(generation);
+    // A newer epoch means another device deleted and restored this object while the operation sat
+    // in the outbox. Publishing or deleting against the stale epoch can only throw
+    // `epoch-mismatch`, and a failed entry is never acknowledged, so it would block every later
+    // pass forever. The restore replaced what this operation was editing, so it is obsolete.
+    const superseded = head !== null && head.head.epoch > operation.epoch;
+    if (operation.kind === 'put' && operation.body !== null) {
+      if (superseded || (head !== null && head.head.state !== 'active')) {
+        // A tombstone exists to defeat stale edits: another device deleted this object while the
+        // put was queued. Resurrecting it here would bypass the review a restore requires, so the
+        // stale write is dropped and remote reconciliation applies the deletion locally. The
+        // configuration is still recoverable through an explicit restore preview.
+        input.repo.acknowledge(input.binding.id, operation.operationId);
+        return false;
+      }
+      await publishEntity(store, operation, signal);
+    } else {
+      if (superseded || head === null || head.head.state === 'deleted' || head.head.state === 'purged') {
+        input.repo.acknowledge(input.binding.id, operation.operationId);
+        return false;
+      }
+      await deleteEntity(store, operation.objectId, operation.epoch, signal);
+    }
+    assertGeneration(generation);
+    input.repo.acknowledge(input.binding.id, operation.operationId);
+    return false;
+  }
+
+  async function drainOutbox(generation: number, signal: AbortSignal): Promise<boolean> {
+    let unpublishable = false;
+    for (const operation of input.repo.outbox(input.binding.id)) {
+      signal.throwIfAborted();
+      // Each publication holds the mutation fence, from its guards through the backend write:
+      // leaving the synchronized range and a local commit's outbox append both run in that queue,
+      // and either one landing mid-publication uploads a body the user moved back to local, deletes
+      // a cloud copy leaving retains, or tombstones an object that has just been re-added. Nothing
+      // may hold the fence while awaiting a drain — the queue is not reentrant, so a fenced caller
+      // waiting on `stop()` or `reconcile()` would deadlock against this.
+      unpublishable =
+        (await input.local.withFence(() => publishOperation(operation, generation, signal))) || unpublishable;
     }
     return unpublishable;
   }

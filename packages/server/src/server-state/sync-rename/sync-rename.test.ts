@@ -9,6 +9,7 @@ import {
   encodeCandidate,
   type JsonValue,
   type LocalEntity,
+  type PluginRepository,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 
@@ -18,6 +19,37 @@ const unauthorized = {
   withAccountTransaction: <T>(run: () => T) => run(),
   readAccount: () => null,
   renameAccount: () => false,
+};
+
+function authorize(accounts: PluginRepository, providerId: string) {
+  const pending = accounts.stageAccountOperation({
+    kind: 'create',
+    targetDigest: 'digest:create',
+    account: {
+      providerId,
+      plugin: '@aio-proxy/example',
+      capability: 'oauth',
+      fingerprint: `${providerId}-fingerprint`,
+      options: {},
+      secrets: {},
+      credential: { accessToken: 'token' },
+      catalog: { kind: 'preserve' },
+    },
+  });
+  accounts.completeAccountOperation(pending.operationId);
+  return accounts.readAccount(providerId)!;
+}
+
+const row: LocalEntity = {
+  objectId: 'object',
+  logicalKey: 'work',
+  kind: 'provider',
+  mode: 'included',
+  epoch: 1,
+  desired: null,
+  baseline: null,
+  overrides: [],
+  pendingReason: null,
 };
 
 test('renaming a Provider rewrites the authored configuration and its references with the rows', async () => {
@@ -31,19 +63,7 @@ test('renaming a Provider rewrites the authored configuration and its references
     plugins: [['@example/business', { providerId: 'work', providers: 'all' }]],
   };
   writeFileSync(configPath, encodeCandidate(authored, configPath));
-  const rows: LocalEntity[] = [
-    {
-      objectId: 'object',
-      logicalKey: 'personal',
-      kind: 'provider',
-      mode: 'included',
-      epoch: 1,
-      desired: null,
-      baseline: null,
-      overrides: [],
-      pendingReason: null,
-    },
-  ];
+  const rows: LocalEntity[] = [{ ...row, logicalKey: 'personal' }];
   try {
     const file = new AtomicConfigFile(configPath);
     let applied: Record<string, JsonValue> | undefined;
@@ -54,6 +74,7 @@ test('renaming a Provider rewrites the authored configuration and its references
         configFile: file,
         repo: {
           readBinding: () => ({ id: 'binding' }),
+          entities: () => [row],
           putEntities: (_bindingId: string, entities: readonly LocalEntity[]) => void (written = entities),
         } as never,
         accounts: unauthorized,
@@ -88,26 +109,11 @@ test('renaming an authorized Provider moves its credential onto the new Provider
   const db = openDb({ home });
   try {
     const accounts = createPluginRepository(db.sqlite);
-    const pending = accounts.stageAccountOperation({
-      kind: 'create',
-      targetDigest: 'digest:create',
-      account: {
-        providerId: 'work',
-        plugin: '@aio-proxy/example',
-        capability: 'oauth',
-        fingerprint: 'work-fingerprint',
-        options: {},
-        secrets: {},
-        credential: { accessToken: 'token' },
-        catalog: { kind: 'preserve' },
-      },
-    });
-    accounts.completeAccountOperation(pending.operationId);
-    const before = accounts.readAccount('work');
+    const before = authorize(accounts, 'work');
     await renameProviderIdentity(
       {
         configFile: new AtomicConfigFile(configPath),
-        repo: { readBinding: () => ({ id: 'binding' }), putEntities: () => {} } as never,
+        repo: { readBinding: () => ({ id: 'binding' }), entities: () => [], putEntities: () => {} } as never,
         accounts,
         applyCandidate: async () => {},
       },
@@ -118,7 +124,48 @@ test('renaming an authorized Provider moves its credential onto the new Provider
     // A credential left under the old Provider ID reads as unauthorized under the new one, and
     // a bumped revision would read as a different credential to the shared-ownership row.
     expect(accounts.readAccount('work')).toBeNull();
-    expect(accounts.readAccount('personal')).toEqual({ ...before!, providerId: 'personal' });
+    expect(accounts.readAccount('personal')).toEqual({ ...before, providerId: 'personal' });
+  } finally {
+    db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// The account move can be refused — a staged login, refresh, or removal for either Provider ID holds
+// it back — and the configuration commit can fail its own verification. Committing the configuration
+// first would leave the file and the runtime on the new Provider ID with the credential and the rows
+// on the old one, which the consumed preview can no longer repair.
+test('a configuration commit that fails leaves the credential and the rows on the old Provider ID', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-rename-rollback-'));
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: { kind: 'api' } } }, configPath));
+  const db = openDb({ home });
+  try {
+    const accounts = createPluginRepository(db.sqlite);
+    const before = authorize(accounts, 'work');
+    let stored: readonly LocalEntity[] = [row];
+    await expect(
+      renameProviderIdentity(
+        {
+          configFile: new AtomicConfigFile(configPath),
+          repo: {
+            readBinding: () => ({ id: 'binding' }),
+            entities: () => stored,
+            putEntities: (_bindingId: string, entities: readonly LocalEntity[]) => void (stored = entities),
+          } as never,
+          accounts,
+          applyCandidate: async () => {
+            throw new Error('candidate rejected');
+          },
+        },
+        'work',
+        'personal',
+        [{ ...row, logicalKey: 'personal' }],
+      ),
+    ).rejects.toThrow('candidate rejected');
+    expect(accounts.readAccount('personal')).toBeNull();
+    expect(accounts.readAccount('work')).toEqual(before);
+    expect(stored).toEqual([row]);
   } finally {
     db.close();
     rmSync(home, { recursive: true, force: true });

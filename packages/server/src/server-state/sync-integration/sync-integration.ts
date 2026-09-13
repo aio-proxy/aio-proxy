@@ -209,6 +209,7 @@ export function createSyncIntegration(
     candidateRemote: SyncConnectCandidate['remote'],
   ): Promise<() => void> => {
     let next: ReturnType<typeof createLifecycle> | undefined;
+    let retired: typeof lifecycle;
     try {
       next = createLifecycle(binding, preconnectedSession, true);
       await next.lifecycle.start();
@@ -260,7 +261,7 @@ export function createSyncIntegration(
           lifecycle = next!.lifecycle;
           runtime.sync = lifecycle;
           next!.publish();
-          await previousLifecycle?.close().catch(() => {});
+          retired = previousLifecycle;
         } catch (error) {
           syncPort = previousPort;
           lifecycle = previousLifecycle;
@@ -273,6 +274,11 @@ export function createSyncIntegration(
           throw error;
         }
       });
+      // Closed outside the fence the swap held: the retired engine takes that same fence for each
+      // publication and `close()` waits for a drain in flight, so closing from inside the slot would
+      // deadlock against it. The swap already made every generation check in that engine stale, so
+      // all it can do is unwind.
+      await retired?.close().catch(() => {});
       // The engine stays deferred until the caller has applied the reviewed connect decisions:
       // reconciling first would import the candidate's remote objects under the engine's default
       // inclusion, transiently activating a cloud configuration the user chose to overwrite.
