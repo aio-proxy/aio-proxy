@@ -1,5 +1,4 @@
 import CloudKit
-import CryptoKit
 import Foundation
 
 private let expectedBundleId = "dev.aioproxy"
@@ -64,11 +63,6 @@ private func readProbeInput() -> ProbeInput? {
     return try? JSONDecoder().decode(ProbeInput.self, from: Data(line))
 }
 
-private func identityHash(_ recordName: String) -> String {
-    let digest = SHA256.hash(data: Data(recordName.utf8))
-    return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
-}
-
 private func failureCode(for error: Error) -> SyncFailureCode {
     if error is ProbeError { return .unauthorized }
     guard let cloudKitError = error as? CKError else { return .unsupported }
@@ -100,7 +94,7 @@ private func runProbe() async {
 
     do {
         let recordName = try await AccountProbe.run(containerId: input.containerId)
-        emit(.success(account: "available", identityId: identityHash(recordName), bundleId: expectedBundleId))
+        emit(.success(account: "available", identityId: AccountIdentity.opaque(recordName), bundleId: expectedBundleId))
     } catch {
         emit(.failure(code: failureCode(for: error)))
     }

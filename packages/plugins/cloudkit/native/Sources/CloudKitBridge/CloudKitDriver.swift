@@ -81,7 +81,7 @@ final class CloudKitDatabaseDriver: CloudKitDriver, @unchecked Sendable {
 
     func accountIdentity() async throws -> AccountIdentity {
         guard try await container.accountStatus() == .available else { throw ProbeError.accountUnavailable }
-        return AccountIdentity(identifier: try await container.userRecordID().recordName)
+        return AccountIdentity(identifier: AccountIdentity.opaque(try await container.userRecordID().recordName))
     }
 
     // A custom zone does not exist in a private database until someone creates it, so every

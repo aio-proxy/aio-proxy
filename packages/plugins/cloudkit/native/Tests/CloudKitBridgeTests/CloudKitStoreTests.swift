@@ -1,4 +1,5 @@
 import CloudKit
+import CryptoKit
 #if canImport(XCTest)
 import XCTest
 @testable import CloudKitBridge
@@ -200,6 +201,16 @@ final class CloudKitStoreTests: XCTestCase {
             XCTFail("malformed cursor was accepted")
         } catch StoreError.invalidData {
         }
+    }
+
+    // The identity leaves this component and is persisted in the local binding, so it must be the
+    // opaque digest and never the Apple account's record name.
+    func testAccountIdentityIsOpaque() throws {
+        let recordName = "_9f8c1e2d3a4b5c6d7e8f90a1b2c3d4e5"
+        let opaque = AccountIdentity.opaque(recordName)
+        let expected = SHA256.hash(data: Data(recordName.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(opaque, "sha256:" + expected)
+        XCTAssertFalse(opaque.contains(recordName))
     }
 
     func testPayloadAndFrameBounds() throws {
