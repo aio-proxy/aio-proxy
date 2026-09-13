@@ -419,19 +419,27 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       // binding switched left rows on a baseline the backend has moved past, and activating the
       // engine here would import exactly what the user chose to overwrite. Only a new connect
       // preview re-reviews those rows.
-      if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
-      state = 'syncing';
-      // A startup restore whose backend was offline left the lifecycle unstarted, so retry is
-      // the reconnect path, not just a reconcile.
-      await options.lifecycle?.start?.();
-      if (options.session !== undefined && binding() !== null && options.session() === undefined) {
-        state = 'offline';
-        throw new SyncOperationError('backend-unavailable');
-      }
-      options.lifecycle?.activate();
-      await options.lifecycle?.reconcile?.();
-      state = 'idle';
-      lastSuccessAt = now();
+      //
+      // Reading that flag outside the FIFO is not enough. A connect Apply already in flight has not
+      // reached its swap yet, and the integration wrapper resolves `integration.lifecycle` per call,
+      // so a Retry that passed the check and is awaiting `start()` resumes on the candidate the swap
+      // installed — activating and reconciling it before the reviewed decisions land, which imports
+      // the cloud state the user has not applied. Queued, it sees the settled engine and flag.
+      await applies(async () => {
+        if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
+        state = 'syncing';
+        // A startup restore whose backend was offline left the lifecycle unstarted, so retry is
+        // the reconnect path, not just a reconcile.
+        await options.lifecycle?.start?.();
+        if (options.session !== undefined && binding() !== null && options.session() === undefined) {
+          state = 'offline';
+          throw new SyncOperationError('backend-unavailable');
+        }
+        options.lifecycle?.activate();
+        await options.lifecycle?.reconcile?.();
+        state = 'idle';
+        lastSuccessAt = now();
+      });
       return status();
     },
     async disconnect() {

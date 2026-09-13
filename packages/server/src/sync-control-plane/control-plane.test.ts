@@ -453,6 +453,77 @@ test('a second connect apply cannot swap the binding while the first is still pu
   expect(cleared).toEqual([['swapped-1', false]]);
 });
 
+test('retry cannot activate the engine a connect apply is still swapping in', async () => {
+  // Retry refuses to reconnect over an unfinished connect review by reading `connectApplyIncomplete`,
+  // but an Apply still short of its swap has not set that flag yet. Unserialized, Retry passes the
+  // check, parks in `start()`, and resumes on whatever engine the swap installed — reconciling the
+  // cloud backend before the reviewed decisions land.
+  let binding: Record<string, unknown> = { ...BINDING };
+  const events: string[] = [];
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  let swapped = () => {};
+  const afterSwap = new Promise<void>((resolve) => {
+    swapped = resolve;
+  });
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => binding,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      setConnectPending: () => {},
+    } as never,
+    binding: () => binding as never,
+    localEntities: () => [],
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => {
+      // The swap is done: release the Retry waiting in `start()` and keep publishing, so an
+      // unserialized Retry has every chance to overtake the reviewed import.
+      swapped();
+      await tick();
+      await tick();
+      events.push('import');
+    },
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [CLOUD_ROW],
+      // Parks the Apply before its fence check, so Retry starts while the binding is still the old one.
+      refresh: async () => {
+        await tick();
+        return [CLOUD_ROW];
+      },
+      commit: async () => void (binding = { ...BINDING, id: 'binding-2', sessionGeneration: 2 }),
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    lifecycle: {
+      start: async () => {
+        await afterSwap;
+      },
+      activate: () => void events.push('activate'),
+      reconcile: async () => {},
+      close: async () => {},
+    },
+  });
+
+  const preview = await control.preview(CONNECT);
+  const apply = control.apply({
+    previewId: preview.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'cloud' }],
+  });
+  const retry = control.retry();
+
+  await apply;
+  await retry;
+  expect(events).toEqual(['import', 'activate']);
+});
+
 test('a second non-connect apply cannot publish over the first reviewed decision', async () => {
   // Applying takes the preview out of the store, so two ordinary Applies can be in flight together.
   // Both then pass their fence and commit checks — those run inside applyPreview — before either
