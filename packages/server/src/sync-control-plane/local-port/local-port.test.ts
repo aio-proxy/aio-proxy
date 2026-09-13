@@ -1061,6 +1061,87 @@ test('overrides pinned during the configuration write survive the remote entity 
   }
 });
 
+test('a shared credential refreshed during the configuration write keeps its imported ownership', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-refresh-'));
+  const configPath = join(directory, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: body.value } }, configPath));
+  const database = openDb({ home: directory });
+  const repo = createSyncRepository(database.sqlite);
+  const accounts = {
+    readPluginSecret: () => null,
+    readAccount: () => null,
+    listPendingAccountOperations: () => [],
+    deleteAccount: () => {},
+  } as unknown as PluginRepository;
+  const binding = {
+    id: 'binding',
+    plugin: '@example/sync',
+    capability: 'memory',
+    pluginVersion: '1.0.0',
+    identityId: 'identity',
+    spaceId: 'default' as const,
+    deviceId: 'device',
+    sessionGeneration: 1,
+    options: {},
+  };
+  repo.writeBinding(binding);
+  const ownership = {
+    mode: 'shared' as const,
+    epoch: 0,
+    generation: 2,
+    localRevision: 1,
+    pluginVersion: '1.0.0',
+    formatVersion: 1,
+  };
+  const row = {
+    objectId: 'object',
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 0,
+    desired: body,
+    baseline: 'remote-1',
+    overrides: [],
+    pendingReason: null,
+    oauth: ownership,
+  };
+  repo.putEntity(binding.id, row);
+  const refreshed = { ...ownership, generation: 3, localRevision: 2 };
+  const file = new AtomicConfigFile(configPath);
+  const port = createLocalSyncPort({
+    configPath,
+    configFile: file,
+    repo,
+    accounts,
+    bindingId: binding.id,
+    bindingGeneration: binding.sessionGeneration,
+    enqueue: createFifoQueue(),
+    registry: () => ({
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    }),
+    applyCandidate: async (candidate) => {
+      await file.replace(() => candidate);
+      // A model request refreshes the shared credential on its own account transaction, outside this
+      // fence: it stores a newer account revision and records it on the row.
+      repo.putEntity(binding.id, { ...row, oauth: refreshed });
+    },
+  });
+
+  try {
+    const next = { ...body, value: { ...body.value, baseUrl: 'https://cloud.example.test/v1' } };
+    expect((await port.applyRemote('object', next, 'remote-2')).applied).toBe(true);
+    // Replaying the pre-write snapshot would reinstate the superseded revision, and the next
+    // credential read then refuses the Provider as `detach-pending`.
+    expect(repo.entities(binding.id)[0]?.oauth).toEqual(refreshed);
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('a remote apply racing a completed leave acknowledges the revision without writing the configuration', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'aio-proxy-local-port-left-'));
   const configPath = join(directory, 'config.jsonc');

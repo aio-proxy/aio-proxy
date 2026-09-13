@@ -354,6 +354,12 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
         // `currentEntities` predates the configuration write above. An override Apply runs outside
         // this fence, so replaying that snapshot would silently unpin paths it just persisted.
         const latestEntity = entities().find((entity) => entity.objectId === objectId);
+        // Same for OAuth ownership: a shared credential refresh imports the rotated account and
+        // records the revision it wrote on this row, outside the fence. Replaying the snapshot would
+        // reinstate the older `localRevision`, and the next credential read rejects the Provider as
+        // `detach-pending` because it disagrees with the stored account. A row that lost its
+        // ownership meanwhile — a completed detach — must not have it resurrected either.
+        const oauth = latestEntity === undefined ? currentEntity?.oauth : latestEntity.oauth;
         const nextEntity = {
           objectId,
           logicalKey:
@@ -368,7 +374,7 @@ export function createLocalSyncPort(input: LocalPortInput): LocalSyncPort {
           // The account this ownership names was just deleted, so carrying it onto the tombstone
           // would pin `detach-required` on a row that can never detach — and sharing would keep
           // seeing the stale ownership if the Provider is restored.
-          ...(currentEntity?.oauth === undefined || tombstoned !== undefined ? {} : { oauth: currentEntity.oauth }),
+          ...(oauth === undefined || tombstoned !== undefined ? {} : { oauth }),
         };
         input.repo.putEntity(input.bindingId, nextEntity);
         await confirmLocalCommit(input.repo, input.bindingId, remoteCommitId, {
