@@ -12,14 +12,8 @@ import {
   type PreviewRecord,
   type RemoteEntity,
 } from '../preview';
-import {
-  applyPreview,
-  assertDecisions,
-  assertNoRetainedOAuth,
-  SyncOperationError,
-  type OperationInput,
-  type SyncDecision,
-} from './operations';
+import { assertDecisions, type SyncDecision } from './decisions';
+import { applyPreview, assertNoRetainedOAuth, SyncOperationError, type OperationInput } from './operations';
 import { rewireProviderReferences } from './provider-identity';
 
 const fence: PreviewFence = {

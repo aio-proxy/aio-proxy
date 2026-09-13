@@ -57,6 +57,29 @@ test('a verified candidate becomes one stable outgoing operation', async () => {
   });
 });
 
+test('a connect that only published still detects the next external edit', async () => {
+  await withSyncCommitFixture(async (f) => {
+    // Connect and join send the reviewed rows straight to the backend, so a first connect to an
+    // empty space — or one where every row was kept local — writes the configuration file for no row
+    // and confirms no commit. Drift is measured against the last confirmed commit, so with none this
+    // pass has to establish one rather than skip.
+    expect(f.repo.latestConfirmedCommit(f.bindingId)).toBeNull();
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toEqual([]);
+    expect(f.repo.latestConfirmedCommit(f.bindingId)).not.toBeNull();
+
+    await fsPromises.writeFile(
+      f.configPath,
+      encodeCandidate({ providers: { work: { kind: 'api', baseUrl: 'https://edited.test' } } }, f.configPath),
+    );
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)[0]?.body).toMatchObject({
+      logicalKey: 'work',
+      value: { baseUrl: 'https://edited.test' },
+    });
+  });
+});
+
 test('a configuration edited outside any mutation republishes its objects', async () => {
   await withSyncCommitFixture(async (f) => {
     const file = new AtomicConfigFile(f.configPath);

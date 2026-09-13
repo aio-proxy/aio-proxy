@@ -153,6 +153,31 @@ async function confirmLocalCommitUnderFence(
   );
 }
 
+/**
+ * Records the file as it stands as the published baseline, publishing nothing. Connect and join send
+ * the reviewed rows straight to the backend, and only an import writes the configuration file, so a
+ * first connect to an empty space — or one where every reviewed row was kept local — confirms no
+ * commit at all. Drift below is a digest comparison against the last confirmed commit, so with none
+ * to compare against every later external edit would be loaded locally and never published, for the
+ * lifetime of the binding. That apply is what made the cloud agree with the file, so the file is the
+ * baseline.
+ *
+ * ponytail: an edit landing between that apply and this pass is adopted rather than published. A
+ * drift commit publishes the whole projection rather than a delta, so the next edit carries it.
+ */
+function seedBaseline(repo: SyncRepository, bindingId: string, digest: string, source: CommittedSource): void {
+  const commitId = crypto.randomUUID();
+  prepareLocalCommit(repo, bindingId, {
+    commitId,
+    origin: 'local',
+    beforeDigest: digest,
+    afterDigest: digest,
+    rawAfter: source.raw,
+    accountOperationIds: [],
+  });
+  repo.confirm(bindingId, commitId, [], source.sourceRevisions);
+}
+
 // Local publication is intent-driven, so a configuration that reached the file without one leaves
 // every other device on the superseded objects until a later mutation happens to republish them.
 // Two paths produce that: an external edit the watcher reloads without rewriting the file, and a
@@ -162,17 +187,21 @@ async function confirmLocalCommitUnderFence(
 // never come back; the next pass re-reads the drift. A digest cannot witness a plugin secret, so a
 // secret-only change is still the writer's own intent to journal.
 async function publishLocalDrift(repo: SyncRepository, bindingId: string, port: LocalCommitPort): Promise<void> {
-  const latest = repo.latestConfirmedCommit(bindingId);
   // Queued operations are the newest state a drain is still carrying, and this pass drains after it.
   // Recomputing puts from the file alongside them would order a put behind a delete the same drain
   // is about to publish, and the outbox's newest-wins rule would drop that delete. Whatever drift
   // survives the drain is still there for the next pass.
-  if (latest === null || repo.pendingCommits(bindingId).length > 0 || repo.outbox(bindingId).length > 0) return;
+  if (repo.pendingCommits(bindingId).length > 0 || repo.outbox(bindingId).length > 0) return;
+  const latest = repo.latestConfirmedCommit(bindingId);
   const afterDigest = await port.rawDigest();
   port.assertCurrent?.();
-  if (afterDigest === latest.afterDigest) return;
+  if (latest !== null && afterDigest === latest.afterDigest) return;
   const source = await port.committedSource();
   port.assertCurrent?.();
+  if (latest === null) {
+    seedBaseline(repo, bindingId, afterDigest, source);
+    return;
+  }
   const commitId = crypto.randomUUID();
   prepareLocalCommit(repo, bindingId, {
     commitId,

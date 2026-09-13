@@ -1,11 +1,4 @@
 export { SyncOperationError } from './errors';
 export { rewireProviderReferences } from './provider-identity';
-export {
-  applyPreview,
-  assertDecisions,
-  assertFresh,
-  assertNoRetainedOAuth,
-  setRange,
-  type OperationInput,
-  type SyncDecision,
-} from './operations';
+export { assertDecisions, type SyncDecision } from './decisions';
+export { applyPreview, assertFresh, assertNoRetainedOAuth, setRange, type OperationInput } from './operations';
