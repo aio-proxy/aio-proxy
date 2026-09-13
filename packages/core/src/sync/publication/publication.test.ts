@@ -127,6 +127,46 @@ test('conditional publication rejects a changed head before reserving a revision
   ).rejects.toMatchObject({ code: 'upgrade-required' });
 });
 
+test('conditional publication rejects a revision published after its reservation', async () => {
+  const backend = createMemorySyncBackend();
+  const signal = new AbortController().signal;
+  const store = createSyncObjectStore(backend.connect());
+  const first = makeOperation();
+  await publishEntity(store, first, signal);
+  const expected = (await store.readHead(first.objectId, signal))!.version;
+  const concurrent = makeOperation({
+    objectId: first.objectId,
+    body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'concurrent' }, dependencies: [] },
+  });
+
+  // The reservation is fenced, but the payload write sits between it and the publish CAS. Another
+  // device reserving and publishing in that window is exactly what the reviewed preview never saw.
+  const session = backend.connect();
+  let raced = false;
+  const racing = createSyncObjectStore({
+    ...session,
+    async compareAndSwap(key, version, value, sig) {
+      const result = await session.compareAndSwap(key, version, value, sig);
+      if (!raced && key === entityKey(first.objectId)) {
+        raced = true;
+        await publishEntity(createSyncObjectStore(backend.connect()), concurrent, signal);
+      }
+      return result;
+    },
+  });
+
+  const stale = makeOperation({
+    objectId: first.objectId,
+    body: { kind: 'provider', logicalKey: 'work', value: { apiKey: 'stale' }, dependencies: [] },
+  });
+  await expect(publishEntity(racing, stale, signal, expected)).rejects.toMatchObject({ code: 'upgrade-required' });
+  expect(raced).toBe(true);
+  // Reporting success here would have left the reviewed-but-stale body current over the concurrent one.
+  const head = (await store.readHead(first.objectId, signal))!.head;
+  expect(head.current).toBe(concurrent.operationId);
+  expect(head.receipts[stale.operationId]).toBeUndefined();
+});
+
 test('outcome-unknown at every publication CAS position is recoverable with one operation', async () => {
   // Positions 1, 2 and 4 are head CAS writes that resolve in place instead of rejecting, so each
   // has its own test below.

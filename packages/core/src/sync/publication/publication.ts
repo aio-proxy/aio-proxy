@@ -251,6 +251,7 @@ async function publishReserved(
   store: SyncObjectStore,
   operation: OutboxOperation,
   signal: AbortSignal,
+  expectedSequence?: number,
 ): Promise<{ head: EntityHead; modifiedAt: number; sequence: number }> {
   assertPut(operation);
   for (;;) {
@@ -275,6 +276,15 @@ async function publishReserved(
     if (!current.head.reserved.includes(operation.operationId)) {
       throw new SyncProtocolError('invalid-data', 'operation was not reserved');
     }
+    // Reserving is fenced, but publishing is what makes this body current, and the two are separated
+    // by a payload write. Another device that reserves and publishes in that window leaves the head's
+    // version changed and its sequence bumped; retrying against the latest head would then make a
+    // reviewed-but-stale body current last and report success, silently overwriting a revision the
+    // preview never showed. Only `publish()` moves the sequence, so it is the whole fence: a
+    // competing reservation is harmless and still retries. Checked after the idempotence returns
+    // above, so a resumed publication of our own landed write still reports its receipt.
+    if (expectedSequence !== undefined && current.head.sequence !== expectedSequence)
+      throw new SyncProtocolError('upgrade-required', 'head published a newer revision');
     const next = publish(current.head, operation.operationId, operation.epoch);
     const bytes = encode(next);
     assertSize(store, bytes);
@@ -334,7 +344,7 @@ export async function publishEntity(
     const revision = await readRevision(store, operation, signal);
     const previousPublication = storedPublication(revision, operation.operationId);
     if (previousPublication !== undefined) return previousPublication;
-    await casHead(
+    const reserved = await casHead(
       store,
       operation.objectId,
       (head) => {
@@ -347,7 +357,12 @@ export async function publishEntity(
     const stored = await ensurePayload(store, operation, payload, signal);
     if (stored.record.state !== 'payload')
       throw new SyncProtocolError('invalid-data', 'publication payload is missing');
-    const published = await publishReserved(store, operation, signal);
+    const published = await publishReserved(
+      store,
+      operation,
+      signal,
+      firstExpected === undefined ? undefined : reserved.head.sequence,
+    );
     await finalizeReceipt(store, published.head, operation.operationId, signal);
     return { operationId: operation.operationId, sequence: published.sequence };
   }
