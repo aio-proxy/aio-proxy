@@ -188,6 +188,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     snapshot?: readonly RemoteEntity[],
     localCommitId?: string,
     bindingSnapshot?: LocalBinding | null,
+    capturedRangeRevision?: number,
   ): Promise<PreviewFence> => {
     const current = bindingSnapshot === undefined ? binding() : bindingSnapshot;
     const remote = snapshot ?? (await remoteEntities());
@@ -195,7 +196,12 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
       bindingId: current?.id ?? '',
       sessionGeneration: current?.sessionGeneration ?? 0,
       localCommitId: current === null ? '' : (localCommitId ?? latestCommitId(options.repo, current)),
-      rangeRevision,
+      // The revision the local rows were read at, not the one live when the fence is built: a Leave
+      // completing in between — the preview reads the committed source and the remote range over the
+      // network first — would otherwise pair the pre-Leave included row with the post-Leave revision,
+      // pass `sameFence()`, and let the reviewed join re-include the Provider Leave reported success
+      // for. Applying uses the live value, so the fence rejects the preview instead.
+      rangeRevision: capturedRangeRevision ?? rangeRevision,
       remoteVersions: Object.fromEntries(remote.map((entity) => [entity.objectId, entity.version])),
     };
   };
@@ -204,15 +210,24 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     readonly binding: LocalBinding | null;
     readonly entities: readonly LocalEntity[];
     readonly localCommitId: string;
+    readonly rangeRevision: number;
   } => {
     const capturedBinding = binding();
-    if (capturedBinding === null) return { binding: null, entities: [], localCommitId: '' };
+    // Read with the rows, in one synchronous block, so nothing can land between the two.
+    const capturedRangeRevision = rangeRevision;
+    if (capturedBinding === null)
+      return { binding: null, entities: [], localCommitId: '', rangeRevision: capturedRangeRevision };
     const before = latestCommitId(options.repo, capturedBinding);
     const entities = snapshotLocalEntities(localEntities());
     const afterBinding = binding();
     const after = afterBinding?.id === capturedBinding.id ? latestCommitId(options.repo, capturedBinding) : '';
     if (afterBinding?.id !== capturedBinding.id || before !== after) throw new SyncPreviewError('preview-stale');
-    return { binding: capturedBinding, entities, localCommitId: after };
+    return {
+      binding: capturedBinding,
+      entities,
+      localCommitId: after,
+      rangeRevision: capturedRangeRevision,
+    };
   };
 
   const operationInput = (): OperationInput => ({
@@ -264,7 +279,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
     // configuration change between preview and Apply would otherwise publish the superseded body or
     // overwrite the intervening edit with a cloud value, and the commit guard is disabled below.
     const local = captureLocal();
-    const observed = await currentFence(remote, local.localCommitId, local.binding);
+    const observed = await currentFence(remote, local.localCommitId, local.binding, local.rangeRevision);
     if (!sameFence(record.fence, observed)) throw new SyncPreviewError('preview-stale');
     await candidate.commit();
     // Deferring the engine exists precisely so reconciliation never sees these objects before the
@@ -310,7 +325,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
             request,
             local: local.entities,
             remote,
-            fence: await currentFence(remote, local.localCommitId, local.binding),
+            fence: await currentFence(remote, local.localCommitId, local.binding, local.rangeRevision),
             previewId,
             expiresAt,
             registry: options.registry?.(),
@@ -342,7 +357,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): SyncCo
         request: input,
         local: local.entities,
         remote,
-        fence: await currentFence(remote, local.localCommitId, local.binding),
+        fence: await currentFence(remote, local.localCommitId, local.binding, local.rangeRevision),
         previewId,
         expiresAt,
         registry: options.registry?.(),

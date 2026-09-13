@@ -766,3 +766,71 @@ test('a leave waits for an apply whose reviewed import is already in flight, and
     control.apply({ previewId: queued?.previewId ?? '', decisions: [{ objectId: 'cloud-object', choice: 'restore' }] }),
   ).rejects.toMatchObject({ code: 'preview-stale' });
 });
+
+// A preview reads its local rows first, then the committed source and the remote range over the
+// network, and it does not hold the mutation queue. A Leave completing in that window used to pair
+// the pre-Leave included row with the post-Leave range revision, so the reviewed join passed its
+// fence and re-included the Provider Leave had already reported success for.
+test('a leave completing while a join preview is being built makes the preview stale', async () => {
+  let row = {
+    objectId: 'local-object',
+    logicalKey: 'shared',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind: 'provider' as const, logicalKey: 'shared', value: { region: 'eu' }, dependencies: [] },
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  };
+  let left = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [row],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: (_bindingId: string, entity: typeof row) => {
+        row = entity;
+      },
+      latestConfirmedCommit: () => ({ commitId: 'commit-1' }),
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [row],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    committedSource: async () => {
+      // Past the row snapshot and still awaiting the source: previewing takes no lock, so a Leave
+      // request really does land here.
+      if (!left) {
+        left = true;
+        await control.setRange('shared', false);
+      }
+      return {
+        raw: { providers: { shared: { kind: 'api', baseUrl: 'https://shared.example.test' } } },
+        accounts: new Map(),
+        pluginSecrets: new Map(),
+        pluginVersions: new Map(),
+      };
+    },
+  } as never);
+
+  const preview = await control.preview({ kind: 'join', providerId: 'shared' });
+
+  expect(row.mode).toBe('excluded');
+  await expect(
+    control.apply({
+      previewId: preview.previewId,
+      decisions: preview.rows.map((previewRow) => ({ objectId: previewRow.objectId, choice: previewRow.choices[0]! })),
+    }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  // Re-including it is the harm: the row must still be excluded once the stale apply is refused.
+  expect(row.mode).toBe('excluded');
+});
