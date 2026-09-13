@@ -48,7 +48,16 @@ const oauthProviderRecord = (body: EntityBody): Record<string, JsonValue> | unde
  */
 function templateEnv(body: EntityBody): 'invalid-config' | readonly string[] {
   try {
-    return collectMissingTemplateEnv(body.value);
+    // `resolveApiKey()` expands the supported legacy `apiKey: "$NAME"` from this device's environment,
+    // and the template resolver never sees it. Left out, a Provider referencing a variable this
+    // device never defined activates with an undefined key — a working Provider replaced by an
+    // unauthenticated one — instead of staying pending as `missing-env`.
+    const legacy = new Set<string>();
+    legacyApiKeyEnv(body.value, legacy);
+    return [
+      ...collectMissingTemplateEnv(body.value),
+      ...[...legacy].filter((name) => typeof process.env[name] !== 'string'),
+    ];
   } catch {
     // A template this device cannot parse would fail the whole configuration on its next load.
     return 'invalid-config';

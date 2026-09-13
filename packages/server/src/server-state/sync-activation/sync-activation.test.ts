@@ -111,6 +111,14 @@ test('holds a remote Provider that repoints a legacy $NAME key at a new destinat
   expect(await withEnv(() => checkWith(approved)(runningConfig, body))).toBe('secret-conflict');
 });
 
+// `resolveApiKey()` resolves an undefined `$NAME` to `undefined`, so activating replaces a working
+// Provider with an unauthenticated one — the same reason an unresolved `{{env.NAME}}` stays pending.
+test('holds a remote Provider whose legacy $NAME key this device never defined', async () => {
+  const body = providerBody({ baseURL: 'https://example.test', apiKey: '$AIO_PROXY_TEST_ABSENT' });
+
+  expect(await checkWith(body)(runningConfig, body)).toBe('missing-env');
+});
+
 // `close()` aborts the engine controller and then waits for the running reconciliation, so an
 // independent controller here lets disconnect, backend replacement or shutdown hang on `receive()`.
 test('an OAuth account import is aborted by the reconciliation signal', async () => {
