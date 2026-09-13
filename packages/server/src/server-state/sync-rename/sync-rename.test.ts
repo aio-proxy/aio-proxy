@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  AtomicConfigCommitUncertainError,
   AtomicConfigFile,
   createPluginRepository,
   encodeCandidate,
@@ -167,6 +168,91 @@ test('a configuration commit that fails leaves the credential and the rows on th
         [{ ...row, logicalKey: 'personal' }],
       ),
     ).rejects.toThrow('candidate rejected');
+    expect(accounts.readAccount('personal')).toBeNull();
+    expect(accounts.readAccount('work')).toEqual(before);
+    expect(stored).toEqual([row]);
+  } finally {
+    db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// An uncertain commit may already be durable on the new Provider ID. Undoing the local half then
+// leaves the file and the runtime on the new ID with the credential and the rows on the old one — the
+// unauthorized split this move exists to prevent, and the consumed preview can no longer repair it.
+test('an uncertain configuration commit that landed keeps the credential and the rows on the new Provider ID', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-rename-uncertain-'));
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: { kind: 'api' } } }, configPath));
+  const db = openDb({ home });
+  try {
+    const accounts = createPluginRepository(db.sqlite);
+    const before = authorize(accounts, 'work');
+    const file = new AtomicConfigFile(configPath);
+    let stored: readonly LocalEntity[] = [row];
+    const renamed = [{ ...row, logicalKey: 'personal' }];
+    await expect(
+      renameProviderIdentity(
+        {
+          configPath,
+          configFile: file,
+          repo: {
+            readBinding: () => ({ id: 'binding' }),
+            entities: () => stored,
+            putEntities: (_bindingId: string, entities: readonly LocalEntity[]) => void (stored = entities),
+          } as never,
+          accounts,
+          applyCandidate: async (raw) => {
+            await file.transaction(async () => ({ next: raw, result: undefined }));
+            throw new AtomicConfigCommitUncertainError();
+          },
+        },
+        'work',
+        'personal',
+        renamed,
+      ),
+    ).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
+    expect(await file.read()).toEqual({ providers: { personal: { kind: 'api' } } });
+    expect(accounts.readAccount('work')).toBeNull();
+    expect(accounts.readAccount('personal')).toEqual({ ...before, providerId: 'personal' });
+    expect(stored).toEqual(renamed);
+  } finally {
+    db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Uncertain is not committed: a candidate that never reached the file leaves the authored
+// configuration on the old Provider ID, so the local half has to go back with it.
+test('an uncertain configuration commit that never landed leaves the credential and the rows on the old Provider ID', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-rename-uncertain-lost-'));
+  const configPath = join(home, 'config.jsonc');
+  writeFileSync(configPath, encodeCandidate({ providers: { work: { kind: 'api' } } }, configPath));
+  const db = openDb({ home });
+  try {
+    const accounts = createPluginRepository(db.sqlite);
+    const before = authorize(accounts, 'work');
+    let stored: readonly LocalEntity[] = [row];
+    await expect(
+      renameProviderIdentity(
+        {
+          configPath,
+          configFile: new AtomicConfigFile(configPath),
+          repo: {
+            readBinding: () => ({ id: 'binding' }),
+            entities: () => stored,
+            putEntities: (_bindingId: string, entities: readonly LocalEntity[]) => void (stored = entities),
+          } as never,
+          accounts,
+          applyCandidate: async () => {
+            throw new AtomicConfigCommitUncertainError();
+          },
+        },
+        'work',
+        'personal',
+        [{ ...row, logicalKey: 'personal' }],
+      ),
+    ).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
     expect(accounts.readAccount('personal')).toBeNull();
     expect(accounts.readAccount('work')).toEqual(before);
     expect(stored).toEqual([row]);
