@@ -29,21 +29,26 @@ export function redactEntityValue(body: EntityBody, secretKeys: ReadonlySet<stri
 }
 
 function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = new Set()): Map<string, JsonValue> {
-  // Keyed by an authored path, so `__proto__` is reachable here too — see `redact`.
+  // Keyed by an authored path, so `__proto__` is reachable here too — see `redact`. The key is the
+  // segment list rather than its dotted join because an authored key may itself contain a dot:
+  // `{'a.b': {apiKey}}` and `{a: {b: {apiKey}}}` both join to `a.b.apiKey`, and the second leaf
+  // would overwrite the first — a change to the loser then compares equal and reports no secret
+  // change while the preview redacts both. Matching still uses the dotted form.
   const found = new Map<string, JsonValue>();
-  const visit = (entry: JsonValue, path: string): void => {
+  const visit = (entry: JsonValue, path: readonly string[]): void => {
     if (entry === null || typeof entry !== 'object') {
-      if (SECRET_KEY.test(path) || secretKeys.has(path) || secretKeys.has(path.split('.').at(-1) ?? ''))
-        found.set(path, entry);
+      const dotted = path.join('.');
+      if (SECRET_KEY.test(dotted) || secretKeys.has(dotted) || secretKeys.has(path.at(-1) ?? ''))
+        found.set(JSON.stringify(path), entry);
       return;
     }
     if (Array.isArray(entry)) {
-      entry.forEach((child, index) => visit(child, `${path}[${index}]`));
+      entry.forEach((child, index) => visit(child, [...path, `[${index}]`]));
       return;
     }
-    for (const [key, child] of Object.entries(entry)) visit(child, path === '' ? key : `${path}.${key}`);
+    for (const [key, child] of Object.entries(entry)) visit(child, [...path, key]);
   };
-  if (value !== null) visit(value, '');
+  if (value !== null) visit(value, []);
   return found;
 }
 

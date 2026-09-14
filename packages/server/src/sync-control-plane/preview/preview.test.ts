@@ -2661,3 +2661,12 @@ test('the same secrets authored in a different key order are not a secret change
   expect(secretChange(local, cloud, new Set())).toBe('none');
   expect(secretChange(local, { ...cloud, apiKey: 'rotated' }, new Set())).toBe('changed');
 });
+
+test('a secret under a dotted authored key is not shadowed by the nested path it collides with', () => {
+  // `{'a.b': {apiKey}}` and `{a: {b: {apiKey}}}` both address `a.b.apiKey`, so one leaf would hide
+  // the other and a rotation of the hidden one would be reported as no change at all.
+  const local = { 'a.b': { apiKey: 'first' }, a: { b: { apiKey: 'second' } } };
+
+  expect(secretChange(local, { ...local, 'a.b': { apiKey: 'rotated' } }, new Set())).toBe('changed');
+  expect(secretChange(local, { ...local, a: { b: { apiKey: 'rotated' } } }, new Set())).toBe('changed');
+});
