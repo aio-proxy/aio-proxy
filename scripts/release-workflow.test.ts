@@ -83,6 +83,60 @@ test('installs bun from a pinned commit, never a movable tag', async () => {
   for (const reference of references) expect(reference).toMatch(/^[0-9a-f]{40}$/u);
 });
 
+// This gate decides whether the runner is handed Apple signing material, and it is shell
+// that runs there, so the honest check is to run it against a registry that has published
+// one version. A numeric-core comparison read 0.24.0-beta.2 as equal to a published
+// 0.24.0-beta.1 and skipped signing for a release Changesets went on to publish.
+test('the CloudKit signing gate asks the registry about the exact version', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const step = workflow.slice(workflow.indexOf('- name: Determine whether CloudKit is being published'));
+  const marker = 'run: |\n';
+  const script = step.slice(step.indexOf(marker) + marker.length, step.indexOf('\n\n')).replaceAll(/^ {10}/gmu, '');
+  const directory = await mkdtemp(join(tmpdir(), 'aio-cloudkit-gate-'));
+  const fakeBin = join(directory, 'bin');
+  const manifest = join(directory, 'packages', 'plugins', 'cloudkit', 'package.json');
+  const output = join(directory, 'github-output');
+  await mkdir(join(directory, 'packages', 'plugins', 'cloudkit'), { recursive: true });
+  await mkdir(fakeBin);
+  // A registry holding 0.24.0-beta.1 and nothing else, answering both the dist-tag and
+  // the exact-version query so the gate cannot pass by asking the wrong one.
+  await writeFile(
+    join(fakeBin, 'npm'),
+    '#!/bin/sh\ncase "$2" in\n' +
+      "  '@aio-proxy/plugin-cloudkit'|'@aio-proxy/plugin-cloudkit@0.24.0-beta.1') echo 0.24.0-beta.1 ;;\n" +
+      '  *) exit 1 ;;\nesac\n',
+  );
+  await chmod(join(fakeBin, 'npm'), 0o755);
+
+  const publishableFor = async (version: string): Promise<string> => {
+    await writeFile(manifest, JSON.stringify({ name: '@aio-proxy/plugin-cloudkit', version }));
+    await writeFile(output, '');
+    const child = Bun.spawn(['bash', '-c', script], {
+      cwd: directory,
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}:${process.env['PATH'] ?? ''}`,
+        GITHUB_OUTPUT: output,
+        GITHUB_ENV: join(directory, 'github-env'),
+      },
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+    expect(`${exitCode} ${stderr}`).toBe('0 ');
+    return await readFile(output, 'utf8');
+  };
+
+  try {
+    // Not on the registry, so Changesets will publish it: the runner needs the material.
+    expect(await publishableFor('0.24.0-beta.2')).toContain('publishable=true');
+    // The standing Version PR still carries the published version: ask for nothing.
+    expect(await publishableFor('0.24.0-beta.1')).toContain('publishable=false');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('dry-run restores bun.lock and never invokes npm publish', async () => {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'aio-release-dry-run-'));
   const fakeBin = join(temporaryDirectory, 'bin');

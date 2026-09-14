@@ -423,6 +423,8 @@ async function shouldPrepareCloudKitArtifact(releaseVersion: string): Promise<bo
   const override = process.env['APPLE_CLOUDKIT_RELEASE_REQUIRED'];
   if (override === 'true') return true;
   if (override === 'false') return false;
-  const published = await $`npm view @aio-proxy/plugin-cloudkit version`.nothrow().quiet();
+  // Same exact-version probe as the publish loop and the workflow gate: the dist-tag
+  // does not follow a prerelease, so it cannot answer whether this version is published.
+  const published = await $`npm view ${`@aio-proxy/plugin-cloudkit@${releaseVersion}`} version`.nothrow().quiet();
   return published.exitCode !== 0 || published.text().trim() !== releaseVersion;
 }
