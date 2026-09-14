@@ -1,12 +1,3 @@
-import {
-  type CommittedSource,
-  type LocalBinding,
-  type LocalEntity,
-  type PluginRegistry,
-  type PluginRepository,
-  type SyncRepository,
-} from '@aio-proxy/core';
-import type { SyncSession } from '@aio-proxy/plugin-sdk';
 import type {
   SyncApplyInput,
   SyncBackendView,
@@ -16,9 +7,8 @@ import type {
   SyncStatus,
 } from '@aio-proxy/types';
 
-import { createFifoQueue } from '../fifo-queue';
-import { createFenceReader, sourceDigest } from './fence';
-import type { ServerSyncLifecycle } from './lifecycle';
+import { createFifoQueue } from '../../fifo-queue';
+import { createFenceReader, sourceDigest } from '../fence';
 import {
   applyPreview,
   assertDecisions,
@@ -26,65 +16,19 @@ import {
   setRange,
   SyncOperationError,
   type OperationInput,
-} from './operations';
+} from '../operations';
 import {
   buildPreview,
   createPreviewToken,
-  listRemoteEntities,
   sameFence,
   snapshotRemoteEntities,
   SyncPreviewError,
   type PreviewRecord,
-  type RemoteEntity,
-} from './preview';
-import { createPreviewStore, type SyncConnectCandidate } from './preview-store';
-import { createRemoteOperations, readHistory } from './remote-operations';
-import { createStatus } from './status';
-
-export type { SyncConnectCandidate } from './preview-store';
-
-export type SyncControlPlaneOptions = {
-  readonly repo: SyncRepository;
-  readonly registry?: () => PluginRegistry;
-  readonly accounts?: PluginRepository;
-  readonly backendOptions?: (
-    plugin: string,
-    capability: string,
-  ) => import('@aio-proxy/plugin-sdk').JsonValue | undefined;
-  readonly binding?: () => LocalBinding | null;
-  readonly localEntities?: () => readonly LocalEntity[];
-  /** The committed configuration a join projects local-only bodies from. */
-  readonly committedSource?: () => Promise<CommittedSource>;
-  readonly session?: () => SyncSession | undefined;
-  /**
-   * The mutation fence `applyRemote` holds. Excluding a Provider outside it can land between the
-   * entity snapshot that call takes and the row it writes back, silently re-including the Provider.
-   */
-  readonly withFence?: <T>(run: () => Promise<T>) => Promise<T>;
-  readonly remoteEntities?: () => Promise<readonly RemoteEntity[]>;
-  readonly lifecycle?: Partial<Pick<ServerSyncLifecycle, 'start'>> &
-    Pick<ServerSyncLifecycle, 'activate' | 'reconcile' | 'close'>;
-  readonly applyLocal: OperationInput['applyLocal'];
-  readonly applyCloud?: OperationInput['applyCloud'];
-  readonly restore?: OperationInput['restore'];
-  readonly persistOverrides: OperationInput['persistOverrides'];
-  readonly persistProviderIdentity?: OperationInput['persistProviderIdentity'];
-  readonly shareOAuth?: OperationInput['shareOAuth'];
-  readonly connect: (input: Extract<SyncPreviewInput, { kind: 'connect' }>) => Promise<SyncConnectCandidate>;
-  readonly detach?: (providerId: string, loginSessionId?: string) => Promise<void>;
-  readonly cancelDetach?: (providerId: string) => Promise<void>;
-  readonly purge?: OperationInput['purge'];
-  /**
-   * Registers the sink the lifecycle pushes background engine outcomes into. Without it the public
-   * state only ever moves on a manual preview/apply/retry, so automatic synchronization can be
-   * failing while the Dashboard and CLI still report `idle`.
-   */
-  readonly onEngineStatus?: (handle: (status: string) => void) => void;
-  readonly now?: () => number;
-  /** How long a preview stays applicable before it is discarded. Defaults to ten minutes. */
-  readonly previewTtlMs?: number;
-  readonly randomBytes?: (size: number) => Uint8Array;
-};
+} from '../preview';
+import { createPreviewStore, type SyncConnectCandidate } from '../preview-store';
+import { readHistory } from '../remote-operations';
+import { createStatus } from '../status';
+import { resolveOptions, type SyncControlPlaneOptions } from './options';
 
 const ENGINE_STATES: Readonly<Record<string, SyncConnectionState>> = {
   offline: 'offline',
@@ -103,37 +47,13 @@ export type ServerSyncControlPlane = SyncControlPlane & { readonly dispose: () =
 
 // eslint-disable-next-line max-lines-per-function -- this assembles the public operations over one fence owner
 export function createSyncControlPlane(options: SyncControlPlaneOptions): ServerSyncControlPlane {
-  if (
-    options.applyLocal === undefined ||
-    (options.applyCloud === undefined && options.session === undefined) ||
-    (options.restore === undefined && options.session === undefined) ||
-    options.persistOverrides === undefined ||
-    (options.purge === undefined && options.session === undefined) ||
-    options.connect === undefined
-  )
-    throw new SyncOperationError('backend-unavailable');
-  const now = options.now ?? Date.now;
-  const previewTtlMs = options.previewTtlMs ?? 10 * 60_000;
-  const binding = options.binding ?? (() => options.repo.readBinding());
-  const localEntities =
-    options.localEntities ??
-    (() => {
-      const current = binding();
-      return current === null ? [] : options.repo.entities(current.id);
-    });
-  // Reads against the bound session outlive nothing but the binding, so a stalled `list`/`read`
-  // after network loss would otherwise hang until the process exits. Disconnecting aborts them and
-  // re-arms, since this control plane is created once and survives connect/disconnect cycles.
+  // Disconnecting aborts the reads still outstanding against the bound session and re-arms, since
+  // this control plane is created once and survives connect/disconnect cycles.
   let lifetime = new AbortController();
-  const remoteEntities = options.remoteEntities ?? (() => listRemoteEntities(options.session?.(), lifetime.signal));
-  const remoteOps =
-    options.session === undefined ? undefined : () => createRemoteOperations(options.session!(), lifetime.signal);
-  const restore =
-    options.restore ?? (async (...args: Parameters<OperationInput['restore']>) => remoteOps!().restore(...args));
-  const purge = options.purge ?? (async (...args: Parameters<OperationInput['purge']>) => remoteOps!().purge(...args));
-  const applyCloud =
-    options.applyCloud ??
-    (async (...args: Parameters<NonNullable<OperationInput['applyCloud']>>) => remoteOps!().publish(...args));
+  const { now, previewTtlMs, binding, localEntities, remoteEntities, restore, purge, applyCloud } = resolveOptions(
+    options,
+    () => lifetime.signal,
+  );
   const previews = createPreviewStore({ now, onExpire: () => releasePreviewState() });
   let rangeRevision = 0;
   let stateBeforePreview: SyncConnectionState = 'idle';
@@ -500,5 +420,3 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     },
   };
 }
-
-export type { SyncControlPlane } from '@aio-proxy/types';
