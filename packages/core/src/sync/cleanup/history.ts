@@ -63,6 +63,7 @@ async function cancelReservations(
     const current = await readHeadOrThrow(store, objectId, signal);
     if (current.head.state === 'purged') return;
     const stale: string[] = [];
+    const aged: string[] = [];
     const unstaged: string[] = [];
     for (const operationId of current.head.reserved) {
       const verdict = await reservationVerdict(store, objectId, operationId, cutoff, signal);
@@ -72,8 +73,19 @@ async function cancelReservations(
         continue;
       }
       const since = stampedAt(current.head, operationId);
-      if (since !== undefined && since < cutoff) stale.push(operationId);
+      if (since !== undefined && since < cutoff) aged.push(operationId);
       else unstaged.push(operationId);
+    }
+    // An aged reservation is reclaimed on the absence of its payload alone, and that read is already
+    // stale: the verdicts above are one round trip each, and a publisher resuming in any of them
+    // stages its payload while its ID is still reserved. Cancelling it then erases that payload and
+    // strands its outbox entry for good, because `reserve()` and `publish()` both refuse an ID the
+    // head lists as cancelling. Rereading here is the last look before the write.
+    // ponytail: narrows the window to a single round trip; closing it needs a transaction across the
+    // head and revision keys that the backends do not offer.
+    for (const operationId of aged) {
+      if ((await reservationVerdict(store, objectId, operationId, cutoff, signal)) === 'live') continue;
+      stale.push(operationId);
     }
     if (stale.length > 0) {
       await updateHead(

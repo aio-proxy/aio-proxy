@@ -179,15 +179,20 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
 
   // A preview awaiting a decision is the user's turn, so a background poll must not overwrite it;
   // `stopped` belongs to disconnect(), which owns its own terminal state.
+  let engineStatusSeen = 0;
   options.onEngineStatus?.((value) => {
     if (state === 'preview-required' || state === 'disconnected') return;
     if (value === 'online') {
       state = 'idle';
       lastSuccessAt = now();
+      engineStatusSeen += 1;
       return;
     }
     const mapped = ENGINE_STATES[value];
-    if (mapped !== undefined) state = mapped;
+    if (mapped !== undefined) {
+      state = mapped;
+      engineStatusSeen += 1;
+    }
   });
 
   const { fence: currentFence, captureLocal } = createFenceReader({
@@ -462,7 +467,13 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
           throw new SyncOperationError('backend-unavailable');
         }
         options.lifecycle?.activate();
+        const reported = engineStatusSeen;
         await options.lifecycle?.reconcile?.();
+        // `reconcile()` resolves for an offline backend and for an unpublishable oversized entry —
+        // the engine reports those as its own status rather than throwing. Claiming `idle` and a
+        // fresh success over that outcome tells the API and the Dashboard a synchronization that
+        // never happened succeeded, so the engine's verdict stands whenever it gave one.
+        if (engineStatusSeen !== reported) return;
         state = 'idle';
         lastSuccessAt = now();
       });

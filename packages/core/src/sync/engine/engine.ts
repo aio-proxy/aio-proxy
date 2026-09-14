@@ -102,28 +102,25 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
       return false;
     }
     // Supersession comes from the outbox as it stands, not from the pass's snapshot: a local commit
-    // confirmed during an earlier operation's network wait appends to it. An entry a newer one
-    // replaces carries a body nothing needs any more, which is what makes dropping an unpublishable
-    // one safe, and a delete must not be published at all: the tombstone it leaves defeats that
-    // newer put at the state check below, so an object deleted and re-added while the backend was
-    // unreachable would be dropped again by the next remote reconciliation. The end state the
-    // outbox describes is the newest operation's.
+    // confirmed during an earlier operation's network wait appends to it. The end state the outbox
+    // describes is the newest operation's, so an entry a newer one replaces carries a body nothing
+    // needs any more. Publishing it anyway appends a revision to the head's history and receipts for
+    // a state no device will ever read — enough of them and the head itself exceeds the backend's
+    // value limit before `maintenance()` trims it, after which every put throws `quota`. A delete
+    // must not be published for a second reason: the tombstone it leaves defeats that newer put at
+    // the state check below, so an object deleted and re-added while the backend was unreachable
+    // would be dropped again by the next remote reconciliation.
     const queued = input.repo.outbox(input.binding.id).filter((entry) => entry.objectId === operation.objectId);
-    const newest = queued.at(-1)?.operationId === operation.operationId;
-    if (operation.kind === 'delete' && !newest) {
+    if (queued.at(-1)?.operationId !== operation.operationId) {
       input.repo.acknowledge(input.binding.id, operation.operationId);
       return false;
     }
     // A body over the backend's value limit throws `quota` deterministically, and a failed entry
     // is never acknowledged, so retrying it first on every pass wedges every later object — and
-    // remote reconciliation behind it — on a row that can never publish. A newer operation for
-    // the same object supersedes it outright; the newest one stays queued, since shrinking the
-    // configuration is what produces its replacement, and the pass reports `quota` instead of
-    // `online` for as long as it is there.
-    if (exceedsValueLimit(store, operation)) {
-      if (!newest) input.repo.acknowledge(input.binding.id, operation.operationId);
-      return newest;
-    }
+    // remote reconciliation behind it — on a row that can never publish. The newest entry stays
+    // queued, since shrinking the configuration is what produces its replacement, and the pass
+    // reports `quota` instead of `online` for as long as it is there.
+    if (exceedsValueLimit(store, operation)) return true;
     const head = await store.readHead(operation.objectId, signal);
     assertGeneration(generation);
     // A newer epoch means another device deleted and restored this object while the operation sat

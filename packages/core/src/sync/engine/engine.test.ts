@@ -1039,6 +1039,27 @@ test('leaving the synchronized range drops the writes queued while the backend w
   });
 });
 
+// Every published revision leaves an entry in the head's history and a receipt beside it, and the
+// head is one backend value: a device that queued a dozen edits while offline would publish a dozen
+// bodies no device will ever read, and can push the head past the value limit before `maintenance()`
+// trims it — after which every put throws `quota`.
+test('a put a newer entry supersedes never reaches the backend', async () => {
+  await withTwoSyncDevices(async ({ a, b }) => {
+    await a.commitProvider('work', { kind: 'api', apiKey: 'first' }, true);
+    await a.commitProvider('work', { kind: 'api', apiKey: 'second' }, true);
+    expect(a.repo.outbox(a.binding.id)).toHaveLength(2);
+
+    await a.engine.reconcile(a.signal);
+    await b.engine.reconcile(b.signal);
+
+    expect(a.repo.outbox(a.binding.id)).toEqual([]);
+    const stored = await createSyncObjectStore(a.session).readHead('provider-work', a.signal);
+    expect(stored?.head.history).toEqual([]);
+    expect(Object.keys(stored?.head.receipts ?? {})).toHaveLength(1);
+    expect(b.remoteApplyCalls().map((call) => call.body)).toEqual([{ kind: 'api', apiKey: 'second' }]);
+  });
+});
+
 test('an outbox entry over the backend value limit yields to every later object', async () => {
   await withTwoSyncDevices(
     async ({ a, b }) => {

@@ -463,6 +463,62 @@ test('history reclaims a reservation whose publisher never staged a payload', as
   expect(reclaimed.reservedAt).toBeUndefined();
 });
 
+// Cancelling a reservation erases its payload, and both `reserve()` and `publish()` refuse an ID the
+// head lists as cancelling, so a publisher reclaimed on a read that went stale mid-pass loses its
+// body and its outbox entry can never complete.
+test('history leaves a reservation whose publisher staged its payload mid-pass', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'resumed-secret');
+  await store.session.compareAndSwap(
+    entityKey(item.objectId),
+    null,
+    encode(reserve(newHead(item.objectId, item.body), item.operationId, 0)),
+    signal,
+  );
+  await collectHistory(store, item.objectId, 1_000, signal);
+
+  const serverNow = 1_001 + HISTORY_RETENTION_MS;
+  const base = backend.connect();
+  let staged = false;
+  const racingSession: SyncSession = {
+    ...base,
+    async read(key, readSignal) {
+      const value = await base.read(key, readSignal);
+      // The publisher resumes right after maintenance reads its revision as absent, so the reclaim
+      // decision is already wrong by the time the head write goes out.
+      if (!staged && key === revisionKey(item.objectId, item.operationId)) {
+        staged = true;
+        await base.compareAndSwap(
+          key,
+          null,
+          encode({
+            protocol: 1,
+            state: 'payload',
+            objectId: item.objectId,
+            epoch: 0,
+            operationId: item.operationId,
+            body: item.body,
+            publishedSequence: null,
+            writtenAt: serverNow,
+          }),
+          signal,
+        );
+      }
+      return value;
+    },
+  };
+  await collectHistory(createSyncObjectStore(racingSession), item.objectId, serverNow, signal);
+
+  expect(head(backend, item.objectId)).toMatchObject({ reserved: [item.operationId], cancelling: [] });
+  expect(decodeRevision(backend.readAll().get(revisionKey(item.objectId, item.operationId))!.value)).toMatchObject({
+    state: 'payload',
+  });
+  // The whole point of leaving it alone: the publisher can still finish the operation it queued.
+  expect((await publishEntity(store, item, signal)).sequence).toBe(1);
+});
+
 test('receipt finalization retries an unknown cleanup write', async () => {
   const backend = createMemorySyncBackend();
   const session = backend.connect();

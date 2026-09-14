@@ -220,6 +220,51 @@ test('background engine outcomes move the publicly reported state', async () => 
   expect(control.status().state).toBe('idle');
 });
 
+// The engine reports an unreachable backend and an entry it cannot publish through its status
+// callback and resolves anyway, so overwriting that verdict with `idle` and a fresh timestamp tells
+// the API and the Dashboard that a synchronization which never happened succeeded.
+test('retry keeps the engine verdict when reconcile resolves without synchronizing', async () => {
+  let handle: ((status: string) => void) | undefined;
+  let reported: string | undefined = 'offline';
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    now: () => 1_000,
+    onEngineStatus: (next) => {
+      handle = next;
+    },
+    lifecycle: {
+      activate: () => {},
+      reconcile: async () => {
+        if (reported !== undefined) handle!(reported);
+      },
+      close: async () => {},
+    },
+  } as never);
+
+  expect(await control.retry()).toMatchObject({ state: 'offline', lastSuccessAt: null });
+  reported = 'quota';
+  expect(await control.retry()).toMatchObject({ state: 'quota', lastSuccessAt: null });
+
+  // A pass that reports nothing still resolves as a success: the guard must not swallow that.
+  reported = undefined;
+  expect(await control.retry()).toMatchObject({ state: 'idle', lastSuccessAt: 1_000 });
+});
+
 test('a connect apply is refused when the configuration moved after the preview was reviewed', async () => {
   let commitId = 'commit-1';
   let committed = 0;
