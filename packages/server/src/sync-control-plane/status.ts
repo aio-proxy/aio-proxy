@@ -58,14 +58,21 @@ export function createStatus(input: StatusInput): { status: () => SyncStatus; ba
           .filter((entity) => entity.kind === 'provider')
           .map((entity) => {
             const pendingState = entity.pendingReason;
+            const mode = entity.oauth?.mode === 'share-pending' ? 'unverified' : entity.oauth?.mode;
+            // Publishing an OAuth Provider before its account object arrives holds the row at
+            // `oauth-unverified` with no ownership recorded at all, so reading the mode alone reports
+            // a plain local credential and the Dashboard hides the pending warning for a Provider
+            // that cannot use one. `detach-pending` still wins: that row waits on the user's own
+            // login and its copy carries the cancel action. An excluded row synchronizes nothing, so
+            // it keeps reporting an independent credential.
             const oauthState =
               pendingState === 'refresh-deferred' ||
               pendingState === 'result-uncertain' ||
               pendingState === 'login-required'
                 ? pendingState
-                : entity.oauth?.mode === 'share-pending'
+                : pendingState === 'oauth-unverified' && entity.mode === 'included' && mode !== 'detach-pending'
                   ? 'unverified'
-                  : entity.oauth?.mode;
+                  : mode;
             return {
               providerId: entity.logicalKey,
               objectId: entity.objectId,

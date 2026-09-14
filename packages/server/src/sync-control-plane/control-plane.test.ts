@@ -220,6 +220,53 @@ test('background engine outcomes move the publicly reported state', async () => 
   expect(control.status().state).toBe('idle');
 });
 
+// A Provider published before its account object arrives is held at `oauth-unverified` with no
+// ownership recorded yet, so reading `oauth.mode` alone reports a plain local credential and the
+// Dashboard hides the pending warning for a Provider that cannot use one.
+test('an included Provider held before its account object arrives reports an unverified credential', () => {
+  const provider = (objectId: string, extra: Record<string, unknown>) => ({
+    objectId,
+    logicalKey: objectId,
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 0,
+    desired: null,
+    baseline: null,
+    overrides: [],
+    pendingReason: 'oauth-unverified' as const,
+    ...extra,
+  });
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [
+        provider('waiting', {}),
+        // The user's own login owes this row an action, and its copy carries the cancel button.
+        provider('detaching', { oauth: { mode: 'detach-pending' } }),
+        provider('excluded', { mode: 'excluded' }),
+      ],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+  } as never);
+
+  expect(control.status().providers).toMatchObject([
+    { providerId: 'waiting', credentialState: 'unverified' },
+    { providerId: 'detaching', credentialState: 'detach-pending' },
+    { providerId: 'excluded', credentialState: 'independent' },
+  ]);
+});
+
 // The engine reports an unreachable backend and an entry it cannot publish through its status
 // callback and resolves anyway, so overwriting that verdict with `idle` and a fresh timestamp tells
 // the API and the Dashboard that a synchronization which never happened succeeded.

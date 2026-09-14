@@ -159,14 +159,12 @@ test('connecting cannot carry a row while the object its body depends on is decl
   const plugin = localOnly('plugin-a', '@example/plugin', true);
   const base = localOnly('provider-b', 'work', true);
   const dependency = { objectId: 'plugin-a', packageName: '@example/plugin', version: '1.0.0' };
-  const reviewed = record(connect, [
-    plugin,
-    {
-      ...base,
-      local: { ...body('provider', 'work'), dependencies: [dependency] },
-      row: { ...base.row, dependencies: ['plugin-a'] },
-    },
-  ]);
+  const dependent: PreviewCandidate = {
+    ...base,
+    local: { ...body('provider', 'work'), dependencies: [dependency] },
+    row: { ...base.row, dependencies: ['plugin-a'] },
+  };
+  const reviewed = record(connect, [plugin, dependent]);
 
   expect(() => assertDecisions(reviewed, [{ objectId: 'provider-b', choice: 'local' }])).toThrow(SyncOperationError);
   // Declining both is connect's default, and carrying both publishes a resolvable pair.
@@ -177,6 +175,21 @@ test('connecting cannot carry a row while the object its body depends on is decl
       { objectId: 'provider-b', choice: 'local' },
     ]),
   ).not.toThrow();
+
+  // Retiring the dependency's head is the same gap from the other side: a kind no rename can
+  // separate is offered `delete` on its colliding row, and the dependent would then publish a body
+  // pointing at a tombstone. Being named in the decisions is not enough — the head has to survive.
+  const collision = candidate('plugin-a', 'plugin-business', '@example/plugin');
+  const conflicted = record({ kind: 'join', providerId: 'work' }, [
+    { ...collision, row: { ...collision.row, change: 'conflict', choices: ['local', 'cloud', 'delete'] } },
+    dependent,
+  ]);
+  const decide = (choice: SyncDecision['choice']): SyncDecision[] => [
+    { objectId: 'plugin-a', choice },
+    { objectId: 'provider-b', choice: 'local' },
+  ];
+  expect(() => assertDecisions(conflicted, decide('delete'))).toThrow(SyncOperationError);
+  expect(() => assertDecisions(conflicted, decide('cloud'))).not.toThrow();
 });
 
 test('a plugin purge refuses to erase the transitive dependents the preview listed', async () => {

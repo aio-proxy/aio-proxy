@@ -71,12 +71,17 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
     // A published body names the objects it needs, and connect is the one preview that lets a row be
     // left out, so it is the one that can carry a Provider while the business-plugin object it
     // depends on is declined. Nothing would ever publish that object, and every other device then
-    // holds the Provider pending on a dependency the space does not have. A `cloud` or `delete`
-    // choice publishes no local body, so it names no dependency of its own.
+    // holds the Provider pending on a dependency the space does not have. `delete` is the same gap
+    // from the other side: a collision row in a kind no rename can separate may retire its own head,
+    // which leaves the published body pointing at a tombstone. A `cloud` or `delete` choice publishes
+    // no local body, so it names no dependency of its own.
     if (decision.choice !== 'cloud' && decision.choice !== 'delete')
-      for (const dependency of (candidate.local ?? candidate.restoreBody)?.dependencies ?? [])
-        if (rowIds.has(dependency.objectId) && !selected.has(dependency.objectId))
+      for (const dependency of (candidate.local ?? candidate.restoreBody)?.dependencies ?? []) {
+        if (!rowIds.has(dependency.objectId)) continue;
+        const dependencyChoice = selected.get(dependency.objectId)?.choice;
+        if (dependencyChoice === undefined || dependencyChoice === 'delete')
           throw new SyncOperationError('upgrade-required');
+      }
   }
   assertProviderIdentitiesFree(record, selected);
 }
