@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-cloudkit",
-  "version": "0.22.0",
+  "version": "0.22.1",
   "publishConfig": {
     "access": "public"
   },
