@@ -97,6 +97,8 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
   const manifest = join(directory, 'packages', 'plugins', 'cloudkit', 'package.json');
   const output = join(directory, 'github-output');
   await mkdir(join(directory, 'packages', 'plugins', 'cloudkit'), { recursive: true });
+  await mkdir(join(directory, '.changeset'));
+  await writeFile(join(directory, '.changeset', 'README.md'), '# Changesets\n');
   await mkdir(fakeBin);
   // A registry holding 0.24.0-beta.1 and nothing else, answering both the dist-tag and
   // the exact-version query so the gate cannot pass by asking the wrong one.
@@ -132,6 +134,11 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
     expect(await publishableFor('0.24.0-beta.2')).toContain('publishable=true');
     // The standing Version PR still carries the published version: ask for nothing.
     expect(await publishableFor('0.24.0-beta.1')).toContain('publishable=false');
+    // A pending note means this push only maintains that PR. Registry absence is the normal
+    // state for a package whose first release has not been cut, so without this the gate would
+    // notarize and discard an artifact on every push until it ships.
+    await writeFile(join(directory, '.changeset', 'quiet-syncs-share.md'), '---\n---\n');
+    expect(await publishableFor('0.24.0-beta.2')).toContain('publishable=false');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

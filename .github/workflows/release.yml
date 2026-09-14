@@ -71,20 +71,24 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      # The standing Version PR also runs this workflow. Only a lockstep version that
-      # is not yet on the registry is an actual publish, so do not ask for signing
-      # material while Changesets is merely maintaining that PR. Ask the registry about
-      # this exact version, the same probe the publish loop in scripts/release.ts uses:
-      # comparing numeric cores read 0.24.0-beta.2 as equal to a published
-      # 0.24.0-beta.1 and skipped signing for a release that did happen.
+      # The standing Version PR also runs this workflow. Signing material is asked for only on
+      # the publish path: Changesets publishes when no notes are pending and merely maintains
+      # that PR otherwise, so a pending note means nothing will be published no matter what the
+      # registry says. That second half matters for a package whose first release is still
+      # pending — the registry has never seen it, so the probe alone would demand every Apple
+      # secret and a full notarization on every push until it ships. On the publish push the
+      # probe asks about this exact version, the same one the publish loop in scripts/release.ts
+      # uses: comparing numeric cores read 0.24.0-beta.2 as equal to a published 0.24.0-beta.1
+      # and skipped signing for a release that did happen.
       - name: Determine whether CloudKit is being published
         id: cloudkit-release
         shell: bash
         run: |
           set -euo pipefail
           version="$(node -p "require('./packages/plugins/cloudkit/package.json').version")"
+          pending="$(node -p "require('node:fs').readdirSync('.changeset').filter((name) => name.endsWith('.md') && name !== 'README.md').length")"
           published="$(npm view "@aio-proxy/plugin-cloudkit@$version" version 2>/dev/null || true)"
-          if [ -z "$published" ]; then should_prepare=true; else should_prepare=false; fi
+          if [ "$pending" = 0 ] && [ -z "$published" ]; then should_prepare=true; else should_prepare=false; fi
           echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "APPLE_CLOUDKIT_RELEASE_REQUIRED=$should_prepare" >> "$GITHUB_ENV"
