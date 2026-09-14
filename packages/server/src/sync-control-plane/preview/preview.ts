@@ -197,10 +197,16 @@ export function buildPreview(input: {
   const ids = new Set<string>();
   if (input.request.kind === 'join') {
     // `providerId` is the logical key of any kind, not only a Provider: a model rule is joined the
-    // same way.
+    // same way. But `sync join PROVIDER_ID` names a Provider, so when one answers to the key it is
+    // the only thing joined — otherwise a rule or plugin that happens to spell its identity the same
+    // way would be dragged into the Provider's join and published with it. Dependencies discovered
+    // below still expand the selection across kinds.
     const providerId = input.request.providerId;
-    for (const entity of localSnapshot) if (entity.logicalKey === providerId) ids.add(entity.objectId);
-    for (const entity of remoteSnapshot) if (entity.logicalKey === providerId) ids.add(entity.objectId);
+    const named = [...localSnapshot, ...remoteSnapshot].filter((entity) => entity.logicalKey === providerId);
+    const scoped = named.some((entity) => entity.kind === 'provider')
+      ? named.filter((entity) => entity.kind === 'provider')
+      : named;
+    for (const entity of scoped) ids.add(entity.objectId);
     // A Provider is only publishable together with the business plugin config it needs, so the
     // join has to carry that object too. The authored configuration is the only source for it
     // while the Provider itself is still local-only and therefore has no published body yet.

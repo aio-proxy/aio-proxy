@@ -82,11 +82,37 @@ export interface SyncPreviewDialogProps {
 // not collide with a real choice.
 const EXCLUDE = 'exclude';
 
+// A published body names the objects it needs, and the server rejects a decision set that carries a
+// row while a dependency row of its own is left out: nothing would ever publish that object, so every
+// other device would hold the dependent pending on a dependency the space does not have. Selecting a
+// row therefore selects what it depends on, at that row's own default choice. `cloud` and `delete`
+// publish no local body, so they name no dependency.
+const withDependencyClosure = (
+  decisions: PreviewFormValues['decisions'],
+  rows: readonly SyncPreviewRow[],
+): PreviewFormValues['decisions'] => {
+  const byId = new Map(rows.map((row) => [row.objectId, row]));
+  const closed = new Map(Object.entries(decisions));
+  // Map iteration visits entries added during the loop, so a dependency's own dependencies follow.
+  for (const [objectId, decision] of closed) {
+    if (decision.choice === 'cloud' || decision.choice === 'delete') continue;
+    for (const dependency of byId.get(objectId)?.dependencies ?? []) {
+      const row = byId.get(dependency);
+      if (row === undefined || closed.has(dependency)) continue;
+      closed.set(dependency, { objectId: dependency, choice: row.choices[0] ?? 'local' });
+    }
+  }
+  return Object.fromEntries(closed);
+};
+
 const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
-  decisions: Object.fromEntries(
-    (preview?.rows ?? [])
-      .filter((row) => row.optional !== true)
-      .map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
+  decisions: withDependencyClosure(
+    Object.fromEntries(
+      (preview?.rows ?? [])
+        .filter((row) => row.optional !== true)
+        .map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
+    ),
+    preview?.rows ?? [],
   ),
   overrides: {},
   renames: {},
@@ -339,18 +365,23 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                             if (value === null) return;
                             if (value === EXCLUDE) {
                               if (row.optional !== true) return;
-                              field.handleChange(omit(field.state.value, [row.objectId]));
+                              field.handleChange(withDependencyClosure(omit(field.state.value, [row.objectId]), rows));
                               return;
                             }
                             if (!options.has(value as SyncPreviewRow['choices'][number])) return;
-                            field.handleChange({
-                              ...field.state.value,
-                              [row.objectId]: {
-                                ...(at(field.state.value, row.objectId) ?? { objectId: row.objectId }),
-                                objectId: row.objectId,
-                                choice: value as SyncApplyInput['decisions'][number]['choice'],
-                              },
-                            });
+                            field.handleChange(
+                              withDependencyClosure(
+                                {
+                                  ...field.state.value,
+                                  [row.objectId]: {
+                                    ...(at(field.state.value, row.objectId) ?? { objectId: row.objectId }),
+                                    objectId: row.objectId,
+                                    choice: value as SyncApplyInput['decisions'][number]['choice'],
+                                  },
+                                },
+                                rows,
+                              ),
+                            );
                           }}
                         >
                           <SelectTrigger aria-label={row.logicalKey} className="w-full sm:w-44">

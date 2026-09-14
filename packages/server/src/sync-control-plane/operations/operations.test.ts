@@ -152,6 +152,33 @@ test('connecting may leave out a decision only for a row with nothing on the clo
   ).toThrow(SyncOperationError);
 });
 
+// A body names the objects it needs, and connect is the one preview a row may be left out of, so it
+// is the one that can publish a Provider whose business-plugin object was declined.
+test('connecting cannot carry a row while the object its body depends on is declined', () => {
+  const connect: SyncPreviewInput = { kind: 'connect', plugin: '@example/backend', capability: 'cloud', options: {} };
+  const plugin = localOnly('plugin-a', '@example/plugin', true);
+  const base = localOnly('provider-b', 'work', true);
+  const dependency = { objectId: 'plugin-a', packageName: '@example/plugin', version: '1.0.0' };
+  const reviewed = record(connect, [
+    plugin,
+    {
+      ...base,
+      local: { ...body('provider', 'work'), dependencies: [dependency] },
+      row: { ...base.row, dependencies: ['plugin-a'] },
+    },
+  ]);
+
+  expect(() => assertDecisions(reviewed, [{ objectId: 'provider-b', choice: 'local' }])).toThrow(SyncOperationError);
+  // Declining both is connect's default, and carrying both publishes a resolvable pair.
+  expect(() => assertDecisions(reviewed, [])).not.toThrow();
+  expect(() =>
+    assertDecisions(reviewed, [
+      { objectId: 'plugin-a', choice: 'local' },
+      { objectId: 'provider-b', choice: 'local' },
+    ]),
+  ).not.toThrow();
+});
+
 test('a plugin purge refuses to erase the transitive dependents the preview listed', async () => {
   const scenario = harness();
   const rows = [

@@ -28,6 +28,19 @@ const preview: SyncPreview = {
   ],
 };
 
+const row = (objectId: string, logicalKey: string, extra: Partial<SyncPreview['rows'][number]>) => ({
+  objectId,
+  logicalKey,
+  kind: 'provider',
+  change: 'add' as const,
+  local: null,
+  cloud: null,
+  secretChange: 'none' as const,
+  dependencies: [],
+  choices: [] as SyncPreview['rows'][number]['choices'],
+  ...extra,
+});
+
 const mocks = rs.hoisted(() => ({ applySync: rs.fn(), applyError: null as Error | null }));
 
 rs.mock('@/hooks/use-sync', () => ({
@@ -350,18 +363,6 @@ test('retries a failed removal with the same empty override path set', async () 
 
 test('a connect preview leaves an optional row out of the decisions until the user opts in', async () => {
   mocks.applySync.mockReset();
-  const row = (objectId: string, logicalKey: string, extra: Partial<SyncPreview['rows'][number]>) => ({
-    objectId,
-    logicalKey,
-    kind: 'provider',
-    change: 'add' as const,
-    local: null,
-    cloud: null,
-    secretChange: 'none' as const,
-    dependencies: [],
-    choices: [] as SyncPreview['rows'][number]['choices'],
-    ...extra,
-  });
   const connect: SyncPreview = {
     previewId: 'preview-connect',
     kind: 'connect',
@@ -386,6 +387,54 @@ test('a connect preview leaves an optional row out of the decisions until the us
   await waitFor(() =>
     expect(mocks.applySync).toHaveBeenCalledWith(
       { previewId: 'preview-connect', decisions: [{ objectId: 'cloud-only', choice: 'cloud' }] },
+      { onSuccess: expect.any(Function) },
+    ),
+  );
+});
+
+// The server refuses a decision set that carries a row while an object its body depends on is
+// declined: nothing would publish that object, and every other device would hold the dependent
+// pending forever. Connect starts its optional rows declined, so the dialog has to opt them back in.
+test('a connect preview carries the optional object a selected row depends on', async () => {
+  mocks.applySync.mockReset();
+  const connect: SyncPreview = {
+    previewId: 'preview-connect',
+    kind: 'connect',
+    expiresAt: Date.now() + 10_000,
+    retainedSharedPlugins: [],
+    rows: [
+      row('plugin-config', '@example/plugin', {
+        kind: 'plugin-business',
+        local: { region: 'eu' },
+        choices: ['local'],
+        optional: true,
+      }),
+      row('object-work', 'work', {
+        change: 'conflict',
+        local: { name: 'work' },
+        cloud: { name: 'work-cloud' },
+        choices: ['local', 'cloud'],
+        dependencies: ['plugin-config'],
+      }),
+    ],
+  };
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={connect} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
+
+  await waitFor(() =>
+    expect(mocks.applySync).toHaveBeenCalledWith(
+      {
+        previewId: 'preview-connect',
+        decisions: [
+          { objectId: 'object-work', choice: 'local' },
+          { objectId: 'plugin-config', choice: 'local' },
+        ],
+      },
       { onSuccess: expect.any(Function) },
     ),
   );

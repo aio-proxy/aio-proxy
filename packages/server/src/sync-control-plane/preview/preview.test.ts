@@ -1582,6 +1582,38 @@ test('a collision in a kind that cannot be renamed offers retiring the duplicate
   expect(stored).toContainEqual({ objectId: 'rule-b', mode: 'excluded' });
 });
 
+// `sync join PROVIDER_ID` names a Provider, but the key is matched across kinds so a model rule can
+// answer to it too. Joining the Provider must not drag that rule along and publish it unasked.
+test('joining a Provider ID scopes the preview to the Provider answering to it', () => {
+  const local = (objectId: string, kind: 'provider' | 'model-rule') => ({
+    objectId,
+    logicalKey: 'work',
+    kind,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind, logicalKey: 'work', value: {}, dependencies: [] },
+    baseline: null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const { record } = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [local('provider-a', 'provider'), local('rule-a', 'model-rule')],
+    remote: [],
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+
+  expect(record.rows.map((candidate) => candidate.row.objectId)).toEqual(['provider-a']);
+});
+
 test('replacement Provider IDs that are still taken are refused before any write', () => {
   const entity = (objectId: string, logicalKey: string) => ({
     objectId,

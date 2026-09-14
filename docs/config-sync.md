@@ -75,9 +75,11 @@ removal of the cloud configuration, history, and account. Plugin purge uses
 plugin. These operations have separate previews and separate confirmation.
 
 Switching backends is also a reviewed operation. Connect the new backend, inspect
-the preview, apply it, and then disconnect the old backend. Backend authorization,
-identity, range, and local data-directory state remain local to this configuration
-directory.
+the preview, and apply it: applying replaces the active binding and retires the old
+one, so no separate disconnect follows. `sync disconnect` takes no backend and
+always stops synchronization on whichever backend is active, which after a switch is
+the new one. Backend authorization, identity, range, and local data-directory state
+remain local to this configuration directory.
 
 Shared OAuth credentials require confirmed remote coordination. A credential copied
 to another device may remain pending until the exact adapter and version has
