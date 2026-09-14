@@ -10,6 +10,7 @@ CREATE TABLE `sync_binding` (
 	`options_json` text NOT NULL,
 	`active` integer DEFAULT 0 NOT NULL,
 	`latest_confirmed_commit` integer DEFAULT 0 NOT NULL,
+	`connect_pending` integer DEFAULT 1 NOT NULL,
 	CONSTRAINT "sync_binding_space_check" CHECK("sync_binding"."space_id" = 'default'),
 	CONSTRAINT "sync_binding_active_check" CHECK("sync_binding"."active" in (0, 1))
 );
@@ -25,6 +26,7 @@ CREATE TABLE `sync_commit` (
 	`account_operation_ids_json` text NOT NULL,
 	`phase` text NOT NULL,
 	`remote_operations_json` text,
+	`plugin_secrets_json` text,
 	`source_revisions_json` text,
 	`confirmed_order` integer,
 	PRIMARY KEY(`binding_id`, `commit_id`),
@@ -44,6 +46,7 @@ CREATE TABLE `sync_entity` (
 	`baseline` text,
 	`overrides_json` text NOT NULL,
 	`pending_reason` text,
+	`oauth_json` text,
 	PRIMARY KEY(`binding_id`, `object_id`),
 	CONSTRAINT "sync_entity_mode_check" CHECK("sync_entity"."mode" in ('included', 'excluded'))
 );

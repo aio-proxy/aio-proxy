@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a5c4725b-a075-405a-acb4-12bb950619d1",
+  "id": "bb16bacf-4665-4b3a-9d5d-38c7820c3e1a",
   "prevId": "5a8f67fc-3fe5-4eff-82a0-a8f7c10b1cc9",
   "tables": {
     "agent_access_token": {
@@ -790,6 +790,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "connect_pending": {
+          "name": "connect_pending",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
         }
       },
       "indexes": {
@@ -875,6 +883,13 @@
         },
         "remote_operations_json": {
           "name": "remote_operations_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "plugin_secrets_json": {
+          "name": "plugin_secrets_json",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -989,6 +1004,13 @@
         },
         "pending_reason": {
           "name": "pending_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "oauth_json": {
+          "name": "oauth_json",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

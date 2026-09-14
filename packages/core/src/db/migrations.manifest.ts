@@ -8,9 +8,6 @@ import migration5Sql from "./migrations/0005_material_xavin.sql?raw";
 import migration6Sql from "./migrations/0006_furry_mastermind.sql?raw";
 import migration7Sql from "./migrations/0007_confused_puck.sql?raw";
 import migration8Sql from "./migrations/0008_config_sync.sql?raw";
-import migration9Sql from "./migrations/0009_glamorous_orphan.sql?raw";
-import migration10Sql from "./migrations/0010_goofy_gambit.sql?raw";
-import migration11Sql from "./migrations/0011_peaceful_timeslip.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -69,26 +66,8 @@ export const MIGRATIONS: readonly Migration[] = [
     {
         version: 9,
         file: "0008_config_sync.sql",
-        sha256: "99d934f3a0869bf3c023930a488b0e93107923b1801f73e371beccdd2b5ad4ff",
+        sha256: "39a8987d50aecb1e71e63a64d52556a85dd15ed9bc0820cc5fe846c1b8c800fb",
         sql: migration8Sql
-    },
-    {
-        version: 10,
-        file: "0009_glamorous_orphan.sql",
-        sha256: "210483638e33c7e8e5f4cbcf0e1cb5476cd6b54a7d801231ba463f8195fb3d4c",
-        sql: migration9Sql
-    },
-    {
-        version: 11,
-        file: "0010_goofy_gambit.sql",
-        sha256: "4b76ab3552286d79d84dc6626bc93472402199200b95902d668f9ae7ae1bf81d",
-        sql: migration10Sql
-    },
-    {
-        version: 12,
-        file: "0011_peaceful_timeslip.sql",
-        sha256: "eeb5157f349c073ebb0055c7e411aa53f1e43d48e96ee6b7c85c2705ae46a203",
-        sql: migration11Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;
