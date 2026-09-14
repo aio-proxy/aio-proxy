@@ -41,6 +41,14 @@ export function createPreviewStore(input: { readonly now: () => number; readonly
     return candidate;
   };
 
+  /** Drops the preview and releases the backend session it held, if any. */
+  const release = (previewId: string): Promise<void> | undefined => {
+    previews.delete(previewId);
+    return takeCandidate(previewId)
+      ?.dispose()
+      .catch(() => {});
+  };
+
   return {
     get: (previewId: string): PreviewRecord | undefined => previews.get(previewId),
     size: (): number => previews.size,
@@ -53,14 +61,17 @@ export function createPreviewStore(input: { readonly now: () => number; readonly
     },
 
     retain(previewId: string, record: PreviewRecord, expiresAt: number, candidate?: SyncConnectCandidate): void {
+      // A connect preview replaces every other candidate. `preview()` disposes the pending ones
+      // before it connects, but two concurrent calls both pass that point before either retains, so
+      // the loser would stay applicable with its backend session — for CloudKit, a native helper —
+      // alive until the TTL. Eviction here is synchronous, which is what makes the replacement
+      // authoritative; the release itself may trail.
+      if (candidate !== undefined) for (const other of [...candidates.keys()]) void release(other);
       previews.set(previewId, record);
       if (candidate !== undefined) candidates.set(previewId, candidate);
       const timer = setTimeout(
         () => {
-          previews.delete(previewId);
-          void takeCandidate(previewId)
-            ?.dispose()
-            .catch(() => {});
+          void release(previewId);
           input.onExpire();
         },
         Math.max(0, expiresAt - input.now()),
@@ -71,12 +82,7 @@ export function createPreviewStore(input: { readonly now: () => number; readonly
 
     /** Releases candidates the user walked away from, each still holding an open backend session. */
     async disposePending(): Promise<void> {
-      for (const previewId of [...candidates.keys()]) {
-        previews.delete(previewId);
-        await takeCandidate(previewId)
-          ?.dispose()
-          .catch(() => {});
-      }
+      for (const previewId of [...candidates.keys()]) await release(previewId);
     },
   };
 }

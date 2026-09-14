@@ -464,6 +464,52 @@ test('a connect preview that finished opening after shutdown releases its backen
   expect(disposed).toBe(1);
 });
 
+test('a connect preview overtaken by a concurrent one releases its backend session', async () => {
+  const disposed: string[] = [];
+  const finish: Array<(id: string) => void> = [];
+  const control = createSyncControlPlane({
+    repo: { readBinding: () => null, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () =>
+      await new Promise((resolve) => {
+        finish.push((id) =>
+          resolve({
+            remote: [],
+            refresh: async () => [],
+            commit: async () => {},
+            activate: () => {},
+            dispose: async () => void disposed.push(id),
+          }),
+        );
+      }),
+  });
+
+  // Both requests pass the `disposePending()` that precedes connecting before either has a candidate
+  // to retain, so neither sees the other there.
+  const first = control.preview(CONNECT);
+  const second = control.preview(CONNECT);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  finish[0]?.('first');
+  const earlier = await first;
+  finish[1]?.('second');
+  await second;
+
+  // The replacement is authoritative: the overtaken candidate holds an open backend session — for
+  // CloudKit, a native helper — and its preview would otherwise stay applicable until the TTL.
+  expect(disposed).toEqual(['first']);
+  await expect(
+    control.apply({ previewId: earlier.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+});
+
 // The connect-only options the two fence tests below share: no binding, one cloud row, and a
 // `committedSource` the test moves between reads.
 const firstConnectOptions = (committedSource: () => Promise<unknown>, committed: () => void) =>
