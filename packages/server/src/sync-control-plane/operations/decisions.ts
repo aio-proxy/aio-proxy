@@ -34,6 +34,19 @@ function assertProviderIdentitiesFree(record: PreviewRecord, selected: ReadonlyM
   for (const entity of record.remote)
     // A tombstone holds no identity: its Provider ID is exactly what a rename is free to take.
     if (entity.kind === 'provider' && entity.tombstone !== true) claim(entity.objectId, entity.logicalKey);
+  // Neither snapshot above sees a revive: a restore or rejoin target is tombstoned on both sides, so
+  // its Provider ID reads as free while a live object still publishes under it. Applying would then
+  // write a second live head under one ID and the next reconciliation quarantines both. The rename
+  // that resolves every other collision cannot resolve this one — the revived head's logical key is
+  // immutable — so the revive is refused here, and freeing the ID stays the conflict flow's job.
+  const remoteById = new Map(record.remote.map((entity) => [entity.objectId, entity]));
+  for (const candidate of record.rows) {
+    const choice = selected.get(candidate.row.objectId)?.choice;
+    // A delete publishes no body; reading one here would claim the very ID it frees.
+    if (candidate.row.kind !== 'provider' || choice === undefined || choice === 'delete') continue;
+    const body = reviewedBody(record, candidate, choice, remoteById.get(candidate.row.objectId));
+    if (body !== null) claim(candidate.row.objectId, body.logicalKey);
+  }
 }
 
 /**

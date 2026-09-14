@@ -629,11 +629,13 @@ test('restoring a deleted head publishes the revision through the choice the row
   expect(scenario.appliedLocal).toBe(1);
 });
 
-// A rename publishes the renamed body to this row's own object, whose head holds the contested
-// Provider ID as an immutable logical key, so `restoreEntity` could only throw `invalid-data`.
-// A tombstone holds no identity — `assertDecisions` and reconciliation both free its Provider ID —
-// so the collision the preview reported against the object that took the ID over was not real.
-test('restoring a revision does not demand a replacement ID for a tombstone collision', async () => {
+// A rename cannot resolve this one: it would publish the renamed body onto this row's own head,
+// whose logical key is immutable, so `restoreEntity` could only throw `invalid-data`. The preview
+// therefore demands no replacement ID — and the revive itself is refused, because reviving the
+// tombstone publishes a second live head under a Provider ID the survivor still holds, which the
+// next reconciliation quarantines. Freeing the ID stays the conflict flow's job, which previews
+// both colliding rows.
+test('restoring a revision is refused while a live object holds the tombstoned Provider ID', () => {
   const historical: EntityBody = { kind: 'provider', logicalKey: 'work', value: { value: 'past' }, dependencies: [] };
   const deleted = { ...localEntity('provider-a', 'provider', 'work'), desired: null, baseline: 'deleted:1' };
   const survivor = localEntity('provider-b', 'provider', 'work');
@@ -661,17 +663,7 @@ test('restoring a revision does not demand a replacement ID for a tombstone coll
   expect(row.requiresProviderId).toBeUndefined();
   expect(row.row.choices).toEqual(['cloud']);
 
-  const restored: EntityBody[] = [];
-  const scenario = harness({
-    localEntities: () => [deleted, survivor],
-    restore: async (_objectId, candidateBody) => void restored.push(candidateBody),
-  });
-  const decisions: SyncDecision[] = [{ objectId: 'provider-a', choice: 'cloud' }];
-
-  assertDecisions(built, decisions);
-  await applyPreview(scenario.input, built, decisions);
-
-  expect(restored).toEqual([historical]);
+  expect(() => assertDecisions(built, [{ objectId: 'provider-a', choice: 'cloud' }])).toThrow(SyncOperationError);
 });
 
 // Two live objects under one Provider ID is a real collision, but a restore cannot resolve it: it
