@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.22.1
+
+### Patch Changes
+
+- [#355](https://github.com/aio-proxy/aio-proxy/pull/355) [`6484bef`](https://github.com/aio-proxy/aio-proxy/commit/6484bef7a020406a4ced6ea40dc027167d88cbf9) Thanks [@olivewind](https://github.com/olivewind)! - Fix the settings page crashing when adding an API key through an HTTP connection to a remote host.
+
 ## 0.22.0
 
 ### Minor Changes

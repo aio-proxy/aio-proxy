@@ -281,28 +281,35 @@ test('adds a new API key and sends it in plaintext exactly once', () => {
   );
 });
 
-test('generates a usable key for a new row without asking the server for one', () => {
-  renderPage();
+test('adds, generates and saves a key when randomUUID is unavailable on HTTP', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+  Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined });
+  try {
+    renderPage();
 
-  const group = screen.getByTestId('settings-group-api-keys');
-  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
-  fireEvent.click(
-    within(group).getByRole('button', { name: /Generate a key|随机生成密钥|隨機產生金鑰|キーを生成|키 생성/u }),
-  );
+    const group = screen.getByTestId('settings-group-api-keys');
+    fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+    fireEvent.click(
+      within(group).getByRole('button', { name: /Generate a key|随机生成密钥|隨機產生金鑰|キーを生成|키 생성/u }),
+    );
 
-  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
-  const generated = (values[values.length - 1] as HTMLInputElement).value;
-  // A key too short or without enough entropy is worse than no key: it is a guessable credential.
-  expect(generated).toMatch(/^sk-[0-9a-f]{48}$/u);
+    const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+    const generated = (values[values.length - 1] as HTMLInputElement).value;
+    // A key too short or without enough entropy is worse than no key: it is a guessable credential.
+    expect(generated).toMatch(/^sk-[0-9a-f]{48}$/u);
 
-  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
-  expect(mocks.mutate).toHaveBeenCalledWith(
-    {
-      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: generated }],
-      apiKeysRevision: settings.apiKeysRevision,
-    },
-    expect.anything(),
-  );
+    fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: generated }],
+        apiKeysRevision: settings.apiKeysRevision,
+      },
+      expect.anything(),
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(crypto, 'randomUUID', descriptor);
+    else Reflect.deleteProperty(crypto, 'randomUUID');
+  }
 });
 
 test('puts the required key before the optional label in each row', () => {

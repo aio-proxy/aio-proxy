@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.22.1
+
+### Patch Changes
+
+- [#355](https://github.com/aio-proxy/aio-proxy/pull/355) [`6484bef`](https://github.com/aio-proxy/aio-proxy/commit/6484bef7a020406a4ced6ea40dc027167d88cbf9) Thanks [@olivewind](https://github.com/olivewind)! - Fix the settings page crashing when adding an API key through an HTTP connection to a remote host.
+- Updated dependencies []:
+  - @aio-proxy/brand@0.22.1
+  - @aio-proxy/i18n@0.22.1
+  - @aio-proxy/plugin-sdk@0.22.1
+  - @aio-proxy/server@0.22.1
+  - @aio-proxy/types@0.22.1
+  - @aio-proxy/ui@0.22.1
+
 ## 0.22.0
 
 ### Minor Changes

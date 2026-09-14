@@ -6,7 +6,7 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@aio-proxy/ui/components/input-group';
 import { Label } from '@aio-proxy/ui/components/label';
 import { DicesIcon, PlusIcon, Trash2Icon } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { apiKeysSchema, type SettingsSave } from './settings-form-contract';
 
@@ -56,6 +56,7 @@ const generateApiKey = () =>
   `sk-${Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 
 export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disabled, settings, onSave }) => {
+  const nextDraftId = useRef(0);
   const [rows, setRows] = useState<readonly ApiKeyRow[]>(() => rowsFromSettings(settings));
   const [revision, setRevision] = useState(settings.apiKeysRevision);
 
@@ -174,7 +175,9 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
             size="xs"
             disabled={disabled}
             onClick={() => {
-              setRows((current) => [...current, { id: `draft-${crypto.randomUUID()}`, key: '', label: '' }]);
+              // Row identity is local to this form; randomUUID is unavailable on remote HTTP origins.
+              const id = `draft-${nextDraftId.current++}`;
+              setRows((current) => [...current, { id, key: '', label: '' }]);
             }}
           >
             <PlusIcon data-icon="inline-start" />
