@@ -58,7 +58,7 @@ export const createAgentOAuthRoutes = ({ challenges, identity, currentConfig }: 
       const body = context.req.valid('form');
       if (AGENT_CLIENT_ID[body.agent] !== body.client_id) return oauthError(context, 400, 'invalid_client');
       const server = currentConfig().server;
-      if (server.apiKeys.length > 0 && server.password === undefined)
+      if (server.requireApiKey && server.password === undefined)
         return oauthError(context, 503, 'authorization_unavailable');
       try {
         const response = challenges.create(body, requestPeer(context));
@@ -109,7 +109,7 @@ export const createAgentApprovalRoutes = ({ challenges, currentConfig }: AgentAp
     .use('*', requireAgentApprovalOrigin)
     .use('*', async (context, next) => {
       const server = currentConfig().server;
-      if (server.apiKeys.length > 0 && server.password === undefined)
+      if (server.requireApiKey && server.password === undefined)
         return context.json({ error: 'authorization_unavailable' }, 503);
       await next();
     })
@@ -142,7 +142,7 @@ export const createAgentAdminRoutes = ({ identity, currentConfig }: AgentAdminRo
       context.json({
         installations: identity.listInstallations(),
         deviceAuthorization:
-          currentConfig().server.apiKeys.length > 0 && currentConfig().server.password === undefined
+          currentConfig().server.requireApiKey && currentConfig().server.password === undefined
             ? ('password_required' as const)
             : ('available' as const),
         catalogSchemaVersions: [1] as const,

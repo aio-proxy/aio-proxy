@@ -21,6 +21,7 @@ export const SERVER_LOG_LEVEL = {
   'request.provider_attempt_failed': 'warn',
   'request.recorder_invariant': 'warn',
   'request.rejected': 'warn',
+  'server.api_key_enforcement_disabled': 'warn',
   'trace.persistence_failed': 'error',
   'request.upstream_result': 'debug',
   'request.upstream_snapshot': 'debug',

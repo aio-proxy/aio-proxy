@@ -26,10 +26,9 @@ export function agentCallerPrincipal(installationId: string): CallerPrincipal {
 // A bare digest of a configured key is an offline verifier for it, and
 // `StaticApiKeySchema` only requires one character, so `key: "1234"` would be trivially
 // reversed wherever the principal is carried. Keying with a per-process secret makes the
-// id opaque, as `dashboard-routes/settings`'s `apiKeysRevision` does for the same reason.
-// The secret must not be regenerated per call — a caller's create and attach requests have
-// to derive the same id — but it need not outlive the process: principals live only in the
-// in-memory realtime call store, whose records die with it.
+// id opaque. The secret must not be regenerated per call — a caller's create and attach
+// requests have to derive the same id — but it need not outlive the process: principals
+// live only in the in-memory realtime call store, whose records die with it.
 const callerKeyingMaterial = randomBytes(32);
 
 /** Identifies the presented credential rather than a person: the id derives from the

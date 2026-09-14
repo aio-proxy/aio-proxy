@@ -1,5 +1,21 @@
 # @aio-proxy/dashboard
 
+## 0.23.0
+
+### Minor Changes
+
+- [#357](https://github.com/aio-proxy/aio-proxy/pull/357) [`6fd1738`](https://github.com/aio-proxy/aio-proxy/commit/6fd173878a3574113571b2cf8499e679f83e1b96) Thanks [@baranwang](https://github.com/baranwang)! - Add `server.requireApiKey` to turn caller key enforcement off without deleting the configured keys, with a matching switch in Settings; when it is off on a non-loopback bind the proxy logs a warning. Settings now shows the configured caller keys as they are authored — including `{{env.NAME}}` templates — instead of `****`, so a key can be read back, edited, and copied rather than only replaced.
+
+### Patch Changes
+
+- Updated dependencies [[`6fd1738`](https://github.com/aio-proxy/aio-proxy/commit/6fd173878a3574113571b2cf8499e679f83e1b96)]:
+  - @aio-proxy/types@0.23.0
+  - @aio-proxy/server@0.23.0
+  - @aio-proxy/plugin-sdk@0.23.0
+  - @aio-proxy/brand@0.23.0
+  - @aio-proxy/i18n@0.23.0
+  - @aio-proxy/ui@0.23.0
+
 ## 0.22.1
 
 ### Patch Changes

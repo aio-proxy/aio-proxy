@@ -40,6 +40,24 @@ test('accepts labeled caller API keys and authoring templates', () => {
   ).toBe(true);
 });
 
+test.each([
+  { authored: undefined, keys: 1, expected: true, why: 'unset with keys keeps the legacy coupling' },
+  { authored: undefined, keys: 0, expected: false, why: 'unset without keys enforces nothing' },
+  { authored: false, keys: 1, expected: false, why: 'off keeps the keys authored but stops rejecting' },
+  { authored: true, keys: 0, expected: false, why: 'on without keys cannot enforce' },
+])('resolves server.requireApiKey: $why', ({ authored, keys, expected }) => {
+  const apiKeys = Array.from({ length: keys }, (_unused, index) => ({ key: `sk-${index}` }));
+  const server = ConfigSchema.parse({
+    server: { apiKeys, ...(authored === undefined ? {} : { requireApiKey: authored }) },
+    providers: {},
+  }).server;
+
+  expect(server.requireApiKey).toBe(expected);
+  // Turning enforcement off must never drop the authored keys: recovering them is exactly what
+  // the switch exists to avoid, and the codex credential picker reads them straight back.
+  expect(server.apiKeys).toHaveLength(keys);
+});
+
 test.each(['aio_agent_at_v1_static', 'aio_agent_rt_v1_static'])(
   'rejects reserved Agent prefix %s as a static API key',
   (key) => {

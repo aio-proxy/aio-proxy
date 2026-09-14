@@ -16,12 +16,12 @@ rs.mock('../../services/settings-service', () => ({
 
 const settings: DashboardSettingsView = {
   apiKeys: [],
-  apiKeysRevision: 'sha256:current',
   hasPassword: false,
   host: '127.0.0.1',
   logging: { enabled: true, level: 'info', retentionDays: 3 },
   port: 9317,
   proxy: null,
+  requireApiKey: false,
   retryAfterCapMs: 30_000,
 };
 

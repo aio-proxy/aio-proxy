@@ -205,7 +205,11 @@ export const createRoutes = (
     }),
   );
   const modelAuthentication = requireModelAuthentication({
+    // The authored keys are always matched, so a caller that presents one keeps its own
+    // principal; `server.requireApiKey` — the resolved policy, anded with the key count by
+    // the config envelope transform — decides only whether an unmatched caller is rejected.
     apiKeys: () => state.currentConfig().server.apiKeys,
+    enforceApiKeys: () => state.currentConfig().server.requireApiKey,
     authenticateAgent: (token) => state.agentIdentity.authenticateAccessToken(token),
   });
   app.get('/v1/models', parseAgentCatalogNegotiation, modelAuthentication, listModelsHandler(state));

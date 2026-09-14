@@ -57,7 +57,7 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings }) => {
         onAccessChange={(field, input) => setPendingAccess({ field, input })}
         onSave={save}
       />
-      <SettingsApiKeysGroup disabled={mutation.isPending} settings={settings} onSave={save} />
+      <SettingsApiKeysGroup disabled={mutation.isPending} form={form} settings={settings} onSave={save} />
       <SettingsLogsGroup disabled={mutation.isPending} form={form} settings={settings} onSave={save} />
       <SettingsMutationStatus data={mutation.data} isError={mutation.isError} />
       <SettingsAccessConfirmationDialog

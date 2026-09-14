@@ -14,6 +14,7 @@ import type { AccountRemovalCoordinator } from '../account-removal';
 import type { CatalogScheduler } from '../catalog-scheduler';
 import type { ConfigStore } from '../config-store';
 import { createConfigStore } from '../config-store';
+import { warnUnenforcedApiKeys } from '../config-unenforced-api-keys';
 import type { DashboardEventHub } from '../dashboard-events';
 import type { FifoQueue } from '../fifo-queue';
 import type { LogicalSessionStore } from '../logical-session-store';
@@ -128,6 +129,12 @@ export async function commitConfig(
   const previousRecord = providerConfigRecord(previous.config);
   const nextRecord = providerConfigRecord(config);
   runtime.accountRemovals.cancelReadded(previousRecord, nextRecord);
+  // Switching enforcement off leaves the same open proxy a start with it off does, and the
+  // Dashboard switch and a hand-edited config file both land here. Only the transition warns:
+  // every other commit (a catalog rebuild, a provider edit) would repeat it forever.
+  if (previous.config.server.requireApiKey && !config.server.requireApiKey) {
+    warnUnenforcedApiKeys(runtime.options.host, config, runtime.logger);
+  }
   return retired;
 }
 

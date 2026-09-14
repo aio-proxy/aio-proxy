@@ -114,3 +114,29 @@ test('createServer reports managedService from the injected auto-update hooks', 
   });
   app.close();
 });
+
+test('configured keys the operator switched off stop rejecting callers and warn on a public bind', async () => {
+  const home = isolateHome('aio-proxy-require-api-key-off-');
+  const logs: { readonly event: string }[] = [];
+  const app = await createServer({
+    config: {
+      server: { host: '0.0.0.0', apiKeys: [{ key: 'static' }], requireApiKey: false },
+      providers: {},
+    },
+    dbHome: home,
+    host: '0.0.0.0',
+    logger: (entry) => logs.push(entry as { readonly event: string }),
+  });
+
+  // A wrong credential is not "wrong" against a policy that enforces nothing: with keys still
+  // authored the caller must be admitted, or turning enforcement off would achieve nothing.
+  for (const headers of [{}, { authorization: 'Bearer wrong' }, { 'x-api-key': 'static' }]) {
+    expect((await app.request('/v1/models', { headers })).status).toBe(200);
+  }
+  // Reachable from the network with nothing checked: advisory only, since the operator may be
+  // behind their own gateway, but it must not be silent.
+  expect(logs.filter((entry) => entry.event === 'server.api_key_enforcement_disabled')).toEqual([
+    { event: 'server.api_key_enforcement_disabled', host: '0.0.0.0' },
+  ]);
+  app.close();
+});

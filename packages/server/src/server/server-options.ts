@@ -36,11 +36,13 @@ export function createServerStateOptions(input: {
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
   readonly builtIns?: readonly BuiltInPluginDefinition[];
+  readonly host: string;
   readonly dashboardAuthHealthChanged: (available: boolean) => void;
   readonly testHooks?: ServerStateTestHooks;
 }): InternalServerStateOptions {
   return {
     config: input.config,
+    host: input.host,
     __dashboardAuthHealthChanged: input.dashboardAuthHealthChanged,
     ...(input.testHooks === undefined ? {} : { __test: input.testHooks }),
     ...(input.configPath === undefined ? {} : { configPath: input.configPath }),

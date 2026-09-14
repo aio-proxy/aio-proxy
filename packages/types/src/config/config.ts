@@ -68,6 +68,10 @@ export const ServerConfigSchema = z.object({
   host: ServerHostSchema.default('127.0.0.1').describe('Host for the proxy API server.'),
   port: z.number().int().min(1).max(65_535).default(9_317).describe('HTTP port for the proxy API server.'),
   apiKeys: z.array(ApiKeySchema).default([]).describe('Caller API keys for the proxy API server.'),
+  requireApiKey: z
+    .boolean()
+    .optional()
+    .describe('Enforce the caller API keys. Off keeps them authored but stops rejecting requests.'),
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
   retry: ServerRetrySchema.prefault({}),
@@ -224,7 +228,13 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
     providers.push(ProviderSchema.parse({ ...result.data, id }));
   }
   return {
-    server: input.server,
+    server: {
+      ...input.server,
+      // Unset means the legacy coupling: configured keys are enforced. Anded with the count so
+      // `true` with no keys cannot become a state that claims enforcement it cannot perform —
+      // callers read this one field instead of re-deriving `apiKeys.length > 0` at each site.
+      requireApiKey: (input.server.requireApiKey ?? input.server.apiKeys.length > 0) && input.server.apiKeys.length > 0,
+    },
     plugins: input.plugins,
     proxy: input.proxy,
     router: input.router,

@@ -16,6 +16,7 @@ const VALID_GRANT = {
 
 function authenticatedApp(input: {
   readonly apiKeys: readonly { readonly key: string }[];
+  readonly enforceApiKeys?: boolean;
   readonly authenticateAgent: (token: string) => AgentAccessAuthentication;
 }) {
   const app = new Hono<AgentEnv>();
@@ -27,6 +28,7 @@ function authenticatedApp(input: {
     '*',
     requireModelAuthentication({
       apiKeys: () => input.apiKeys,
+      enforceApiKeys: () => input.enforceApiKeys ?? true,
       authenticateAgent: input.authenticateAgent,
     }),
   );
@@ -157,4 +159,36 @@ test('an unlocked proxy stamps the anonymous principal instead of relying on the
 
   expect((await principalOf(app, '/probe')).stamped).toEqual({ kind: 'anonymous' });
   expect((await principalOf(app, '/unguarded')).stamped).toBeNull();
+});
+
+// Switching `server.requireApiKey` off must not merge the configured callers into one
+// identity: a realtime call or video job created before the switch stays owned by its key
+// principal, and two callers holding different keys must not be able to reach each other's.
+test('enforcement off still identifies a caller by the configured key it presents', async () => {
+  const app = authenticatedApp({
+    apiKeys: [{ key: 'first' }, { key: 'second' }],
+    enforceApiKeys: false,
+    authenticateAgent: () => ({ status: 'invalid' }),
+  });
+
+  expect((await principalOf(app, '/probe', { 'x-api-key': 'second' })).principal).toEqual(
+    staticKeyCallerPrincipal('second'),
+  );
+  // An unmatched caller is admitted rather than rejected — that is the whole point of the
+  // switch — but as anonymous, so it cannot pass for either configured caller.
+  const stranger = await principalOf(app, '/probe', { authorization: 'Bearer wrong' });
+  expect(stranger.principal).toEqual({ kind: 'anonymous' });
+});
+
+// The matched value is the proxy's own configured key, not an upstream one, so it must not
+// ride along to the provider merely because enforcement is off.
+test('enforcement off still strips a credential that matched a configured key', async () => {
+  const app = authenticatedApp({
+    apiKeys: [{ key: 'static' }],
+    enforceApiKeys: false,
+    authenticateAgent: () => ({ status: 'invalid' }),
+  });
+  const response = await app.request('/probe?key=static&keep=yes', { headers: { 'x-api-key': 'static' } });
+
+  expect(await response.json()).toMatchObject({ xApiKey: null, search: '?keep=yes' });
 });

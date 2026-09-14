@@ -1,9 +1,5 @@
-import { createHmac, randomBytes } from 'node:crypto';
-
-import { digestProviderEntry } from '@aio-proxy/core';
 import {
   type Config,
-  type DashboardApiKeyMutation,
   type DashboardSettingsMutation,
   type DashboardSettingsMutationInput,
   DashboardSettingsMutationSchema,
@@ -33,17 +29,14 @@ const settingsValidator = validator('json', (raw, context) => {
   }
 >;
 
-class StaleApiKeysError extends Error {}
-
-// `retain` indexes the authored array, not the runtime one: templates are already
-// expanded in `currentConfig()`, so the revision has to digest what is on disk.
-// Without a config file nothing is writable (PUT fails with `config_unavailable`),
-// but the read view must still show the keys the proxy is actually enforcing.
-// An unparseable file is the same situation: the watcher rejected it, so the runtime
-// still enforces its last valid snapshot, and failing the whole endpoint would hide
-// every control until the file is repaired. The runtime keys stand in, and a write
-// against the revision they produce is rejected as stale rather than applying
-// `retain` indexes to an array the client never read.
+// Templates are already expanded in `currentConfig()`, so the rows have to come from what is on
+// disk: a save round-trips the view straight back through the mutation endpoint, and serving the
+// expanded value would write the resolved secret over the `{{env.X}}` reference.
+// Without a config file nothing is writable (PUT fails with `config_unavailable`), but the read
+// view must still show the keys the proxy is actually enforcing. An unparseable file is the same
+// situation: the watcher rejected it, so the runtime still enforces its last valid snapshot, and
+// failing the whole endpoint would hide every control until the file is repaired. In both cases the
+// runtime keys stand in, and a write is refused before any bytes move.
 async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> {
   const file = state.configStore.file;
   if (file === undefined) return state.currentConfig().server.apiKeys;
@@ -57,23 +50,17 @@ async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> 
   return Array.isArray(keys) ? keys : [];
 }
 
-// A bare digest of the authored array is an offline verifier for the secrets inside it:
-// the same response hands the client the labels and ordering, so short keys fall to a
-// dictionary attack. Keying the digest with a per-process secret makes it opaque. The
-// key need not outlive the process — clients refetch settings before they can save.
-const revisionKey = randomBytes(32);
-
-function apiKeysRevision(authored: readonly unknown[]): string {
-  return `sha256:${createHmac('sha256', revisionKey).update(digestProviderEntry(authored)).digest('hex')}`;
-}
-
-// Rows and revision both come from the authored snapshot. Reading the count and labels from
-// `currentConfig()` instead would pair one snapshot's `retain` indexes with another's revision
-// whenever an external edit lands before the watcher reloads.
+// Same policy as provider credentials: this endpoint sits behind the dashboard password (or
+// loopback), and the editor round-trips its rows back through the mutation endpoint, so masking
+// here would write the mask over the credential. Only `/config` and the CLI mask.
+// A non-string key is dropped rather than coerced: it enforces nothing, and the authored file it
+// came from is already rejected by the schema.
 function apiKeysView(authored: readonly unknown[]): DashboardSettingsView['apiKeys'] {
-  return authored.map((entry) => {
+  return authored.flatMap((entry) => {
+    const key = isPlainObject(entry) ? entry['key'] : undefined;
+    if (typeof key !== 'string' || key === '') return [];
     const label = isPlainObject(entry) ? entry['label'] : undefined;
-    return { key: '****' as const, ...(typeof label === 'string' && label !== '' ? { label } : {}) };
+    return [{ key, ...(typeof label === 'string' && label !== '' ? { label } : {}) }];
   });
 }
 
@@ -81,7 +68,6 @@ function settingsView(config: Config, authored: readonly unknown[]): DashboardSe
   const logging = config.server.logging ?? defaultLogging;
   return {
     apiKeys: apiKeysView(authored),
-    apiKeysRevision: apiKeysRevision(authored),
     hasPassword: config.server.password !== undefined,
     host: config.server.host,
     logging: {
@@ -91,6 +77,7 @@ function settingsView(config: Config, authored: readonly unknown[]): DashboardSe
     },
     port: config.server.port,
     proxy: config.proxy === undefined ? null : '****',
+    requireApiKey: config.server.requireApiKey,
     retryAfterCapMs: config.server.retry.retryAfterCapMs,
   };
 }
@@ -99,34 +86,6 @@ function section(value: unknown, path: string): Record<string, unknown> {
   if (value === undefined) return {};
   if (!isPlainObject(value)) throw new TypeError(`${path} must be an object`);
   return value;
-}
-
-function resolveApiKeys(
-  authored: unknown,
-  submitted: readonly DashboardApiKeyMutation[],
-  revision: string,
-): readonly Record<string, unknown>[] {
-  const previous = Array.isArray(authored) ? authored : [];
-  // The client's `retain` indexes address the array it read. If the watcher or another
-  // session rewrote it since, those positions now name different secrets — reject instead.
-  if (apiKeysRevision(previous) !== revision) throw new StaleApiKeysError();
-  return submitted.flatMap((entry) => {
-    const label = entry.label === undefined ? {} : { label: entry.label };
-    // Every submitted key is authored, including one whose value already appears in a retained
-    // row: the schema permits the same credential under several labels, and value equality
-    // cannot tell an intentional duplicate from a resubmission after a lost response. Collapsing
-    // them would silently discard a key the operator has already handed out, so the resubmission
-    // authors a second visible row the user can delete instead. Suppressing it correctly needs a
-    // per-write operation identity, which means server-side state this endpoint does not keep.
-    if (!('retain' in entry)) return [{ key: entry.key, ...label }];
-    const kept = previous[entry.retain];
-    if (!isPlainObject(kept) || typeof kept['key'] !== 'string') {
-      throw new TypeError(`server.apiKeys[${entry.retain}] cannot be retained`);
-    }
-    // The mutation owns `label` outright: an omitted label clears the authored one.
-    const { label: _label, ...rest } = kept;
-    return [{ ...rest, key: kept['key'], ...label }];
-  });
 }
 
 async function applySettingsMutation(
@@ -139,6 +98,7 @@ async function applySettingsMutation(
     mutation.host !== undefined ||
     mutation.port !== undefined ||
     mutation.logging !== undefined ||
+    mutation.requireApiKey !== undefined ||
     mutation.retryAfterCapMs !== undefined
   ) {
     const server = section(current['server'], 'server');
@@ -162,6 +122,11 @@ async function applySettingsMutation(
         }
       }
       if (nextLogging !== logging) nextServer = { ...nextServer, logging: nextLogging };
+    }
+    // No restart: `requireModelAuthentication` reads the policy from `currentConfig()` per
+    // request, so the reload the write triggers is the whole rollout.
+    if (mutation.requireApiKey !== undefined && server['requireApiKey'] !== mutation.requireApiKey) {
+      nextServer = { ...nextServer, requireApiKey: mutation.requireApiKey };
     }
     if (mutation.retryAfterCapMs !== undefined) {
       const retry = section(server['retry'], 'server.retry');
@@ -192,12 +157,12 @@ async function applySettingsMutation(
       next = { ...next, server: { ...server, password: await Bun.password.hash(mutation.password) } };
     }
   }
-  if (mutation.apiKeys !== undefined && mutation.apiKeysRevision !== undefined) {
+  if (mutation.apiKeys !== undefined) {
     const server = section(next['server'], 'server');
-    next = {
-      ...next,
-      server: { ...server, apiKeys: resolveApiKeys(server['apiKeys'], mutation.apiKeys, mutation.apiKeysRevision) },
-    };
+    // The array is authored wholesale from what the editor read: the view already served the
+    // authored values, so a submitted row carries the real credential (or its `{{env.X}}`
+    // reference) and nothing has to be reconciled against the previous positions.
+    next = { ...next, server: { ...server, apiKeys: mutation.apiKeys } };
   }
   return { next, restartRequired };
 }
@@ -217,9 +182,6 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
       } catch (error) {
         if (error instanceof ConfigPathMissingError) {
           return context.json({ error: { code: 'config_unavailable' }, ok: false } as const, 409);
-        }
-        if (error instanceof StaleApiKeysError) {
-          return context.json({ error: { code: 'stale_api_keys' }, ok: false } as const, 409);
         }
         if (error instanceof ConfigReloadRejectedError) {
           return context.json({ error: { code: 'reload_failed' }, ok: false } as const, 422);

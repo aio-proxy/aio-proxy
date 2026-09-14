@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -41,11 +40,13 @@ type Routes = ReturnType<typeof createDashboardRoutes>;
 async function withSettingsFixture(
   run: (fixture: {
     readonly configPath: string;
+    readonly logs: readonly { readonly event: string }[];
     readonly routes: Routes;
     readonly state: ServerState;
   }) => Promise<void>,
   options: {
     readonly configPath?: boolean;
+    readonly host?: string;
     readonly rejectReload?: { value: boolean };
     readonly controller?: AutoUpdateController;
   } = {},
@@ -66,9 +67,12 @@ async function withSettingsFixture(
   process.env['SETTINGS_PROXY_HOST'] = 'replacement.proxy.example';
   process.env['SETTINGS_ROOT_PROXY'] = 'http://user:password@proxy.example:8080';
   const rejectReload = options.rejectReload;
+  const logs: { readonly event: string }[] = [];
   const state = await createServerState({
     config: parseRuntimeConfig(authoredConfig),
     dbHome: directory,
+    logger: (entry) => logs.push(entry as { readonly event: string }),
+    ...(options.host === undefined ? {} : { host: options.host }),
     ...(options.configPath === false ? {} : { configPath }),
     watchConfig: false,
     ...(rejectReload === undefined
@@ -86,6 +90,7 @@ async function withSettingsFixture(
   try {
     await run({
       configPath,
+      logs,
       routes: createDashboardRoutes(state, disabledDashboardAuthentication, '0.0.0', options.controller),
       state,
     });
@@ -111,16 +116,6 @@ function onDisk(configPath: string): typeof authoredConfig {
   return JSON.parse(readFileSync(configPath, 'utf8')) as typeof authoredConfig;
 }
 
-async function apiKeysRevision(routes: Routes): Promise<string> {
-  const view = (await (await routes.request('/settings')).json()) as { readonly apiKeysRevision: string };
-  return view.apiKeysRevision;
-}
-
-// Every key write carries the revision the client read, so the fixtures round-trip through GET.
-async function putKeys(routes: Routes, apiKeys: unknown): Promise<Response> {
-  return put(routes, { apiKeys, apiKeysRevision: await apiKeysRevision(routes) });
-}
-
 test('PUT /settings leaves a leftover autoUpdate key on disk', async () => {
   await withSettingsFixture(async ({ routes, configPath }) => {
     const current = onDisk(configPath);
@@ -131,56 +126,54 @@ test('PUT /settings leaves a leftover autoUpdate key on disk', async () => {
   });
 });
 
-test('GET /settings returns only the redacted typed settings view', async () => {
+test('GET /settings serves the authored caller keys and redacts only the root proxy', async () => {
   await withSettingsFixture(async ({ routes }) => {
     const response = await routes.request('/settings');
     const text = await response.text();
 
     expect(response.status).toBe(200);
     expect(JSON.parse(text)).toEqual({
-      apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
-      apiKeysRevision: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      // Authored, not expanded and not masked: the editor round-trips these rows back through
+      // PUT, so a mask would be written over the credential and `sk-from-env` over the template.
+      apiKeys: [{ key: '{{env.SETTINGS_API_KEY}}', label: 'ci' }, { key: 'sk-plain-preserved' }],
       hasPassword: true,
       host: '127.0.0.1',
       logging: { enabled: false, level: 'info', retentionDays: 3 },
       port: 9_317,
       proxy: '****',
+      requireApiKey: true,
       retryAfterCapMs: 30_000,
     });
-    expect(text).not.toMatch(
-      /password-preserved|user:password|SETTINGS_|root-preserved|sk-from-env|sk-plain-preserved/u,
-    );
+    // The proxy carries `user:password@`, which has no editor round-trip, and the dashboard
+    // password hash is never a form value — both stay out of the response.
+    expect(text).not.toMatch(/password-preserved|user:password|root-preserved|sk-from-env/u);
   });
 });
 
-test('GET /settings masks the enforced keys when the server runs without a config file', async () => {
+test('GET /settings falls back to the enforced keys when the authored file is missing or unparseable', async () => {
+  // Keys stay enforced without a writable file, so reporting none would tell the operator access
+  // is open when it is not. The expansion is what the runtime holds; PUT is refused either way.
+  const enforced = [{ key: 'sk-from-env', label: 'ci' }, { key: 'sk-plain-preserved' }];
   await withSettingsFixture(
     async ({ routes }) => {
-      // Keys stay enforced without a file to write back to, so reporting none would
-      // tell the operator access is open when it is not.
-      const view = (await (await routes.request('/settings')).json()) as { readonly apiKeys: unknown };
-
-      expect(view.apiKeys).toEqual([{ key: '****', label: 'ci' }, { key: '****' }]);
+      expect(await (await routes.request('/settings')).json()).toMatchObject({ apiKeys: enforced });
     },
     { configPath: false },
   );
-});
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    // The watcher rejected this edit, so the proxy still enforces its last valid snapshot.
+    // Failing the read would blank the whole Settings page until the file is repaired.
+    writeFileSync(configPath, '{ "server": { "apiKeys": ');
 
-test('the API key revision is not the bare digest of the authored array', async () => {
-  await withSettingsFixture(async ({ routes }) => {
-    // A plain sha256 over the authored entries is an offline verifier for the very
-    // secrets the view masks: the labels and ordering ship in the same response.
-    const bare = createHash('sha256')
-      .update(JSON.stringify([{ key: 'sk-from-env', label: 'ci' }, { key: 'sk-plain-preserved' }]))
-      .digest('hex');
-    const authored = createHash('sha256')
-      .update(JSON.stringify([{ key: '{{env.SETTINGS_API_KEY}}', label: 'ci' }, { key: 'sk-plain-preserved' }]))
-      .digest('hex');
+    const response = await routes.request('/settings');
 
-    const revision = await apiKeysRevision(routes);
-
-    expect(revision).not.toBe(`sha256:${bare}`);
-    expect(revision).not.toBe(`sha256:${authored}`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ apiKeys: enforced });
+    const before = readFileSync(configPath, 'utf8');
+    const write = await put(routes, { apiKeys: [{ key: 'sk-added' }] });
+    expect(write.status).toBe(422);
+    expect(await write.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
   });
 });
 
@@ -365,50 +358,27 @@ test('a password write does not require restart', async () => {
   });
 });
 
-test('a retained API key keeps its authored template byte-for-byte', async () => {
+test('an API key array is authored wholesale, templates byte-for-byte', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await putKeys(routes, [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }]);
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      ok: true,
-      settings: { apiKeys: [{ key: '****', label: 'ci-renamed' }, { key: '****' }] },
-    });
-    expect(onDisk(configPath).server.apiKeys).toEqual([
+    // A resubmitted template must land as the reference the view served, not as its expansion:
+    // writing `sk-from-env` here would burn the secret into the config file.
+    const apiKeys = [
       { key: '{{env.SETTINGS_API_KEY}}', label: 'ci-renamed' },
-      { key: 'sk-plain-preserved' },
-    ]);
-  });
-});
-
-test('retaining a key without a label clears the authored label', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await putKeys(routes, [{ retain: 0 }]);
+      { key: 'sk-added', label: 'laptop' },
+    ];
+    const response = await put(routes, { apiKeys });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, settings: { apiKeys: [{ key: '****' }] } });
-    expect(onDisk(configPath).server.apiKeys).toEqual([{ key: '{{env.SETTINGS_API_KEY}}' }]);
-  });
-});
-
-test('a new API key is appended and an unlisted authored key is removed', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await putKeys(routes, [
-      { retain: 0, label: 'ci' },
-      { key: 'sk-added', label: 'laptop' },
-    ]);
-
-    expect(response.status).toBe(200);
-    expect(onDisk(configPath).server.apiKeys).toEqual([
-      { key: '{{env.SETTINGS_API_KEY}}', label: 'ci' },
-      { key: 'sk-added', label: 'laptop' },
-    ]);
+    // Unlisted authored keys are gone, and the write is hot: the middleware reads the policy
+    // from `currentConfig()` per request, so the reload is the whole rollout.
+    expect(await response.json()).toMatchObject({ ok: true, restartRequired: false, settings: { apiKeys } });
+    expect(onDisk(configPath).server.apiKeys).toEqual(apiKeys);
   });
 });
 
 test('an empty API key array removes every authored key', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await putKeys(routes, []);
+    const response = await put(routes, { apiKeys: [] });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, settings: { apiKeys: [] } });
@@ -425,77 +395,51 @@ test('an omitted API key array preserves the authored keys', async () => {
   });
 });
 
-test('a retain index outside the authored array and a reserved-prefix key are rejected', async () => {
+test('a reserved-prefix API key is rejected without changing config bytes', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
     const before = readFileSync(configPath, 'utf8');
-    for (const apiKeys of [[{ retain: 5 }], [{ key: 'aio_agent_at_forged' }]]) {
-      const response = await putKeys(routes, apiKeys);
 
-      expect(response.status).toBe(422);
-      expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
-      expect(readFileSync(configPath, 'utf8')).toBe(before);
-    }
-  });
-});
+    const response = await put(routes, { apiKeys: [{ key: 'aio_agent_at_forged' }] });
 
-test('GET /settings derives key rows and their revision from the same authored snapshot', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    // An external edit lands before the watcher reloads, so `currentConfig()` is one snapshot
-    // behind. Rows read from it would pair old `retain` indexes with the new file's revision.
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        ...authoredConfig,
-        server: { ...authoredConfig.server, apiKeys: [{ key: 'sk-plain-preserved', label: 'moved' }] },
-      }),
-    );
-
-    const view = (await (await routes.request('/settings')).json()) as {
-      readonly apiKeys: readonly { readonly label?: string }[];
-      readonly apiKeysRevision: string;
-    };
-
-    expect(view.apiKeys).toEqual([{ key: '****', label: 'moved' }]);
-    // `retain: 0` now names the same entry the revision was taken over, so the write applies.
-    const response = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: view.apiKeysRevision });
-    expect(response.status).toBe(200);
-    expect(onDisk(configPath).server.apiKeys).toEqual([{ key: 'sk-plain-preserved' }]);
-  });
-});
-
-test('a key write against a superseded revision is rejected without changing config bytes', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    const stale = await apiKeysRevision(routes);
-    // Another writer reorders the authored array, so `retain: 0` now names a different secret.
-    expect((await putKeys(routes, [{ retain: 1 }, { retain: 0 }])).status).toBe(200);
-    const before = readFileSync(configPath, 'utf8');
-
-    const response = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: stale });
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ ok: false, error: { code: 'stale_api_keys' } });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
     expect(readFileSync(configPath, 'utf8')).toBe(before);
   });
 });
 
-test('GET /settings still serves the enforced keys when the authored file cannot be parsed', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    // The watcher rejected this edit, so the proxy still enforces its last valid snapshot.
-    // Failing the read would blank the whole Settings page until the file is repaired.
-    writeFileSync(configPath, '{ "server": { "apiKeys": ');
+test('caller-key enforcement is switched without touching the authored keys', async () => {
+  await withSettingsFixture(
+    async ({ configPath, logs, routes }) => {
+      // Recovering a deleted key is exactly what this switch exists to avoid, so turning
+      // enforcement off must leave the array alone — and take effect without a restart.
+      const response = await put(routes, { requireApiKey: false });
 
-    const response = await routes.request('/settings');
-    const view = (await response.json()) as { readonly apiKeys: unknown; readonly apiKeysRevision: string };
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        restartRequired: false,
+        settings: { requireApiKey: false, apiKeys: authoredConfig.server.apiKeys },
+      });
+      expect(onDisk(configPath).server).toMatchObject({
+        requireApiKey: false,
+        apiKeys: authoredConfig.server.apiKeys,
+      });
+      // Taking effect without a restart means the startup warning never runs, so the hot
+      // switch has to raise it: a publicly bound proxy must not go open quietly.
+      expect(logs.filter((entry) => entry.event === 'server.api_key_enforcement_disabled')).toEqual([
+        { event: 'server.api_key_enforcement_disabled', host: '0.0.0.0' },
+      ]);
+    },
+    { host: '0.0.0.0' },
+  );
+});
 
-    expect(response.status).toBe(200);
-    expect(view.apiKeys).toEqual([{ key: '****', label: 'ci' }, { key: '****' }]);
-    // A write cannot apply `retain` indexes to an array the client never read, and the file it
-    // would rewrite does not parse — so it is refused before any bytes move.
-    const before = readFileSync(configPath, 'utf8');
-    const write = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: view.apiKeysRevision });
-    expect(write.status).toBe(422);
-    expect(await write.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
-    expect(readFileSync(configPath, 'utf8')).toBe(before);
+test('switching caller-key enforcement off on a loopback bind stays quiet', async () => {
+  await withSettingsFixture(async ({ logs, routes }) => {
+    expect((await put(routes, { requireApiKey: false })).status).toBe(200);
+
+    // Unreachable from the network, so an open proxy here is the operator's own machine.
+    expect(logs.some((entry) => entry.event === 'server.api_key_enforcement_disabled')).toBe(false);
   });
 });
 
@@ -505,69 +449,13 @@ test('a config whose root parses to a non-object is refused rather than crashing
     // than the parser's own error — the write must still answer `config_rejected`, not a 500.
     writeFileSync(configPath, '[]');
 
-    const response = await routes.request('/settings');
-    const view = (await response.json()) as { readonly apiKeysRevision: string };
-    expect(response.status).toBe(200);
+    expect((await routes.request('/settings')).status).toBe(200);
 
     const before = readFileSync(configPath, 'utf8');
-    const write = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: view.apiKeysRevision });
+    const write = await put(routes, { apiKeys: [{ key: 'sk-added' }] });
 
     expect(write.status).toBe(422);
     expect(await write.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
     expect(readFileSync(configPath, 'utf8')).toBe(before);
-  });
-});
-
-test('a newly added key is authored even when a retained row already holds that credential', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    // Value equality cannot tell a deliberate second label for one credential from a
-    // resubmission after a lost response, and dropping a submitted key is the worse failure:
-    // the operator has already handed it out. So the row is authored either way.
-    const response = await putKeys(routes, [
-      { retain: 0, label: 'ci' },
-      { retain: 1 },
-      { key: 'sk-plain-preserved', label: 'second-label' },
-    ]);
-
-    expect(response.status).toBe(200);
-    expect(onDisk(configPath).server.apiKeys).toEqual([
-      { key: '{{env.SETTINGS_API_KEY}}', label: 'ci' },
-      { key: 'sk-plain-preserved' },
-      { key: 'sk-plain-preserved', label: 'second-label' },
-    ]);
-  });
-});
-
-test('a retained duplicate credential survives a label-only edit', async () => {
-  await withSettingsFixture(async ({ configPath, routes }) => {
-    // The schema permits the same credential under several labels, so retained rows must be
-    // written back as authored — deduplicating them would delete an unrelated entry.
-    expect(
-      (
-        await putKeys(routes, [
-          { key: 'sk-shared', label: 'first' },
-          { key: 'sk-shared', label: 'second' },
-        ])
-      ).status,
-    ).toBe(200);
-
-    const response = await putKeys(routes, [
-      { retain: 0, label: 'renamed' },
-      { retain: 1, label: 'second' },
-    ]);
-
-    expect(response.status).toBe(200);
-    expect(onDisk(configPath).server.apiKeys).toEqual([
-      { key: 'sk-shared', label: 'renamed' },
-      { key: 'sk-shared', label: 'second' },
-    ]);
-  });
-});
-
-test('an API key write does not require restart', async () => {
-  await withSettingsFixture(async ({ routes }) => {
-    const response = await putKeys(routes, [{ retain: 0 }]);
-
-    expect(await response.json()).toMatchObject({ ok: true, restartRequired: false });
   });
 });

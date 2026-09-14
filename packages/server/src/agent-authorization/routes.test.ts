@@ -38,7 +38,14 @@ const json = (value: unknown, headers: Record<string, string> = {}): RequestInit
   body: JSON.stringify(value),
 });
 
-async function routeFixture(server: { apiKeys?: Array<{ key: string }>; password?: string; host?: string } = {}) {
+async function routeFixture(
+  server: {
+    apiKeys?: Array<{ key: string }>;
+    password?: string;
+    host?: string;
+    requireApiKey?: boolean;
+  } = {},
+) {
   const host = server.host ?? '127.0.0.1';
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-routes-'));
   routeHomes.push(home);
@@ -184,6 +191,16 @@ test('static API keys without a Dashboard password disable challenge creation', 
   const response = await f.app.request('/oauth/device/code', form(DEVICE_REQUEST), loopbackServer);
   expect(response.status).toBe(503);
   expect(await response.json()).toMatchObject({ error: 'authorization_unavailable' });
+});
+
+// The gate exists because an approval issues a credential that bypasses the configured keys, so
+// it needs the password to authorize the approver. With enforcement off there is nothing to
+// bypass, and telling the operator to set a password for a proxy that admits everyone is a lie.
+test('keys the proxy no longer enforces do not gate challenge creation on a Dashboard password', async () => {
+  const f = await routeFixture({ apiKeys: [{ key: 'static' }], requireApiKey: false });
+  expect((await f.app.request('/oauth/device/code', form(DEVICE_REQUEST), loopbackServer)).status).toBe(200);
+  const admin = await f.app.request('/admin/agent-installations', undefined, loopbackServer);
+  expect(await admin.json()).toMatchObject({ deviceAuthorization: 'available' });
 });
 
 test.each(['resolve', 'approve', 'deny'] as const)(

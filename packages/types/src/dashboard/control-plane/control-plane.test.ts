@@ -16,8 +16,8 @@ const settings = {
   logging: { enabled: true, retentionDays: 3, level: 'info' },
   retryAfterCapMs: 30_000,
   hasPassword: true,
-  apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
-  apiKeysRevision: 'sha256:fixture',
+  apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }],
+  requireApiKey: true,
 } as const;
 
 describe('dashboard settings control-plane contracts', () => {
@@ -77,52 +77,42 @@ describe('dashboard settings control-plane contracts', () => {
     }
   });
 
-  test('masks API keys in the view and distinguishes retained from replaced keys in the mutation', () => {
+  test('serves authored API keys verbatim and writes them back wholesale', () => {
     const view = schema('DashboardSettingsViewSchema');
     const mutation = schema('DashboardSettingsMutationSchema');
 
+    // The editor round-trips the view straight back through the mutation, so the authored
+    // value — template reference included — has to survive both directions unmasked.
     expect(view.parse(settings)).toEqual(settings);
-    expect(view.safeParse({ ...settings, apiKeys: [{ key: 'sk-real-secret' }] }).success).toBe(false);
-    expect(view.safeParse({ ...settings, apiKeys: [{ key: '****', label: '' }] }).success).toBe(false);
+    expect(view.safeParse({ ...settings, apiKeys: [{ key: '' }] }).success).toBe(false);
+    expect(view.safeParse({ ...settings, apiKeys: [{ key: 'sk-ci', label: '' }] }).success).toBe(false);
 
     expect(mutation.parse({})).not.toHaveProperty('apiKeys');
-    expect(mutation.parse({ apiKeysRevision: 'sha256:r', apiKeys: [] })).toEqual({
-      apiKeysRevision: 'sha256:r',
-      apiKeys: [],
-    });
-    expect(
-      mutation.parse({
-        apiKeysRevision: 'sha256:r',
-        apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }],
-      }),
-    ).toEqual({
-      apiKeysRevision: 'sha256:r',
-      apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }],
+    expect(mutation.parse({ apiKeys: [] })).toEqual({ apiKeys: [] });
+    expect(mutation.parse({ apiKeys: [{ key: '{{env.PROXY_KEY}}' }, { key: 'sk-new', label: 'renamed' }] })).toEqual({
+      apiKeys: [{ key: '{{env.PROXY_KEY}}' }, { key: 'sk-new', label: 'renamed' }],
     });
     for (const entry of [
-      { retain: -1 },
-      { retain: 1.5 },
-      { retain: 0, key: 'sk-both' },
+      { retain: 0 },
       { key: '' },
       { key: 'aio_agent_at_forged' },
       { key: 'aio_agent_rt_forged' },
       { label: 'no key' },
       {},
     ]) {
-      expect(mutation.safeParse({ apiKeysRevision: 'sha256:r', apiKeys: [entry] }).success).toBe(false);
+      expect(mutation.safeParse({ apiKeys: [entry] }).success).toBe(false);
     }
   });
 
-  test('requires an API key revision whenever keys are written', () => {
+  test('carries the caller-key enforcement switch in both directions', () => {
     const view = schema('DashboardSettingsViewSchema');
     const mutation = schema('DashboardSettingsMutationSchema');
 
-    expect(view.parse(settings).apiKeysRevision).toBe(settings.apiKeysRevision);
-    // A positional `retain` is only meaningful against the array the client actually read.
-    expect(mutation.safeParse({ apiKeys: [{ retain: 0 }] }).success).toBe(false);
-    expect(mutation.safeParse({ apiKeysRevision: 'sha256:abc', apiKeys: [{ retain: 0 }] }).success).toBe(true);
-    expect(mutation.safeParse({ apiKeysRevision: 'sha256:abc' }).success).toBe(false);
-    expect(mutation.safeParse({ apiKeysRevision: '', apiKeys: [] }).success).toBe(false);
+    expect(view.safeParse({ ...settings, requireApiKey: undefined }).success).toBe(false);
+    expect(view.parse({ ...settings, requireApiKey: false }).requireApiKey).toBe(false);
+    expect(mutation.parse({})).not.toHaveProperty('requireApiKey');
+    expect(mutation.parse({ requireApiKey: false })).toEqual({ requireApiKey: false });
+    expect(mutation.safeParse({ requireApiKey: 'yes' }).success).toBe(false);
   });
 
   test('accepts only credential-free or fully redacted root proxies in the settings view', () => {

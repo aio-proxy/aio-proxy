@@ -2,6 +2,7 @@ import { fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 
 import { createAutoUpdateController } from '../auto-update';
 import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
+import { warnUnenforcedApiKeys } from '../config-unenforced-api-keys';
 import { prepareDashboardConfig } from '../dashboard-auth';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState } from '../server-state';
@@ -40,6 +41,8 @@ export const createServer = async (
   }
   const config = parseRuntimeConfig(prepared.config);
   warnLeftoverOAuthModels(prepared.config, options.logger ?? defaultLogger);
+  const boundHost = options.host ?? config.server.host;
+  warnUnenforcedApiKeys(boundHost, config, options.logger ?? defaultLogger);
   const stateOptions = createServerStateOptions({
     config,
     configPath: options.configPath,
@@ -50,6 +53,7 @@ export const createServer = async (
     watchConfig: options.watchConfig,
     builtIns: options.builtIns,
     testHooks: options.__test,
+    host: boundHost,
     dashboardAuthHealthChanged: (available) => {
       dashboardAuthAvailable = available;
     },

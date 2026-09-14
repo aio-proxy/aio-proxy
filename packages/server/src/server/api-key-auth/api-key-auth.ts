@@ -9,23 +9,20 @@ type ApiKeyEntry = { readonly key: string };
 export const requireApiKey =
   (apiKeys: () => readonly ApiKeyEntry[]): MiddlewareHandler =>
   async (context, next) =>
-    authenticateStaticOrAnonymous(context, next, apiKeys());
+    authenticateStaticOrAnonymous(context, next, apiKeys(), true);
 
+/** Matches `configuredKeys` for caller identity whatever `enforce` says; `enforce` decides
+ *  only whether an unmatched caller is rejected. The two are separate because
+ *  `server.requireApiKey` can be switched off with keys still authored, and collapsing those
+ *  callers to one anonymous principal would let any of them hang up another's realtime call
+ *  or delete another's video job — and would 403 a caller whose own call was created before
+ *  the switch was flipped. */
 export async function authenticateStaticOrAnonymous(
   context: Context<CallerPrincipalEnv>,
   next: () => Promise<void>,
   configuredKeys: readonly ApiKeyEntry[],
+  enforce: boolean,
 ): Promise<Response | void> {
-  if (configuredKeys.length === 0) {
-    // Stamped rather than left to `callerPrincipal()`'s fallback so an absent context
-    // variable means only that no auth middleware ran: Hono's `app.use` covers just the
-    // routes registered after it, and a route registered ahead of it would otherwise read
-    // as this same anonymous principal on a key-protected proxy.
-    context.set('callerPrincipal', ANONYMOUS_CALLER);
-    await next();
-    return;
-  }
-
   const candidates = [
     bearerToken(context.req.header('authorization')),
     context.req.header('x-api-key'),
@@ -45,7 +42,16 @@ export async function authenticateStaticOrAnonymous(
       break;
     }
   }
-  if (matched === undefined) return authenticationError(context);
+  if (matched === undefined) {
+    if (enforce && configuredKeys.length > 0) return authenticationError(context);
+    // Stamped rather than left to `callerPrincipal()`'s fallback so an absent context
+    // variable means only that no auth middleware ran: Hono's `app.use` covers just the
+    // routes registered after it, and a route registered ahead of it would otherwise read
+    // as this same anonymous principal on a key-protected proxy.
+    context.set('callerPrincipal', ANONYMOUS_CALLER);
+    await next();
+    return;
+  }
 
   context.set('callerPrincipal', staticKeyCallerPrincipal(matched.key));
   stripCallerCredentials(context);
@@ -66,9 +72,10 @@ const CALLER_CREDENTIAL_QUERY_PARAMS = ['key', 'auth_token'] as const;
 
 /** A copy of `headers` with every caller credential removed, for the one path that hands
  *  inbound headers to a plugin. `stripCallerCredentials` cannot stand in for it: it only
- *  runs on the keyed branch of `authenticateStaticOrAnonymous`, so on a keyless proxy the
- *  caller's own `Authorization` is still on the request when the route reads it. Copied
- *  rather than mutated in place so a route keeps its inbound headers for its own use. */
+ *  runs on the matched branch of `authenticateStaticOrAnonymous`, so an anonymously admitted
+ *  caller — no keys configured, or enforcement off and nothing matched — still has its own
+ *  `Authorization` on the request when the route reads it. Copied rather than mutated in
+ *  place so a route keeps its inbound headers for its own use. */
 export function withoutCallerCredentials(headers: Headers): Headers {
   const copy = new Headers(headers);
   for (const header of CALLER_CREDENTIAL_HEADERS) copy.delete(header);
@@ -77,11 +84,11 @@ export function withoutCallerCredentials(headers: Headers): Headers {
 
 /** `url` with every caller credential query parameter removed, for the paths that build an
  *  upstream request from the inbound URL. Same asymmetry as `withoutCallerCredentials`, one
- *  channel over: `stripCallerCredentials` rewrites the request on the keyed branch only, so
- *  on a keyless proxy `?key=`/`?auth_token=` are still on the inbound URL when a route reads
- *  it — and a plugin that merges inbound query onto its own upstream endpoint would send them
- *  on. Returns a string because that is what the `Request` constructor wants at every call
- *  site, and takes one so no caller has to build a `URL` just to discard it. */
+ *  channel over: `stripCallerCredentials` rewrites the request on the matched branch only, so
+ *  an anonymously admitted caller still has `?key=`/`?auth_token=` on the inbound URL when a
+ *  route reads it — and a plugin that merges inbound query onto its own upstream endpoint would
+ *  send them on. Returns a string because that is what the `Request` constructor wants at every
+ *  call site, and takes one so no caller has to build a `URL` just to discard it. */
 export function withoutCallerCredentialQuery(url: string): string {
   const parsed = new URL(url);
   if (!CALLER_CREDENTIAL_QUERY_PARAMS.some((param) => parsed.searchParams.has(param))) return url;
@@ -89,10 +96,10 @@ export function withoutCallerCredentialQuery(url: string): string {
   return parsed.toString();
 }
 
-/** A copy of `request` with caller credential headers and query removed. Same keyless
- *  asymmetry as the two helpers above: keyed auth already stripped the inbound request,
- *  but a keyless proxy still carries the caller's own secrets when a route or raw
- *  attempt builds the upstream `Request`. Identity is preserved when there is nothing
+/** A copy of `request` with caller credential headers and query removed. Same asymmetry as
+ *  the two helpers above: a matched key already stripped the inbound request, but an
+ *  anonymously admitted caller still carries its own secrets when a route or raw attempt
+ *  builds the upstream `Request`. Identity is preserved when there is nothing
  *  to strip so a body stream is not moved onto a new object. */
 export function withoutCallerCredentialsOnRequest(request: Request): Request {
   const url = withoutCallerCredentialQuery(request.url);

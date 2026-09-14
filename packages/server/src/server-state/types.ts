@@ -37,6 +37,9 @@ export type ServerStateOptions = {
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
+  /** The host the proxy is actually bound to, which a `--host` flag can move away from
+   *  `config.server.host`. Only reachability warnings read it; nothing here binds a socket. */
+  readonly host?: string;
   readonly logger?: ServerLogSink;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly watchConfig?: boolean;

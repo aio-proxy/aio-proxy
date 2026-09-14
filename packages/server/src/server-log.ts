@@ -17,6 +17,11 @@ export type DashboardAuthUnavailableLog = {
   readonly event: 'dashboard.auth_unavailable';
 };
 
+export type ServerApiKeyEnforcementDisabledLog = {
+  readonly event: 'server.api_key_enforcement_disabled';
+  readonly host: string;
+};
+
 export type AutoUpdateFailedLog = {
   readonly error: string;
   readonly errorType: string;
@@ -268,6 +273,7 @@ export type ServerLog =
   | RequestProviderAttemptFailedLog
   | RequestRecorderInvariantLog
   | RequestRejectedLog
+  | ServerApiKeyEnforcementDisabledLog
   | TracePersistenceFailedLog
   | UsageAccountingDroppedLog
   | RequestUpstreamResultLog
