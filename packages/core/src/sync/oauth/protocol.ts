@@ -1,4 +1,5 @@
 import type { JsonValue, OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import { type DeletedAccount, SyncProtocolError } from '../protocol';
@@ -65,20 +66,38 @@ export interface OAuthOwnership {
 }
 
 /**
+ * The journal payload's operation, read structurally: the full parser lives with the sharing
+ * service, which builds on this module.
+ */
+function journalKind(payload: JsonValue | null | undefined): string | undefined {
+  if (!isPlainObject(payload)) return undefined;
+  const kind = (payload as Record<string, JsonValue>)['kind'];
+  return typeof kind === 'string' ? kind : undefined;
+}
+
+/**
  * Whether this row still speaks for a credential other devices may be following: it holds
  * ownership that is not `independent`, or an OAuth operation is journalled against its object and
  * may have published the credential before it was interrupted. Either way the local credential
  * port must not rotate the refresh token on its own, and the binding must not be retired while the
  * hold stands — nothing can target an inactive lifecycle, so a surviving hold could never be
  * detached.
+ *
+ * A first share is the exception. Its journal and its `share-pending` ownership are both written
+ * before the account object's first write, and confirming that write is what clears the journal and
+ * moves the row to `shared` in one transaction — so either one still standing means this device
+ * never published the credential and no other device can be following it. Counting that as a hold
+ * wedges the binding for good: a share interrupted offline leaves a connect Apply unfinished, whose
+ * only recovery is a fresh connect, and the swap and `disconnect` would both refuse it as
+ * `detach-required` while detaching cannot clear a claim on an account object that does not exist.
  */
 export function retainsSharedOAuth(
   entity: { readonly objectId: string; readonly oauth?: OAuthOwnership },
-  journals: readonly { readonly objectId: string }[],
+  journals: readonly { readonly objectId: string; readonly payload?: JsonValue | null }[],
 ): boolean {
   return (
-    (entity.oauth !== undefined && entity.oauth.mode !== 'independent') ||
-    journals.some((row) => row.objectId === entity.objectId)
+    (entity.oauth !== undefined && entity.oauth.mode !== 'independent' && entity.oauth.mode !== 'share-pending') ||
+    journals.some((row) => row.objectId === entity.objectId && journalKind(row.payload) !== 'share')
   );
 }
 

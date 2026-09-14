@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import {
+  isTombstonedEntity,
   projectCommitted,
   providerDependencyPackage,
   type CommittedSource,
@@ -252,10 +253,17 @@ export function buildPreview(input: {
     for (const objectId of targets) if (remoteIds.has(objectId)) ids.add(objectId);
   } else for (const id of [...localByObject.keys(), ...remoteByObject.keys()]) ids.add(id);
   const identityGroups = new Map<string, Set<string>>();
-  // A tombstoned remote head no longer claims its identity. Counting it would report a collision
-  // against the one live object that remains and, for a Provider, demand a replacement Provider ID
-  // to resolve a duplicate that has already been deleted or purged.
-  for (const entity of [...localSnapshot, ...remoteSnapshot.filter((entity) => entity.tombstone !== true)]) {
+  // A tombstoned head no longer claims its identity, on either side. Counting one would report a
+  // collision against the one live object that remains and, for a Provider, demand a replacement
+  // Provider ID to resolve a duplicate that has already been deleted or purged — a resolution
+  // `assertDecisions` then rejects, since it frees a tombstone's Provider ID by the same rule
+  // reconciliation does. It is a restore preview that pays for this: rolling a deleted object back
+  // is exactly when a local tombstone is in play, and the rename it demanded would publish onto a
+  // head whose logical key is immutable, so it could only fail as `invalid-data`.
+  for (const entity of [
+    ...localSnapshot.filter((entity) => !isTombstonedEntity(entity)),
+    ...remoteSnapshot.filter((entity) => entity.tombstone !== true),
+  ]) {
     const groupKey = `${entity.kind}\0${entity.logicalKey}`;
     const idsForKey = identityGroups.get(groupKey) ?? new Set<string>();
     idsForKey.add(entity.objectId);

@@ -457,12 +457,15 @@ test('rewiring onto a Provider named __proto__ keeps the reference as an own ent
 });
 
 test('retiring a binding is refused while any row still holds a shared credential', () => {
-  const repo = (entities: LocalEntity[], journalObjectIds: string[] = []) =>
+  const repo = (entities: LocalEntity[], journals: { objectId: string; payload?: JsonValue }[] = []) =>
     ({
       entities: () => entities,
-      oauthJournals: () => journalObjectIds.map((objectId) => ({ objectId })),
+      oauthJournals: () => journals,
     }) as never;
-  const row = (objectId: string, mode?: 'shared' | 'detach-pending' | 'independent'): LocalEntity => ({
+  const row = (
+    objectId: string,
+    mode?: 'shared' | 'detach-pending' | 'independent' | 'share-pending',
+  ): LocalEntity => ({
     ...localEntity(objectId, 'provider', objectId),
     ...(mode === undefined
       ? {}
@@ -471,11 +474,25 @@ test('retiring a binding is refused while any row still holds a shared credentia
 
   expect(() => assertNoRetainedOAuth(repo([row('a'), row('b', 'shared')]), 'binding')).toThrow(SyncOperationError);
   expect(() => assertNoRetainedOAuth(repo([row('b', 'detach-pending')]), 'binding')).toThrow(SyncOperationError);
-  // An interrupted share may already have published the credential, so a journal row blocks even
+  // A journal of an unreadable kind may already have published the credential, so it blocks even
   // though no ownership was recorded before the crash.
-  expect(() => assertNoRetainedOAuth(repo([row('a')], ['a']), 'binding')).toThrow(SyncOperationError);
+  expect(() => assertNoRetainedOAuth(repo([row('a')], [{ objectId: 'a' }]), 'binding')).toThrow(SyncOperationError);
   // A detached Provider owns its credential alone, so nothing follows it across the retire.
   expect(() => assertNoRetainedOAuth(repo([row('a'), row('b', 'independent')]), 'binding')).not.toThrow();
+  // A first share writes its journal and its `share-pending` ownership before the account object's
+  // first write, and confirming that write is what clears both — so either one still standing means
+  // the credential was never published and no other device can be following it. Blocking here wedged
+  // the binding for good: the connect Apply this interrupted can only be recovered by a fresh
+  // connect, whose swap is exactly what this refuses, and detaching cannot clear a claim on an
+  // account object that does not exist.
+  const sharePending = repo(
+    [row('a', 'share-pending')],
+    [{ objectId: 'a', payload: { schema: 'oauth-sharing-v1', kind: 'share', providerId: 'a' } }],
+  );
+  expect(() => assertNoRetainedOAuth(sharePending, 'binding')).not.toThrow();
+  // A detach journal only exists once the account object was read as live, so that hold is real.
+  const detaching = repo([row('a', 'shared')], [{ objectId: 'a', payload: { kind: 'detach' } }]);
+  expect(() => assertNoRetainedOAuth(detaching, 'binding')).toThrow(SyncOperationError);
 });
 
 test('restoring a revision writes it to the local configuration, not just the row', async () => {
@@ -570,6 +587,51 @@ test('restoring a deleted head publishes the revision through the choice the row
   // The restored body still has to reach the configuration file, or the next commit projects the
   // deletion back over it.
   expect(scenario.appliedLocal).toBe(1);
+});
+
+// A rename publishes the renamed body to this row's own object, whose head holds the contested
+// Provider ID as an immutable logical key, so `restoreEntity` could only throw `invalid-data`.
+// A tombstone holds no identity — `assertDecisions` and reconciliation both free its Provider ID —
+// so the collision the preview reported against the object that took the ID over was not real.
+test('restoring a revision does not demand a replacement ID for a tombstone collision', async () => {
+  const historical: EntityBody = { kind: 'provider', logicalKey: 'work', value: { value: 'past' }, dependencies: [] };
+  const deleted = { ...localEntity('provider-a', 'provider', 'work'), desired: null, baseline: 'deleted:1' };
+  const survivor = localEntity('provider-b', 'provider', 'work');
+  const { record: built } = buildPreview({
+    request: { kind: 'restore', objectId: 'provider-a', operationId: 'r0' },
+    local: [deleted, survivor],
+    remote: [
+      {
+        objectId: 'provider-a',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: null,
+        body: null,
+        tombstone: true,
+        revisions: { r0: historical },
+        restoreBody: historical,
+      },
+    ],
+    fence,
+    previewId: 'preview',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+  });
+  const row = built.rows.find((entry) => entry.row.objectId === 'provider-a')!;
+  expect(row.requiresProviderId).toBeUndefined();
+  expect(row.row.choices).toEqual(['cloud']);
+
+  const restored: EntityBody[] = [];
+  const scenario = harness({
+    localEntities: () => [deleted, survivor],
+    restore: async (_objectId, candidateBody) => void restored.push(candidateBody),
+  });
+  const decisions: SyncDecision[] = [{ objectId: 'provider-a', choice: 'cloud' }];
+
+  assertDecisions(built, decisions);
+  await applyPreview(scenario.input, built, decisions);
+
+  expect(restored).toEqual([historical]);
 });
 
 test('a leave that completes during a publication is not undone by the recorded join', async () => {

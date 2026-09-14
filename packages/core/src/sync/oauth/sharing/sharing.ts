@@ -367,8 +367,7 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
                 (old) =>
                   old.kind === 'provider' &&
                   old.logicalKey === providerId &&
-                  old.oauth !== undefined &&
-                  old.oauth.mode !== 'independent',
+                  retainsSharedOAuth(old, input.repo.oauthJournals(binding.id)),
               ),
           )
       )
