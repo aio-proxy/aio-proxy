@@ -85,17 +85,16 @@ export const createServer = async (
       controller,
     );
     controller.start();
-    let closed = false;
     return Object.assign(routes, {
       close() {
-        if (closed) return;
-        closed = true;
         controller.stop();
         state.close();
       },
+      // No `closed` latch here: `state.close()` leaves the asynchronous half of the teardown on
+      // `closePromise` and `state.closeAsync()` returns it, so closing synchronously and then
+      // awaiting still waits for the drain. A latch would resolve that await while sync was still
+      // running. `state`'s two entry points and `controller.stop()` are already idempotent.
       async closeAsync() {
-        if (closed) return;
-        closed = true;
         controller.stop();
         await state.closeAsync();
       },

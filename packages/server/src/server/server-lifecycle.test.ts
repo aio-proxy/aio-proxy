@@ -35,6 +35,9 @@ test('createServer exposes idempotent close and route-assembly failure closes st
   });
   first.close();
   first.close();
+  // `closeAsync` after a synchronous close must delegate rather than latch: it awaits the drain
+  // `close()` left running instead of resolving straight away, and must not tear down twice.
+  await first.closeAsync();
   const second = await createServer({
     config: { providers: {} },
     dbHome: home,
