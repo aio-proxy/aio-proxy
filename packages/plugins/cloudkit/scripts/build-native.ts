@@ -1,6 +1,7 @@
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 
+import { bundleVersion } from '../src/native-artifact';
 import {
   CLOUDKIT_BUNDLE_ID,
   directoryDigest,
@@ -29,8 +30,9 @@ export function resolveBundleVersion(version: string | undefined): string {
   if (version === undefined || !/^\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?$/u.test(version)) {
     throw new Error('CloudKit plugin release manifest must provide a valid release version');
   }
-  const numeric = version.split('-', 1)[0];
-  return numeric ?? version;
+  // Shared with the runtime install check, which compares the plist against the manifest's full
+  // release version and would reject every prerelease artifact if the two stripped differently.
+  return bundleVersion(version);
 }
 
 async function loadReleaseVersion(): Promise<string> {

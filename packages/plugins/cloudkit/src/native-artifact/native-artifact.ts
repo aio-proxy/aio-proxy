@@ -26,6 +26,15 @@ export const NativeManifestSchema = zod.object({
   sha256: zod.string().regex(/^[a-f0-9]{64}$/u),
 }) satisfies zod.ZodType<NativeManifest>;
 
+/**
+ * Apple rejects a prerelease suffix in `CFBundleVersion`, so the build writes the numeric form alone
+ * while the manifest keeps the full release version every other comparison uses. Both sides call
+ * this so the plist check cannot drift back into rejecting every prerelease artifact.
+ */
+export function bundleVersion(version: string): string {
+  return version.split('-', 1)[0] ?? version;
+}
+
 export class NativeArtifactError extends Error {
   readonly code: 'invalid-data' | 'unsupported';
   readonly retryable = true as const;
@@ -112,7 +121,7 @@ async function verifyBundle(appPath: string, manifest: NativeManifest, executabl
   const parsed = JSON.parse(info) as Record<string, unknown>;
   if (parsed.CFBundleIdentifier !== manifest.bundleId)
     throw new NativeArtifactError('Native bundle identifier is invalid');
-  if (parsed.CFBundleVersion !== manifest.nativeVersion)
+  if (parsed.CFBundleVersion !== bundleVersion(manifest.nativeVersion))
     throw new NativeArtifactError('Native bundle version is older than the manifest');
   if (Number.parseFloat(String(parsed.LSMinimumSystemVersion ?? '0')) < 14)
     throw new NativeArtifactError('Native bundle requires an unsupported macOS version');
