@@ -26,7 +26,7 @@ import type { PluginSecretChange } from '../../sync-control-plane/local-port';
 import { commitConfig, type ServerRuntime } from '../lifecycle';
 import { createActivationCheck } from '../sync-activation';
 import type { ServerStateOptions } from '../types';
-import { createConnectBackend, type SyncLifecycleSlot } from './connect-backend';
+import { createConnectBackend, pruneBackendData, type SyncLifecycleSlot } from './connect-backend';
 
 // eslint-disable-next-line max-lines-per-function -- lifecycle replacement keeps one integration owner
 export function createSyncIntegration(
@@ -298,6 +298,7 @@ export async function startSyncIntegration(
   registerStartupCleanup: (cleanup: () => void | Promise<void>) => void,
 ): Promise<void> {
   if (integration.lifecycle === undefined) return;
+  if (integration.configPath !== undefined) await pruneBackendData(integration.configPath, integration.syncBinding?.id);
   runtime.sync = integration.lifecycle;
   registerStartupCleanup(() => runtime.sync?.close());
   try {

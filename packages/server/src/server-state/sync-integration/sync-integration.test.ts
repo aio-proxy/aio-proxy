@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,7 +24,7 @@ import { openDb } from '@aio-proxy/core/db';
 
 import type { ServerRuntime } from '../lifecycle';
 import { createSyncControlPlaneIntegration } from './control-plane-integration';
-import { createSyncIntegration, syncCommitOption } from './sync-integration';
+import { createSyncIntegration, startSyncIntegration, syncCommitOption } from './sync-integration';
 
 test('remote apply rejects a stale digest without overwriting an external edit', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-integration-'));
@@ -297,6 +297,57 @@ test('a carried row is rebased onto the protocol state the candidate backend hol
     const bindingId = repo.readBinding()!.id;
     expect(bindingId).not.toBe('binding-old');
     expect(repo.entities(bindingId)).toMatchObject([{ objectId: 'object-1', epoch: 0, baseline: null }]);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Every Apply binds a fresh UUID-scoped `.sync/<binding-id>`, so a swap that leaves the directory it
+// retired keeps that backend's extracted helper and cached credentials on disk for the life of the
+// installation, once per reconnection.
+test('a backend swap removes the retired binding data directory', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-retire-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    const repo = createSyncRepository(fixture.db.sqlite);
+    repo.writeBinding({
+      id: 'binding-old',
+      plugin: 'p',
+      capability: 'c',
+      pluginVersion: '1.0.0',
+      identityId: 'identity',
+      spaceId: 'default',
+      deviceId: 'device',
+      sessionGeneration: 1,
+      options: {},
+    });
+    mkdirSync(join(home, '.sync', 'binding-old'), { recursive: true });
+    writeFileSync(join(home, '.sync', 'binding-old', 'credentials.json'), '{}');
+
+    const candidate = await fixture.integration.connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    await candidate.commit();
+
+    expect(readdirSync(join(home, '.sync'))).toEqual([repo.readBinding()!.id]);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Disconnect closes the lifecycle and clears the binding row, but the backend's own directory stays,
+// and no id ever names it again. A kill mid-connect strands a candidate's directory the same way.
+// Starting is the one point with no candidate in flight, so the sweep belongs there.
+test('starting sync sweeps backend data no binding claims any more', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-sweep-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  try {
+    mkdirSync(join(home, '.sync', 'sync-disconnected'), { recursive: true });
+    writeFileSync(join(home, '.sync', 'sync-disconnected', 'credentials.json'), '{}');
+
+    await startSyncIntegration(fixture.runtime, fixture.integration, () => {});
+
+    expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
   } finally {
     fixture.db.close();
     rmSync(home, { recursive: true, force: true });

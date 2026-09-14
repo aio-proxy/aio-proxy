@@ -1,4 +1,4 @@
-import { chmod, mkdir, rm } from 'node:fs/promises';
+import { chmod, mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import {
@@ -27,6 +27,23 @@ const CONNECT_STARTUP_TIMEOUT_MS = 5 * 60_000;
 
 /** The pre-Apply re-read only lists what the preview already listed, and a user is waiting on it. */
 const CONNECT_REFRESH_TIMEOUT_MS = 60_000;
+
+const backendDataDirectory = (configPath: string, bindingId: string): string =>
+  join(dirname(configPath), '.sync', bindingId);
+
+/**
+ * Backend state lives under `.sync/<binding-id>` — for CloudKit an extracted helper build and the
+ * credentials it cached — and nothing revisits a binding id once it is retired. A swap removes the
+ * binding it replaces, but a disconnect clears the row without touching the disk, and a process
+ * killed mid-connect leaves its candidate's directory. A start is the one moment no candidate is in
+ * flight, so every id that is not the bound one can be swept here.
+ */
+export async function pruneBackendData(configPath: string, keep: string | undefined): Promise<void> {
+  const root = join(dirname(configPath), '.sync');
+  for (const name of await readdir(root).catch(() => [])) {
+    if (name !== keep) await rm(join(root, name), { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 /** The live pair a swap installs into. Owned by the integration, which reads it through getters. */
 export interface SyncLifecycleSlot {
@@ -75,6 +92,7 @@ export function createConnectBackend(input: ConnectBackendInput) {
   ): Promise<() => void> => {
     let next: ReturnType<typeof createLifecycle> | undefined;
     let retired: SyncLifecycleSlot['lifecycle'];
+    let retiredId: string | undefined;
     try {
       next = createLifecycle(binding, preconnectedSession, true);
       await next.lifecycle.start();
@@ -132,6 +150,7 @@ export function createConnectBackend(input: ConnectBackendInput) {
           runtime.sync = active.lifecycle;
           next!.publish();
           retired = previousLifecycle;
+          retiredId = previousBinding?.id;
         } catch (error) {
           active.port = previousPort;
           active.lifecycle = previousLifecycle;
@@ -149,6 +168,10 @@ export function createConnectBackend(input: ConnectBackendInput) {
       // deadlock against it. The swap already made every generation check in that engine stale, so
       // all it can do is unwind.
       await retired?.close().catch(() => {});
+      // Only once that close returned: the retired backend still held this directory open, and it is
+      // the last reference to it — every later read resolves the new binding id.
+      if (retiredId !== undefined)
+        await rm(backendDataDirectory(configPath, retiredId), { recursive: true, force: true }).catch(() => {});
       // The engine stays deferred until the caller has applied the reviewed connect decisions:
       // reconciling first would import the candidate's remote objects under the engine's default
       // inclusion, transiently activating a cloud configuration the user chose to overwrite.
@@ -176,7 +199,7 @@ export function createConnectBackend(input: ConnectBackendInput) {
         throw new SyncOperationError('backend-unavailable');
       const normalizedOptions = parsed.data as JsonValue;
       const bindingId = `sync-${crypto.randomUUID()}`;
-      const dataDirectory = join(dirname(configPath), '.sync', bindingId);
+      const dataDirectory = backendDataDirectory(configPath, bindingId);
       await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
       await chmod(dataDirectory, 0o700);
       // The candidate owns its backend work until `commit()` hands the session to a lifecycle: a
