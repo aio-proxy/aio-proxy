@@ -358,7 +358,12 @@ export function buildPreview(input: {
       return { ...candidate, row: { ...candidate.row, optional: true } };
     })
     .map((candidate) => {
-      if (input.request.kind === 'purge') return candidate;
+      // A restore rolls one object's own head back to a past revision and never publishes a new
+      // object, while `restoreEntity` rejects a body whose logical key differs from that head's
+      // immutable one. Demanding a replacement Provider ID here — and `assertDecisions` makes it
+      // mandatory once asked for — would make every restore of a colliding Provider fail as
+      // `invalid-data`. Freeing the identity is the conflict flow's job and stays available there.
+      if (input.request.kind === 'purge' || input.request.kind === 'restore') return candidate;
       if (!identityConflictKeys.has(`${candidate.row.kind}\0${candidate.row.logicalKey}`)) return candidate;
       // Only a Provider can be renamed out of an identity collision; other kinds have no rename
       // path, so demanding a new Provider ID for them would make the conflict unresolvable.

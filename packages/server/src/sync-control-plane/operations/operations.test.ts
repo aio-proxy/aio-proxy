@@ -634,6 +634,33 @@ test('restoring a revision does not demand a replacement ID for a tombstone coll
   expect(restored).toEqual([historical]);
 });
 
+// Two live objects under one Provider ID is a real collision, but a restore cannot resolve it: it
+// republishes a past revision onto this row's own head, whose logical key is immutable, so the
+// rename the preview demanded — and `assertDecisions` then required — could only throw
+// `invalid-data`, after applying had already rewired the local configuration onto the replacement
+// ID. Freeing the identity stays the conflict flow's job, which previews both colliding rows.
+test('restoring a revision neither demands nor accepts a replacement Provider ID', () => {
+  const historical: EntityBody = { kind: 'provider', logicalKey: 'work', value: { value: 'past' }, dependencies: [] };
+  const target = localEntity('provider-a', 'provider', 'work');
+  const rival = localEntity('provider-b', 'provider', 'work');
+  const { record: built } = buildPreview({
+    request: { kind: 'restore', objectId: 'provider-a', operationId: 'r0' },
+    local: [target, rival],
+    remote: [
+      { ...remoteEntity('provider-a', 'provider', 'work'), revisions: { r0: historical }, restoreBody: historical },
+      remoteEntity('provider-b', 'provider', 'work'),
+    ],
+    fence,
+    previewId: 'preview',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+  });
+
+  expect(built.rows.find((entry) => entry.row.objectId === 'provider-a')?.requiresProviderId).toBeUndefined();
+  expect(() => assertDecisions(built, [{ objectId: 'provider-a', choice: 'cloud', newProviderId: 'work-2' }])).toThrow(
+    SyncOperationError,
+  );
+});
+
 test('a leave that completes during a publication is not undone by the recorded join', async () => {
   const written: LocalEntity[] = [];
   const scenario = harness({

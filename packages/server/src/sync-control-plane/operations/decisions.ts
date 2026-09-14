@@ -61,6 +61,12 @@ export function assertDecisions(record: PreviewRecord, decisions: readonly SyncD
       throw new SyncOperationError('upgrade-required');
     if (decision.newProviderId !== undefined && candidate.row.kind !== 'provider')
       throw new SyncOperationError('upgrade-required');
+    // A restore republishes a past revision onto this row's own head, and that head's logical key is
+    // immutable, so a rename could only fail as `invalid-data` — after applying already rewired the
+    // local configuration onto the replacement ID. Freeing a contested Provider ID is the conflict
+    // flow's job: it previews both colliding rows and can retire the head the rename vacates.
+    if (decision.newProviderId !== undefined && record.input.kind === 'restore')
+      throw new SyncOperationError('upgrade-required');
     if (!candidate.row.choices.includes(decision.choice)) throw new SyncOperationError('upgrade-required');
   }
   assertProviderIdentitiesFree(record, selected);
