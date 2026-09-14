@@ -19,3 +19,5 @@ npm/cli-*/bin/
 .reference
 .claude/worktrees/
 .claude/settings.local.json
+# Lock files from local PR-watch tooling
+work/pr-watch/
