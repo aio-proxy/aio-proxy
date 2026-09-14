@@ -126,9 +126,13 @@ export async function assertFresh(input: OperationInput, expected: PreviewFence)
   const current = await input.fence();
   // The live fence is read without a local capture, so the row digest has to be taken here. Only for
   // a preview that carried one: adding it unconditionally would make every restore and purge Apply
-  // stale against its own fence, which has none.
+  // stale against its own fence, which has none. And only when the caller left it out: connect pins
+  // the reviewed fence here because it already compared it against a capture of its own, taken while
+  // the old binding was still bound. Re-reading the rows now would read the binding the backend swap
+  // has since installed — a different, freshly seeded row set — so every connect Apply would be stale
+  // against its own preview.
   const observed =
-    expected.entitiesDigest === undefined
+    expected.entitiesDigest === undefined || current.entitiesDigest !== undefined
       ? current
       : { ...current, entitiesDigest: entitiesDigest(input.localEntities()) };
   if (!sameFence(expected, observed)) throw new SyncPreviewError('preview-stale');

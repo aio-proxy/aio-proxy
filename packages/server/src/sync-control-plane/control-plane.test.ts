@@ -528,6 +528,53 @@ test('an unfinished connect apply is remembered across a restart by the binding 
   expect(control.status().state).toBe('idle');
 });
 
+// Applying a connect swaps the binding before the reviewed decisions land, and the new binding gets
+// its own freshly seeded rows. The row half of the fence is checked against a capture taken before
+// that swap; re-reading it afterwards compares the old binding's review against the new binding's
+// rows, so every connect Apply would be stale against its own preview.
+test('a connect apply survives the binding swap reseeding the local rows', async () => {
+  let binding: Record<string, unknown> = { ...BINDING };
+  let rows = [LOCAL_ROW];
+  let imported = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => binding,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      setConnectPending: () => {},
+    } as never,
+    binding: () => binding as never,
+    localEntities: () => rows,
+    remoteEntities: async () => [CLOUD_ROW],
+    registry: REGISTRY,
+    applyLocal: async () => void (imported += 1),
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [CLOUD_ROW],
+      refresh: async () => [CLOUD_ROW],
+      commit: async () => {
+        binding = { ...BINDING, id: 'binding-2', sessionGeneration: 2 };
+        rows = [{ ...LOCAL_ROW, objectId: 'seeded-object', mode: 'excluded' as const }];
+      },
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    lifecycle: { activate: () => {}, reconcile: async () => {}, close: async () => {} },
+  });
+
+  const preview = await control.preview(CONNECT);
+  await control.apply({ previewId: preview.previewId, decisions: [{ objectId: 'cloud-object', choice: 'cloud' }] });
+
+  expect(imported).toBe(1);
+  expect(control.status().state).toBe('idle');
+});
+
 // The binding is already swapped when the reviewed import fails, so every row sits on a baseline the
 // candidate backend has moved past. Reviewing or applying anything else against them would report
 // success and hand the state back to `idle` while the engine stays held, and a preview captured
