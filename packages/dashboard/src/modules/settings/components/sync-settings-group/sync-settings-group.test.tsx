@@ -173,48 +173,74 @@ test('hides a backend field until its controlling option matches', () => {
   expect(screen.queryByLabelText(/API token/u)).toBeNull();
 });
 
-test('does not reopen the preview dialog with a result abandoned by closing it', async () => {
-  const preview: SyncPreview = {
-    previewId: 'preview-1',
-    kind: 'join',
-    expiresAt: Date.now() + 10_000,
-    retainedSharedPlugins: [],
-    rows: [
-      {
-        objectId: 'object-work',
-        logicalKey: 'work',
-        kind: 'provider',
-        change: 'update',
-        local: { limits: { timeout: 1 } },
-        cloud: { limits: { timeout: 2 } },
-        secretChange: 'none',
-        dependencies: [],
-        choices: ['local', 'cloud'],
-      },
-    ],
-  };
+const joinPreview = (previewId: string, logicalKey = 'work'): SyncPreview => ({
+  previewId,
+  kind: 'join',
+  expiresAt: Date.now() + 10_000,
+  retainedSharedPlugins: [],
+  rows: [
+    {
+      objectId: `object-${logicalKey}`,
+      logicalKey,
+      kind: 'provider',
+      change: 'update',
+      local: { limits: { timeout: 1 } },
+      cloud: { limits: { timeout: 2 } },
+      secretChange: 'none',
+      dependencies: [],
+      choices: ['local', 'cloud'],
+    },
+  ],
+});
+
+/** Opens `preview` in the dialog and pins an option path, leaving that override preview in flight. */
+const pinOptionPath = async (preview: SyncPreview) => {
   let resolveOverrides!: (value: SyncPreview) => void;
-  renderGroup([cloudkit], cloudkit);
   // After `renderGroup`, which resets the mutation mocks.
-  mocks.previewMutateAsync.mockReturnValue(
+  mocks.previewMutateAsync.mockReturnValueOnce(
     new Promise<SyncPreview>((resolve) => {
       resolveOverrides = resolve;
     }),
   );
-  connect();
-  const [, handlers] = mocks.previewMutate.mock.calls[0] as [unknown, { onSuccess(next: SyncPreview): void }];
-  handlers.onSuccess(preview);
-
+  const [, handlers] = mocks.previewMutate.mock.calls.at(-1) as [unknown, { onSuccess(next: SyncPreview): void }];
+  act(() => handlers.onSuccess(preview));
   fireEvent.change(await screen.findByLabelText(/Option path|选项路径/u), { target: { value: 'limits.timeout' } });
   fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
   await waitFor(() => expect(mocks.previewMutateAsync).toHaveBeenCalledTimes(1));
+  return resolveOverrides;
+};
+
+test('does not reopen the preview dialog with a result abandoned by closing it', async () => {
+  renderGroup([cloudkit], cloudkit);
+  connect();
+  const resolveOverrides = await pinOptionPath(joinPreview('preview-1'));
+
   // Cancel is disabled while the override preview is in flight, so the reachable dismissal is the
   // dialog's own close control.
   fireEvent.click(screen.getByRole('button', { name: /^(Close|关闭)$/u }));
   await waitFor(() => expect(screen.queryByLabelText(/Option path|选项路径/u)).toBeNull());
 
-  resolveOverrides({ ...preview, previewId: 'preview-overrides', kind: 'overrides' });
+  resolveOverrides({ ...joinPreview('preview-overrides'), kind: 'overrides' });
   // `act` flushes the continuation that would otherwise reopen the dialog with the abandoned result.
   await act(async () => {});
   expect(screen.queryByText(/Review sync changes|审核同步变更/u)).toBeNull();
+});
+
+test('does not overwrite a newer preview with an override abandoned by replacing it', async () => {
+  renderGroup([cloudkit], cloudkit);
+  connect();
+  const resolveOverrides = await pinOptionPath(joinPreview('preview-1'));
+
+  // A newer preview takes the dialog while that override is still in flight.
+  const [, handlers] = mocks.previewMutate.mock.calls.at(-1) as [unknown, { onSuccess(next: SyncPreview): void }];
+  act(() => handlers.onSuccess(joinPreview('preview-2', 'billing')));
+  expect(await screen.findByText('billing')).toBeTruthy();
+
+  // The dialog's own generation guard only protects its draft state, so an abandoned result still
+  // reaches the preview the dialog renders from. Adopting it here would put its rows on screen under
+  // a token that applies to the previous operation, and Apply would submit that token.
+  resolveOverrides({ ...joinPreview('preview-overrides', 'stranded'), kind: 'overrides' });
+  await act(async () => {});
+  expect(screen.getByText('billing')).toBeTruthy();
+  expect(screen.queryByText('stranded')).toBeNull();
 });

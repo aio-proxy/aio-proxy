@@ -250,10 +250,12 @@ export const SyncSettingsGroup: React.FC = () => {
     previewMutation.mutate(input, { onSuccess: setPreview });
   };
 
-  // A preview the dialog asked for can resolve after the user dismissed the dialog. Replacing only a
-  // preview that is still open keeps an abandoned result from reopening it.
-  const replaceOpenPreview = (next: SyncPreview): SyncPreview => {
-    setPreview((current) => (current === null ? null : next));
+  // A preview the dialog asked for can resolve after the user dismissed the dialog, or after a
+  // different preview took its place. Swapping only when the preview it was pinned from is still the
+  // current one keeps an abandoned result from reopening the dialog and from overwriting the newer
+  // preview with a token that applies to the previous object.
+  const replacePinnedPreview = (origin: SyncPreview | null, next: SyncPreview): SyncPreview => {
+    setPreview((current) => (current === origin ? next : current));
     return next;
   };
 
@@ -397,7 +399,7 @@ export const SyncSettingsGroup: React.FC = () => {
         }}
         onRetry={async () => {
           if (lastPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
-          return replaceOpenPreview(await previewMutation.mutateAsync(lastPreviewInput));
+          return replacePinnedPreview(preview, await previewMutation.mutateAsync(lastPreviewInput));
         }}
         onPreviewOverrides={
           preview?.kind === 'purge'
@@ -406,7 +408,7 @@ export const SyncSettingsGroup: React.FC = () => {
                 // An override is its own operation, so the operation it was pinned from stays
                 // remembered for the dialog to regenerate once these paths are applied.
                 const input: SyncPreviewInput = { kind: 'overrides', objectId, paths: paths.map((path) => [...path]) };
-                return replaceOpenPreview(await previewMutation.mutateAsync(input));
+                return replacePinnedPreview(preview, await previewMutation.mutateAsync(input));
               }
         }
       />
