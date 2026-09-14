@@ -481,6 +481,20 @@ test('resolveUpgradeTargetFrom maps a Homebrew prefix symlink to brew even when 
   });
 });
 
+test('resolveUpgradeTargetFrom maps an aliased launcher outside the Homebrew prefix to brew', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-alias-prefix-'));
+  const aliasDir = mkdtempSync(join(tmpdir(), 'aio-brew-alias-bin-'));
+  const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
+  const alias = join(aliasDir, 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
+  writeExecutable(cellar, '#!/bin/sh\n');
+  symlinkSync(cellar, alias);
+  await withEmptyManagerPath(async () => {
+    const target = await resolveUpgradeTargetFrom(alias, {});
+    expect(target).toEqual({ method: 'brew', command: join(realpathSync(prefix), 'bin', 'brew'), bin: alias });
+  });
+});
+
 test('resolveUpgradeTargetFrom maps a brew+npm sibling that is not a Cellar link to binary', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-npm-sibling-'));
   const bin = join(prefix, 'bin', 'aio-proxy');

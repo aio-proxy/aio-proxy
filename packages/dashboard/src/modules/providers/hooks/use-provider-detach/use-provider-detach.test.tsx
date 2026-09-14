@@ -18,14 +18,14 @@ const detachCalls = () => mocks.detachSync.mock.calls.map(([input]) => input);
 
 const status = { state: 'idle', providers: [], backends: [] };
 
-const renderDetach = () => {
+const renderDetach = (providerId = 'work') => {
   mocks.detachSync.mockReset().mockResolvedValue(status);
   mocks.cancelDetachSync.mockReset().mockResolvedValue(status);
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   const wrapper = ({ children }: { readonly children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useProviderDetach('work'), { wrapper });
+  return renderHook((id: string) => useProviderDetach(id), { wrapper, initialProps: providerId });
 };
 
 // The first call is what marks the Provider `detach-pending`, so the login that follows is not
@@ -128,4 +128,17 @@ test('a lost login nobody detached for cancels nothing on the server', async () 
   result.current.cancel();
 
   await waitFor(() => expect(mocks.cancelDetachSync).not.toHaveBeenCalled());
+});
+
+// The editor keeps this hook across a route change. The intent is durable server state that blocks
+// the first Provider's shared credential, and no login on the Provider now displayed can complete
+// it, so it has to be cancelled against the Provider that started it — not the one on screen.
+test('navigating to another Provider cancels the detachment the first one started', async () => {
+  const { result, rerender } = renderDetach();
+
+  await result.current.start(() => true);
+  rerender('personal');
+
+  await waitFor(() => expect(mocks.cancelDetachSync).toHaveBeenCalledTimes(1));
+  expect(mocks.cancelDetachSync.mock.calls[0]?.[0]).toEqual({ providerId: 'work' });
 });

@@ -296,8 +296,19 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
           { objectId: remote.account.objectId, epoch: remote.account.epoch, generation: remote.account.generation },
         );
       setPending(input, providerId, 'detach-pending', true);
-      if (!(await verifyDetach(resolved.adapter, remote.account.payload.credential, candidate, signal)))
-        return 'pending';
+      // A `false` answer is the expected outcome of the first call and keeps the row pending on
+      // purpose, so the login that follows is not published as the shared credential. A *throw* is
+      // not an answer: `canDetach` reaches the OAuth service, and the caller that reports the error
+      // never learns a detachment was started, so the row would block every read of the shared
+      // credential until someone cancelled it by hand — and recovery would rethrow on each restart.
+      let independent: boolean;
+      try {
+        independent = await verifyDetach(resolved.adapter, remote.account.payload.credential, candidate, signal);
+      } catch (error) {
+        cancelDetach(providerId);
+        throw error;
+      }
+      if (!independent) return 'pending';
       const durable = input.repo
         .oauthJournals(input.binding.id)
         .find((journal) => journal.operationId === row.operationId);

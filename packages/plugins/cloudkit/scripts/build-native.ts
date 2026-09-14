@@ -24,6 +24,7 @@ async function run(command: string, args: readonly string[], cwd?: string): Prom
   return result;
 }
 
+/** Apple rejects a prerelease suffix in CFBundleVersion, so the plist takes the numeric form alone. */
 export function resolveBundleVersion(version: string | undefined): string {
   if (version === undefined || !/^\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?$/u.test(version)) {
     throw new Error('CloudKit plugin release manifest must provide a valid release version');
@@ -37,7 +38,13 @@ async function loadReleaseVersion(): Promise<string> {
   for (const path of candidates) {
     if (!(await Bun.file(path).exists())) continue;
     const value = (await Bun.file(path).json()) as { readonly version?: unknown };
-    if (typeof value.version === 'string') return resolveBundleVersion(value.version);
+    // Validated here but returned whole: `artifactVersion` is compared against the full package
+    // version by pack-native, the release script, and the runtime install check, so stripping a
+    // prerelease suffix from it would make every prerelease publish fail those comparisons.
+    if (typeof value.version === 'string') {
+      resolveBundleVersion(value.version);
+      return value.version;
+    }
   }
   throw new Error('CloudKit plugin release manifest is missing');
 }
@@ -100,7 +107,7 @@ async function main(): Promise<void> {
   const universalExecutable = join(macos, 'AIOProxyCloudKit');
   await run('lipo', ['-create', arm64, x86_64, '-output', universalExecutable]);
   await chmod(universalExecutable, 0o755);
-  await writeFile(join(contents, 'Info.plist'), infoPlist(template, version));
+  await writeFile(join(contents, 'Info.plist'), infoPlist(template, resolveBundleVersion(version)));
 
   const manifest: ArtifactManifest = {
     artifactVersion: version,

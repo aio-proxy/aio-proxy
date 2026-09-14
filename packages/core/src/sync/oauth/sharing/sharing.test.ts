@@ -84,6 +84,30 @@ test('cancelling a suspended detachment fences its late verification result', as
   );
 });
 
+// `canDetach` reaches the OAuth service, so it can fail rather than answer. The pending row is
+// durable by then and blocks every read of the shared credential; the caller reports the error
+// without knowing a detachment was started, and recovery would rethrow on each restart.
+test('a verification that throws leaves the Provider shared rather than blocked', async () => {
+  await withOAuthSharingFixture(
+    async (f) => {
+      f.replaceAdapter({
+        ...f.adapter,
+        credentialSync: {
+          formatVersion: 1,
+          multiDevice: { evidenceId: 'fixture-evidence' },
+          canDetach: () => Promise.reject(new Error('oauth service offline')),
+        },
+      });
+      const candidate = { ...f.accountWrite, credential: { token: 'independent-token' } };
+      await expect(f.sharing.detach(f.providerId, candidate, f.signal)).rejects.toThrow('oauth service offline');
+      expect(f.ownership()?.mode).toBe('shared');
+      expect(f.currentCredential()).toEqual({ token: 'shared-token' });
+      expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+    },
+    { shared: true },
+  );
+});
+
 test('cancelling a detachment that has not journalled yet leaves the Provider shared', async () => {
   await withOAuthSharingFixture(
     async (f) => {

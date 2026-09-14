@@ -197,7 +197,12 @@ const brewTargetFromCellar = (binPath: string, launcherPath = binPath): UpgradeT
   const prefix = brewPrefixFromCellar(binPath);
   if (prefix === undefined) return undefined;
   const launcherDir = launcherPath === binPath ? join(prefix, 'bin') : dirname(launcherPath);
-  const command = join(launcherDir, 'brew');
+  // An alias outside the Homebrew prefix — `/usr/local/bin/aio-proxy` pointing into
+  // `/opt/homebrew/Cellar` — has no `brew` beside it, but the Cellar path already names the prefix
+  // that does. Preferred over that prefix when a sibling exists, because the launcher's own path is
+  // the one the user's PATH resolves and a realpath'd prefix can spell the same directory
+  // differently.
+  const command = siblingCommand(launcherPath, 'brew') ?? join(prefix, 'bin', 'brew');
   if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
   return { method: 'brew', command, bin: join(launcherDir, PACKAGE) };
 };
