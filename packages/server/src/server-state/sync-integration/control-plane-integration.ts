@@ -152,7 +152,13 @@ export function createSyncControlPlaneIntegration(
       const lifecycle = integration.lifecycle;
       if (sharing === undefined || account === null || lifecycle === undefined)
         throw new SyncOperationError('backend-unavailable');
-      await sharing.detach(providerId, accountCandidate(account), lifecycle.signal);
+      const outcome = await sharing.detach(providerId, accountCandidate(account), lifecycle.signal);
+      // The first call marks the row `detach-pending` and is expected to report exactly that. On the
+      // completion call the login session is the proof the candidate is an independent
+      // authorization, so `pending` means the adapter rejected it: the row stays `detach-pending`
+      // and shared credential reads stay blocked. Reporting success would tell the user the
+      // Provider is theirs again while it is still following the shared credential.
+      if (loginSessionId !== undefined && outcome !== 'independent') throw new SyncOperationError('operation-pending');
     },
     cancelDetach: async (providerId) => {
       const sharing = integration.sharing();

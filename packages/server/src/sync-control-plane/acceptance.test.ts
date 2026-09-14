@@ -343,7 +343,13 @@ test('synthetic OAuth detach stays pending through outage until an independent c
         providerId: 'acceptance-oauth-provider',
       });
 
-      await fixture.b.state.sync!.detach('acceptance-oauth-provider', login.id);
+      // The adapter refuses this candidate as non-independent, so the detachment cannot complete. The
+      // row is marked `detach-pending` durably — that is what stops the login from being published as
+      // the shared credential — and the call reports that it did not finish, because a Provider whose
+      // credential reads are still blocked is not detached.
+      await expect(fixture.b.state.sync!.detach('acceptance-oauth-provider', login.id)).rejects.toThrow(
+        'operation-pending',
+      );
       expect(fixture.b.state.sync!.status().providers).toContainEqual(
         expect.objectContaining({
           providerId: 'acceptance-oauth-provider',
@@ -390,10 +396,23 @@ test('unknown remote format remains read-only and marks the local identity upgra
   });
 }, 30_000);
 
-test('an identity switch fails the next public synchronization attempt', async () => {
+test('an identity switch fails synchronization until the backend signs back into the bound identity', async () => {
   await withTwoServerSyncFixtures(async (fixture) => {
     fixture.backend.setIdentity('acceptance-new-identity');
     await expect(fixture.a.state.sync!.retry()).rejects.toThrow('identity changed');
+    await waitUntil(
+      () => fixture.a.state.sync!.status().state === 'identity-changed',
+      'the identity change was not reported',
+    );
+
+    // The backend disposed the session it handed over, so the engine is stopped for good and Retry
+    // has to dial the backend again once the user signs back in. Reusing the dead one reports
+    // success while every later edit stays on this device.
+    fixture.backend.setIdentity('acceptance-memory-identity');
+    const marker = `identity-marker-${crypto.randomUUID()}`;
+    await setProvider(fixture.a, 'work', marker);
+    expect((await fixture.a.state.sync!.retry()).state).toBe('idle');
+    await waitUntil(() => cloudText(fixture).includes(marker), 'the reconnected device published nothing');
   });
 }, 30_000);
 

@@ -58,6 +58,28 @@ export type ServerSyncLifecycleInput = {
   readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
+function createSharing(
+  input: ServerSyncLifecycleInput,
+  binding: LocalBinding,
+  store: ReturnType<typeof createSyncObjectStore>,
+) {
+  return createOAuthSharingService({
+    binding,
+    repo: input.repo,
+    accounts: input.accounts,
+    store,
+    resolveAdapter(providerId) {
+      const account = input.accounts.readAccount(providerId);
+      if (account === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
+      const adapter = input.registry().resolveOAuth(account.plugin, account.capability);
+      const pluginVersion = input.pluginVersions?.().get(account.plugin);
+      if (adapter === undefined || pluginVersion === undefined) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
+      return { adapter, pluginVersion };
+    },
+    withProviderGate: input.withProviderGate ?? (async (_providerId, run) => run()),
+  });
+}
+
 export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): ServerSyncLifecycle {
   const controller = new AbortController();
   let engine: ReturnType<typeof createSyncEngine> | undefined;
@@ -68,6 +90,24 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
   let started = false;
   let closed = false;
   let closePromise: Promise<void> | undefined;
+  // Consumed by the first start(): the session it hands over is disposed on every failure path, and a
+  // reconnect must dial the backend again rather than install a dead session a second time.
+  let preconnected = input.preconnectedSession;
+
+  // The engine stops for good when the backend disposed its session because the signed-in identity
+  // changed, so what this lifecycle holds is a dead session no reconcile can use. Staying `started`
+  // would make Retry a no-op that reports success; unstarted, Retry reconnects — and fails loudly
+  // while the backend is still signed into the wrong identity.
+  function handleStatus(value: string): void {
+    if (value === 'identity-changed' && !closed) {
+      engine = undefined;
+      session = undefined;
+      started = false;
+      input.onCoordinator?.(undefined);
+      input.onSharing?.(undefined);
+    }
+    input.onStatus?.(value);
+  }
 
   function abort(): void {
     if (closed) return;
@@ -78,7 +118,8 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
   async function start(): Promise<void> {
     if (started || closed) return;
     started = true;
-    let connected: SyncSession | undefined = input.preconnectedSession;
+    let connected: SyncSession | undefined = preconnected;
+    preconnected = undefined;
     // An explicit connect must surface why it failed. Restoring a persisted binding must not: the
     // plugin can be missing or the options stale, and the documented retry calls start() again on
     // this same lifecycle. Nothing was connected yet, so stay unstarted or that retry no-ops and
@@ -144,21 +185,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
       session = connected;
       const store = createSyncObjectStore(connected);
       input.onCoordinator?.(createSharedOAuthCoordinator({ binding, store, repo: input.repo }));
-      const sharing = createOAuthSharingService({
-        binding,
-        repo: input.repo,
-        accounts: input.accounts,
-        store,
-        resolveAdapter(providerId) {
-          const account = input.accounts.readAccount(providerId);
-          if (account === null) throw new Error('SYNC_OAUTH_ACCOUNT_MISSING');
-          const adapter = input.registry().resolveOAuth(account.plugin, account.capability);
-          const pluginVersion = input.pluginVersions?.().get(account.plugin);
-          if (adapter === undefined || pluginVersion === undefined) throw new Error('SYNC_OAUTH_UPGRADE_REQUIRED');
-          return { adapter, pluginVersion };
-        },
-        withProviderGate: input.withProviderGate ?? (async (_providerId, run) => run()),
-      });
+      const sharing = createSharing(input, binding, store);
       input.onSharing?.(sharing);
       await sharing.recover(controller.signal);
       engine = createSyncEngine({
@@ -166,7 +193,7 @@ export function createServerSyncLifecycle(input: ServerSyncLifecycleInput): Serv
         session,
         repo: input.repo,
         local: port,
-        onStatus: (value) => input.onStatus?.(value),
+        onStatus: handleStatus,
       });
       if (!input.deferEngine) engine.start();
     } catch (error) {

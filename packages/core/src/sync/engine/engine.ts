@@ -192,6 +192,7 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
     await recoverLocalCommits(input.repo, input.binding.id, {
       ...input.local,
       assertCurrent: () => assertGeneration(generation),
+      publishableQueued: (operation) => !exceedsValueLimit(store, operation),
     });
     assertGeneration(generation);
     const unpublishable = await drainOutbox(generation, signal);

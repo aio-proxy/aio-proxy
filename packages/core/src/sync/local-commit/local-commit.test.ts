@@ -80,6 +80,36 @@ test('a connect that only published still detects the next external edit', async
   });
 });
 
+test('drift replaces a queued operation no drain can publish', async () => {
+  await withSyncCommitFixture(async (f) => {
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    await fsPromises.writeFile(
+      f.configPath,
+      encodeCandidate({ providers: { work: { kind: 'api', baseUrl: 'https://oversized.test' } } }, f.configPath),
+    );
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    const queued = f.repo.outbox(f.bindingId);
+    expect(queued).toHaveLength(1);
+
+    await fsPromises.writeFile(
+      f.configPath,
+      encodeCandidate({ providers: { work: { kind: 'api', baseUrl: 'https://shrunk.test' } } }, f.configPath),
+    );
+    // A publishable entry is work in flight: the drain runs after this pass and carries the newest
+    // state, so recomputing puts alongside it would reorder them.
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toEqual(queued);
+
+    // A body over the backend's value limit is retried forever by design, and shrinking the
+    // configuration is what replaces it — so that edit must not wait for the queue to drain.
+    await recoverLocalCommits(f.repo, f.bindingId, { ...f.port, publishableQueued: () => false });
+    expect(f.repo.outbox(f.bindingId).at(-1)?.body).toMatchObject({
+      logicalKey: 'work',
+      value: { baseUrl: 'https://shrunk.test' },
+    });
+  });
+});
+
 test('a configuration edited outside any mutation republishes its objects', async () => {
   await withSyncCommitFixture(async (f) => {
     const file = new AtomicConfigFile(f.configPath);

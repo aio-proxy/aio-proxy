@@ -13,6 +13,8 @@ export interface LocalCommitPort {
   assertCurrent?(): void;
   rawDigest(): Promise<string>;
   accountOperationsSettled(ids: readonly string[]): boolean;
+  /** False for a queued operation no drain can ever publish, so drift may replace it. */
+  publishableQueued?(operation: OutboxOperation): boolean;
   committedSource(): Promise<CommittedSource>;
 }
 
@@ -162,8 +164,13 @@ async function confirmLocalCommitUnderFence(
  * lifetime of the binding. That apply is what made the cloud agree with the file, so the file is the
  * baseline.
  *
- * ponytail: an edit landing between that apply and this pass is adopted rather than published. A
- * drift commit publishes the whole projection rather than a delta, so the next edit carries it.
+ * ponytail: an edit landing between that apply and this pass is adopted rather than published, so the
+ * cloud stays on the applied bodies until the configuration changes again — every later drift commit
+ * publishes the whole projection, so the next change carries this one's content too. Seeding a delta
+ * instead is not safe here: a row records what this device published, so an object the cloud owns and
+ * this device never published looks exactly like an unpublished local edit, and publishing it echoes
+ * a freshly imported object back — dropping the shared plugin secret the file cannot carry. Closing
+ * the window properly means the connect apply confirming a baseline commit for the file it writes.
  */
 function seedBaseline(repo: SyncRepository, bindingId: string, digest: string, source: CommittedSource): void {
   const commitId = crypto.randomUUID();
@@ -190,8 +197,12 @@ async function publishLocalDrift(repo: SyncRepository, bindingId: string, port: 
   // Queued operations are the newest state a drain is still carrying, and this pass drains after it.
   // Recomputing puts from the file alongside them would order a put behind a delete the same drain
   // is about to publish, and the outbox's newest-wins rule would drop that delete. Whatever drift
-  // survives the drain is still there for the next pass.
-  if (repo.pendingCommits(bindingId).length > 0 || repo.outbox(bindingId).length > 0) return;
+  // survives the drain is still there for the next pass. An entry the drain reports unpublishable is
+  // not work in flight: a body over the backend's value limit is retried forever by design, because
+  // shrinking the configuration is what replaces it — and that edit is drift, so waiting for the
+  // queue to empty first would wedge the one path out of quota.
+  if (repo.pendingCommits(bindingId).length > 0) return;
+  if (repo.outbox(bindingId).some((operation) => port.publishableQueued?.(operation) ?? true)) return;
   const latest = repo.latestConfirmedCommit(bindingId);
   const afterDigest = await port.rawDigest();
   port.assertCurrent?.();
