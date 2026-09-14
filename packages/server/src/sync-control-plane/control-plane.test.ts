@@ -220,31 +220,24 @@ test('background engine outcomes move the publicly reported state', async () => 
   expect(control.status().state).toBe('idle');
 });
 
-// A Provider published before its account object arrives is held at `oauth-unverified` with no
-// ownership recorded yet, so reading `oauth.mode` alone reports a plain local credential and the
-// Dashboard hides the pending warning for a Provider that cannot use one.
-test('an included Provider held before its account object arrives reports an unverified credential', () => {
-  const provider = (objectId: string, extra: Record<string, unknown>) => ({
-    objectId,
-    logicalKey: objectId,
-    kind: 'provider' as const,
-    mode: 'included' as const,
-    epoch: 0,
-    desired: null,
-    baseline: null,
-    overrides: [],
-    pendingReason: 'oauth-unverified' as const,
-    ...extra,
-  });
-  const control = createSyncControlPlane({
+const PROVIDER = (objectId: string, extra: Record<string, unknown>) => ({
+  objectId,
+  logicalKey: objectId,
+  kind: 'provider' as const,
+  mode: 'included' as const,
+  epoch: 0,
+  desired: null,
+  baseline: null,
+  overrides: [],
+  pendingReason: 'oauth-unverified' as const,
+  ...extra,
+});
+
+const statusOf = (entities: readonly unknown[]) =>
+  createSyncControlPlane({
     repo: {
       readBinding: () => BINDING,
-      entities: () => [
-        provider('waiting', {}),
-        // The user's own login owes this row an action, and its copy carries the cancel button.
-        provider('detaching', { oauth: { mode: 'detach-pending' } }),
-        provider('excluded', { mode: 'excluded' }),
-      ],
+      entities: () => entities,
       outbox: () => [],
       pendingCommits: () => [],
       oauthJournals: () => [],
@@ -258,12 +251,44 @@ test('an included Provider held before its account object arrives reports an unv
     persistOverrides: async () => {},
     purge: async () => {},
     connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
-  } as never);
+  } as never).status().providers;
 
-  expect(control.status().providers).toMatchObject([
+// A Provider published before its account object arrives is held at `oauth-unverified` with no
+// ownership recorded yet, so reading `oauth.mode` alone reports a plain local credential and the
+// Dashboard hides the pending warning for a Provider that cannot use one.
+test('an included Provider held before its account object arrives reports an unverified credential', () => {
+  expect(
+    statusOf([
+      PROVIDER('waiting', {}),
+      // The user's own login owes this row an action, and its copy carries the cancel button.
+      PROVIDER('detaching', { oauth: { mode: 'detach-pending' } }),
+      PROVIDER('excluded', { mode: 'excluded' }),
+    ]),
+  ).toMatchObject([
     { providerId: 'waiting', credentialState: 'unverified' },
     { providerId: 'detaching', credentialState: 'detach-pending' },
     { providerId: 'excluded', credentialState: 'independent' },
+  ]);
+});
+
+// A deleted head keeps its Provider ID for credential coordination, so re-authoring the Provider
+// leaves two rows under one ID. Every consumer looks a Provider up by that ID and takes the first
+// match — the dead one, whose `included` flag and objectId aim the editor's sync controls at an
+// object nothing can publish.
+test('a Provider re-created under a deleted head ID reports only the live row', () => {
+  expect(
+    statusOf([
+      PROVIDER('dead-head', { logicalKey: 'work', baseline: 'deleted:3', pendingReason: null }),
+      PROVIDER('reauthored', { logicalKey: 'work', mode: 'excluded', pendingReason: null }),
+    ]),
+  ).toEqual([
+    {
+      providerId: 'work',
+      objectId: 'reauthored',
+      included: false,
+      credentialState: 'independent',
+      pendingReason: null,
+    },
   ]);
 });
 

@@ -1,4 +1,5 @@
 import type { LocalBinding, PluginRegistry, PluginRepository, SyncRepository } from '@aio-proxy/core';
+import { isTombstonedEntity } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { ProviderSyncView, SyncBackendView, SyncConnectionState, SyncStatus } from '@aio-proxy/types';
 
@@ -55,7 +56,12 @@ export function createStatus(input: StatusInput): { status: () => SyncStatus; ba
             ? null
             : { plugin: currentBinding.plugin, capability: currentBinding.capability, spaceId: currentBinding.spaceId },
         providers: entities
-          .filter((entity) => entity.kind === 'provider')
+          // A tombstone keeps its kind and logical key for credential coordination but no longer
+          // holds that identity, so re-authoring the Provider seeds a second row under the same
+          // Provider ID. Every consumer looks a Provider up by that ID and takes the first match,
+          // which in row order is the dead one — the editor would report the deleted head as
+          // included and aim its sync controls and history at an object nothing can publish.
+          .filter((entity) => entity.kind === 'provider' && !isTombstonedEntity(entity))
           .map((entity) => {
             const pendingState = entity.pendingReason;
             const mode = entity.oauth?.mode === 'share-pending' ? 'unverified' : entity.oauth?.mode;
