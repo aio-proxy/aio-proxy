@@ -876,6 +876,35 @@ test('a rename records the join on the renamed row against the revision it just 
   expect(written[0]?.objectId).not.toBe('provider-a');
 });
 
+// An account object is keyed by object ID, and a rename republishes the configuration as a new object
+// while deleting the one it vacated. Resolving a Provider ID collision by taking the cloud body under
+// a new ID moves the local credential onto that ID, so it has to be reshared under the new object or
+// no device — this one included — has an account to import for the Provider it just adopted.
+test('a cloud rename reshares the credential under the object it published', async () => {
+  const oauthBody: EntityBody = {
+    kind: 'provider',
+    logicalKey: 'work',
+    value: { kind: 'oauth', plugin: '@example/plugin', capability: 'chat' },
+    dependencies: [],
+  };
+  const base = candidate('provider-a', 'provider', 'work');
+  const rows = [{ ...base, local: oauthBody, cloud: oauthBody }];
+  const shared: string[] = [];
+  const scenario = harness({
+    repo: { putEntity: () => {}, oauthJournals: () => [] } as never,
+    localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+    persistProviderIdentity: async () => {},
+    shareOAuth: async (providerId) => void shared.push(providerId),
+    accounts: { readAccount: () => ({ providerId: 'work-2' }) } as never,
+  });
+
+  await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+    { objectId: 'provider-a', choice: 'cloud', newProviderId: 'work-2' },
+  ]);
+
+  expect(shared).toEqual(['work-2']);
+});
+
 // Ownership names the account object under the head being replaced, so a rename can neither carry it
 // (the new object has no account, and `share()` short-circuits on ownership) nor drop it (the local
 // port would rotate a refresh token other devices follow).

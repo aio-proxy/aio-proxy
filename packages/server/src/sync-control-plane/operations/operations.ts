@@ -378,6 +378,12 @@ export async function applyPreview(
         if (identityRows !== undefined) {
           publishedRevision = (await input.applyCloud(selectedBody, identityRows.renamed, null)) ?? null;
           if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
+          // The renamed object is a publication like any other, and an account object is keyed by the
+          // object ID the rename just vacated and deleted. Leaving this false skipped the reshare, so
+          // the credential `persistProviderIdentity` moved onto the new Provider ID had no account
+          // under the new object for any device to import — including this one, which then holds the
+          // Provider it just adopted at `oauth-unverified`.
+          published = true;
         }
         // The head check above lists and reads the whole backend, and the publication before it is
         // another round trip. A commit landing in either window is overlaid by the import below and
