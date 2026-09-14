@@ -998,3 +998,55 @@ test('a leave completing while a join preview is being built makes the preview s
   // Re-including it is the harm: the row must still be excluded once the stale apply is refused.
   expect(row.mode).toBe('excluded');
 });
+
+// An overrides Apply rewrites only the synchronization row: it moves neither `localCommitId` nor
+// `rangeRevision`, so a join preview reviewed before it used to pass its fence and publish the body
+// projected from the paths the user has since pinned.
+test('an overrides apply landing after a join preview makes the preview stale', async () => {
+  const row = {
+    objectId: 'local-object',
+    logicalKey: 'shared',
+    kind: 'provider' as const,
+    mode: 'included' as const,
+    epoch: 1,
+    desired: { kind: 'provider' as const, logicalKey: 'shared', value: { region: 'eu' }, dependencies: [] },
+    baseline: null,
+    overrides: [] as readonly (readonly string[])[],
+    pendingReason: null,
+  };
+  const published: string[] = [];
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [row],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+      latestConfirmedCommit: () => ({ commitId: 'commit-1' }),
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [row],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => void published.push('local'),
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+  } as never);
+
+  const preview = await control.preview({ kind: 'join', providerId: 'shared' });
+  // The overrides Apply the user ran in between, pinning `region` locally.
+  row.overrides = [['region']];
+
+  await expect(
+    control.apply({
+      previewId: preview.previewId,
+      decisions: preview.rows.map((previewRow) => ({ objectId: previewRow.objectId, choice: previewRow.choices[0]! })),
+    }),
+  ).rejects.toMatchObject({ code: 'preview-stale' });
+  // Publishing the pre-pin body is the harm: nothing may reach the backend.
+  expect(published).toEqual([]);
+});

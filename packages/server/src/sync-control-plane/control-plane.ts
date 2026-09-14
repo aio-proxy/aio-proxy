@@ -360,7 +360,12 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
         request: input,
         local: local.entities,
         remote,
-        fence: await currentFence(local, remote),
+        // A join publishes the projected authored body and an overrides Apply replaces the row's
+        // whole pinned set, so both are decided against row state an overrides Apply landing in
+        // between rewrites — and that Apply moves neither the commit ID nor the range revision, so
+        // the rest of the fence would let the stale selection through. Restore and purge publish a
+        // cloud body no override takes part in.
+        fence: await currentFence(local, remote, input.kind === 'join' || input.kind === 'overrides'),
         previewId,
         expiresAt,
         registry: options.registry?.(),

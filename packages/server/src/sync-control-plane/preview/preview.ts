@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import {
   isTombstonedEntity,
@@ -34,12 +34,27 @@ export type PreviewFence = {
    */
   readonly sourceDigest?: string;
   /**
-   * Digest of the row state a reviewed decision publishes, carried only by connect. An override
-   * applied between preview and Apply rewrites the body a `local` choice sends while moving neither
-   * the commit ID nor the range revision, so nothing else in the fence would notice it.
+   * Digest of the row state a reviewed decision publishes, carried by connect, join and overrides.
+   * An override applied between preview and Apply rewrites the body a `local` choice sends — and is
+   * itself the thing a second overrides preview would replace wholesale — while moving neither the
+   * commit ID nor the range revision, so nothing else in the fence would notice it.
    */
   readonly entitiesDigest?: string;
 };
+
+// Only the row state a reviewed decision publishes. Epoch, baseline and pending reason are left out
+// on purpose: ordinary reconciliation moves those, and reading that as a stale preview would make an
+// Apply unlandable on a busy device.
+export const entitiesDigest = (entities: readonly LocalEntity[]): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify(
+        [...entities]
+          .sort((left, right) => left.objectId.localeCompare(right.objectId))
+          .map((entity) => [entity.objectId, entity.mode, entity.overrides]),
+      ),
+    )
+    .digest('hex');
 
 export type PreviewRecord = {
   readonly fence: PreviewFence;

@@ -7,7 +7,7 @@ import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { PreviewFence, PreviewRecord, RemoteEntity } from '../preview';
-import { latestCommitId, SyncPreviewError, sameFence } from '../preview';
+import { entitiesDigest, latestCommitId, SyncPreviewError, sameFence } from '../preview';
 import { assertDecisions, reviewedBody, type SyncDecision } from './decisions';
 import { SyncOperationError } from './errors';
 import { providerIdentityRows, remoteIdentityEntity, type ProviderIdentityRows } from './provider-identity';
@@ -124,7 +124,14 @@ async function persistProviderIdentity(input: OperationInput, rows: ProviderIden
 
 export async function assertFresh(input: OperationInput, expected: PreviewFence): Promise<void> {
   const current = await input.fence();
-  if (!sameFence(expected, current)) throw new SyncPreviewError('preview-stale');
+  // The live fence is read without a local capture, so the row digest has to be taken here. Only for
+  // a preview that carried one: adding it unconditionally would make every restore and purge Apply
+  // stale against its own fence, which has none.
+  const observed =
+    expected.entitiesDigest === undefined
+      ? current
+      : { ...current, entitiesDigest: entitiesDigest(input.localEntities()) };
+  if (!sameFence(expected, observed)) throw new SyncPreviewError('preview-stale');
 }
 
 /**

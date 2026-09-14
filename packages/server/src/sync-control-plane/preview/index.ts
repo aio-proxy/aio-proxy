@@ -5,6 +5,7 @@ export { secretChange } from './redact';
 export {
   buildPreview,
   createPreviewToken,
+  entitiesDigest,
   latestCommitId,
   objectValue,
   sameFence,

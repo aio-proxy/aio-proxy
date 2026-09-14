@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { CommittedSource, LocalBinding, LocalEntity, SyncRepository } from '@aio-proxy/core';
 
 import {
+  entitiesDigest,
   latestCommitId,
   snapshotLocalEntities,
   SyncPreviewError,
@@ -26,20 +27,6 @@ export type LocalCapture = {
   readonly localCommitId: string;
   readonly rangeRevision: number;
 };
-
-// Only the row state a reviewed decision publishes. Epoch, baseline and pending reason are left out
-// on purpose: ordinary reconciliation moves those, and reading that as a stale preview would make an
-// Apply unlandable on a busy device.
-const entitiesDigest = (entities: readonly LocalEntity[]): string =>
-  createHash('sha256')
-    .update(
-      JSON.stringify(
-        [...entities]
-          .sort((left, right) => left.objectId.localeCompare(right.objectId))
-          .map((entity) => [entity.objectId, entity.mode, entity.overrides]),
-      ),
-    )
-    .digest('hex');
 
 /**
  * The authored state a preview's rows were projected from. The configuration file alone is not it:
@@ -76,8 +63,9 @@ export function createFenceReader(input: FenceReaderInput): {
     capture?: LocalCapture,
     remote?: readonly RemoteEntity[],
     /**
-     * Whether the captured rows are part of the fence. Passed by connect only: an override Apply
-     * landing between its preview and its Apply changes the body a `local` choice publishes without
+     * Whether the captured rows are part of the fence. Passed by connect, join and overrides: an
+     * override Apply landing between one of those previews and its Apply rewrites the body a `local`
+     * choice publishes, or replaces the override set a second overrides preview reviewed, without
      * moving any other half of the fence.
      */
     reviewedEntities?: boolean,
