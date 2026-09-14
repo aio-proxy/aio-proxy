@@ -288,14 +288,25 @@ test('a before-digest recovery discards the prepared intent', async () => {
   });
 });
 
-test('an unknown raw digest remains pending for a later recovery', async () => {
+test('an intent overtaken by a direct file edit is discarded so that edit publishes', async () => {
   await withSyncCommitFixture(async (f) => {
-    const file = new AtomicConfigFile(f.configPath);
-    prepareLocalCommit(f.repo, f.bindingId, f.intent);
-    await file.replace(() => ({ providers: { other: { kind: 'api', baseUrl: 'https://other.test' } } }));
     await recoverLocalCommits(f.repo, f.bindingId, f.port);
-    expect(f.repo.pendingCommits(f.bindingId)).toHaveLength(1);
-    expect(f.repo.outbox(f.bindingId)).toEqual([]);
+
+    // The writer journaled A→B and died before its rename; the file was then edited directly to C.
+    prepareLocalCommit(f.repo, f.bindingId, f.intent);
+    await fsPromises.writeFile(
+      f.configPath,
+      encodeCandidate({ providers: { work: { kind: 'api', baseUrl: 'https://edited.test' } } }, f.configPath),
+    );
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+
+    // No later file state can match that intent again, so leaving it prepared wedges drift: C and
+    // every edit after it would go unpublished for the lifetime of the binding.
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.outbox(f.bindingId)[0]?.body).toMatchObject({
+      logicalKey: 'work',
+      value: { baseUrl: 'https://edited.test' },
+    });
   });
 });
 

@@ -240,12 +240,14 @@ export async function recoverLocalCommits(
         repo.discard(bindingId, intent.commitId);
       } else if (digest === intent.afterDigest) {
         await confirmLocalCommitUnderFence(repo, bindingId, intent.commitId, port);
-      } else if (repo.latestConfirmedCommit(bindingId)?.afterDigest === digest) {
-        // Neither digest matches, but a confirmed commit owns the file as it stands: this intent was
-        // overtaken while its account operations were still draining. Leaving it prepared strands it
-        // forever, since no future file state can match it again. Discarding publishes nothing —
-        // `committedOperations` recomputes puts and deletes from the current source, so the commit
-        // that superseded this one already carried whatever it would have sent.
+      } else {
+        // Neither digest matches, so no future file state can match this intent again: it was
+        // overtaken while its account operations were still draining, or the configuration was
+        // edited directly after the writer died. Leaving it prepared strands more than itself —
+        // `publishLocalDrift` returns early while any commit is pending, so the edit that overtook
+        // it, and every edit after that, would never be published. Discarding loses nothing:
+        // `committedOperations` recomputes puts and deletes from the current source, so whatever
+        // this intent would have sent is carried by the commit that replaces it.
         repo.discard(bindingId, intent.commitId);
       }
     }
