@@ -945,6 +945,35 @@ test('a cloud rename reshares the credential under the object it published', asy
   expect(shared).toEqual(['work-2']);
 });
 
+// Deleting a head tombstones its account object too, so reviving the Provider republishes only the
+// configuration. Without the reshare no later path republishes this device's retained credential,
+// and every other device holds the rejoined Provider at `oauth-unverified` forever.
+test('reviving a retired OAuth Provider reshares the credential it republished', async () => {
+  const oauthBody: EntityBody = {
+    kind: 'provider',
+    logicalKey: 'work',
+    value: { kind: 'oauth', plugin: '@example/plugin', capability: 'chat' },
+    dependencies: [],
+  };
+  const base = candidate('provider-a', 'provider', 'work');
+  const rows = [{ ...base, row: { ...base.row, choices: ['restore' as const] }, local: oauthBody, cloud: null }];
+  const shared: string[] = [];
+  const restored: EntityBody[] = [];
+  const scenario = harness({
+    localEntities: () => [localEntity('provider-a', 'provider', 'work')],
+    restore: async (_objectId, candidateBody) => void restored.push(candidateBody),
+    shareOAuth: async (providerId) => void shared.push(providerId),
+    accounts: { readAccount: () => ({ providerId: 'work' }) } as never,
+  });
+
+  await applyPreview(scenario.input, record({ kind: 'join', providerId: 'work' }, rows), [
+    { objectId: 'provider-a', choice: 'restore' },
+  ]);
+
+  expect(restored).toEqual([oauthBody]);
+  expect(shared).toEqual(['work']);
+});
+
 // Ownership names the account object under the head being replaced, so a rename can neither carry it
 // (the new object has no account, and `share()` short-circuits on ownership) nor drop it (the local
 // port would rotate a refresh token other devices follow).

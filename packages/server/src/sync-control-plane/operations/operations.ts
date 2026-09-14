@@ -364,6 +364,13 @@ export async function applyPreview(
         // pre-restore value (or nothing, after a deletion) until some later reconciliation, and any
         // configuration commit in that window projects the stale file over the restore.
         publishedRevision = operationId;
+        // A restore is a publication like any other, and reviving a retired head is the one that most
+        // needs the reshare: the deletion tombstoned the account object too, so republishing only the
+        // configuration holds every device — including this one — at `oauth-unverified` with nothing
+        // left to seed the credential. `share()` reads the account head before minting precisely so a
+        // tombstone a restore left behind is superseded at its own epoch, and returns early on
+        // ownership it already holds, so a restore that changed nothing costs no remote write.
+        published = true;
         // The guard above ran before the restore's round trip. Importing the historical body
         // overlays a commit that landed in that window, and the `adopt()` below takes the result as
         // the new baseline, so the edit would be gone with nothing left to republish it.
