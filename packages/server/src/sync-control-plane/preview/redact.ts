@@ -1,6 +1,7 @@
 import type { EntityBody } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreviewRow } from '@aio-proxy/types';
+import { isEqual } from 'es-toolkit';
 
 // `headers` and `account` are listed as whole records: any child name can carry a credential
 // (`Authorization`, `Cookie`, a vendor-specific name, an OAuth refresh token), so the map is
@@ -27,7 +28,7 @@ export function redactEntityValue(body: EntityBody, secretKeys: ReadonlySet<stri
   return redact(structuredClone(body.value), '', secretKeys);
 }
 
-function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = new Set()): Record<string, JsonValue> {
+function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = new Set()): Map<string, JsonValue> {
   // Keyed by an authored path, so `__proto__` is reachable here too — see `redact`.
   const found = new Map<string, JsonValue>();
   const visit = (entry: JsonValue, path: string): void => {
@@ -43,7 +44,7 @@ function sensitive(value: JsonValue | null, secretKeys: ReadonlySet<string> = ne
     for (const [key, child] of Object.entries(entry)) visit(child, path === '' ? key : `${path}.${key}`);
   };
   if (value !== null) visit(value, '');
-  return Object.fromEntries(found);
+  return found;
 }
 
 export function secretChange(
@@ -54,10 +55,11 @@ export function secretChange(
   const safeKeys = secretKeys ?? new Set<string>();
   const left = sensitive(local, safeKeys);
   const right = sensitive(cloud, safeKeys);
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length === 0 && rightKeys.length === 0) return 'none';
-  if (leftKeys.length === 0) return 'added';
-  if (rightKeys.length === 0) return 'removed';
-  return JSON.stringify(left) === JSON.stringify(right) ? 'none' : 'changed';
+  if (left.size === 0 && right.size === 0) return 'none';
+  if (left.size === 0) return 'added';
+  if (right.size === 0) return 'removed';
+  // Compared by key rather than by serialization: two devices that authored the same credentials
+  // in a different key order hold the same secrets, and reporting that as a change would ask the
+  // user to resolve a conflict that does not exist.
+  return isEqual(left, right) ? 'none' : 'changed';
 }

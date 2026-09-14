@@ -9,7 +9,7 @@ import { listRemoteEntities } from './entities';
 import { SyncPreviewError } from './errors';
 import { applyOverrides } from './overrides';
 import { buildPreview, createPreviewToken } from './preview';
-import { redactEntityValue } from './redact';
+import { redactEntityValue, secretChange } from './redact';
 
 const providerBody = (value: Record<string, JsonValue>) => ({
   kind: 'provider' as const,
@@ -2652,4 +2652,12 @@ test('redaction reaches nested records whose own key is the sensitive one', () =
   expect(JSON.stringify(value)).not.toContain('expose-me');
   expect(value).toMatchObject({ account: '[redacted]', headers: '[redacted]' });
   expect(Object.hasOwn(value as object, '__proto__')).toBe(true);
+});
+
+test('the same secrets authored in a different key order are not a secret change', () => {
+  const local = { apiKey: 'k', options: { token: 't', baseURL: 'https://a.example' } };
+  const cloud = { options: { baseURL: 'https://a.example', token: 't' }, apiKey: 'k' };
+
+  expect(secretChange(local, cloud, new Set())).toBe('none');
+  expect(secretChange(local, { ...cloud, apiKey: 'rotated' }, new Set())).toBe('changed');
 });
