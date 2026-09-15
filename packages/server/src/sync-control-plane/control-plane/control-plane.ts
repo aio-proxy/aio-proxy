@@ -376,7 +376,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
       // so a Retry that passed the check and is awaiting `start()` resumes on the candidate the swap
       // installed — activating and reconciling it before the reviewed decisions land, which imports
       // the cloud state the user has not applied. Queued, it sees the settled engine and flag.
-      await applies(async () => {
+      const started = await applies(async () => {
         if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
         state = 'syncing';
         // A startup restore whose backend was offline left the lifecycle unstarted, so retry is
@@ -387,16 +387,25 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
           throw new SyncOperationError('backend-unavailable');
         }
         options.lifecycle?.activate();
-        const reported = engineStatusSeen;
-        await options.lifecycle?.reconcile?.();
-        // `reconcile()` resolves for an offline backend and for an unpublishable oversized entry —
-        // the engine reports those as its own status rather than throwing. Claiming `idle` and a
-        // fresh success over that outcome tells the API and the Dashboard a synchronization that
-        // never happened succeeded, so the engine's verdict stands whenever it gave one.
-        if (engineStatusSeen !== reported) return;
+        // Started here, against the lifecycle this turn activated, for the reason above — resolving
+        // it later would reconcile a candidate a connect Apply swapped in. Only the waiting happens
+        // outside the queue: reconciliation is the engine's own work and coalesces with the poll and
+        // watch passes that already run unqueued, so holding the FIFO across it orders nothing while
+        // a backend read that never settles would pin Apply, Leave and Disconnect behind it, leaving
+        // no recovery short of restarting the service. Disconnect's `close()` aborts the engine.
+        return { reported: engineStatusSeen, signal: lifetime.signal, reconciling: options.lifecycle?.reconcile?.() };
+      });
+      await started.reconciling;
+      // A disconnect that landed while that was in flight owns the state now.
+      if (started.signal.aborted) return status();
+      // `reconcile()` resolves for an offline backend and for an unpublishable oversized entry —
+      // the engine reports those as its own status rather than throwing. Claiming `idle` and a
+      // fresh success over that outcome tells the API and the Dashboard a synchronization that
+      // never happened succeeded, so the engine's verdict stands whenever it gave one.
+      if (engineStatusSeen === started.reported) {
         state = 'idle';
         lastSuccessAt = now();
-      });
+      }
       return status();
     },
     async disconnect() {

@@ -337,6 +337,48 @@ test('retry keeps the engine verdict when reconcile resolves without synchronizi
   expect(await control.retry()).toMatchObject({ state: 'idle', lastSuccessAt: 1_000 });
 });
 
+test('a reconcile that never settles still lets disconnect through', async () => {
+  let release: (() => void) | undefined;
+  let closed = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      clearBinding: () => {},
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    now: () => 1_000,
+    lifecycle: {
+      activate: () => {},
+      // A backend read inside the pass that hangs. Awaited on the shared FIFO it pinned Apply, Leave
+      // and Disconnect behind it, so the operator's only recovery was restarting the service.
+      reconcile: () => new Promise<void>((resolve) => void (release = resolve)),
+      close: async () => {
+        closed = true;
+        release?.();
+      },
+    },
+  } as never);
+
+  const retry = control.retry();
+  expect(await control.disconnect()).toMatchObject({ state: 'disconnected' });
+  expect(closed).toBe(true);
+  await retry;
+  // The disconnect owns the state: the released retry must not report a success over it.
+  expect(control.status()).toMatchObject({ state: 'disconnected', lastSuccessAt: null });
+});
+
 test('a connect apply is refused when the configuration moved after the preview was reviewed', async () => {
   let commitId = 'commit-1';
   let committed = 0;
