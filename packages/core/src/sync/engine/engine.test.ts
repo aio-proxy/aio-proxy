@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { deleteEntity, restoreEntity } from '../cleanup';
+import { retainsSharedOAuth } from '../oauth';
 import { encode, newHead, entityKey, revisionKey, type EntityBody } from '../protocol';
 import { createSyncObjectStore, publishEntity } from '../publication';
 import { withTwoSyncDevices } from '../test-support';
@@ -16,7 +17,7 @@ test('a cloud Provider joins the other device and import has no outgoing echo', 
   });
 });
 
-test('remote updates, pending states, and deletion preserve OAuth ownership', async () => {
+test('remote updates and pending states preserve OAuth ownership, and a deletion releases it', async () => {
   await withTwoSyncDevices(async ({ a, b }) => {
     const ownership = {
       mode: 'shared' as const,
@@ -68,10 +69,14 @@ test('remote updates, pending states, and deletion preserve OAuth ownership', as
     await deleteEntity(createSyncObjectStore(a.session), 'provider-work', 0, a.signal);
     await a.engine.reconcile(a.signal);
     await b.engine.reconcile(b.signal);
-    expect(b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work')).toMatchObject({
-      baseline: expect.stringMatching(/^deleted:/),
-      oauth: ownership,
-    });
+    // Ownership names an account object the cloud has deleted, and nothing can retire it from here:
+    // `share()` and `detach()` both return `pending` once the head is a tombstone. Carrying it
+    // forward would leave a hold that reads as live for as long as the row exists, so `disconnect`
+    // and a backend swap would both refuse the binding as `detach-required` forever.
+    const deleted = b.repo.entities(b.binding.id).find((entity) => entity.objectId === 'provider-work');
+    expect(deleted?.baseline).toMatch(/^deleted:/);
+    expect(deleted?.oauth).toBeUndefined();
+    expect(retainsSharedOAuth(deleted!, b.repo.oauthJournals(b.binding.id))).toBe(false);
   });
 });
 

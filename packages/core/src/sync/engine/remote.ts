@@ -57,6 +57,7 @@ function upsertEntity(
 ): LocalEntity['mode'] {
   const latest = input.repo.entities(input.bindingId).find((entity) => entity.objectId === head.objectId);
   const effective = effectiveMode(latest, existing, mode);
+  const tombstoned = body === null && (baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
   input.repo.putEntity(input.bindingId, {
     objectId: head.objectId,
     logicalKey: head.logicalKey,
@@ -73,7 +74,14 @@ function upsertEntity(
     // `existing` predates this pass's awaits. Importing a shared account during one writes the
     // row's OAuth ownership, and handing the snapshot back would erase it: the account exists from
     // then on, so the import never runs again and the Provider stays unverified forever.
-    oauth: latest === undefined ? existing?.oauth : latest.oauth,
+    //
+    // A tombstone is the exception. Ownership names an account object the cloud has deleted, so
+    // carrying it forward strands an `excluded` row — whose local credential survives the deletion —
+    // holding `shared` or `detach-pending`: `retainsSharedOAuth` reads that as a live hold, and
+    // `disconnect` refuses while nothing can ever clear it, because `share()` and `detach()` both
+    // return `pending` once the head is a tombstone. Clearing it, rather than writing
+    // `independent`, is what lets `recover()` republish the credential if the object comes back.
+    oauth: tombstoned ? undefined : latest === undefined ? existing?.oauth : latest.oauth,
   });
   return effective;
 }
@@ -292,6 +300,7 @@ export async function reconcileRemote(
           baseline: tombstoneRevision,
           overrides: existing?.overrides ?? [],
           pendingReason: null,
+          oauth: undefined,
         });
         continue;
       }
