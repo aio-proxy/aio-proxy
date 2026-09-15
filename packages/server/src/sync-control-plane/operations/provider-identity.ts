@@ -1,4 +1,10 @@
-import { isTombstonedEntity, type EntityBody, type LocalEntity } from '@aio-proxy/core';
+import {
+  isPluginRequirement,
+  isTombstonedEntity,
+  providerReference,
+  type EntityBody,
+  type LocalEntity,
+} from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 
@@ -118,6 +124,14 @@ export function providerIdentityRows(
       desired: {
         ...entity.desired,
         value: rewireModelPolicy(entity.desired.value, current.logicalKey, newProviderId),
+        // A rule's edge to a Provider names the object, not the ID, and renaming a published head
+        // mints a new object. Rewriting only the policy leaves the edge on the object this rename
+        // deletes, so every device resolving the rule's dependencies follows a retired head.
+        dependencies: entity.desired.dependencies.map((dependency) =>
+          dependency.objectId === current.objectId && !isPluginRequirement(dependency)
+            ? providerReference(renamed)
+            : dependency,
+        ),
       },
     };
   });

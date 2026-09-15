@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { EntityBody, LocalEntity } from '@aio-proxy/core';
+import { providerReference } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncPreviewInput } from '@aio-proxy/types';
 
@@ -897,7 +898,56 @@ test('importing a cloud-only OAuth Provider records the join on the row the impo
   expect(written[0]).toMatchObject({ baseline: 'r1' });
 });
 
-// A rename republishes the configuration as a new object, so the row to join is the renamed one.
+// A rename mints a new Provider object and deletes the one it vacates, so every model rule routing
+// to it is rewritten locally. The configuration commit carrying that rewrite is remote-origin, so it
+// queues no publication, and reconciliation skips a row whose baseline still matches the cloud: the
+// rewritten rules only ever reached the backend when an unrelated local edit happened to republish
+// the whole projection. Until then every other device routed to the object this Apply deleted.
+test('a rename publishes the model rules it rewired onto the new Provider object', async () => {
+  const ruleRow: LocalEntity = {
+    ...localEntity('rule-a', 'model-rule', 'gpt'),
+    desired: {
+      kind: 'model-rule',
+      logicalKey: 'gpt',
+      value: { providers: { work: {} } },
+      dependencies: [providerReference({ objectId: 'provider-a', epoch: 1 })],
+    },
+    baseline: 'r1',
+  };
+  const providerRow = localEntity('provider-a', 'provider', 'work');
+  const rows = [candidate('provider-a', 'provider', 'work')];
+  const publications: { body: EntityBody | null; objectId: string | undefined; expected: string | null }[] = [];
+  const scenario = harness({
+    localEntities: () => [providerRow, ruleRow],
+    persistProviderIdentity: async () => {},
+    applyCloud: async (candidateBody, currentRow, expectedVersion) => {
+      publications.push({ body: candidateBody, objectId: currentRow?.objectId, expected: expectedVersion });
+      return 'rev-2';
+    },
+  });
+
+  await applyPreview(
+    scenario.input,
+    record({ kind: 'join', providerId: 'work' }, rows, {
+      local: [providerRow, ruleRow],
+      remote: [remoteEntity('provider-a', 'provider', 'work'), remoteEntity('rule-a', 'model-rule', 'gpt')],
+    }),
+    [{ objectId: 'provider-a', choice: 'local', newProviderId: 'work-2' }],
+  );
+
+  const renamedObjectId = publications[0]?.objectId;
+  expect(renamedObjectId).not.toBe('provider-a');
+  const rule = publications.find((publication) => publication.body?.kind === 'model-rule');
+  expect(rule?.body?.value).toEqual({ providers: { 'work-2': {} } });
+  // The edge names the object, so leaving it on the vacated ID points every peer at a retired head.
+  // A replacement object starts at epoch 0, and the reference carries the epoch it was projected at.
+  expect(rule?.body?.dependencies).toEqual([providerReference({ objectId: renamedObjectId!, epoch: 0 })]);
+  // Conditional on the revision the rule is actually following, and ordered before the deletion of
+  // the object it used to name.
+  expect(rule?.expected).toBe('v1');
+  expect(publications.at(-1)?.body).toBeNull();
+});
+
 // Joining the pre-rename row reported success while leaving the Provider outside synchronization:
 // reconciliation had already quarantined the colliding row, and the rename deletes the head it held.
 test('a rename records the join on the renamed row against the revision it just published', async () => {

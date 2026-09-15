@@ -122,6 +122,35 @@ async function persistProviderIdentity(input: OperationInput, rows: ProviderIden
   persistRows(input, rows.entities);
 }
 
+/**
+ * Publishes the model rules a rename rewired — new Provider ID in the policy, new object in the
+ * dependency. `persistProviderIdentity` writes those rows locally, and nothing else ever sends them:
+ * the configuration commit behind the rename is deliberately remote-origin, so it queues no
+ * operation, and reconciliation skips a row whose baseline still matches the unchanged cloud
+ * revision. Left unpublished, every other device keeps routing to the object this Apply deletes until
+ * an unrelated local edit happens to republish the whole projection.
+ */
+async function publishRewiredRules(
+  input: OperationInput,
+  bindingId: string,
+  rows: ProviderIdentityRows,
+  remoteByObject: Map<string, RemoteEntity>,
+): Promise<void> {
+  for (const rule of rows.entities) {
+    if (rule.desired?.kind !== 'model-rule' || rule.mode !== 'included') continue;
+    const remote = remoteByObject.get(rule.objectId);
+    // A rule the cloud does not hold has nothing to correct, and publishing it here would join a row
+    // the user never selected.
+    if (remote?.body == null) continue;
+    const revision = (await input.applyCloud(rule.desired, rule, remote.version ?? null)) ?? null;
+    if (revision === null || typeof input.repo.putEntity !== 'function') continue;
+    // Recording the pre-publication baseline would leave the row behind its own write, so the next
+    // reconcile reads the body this device just published back as remote drift.
+    const latest = input.localEntities().find((entity) => entity.objectId === rule.objectId) ?? rule;
+    input.repo.putEntity(bindingId, { ...latest, desired: rule.desired, baseline: revision });
+  }
+}
+
 export async function assertFresh(input: OperationInput, expected: PreviewFence): Promise<void> {
   const current = await input.fence();
   // The live fence is read without a local capture, so the row digest has to be taken here. Only for
@@ -271,12 +300,13 @@ export async function applyPreview(
         );
       }
     }
+    commits.assertUnchanged();
     // A remote-only row has nothing authored to rewire — applyLocal writes the imported body under
     // the new ID — and rewiring would rename whichever local Provider still holds the old one,
     // which in a collision is a different object.
-    commits.assertUnchanged();
-    if (identityRows !== undefined && current !== undefined) {
-      await persistProviderIdentity(input, identityRows);
+    const rewired = current === undefined ? undefined : identityRows;
+    if (rewired !== undefined) {
+      await persistProviderIdentity(input, rewired);
       commits.adopt();
     }
     let published = false;
@@ -384,6 +414,7 @@ export async function applyPreview(
         // renamed object first, then bind the local row to the object the cloud now agrees with.
         if (identityRows !== undefined) {
           publishedRevision = (await input.applyCloud(selectedBody, identityRows.renamed, null)) ?? null;
+          if (rewired !== undefined) await publishRewiredRules(input, binding.id, rewired, remoteByObject);
           if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
           // The renamed object is a publication like any other, and an account object is keyed by the
           // object ID the rename just vacated and deleted. Leaving this false skipped the reshare, so
@@ -407,6 +438,9 @@ export async function applyPreview(
             identityRows.renamed,
             identityRows.replacesPublished ? null : (remote?.version ?? null),
           )) ?? null;
+        // Published before the old object is deleted: the reverse order leaves a window where the
+        // cloud holds rules whose dependency names a head that is already gone.
+        if (rewired !== undefined) await publishRewiredRules(input, binding.id, rewired, remoteByObject);
         if (identityRows.replacesPublished) await input.applyCloud(null, identityBase, remote?.version ?? null);
         published = true;
       } else {
