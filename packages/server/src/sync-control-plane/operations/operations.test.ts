@@ -497,7 +497,10 @@ test('rewiring onto a Provider named __proto__ keeps the reference as an own ent
 });
 
 test('retiring a binding is refused while any row still holds a shared credential', () => {
-  const repo = (entities: LocalEntity[], journals: { objectId: string; payload?: JsonValue }[] = []) =>
+  const repo = (
+    entities: LocalEntity[],
+    journals: { objectId: string; phase: 'started' | 'result' | 'complete'; payload?: JsonValue }[] = [],
+  ) =>
     ({
       entities: () => entities,
       oauthJournals: () => journals,
@@ -516,7 +519,9 @@ test('retiring a binding is refused while any row still holds a shared credentia
   expect(() => assertNoRetainedOAuth(repo([row('b', 'detach-pending')]), 'binding')).toThrow(SyncOperationError);
   // A journal of an unreadable kind may already have published the credential, so it blocks even
   // though no ownership was recorded before the crash.
-  expect(() => assertNoRetainedOAuth(repo([row('a')], [{ objectId: 'a' }]), 'binding')).toThrow(SyncOperationError);
+  expect(() => assertNoRetainedOAuth(repo([row('a')], [{ objectId: 'a', phase: 'started' }]), 'binding')).toThrow(
+    SyncOperationError,
+  );
   // A detached Provider owns its credential alone, so nothing follows it across the retire.
   expect(() => assertNoRetainedOAuth(repo([row('a'), row('b', 'independent')]), 'binding')).not.toThrow();
   // A first share writes its journal and its `share-pending` ownership before the account object's
@@ -527,11 +532,18 @@ test('retiring a binding is refused while any row still holds a shared credentia
   // account object that does not exist.
   const sharePending = repo(
     [row('a', 'share-pending')],
-    [{ objectId: 'a', payload: { schema: 'oauth-sharing-v1', kind: 'share', providerId: 'a' } }],
+    [{ objectId: 'a', phase: 'started', payload: { schema: 'oauth-sharing-v1', kind: 'share', providerId: 'a' } }],
   );
   expect(() => assertNoRetainedOAuth(sharePending, 'binding')).not.toThrow();
+  // `share()` reaches `result` only once the account object's first write has been dispatched, so
+  // from then on another device may already be following the credential.
+  const shareDispatched = repo(
+    [row('a', 'share-pending')],
+    [{ objectId: 'a', phase: 'result', payload: { schema: 'oauth-sharing-v1', kind: 'share', providerId: 'a' } }],
+  );
+  expect(() => assertNoRetainedOAuth(shareDispatched, 'binding')).toThrow(SyncOperationError);
   // A detach journal only exists once the account object was read as live, so that hold is real.
-  const detaching = repo([row('a', 'shared')], [{ objectId: 'a', payload: { kind: 'detach' } }]);
+  const detaching = repo([row('a', 'shared')], [{ objectId: 'a', phase: 'started', payload: { kind: 'detach' } }]);
   expect(() => assertNoRetainedOAuth(detaching, 'binding')).toThrow(SyncOperationError);
 });
 
