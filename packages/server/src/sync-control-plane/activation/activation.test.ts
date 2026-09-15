@@ -182,7 +182,7 @@ test('activation keeps missing or stale account evidence pending', async () => {
 });
 
 test('verified durable sharing ownership activates the stored account', async () => {
-  const { withOAuthSharingFixture } = await import('../../../core/src/sync/oauth/test-support');
+  const { withOAuthSharingFixture } = await import('../../../../core/src/sync/oauth/test-support');
   await withOAuthSharingFixture(async (f) => {
     await f.sharing.share(f.providerId, f.signal);
     const account = f.accounts.readAccount(f.providerId)!;

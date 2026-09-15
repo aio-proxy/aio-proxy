@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { encodeCandidate } from '@aio-proxy/core';
 
-import { createServerSyncFixture } from './test-support';
+import { createServerSyncFixture } from '../test-support';
 
 const repository = {
   readPluginSecret: () => null,

@@ -16,9 +16,9 @@ import {
 } from '@aio-proxy/core';
 import type { SyncSession } from '@aio-proxy/plugin-sdk';
 
-import type { FifoQueue } from '../fifo-queue';
-import type { LocalPortInput } from './local-port';
-import { createLocalSyncPort } from './local-port';
+import type { FifoQueue } from '../../fifo-queue';
+import type { LocalPortInput } from '../local-port';
+import { createLocalSyncPort } from '../local-port';
 
 export interface ServerSyncLifecycle {
   start(): Promise<void>;
