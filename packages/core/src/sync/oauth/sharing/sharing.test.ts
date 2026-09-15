@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { zod } from '@aio-proxy/plugin-sdk';
 
+import { retainsSharedOAuth } from '../protocol';
 import { oauthAdapterFixture, withOAuthSharingFixture } from '../test-support';
 
 test('a login during a pending detachment stays local so the next attempt can prove independence', async () => {
@@ -653,4 +654,47 @@ test('invalid login credentials cannot be published or committed by detachment',
     },
     { shared: true },
   );
+});
+
+// The account write and the transaction that records it are separate, so between them the journal
+// and `share-pending` ownership stand over a credential other devices can already be following.
+// Read as an unstarted share, disconnect retires the binding and nothing can target the ownership
+// again — leaving the local port free to rotate a refresh token those devices still use.
+test('a first share whose write has landed holds the binding until the local record catches up', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    const session = f.backend.connect();
+    let landed!: () => void;
+    const written = new Promise<void>((resolve) => {
+      landed = resolve;
+    });
+    const service = (await import('./sharing')).createOAuthSharingService({
+      binding: f.repo.readBinding()!,
+      repo: f.repo,
+      accounts: f.accounts,
+      store: (await import('../../publication')).createSyncObjectStore({
+        ...session,
+        async compareAndSwap(...args) {
+          const result = await session.compareAndSwap(...args);
+          landed();
+          // Stands in for the process exiting here: the write is durable in the backend, the local
+          // transaction that would clear the journal has not run.
+          await new Promise(() => {});
+          return result;
+        },
+      }),
+      resolveAdapter: () => ({ adapter: f.adapter, pluginVersion: '1.0.0' }),
+      withProviderGate: async (_id, run) => run(),
+    });
+    void service.share(f.providerId, f.signal);
+    await written;
+
+    expect(f.remote()?.payload.credential).toEqual({ token: 'shared-token' });
+    expect(f.ownership()?.mode).toBe('share-pending');
+    const entity = f.repo.entities('oauth-sharing')[0]!;
+    expect(retainsSharedOAuth(entity, f.repo.oauthJournals('oauth-sharing'))).toBe(true);
+    // Recovery is still the resolution: it finds the published account and completes the record.
+    await f.restart().recover(f.signal);
+    expect(f.ownership()?.mode).toBe('shared');
+    expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+  });
 });

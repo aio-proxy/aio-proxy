@@ -136,13 +136,9 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
       )
         return 'pending';
       // Fence ownership before the first remote write, including conflicts and lost replies.
-      const row =
-        pending?.row ??
-        writeJournal(
-          input,
-          { schema: 'oauth-sharing-v1', kind: 'share', providerId, candidate, base: null, next },
-          { objectId: next.objectId, epoch: next.epoch, generation: 0 },
-        );
+      const attempt = { schema: 'oauth-sharing-v1', kind: 'share', providerId, candidate, base: null, next } as const;
+      const identity = { objectId: next.objectId, epoch: next.epoch, generation: 0 };
+      const row = pending?.row ?? writeJournal(input, attempt, identity);
       input.repo.putEntity(input.binding.id, {
         ...entity,
         pendingReason: 'share-pending',
@@ -161,6 +157,18 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         return 'shared';
       }
       if (pending !== undefined) return 'pending';
+      // Advance the row before the write leaves: confirming it is a separate transaction from the
+      // one that clears the journal, so a lost reply or an exit in between must not read as a share
+      // that never happened. From here the row holds the binding until the outcome is known.
+      const dispatched = { ...row, phase: 'result' as const };
+      input.repo.writeOAuthJournal(input.binding.id, dispatched);
+      // A backend that refused the swap, or failed with anything but `outcome-unknown`, is a
+      // definite answer that these bytes were never stored. The phase only climbs, so release the
+      // hold by retiring the row and journalling the same attempt afresh.
+      const undispatch = (): void => {
+        finishJournal(input, dispatched);
+        writeJournal(input, attempt, identity);
+      };
       try {
         const result = await input.store.session.compareAndSwap(
           accountKey(next.objectId),
@@ -168,14 +176,20 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
           accountBytes(next),
           signal,
         );
-        if (result.kind !== 'written') return 'pending';
+        if (result.kind !== 'written') {
+          undispatch();
+          return 'pending';
+        }
       } catch (error) {
-        if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') throw error;
+        if (!(error instanceof SyncBackendError) || error.code !== 'outcome-unknown') {
+          undispatch();
+          throw error;
+        }
         const observed = await readRemote(input.store, next.objectId, signal);
         if (observed === null || 'unknown' in observed || 'deleted' in observed || !isEqual(observed.account, next))
           return 'pending';
       }
-      applyLocal(input, providerId, candidate, next, row, 'shared');
+      applyLocal(input, providerId, candidate, next, dispatched, 'shared');
       return 'shared';
     });
   }

@@ -83,21 +83,32 @@ function journalKind(payload: JsonValue | null | undefined): string | undefined 
  * hold stands — nothing can target an inactive lifecycle, so a surviving hold could never be
  * detached.
  *
- * A first share is the exception. Its journal and its `share-pending` ownership are both written
- * before the account object's first write, and confirming that write is what clears the journal and
- * moves the row to `shared` in one transaction — so either one still standing means this device
- * never published the credential and no other device can be following it. Counting that as a hold
- * wedges the binding for good: a share interrupted offline leaves a connect Apply unfinished, whose
- * only recovery is a fresh connect, and the swap and `disconnect` would both refuse it as
- * `detach-required` while detaching cannot clear a claim on an account object that does not exist.
+ * A first share that has not reached the backend is the exception. Its journal and its
+ * `share-pending` ownership are both written before the account object's first write, so while the
+ * row is still `started` this device demonstrably never published the credential. Counting that as
+ * a hold wedges the binding for good: a share interrupted offline leaves a connect Apply
+ * unfinished, whose only recovery is a fresh connect, and the swap and `disconnect` would both
+ * refuse it as `detach-required` while detaching cannot clear a claim on an account object that
+ * does not exist.
+ *
+ * `share()` advances the row to `result` before dispatching that write, because confirming it is a
+ * separate transaction from the one that clears the journal and moves the row to `shared`: a lost
+ * reply or an exit in between leaves both excluded states standing over a credential other devices
+ * can already be following. Only `started` proves the write never went out.
  */
 export function retainsSharedOAuth(
   entity: { readonly objectId: string; readonly oauth?: OAuthOwnership },
-  journals: readonly { readonly objectId: string; readonly payload?: JsonValue | null }[],
+  journals: readonly {
+    readonly objectId: string;
+    readonly phase: 'started' | 'result' | 'complete';
+    readonly payload?: JsonValue | null;
+  }[],
 ): boolean {
   return (
     (entity.oauth !== undefined && entity.oauth.mode !== 'independent' && entity.oauth.mode !== 'share-pending') ||
-    journals.some((row) => row.objectId === entity.objectId && journalKind(row.payload) !== 'share')
+    journals.some(
+      (row) => row.objectId === entity.objectId && (journalKind(row.payload) !== 'share' || row.phase !== 'started'),
+    )
   );
 }
 
