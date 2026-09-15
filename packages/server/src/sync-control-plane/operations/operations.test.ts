@@ -13,7 +13,7 @@ import {
   type RemoteEntity,
 } from '../preview';
 import { assertDecisions, type SyncDecision } from './decisions';
-import { applyPreview, assertNoRetainedOAuth, SyncOperationError, type OperationInput } from './operations';
+import { applyPreview, assertNoRetainedOAuth, setRange, SyncOperationError, type OperationInput } from './operations';
 import { rewireProviderReferences } from './provider-identity';
 
 const fence: PreviewFence = {
@@ -1096,4 +1096,22 @@ test('a connect apply stops on a configuration commit that lands after the swap'
     ),
   ).rejects.toThrow(SyncPreviewError);
   expect(stored).toEqual([]);
+});
+
+// Re-creating a deleted Provider under the same ID keeps the tombstone beside the fresh row, and the
+// tombstone comes first in row order. Leaving on it excluded an object that publishes nothing while
+// the live Provider kept syncing, and `sync leave` reported success.
+test('leaving a re-created Provider excludes the live row, not the tombstone that held its ID', () => {
+  const written: LocalEntity[] = [];
+  const scenario = harness({
+    repo: { putEntity: (_binding: string, entity: LocalEntity) => written.push(entity) } as never,
+    localEntities: () => [
+      { ...localEntity('provider-dead', 'provider', 'work'), desired: null, baseline: 'deleted:operation-1' },
+      localEntity('provider-a', 'provider', 'work'),
+    ],
+  });
+
+  setRange(scenario.input, 'work');
+
+  expect(written[0]).toMatchObject({ objectId: 'provider-a', mode: 'excluded' });
 });

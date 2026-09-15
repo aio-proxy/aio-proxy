@@ -57,6 +57,19 @@ export function isTombstonedEntity(entity: LocalEntity): boolean {
   return entity.desired === null && (entity.baseline?.startsWith(TOMBSTONE_BASELINE_PREFIX) ?? false);
 }
 
+/**
+ * The row that owns a Provider ID right now. Re-creating a deleted Provider under the same ID keeps
+ * the tombstone and appends a fresh row, and the tombstone comes first in row order, so a plain
+ * lookup by logical key answers with the dead object: credential coordination would attach ownership
+ * to it, and `sync leave` would retire it while the live Provider kept publishing. A model rule or
+ * plugin can spell the same logical key, so the kind is part of the identity.
+ */
+export function liveProviderRow(entities: readonly LocalEntity[], providerId: string): LocalEntity | undefined {
+  return entities.find(
+    (entity) => entity.kind === 'provider' && entity.logicalKey === providerId && !isTombstonedEntity(entity),
+  );
+}
+
 export interface OutboxOperation {
   operationId: string;
   objectId: string;

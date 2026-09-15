@@ -206,7 +206,15 @@ export function buildPreview(input: {
     const scoped = named.some((entity) => entity.kind === 'provider')
       ? named.filter((entity) => entity.kind === 'provider')
       : named;
-    for (const entity of scoped) ids.add(entity.objectId);
+    // Re-creating a deleted Provider under the same ID keeps the tombstone beside the fresh row, and
+    // both answer to the key. Joining both offers a revive and a publication of one Provider ID at
+    // once, which `assertDecisions` rejects as a collision — so the re-created Provider could never
+    // be joined at all. A tombstone with no live row beside it is still a join target: that is the
+    // rejoin of a Provider a peer deleted while this device kept its configuration.
+    const retired = (entity: LocalEntity | RemoteEntity): boolean =>
+      'overrides' in entity ? isTombstonedEntity(entity) : entity.tombstone === true;
+    const live = scoped.filter((entity) => !retired(entity));
+    for (const entity of live.length > 0 ? live : scoped) ids.add(entity.objectId);
     // A Provider is only publishable together with the business plugin config it needs, so the
     // join has to carry that object too. The authored configuration is the only source for it
     // while the Provider itself is still local-only and therefore has no published body yet.

@@ -1,6 +1,7 @@
 import {
   createSharedCredentialPort,
   type CredentialPortCallbacks,
+  liveProviderRow,
   retainsSharedOAuth,
   SyncOAuthError,
   type PluginRepository,
@@ -50,7 +51,10 @@ export function createSharedCredentialResolver(
     ) {
       return blocked('detach-pending', 'The shared OAuth ownership is unresolved across synchronization bindings');
     }
-    const entity = owned.find((entry) => entry.bindingId === binding?.id)?.entity;
+    const entity = liveProviderRow(
+      owned.filter((entry) => entry.bindingId === binding?.id).map((entry) => entry.entity),
+      providerId,
+    );
     const hasJournal =
       binding !== null &&
       entity !== undefined &&

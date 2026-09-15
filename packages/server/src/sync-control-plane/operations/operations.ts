@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { EntityBody, LocalEntity, LocalBinding, PluginRepository, SyncRepository } from '@aio-proxy/core';
-import { retainsSharedOAuth } from '@aio-proxy/core';
+import { liveProviderRow, retainsSharedOAuth } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import type { SyncStatus } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -438,9 +438,7 @@ export async function applyPreview(
 export function setRange(input: OperationInput, providerId: string): SyncStatus {
   const binding = input.binding();
   if (binding === null) throw new SyncPreviewError('not-connected');
-  const entity = input
-    .localEntities()
-    .find((candidate) => candidate.logicalKey === providerId && candidate.kind === 'provider');
+  const entity = liveProviderRow(input.localEntities(), providerId);
   if (entity === undefined) throw new SyncOperationError('upgrade-required');
   input.repo.putEntity(binding.id, { ...entity, mode: 'excluded', pendingReason: null });
   return input.status();

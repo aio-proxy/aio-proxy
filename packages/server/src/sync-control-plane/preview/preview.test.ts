@@ -1614,6 +1614,40 @@ test('joining a Provider ID scopes the preview to the Provider answering to it',
   expect(record.rows.map((candidate) => candidate.row.objectId)).toEqual(['provider-a']);
 });
 
+// Re-creating a deleted Provider under the same ID keeps the tombstone beside the fresh row, and both
+// answer to the key. The tombstone has no body on either side, so it is offered as a row with no
+// choices at all — and a join demands a decision for every row it lists, which made the re-created
+// Provider unjoinable for good.
+test('joining a re-created Provider leaves the tombstone that held its ID out of the preview', () => {
+  const local = (objectId: string, retired: boolean) => ({
+    objectId,
+    logicalKey: 'work',
+    kind: 'provider' as const,
+    mode: 'excluded' as const,
+    epoch: 1,
+    desired: retired ? null : { kind: 'provider' as const, logicalKey: 'work', value: {}, dependencies: [] },
+    baseline: retired ? 'deleted:operation-1' : null,
+    overrides: [],
+    pendingReason: null,
+  });
+  const { record } = buildPreview({
+    request: { kind: 'join', providerId: 'work' },
+    local: [local('provider-dead', true), local('provider-a', false)],
+    remote: [],
+    fence: {
+      bindingId: 'binding',
+      sessionGeneration: 1,
+      localCommitId: 'commit',
+      rangeRevision: 1,
+      remoteVersions: {},
+    },
+    previewId: 'preview',
+    expiresAt: 0,
+  });
+
+  expect(record.rows.map((candidate) => candidate.row.objectId)).toEqual(['provider-a']);
+});
+
 test('replacement Provider IDs that are still taken are refused before any write', () => {
   const entity = (objectId: string, logicalKey: string) => ({
     objectId,

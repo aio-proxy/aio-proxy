@@ -15,6 +15,7 @@ export { authoredEntityIdentities, committedSourceFrom, seedAuthoredEntities } f
 export {
   createSyncRepository,
   isTombstonedEntity,
+  liveProviderRow,
   type CommitIntent,
   type LocalBinding,
   type LocalEntity,
