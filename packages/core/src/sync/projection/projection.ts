@@ -6,7 +6,14 @@ import type { EntityBody, Dependency } from '../protocol';
 import { providerReference } from '../protocol';
 import type { LocalEntity } from '../repository';
 import { authoredPluginPackages } from './authored';
-import { applyEntityOverrides, applyOverrides, cloneJson, mergeRaw, overlayEntityOverrides } from './local-overrides';
+import {
+  applyEntityOverrides,
+  applyOverrides,
+  cloneJson,
+  mergeRaw,
+  overlayEntityOverrides,
+  readPath,
+} from './local-overrides';
 import { localModelPolicy, selectedModelPolicy } from './model-overlays';
 
 type JsonRecord = Record<string, JsonValue>;
@@ -218,17 +225,21 @@ function entityBody(entity: LocalEntity, value: JsonValue, dependencies: Depende
 }
 
 /**
- * The shared body for an entity. An overridden path holds a machine-local decision, so it is
- * excluded from what is published whether or not the override carries a value; `overlayLocal` puts
- * the local value back on activation. A root override leaves no publishable remainder, so the
- * authored value is published unchanged rather than the local replacement.
+ * The shared body for an entity. An overridden path holds a machine-local decision, so what goes out
+ * there is the value the space last carried — never the local one, and never the authored remainder.
+ * A peer activates a body by replacing the whole entity, so publishing the path stripped would delete
+ * the shared value on every device that did not pin it; `overlayLocal` puts the local value back
+ * here. A path the space never carried is still published as absent. A root override leaves no
+ * publishable remainder, so the authored value is published unchanged rather than the local one.
  */
 function publishedValue(value: JsonValue, entity: LocalEntity): JsonValue {
   let result = cloneJson(value);
+  const shared = entity.desired?.value;
   for (const override of entity.overrides) {
     if (override.path.length === 0 || !isPlainObject(result)) continue;
     const pathRoot = { value: result };
-    applyEntityOverrides(pathRoot, ['value'], [{ path: override.path, value: undefined }]);
+    const previous = shared === undefined ? undefined : readPath(shared, override.path);
+    applyEntityOverrides(pathRoot, ['value'], [{ path: override.path, value: previous }]);
     result = pathRoot.value;
   }
   return result;

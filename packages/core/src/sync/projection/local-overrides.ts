@@ -50,7 +50,7 @@ export function mergeRaw(
   return mergeJson(shared, local) as Record<string, JsonValue>;
 }
 
-function readPath(root: JsonValue, path: readonly string[]): JsonValue | undefined {
+export function readPath(root: JsonValue, path: readonly string[]): JsonValue | undefined {
   let current: JsonValue | undefined = root;
   for (const segment of path) {
     const record = asRecord(current);

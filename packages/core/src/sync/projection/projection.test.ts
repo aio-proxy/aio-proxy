@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { isPluginRequirement, type JsonValue } from '../protocol';
+import { isPluginRequirement, type EntityBody, type JsonValue } from '../protocol';
 import { includedEntity, storedAccount } from '../test-support';
 import { overlayLocal, projectCommitted } from './projection';
 
@@ -147,8 +147,8 @@ test('excludes overridden local paths from the published body and keeps an untra
     [provider],
   );
 
-  // An overridden path is a machine-local decision: it is never published, so neither the local
-  // value nor whatever this device authored at that path reaches another device.
+  // An overridden path is a machine-local decision, and the space never carried a value at one here,
+  // so neither the local value nor whatever this device authored at that path reaches another device.
   expect(result.entities.get('p-work')?.value).toEqual({
     kind: 'api',
     options: { nested: {} },
@@ -166,6 +166,42 @@ test('excludes overridden local paths from the published body and keeps an untra
       work: { kind: 'api', options: { nested: { local: 'machine' } } },
       personal: { kind: 'api', apiKey: 'local-key' },
     },
+  });
+});
+
+// A peer replaces the whole entity when it activates a body, so a body that simply omits a pinned
+// path deletes the shared value on every device that never pinned it: one machine's local preference
+// erases a setting everywhere, and the space has no copy left to restore it from.
+test('a pinned path publishes the value the space last carried, not the local one', () => {
+  const provider = {
+    ...includedEntity('p-work', 'provider', 'work'),
+    desired: {
+      kind: 'provider',
+      logicalKey: 'work',
+      value: { kind: 'api', options: { timeout: 30, region: 'eu' } },
+      dependencies: [],
+    } satisfies EntityBody,
+    overrides: [
+      { path: ['options', 'timeout'], value: 5 },
+      { path: ['options', 'local'], value: 'machine' },
+    ],
+  };
+
+  const result = projectCommitted(
+    {
+      raw: { providers: { work: { kind: 'api', options: { timeout: 5, region: 'us', local: 'machine' } } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    },
+    [provider],
+  );
+
+  // `timeout` keeps the shared 30 and `local` stays absent because the space never carried it, while
+  // `region` is unpinned, so this device's edit is published.
+  expect(result.entities.get('p-work')?.value).toEqual({
+    kind: 'api',
+    options: { timeout: 30, region: 'us' },
   });
 });
 
