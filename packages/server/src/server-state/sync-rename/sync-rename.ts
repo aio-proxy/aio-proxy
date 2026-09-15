@@ -67,6 +67,12 @@ export async function renameProviderIdentity(
   // one — a split the consumed preview can no longer repair. One transaction, because rows naming
   // the new ID with the credential still under the old one is exactly the unauthorized state this
   // move exists to prevent.
+  // ponytail: crashing between this transaction and the commit below strands the move — the rows and
+  // the credential name the new ID while the file still names the old one, and the orphan sweep then
+  // reclaims the credential. Accepted as a known limitation: the only way here is a sync identity
+  // collision the user resolves by hand, and re-authorizing the Provider recovers it. Closing the
+  // window needs this intent staged durably, so a startup pass can compare the file digest against
+  // `expectedDigest` and undo the move the way the catch below does in process.
   input.accounts.withAccountTransaction(() => {
     if (moves && !input.accounts.renameAccount(oldProviderId, newProviderId))
       throw new SyncOperationError('operation-pending');
