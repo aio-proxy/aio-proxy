@@ -1035,8 +1035,10 @@ test('disconnect waits for a connect apply already past its fence check', async 
 
   // Interleaved, the reviewed decisions land after the teardown reported success, leaving the new
   // binding in place and synchronization running against a backend the user just disconnected.
+  // The binding is cleared ahead of `close()`, in the same turn as the retained-OAuth check, so a
+  // login suspended past its own binding check cannot write a shared hold onto it while close awaits.
   expect(await disconnect).toMatchObject({ state: 'disconnected' });
-  expect(events).toEqual(['committed', 'applied', 'closed', 'cleared']);
+  expect(events).toEqual(['committed', 'applied', 'cleared', 'closed']);
   expect(binding).toBeNull();
 });
 

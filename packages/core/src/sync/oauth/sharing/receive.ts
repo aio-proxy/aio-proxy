@@ -35,6 +35,10 @@ export async function importRemoteAccount(
     if (!canActivateSyncedAccount(resolved.adapter, resolved.pluginVersion, account)) return null;
     if (!(await parsePluginSchema(resolved.adapter.credentials, account.payload.credential)).ok) return null;
     return input.accounts.withAccountTransaction(() => {
+      // The binding check above predates this pass's awaits, and `shared` ownership recorded onto a
+      // binding a `disconnect` has since retired is a hold nothing can clear: detaching reaches only
+      // the active binding, so every later binding refuses this Provider as `detach-pending`.
+      if (input.repo.readBinding()?.id !== input.binding.id) return null;
       const current = entityFor(input.repo, input.binding, providerId);
       if (input.accounts.readAccount(providerId) !== null || current?.objectId !== entity.objectId) return null;
       const pending = input.accounts.stageAccountOperation({

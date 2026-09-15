@@ -698,3 +698,39 @@ test('a first share whose write has landed holds the binding until the local rec
     expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
   });
 });
+
+// Disconnect refuses to retire a binding whose rows hold a shared credential, then retires it. A
+// share suspended past its own binding check must not land a hold after that: ownership would name
+// an account object in a space no later detach can reach, and every later binding would refuse the
+// Provider as `detach-pending` with nothing able to clear it.
+test('a share suspended past the disconnect check writes no hold onto the retired binding', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    let admit!: () => void;
+    let validating!: () => void;
+    const held = new Promise<void>((resolve) => {
+      admit = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      validating = resolve;
+    });
+    f.replaceAdapter({
+      ...f.adapter,
+      credentials: zod.object({ token: zod.string() }).refine(async () => {
+        validating();
+        await held;
+        return true;
+      }),
+    });
+    const sharing = f.sharing.share(f.providerId, f.signal);
+    await reached;
+    const entity = f.repo.entities('oauth-sharing')[0]!;
+    expect(retainsSharedOAuth(entity, f.repo.oauthJournals('oauth-sharing'))).toBe(false);
+    f.repo.clearBinding!();
+    admit();
+
+    expect(await sharing).toBe('pending');
+    expect(f.remote()).toBeNull();
+    expect(f.ownership()).toBeUndefined();
+    expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
+  });
+});

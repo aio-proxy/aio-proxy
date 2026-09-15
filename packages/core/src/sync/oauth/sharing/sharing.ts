@@ -135,6 +135,12 @@ export function createOAuthSharingService(input: OAuthSharingServiceInput): OAut
         !compatibleRemote(next, candidate, resolved)
       )
         return 'pending';
+      // The binding check at the top predates this pass's awaits. A `disconnect` or a backend swap
+      // retires the binding in the same turn as the assertion that no row holds a shared credential,
+      // so everything below — the dispatched journal row and the ownership it confirms — would be a
+      // hold on a binding nothing can target again: detaching reaches only the active binding, and
+      // every later binding then refuses this Provider as `detach-pending` forever.
+      if (input.repo.readBinding()?.id !== input.binding.id) return 'pending';
       // Fence ownership before the first remote write, including conflicts and lost replies.
       const attempt = { schema: 'oauth-sharing-v1', kind: 'share', providerId, candidate, base: null, next } as const;
       const identity = { objectId: next.objectId, epoch: next.epoch, generation: 0 };

@@ -407,12 +407,15 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
       await applies(async () => {
         const active = binding();
         if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
+        // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
+        // so the next service start would read it and reconnect, silently undoing the disconnect.
+        // Retired in the same turn as the assertion above, because an OAuth login suspended past its
+        // own binding check resumes while `close()` awaits: seeing the row still active it would
+        // write a shared hold onto the binding being retired, which no later detach can target.
+        options.repo.clearBinding?.();
         lifetime.abort();
         lifetime = new AbortController();
         await options.lifecycle?.close();
-        // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
-        // so the next service start would read it and reconnect, silently undoing the disconnect.
-        options.repo.clearBinding?.();
         state = 'disconnected';
         connectApplyIncomplete = false;
       });
