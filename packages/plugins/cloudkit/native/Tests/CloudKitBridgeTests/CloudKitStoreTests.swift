@@ -240,5 +240,18 @@ final class CloudKitStoreTests: XCTestCase {
             XCTAssertEqual(error as? StoreError, .invalidData)
         }
     }
+    // A second helper starting mid-CAS used to wipe the shared asset directory out from under the
+    // first, failing a save CloudKit was still reading the file for.
+    func testStartupCleanupKeepsAssetsOfLiveHelpers() throws {
+        let (_, mine) = try AssetStore.makeAsset(Data("payload".utf8))
+        defer { try? FileManager.default.removeItem(at: mine) }
+        let dead = AssetStore.root.appendingPathComponent("999999999", isDirectory: true)
+        try FileManager.default.createDirectory(at: dead, withIntermediateDirectories: true)
+
+        AssetStore.removeAbandonedFiles()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mine.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dead.path))
+    }
 }
 #endif
