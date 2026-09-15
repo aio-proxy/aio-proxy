@@ -362,9 +362,12 @@ test('an override on a local-only object pins the authored value rather than the
   });
 
   // The row carries the body applying the override persists. Falling back to the never-published
-  // `desired` would pin `undefined`, which deletes `region` from the authored configuration.
-  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['local-fresh']);
+  // `desired` would pin `undefined`, which deletes `region` from the authored configuration. The
+  // Provider's business plugin is previewed alongside it: the published Provider body names that
+  // object, so leaving it out publishes a dependency nothing else in the space has.
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['local-fresh', 'local-plugin']);
   expect(built.record.rows[0]?.local?.value).toMatchObject({ options: { region: 'eu' } });
+  expect(built.record.rows[1]?.local?.value).toMatchObject({ options: { endpoint: 'https://plugin.example.test' } });
 });
 
 test('a join follows published dependency object IDs instead of matching logical keys', () => {

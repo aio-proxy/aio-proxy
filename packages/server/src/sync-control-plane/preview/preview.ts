@@ -238,8 +238,22 @@ export function buildPreview(input: {
             changed = true;
           }
     }
-  } else if (input.request.kind === 'restore' || input.request.kind === 'overrides') ids.add(input.request.objectId);
-  else if (input.request.kind === 'purge') {
+  } else if (input.request.kind === 'restore') ids.add(input.request.objectId);
+  else if (input.request.kind === 'overrides') {
+    ids.add(input.request.objectId);
+    // Pinning a path republishes the Provider's body, and that body names the business plugin object
+    // it needs. Projecting the plugin so a body exists, without previewing it, published a Provider
+    // whose dependency nothing publishes: every other device then holds it pending on an object the
+    // space does not have. The join path carries the same object for the same reason.
+    const logicalKey = localByObject.get(input.request.objectId)?.logicalKey;
+    const dependency =
+      logicalKey === undefined || input.source === undefined
+        ? undefined
+        : providerDependencyPackage(input.source.raw, logicalKey);
+    if (dependency !== undefined)
+      for (const entity of localSnapshot)
+        if (entity.kind === 'plugin-business' && entity.logicalKey === dependency) ids.add(entity.objectId);
+  } else if (input.request.kind === 'purge') {
     const purge = input.request;
     const remoteIds = new Set(remoteSnapshot.map((entity) => entity.objectId));
     const all = [
@@ -307,23 +321,13 @@ export function buildPreview(input: {
   // dependencies included, and reuses the one projection the commit path uses rather than a second
   // encoding. An override pins a path of that same authored body, so it needs the projection too —
   // reading the published body there would pin `undefined` and delete the value locally. An
-  // override previews one object, so its business plugin is projected without becoming a row: the
-  // projection drops a Provider whose dependency is not included, and that would leave no body.
-  const projected = new Set(ids);
-  if (input.request.kind === 'overrides' && input.source !== undefined) {
-    const logicalKey = localByObject.get(input.request.objectId)?.logicalKey;
-    const dependency = logicalKey === undefined ? undefined : providerDependencyPackage(input.source.raw, logicalKey);
-    for (const entity of localSnapshot)
-      if (entity.kind === 'plugin-business' && entity.logicalKey === dependency) projected.add(entity.objectId);
-  }
+  // override previews the Provider's business plugin alongside it, so the projection keeps a body.
   const joined =
     (input.request.kind !== 'join' && input.request.kind !== 'overrides') || input.source === undefined
       ? undefined
       : projectCommitted(
           input.source,
-          localSnapshot.map((entity) =>
-            projected.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity,
-          ),
+          localSnapshot.map((entity) => (ids.has(entity.objectId) ? { ...entity, mode: 'included' as const } : entity)),
         ).entities;
   // Joining an object can rewrite the projected body of one already included — a model rule whose
   // Provider reference only resolves once that Provider joins. Those rows are not in `ids`, so
@@ -353,7 +357,9 @@ export function buildPreview(input: {
           if (restored === undefined) throw new SyncPreviewError('not-connected');
           remote = restored;
         } else remote = remoteEntity?.body ?? null;
-        if (input.request.kind === 'overrides' && local !== null)
+        // The pinned paths belong to the requested object. The plugin row rides along so its body is
+        // published too, unpinned.
+        if (input.request.kind === 'overrides' && objectId === input.request.objectId && local !== null)
           remote = applyOverrides(local, remote, input.request.paths);
         const secretKeys = new Set<string>();
         for (const body of [local, remote]) {
