@@ -491,7 +491,15 @@ test('resolveUpgradeTargetFrom maps an aliased launcher outside the Homebrew pre
   symlinkSync(cellar, alias);
   await withEmptyManagerPath(async () => {
     const target = await resolveUpgradeTargetFrom(alias, {});
-    expect(target).toEqual({ method: 'brew', command: join(realpathSync(prefix), 'bin', 'brew'), bin: alias });
+    // The alias names the version directory this upgrade replaces, and `brew upgrade` retargets only
+    // the launcher inside its own prefix. Reporting the alias made the post-upgrade version read
+    // report the old version, so the upgrade called itself unchanged and handed the service a
+    // launcher pointing into a Cellar directory Homebrew had already removed.
+    expect(target).toEqual({
+      method: 'brew',
+      command: join(realpathSync(prefix), 'bin', 'brew'),
+      bin: join(realpathSync(prefix), 'bin', 'aio-proxy'),
+    });
   });
 });
 
