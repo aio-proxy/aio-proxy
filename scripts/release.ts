@@ -42,6 +42,8 @@ import { basename, join, relative, resolve } from 'node:path';
 
 import { $ } from 'bun';
 
+import { cloudKitReleaseGatePassed } from './release-cloudkit-gate';
+
 const DRY_RUN = process.argv.includes('--dry-run');
 
 type PackageJson = {
@@ -107,7 +109,18 @@ const platformProvided = new Set(allPackages.flatMap(({ json }) => Object.keys(j
 // that isn't on the registry yet (launcher -> @aio-proxy/cli-*), and a dependent
 // published before its workspace dependency (plugin-sdk -> @aio-proxy/types) is
 // uninstallable if the later publish fails mid-release.
-const unsorted = allPackages.filter(({ json }) => json.private !== true);
+// CloudKit is the one package whose publishability is not a property of the repository: the backend
+// is only releasable once its live gates have been recorded (scripts/release-cloudkit-gate.ts). It is
+// withheld from the set rather than failing the run, because a blocked native gate is no reason to
+// hold the rest of the release — and the workflow skips signing on the same answer, so a withheld
+// backend costs the run neither Apple secrets nor a notarization.
+const cloudKitReleasable = await cloudKitReleaseGatePassed();
+if (!cloudKitReleasable) {
+  console.log('Withholding @aio-proxy/plugin-cloudkit: docs/testing/evidence/cloudkit-sync.json is not a passed gate.');
+}
+const unsorted = allPackages.filter(
+  ({ json }) => json.private !== true && (cloudKitReleasable || json.name !== '@aio-proxy/plugin-cloudkit'),
+);
 const names = new Set(unsorted.map((p) => p.json.name));
 const emitted = new Set<string>();
 const publishable: typeof unsorted = [];

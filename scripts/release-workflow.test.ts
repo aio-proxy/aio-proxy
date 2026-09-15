@@ -95,9 +95,11 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
   const directory = await mkdtemp(join(tmpdir(), 'aio-cloudkit-gate-'));
   const fakeBin = join(directory, 'bin');
   const manifest = join(directory, 'packages', 'plugins', 'cloudkit', 'package.json');
+  const gateScript = join(directory, 'scripts', 'release-cloudkit-gate.ts');
   const output = join(directory, 'github-output');
   await mkdir(join(directory, 'packages', 'plugins', 'cloudkit'), { recursive: true });
   await mkdir(join(directory, '.changeset'));
+  await mkdir(join(directory, 'scripts'));
   await writeFile(join(directory, '.changeset', 'README.md'), '# Changesets\n');
   await mkdir(fakeBin);
   // A registry holding 0.24.0-beta.1 and nothing else, answering both the dist-tag and
@@ -110,7 +112,10 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
   );
   await chmod(join(fakeBin, 'npm'), 0o755);
 
-  const publishableFor = async (version: string): Promise<string> => {
+  const publishableFor = async (version: string, gate = 'true'): Promise<string> => {
+    // Stands in for scripts/release-cloudkit-gate.ts, whose own test covers which recorded evidence
+    // clears the backend. What this step decides is only what to do with that answer.
+    await writeFile(gateScript, `console.log('${gate}');\n`);
     await writeFile(manifest, JSON.stringify({ name: '@aio-proxy/plugin-cloudkit', version }));
     await writeFile(output, '');
     const child = Bun.spawn(['bash', '-c', script], {
@@ -139,6 +144,12 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
     // notarize and discard an artifact on every push until it ships.
     await writeFile(join(directory, '.changeset', 'quiet-syncs-share.md'), '---\n---\n');
     expect(await publishableFor('0.24.0-beta.2')).toContain('publishable=false');
+    // Signing proves the bundle's provenance, not that CloudKit works: the Production schema,
+    // the installed entitlements and the cross-device runs are what the recorded gate answers
+    // for. scripts/release.ts withholds the package on a blocked gate, so asking for the
+    // Developer ID here would notarize an artifact no release is going to carry.
+    await rm(join(directory, '.changeset', 'quiet-syncs-share.md'));
+    expect(await publishableFor('0.24.0-beta.2', 'false')).toContain('publishable=false');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -155,12 +166,18 @@ test('dry-run restores bun.lock and never invokes npm publish', async () => {
 
   const before = await lockHash();
   try {
+    // A blocked gate is the committed state, but pin it here anyway: this assertion is about the
+    // publish set following the evidence, and it must keep failing for the right reason once the
+    // real gate passes.
+    const evidence = join(temporaryDirectory, 'cloudkit-sync.json');
+    await writeFile(evidence, JSON.stringify({ productionGate: 'blocked' }));
     const child = Bun.spawn([process.execPath, join(repositoryRoot, 'scripts', 'release.ts'), '--dry-run'], {
       cwd: repositoryRoot,
       env: {
         ...process.env,
         PATH: `${fakeBin}:${process.env['PATH'] ?? ''}`,
         RELEASE_TEST_NPM_MARKER: npmMarker,
+        APPLE_CLOUDKIT_EVIDENCE_PATH: evidence,
       },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -173,6 +190,8 @@ test('dry-run restores bun.lock and never invokes npm publish', async () => {
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain('[dry-run] Would publish');
+    // Recorded evidence, not a successful codesign, is what makes the backend publishable.
+    expect(stdout).not.toContain('  @aio-proxy/plugin-cloudkit');
     expect(`${stdout}\n${stderr}`).not.toContain('npm publish');
     expect(await lockHash()).toBe(before);
     expect(await Bun.file(npmMarker).exists()).toBe(false);

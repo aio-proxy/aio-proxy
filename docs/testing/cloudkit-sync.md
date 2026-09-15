@@ -132,6 +132,14 @@ Being signed, notarized, or runnable from Xcode is not enough. Until the
 installed path and launchd path both return a confirmed account result, keep
 the CloudKit capability unavailable for release.
 
+That is enforced rather than advised. `scripts/release-cloudkit-gate.ts` reads
+this evidence: unless it records `"productionGate": "passed"`, the release
+workflow skips signing and `scripts/release.ts` drops
+`@aio-proxy/plugin-cloudkit` from the packages it publishes, so the rest of the
+release still ships. No script writes `passed` — `conformance-live.ts` stops at
+`unverified` because the launchd-service and Production-container runs are
+manual — so it is recorded by hand only once every case above has passed.
+
 ## Installed two-process conformance
 
 Run the live wrapper only with an explicit `--live` flag and a dedicated
