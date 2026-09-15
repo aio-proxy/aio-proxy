@@ -637,6 +637,35 @@ test('restore preserves a recovered same-epoch account payload', async () => {
   expect(new TextDecoder().decode(value!.value)).toContain('"generation":7');
 });
 
+// Reviving the head is what makes the object publishable again, so a peer can put a fresh body onto
+// it before the restore reaches its own publication. Publishing unfenced there made the historical
+// body current over that update — a restore silently overwriting a revision it never reviewed.
+test('restore refuses to publish over a body a peer put onto the revived head', async () => {
+  const backend = createMemorySyncBackend();
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old');
+  const signal = new AbortController().signal;
+  const seed = createSyncObjectStore(backend.connect());
+  await publishEntity(seed, item, signal);
+  await deleteEntity(seed, item.objectId, 0, signal);
+
+  const headCas = backend.gateAfterNext('compareAndSwap');
+  const restore = restoreEntity(
+    createSyncObjectStore(backend.connect()),
+    item.objectId,
+    item.body,
+    crypto.randomUUID(),
+    signal,
+  );
+  await headCas.entered;
+  // The revival has landed, so the object is live again at the new epoch and open to any device.
+  const peer = { ...operation(item.objectId, crypto.randomUUID(), 'newer'), epoch: 1 };
+  await publishEntity(createSyncObjectStore(backend.connect()), peer, signal);
+  headCas.release();
+
+  await expect(restore).rejects.toThrow('head version changed');
+  expect(head(backend, item.objectId)).toMatchObject({ current: peer.operationId });
+});
+
 test('restore leaves an account record OAuth readers can decode', async () => {
   const backend = createMemorySyncBackend();
   const store = createSyncObjectStore(backend.connect());

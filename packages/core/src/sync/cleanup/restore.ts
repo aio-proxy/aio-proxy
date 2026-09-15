@@ -67,6 +67,9 @@ export async function restoreEntity(
       commitId: `restore:${operationId}`,
       body,
     };
-    return publishEntity(store, operation, signal);
+    // Fenced on the head this restore just revived. The transition to `active` makes the object
+    // publishable again, so a peer can put a fresh body onto it before this call reaches the
+    // publication — unfenced, the historical body would silently become current over that update.
+    return publishEntity(store, operation, signal, restored.version);
   }
 }
