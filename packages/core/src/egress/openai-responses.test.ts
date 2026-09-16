@@ -106,6 +106,38 @@ describe('OpenAI Responses egress', () => {
     expect(response.output[0]?.id).toBe('msg_resp_upstream_0');
   });
 
+  test('Given AI SDK cache and reasoning usage When encoded Then Responses usage keeps those dimensions', async () => {
+    const parts = [
+      { type: 'text-delta', id: 'text-1', text: 'cached' },
+      {
+        type: 'finish',
+        finishReason: 'stop',
+        rawFinishReason: 'stop',
+        totalUsage: {
+          inputTokens: 10228,
+          outputTokens: 12,
+          totalTokens: 10240,
+          inputTokenDetails: { cacheReadTokens: 11008, cacheWriteTokens: 256, noCacheTokens: 0 },
+          outputTokenDetails: { reasoningTokens: 4, textTokens: 8 },
+        },
+      },
+    ] as const;
+
+    const usage = {
+      input_tokens: 10228,
+      input_tokens_details: { cached_tokens: 11008, cache_write_tokens: 256 },
+      output_tokens: 12,
+      output_tokens_details: { reasoning_tokens: 4 },
+      total_tokens: 10240,
+    };
+
+    const response = await writeOpenAIResponsesResponse(aiSdkPartStream(parts));
+    expect(response.usage).toEqual(usage);
+
+    const events = await frames(writeOpenAIResponsesSSE(aiSdkPartStream(parts)));
+    expect(events.at(-1)?.response?.usage).toEqual(usage);
+  });
+
   test('Given independent response streams When encoded Then ids are unique and event references are consistent', async () => {
     const encode = () =>
       frames(
