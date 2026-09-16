@@ -826,7 +826,7 @@ Existing test `serves a quota snapshot once...` already asserts `payload.snapsho
 
 Run: `bun test packages/server/src/dashboard-routes/provider-routes/provider-routes.test.ts`
 
-Expected: FAIL — `payload.estimates` is undefined / `providerWindowCost` assignment unused because the route does not attach estimates.
+Expected: FAIL — `payload.estimates` is undefined on the happy path, and the throwing-cost spy is never called because the route does not attach estimates.
 
 - [ ] **Step 7: Attach estimates on the quota route**
 
@@ -891,6 +891,7 @@ Compact **Used $x** under each window. Hide when that item has no estimate. No E
 - Modify: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-item.tsx`
 - Create: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-cost.tsx`
 - Modify: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-dialog.tsx`
+- Modify: `packages/dashboard/src/modules/providers/services/provider-quota-service/provider-quota-service.ts`
 - Test: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-ring.test.tsx`
 
 **Interfaces:**
@@ -1153,7 +1154,7 @@ Expected: PASS, including existing ring/pace/stale tests.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add packages/i18n/messages packages/i18n/src/paraglide packages/dashboard/src/lib/nano-usd packages/dashboard/src/modules/providers/components/provider-quota-ring
+git add packages/i18n/messages packages/i18n/src/paraglide packages/dashboard/src/lib/nano-usd packages/dashboard/src/modules/providers/components/provider-quota-ring packages/dashboard/src/modules/providers/services/provider-quota-service/provider-quota-service.ts
 git commit -m "feat(dashboard): show API-equivalent spend on quota windows"
 ```
 
@@ -1234,4 +1235,3 @@ git commit -m "chore: add quota-window API-equivalent cost changeset"
 - `aria-description` carries the note; `title` is the exact amount (hover), matching the spec after Oracle's copy fix.
 - Route tests spy `providerWindowCost` and `console.error` instead of assigning a readonly method. The cutoff test has a before/after/refresh sequence with a frozen `Date.now()`.
 - Quota-route patch keeps the existing `entry` binding. The dashboard quota query's "in-memory cache hit" comment still describes the *upstream snapshot*; local SQL still runs on each poll.
-s on each poll.
