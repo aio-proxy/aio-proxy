@@ -108,7 +108,7 @@ describe('passthrough usage extraction', () => {
             prompt_tokens: 10,
             completion_tokens: 4,
             total_tokens: 14,
-            prompt_tokens_details: { cached_tokens: 6 },
+            prompt_tokens_details: { cached_tokens: 6, cache_write_tokens: 2 },
             completion_tokens_details: { reasoning_tokens: 3 },
           },
         }),
@@ -118,7 +118,47 @@ describe('passthrough usage extraction', () => {
       outputTokens: 4,
       totalTokens: 14,
       cacheReadTokens: 6,
+      cacheWriteTokens: 2,
       reasoningTokens: 3,
+    });
+  });
+
+  test('preserves OpenAI Responses cache write and read dimensions', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIResponse,
+        JSON.stringify({
+          usage: {
+            input_tokens: 10,
+            output_tokens: 4,
+            total_tokens: 14,
+            input_tokens_details: { cached_tokens: 6, cache_write_tokens: 2 },
+            output_tokens_details: { reasoning_tokens: 3 },
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 10,
+      outputTokens: 4,
+      totalTokens: 14,
+      cacheReadTokens: 6,
+      cacheWriteTokens: 2,
+      reasoningTokens: 3,
+    });
+  });
+
+  test('extracts nested OpenAI Responses SSE cache write tokens', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIResponse,
+        'event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":8,"total_tokens":15,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0}}}}\n\n',
+      ),
+    ).toEqual({
+      inputTokens: 7,
+      outputTokens: 8,
+      totalTokens: 15,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
     });
   });
 
