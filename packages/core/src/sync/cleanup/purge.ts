@@ -75,7 +75,11 @@ export async function purgeEntity(
     await verifyErasedRevisions(store, frozen.head, signal);
     const latest = await readHeadOrThrow(store, objectId, signal);
     if (latest.head.state === 'purged') return;
-    if (latest.head.state !== 'purging') continue;
+    // Anything else means the head left `purging` while this pass was erasing: another device
+    // finished the purge and a restore opened a new epoch on the object. That epoch is not the one
+    // this call was asked to erase, and the fence that guarded the first read is gone, so looping
+    // back would only re-read it and begin purging the restore.
+    if (latest.head.state !== 'purging') return;
     await updateHead(
       store,
       objectId,

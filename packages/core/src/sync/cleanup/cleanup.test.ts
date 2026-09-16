@@ -230,6 +230,49 @@ test('a stale purge cannot overwrite a restored account after resuming', async (
   expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1 });
 });
 
+test('a purge interrupted by a peer that finished it leaves the restored epoch alone', async () => {
+  const backend = createMemorySyncBackend();
+  const seed = createSyncObjectStore(backend.connect());
+  const item = operation(crypto.randomUUID(), crypto.randomUUID(), 'old-secret');
+  const signal = new AbortController().signal;
+  await publishEntity(seed, item, signal);
+  await deleteEntity(seed, item.objectId, item.epoch, signal);
+
+  // This pass marks the head `purging` and erases its revisions. Another device finishes the same
+  // purge and a user restores the object before the pass re-reads the head, so what it finds there
+  // is a live epoch it was never asked to erase.
+  const base = backend.connect();
+  let erased = false;
+  let restored: Awaited<ReturnType<typeof restoreEntity>> | undefined;
+  const interrupted: SyncSession = {
+    ...base,
+    async compareAndSwap(key, expected, value, casSignal) {
+      const result = await base.compareAndSwap(key, expected, value, casSignal);
+      if (key === revisionKey(item.objectId, item.operationId)) erased = true;
+      return result;
+    },
+    async read(key, readSignal) {
+      if (erased && restored === undefined && key === entityKey(item.objectId)) {
+        await purgeEntity(createSyncObjectStore(backend.connect()), item.objectId, signal);
+        restored = await restoreEntity(
+          createSyncObjectStore(backend.connect()),
+          item.objectId,
+          item.body,
+          'restore-op',
+          signal,
+        );
+      }
+      return base.read(key, readSignal);
+    },
+  };
+  await purgeEntity(createSyncObjectStore(interrupted), item.objectId, signal);
+
+  expect(head(backend, item.objectId)).toMatchObject({ state: 'active', epoch: 1, current: restored!.operationId });
+  expect(decodeRevision(backend.readAll().get(revisionKey(item.objectId, restored!.operationId))!.value)).toMatchObject(
+    { state: 'payload' },
+  );
+});
+
 test('a purge that finalizes its epoch leaves a concurrent restore intact', async () => {
   const backend = createMemorySyncBackend();
   const seed = createSyncObjectStore(backend.connect());
