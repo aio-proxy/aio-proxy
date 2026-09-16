@@ -165,6 +165,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
   // candidate teardown has just disposed — it would bind the service to a dead backend session on the
   // way out. Shutdown therefore refuses the swap outright rather than racing it.
   let closing = false;
+  // Everything the FIFO carries touches the backend session and the repository, both of which
+  // `closeAsync()` takes away as soon as `dispose()` returns. Admitting a job after that point runs
+  // it against a closed database, so shutdown refuses work rather than racing it.
+  const serialized = <T>(run: () => Promise<T>): Promise<T> =>
+    applies(() => {
+      if (closing) throw new SyncOperationError('backend-unavailable');
+      return run();
+    });
 
   // The swap replaces the binding along with its commit history, so the binding and local-commit
   // halves of the reviewed fence describe a world that will no longer exist. The cloud half is what
@@ -211,8 +219,14 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     // may be stalled in, which is what lets shutdown proceed instead of waiting out the bound.
     dispose: async () => {
       closing = true;
+      // An Apply, Leave, Retry or Disconnect already queued is not in `applying` and holds no
+      // candidate, so nothing above reaches it. Aborting the lifetime is what stops the backend read
+      // or publication it is awaiting, and the empty job runs last in the same FIFO — awaiting it is
+      // awaiting everything ahead of it, so no callback is still writing once this returns.
+      lifetime.abort();
       for (const candidate of applying) await candidate.dispose().catch(() => {});
       await previews.disposePending();
+      await applies(async () => {}).catch(() => {});
     },
     async preview(input) {
       if (input.kind === 'connect') {
@@ -315,7 +329,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
           if (candidate === undefined) throw new SyncPreviewError('preview-stale');
           applying.add(candidate);
           try {
-            await applies(() => applyConnect(candidate, record, input.decisions));
+            await serialized(() => applyConnect(candidate, record, input.decisions));
           } catch (error) {
             await candidate.dispose().catch(() => {});
             throw error;
@@ -326,7 +340,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
           // A preview captured before a connect apply failed reviews rows that now belong to another
           // binding, and applying it would set the state to `idle` with the engine still held.
           if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
-          await applies(() => applyPreview(operationInput(), record, input.decisions));
+          await serialized(() => applyPreview(operationInput(), record, input.decisions));
         }
       } catch (error) {
         // The preview was consumed, so there is nothing left for the user to decide on.
@@ -353,7 +367,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
       // in the reviewed path only holds the row's mode back. The same FIFO orders Leave against the
       // whole Apply, so it either invalidates the reviewed fence or takes effect once the import is
       // done. A preview captured before this bump is stale either way.
-      return applies(() => (options.withFence === undefined ? run() : options.withFence(run)));
+      return serialized(() => (options.withFence === undefined ? run() : options.withFence(run)));
     },
     async detach(providerId, loginSessionId) {
       if (options.detach === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
@@ -379,7 +393,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
       // so a Retry that passed the check and is awaiting `start()` resumes on the candidate the swap
       // installed — activating and reconciling it before the reviewed decisions land, which imports
       // the cloud state the user has not applied. Queued, it sees the settled engine and flag.
-      const started = await applies(async () => {
+      const started = await serialized(async () => {
         if (connectApplyIncomplete) throw new SyncPreviewError('preview-stale');
         state = 'syncing';
         // A startup restore whose backend was offline left the lifecycle unstarted, so retry is
@@ -416,7 +430,7 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
       // through the candidate's own session, which aborting `lifetime` does not reach. Interleaved,
       // the teardown would close the old lifecycle, clear its binding and report success while
       // synchronization came straight back up. The same FIFO puts it after that Apply.
-      await applies(async () => {
+      await serialized(async () => {
         const active = binding();
         if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
         // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,

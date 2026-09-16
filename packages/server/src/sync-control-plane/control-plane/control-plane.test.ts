@@ -1304,3 +1304,50 @@ test('an overrides apply landing after a join preview makes the preview stale', 
   // Publishing the pre-pin body is the harm: nothing may reach the backend.
   expect(published).toEqual([]);
 });
+
+test('shutdown waits out an operation already running in the queue', async () => {
+  let release: (() => void) | undefined;
+  let running = false;
+  let finished = false;
+  const control = createSyncControlPlane({
+    repo: { readBinding: () => BINDING, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    lifecycle: {
+      start: async () => {
+        running = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        finished = true;
+      },
+      activate: () => {},
+      close: async () => {},
+      reconcile: async () => {},
+    },
+  } as never);
+
+  const retrying = control.retry();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(running).toBe(true);
+  // This operation holds no connect candidate and left no preview behind, so nothing teardown
+  // disposes reaches it. Returning here lets `closeAsync()` take the backend session and the
+  // database away while the callback is still publishing against them.
+  let disposed = false;
+  const disposing = control.dispose().then(() => void (disposed = true));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(disposed).toBe(false);
+
+  release!();
+  await disposing;
+  expect(finished).toBe(true);
+  await retrying.catch(() => {});
+});
