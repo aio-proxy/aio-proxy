@@ -39,7 +39,12 @@ export const useProviderDetach = (providerId: string | undefined) => {
   const start = useCallback(
     async (startLogin: () => boolean) => {
       if (providerId === undefined) return;
-      await mutateAsync({ providerId });
+      const pending = await mutateAsync({ providerId });
+      // A detachment that completed but lost its response is this same click again, and the row is no
+      // longer `detach-pending`: the login below would be published as the shared credential and undo
+      // the detachment, leaving the completion call unable to prove independence against it.
+      if (pending.providers.find((provider) => provider.providerId === providerId)?.credentialState === 'independent')
+        return;
       // Only a login that actually began can carry the proof. A save the editor refused — an invalid
       // field, a blocking section — starts none, and recording the intent anyway would let the next
       // unrelated re-authorization complete a detachment nobody asked for. Thrown rather than

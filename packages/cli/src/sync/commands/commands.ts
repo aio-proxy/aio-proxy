@@ -3,8 +3,8 @@ import type { SyncPreviewInput } from '@aio-proxy/types';
 import { SyncApplyInputSchema, SyncPreviewInputSchema } from '@aio-proxy/types';
 import type { Command } from 'commander';
 
-import { createSyncClient, readJsonFile, SyncCliError, type SyncCliDeps } from './client';
-import { renderSyncPreview, renderSyncStatus } from './output';
+import { createSyncClient, readJsonFile, SyncCliError, type SyncCliDeps } from '../client';
+import { renderSyncPreview, renderSyncStatus } from '../output';
 
 type OutputOptions = { readonly json?: boolean };
 
@@ -144,7 +144,14 @@ export function registerSyncCommands(program: Command, deps: SyncCliDeps): void 
       // Mark the detachment pending before authorizing: a login on a still-shared Provider is
       // published as the shared credential, which would leave the candidate identical to it and no
       // detachment could ever be approved.
-      await client.detach(providerId);
+      const pending = await client.detach(providerId);
+      // A detachment that completed but lost its response is this same command run again, and the row
+      // is no longer `detach-pending`: the login below would be published as the shared credential and
+      // undo the detachment, leaving the completion call unable to prove independence against it.
+      if (pending.providers.find((provider) => provider.providerId === providerId)?.credentialState === 'independent') {
+        emitStatus(pending, options, command);
+        return;
+      }
       let loginSessionId: string;
       try {
         loginSessionId = await client.startDetachSession(providerId);

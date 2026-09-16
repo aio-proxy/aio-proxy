@@ -9,11 +9,11 @@ import { createServer } from '@aio-proxy/server';
 import { Command } from 'commander';
 import { z } from 'zod';
 
-import { openDb } from '../../../core/src/db';
-import { createSyncRepository } from '../../../core/src/sync/repository';
-import { createMemorySyncBackend } from '../../../core/src/sync/test-support';
-import { loopbackServer } from '../../../server/src/dashboard-auth/test-support';
-import { createDefaultSyncCliDeps, createSyncClient } from './client';
+import { openDb } from '../../../../core/src/db';
+import { createSyncRepository } from '../../../../core/src/sync/repository';
+import { createMemorySyncBackend } from '../../../../core/src/sync/test-support';
+import { loopbackServer } from '../../../../server/src/dashboard-auth/test-support';
+import { createDefaultSyncCliDeps, createSyncClient } from '../client';
 import { registerSyncCommands } from './commands';
 
 test('leave excludes the Provider without invoking cloud purge', async () => {
@@ -229,6 +229,40 @@ test('detach marks the Provider pending before authorizing, then names the succe
       body: JSON.stringify({ providerId: 'work', loginSessionId: '11111111-1111-4111-8111-111111111111' }),
     },
   ]);
+  expect(JSON.parse(output[0]!)).toMatchObject({ state: 'idle' });
+});
+
+test('detach starts no login when the Provider is already independent', async () => {
+  const calls: string[] = [];
+  const output: string[] = [];
+  const program = new Command();
+  registerSyncCommands(program, {
+    endpoint: async () => 'http://127.0.0.1:9317',
+    authenticate: async () => undefined,
+    request: async (path) => {
+      calls.push(path);
+      return Response.json({
+        state: 'idle',
+        backend: null,
+        providers: [
+          {
+            providerId: 'work',
+            objectId: 'work',
+            included: false,
+            credentialState: 'independent',
+            pendingReason: null,
+          },
+        ],
+        pendingOperations: 0,
+        lastSuccessAt: null,
+      });
+    },
+    write: (value) => output.push(value),
+  });
+  await program.parseAsync(['node', 'aio-proxy', 'sync', 'detach', 'work', '--json']);
+  // A rerun after a lost response must not authorize again: the new credential would be published as
+  // the shared one and undo the detachment that already finished.
+  expect(calls).toEqual(['/dashboard/api/sync/detach']);
   expect(JSON.parse(output[0]!)).toMatchObject({ state: 'idle' });
 });
 

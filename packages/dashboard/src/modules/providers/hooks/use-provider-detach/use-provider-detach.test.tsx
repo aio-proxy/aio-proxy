@@ -46,7 +46,27 @@ test('detaching marks the Provider pending, asks for a login, then names that lo
   expect(detachCalls()[1]).toEqual({ providerId: 'work', loginSessionId: 'login-session' });
 });
 
+// A detachment that completed but lost its response is the same click again. Authorizing anyway
+// publishes the new credential as the shared one and undoes the detachment that already finished.
+test('a Provider the server already reports independent is not reauthorized', async () => {
+  const startLogin = rs.fn(() => true);
+  const { result } = renderDetach();
+  mocks.detachSync.mockResolvedValue({
+    ...status,
+    providers: [{ providerId: 'work', credentialState: 'independent' }],
+  });
+
+  await result.current.start(startLogin);
+
+  expect(startLogin).not.toHaveBeenCalled();
+  expect(detachCalls()).toEqual([{ providerId: 'work' }]);
+  // No intent was recorded either, so the next unrelated login cannot complete one.
+  result.current.complete('later-login');
+  await waitFor(() => expect(detachCalls()).toEqual([{ providerId: 'work' }]));
+});
+
 // Re-authorizing for any other reason must not finish a detachment nobody asked for: the second call
+// is what makes the local credential independent of the cloud copy.
 // is what makes the local credential independent of the cloud copy.
 test('a login nobody detached for is not turned into a detachment', async () => {
   const { result } = renderDetach();
