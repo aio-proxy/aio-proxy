@@ -151,8 +151,12 @@ jobs:
           manifest="packages/plugins/cloudkit/release-manifest.json"
           manifest_backup="$RUNNER_TEMP/aio-cloudkit-release-manifest.json"
           signed_manifest="$RUNNER_TEMP/AIOProxyCloudKit-${{ steps.cloudkit-release.outputs.version }}.manifest.json"
-          cp "$manifest" "$manifest_backup"
-          restore_manifest() { cp "$manifest_backup" "$manifest"; }
+          # The version lives in package.json alone; this file is written below for the native build,
+          # so the checkout usually does not carry one. Restore whichever state the checkout had.
+          cp "$manifest" "$manifest_backup" 2>/dev/null || rm -f "$manifest_backup"
+          restore_manifest() {
+            if [ -f "$manifest_backup" ]; then cp "$manifest_backup" "$manifest"; else rm -f "$manifest"; fi
+          }
           trap restore_manifest EXIT
 
           # Keep the temporary keychain password empty. The certificate password
