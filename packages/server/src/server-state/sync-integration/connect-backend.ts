@@ -139,8 +139,8 @@ export function createConnectBackend(input: ConnectBackendInput) {
           // status lists no Provider and a join has nothing to select. Seeding is excluded-only,
           // so connecting still publishes nothing until the user joins. An identity the candidate
           // already holds is left out: the reviewed decision for that row imports it under the
-          // cloud object's own ID, and a seeded twin would collide with it. Only rows carrying cloud
-          // state count, since those are exactly the ones a decision is mandatory for.
+          // cloud object's own ID, and a seeded twin would collide with it. A row whose decision is
+          // declined never gets written here, so the reviewed Apply seeds again for those.
           seedAuthoredEntities(
             syncRepository,
             binding.id,

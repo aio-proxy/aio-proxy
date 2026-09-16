@@ -1,3 +1,4 @@
+import { seedAuthoredEntities } from '@aio-proxy/core';
 import type {
   SyncApplyInput,
   SyncBackendView,
@@ -206,7 +207,19 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     // The binding row was written pending by the connect that created it, so this is what tells a
     // restarted service the reviewed Apply actually finished and the backend may be reconciled.
     const bound = binding();
-    if (bound !== null) options.repo.setConnectPending?.(bound.id, false);
+    // The swap seeds rows for the authored objects, but it runs before the decisions and has to
+    // leave out every identity the candidate already holds: that row arrives under the cloud
+    // object's own ID once its decision lands, and a seeded twin would collide with it. A connect
+    // row may be declined, though — a tombstoned head is optional precisely so a first connect need
+    // not resurrect a deleted object — and then nothing ever wrote the row, leaving the authored
+    // object out of status and unjoinable. Every adopted identity has its row by now, so seeding
+    // again writes exactly the declined ones. Read the source after applying: a rename rewrote the
+    // configuration, and the pre-apply reading still names the Provider ID it vacated.
+    if (bound !== null) {
+      const source = await options.committedSource?.().catch(() => undefined);
+      if (source !== undefined) seedAuthoredEntities(options.repo, bound.id, source.raw);
+      options.repo.setConnectPending?.(bound.id, false);
+    }
     connectApplyIncomplete = false;
   };
 

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { encode, entityKey, revisionKey, type EntityBody } from '@aio-proxy/core';
+import { encode, entityKey, revisionKey, type EntityBody, type LocalEntity } from '@aio-proxy/core';
 import type { JsonValue, SyncSession } from '@aio-proxy/plugin-sdk';
 
 import { createSyncControlPlane } from '../control-plane';
@@ -2554,10 +2554,9 @@ test('a first connect reviews an authored object the candidate backend already h
   expect(imported).toEqual([]);
 });
 
-test('a first connect leaves a tombstoned cloud head optional', async () => {
-  // The cloud deleted this Provider but kept its payload for a restore, and the same Provider is
-  // still authored locally. Requiring a decision here left `restore` as the only choice, so
-  // connecting could not finish without reviving an object the space had already deleted.
+// The cloud deleted this Provider but kept its payload for a restore, and the same Provider is
+// still authored locally.
+function tombstonedConnect() {
   const cloud = {
     objectId: 'cloud-object',
     logicalKey: 'work',
@@ -2570,15 +2569,20 @@ test('a first connect leaves a tombstoned cloud head optional', async () => {
   };
   const published: (string | null)[] = [];
   const imported: string[] = [];
+  const rows: LocalEntity[] = [];
   let bound = false;
   const control = createSyncControlPlane({
     repo: {
       readBinding: () => null,
-      entities: () => [],
+      entities: () => rows,
       outbox: () => [],
       pendingCommits: () => [],
       oauthJournals: () => [],
-      putEntity: () => {},
+      putEntity: (_bindingId: string, entity: LocalEntity) => {
+        const index = rows.findIndex((row) => row.objectId === entity.objectId);
+        if (index === -1) rows.push(entity);
+        else rows[index] = entity;
+      },
     } as never,
     binding: () =>
       bound
@@ -2594,7 +2598,7 @@ test('a first connect leaves a tombstoned cloud head optional', async () => {
             options: {},
           }
         : null,
-    localEntities: () => [],
+    localEntities: () => rows,
     remoteEntities: async () => [],
     registry: () =>
       ({
@@ -2622,13 +2626,21 @@ test('a first connect leaves a tombstoned cloud head optional', async () => {
       pluginVersions: new Map(),
     }),
   } as never);
+  return {
+    control,
+    rows,
+    published,
+    imported,
+    bound: () => bound,
+    preview: () => control.preview({ kind: 'connect', plugin: '@example/sync', capability: 'memory', options: {} }),
+  };
+}
 
-  const preview = await control.preview({
-    kind: 'connect',
-    plugin: '@example/sync',
-    capability: 'memory',
-    options: {},
-  });
+test('a first connect leaves a tombstoned cloud head optional', async () => {
+  // Requiring a decision here left `restore` as the only choice, so connecting could not finish
+  // without reviving an object the space had already deleted.
+  const fixture = tombstonedConnect();
+  const preview = await fixture.preview();
   const row = preview.rows.find((entry) => entry.objectId === 'cloud-object');
   expect(row?.change).toBe('delete');
   expect(row?.choices).toEqual(['restore']);
@@ -2636,10 +2648,31 @@ test('a first connect leaves a tombstoned cloud head optional', async () => {
 
   // Skipping it connects the backend and leaves the authored Provider local-only: nothing is
   // revived in the cloud and nothing is written over the local configuration.
-  await control.apply({ previewId: preview.previewId, decisions: [] });
-  expect(bound).toBe(true);
-  expect(published).toEqual([]);
-  expect(imported).toEqual([]);
+  await fixture.control.apply({ previewId: preview.previewId, decisions: [] });
+  expect(fixture.bound()).toBe(true);
+  expect(fixture.published).toEqual([]);
+  expect(fixture.imported).toEqual([]);
+  // Local-only still needs a row of its own. The swap leaves out every identity the candidate holds,
+  // because the decision for that row writes it under the cloud object's own ID — but a declined row
+  // writes nothing, and the authored Provider was then absent from status with no way to join it.
+  expect(fixture.rows).toMatchObject([
+    { kind: 'provider', logicalKey: 'work', mode: 'excluded', desired: null, baseline: null },
+  ]);
+  expect(fixture.rows[0]?.objectId).not.toBe('cloud-object');
+});
+
+// Reviving it is the other half: the row lands under the deleted object's own ID, so seeding a
+// second row for the same Provider ID would leave the first reconciliation quarantining both.
+test('a first connect that revives a tombstoned head keeps one row for the Provider', async () => {
+  const fixture = tombstonedConnect();
+  const preview = await fixture.preview();
+
+  await fixture.control.apply({
+    previewId: preview.previewId,
+    decisions: [{ objectId: 'cloud-object', choice: 'restore' }],
+  });
+
+  expect(fixture.rows).toMatchObject([{ objectId: 'cloud-object', logicalKey: 'work', mode: 'included' }]);
 });
 
 test('a tombstoned duplicate does not collide with the live object holding the identity', () => {

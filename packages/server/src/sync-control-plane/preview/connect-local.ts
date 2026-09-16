@@ -23,8 +23,9 @@ export function authoredLocalEntities(
 ): readonly LocalEntity[] {
   const known = new Set(local.map((entity) => identityKey(entity.kind, entity.logicalKey)));
   const claimed = new Map<string, RemoteEntity>();
-  // A tombstone claims nothing: its identity is free, so the authored object stays local-only and is
-  // seeded as an ordinary excluded row by the connect that follows.
+  // A tombstone that kept no payload claims nothing: its identity is free, so the authored object
+  // stays local-only and is seeded as an ordinary excluded row. One that retained a restore body can
+  // still be revived under its own ID, so it holds the identity and needs the minted row.
   for (const entity of remote)
     if (entity.body !== null || (entity.restoreBody ?? null) !== null)
       claimed.set(identityKey(entity.kind, entity.logicalKey), entity);
