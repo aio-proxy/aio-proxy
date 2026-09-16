@@ -22,6 +22,30 @@ const mutationBody = (values: ProviderEditorShape) => {
 };
 
 describe('API provider form fields', () => {
+  test.each(['openai-compatible', 'anthropic'] as const)(
+    'editing a Command Code %s provider keeps its full endpoint URL',
+    async (protocol) => {
+      const endpoints = { baseURL: 'https://api.commandcode.ai/provider/v1', protocol: [protocol] };
+      const initial = parseProviderFormInitial({
+        kind: ProviderKind.Api,
+        id: 'command-code',
+        models: [protocol === 'anthropic' ? 'claude-sonnet-4-6' : 'deepseek/deepseek-v4-flash'],
+        endpoints,
+      });
+      const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api, initial }));
+      render(<ProviderFormFieldsApi form={result.current} hasApiKey={true} />);
+
+      const input = within(screen.getByTestId('provider-form-field-apiKey')).getByLabelText(/API Key/u);
+      fireEvent.change(input, { target: { value: 'replacement-test-key' } });
+      await waitFor(() => expect(input).toHaveValue('replacement-test-key'));
+
+      const submitted = mutationBody(result.current.state.values);
+      expect(submitted).toMatchObject({ endpoints, apiKey: 'replacement-test-key' });
+      expect(submitted).not.toHaveProperty('baseURL');
+      expect(submitted).not.toHaveProperty('protocol');
+    },
+  );
+
   test('opens on OpenAI Compatible, with a placeholder and icons in the options and selected value', async () => {
     const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
 

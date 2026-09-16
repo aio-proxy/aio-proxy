@@ -1,5 +1,26 @@
 # @aio-proxy/core
 
+## 0.23.2
+
+### Patch Changes
+
+- [#366](https://github.com/aio-proxy/aio-proxy/pull/366) [`3bf7004`](https://github.com/aio-proxy/aio-proxy/commit/3bf7004feb80ae77ac64030d0255a601e1488a2c) Thanks [@YePiXpert](https://github.com/YePiXpert)! - Image generation and editing requests with an omitted or blank model now default to `gpt-image-2.5-sunburst`. Explicit model selections keep their existing routing. API Providers must expose the new default model, or clients must explicitly request a model their Provider supports.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.23.2
+  - @aio-proxy/logger@0.23.2
+  - @aio-proxy/plugin-sdk@0.23.2
+  - @aio-proxy/plugin-claude-code@0.23.2
+  - @aio-proxy/plugin-cursor@0.23.2
+  - @aio-proxy/plugin-github-copilot@0.23.2
+  - @aio-proxy/plugin-google-antigravity@0.23.2
+  - @aio-proxy/plugin-kimi-code@0.23.2
+  - @aio-proxy/plugin-muse-code@0.23.2
+  - @aio-proxy/plugin-openai-chatgpt@0.23.2
+  - @aio-proxy/plugin-openrouter@0.23.2
+  - @aio-proxy/plugin-xai-grok@0.23.2
+  - @aio-proxy/shared@0.23.2
+  - @aio-proxy/types@0.23.2
+
 ## 0.23.1
 
 ### Patch Changes

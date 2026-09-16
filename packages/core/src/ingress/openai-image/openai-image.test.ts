@@ -23,10 +23,10 @@ test.each([
   ['JSON null', { model: null }],
   ['empty string', { model: '' }],
   ['whitespace', { model: '  \t' }],
-] as const)('defaults %s model to gpt-image-2', (_name, extra) => {
+] as const)('defaults %s model to gpt-image-2.5-sunburst', (_name, extra) => {
   const parsed = parseOpenAIImageGenerations({ ...extra, prompt: 'a cat' });
   expect(parsed.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
-  expect(CPA_DEFAULT_IMAGE_MODEL).toBe('gpt-image-2');
+  expect(CPA_DEFAULT_IMAGE_MODEL).toBe('gpt-image-2.5-sunburst');
   expect(parsed.modelDefaulted).toBe(true);
   expect(parsed.clientModel).toBeUndefined();
 });
@@ -48,7 +48,7 @@ test('GPT-only fields do not change the omitted-model default and do not 400', (
     stream: false,
     partial_images: 2,
   });
-  expect(parsed.model).toBe('gpt-image-2');
+  expect(parsed.model).toBe('gpt-image-2.5-sunburst');
   expect(parsed.modelDefaulted).toBe(true);
   expect(parsed.background).toBe('transparent');
   expect(parsed.output_format).toBe('png');
@@ -60,7 +60,7 @@ test('GPT-only fields do not change the omitted-model default and do not 400', (
 
 test('omitted model plus stream true parses as the CPA default, not a missing-model 400', () => {
   const parsed = parseOpenAIImageGenerations({ prompt: 'a cat', stream: true });
-  expect(parsed.model).toBe('gpt-image-2');
+  expect(parsed.model).toBe('gpt-image-2.5-sunburst');
   expect(parsed.modelDefaulted).toBe(true);
   expect(parsed.stream).toBe(true);
 });
@@ -117,7 +117,7 @@ test.each([
   ['JSON null', { model: null }],
   ['empty string', { model: '' }],
   ['whitespace', { model: '  \t' }],
-] as const)('defaults edits %s model to gpt-image-2', (_name, extra) => {
+] as const)('defaults edits %s model to gpt-image-2.5-sunburst', (_name, extra) => {
   const parsed = parseOpenAIImageEdits({ ...extra, prompt: 'make it night', images: [imageUrl] });
   expect(parsed.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
   expect(parsed.modelDefaulted).toBe(true);

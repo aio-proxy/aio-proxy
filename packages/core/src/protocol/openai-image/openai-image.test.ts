@@ -54,12 +54,18 @@ test.each([
   ['JSON null', { model: null, prompt: 'a cat' }],
   ['empty string', { model: '', prompt: 'a cat' }],
   ['whitespace', { model: '   ', prompt: 'a cat' }],
-] as const)('defaults %s model; raw and convert use gpt-image-2 when unresolved', async (_name, body) => {
+] as const)('defaults %s model; raw and convert use gpt-image-2.5-sunburst when unresolved', async (_name, body) => {
   const raw = generationsRequest(body);
   const request = await openAIImagesAdapter.parse(raw, generations);
-  expect(request.model).toBe('gpt-image-2');
-  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
-  expect(await forwarded.json()).toMatchObject({ model: 'gpt-image-2', prompt: 'a cat' });
+  expect(request.model).toBe('gpt-image-2.5-sunburst');
+  const forwarded = await openAIImagesAdapter.rawRequest(
+    raw,
+    request,
+    'gpt-image-2.5-sunburst',
+    new Set(),
+    generations,
+  );
+  expect(await forwarded.json()).toMatchObject({ model: 'gpt-image-2.5-sunburst', prompt: 'a cat' });
   expect(openAIImagesAdapter.imageInvocation(request, generations)).toMatchObject({
     operation: 'generate',
     prompt: 'a cat',
@@ -71,7 +77,7 @@ test.each([
 test('rewrites a defaulted request to the resolved alias target', async () => {
   const raw = generationsRequest({ prompt: 'a cat' });
   const request = await openAIImagesAdapter.parse(raw, generations);
-  expect(request.model).toBe('gpt-image-2');
+  expect(request.model).toBe('gpt-image-2.5-sunburst');
   const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'acme-image-2', new Set(), generations);
   expect(await forwarded.json()).toMatchObject({ model: 'acme-image-2' });
 });
@@ -146,7 +152,7 @@ test('same-id raw clone keeps body integrity headers', async () => {
   expect(forwarded.headers.get('content-digest')).toBe('sha-256=:abc:');
 });
 
-test('rewrites even when the defaulted lookup still resolves to gpt-image-2', async () => {
+test('rewrites even when the defaulted lookup still resolves to gpt-image-2.5-sunburst', async () => {
   const bodyText = '{"prompt":"a cat","seed":42}';
   const raw = new Request('https://x/v1/images/generations', {
     method: 'POST',
@@ -154,10 +160,16 @@ test('rewrites even when the defaulted lookup still resolves to gpt-image-2', as
     body: bodyText,
   });
   const request = await openAIImagesAdapter.parse(raw, generations);
-  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
+  const forwarded = await openAIImagesAdapter.rawRequest(
+    raw,
+    request,
+    'gpt-image-2.5-sunburst',
+    new Set(),
+    generations,
+  );
   const forwardedText = await forwarded.text();
   expect(forwardedText).not.toBe(bodyText);
-  expect(JSON.parse(forwardedText)).toMatchObject({ model: 'gpt-image-2', prompt: 'a cat', seed: 42 });
+  expect(JSON.parse(forwardedText)).toMatchObject({ model: 'gpt-image-2.5-sunburst', prompt: 'a cat', seed: 42 });
 });
 
 test('treats convert null optional fields as omitted while raw keeps the nulls', async () => {
@@ -239,7 +251,7 @@ test('copies present provider options and drops unknown fields on convert', asyn
 
 test('omitted model plus stream true is a stream skip, not a missing-model 400', async () => {
   const request = await parseGenerations({ prompt: 'a cat', stream: true });
-  expect(request.model).toBe('gpt-image-2');
+  expect(request.model).toBe('gpt-image-2.5-sunburst');
   expect(openAIImagesAdapter.wantsStream(request, generations)).toBe(true);
   expect(imageConvertSkipReason({ request, resolvedModelId: 'gpt-image-2' })).toBe('stream');
   const response = openAIImagesErrors.unsupported('stream');
@@ -383,13 +395,13 @@ test.each([
   ['JSON null', { model: null, prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
   ['empty string', { model: '', prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
   ['whitespace', { model: '   ', prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
-] as const)('defaults edits %s model lookup to gpt-image-2', async (_name, body) => {
+] as const)('defaults edits %s model lookup to gpt-image-2.5-sunburst', async (_name, body) => {
   const raw = editsRequest(body);
   const request = await openAIImagesAdapter.parse(raw, edits);
   expect(request.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
   expect(request.modelDefaulted).toBe(true);
-  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
-  expect(await forwarded.json()).toMatchObject({ model: 'gpt-image-2', prompt: 'make it night' });
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2.5-sunburst', new Set(), edits);
+  expect(await forwarded.json()).toMatchObject({ model: 'gpt-image-2.5-sunburst', prompt: 'make it night' });
 });
 
 test('edits JSON bodyLimits accept the official-max envelope', () => {
@@ -551,15 +563,15 @@ test.each([
   ['missing', {}],
   ['empty', { model: '' }],
   ['whitespace', { model: '   ' }],
-] as const)('defaults edits multipart %s model lookup to gpt-image-2', async (_name, extra) => {
+] as const)('defaults edits multipart %s model lookup to gpt-image-2.5-sunburst', async (_name, extra) => {
   const raw = editsMultipartRequest({ ...extra, prompt: 'make it night', image: pngBlob() });
   const request = await openAIImagesAdapter.parse(raw, edits);
   expect(request.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
   expect(request.modelDefaulted).toBe(true);
-  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2.5-sunburst', new Set(), edits);
   expect(forwarded.headers.get('content-type') ?? '').toStartWith('multipart/form-data');
   const form = await forwarded.formData();
-  expect(form.get('model')).toBe('gpt-image-2');
+  expect(form.get('model')).toBe('gpt-image-2.5-sunburst');
   expect(form.get('prompt')).toBe('make it night');
 });
 
@@ -618,7 +630,7 @@ test('multipart literal null with alias rewrites raw to the resolved target', as
 test('rewrites a defaulted multipart edits request to the resolved alias target', async () => {
   const raw = editsMultipartRequest({ prompt: 'make it night', image: pngBlob() });
   const request = await openAIImagesAdapter.parse(raw, edits);
-  expect(request.model).toBe('gpt-image-2');
+  expect(request.model).toBe('gpt-image-2.5-sunburst');
   const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'acme-image-2', new Set(), edits);
   const form = await forwarded.formData();
   expect(form.get('model')).toBe('acme-image-2');

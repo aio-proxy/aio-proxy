@@ -150,8 +150,8 @@ aio-proxy reload
 - `endpoints` 中每一项的 `baseURL` 就是传给对应 AI SDK 包的那个值：OpenAI 系和 Anthropic 端点包含 `/v1` 段，Gemini 端点包含 `/v1beta`（因此 Gemini 无法共用 `/v1` 的 base URL，需要在数组中单独声明一项）。
 - 厂商文档给出的 Anthropic 地址通常是用于 `ANTHROPIC_BASE_URL` 的形式（例如 `https://api.z.ai/api/anthropic`）；填写到这里时需要补上 `/v1`。
 - `auth` 仅支持用于 `anthropic` 端点（配置在其他协议的端点上会导致校验失败）：`bearer` 会发送 `Authorization: Bearer`，且要求该 Provider 声明 `apiKey`，默认的 `x-api-key` 维持现有请求头。
-- 顶层的 `protocol`/`baseURL` 仍然是主端点，并保持既有的透传行为——透传时会丢弃其 base URL 的路径部分，只取 origin 并拼接入站请求的路径，因此单协议的 Provider 建议继续使用顶层的 `protocol`/`baseURL`；跨协议转换始终指向主端点。如果没有声明顶层的 `protocol`/`baseURL`，主端点就是 `endpoints` 中的第一项（共用形式下为其 `protocol` 列表中的第一个协议）。
-- 在 Dashboard 中编辑声明了 `endpoints` 的 Provider 目前会丢失该字段；在 Dashboard 支持之前，请直接编辑配置文件。
+- 顶层的 `protocol`/`baseURL` 仍然是主端点，并保持既有的透传行为——透传时会丢弃其 base URL 的路径部分，只取 origin 并拼接入站请求的路径，因此上游地址需要保留路径前缀时应使用 `endpoints`；跨协议转换始终指向主端点。如果没有声明顶层的 `protocol`/`baseURL`，主端点就是 `endpoints` 中的第一项（共用形式下为其 `protocol` 列表中的第一个协议）。
+- Dashboard 支持共用地址和独立端点地址。新建 API Provider 时，即使只选择一个协议，也会使用 `endpoints` 保存完整的上游路径。已有的旧式单协议 Provider 保持顶层 `protocol`/`baseURL` 的原有行为。
 
 ### 模型元数据与计费
 
@@ -297,12 +297,12 @@ router:
 Images 说明：
 
 - 原始透传 Images 需要 `openai-image` 端点（或将其设为主协议）。
-- JSON 中留空的 `model` 以及 multipart 中缺失/空/仅空白的 `model` 会查找 `gpt-image-2`（不是官方的 `dall-e-2` / `gpt-image-1.5`）。multipart 字面量 `null` 是模型 id `"null"`，不会被默认化。原始透传会写入解析后的候选 id。
+- JSON 中缺失/null/空/仅空白的 `model` 以及 multipart 中缺失/空/仅空白的 `model` 会查找 `gpt-image-2.5-sunburst`。显式指定的模型 id（包括 `gpt-image-2` 和 `gpt-image-2.5-flare`）沿用原有路由。multipart 字面量 `null` 是模型 id `"null"`，不会被默认化。原始透传会写入解析后的候选 id。
 - 入站模型是 OpenAI id，外加现有的 `providerId/` 限定符。
 - 转换路径不流式输出，也不会去拉取 `image_url`。
 - DALL·E 省略/`null`/`url` 会跳过转换；GPT Image 省略时编码为 `b64_json`；自定义模型省略时的 `b64_json` 是 aio-proxy 扩展。
 - Edits 接受官方上限信封（JSON `357_564_416`，multipart `851_048_559`）。P1 没有更低的默认 DoS 上限；未来更小的上限只能作为显式的部署扩展。
-- 无目录的 Images Provider 需要有限 id 集合（`models` 或保留的别名目标），其中须包含 `gpt-image-2` 才能使用空白 model 的默认值。`router.models` 元数据条目不会创建路由。
+- 无目录的 Images Provider 需要有限 id 集合（`models` 或保留的别名目标），其中须包含 `gpt-image-2.5-sunburst` 才能使用空白 model 的默认值。仅配置了 `gpt-image-2` 的 Provider 需要添加新模型，或由客户端显式请求旧模型。`router.models` 元数据条目不会创建路由。
 
 Audio 说明：
 
@@ -363,6 +363,10 @@ aio-proxy provider list --probe
 aio-proxy doctor
 aio-proxy --help
 ```
+
+## Command Code 接入
+
+参阅 [Command Code 接入指南](./docs/command-code.md)，了解 API Key 配置、订阅套餐支持情况，以及保留 `/provider/v1` 路径的 OpenAI Compatible 和 Anthropic 独立 Provider 示例。
 
 ## 贡献
 

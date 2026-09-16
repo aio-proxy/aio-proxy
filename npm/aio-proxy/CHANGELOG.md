@@ -1,5 +1,15 @@
 # aio-proxy
 
+## 0.23.2
+
+### Patch Changes
+
+- [#360](https://github.com/aio-proxy/aio-proxy/pull/360) [`6e54855`](https://github.com/aio-proxy/aio-proxy/commit/6e548551c2fe9f94816ede2fd8a4ea3b9882672c) Thanks [@baranwang](https://github.com/baranwang)! - Fixed `aio-proxy upgrade --version` on prerelease versions. The post-install check dropped the prerelease suffix when reading the new binary's version, so it compared `0.23.1` against the requested `0.23.1-canary.…`, judged the install a failure, and rolled the working binary back.
+
+- [#366](https://github.com/aio-proxy/aio-proxy/pull/366) [`3bf7004`](https://github.com/aio-proxy/aio-proxy/commit/3bf7004feb80ae77ac64030d0255a601e1488a2c) Thanks [@YePiXpert](https://github.com/YePiXpert)! - Image generation and editing requests with an omitted or blank model now default to `gpt-image-2.5-sunburst`. Explicit model selections keep their existing routing. API Providers must expose the new default model, or clients must explicitly request a model their Provider supports.
+
+- [#365](https://github.com/aio-proxy/aio-proxy/pull/365) [`f4d4ed1`](https://github.com/aio-proxy/aio-proxy/commit/f4d4ed10166dfa1379e31b19938f64e64488e97a) Thanks [@YePiXpert](https://github.com/YePiXpert)! - Preserve the full upstream URL when creating or editing single-protocol API endpoints in the Dashboard. Gateways such as Command Code now retain their required path prefixes after saving; existing legacy single-protocol configurations retain their original URL behavior.
+
 ## 0.23.1
 
 ### Patch Changes

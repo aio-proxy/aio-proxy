@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.23.2
+
+### Patch Changes
+
+- [#360](https://github.com/aio-proxy/aio-proxy/pull/360) [`6e54855`](https://github.com/aio-proxy/aio-proxy/commit/6e548551c2fe9f94816ede2fd8a4ea3b9882672c) Thanks [@baranwang](https://github.com/baranwang)! - Fixed `aio-proxy upgrade --version` on prerelease versions. The post-install check dropped the prerelease suffix when reading the new binary's version, so it compared `0.23.1` against the requested `0.23.1-canary.…`, judged the install a failure, and rolled the working binary back.
+- Updated dependencies [[`3bf7004`](https://github.com/aio-proxy/aio-proxy/commit/3bf7004feb80ae77ac64030d0255a601e1488a2c), [`f4d4ed1`](https://github.com/aio-proxy/aio-proxy/commit/f4d4ed10166dfa1379e31b19938f64e64488e97a)]:
+  - @aio-proxy/core@0.23.2
+  - @aio-proxy/dashboard@0.23.2
+  - @aio-proxy/server@0.23.2
+  - @aio-proxy/opencode-provider@0.23.2
+  - @aio-proxy/pi-provider@0.23.2
+  - @aio-proxy/agent-provider-runtime@0.23.2
+  - @aio-proxy/i18n@0.23.2
+  - @aio-proxy/logger@0.23.2
+  - @aio-proxy/plugin-sdk@0.23.2
+  - @aio-proxy/shared@0.23.2
+  - @aio-proxy/types@0.23.2
+
 ## 0.23.1
 
 ### Patch Changes

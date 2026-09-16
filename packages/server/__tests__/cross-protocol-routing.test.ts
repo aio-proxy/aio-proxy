@@ -305,17 +305,33 @@ describe('openai-image inbound', () => {
     expect(fixture.calls.image).toBe(0);
   });
 
-  test('documented example routes omitted-model generations to gpt-image-2', async () => {
-    const fixture = documentedImageProvider(['gpt-image-2', 'dall-e-2', 'gpt-image-1.5']);
-    const response = await requestImages({ prompt: 'a cat' }, [fixture.value]);
+  test.each([
+    ['omitted', {}],
+    ['JSON null', { model: null }],
+    ['empty', { model: '' }],
+    ['whitespace', { model: '   ' }],
+  ] as const)('routes %s model to gpt-image-2.5-sunburst alongside older image models', async (_name, extra) => {
+    const fixture = documentedImageProvider(['gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare']);
+    const response = await requestImages({ ...extra, prompt: 'a cat' }, [fixture.value]);
 
     expect(response.status).toBe(200);
     expect(fixture.calls.raw).toBe(1);
-    expect(fixture.rawBodies[0]).toMatchObject({ model: 'gpt-image-2', prompt: 'a cat' });
+    expect(fixture.rawBodies[0]).toMatchObject({ model: 'gpt-image-2.5-sunburst', prompt: 'a cat' });
   });
 
-  test('same documented provider without gpt-image-2 404s the CPA default', async () => {
-    const fixture = documentedImageProvider(['dall-e-2', 'gpt-image-1.5']);
+  test.each(['gpt-image-2', 'gpt-image-2.5-flare'] as const)(
+    'preserves explicit %s when the new default is also available',
+    async (model) => {
+      const fixture = documentedImageProvider(['gpt-image-2.5-sunburst', model]);
+      const response = await requestImages({ model, prompt: 'a cat' }, [fixture.value]);
+
+      expect(response.status).toBe(200);
+      expect(fixture.rawBodies[0]).toMatchObject({ model, prompt: 'a cat' });
+    },
+  );
+
+  test('same documented provider without gpt-image-2.5-sunburst 404s the CPA default', async () => {
+    const fixture = documentedImageProvider(['gpt-image-2', 'dall-e-2', 'gpt-image-1.5']);
     const response = await requestImages({ prompt: 'a cat' }, [fixture.value]);
 
     expect(response.status).toBe(404);

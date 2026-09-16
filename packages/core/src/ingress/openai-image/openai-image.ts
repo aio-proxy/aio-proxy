@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CPA_DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+export const CPA_DEFAULT_IMAGE_MODEL = 'gpt-image-2.5-sunburst';
 
 const nullableString = z.string().nullable().optional();
 const nullableInt = z.number().int().nullable().optional();

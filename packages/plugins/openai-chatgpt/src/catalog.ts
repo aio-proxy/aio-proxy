@@ -74,9 +74,9 @@ export async function discoverOpenAIChatGPTModels(
  * reference proxy hardcode them. Meanwhile `/backend-api/codex/images/*`
  * accepts them for the same account.
  *
- * Blank inbound `model` still defaults to `gpt-image-2`. The 2.5 ids exist so
- * clients can select Sunburst or Flare explicitly; the runtime forwards the
- * requested id verbatim.
+ * Blank inbound `model` defaults to `gpt-image-2.5-sunburst`. Clients can still
+ * select GPT Image 2 or Flare explicitly; the runtime forwards the resolved
+ * model id verbatim.
  *
  * No `extra.protocol`. The host does hand this descriptor's `extra` to the raw
  * resolver — for an inbound `openai-image` it resolves the descriptor from the

@@ -74,7 +74,7 @@ test.each([
   ['missing', {}],
   ['empty', { model: '' }],
   ['whitespace', { model: '  \t' }],
-] as const)('defaults multipart %s model to gpt-image-2', async (_name, extra) => {
+] as const)('defaults multipart %s model to gpt-image-2.5-sunburst', async (_name, extra) => {
   const parsed = await parseOpenAIImageEditsMultipart(
     editsMultipartRequest({
       ...extra,
@@ -83,7 +83,7 @@ test.each([
     }),
   );
   expect(parsed.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
-  expect(CPA_DEFAULT_IMAGE_MODEL).toBe('gpt-image-2');
+  expect(CPA_DEFAULT_IMAGE_MODEL).toBe('gpt-image-2.5-sunburst');
   expect(parsed.modelDefaulted).toBe(true);
   expect(parsed.clientModel).toBeUndefined();
 });

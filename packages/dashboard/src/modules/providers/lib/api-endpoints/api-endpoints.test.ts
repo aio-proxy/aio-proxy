@@ -37,6 +37,7 @@ describe('apiDraftFromProvider', () => {
       shape: 'shared',
       baseURL: 'https://api.openai.com/v1',
       protocols: [ProviderProtocol.OpenAIResponse],
+      legacy: true,
     });
   });
 
@@ -107,14 +108,54 @@ describe('apiDraftFromProvider', () => {
 });
 
 describe('apiDraftToMutation', () => {
-  test('one shared protocol writes the legacy pair and omits endpoints', () => {
+  test.each(['openai-compatible', 'anthropic'] as const)(
+    'saving a Command Code %s endpoint retains its path-aware transport',
+    (protocol) => {
+      const baseURL = 'https://api.commandcode.ai/provider/v1';
+      for (const endpoints of [{ baseURL, protocol: [protocol] }, [{ baseURL, protocol }]]) {
+        const draft = apiDraftFromProvider({ kind: ProviderKind.Api, endpoints });
+        expect(draft).toBeDefined();
+        expect(apiDraftToMutation(draft!)).toEqual({ endpoints: { baseURL, protocol: [protocol] } });
+      }
+    },
+  );
+
+  test('a new shared single-protocol provider keeps the full base URL', () => {
     expect(
       apiDraftToMutation({
         shape: 'shared',
         baseURL: 'https://api.openai.com/v1',
         protocols: [ProviderProtocol.OpenAIResponse],
       }),
-    ).toEqual({ protocol: ProviderProtocol.OpenAIResponse, baseURL: 'https://api.openai.com/v1' });
+    ).toEqual({ endpoints: { protocol: [ProviderProtocol.OpenAIResponse], baseURL: 'https://api.openai.com/v1' } });
+  });
+
+  test('an existing single legacy provider retains its origin-only transport after editing', () => {
+    const draft = apiDraftFromProvider({
+      kind: ProviderKind.Api,
+      protocol: ProviderProtocol.Anthropic,
+      baseURL: 'https://api.anthropic.com',
+    });
+    expect(draft).toBeDefined();
+    expect(apiDraftToMutation({ ...draft!, baseURL: 'https://legacy.example.com' } as ApiEndpointDraft)).toEqual({
+      protocol: ProviderProtocol.Anthropic,
+      baseURL: 'https://legacy.example.com',
+    });
+  });
+
+  test('reducing a shared endpoint list to one protocol keeps SDK URL semantics', () => {
+    const draft = apiDraftFromProvider({
+      kind: ProviderKind.Api,
+      endpoints: {
+        baseURL: 'https://api.commandcode.ai/provider/v1',
+        protocol: [ProviderProtocol.OpenAICompatible, ProviderProtocol.Anthropic],
+      },
+    });
+    expect(draft?.shape).toBe('shared');
+    if (draft?.shape !== 'shared') throw new Error('Expected a shared endpoint draft');
+    expect(apiDraftToMutation({ ...draft, protocols: [ProviderProtocol.Anthropic] })).toEqual({
+      endpoints: { baseURL: 'https://api.commandcode.ai/provider/v1', protocol: [ProviderProtocol.Anthropic] },
+    });
   });
 
   test('several shared protocols write the shared endpoints object', () => {

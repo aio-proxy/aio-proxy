@@ -240,6 +240,34 @@ test('create-api save opens the created provider', async () => {
   expect(screen.queryByText(SAVED_LINE)).toBeNull();
 });
 
+test('creating Command Code from the shared-address form submits a path-preserving endpoint', async () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.Api,
+    initial: { enabled: true, models: ['deepseek/deepseek-v4-flash'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  fillId('command-code');
+  fillBaseURL('https://api.commandcode.ai/provider/v1');
+  await pickProtocol();
+  fireEvent.change(within(screen.getByTestId('provider-form-field-apiKey')).getByLabelText(/API Key/u), {
+    target: { value: 'command-code-test-key' },
+  });
+  await waitFor(() => expect(saveButton()).toBeEnabled());
+  fireEvent.click(saveButton());
+
+  await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+  const body = mocks.create.mock.calls[0]?.[0] as Record<string, unknown>;
+  expect(body).toMatchObject({
+    id: 'command-code',
+    apiKey: 'command-code-test-key',
+    endpoints: { baseURL: 'https://api.commandcode.ai/provider/v1', protocol: ['openai-compatible'] },
+  });
+  expect(body).not.toHaveProperty('protocol');
+  expect(body).not.toHaveProperty('baseURL');
+});
+
 test('create-api emptying baseURL disables save and marks Connection as to do', async () => {
   renderPage({
     mode: ProviderFormMode.Create,

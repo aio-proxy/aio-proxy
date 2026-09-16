@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.23.2
+
+### Patch Changes
+
+- [#365](https://github.com/aio-proxy/aio-proxy/pull/365) [`f4d4ed1`](https://github.com/aio-proxy/aio-proxy/commit/f4d4ed10166dfa1379e31b19938f64e64488e97a) Thanks [@YePiXpert](https://github.com/YePiXpert)! - Preserve the full upstream URL when creating or editing single-protocol API endpoints in the Dashboard. Gateways such as Command Code now retain their required path prefixes after saving; existing legacy single-protocol configurations retain their original URL behavior.
+- Updated dependencies []:
+  - @aio-proxy/server@0.23.2
+  - @aio-proxy/brand@0.23.2
+  - @aio-proxy/i18n@0.23.2
+  - @aio-proxy/plugin-sdk@0.23.2
+  - @aio-proxy/types@0.23.2
+  - @aio-proxy/ui@0.23.2
+
 ## 0.23.1
 
 ### Patch Changes

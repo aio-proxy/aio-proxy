@@ -11,6 +11,8 @@ export type ApiEndpointDraft =
       readonly shape: 'shared';
       readonly baseURL: string;
       readonly protocols: readonly ProviderProtocol[];
+      /** Only a stored protocol/baseURL pair uses the historical origin-only transport. */
+      readonly legacy?: true;
     }
   | {
       readonly shape: 'separate';
@@ -59,7 +61,7 @@ export function apiDraftFromProvider(value: {
   if (rows.length === 1 && rows[0] !== undefined && !Array.isArray(endpoints)) {
     const only = rows[0];
     if (only.protocol === '') return emptySharedDraft();
-    return { shape: 'shared', baseURL: only.baseURL, protocols: [only.protocol] };
+    return { shape: 'shared', baseURL: only.baseURL, protocols: [only.protocol], legacy: true };
   }
   // A stored legacy protocol/baseURL pair is origin-mode. Keep it as a separate
   // first row even when extra endpoints reuse the same URL, so a save does not
@@ -86,7 +88,7 @@ export function apiDraftToMutation(draft: ApiEndpointDraft): {
 } {
   if (draft.shape === 'shared') {
     const [only, ...rest] = draft.protocols;
-    if (only !== undefined && rest.length === 0) return { protocol: only, baseURL: draft.baseURL };
+    if (draft.legacy && only !== undefined && rest.length === 0) return { protocol: only, baseURL: draft.baseURL };
     if (only === undefined) return {};
     return { endpoints: { baseURL: draft.baseURL, protocol: [...draft.protocols] } };
   }
