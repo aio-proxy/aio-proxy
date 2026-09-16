@@ -87,6 +87,11 @@ const EXCLUDE = 'exclude';
 // other device would hold the dependent pending on a dependency the space does not have. Selecting a
 // row therefore selects what it depends on, at that row's own default choice. `cloud` and `delete`
 // publish no local body, so they name no dependency.
+//
+// The form holds only what the user chose, and the closure is re-derived from it on every read.
+// Storing the derived rows instead would strand them: switching the dependent to `cloud`, or
+// declining it, leaves nothing that needs the dependency, and Apply would still publish the optional
+// plugin's settings and secrets the user had just opted out of.
 const withDependencyClosure = (
   decisions: PreviewFormValues['decisions'],
   rows: readonly SyncPreviewRow[],
@@ -106,13 +111,10 @@ const withDependencyClosure = (
 };
 
 const initialValues = (preview: SyncPreview | null): PreviewFormValues => ({
-  decisions: withDependencyClosure(
-    Object.fromEntries(
-      (preview?.rows ?? [])
-        .filter((row) => row.optional !== true)
-        .map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
-    ),
-    preview?.rows ?? [],
+  decisions: Object.fromEntries(
+    (preview?.rows ?? [])
+      .filter((row) => row.optional !== true)
+      .map((row) => [row.objectId, { objectId: row.objectId, choice: row.choices[0] ?? 'local' }]),
   ),
   overrides: {},
   renames: {},
@@ -128,15 +130,17 @@ const choiceLabel = (choice: SyncPreviewRow['choices'][number] | typeof EXCLUDE)
 
 // An excluded connect row is not being carried anywhere, so it has no identity to collide with and
 // demanding a new Provider ID for it would leave Apply blocked with no way to satisfy it.
-const missingRenames = (values: PreviewFormValues, rows: readonly SyncPreviewRow[]): readonly string[] =>
-  rows
+const missingRenames = (values: PreviewFormValues, rows: readonly SyncPreviewRow[]): readonly string[] => {
+  const decisions = withDependencyClosure(values.decisions, rows);
+  return rows
     .filter(
       (row) =>
         row.requiresProviderId === true &&
-        at(values.decisions, row.objectId) !== undefined &&
+        at(decisions, row.objectId) !== undefined &&
         !providerIdSchema.safeParse(at(values.renames, row.objectId)).success,
     )
     .map((row) => row.objectId);
+};
 
 const isValidReplacementPreview = (value: unknown, kind: SyncPreview['kind']): value is SyncPreview =>
   SyncPreviewSchema.safeParse(value).success && (value as SyncPreview).kind === kind;
@@ -272,7 +276,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
   // Reached only after the form's own validators pass, so the rename requirement is already met.
   function submit(values: PreviewFormValues) {
     if (preview === null || submitDisabled) return;
-    const decisions = Object.values(values.decisions).map((decision) => {
+    const decisions = Object.values(withDependencyClosure(values.decisions, rows)).map((decision) => {
       const rename = at(values.renames, decision.objectId)?.trim();
       return { ...decision, ...(rename === undefined || rename === '' ? {} : { newProviderId: rename }) };
     });
@@ -356,7 +360,7 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                   <form.Field name="decisions">
                     {(field) => {
                       const current =
-                        at(field.state.value, row.objectId)?.choice ??
+                        at(withDependencyClosure(field.state.value, rows), row.objectId)?.choice ??
                         (row.optional === true ? EXCLUDE : (row.choices[0] ?? 'local'));
                       return (
                         <Select
@@ -365,23 +369,18 @@ export const SyncPreviewDialog: React.FC<SyncPreviewDialogProps> = ({
                             if (value === null) return;
                             if (value === EXCLUDE) {
                               if (row.optional !== true) return;
-                              field.handleChange(withDependencyClosure(omit(field.state.value, [row.objectId]), rows));
+                              field.handleChange(omit(field.state.value, [row.objectId]));
                               return;
                             }
                             if (!options.has(value as SyncPreviewRow['choices'][number])) return;
-                            field.handleChange(
-                              withDependencyClosure(
-                                {
-                                  ...field.state.value,
-                                  [row.objectId]: {
-                                    ...(at(field.state.value, row.objectId) ?? { objectId: row.objectId }),
-                                    objectId: row.objectId,
-                                    choice: value as SyncApplyInput['decisions'][number]['choice'],
-                                  },
-                                },
-                                rows,
-                              ),
-                            );
+                            field.handleChange({
+                              ...field.state.value,
+                              [row.objectId]: {
+                                ...(at(field.state.value, row.objectId) ?? { objectId: row.objectId }),
+                                objectId: row.objectId,
+                                choice: value as SyncApplyInput['decisions'][number]['choice'],
+                              },
+                            });
                           }}
                         >
                           <SelectTrigger aria-label={row.logicalKey} className="w-full sm:w-44">

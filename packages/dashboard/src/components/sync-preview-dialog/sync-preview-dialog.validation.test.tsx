@@ -439,3 +439,53 @@ test('a connect preview carries the optional object a selected row depends on', 
     ),
   );
 });
+
+// Switching the dependent to `cloud` publishes no local body, so nothing needs the optional plugin
+// row its local side pulled in. Keeping that auto-selection would upload the plugin's settings and
+// secrets the user declined by taking the cloud side.
+test('a connect preview drops the optional dependency once no selected row needs it', async () => {
+  mocks.applySync.mockReset();
+  const connect: SyncPreview = {
+    previewId: 'preview-connect',
+    kind: 'connect',
+    expiresAt: Date.now() + 10_000,
+    retainedSharedPlugins: [],
+    rows: [
+      row('plugin-config', '@example/plugin', {
+        kind: 'plugin-business',
+        local: { region: 'eu' },
+        choices: ['local'],
+        optional: true,
+      }),
+      row('object-work', 'work', {
+        change: 'conflict',
+        local: { name: 'work' },
+        cloud: { name: 'work-cloud' },
+        choices: ['local', 'cloud'],
+        dependencies: ['plugin-config'],
+      }),
+    ],
+  };
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SyncPreviewDialog open preview={connect} onOpenChange={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.click(screen.getByLabelText('work'));
+  const cloud = screen.getByRole('option', { name: /Use cloud|使用云端|クラウド|클라우드/u });
+  fireEvent.pointerDown(cloud, { pointerType: 'mouse' });
+  fireEvent.click(cloud);
+  await waitFor(() =>
+    expect(screen.getByLabelText('@example/plugin').textContent).toMatch(/Don't join|不加入|参加しない|참여 안 함/u),
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: /Apply reviewed changes|应用审核后的变更/u }));
+
+  await waitFor(() =>
+    expect(mocks.applySync).toHaveBeenCalledWith(
+      { previewId: 'preview-connect', decisions: [{ objectId: 'object-work', choice: 'cloud' }] },
+      { onSuccess: expect.any(Function) },
+    ),
+  );
+});
