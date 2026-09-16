@@ -1,5 +1,26 @@
 # @aio-proxy/cli
 
+## 0.25.0
+
+### Minor Changes
+
+- [#372](https://github.com/aio-proxy/aio-proxy/pull/372) [`c0e2cab`](https://github.com/aio-proxy/aio-proxy/commit/c0e2cab47228253c7d8e5e042bcff9397c369430) Thanks [@baranwang](https://github.com/baranwang)! - Add a built-in OpenCode Go plugin. Paste an OpenCode API key from opencode.ai/auth to use the Go subscription catalog, with per-model Chat Completions, Responses, and Anthropic Messages routing.
+
+### Patch Changes
+
+- Updated dependencies [[`d94e381`](https://github.com/aio-proxy/aio-proxy/commit/d94e38184a5e10f11f0cefd113e9919a5e094cff), [`c0e2cab`](https://github.com/aio-proxy/aio-proxy/commit/c0e2cab47228253c7d8e5e042bcff9397c369430), [`c1487e5`](https://github.com/aio-proxy/aio-proxy/commit/c1487e50de8f6b6edde853228d9c8b29e399611b)]:
+  - @aio-proxy/server@0.25.0
+  - @aio-proxy/core@0.25.0
+  - @aio-proxy/dashboard@0.25.0
+  - @aio-proxy/opencode-provider@0.25.0
+  - @aio-proxy/pi-provider@0.25.0
+  - @aio-proxy/agent-provider-runtime@0.25.0
+  - @aio-proxy/i18n@0.25.0
+  - @aio-proxy/logger@0.25.0
+  - @aio-proxy/plugin-sdk@0.25.0
+  - @aio-proxy/shared@0.25.0
+  - @aio-proxy/types@0.25.0
+
 ## 0.24.0
 
 ### Patch Changes

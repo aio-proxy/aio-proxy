@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.25.0
+
+### Minor Changes
+
+- [#372](https://github.com/aio-proxy/aio-proxy/pull/372) [`c0e2cab`](https://github.com/aio-proxy/aio-proxy/commit/c0e2cab47228253c7d8e5e042bcff9397c369430) Thanks [@baranwang](https://github.com/baranwang)! - Add a built-in OpenCode Go plugin. Paste an OpenCode API key from opencode.ai/auth to use the Go subscription catalog, with per-model Chat Completions, Responses, and Anthropic Messages routing.
+
+### Patch Changes
+
+- [#375](https://github.com/aio-proxy/aio-proxy/pull/375) [`d94e381`](https://github.com/aio-proxy/aio-proxy/commit/d94e38184a5e10f11f0cefd113e9919a5e094cff) Thanks [@foriLLL](https://github.com/foriLLL)! - Record OpenAI Responses and Chat Completions `cache_write_tokens` on traces. Dashboard cache write previously showed N/A even when the upstream usage object included that field.
+
+- [#376](https://github.com/aio-proxy/aio-proxy/pull/376) [`c1487e5`](https://github.com/aio-proxy/aio-proxy/commit/c1487e50de8f6b6edde853228d9c8b29e399611b) Thanks [@foriLLL](https://github.com/foriLLL)! - Preserve prompt-cache and reasoning token counts when converting a model
+  stream into OpenAI Responses. Cross-protocol Responses usage previously
+  reported those fields as 0 even when the upstream model returned them.
+
 ## 0.24.0
 
 ### Minor Changes

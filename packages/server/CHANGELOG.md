@@ -1,5 +1,18 @@
 # @aio-proxy/server
 
+## 0.25.0
+
+### Patch Changes
+
+- [#375](https://github.com/aio-proxy/aio-proxy/pull/375) [`d94e381`](https://github.com/aio-proxy/aio-proxy/commit/d94e38184a5e10f11f0cefd113e9919a5e094cff) Thanks [@foriLLL](https://github.com/foriLLL)! - Record OpenAI Responses and Chat Completions `cache_write_tokens` on traces. Dashboard cache write previously showed N/A even when the upstream usage object included that field.
+- Updated dependencies [[`c0e2cab`](https://github.com/aio-proxy/aio-proxy/commit/c0e2cab47228253c7d8e5e042bcff9397c369430), [`c1487e5`](https://github.com/aio-proxy/aio-proxy/commit/c1487e50de8f6b6edde853228d9c8b29e399611b)]:
+  - @aio-proxy/core@0.25.0
+  - @aio-proxy/i18n@0.25.0
+  - @aio-proxy/logger@0.25.0
+  - @aio-proxy/plugin-sdk@0.25.0
+  - @aio-proxy/shared@0.25.0
+  - @aio-proxy/types@0.25.0
+
 ## 0.24.0
 
 ### Minor Changes
