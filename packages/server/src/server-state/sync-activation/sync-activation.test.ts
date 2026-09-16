@@ -20,11 +20,14 @@ const providerBody = (value: EntityBody['value']): EntityBody => ({
 });
 
 /** `approved` is what this device already accepted for `work`, if anything. */
-const checkWith = (approved?: EntityBody) => {
+const checkWith = (approved?: EntityBody, precedingRows: readonly LocalEntity[] = []) => {
   const check = createActivationCheck({
     repo: {
       readBinding: () => ({ id: 'binding' }),
-      entities: () => (approved === undefined ? [] : [{ ...approved, desired: approved } as unknown as LocalEntity]),
+      entities: () => [
+        ...precedingRows,
+        ...(approved === undefined ? [] : [{ ...approved, desired: approved } as unknown as LocalEntity]),
+      ],
     } as unknown as SyncRepository,
     accounts: {} as PluginRepository,
     plugins: () => ({ registry: { resolveOAuth: () => undefined } }) as unknown as PluginRegistrySnapshot,
@@ -70,6 +73,18 @@ test('activates a remote Provider whose secret keeps going to the destination th
   const body = providerBody({ baseURL: 'https://example.test', apiKey: '{{env.AIO_PROXY_TEST_PRESENT}}' });
 
   expect(await withEnv(() => checkWith(body)(runningConfig, body))).toBeUndefined();
+});
+
+// Re-creating a deleted Provider under the same ID keeps the retained tombstone ahead of the fresh
+// row. The tombstone carries no approved body and no OAuth ownership, so answering with it held every
+// later revision of the live object at `secret-conflict` or `oauth-unverified`.
+test('approves against the live row when a tombstone still holds the same Provider ID', async () => {
+  const body = providerBody({ baseURL: 'https://example.test', apiKey: '{{env.AIO_PROXY_TEST_PRESENT}}' });
+  const tombstone = { kind: 'provider', logicalKey: 'work', desired: null, baseline: 'deleted:1' };
+
+  expect(
+    await withEnv(() => checkWith(body, [tombstone as unknown as LocalEntity])(runningConfig, body)),
+  ).toBeUndefined();
 });
 
 // The published body keeps `{{env.NAME}}` unresolved, so a writer with space access cannot read the

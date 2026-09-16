@@ -1,5 +1,6 @@
 import {
   collectMissingTemplateEnv,
+  isTombstonedEntity,
   parsePluginSchema,
   resolveConfigTemplates,
   type EntityBody,
@@ -169,7 +170,13 @@ export function createActivationCheck(input: ActivationCheckInput) {
         ? undefined
         : input.repo
             .entities(binding.id)
-            .find((entity) => entity.kind === body.kind && entity.logicalKey === body.logicalKey);
+            // A deleted-then-recreated object keeps its tombstone ahead of the fresh row, and the
+            // tombstone carries no approved body and no ownership, so matching it would hold every
+            // later revision at `secret-conflict` or `oauth-unverified`.
+            .find(
+              (entity) =>
+                entity.kind === body.kind && entity.logicalKey === body.logicalKey && !isTombstonedEntity(entity),
+            );
     let localEntity = readLocalEntity();
     // Only once the reference resolves: a variable this device never defined carries no secret to
     // redirect, and `missing-env` is the more useful answer for it.
