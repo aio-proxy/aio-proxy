@@ -83,6 +83,22 @@ test('duplicate and unexpected replies fail pending work', async () => {
   }
 });
 
+// A torn-down native task answers `cancelled`, but CloudKit may have committed the save already.
+// `cancelled` is the one code publication is allowed to ignore, so forwarding it here would skip
+// the reread and leave the cloud changed with no local confirmation.
+test('a cancelled native mutation is reported as outcome unknown', async () => {
+  await withFakeNative('cancelled-cas', async (executable) => {
+    const signal = new AbortController().signal;
+    const session = await connectNative({ executable, containerId: 'test', signal });
+    await expect(session.compareAndSwap('k', null, new Uint8Array([1]), signal)).rejects.toMatchObject({
+      code: 'outcome-unknown',
+    });
+    // A read carries no outcome, so its cancellation stays ignorable.
+    await expect(session.read('k', signal)).resolves.toMatchObject({ kind: 'absent' });
+    await session.dispose();
+  });
+});
+
 test('malformed native output during CAS preserves outcome unknown', async () => {
   await withFakeNative('malformed', async (executable) => {
     const session = await connectNative({ executable, containerId: 'test', signal: new AbortController().signal });

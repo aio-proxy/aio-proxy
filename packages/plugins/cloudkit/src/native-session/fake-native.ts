@@ -63,6 +63,12 @@ for await (const chunk of input) {
     }
     if (request.op === 'cas') {
       const key = String(request.input.key);
+      // The bridge answers a torn-down CloudKit save with `cancelled`, and cannot say whether the
+      // record was already committed.
+      if (mode === 'cancelled-cas') {
+        emit({ id: request.id, ok: false, error: { code: 'cancelled' } });
+        continue;
+      }
       values.set(key, { valueBase64: String(request.input.valueBase64), version: 'v1' });
       if (mode === 'exit-after-write') process.exit(0);
       if (mode === 'malformed') {

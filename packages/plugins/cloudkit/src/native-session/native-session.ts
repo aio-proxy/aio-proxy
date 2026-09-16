@@ -295,6 +295,11 @@ class NativeSession implements SyncSession {
     this.#pending.delete(reply.id);
     pending.release();
     if (reply.ok) pending.resolve(reply.result);
+    // A cancelled mutation is not a no-op: the native task can be torn down after CloudKit already
+    // committed the write, and `cancelled` is the one code publication is allowed to ignore. Same
+    // rule as `#failAll` — an in-flight mutation earns `outcome-unknown` so the reread still runs.
+    else if (reply.error.code === 'cancelled' && pending.mutation)
+      pending.reject(new NativeSessionError('outcome-unknown', 'native mutation cancelled'));
     else pending.reject(new NativeSessionError(reply.error.code));
   }
 
