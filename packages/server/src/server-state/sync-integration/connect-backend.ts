@@ -89,12 +89,14 @@ export function createConnectBackend(input: ConnectBackendInput) {
     binding: LocalBinding,
     preconnectedSession: SyncSession,
     candidateRemote: SyncConnectCandidate['remote'],
+    onHandoff: (handoff: CandidateLifecycle) => void,
   ): Promise<() => void> => {
     let next: ReturnType<typeof createLifecycle> | undefined;
     let retired: SyncLifecycleSlot['lifecycle'];
     let retiredId: string | undefined;
     try {
       next = createLifecycle(binding, preconnectedSession, true);
+      onHandoff(next);
       await next.lifecycle.start();
       const authored = (await configFile.read()) as Record<string, JsonValue>;
       await queue(async () => {
@@ -238,6 +240,9 @@ export function createConnectBackend(input: ConnectBackendInput) {
         };
         let released = false;
         let activateBackend: (() => void) | undefined;
+        // The lifecycle a handover is currently starting, so teardown can end it from outside the
+        // queue. Cleared the moment the swap settles: past that point it is either live or closed.
+        let handoff: CandidateLifecycle | undefined;
         return {
           remote,
           // Apply awaits this re-read while holding the control plane's serialized queue, and the
@@ -257,25 +262,35 @@ export function createConnectBackend(input: ConnectBackendInput) {
               // either double-dispose or tear down the session that is now live.
               released = true;
               try {
-                activateBackend = await replaceBackend(binding, candidateSession, remote);
+                activateBackend = await replaceBackend(binding, candidateSession, remote, (value) => {
+                  handoff = value;
+                });
                 refreshCommitHooks();
               } catch (error) {
                 await discard();
                 if (error instanceof SyncOperationError) throw error;
                 throw new SyncOperationError('backend-unavailable');
+              } finally {
+                handoff = undefined;
               }
             }),
           activate: () => activateBackend?.(),
           // Serialized against `commit()`, which sets `released` before its swap begins: an
           // unqueued disposal would return while that handover was still in flight and let teardown
           // finish around it. Queued, it waits for the swap to install or unwind.
-          dispose: () =>
-            connectQueue(async () => {
+          dispose: () => {
+            // The swap waits on the new lifecycle's `start()`, which can sit on the backend — an
+            // OAuth recovery — with no bound of its own, and `commit()` holds the queue while it
+            // does. Aborting from inside the queue would never be reached, so end the handover here
+            // and let the queued body run once it has unwound.
+            handoff?.lifecycle.abort();
+            return connectQueue(async () => {
               if (released) return;
               released = true;
               await candidateSession.dispose().catch(() => {});
               await discard();
-            }),
+            });
+          },
         };
       } catch (error) {
         await session?.dispose().catch(() => {});

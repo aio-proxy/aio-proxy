@@ -23,6 +23,7 @@ import {
 import { openDb } from '@aio-proxy/core/db';
 
 import type { ServerRuntime } from '../lifecycle';
+import { createConnectBackend } from './connect-backend';
 import { createSyncControlPlaneIntegration } from './control-plane-integration';
 import { createSyncIntegration, startSyncIntegration, syncCommitOption } from './sync-integration';
 
@@ -627,6 +628,60 @@ test('account sharing work is cancelled by the lifecycle that owns it', async ()
     expect(captured?.aborted).toBe(false);
     await lifecycle.close();
     expect(captured?.aborted).toBe(true);
+  } finally {
+    fixture.db.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// `commit()` holds the connect queue across the whole handover, and the new lifecycle's `start()`
+// waits on the backend — recovering a shared OAuth account — with no bound of its own. A disposal
+// queued behind that stall would never reach the abort that ends it, so shutdown would hang on the
+// candidate instead of tearing it down.
+test('disposing a candidate ends a handover stalled inside the new lifecycle start', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-sync-handoff-'));
+  const fixture = candidateFixture(home, () => Promise.resolve({ keys: [] }));
+  let starting!: () => void;
+  const started = new Promise<void>((resolve) => {
+    starting = resolve;
+  });
+  const aborter = new AbortController();
+  try {
+    const connectBackend = createConnectBackend({
+      runtime: fixture.runtime,
+      configFile: new AtomicConfigFile(join(home, 'config.jsonc')),
+      configPath: join(home, 'config.jsonc'),
+      syncRepository: createSyncRepository(fixture.db.sqlite),
+      plugins: () => ({ plugins: new Map(), registry: fixture.registry }) as unknown as PluginRegistrySnapshot,
+      queue: async <T>(run: () => Promise<T>) => run(),
+      active: { port: undefined, lifecycle: undefined },
+      createLifecycle: () =>
+        ({
+          port: undefined,
+          lifecycle: {
+            start: () => {
+              starting();
+              return new Promise<void>((_resolve, reject) => {
+                aborter.signal.addEventListener('abort', () => reject(new Error('handover aborted')));
+              });
+            },
+            abort: () => aborter.abort(),
+            close: () => Promise.resolve(),
+          },
+          publish: () => {},
+        }) as never,
+      refreshCommitHooks: () => {},
+    });
+
+    const candidate = await connectBackend({ plugin: 'p', capability: 'c', options: {} });
+    const commit = candidate.commit().then(
+      () => 'committed',
+      () => 'failed',
+    );
+    await started;
+    await candidate.dispose();
+    expect(await commit).toBe('failed');
+    expect(readdirSync(join(home, '.sync'))).toHaveLength(0);
   } finally {
     fixture.db.close();
     rmSync(home, { recursive: true, force: true });
