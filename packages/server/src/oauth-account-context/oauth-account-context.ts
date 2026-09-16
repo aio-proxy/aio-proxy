@@ -4,9 +4,10 @@ import {
   type DiagnosticFactory,
   type PluginLogSink,
   type PluginRepository,
+  type CredentialPortCallbacks,
   withAbort,
 } from '@aio-proxy/core';
-import type { AccountContext, CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import type { AccountContext, CredentialPort, OAuthAdapter, ZodType } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind } from '@aio-proxy/types';
 
 import { prepareOAuthPluginAccount } from '../plugin-account';
@@ -27,6 +28,12 @@ export type OAuthAccountContextDependencies = {
    * summaries are still stale awaits it.
    */
   readonly onDiagnosticChanged: () => void | Promise<void>;
+  readonly resolveShared?: (
+    providerId: string,
+    schema: ZodType<unknown>,
+    callbacks?: CredentialPortCallbacks,
+  ) => CredentialPort<unknown> | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };
 
 export type PreparedOAuthAccountContext = {
@@ -89,6 +96,8 @@ async function prepareContext<Capability>(
     if (provider?.kind !== ProviderKind.OAuth) {
       throw new OAuthAccountUnavailableError(true);
     }
+    const adapter = lease.snapshot.plugins.registry.resolveOAuth(provider.plugin, provider.capability);
+    if (adapter === undefined) throw new OAuthAccountUnavailableError(true);
     const pluginSecretValues = collectSecretStrings(dependencies.repository.readPluginSecret(provider.plugin)?.value);
     const prepared = await prepareOAuthPluginAccount({
       config: provider,
@@ -98,7 +107,13 @@ async function prepareContext<Capability>(
       logger: dependencies.logger,
       credentialMode: 'control-plane',
       onDiagnosticChanged: dependencies.onDiagnosticChanged,
+      ...(dependencies.resolveShared === undefined
+        ? {}
+        : {
+            resolveShared: (callbacks) => dependencies.resolveShared!(providerId, adapter.credentials, callbacks),
+          }),
       pluginSecretValues,
+      ...(dependencies.withProviderGate === undefined ? {} : { withProviderGate: dependencies.withProviderGate }),
     });
     const capability = request.select(prepared.adapter);
     if (capability === undefined) {

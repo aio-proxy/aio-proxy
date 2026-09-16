@@ -1,0 +1,27 @@
+export * from './protocol';
+export * from './publication';
+export * from './cleanup';
+export * from './local-commit';
+export * from './engine';
+export * from './oauth';
+export {
+  overlayLocal,
+  projectCommitted,
+  providerDependencyPackage,
+  type CommittedSource,
+  type Projection,
+} from './projection';
+export { authoredEntityIdentities, committedSourceFrom, seedAuthoredEntities } from './projection';
+export {
+  createSyncRepository,
+  isTombstonedEntity,
+  liveProviderRow,
+  type CommitIntent,
+  type LocalBinding,
+  type LocalEntity,
+  type LocalOverride,
+  type PluginSecretCommit,
+  type OAuthJournalRow,
+  type OutboxOperation,
+  type SyncRepository,
+} from './repository';

@@ -14,6 +14,7 @@ import type { SnapshotManager } from '../plugin-snapshot';
 import { providerDiff } from '../provider-runtime';
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
+import type { SyncCommitHooks } from '../sync-control-plane/commit';
 import { providerConfigRecord, type Snapshot } from './snapshot';
 import type { ConfigReloadResult, ReloadFailure } from './types';
 
@@ -25,6 +26,7 @@ export async function reloadSnapshot({
   manager,
   onDashboardAuthHealthChanged = () => {},
   retainedOperations = [],
+  syncCommit,
 }: {
   readonly accountRemovals: AccountRemovalCoordinator;
   readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
@@ -33,6 +35,7 @@ export async function reloadSnapshot({
   readonly manager: SnapshotManager;
   readonly onDashboardAuthHealthChanged?: (available: boolean) => void;
   readonly retainedOperations?: readonly PendingAccountOperation[];
+  readonly syncCommit?: SyncCommitHooks;
 }): Promise<ConfigReloadResult> {
   try {
     const before = (manager.current() as Snapshot).summaries;
@@ -46,6 +49,7 @@ export async function reloadSnapshot({
         manager,
         onDashboardAuthHealthChanged,
         retainedOperations,
+        syncCommit,
       });
     return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
   } catch (error) {
@@ -63,6 +67,7 @@ async function reloadConfigFile({
   manager,
   onDashboardAuthHealthChanged,
   retainedOperations,
+  syncCommit,
 }: {
   readonly accountRemovals: AccountRemovalCoordinator;
   readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
@@ -71,6 +76,7 @@ async function reloadConfigFile({
   readonly manager: SnapshotManager;
   readonly onDashboardAuthHealthChanged: (available: boolean) => void;
   readonly retainedOperations: readonly PendingAccountOperation[];
+  readonly syncCommit?: SyncCommitHooks;
 }): Promise<void> {
   const staged: PendingAccountOperation[] = [...retainedOperations];
   const newlyStaged: PendingAccountOperation[] = [];
@@ -78,9 +84,12 @@ async function reloadConfigFile({
   let retired: RetiredProviderSnapshot | undefined;
   let commitAfterWrite = false;
   let dashboardPasswordNormalized: boolean | undefined;
+  let before: Record<string, unknown> | undefined;
+  let commitId: string | undefined;
   try {
     await configFile.transaction(
       async (current) => {
+        before = current;
         let next: Record<string, unknown>;
         try {
           next = await normalizeDashboardPassword(current);
@@ -112,6 +121,14 @@ async function reloadConfigFile({
             retired = await commitConfig(parseRuntimeConfig(candidate), 'reload');
           }
         },
+        beforeCommit: async (candidate) => {
+          if (syncCommit !== undefined && before !== undefined)
+            commitId = syncCommit.prepare(
+              before,
+              candidate,
+              staged.map((operation) => operation.operationId),
+            );
+        },
       },
     );
   } catch (error) {
@@ -122,6 +139,7 @@ async function reloadConfigFile({
     throw error;
   }
   onDashboardAuthHealthChanged(true);
+  if (commitId !== undefined) void syncCommit?.confirm(commitId).catch(() => {});
   void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
 }
 

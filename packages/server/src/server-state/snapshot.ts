@@ -7,6 +7,8 @@ import {
   type PluginRegistrySnapshot,
   type PluginRepository,
 } from '@aio-proxy/core';
+import type { CredentialPortCallbacks } from '@aio-proxy/core';
+import type { CredentialPort, ZodType } from '@aio-proxy/plugin-sdk';
 import {
   type Config,
   type DashboardProviderSummary,
@@ -65,6 +67,13 @@ export async function buildSnapshot(
   logger: PluginLogSink,
   onDiagnosticChanged: () => void,
   createRouter: CreateRouter,
+  resolveShared?: (
+    providerId: string,
+    schema: ZodType<unknown>,
+    callbacks?: CredentialPortCallbacks,
+  ) => CredentialPort<unknown> | undefined,
+  withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>,
+  prepareOAuth?: (plugins: PluginRegistrySnapshot) => Promise<void>,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
@@ -74,6 +83,7 @@ export async function buildSnapshot(
     diagnostics,
     logger,
   );
+  await prepareOAuth?.(plugins);
   // Resolve router model `metadata.extend` before model resolution and capability
   // indexing read the policies, so downstream consumers see effective values.
   const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });
@@ -111,6 +121,8 @@ export async function buildSnapshot(
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),
         ...(previousEntry === undefined ? {} : { previous: previousEntry }),
+        ...(resolveShared === undefined ? {} : { resolveShared }),
+        ...(withProviderGate === undefined ? {} : { withProviderGate }),
       });
     }),
   );
@@ -284,5 +296,13 @@ export function buildSnapshotWithProviders(
 }
 
 export function emptyPluginSnapshot(): PluginRegistrySnapshot {
-  return { registry: { resolveOAuth: () => undefined, oauthCapabilities: () => [] }, plugins: new Map() };
+  return {
+    registry: {
+      resolveOAuth: () => undefined,
+      oauthCapabilities: () => [],
+      resolveSync: () => undefined,
+      syncCapabilities: () => [],
+    },
+    plugins: new Map(),
+  };
 }

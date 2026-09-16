@@ -62,6 +62,8 @@ type PrepareOAuthPluginAccountBaseOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
+  readonly resolveShared?: CreateCredentialPortOptions<unknown>['resolveShared'];
+  readonly withProviderGate?: CreateCredentialPortOptions<unknown>['withProviderGate'];
 };
 
 export type PrepareOAuthPluginAccountOptions = PrepareOAuthPluginAccountBaseOptions &
@@ -174,6 +176,8 @@ export async function prepareOAuthPluginAccount(
     logger: options.logger,
     onDiagnosticChanged: options.onDiagnosticChanged,
     onCredentialChanged: options.onDiagnosticChanged,
+    ...(options.resolveShared === undefined ? {} : { resolveShared: options.resolveShared }),
+    ...(options.withProviderGate === undefined ? {} : { withProviderGate: options.withProviderGate }),
   };
   if (options.credentialMode === 'control-plane') {
     const pluginSecretValues = [...(options.pluginSecretValues ?? [])];

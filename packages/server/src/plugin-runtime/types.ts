@@ -5,7 +5,8 @@ import type {
   PluginRepository,
   StoredCatalog,
 } from '@aio-proxy/core';
-import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type { CredentialPortCallbacks } from '@aio-proxy/core';
+import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch, ZodType } from '@aio-proxy/plugin-sdk';
 import type { DashboardProviderSummary, OAuthProvider, ProviderState } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../runtime';
@@ -74,4 +75,10 @@ export type MaterializePluginProviderOptions = {
   readonly runtimeFetch?: RuntimeFetch;
   readonly pluginSecrets?: unknown;
   readonly previous?: PluginRuntimeCacheEntry;
+  readonly resolveShared?: (
+    providerId: string,
+    schema: ZodType<unknown>,
+    callbacks?: CredentialPortCallbacks,
+  ) => CredentialPort<unknown> | undefined;
+  readonly withProviderGate?: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
 };

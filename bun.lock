@@ -332,6 +332,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/cloudkit": {
+      "name": "@aio-proxy/plugin-cloudkit",
+      "version": "0.21.0",
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+    },
     "packages/plugins/cursor": {
       "name": "@aio-proxy/plugin-cursor",
       "version": "0.21.0",
@@ -671,6 +685,8 @@
     "@aio-proxy/pi-provider": ["@aio-proxy/pi-provider@workspace:packages/agent-provider/pi"],
 
     "@aio-proxy/plugin-claude-code": ["@aio-proxy/plugin-claude-code@workspace:packages/plugins/claude-code"],
+
+    "@aio-proxy/plugin-cloudkit": ["@aio-proxy/plugin-cloudkit@workspace:packages/plugins/cloudkit"],
 
     "@aio-proxy/plugin-cursor": ["@aio-proxy/plugin-cursor@workspace:packages/plugins/cursor"],
 

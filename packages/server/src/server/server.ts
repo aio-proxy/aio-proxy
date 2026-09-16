@@ -3,17 +3,14 @@ import { fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 import { createAutoUpdateController } from '../auto-update';
 import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import { warnUnenforcedApiKeys } from '../config-unenforced-api-keys';
-import type { DashboardAssets } from '../dashboard-assets';
 import { prepareDashboardConfig } from '../dashboard-auth';
-import type { DashboardEventLimits } from '../dashboard-events';
-import type { RuntimeProviderInput } from '../runtime';
-import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
-import type { InternalServerStateOptions, ServerStateTestHooks } from '../server-state/types';
+import type { ServerStateTestHooks } from '../server-state/types';
 import { createRoutes } from './create-routes';
 import { serverDefaults } from './defaults';
+import { createServerStateOptions, type ServerOptionsBase } from './server-options';
 
 /** The Bun WebSocket handler the realtime routes' `upgradeWebSocket` needs at the
  *  `Bun.serve` call site. `createServer` returns `Object.assign(routes, { close })`, so this
@@ -23,30 +20,15 @@ export { websocket } from 'hono/bun';
 
 export { serverDefaults };
 
-export type CreateServerOptions = {
+export type CreateServerOptions = ServerOptionsBase & {
   readonly __test?: ServerStateTestHooks & { readonly createRoutes?: typeof createRoutes };
-  readonly config: unknown;
-  readonly configPath?: string;
-  readonly dbHome?: string;
-  readonly eventLimits?: DashboardEventLimits;
-  readonly providerInstances?: readonly RuntimeProviderInput[];
-  readonly port?: number;
-  readonly host?: string;
-  readonly dashboardAssets?: DashboardAssets;
-  readonly logger?: ServerLogSink;
-  readonly watchConfig?: boolean;
-  readonly version?: string;
-  readonly autoUpdate?: {
-    readonly isManagedService: () => boolean;
-    readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
-    readonly notifyAvailable?: (latest: string) => void | Promise<void>;
-    readonly fetchLatest?: (pkg: string) => Promise<string>;
-  };
 };
 
 export type AppType = ReturnType<typeof createRoutes>;
 
-export const createServer = async (options: CreateServerOptions): Promise<AppType & { readonly close: () => void }> => {
+export const createServer = async (
+  options: CreateServerOptions,
+): Promise<AppType & { readonly close: () => void; readonly closeAsync: () => Promise<void> }> => {
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
   let dashboardAuthAvailable = !prepared.dashboardUnavailable;
   if (prepared.error !== undefined) {
@@ -61,20 +43,21 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
   warnLeftoverOAuthModels(prepared.config, options.logger ?? defaultLogger);
   const boundHost = options.host ?? config.server.host;
   warnUnenforcedApiKeys(boundHost, config, options.logger ?? defaultLogger);
-  const stateOptions: InternalServerStateOptions = {
+  const stateOptions = createServerStateOptions({
     config,
+    configPath: options.configPath,
+    dbHome: options.dbHome,
+    eventLimits: options.eventLimits,
+    providerInstances: options.providerInstances,
+    logger: options.logger,
+    watchConfig: options.watchConfig,
+    builtIns: options.builtIns,
+    testHooks: options.__test,
     host: boundHost,
-    __dashboardAuthHealthChanged: (available) => {
+    dashboardAuthHealthChanged: (available) => {
       dashboardAuthAvailable = available;
     },
-    ...(options.__test === undefined ? {} : { __test: options.__test }),
-    ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
-    ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
-    ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
-    ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
-    ...(options.logger === undefined ? {} : { logger: options.logger }),
-    ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
-  };
+  });
   const state = await createServerState(stateOptions);
   const logger = options.logger ?? defaultLogger;
   const controller = createAutoUpdateController({
@@ -102,13 +85,18 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       controller,
     );
     controller.start();
-    let closed = false;
     return Object.assign(routes, {
       close() {
-        if (closed) return;
-        closed = true;
         controller.stop();
         state.close();
+      },
+      // No `closed` latch here: `state.close()` leaves the asynchronous half of the teardown on
+      // `closePromise` and `state.closeAsync()` returns it, so closing synchronously and then
+      // awaiting still waits for the drain. A latch would resolve that await while sync was still
+      // running. `state`'s two entry points and `controller.stop()` are already idempotent.
+      async closeAsync() {
+        controller.stop();
+        await state.closeAsync();
       },
     });
   } catch (error) {
@@ -116,7 +104,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       controller.stop();
     } catch {}
     try {
-      state.close();
+      await state.closeAsync();
     } catch {}
     throw error;
   }

@@ -230,3 +230,58 @@ test('superseded recovery compensation preserves newer data and writes a safe di
   expect(diagnostic).toBeDefined();
   expect(diagnostic?.summary).not.toContain('super-secret-token');
 });
+
+// Publication only happens after the config rename, so a crash between the durable stage and the
+// rename leaves a synced operation whose credential never reached the backend. Retrying it forever
+// pinned the pending row: it blocked every later account operation for the provider and kept the
+// orphaned account exempt from cleanup.
+test('a synced operation interrupted before the config rename compensates instead of pinning the provider', async () => {
+  const state = fixture();
+  const real = state.config;
+  const uncertain = {
+    read: () => real.read(),
+    async transaction<T>(mutate: Parameters<AtomicConfigFile['transaction']>[0]): Promise<T> {
+      await mutate(await real.read());
+      throw new AtomicConfigCommitUncertainError();
+    },
+  } as AtomicConfigFile;
+  await expect(
+    createAccount(state, { config: uncertain, beforeAccountOperationComplete: async () => {} }),
+  ).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  let published = false;
+  await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'server',
+    canDeleteAccount: () => true,
+    now: () => Date.now() + PENDING_OPERATION_TTL_MS + 1,
+    beforeAccountOperationComplete: async () => void (published = true),
+  });
+  expect(published).toBe(false);
+  expect(state.repository.listPendingAccountOperations()).toEqual([]);
+  expect(state.repository.readAccount('person')).toBeNull();
+});
+
+// The mirror image: once publication is attempted the backend may already hold the credential, so a
+// provider entry that changed underneath must not be read as an interrupted write.
+test('a synced operation that already attempted publication is retained when the provider entry changes', async () => {
+  const state = fixture();
+  await expect(
+    createAccount(state, {
+      beforeAccountOperationComplete: async () => {
+        throw new Error('remote acknowledgement unavailable');
+      },
+    }),
+  ).rejects.toThrow('remote acknowledgement unavailable');
+  await state.config.transaction(async (current) => {
+    const { person: _removed, ...remaining } = current['providers'] as Record<string, unknown>;
+    return { next: { ...current, providers: remaining }, result: undefined };
+  });
+  await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'server',
+    canDeleteAccount: () => true,
+    now: () => Date.now() + PENDING_OPERATION_TTL_MS + 1,
+    beforeAccountOperationComplete: async () => {},
+  });
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  expect(state.repository.readAccount('person')).not.toBeNull();
+});

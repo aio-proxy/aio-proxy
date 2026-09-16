@@ -1,4 +1,8 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import { sessionKeyPath } from '@aio-proxy/core';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const FAILURE_WINDOW_MS = 60_000;
@@ -22,8 +26,19 @@ export function createDashboardAuthentication(
   passwordHash: () => string | undefined,
   now: () => number = Date.now,
   available: () => boolean = () => true,
+  deviceKey: () => string = deviceSessionKey,
 ): DashboardAuthentication {
   const failures = new Map<string, FailureWindow>();
+  let resolvedDeviceKey: string | undefined;
+
+  // The password hash alone must never be the signing key: `service-access` publishes it to the
+  // sync backend, so a read-only breach there would be enough to mint a bearer token for every
+  // Dashboard API without ever cracking the password. The device key is not synced, and keeping
+  // the hash in the key as well is what rotates every live session when the password changes.
+  function signingKey(hash: string): string {
+    resolvedDeviceKey ??= deviceKey();
+    return `${resolvedDeviceKey}.${hash}`;
+  }
 
   function enabled(): boolean {
     return passwordHash() !== undefined;
@@ -45,7 +60,7 @@ export function createDashboardAuthentication(
     failures.delete(clientId);
     const expiresAt = now() + SESSION_TTL_MS;
     const payload = `v1.${expiresAt}.${crypto.randomUUID()}`;
-    return { status: 'authenticated', expiresAt, token: `${payload}.${sign(hash, payload)}` };
+    return { status: 'authenticated', expiresAt, token: `${payload}.${sign(signingKey(hash), payload)}` };
   }
 
   function verify(token: string | undefined): boolean {
@@ -58,7 +73,7 @@ export function createDashboardAuthentication(
     const signature = parts[3];
     if (signature === undefined) return false;
     const payload = parts.slice(0, 3).join('.');
-    return signaturesEqual(signature, sign(hash, payload));
+    return signaturesEqual(signature, sign(signingKey(hash), payload));
   }
 
   function retryAfter(clientId: string, timestamp: number): number | undefined {
@@ -82,6 +97,73 @@ export function createDashboardAuthentication(
   }
 
   return { available, enabled, login, verify };
+}
+
+/**
+ * Clear a stale empty key file, which `wx` can never replace, so provisioning interrupted between
+ * create and write does not make every login throw until someone deletes it by hand. `rmSync` on a
+ * path merely observed to be empty would delete a real key another process created in the gap, so
+ * the file is moved aside first: rename is atomic, and whatever lands at the scratch path is ours
+ * alone to inspect. Returns the winner's key when the file turned out to have been repaired
+ * already, and that key is put back before it is handed out.
+ */
+function clearEmptyKeyFile(path: string): string {
+  const scratch = `${path}.${randomBytes(8).toString('hex')}`;
+  try {
+    renameSync(path, scratch);
+  } catch {
+    return '';
+  }
+  let moved = '';
+  try {
+    moved = readFileSync(scratch, 'utf8').trim();
+  } catch {
+    // Unreadable is as good as empty: nothing here can be handed out as a key.
+  }
+  if (moved === '') {
+    rmSync(scratch, { force: true });
+    return '';
+  }
+  try {
+    writeFileSync(path, `${moved}\n`, { flag: 'wx', mode: 0o600 });
+    rmSync(scratch, { force: true });
+  } catch {
+    // A third process already published a key. Its file is the one to keep, so drop the copy
+    // rather than clobbering it, and let the next pass read whatever is now on disk.
+    rmSync(scratch, { force: true });
+    return '';
+  }
+  return moved;
+}
+
+/**
+ * Read the device-local signing key, creating it on first use. `wx` plus the retry is what keeps a
+ * CLI and a server racing on first start from each minting a key and invalidating the other's
+ * sessions — the loser of the race reads the winner's file on the second pass.
+ */
+function deviceSessionKey(): string {
+  const path = sessionKeyPath();
+  const stored = (): string => (existsSync(path) ? readFileSync(path, 'utf8').trim() : '');
+  // Three passes, because clearing a stale empty file costs one: read, clear, create, and the
+  // racer that loses the re-created file still needs a pass to read the winner's key.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = stored();
+    if (existing !== '') return existing;
+    mkdirSync(dirname(path), { recursive: true });
+    const generated = randomBytes(32).toString('base64url');
+    try {
+      writeFileSync(path, `${generated}\n`, { flag: 'wx', mode: 0o600 });
+      return generated;
+    } catch {
+      // Either another process won the race — the next pass reads its key — or provisioning was
+      // interrupted and left an empty file, which `wx` can never replace.
+      if (stored() === '') {
+        const repaired = clearEmptyKeyFile(path);
+        if (repaired !== '') return repaired;
+      }
+    }
+  }
+  throw new Error('unable to establish a device session key');
 }
 
 function sign(key: string, payload: string): string {

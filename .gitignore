@@ -9,6 +9,8 @@ packages/*/.turbo/
 .omo/
 bun-debug.log
 *.tsbuildinfo
+# SwiftPM build output for the CloudKit bridge
+.build/
 npm/cli-*/bin/
 .playwright-mcp
 .superpowers/
@@ -17,3 +19,5 @@ npm/cli-*/bin/
 .reference
 .claude/worktrees/
 .claude/settings.local.json
+# Lock files from local PR-watch tooling
+work/pr-watch/

@@ -7,8 +7,8 @@ import type { Diagnostic } from '@aio-proxy/types';
 
 import { type OpenDbHandle, openDb } from '../../db';
 import type { DiagnosticFactory, PluginLogSink } from '../diagnostic/index';
-import { createCredentialPort } from '../index';
 import { type AccountWrite, createPluginRepository, type PluginRepository } from '../repository/index';
+import { createCredentialPort, type CreateCredentialPortOptions } from './index';
 
 function account(providerId: string, credential: unknown = { token: 'initial-secret' }): AccountWrite {
   return {
@@ -110,6 +110,22 @@ function port(
   });
 }
 
+function credentialPortOptions<Credential>(
+  repository: PluginRepository,
+  overrides: Partial<CreateCredentialPortOptions<Credential>> = {},
+): CreateCredentialPortOptions<Credential> {
+  return {
+    providerId: 'provider-1',
+    schema: zod.object({ token: zod.string() }) as never,
+    repository,
+    diagnostics: diagnosticFactory(),
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    onCredentialChanged: () => {},
+    ...overrides,
+  } as CreateCredentialPortOptions<Credential>;
+}
+
 function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve = () => {};
   const promise = new Promise<void>((done) => {
@@ -118,4 +134,4 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
   return { promise, resolve };
 }
 
-export { createFixtureScope, deferred, port };
+export { createFixtureScope, credentialPortOptions, deferred, port };

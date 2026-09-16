@@ -1,4 +1,4 @@
-import type { DashboardEvent } from '@aio-proxy/types';
+import type { DashboardEvent, SyncConnectionState } from '@aio-proxy/types';
 
 export type DashboardEventLimits = {
   readonly maxEvents: number;
@@ -10,6 +10,12 @@ export type DashboardEventHub = {
   readonly stream: (authorized?: () => boolean) => ReadableStream<Uint8Array>;
   readonly close: () => void;
 };
+
+export type SyncChangedEvent = Extract<DashboardEvent, { readonly event: 'sync.changed' }>;
+
+export function publishSyncChanged(events: DashboardEventHub | undefined, state: SyncConnectionState): void {
+  events?.publish({ event: 'sync.changed', data: { state } });
+}
 
 type Subscriber = {
   readonly id: number;

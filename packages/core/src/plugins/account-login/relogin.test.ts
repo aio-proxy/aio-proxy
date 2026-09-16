@@ -11,10 +11,12 @@ import {
   fixture,
   loginOAuthAccount,
   options,
+  PENDING_OPERATION_TTL_MS,
   type PluginLogSink,
   ProviderAccountChangedError,
   ProviderFingerprintMismatchError,
   refreshCredential,
+  recoverPendingAccountOperations,
   registry,
   test,
 } from './test-support';
@@ -460,4 +462,39 @@ test('credential-only refresh is allowed during re-login but runtime revision ch
   state.repository.completeAccountOperation(pending.operationId);
   releaseSecond();
   await expect(stale).rejects.toBeInstanceOf(ProviderAccountChangedError);
+});
+
+test('a shared-login finalization failure leaves the staged account durable for recovery', async () => {
+  const state = fixture();
+  await createAccount(state);
+  await expect(
+    loginOAuthAccount(
+      options(state, {
+        targetProviderId: 'person',
+        capability: undefined,
+        beforeAccountOperationComplete: async () => {
+          throw new Error('remote acknowledgement unavailable');
+        },
+      }),
+    ),
+  ).rejects.toThrow('remote acknowledgement unavailable');
+  expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'new' });
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'cli',
+    now: () => Date.now() + PENDING_OPERATION_TTL_MS + 1,
+  });
+  expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
+  let synchronized = false;
+  await recoverPendingAccountOperations(state.config, state.repository, {
+    mode: 'server',
+    canDeleteAccount: () => true,
+    now: () => Date.now() + PENDING_OPERATION_TTL_MS + 1,
+    beforeAccountOperationComplete: async () => {
+      synchronized = true;
+    },
+  });
+  expect(synchronized).toBe(true);
+  expect(state.repository.listPendingAccountOperations()).toEqual([]);
+  expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'new' });
 });

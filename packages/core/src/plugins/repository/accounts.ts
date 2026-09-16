@@ -69,7 +69,12 @@ export function createAccountRepository(
   sqlite: Database,
 ): Pick<
   PluginRepository,
-  'readAccount' | 'findAccountByFingerprint' | 'listAccounts' | 'deleteAccount' | 'compareAndSwapCredential'
+  | 'readAccount'
+  | 'findAccountByFingerprint'
+  | 'listAccounts'
+  | 'deleteAccount'
+  | 'renameAccount'
+  | 'compareAndSwapCredential'
 > {
   const { selectAccount } = createAccountRows(sqlite);
   return {
@@ -93,6 +98,28 @@ export function createAccountRepository(
     },
     deleteAccount(providerId) {
       sqlite.query('DELETE FROM oauth_account WHERE provider_id = ?').run(providerId);
+    },
+    renameAccount(oldProviderId, newProviderId) {
+      return sqlite
+        .transaction(() => {
+          if (selectAccount.get(oldProviderId) === null || selectAccount.get(newProviderId) !== null) return false;
+          // A staged login, refresh, or removal carries the Provider ID it was staged for, and its
+          // recovery pass would compensate an account this move has already taken elsewhere.
+          const pending = sqlite
+            .query<{ pending: number }, [string, string]>(
+              'SELECT COUNT(*) AS pending FROM oauth_pending_operation WHERE provider_id IN (?, ?)',
+            )
+            .get(oldProviderId, newProviderId);
+          if ((pending?.pending ?? 0) > 0) return false;
+          // The catalog, the diagnostics, and the refresh lease reference `oauth_account`'s Provider
+          // ID with `ON UPDATE no action`, so parent and children can only move together under a
+          // check deferred to the commit.
+          sqlite.run('PRAGMA defer_foreign_keys = ON');
+          for (const table of ['oauth_account', 'oauth_account_diagnostic', 'oauth_catalog', 'oauth_refresh_lease'])
+            sqlite.query(`UPDATE ${table} SET provider_id = ? WHERE provider_id = ?`).run(newProviderId, oldProviderId);
+          return true;
+        })
+        .immediate();
     },
     compareAndSwapCredential(providerId, expectedRevision, leaseOwner, credential, metadata) {
       const encoded = encodeJson(credential);

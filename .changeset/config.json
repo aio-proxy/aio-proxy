@@ -21,6 +21,7 @@
       "@aio-proxy/infra",
       "@aio-proxy/logger",
       "@aio-proxy/plugin-claude-code",
+      "@aio-proxy/plugin-cloudkit",
       "@aio-proxy/plugin-cursor",
       "@aio-proxy/plugin-github-copilot",
       "@aio-proxy/plugin-google-antigravity",

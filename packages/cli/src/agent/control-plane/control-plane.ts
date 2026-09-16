@@ -8,12 +8,13 @@ import {
 
 import { controlBaseUrl, resolveControlAddress } from '../../control-plane';
 
-export const connectHost = (host: string): string => {
+export const connectHost = (host: string, options: { readonly allowRemote?: boolean } = {}): string => {
   if (host === '0.0.0.0' || host === '*') return '127.0.0.1';
   if (host === '::' || host === '[::]') return '::1';
   const canonical = canonicalizeLoopbackHost(host);
-  if (canonical === undefined) throw new Error('Agent integrations require a loopback aio-proxy endpoint');
-  return canonical;
+  if (canonical !== undefined) return canonical;
+  if (options.allowRemote) return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  throw new Error('Agent integrations require a loopback aio-proxy endpoint');
 };
 
 export const resolveAgentEndpoint = async (): Promise<string> => {

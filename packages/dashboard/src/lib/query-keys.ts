@@ -34,6 +34,7 @@ export const queryKeys = {
   release: ['release'],
   routingModels: ['routing', 'models'],
   settings: ['settings'],
+  sync: ['sync'],
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],
   traces: (search: object) => ['dashboard', 'traces', search],

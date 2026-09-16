@@ -64,6 +64,7 @@ export function createClaudeCodePlugin(
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
+    credentialSync: { formatVersion: 1 },
     login: async (context, options) => {
       await accountOptions.schema.parseAsync(options);
       return await loginClaude(

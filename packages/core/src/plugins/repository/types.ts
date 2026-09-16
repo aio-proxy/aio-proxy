@@ -64,7 +64,7 @@ export type AccountWrite = {
   readonly expiresAt?: number;
   readonly catalog:
     | { readonly kind: 'replace'; readonly value: CatalogWrite }
-    | { readonly kind: 'preserve'; readonly diagnostic: Diagnostic }
+    | { readonly kind: 'preserve'; readonly diagnostic?: Diagnostic }
     | { readonly kind: 'missing'; readonly diagnostic: Diagnostic };
 };
 
@@ -94,6 +94,7 @@ export class PendingAccountOperationConflictError extends Error {
 }
 
 export type PluginRepository = {
+  readonly withAccountTransaction: <T>(run: () => T) => T;
   readonly readPluginSecret: (plugin: string) => PluginSecretSnapshot | null;
   readonly writePluginSecret: (plugin: string, expectedRevision: number | null, value: unknown) => PluginSecretSnapshot;
   readonly deletePluginSecret: (plugin: string, expectedRevision: number) => boolean;
@@ -110,8 +111,21 @@ export type PluginRepository = {
   readonly writeDiagnostic: (providerId: string, diagnostic: Diagnostic) => boolean;
   readonly clearDiagnostic: (providerId: string, code: DiagnosticCode) => boolean;
   readonly deleteAccount: (providerId: string) => void;
+  /**
+   * Moves an account, and everything else keyed by its Provider ID, onto `newProviderId` with both
+   * revisions intact: a re-created account reads as a different credential to a shared-ownership row
+   * and to a lease holder. False when the source is gone, the target is taken, or an account
+   * operation for either ID is still pending, whose recovery would name an ID that has moved.
+   */
+  readonly renameAccount: (oldProviderId: string, newProviderId: string) => boolean;
   readonly stageAccountOperation: (input: StageAccountOperationInput) => PendingAccountOperation;
   readonly completeAccountOperation: (operationId: string) => void;
+  /**
+   * Durably records that a synced operation is about to publish its credential, so a recovery
+   * after a crash mid-publication retains it instead of compensating away an account the backend
+   * may already hold. A no-op for an operation that is not synced or has already been marked.
+   */
+  readonly markAccountOperationPublishing: (operationId: string) => void;
   readonly compensateAccountOperation: (operationId: string) => 'compensated' | 'superseded';
   readonly finalizeDeleteOperation: (operationId: string) => 'deleted' | 'superseded';
   readonly listPendingAccountOperations: () => readonly PendingAccountOperation[];

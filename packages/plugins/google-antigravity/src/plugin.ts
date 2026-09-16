@@ -96,6 +96,7 @@ export function createGoogleAntigravityPlugin(
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
+    credentialSync: { formatVersion: 1 },
     login: async (context, options) => {
       const parsedOptions = await accountOptions.schema.parseAsync(options);
       const state = crypto.randomUUID();
