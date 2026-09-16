@@ -384,7 +384,15 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     },
     async cancelDetach(providerId) {
       if (options.cancelDetach === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
-      await serialized(() => options.cancelDetach!(providerId));
+      // Unqueued on purpose: the `detach` this cancels holds the FIFO across the adapter's
+      // independence check, so queueing behind it would make the cancellation wait for the very
+      // network call it exists to abandon — and Disconnect, queued behind both, would wait too.
+      // Cancellation bumps the fence and writes its rows without awaiting anything, and the detach
+      // re-reads the journal and the row's mode after the check returns, so whichever lands first
+      // the other reports `pending` and leaves the row consistent. The `closing` guard is all the
+      // queue was adding here: the writes finish before this returns, so shutdown cannot interleave.
+      if (closing) throw new SyncOperationError('backend-unavailable');
+      await options.cancelDetach(providerId);
       return status();
     },
     async history(objectId) {

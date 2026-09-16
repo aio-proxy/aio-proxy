@@ -1490,3 +1490,46 @@ test('disposing waits for a detachment still awaiting the adapter', async () => 
   expect(finished).toBe(true);
   await detaching;
 });
+
+test('cancelling a detachment does not wait for the adapter check it abandons', async () => {
+  let release!: () => void;
+  let cancelled = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    detach: async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    },
+    cancelDetach: async () => {
+      cancelled = true;
+    },
+  } as never);
+
+  const detaching = control.detach('person').catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  // The cancellation is what unblocks the stalled check, so it cannot be queued behind it.
+  await control.cancelDetach('person');
+  expect(cancelled).toBe(true);
+
+  release();
+  await detaching;
+  await control.dispose();
+});
