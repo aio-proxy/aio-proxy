@@ -75,11 +75,11 @@ Count a span when all of these hold:
 - `ended_at` in `[start, end]` inclusive
 - `estimated_cost_nano_usd IS NOT NULL`
 
-`SUM(estimated_cost_nano_usd)` as text, parsed with the existing `parseSqliteInteger` helper. Return `undefined` when there is no matching priced row (so the UI never prints `$0.00` for unpriced or empty history). Failed / cancelled / interrupted / still-running roots are out. Unpriced successful roots are out of the sum and do not become zero dollars.
+`SUM(estimated_cost_nano_usd)` as text, parsed with the existing `parseSqliteInteger` helper. Return `undefined` when there is no matching priced row (so the UI never prints `$0.00` for unpriced or empty history). A real priced sum of `0` is distinct and may show `$0.00`. Failed / cancelled / interrupted / still-running roots are out. Unpriced successful roots are out of the sum and do not become zero dollars.
 
 Existing `trace_span_root_ended_idx` is enough for v1. Do not add an index unless a measured poll path needs it.
 
-Deduplicate identical `[start, end]` pairs when several items share bounds. Two windows with different starts (5h vs weekly) are two sums. They **share overlapping dollars**; that is accepted. The weekly line is the subscription-value answer.
+Deduplicate identical `[start, end]` pairs when several items share bounds. Two windows with different starts (5h vs weekly) are two sums. They **share overlapping dollars**; that is accepted and the amounts must not be added together. The weekly line is the subscription-value answer.
 
 `# ponytail: 按 Provider+时间窗口汇总，车道拆分要等 usageAttribution`
 
@@ -95,7 +95,9 @@ estimates?: readonly {
 }[]
 ```
 
-Host-owned. Not part of `OAuthQuotaSnapshot`, not validated by `validateOAuthQuotaSnapshot`. Omit the field, or the item, when there is nothing to show. Compute on the route from the returned cache entry plus `traceStore` so the 60s dashboard poll sees new traces without a new upstream quota read. Quota cache stays an upstream-snapshot cache.
+Host-owned. Not part of `OAuthQuotaSnapshot`, not validated by `validateOAuthQuotaSnapshot`. Omit the field, or the item, when there is nothing to show. Compute on the route from the returned cache entry plus `traceStore`, using that entry's `sampledAt` as `end`. Quota cache stays an upstream-snapshot cache.
+
+The 60s dashboard poll can pick up traces that finished **at or before** `sampledAt` but landed after the last read. It does **not** extend the window to `Date.now()`. Spend after the quota sample waits for the next successful quota read (cooldown, pipeline warm, or the dialog Refresh button).
 
 ## UI
 
@@ -103,7 +105,7 @@ Home: Providers → card ring → quota dialog. New row sits under the progress 
 
 - Compact `formatNanoUsd(..., 'compact')`. If the compact amount would round to `$0.00` but the value is `> 0`, show `<$0.01` (`cost_less_than`). Exact amount on hover (`formatNanoUsd` default).
 - Visible label: used amount plus a short “API equivalent” marker.
-- Note (title / accessible description): aio-proxy recorded this Provider’s requests in this window, priced as API equivalents. Not an account balance. Outside clients, other instances, downtime, and prune undercount. Never claim a full bill.
+- Note (title / accessible description): aio-proxy recorded this Provider’s **successful, priced** requests in this window, across **all models**, priced as API equivalents. It is not that window’s own lane spend, not an account balance, and not Cursor / Grok credits. Outside clients, other instances, downtime, unpriced models, and prune undercount. Never claim a full bill. Do not add the overlapping window amounts together.
 - Do not ship `cost_total` / Est. total.
 - Cursor / Grok get the same local-$ row. Do not place it next to a fake upstream dollar line in this change.
 
@@ -113,9 +115,9 @@ i18n: Paraglide, all five locales (`en`, `ja`, `ko`, `zh-Hans`, `zh-Hant`). Keys
 
 | Window | Coverage |
 | --- | --- |
-| 5h / 7d | Full, if aio-proxy was recording |
-| 30d billing | Full only if this instance recorded the whole cycle inside the 45-day file |
-| Longer than 45d | Only leftover history |
+| 5h / 7d | Can cover the window if this instance was recording |
+| 30d billing | Can cover the cycle only if this instance recorded it inside the 45-day file |
+| Longer than 45d | Leftover history only |
 
 Copy must not imply a complete vendor invoice.
 
@@ -129,13 +131,14 @@ Copy must not imply a complete vendor invoice.
 | Stale snapshot with still-valid bounds | Show Used $x for that stored window |
 | Overlapping 5h and weekly | Both rows; overlapping dollars |
 | Plugin with amounts we do not display yet | Local-$ row only |
+| Local cost aggregation throws | Log it, omit `estimates`, still return the quota snapshot. Do not turn a cost-query failure into quota 502 |
 
 ## Testing
 
 Behavior-level, colocated:
 
-- `providerWindowCost` returns one aggregate, not N traces; failed / unpriced roots are excluded; empty / unpriced range is `undefined`.
-- Route attaches `estimates` for any OAuth quota window with usable bounds; never branches on plugin package name.
+- `providerWindowCost` returns one aggregate, not N traces; failed / unpriced roots are excluded; empty / unpriced range is `undefined`; a real priced sum of `0` is not treated as missing.
+- Route attaches `estimates` for any OAuth quota window with usable bounds; never branches on plugin package name; a throwing cost query still returns the quota snapshot without `estimates`.
 - Dialog shows Used $x under a matching window, hides it otherwise, and does not render Est. total.
 - Compact `<$0.01` for a positive sub-cent sum.
 
