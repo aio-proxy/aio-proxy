@@ -1447,3 +1447,46 @@ test('disconnect cancels an Apply stalled on a backend read instead of queueing 
   expect(closed).toBe(1);
   await expect(applying).rejects.toThrow();
 });
+
+// A detachment waits on the adapter's independence check over the network and only then writes the
+// OAuth journal and the entity row. Shutdown that returns in that window lets `closeAsync()` take
+// the database away before those writes land.
+test('disposing waits for a detachment still awaiting the adapter', async () => {
+  let release!: () => void;
+  let running = false;
+  let finished = false;
+  const control = createSyncControlPlane({
+    repo: { readBinding: () => BINDING, entities: () => [], outbox: () => [], pendingCommits: () => [] } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    detach: async () => {
+      running = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      finished = true;
+    },
+  } as never);
+
+  const detaching = control.detach('person').catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(running).toBe(true);
+
+  let disposed = false;
+  const disposing = control.dispose().then(() => void (disposed = true));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(disposed).toBe(false);
+
+  release();
+  await disposing;
+  expect(finished).toBe(true);
+  await detaching;
+});

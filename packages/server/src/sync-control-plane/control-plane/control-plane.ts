@@ -375,12 +375,16 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
     },
     async detach(providerId, loginSessionId) {
       if (options.detach === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
-      await options.detach(providerId, loginSessionId);
+      // The adapter's independence check is a network call, and the journal and entity writes land
+      // after it. Outside the FIFO those writes settle against the repository `closeAsync()` takes
+      // away the moment `dispose()` returns; queued, shutdown's trailing job waits for them and
+      // refuses a detachment requested after that point.
+      await serialized(() => options.detach!(providerId, loginSessionId));
       return status();
     },
     async cancelDetach(providerId) {
       if (options.cancelDetach === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
-      await options.cancelDetach(providerId);
+      await serialized(() => options.cancelDetach!(providerId));
       return status();
     },
     async history(objectId) {
