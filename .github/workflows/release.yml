@@ -93,16 +93,21 @@ jobs:
       # installed entitlements or cross-device behavior, so scripts/release-cloudkit-gate/
       # reads the evidence that does — the same call scripts/release.ts makes to decide whether
       # the package is published at all, so this step cannot sign something that then stays home.
+      # A canary is dispatched, not pushed, and scripts/release.ts withholds CloudKit from every
+      # canary — signing one would demand the Apple secrets (failing the run on a fork or a branch
+      # without them) to produce a bundle that is then thrown away.
       - name: Determine whether CloudKit is being published
         id: cloudkit-release
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./packages/plugins/cloudkit/package.json').version")"
           pending="$(node -p "require('node:fs').readdirSync('.changeset').filter((name) => name.endsWith('.md') && name !== 'README.md').length")"
           published="$(npm view "@aio-proxy/plugin-cloudkit@$version" version 2>/dev/null || true)"
           gate="$(bun scripts/release-cloudkit-gate/index.ts)"
-          if [ "$pending" = 0 ] && [ -z "$published" ] && [ "$gate" = true ]; then should_prepare=true; else should_prepare=false; fi
+          if [ "$EVENT_NAME" = push ] && [ "$pending" = 0 ] && [ -z "$published" ] && [ "$gate" = true ]; then should_prepare=true; else should_prepare=false; fi
           echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "APPLE_CLOUDKIT_RELEASE_REQUIRED=$should_prepare" >> "$GITHUB_ENV"
