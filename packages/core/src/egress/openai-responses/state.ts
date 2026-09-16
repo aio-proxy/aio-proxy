@@ -191,28 +191,40 @@ export function reasoningDelta(part: ReasoningDeltaPart): string {
   return 'delta' in part ? part.delta : part.text;
 }
 
-export function finishUsage(part: FinishPart): {
+type FinishUsage = {
   readonly inputTokens?: number | undefined;
   readonly outputTokens?: number | undefined;
   readonly totalTokens?: number | undefined;
-} {
+  readonly cachedInputTokens?: number | undefined;
+  readonly reasoningTokens?: number | undefined;
+  readonly inputTokenDetails?: {
+    readonly cacheReadTokens?: number | undefined;
+    readonly cacheWriteTokens?: number | undefined;
+  };
+  readonly outputTokenDetails?: {
+    readonly reasoningTokens?: number | undefined;
+  };
+};
+
+export function finishUsage(part: FinishPart): FinishUsage {
   return 'usage' in part ? part.usage : part.totalUsage;
 }
 
-export function openAIUsage(usage: {
-  readonly inputTokens?: number | undefined;
-  readonly outputTokens?: number | undefined;
-  readonly totalTokens?: number | undefined;
-}): ResponseUsage | undefined {
+export function openAIUsage(usage: FinishUsage): ResponseUsage | undefined {
   if (usage.inputTokens === undefined && usage.outputTokens === undefined && usage.totalTokens === undefined)
     return undefined;
   const inputTokens = usage.inputTokens ?? 0;
   const outputTokens = usage.outputTokens ?? 0;
   return {
     input_tokens: inputTokens,
-    input_tokens_details: { cache_write_tokens: 0, cached_tokens: 0 },
+    input_tokens_details: {
+      cache_write_tokens: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
+      cached_tokens: usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0,
+    },
     output_tokens: outputTokens,
-    output_tokens_details: { reasoning_tokens: 0 },
+    output_tokens_details: {
+      reasoning_tokens: usage.outputTokenDetails?.reasoningTokens ?? usage.reasoningTokens ?? 0,
+    },
     total_tokens: usage.totalTokens ?? inputTokens + outputTokens,
   };
 }
