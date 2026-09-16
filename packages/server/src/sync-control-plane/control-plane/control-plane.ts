@@ -430,13 +430,24 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
       return status();
     },
     async disconnect() {
-      // A connect Apply past its final fence check still installs a binding and publishes to it
-      // through the candidate's own session, which aborting `lifetime` does not reach. Interleaved,
-      // the teardown would close the old lifecycle, clear its binding and report success while
-      // synchronization came straight back up. The same FIFO puts it after that Apply.
+      // The cancellation cannot wait for the FIFO. Everything a queued Apply, Leave or Retry is
+      // awaiting reads through this signal, so an Apply stalled on a backend read or publication
+      // holds the queue until it is aborted — and the abort is what Disconnect was queued to do.
+      // Aborting first unblocks that job (it fails, which is the requested outcome) and Disconnect
+      // still runs behind it, so a connect Apply publishing through its own candidate session
+      // finishes before the teardown as before.
+      const cancelled = lifetime;
+      cancelled.abort();
       await serialized(async () => {
         const active = binding();
-        if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
+        try {
+          if (active !== null) assertNoRetainedOAuth(options.repo, active.id);
+        } catch (error) {
+          // A refused Disconnect stays connected, and the engine keeps reading through the signal
+          // just cancelled: without a fresh one the backend it is still bound to never syncs again.
+          if (lifetime === cancelled) lifetime = new AbortController();
+          throw error;
+        }
         // Closing only tears down the in-memory lifecycle. The binding row stays active in SQLite,
         // so the next service start would read it and reconnect, silently undoing the disconnect.
         // Retired in the same turn as the assertion above, because an OAuth login suspended past its

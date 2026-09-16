@@ -1397,3 +1397,53 @@ test('applying one preview keeps preview-required while another token is outstan
   // The last token settling is what actually hands the state back.
   expect((await control.apply({ previewId: second.previewId, decisions: decisions(second) })).state).toBe('idle');
 });
+
+// The FIFO is what orders Disconnect after an Apply, but everything an Apply awaits reads through
+// the lifetime signal Disconnect aborts. Aborting inside the queued callback would mean a backend
+// read that never settles pins Apply, Leave, Retry and Disconnect until the process is restarted.
+test('disconnect cancels an Apply stalled on a backend read instead of queueing behind it', async () => {
+  let stall = false;
+  const session = {
+    list: async (_request: unknown, signal: AbortSignal) => {
+      if (!stall) return { keys: [] };
+      return new Promise<never>((_resolve, reject) => {
+        const fail = () => reject(new Error('read aborted'));
+        if (signal.aborted) fail();
+        else signal.addEventListener('abort', fail);
+      });
+    },
+    read: async () => ({ kind: 'absent' }),
+  };
+  let closed = 0;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      clearBinding: () => {},
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [],
+    session: () => session as never,
+    applyLocal: async () => {},
+    persistOverrides: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    lifecycle: {
+      activate: () => {},
+      reconcile: async () => {},
+      close: async () => {
+        closed += 1;
+      },
+    },
+  });
+
+  const preview = await control.preview({ kind: 'join' });
+  stall = true;
+  const applying = control.apply({ previewId: preview.previewId, decisions: [] });
+
+  expect(await control.disconnect()).toMatchObject({ state: 'disconnected' });
+  expect(closed).toBe(1);
+  await expect(applying).rejects.toThrow();
+});
