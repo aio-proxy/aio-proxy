@@ -473,6 +473,21 @@ test('excluded prototype-named entries survive the device-local projection', () 
 // while re-creating the same Provider ID locally adds a fresh `excluded` row. Reading the dead row
 // as selected published the local route inside the shared rule, with no Provider body or reference
 // behind it, so peers received a rule pointing at a Provider they could never resolve.
+test('a tombstone does not replay its overrides onto what replaced it', () => {
+  const tombstone = {
+    ...includedEntity('p-work-deleted', 'provider', 'work'),
+    baseline: 'deleted:3',
+    overrides: [{ path: ['baseURL'], value: 'https://retired' }],
+  };
+  const recreated = { ...includedEntity('p-work', 'provider', 'work'), mode: 'excluded' as const };
+
+  // The pinned path belonged to the deleted object. Replaying it would write a retired value over
+  // the Provider the user just re-authored under the same ID, on every activation.
+  expect(
+    overlayLocal({}, { providers: { work: { kind: 'api', baseURL: 'https://authored' } } }, [tombstone, recreated]),
+  ).toEqual({ providers: { work: { kind: 'api', baseURL: 'https://authored' } } });
+});
+
 test('a re-created Provider stays local even though its tombstone is still included', () => {
   const work = includedEntity('p-work', 'provider', 'work');
   const tombstone = { ...includedEntity('p-personal-deleted', 'provider', 'personal'), baseline: 'deleted:3' };
@@ -497,4 +512,8 @@ test('a re-created Provider stays local even though its tombstone is still inclu
   expect(result.entities.get('m-shared')?.value).toEqual({ providers: { work: {} } });
   expect(result.entities.has('p-personal-deleted')).toBe(false);
   expect(result.local.router).toEqual({ models: { shared: { providers: { personal: { weight: 2 } } } } });
+  // Repository order puts the retained tombstone ahead of the fresh row. Reading it as the live one
+  // left the re-created Provider out of the local projection, so the next remote activation
+  // overwrote the configuration with cloud state that still has it deleted.
+  expect(result.local.providers).toEqual({ personal: { kind: 'api', apiKey: 'personal-key' } });
 });

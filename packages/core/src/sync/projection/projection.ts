@@ -250,9 +250,14 @@ function publishedValue(value: JsonValue, entity: LocalEntity): JsonValue {
 
 function localProjection(
   source: CommittedSource,
-  entities: readonly LocalEntity[],
+  allEntities: readonly LocalEntity[],
   selected: ReadonlySet<string>,
 ): JsonRecord {
+  // A tombstone is a deleted object and claims nothing here. Re-creating one under the same
+  // identity leaves the retained `included` tombstone ahead of the fresh excluded row in repository
+  // order, so reading it as the live row would strip the re-authored configuration out of the local
+  // projection — and the next remote activation would overwrite what the projection dropped.
+  const entities = allEntities.filter((entity) => !isTombstonedEntity(entity));
   const raw = source.raw;
   const local = cloneJson(raw) as JsonRecord;
   const providers = recordAt(raw, 'providers');
@@ -443,6 +448,9 @@ export function overlayLocal(
     );
   }
   for (const entity of entities) {
+    // A retained tombstone still carries the overrides its object had. Replaying them would pin an
+    // obsolete value onto whatever was re-created under that identity.
+    if (isTombstonedEntity(entity)) continue;
     if (entity.kind === 'plugin-business') {
       const plugins = overlayPluginOverrides(result['plugins'], entity.logicalKey, entity.overrides);
       if (plugins !== undefined) result['plugins'] = plugins;
