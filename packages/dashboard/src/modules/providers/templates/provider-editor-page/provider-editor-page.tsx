@@ -87,11 +87,13 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     persistedId === undefined
       ? undefined
       : syncStatus.data?.providers.find((entry) => entry.providerId === persistedId);
-  // A preview the open dialog asked for can resolve after the user dismissed it with Escape, the
-  // overlay or Cancel — that request is not part of `pending`. Replacing only a preview that is still
-  // open keeps an abandoned result from reopening the dialog.
-  const replaceOpenSyncPreview = (next: SyncPreview): SyncPreview => {
-    setSyncPreview((current) => (current === null ? null : next));
+  // A preview the dialog asked for can resolve after the user dismissed it with Escape, the overlay
+  // or Cancel, or after the editor moved to another Provider and opened a preview of its own — that
+  // request is not part of `pending`. Swapping only when the preview it was pinned from is still the
+  // open one keeps an abandoned result from reopening the dialog, and keeps Provider A's token from
+  // replacing the dialog the user is now looking at for Provider B.
+  const replaceOpenSyncPreview = (origin: SyncPreview | null, next: SyncPreview): SyncPreview => {
+    setSyncPreview((current) => (current === origin ? next : current));
     return next;
   };
   const openSyncPreview = async () => {
@@ -101,15 +103,19 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     setSyncPreview(await previewMutation.mutateAsync(input));
   };
   const retrySyncPreview = async (input: ProviderSyncPreviewInput): Promise<SyncPreview> => {
+    const origin = syncPreview;
     setLastSyncPreviewInput(input);
-    return replaceOpenSyncPreview(await previewMutation.mutateAsync(input));
+    return replaceOpenSyncPreview(origin, await previewMutation.mutateAsync(input));
   };
-  const previewOverrides = async (objectId: string, paths: readonly string[][]): Promise<SyncPreview> =>
+  const previewOverrides = async (objectId: string, paths: readonly string[][]): Promise<SyncPreview> => {
+    const origin = syncPreview;
     // An override is its own operation. The join it was pinned from stays remembered so the dialog
     // can regenerate it once these paths are applied.
-    replaceOpenSyncPreview(
+    return replaceOpenSyncPreview(
+      origin,
       await previewMutation.mutateAsync({ kind: 'overrides', objectId, paths: paths.map((path) => [...path]) }),
     );
+  };
 
   const identitySection = <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />;
   const connectionSection = (
