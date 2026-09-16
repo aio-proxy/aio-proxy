@@ -765,6 +765,20 @@ test('a remote model rule keeps the routes this device holds to locally excluded
       overrides: [],
       pendingReason: null,
     },
+    // `home` was shared once, then deleted and re-created locally: the retained tombstone still says
+    // `included`, and only the fresh row below tells the truth. Counting the dead row used to make
+    // the local route look shared, so the next remote revision deleted it.
+    {
+      objectId: 'provider-home-deleted',
+      logicalKey: 'home',
+      kind: 'provider',
+      mode: 'included',
+      epoch: 0,
+      desired: null,
+      baseline: 'deleted:remote-1',
+      overrides: [],
+      pendingReason: null,
+    },
     {
       objectId: 'provider-home',
       logicalKey: 'home',

@@ -1,4 +1,4 @@
-import type { EntityBody, SyncRepository } from '@aio-proxy/core';
+import { isTombstonedEntity, type EntityBody, type SyncRepository } from '@aio-proxy/core';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 
 export function record(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -44,8 +44,13 @@ function mergeLocalRoutes(
   shared: JsonValue | undefined,
   entities: ReturnType<SyncRepository['entities']>,
 ): JsonValue | undefined {
+  // A deleted-then-recreated Provider keeps its retained tombstone `included` while the fresh row is
+  // excluded. Counting the tombstone would call the new Provider's route shared, so the next remote
+  // revision would drop it from the local remainder and delete a route that only exists here.
   const included = new Set(
-    entities.filter((entity) => entity.kind === 'provider' && entity.mode === 'included').map((e) => e.logicalKey),
+    entities
+      .filter((entity) => entity.kind === 'provider' && entity.mode === 'included' && !isTombstonedEntity(entity))
+      .map((e) => e.logicalKey),
   );
   const local = Object.entries(record(record(previous)['providers'])).filter(([id]) => !included.has(id));
   if (local.length === 0) return shared;
