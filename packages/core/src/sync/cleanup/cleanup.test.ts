@@ -21,6 +21,7 @@ import {
   collectHistory,
   deleteEntity,
   HISTORY_RETENTION_MS,
+  MAX_HISTORY_REVISIONS,
   purgeEntity,
   readServerTime,
   restoreEntity,
@@ -375,6 +376,33 @@ test('ordinary deletion retains current history while scrubbing the account', as
   const accountValue = backend.readAll().get(accountKey(first.objectId));
   expect(accountValue?.kind).toBe('present');
   expect(new TextDecoder().decode(accountValue!.value)).not.toContain('token');
+});
+
+// Nothing here is near the 30-day cutoff, so retention alone would let the head grow one operation
+// ID and one receipt per publication until it no longer fits the backend's value limit — a `quota`
+// raised while draining the outbox, which is before maintenance ever gets to run.
+test('history caps the head so a frequently updated object cannot outgrow the value limit', async () => {
+  const backend = createMemorySyncBackend();
+  const store = createSyncObjectStore(backend.connect());
+  const signal = new AbortController().signal;
+  const objectId = crypto.randomUUID();
+  const published: string[] = [];
+  for (let index = 0; index < MAX_HISTORY_REVISIONS + 3; index += 1) {
+    const entry = operation(objectId, crypto.randomUUID(), `secret-${index}`);
+    await publishEntity(store, entry, signal);
+    published.push(entry.operationId);
+    backend.advance(60_000);
+    await collectHistory(store, objectId, backend.now(), signal);
+    expect(head(backend, objectId).history.length).toBeLessThanOrEqual(MAX_HISTORY_REVISIONS);
+  }
+  const current = head(backend, objectId);
+  expect(current.current).toBe(published.at(-1));
+  expect(current.history).toEqual(published.slice(-1 - MAX_HISTORY_REVISIONS, -1));
+  expect(Object.keys(current.receipts).sort()).toEqual([...current.history, current.current!].sort());
+  // Shed early, not orphaned: the body is erased exactly as the age cutoff would have erased it, so
+  // no secret payload is left in the store with nothing referencing it.
+  const shed = decodeRevision(backend.readAll().get(revisionKey(objectId, published[0]!))!.value);
+  expect(shed).toMatchObject({ state: 'erased', reason: 'expired' });
 });
 
 test('history keeps current and expires only old confirmed history', async () => {

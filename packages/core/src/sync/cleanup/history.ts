@@ -6,6 +6,7 @@ import { decodeRevision, receiptSequence, revisionKey, type EntityHead } from '.
 import { type SyncObjectStore } from '../publication';
 import {
   HISTORY_RETENTION_MS,
+  MAX_HISTORY_REVISIONS,
   eraseRevision,
   finalizeRevisionReceiptIfPresent,
   readHeadOrThrow,
@@ -161,6 +162,9 @@ export async function collectHistory(
   const head = await readHeadOrThrow(store, objectId, signal);
   const pending = new Set([...head.head.reserved, ...head.head.cancelling]);
   const current = head.head.current;
+  // `history` is append-ordered, so the entries the cap sheds are the ones at the front — the same
+  // ones the age cutoff would reach first.
+  const overflow = new Set(head.head.history.slice(0, Math.max(0, head.head.history.length - MAX_HISTORY_REVISIONS)));
   for (const operationId of head.head.history) {
     if (operationId === current || pending.has(operationId)) continue;
     const value = await store.session.read(revisionKey(objectId, operationId), signal);
@@ -172,7 +176,9 @@ export async function collectHistory(
       continue;
     }
     if (receiptSequence(head.head, operationId) === undefined || record.publishedSequence === null) continue;
-    if (record.writtenAt === null || record.writtenAt >= cutoff) continue;
+    // A revision with no recorded write time never expires on age alone, so the cap is also what
+    // stops one from pinning a slot in the head for good.
+    if (!overflow.has(operationId) && (record.writtenAt === null || record.writtenAt >= cutoff)) continue;
     await eraseRevision(
       store,
       revisionKey(objectId, operationId),

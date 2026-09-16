@@ -19,6 +19,16 @@ const SPACE_KEY = 's/v1/default/space';
 
 export const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Retention alone leaves the head unbounded inside its own window: every publication appends the
+ * previous operation ID and a receipt, so an object updated often enough grows the encoded head past
+ * the backend's value limit long before anything in it is 30 days old. That `quota` is raised while
+ * draining the outbox, before maintenance runs, so the binding could never prune its way back out.
+ * The oldest revisions beyond this cap are therefore expired early — the same erase the cutoff would
+ * perform later, so nothing is left orphaned in the store.
+ */
+export const MAX_HISTORY_REVISIONS = 20;
+
 export async function readHeadOrThrow(
   store: SyncObjectStore,
   objectId: string,
