@@ -112,7 +112,7 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
   );
   await chmod(join(fakeBin, 'npm'), 0o755);
 
-  const publishableFor = async (version: string, gate = 'true'): Promise<string> => {
+  const publishableFor = async (version: string, gate = 'true', eventName = 'push'): Promise<string> => {
     // Stands in for scripts/release-cloudkit-gate, whose own test covers which recorded evidence
     // clears the backend. What this step decides is only what to do with that answer.
     await writeFile(gateScript, `console.log('${gate}');\n`);
@@ -123,6 +123,7 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
       env: {
         ...process.env,
         PATH: `${fakeBin}:${process.env['PATH'] ?? ''}`,
+        EVENT_NAME: eventName,
         GITHUB_OUTPUT: output,
         GITHUB_ENV: join(directory, 'github-env'),
       },
@@ -150,6 +151,10 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
     // Developer ID here would notarize an artifact no release is going to carry.
     await rm(join(directory, '.changeset', 'quiet-syncs-share.md'));
     expect(await publishableFor('0.24.0-beta.2', 'false')).toContain('publishable=false');
+    // A canary is dispatched, not pushed, and scripts/release.ts withholds CloudKit from every
+    // canary: demanding the Apple secrets here fails the run on a fork and notarizes a bundle no
+    // release carries.
+    expect(await publishableFor('0.24.0-beta.2', 'true', 'workflow_dispatch')).toContain('publishable=false');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
