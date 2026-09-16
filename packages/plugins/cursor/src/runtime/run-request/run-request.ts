@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 import { InvalidPromptError, type LanguageModelV4Prompt } from '@ai-sdk/provider';
-import { create, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
   AgentClientMessageSchema,
@@ -9,12 +9,15 @@ import {
   ConversationActionSchema,
   type ConversationStateStructure,
   ConversationStateStructureSchema,
+  ConversationTurnStructureSchema,
   ModelDetailsSchema,
   RequestedModelSchema,
   ResumeActionSchema,
+  type SelectedImage,
   UserMessageActionSchema,
+  UserMessageSchema,
 } from '../../gen/agent_pb';
-import { storeCursorBlob } from '../../store/blobs';
+import { readCursorBlob, storeCursorBlob } from '../../store/blobs';
 import {
   appendCursorRootHistory,
   applyMcpToolResults,
@@ -85,15 +88,15 @@ export function buildCursorRunRequestBytes(input: {
   const promptHeadMatches =
     cachedHead.length === systemPromptIds.length &&
     systemPromptIds.every((id, index) => Buffer.from(cachedHead[index]!).equals(id));
-  const hasInboundHistory = promptRootMessages.length > systemPromptIds.length;
   const hasHistoricalImages = prompt.some(
     (message, index) => index !== historyActiveIndex && message.role === 'user' && v4UserHasImages(message.content),
   );
+  const hasInboundHistory = promptRootMessages.length > systemPromptIds.length || hasHistoricalImages;
   const promptHistoryMatches =
     !hasInboundHistory ||
-    (!hasHistoricalImages &&
-      cachedRootMessages.length === promptRootMessages.length &&
-      promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)));
+    (cachedRootMessages.length === promptRootMessages.length &&
+      promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)) &&
+      (!hasHistoricalImages || turnImagesMatch(promptTurns, state.conversationState?.turns ?? [], blobStore)));
   const reusableState =
     state.conversationState && (isPendingResume || (promptHeadMatches && promptHistoryMatches))
       ? state.conversationState
@@ -146,6 +149,56 @@ export function buildCursorRunRequestBytes(input: {
     conversationState,
     pendingToolCalls: patched.pendingToolCalls,
   };
+}
+
+function turnImagesMatch(
+  promptTurns: readonly Uint8Array[],
+  cachedTurns: readonly Uint8Array[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): boolean {
+  if (promptTurns.length !== cachedTurns.length) return false;
+  try {
+    return promptTurns.every((promptTurn, index) => {
+      const promptImages = readTurnImages(promptTurn, blobStore);
+      const cachedImages = readTurnImages(cachedTurns[index]!, blobStore);
+      if (promptImages === undefined || cachedImages === undefined || promptImages.length !== cachedImages.length) {
+        return false;
+      }
+      return promptImages.every((image, imageIndex) => {
+        const cachedImage = cachedImages[imageIndex]!;
+        const data = imageData(image, blobStore);
+        const cachedData = imageData(cachedImage, blobStore);
+        return (
+          image.mimeType === cachedImage.mimeType &&
+          data !== undefined &&
+          cachedData !== undefined &&
+          Buffer.from(data).equals(cachedData)
+        );
+      });
+    });
+  } catch {
+    return false;
+  }
+}
+
+function readTurnImages(
+  turnId: Uint8Array,
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): readonly SelectedImage[] | undefined {
+  const turnBytes = readCursorBlob(blobStore, turnId);
+  if (turnBytes === undefined) return undefined;
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') return undefined;
+  const userMessageBytes = readCursorBlob(blobStore, turn.turn.value.userMessage);
+  if (userMessageBytes === undefined) return undefined;
+  return fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? [];
+}
+
+function imageData(image: SelectedImage, blobStore: ReadonlyMap<string, Uint8Array>): Uint8Array | undefined {
+  if (image.dataOrBlobId.case === 'data') return image.dataOrBlobId.value;
+  if (image.dataOrBlobId.case === 'blobId') return readCursorBlob(blobStore, image.dataOrBlobId.value);
+  if (image.dataOrBlobId.case === 'blobIdWithData') return image.dataOrBlobId.value.data;
+  return undefined;
 }
 
 function validateFileParts(prompt: LanguageModelV4Prompt): void {

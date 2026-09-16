@@ -301,6 +301,44 @@ test('a changed image in full history rebuilds instead of reusing stale cached t
   expect(changed.conversationState.turns).not.toEqual(initial.conversationState.turns);
 });
 
+test('an unchanged image in full history preserves the reusable Cursor checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-same-image', blobStore },
+  });
+
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-same-image',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(initial.conversationState.turns);
+});
+
 test('keeps historical images in Cursor turns without emitting root file content', () => {
   const blobStore = new Map<string, Uint8Array>();
   const { conversationState } = buildCursorRunRequestBytes({
