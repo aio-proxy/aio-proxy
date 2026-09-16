@@ -354,6 +354,12 @@ export function buildPreview(input: {
       // whose only cloud state is a restorable revision, so publish the server's own rule here and
       // let assertDecisions read it back instead of re-deriving it.
       if (input.request.kind !== 'connect') return candidate;
+      // A tombstoned head is one of those rows: the swap's reconciliation imports nothing from a
+      // deleted object, so the only decision left is whether to revive it. Requiring one would make
+      // a first connect resurrect a cloud object the space already deleted — and on the sole choice
+      // `restore` offers, with no way to keep the authored configuration local-only.
+      if (remoteByObject.get(candidate.row.objectId)?.tombstone === true)
+        return { ...candidate, row: { ...candidate.row, optional: true } };
       if (candidate.cloud !== null || (candidate.restoreBody ?? null) !== null) return candidate;
       return { ...candidate, row: { ...candidate.row, optional: true } };
     })

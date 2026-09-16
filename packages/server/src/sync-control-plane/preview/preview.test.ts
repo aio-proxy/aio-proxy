@@ -2554,6 +2554,94 @@ test('a first connect reviews an authored object the candidate backend already h
   expect(imported).toEqual([]);
 });
 
+test('a first connect leaves a tombstoned cloud head optional', async () => {
+  // The cloud deleted this Provider but kept its payload for a restore, and the same Provider is
+  // still authored locally. Requiring a decision here left `restore` as the only choice, so
+  // connecting could not finish without reviving an object the space had already deleted.
+  const cloud = {
+    objectId: 'cloud-object',
+    logicalKey: 'work',
+    kind: 'provider',
+    version: 'v1',
+    revision: 'op-1',
+    tombstone: true,
+    body: null,
+    restoreBody: providerBody({ kind: 'api', baseURL: 'https://cloud' }),
+  };
+  const published: (string | null)[] = [];
+  const imported: string[] = [];
+  let bound = false;
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => null,
+      entities: () => [],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: () => {},
+    } as never,
+    binding: () =>
+      bound
+        ? {
+            id: 'binding',
+            plugin: '@example/sync',
+            capability: 'memory',
+            pluginVersion: '1',
+            identityId: 'identity',
+            spaceId: 'default',
+            deviceId: 'device',
+            sessionGeneration: 1,
+            options: {},
+          }
+        : null,
+    localEntities: () => [],
+    remoteEntities: async () => [],
+    registry: () =>
+      ({
+        resolveSync: () => ({
+          options: { schema: { safeParse: (value: unknown) => ({ success: true, data: value }) } },
+        }),
+        resolveOAuth: () => undefined,
+      }) as never,
+    applyLocal: async (_candidate, _current, objectId) => void imported.push(objectId),
+    applyCloud: async (body) => void published.push(body?.logicalKey ?? null),
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({
+      remote: [cloud],
+      refresh: async () => [cloud],
+      commit: async () => void (bound = true),
+      activate: () => {},
+      dispose: async () => {},
+    }),
+    committedSource: async () => ({
+      raw: { providers: { work: { kind: 'api', baseURL: 'https://local' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+  } as never);
+
+  const preview = await control.preview({
+    kind: 'connect',
+    plugin: '@example/sync',
+    capability: 'memory',
+    options: {},
+  });
+  const row = preview.rows.find((entry) => entry.objectId === 'cloud-object');
+  expect(row?.change).toBe('delete');
+  expect(row?.choices).toEqual(['restore']);
+  expect(row?.optional).toBe(true);
+
+  // Skipping it connects the backend and leaves the authored Provider local-only: nothing is
+  // revived in the cloud and nothing is written over the local configuration.
+  await control.apply({ previewId: preview.previewId, decisions: [] });
+  expect(bound).toBe(true);
+  expect(published).toEqual([]);
+  expect(imported).toEqual([]);
+});
+
 test('a tombstoned duplicate does not collide with the live object holding the identity', () => {
   const remoteEntity = (objectId: string, tombstone: boolean) => ({
     objectId,
