@@ -4,7 +4,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import type { StoredAccount } from '../../plugins/repository';
 import type { EntityBody, Dependency } from '../protocol';
 import { providerReference } from '../protocol';
-import type { LocalEntity } from '../repository';
+import { isTombstonedEntity, type LocalEntity } from '../repository';
 import { authoredPluginPackages } from './authored';
 import {
   applyEntityOverrides,
@@ -60,10 +60,13 @@ function entityIndex(entities: readonly LocalEntity[]): Map<string, LocalEntity>
   return new Map(entities.map((entity) => [identityKey(entity.kind, entity.logicalKey), entity]));
 }
 
+// A Provider deleted and re-created under the same ID keeps its tombstone row `included` while the
+// fresh row stays `excluded`. Counting the dead row as selected publishes the re-created Provider's
+// routes inside a shared model rule, with no body and no Provider reference behind them.
 function includedProviderIds(entities: readonly LocalEntity[]): Set<string> {
   return new Set(
     entities
-      .filter((entity) => entity.kind === 'provider' && entity.mode === 'included')
+      .filter((entity) => entity.kind === 'provider' && entity.mode === 'included' && !isTombstonedEntity(entity))
       .map((entity) => entity.logicalKey),
   );
 }
@@ -324,7 +327,7 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
   const pluginMap = pluginEntries(source.raw['plugins']);
   const businessPluginPackages = new Set(pluginMap.keys());
   for (const entity of entities) {
-    if (entity.kind !== 'provider' || entity.mode !== 'included') continue;
+    if (entity.kind !== 'provider' || entity.mode !== 'included' || isTombstonedEntity(entity)) continue;
     if (!own(rawProviders, entity.logicalKey)) continue;
     const provider = asRecord(rawProviders[entity.logicalKey]);
     if (provider?.['kind'] === 'oauth' && typeof provider['plugin'] === 'string') {
@@ -335,7 +338,10 @@ export function projectCommitted(source: CommittedSource, entities: readonly Loc
   const accountsOut = new Map<string, StoredAccount>();
 
   for (const entity of entities) {
-    if (entity.mode !== 'included') continue;
+    // A tombstone keeps the row's `included` mode, and re-creating the same logical key locally adds
+    // a separate excluded row. Publishing from the dead row resurrects the object the cloud already
+    // deleted, carrying the re-created entry's body and credentials into it.
+    if (entity.mode !== 'included' || isTombstonedEntity(entity)) continue;
     let value: JsonValue | undefined;
     let dependencies: Dependency[] = [];
     if (entity.kind === 'provider') {

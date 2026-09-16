@@ -468,3 +468,33 @@ test('excluded prototype-named entries survive the device-local projection', () 
   expect(Object.getOwnPropertyDescriptor(providers, '__proto__')?.value).toEqual({ kind: 'api', apiKey: 'local' });
   expect(Object.hasOwn(models, '__proto__')).toBe(true);
 });
+
+// Deleting a shared Provider retains its row with a `deleted:` baseline and its `included` mode,
+// while re-creating the same Provider ID locally adds a fresh `excluded` row. Reading the dead row
+// as selected published the local route inside the shared rule, with no Provider body or reference
+// behind it, so peers received a rule pointing at a Provider they could never resolve.
+test('a re-created Provider stays local even though its tombstone is still included', () => {
+  const work = includedEntity('p-work', 'provider', 'work');
+  const tombstone = { ...includedEntity('p-personal-deleted', 'provider', 'personal'), baseline: 'deleted:3' };
+  const recreated = { ...includedEntity('p-personal', 'provider', 'personal'), mode: 'excluded' as const };
+  const model = includedEntity('m-shared', 'model-rule', 'shared');
+  const result = projectCommitted(
+    {
+      raw: {
+        providers: {
+          work: { kind: 'api', apiKey: 'work-key' },
+          personal: { kind: 'api', apiKey: 'personal-key' },
+        },
+        router: { models: { shared: { providers: { work: {}, personal: { weight: 2 } } } } },
+      },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    },
+    [work, tombstone, recreated, model],
+  );
+
+  expect(result.entities.get('m-shared')?.value).toEqual({ providers: { work: {} } });
+  expect(result.entities.has('p-personal-deleted')).toBe(false);
+  expect(result.local.router).toEqual({ models: { shared: { providers: { personal: { weight: 2 } } } } });
+});
