@@ -734,3 +734,18 @@ test('a share suspended past the disconnect check writes no hold onto the retire
     expect(f.repo.oauthJournals('oauth-sharing')).toEqual([]);
   });
 });
+
+// Every built-in adapter ships `credentialSync: { formatVersion: 1 }` and nothing else: the
+// multi-device evidence and the `canDetach` check that goes with it are added per adapter once live
+// runs pass. Sharing one of those before then would publish a credential the device can never prove
+// itself independent of, and a shared row refuses both disconnect and backend replacement.
+test('an adapter without recorded multi-device evidence never reaches shared ownership', async () => {
+  await withOAuthSharingFixture(async (f) => {
+    f.replaceAdapter({ ...f.adapter, credentialSync: { formatVersion: 1 } });
+
+    expect(await f.sharing.share(f.providerId, f.signal)).toBe('pending');
+    expect(f.remote()).toBeNull();
+    expect(f.ownership()).toBeUndefined();
+    expect(retainsSharedOAuth(f.repo.entities('oauth-sharing')[0]!, f.repo.oauthJournals('oauth-sharing'))).toBe(false);
+  });
+});
