@@ -95,6 +95,16 @@ test('shows the explicit local plugin action when no backend is installed', () =
   expect(screen.getByRole('link').getAttribute('href')).toBe('/dashboard/plugins');
 });
 
+// Removing the bound plugin (or a load failure) leaves the binding in status with no matching
+// `/backends` entry. Gating the whole form on that entry used to hide Disconnect and Retry too, so
+// the only binding that needs retiring was the one the Dashboard could not touch.
+test('keeps disconnect and retry available when the bound backend is no longer registered', () => {
+  renderGroup([], cloudkit);
+  expect(screen.getByRole('button', { name: /^(Disconnect|断开连接)$/u }).hasAttribute('disabled')).toBe(false);
+  expect(screen.getByRole('button', { name: /^(Retry|重试)$/u }).hasAttribute('disabled')).toBe(false);
+  expect(screen.queryByRole('button', { name: /^(Connect|连接)$/u })).toBeNull();
+});
+
 test('connects the picked backend instead of the first registered one', () => {
   renderGroup([archive, cloudkit], cloudkit);
 

@@ -330,6 +330,22 @@ export const SyncSettingsGroup: React.FC = () => {
                   </Field>
                 )}
               </form.Field>
+              {backend.form.map((field) => (
+                <div key={field.key}>{renderSyncBackendField(field, form as unknown as SyncReactFormApi)}</div>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={previewMutation.isPending}>
+                  {m['dashboard.sync.connect']()}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+          {/* Outside the connect form on purpose: a binding whose plugin was removed, failed to load
+              or no longer registers its capability leaves no matching backend definition, and gating
+              these on one hid Disconnect, Retry, history and purge exactly when the binding can only
+              be retired or inspected. */}
+          {backend === undefined && connectedBackend === null ? null : (
+            <div className="space-y-4">
               {providers.length === 0 ? null : (
                 <form.Field name="providerId">
                   {(field) => (
@@ -351,13 +367,7 @@ export const SyncSettingsGroup: React.FC = () => {
                   )}
                 </form.Field>
               )}
-              {backend.form.map((field) => (
-                <div key={field.key}>{renderSyncBackendField(field, form as unknown as SyncReactFormApi)}</div>
-              ))}
               <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={previewMutation.isPending}>
-                  {m['dashboard.sync.connect']()}
-                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -385,8 +395,8 @@ export const SyncSettingsGroup: React.FC = () => {
                   </Button>
                 )}
               </div>
-            </form>
-          ) : null}
+            </div>
+          )}
           {previewError === undefined ? null : <p role="alert">{previewError}</p>}
           {disconnectMutation.isError ? <p role="alert">{m['dashboard.sync.disconnect_failed']()}</p> : null}
           {retryMutation.isError ? <p role="alert">{m['dashboard.sync.retry_failed']()}</p> : null}
