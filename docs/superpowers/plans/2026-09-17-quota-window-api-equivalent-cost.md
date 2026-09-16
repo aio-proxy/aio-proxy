@@ -47,9 +47,11 @@ packages/server/src/dashboard-routes/
 packages/dashboard/src/
   lib/nano-usd/nano-usd.ts                      # compact vs sub-cent
   lib/nano-usd/nano-usd.test.ts
+  modules/providers/services/provider-quota-service/provider-quota-service.ts  # poll comment: snapshot only
   modules/providers/components/provider-quota-ring/
     provider-quota-item.tsx                     # Used $x row
     provider-quota-dialog.tsx                   # pass estimate by itemId
+    provider-quota-cost.tsx                     # compact Used $x line
     provider-quota-ring.test.tsx
 
 packages/i18n/messages/{en,ja,ko,zh-Hans,zh-Hant}.json
@@ -159,9 +161,36 @@ describe('providerWindowCost', () => {
         finalHttpStatus: 200,
         usage: { providerId: 'person', modelId: 'gpt-5', totalTokens: 10 },
       });
-      complete(store, 'b'.repeat(32), MID, { terminationReason: 'failure' });
-      complete(store, 'c'.repeat(32), MID, { terminationReason: 'cancelled' });
       store.startRoot(rootStart({ traceId: 'd'.repeat(32), spanId: 'd'.repeat(16), requestId: 'running' }));
+
+      expect(store.providerWindowCost({ providerId: 'person', start: START, end: END })).toBeUndefined();
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('excludes priced failed, cancelled, and interrupted roots for this Provider', () => {
+    const { handle, store } = makeStore();
+    try {
+      complete(store, 'a'.repeat(32), MID, {
+        finalProviderId: 'person',
+        finalModelId: 'gpt-5',
+        finalHttpStatus: 500,
+        terminationReason: 'failure',
+        usage: { providerId: 'person', modelId: 'gpt-5', estimatedCostUsd: 0.4 },
+      });
+      complete(store, 'b'.repeat(32), MID, {
+        finalProviderId: 'person',
+        finalModelId: 'gpt-5',
+        terminationReason: 'cancelled',
+        usage: { providerId: 'person', modelId: 'gpt-5', estimatedCostUsd: 0.4 },
+      });
+      complete(store, 'c'.repeat(32), MID, {
+        finalProviderId: 'person',
+        finalModelId: 'gpt-5',
+        terminationReason: 'interrupted',
+        usage: { providerId: 'person', modelId: 'gpt-5', estimatedCostUsd: 0.4 },
+      });
 
       expect(store.providerWindowCost({ providerId: 'person', start: START, end: END })).toBeUndefined();
     } finally {
@@ -333,7 +362,7 @@ Do not export `ProviderWindowCostQuery` from `packages/core/src/db/index.ts`. Se
 
 Run: `bun test packages/core/src/db/trace-store/provider-window-cost`
 
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -534,9 +563,10 @@ Expected: PASS, 4 tests.
 
 In `packages/server/src/dashboard-routes/provider-routes/provider-routes.test.ts`:
 
-1. Add `state` to the fixture return: `return { routes, state, reads: () => reads, cleanup: ... }`.
-2. Keep `SNAPSHOT` as-is (no window bounds) so existing tests still expect no `estimates`.
-3. Append:
+1. Change the bun:test import to `import { expect, spyOn, test } from 'bun:test';`.
+2. Add `state` to the fixture return: `return { routes, state, reads: () => reads, cleanup: ... }`.
+3. Keep `SNAPSHOT` as-is (no window bounds) so existing tests still expect no `estimates`.
+4. Append:
 
 ```ts
 const HOUR = 60 * 60 * 1000;
@@ -615,24 +645,80 @@ test('attaches local API-equivalent estimates for any OAuth plugin, not ChatGPT'
 });
 
 test('a later trace does not enter estimates until the next quota sample', async () => {
-  const fixture = await createQuotaFixture({
+  const now = spyOn(Date, 'now');
+  const sampledAt = Date.parse('2026-01-10T12:00:00.000Z');
+  now.mockReturnValue(sampledAt);
+  let fixture: Awaited<ReturnType<typeof createQuotaFixture>> | undefined;
+  try {
+  fixture = await createQuotaFixture({
     read: async () => ({
       items: [
         {
           id: 'five-hour',
           displayName: 'Five hour',
           remainingRatio: 0.5,
-          resetsAt: Date.now() + 4 * HOUR,
+          resetsAt: sampledAt + 4 * HOUR,
           windowMinutes: 300,
         },
       ],
     }),
   });
   try {
-    const first = await (await quota(fixture.routes, 'person')).json();
-    expect(first.estimates).toBeUndefined();
-    const sampledAt = first.sampledAt as number;
+    fixture.state.traceStore.startRoot({
+      traceId: 'a'.repeat(32),
+      spanId: 'a'.repeat(16),
+      requestId: 'before',
+      inboundProtocol: 'openai-compatible',
+      name: 'aio_proxy.request',
+      kind: 1,
+      startedAt: new Date(sampledAt - HOUR),
+      statusCode: 0,
+      attributes: {
+        'aio_proxy.request.id': 'before',
+        'aio_proxy.protocol.inbound': 'openai-compatible',
+        'aio_proxy.route.final_provider_id': 'person',
+        'gen_ai.usage.estimated_cost_usd': 0.1,
+      },
+      events: [],
+      links: [],
+    });
+    fixture.state.traceStore.complete({
+      traceId: 'a'.repeat(32),
+      rootSpanId: 'a'.repeat(16),
+      spans: [
+        {
+          traceId: 'a'.repeat(32),
+          spanId: 'a'.repeat(16),
+          name: 'aio_proxy.request',
+          kind: 1,
+          startedAt: new Date(sampledAt - HOUR),
+          endedAt: new Date(sampledAt - 1),
+          statusCode: 0,
+          attributes: {
+            'aio_proxy.request.id': 'before',
+            'aio_proxy.protocol.inbound': 'openai-compatible',
+            'aio_proxy.route.final_provider_id': 'person',
+            'gen_ai.usage.estimated_cost_usd': 0.1,
+          },
+          events: [],
+          links: [],
+        },
+      ],
+      summary: {
+        finalProviderId: 'person',
+        finalModelId: 'codex-auto-review',
+        finalHttpStatus: 200,
+        usage: { providerId: 'person', modelId: 'codex-auto-review', estimatedCostUsd: 0.1 },
+      },
+    });
 
+    const first = await (await quota(fixture.routes, 'person')).json();
+    expect(first.sampledAt).toBe(sampledAt);
+    expect(first.estimates).toEqual([
+      { itemId: 'five-hour', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+    ]);
+
+    now.mockReturnValue(sampledAt + HOUR);
     fixture.state.traceStore.startRoot({
       traceId: 'b'.repeat(32),
       spanId: 'b'.repeat(16),
@@ -642,7 +728,12 @@ test('a later trace does not enter estimates until the next quota sample', async
       kind: 1,
       startedAt: new Date(sampledAt + 1),
       statusCode: 0,
-      attributes: { 'aio_proxy.request.id': 'after', 'aio_proxy.protocol.inbound': 'openai-compatible' },
+      attributes: {
+        'aio_proxy.request.id': 'after',
+        'aio_proxy.protocol.inbound': 'openai-compatible',
+        'aio_proxy.route.final_provider_id': 'person',
+        'gen_ai.usage.estimated_cost_usd': 0.4,
+      },
       events: [],
       links: [],
     });
@@ -678,9 +769,20 @@ test('a later trace does not enter estimates until the next quota sample', async
 
     const cached = await (await quota(fixture.routes, 'person')).json();
     expect(cached.sampledAt).toBe(sampledAt);
-    expect(cached.estimates).toBeUndefined();
+    expect(cached.estimates).toEqual([
+      { itemId: 'five-hour', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+    ]);
+
+    const refreshed = await (await quota(fixture.routes, 'person', { refresh: true })).json();
+    expect(refreshed.sampledAt).toBe(sampledAt + HOUR);
+    expect(refreshed.estimates).toEqual([
+      { itemId: 'five-hour', usedNanoUsd: '500000000', basis: 'local-api-equivalent' },
+    ]);
   } finally {
-    fixture.cleanup();
+    fixture?.cleanup();
+  }
+  } finally {
+    now.mockRestore();
   }
 });
 
@@ -698,16 +800,21 @@ test('a throwing cost query still returns the quota snapshot', async () => {
       ],
     }),
   });
+  const cost = spyOn(fixture.state.traceStore, 'providerWindowCost').mockImplementation(() => {
+    throw new Error('sqlite exploded');
+  });
+  const logged = spyOn(console, 'error').mockImplementation(() => {});
   try {
-    fixture.state.traceStore.providerWindowCost = () => {
-      throw new Error('sqlite exploded');
-    };
     const response = await quota(fixture.routes, 'person');
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.snapshot.items[0]?.id).toBe('five-hour');
     expect(payload.estimates).toBeUndefined();
+    expect(cost).toHaveBeenCalled();
+    expect(logged).toHaveBeenCalled();
   } finally {
+    cost.mockRestore();
+    logged.mockRestore();
     fixture.cleanup();
   }
 });
@@ -731,10 +838,9 @@ Add import:
 import { quotaWindowEstimates } from '../provider-quota-estimates';
 ```
 
-Replace the `return context.json({ snapshot, sampledAt, stale, error })` block with:
+Keep the existing `const entry = await state.quotaCache.read(...)`. Replace only the `return context.json({ snapshot, sampledAt, stale, error })` that follows it. Do not redeclare `entry`.
 
 ```ts
-        const entry = await state.quotaCache.read(id, context.req.valid('json').refresh);
         let estimates: ReturnType<typeof quotaWindowEstimates>;
         try {
           estimates = quotaWindowEstimates(entry, (range) =>
@@ -783,6 +889,7 @@ Compact **Used $x** under each window. Hide when that item has no estimate. No E
 - Modify: `packages/dashboard/src/lib/nano-usd/nano-usd.ts`
 - Test: `packages/dashboard/src/lib/nano-usd/nano-usd.test.ts`
 - Modify: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-item.tsx`
+- Create: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-cost.tsx`
 - Modify: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-dialog.tsx`
 - Test: `packages/dashboard/src/modules/providers/components/provider-quota-ring/provider-quota-ring.test.tsx`
 
@@ -980,7 +1087,7 @@ interface ProviderQuotaItemProps {
 }
 ```
 
-Import `compactNanoUsdDisplay` from `@/lib/nano-usd`. After the resets line, add:
+Destructure the new prop: `({ item, sampledAt, estimate })`. Do **not** import `compactNanoUsdDisplay` here; only `provider-quota-cost.tsx` formats the amount. After the resets line, add:
 
 ```tsx
       {estimate === undefined ? null : <ProviderQuotaCost estimate={estimate} itemId={item.id} />}
@@ -1034,6 +1141,8 @@ In `provider-quota-dialog.tsx`, pass the matching estimate:
 ```
 
 Do not add `cost_total`. Do not change the ring.
+
+In `packages/dashboard/src/modules/providers/services/provider-quota-service/provider-quota-service.ts`, keep the 60s poll. Narrow the existing comment so "in-memory cache hit" refers only to the **upstream quota snapshot**. Each poll still runs local SQL for `estimates`.
 
 - [ ] **Step 9: Run dashboard tests to verify they pass**
 
@@ -1121,5 +1230,8 @@ git commit -m "chore: add quota-window API-equivalent cost changeset"
 ## Self-review
 
 - No TBD/TODO. Names match across tasks: `providerWindowCost`, `quotaWindowEstimates`, `QuotaWindowEstimate`, `compactNanoUsdDisplay`, `cost_used` / `cost_note` / `cost_less_than`.
-- Dashboard has one component per `.tsx` file (`ProviderQuotaCost` is its own file).
+- Dashboard has one component per `.tsx` file (`ProviderQuotaCost` is its own file). `ProviderQuotaItem` destructures `estimate` and does not import `compactNanoUsdDisplay`.
 - `aria-description` carries the note; `title` is the exact amount (hover), matching the spec after Oracle's copy fix.
+- Route tests spy `providerWindowCost` and `console.error` instead of assigning a readonly method. The cutoff test has a before/after/refresh sequence with a frozen `Date.now()`.
+- Quota-route patch keeps the existing `entry` binding. The dashboard quota query's "in-memory cache hit" comment still describes the *upstream snapshot*; local SQL still runs on each poll.
+s on each poll.
