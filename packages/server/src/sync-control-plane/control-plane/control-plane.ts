@@ -347,7 +347,11 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
         releasePreviewState();
         throw error;
       }
-      state = 'idle';
+      // Another client's preview can still be outstanding, and its token still mutates
+      // synchronization until it expires, so `idle` only holds once the store is empty. Either way
+      // this apply is what a later release hands back.
+      stateBeforePreview = 'idle';
+      releasePreviewState();
       lastSuccessAt = now();
       return status();
     },

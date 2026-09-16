@@ -1351,3 +1351,49 @@ test('shutdown waits out an operation already running in the queue', async () =>
   expect(finished).toBe(true);
   await retrying.catch(() => {});
 });
+
+// Two clients can each hold a preview token, and a token keeps mutating synchronization until it is
+// applied or expires. Reporting `idle` as soon as one of them is applied hides the other.
+test('applying one preview keeps preview-required while another token is outstanding', async () => {
+  let row = { ...LOCAL_ROW };
+  const control = createSyncControlPlane({
+    repo: {
+      readBinding: () => BINDING,
+      entities: () => [row],
+      outbox: () => [],
+      pendingCommits: () => [],
+      oauthJournals: () => [],
+      putEntity: (_bindingId: string, entity: typeof row) => void (row = entity),
+      latestConfirmedCommit: () => ({ commitId: 'commit-1' }),
+    } as never,
+    binding: () => BINDING as never,
+    localEntities: () => [row],
+    remoteEntities: async () => [],
+    registry: REGISTRY,
+    applyLocal: async () => {},
+    applyCloud: async () => {},
+    restore: async () => {},
+    persistOverrides: async () => {},
+    purge: async () => {},
+    connect: async () => ({ remote: [], commit: async () => {}, activate: () => {}, dispose: async () => {} }),
+    committedSource: async () => ({
+      raw: { providers: { work: { kind: 'api', baseUrl: 'https://work.example.test' } } },
+      accounts: new Map(),
+      pluginSecrets: new Map(),
+      pluginVersions: new Map(),
+    }),
+  } as never);
+
+  const first = await control.preview(OVERRIDES);
+  const second = await control.preview(OVERRIDES);
+  expect(control.status().state).toBe('preview-required');
+
+  const decisions = (preview: { rows: readonly { objectId: string; choices: readonly string[] }[] }) =>
+    preview.rows.map((previewRow) => ({ objectId: previewRow.objectId, choice: previewRow.choices[0]! }));
+  expect((await control.apply({ previewId: first.previewId, decisions: decisions(first) })).state).toBe(
+    'preview-required',
+  );
+
+  // The last token settling is what actually hands the state back.
+  expect((await control.apply({ previewId: second.previewId, decisions: decisions(second) })).state).toBe('idle');
+});
