@@ -295,6 +295,9 @@ export function createSyncControlPlane(options: SyncControlPlaneOptions): Server
         expiresAt,
         registry: options.registry?.(),
         ...(source === undefined ? {} : { source }),
+        // Only purge reads them, and only to refuse erasing an object a queued publication still
+        // depends on.
+        ...(input.kind === 'purge' ? { queued: options.repo.outbox(local.binding.id) } : {}),
       });
       previews.retain(previewId, built.record, expiresAt);
       enterPreviewRequired();

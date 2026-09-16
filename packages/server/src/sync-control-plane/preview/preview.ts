@@ -5,9 +5,11 @@ import {
   projectCommitted,
   providerDependencyPackage,
   type CommittedSource,
+  type Dependency,
   type EntityBody,
   type LocalBinding,
   type LocalEntity,
+  type OutboxOperation,
   type SyncRepository,
   type PluginRepository,
   type PluginRegistry,
@@ -167,6 +169,8 @@ export function buildPreview(input: {
   readonly registry?: PluginRegistry;
   readonly accounts?: PluginRepository;
   readonly source?: CommittedSource;
+  /** Publications this device has committed but not yet drained. Read by purge. */
+  readonly queued?: readonly OutboxOperation[];
 }): { readonly preview: SyncPreview; readonly record: PreviewRecord } {
   const remoteSnapshot = snapshotRemoteEntities(input.remote);
   // Connect is the one preview whose local side may not exist yet, and the rows it mints have to be
@@ -195,6 +199,8 @@ export function buildPreview(input: {
   const localByObject = new Map(localSnapshot.map((entity) => [entity.objectId, entity]));
   const remoteByObject = new Map(remoteSnapshot.map((entity) => [entity.objectId, entity]));
   const ids = new Set<string>();
+  // Set by purge alone: a dependent whose queued publication would outlive the erase.
+  let queuedDependency = false;
   if (input.request.kind === 'join') {
     // `providerId` is the logical key of any kind, not only a Provider: a model rule is joined the
     // same way. But `sync join PROVIDER_ID` names a Provider, so when one answers to the key it is
@@ -256,13 +262,21 @@ export function buildPreview(input: {
   } else if (input.request.kind === 'purge') {
     const purge = input.request;
     const remoteIds = new Set(remoteSnapshot.map((entity) => entity.objectId));
+    // A row's `desired` is the body the last drain published, so an edit made while the backend was
+    // unreachable names its new dependencies only in the outbox. Walking published bodies alone
+    // misses a rule that has just started referencing the purge target: erasing it anyway lets the
+    // next drain publish that rule against an object no peer can resolve. Newest queued body wins,
+    // and a queued delete carries none — the object is on its way out.
+    const queued = new Map<string, readonly Dependency[]>(
+      (input.queued ?? []).map((operation) => [operation.objectId, operation.body?.dependencies ?? []]),
+    );
     const all = [
       ...localSnapshot.map((entity) => ({
         objectId: entity.objectId,
         logicalKey: entity.logicalKey,
         kind: entity.kind,
         remote: false,
-        dependencies: entity.desired?.dependencies ?? [],
+        dependencies: queued.get(entity.objectId) ?? entity.desired?.dependencies ?? [],
       })),
       ...remoteSnapshot.map((entity) => ({
         objectId: entity.objectId,
@@ -272,7 +286,7 @@ export function buildPreview(input: {
         dependencies: remoteDependencies(entity),
       })),
     ];
-    const targets = new Set(
+    const roots = new Set(
       all
         .filter((entity) =>
           purge.scope === 'provider'
@@ -281,11 +295,12 @@ export function buildPreview(input: {
         )
         .map((entity) => entity.objectId),
     );
+    const targets = new Set(roots);
     let changed = true;
     while (changed) {
       changed = false;
       for (const entity of all) {
-        if (entity.remote && entity.dependencies.some((dependency) => targets.has(dependency.objectId))) {
+        if (entity.dependencies.some((dependency) => targets.has(dependency.objectId))) {
           if (!targets.has(entity.objectId)) {
             targets.add(entity.objectId);
             changed = true;
@@ -293,7 +308,13 @@ export function buildPreview(input: {
         }
       }
     }
-    for (const objectId of targets) if (remoteIds.has(objectId)) ids.add(objectId);
+    for (const objectId of targets) {
+      if (remoteIds.has(objectId)) ids.add(objectId);
+      // A local-only dependent has no cloud head, so a purge erases nothing of it and it is no row
+      // of this preview. Its queued publication lands after the erase all the same, so it blocks the
+      // Apply instead of being shown as collateral.
+      else if (!roots.has(objectId) && queued.has(objectId)) queuedDependency = true;
+    }
   } else for (const id of [...localByObject.keys(), ...remoteByObject.keys()]) ids.add(id);
   const identityGroups = new Map<string, Set<string>>();
   // A tombstoned head no longer claims its identity, on either side. Counting one would report a
@@ -451,11 +472,12 @@ export function buildPreview(input: {
   const allLocalIds = new Set(localSnapshot.map((entity) => entity.objectId));
   const dependencyError =
     input.request.kind === 'purge' &&
-    candidates.some((candidate) =>
-      remoteDependencies(remoteByObject.get(candidate.row.objectId)).some(
-        (dependency) => !allRemoteIds.has(dependency.objectId) && !allLocalIds.has(dependency.objectId),
-      ),
-    );
+    (queuedDependency ||
+      candidates.some((candidate) =>
+        remoteDependencies(remoteByObject.get(candidate.row.objectId)).some(
+          (dependency) => !allRemoteIds.has(dependency.objectId) && !allLocalIds.has(dependency.objectId),
+        ),
+      ));
   const preview: SyncPreview = {
     previewId: input.previewId,
     kind: input.request.kind,

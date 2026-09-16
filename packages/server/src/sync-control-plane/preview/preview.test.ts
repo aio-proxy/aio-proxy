@@ -440,6 +440,73 @@ test('provider purge targets the Provider ID while returning its opaque cloud ob
   expect(built.preview.rows.map((row) => row.objectId)).toEqual(['cloud-work']);
 });
 
+test('purge lists a dependent whose queued publication references the target', () => {
+  // The rule was edited to route to the Provider while the backend was unreachable: the new body is
+  // in the outbox and the row's `desired` still holds the published one, which names no Provider.
+  const rule = (dependencies: string[]) => ({
+    kind: 'model-rule' as const,
+    logicalKey: 'sonnet',
+    value: {},
+    dependencies: dependencies.map((objectId) => ({ objectId, providerId: 'work' })),
+  });
+  const built = buildPreview({
+    request: { kind: 'purge', scope: 'provider', objectId: 'work' },
+    local: [
+      {
+        objectId: 'cloud-work',
+        logicalKey: 'work',
+        kind: 'provider',
+        mode: 'included',
+        epoch: 1,
+        desired: { kind: 'provider', logicalKey: 'work', value: {}, dependencies: [] },
+        baseline: 'work-revision',
+        overrides: [],
+        pendingReason: null,
+      },
+      {
+        objectId: 'rule-sonnet',
+        logicalKey: 'sonnet',
+        kind: 'model-rule',
+        mode: 'included',
+        epoch: 1,
+        desired: rule([]),
+        baseline: 'rule-revision',
+        overrides: [],
+        pendingReason: null,
+      },
+    ],
+    remote: [
+      {
+        objectId: 'cloud-work',
+        logicalKey: 'work',
+        kind: 'provider',
+        version: 'v1',
+        revision: 'work-revision',
+        body: { kind: 'provider', logicalKey: 'work', value: {}, dependencies: [] },
+      },
+    ],
+    queued: [
+      { operationId: 'op-1', objectId: 'rule-sonnet', epoch: 1, kind: 'put', commitId: 'commit', body: rule([]) },
+      {
+        operationId: 'op-2',
+        objectId: 'rule-sonnet',
+        epoch: 1,
+        kind: 'put',
+        commitId: 'commit',
+        body: rule(['cloud-work']),
+      },
+    ],
+    fence: { bindingId: 'binding', sessionGeneration: 1, localCommitId: '', rangeRevision: 0, remoteVersions: {} },
+    previewId: 'preview-queued',
+    expiresAt: 1,
+  });
+
+  // A local-only rule has no cloud head to erase, so it is no row — but the purge has to fail
+  // closed: the next drain would otherwise publish a rule every peer resolves to nothing.
+  expect(built.preview.rows.map((row) => row.objectId)).toEqual(['cloud-work']);
+  expect(built.record.dependencyError).toBe(true);
+});
+
 test('rejoin preview is one-use, expires, and redacts candidate values', async () => {
   let remoteVersion = 'v1';
   const control = createSyncControlPlane({
