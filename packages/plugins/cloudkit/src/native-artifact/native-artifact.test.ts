@@ -75,6 +75,34 @@ test('installs a verified staged bundle and preserves it when extraction is inte
   });
 });
 
+// A corrupt cache used to be terminal: every reconnect took the fast path, failed verification and
+// threw, so the backend stayed unusable until the user deleted the internal cache by hand.
+test('reinstalls from the verified archive when the cached bundle no longer verifies', async () => {
+  await withArtifactFixture(async (fixture) => {
+    let cachedVerifications = 0;
+    const installRoot = join(fixture.cacheRoot, '1.0.0');
+    const hooks = {
+      verifyBundle: async (appPath: string) => {
+        // Only the cached copy is rejected; the freshly staged bundle still has to pass.
+        if (!appPath.startsWith(installRoot)) return;
+        cachedVerifications += 1;
+        throw new Error('cached bundle is corrupt');
+      },
+      extractArchive: async (archivePath: string, stagingRoot: string) => {
+        await Bun.$`unzip -q ${archivePath} -d ${stagingRoot}`;
+      },
+    };
+    const installed = await ensureNativeArtifact({ ...fixture, signal: new AbortController().signal, hooks });
+    await writeFile(installed.executable, 'corrupted');
+
+    const repaired = await ensureNativeArtifact({ ...fixture, signal: new AbortController().signal, hooks });
+
+    expect(cachedVerifications).toBe(1);
+    expect(repaired.executable).toBe(installed.executable);
+    expect(await Bun.file(repaired.executable).text()).toBe('#!/bin/sh\n');
+  });
+});
+
 test('keeps the previous installation when activation fails', async () => {
   await withArtifactFixture(async (fixture) => {
     const previousExecutable = join(

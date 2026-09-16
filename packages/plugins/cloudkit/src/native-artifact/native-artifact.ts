@@ -153,8 +153,19 @@ export async function ensureNativeArtifact(input: {
   await mkdir(input.cacheRoot, { recursive: true });
   const installRoot = join(input.cacheRoot, manifest.nativeVersion);
   const existing = join(installRoot, 'AIOProxyCloudKit.app', 'Contents', 'MacOS', 'AIOProxyCloudKit');
-  if (await Bun.file(existing).exists()) {
-    await verifyBundle(dirname(dirname(dirname(existing))), manifest, existing);
+  const verify = input.hooks?.verifyBundle ?? verifyBundle;
+  // A cached bundle that fails verification — corruption, an interrupted external move — is a cache
+  // miss, not a refusal. The archive shipped in the installed package was digest-verified above and
+  // reinstalling replaces `installRoot` wholesale, so recovery costs one extraction. Throwing here
+  // sent every Retry down the same branch and left the backend unable to connect until the user
+  // found and deleted the internal cache by hand.
+  if (
+    (await Bun.file(existing).exists()) &&
+    (await verify(dirname(dirname(dirname(existing))), manifest, existing).then(
+      () => true,
+      () => false,
+    ))
+  ) {
     return { executable: existing };
   }
   const stagingRoot = await mkdtemp(join(input.cacheRoot, '.staging-'));
@@ -179,7 +190,7 @@ export async function ensureNativeArtifact(input: {
     if (apps.length !== 1) throw new NativeArtifactError('Native archive must contain exactly one app bundle');
     const appPath = apps[0]!;
     const executable = join(appPath, 'Contents', 'MacOS', 'AIOProxyCloudKit');
-    await (input.hooks?.verifyBundle ?? verifyBundle)(appPath, manifest, executable);
+    await verify(appPath, manifest, executable);
     input.signal.throwIfAborted();
     previousRoot = `${installRoot}.previous-${crypto.randomUUID()}`;
     const hadPrevious = await stat(installRoot)
