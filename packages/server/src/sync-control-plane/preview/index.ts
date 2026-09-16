@@ -2,14 +2,5 @@ export { listRemoteEntities, snapshotLocalEntities, snapshotRemoteEntities, type
 export { SyncPreviewError } from './errors';
 export { applyOverrides } from './overrides';
 export { secretChange } from './redact';
-export {
-  buildPreview,
-  createPreviewToken,
-  entitiesDigest,
-  latestCommitId,
-  objectValue,
-  sameFence,
-  type PreviewCandidate,
-  type PreviewFence,
-  type PreviewRecord,
-} from './preview';
+export { createPreviewToken, entitiesDigest, latestCommitId, sameFence, type PreviewFence } from './fence';
+export { buildPreview, objectValue, type PreviewCandidate, type PreviewRecord } from './preview';

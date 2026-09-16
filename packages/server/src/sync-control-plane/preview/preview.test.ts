@@ -7,8 +7,9 @@ import { createSyncControlPlane } from '../control-plane';
 import { SyncOperationError, assertDecisions } from '../operations';
 import { listRemoteEntities } from './entities';
 import { SyncPreviewError } from './errors';
+import { createPreviewToken } from './fence';
 import { applyOverrides } from './overrides';
-import { buildPreview, createPreviewToken } from './preview';
+import { buildPreview } from './preview';
 import { redactEntityValue, secretChange } from './redact';
 
 const providerBody = (value: Record<string, JsonValue>) => ({
