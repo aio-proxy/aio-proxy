@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import { BINARY_DOWNLOAD_TIMEOUT_MS, BINARY_NPM_SCOPE, NPM_REGISTRY, SUPPORTED_BINARY_TARGETS } from './constants';
+import { parseVersionOutput } from './version-output';
 
 type Verification = { readonly ok: boolean; readonly actual?: string };
 type ReplaceOptions = {
@@ -100,7 +101,7 @@ const verifyInstalledVersion = async (binPath: string, expected: string): Promis
   const proc = Bun.spawn([binPath, '--version'], { stdout: 'pipe', stderr: 'ignore' });
   const out = (await new Response(proc.stdout).text()).trim();
   if ((await proc.exited) !== 0) return { ok: false };
-  const actual = out.match(/(\d+\.\d+\.\d+)/)?.[1];
+  const actual = parseVersionOutput(out);
   return { ok: actual === expected, ...(actual === undefined ? {} : { actual }) };
 };
 

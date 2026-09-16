@@ -83,13 +83,7 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
           <h2 className="font-semibold">{m['dashboard.providers.oauth.loopback_title']()}</h2>
           <OAuthAuthorizationUrlField url={session.authorizationUrl} />
           {session.allowManualCallback ? (
-            <form
-              className="space-y-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void callbackForm.handleSubmit();
-              }}
-            >
+            <div className="space-y-3">
               <callbackForm.Field name="callbackUrl">
                 {(field) => (
                   <Field>
@@ -99,14 +93,19 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
                       value={field.state.value}
                       placeholder={m['dashboard.providers.oauth.manual_callback_placeholder']()}
                       onChange={(event) => field.handleChange(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+                        event.preventDefault();
+                        if (!isPending) void callbackForm.handleSubmit();
+                      }}
                     />
                   </Field>
                 )}
               </callbackForm.Field>
-              <Button type="submit" disabled={isPending}>
+              <Button type="button" disabled={isPending} onClick={() => void callbackForm.handleSubmit()}>
                 {m['dashboard.providers.oauth.submit_callback']()}
               </Button>
-            </form>
+            </div>
           ) : null}
         </div>
       ) : null}

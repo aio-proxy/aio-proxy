@@ -16,9 +16,17 @@ name: Release
 on:
   push:
     branches: [main]
+  # canary: dispatch this same workflow file from any branch. Reusing the file
+  # name keeps npm OIDC working — trusted publishing matches on org/repo +
+  # workflow filename, not on the git ref.
+  workflow_dispatch:
 
 concurrency:
-  group: release
+  # Per-ref: a canary on a branch must not queue behind (or block) main's release.
+  # All canary dispatches share ONE group regardless of branch, though — they all
+  # move the single global `canary` dist-tag, so two concurrent runs could leave
+  # the tag on the slower (older) one, or split it across the lockstep packages.
+  group: release-${{ github.event_name == 'workflow_dispatch' && 'canary' || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -42,6 +50,7 @@ jobs:
       # at parse time with "Unrecognized named-value: 'runner'". Export via
       # $GITHUB_ENV so publish (scripts/release.ts) and the upload step share one path.
       - name: Set release assets directory
+        if: github.event_name == 'push'
         run: |
           echo "RELEASE_ASSETS_DIR=$RUNNER_TEMP/release-assets" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/release-assets"
@@ -213,6 +222,7 @@ jobs:
       # (and the @changesets/* devDependencies) together when upgrading.
       - name: Changesets — maintain Version PR or publish
         id: changesets
+        if: github.event_name == 'push'
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           # This action uses kebab-case inputs and HARD-FAILS if given any legacy
@@ -233,6 +243,19 @@ jobs:
           # then, once every package exists and its trusted publisher is configured
           # on npmjs.com, delete the secret so this resolves to empty and publishing
           # runs on OIDC alone.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # canary: the manual-dispatch counterpart of the step above. Publishes every
+      # package at X.Y.(Z+1)-canary.<run_number>.<sha7> to the `canary` dist-tag and
+      # stops there — no version commit, no tag, no Release, no Docker, no Homebrew.
+      # See docs/superpowers/specs/2026-09-15-canary-release-design.md.
+      - name: Publish canary
+        if: github.event_name == 'workflow_dispatch'
+        run: bun run scripts/release.ts --canary
+        env:
+          # Same fallback as the changesets step: OIDC is the intended path, the
+          # token only matters while the NPM_TOKEN secret still exists.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

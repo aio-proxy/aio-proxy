@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.23.1
+
+### Patch Changes
+
+- [#362](https://github.com/aio-proxy/aio-proxy/pull/362) [`1658708`](https://github.com/aio-proxy/aio-proxy/commit/1658708238094422610bcae1f05bbebd08186d97) Thanks [@baranwang](https://github.com/baranwang)! - Fix manual OAuth callback submission in the Dashboard without navigating the editor page.
+
 ## 0.23.0
 
 ### Minor Changes

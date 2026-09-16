@@ -16,6 +16,7 @@ import type {
   AgentUpgradeHandoffDeps,
 } from './post-upgrade-agents';
 import { fetchLatestVersion } from './registry';
+import { parseVersionOutput } from './version-output';
 
 export type UpgradeOptions = {
   readonly check?: boolean;
@@ -51,7 +52,7 @@ const readBinVersion = async (bin: string): Promise<string> => {
   });
   const stdout = (await new Response(proc.stdout).text()).trim();
   if ((await proc.exited) !== 0) throw new Error(`${bin} --version exited nonzero`);
-  const version = stdout.match(/(\d+\.\d+\.\d+)/)?.[1] ?? stdout;
+  const version = parseVersionOutput(stdout) ?? stdout;
   try {
     Bun.semver.order(version, '0.0.0');
   } catch {

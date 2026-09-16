@@ -70,3 +70,24 @@ bun changeset
 - Purely internal changes (refactors, tests, tooling) need no changeset.
 
 You do not run `changeset version` or publish by hand. On merge to `main`, CI maintains a standing `chore: release` Version PR that consumes the accumulated changesets; merging that PR is what cuts a release.
+
+## Canary releases
+
+For a change that is large or hard to verify locally, publish a canary build and install it for real. Run the **Release** workflow manually (Actions → Release → Run workflow) and pick your branch. It publishes every package at `X.Y.(Z+1)-canary.<run_number>.g<sha7>` — where `X.Y.Z` is the current published release, not your branch's manifest version — to the npm `canary` dist-tag. Nothing else moves: no version commit, no git tag, no GitHub Release, no Docker image, no Homebrew notification, and the `latest` dist-tag is untouched.
+
+```bash
+# try it once
+bunx aio-proxy@canary
+
+# switch an existing install over (npm/bun/pnpm installs and standalone binaries)
+aio-proxy upgrade --version 0.23.1-canary.4213.ga1b2c3d
+
+# go back to the stable line
+aio-proxy upgrade --force
+```
+
+A canary sorts above the last release and below the next one, so canary users are not prompted to "upgrade" backwards, and the next real release takes over on its own. Canary versions stay on npm permanently — that is expected, the `canary` dist-tag is just a pointer to the most recent one.
+
+Homebrew installs cannot take a canary: the tap carries only released bottles, and `upgrade` hands Homebrew the formula rather than a version, so `--version` is ignored there. Test a canary from a `bunx` run or a non-Homebrew install instead.
+
+Dispatching the workflow runs that branch's own `scripts/release.ts` with publish credentials, so a canary is only as trustworthy as the branch it came from. Anyone who can dispatch the workflow can publish — treat write access to this repository as publish access.

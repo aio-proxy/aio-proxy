@@ -46,6 +46,63 @@ test('clears a manually submitted callback URL', async () => {
   });
 });
 
+test.each(['click', 'Enter'])(
+  'submits the manual callback via %s without submitting the editor form',
+  async (action) => {
+    const submit = rs.fn();
+    const submitEditor = rs.fn((event: React.FormEvent) => event.preventDefault());
+    render(
+      <form onSubmit={submitEditor}>
+        <OAuthAuthorizationPanel
+          session={{
+            id: '550e8400-e29b-41d4-a716-446655440000',
+            status: 'loopback',
+            authorizationUrl: 'https://example.com/authorize',
+            allowManualCallback: true,
+          }}
+          onSubmitCallback={submit}
+          onCancel={rs.fn()}
+          isPending={false}
+        />
+      </form>,
+    );
+
+    const callbackUrl = 'http://localhost:1455/auth/callback?code=example&state=example';
+    const input = screen.getByLabelText(/Complete callback URL|完整回调 URL/u);
+    fireEvent.change(input, { target: { value: callbackUrl } });
+    if (action === 'click') fireEvent.click(screen.getByRole('button', { name: /Submit callback|提交回调/u }));
+    else expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(callbackUrl));
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submitEditor).not.toHaveBeenCalled();
+  },
+);
+
+test('does not submit the manual callback while a request is pending', async () => {
+  const submit = rs.fn();
+  render(
+    <OAuthAuthorizationPanel
+      session={{
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        status: 'loopback',
+        authorizationUrl: 'https://example.com/authorize',
+        allowManualCallback: true,
+      }}
+      onSubmitCallback={submit}
+      onCancel={rs.fn()}
+      isPending
+    />,
+  );
+
+  const input = screen.getByLabelText(/Complete callback URL|完整回调 URL/u);
+  fireEvent.change(input, { target: { value: 'http://localhost:1455/auth/callback?code=example&state=example' } });
+  fireEvent.click(screen.getByRole('button', { name: /Submit callback|提交回调/u }));
+  expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(submit).not.toHaveBeenCalled();
+});
+
 test('shows a restart action for a cancelled session', () => {
   const restart = rs.fn();
   render(
