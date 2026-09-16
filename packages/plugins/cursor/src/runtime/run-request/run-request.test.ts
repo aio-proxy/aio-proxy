@@ -3,7 +3,12 @@ import { expect, test } from 'bun:test';
 import type { LanguageModelV4Prompt, LanguageModelV4ToolResultPart } from '@ai-sdk/provider';
 import { create, fromBinary } from '@bufbuild/protobuf';
 
-import { AgentClientMessageSchema, ConversationStateStructureSchema } from '../../gen/agent_pb';
+import {
+  AgentClientMessageSchema,
+  ConversationStateStructureSchema,
+  ConversationTurnStructureSchema,
+  UserMessageSchema,
+} from '../../gen/agent_pb';
 import { storeCursorBlob } from '../../store/blobs';
 import { buildCursorRunRequestBytes } from './run-request';
 
@@ -294,6 +299,50 @@ test('a changed image in full history rebuilds instead of reusing stale cached t
   });
 
   expect(changed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
+test('keeps historical images in Cursor turns without emitting root file content', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'inspect this image' },
+          { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+        ],
+      },
+      { role: 'assistant', content: [{ type: 'text', text: 'initial analysis' }] },
+      { role: 'user', content: [{ type: 'text', text: 'what did the image show?' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-image-follow-up', blobStore },
+  });
+
+  const rootMessages = conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(rootMessages).toContainEqual({
+    role: 'user',
+    content: [{ type: 'text', text: 'inspect this image' }],
+  });
+  expect(JSON.stringify(rootMessages)).not.toContain('"type":"file"');
+
+  expect(conversationState.turns).toHaveLength(1);
+  const turnBytes = blobStore.get(Buffer.from(conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected historical turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected historical user message blob');
+  const historicalUser = fromBinary(UserMessageSchema, userMessageBytes);
+  const image = historicalUser.selectedContext?.selectedImages[0];
+  expect(image?.mimeType).toBe('image/png');
+  expect(image?.dataOrBlobId.case).toBe('data');
+  expect([...(image!.dataOrBlobId.value as Uint8Array)]).toEqual([1, 2, 3]);
 });
 
 test('an incremental request without inbound history preserves the reusable checkpoint', () => {

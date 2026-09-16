@@ -42,21 +42,9 @@ function buildRootMessages(prompt: LanguageModelV4Prompt, knownCallIds: Set<stri
   for (const message of prompt) {
     if (message.role === 'user') {
       const text = extractV4UserText(message.content);
-      const content: unknown[] = text.length > 0 ? [{ type: 'text', text }] : [];
-      for (const part of message.content) {
-        if (
-          part.type !== 'file' ||
-          (part.mediaType !== 'image' && !part.mediaType.startsWith('image/')) ||
-          part.data.type !== 'data'
-        )
-          continue;
-        const data =
-          part.data.data instanceof Uint8Array
-            ? Buffer.from(part.data.data).toString('base64')
-            : Buffer.from(part.data.data, 'base64').toString('base64');
-        content.push({ type: 'file', mediaType: part.mediaType, data: { type: 'data', data } });
-      }
-      if (content.length > 0) messages.push({ role: 'user', content });
+      // Historical images already travel in ConversationTurnStructure selectedImages;
+      // Cursor root messages reject the AI SDK's `file` content type.
+      if (text.length > 0) messages.push({ role: 'user', content: [{ type: 'text', text }] });
     } else if (message.role === 'assistant') {
       let content: Record<string, unknown>[] = [];
       const flush = () => {

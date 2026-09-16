@@ -24,6 +24,7 @@ import {
   createCursorUserMessage,
   extractV4UserText,
   hasMatchingPendingToolResult,
+  v4UserHasImages,
 } from '../history';
 
 export type CursorRunState = {
@@ -85,9 +86,13 @@ export function buildCursorRunRequestBytes(input: {
     cachedHead.length === systemPromptIds.length &&
     systemPromptIds.every((id, index) => Buffer.from(cachedHead[index]!).equals(id));
   const hasInboundHistory = promptRootMessages.length > systemPromptIds.length;
+  const hasHistoricalImages = prompt.some(
+    (message, index) => index !== historyActiveIndex && message.role === 'user' && v4UserHasImages(message.content),
+  );
   const promptHistoryMatches =
     !hasInboundHistory ||
-    (cachedRootMessages.length === promptRootMessages.length &&
+    (!hasHistoricalImages &&
+      cachedRootMessages.length === promptRootMessages.length &&
       promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)));
   const reusableState =
     state.conversationState && (isPendingResume || (promptHeadMatches && promptHistoryMatches))
