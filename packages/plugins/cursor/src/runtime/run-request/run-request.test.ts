@@ -202,20 +202,15 @@ test('a matching full-history request preserves the reusable Cursor checkpoint',
     { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
     { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
   ];
-  const systemPrompt = storeCursorBlob(
-    blobStore,
-    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
-  );
-  const cachedUser = storeCursorBlob(
-    blobStore,
-    new TextEncoder().encode(JSON.stringify({ role: 'user', content: [{ type: 'text', text: 'first user' }] })),
-  );
-  const cachedAssistant = storeCursorBlob(
-    blobStore,
-    new TextEncoder().encode(JSON.stringify({ role: 'assistant', content: [{ type: 'text', text: 'first answer' }] })),
-  );
-  const cachedTurn = storeCursorBlob(blobStore, new TextEncoder().encode('richer-cached-turn'));
-  const { conversationState } = buildCursorRunRequestBytes({
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-checkpoint', blobStore },
+  });
+  const repeated = buildCursorRunRequestBytes({
     prompt,
     wireModelId: 'claude-4.5-sonnet',
     displayModelId: 'claude-4.5-sonnet',
@@ -224,15 +219,70 @@ test('a matching full-history request preserves the reusable Cursor checkpoint',
     state: {
       conversationId: 'conv-checkpoint',
       blobStore,
-      conversationState: create(ConversationStateStructureSchema, {
-        rootPromptMessagesJson: [systemPrompt, cachedUser, cachedAssistant],
-        turns: [cachedTurn],
-      }),
+      conversationState: initial.conversationState,
     },
   });
 
-  expect(conversationState.rootPromptMessagesJson).toEqual([systemPrompt, cachedUser, cachedAssistant]);
-  expect(conversationState.turns).toEqual([cachedTurn]);
+  expect(repeated.conversationState.rootPromptMessagesJson).toEqual(initial.conversationState.rootPromptMessagesJson);
+  expect(repeated.conversationState.turns).toEqual(initial.conversationState.turns);
+});
+
+test.each([
+  {
+    label: 'the cached turn blob is missing',
+    corrupt: (blobStore: Map<string, Uint8Array>, turnId: Uint8Array) => {
+      blobStore.delete(Buffer.from(turnId).toString('hex'));
+    },
+  },
+  {
+    label: 'the cached user-message blob is missing',
+    corrupt: (blobStore: Map<string, Uint8Array>, turnId: Uint8Array) => {
+      const turnBytes = blobStore.get(Buffer.from(turnId).toString('hex'));
+      if (turnBytes === undefined) throw new Error('expected cached turn blob');
+      const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+      if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected cached agent turn');
+      blobStore.delete(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+    },
+  },
+  {
+    label: 'the cached turn protobuf is malformed',
+    corrupt: (blobStore: Map<string, Uint8Array>, turnId: Uint8Array) => {
+      blobStore.set(Buffer.from(turnId).toString('hex'), Uint8Array.of(0x80));
+    },
+  },
+])('a full-history request rebuilds when $label', ({ corrupt }) => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'user', content: [{ type: 'text', text: 'first user' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-unreadable-checkpoint', blobStore },
+  });
+  const cachedTurn = initial.conversationState.turns[0];
+  if (cachedTurn === undefined) throw new Error('expected cached turn');
+  corrupt(blobStore, cachedTurn);
+
+  const rebuilt = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-unreadable-checkpoint',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(rebuilt.conversationState.turns).not.toEqual([cachedTurn]);
 });
 
 test('an edited full-history request rebuilds instead of reusing stale cached turns', () => {

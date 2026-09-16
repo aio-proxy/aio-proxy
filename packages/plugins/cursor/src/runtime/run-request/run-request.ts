@@ -92,13 +92,13 @@ export function buildCursorRunRequestBytes(input: {
     (message, index) => index !== historyActiveIndex && message.role === 'user' && v4UserHasImages(message.content),
   );
   const cachedTurns = state.conversationState?.turns ?? [];
-  const cachedHasImages = turnsHaveImages(cachedTurns, blobStore);
   const hasInboundHistory = promptRootMessages.length > systemPromptIds.length || hasHistoricalImages;
   const promptHistoryMatches =
     !hasInboundHistory ||
     (cachedRootMessages.length === promptRootMessages.length &&
       promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)) &&
-      ((!hasHistoricalImages && !cachedHasImages) || turnImagesMatch(promptTurns, cachedTurns, blobStore)));
+      ((!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
+        turnImagesMatch(promptTurns, cachedTurns, blobStore)));
   const reusableState =
     state.conversationState && (isPendingResume || (promptHeadMatches && promptHistoryMatches))
       ? state.conversationState
@@ -153,14 +153,20 @@ export function buildCursorRunRequestBytes(input: {
   };
 }
 
-function turnsHaveImages(turns: readonly Uint8Array[], blobStore: ReadonlyMap<string, Uint8Array>): boolean {
-  return turns.some((turn) => {
-    try {
-      return (readTurnImages(turn, blobStore)?.length ?? 0) > 0;
-    } catch {
-      return false;
+function turnsHaveImages(
+  turns: readonly Uint8Array[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): boolean | undefined {
+  try {
+    for (const turn of turns) {
+      const images = readTurnImages(turn, blobStore);
+      if (images === undefined) return undefined;
+      if (images.length > 0) return true;
     }
-  });
+    return false;
+  } catch {
+    return undefined;
+  }
 }
 
 function turnImagesMatch(
