@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 
-import { bundleVersion } from '../src/native-artifact';
+import { bundleVersion } from '../../src/native-artifact';
 import {
   CLOUDKIT_BUNDLE_ID,
   directoryDigest,
@@ -10,9 +10,9 @@ import {
   validateManifest,
   type ArtifactManifest,
   type CommandResult,
-} from './artifact';
+} from '../artifact';
 
-const packageRoot = resolve(import.meta.dir, '..');
+const packageRoot = resolve(import.meta.dir, '..', '..');
 const nativeRoot = join(packageRoot, 'native');
 const nativeDist = join(packageRoot, 'dist', 'native');
 
@@ -89,7 +89,7 @@ function infoPlist(template: string, version: string): string {
   return template.replaceAll('__PLUGIN_VERSION__', version);
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   if (process.platform !== 'darwin') {
     throw new Error('CloudKit native artifacts can only be built on macOS 14 or later');
   }
@@ -124,11 +124,4 @@ async function main(): Promise<void> {
   };
   validateManifest(manifest);
   await writeFile(join(nativeDist, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-}
-
-if (import.meta.main) {
-  await main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : 'CloudKit native build failed');
-    process.exitCode = 1;
-  });
 }

@@ -16,7 +16,7 @@ OAUTH_SYNC_TEST_ACCOUNT=1 \
 OAUTH_SYNC_PROVIDER_ID=<local-provider-id> \
 OAUTH_SYNC_REMOTE_OBJECT_ID=<test-remote-object-id> \
 OAUTH_SYNC_UPSTREAM=<provider-under-test> \
-  rtk proxy bun scripts/verify-oauth-sync.ts \
+  rtk proxy bun scripts/verify-oauth-sync/index.ts \
     --plugin @aio-proxy/plugin-openai-chatgpt --live
 ```
 

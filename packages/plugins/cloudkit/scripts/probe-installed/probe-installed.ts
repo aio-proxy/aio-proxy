@@ -15,9 +15,9 @@ import {
   validateProfileMetadata,
   type ArtifactManifest,
   type CommandResult,
-} from './artifact';
+} from '../artifact';
 
-const packageRoot = resolve(import.meta.dir, '..');
+const packageRoot = resolve(import.meta.dir, '..', '..');
 const nativeDist = join(packageRoot, 'dist', 'native');
 const failureCodes = new Set([
   'offline',
@@ -278,7 +278,7 @@ function evidence(
   };
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   if (process.platform !== 'darwin') throw new Error('Installed CloudKit probing requires macOS');
   const osVersion = (await run('sw_vers', ['-productVersion'])).stdout.trim();
   if (!/^\d+(?:\.\d+){1,2}$/u.test(osVersion)) throw new Error('macOS version evidence is invalid');
@@ -321,11 +321,4 @@ async function main(): Promise<void> {
     await Bun.write(evidencePath, `${output}\n`);
   }
   console.log(output);
-}
-
-if (import.meta.main) {
-  await main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : 'CloudKit installed probe failed');
-    process.exitCode = 1;
-  });
 }

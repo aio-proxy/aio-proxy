@@ -7,7 +7,7 @@ import {
 import { isRecord } from '@aio-proxy/shared';
 import { CapabilityIdSchema } from '@aio-proxy/types';
 
-import { validateConfigSpec } from '../config-spec';
+import { validateConfigSpec } from '../../config-spec';
 
 function invalidBackend(): never {
   throw new Error('Invalid sync backend');

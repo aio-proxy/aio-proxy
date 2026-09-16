@@ -1,9 +1,7 @@
-#!/usr/bin/env bun
-
-// Prints `true` when the CloudKit backend may be published and `false` otherwise. The release
-// workflow runs this file to decide whether to ask for the Apple signing secrets; scripts/release.ts
-// imports the same function to decide whether the package joins the publish set. One definition, so
-// the signing step and the publish set cannot disagree about whether the backend is releasable.
+// Whether the CloudKit backend may be published. The release workflow runs `index.ts` and reads the
+// printed answer to decide whether to ask for the Apple signing secrets; scripts/release.ts imports
+// the same function to decide whether the package joins the publish set. One definition, so the
+// signing step and the publish set cannot disagree about whether the backend is releasable.
 
 import { join } from 'node:path';
 
@@ -21,11 +19,9 @@ import { join } from 'node:path';
 export async function cloudKitReleaseGatePassed(): Promise<boolean> {
   const path =
     process.env['APPLE_CLOUDKIT_EVIDENCE_PATH'] ??
-    join(import.meta.dir, '..', 'docs', 'testing', 'evidence', 'cloudkit-sync.json');
+    join(import.meta.dir, '..', '..', 'docs', 'testing', 'evidence', 'cloudkit-sync.json');
   const evidence = (await Bun.file(path)
     .json()
     .catch(() => undefined)) as { readonly productionGate?: unknown } | undefined;
   return evidence?.productionGate === 'passed';
 }
-
-if (import.meta.main) console.log(await cloudKitReleaseGatePassed());

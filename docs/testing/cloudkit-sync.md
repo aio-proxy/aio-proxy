@@ -54,7 +54,7 @@ path.
 Build the two architecture slices and the unsigned app bundle:
 
 ```sh
-rtk proxy bun packages/plugins/cloudkit/scripts/build-native.ts
+rtk proxy bun packages/plugins/cloudkit/scripts/build-native/index.ts
 ```
 
 The result is `packages/plugins/cloudkit/dist/native/AIOProxyCloudKit.app` and
@@ -85,7 +85,7 @@ Probe the versioned installed cache path with a container identifier:
 
 ```sh
 rtk proxy env APPLE_CLOUDKIT_CONTAINER_ID=iCloud.dev.aioproxy \
-  bun packages/plugins/cloudkit/scripts/probe-installed.ts
+  bun packages/plugins/cloudkit/scripts/probe-installed/index.ts
 ```
 
 The probe stages the bundle without removing the previous version, verifies
@@ -132,7 +132,7 @@ Being signed, notarized, or runnable from Xcode is not enough. Until the
 installed path and launchd path both return a confirmed account result, keep
 the CloudKit capability unavailable for release.
 
-That is enforced rather than advised. `scripts/release-cloudkit-gate.ts` reads
+That is enforced rather than advised. `scripts/release-cloudkit-gate` reads
 this evidence: unless it records `"productionGate": "passed"`, the release
 workflow skips signing and `scripts/release.ts` drops
 `@aio-proxy/plugin-cloudkit` from the packages it publishes, so the rest of the
@@ -175,7 +175,7 @@ runner, with the exact versioned artifact copied into a temporary path for the
 publish step:
 
 ```sh
-rtk proxy bun packages/plugins/cloudkit/scripts/build-native.ts
+rtk proxy bun packages/plugins/cloudkit/scripts/build-native/index.ts
 rtk proxy bun packages/plugins/cloudkit/scripts/sign-native.ts
 ```
 

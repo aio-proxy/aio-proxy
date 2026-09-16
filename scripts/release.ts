@@ -89,7 +89,7 @@ const platformProvided = new Set(allPackages.flatMap(({ json }) => Object.keys(j
 // published before its workspace dependency (plugin-sdk -> @aio-proxy/types) is
 // uninstallable if the later publish fails mid-release.
 // CloudKit is the one package whose publishability is not a property of the repository: the backend
-// is only releasable once its live gates have been recorded (scripts/release-cloudkit-gate.ts). It is
+// is only releasable once its live gates have been recorded (scripts/release-cloudkit-gate/). It is
 // withheld from the set rather than failing the run, because a blocked native gate is no reason to
 // hold the rest of the release — and the workflow skips signing on the same answer, so a withheld
 // backend costs the run neither Apple secrets nor a notarization.

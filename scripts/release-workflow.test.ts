@@ -95,11 +95,11 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
   const directory = await mkdtemp(join(tmpdir(), 'aio-cloudkit-gate-'));
   const fakeBin = join(directory, 'bin');
   const manifest = join(directory, 'packages', 'plugins', 'cloudkit', 'package.json');
-  const gateScript = join(directory, 'scripts', 'release-cloudkit-gate.ts');
+  const gateScript = join(directory, 'scripts', 'release-cloudkit-gate', 'index.ts');
   const output = join(directory, 'github-output');
   await mkdir(join(directory, 'packages', 'plugins', 'cloudkit'), { recursive: true });
   await mkdir(join(directory, '.changeset'));
-  await mkdir(join(directory, 'scripts'));
+  await mkdir(join(directory, 'scripts', 'release-cloudkit-gate'), { recursive: true });
   await writeFile(join(directory, '.changeset', 'README.md'), '# Changesets\n');
   await mkdir(fakeBin);
   // A registry holding 0.24.0-beta.1 and nothing else, answering both the dist-tag and
@@ -113,7 +113,7 @@ test('the CloudKit signing gate asks the registry about the exact version', asyn
   await chmod(join(fakeBin, 'npm'), 0o755);
 
   const publishableFor = async (version: string, gate = 'true'): Promise<string> => {
-    // Stands in for scripts/release-cloudkit-gate.ts, whose own test covers which recorded evidence
+    // Stands in for scripts/release-cloudkit-gate, whose own test covers which recorded evidence
     // clears the backend. What this step decides is only what to do with that answer.
     await writeFile(gateScript, `console.log('${gate}');\n`);
     await writeFile(manifest, JSON.stringify({ name: '@aio-proxy/plugin-cloudkit', version }));

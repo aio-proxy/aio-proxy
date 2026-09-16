@@ -3,9 +3,9 @@ import { expect, test } from 'bun:test';
 import { definePlugin } from '@aio-proxy/plugin-sdk';
 import { z } from 'zod';
 
-import { createMemorySyncBackend } from '../../sync/test-support';
-import { loadPluginRegistry } from '../loader/index';
-import { createPluginRegistryHost } from '../registry';
+import { createMemorySyncBackend } from '../../../sync/test-support';
+import { loadPluginRegistry } from '../../loader/index';
+import { createPluginRegistryHost } from '../../registry';
 
 const options = { schema: z.object({}), form: [] };
 

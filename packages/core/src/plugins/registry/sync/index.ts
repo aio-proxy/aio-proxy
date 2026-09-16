@@ -1,0 +1,1 @@
+export { validateSyncBackend } from './sync';

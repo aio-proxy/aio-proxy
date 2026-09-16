@@ -1,12 +1,10 @@
-#!/usr/bin/env bun
-
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { createPluginRegistryHost } from '../packages/core/src/plugins/registry';
-import { evaluateOAuthEvidence, type OAuthSyncEvidence } from '../packages/core/src/sync/oauth/adapter-conformance';
-import type { PluginDescriptor } from '../packages/plugin-sdk/src';
-import { isProtectedOAuthSyncHome, runOAuthSyncLive } from './verify-oauth-sync-live';
+import { createPluginRegistryHost } from '../../packages/core/src/plugins/registry';
+import { evaluateOAuthEvidence, type OAuthSyncEvidence } from '../../packages/core/src/sync/oauth/adapter-conformance';
+import type { PluginDescriptor } from '../../packages/plugin-sdk/src';
+import { isProtectedOAuthSyncHome, runOAuthSyncLive } from '../verify-oauth-sync-live';
 
 // Every supported plugin is `@aio-proxy/plugin-<directory>` under packages/plugins/<directory>.
 const PLUGIN_PREFIX = '@aio-proxy/plugin-';
@@ -24,7 +22,7 @@ const plugins = new Set([
 
 const evidencePath = resolve(
   process.env['OAUTH_SYNC_EVIDENCE_PATH'] ??
-    join(import.meta.dir, '..', 'docs', 'testing', 'evidence', 'oauth-sync.json'),
+    join(import.meta.dir, '..', '..', 'docs', 'testing', 'evidence', 'oauth-sync.json'),
 );
 
 const safeCodes = new Set<string>([
@@ -71,15 +69,17 @@ function liveInput(): {
   return { providerId, remoteObjectId };
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const plugin = argumentValue('--plugin');
   if (plugin === undefined || !process.argv.includes('--live')) throw new Error('usage');
   const directory = plugin.startsWith(PLUGIN_PREFIX) ? plugin.slice(PLUGIN_PREFIX.length) : '';
   if (!plugins.has(directory)) throw new Error('unsupported-plugin');
   const packageJson = (await Bun.file(
-    join(import.meta.dir, '..', 'packages', 'plugins', directory, 'package.json'),
+    join(import.meta.dir, '..', '..', 'packages', 'plugins', directory, 'package.json'),
   ).json()) as { readonly version: string };
-  const imported = (await import(new URL(`../packages/plugins/${directory}/src/index.ts`, import.meta.url).href)) as {
+  const imported = (await import(
+    new URL(`../../packages/plugins/${directory}/src/index.ts`, import.meta.url).href
+  )) as {
     readonly default?: PluginDescriptor;
   };
   const descriptor = imported.default;
@@ -170,8 +170,3 @@ function argumentValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
   return index < 0 ? undefined : process.argv[index + 1];
 }
-
-if (import.meta.main)
-  await main().catch(() => {
-    process.exitCode = 1;
-  });

@@ -90,7 +90,7 @@ jobs:
       # uses: comparing numeric cores read 0.24.0-beta.2 as equal to a published 0.24.0-beta.1
       # and skipped signing for a release that did happen. The recorded live gates decide the
       # rest: a signed, notarized bundle still says nothing about the Production schema, the
-      # installed entitlements or cross-device behavior, so scripts/release-cloudkit-gate.ts
+      # installed entitlements or cross-device behavior, so scripts/release-cloudkit-gate/
       # reads the evidence that does — the same call scripts/release.ts makes to decide whether
       # the package is published at all, so this step cannot sign something that then stays home.
       - name: Determine whether CloudKit is being published
@@ -101,7 +101,7 @@ jobs:
           version="$(node -p "require('./packages/plugins/cloudkit/package.json').version")"
           pending="$(node -p "require('node:fs').readdirSync('.changeset').filter((name) => name.endsWith('.md') && name !== 'README.md').length")"
           published="$(npm view "@aio-proxy/plugin-cloudkit@$version" version 2>/dev/null || true)"
-          gate="$(bun scripts/release-cloudkit-gate.ts)"
+          gate="$(bun scripts/release-cloudkit-gate/index.ts)"
           if [ "$pending" = 0 ] && [ -z "$published" ] && [ "$gate" = true ]; then should_prepare=true; else should_prepare=false; fi
           echo "publishable=$should_prepare" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -189,7 +189,7 @@ jobs:
           echo "APPLE_CLOUDKIT_CONTAINER_ID=$APPLE_CLOUDKIT_CONTAINER_ID" >> "$GITHUB_ENV"
           echo "APPLE_NOTARY_PROFILE=$APPLE_NOTARY_PROFILE" >> "$GITHUB_ENV"
 
-          bun packages/plugins/cloudkit/scripts/build-native.ts
+          bun packages/plugins/cloudkit/scripts/build-native/index.ts
           bun packages/plugins/cloudkit/scripts/sign-native.ts
           signed="$(find packages/plugins/cloudkit/dist/native -maxdepth 1 -name '*.app.zip' ! -name '*.submission.zip' -print -quit)"
           test -n "$signed"

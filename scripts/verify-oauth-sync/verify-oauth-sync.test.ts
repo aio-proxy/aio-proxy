@@ -10,19 +10,19 @@ import {
   createSyncRepository,
   encode,
   type LiveAccount,
-} from '../packages/core/src';
-import { openDb } from '../packages/core/src/db';
-import { createPluginRepository } from '../packages/core/src/plugins/repository';
-import { createMemorySyncBackend } from '../packages/core/src/sync/test-support';
+} from '../../packages/core/src';
+import { openDb } from '../../packages/core/src/db';
+import { createPluginRepository } from '../../packages/core/src/plugins/repository';
+import { createMemorySyncBackend } from '../../packages/core/src/sync/test-support';
 import {
   classifyInterruptedRefresh,
   classifyRotationResults,
   confirmRecoveredOAuthOperation,
   isProtectedOAuthSyncHome,
   matchesOAuthAdapter,
-} from './verify-oauth-sync-live';
+} from '../verify-oauth-sync-live';
 
-const script = join(import.meta.dir, 'verify-oauth-sync.ts');
+const script = join(import.meta.dir, 'index.ts');
 
 async function run(env: Record<string, string>): Promise<{
   readonly exitCode: number;
