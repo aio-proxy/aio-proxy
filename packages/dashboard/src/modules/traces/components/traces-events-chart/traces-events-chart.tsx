@@ -32,7 +32,7 @@ export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, b
       <BarChart
         data={buckets as DashboardTraceSummaryBucket[]}
         margin={{ left: 8, right: 8 }}
-        barCategoryGap={2}
+        barCategoryGap="20%"
         maxBarSize={24}
         onClick={(state) => {
           // activeLabel 是命中那一类的 x 值，也就是桶的 at。事件挂在图上而不是 <Bar> 上，
