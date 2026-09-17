@@ -3,6 +3,10 @@
 // `@aio-proxy/server` only exports its root entry.
 export const traceAttribute = {
   attemptIndex: 'aio_proxy.attempt.index',
+  requestId: 'aio_proxy.request.id',
+  inboundProtocol: 'aio_proxy.protocol.inbound',
+  sessionSource: 'aio_proxy.session.source',
+  sessionId: 'aio_proxy.session.id',
   providerId: 'aio_proxy.provider.id',
   finalProviderId: 'aio_proxy.route.final_provider_id',
   requestModel: 'gen_ai.request.model',

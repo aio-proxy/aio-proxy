@@ -1,5 +1,5 @@
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
-import { expect, test } from '@rstest/core';
+import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { SpanDetailPanel } from './span-detail-panel';
@@ -54,7 +54,7 @@ const span: DashboardTraceSpan = {
 };
 
 test('shows the selected Span identity, status, attributes, events, and links', () => {
-  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} />);
+  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />);
 
   const panel = screen.getByTestId('span-detail-panel');
   expect(within(panel).getByText(span.name)).toBeTruthy();
@@ -77,12 +77,32 @@ test('shows the selected Span identity, status, attributes, events, and links', 
   expect(within(panel).getByText(/"relationship": "retry"/u)).toBeTruthy();
 });
 
-test('dumps the raw attributes in the attributes tab', () => {
-  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} />);
+test('lists attributes as searchable rows, and turns one into a list filter', () => {
+  const onFilter = rs.fn();
+  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={onFilter} />);
 
-  // Scoped to the tab panel: the provider ID also shows up in the status row above it.
-  const attributes = within(screen.getByTestId('span-detail-panel')).getByRole('tabpanel');
-  expect(within(attributes).getByText(/"aio_proxy\.provider\.id": "provider-a"/u)).toBeTruthy();
+  const table = screen.getByTestId('span-attribute-table');
+  expect(within(table).getByText('aio_proxy.provider.id')).toBeTruthy();
+  expect(within(table).getByText('503')).toBeTruthy();
+
+  fireEvent.change(within(table).getByTestId('span-attribute-search'), { target: { value: 'status' } });
+  expect(within(table).queryByText('aio_proxy.provider.id')).toBeNull();
+
+  // The menu content renders in a portal, so it is queried off `screen`, not the table.
+  fireEvent.click(within(table).getByRole('button', { name: /Attribute actions|属性操作/u }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /Add as filter|加为筛选条件/u }));
+  expect(onFilter).toHaveBeenCalledWith({ finalHttpStatus: 503 });
+});
+
+test('offers no filter action for an attribute the list page cannot query', () => {
+  const kind: DashboardTraceSpan = { ...span, attributes: { 'aio_proxy.provider.kind': 'api' } };
+  render(<SpanDetailPanel span={kind} trace={trace} spans={[kind]} onFilter={rs.fn()} />);
+
+  const table = screen.getByTestId('span-attribute-table');
+  fireEvent.click(within(table).getByRole('button', { name: /Attribute actions|属性操作/u }));
+
+  expect(screen.getByRole('menuitem', { name: /Copy value|复制值/u })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: /Add as filter|加为筛选条件/u })).toBeNull();
 });
 
 test('shows the OTel status when the selected Span records no HTTP status of its own', () => {
@@ -101,7 +121,7 @@ test('shows the OTel status when the selected Span records no HTTP status of its
     links: [],
   };
 
-  render(<SpanDetailPanel span={parse} trace={trace} spans={[span, parse]} />);
+  render(<SpanDetailPanel span={parse} trace={trace} spans={[span, parse]} onFilter={rs.fn()} />);
 
   const row = within(screen.getByTestId('span-detail-panel')).getByTestId('span-status-row');
   // The trace ended 500, but this span never recorded a status code, so it must not claim one.
@@ -110,7 +130,7 @@ test('shows the OTel status when the selected Span records no HTTP status of its
 });
 
 test('heads the panel with the failing HTTP status and the provider · model identity', () => {
-  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} />);
+  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />);
 
   const row = within(screen.getByTestId('span-detail-panel')).getByTestId('span-status-row');
   expect(within(row).getByText('503')).toHaveClass('text-destructive');
@@ -118,7 +138,7 @@ test('heads the panel with the failing HTTP status and the provider · model ide
 });
 
 test('keeps all six metric cells, filling missing values with the placeholder', () => {
-  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} />);
+  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />);
 
   const grid = within(screen.getByTestId('span-detail-panel')).getByTestId('span-metric-grid');
   const values = Array.from(grid.querySelectorAll('dd')).map((cell) => cell.textContent);
@@ -127,7 +147,7 @@ test('keeps all six metric cells, filling missing values with the placeholder', 
 });
 
 test('renders the placeholder when no Span is selected', () => {
-  render(<SpanDetailPanel span={undefined} trace={trace} spans={[]} />);
+  render(<SpanDetailPanel span={undefined} trace={trace} spans={[]} onFilter={rs.fn()} />);
 
   const panel = screen.getByTestId('span-detail-panel');
   expect(within(panel).queryByTestId('span-metric-grid')).toBeNull();

@@ -22,7 +22,7 @@ const detail: DashboardTraceDetail = {
 };
 
 test('defaults to Detail and exposes request and response tab values', () => {
-  render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} />);
+  render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);
 
   expect(screen.getByRole('tab', { name: /^Detail$|^详情$/u })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText(/^Spans$|^Span$/u)).toBeInTheDocument();

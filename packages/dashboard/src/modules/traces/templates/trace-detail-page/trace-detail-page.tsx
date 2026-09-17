@@ -13,7 +13,7 @@ import { TraceContextRail } from '../../components/trace-context-rail';
 import { TraceDetailTabs } from '../../components/trace-detail-tabs';
 import { TraceStatus } from '../../components/trace-status';
 import { useTraceQuery } from '../../hooks/use-trace-query';
-import { createDefaultTraceSearch } from '../../lib/trace-search';
+import { createDefaultTraceSearch, withTraceFilters } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 
 interface TraceDetailPageProps {
@@ -118,7 +118,15 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
             })
           }
         />
-        <TraceDetailTabs detail={query.data} selectedSpan={selectedSpan} onSpanSelect={setSelectedSpanId} />
+        <TraceDetailTabs
+          detail={query.data}
+          selectedSpan={selectedSpan}
+          onSpanSelect={setSelectedSpanId}
+          // 详情路由自己没有列表的 search 参数，所以从默认区间起算，再叠上这一条属性。
+          onFilter={(patch) =>
+            void navigate({ to: '/traces', search: withTraceFilters(createDefaultTraceSearch(), patch) })
+          }
+        />
       </div>
     </PageContainer>
   );
