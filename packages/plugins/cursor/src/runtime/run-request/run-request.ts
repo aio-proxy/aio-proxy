@@ -102,7 +102,9 @@ export function buildCursorRunRequestBytes(input: {
   const reusableState =
     state.conversationState &&
     (isPendingResume
-      ? !hasHistoricalImages || turnImagesMatch(promptTurns, cachedTurns, blobStore)
+      ? !hasInboundHistory ||
+        (!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
+        turnImagesMatch(promptTurns, cachedTurns, blobStore)
       : promptHeadMatches && promptHistoryMatches)
       ? state.conversationState
       : undefined;

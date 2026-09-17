@@ -190,6 +190,61 @@ test('a pending resume rebuilds when the cached checkpoint is missing the histor
   ).not.toContain('"type":"file"');
 });
 
+test('a pending resume rebuilds when full history removes the last historical image', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (withImage: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        ...(withImage
+          ? ([{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] as const)
+          : []),
+      ],
+    },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+    },
+    {
+      role: 'tool',
+      content: [
+        { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+      ],
+    },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: { conversationId: 'conv-resume-remove-image', blobStore },
+  });
+  const removed = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-resume-remove-image',
+      blobStore,
+      conversationState: initial.conversationState,
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+
+  expect(removed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+  const turnBytes = blobStore.get(Buffer.from(removed.conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected rebuilt turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected rebuilt user message blob');
+  expect(fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? []).toEqual([]);
+});
+
 test('an incremental resume that includes the assistant tool-call keeps the cached user request', () => {
   const blobStore = new Map<string, Uint8Array>();
   const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
