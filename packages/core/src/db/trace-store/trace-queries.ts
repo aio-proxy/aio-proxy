@@ -4,13 +4,14 @@ import type {
   DashboardTraceSummary,
   TraceTerminationReason,
 } from '@aio-proxy/types';
-import { and, asc, desc, eq, gt, gte, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, lt, or } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { z } from 'zod';
 
 import { nanoUsdToUsd } from '../../usage-numbers';
 import { traceSpan } from '../schema';
 import { mergeAttributes } from './span-projection';
+import { traceFilterConditions } from './trace-filters';
 import type { TraceCursor, TracesPage, TracesQuery } from './types';
 import { hasAnyUsage } from './usage-fields';
 
@@ -197,23 +198,7 @@ export function list(db: BunSQLiteDatabase, query: TracesQuery): TracesPage {
       and(eq(traceSpan.startedAt, query.cursor.startedAt), compare(traceSpan.traceId, query.cursor.traceId)),
     );
   }
-  const filter = and(
-    isNull(traceSpan.parentSpanId),
-    cursorFilter,
-    query.startedAfter === undefined ? undefined : gte(traceSpan.startedAt, query.startedAfter),
-    query.startedBefore === undefined ? undefined : lte(traceSpan.startedAt, query.startedBefore),
-    query.traceId === undefined ? undefined : eq(traceSpan.traceId, query.traceId),
-    query.requestId === undefined ? undefined : eq(traceSpan.requestId, query.requestId),
-    query.sessionSource === undefined ? undefined : eq(traceSpan.sessionSource, query.sessionSource),
-    query.sessionId === undefined ? undefined : eq(traceSpan.sessionId, query.sessionId),
-    query.otelStatusCode === undefined ? undefined : eq(traceSpan.statusCode, statusCodeFromOtel(query.otelStatusCode)),
-    query.terminationReason === undefined ? undefined : eq(traceSpan.terminationReason, query.terminationReason),
-    query.inboundProtocol === undefined ? undefined : eq(traceSpan.inboundProtocol, query.inboundProtocol),
-    query.requestedModelId === undefined ? undefined : eq(traceSpan.requestedModelId, query.requestedModelId),
-    query.finalProviderId === undefined ? undefined : eq(traceSpan.finalProviderId, query.finalProviderId),
-    query.finalModelId === undefined ? undefined : eq(traceSpan.finalModelId, query.finalModelId),
-    query.finalHttpStatus === undefined ? undefined : eq(traceSpan.finalHttpStatus, query.finalHttpStatus),
-  );
+  const filter = and(isNull(traceSpan.parentSpanId), cursorFilter, ...traceFilterConditions(query));
 
   const queryingNewer = query.cursor?.direction === 'newer';
   const selectedRows = db
@@ -270,10 +255,4 @@ export function find(db: BunSQLiteDatabase, traceId: string, now = new Date()): 
     trace: rowToSummary(root, now),
     spans: rows.map((row) => rowToSpan(row, row.parentSpanId === null, now)),
   };
-}
-
-function statusCodeFromOtel(otel: 'UNSET' | 'OK' | 'ERROR'): number {
-  if (otel === 'OK') return 1;
-  if (otel === 'ERROR') return 2;
-  return 0;
 }
