@@ -28,14 +28,16 @@
 表格上方一张卡片，可折叠。折叠状态存 localStorage —— 这是个人显示偏好，不该进 URL 被分享出去。
 
 - **图形**：按时间分桶的堆叠柱状图。成功在下、失败在上。
-- **图例**：`● 成功 18,307` / `● 失败 93` 两个 chip，显示区间总数。点击切换该系列的显示，
-  同时写入抽屉里已有的 `otelStatusCode` 筛选字段 —— 图例即筛选器，和抽屉共用一份状态，
-  不新开一条并行的过滤链路。
+- **图例**：`● 成功 18,307` / `● 失败 93` 两个 chip，显示区间总数。点击即筛选，写入 URL 上的
+  `outcome` 字段（`success` / `error`），列表和图共用这一个字段，不新开一条并行的过滤链路。
+  这里刻意不用抽屉里的 `otelStatusCode`：成功的根 span 记的是 OTel `UNSET` 而不是 `OK`，
+  按状态码筛会把全部成功调用链漏掉。`outcome` 是「人看到的成败」，和状态码不是一回事。
 - **交互**：hover 出 tooltip（桶时间 + 两个系列的值）；点击某个桶把时间范围收窄到该桶。
-- **颜色**：状态色，不是分类色。`--chart-success: var(--color-teal-600)`、
-  `--chart-error: var(--color-red-500)`，明暗两套都过了 `validate_palette.js` 六项检查。
-  失败永远是红色，不参与分类色轮转。
-- **标记规格**：柱宽上限 24px，柱间与堆叠段之间留 2px 表面间隙，只有最顶段圆角 4px。
+- **颜色**：状态色，不是分类色。`--chart-success` 取各自 surface 上还合规的最亮一档
+  （白底 `teal-500`、暗底 `teal-600`），`--chart-error: var(--color-red-500)`，
+  明暗两套都过了 `validate_palette.js` 六项检查。失败永远是红色，不参与分类色轮转。
+- **标记规格**：柱宽上限 24px，柱间留类目带的 20%、堆叠段之间留 2px 表面间隙，两段都收 4px 圆角
+  （绝大多数桶没有失败，只给顶段加圆角会让整张图变成一排平头柱子）。
 
 实现用 recharts + `@aio-proxy/ui/components/chart` 的 `ChartContainer`/`ChartTooltip`/`ChartLegend`，
 参照 `model-usage-trend.tsx` 的写法。demo 里的手写 SVG 只是占位。
