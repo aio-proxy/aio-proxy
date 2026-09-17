@@ -46,11 +46,6 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.traceId}</span>,
   },
   {
-    id: 'requestStatus',
-    header: () => m['dashboard.traces.status'](),
-    cell: ({ row }) => <TraceStatus item={row.original} />,
-  },
-  {
     accessorKey: 'inboundProtocol',
     header: () => m['dashboard.traces.protocol'](),
     cell: ({ row }) => row.original.inboundProtocol,
@@ -83,6 +78,11 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
     accessorKey: 'finalHttpStatus',
     header: () => m['dashboard.traces.http_status'](),
     cell: ({ row }) => row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
+  },
+  {
+    id: 'requestStatus',
+    header: () => m['dashboard.traces.status'](),
+    cell: ({ row }) => <TraceStatus item={row.original} />,
   },
   {
     id: 'latency',
