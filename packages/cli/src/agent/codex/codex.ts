@@ -17,7 +17,7 @@ import { inspectProxyKeys, probeProxyApiKey } from './credentials';
 import { listCodexLifecycle, removeCodexLifecycle } from './lifecycle';
 import { resolveCodexLocation } from './location';
 import { inspectCodexConfig, recoverCodexConfigOperation } from './managed-config';
-import { inspectCodexSessions, migrateCodexSessions, restoreCodexMigration } from './sessions';
+import { inspectCodexSessions, isCodexUuid, migrateCodexSessions, restoreCodexMigration } from './sessions';
 import { commitCodexSetup, recoverCodexAuthOperation } from './setup';
 import { assertCodexSetupEndpoint, runCodexWizard, type CodexConfigureResult, type CodexPrompts } from './wizard';
 
@@ -26,8 +26,6 @@ export type { CodexConfigureResult } from './wizard';
 export type { CodexListResult, CodexRemoveResult } from './contracts';
 
 export type CodexConfigureOptions = { readonly restoreMigration?: string };
-
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 const checkCodexInstalled = async (): Promise<string> => {
   let child: ReturnType<typeof Bun.spawn>;
@@ -201,7 +199,7 @@ export async function recoverPendingCodexOperations(
 export async function configureCodexAgent(options: CodexConfigureOptions = {}): Promise<CodexConfigureResult> {
   const location = configuredLocation();
   if (options.restoreMigration !== undefined) {
-    if (!uuidPattern.test(options.restoreMigration)) throw new Error('migration operation id must be a UUID');
+    if (!isCodexUuid(options.restoreMigration)) throw new Error('migration operation id must be a UUID');
     const migration = await restoreCodexMigration(location, options.restoreMigration);
     return {
       target: 'codex',
@@ -292,7 +290,7 @@ export async function runCodexAuthCommand(
       );
     }),
 ): Promise<void> {
-  if (!uuidPattern.test(installationId)) throw new Error('Codex installation id must be a UUID');
+  if (!isCodexUuid(installationId)) throw new Error('Codex installation id must be a UUID');
   const remainingMs = Math.max(0, 4_500 - (Date.now() - startedAt));
   if (remainingMs === 0) throw new Error('CODEX_AUTH_TIMEOUT');
   const location = configuredLocation();

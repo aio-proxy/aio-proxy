@@ -4,6 +4,8 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export const isCodexUuid = (value: string): boolean => uuidPattern.test(value);
+
 export type LegacySessionMetadata = {
   readonly id: string;
   readonly providerId: string;
@@ -38,7 +40,7 @@ export function inspectLegacyMetadata(bytes: Uint8Array): LegacySessionMetadata 
     }
     if (!isPlainObject(record) || record['type'] !== 'session_meta') continue;
     const payload = record['payload'];
-    if (!isPlainObject(payload) || typeof payload['id'] !== 'string' || !uuidPattern.test(payload['id']))
+    if (!isPlainObject(payload) || typeof payload['id'] !== 'string' || !isCodexUuid(payload['id']))
       throw new Error('no unique session_meta.payload.id');
     if (typeof payload['model_provider'] !== 'string' || payload['model_provider'].length === 0)
       throw new Error('session_meta.payload.model_provider is missing');
@@ -53,7 +55,7 @@ export function inspectLegacyMetadata(bytes: Uint8Array): LegacySessionMetadata 
 
 /** Rewrite only the session provider value, preserving every other byte. */
 export function rewriteLegacyProvider(bytes: Uint8Array, id: string, source: string, target: string): Uint8Array {
-  if (!uuidPattern.test(id) || source.length === 0 || target.length === 0)
+  if (!isCodexUuid(id) || source.length === 0 || target.length === 0)
     throw new Error('invalid legacy session rewrite arguments');
   let text: string;
   try {
