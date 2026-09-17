@@ -15,7 +15,11 @@ const BUCKET_SIZES: readonly (readonly [DashboardTraceSummaryBucketSize, number]
 ];
 
 // 桶数的上界。选最细的、且桶数不超过它的那一档，得到的就是设计稿要的
-// 1h→1m / 24h→30m / 7d→1h / 45d→1d，同时任何离谱的时间范围都不会炸出几万个桶。
+// 1h→1m / 24h→30m / 7d→1h / 45d→1d。
+//
+// 这一档一档挑下来只在 1d 之前有效：跨度再大就没有更宽的桶可选了（bucket 只能是
+// 那 5 个枚举值），所以最后还得靠 count 自己夹一刀，否则客户端传个 0000→9999
+// 就能让下面 Array.from 开出三百多万个桶。
 const MAX_BUCKETS = 180;
 
 function resolveBucket(spanMs: number): readonly [DashboardTraceSummaryBucketSize, number] {
@@ -24,9 +28,12 @@ function resolveBucket(spanMs: number): readonly [DashboardTraceSummaryBucketSiz
 
 export function summary(db: BunSQLiteDatabase, query: TracesSummaryQuery): DashboardTraceSummaryResponse {
   const startMs = query.startedAfter.getTime();
-  const endMs = query.startedBefore.getTime();
-  const [bucket, bucketMs] = resolveBucket(Math.max(0, endMs - startMs));
-  const count = Math.max(1, Math.ceil((endMs - startMs) / bucketMs));
+  const requestedEndMs = query.startedBefore.getTime();
+  const [bucket, bucketMs] = resolveBucket(Math.max(0, requestedEndMs - startMs));
+  const count = Math.min(MAX_BUCKETS, Math.max(1, Math.ceil((requestedEndMs - startMs) / bucketMs)));
+  // 桶数被夹住时窗口就画不满了，过滤上界要跟着收窄 —— 否则窗口外的调用链会被下面的
+  // Math.min 全塞进最后一个桶，totals 对得上而图是错的。宁可少画一段，也不报个假的宽度。
+  const endMs = Math.min(requestedEndMs, startMs + count * bucketMs);
 
   // 桶对齐到范围起点而不是 epoch：时间范围是用户在本地时区选的，按 epoch 取整会让
   // 1d 的桶界落在 UTC 零点上，跟图上标的起点对不齐。减去起点就没有时区这回事了。
@@ -38,7 +45,7 @@ export function summary(db: BunSQLiteDatabase, query: TracesSummaryQuery): Dashb
       error: sql<number>`sum(case when ${traceSpan.statusCode} = 2 then 1 else 0 end)`.as('error'),
     })
     .from(traceSpan)
-    .where(and(isNull(traceSpan.parentSpanId), ...traceFilterConditions(query)))
+    .where(and(isNull(traceSpan.parentSpanId), ...traceFilterConditions({ ...query, startedBefore: new Date(endMs) })))
     .groupBy(sql`bucket_index`)
     .all();
 
