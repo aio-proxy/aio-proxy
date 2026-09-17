@@ -1,6 +1,9 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
+import * as reactQuery from '@tanstack/react-query' with { rstest: 'importActual' };
 import { fireEvent, render, screen, within } from '@testing-library/react';
+
+import { queryKeys } from '@/lib/query-keys';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
@@ -8,6 +11,7 @@ import { TracesPage } from './traces-page';
 
 const mocks = rs.hoisted(() => ({
   refetch: rs.fn(),
+  invalidateQueries: rs.fn(),
   querySearch: rs.fn(),
   data: undefined as
     | {
@@ -102,6 +106,12 @@ rs.mock('../../hooks/use-trace-summary-query', () => ({
   useTraceSummaryQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
+// 只替掉 useQueryClient，其余照旧：traces-service 在模块加载时就要用真的 queryOptions。
+rs.mock('@tanstack/react-query', () => ({
+  ...reactQuery,
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
+}));
+
 describe('traces page', () => {
   beforeEach(() => {
     mocks.data = {
@@ -114,6 +124,20 @@ describe('traces page', () => {
     mocks.isPlaceholderData = false;
     mocks.mobile = false;
     mocks.querySearch.mockClear();
+    mocks.invalidateQueries.mockClear();
+  });
+
+  test('manual refresh reaches the summary query as well as the list', () => {
+    const search = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    render(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh|刷新|更新|새로고침/u }));
+
+    // 刷新的 key 必须同时盖住表和图，否则表走了、图停在上一个区间，一屏里两块自相矛盾。
+    const invalidated = mocks.invalidateQueries.mock.calls[0]?.[0]?.queryKey as readonly unknown[];
+    for (const covered of [queryKeys.traces(search), queryKeys.tracesSummary(search)]) {
+      expect(covered.slice(0, invalidated.length)).toEqual(invalidated);
+    }
   });
 
   test('renders the events card above the table and routes legend clicks into the status filter', () => {
