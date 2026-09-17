@@ -73,7 +73,8 @@ test('falls back to the trace row when the root span carries no attributes', () 
   const root = createSpan({ spanId: trace.rootSpanId, name: 'aio_proxy.request', kind: 'SERVER', durationMs: 3_420 });
 
   expect(readSpanMetrics({ span: root, spans: [root], trace })).toEqual({
-    httpStatus: 200,
+    // No trace fallback for the status code: it belongs to whichever span recorded it.
+    httpStatus: undefined,
     providerId: 'anthropic-backup',
     modelId: 'claude-sonnet-4-6-20260101',
     durationMs: 3_420,
@@ -85,6 +86,25 @@ test('falls back to the trace row when the root span carries no attributes', () 
   });
 });
 
+test('still falls back to the trace row when the root span records unusable numbers', () => {
+  const root = createSpan({
+    spanId: trace.rootSpanId,
+    name: 'aio_proxy.request',
+    kind: 'SERVER',
+    attributes: {
+      'aio_proxy.response.ttft_ms': Number.NaN,
+      'gen_ai.usage.input_tokens': Number.NaN,
+      'gen_ai.usage.output_tokens': Number.POSITIVE_INFINITY,
+    },
+  });
+
+  const metrics = readSpanMetrics({ span: root, spans: [root], trace });
+
+  expect(metrics.ttftMs).toBe(1_820);
+  expect(metrics.inputTokens).toBe(8_412);
+  expect(metrics.outputTokens).toBe(1_096);
+});
+
 test('keeps trace fallbacks off non-root spans so a child never borrows the request totals', () => {
   const child = createSpan({ spanId: 'd'.repeat(16), name: 'aio_proxy.response.egress', kind: 'INTERNAL' });
 
@@ -93,9 +113,10 @@ test('keeps trace fallbacks off non-root spans so a child never borrows the requ
   expect(metrics.ttftMs).toBeUndefined();
   expect(metrics.inputTokens).toBeUndefined();
   expect(metrics.outputTokens).toBeUndefined();
-  // provider / model / http status stay trace-wide facts, so those still fall back.
+  // A parse or egress span never records a status code; the trace's final code is not its outcome.
+  expect(metrics.httpStatus).toBeUndefined();
+  // provider / model stay trace-wide facts, so those still fall back.
   expect(metrics.providerId).toBe('anthropic-backup');
-  expect(metrics.httpStatus).toBe(200);
 });
 
 test('counts only provider attempt spans as attempts', () => {
@@ -124,7 +145,7 @@ test('rejects attribute values that are not finite numbers or non-empty strings'
 
   const metrics = readSpanMetrics({ span, spans: [span], trace: { ...trace, finalProviderId: undefined } });
 
-  expect(metrics.httpStatus).toBe(200);
+  expect(metrics.httpStatus).toBeUndefined();
   expect(metrics.providerId).toBeUndefined();
   expect(metrics.modelId).toBe('claude-sonnet-4-6-20260101');
   expect(metrics.inputTokens).toBeUndefined();

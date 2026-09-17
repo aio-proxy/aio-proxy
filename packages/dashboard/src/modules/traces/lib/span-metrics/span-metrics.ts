@@ -34,7 +34,11 @@ const stringAttribute = (attributes: SpanAttributes, key: string): string | unde
  *
  * Request-scoped numbers (TTFT, usage) only fall back to the trace row for the root span:
  * a child span that never recorded them did not inherit the whole request's totals.
- * Provider, model, and HTTP status describe the request outcome, so they fall back everywhere.
+ * Provider and model describe the request outcome, so they fall back trace-wide.
+ *
+ * `httpStatus` never falls back: only the root span and attempt spans record a status code,
+ * so lending the trace's final code to a parse or egress span would attribute someone
+ * else's outcome to it. Spans without one show their OTel status instead.
  */
 export const readSpanMetrics = (input: {
   readonly span: DashboardTraceSpan;
@@ -47,7 +51,7 @@ export const readSpanMetrics = (input: {
   const attemptCount = spans.filter((candidate) => candidate.name === ATTEMPT_SPAN_NAME).length;
 
   return {
-    httpStatus: numberAttribute(attributes, traceAttribute.httpStatusCode) ?? trace.finalHttpStatus,
+    httpStatus: numberAttribute(attributes, traceAttribute.httpStatusCode),
     providerId:
       stringAttribute(attributes, traceAttribute.providerId) ??
       stringAttribute(attributes, traceAttribute.finalProviderId) ??
