@@ -351,7 +351,7 @@ describe('traces page', () => {
     expect(onTraceSelect).toHaveBeenCalledWith(runningTrace.traceId);
   });
 
-  test('uses the shared sidebar trigger to expand desktop filters', () => {
+  test('expands the desktop filters from the toolbar trigger', () => {
     render(
       <TracesPage
         search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
@@ -364,7 +364,6 @@ describe('traces page', () => {
     expect(sidebar).toHaveAttribute('data-state', 'collapsed');
 
     const trigger = screen.getByRole('button', { name: /Filters|筛选/u });
-    expect(trigger).toHaveAttribute('data-sidebar', 'trigger');
     fireEvent.click(trigger);
 
     expect(sidebar).toHaveAttribute('data-state', 'expanded');
