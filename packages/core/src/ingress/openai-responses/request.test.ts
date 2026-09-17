@@ -41,8 +41,8 @@ describe('OpenAIResponsesRequestSchema', () => {
 
   test('Given a synthetic tool output without call_id When parsed Then request is accepted', () => {
     // Codex Desktop injects cross-thread delegation as a function_call_output
-    // with no matching call, identified by name/namespace. Same-protocol raw
-    // passthrough forwards it verbatim, so parse must not reject it.
+    // with no matching call, identified by name/namespace. Parse must not reject
+    // it; the create raw path rewrites it to a user note before forwarding.
     const input = {
       model: 'gpt-5.6-luna',
       input: [

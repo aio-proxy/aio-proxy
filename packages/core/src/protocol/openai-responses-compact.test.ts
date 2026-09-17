@@ -110,3 +110,20 @@ test('compact raw strips leftover stream and rewrites model only then', async ()
     reasoning: { effort: 'xhigh' },
   });
 });
+
+test('does not rewrite unpaired tool output on the compact raw path', async () => {
+  const body = {
+    model: 'gpt-5.1-codex-max',
+    input: [{ type: 'function_call_output', name: 'send_message_to_thread', output: 'hi' }],
+  };
+  const raw = new Request('https://proxy.test/v1/responses/compact', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, compactCtx);
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'gpt-5.1-codex-max', new Set(), compactCtx);
+
+  expect(await forwarded.json()).toEqual(body);
+});
