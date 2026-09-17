@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import { isToolPairingRejection, repairOpenAIResponsesToolPairing } from './tool-pairing-retry';
+import {
+  isToolPairingRejection,
+  repairOpenAIResponsesCallIdlessToolOutputs,
+  repairOpenAIResponsesToolPairing,
+} from './tool-pairing-retry';
 
 function errorPayload(message: string, code?: string | null): Record<string, unknown> {
   return { error: { type: 'invalid_request_error', code: code ?? null, message } };
@@ -155,5 +159,17 @@ test('carries a custom tool call input verbatim', () => {
       role: 'assistant',
       content: [{ type: 'output_text', text: '[unanswered tool call: exec(ls -la)]' }],
     },
+  ]);
+});
+
+test('eager create rewrites only outputs that have no call_id', () => {
+  expect(
+    repairOpenAIResponsesCallIdlessToolOutputs([
+      { type: 'function_call_output', name: 'send_message_to_thread', output: 'ok' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'Sunny' },
+    ]),
+  ).toEqual([
+    { type: 'message', role: 'user', content: [{ type: 'input_text', text: '[orphan tool result] ok' }] },
+    { type: 'function_call_output', call_id: 'call_1', output: 'Sunny' },
   ]);
 });

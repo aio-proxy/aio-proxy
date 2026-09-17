@@ -161,30 +161,24 @@ test('rewrites a synthetic tool output without call_id before raw forwarding', a
   });
 });
 
-test('rewrites an output whose call_id has no matching call before raw forwarding', async () => {
-  const body = {
+test('keeps a tool output whose call lives in previous_response_id', async () => {
+  // Official create-with-previous_response_id sends only the new output; the
+  // matching call sits in stored state. Local pairing must not narrate it.
+  const bodyText = JSON.stringify({
     model: 'grok-4.6',
-    input: [{ type: 'function_call_output', call_id: 'call_gone', output: 'exit code 0' }],
-  };
+    previous_response_id: 'resp_1',
+    input: [{ type: 'function_call_output', call_id: 'call_1', output: 'Sunny' }],
+  });
   const raw = new Request('https://proxy.test/v1/responses', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: bodyText,
   });
   const parsed = await openAIResponsesAdapter.parse(raw, {});
 
   const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'grok-4.6', new Set(), {});
 
-  expect(await forwarded.json()).toEqual({
-    model: 'grok-4.6',
-    input: [
-      {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text: '[orphan tool result; call_id=call_gone] exit code 0' }],
-      },
-    ],
-  });
+  expect(await forwarded.text()).toBe(bodyText);
 });
 
 test('keeps a paired tool call and output on the raw path', async () => {

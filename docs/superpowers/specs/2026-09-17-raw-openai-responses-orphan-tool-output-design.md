@@ -2,7 +2,7 @@
 
 ## Goal
 
-Same-protocol raw passthrough must not forward a Responses `input` item that no upstream can pair: a `function_call_output` / `custom_tool_call_output` with no `call_id`, or a `call_id` whose matching call is missing. Rewrite it to a user note on the first attempt.
+Same-protocol raw passthrough must not forward a Responses `function_call_output` / `custom_tool_call_output` with no `call_id`. Rewrite that item to a user note on the first attempt. Outputs that still have a `call_id` stay untouched: they may pair with a call stored under `previous_response_id` or `conversation`.
 
 ## Background
 
@@ -48,14 +48,14 @@ It only runs today after a classified pairing rejection.
 
 ## Behavior
 
-`rewriteOpenAIResponsesRequest` (create only) applies `repairOpenAIResponsesToolPairing` to `body.input` when that field is an array, **before** the first upstream call.
+`rewriteOpenAIResponsesRequest` (create only) applies `repairOpenAIResponsesCallIdlessToolOutputs` to `body.input` when that field is an array, **before** the first upstream call.
 
 | Input | Raw outbound |
 |---|---|
 | Paired `function_call` + `function_call_output` | Unchanged. Keep verbatim bytes when model / background / effort are also unchanged. |
-| Output with `call_id` but no preceding call | User note via existing `orphanOutputNote`. |
-| Output with no `call_id` (Codex `send_message_to_thread`) | Same note, label `[orphan tool result]`. |
-| Unanswered call | Existing unanswered-call assistant note. |
+| Output with `call_id` but no preceding call in this body | Unchanged. May belong to `previous_response_id` / `conversation`. Retry still narrates it after an official pairing 400. |
+| Output with no `call_id` (Codex `send_message_to_thread`) | User note, label `[orphan tool result]`. |
+| Unanswered call | Unchanged on the eager path. Retry still narrates it after an official pairing 400. |
 | Compact endpoint | Unchanged. Do not repair. |
 | Convert / model path | Unchanged. Still reject missing `call_id` as unsupported so a later raw candidate can run. |
 

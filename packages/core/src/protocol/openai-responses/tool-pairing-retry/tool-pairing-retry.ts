@@ -39,6 +39,20 @@ const OUTPUT_TYPES = new Set(['function_call_output', 'custom_tool_call_output']
 // retry — so the replay would just earn a second 400. Notes raised inside an
 // open batch are held and emitted once the batch closes. Only our own synthetic
 // notes move; every item the caller sent keeps its position.
+// Eager raw create: Codex Desktop injects function_call_output with no call_id.
+// Outputs that still have a call_id may pair with a call stored under
+// previous_response_id / conversation, so they stay on the retry path.
+export function repairOpenAIResponsesCallIdlessToolOutputs(input: readonly unknown[]): unknown[] | undefined {
+  let changed = false;
+  const next = input.map((item) => {
+    if (!isPlainObject(item) || typeof item['type'] !== 'string' || !OUTPUT_TYPES.has(item['type'])) return item;
+    if (typeof item['call_id'] === 'string') return item;
+    changed = true;
+    return orphanOutputNote(item, undefined);
+  });
+  return changed ? next : undefined;
+}
+
 export function repairOpenAIResponsesToolPairing(input: readonly unknown[]): unknown[] | undefined {
   const answered = answeredCallIds(input);
   const seen = new Set<string>();

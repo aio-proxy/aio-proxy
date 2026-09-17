@@ -14,7 +14,7 @@ import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/to
 import { defineProtocolAdapter } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
-import { repairOpenAIResponsesToolPairing } from './openai-responses/tool-pairing-retry';
+import { repairOpenAIResponsesCallIdlessToolOutputs } from './openai-responses/tool-pairing-retry';
 import { clampSdkReasoning, normalizeEffort, reasoningSettings } from './reasoning-effort/index';
 import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
@@ -255,11 +255,14 @@ async function rewriteOpenAIResponsesRequest(
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
-  const repairedInput = Array.isArray(body['input']) ? repairOpenAIResponsesToolPairing(body['input']) : undefined;
+  const repairedInput = Array.isArray(body['input'])
+    ? repairOpenAIResponsesCallIdlessToolOutputs(body['input'])
+    : undefined;
   // Any of these force a re-serialization: a model rewrite, a stripped
-  // `background` field, a clamped effort, or unpaired tool items that would
-  // 400/422 upstream (Codex Desktop injects function_call_output with no
-  // call_id). Only when none apply can we forward the untouched original bytes.
+  // `background` field, a clamped effort, or a function_call_output with no
+  // call_id (Codex Desktop cross-thread delegation). Outputs that still have a
+  // call_id may belong to previous_response_id / conversation state. Only when
+  // none apply can we forward the untouched original bytes.
   const modelUnchanged = body['model'] === resolvedModel;
   const backgroundStripped = _background !== undefined;
   const effortUnchanged =

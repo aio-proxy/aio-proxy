@@ -1,1 +1,5 @@
-export { isToolPairingRejection, repairOpenAIResponsesToolPairing } from './tool-pairing-retry';
+export {
+  isToolPairingRejection,
+  repairOpenAIResponsesCallIdlessToolOutputs,
+  repairOpenAIResponsesToolPairing,
+} from './tool-pairing-retry';
