@@ -3,19 +3,27 @@ import type { DashboardTraceSummaryBucket, DashboardTraceSummaryBucketSize } fro
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@aio-proxy/ui/components/chart';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
+const tickOptions: Record<DashboardTraceSummaryBucketSize, Intl.DateTimeFormatOptions> = {
+  '1m': { hour: '2-digit', minute: '2-digit' },
+  '5m': { hour: '2-digit', minute: '2-digit' },
+  '30m': { hour: '2-digit', minute: '2-digit' },
+  '1h': { month: 'short', day: 'numeric', hour: '2-digit' },
+  '1d': { month: 'short', day: 'numeric' },
+};
+
 interface TracesEventsChartProps {
   readonly buckets: readonly DashboardTraceSummaryBucket[];
   readonly bucket: DashboardTraceSummaryBucketSize;
+  readonly canZoom: boolean;
   readonly onBucketSelect: (at: string) => void;
 }
 
-export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, bucket, onBucketSelect }) => {
+export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, bucket, canZoom, onBucketSelect }) => {
   const locale = getLocale();
   const formatCount = new Intl.NumberFormat(locale, { notation: 'compact' });
-  const formatTick =
-    bucket === '1d'
-      ? new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' })
-      : new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' });
+  // 1h 及更粗的桶要带上日期：7d 预设就是按 1h 分桶的，只给时分会排出十几个
+  // 重复的 00:00…23:00，看不出哪里跨了天。
+  const formatTick = new Intl.DateTimeFormat(locale, tickOptions[bucket]);
   const formatLabel = new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
@@ -70,7 +78,7 @@ export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, b
           stroke="var(--background)"
           strokeWidth={2}
           radius={[4, 4, 0, 0]}
-          className="cursor-pointer"
+          className={canZoom ? 'cursor-pointer' : undefined}
         />
         <Bar
           dataKey="error"
@@ -79,7 +87,7 @@ export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, b
           stroke="var(--background)"
           strokeWidth={2}
           radius={[4, 4, 0, 0]}
-          className="cursor-pointer"
+          className={canZoom ? 'cursor-pointer' : undefined}
         />
       </BarChart>
     </ChartContainer>
