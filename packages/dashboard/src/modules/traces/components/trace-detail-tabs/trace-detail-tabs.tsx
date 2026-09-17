@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardTraceDetail, DashboardTraceSpan } from '@aio-proxy/types';
+import type { DashboardTraceDetail, DashboardTracePercentile, DashboardTraceSpan } from '@aio-proxy/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
 import type { TraceFilterPatch } from '../../lib/trace-search';
@@ -10,11 +10,18 @@ import { TraceHttpDiagnostics } from '../trace-http-diagnostics';
 interface TraceDetailTabsProps {
   readonly detail: DashboardTraceDetail;
   readonly selectedSpan: DashboardTraceSpan | undefined;
+  readonly comparison?: DashboardTracePercentile | null;
   readonly onSpanSelect: (spanId: string) => void;
   readonly onFilter: (patch: TraceFilterPatch) => void;
 }
 
-export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({ detail, selectedSpan, onSpanSelect, onFilter }) => (
+export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({
+  detail,
+  selectedSpan,
+  comparison,
+  onSpanSelect,
+  onFilter,
+}) => (
   <Tabs defaultValue="detail" className="min-w-0">
     <TabsList variant="line" aria-label={m['dashboard.traces.detail_title']()}>
       <TabsTrigger value="detail">{m['dashboard.traces.detail_tab']()}</TabsTrigger>
@@ -26,7 +33,13 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({ detail, select
       className="mt-4 grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]"
     >
       <SpanWaterfall spans={detail.spans} selectedSpanId={selectedSpan?.spanId} onSelect={onSpanSelect} />
-      <SpanDetailPanel span={selectedSpan} trace={detail.trace} spans={detail.spans} onFilter={onFilter} />
+      <SpanDetailPanel
+        span={selectedSpan}
+        trace={detail.trace}
+        spans={detail.spans}
+        comparison={comparison}
+        onFilter={onFilter}
+      />
     </TabsContent>
     <TabsContent value="request" className="mt-4">
       <TraceHttpDiagnostics side="request" diagnostics={detail.diagnostics?.request} />

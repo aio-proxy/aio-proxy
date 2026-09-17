@@ -12,6 +12,7 @@ import { PageContainer } from '@/components/page-container';
 import { TraceContextRail } from '../../components/trace-context-rail';
 import { TraceDetailTabs } from '../../components/trace-detail-tabs';
 import { TraceStatus } from '../../components/trace-status';
+import { useTracePercentileQuery } from '../../hooks/use-trace-percentile-query';
 import { useTraceQuery } from '../../hooks/use-trace-query';
 import { createDefaultTraceSearch, withTraceFilters } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
@@ -23,6 +24,7 @@ interface TraceDetailPageProps {
 export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => {
   const navigate = useNavigate();
   const query = useTraceQuery(traceId);
+  const percentileQuery = useTracePercentileQuery(traceId);
   const [selectedSpanId, setSelectedSpanId] = useState<string>();
   const selectedSpan =
     query.data?.spans.find((span) => span.spanId === selectedSpanId) ??
@@ -121,6 +123,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
         <TraceDetailTabs
           detail={query.data}
           selectedSpan={selectedSpan}
+          comparison={percentileQuery.data?.comparison}
           onSpanSelect={setSelectedSpanId}
           // 详情路由自己没有列表的 search 参数，所以从默认区间起算，再叠上这一条属性。
           onFilter={(patch) =>

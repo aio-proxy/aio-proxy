@@ -1461,6 +1461,7 @@
       "span_metric_ttft": "Time to first token",
       "span_metric_upstream": "Upstream latency",
       "span_metric_attempts": "Attempts",
+      "percentile_caption": "Compared with {count} recent {model} requests — at p{percentile}",
       "select_span": "Select Span {name} ({spanId})",
       "attributes": "Attributes",
       "attributes_search_placeholder": "Search attributes",

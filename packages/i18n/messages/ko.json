@@ -1461,6 +1461,7 @@
       "span_metric_ttft": "첫 토큰까지 시간",
       "span_metric_upstream": "업스트림 소요 시간",
       "span_metric_attempts": "시도 횟수",
+      "percentile_caption": "최근 {count}건의 {model} 요청과 비교 — p{percentile}",
       "select_span": "스팬 {name} ({spanId}) 선택",
       "attributes": "속성",
       "attributes_search_placeholder": "속성 검색",

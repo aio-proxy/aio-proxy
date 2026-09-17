@@ -1461,6 +1461,7 @@
       "span_metric_ttft": "首字时延",
       "span_metric_upstream": "上游耗时",
       "span_metric_attempts": "尝试次数",
+      "percentile_caption": "与最近 {count} 个 {model} 请求相比 — 处于 p{percentile}",
       "select_span": "选择 Span {name}（{spanId}）",
       "attributes": "属性",
       "attributes_search_placeholder": "搜索属性",

@@ -1,4 +1,4 @@
-import type { DashboardTraceDetail } from '@aio-proxy/types';
+import type { DashboardTraceDetail, DashboardTracePercentile } from '@aio-proxy/types';
 import { afterEach, beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
@@ -11,6 +11,7 @@ const mocks = rs.hoisted(() => ({
   navigate: rs.fn(),
   writeText: rs.fn(async () => undefined),
   data: undefined as DashboardTraceDetail | undefined,
+  comparison: null as DashboardTracePercentile | null,
 }));
 const traceId = 'a'.repeat(32);
 const detail: DashboardTraceDetail = {
@@ -102,6 +103,10 @@ const detail: DashboardTraceDetail = {
   },
 };
 
+rs.mock('../../hooks/use-trace-percentile-query', () => ({
+  useTracePercentileQuery: () => ({ data: { comparison: mocks.comparison } }),
+}));
+
 rs.mock('../../hooks/use-trace-query', () => ({
   useTraceQuery: () => {
     if (mocks.mode === 'loading') return { isLoading: true, isError: false, refetch: mocks.refetch };
@@ -160,9 +165,35 @@ describe('trace detail page', () => {
       value: { writeText: mocks.writeText },
     });
     mocks.data = undefined;
+    mocks.comparison = null;
   });
 
   afterEach(() => rs.restoreAllMocks());
+
+  // 分位对比一路要穿过 template -> tabs -> 详情面板才到条上，中间任何一层漏传 prop 都是静默消失。
+  test('shows the latency comparison only once the sample is large enough', () => {
+    const { unmount } = render(<TraceDetailPage traceId={traceId} />);
+    expect(screen.queryByTestId('trace-percentile-bar')).toBeNull();
+    unmount();
+
+    mocks.comparison = {
+      modelId: 'gpt-5.1',
+      windowMinutes: 60,
+      sampleCount: 42,
+      durationMs: 125,
+      percentile: 73,
+      minMs: 100,
+      maxMs: 900,
+      p50Ms: 300,
+      p95Ms: 800,
+    };
+    render(<TraceDetailPage traceId={traceId} />);
+
+    const bar = screen.getByTestId('trace-percentile-bar');
+    expect(bar.textContent).toContain('42');
+    expect(bar.textContent).toContain('gpt-5.1');
+    expect(bar.textContent).toContain('73');
+  });
 
   test('renders a terminal summary, usage, and every span in API order', () => {
     render(<TraceDetailPage traceId={traceId} />);

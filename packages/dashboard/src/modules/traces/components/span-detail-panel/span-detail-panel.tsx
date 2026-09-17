@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
+import type { DashboardTracePercentile, DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
@@ -7,6 +7,7 @@ import { readSpanMetrics } from '../../lib/span-metrics';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceResultDetails } from '../../lib/trace-formatters';
 import type { TraceFilterPatch } from '../../lib/trace-search';
+import { TracePercentileBar } from '../trace-percentile-bar';
 import { TraceStatus } from '../trace-status';
 import { SpanAttributeTable } from './span-attribute-table';
 import { SpanMetricGrid } from './span-metric-grid';
@@ -16,10 +17,12 @@ interface SpanDetailPanelProps {
   readonly span: DashboardTraceSpan | undefined;
   readonly trace: DashboardTraceSummary;
   readonly spans: readonly DashboardTraceSpan[];
+  /** 整条调用链的分位对比，不是这个 span 的：样本不足或还没到就不渲染。 */
+  readonly comparison?: DashboardTracePercentile | null;
   readonly onFilter: (patch: TraceFilterPatch) => void;
 }
 
-export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, spans, onFilter }) => {
+export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, spans, comparison, onFilter }) => {
   const missing = TRACE_PLACEHOLDER;
   const metrics = span === undefined ? undefined : readSpanMetrics({ span, spans, trace });
   const resultDetails =
@@ -62,6 +65,7 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
                 ))}
               </dl>
             </div>
+            <TracePercentileBar comparison={comparison} />
             <Tabs defaultValue="attributes">
               <TabsList className="w-full" aria-label={m['dashboard.traces.span_data']()}>
                 <TabsTrigger value="attributes">{m['dashboard.traces.attributes']()}</TabsTrigger>

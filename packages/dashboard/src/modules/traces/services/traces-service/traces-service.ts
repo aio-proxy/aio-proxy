@@ -10,6 +10,10 @@ import type { TraceSearch } from '../../lib/trace-search';
 type DashboardTracesResponse = InferResponseType<typeof dashboardClient.dashboard.api.traces.$get, 200>;
 type DashboardTraceResponse = InferResponseType<(typeof dashboardClient.dashboard.api.traces)[':traceId']['$get'], 200>;
 type DashboardTraceSummaryResponse = InferResponseType<typeof dashboardClient.dashboard.api.traces.summary.$get, 200>;
+type DashboardTracePercentileResponse = InferResponseType<
+  (typeof dashboardClient.dashboard.api.traces)[':traceId']['percentile']['$get'],
+  200
+>;
 
 export class DashboardTracesRequestError extends Error {
   constructor(readonly status: number) {
@@ -31,6 +35,14 @@ export const traceQueryOptions = (traceId: string) =>
   queryOptions({
     queryKey: queryKeys.trace(traceId),
     queryFn: () => getTrace(traceId),
+  });
+
+// 一小时窗口的聚合，逐秒刷新没有意义：一分钟内复用缓存，翻回这一页不再打一次请求。
+export const tracePercentileQueryOptions = (traceId: string) =>
+  queryOptions({
+    queryKey: queryKeys.tracePercentile(traceId),
+    queryFn: () => getTracePercentile(traceId),
+    staleTime: 60_000,
   });
 
 const toSummaryFilters = (search: TraceSearch) => omit(search, ['pageSize', 'pageToken']);
@@ -73,6 +85,12 @@ export const getTraces = async (search: TraceSearch): Promise<DashboardTracesRes
 
 export const getTrace = async (traceId: string): Promise<DashboardTraceResponse> => {
   const response = await dashboardClient.dashboard.api.traces[':traceId'].$get({ param: { traceId } });
+  if (!response.ok) throw new DashboardTracesRequestError(response.status);
+  return response.json();
+};
+
+export const getTracePercentile = async (traceId: string): Promise<DashboardTracePercentileResponse> => {
+  const response = await dashboardClient.dashboard.api.traces[':traceId'].percentile.$get({ param: { traceId } });
   if (!response.ok) throw new DashboardTracesRequestError(response.status);
   return response.json();
 };
