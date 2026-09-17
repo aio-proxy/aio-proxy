@@ -24,8 +24,8 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
   const formatCount = new Intl.NumberFormat(getLocale());
   const totals = query.data?.totals ?? { success: 0, error: 0 };
   const chips = [
-    { code: 'OK', label: m['dashboard.traces.success'](), count: totals.success, dot: 'bg-chart-success' },
-    { code: 'ERROR', label: m['dashboard.traces.failure'](), count: totals.error, dot: 'bg-chart-error' },
+    { outcome: 'success', label: m['dashboard.traces.success'](), count: totals.success, dot: 'bg-chart-success' },
+    { outcome: 'error', label: m['dashboard.traces.failure'](), count: totals.error, dot: 'bg-chart-error' },
   ] as const;
   // 只剩一个桶就没法再收窄了（1m 粒度下每次缩放的结果都是这个状态），
   // 那就别再摆出可点的样子：提示语收起来，柱子也不显示手型。
@@ -57,12 +57,12 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
     <section className="border-b" aria-label={m['dashboard.traces.events']()}>
       <header className="flex min-h-12 flex-wrap items-center gap-2 px-3 py-2">
         {chips.map((chip) => {
-          const pressed = search.otelStatusCode === chip.code;
-          // 抽屉里还能筛 UNSET（还在跑），那时两个 chip 都不是按下态，也都该淡出。
-          const filteredOut = search.otelStatusCode !== undefined && !pressed;
+          const pressed = search.outcome === chip.outcome;
+          // 抽屉里还能按别的条件筛，那时两个 chip 都不是按下态，也都不该淡出。
+          const filteredOut = search.outcome !== undefined && !pressed;
           return (
             <button
-              key={chip.code}
+              key={chip.outcome}
               type="button"
               aria-pressed={pressed}
               className={cn(
@@ -70,7 +70,7 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
                 pressed && 'border-ring',
                 filteredOut && 'opacity-50',
               )}
-              onClick={() => onChange(withTraceFilters(search, { otelStatusCode: pressed ? undefined : chip.code }))}
+              onClick={() => onChange(withTraceFilters(search, { outcome: pressed ? undefined : chip.outcome }))}
             >
               <span className={cn('size-2 rounded-full', chip.dot)} />
               <span className="font-medium tabular-nums">{formatCount.format(chip.count)}</span>
