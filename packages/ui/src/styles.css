@@ -25,6 +25,8 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-error: var(--chart-error);
+  --color-chart-success: var(--chart-success);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -76,6 +78,11 @@
   --border: var(--color-olive-200);
   --input: var(--color-olive-200);
   --ring: var(--color-olive-400);
+  /* 状态色，不是分类色：失败永远是红，不参与 chart-1..5 的轮转。
+     teal-600 / red-500 在 light 和 dark 两个 surface 上都过了对比度校验，
+     所以 .dark 不需要覆写 —— 两模同值是选出来的结果，不是忘了写。 */
+  --chart-success: var(--color-teal-600);
+  --chart-error: var(--color-red-500);
   --chart-1: var(--color-teal-300);
   --chart-2: var(--color-teal-500);
   --chart-3: var(--color-teal-600);

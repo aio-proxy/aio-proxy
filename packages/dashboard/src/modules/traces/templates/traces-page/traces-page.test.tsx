@@ -98,6 +98,10 @@ rs.mock('../../hooks/use-traces-query', () => ({
   },
 }));
 
+rs.mock('../../hooks/use-trace-summary-query', () => ({
+  useTraceSummaryQuery: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
+
 describe('traces page', () => {
   beforeEach(() => {
     mocks.data = {
@@ -112,6 +116,19 @@ describe('traces page', () => {
     mocks.querySearch.mockClear();
   });
 
+  test('renders the events card above the table and routes legend clicks into the status filter', () => {
+    const search = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    const onSearchChange = rs.fn();
+    render(<TracesPage search={search} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    const events = screen.getByRole('region', { name: /Events|事件|イベント|이벤트/u });
+    expect(events.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(within(events).getByRole('button', { name: /Failure|失败|失敗|Failed/u }));
+
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ otelStatusCode: 'ERROR' }));
+  });
+
   test('renders aligned latency and token details without the Session column', () => {
     render(
       <TracesPage
@@ -122,7 +139,7 @@ describe('traces page', () => {
     );
 
     expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
-    expect(screen.getByText(/Failure|失败/u)).toBeTruthy();
+    expect(within(screen.getByRole('table')).getByText(/Failure|失败/u)).toBeTruthy();
     expect(screen.queryByText('cache-a')).toBeNull();
     expect(screen.getByRole('columnheader', { name: /^(Status|状态|ステータス|상태)$/u })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /^(Model|模型|モデル|모델)$/u })).toBeTruthy();
@@ -399,7 +416,7 @@ describe('traces page', () => {
     };
     view.rerender(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.queryByText(/Running|运行中/u)).toBeNull();
-    expect(screen.getByText(/Success|成功/u)).toBeTruthy();
+    expect(within(screen.getByRole('table')).getByText(/Success|成功/u)).toBeTruthy();
   });
 
   test('resets buffering for filters and page-size changes and never buffers token pages', () => {
