@@ -22,6 +22,7 @@ export type {
   TraceTerminalSummary,
   TracesPage,
   TracesQuery,
+  TracesSummaryQuery,
   UsageOverviewQuery,
 } from './trace-store';
 export {
