@@ -165,7 +165,7 @@ function turnsHaveImages(
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean | undefined {
   const lists = agentTurnImageLists(turns, blobStore);
-  return lists?.some((images) => images.length > 0);
+  return lists?.some((turn) => turn.images.length > 0);
 }
 
 function turnImagesMatch(
@@ -173,16 +173,16 @@ function turnImagesMatch(
   cachedTurns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean {
-  const promptLists = agentTurnImageLists(promptTurns, blobStore)?.filter((images) => images.length > 0);
-  const cachedLists = agentTurnImageLists(cachedTurns, blobStore)?.filter((images) => images.length > 0);
+  const promptLists = agentTurnImageLists(promptTurns, blobStore);
+  const cachedLists = agentTurnImageLists(cachedTurns, blobStore);
   if (promptLists === undefined || cachedLists === undefined || promptLists.length !== cachedLists.length) {
     return false;
   }
-  return promptLists.every((promptImages, index) => {
-    const cachedImages = cachedLists[index]!;
-    if (promptImages.length !== cachedImages.length) return false;
-    return promptImages.every((image, imageIndex) => {
-      const cachedImage = cachedImages[imageIndex]!;
+  return promptLists.every((promptTurn, index) => {
+    const cachedTurn = cachedLists[index]!;
+    if (promptTurn.text !== cachedTurn.text || promptTurn.images.length !== cachedTurn.images.length) return false;
+    return promptTurn.images.every((image, imageIndex) => {
+      const cachedImage = cachedTurn.images[imageIndex]!;
       const data = imageData(image, blobStore);
       const cachedData = imageData(cachedImage, blobStore);
       return (
@@ -198,9 +198,9 @@ function turnImagesMatch(
 function agentTurnImageLists(
   turns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
-): readonly (readonly SelectedImage[])[] | undefined {
+): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] | undefined {
   try {
-    const lists: (readonly SelectedImage[])[] = [];
+    const lists: { text: string; images: readonly SelectedImage[] }[] = [];
     for (const turnId of turns) {
       const turnBytes = readCursorBlob(blobStore, turnId);
       if (turnBytes === undefined) return undefined;
@@ -211,7 +211,10 @@ function agentTurnImageLists(
       }
       const userMessageBytes = readCursorBlob(blobStore, turn.turn.value.userMessage);
       if (userMessageBytes === undefined) return undefined;
-      lists.push(fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? []);
+      const userMessage = fromBinary(UserMessageSchema, userMessageBytes);
+      const images = userMessage.selectedContext?.selectedImages ?? [];
+      if (userMessage.text.length === 0 && images.length === 0) continue;
+      lists.push({ text: userMessage.text, images });
     }
     return lists;
   } catch {
