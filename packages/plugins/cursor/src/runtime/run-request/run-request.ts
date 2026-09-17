@@ -100,13 +100,13 @@ export function buildCursorRunRequestBytes(input: {
     (cachedRootMessages.length === promptRootMessages.length &&
       promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)) &&
       ((!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
-        turnImagesMatch(promptTurns, cachedTurns, blobStore)));
+        turnImagesMatch(prompt, historyActiveIndex, cachedTurns, blobStore)));
   const reusableState =
     state.conversationState &&
     (isPendingResume
       ? !hasHistoricalUsers ||
         (!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
-        turnImagesMatch(promptTurns, cachedTurns, blobStore)
+        turnImagesMatch(prompt, historyActiveIndex, cachedTurns, blobStore)
       : promptHeadMatches && promptHistoryMatches)
       ? state.conversationState
       : undefined;
@@ -169,35 +169,40 @@ function turnsHaveImages(
 }
 
 function turnImagesMatch(
-  promptTurns: readonly Uint8Array[],
+  prompt: LanguageModelV4Prompt,
+  historyActiveIndex: number,
   cachedTurns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean {
-  const promptLists = agentTurnImageLists(promptTurns, blobStore);
-  const cachedLists = agentTurnImageLists(cachedTurns, blobStore);
-  if (promptLists === undefined || cachedLists === undefined || promptLists.length !== cachedLists.length) {
-    return false;
-  }
+  const promptLists = promptUserImageSlots(prompt, historyActiveIndex);
+  const cachedLists = agentTurnImageLists(cachedTurns, blobStore, promptLists.length);
+  if (cachedLists === undefined || promptLists.length !== cachedLists.length) return false;
   return promptLists.every((promptTurn, index) => {
     const cachedTurn = cachedLists[index]!;
-    if (promptTurn.text !== cachedTurn.text || promptTurn.images.length !== cachedTurn.images.length) return false;
-    return promptTurn.images.every((image, imageIndex) => {
-      const cachedImage = cachedTurn.images[imageIndex]!;
-      const data = imageData(image, blobStore);
-      const cachedData = imageData(cachedImage, blobStore);
-      return (
-        image.mimeType === cachedImage.mimeType &&
-        data !== undefined &&
-        cachedData !== undefined &&
-        Buffer.from(data).equals(cachedData)
-      );
-    });
+    if (promptTurn.text !== cachedTurn.text) return false;
+    return imagesMatch(promptTurn.images, cachedTurn.images, blobStore);
+  });
+}
+
+function promptUserImageSlots(
+  prompt: LanguageModelV4Prompt,
+  historyActiveIndex: number,
+): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] {
+  return prompt.flatMap((message, index) => {
+    if (index === historyActiveIndex || message.role !== 'user') return [];
+    return [
+      {
+        text: extractV4UserText(message.content),
+        images: createCursorUserMessage(message.content, '').selectedContext?.selectedImages ?? [],
+      },
+    ];
   });
 }
 
 function agentTurnImageLists(
   turns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
+  needed = Number.POSITIVE_INFINITY,
 ): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] | undefined {
   try {
     const lists: { text: string; images: readonly SelectedImage[] }[] = [];
@@ -214,13 +219,32 @@ function agentTurnImageLists(
       const userMessage = fromBinary(UserMessageSchema, userMessageBytes);
       if (userMessage.isSimulatedMsg === true) continue;
       const images = userMessage.selectedContext?.selectedImages ?? [];
-      if (userMessage.text.length === 0 && images.length === 0) continue;
+      if (userMessage.text.length === 0 && images.length === 0 && lists.length >= needed) continue;
       lists.push({ text: userMessage.text, images });
     }
     return lists;
   } catch {
     return undefined;
   }
+}
+
+function imagesMatch(
+  promptImages: readonly SelectedImage[],
+  cachedImages: readonly SelectedImage[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): boolean {
+  if (promptImages.length !== cachedImages.length) return false;
+  return promptImages.every((image, imageIndex) => {
+    const cachedImage = cachedImages[imageIndex]!;
+    const data = imageData(image, blobStore);
+    const cachedData = imageData(cachedImage, blobStore);
+    return (
+      image.mimeType === cachedImage.mimeType &&
+      data !== undefined &&
+      cachedData !== undefined &&
+      Buffer.from(data).equals(cachedData)
+    );
+  });
 }
 
 function imageData(image: SelectedImage, blobStore: ReadonlyMap<string, Uint8Array>): Uint8Array | undefined {

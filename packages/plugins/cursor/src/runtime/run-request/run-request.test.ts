@@ -708,6 +708,62 @@ test('an edited full-history request rebuilds instead of reusing stale cached tu
   expect(conversationState.turns).not.toEqual([staleTurn]);
 });
 
+test('moving an image onto a later empty user rebuilds instead of reusing cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (imageOnFirst: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: imageOnFirst ? [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] : [],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    {
+      role: 'user',
+      content: imageOnFirst ? [] : [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'second answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-moved-empty-image', blobStore },
+  });
+  const emptyUser = storeCursorBlob(blobStore, toBinary(UserMessageSchema, create(UserMessageSchema, {})));
+  const emptyTurn = storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'agentConversationTurn',
+          value: create(AgentConversationTurnStructureSchema, { userMessage: emptyUser, steps: [] }),
+        },
+      }),
+    ),
+  );
+  const cachedTurns = [initial.conversationState.turns[0]!, emptyTurn];
+  const moved = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-moved-empty-image',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(moved.conversationState.turns).not.toEqual(cachedTurns);
+});
+
 test('moving an image between historical users rebuilds instead of reusing cached turns', () => {
   const blobStore = new Map<string, Uint8Array>();
   const prompt = (imageOnFirst: boolean): LanguageModelV4Prompt => [
