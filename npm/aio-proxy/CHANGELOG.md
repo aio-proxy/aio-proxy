@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.26.0
+
+### Minor Changes
+
+- [#380](https://github.com/aio-proxy/aio-proxy/pull/380) [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e) Thanks [@baranwang](https://github.com/baranwang)! - Quota details show this instance's API-equivalent spend for each OAuth window. It is not the vendor balance.
+
+### Patch Changes
+
+- [#377](https://github.com/aio-proxy/aio-proxy/pull/377) [`7e02db8`](https://github.com/aio-proxy/aio-proxy/commit/7e02db80b0be294c5a02b2e7b7d2350d666868c5) Thanks [@baranwang](https://github.com/baranwang)! - Settings → About now shows only one version action at a time. When a newer release is available, the row keeps "Update now" and hides "Check for updates". After a failed or unavailable install, both stay so the user can recheck or retry.
+
+- [#378](https://github.com/aio-proxy/aio-proxy/pull/378) [`67e63dd`](https://github.com/aio-proxy/aio-proxy/commit/67e63dde4e3b60b0cae31cbf37f1d70d1aac02e9) Thanks [@baranwang](https://github.com/baranwang)! - Fixed Cursor multimodal follow-up requests failing after an inline image moved into conversation history, including pending tool resumes, without dropping Cursor-owned conversation turns.
+
+- [#381](https://github.com/aio-proxy/aio-proxy/pull/381) [`a9b3558`](https://github.com/aio-proxy/aio-proxy/commit/a9b355800d01932b1f9e27c63f6f6765bc489125) Thanks [@baranwang](https://github.com/baranwang)! - Codex Desktop tool results that arrive without a `call_id` are rewritten to a user note on the OpenAI Responses raw path. Outputs that still have a `call_id` are left for stored previous-response state.
+
 ## 0.25.0
 
 ### Minor Changes

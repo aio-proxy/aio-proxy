@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-cursor
 
+## 0.26.0
+
+### Patch Changes
+
+- [#378](https://github.com/aio-proxy/aio-proxy/pull/378) [`67e63dd`](https://github.com/aio-proxy/aio-proxy/commit/67e63dde4e3b60b0cae31cbf37f1d70d1aac02e9) Thanks [@baranwang](https://github.com/baranwang)! - Fixed Cursor multimodal follow-up requests failing after an inline image moved into conversation history, including pending tool resumes, without dropping Cursor-owned conversation turns.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.26.0
+  - @aio-proxy/types@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes

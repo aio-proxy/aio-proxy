@@ -1,5 +1,31 @@
 # @aio-proxy/core
 
+## 0.26.0
+
+### Minor Changes
+
+- [#380](https://github.com/aio-proxy/aio-proxy/pull/380) [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e) Thanks [@baranwang](https://github.com/baranwang)! - Quota details show this instance's API-equivalent spend for each OAuth window. It is not the vendor balance.
+
+### Patch Changes
+
+- [#381](https://github.com/aio-proxy/aio-proxy/pull/381) [`a9b3558`](https://github.com/aio-proxy/aio-proxy/commit/a9b355800d01932b1f9e27c63f6f6765bc489125) Thanks [@baranwang](https://github.com/baranwang)! - Codex Desktop tool results that arrive without a `call_id` are rewritten to a user note on the OpenAI Responses raw path. Outputs that still have a `call_id` are left for stored previous-response state.
+- Updated dependencies [[`67e63dd`](https://github.com/aio-proxy/aio-proxy/commit/67e63dde4e3b60b0cae31cbf37f1d70d1aac02e9), [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e)]:
+  - @aio-proxy/plugin-cursor@0.26.0
+  - @aio-proxy/i18n@0.26.0
+  - @aio-proxy/logger@0.26.0
+  - @aio-proxy/plugin-sdk@0.26.0
+  - @aio-proxy/plugin-claude-code@0.26.0
+  - @aio-proxy/plugin-github-copilot@0.26.0
+  - @aio-proxy/plugin-google-antigravity@0.26.0
+  - @aio-proxy/plugin-kimi-code@0.26.0
+  - @aio-proxy/plugin-muse-code@0.26.0
+  - @aio-proxy/plugin-openai-chatgpt@0.26.0
+  - @aio-proxy/plugin-opencode-go@0.26.0
+  - @aio-proxy/plugin-openrouter@0.26.0
+  - @aio-proxy/plugin-xai-grok@0.26.0
+  - @aio-proxy/shared@0.26.0
+  - @aio-proxy/types@0.26.0
+
 ## 0.25.0
 
 ### Minor Changes
