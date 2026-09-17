@@ -105,12 +105,14 @@ const migrationSelection = async (
     }
   | { readonly accepted: true; readonly targets: readonly MigrationTarget[] }
 > => {
-  if (preview.blocked.length > 0)
+  if (preview.targets.length === 0)
     return {
       accepted: false,
-      result: { status: 'blocked', migrated: 0, skipped: 0, conflicts: preview.blocked.length },
+      result:
+        preview.blocked.length > 0
+          ? { status: 'blocked', migrated: 0, skipped: 0, conflicts: preview.blocked.length }
+          : { status: 'empty' },
     };
-  if (preview.targets.length === 0) return { accepted: false, result: { status: 'empty' } };
   const groups = preview.groups.filter((group) => group.providerId !== providerId);
   if (groups.length === 0) return { accepted: false, result: { status: 'empty' } };
   const selected =

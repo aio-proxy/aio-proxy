@@ -82,7 +82,7 @@ const parseOwner = (value: unknown): LeaseOwner | undefined => {
     : undefined;
 };
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const sha256 = /^[0-9a-f]{64}$/i;
 const validEntry = (value: unknown): value is JournalEntry => {
   if (!isPlainObject(value)) return false;
@@ -287,7 +287,7 @@ export async function readJournal(
   location: CodexLocation,
   operationId: string,
 ): Promise<SessionMigrationJournal | undefined> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId))
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId))
     throw new Error('invalid migration operation id');
   try {
     const path = journalPath(location, operationId);

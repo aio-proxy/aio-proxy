@@ -15,6 +15,8 @@ test('resolves CODEX_HOME and fixed managed paths', () => {
   expect(location.configPath).toBe('/tmp/user/codex-home/config.toml');
   expect(location.managedRoot).toBe('/tmp/user/codex-home/.aio-proxy');
   expect(location.markerPath).toBe('/tmp/user/codex-home/.aio-proxy/codex-config.json');
+  expect(location.sqliteHome).toBe('/tmp/user/codex-home');
+  expect(location.legacyScanAllowed).toBe(false);
 });
 
 test('uses an explicit absolute home and ignores blank CODEX_HOME', () => {
@@ -52,10 +54,12 @@ test('rejects an unsafe home-relative sqlite_home value', async () => {
   try {
     await writeFile(join(root, 'config.toml'), 'sqlite_home = "~other/state"\n');
     const location = resolveCodexLocation(root, { HOME: root });
-    expect(location.sqliteHome).toBeUndefined();
+    expect(location.sqliteHome).toBe(root);
     expect(location.legacyScanAllowed).toBe(false);
     await writeFile(join(root, 'config.toml'), 'sqlite_home = "../outside"\n');
-    expect(resolveCodexLocation(root, { HOME: root }).sqliteHome).toBeUndefined();
+    const rejected = resolveCodexLocation(root, { HOME: root });
+    expect(rejected.sqliteHome).toBe(root);
+    expect(rejected.legacyScanAllowed).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

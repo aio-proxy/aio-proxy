@@ -293,9 +293,11 @@ export async function migrateCodexSessions(input: {
     await lock.renew();
     const offline = await checkOffline(location);
     if (offline !== 'ok') return resultBlocked();
-    const preview = await inspectCodexSessions(location);
-    if (preview.blocked.length > 0) return resultBlocked(preview.blocked.length);
-    if (targetProviderId !== (await managedProvider(location))) return resultBlocked();
+    try {
+      if (targetProviderId !== (await managedProvider(location))) return resultBlocked();
+    } catch {
+      return resultBlocked();
+    }
     const snapshot = await readStateIndex(location);
     const { selected, skipped, conflicts } = selectMigrationSessions(snapshot, targets, targetProviderId);
     const paths = new Set<string>();

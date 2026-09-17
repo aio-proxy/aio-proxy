@@ -230,6 +230,52 @@ test('defaults a first multi-source migration selector to openai', async () => {
   expect(result.migration).toEqual({ status: 'declined' });
 });
 
+test('migrates readable history when inspect also reports blocked sessions', async () => {
+  let migratedIds: string[] | undefined;
+  const result = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => 'aio-proxy',
+      authMode: async () => 'keep-chatgpt',
+      key: async () => ({ kind: 'none' }),
+      sources: async () => ['newapi'],
+      migrate: async () => true,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'newapi', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => ({ token: 'placeholder', kind: 'placeholder', verified: true }),
+    }),
+    inspectSessions: async () => ({
+      groups: [{ providerId: 'newapi', active: 1, archived: 0 }],
+      blocked: [{ id: 'blocked-id', reason: 'index_rollout_mismatch' }],
+      targets: [{ id: 'readable-id', sourceProviderId: 'newapi', archived: false, storage: 'legacy', revision: 'r1' }],
+    }),
+    resolveCommand: async () => '/tmp/aiop',
+    commitSetup: async ({ providerId }) => ({
+      status: 'configured',
+      providerId,
+      authMode: 'keep-chatgpt',
+      credential: 'placeholder',
+      connection: 'not_checked',
+    }),
+    migrateSessions: async (targets) => {
+      migratedIds = targets.map((target) => target.id);
+      return { status: 'completed', migrated: targets.length, skipped: 0, conflicts: 0 };
+    },
+  });
+  expect(migratedIds).toEqual(['readable-id']);
+  expect(result.migration).toEqual({ status: 'completed', migrated: 1, skipped: 0, conflicts: 0 });
+});
+
 test('aborts commit when the proxy endpoint changes during prompts', async () => {
   let committed = false;
   const error = await runCodexWizard({

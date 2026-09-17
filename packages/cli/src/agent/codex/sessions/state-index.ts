@@ -25,7 +25,7 @@ export type IndexBlocked = { readonly id: string; readonly reason: string };
 export type StateSnapshot = { readonly sessions: readonly IndexedSession[]; readonly blocked: readonly IndexBlocked[] };
 
 const databaseNames = ['state_5.sqlite'] as const;
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const roots = async (location: CodexLocation): Promise<string[]> => {
   const candidates = [location.sqliteHome, location.home].filter((value): value is string => value !== undefined);
   const result: string[] = [];
@@ -201,10 +201,6 @@ export async function readStateIndex(location: CodexLocation): Promise<StateSnap
       }
       if (mode !== 'legacy' && mode !== 'paginated') {
         blocked.push({ id, reason: 'unknown_history_mode' });
-        continue;
-      }
-      if (mode === 'paginated') {
-        blocked.push({ id, reason: 'paginated history format is not verified for offline migration' });
         continue;
       }
       try {

@@ -45,9 +45,10 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
   const actualHome = normalize(isAbsolute(candidate) ? candidate : resolve(userHome, candidate));
   const explicitSqliteHome = env['CODEX_SQLITE_HOME']?.trim();
   const useConfigSqliteHome = explicitSqliteHome === undefined || explicitSqliteHome.length === 0;
-  const sqliteHome = useConfigSqliteHome
+  const configuredSqliteHome = useConfigSqliteHome
     ? readConfiguredSqliteHome(join(actualHome, 'config.toml'), actualHome, userHome)
     : resolveStoragePath(explicitSqliteHome, userHome, userHome);
+  const sqliteHome = configuredSqliteHome ?? (useConfigSqliteHome ? actualHome : undefined);
   const managedRoot = join(actualHome, '.aio-proxy');
   return {
     home: actualHome,
@@ -55,6 +56,7 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
     managedRoot,
     markerPath: join(managedRoot, 'codex-config.json'),
     sqliteHome,
-    legacyScanAllowed: env['CODEX_LEGACY_SCAN_ALLOWED'] === '1' || (useConfigSqliteHome && sqliteHome !== undefined),
+    legacyScanAllowed:
+      env['CODEX_LEGACY_SCAN_ALLOWED'] === '1' || (useConfigSqliteHome && configuredSqliteHome !== undefined),
   };
 }
