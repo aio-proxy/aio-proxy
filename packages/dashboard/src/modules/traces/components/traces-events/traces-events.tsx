@@ -38,8 +38,10 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
     onChange(
       withTraceFilters(search, {
         startedAfter: new Date(startMs).toISOString(),
-        // 服务端的 startedBefore 是闭区间，减 1ms 免得把下一个桶的第一条也捞进来
-        startedBefore: new Date(startMs + bucketMs - 1).toISOString(),
+        // 服务端的 startedBefore 是闭区间，减 1ms 免得把下一个桶的第一条也捞进来。
+        // 再跟当前范围的右端取小：桶是从范围起点开始排的，范围不是桶宽的整数倍时
+        // 服务端会把最后一个桶截短，这里不夹住就会选到图上根本没画的那段时间。
+        startedBefore: new Date(Math.min(startMs + bucketMs - 1, Date.parse(search.startedBefore))).toISOString(),
       }),
     );
   };
