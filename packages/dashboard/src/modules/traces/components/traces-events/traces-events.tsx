@@ -27,6 +27,9 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
     { code: 'OK', label: m['dashboard.traces.success'](), count: totals.success, dot: 'bg-chart-success' },
     { code: 'ERROR', label: m['dashboard.traces.failure'](), count: totals.error, dot: 'bg-chart-error' },
   ] as const;
+  // 只剩一个桶就没法再收窄了（1m 粒度下每次缩放的结果都是这个状态），
+  // 那就别再摆出可点的样子：提示语收起来，柱子也不显示手型。
+  const canZoom = (query.data?.buckets.length ?? 0) > 1;
 
   const selectBucket = (at: string) => {
     const [first, second] = query.data?.buckets ?? [];
@@ -71,8 +74,9 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
             </button>
           );
         })}
+        {/* span 常在：ml-auto 靠它把折叠按钮顶到右边，提示语只是它的内容。 */}
         <span className="ml-auto text-xs text-muted-foreground max-sm:hidden">
-          {m['dashboard.traces.events_hint']()}
+          {canZoom && m['dashboard.traces.events_hint']()}
         </span>
         <Button
           variant="ghost"
@@ -88,9 +92,17 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
       {!collapsed && (
         <div id={bodyId} className="px-3 pb-3">
           {query.isLoading && <Skeleton className="h-40 w-full" />}
-          {query.isError && <p className="text-xs text-muted-foreground">{m['dashboard.traces.error_title']()}</p>}
+          {/* 轮询失败后 TanStack Query 会留着上一次的 data，不判 data 就成了错误行压在旧图上面。 */}
+          {query.isError && query.data === undefined && (
+            <p className="text-xs text-muted-foreground">{m['dashboard.traces.error_title']()}</p>
+          )}
           {query.data && (
-            <TracesEventsChart buckets={query.data.buckets} bucket={query.data.bucket} onBucketSelect={selectBucket} />
+            <TracesEventsChart
+              buckets={query.data.buckets}
+              bucket={query.data.bucket}
+              canZoom={canZoom}
+              onBucketSelect={selectBucket}
+            />
           )}
         </div>
       )}
