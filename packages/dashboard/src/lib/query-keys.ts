@@ -37,6 +37,8 @@ export const queryKeys = {
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],
   traces: (search: object) => ['dashboard', 'traces', search],
+  // 摘要 key 不含分页参数：图覆盖整个时间范围，翻页不该让它重新请求。
+  tracesSummary: (filters: object) => ['dashboard', 'traces', 'summary', filters],
   usage: (range: string, metric: string, groupBy: string, maxResults?: number) => [
     'dashboard',
     'usage',

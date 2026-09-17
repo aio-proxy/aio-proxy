@@ -6,11 +6,13 @@ import {
   DashboardTracesRequestError,
   getTrace,
   getTraces,
+  getTraceSummary,
   traceQueryOptions,
   tracesQueryOptions,
+  traceSummaryQueryOptions,
 } from './traces-service';
 
-const mocks = rs.hoisted(() => ({ list: rs.fn(), detail: rs.fn() }));
+const mocks = rs.hoisted(() => ({ list: rs.fn(), detail: rs.fn(), summary: rs.fn() }));
 
 rs.mock('@/lib/dashboard-client', () => ({
   dashboardClient: {
@@ -18,6 +20,7 @@ rs.mock('@/lib/dashboard-client', () => ({
       api: {
         traces: {
           $get: mocks.list,
+          summary: { $get: mocks.summary },
           ':traceId': { $get: mocks.detail },
         },
       },
@@ -40,13 +43,20 @@ const detailBody = {
   },
   spans: [],
 };
+const summaryBody = {
+  bucket: '5m',
+  buckets: [{ at: '2026-07-12T08:00:00.000Z', success: 3, error: 1 }],
+  totals: { success: 3, error: 1 },
+};
 
 describe('trace service', () => {
   beforeEach(() => {
     mocks.list.mockReset();
     mocks.detail.mockReset();
+    mocks.summary.mockReset();
     mocks.list.mockResolvedValue(new Response(JSON.stringify(listBody), { status: 200 }));
     mocks.detail.mockResolvedValue(new Response(JSON.stringify(detailBody), { status: 200 }));
+    mocks.summary.mockResolvedValue(new Response(JSON.stringify(summaryBody), { status: 200 }));
   });
 
   test('forwards the page token, date bounds, and every active filter to the typed list route', async () => {
@@ -105,6 +115,58 @@ describe('trace service', () => {
     expect(tracesQueryOptions(search, false).refetchInterval).toBe(false);
     expect(traceQueryOptions(traceId).queryKey).toEqual(['dashboard', 'traces', traceId]);
     expect(traceQueryOptions(traceId).refetchInterval).toBeUndefined();
+  });
+
+  test('sends the same filters as the list route to the summary route, without pagination', async () => {
+    const search = {
+      ...createDefaultTraceSearch(new Date('2026-07-12T12:00:00.000Z')),
+      pageSize: 20 as const,
+      pageToken: 'next-page-token',
+      traceId,
+      requestId: 'request-a',
+      sessionSource: 'openai-prompt-cache',
+      sessionId: 'cache-a',
+      otelStatusCode: 'ERROR' as const,
+      terminationReason: 'cancelled' as const,
+      inboundProtocol: 'openai-response',
+      requestedModelId: 'gpt-5',
+      finalProviderId: 'provider-a',
+      finalModelId: 'gpt-5.1',
+      finalHttpStatus: 503,
+    };
+
+    await expect(getTraceSummary(search)).resolves.toEqual(summaryBody);
+
+    expect(mocks.summary).toHaveBeenCalledWith({
+      query: {
+        startedAfter: search.startedAfter,
+        startedBefore: search.startedBefore,
+        traceId,
+        requestId: 'request-a',
+        sessionSource: 'openai-prompt-cache',
+        sessionId: 'cache-a',
+        otelStatusCode: 'ERROR',
+        terminationReason: 'cancelled',
+        inboundProtocol: 'openai-response',
+        requestedModelId: 'gpt-5',
+        finalProviderId: 'provider-a',
+        finalModelId: 'gpt-5.1',
+        finalHttpStatus: 503,
+      },
+    });
+  });
+
+  test('keys the summary without pagination so paging does not refetch the chart', () => {
+    const search = createDefaultTraceSearch(new Date('2026-07-12T12:00:00.000Z'));
+    const paged = { ...search, pageSize: 20 as const, pageToken: 'next-page-token' };
+
+    expect(traceSummaryQueryOptions(search, true).queryKey).toEqual(traceSummaryQueryOptions(paged, true).queryKey);
+    expect(traceSummaryQueryOptions(search, true).queryKey).not.toEqual(
+      traceSummaryQueryOptions({ ...search, finalProviderId: 'provider-a' }, true).queryKey,
+    );
+    expect(traceSummaryQueryOptions(search, true).refetchInterval).toBe(5_000);
+    expect(traceSummaryQueryOptions(paged, true).refetchInterval).toBe(false);
+    expect(traceSummaryQueryOptions(search, false).refetchInterval).toBe(false);
   });
 
   test.each([
