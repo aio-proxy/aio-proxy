@@ -493,6 +493,40 @@ test('removing an image from full history rebuilds instead of reusing stale cach
   expect(removed.conversationState.turns).not.toEqual(initial.conversationState.turns);
 });
 
+test('removing the only historical image from an empty user rebuilds instead of reusing cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (withImage: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: withImage ? [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] : [],
+    },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-empty-image-history', blobStore },
+  });
+
+  const removed = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-empty-image-history',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(removed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
 test('an unchanged image in full history preserves the reusable Cursor checkpoint', () => {
   const blobStore = new Map<string, Uint8Array>();
   const prompt: LanguageModelV4Prompt = [
