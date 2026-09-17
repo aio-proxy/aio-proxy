@@ -1,20 +1,24 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardTraceSpan } from '@aio-proxy/types';
+import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
-import { formatDuration } from '@/lib/format-duration';
-
+import { readSpanMetrics } from '../../lib/span-metrics';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceResultDetails } from '../../lib/trace-formatters';
 import { TraceStatus } from '../trace-status';
+import { SpanMetricGrid } from './span-metric-grid';
+import { SpanStatusRow } from './span-status-row';
 
 interface SpanDetailPanelProps {
   readonly span: DashboardTraceSpan | undefined;
+  readonly trace: DashboardTraceSummary;
+  readonly spans: readonly DashboardTraceSpan[];
 }
 
-export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
+export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, spans }) => {
   const missing = TRACE_PLACEHOLDER;
+  const metrics = span === undefined ? undefined : readSpanMetrics({ span, spans, trace });
   const resultDetails =
     span === undefined ? undefined : formatTraceResultDetails({ errorType: span.errorType, errorCode: span.errorCode });
 
@@ -24,7 +28,7 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
         <CardTitle>{m['dashboard.traces.span_details']()}</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 space-y-4">
-        {span === undefined ? (
+        {span === undefined || metrics === undefined ? (
           <p className="text-muted-foreground">{missing}</p>
         ) : (
           <>
@@ -33,6 +37,8 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
                 <div className="font-heading text-base font-medium wrap-break-word">{span.name}</div>
                 <div className="text-xs text-muted-foreground">{span.kind}</div>
               </div>
+              <SpanStatusRow span={span} metrics={metrics} />
+              <SpanMetricGrid metrics={metrics} />
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
                 {[
                   [m['dashboard.traces.trace_id'](), span.traceId],
@@ -44,7 +50,6 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
                     m['dashboard.traces.ended_at'](),
                     span.endedAt === null ? undefined : new Date(span.endedAt).toLocaleString(),
                   ],
-                  [m['dashboard.traces.duration'](), formatDuration(span.durationMs)],
                   [m['dashboard.traces.result_details'](), resultDetails],
                 ].map(([label, value]) => (
                   <div className="contents" key={label as string}>

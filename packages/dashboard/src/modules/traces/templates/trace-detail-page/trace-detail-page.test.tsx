@@ -217,7 +217,9 @@ describe('trace detail page', () => {
     expect(screen.getByRole('tab', { name: /^Response$|^响应$/u })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByRole('heading', { name: /^Headers$|^标头$/u }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('heading', { name: /^Body$|^正文$/u }).length).toBeGreaterThan(0);
-    expect(screen.getByText('503')).toBeInTheDocument();
+    // Scoped to the response metadata: the Detail tab's status row shows the same code.
+    const httpStatus = screen.getByText(/^HTTP status$|^HTTP 状态码$/u).parentElement!;
+    expect(within(httpStatus).getByText('503')).toBeInTheDocument();
     expect(screen.getByText('24')).toBeInTheDocument();
   });
 
