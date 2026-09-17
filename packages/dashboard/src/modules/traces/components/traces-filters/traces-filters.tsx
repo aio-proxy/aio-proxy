@@ -8,12 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@aio-proxy/ui/components/sidebar';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
-import { endOfDay, startOfDay } from 'date-fns';
 import { RefreshCw, RotateCcw } from 'lucide-react';
 import { useEffect } from 'react';
 import { z } from 'zod';
 
-import { DateTimeRangePicker } from '@/components/date-time-range-picker';
 import { PROTOCOL_ORDER, ProtocolLabel } from '@/components/protocol-label';
 
 import {
@@ -24,7 +22,6 @@ import {
 } from '../../lib/trace-search';
 import { TracesRequestFilters } from '../traces-request-filters';
 import { TracesResultFilters } from '../traces-result-filters';
-import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from './date-range';
 
 interface TracesFiltersProps {
   readonly search: TraceSearch;
@@ -36,7 +33,6 @@ interface TracesFiltersProps {
 }
 
 const schema = z.object({
-  dateRange: z.object({ from: z.date(), to: z.date() }),
   requestedModelId: z.string(),
   otelStatusCode: z.string(),
   inboundProtocol: z.string(),
@@ -51,11 +47,8 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
   onAutoRefresh,
   onRefresh,
 }) => {
-  const now = new Date();
-  const retentionStart = startOfDay(new Date(now.getTime() - 45 * 86_400_000));
   const form = useForm({
     defaultValues: {
-      dateRange: toPickerRange(search),
       requestedModelId: search.requestedModelId ?? '',
       otelStatusCode: search.otelStatusCode ?? '',
       inboundProtocol: search.inboundProtocol ?? '',
@@ -64,45 +57,30 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
     validators: { onChange: schema },
   });
   const patch = (value: TraceFilterPatch) => onChange(withTraceFilters(search, value));
-  const { startedAfter, startedBefore, requestedModelId, otelStatusCode, inboundProtocol } = search;
+  const { requestedModelId, otelStatusCode, inboundProtocol } = search;
 
   useEffect(() => {
-    form.setFieldValue('dateRange', toPickerRange({ startedAfter, startedBefore }));
     form.setFieldValue('requestedModelId', requestedModelId ?? '');
     form.setFieldValue('otelStatusCode', otelStatusCode ?? '');
     form.setFieldValue('inboundProtocol', inboundProtocol ?? '');
-  }, [form, startedAfter, startedBefore, requestedModelId, otelStatusCode, inboundProtocol]);
+  }, [form, requestedModelId, otelStatusCode, inboundProtocol]);
+
+  // 工具栏的实时按钮和这个开关绑同一个 autoRefresh，从工具栏改过来时要跟上。
+  useEffect(() => {
+    form.setFieldValue('autoRefresh', autoRefresh);
+  }, [form, autoRefresh]);
 
   return (
-    <Sidebar className="absolute! inset-y-0! h-full! border-r" aria-label={m['dashboard.traces.filters']()}>
+    <Sidebar
+      id="traces-filters"
+      className="absolute! inset-y-0! h-full! border-r"
+      aria-label={m['dashboard.traces.filters']()}
+    >
       <SidebarHeader className="flex h-12 justify-center border-b px-4">
         <h2 className="font-heading text-base font-medium">{m['dashboard.traces.filters']()}</h2>
       </SidebarHeader>
       <SidebarContent>
-        <Accordion multiple defaultValue={['range']} className="rounded-none border-0 **:data-open:bg-transparent">
-          <AccordionItem value="range">
-            <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
-              {m['dashboard.traces.range']()}
-            </AccordionTrigger>
-            <AccordionContent className="pb-3">
-              <form.Field name="dateRange">
-                {(field) => (
-                  <Field className="w-full min-w-0">
-                    <DateTimeRangePicker
-                      value={field.state.value}
-                      presets={createTraceDateTimeRangePresets()}
-                      min={retentionStart}
-                      max={endOfDay(now)}
-                      onChange={(value) => {
-                        field.handleChange(value);
-                        patch(toQueryRange(value));
-                      }}
-                    />
-                  </Field>
-                )}
-              </form.Field>
-            </AccordionContent>
-          </AccordionItem>
+        <Accordion multiple defaultValue={['request']} className="rounded-none border-0 **:data-open:bg-transparent">
           <AccordionItem value="request">
             <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
               {m['dashboard.traces.request_tab']()}

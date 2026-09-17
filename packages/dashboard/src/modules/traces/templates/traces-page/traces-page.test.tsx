@@ -234,7 +234,6 @@ describe('traces page', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
-    fireEvent.click(screen.getByRole('button', { name: /^Request$|^请求$/u }));
     fireEvent.change(await screen.findByRole('textbox', { name: /Session ID|会话 ID/u }), {
       target: { value: 'cache-exact' },
     });
@@ -251,12 +250,11 @@ describe('traces page', () => {
     const view = render(<TracesPage search={initialSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
-    fireEvent.click(screen.getByRole('button', { name: /^Request$|^请求$/u }));
     const traceIdInput = await screen.findByRole('textbox', { name: /Trace ID|追踪 ID/u });
     fireEvent.change(traceIdInput, { target: { value: 'abc' } });
 
     expect(onSearchChange).not.toHaveBeenCalled();
-    expect(mocks.querySearch).toHaveBeenLastCalledWith(initialSearch, true);
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(initialSearch, false);
     expect(screen.getByRole('alert')).toHaveTextContent(/32-character lowercase hexadecimal|32 位小写十六进制/u);
 
     const traceId = 'a'.repeat(32);
@@ -266,7 +264,35 @@ describe('traces page', () => {
     expect(validSearch).toEqual(expect.objectContaining({ traceId }));
     expect(validSearch).not.toHaveProperty('pageToken');
     view.rerender(<TracesPage search={validSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
-    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ traceId }), true);
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ traceId }), false);
+  });
+
+  test('does not poll until live updates are switched on', () => {
+    const search = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    render(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(search, false);
+
+    fireEvent.click(screen.getByRole('button', { name: /Live|实时/u }));
+
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(search, true);
+  });
+
+  test('keeps the drawer auto-refresh switch in sync with the toolbar live button', () => {
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const drawerSwitch = screen.getByRole('switch', { name: /Auto refresh|自动刷新/u });
+    expect(drawerSwitch).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: /Live|实时/u }));
+
+    expect(drawerSwitch).toHaveAttribute('aria-checked', 'true');
   });
 
   test('navigates a keyboard-selected row to its trace detail', () => {
