@@ -1,3 +1,5 @@
+import { cn } from '@aio-proxy/ui/lib/utils';
+
 import { formatDuration } from '@/lib/format-duration';
 
 import { createWaterfallTicks } from '../../lib/trace-waterfall-ticks';
@@ -13,12 +15,14 @@ export const WaterfallRuler: React.FC<WaterfallRulerProps> = ({ totalDurationMs 
     {createWaterfallTicks(totalDurationMs).map((tick) => (
       <span
         key={tick.ratio}
-        className="absolute bottom-0 flex h-full items-end border-l pl-1 font-mono text-[10px] text-muted-foreground tabular-nums"
-        style={
-          tick.ratio === 1
-            ? { right: 0, borderLeft: 'none', borderRight: '1px solid', paddingLeft: 0, paddingRight: '0.25rem' }
-            : { left: `${tick.ratio * 100}%` }
-        }
+        // 最后一格钉在右边、刻度线画在右侧，不然 100% 的标签会整个溢出容器。
+        // 边框只能用 Tailwind 的 border-l / border-r：内联 `borderRight: '1px solid'`
+        // 会取 currentColor，跟其他几格的 --border 不是一个颜色。
+        className={cn(
+          'absolute bottom-0 flex h-full items-end font-mono text-[10px] text-muted-foreground tabular-nums',
+          tick.ratio === 1 ? 'right-0 border-r pr-1' : 'border-l pl-1',
+        )}
+        style={tick.ratio === 1 ? undefined : { left: `${tick.ratio * 100}%` }}
       >
         {formatDuration(tick.durationMs)}
       </span>
