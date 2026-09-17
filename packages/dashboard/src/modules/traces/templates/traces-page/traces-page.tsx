@@ -10,6 +10,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
+import { TracesEvents } from '../../components/traces-events';
 import { TracesFilters } from '../../components/traces-filters';
 import { TracesTable } from '../../components/traces-table';
 import { TracesToolbar } from '../../components/traces-toolbar';
@@ -133,6 +134,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 onChange={onSearchChange}
                 onAutoRefresh={setAutoRefresh}
               />
+              <TracesEvents search={search} autoRefresh={autoRefresh} onChange={onSearchChange} />
               <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
                 {loading && (
                   <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>
