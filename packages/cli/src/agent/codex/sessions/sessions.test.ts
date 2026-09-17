@@ -284,7 +284,8 @@ test('migrates valid paginated history when a sibling rollout is unreadable', as
     expect(preview.blocked.map((item) => item.id)).toEqual([blockedId]);
     expect(preview.targets.map((target) => target.id)).toEqual([id]);
     const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
-    expect(migrated.status).toBe('completed');
+    expect(migrated.status).toBe('partial');
+    expect(migrated.conflicts).toBe(1);
     expect(await readFile(validPath, 'utf8')).toContain('"model_provider":"aio-proxy"');
     expect(await readFile(blockedPath, 'utf8')).toContain('"model_provider":"newapi"');
   } finally {

@@ -170,7 +170,12 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
       migration.accepted ? { status: 'not_requested' } : migration.result;
     if (migration.accepted) {
       try {
-        migrationResult = await deps.migrateSessions(migration.targets, providerId);
+        const migrated = await deps.migrateSessions(migration.targets, providerId);
+        const conflicts = migrated.conflicts + preview.blocked.length;
+        migrationResult =
+          conflicts === 0
+            ? migrated
+            : { ...migrated, status: migrated.status === 'blocked' ? 'blocked' : 'partial', conflicts };
       } catch {
         migrationResult = { status: 'blocked', migrated: 0, skipped: 0, conflicts: 1 };
       }

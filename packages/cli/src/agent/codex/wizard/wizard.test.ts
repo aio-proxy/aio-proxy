@@ -273,7 +273,7 @@ test('migrates readable history when inspect also reports blocked sessions', asy
     },
   });
   expect(migratedIds).toEqual(['readable-id']);
-  expect(result.migration).toEqual({ status: 'completed', migrated: 1, skipped: 0, conflicts: 0 });
+  expect(result.migration).toEqual({ status: 'partial', migrated: 1, skipped: 0, conflicts: 1 });
 });
 
 test('aborts commit when the proxy endpoint changes during prompts', async () => {

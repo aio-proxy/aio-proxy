@@ -299,14 +299,16 @@ export async function migrateCodexSessions(input: {
       return resultBlocked();
     }
     const snapshot = await readStateIndex(location);
-    const { selected, skipped, conflicts } = selectMigrationSessions(snapshot, targets, targetProviderId);
+    const selectedSessions = selectMigrationSessions(snapshot, targets, targetProviderId);
+    const { selected, skipped } = selectedSessions;
+    const conflicts = selectedSessions.conflicts + snapshot.blocked.length;
     const paths = new Set<string>();
     for (const session of selected) {
       if (paths.has(session.rolloutPath)) return resultBlocked(1);
       paths.add(session.rolloutPath);
     }
     if (selected.length === 0)
-      return { status: conflicts > 0 ? 'partial' : 'completed', migrated: 0, skipped, conflicts };
+      return { status: conflicts > 0 || skipped > 0 ? 'partial' : 'completed', migrated: 0, skipped, conflicts };
     const operationId = testDeps.randomUUID?.() ?? crypto.randomUUID();
     const operationDir = operationPath(location, operationId);
     const entries: JournalEntry[] = [];
