@@ -92,7 +92,7 @@ export function buildCursorRunRequestBytes(input: {
     (message, index) => index !== historyActiveIndex && message.role === 'user' && v4UserHasImages(message.content),
   );
   const cachedTurns = state.conversationState?.turns ?? [];
-  const hasInboundHistory = prompt.some((message, index) => index !== historyActiveIndex && message.role !== 'system');
+  const hasInboundHistory = prompt.some((message, index) => index !== historyActiveIndex && message.role === 'user');
   const promptHistoryMatches =
     !hasInboundHistory ||
     (cachedRootMessages.length === promptRootMessages.length &&

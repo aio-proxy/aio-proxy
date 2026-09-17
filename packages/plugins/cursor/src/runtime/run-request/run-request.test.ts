@@ -245,6 +245,70 @@ test('a pending resume rebuilds when full history removes the last historical im
   expect(fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? []).toEqual([]);
 });
 
+test('an incremental tool resume preserves a cached image checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const system = { role: 'system', content: 'sys' } as const;
+  const imagePrompt: LanguageModelV4Prompt = [
+    system,
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: imagePrompt,
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: { conversationId: 'conv-incremental-image-resume', blobStore },
+  });
+  const resumed = buildCursorRunRequestBytes({
+    prompt: [
+      system,
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+        ],
+      },
+    ],
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-incremental-image-resume',
+      blobStore,
+      conversationState: initial.conversationState,
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+
+  const turnBytes = blobStore.get(Buffer.from(resumed.conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected preserved turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected preserved user message blob');
+  const image = fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages[0];
+  expect(image?.mimeType).toBe('image/png');
+  expect([...(image!.dataOrBlobId.value as Uint8Array)]).toEqual([1, 2, 3]);
+  const history = resumed.conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(history).toContainEqual({ role: 'user', content: [{ type: 'text', text: 'inspect this image' }] });
+});
+
 test('an incremental resume that includes the assistant tool-call keeps the cached user request', () => {
   const blobStore = new Map<string, Uint8Array>();
   const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
