@@ -1,13 +1,20 @@
 import { m } from '@aio-proxy/i18n';
+import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
-import { SidebarTrigger, useSidebar } from '@aio-proxy/ui/components/sidebar';
+import { useSidebar } from '@aio-proxy/ui/components/sidebar';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { endOfDay, startOfDay } from 'date-fns';
+import { CalendarIcon, ChevronDownIcon, ListFilterIcon } from 'lucide-react';
 
 import { DateTimeRangePicker } from '@/components/date-time-range-picker';
 
-import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from '../../lib/trace-date-range';
-import { type TraceSearch, withTraceFilters } from '../../lib/trace-search';
+import {
+  createTraceDateTimeRangePresets,
+  formatTraceRangeLabel,
+  toPickerRange,
+  toQueryRange,
+} from '../../lib/trace-date-range';
+import { countTraceFilters, type TraceSearch, withTraceFilters } from '../../lib/trace-search';
 
 interface TracesToolbarProps {
   readonly search: TraceSearch;
@@ -20,22 +27,39 @@ interface TracesToolbarProps {
 const RETENTION_DAYS = 45;
 
 export const TracesToolbar: React.FC<TracesToolbarProps> = ({ search, autoRefresh, onChange, onAutoRefresh }) => {
-  const { open, isMobile, openMobile } = useSidebar();
+  const { open, isMobile, openMobile, toggleSidebar } = useSidebar();
   const now = new Date();
   const retentionStart = startOfDay(new Date(now.getTime() - RETENTION_DAYS * 86_400_000));
+  const filterCount = countTraceFilters(search);
 
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-      <SidebarTrigger
-        aria-label={m['dashboard.traces.filters']()}
+      {/* 抽屉收起来之后没有别的地方能看出筛选还开着，所以按钮自己要报数。
+          SidebarTrigger 只渲染图标，带不了文案和角标，改成普通按钮直接 toggle。 */}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
         aria-controls="traces-filters"
         aria-expanded={isMobile ? openMobile : open}
-      />
+        onClick={toggleSidebar}
+      >
+        <ListFilterIcon />
+        {m['dashboard.traces.filters']()}
+        {filterCount > 0 && <Badge variant="secondary">{filterCount}</Badge>}
+      </Button>
       <DateTimeRangePicker
         value={toPickerRange(search)}
         presets={createTraceDateTimeRangePresets()}
         min={retentionStart}
         max={endOfDay(now)}
+        trigger={
+          <Button type="button" size="sm" variant="outline" aria-label={m['dashboard.date_time_range_picker.title']()}>
+            <CalendarIcon />
+            {formatTraceRangeLabel(search)}
+            <ChevronDownIcon className="text-muted-foreground" />
+          </Button>
+        }
         onChange={(value) => onChange(withTraceFilters(search, toQueryRange(value)))}
       />
       <div className="flex-1" />
