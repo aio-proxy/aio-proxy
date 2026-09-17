@@ -132,13 +132,13 @@ describe('traces page', () => {
     expect(screen.getByRole('columnheader', { name: /HTTP/u })).toBeTruthy();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[4];
+    )[3];
     expect(modelCell).toHaveTextContent('gpt-5');
     expect(modelCell).toHaveTextContent('gpt-5.1');
     const terminalCells = within(
       screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
     ).getAllByRole('cell');
-    expect(within(terminalCells[5]).getByText(longProviderId)).toHaveClass('max-w-16', 'truncate');
+    expect(within(terminalCells[4]).getByText(longProviderId)).toHaveClass('max-w-16', 'truncate');
     expect(terminalCells[8]).toHaveTextContent('26.6K');
     expect(terminalCells[8]).toHaveTextContent('318');
     expect(terminalCells[8]).toHaveTextContent('1K');
