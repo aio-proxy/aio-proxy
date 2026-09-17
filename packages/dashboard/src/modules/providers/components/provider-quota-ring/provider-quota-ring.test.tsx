@@ -336,6 +336,49 @@ test('renders <$0.01 for a positive sub-cent estimate', () => {
   expect(screen.getByTestId('provider-quota-cost-weekly')).toHaveTextContent(/<\$0\.01|\$0\.01 未満/u);
 });
 
+test('labels a period total approximate when little of the window is consumed', async () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: {
+      items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.91, resetsAt: 2, windowMinutes: 60 }],
+    },
+    estimates: [{ itemId: 'weekly', usedNanoUsd: '10520000000', basis: 'local-api-equivalent' }],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  expect(await screen.findByTestId('provider-quota-cost-period-weekly')).toHaveTextContent(
+    /About|预估约|預估約|推定約|추정 약/u,
+  );
+  expect(trigger).toHaveAttribute('aria-description', expect.stringMatching(/overlapping|重叠|重疊|重なる|겹치는/u));
+});
+
+test('keeps a 10% consumed window as an exact period label', async () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.9, resetsAt: 2, windowMinutes: 60 }] },
+    estimates: [{ itemId: 'weekly', usedNanoUsd: '100000000', basis: 'local-api-equivalent' }],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  const period = await screen.findByTestId('provider-quota-cost-period-weekly');
+  expect(period).toHaveTextContent(/Estimated period|预估周期|預估週期|推定枠|추정 주기/u);
+  expect(period).not.toHaveTextContent(/About|预估约|預估約|推定約|추정 약/u);
+});
+
 test('omits the period total when remaining quota is unused', async () => {
   queryMocks.data = {
     sampledAt: 1,

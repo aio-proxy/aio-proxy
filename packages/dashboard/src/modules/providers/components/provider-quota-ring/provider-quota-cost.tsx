@@ -32,14 +32,20 @@ export const ProviderQuotaCost: React.FC<ProviderQuotaCostProps> = ({ itemId, re
         : m['dashboard.providers.quota.cost_period']({ amount: period });
   const usedLabel = m['dashboard.providers.quota.cost_used']({ amount: used });
   const hint = m['dashboard.providers.quota.cost_period_hint']();
+  const ariaDescription = [usedLabel, periodLabel, hint].filter((part) => part !== undefined).join('. ');
   return (
     <HoverCard>
       <HoverCardTrigger
         delay={0}
         closeDelay={0}
-        className="shrink-0 text-xs text-muted-foreground"
-        data-testid={`provider-quota-cost-${itemId}`}
-        aria-description={hint}
+        render={
+          <span
+            className="shrink-0 text-xs text-muted-foreground"
+            data-testid={`provider-quota-cost-${itemId}`}
+            aria-description={ariaDescription}
+            tabIndex={0}
+          />
+        }
       >
         {usedLabel}
       </HoverCardTrigger>
