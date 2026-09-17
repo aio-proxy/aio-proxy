@@ -558,4 +558,33 @@ describe('trace store summary', () => {
       handle.close();
     }
   });
+
+  test('keeps the bucket array bounded for an absurd range', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 1);
+
+      // 年份是客户端传进来的，0000→9999 按 1d 一桶就是三百多万个桶
+      const result = store.summary({
+        startedAfter: new Date('0000-01-01T00:00:00.000Z'),
+        startedBefore: new Date('9999-12-31T23:59:59.000Z'),
+      });
+
+      // 上界是多少不重要，重要的是有上界，而且跨度再离谱也不会跟着涨
+      expect(result.buckets.length).toBeLessThan(1000);
+      expect(result.bucket).toBe('1d');
+      const wider = store.summary({
+        startedAfter: new Date('0000-01-01T00:00:00.000Z'),
+        startedBefore: new Date('9999-12-31T23:59:59.999Z'),
+      });
+      expect(wider.buckets).toHaveLength(result.buckets.length);
+      // 每个桶的 at 还是真实的 1d 间隔，宽度没有为了收敛而被偷偷拉大
+      expect(Date.parse(result.buckets[1]!.at) - Date.parse(result.buckets[0]!.at)).toBe(86_400_000);
+      // 窗口被截断了，落在窗口外的调用链不能被塞进最后一个桶
+      expect(result.totals).toEqual({ success: 0, error: 0 });
+    } finally {
+      handle.close();
+    }
+  });
 });
