@@ -31,8 +31,8 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
   // 那就别再摆出可点的样子：提示语收起来，柱子也不显示手型。
   const canZoom = (query.data?.buckets.length ?? 0) > 1;
   // 只有摘要挂了、列表还好的时候：TanStack Query 留着上一次的 data，图会继续画旧数
-  // 据。不吭声的话那张图看起来就是当前的，所以在提示位上换成错误文案 —— 图还有参考
-  // 价值，不值得把整块换掉。
+  // 据。不吭声的话那张图看起来就是当前的，所以在提示位上说明这是旧数据 —— 图还有参
+  // 考价值，不值得把整块换掉，也不能用「加载不出来」的文案去盖一张正画着数字的图。
   const staleError = query.isError && query.data !== undefined;
 
   const selectBucket = (at: string) => {
@@ -81,7 +81,7 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
         {/* span 常在：ml-auto 靠它把折叠按钮顶到右边，提示语只是它的内容。
             提示语在窄屏可以省，旧数据的警告不行。 */}
         <span className={cn('ml-auto text-xs text-muted-foreground', !staleError && 'max-sm:hidden')}>
-          {staleError ? m['dashboard.traces.error_title']() : canZoom && m['dashboard.traces.events_hint']()}
+          {staleError ? m['dashboard.traces.events_stale']() : canZoom && m['dashboard.traces.events_hint']()}
         </span>
         <Button
           variant="ghost"

@@ -1454,6 +1454,7 @@
       "attributes": "属性",
       "events": "イベント",
       "events_hint": "バーをクリックするとその時間帯に絞り込みます",
+      "events_stale": "最後に読み込んだデータを表示中",
       "events_collapse": "グラフを折りたたむ",
       "events_expand": "グラフを展開",
       "links": "リンク",

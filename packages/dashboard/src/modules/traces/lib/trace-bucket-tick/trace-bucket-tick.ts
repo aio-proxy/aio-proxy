@@ -1,8 +1,8 @@
 import type { DashboardTraceSummaryBucket, DashboardTraceSummaryBucketSize } from '@aio-proxy/types';
-import { isEmptyObject } from 'es-toolkit/predicate';
 
 // 刻度的时间部分只跟桶宽有关：1h 桶的分钟恒为 00，写出来是噪声；
-// 1d 桶本身就是一天，时间部分留空，标签由日期承担。
+// 1d 桶本身就是一天，时间部分留空，标签由日期承担 —— 服务端只在跨度超过 180h 时
+// 才选 1d，这时桶数必然 ≥ 8，spansDays 一定成立，日期不会缺。
 const timeOptions: Record<DashboardTraceSummaryBucketSize, Intl.DateTimeFormatOptions> = {
   '1m': { hour: '2-digit', minute: '2-digit' },
   '5m': { hour: '2-digit', minute: '2-digit' },
@@ -31,7 +31,5 @@ export const createBucketTickFormat = (
   const first = buckets.at(0);
   const last = buckets.at(-1);
   const spansDays = first !== undefined && last !== undefined && localDay(first.at) !== localDay(last.at);
-  // 时间部分为空（1d 档）时日期必须出现，否则单个 1d 桶会退化成没有任何字段的格式化器。
-  const withDate = spansDays || isEmptyObject(time);
-  return new Intl.DateTimeFormat(locale, withDate ? { ...dateOptions, ...time } : time);
+  return new Intl.DateTimeFormat(locale, spansDays ? { ...dateOptions, ...time } : time);
 };

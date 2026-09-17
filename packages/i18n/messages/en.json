@@ -1454,6 +1454,7 @@
       "attributes": "Attributes",
       "events": "Events",
       "events_hint": "Click a bar to zoom into that time range",
+      "events_stale": "Showing last loaded data",
       "events_collapse": "Collapse chart",
       "events_expand": "Expand chart",
       "links": "Links",

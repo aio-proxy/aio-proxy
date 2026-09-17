@@ -1454,6 +1454,7 @@
       "attributes": "屬性",
       "events": "事件",
       "events_hint": "點擊長條可縮放到該時間區間",
+      "events_stale": "顯示的是上次載入的資料",
       "events_collapse": "摺疊圖表",
       "events_expand": "展開圖表",
       "links": "連結",
