@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createTraceStore, openDb } from '@aio-proxy/core/db';
 import {
   DashboardTraceDetailSchema,
+  DashboardTracePercentileResponseSchema,
   DashboardTracesResponseSchema,
   DashboardTraceSummaryResponseSchema,
 } from '@aio-proxy/types';
@@ -193,6 +194,61 @@ async function paginatedApp(traceCount = 21) {
   return app;
 }
 
+/**
+ * `count` 条已结束的同模型调用链，起点都落在真实当下的前几秒 —— 分位聚合的窗口是
+ * 路由自己取的 `new Date()`，所以样本不能用固定日期。
+ */
+async function percentileApp(count: number) {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-traces-percentile-'));
+  homes.push(home);
+  const app = await createServer({ config: { providers: {} }, dbHome: home });
+  const handle = openDb({ home });
+  const store = createTraceStore(handle.db);
+
+  for (let index = 1; index <= count; index += 1) {
+    const traceId = index.toString(16).padStart(32, '0');
+    const spanId = index.toString(16).padStart(16, '0');
+    const startedAt = new Date(Date.now() - 10_000);
+    const endedAt = new Date(startedAt.getTime() + index * 10);
+    const attributes = { 'gen_ai.response.model': 'gpt-5' };
+    store.startRoot({
+      traceId,
+      spanId,
+      requestId: `request-${index}`,
+      inboundProtocol: 'openai-response',
+      name: 'aio_proxy.request',
+      kind: 1,
+      startedAt,
+      statusCode: 0,
+      attributes,
+      events: [],
+      links: [],
+    });
+    store.complete({
+      traceId,
+      rootSpanId: spanId,
+      spans: [
+        {
+          traceId,
+          spanId,
+          name: 'aio_proxy.request',
+          kind: 1,
+          startedAt,
+          endedAt,
+          statusCode: 0,
+          attributes,
+          events: [],
+          links: [],
+        },
+      ],
+      summary: { finalProviderId: 'provider-a', finalModelId: 'gpt-5', finalHttpStatus: 200 },
+    });
+  }
+
+  handle.close();
+  return app;
+}
+
 describe('Dashboard trace routes', () => {
   test('lists filtered traces and returns ordered trace detail', async () => {
     const app = await seededApp();
@@ -367,5 +423,32 @@ describe('Dashboard trace routes', () => {
     const response = await app.request('/dashboard/api/traces/summary', undefined, loopbackServer);
 
     expect(response.status).toBe(400);
+  });
+
+  test('compares a trace against the same-model hour once the sample clears the threshold', async () => {
+    const traceId = '00000000000000000000000000000001';
+    const enough = await (
+      await percentileApp(30)
+    ).request(`/dashboard/api/traces/${traceId}/percentile`, undefined, loopbackServer);
+    const body = DashboardTracePercentileResponseSchema.parse(await enough.json());
+
+    expect(enough.status).toBe(200);
+    expect(body.comparison).toMatchObject({ modelId: 'gpt-5', sampleCount: 30, windowMinutes: 60, percentile: 0 });
+
+    const sparse = await (
+      await percentileApp(29)
+    ).request(`/dashboard/api/traces/${traceId}/percentile`, undefined, loopbackServer);
+
+    expect(sparse.status).toBe(200);
+    expect(DashboardTracePercentileResponseSchema.parse(await sparse.json()).comparison).toBeNull();
+  });
+
+  test('returns 404 when the compared trace does not exist', async () => {
+    const response = await (
+      await percentileApp(30)
+    ).request(`/dashboard/api/traces/${'f'.repeat(32)}/percentile`, undefined, loopbackServer);
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: 'trace not found' });
   });
 });

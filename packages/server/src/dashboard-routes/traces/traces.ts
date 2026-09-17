@@ -127,4 +127,12 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
       const root = detail.spans.find((span) => span.spanId === detail.trace.rootSpanId);
       const diagnostics = root === undefined ? undefined : traceDiagnosticsFromAttributes(root.attributes);
       return context.json({ ...detail, ...(diagnostics === undefined ? {} : { diagnostics }) });
+    })
+    // 分位对比自己算不出「调用链不存在」和「调用链不可比」的区别，所以先按详情路由的口径
+    // 确认它存在，再去聚合 —— 否则一个打错的 traceId 会拿到一个安静的 null。
+    .get('/:traceId/percentile', traceIdParamsValidator, (context) => {
+      context.header('cache-control', 'no-store');
+      const { traceId } = context.req.valid('param');
+      if (state.traceStore.find(traceId) === undefined) return context.json({ error: 'trace not found' }, 404);
+      return context.json(state.traceStore.percentile(traceId, new Date()));
     });
