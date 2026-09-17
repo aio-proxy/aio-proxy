@@ -1457,7 +1457,6 @@
       "span_id": "Span ID",
       "parent_span_id": "父 Span ID",
       "span_data": "Span 数据",
-      "waterfall": "瀑布图",
       "select_span": "选择 Span {name}（{spanId}）",
       "attributes": "属性",
       "events": "事件",

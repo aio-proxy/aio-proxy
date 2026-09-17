@@ -21,9 +21,9 @@ export const SpanWaterfall: React.FC<SpanWaterfallProps> = ({ spans, selectedSpa
   const rows = layoutTraceSpans(spans, now);
   const needle = query.trim().toLowerCase();
   const visible = needle === '' ? rows : rows.filter((row) => row.name.toLowerCase().includes(needle));
-  // 刻度尺按根 span 的总时长画，不跟着搜索结果缩放 —— 每行的 offsetRatio/widthRatio
-  // 本来就是相对整条调用链算的，刻度一缩放就对不上柱子了。
-  const totalDurationMs = rows.find((row) => row.depth === 0)?.durationMs ?? 0;
+  // 刻度尺用 layout 算出的整条调用链跨度，不跟着搜索结果缩放，也不用根 span 的耗时 ——
+  // 每行的 offsetRatio/widthRatio 都是相对这个跨度算的，换个基准刻度就对不上柱子了。
+  const totalDurationMs = rows[0]?.scaleDurationMs ?? 0;
 
   return (
     <Card>

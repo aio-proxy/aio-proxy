@@ -60,4 +60,17 @@ describe('layoutTraceSpans', () => {
     ]);
     expect(rows[1]).toEqual(expect.objectContaining({ durationMs: 130, offsetRatio: 0.02 / 0.15 }));
   });
+
+  test('exposes a shared scale that covers a child outliving the root Span', () => {
+    const root = span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z');
+    const late = span('late', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.160Z', 'root');
+
+    const rows = layoutTraceSpans([root, late], new Date('2026-07-12T08:00:01.000Z'));
+
+    // The root Span lasts 100ms but the trace spans 160ms, so the scale must follow the trace,
+    // not the root duration — otherwise the ruler labels understate every bar.
+    expect(rows.map((row) => row.scaleDurationMs)).toEqual([160, 160]);
+    expect(rows[0]).toEqual(expect.objectContaining({ durationMs: 100, widthRatio: 100 / 160 }));
+    expect(rows[1]).toEqual(expect.objectContaining({ offsetRatio: 10 / 160, widthRatio: 150 / 160 }));
+  });
 });
