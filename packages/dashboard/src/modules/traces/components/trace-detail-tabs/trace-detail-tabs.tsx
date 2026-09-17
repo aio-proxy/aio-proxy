@@ -24,7 +24,7 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({ detail, select
       className="mt-4 grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]"
     >
       <SpanWaterfall spans={detail.spans} selectedSpanId={selectedSpan?.spanId} onSelect={onSpanSelect} />
-      <SpanDetailPanel span={selectedSpan} />
+      <SpanDetailPanel span={selectedSpan} trace={detail.trace} spans={detail.spans} />
     </TabsContent>
     <TabsContent value="request" className="mt-4">
       <TraceHttpDiagnostics side="request" diagnostics={detail.diagnostics?.request} />
