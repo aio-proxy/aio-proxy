@@ -1447,6 +1447,8 @@
       "usage": "使用状況",
       "spans": "スパン",
       "span_name": "スパン名",
+      "span_search_placeholder": "スパン名を検索",
+      "span_search_empty": "一致するスパンがありません",
       "span_kind": "種類",
       "span_start": "開始",
       "span_end": "終了",

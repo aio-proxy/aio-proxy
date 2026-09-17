@@ -1447,6 +1447,8 @@
       "usage": "Usage",
       "spans": "Spans",
       "span_name": "Span name",
+      "span_search_placeholder": "Search span names",
+      "span_search_empty": "No matching spans",
       "span_kind": "Kind",
       "span_start": "Started",
       "span_end": "Ended",

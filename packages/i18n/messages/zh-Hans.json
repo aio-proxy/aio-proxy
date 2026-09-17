@@ -1447,6 +1447,8 @@
       "usage": "用量",
       "spans": "Span",
       "span_name": "Span 名称",
+      "span_search_placeholder": "搜索 span 名称",
+      "span_search_empty": "没有匹配的 span",
       "span_kind": "类型",
       "span_start": "开始时间",
       "span_end": "结束时间",
