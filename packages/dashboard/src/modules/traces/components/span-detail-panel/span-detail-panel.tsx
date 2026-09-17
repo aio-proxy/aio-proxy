@@ -6,7 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/componen
 import { readSpanMetrics } from '../../lib/span-metrics';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceResultDetails } from '../../lib/trace-formatters';
+import type { TraceFilterPatch } from '../../lib/trace-search';
 import { TraceStatus } from '../trace-status';
+import { SpanAttributeTable } from './span-attribute-table';
 import { SpanMetricGrid } from './span-metric-grid';
 import { SpanStatusRow } from './span-status-row';
 
@@ -14,9 +16,10 @@ interface SpanDetailPanelProps {
   readonly span: DashboardTraceSpan | undefined;
   readonly trace: DashboardTraceSummary;
   readonly spans: readonly DashboardTraceSpan[];
+  readonly onFilter: (patch: TraceFilterPatch) => void;
 }
 
-export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, spans }) => {
+export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, spans, onFilter }) => {
   const missing = TRACE_PLACEHOLDER;
   const metrics = span === undefined ? undefined : readSpanMetrics({ span, spans, trace });
   const resultDetails =
@@ -66,9 +69,7 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
                 <TabsTrigger value="links">{m['dashboard.traces.links']()}</TabsTrigger>
               </TabsList>
               <TabsContent value="attributes">
-                <pre className="max-h-80 overflow-auto rounded-2xl bg-muted p-3 text-xs wrap-break-word whitespace-pre-wrap">
-                  {JSON.stringify(span.attributes, null, 2)}
-                </pre>
+                <SpanAttributeTable attributes={span.attributes} onFilter={onFilter} />
               </TabsContent>
               <TabsContent value="events" className="space-y-2">
                 {span.events.length === 0
