@@ -1,5 +1,22 @@
 # @aio-proxy/dashboard
 
+## 0.26.0
+
+### Minor Changes
+
+- [#380](https://github.com/aio-proxy/aio-proxy/pull/380) [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e) Thanks [@baranwang](https://github.com/baranwang), [@YePiXpert](https://github.com/YePiXpert)! - Quota details show this instance's API-equivalent spend for each OAuth window. It is not the vendor balance.
+
+### Patch Changes
+
+- [#377](https://github.com/aio-proxy/aio-proxy/pull/377) [`7e02db8`](https://github.com/aio-proxy/aio-proxy/commit/7e02db80b0be294c5a02b2e7b7d2350d666868c5) Thanks [@baranwang](https://github.com/baranwang)! - Settings → About now shows only one version action at a time. When a newer release is available, the row keeps "Update now" and hides "Check for updates". After a failed or unavailable install, both stay so the user can recheck or retry.
+- Updated dependencies [[`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e)]:
+  - @aio-proxy/server@0.26.0
+  - @aio-proxy/i18n@0.26.0
+  - @aio-proxy/brand@0.26.0
+  - @aio-proxy/plugin-sdk@0.26.0
+  - @aio-proxy/types@0.26.0
+  - @aio-proxy/ui@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes

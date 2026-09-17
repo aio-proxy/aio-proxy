@@ -1,5 +1,21 @@
 # @aio-proxy/server
 
+## 0.26.0
+
+### Minor Changes
+
+- [#380](https://github.com/aio-proxy/aio-proxy/pull/380) [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e) Thanks [@baranwang](https://github.com/baranwang), [@YePiXpert](https://github.com/YePiXpert)! - Quota details show this instance's API-equivalent spend for each OAuth window. It is not the vendor balance.
+
+### Patch Changes
+
+- Updated dependencies [[`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e), [`a9b3558`](https://github.com/aio-proxy/aio-proxy/commit/a9b355800d01932b1f9e27c63f6f6765bc489125)]:
+  - @aio-proxy/core@0.26.0
+  - @aio-proxy/i18n@0.26.0
+  - @aio-proxy/logger@0.26.0
+  - @aio-proxy/plugin-sdk@0.26.0
+  - @aio-proxy/shared@0.26.0
+  - @aio-proxy/types@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes
