@@ -4,6 +4,7 @@ import { usageDaily } from '../schema';
 import { createTraceStore, decodeTraceCursor, encodeTraceCursor } from './index';
 import { openTestDb } from './test-support';
 import { attemptSpan, completion, ROOT_SPAN_ID, rootSpan, rootStart, TRACE_ID } from './trace-store.test-support';
+import type { TraceStore } from './types';
 
 describe('trace cursor codec', () => {
   test('round-trips a versioned opaque cursor and rejects malformed tokens', () => {
@@ -456,6 +457,103 @@ describe('trace store recover, list, and prune', () => {
 
       expect(store.find(oldTrace)).toBeUndefined();
       expect(store.find(newTrace)).toBeDefined();
+    } finally {
+      handle.close();
+    }
+  });
+});
+
+const seedTrace = (store: TraceStore, traceId: string, startedAt: string, statusCode: number): void => {
+  const spanId = traceId.slice(0, 16);
+  const requestId = `req-${traceId.slice(0, 4)}`;
+  const at = new Date(startedAt);
+  store.startRoot(rootStart({ traceId, spanId, requestId, startedAt: at }));
+  // statusCode 0 是 UNSET —— 只 startRoot 不 complete，就是一条还在跑的调用链
+  if (statusCode === 0) return;
+  store.complete(
+    completion({
+      traceId,
+      rootSpanId: spanId,
+      spans: [
+        rootSpan({
+          traceId,
+          spanId,
+          startedAt: at,
+          endedAt: new Date(at.getTime() + 100),
+          statusCode,
+          // request_id 是唯一列，每条种子调用链都要带上自己的那个
+          attributes: { 'aio_proxy.request.id': requestId },
+        }),
+      ],
+      summary: {
+        finalProviderId: 'provider-b',
+        finalModelId: 'model-b',
+        finalHttpStatus: statusCode === 2 ? 500 : 200,
+      },
+    }),
+  );
+};
+
+describe('trace store summary', () => {
+  test('buckets success and error counts from the range start and leaves running traces out', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 1);
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 1);
+      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:50.000Z', 2);
+      seedTrace(store, '4'.repeat(32), '2026-07-24T09:30:05.000Z', 2);
+      seedTrace(store, '5'.repeat(32), '2026-07-24T09:45:00.000Z', 0);
+
+      const result = store.summary({
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      });
+
+      expect(result.bucket).toBe('1m');
+      expect(result.buckets).toHaveLength(60);
+      expect(result.buckets[0]).toEqual({ at: '2026-07-24T09:00:00.000Z', success: 2, error: 1 });
+      expect(result.buckets[1]).toEqual({ at: '2026-07-24T09:01:00.000Z', success: 0, error: 0 });
+      expect(result.buckets[30]).toEqual({ at: '2026-07-24T09:30:00.000Z', success: 0, error: 1 });
+      // 那条还在跑的落在 09:45 桶里，两边都不该数它
+      expect(result.buckets[45]).toEqual({ at: '2026-07-24T09:45:00.000Z', success: 0, error: 0 });
+      expect(result.totals).toEqual({ success: 2, error: 2 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('reuses the list filters', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 1);
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 2);
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      expect(store.summary({ ...range, otelStatusCode: 'ERROR' }).totals).toEqual({ success: 0, error: 1 });
+      expect(store.summary({ ...range, finalProviderId: 'provider-nope' }).totals).toEqual({ success: 0, error: 0 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('coarsens the bucket as the range widens', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      const startedAfter = new Date('2026-06-24T00:00:00.000Z');
+      const at = (days: number) => new Date(startedAfter.getTime() + days * 86_400_000);
+
+      expect(store.summary({ startedAfter, startedBefore: at(0.25) }).bucket).toBe('5m');
+      expect(store.summary({ startedAfter, startedBefore: at(1) }).bucket).toBe('30m');
+      expect(store.summary({ startedAfter, startedBefore: at(7) }).bucket).toBe('1h');
+      const retention = store.summary({ startedAfter, startedBefore: at(45) });
+      expect(retention.bucket).toBe('1d');
+      expect(retention.buckets).toHaveLength(45);
     } finally {
       handle.close();
     }

@@ -7,6 +7,7 @@ import type {
   DashboardTraceDetail,
   DashboardTracePageSize,
   DashboardTraceSummary,
+  DashboardTraceSummaryResponse,
   DashboardUsageOverviewResponse,
   OtelSpanStatusCode,
   TraceTerminationReason,
@@ -17,6 +18,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { SpanAttributesJson, SpanEventJson, SpanLinkJson } from '../schema/trace-span';
+import type { TraceFilters } from './trace-filters';
 
 export type StoredSpan = {
   readonly traceId: string;
@@ -122,6 +124,12 @@ export type TracesPage = {
   readonly previousCursor?: TraceCursor;
 };
 
+/** 摘要的时间范围是必填的：桶要对齐到范围起点，没有起点就没有桶界。 */
+export type TracesSummaryQuery = Omit<TraceFilters, 'startedAfter' | 'startedBefore'> & {
+  readonly startedAfter: Date;
+  readonly startedBefore: Date;
+};
+
 export type UsageOverviewQuery = {
   readonly range: UsageOverviewRange;
   readonly metric: UsageOverviewMetric;
@@ -139,6 +147,7 @@ export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
   readonly list: (query: TracesQuery) => TracesPage;
+  readonly summary: (query: TracesSummaryQuery) => DashboardTraceSummaryResponse;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;

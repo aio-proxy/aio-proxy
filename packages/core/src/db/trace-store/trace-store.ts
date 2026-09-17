@@ -4,6 +4,7 @@ import { overviewDashboard, overviewDashboardActivity, overviewDashboardDiagnost
 import { findAffinity, markResponseAmbiguous, resolveResponse } from './session-state';
 import { complete, prune, recover, startRoot } from './trace-lifecycle/index';
 import { find, list } from './trace-queries';
+import { summary } from './trace-summary';
 import type { TraceStore } from './types';
 import { overview } from './usage-overview';
 
@@ -12,6 +13,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     startRoot: (input) => startRoot(db, input),
     complete: (input) => complete(db, input),
     list: (query) => list(db, query),
+    summary: (query) => summary(db, query),
     find: (traceId, now) => find(db, traceId, now),
     overview: (query) => overview(db, query),
     overviewDashboard: (query) => overviewDashboard(db, query),
