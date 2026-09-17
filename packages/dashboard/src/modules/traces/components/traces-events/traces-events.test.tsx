@@ -5,29 +5,32 @@ import { createStore, Provider } from 'jotai';
 import { createDefaultTraceSearch, type TraceSearch } from '../../lib/trace-search';
 import { TracesEvents } from './traces-events';
 
-const mocks = rs.hoisted(() => ({ summarySearch: rs.fn() }));
+const twoBuckets = [
+  { at: '2026-07-27T08:00:00.000Z', success: 18_307, error: 0 },
+  { at: '2026-07-27T08:01:00.000Z', success: 0, error: 93 },
+];
+
+const mocks = rs.hoisted(() => ({
+  summarySearch: rs.fn(),
+  summary: undefined as unknown,
+}));
 
 rs.mock('../../hooks/use-trace-summary-query', () => ({
   useTraceSummaryQuery: (search: unknown, autoRefresh: boolean) => {
     mocks.summarySearch(search, autoRefresh);
-    return {
-      data: {
-        bucket: '1m',
-        buckets: [
-          { at: '2026-07-27T08:00:00.000Z', success: 18_307, error: 0 },
-          { at: '2026-07-27T08:01:00.000Z', success: 0, error: 93 },
-        ],
-        totals: { success: 18_307, error: 93 },
-      },
-      isLoading: false,
-      isError: false,
-    };
+    return mocks.summary;
   },
 }));
 
 rs.mock('../traces-events-chart', () => ({
-  TracesEventsChart: ({ onBucketSelect }: { readonly onBucketSelect: (at: string) => void }) => (
-    <button type="button" onClick={() => onBucketSelect('2026-07-27T08:01:00.000Z')}>
+  TracesEventsChart: ({
+    canZoom,
+    onBucketSelect,
+  }: {
+    readonly canZoom: boolean;
+    readonly onBucketSelect: (at: string) => void;
+  }) => (
+    <button type="button" data-can-zoom={canZoom} onClick={() => onBucketSelect('2026-07-27T08:01:00.000Z')}>
       pick bucket
     </button>
   ),
@@ -52,6 +55,11 @@ describe('TracesEvents', () => {
   beforeEach(() => {
     window.localStorage.clear();
     mocks.summarySearch.mockClear();
+    mocks.summary = {
+      data: { bucket: '1m', buckets: twoBuckets, totals: { success: 18_307, error: 93 } },
+      isLoading: false,
+      isError: false,
+    };
   });
 
   test('shows the range totals on the legend chips', () => {
@@ -131,5 +139,31 @@ describe('TracesEvents', () => {
     renderEvents(search);
 
     expect(mocks.summarySearch).toHaveBeenCalledWith(search, false);
+  });
+
+  test('stops advertising zoom once the range is down to a single bucket', () => {
+    // 1m 粒度下每次成功缩放都停在这个状态，再点一次是空操作，不能还摆着可点的样子。
+    mocks.summary = {
+      data: { bucket: '1m', buckets: twoBuckets.slice(0, 1), totals: { success: 18_307, error: 0 } },
+      isLoading: false,
+      isError: false,
+    };
+    renderEvents();
+
+    expect(screen.queryByText(/Click a bar|点击柱体/u)).toBeNull();
+    expect(screen.getByRole('button', { name: 'pick bucket' })).toHaveAttribute('data-can-zoom', 'false');
+  });
+
+  test('keeps the last good chart instead of stacking an error line on top of it', () => {
+    // 轮询失败时 TanStack Query 还留着上一次的 data，错误行和旧图会同时出现。
+    mocks.summary = {
+      data: { bucket: '1m', buckets: twoBuckets, totals: { success: 18_307, error: 93 } },
+      isLoading: false,
+      isError: true,
+    };
+    renderEvents();
+
+    expect(screen.queryByText(/Traces unavailable|无法加载追踪/u)).toBeNull();
+    expect(screen.getByRole('button', { name: 'pick bucket' })).toBeInTheDocument();
   });
 });
