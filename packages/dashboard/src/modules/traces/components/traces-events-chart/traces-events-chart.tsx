@@ -57,14 +57,17 @@ export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, b
         <ChartTooltip
           content={<ChartTooltipContent labelFormatter={(value) => formatLabel.format(new Date(String(value)))} />}
         />
-        {/* 成功在下、失败在上。stroke 用卡片底色画 2px，既是堆叠两段之间的表面间隙，
-            也把相邻柱子分开。两段都收 4px 圆角：绝大多数桶没有失败，只给顶段加圆角的话
+        {/* 成功在下、失败在上。stroke 用页面底色画 2px，既是堆叠两段之间的表面间隙，
+            也把相邻柱子分开。卡片挂在 SidebarInset 里，那层写死了 bg-background，
+            外面 <Card> 的 bg-card 到不了这里 —— 描边必须跟 --background 同色，
+            不然暗色下 olive-900 描在 olive-950 上会给每根柱子镶一圈亮边。
+            两段都收 4px 圆角：绝大多数桶没有失败，只给顶段加圆角的话
             整张图会变成一排平头柱子。有失败时成功段顶上那两个圆角缺口正好落在 2px 间隙里。 */}
         <Bar
           dataKey="success"
           stackId="events"
           fill="var(--chart-success)"
-          stroke="var(--card)"
+          stroke="var(--background)"
           strokeWidth={2}
           radius={[4, 4, 0, 0]}
           className="cursor-pointer"
@@ -73,7 +76,7 @@ export const TracesEventsChart: React.FC<TracesEventsChartProps> = ({ buckets, b
           dataKey="error"
           stackId="events"
           fill="var(--chart-error)"
-          stroke="var(--card)"
+          stroke="var(--background)"
           strokeWidth={2}
           radius={[4, 4, 0, 0]}
           className="cursor-pointer"
