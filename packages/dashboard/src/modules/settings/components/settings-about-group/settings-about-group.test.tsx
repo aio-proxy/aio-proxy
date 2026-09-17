@@ -253,6 +253,14 @@ test('reports a failed update by toast without claiming the build is current', a
   expect(screen.queryByText(upToDate)).toBeNull();
 });
 
+test('keeps Check for updates after a failed install while a newer release is still available', async () => {
+  prepare(withRelease('failed', { latest: '1.10.0', outdated: true }));
+  await renderGroup();
+
+  expect(screen.getByRole('button', { name: checkName })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
+});
+
 test('hides Check for updates as soon as Update now is pending', async () => {
   prepare(withRelease('idle', { latest: '1.10.0', outdated: true }));
   mocks.apply.mockImplementation(
