@@ -821,7 +821,10 @@
         "reset_unavailable": "No reset credit is available anymore",
         "stale_notice": "Showing the last successful reading; the latest refresh failed",
         "load_failed": "Quota is unavailable for this Provider",
-        "loading": "Loading quota"
+        "loading": "Loading quota",
+        "cost_used": "Used {amount} · API equivalent",
+        "cost_note": "Local API-equivalent spend for this Provider's successful priced requests in this window, across all models. Not this window's lane, not an account balance, and not Cursor or Grok credits. Outside clients, other instances, downtime, unpriced models, and 45-day prune undercount. Not a full bill. Do not add overlapping windows.",
+        "cost_less_than": "<$0.01"
       },
       "list_title": "Providers",
       "providers_title": "Providers",

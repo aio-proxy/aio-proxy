@@ -5,7 +5,12 @@ import type React from 'react';
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import { type ApplicableQuotaItem, quotaPace, remainingPercent } from '../../lib/quota-view';
+import { ProviderQuotaCost } from './provider-quota-cost';
 import { QuotaPaceMarker } from './quota-pace-marker';
+
+interface ProviderQuotaCostEstimate {
+  readonly usedNanoUsd: string;
+}
 
 interface ProviderQuotaItemProps {
   readonly item: ApplicableQuotaItem;
@@ -15,9 +20,10 @@ interface ProviderQuotaItemProps {
    * from "now" keeps sliding, which drifts the marker and can flip its colour with no new sample.
    */
   readonly sampledAt: number;
+  readonly estimate?: ProviderQuotaCostEstimate;
 }
 
-export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item, sampledAt }) => {
+export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item, sampledAt, estimate }) => {
   const percent = remainingPercent(item.remainingRatio);
   const tiny = item.remainingRatio > 0 && item.remainingRatio < 0.01;
   const remaining = tiny
@@ -57,6 +63,7 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item, samp
           {m['dashboard.providers.quota.resets_at']({ value: new Date(item.resetsAt).toLocaleString(getLocale()) })}
         </p>
       )}
+      {estimate === undefined ? null : <ProviderQuotaCost estimate={estimate} itemId={item.id} />}
     </li>
   );
 };

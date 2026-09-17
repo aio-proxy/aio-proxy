@@ -23,6 +23,13 @@ export const formatNanoUsd = (value: bigint, locale: string, variant: 'exact' | 
   return (formatter.format as unknown as (value: string) => string)(decimal);
 };
 
+export const compactNanoUsdDisplay = (value: bigint, locale: string) => {
+  const exact = formatNanoUsd(value, locale);
+  const compact = formatNanoUsd(value, locale, 'compact');
+  const subCent = value > 0n && compact === formatNanoUsd(0n, locale, 'compact');
+  return { exact, compact: subCent ? undefined : compact, subCent };
+};
+
 export const createUsageValueFormatter = (metric: UsageOverviewMetric, locale: string) => {
   if (metric === 'tokens') return formatCompactTokenCount;
 
