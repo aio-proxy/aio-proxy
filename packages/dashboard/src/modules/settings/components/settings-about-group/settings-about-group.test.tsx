@@ -195,6 +195,7 @@ test('enables Update now after an outdated check and posts apply', async () => {
   clickCheck();
   const update = await screen.findByRole('button', { name: updateNowName });
   await waitFor(() => expect(update).toBeEnabled());
+  expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
 
   fireEvent.click(update);
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
@@ -214,6 +215,7 @@ test('enables Update now from a persisted outdated GET without clicking Check', 
 
   expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
 });
 
 test('disables Update now and polls when GET already reports in_progress', async () => {
@@ -261,7 +263,7 @@ test('hides Check for updates as soon as Update now is pending', async () => {
   );
   await renderGroup();
 
-  expect(screen.getByRole('button', { name: checkName })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
 
   await waitFor(() => expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument());

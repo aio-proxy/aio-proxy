@@ -35,7 +35,8 @@ export const SettingsAboutGroup: React.FC = () => {
     outdated,
     onUpToDate: () => check.reset(),
   });
-  const hideCheck = applyRelease.inProgress || applyRelease.restartRequired;
+  // One action at a time: Check while current, Update now once a release is available or applying.
+  const hideCheck = applyRelease.releaseAvailable || applyRelease.inProgress || applyRelease.restartRequired;
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version. A failed install is the same — do not replace it with
