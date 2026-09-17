@@ -69,24 +69,24 @@ describe('TracesEvents', () => {
     expect(errorChip()).toHaveTextContent('93');
   });
 
-  test('uses the legend chips as the otel status filter', () => {
+  test('uses the legend chips as the outcome filter', () => {
     const { onChange } = renderEvents();
 
     expect(errorChip()).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(errorChip());
 
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ otelStatusCode: 'ERROR' }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
   });
 
-  test('clears the status filter when the pressed chip is clicked again', () => {
-    const search = { ...createDefaultTraceSearch(), otelStatusCode: 'ERROR' as const };
+  test('clears the outcome filter when the pressed chip is clicked again', () => {
+    const search = { ...createDefaultTraceSearch(), outcome: 'error' as const };
     const { onChange } = renderEvents(search);
 
     expect(errorChip()).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(errorChip());
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0]?.[0]).not.toHaveProperty('otelStatusCode');
+    expect(onChange.mock.calls[0]?.[0]).not.toHaveProperty('outcome');
   });
 
   test('narrows the time range to the clicked bucket', () => {

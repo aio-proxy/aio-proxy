@@ -10,6 +10,7 @@ import type {
   DashboardTraceSummaryResponse,
   DashboardUsageOverviewResponse,
   OtelSpanStatusCode,
+  TraceOutcome,
   TraceTerminationReason,
   UsageOverviewGroupBy,
   UsageOverviewMetric,
@@ -110,6 +111,7 @@ export type TracesQuery = {
   readonly sessionSource?: string;
   readonly sessionId?: string;
   readonly otelStatusCode?: OtelSpanStatusCode;
+  readonly outcome?: TraceOutcome;
   readonly terminationReason?: TraceTerminationReason;
   readonly inboundProtocol?: string;
   readonly requestedModelId?: string;

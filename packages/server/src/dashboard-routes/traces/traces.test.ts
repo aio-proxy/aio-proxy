@@ -98,7 +98,7 @@ async function seededApp() {
         kind: 1,
         startedAt,
         endedAt,
-        statusCode: 1,
+        statusCode: 0,
         attributes: rootAttributes,
         events: [],
         links: [],
@@ -111,7 +111,7 @@ async function seededApp() {
         kind: 2,
         startedAt: new Date(startedAt.getTime() + 10),
         endedAt: new Date(endedAt.getTime() - 10),
-        statusCode: 1,
+        statusCode: 0,
         attributes: { 'aio_proxy.provider.id': 'provider-a' },
         events: [],
         links: [],
@@ -124,7 +124,7 @@ async function seededApp() {
         kind: 2,
         startedAt: new Date(startedAt.getTime() + 20),
         endedAt: new Date(endedAt.getTime() - 20),
-        statusCode: 1,
+        statusCode: 0,
         attributes: { 'gen_ai.response.model': 'gpt-5' },
         events: [],
         links: [],
@@ -316,6 +316,7 @@ describe('Dashboard trace routes', () => {
     '?traceId=bad',
     `?traceId=${'A'.repeat(32)}`,
     '?otelStatusCode=BAD',
+    '?outcome=BAD',
     '?terminationReason=success',
     '?finalHttpStatus=abc',
     '?finalHttpStatus=99',
@@ -345,6 +346,20 @@ describe('Dashboard trace routes', () => {
     // 08:01 那条还在跑，成功和失败都不该算上它
     expect(body.buckets[1]).toEqual({ at: '2026-07-27T08:01:00.000Z', success: 0, error: 0 });
     expect(body.totals).toEqual({ success: 1, error: 0 });
+  });
+
+  // 图例 chip 点下去后，列表要跟摘要数的是同一批调用链：摘要说这个范围里 1 成功 0 失败，
+  // outcome=success 就该给回那一条，outcome=error 一条都不给。
+  test('filters the list by the same outcome the summary counts', async () => {
+    const app = await seededApp();
+    const range = 'startedAfter=2026-07-27T08:00:00.000Z&startedBefore=2026-07-27T09:00:00.000Z';
+    const succeeded = await app.request(`/dashboard/api/traces?${range}&outcome=success`, undefined, loopbackServer);
+    const failed = await app.request(`/dashboard/api/traces?${range}&outcome=error`, undefined, loopbackServer);
+
+    expect(DashboardTracesResponseSchema.parse(await succeeded.json()).items.map((item) => item.traceId)).toEqual([
+      TRACE_ID,
+    ]);
+    expect(DashboardTracesResponseSchema.parse(await failed.json()).items).toEqual([]);
   });
 
   test('rejects a trace summary request without a time range', async () => {

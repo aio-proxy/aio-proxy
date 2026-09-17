@@ -44,9 +44,10 @@ describe('TracesToolbar', () => {
   });
 
   test('leaves the filters trigger unadorned when only the toolbar controls are set', () => {
-    renderToolbar();
+    renderToolbar({ search: { ...createDefaultTraceSearch(), outcome: 'error' } });
 
-    // 默认落地就带着时间范围和分页大小，它们各有自己的控件，算进角标会让按钮永远显示 2。
+    // 默认落地就带着时间范围和分页大小，成败由图例 chip 管，它们各有自己的控件，
+    // 算进角标会让按钮永远显示数字。
     expect(screen.getByRole('button', { name: /Filters|筛选/u })).not.toHaveTextContent(/\d/u);
   });
 

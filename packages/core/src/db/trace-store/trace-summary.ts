@@ -3,7 +3,7 @@ import { and, isNull, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { traceSpan } from '../schema';
-import { traceFilterConditions } from './trace-filters';
+import { FAILED, SUCCEEDED, traceFilterConditions } from './trace-filters';
 import type { TracesSummaryQuery } from './types';
 
 const BUCKET_SIZES: readonly (readonly [DashboardTraceSummaryBucketSize, number])[] = [
@@ -41,8 +41,8 @@ export function summary(db: BunSQLiteDatabase, query: TracesSummaryQuery): Dashb
   const rows = db
     .select({
       index,
-      success: sql<number>`sum(case when ${traceSpan.statusCode} = 1 then 1 else 0 end)`.as('success'),
-      error: sql<number>`sum(case when ${traceSpan.statusCode} = 2 then 1 else 0 end)`.as('error'),
+      success: sql<number>`sum(case when ${SUCCEEDED} then 1 else 0 end)`.as('success'),
+      error: sql<number>`sum(case when ${FAILED} then 1 else 0 end)`.as('error'),
     })
     .from(traceSpan)
     .where(and(isNull(traceSpan.parentSpanId), ...traceFilterConditions({ ...query, startedBefore: new Date(endMs) })))

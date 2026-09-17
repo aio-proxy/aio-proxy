@@ -20,6 +20,7 @@ export const traceSearchSchema = z.object({
   sessionSource: optionalString,
   sessionId: optionalString,
   otelStatusCode: z.enum(['UNSET', 'OK', 'ERROR']).optional().catch(undefined),
+  outcome: z.enum(['success', 'error']).optional().catch(undefined),
   terminationReason: z.enum(['failure', 'cancelled', 'interrupted']).optional().catch(undefined),
   inboundProtocol: optionalString,
   requestedModelId: optionalString,
@@ -61,9 +62,9 @@ export const withTraceFilters = (search: TraceSearch, patch: TraceFilterPatch): 
   return next as TraceSearch;
 };
 
-// 分页和时间范围在工具栏上各有自己的控件，不算抽屉里的筛选条件。剩下的全算，
-// 这样以后加第 12 个筛选字段时角标会自己算上，不用再维护一份手写清单。
-const NON_FILTER_KEYS = new Set<string>(['pageSize', 'pageToken', 'startedAfter', 'startedBefore']);
+// 分页、时间范围和成败在工具栏、时间选择器、图例上各有自己的控件，不算抽屉里的筛选条件。
+// 剩下的全算，这样以后加第 12 个筛选字段时角标会自己算上，不用再维护一份手写清单。
+const NON_FILTER_KEYS = new Set<string>(['pageSize', 'pageToken', 'startedAfter', 'startedBefore', 'outcome']);
 
 export const countTraceFilters = (search: TraceSearch): number =>
   Object.entries(search).filter(([key, value]) => !NON_FILTER_KEYS.has(key) && value !== undefined).length;
