@@ -174,9 +174,11 @@ function turnImagesMatch(
   cachedTurns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean {
-  const promptLists = promptUserImageSlots(prompt, historyActiveIndex);
-  const cachedLists = agentTurnImageLists(cachedTurns, blobStore, promptLists.length);
-  if (cachedLists === undefined || promptLists.length !== cachedLists.length) return false;
+  const promptUsers = historicalUserSlots(prompt, historyActiveIndex);
+  const cachedLists = agentTurnImageLists(cachedTurns, blobStore, promptUsers);
+  if (cachedLists === undefined) return false;
+  const promptLists = alignEmptyUserSlots(promptUsers, cachedLists);
+  if (promptLists.length !== cachedLists.length) return false;
   return promptLists.every((promptTurn, index) => {
     const cachedTurn = cachedLists[index]!;
     if (promptTurn.text !== cachedTurn.text) return false;
@@ -184,28 +186,43 @@ function turnImagesMatch(
   });
 }
 
-function promptUserImageSlots(
+function historicalUserSlots(
   prompt: LanguageModelV4Prompt,
   historyActiveIndex: number,
 ): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] {
   return prompt.flatMap((message, index) => {
     if (index === historyActiveIndex || message.role !== 'user') return [];
-    return [
-      {
-        text: extractV4UserText(message.content),
-        images: createCursorUserMessage(message.content, '').selectedContext?.selectedImages ?? [],
-      },
-    ];
+    const text = extractV4UserText(message.content);
+    const images = createCursorUserMessage(message.content, text).selectedContext?.selectedImages ?? [];
+    return [{ text, images }];
   });
+}
+
+function alignEmptyUserSlots(
+  promptUsers: readonly { readonly text: string; readonly images: readonly SelectedImage[] }[],
+  cachedLists: readonly { readonly text: string; readonly images: readonly SelectedImage[] }[],
+): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] {
+  const remaining = [...promptUsers];
+  const slots: { text: string; images: readonly SelectedImage[] }[] = [];
+  while (remaining.length > 0) {
+    const next = remaining.shift()!;
+    const laterHasContent = remaining.some((slot) => slot.text.length > 0 || slot.images.length > 0);
+    const cached = cachedLists[slots.length];
+    const cachedIsEmpty = cached !== undefined && cached.text.length === 0 && cached.images.length === 0;
+    if (next.text.length === 0 && next.images.length === 0 && !(laterHasContent && cachedIsEmpty)) continue;
+    slots.push(next);
+  }
+  return slots;
 }
 
 function agentTurnImageLists(
   turns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
-  needed = Number.POSITIVE_INFINITY,
+  promptUsers: readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] = [],
 ): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] | undefined {
   try {
     const lists: { text: string; images: readonly SelectedImage[] }[] = [];
+    const remainingPrompt = [...promptUsers];
     for (const turnId of turns) {
       const turnBytes = readCursorBlob(blobStore, turnId);
       if (turnBytes === undefined) return undefined;
@@ -219,7 +236,13 @@ function agentTurnImageLists(
       const userMessage = fromBinary(UserMessageSchema, userMessageBytes);
       if (userMessage.isSimulatedMsg === true) continue;
       const images = userMessage.selectedContext?.selectedImages ?? [];
-      if (userMessage.text.length === 0 && images.length === 0 && lists.length >= needed) continue;
+      const empty = userMessage.text.length === 0 && images.length === 0;
+      if (empty) {
+        const laterPromptContent = remainingPrompt.some((slot) => slot.text.length > 0 || slot.images.length > 0);
+        if (!laterPromptContent) continue;
+      } else {
+        remainingPrompt.shift();
+      }
       lists.push({ text: userMessage.text, images });
     }
     return lists;

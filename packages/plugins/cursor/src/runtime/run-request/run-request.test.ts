@@ -523,6 +523,48 @@ test('a full-history image request preserves cached simulated turns', () => {
   expect(repeated.conversationState.turns).toEqual(cachedTurns);
 });
 
+test('an unchanged full-history request with an omitted empty user preserves cached shell turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'user', content: [] },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-omitted-empty-user', blobStore },
+  });
+  const cachedTurns = [...initial.conversationState.turns, storeShellTurn(blobStore)];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-omitted-empty-user',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
 test('a full-history image request preserves cached empty user turns', () => {
   const blobStore = new Map<string, Uint8Array>();
   const prompt: LanguageModelV4Prompt = [
