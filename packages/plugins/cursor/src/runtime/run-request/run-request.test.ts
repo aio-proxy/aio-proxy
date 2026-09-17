@@ -1,9 +1,18 @@
 import { expect, test } from 'bun:test';
 
 import type { LanguageModelV4Prompt, LanguageModelV4ToolResultPart } from '@ai-sdk/provider';
-import { create, fromBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
-import { AgentClientMessageSchema, ConversationStateStructureSchema } from '../../gen/agent_pb';
+import {
+  AgentClientMessageSchema,
+  ConversationStateStructureSchema,
+  AgentConversationTurnStructureSchema,
+  ConversationTurnStructureSchema,
+  ShellCommandSchema,
+  ShellConversationTurnStructureSchema,
+  ShellOutputSchema,
+  UserMessageSchema,
+} from '../../gen/agent_pb';
 import { storeCursorBlob } from '../../store/blobs';
 import { buildCursorRunRequestBytes } from './run-request';
 
@@ -124,6 +133,183 @@ test.each(resumeResults.flatMap((result) => [true, false].map((fullHistory) => (
   },
 );
 
+test('a pending resume rebuilds when the cached checkpoint is missing the historical image', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
+  const system = { role: 'system', content: 'sys' } as const;
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      system,
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'inspect this image' },
+          { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+        ],
+      },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+        ],
+      },
+    ],
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-resume-image',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [jsonBlob(system)],
+      }),
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+
+  expect(conversationState.turns).toHaveLength(1);
+  const turnBytes = blobStore.get(Buffer.from(conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected rebuilt turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected rebuilt user message blob');
+  const image = fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages[0];
+  expect(image?.mimeType).toBe('image/png');
+  expect([...(image!.dataOrBlobId.value as Uint8Array)]).toEqual([1, 2, 3]);
+  expect(
+    JSON.stringify(
+      conversationState.rootPromptMessagesJson.map((id) =>
+        JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+      ),
+    ),
+  ).not.toContain('"type":"file"');
+});
+
+test('a pending resume rebuilds when full history removes the last historical image', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (withImage: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        ...(withImage
+          ? ([{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] as const)
+          : []),
+      ],
+    },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+    },
+    {
+      role: 'tool',
+      content: [
+        { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+      ],
+    },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: { conversationId: 'conv-resume-remove-image', blobStore },
+  });
+  const removed = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-resume-remove-image',
+      blobStore,
+      conversationState: initial.conversationState,
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+
+  expect(removed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+  const turnBytes = blobStore.get(Buffer.from(removed.conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected rebuilt turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected rebuilt user message blob');
+  expect(fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? []).toEqual([]);
+});
+
+test('an incremental tool resume preserves a cached image checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const system = { role: 'system', content: 'sys' } as const;
+  const imagePrompt: LanguageModelV4Prompt = [
+    system,
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: imagePrompt,
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: { conversationId: 'conv-incremental-image-resume', blobStore },
+  });
+  const resumed = buildCursorRunRequestBytes({
+    prompt: [
+      system,
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolCallId: 'outer', toolName: 'search', input: { query: 'docs' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'outer', toolName: 'search', output: { type: 'text', value: 'FOUND' } },
+        ],
+      },
+    ],
+    wireModelId: 'composer-2.5',
+    displayModelId: 'composer-2.5',
+    displayName: 'Composer',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-incremental-image-resume',
+      blobStore,
+      conversationState: initial.conversationState,
+      pendingToolCalls: new Map([['outer', 'nested']]),
+    },
+  });
+
+  const turnBytes = blobStore.get(Buffer.from(resumed.conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected preserved turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected preserved user message blob');
+  const image = fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages[0];
+  expect(image?.mimeType).toBe('image/png');
+  expect([...(image!.dataOrBlobId.value as Uint8Array)]).toEqual([1, 2, 3]);
+  const history = resumed.conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(history).toContainEqual({ role: 'user', content: [{ type: 'text', text: 'inspect this image' }] });
+});
+
 test('an incremental resume that includes the assistant tool-call keeps the cached user request', () => {
   const blobStore = new Map<string, Uint8Array>();
   const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
@@ -197,20 +383,15 @@ test('a matching full-history request preserves the reusable Cursor checkpoint',
     { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
     { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
   ];
-  const systemPrompt = storeCursorBlob(
-    blobStore,
-    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
-  );
-  const cachedUser = storeCursorBlob(
-    blobStore,
-    new TextEncoder().encode(JSON.stringify({ role: 'user', content: [{ type: 'text', text: 'first user' }] })),
-  );
-  const cachedAssistant = storeCursorBlob(
-    blobStore,
-    new TextEncoder().encode(JSON.stringify({ role: 'assistant', content: [{ type: 'text', text: 'first answer' }] })),
-  );
-  const cachedTurn = storeCursorBlob(blobStore, new TextEncoder().encode('richer-cached-turn'));
-  const { conversationState } = buildCursorRunRequestBytes({
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-checkpoint', blobStore },
+  });
+  const repeated = buildCursorRunRequestBytes({
     prompt,
     wireModelId: 'claude-4.5-sonnet',
     displayModelId: 'claude-4.5-sonnet',
@@ -219,15 +400,322 @@ test('a matching full-history request preserves the reusable Cursor checkpoint',
     state: {
       conversationId: 'conv-checkpoint',
       blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(repeated.conversationState.rootPromptMessagesJson).toEqual(initial.conversationState.rootPromptMessagesJson);
+  expect(repeated.conversationState.turns).toEqual(initial.conversationState.turns);
+});
+
+const storeShellTurn = (blobStore: Map<string, Uint8Array>) =>
+  storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'shellConversationTurn',
+          value: create(ShellConversationTurnStructureSchema, {
+            shellCommand: storeCursorBlob(
+              blobStore,
+              toBinary(ShellCommandSchema, create(ShellCommandSchema, { command: 'ls' })),
+            ),
+            shellOutput: storeCursorBlob(
+              blobStore,
+              toBinary(ShellOutputSchema, create(ShellOutputSchema, { stdout: 'ok', stderr: '', exitCode: 0 })),
+            ),
+          }),
+        },
+      }),
+    ),
+  );
+
+test('a full-history request preserves cached shell turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'user', content: [{ type: 'text', text: 'first user' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-shell-checkpoint', blobStore },
+  });
+  const cachedTurns = [...initial.conversationState.turns, storeShellTurn(blobStore)];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-shell-checkpoint',
+      blobStore,
       conversationState: create(ConversationStateStructureSchema, {
-        rootPromptMessagesJson: [systemPrompt, cachedUser, cachedAssistant],
-        turns: [cachedTurn],
+        ...initial.conversationState,
+        turns: cachedTurns,
       }),
     },
   });
 
-  expect(conversationState.rootPromptMessagesJson).toEqual([systemPrompt, cachedUser, cachedAssistant]);
-  expect(conversationState.turns).toEqual([cachedTurn]);
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test('a full-history image request preserves cached simulated turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-simulated-image', blobStore },
+  });
+  const simulatedUser = storeCursorBlob(
+    blobStore,
+    toBinary(UserMessageSchema, create(UserMessageSchema, { text: 'simulated note', isSimulatedMsg: true })),
+  );
+  const simulatedTurn = storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'agentConversationTurn',
+          value: create(AgentConversationTurnStructureSchema, { userMessage: simulatedUser, steps: [] }),
+        },
+      }),
+    ),
+  );
+  const cachedTurns = [...initial.conversationState.turns, simulatedTurn];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-simulated-image',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test('an unchanged full-history request with an omitted empty user preserves cached shell turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'user', content: [] },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-omitted-empty-user', blobStore },
+  });
+  const cachedTurns = [...initial.conversationState.turns, storeShellTurn(blobStore)];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-omitted-empty-user',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test('a full-history image request preserves cached empty user turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-empty-user-image', blobStore },
+  });
+  const emptyUser = storeCursorBlob(blobStore, toBinary(UserMessageSchema, create(UserMessageSchema, {})));
+  const emptyTurn = storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'agentConversationTurn',
+          value: create(AgentConversationTurnStructureSchema, { userMessage: emptyUser, steps: [] }),
+        },
+      }),
+    ),
+  );
+  const cachedTurns = [...initial.conversationState.turns, emptyTurn];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-empty-user-image',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test('a full-history image request preserves cached shell turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-shell-image-checkpoint', blobStore },
+  });
+  const cachedTurns = [...initial.conversationState.turns, storeShellTurn(blobStore)];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-shell-image-checkpoint',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test.each([
+  {
+    label: 'the cached turn blob is missing',
+    corrupt: (blobStore: Map<string, Uint8Array>, turnId: Uint8Array) => {
+      blobStore.delete(Buffer.from(turnId).toString('hex'));
+    },
+  },
+  {
+    label: 'the cached user-message blob is missing',
+    corrupt: (blobStore: Map<string, Uint8Array>, turnId: Uint8Array) => {
+      const turnBytes = blobStore.get(Buffer.from(turnId).toString('hex'));
+      if (turnBytes === undefined) throw new Error('expected cached turn blob');
+      const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+      if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected cached agent turn');
+      blobStore.delete(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+    },
+  },
+  {
+    label: 'the cached turn protobuf is malformed',
+    corrupt: (blobStore: Map<string, Uint8Array>, turnId: Uint8Array) => {
+      blobStore.set(Buffer.from(turnId).toString('hex'), Uint8Array.of(0x80));
+    },
+  },
+])('a full-history request rebuilds when $label', ({ corrupt }) => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'user', content: [{ type: 'text', text: 'first user' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-unreadable-checkpoint', blobStore },
+  });
+  const cachedTurn = initial.conversationState.turns[0];
+  if (cachedTurn === undefined) throw new Error('expected cached turn');
+  corrupt(blobStore, cachedTurn);
+
+  const rebuilt = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-unreadable-checkpoint',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(rebuilt.conversationState.turns).not.toEqual([cachedTurn]);
 });
 
 test('an edited full-history request rebuilds instead of reusing stale cached turns', () => {
@@ -262,6 +750,111 @@ test('an edited full-history request rebuilds instead of reusing stale cached tu
   expect(conversationState.turns).not.toEqual([staleTurn]);
 });
 
+test('moving an image onto a later empty user rebuilds instead of reusing cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (imageOnFirst: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: imageOnFirst ? [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] : [],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    {
+      role: 'user',
+      content: imageOnFirst ? [] : [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'second answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-moved-empty-image', blobStore },
+  });
+  const emptyUser = storeCursorBlob(blobStore, toBinary(UserMessageSchema, create(UserMessageSchema, {})));
+  const emptyTurn = storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'agentConversationTurn',
+          value: create(AgentConversationTurnStructureSchema, { userMessage: emptyUser, steps: [] }),
+        },
+      }),
+    ),
+  );
+  const cachedTurns = [initial.conversationState.turns[0]!, emptyTurn];
+  const moved = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-moved-empty-image',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(moved.conversationState.turns).not.toEqual(cachedTurns);
+});
+
+test('moving an image between historical users rebuilds instead of reusing cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (imageOnFirst: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'first user' },
+        ...(imageOnFirst
+          ? ([{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] as const)
+          : []),
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'second user' },
+        ...(!imageOnFirst
+          ? ([{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] as const)
+          : []),
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'second answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-moved-image', blobStore },
+  });
+  const moved = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-moved-image',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(moved.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
 test('a changed image in full history rebuilds instead of reusing stale cached turns', () => {
   const blobStore = new Map<string, Uint8Array>();
   const promptWithImage = (data: string): LanguageModelV4Prompt => [
@@ -294,6 +887,198 @@ test('a changed image in full history rebuilds instead of reusing stale cached t
   });
 
   expect(changed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
+test('removing an image from full history rebuilds instead of reusing stale cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (withImage: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        ...(withImage
+          ? ([{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] as const)
+          : []),
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-remove-image', blobStore },
+  });
+
+  const removed = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-remove-image',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(removed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
+test('removing the only historical image from an empty user rebuilds instead of reusing cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt = (withImage: boolean): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: withImage ? [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }] : [],
+    },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: prompt(true),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-empty-image-history', blobStore },
+  });
+
+  const removed = buildCursorRunRequestBytes({
+    prompt: prompt(false),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-empty-image-history',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(removed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
+test('an unchanged image in full history preserves the reusable Cursor checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-same-image', blobStore },
+  });
+
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-same-image',
+      blobStore,
+      conversationState: initial.conversationState,
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(initial.conversationState.turns);
+});
+
+test('keeps historical images in Cursor turns without emitting root file content', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'inspect this image' },
+          { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+        ],
+      },
+      { role: 'assistant', content: [{ type: 'text', text: 'initial analysis' }] },
+      { role: 'user', content: [{ type: 'text', text: 'what did the image show?' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-image-follow-up', blobStore },
+  });
+
+  const rootMessages = conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(rootMessages).toContainEqual({
+    role: 'user',
+    content: [{ type: 'text', text: 'inspect this image' }],
+  });
+  expect(JSON.stringify(rootMessages)).not.toContain('"type":"file"');
+
+  expect(conversationState.turns).toHaveLength(1);
+  const turnBytes = blobStore.get(Buffer.from(conversationState.turns[0]!).toString('hex'));
+  if (turnBytes === undefined) throw new Error('expected historical turn blob');
+  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+  if (turn.turn.case !== 'agentConversationTurn') throw new Error('expected agent turn');
+  const userMessageBytes = blobStore.get(Buffer.from(turn.turn.value.userMessage).toString('hex'));
+  if (userMessageBytes === undefined) throw new Error('expected historical user message blob');
+  const historicalUser = fromBinary(UserMessageSchema, userMessageBytes);
+  const image = historicalUser.selectedContext?.selectedImages[0];
+  expect(image?.mimeType).toBe('image/png');
+  expect(image?.dataOrBlobId.case).toBe('data');
+  expect([...(image!.dataOrBlobId.value as Uint8Array)]).toEqual([1, 2, 3]);
+});
+
+test('an assistant prefill without a historical user replaces cached root history', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const staleSystemPrompt = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
+  );
+  const staleUser = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'user', content: [{ type: 'text', text: 'stale user' }] })),
+  );
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      { role: 'system', content: 'sys' },
+      { role: 'assistant', content: [{ type: 'text', text: 'prefill' }] },
+      { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-assistant-prefill',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [staleSystemPrompt, staleUser],
+      }),
+    },
+  });
+
+  const history = conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(history).toContainEqual({ role: 'assistant', content: [{ type: 'text', text: 'prefill' }] });
+  expect(history).not.toContainEqual({ role: 'user', content: [{ type: 'text', text: 'stale user' }] });
 });
 
 test('an incremental request without inbound history preserves the reusable checkpoint', () => {

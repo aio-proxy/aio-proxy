@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 import { InvalidPromptError, type LanguageModelV4Prompt } from '@ai-sdk/provider';
-import { create, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
   AgentClientMessageSchema,
@@ -9,12 +9,15 @@ import {
   ConversationActionSchema,
   type ConversationStateStructure,
   ConversationStateStructureSchema,
+  ConversationTurnStructureSchema,
   ModelDetailsSchema,
   RequestedModelSchema,
   ResumeActionSchema,
+  type SelectedImage,
   UserMessageActionSchema,
+  UserMessageSchema,
 } from '../../gen/agent_pb';
-import { storeCursorBlob } from '../../store/blobs';
+import { readCursorBlob, storeCursorBlob } from '../../store/blobs';
 import {
   appendCursorRootHistory,
   applyMcpToolResults,
@@ -24,6 +27,7 @@ import {
   createCursorUserMessage,
   extractV4UserText,
   hasMatchingPendingToolResult,
+  v4UserHasImages,
 } from '../history';
 
 export type CursorRunState = {
@@ -84,13 +88,26 @@ export function buildCursorRunRequestBytes(input: {
   const promptHeadMatches =
     cachedHead.length === systemPromptIds.length &&
     systemPromptIds.every((id, index) => Buffer.from(cachedHead[index]!).equals(id));
-  const hasInboundHistory = promptRootMessages.length > systemPromptIds.length;
+  const hasHistoricalImages = prompt.some(
+    (message, index) => index !== historyActiveIndex && message.role === 'user' && v4UserHasImages(message.content),
+  );
+  const cachedTurns = state.conversationState?.turns ?? [];
+  const hasHistoricalUsers = prompt.some((message, index) => index !== historyActiveIndex && message.role === 'user');
+  const hasSerializedRootHistory = promptRootMessages.length > systemPromptIds.length;
+  const hasInboundHistory = isPendingResume ? hasHistoricalUsers : hasHistoricalUsers || hasSerializedRootHistory;
   const promptHistoryMatches =
     !hasInboundHistory ||
     (cachedRootMessages.length === promptRootMessages.length &&
-      promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)));
+      promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)) &&
+      ((!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
+        turnImagesMatch(prompt, historyActiveIndex, cachedTurns, blobStore)));
   const reusableState =
-    state.conversationState && (isPendingResume || (promptHeadMatches && promptHistoryMatches))
+    state.conversationState &&
+    (isPendingResume
+      ? !hasHistoricalUsers ||
+        (!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
+        turnImagesMatch(prompt, historyActiveIndex, cachedTurns, blobStore)
+      : promptHeadMatches && promptHistoryMatches)
       ? state.conversationState
       : undefined;
   const baseState =
@@ -141,6 +158,123 @@ export function buildCursorRunRequestBytes(input: {
     conversationState,
     pendingToolCalls: patched.pendingToolCalls,
   };
+}
+
+function turnsHaveImages(
+  turns: readonly Uint8Array[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): boolean | undefined {
+  const lists = agentTurnImageLists(turns, blobStore);
+  return lists?.some((turn) => turn.images.length > 0);
+}
+
+function turnImagesMatch(
+  prompt: LanguageModelV4Prompt,
+  historyActiveIndex: number,
+  cachedTurns: readonly Uint8Array[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): boolean {
+  const promptUsers = historicalUserSlots(prompt, historyActiveIndex);
+  const cachedLists = agentTurnImageLists(cachedTurns, blobStore, promptUsers);
+  if (cachedLists === undefined) return false;
+  const promptLists = alignEmptyUserSlots(promptUsers, cachedLists);
+  if (promptLists.length !== cachedLists.length) return false;
+  return promptLists.every((promptTurn, index) => {
+    const cachedTurn = cachedLists[index]!;
+    if (promptTurn.text !== cachedTurn.text) return false;
+    return imagesMatch(promptTurn.images, cachedTurn.images, blobStore);
+  });
+}
+
+function historicalUserSlots(
+  prompt: LanguageModelV4Prompt,
+  historyActiveIndex: number,
+): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] {
+  return prompt.flatMap((message, index) => {
+    if (index === historyActiveIndex || message.role !== 'user') return [];
+    const text = extractV4UserText(message.content);
+    const images = createCursorUserMessage(message.content, text).selectedContext?.selectedImages ?? [];
+    return [{ text, images }];
+  });
+}
+
+function alignEmptyUserSlots(
+  promptUsers: readonly { readonly text: string; readonly images: readonly SelectedImage[] }[],
+  cachedLists: readonly { readonly text: string; readonly images: readonly SelectedImage[] }[],
+): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] {
+  const remaining = [...promptUsers];
+  const slots: { text: string; images: readonly SelectedImage[] }[] = [];
+  while (remaining.length > 0) {
+    const next = remaining.shift()!;
+    const laterHasContent = remaining.some((slot) => slot.text.length > 0 || slot.images.length > 0);
+    const cached = cachedLists[slots.length];
+    const cachedIsEmpty = cached !== undefined && cached.text.length === 0 && cached.images.length === 0;
+    if (next.text.length === 0 && next.images.length === 0 && !(laterHasContent && cachedIsEmpty)) continue;
+    slots.push(next);
+  }
+  return slots;
+}
+
+function agentTurnImageLists(
+  turns: readonly Uint8Array[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+  promptUsers: readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] = [],
+): readonly { readonly text: string; readonly images: readonly SelectedImage[] }[] | undefined {
+  try {
+    const lists: { text: string; images: readonly SelectedImage[] }[] = [];
+    const remainingPrompt = [...promptUsers];
+    for (const turnId of turns) {
+      const turnBytes = readCursorBlob(blobStore, turnId);
+      if (turnBytes === undefined) return undefined;
+      const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+      if (turn.turn.case !== 'agentConversationTurn') {
+        if (turn.turn.case === undefined) return undefined;
+        continue;
+      }
+      const userMessageBytes = readCursorBlob(blobStore, turn.turn.value.userMessage);
+      if (userMessageBytes === undefined) return undefined;
+      const userMessage = fromBinary(UserMessageSchema, userMessageBytes);
+      if (userMessage.isSimulatedMsg === true) continue;
+      const images = userMessage.selectedContext?.selectedImages ?? [];
+      const empty = userMessage.text.length === 0 && images.length === 0;
+      if (empty) {
+        const laterPromptContent = remainingPrompt.some((slot) => slot.text.length > 0 || slot.images.length > 0);
+        if (!laterPromptContent) continue;
+      } else {
+        remainingPrompt.shift();
+      }
+      lists.push({ text: userMessage.text, images });
+    }
+    return lists;
+  } catch {
+    return undefined;
+  }
+}
+
+function imagesMatch(
+  promptImages: readonly SelectedImage[],
+  cachedImages: readonly SelectedImage[],
+  blobStore: ReadonlyMap<string, Uint8Array>,
+): boolean {
+  if (promptImages.length !== cachedImages.length) return false;
+  return promptImages.every((image, imageIndex) => {
+    const cachedImage = cachedImages[imageIndex]!;
+    const data = imageData(image, blobStore);
+    const cachedData = imageData(cachedImage, blobStore);
+    return (
+      image.mimeType === cachedImage.mimeType &&
+      data !== undefined &&
+      cachedData !== undefined &&
+      Buffer.from(data).equals(cachedData)
+    );
+  });
+}
+
+function imageData(image: SelectedImage, blobStore: ReadonlyMap<string, Uint8Array>): Uint8Array | undefined {
+  if (image.dataOrBlobId.case === 'data') return image.dataOrBlobId.value;
+  if (image.dataOrBlobId.case === 'blobId') return readCursorBlob(blobStore, image.dataOrBlobId.value);
+  if (image.dataOrBlobId.case === 'blobIdWithData') return image.dataOrBlobId.value.data;
+  return undefined;
 }
 
 function validateFileParts(prompt: LanguageModelV4Prompt): void {
