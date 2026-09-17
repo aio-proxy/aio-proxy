@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -119,6 +119,7 @@ async function createQuotaFixture(
   const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
   return {
     routes,
+    state,
     reads: () => reads,
     cleanup: () => {
       state.close();
@@ -232,6 +233,256 @@ test('reports an unreadable quota as 502 rather than an empty snapshot', async (
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: 'OAuth quota read failed' });
   } finally {
+    fixture.cleanup();
+  }
+});
+
+const HOUR = 60 * 60 * 1000;
+
+test('attaches local API-equivalent estimates for any OAuth plugin, not ChatGPT', async () => {
+  const fixture = await createQuotaFixture({
+    read: async () => ({
+      items: [
+        {
+          id: 'five-hour',
+          displayName: 'Five hour',
+          remainingRatio: 0.5,
+          resetsAt: Date.now() + 4 * HOUR,
+          windowMinutes: 300,
+        },
+        { id: 'unrated', displayName: 'Unrated', resetsAt: Date.now() + 4 * HOUR, windowMinutes: 300 },
+      ],
+    }),
+  });
+  try {
+    fixture.state.traceStore.startRoot({
+      traceId: 'a'.repeat(32),
+      spanId: 'a'.repeat(16),
+      requestId: 'priced',
+      inboundProtocol: 'openai-compatible',
+      name: 'aio_proxy.request',
+      kind: 1,
+      startedAt: new Date(Date.now() - HOUR),
+      statusCode: 0,
+      attributes: {
+        'aio_proxy.request.id': 'priced',
+        'aio_proxy.protocol.inbound': 'openai-compatible',
+        'aio_proxy.route.final_provider_id': 'person',
+        'gen_ai.usage.estimated_cost_usd': 0.1,
+      },
+      events: [],
+      links: [],
+    });
+    fixture.state.traceStore.complete({
+      traceId: 'a'.repeat(32),
+      rootSpanId: 'a'.repeat(16),
+      spans: [
+        {
+          traceId: 'a'.repeat(32),
+          spanId: 'a'.repeat(16),
+          name: 'aio_proxy.request',
+          kind: 1,
+          startedAt: new Date(Date.now() - HOUR),
+          endedAt: new Date(),
+          statusCode: 0,
+          attributes: {
+            'aio_proxy.request.id': 'priced',
+            'aio_proxy.protocol.inbound': 'openai-compatible',
+            'aio_proxy.route.final_provider_id': 'person',
+            'gen_ai.usage.estimated_cost_usd': 0.1,
+          },
+          events: [],
+          links: [],
+        },
+      ],
+      summary: {
+        finalProviderId: 'person',
+        finalModelId: 'codex-auto-review',
+        finalHttpStatus: 200,
+        usage: { providerId: 'person', modelId: 'codex-auto-review', estimatedCostUsd: 0.1 },
+      },
+    });
+
+    const payload = await (await quota(fixture.routes, 'person')).json();
+    expect(payload.estimates).toEqual([
+      { itemId: 'five-hour', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a later trace does not enter estimates until the next quota sample', async () => {
+  const now = spyOn(Date, 'now');
+  const sampledAt = Date.parse('2026-01-10T12:00:00.000Z');
+  now.mockReturnValue(sampledAt);
+  let fixture: Awaited<ReturnType<typeof createQuotaFixture>> | undefined;
+  try {
+    fixture = await createQuotaFixture({
+      read: async () => ({
+        items: [
+          {
+            id: 'five-hour',
+            displayName: 'Five hour',
+            remainingRatio: 0.5,
+            resetsAt: sampledAt + 4 * HOUR,
+            windowMinutes: 300,
+          },
+        ],
+      }),
+    });
+    try {
+      fixture.state.traceStore.startRoot({
+        traceId: 'a'.repeat(32),
+        spanId: 'a'.repeat(16),
+        requestId: 'before',
+        inboundProtocol: 'openai-compatible',
+        name: 'aio_proxy.request',
+        kind: 1,
+        startedAt: new Date(sampledAt - HOUR),
+        statusCode: 0,
+        attributes: {
+          'aio_proxy.request.id': 'before',
+          'aio_proxy.protocol.inbound': 'openai-compatible',
+          'aio_proxy.route.final_provider_id': 'person',
+          'gen_ai.usage.estimated_cost_usd': 0.1,
+        },
+        events: [],
+        links: [],
+      });
+      fixture.state.traceStore.complete({
+        traceId: 'a'.repeat(32),
+        rootSpanId: 'a'.repeat(16),
+        spans: [
+          {
+            traceId: 'a'.repeat(32),
+            spanId: 'a'.repeat(16),
+            name: 'aio_proxy.request',
+            kind: 1,
+            startedAt: new Date(sampledAt - HOUR),
+            endedAt: new Date(sampledAt - 1),
+            statusCode: 0,
+            attributes: {
+              'aio_proxy.request.id': 'before',
+              'aio_proxy.protocol.inbound': 'openai-compatible',
+              'aio_proxy.route.final_provider_id': 'person',
+              'gen_ai.usage.estimated_cost_usd': 0.1,
+            },
+            events: [],
+            links: [],
+          },
+        ],
+        summary: {
+          finalProviderId: 'person',
+          finalModelId: 'codex-auto-review',
+          finalHttpStatus: 200,
+          usage: { providerId: 'person', modelId: 'codex-auto-review', estimatedCostUsd: 0.1 },
+        },
+      });
+
+      const first = await (await quota(fixture.routes, 'person')).json();
+      expect(first.sampledAt).toBe(sampledAt);
+      expect(first.estimates).toEqual([
+        { itemId: 'five-hour', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+      ]);
+
+      now.mockReturnValue(sampledAt + HOUR);
+      fixture.state.traceStore.startRoot({
+        traceId: 'b'.repeat(32),
+        spanId: 'b'.repeat(16),
+        requestId: 'after',
+        inboundProtocol: 'openai-compatible',
+        name: 'aio_proxy.request',
+        kind: 1,
+        startedAt: new Date(sampledAt + 1),
+        statusCode: 0,
+        attributes: {
+          'aio_proxy.request.id': 'after',
+          'aio_proxy.protocol.inbound': 'openai-compatible',
+          'aio_proxy.route.final_provider_id': 'person',
+          'gen_ai.usage.estimated_cost_usd': 0.4,
+        },
+        events: [],
+        links: [],
+      });
+      fixture.state.traceStore.complete({
+        traceId: 'b'.repeat(32),
+        rootSpanId: 'b'.repeat(16),
+        spans: [
+          {
+            traceId: 'b'.repeat(32),
+            spanId: 'b'.repeat(16),
+            name: 'aio_proxy.request',
+            kind: 1,
+            startedAt: new Date(sampledAt + 1),
+            endedAt: new Date(sampledAt + 1),
+            statusCode: 0,
+            attributes: {
+              'aio_proxy.request.id': 'after',
+              'aio_proxy.protocol.inbound': 'openai-compatible',
+              'aio_proxy.route.final_provider_id': 'person',
+              'gen_ai.usage.estimated_cost_usd': 0.4,
+            },
+            events: [],
+            links: [],
+          },
+        ],
+        summary: {
+          finalProviderId: 'person',
+          finalModelId: 'gpt-5',
+          finalHttpStatus: 200,
+          usage: { providerId: 'person', modelId: 'gpt-5', estimatedCostUsd: 0.4 },
+        },
+      });
+
+      const cached = await (await quota(fixture.routes, 'person')).json();
+      expect(cached.sampledAt).toBe(sampledAt);
+      expect(cached.estimates).toEqual([
+        { itemId: 'five-hour', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+      ]);
+
+      const refreshed = await (await quota(fixture.routes, 'person', { refresh: true })).json();
+      expect(refreshed.sampledAt).toBe(sampledAt + HOUR);
+      expect(refreshed.estimates).toEqual([
+        { itemId: 'five-hour', usedNanoUsd: '500000000', basis: 'local-api-equivalent' },
+      ]);
+    } finally {
+      fixture?.cleanup();
+    }
+  } finally {
+    now.mockRestore();
+  }
+});
+
+test('a throwing cost query still returns the quota snapshot', async () => {
+  const fixture = await createQuotaFixture({
+    read: async () => ({
+      items: [
+        {
+          id: 'five-hour',
+          displayName: 'Five hour',
+          remainingRatio: 0.5,
+          resetsAt: Date.now() + 4 * HOUR,
+          windowMinutes: 300,
+        },
+      ],
+    }),
+  });
+  const cost = spyOn(fixture.state.traceStore, 'providerWindowCost').mockImplementation(() => {
+    throw new Error('sqlite exploded');
+  });
+  const logged = spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const response = await quota(fixture.routes, 'person');
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.snapshot.items[0]?.id).toBe('five-hour');
+    expect(payload.estimates).toBeUndefined();
+    expect(cost).toHaveBeenCalled();
+    expect(logged).toHaveBeenCalled();
+  } finally {
+    cost.mockRestore();
+    logged.mockRestore();
     fixture.cleanup();
   }
 });

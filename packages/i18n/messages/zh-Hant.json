@@ -821,7 +821,10 @@
         "reset_unavailable": "已沒有可用的重設次數",
         "stale_notice": "顯示上一次成功取得的資料，最近一次重新整理失敗",
         "load_failed": "無法取得該提供商的額度",
-        "loading": "正在載入額度"
+        "loading": "正在載入額度",
+        "cost_used": "已用 {amount} · API 等價",
+        "cost_note": "本實例按 API 價估算的花費：該 Provider 在此窗口內成功且已定價的全部模型請求。不是該窗口自己的車道消耗，不是帳戶餘額，也不是 Cursor / Grok 點數。外部用戶端、其他實例、停機、未定價模型和 45 天清理都會少計。不是完整帳單。重疊窗口的金額不要相加。",
+        "cost_less_than": "<$0.01"
       },
       "list_title": "提供商",
       "providers_title": "提供商",

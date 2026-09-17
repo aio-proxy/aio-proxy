@@ -34,7 +34,8 @@ export const providerQuotaQueryOptions = (id: string) =>
     // Matches the sibling health query. `staleTime` alone only marks the entry stale and the client
     // disables refetch on focus, so a parked Providers page would keep showing the reading it loaded
     // with while the pipeline's warm updated only the server cache. Each poll is an in-memory cache
-    // hit for the rest of the server's five-minute cooldown, not an upstream quota read.
+    // hit for the upstream quota snapshot for the rest of the server's five-minute cooldown, not an
+    // upstream quota read. Local SQL for `estimates` still runs on every poll.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     retry: false,

@@ -257,3 +257,74 @@ test('clicking the ring does not bubble to the card', () => {
 
   expect(onCardClick).not.toHaveBeenCalled();
 });
+
+test('shows Used API-equivalent spend under a window that has an estimate', () => {
+  queryMocks.data = {
+    sampledAt: 1_700_000_000_000,
+    stale: false,
+    snapshot: {
+      items: [
+        {
+          id: 'five-hour',
+          displayName: 'Five hour',
+          remainingRatio: 0.5,
+          resetsAt: 1_700_000_000_000 + 4 * 60 * 60 * 1000,
+          windowMinutes: 300,
+        },
+        { id: 'unrated', displayName: 'Unrated' },
+      ],
+    },
+    estimates: [
+      { itemId: 'five-hour', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+      { itemId: 'unrated', usedNanoUsd: '100000000', basis: 'local-api-equivalent' },
+    ],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  const row = screen.getByTestId('provider-quota-cost-five-hour');
+  expect(row).toHaveTextContent(/API/u);
+  expect(row).toHaveTextContent(/\$0\.10/u);
+  expect(row).toHaveAttribute('title', '$0.10');
+  expect(row).toHaveAttribute('aria-description', expect.stringMatching(/all models|全部模型|全モデル|모든 모델/u));
+  expect(screen.queryByTestId('provider-quota-cost-unrated')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Est\. total|预估总额|推定合計/u)).not.toBeInTheDocument();
+});
+
+test('hides the cost row when the window has no estimate', () => {
+  queryMocks.data = {
+    sampledAt: 1_700_000_000_000,
+    stale: false,
+    snapshot: {
+      items: [
+        {
+          id: 'weekly',
+          displayName: 'Weekly',
+          remainingRatio: 0.8,
+          windowMinutes: 10080,
+          resetsAt: 1_700_000_000_000 + 6 * 24 * 60 * 60 * 1000,
+        },
+      ],
+    },
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  expect(screen.queryByTestId('provider-quota-cost-weekly')).not.toBeInTheDocument();
+});
+
+test('renders <$0.01 for a positive sub-cent estimate', () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.5, resetsAt: 2, windowMinutes: 60 }] },
+    estimates: [{ itemId: 'weekly', usedNanoUsd: '2', basis: 'local-api-equivalent' }],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  expect(screen.getByTestId('provider-quota-cost-weekly')).toHaveTextContent(/<\$0\.01|\$0\.01 未満/u);
+});

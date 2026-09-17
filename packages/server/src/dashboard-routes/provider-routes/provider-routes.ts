@@ -5,6 +5,7 @@ import { validator } from 'hono/validator';
 import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 import { providerPackageQueryValidator, providerPackageStatus } from '../provider-package-metadata';
+import { quotaWindowEstimates } from '../provider-quota-estimates';
 import { providerRoutingRevision, providerRoutingValues } from '../provider-routing-mutation';
 
 const probeKey = 'probe';
@@ -84,10 +85,20 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
       }
       try {
         const entry = await state.quotaCache.read(id, context.req.valid('json').refresh);
+        let estimates: ReturnType<typeof quotaWindowEstimates>;
+        try {
+          estimates = quotaWindowEstimates(entry, (range) =>
+            state.traceStore.providerWindowCost({ providerId: id, ...range }),
+          );
+        } catch (error) {
+          console.error('quota window cost aggregation failed', { providerId: id, error });
+          estimates = undefined;
+        }
         return context.json({
           snapshot: entry.snapshot,
           sampledAt: entry.sampledAt,
           stale: entry.stale,
+          ...(estimates === undefined ? {} : { estimates }),
           ...(entry.error === undefined ? {} : { error: entry.error }),
         });
       } catch (error) {

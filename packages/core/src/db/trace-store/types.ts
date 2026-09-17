@@ -135,6 +135,12 @@ export type DashboardOverviewQuery = {
   readonly now?: Date;
 };
 
+export type ProviderWindowCostQuery = {
+  readonly providerId: string;
+  readonly start: Date;
+  readonly end: Date;
+};
+
 export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
@@ -151,6 +157,7 @@ export type TraceStore = {
     requestedModelId: string,
     now: Date,
   ) => SessionAffinityObservation | undefined;
+  readonly providerWindowCost: (query: ProviderWindowCostQuery) => string | undefined;
   readonly recover: (now: Date) => number;
   readonly prune: (traceCutoff: Date, sessionCutoff: Date) => void;
 };

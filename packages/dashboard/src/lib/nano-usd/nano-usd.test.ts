@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@rstest/core';
 
-import { createUsageValueFormatter, formatNanoUsd } from './nano-usd';
+import { compactNanoUsdDisplay, createUsageValueFormatter, formatNanoUsd } from './nano-usd';
 
 describe('nano-USD formatting', () => {
   test('formats nano-USD without crossing the Number precision boundary', () => {
@@ -22,4 +22,18 @@ describe('nano-USD formatting', () => {
     expect(formatTokens(1_200)).toBe('1.2K');
     expect(formatRequests(1_234_567)).toBe('1M');
   });
+});
+
+test('compact display uses <$0.01 when two-decimal USD would round to zero', () => {
+  expect(compactNanoUsdDisplay(2n, 'en-US')).toEqual({
+    exact: '$0.000000002',
+    compact: undefined,
+    subCent: true,
+  });
+  expect(compactNanoUsdDisplay(10_000_000n, 'en-US')).toEqual({
+    exact: '$0.01',
+    compact: '$0.01',
+    subCent: false,
+  });
+  expect(compactNanoUsdDisplay(0n, 'en-US').subCent).toBe(false);
 });
