@@ -173,6 +173,26 @@ export const DashboardTraceSummaryResponseSchema = z
   })
   .strict();
 
+// 分位对比只在「有意义」时才有值：同模型、同一小时窗口、成功且已结束的调用链
+// 够 30 条才给结果，不够就 null，前端整块不渲染而不是画个空条。
+export const DashboardTracePercentileSchema = z
+  .object({
+    modelId: z.string().min(1),
+    windowMinutes: z.number().int().positive(),
+    sampleCount: z.number().int().min(0),
+    durationMs: z.number().min(0),
+    percentile: z.number().min(0).max(100),
+    minMs: z.number().min(0),
+    maxMs: z.number().min(0),
+    p50Ms: z.number().min(0),
+    p95Ms: z.number().min(0),
+  })
+  .strict();
+
+export const DashboardTracePercentileResponseSchema = z
+  .object({ comparison: DashboardTracePercentileSchema.nullable() })
+  .strict();
+
 export type OtelSpanStatusCode = z.output<typeof OtelSpanStatusCodeSchema>;
 export type TraceOutcome = z.output<typeof TraceOutcomeSchema>;
 export type TraceTerminationReason = z.output<typeof TraceTerminationReasonSchema>;
@@ -191,3 +211,5 @@ export type DashboardTraceDetail = z.output<typeof DashboardTraceDetailSchema>;
 export type DashboardTraceSummaryBucketSize = z.output<typeof DashboardTraceSummaryBucketSizeSchema>;
 export type DashboardTraceSummaryBucket = z.output<typeof DashboardTraceSummaryBucketSchema>;
 export type DashboardTraceSummaryResponse = z.output<typeof DashboardTraceSummaryResponseSchema>;
+export type DashboardTracePercentile = z.output<typeof DashboardTracePercentileSchema>;
+export type DashboardTracePercentileResponse = z.output<typeof DashboardTracePercentileResponseSchema>;
