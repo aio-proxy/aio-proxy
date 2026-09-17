@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -59,4 +60,27 @@ test('keeps server order and selects Span rows through native button activation'
 
   expect(onSelect).toHaveBeenNthCalledWith(1, childSpanId);
   expect(onSelect).toHaveBeenNthCalledWith(2, rootSpanId);
+});
+
+test('filters rows by span name and falls back to an empty message', () => {
+  render(
+    <SpanWaterfall
+      spans={spans}
+      selectedSpanId={rootSpanId}
+      now={new Date('2026-07-12T08:00:00.100Z')}
+      onSelect={rs.fn()}
+    />,
+  );
+
+  const search = screen.getByTestId('span-search');
+  fireEvent.change(search, { target: { value: '  ATTEMPT ' } });
+
+  expect(screen.getAllByTestId('trace-span').map((row) => row.textContent)).toEqual([
+    expect.stringContaining('aio_proxy.provider.attempt'),
+  ]);
+
+  fireEvent.change(search, { target: { value: 'nothing-matches' } });
+
+  expect(screen.queryAllByTestId('trace-span')).toEqual([]);
+  expect(screen.getByText(m['dashboard.traces.span_search_empty']())).toBeTruthy();
 });

@@ -1441,6 +1441,8 @@
       "usage": "사용량",
       "spans": "스팬",
       "span_name": "스팬 이름",
+      "span_search_placeholder": "스팬 이름 검색",
+      "span_search_empty": "일치하는 스팬이 없습니다",
       "span_kind": "종류",
       "span_start": "시작",
       "span_end": "종료",

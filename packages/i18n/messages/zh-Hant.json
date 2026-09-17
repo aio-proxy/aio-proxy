@@ -1441,6 +1441,8 @@
       "usage": "用量",
       "spans": "Span",
       "span_name": "Span 名稱",
+      "span_search_placeholder": "搜尋 span 名稱",
+      "span_search_empty": "沒有相符的 span",
       "span_kind": "類型",
       "span_start": "開始時間",
       "span_end": "結束時間",
