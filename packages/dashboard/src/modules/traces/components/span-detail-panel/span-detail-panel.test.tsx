@@ -15,6 +15,7 @@ const trace: DashboardTraceSummary = {
   inboundProtocol: 'anthropic-messages',
   requestedModelId: 'claude-sonnet-4-6',
   finalModelId: 'claude-sonnet-4-6-20260101',
+  finalHttpStatus: 500,
 };
 
 const span: DashboardTraceSpan = {
@@ -76,11 +77,43 @@ test('shows the selected Span identity, status, attributes, events, and links', 
   expect(within(panel).getByText(/"relationship": "retry"/u)).toBeTruthy();
 });
 
+test('dumps the raw attributes in the attributes tab', () => {
+  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} />);
+
+  // Scoped to the tab panel: the provider ID also shows up in the status row above it.
+  const attributes = within(screen.getByTestId('span-detail-panel')).getByRole('tabpanel');
+  expect(within(attributes).getByText(/"aio_proxy\.provider\.id": "provider-a"/u)).toBeTruthy();
+});
+
+test('shows the OTel status when the selected Span records no HTTP status of its own', () => {
+  const parse: DashboardTraceSpan = {
+    traceId: trace.traceId,
+    spanId: '1'.repeat(16),
+    parentSpanId: trace.rootSpanId,
+    name: 'aio_proxy.request.parse',
+    kind: 'INTERNAL',
+    startedAt: '2026-07-12T08:00:00.001Z',
+    endedAt: '2026-07-12T08:00:00.004Z',
+    durationMs: 3,
+    otelStatusCode: 'UNSET',
+    attributes: {},
+    events: [],
+    links: [],
+  };
+
+  render(<SpanDetailPanel span={parse} trace={trace} spans={[span, parse]} />);
+
+  const row = within(screen.getByTestId('span-detail-panel')).getByTestId('span-status-row');
+  // The trace ended 500, but this span never recorded a status code, so it must not claim one.
+  expect(within(row).queryByText('500')).toBeNull();
+  expect(within(row).getByText(/Success|成功/u)).toBeTruthy();
+});
+
 test('heads the panel with the failing HTTP status and the provider · model identity', () => {
   render(<SpanDetailPanel span={span} trace={trace} spans={[span]} />);
 
   const row = within(screen.getByTestId('span-detail-panel')).getByTestId('span-status-row');
-  expect(within(row).getByText('503')).toHaveAttribute('data-variant', 'destructive');
+  expect(within(row).getByText('503')).toHaveClass('text-destructive');
   expect(within(row).getByText('provider-a · claude-sonnet-4-6-20260101')).toBeTruthy();
 });
 
