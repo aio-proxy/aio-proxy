@@ -278,7 +278,7 @@ export const readSpanMetrics: (input: {
 
 | 字段 | 来源 |
 |---|---|
-| `httpStatus` | `span.attributes['http.status_code']` → `trace.finalHttpStatus` |
+| `httpStatus` | `span.attributes['http.status_code']`，**没有回退**：状态码是这个 span 自己的结果，借调用链的最终状态会把 500 挂到一个成功的 parse span 头上 |
 | `providerId` | `span.attributes['aio_proxy.provider.id']` → `span.attributes['aio_proxy.route.final_provider_id']` → `trace.finalProviderId` |
 | `modelId` | `span.attributes['gen_ai.response.model']` → `['gen_ai.request.model']` → `trace.finalModelId` → `trace.requestedModelId` |
 | `durationMs` | `span.durationMs`（永远取 span 自己的） |
