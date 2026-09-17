@@ -786,6 +786,42 @@ test('keeps historical images in Cursor turns without emitting root file content
   expect([...(image!.dataOrBlobId.value as Uint8Array)]).toEqual([1, 2, 3]);
 });
 
+test('an assistant prefill without a historical user replaces cached root history', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const staleSystemPrompt = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
+  );
+  const staleUser = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'user', content: [{ type: 'text', text: 'stale user' }] })),
+  );
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      { role: 'system', content: 'sys' },
+      { role: 'assistant', content: [{ type: 'text', text: 'prefill' }] },
+      { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-assistant-prefill',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [staleSystemPrompt, staleUser],
+      }),
+    },
+  });
+
+  const history = conversationState.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(blobStore.get(Buffer.from(id).toString('hex')))),
+  );
+  expect(history).toContainEqual({ role: 'assistant', content: [{ type: 'text', text: 'prefill' }] });
+  expect(history).not.toContainEqual({ role: 'user', content: [{ type: 'text', text: 'stale user' }] });
+});
+
 test('an incremental request without inbound history preserves the reusable checkpoint', () => {
   const blobStore = new Map<string, Uint8Array>();
   const systemPrompt = storeCursorBlob(

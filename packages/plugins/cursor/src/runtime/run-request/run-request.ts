@@ -92,7 +92,9 @@ export function buildCursorRunRequestBytes(input: {
     (message, index) => index !== historyActiveIndex && message.role === 'user' && v4UserHasImages(message.content),
   );
   const cachedTurns = state.conversationState?.turns ?? [];
-  const hasInboundHistory = prompt.some((message, index) => index !== historyActiveIndex && message.role === 'user');
+  const hasHistoricalUsers = prompt.some((message, index) => index !== historyActiveIndex && message.role === 'user');
+  const hasSerializedRootHistory = promptRootMessages.length > systemPromptIds.length;
+  const hasInboundHistory = isPendingResume ? hasHistoricalUsers : hasHistoricalUsers || hasSerializedRootHistory;
   const promptHistoryMatches =
     !hasInboundHistory ||
     (cachedRootMessages.length === promptRootMessages.length &&
@@ -102,7 +104,7 @@ export function buildCursorRunRequestBytes(input: {
   const reusableState =
     state.conversationState &&
     (isPendingResume
-      ? !hasInboundHistory ||
+      ? !hasHistoricalUsers ||
         (!hasHistoricalImages && turnsHaveImages(cachedTurns, blobStore) === false) ||
         turnImagesMatch(promptTurns, cachedTurns, blobStore)
       : promptHeadMatches && promptHistoryMatches)
