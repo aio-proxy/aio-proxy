@@ -95,6 +95,21 @@ describe('TracesEvents', () => {
     );
   });
 
+  test('never selects past the end of the range on a truncated last bucket', () => {
+    // 范围不是桶宽的整数倍：最后一个桶被服务端截短了，整桶宽会伸到图外面去。
+    const search = { ...createDefaultTraceSearch(), startedBefore: '2026-07-27T08:01:30.000Z' };
+    const { onChange } = renderEvents(search);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick bucket' }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startedAfter: '2026-07-27T08:01:00.000Z',
+        startedBefore: '2026-07-27T08:01:30.000Z',
+      }),
+    );
+  });
+
   test('keeps the collapsed preference in localStorage', () => {
     const { unmount } = renderEvents();
 
