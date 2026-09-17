@@ -6,6 +6,7 @@ import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 import {
   AgentClientMessageSchema,
   ConversationStateStructureSchema,
+  AgentConversationTurnStructureSchema,
   ConversationTurnStructureSchema,
   ShellCommandSchema,
   ShellConversationTurnStructureSchema,
@@ -454,6 +455,60 @@ test('a full-history request preserves cached shell turns', () => {
     maxMode: false,
     state: {
       conversationId: 'conv-shell-checkpoint',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test('a full-history image request preserves cached empty user turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-empty-user-image', blobStore },
+  });
+  const emptyUser = storeCursorBlob(blobStore, toBinary(UserMessageSchema, create(UserMessageSchema, {})));
+  const emptyTurn = storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'agentConversationTurn',
+          value: create(AgentConversationTurnStructureSchema, { userMessage: emptyUser, steps: [] }),
+        },
+      }),
+    ),
+  );
+  const cachedTurns = [...initial.conversationState.turns, emptyTurn];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-empty-user-image',
       blobStore,
       conversationState: create(ConversationStateStructureSchema, {
         ...initial.conversationState,

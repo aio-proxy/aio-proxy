@@ -173,8 +173,8 @@ function turnImagesMatch(
   cachedTurns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean {
-  const promptLists = agentTurnImageLists(promptTurns, blobStore);
-  const cachedLists = agentTurnImageLists(cachedTurns, blobStore);
+  const promptLists = agentTurnImageLists(promptTurns, blobStore)?.filter((images) => images.length > 0);
+  const cachedLists = agentTurnImageLists(cachedTurns, blobStore)?.filter((images) => images.length > 0);
   if (promptLists === undefined || cachedLists === undefined || promptLists.length !== cachedLists.length) {
     return false;
   }
