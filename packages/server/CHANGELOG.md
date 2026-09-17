@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- [#380](https://github.com/aio-proxy/aio-proxy/pull/380) [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e) Thanks [@baranwang](https://github.com/baranwang)! - Quota details show this instance's API-equivalent spend for each OAuth window. It is not the vendor balance.
+- [#380](https://github.com/aio-proxy/aio-proxy/pull/380) [`3b81cd0`](https://github.com/aio-proxy/aio-proxy/commit/3b81cd0bf7b7746f539652f21efac70ee5e4720e) Thanks [@baranwang](https://github.com/baranwang), [@YePiXpert](https://github.com/YePiXpert)! - Quota details show this instance's API-equivalent spend for each OAuth window. It is not the vendor balance.
 
 ### Patch Changes
 
