@@ -1460,8 +1460,6 @@
       "span_metric_total": "Total duration",
       "span_metric_ttft": "Time to first token",
       "span_metric_upstream": "Upstream latency",
-      "span_metric_input_tokens": "Input tokens",
-      "span_metric_output_tokens": "Output tokens",
       "span_metric_attempts": "Attempts",
       "select_span": "Select Span {name} ({spanId})",
       "attributes": "Attributes",

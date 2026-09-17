@@ -19,8 +19,8 @@ export const SpanMetricGrid: React.FC<SpanMetricGridProps> = ({ metrics }) => {
     [m['dashboard.traces.span_metric_total'](), duration(metrics.durationMs)],
     [m['dashboard.traces.span_metric_ttft'](), duration(metrics.ttftMs)],
     [m['dashboard.traces.span_metric_upstream'](), duration(metrics.upstreamMs)],
-    [m['dashboard.traces.span_metric_input_tokens'](), count(metrics.inputTokens)],
-    [m['dashboard.traces.span_metric_output_tokens'](), count(metrics.outputTokens)],
+    [m['dashboard.traces.input_tokens'](), count(metrics.inputTokens)],
+    [m['dashboard.traces.output_tokens'](), count(metrics.outputTokens)],
     [m['dashboard.traces.span_metric_attempts'](), count(metrics.attemptCount)],
   ] as const;
 
