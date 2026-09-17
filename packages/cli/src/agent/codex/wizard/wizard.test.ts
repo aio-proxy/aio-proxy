@@ -269,7 +269,7 @@ test('migrates readable history when inspect also reports blocked sessions', asy
     }),
     migrateSessions: async (targets) => {
       migratedIds = targets.map((target) => target.id);
-      return { status: 'completed', migrated: targets.length, skipped: 0, conflicts: 0 };
+      return { status: 'partial', migrated: targets.length, skipped: 0, conflicts: 1 };
     },
   });
   expect(migratedIds).toEqual(['readable-id']);

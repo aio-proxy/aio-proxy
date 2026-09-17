@@ -54,11 +54,11 @@ test('rejects an unsafe home-relative sqlite_home value', async () => {
   try {
     await writeFile(join(root, 'config.toml'), 'sqlite_home = "~other/state"\n');
     const location = resolveCodexLocation(root, { HOME: root });
-    expect(location.sqliteHome).toBe(root);
+    expect(location.sqliteHome).toBeUndefined();
     expect(location.legacyScanAllowed).toBe(false);
     await writeFile(join(root, 'config.toml'), 'sqlite_home = "../outside"\n');
     const rejected = resolveCodexLocation(root, { HOME: root });
-    expect(rejected.sqliteHome).toBe(root);
+    expect(rejected.sqliteHome).toBeUndefined();
     expect(rejected.legacyScanAllowed).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });

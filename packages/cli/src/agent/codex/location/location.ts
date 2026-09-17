@@ -22,16 +22,21 @@ const resolveStoragePath = (value: string, base: string, userHome: string): stri
   return resolved === base || resolved.startsWith(`${base}/`) ? resolved : undefined;
 };
 
-const readConfiguredSqliteHome = (configPath: string, codexHome: string, userHome: string): string | undefined => {
+const readConfiguredSqliteHome = (
+  configPath: string,
+  codexHome: string,
+  userHome: string,
+): { readonly present: false } | { readonly present: true; readonly value?: string } => {
   try {
     const stat = lstatSync(configPath);
-    if (!stat.isFile() || stat.isSymbolicLink()) return undefined;
+    if (!stat.isFile() || stat.isSymbolicLink()) return { present: false };
     const parsed: unknown = Bun.TOML.parse(readFileSync(configPath, 'utf8'));
-    if (!isPlainObject(parsed)) return undefined;
+    if (!isPlainObject(parsed)) return { present: false };
     const value = (parsed as { sqlite_home?: unknown }).sqlite_home;
-    return typeof value === 'string' ? resolveStoragePath(value, codexHome, userHome) : undefined;
+    if (typeof value !== 'string') return { present: false };
+    return { present: true, value: resolveStoragePath(value, codexHome, userHome) };
   } catch {
-    return undefined;
+    return { present: false };
   }
 };
 
@@ -48,7 +53,11 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
   const configuredSqliteHome = useConfigSqliteHome
     ? readConfiguredSqliteHome(join(actualHome, 'config.toml'), actualHome, userHome)
     : resolveStoragePath(explicitSqliteHome, userHome, userHome);
-  const sqliteHome = configuredSqliteHome ?? (useConfigSqliteHome ? actualHome : undefined);
+  const sqliteHome = useConfigSqliteHome
+    ? configuredSqliteHome.present
+      ? configuredSqliteHome.value
+      : actualHome
+    : configuredSqliteHome;
   const managedRoot = join(actualHome, '.aio-proxy');
   return {
     home: actualHome,
@@ -57,6 +66,7 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
     markerPath: join(managedRoot, 'codex-config.json'),
     sqliteHome,
     legacyScanAllowed:
-      env['CODEX_LEGACY_SCAN_ALLOWED'] === '1' || (useConfigSqliteHome && configuredSqliteHome !== undefined),
+      env['CODEX_LEGACY_SCAN_ALLOWED'] === '1' ||
+      (useConfigSqliteHome && configuredSqliteHome.present && configuredSqliteHome.value !== undefined),
   };
 }
