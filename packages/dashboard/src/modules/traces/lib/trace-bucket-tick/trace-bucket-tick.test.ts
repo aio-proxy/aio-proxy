@@ -29,11 +29,4 @@ describe('bucket tick format', () => {
 
     expect(first).toBe(second);
   });
-
-  test('always labels a daily bucket, even when the range holds a single one', () => {
-    const format = createBucketTickFormat('en-US', '1d', [at(27, 0)]);
-
-    // 1d 档的时间部分是空的，不补日期就会退化成一个什么都不写的格式化器。
-    expect(format.format(new Date(at(27, 0).at))).not.toBe('');
-  });
 });

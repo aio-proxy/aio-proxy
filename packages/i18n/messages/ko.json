@@ -1460,6 +1460,7 @@
       "attributes": "속성",
       "events": "이벤트",
       "events_hint": "막대를 클릭하면 해당 시간대로 좁혀집니다",
+      "events_stale": "마지막으로 불러온 데이터 표시 중",
       "events_collapse": "차트 접기",
       "events_expand": "차트 펼치기",
       "links": "링크",

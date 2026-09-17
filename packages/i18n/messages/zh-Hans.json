@@ -1460,6 +1460,7 @@
       "attributes": "属性",
       "events": "事件",
       "events_hint": "点击柱体可缩放到该时间段",
+      "events_stale": "显示的是上次加载的数据",
       "events_collapse": "折叠图表",
       "events_expand": "展开图表",
       "links": "链接",
