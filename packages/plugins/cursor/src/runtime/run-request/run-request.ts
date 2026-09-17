@@ -157,16 +157,8 @@ function turnsHaveImages(
   turns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean | undefined {
-  try {
-    for (const turn of turns) {
-      const images = readTurnImages(turn, blobStore);
-      if (images === undefined) return undefined;
-      if (images.length > 0) return true;
-    }
-    return false;
-  } catch {
-    return undefined;
-  }
+  const lists = agentTurnImageLists(turns, blobStore);
+  return lists?.some((images) => images.length > 0);
 }
 
 function turnImagesMatch(
@@ -174,42 +166,50 @@ function turnImagesMatch(
   cachedTurns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
 ): boolean {
-  if (promptTurns.length !== cachedTurns.length) return false;
-  try {
-    return promptTurns.every((promptTurn, index) => {
-      const promptImages = readTurnImages(promptTurn, blobStore);
-      const cachedImages = readTurnImages(cachedTurns[index]!, blobStore);
-      if (promptImages === undefined || cachedImages === undefined || promptImages.length !== cachedImages.length) {
-        return false;
-      }
-      return promptImages.every((image, imageIndex) => {
-        const cachedImage = cachedImages[imageIndex]!;
-        const data = imageData(image, blobStore);
-        const cachedData = imageData(cachedImage, blobStore);
-        return (
-          image.mimeType === cachedImage.mimeType &&
-          data !== undefined &&
-          cachedData !== undefined &&
-          Buffer.from(data).equals(cachedData)
-        );
-      });
-    });
-  } catch {
+  const promptLists = agentTurnImageLists(promptTurns, blobStore);
+  const cachedLists = agentTurnImageLists(cachedTurns, blobStore);
+  if (promptLists === undefined || cachedLists === undefined || promptLists.length !== cachedLists.length) {
     return false;
   }
+  return promptLists.every((promptImages, index) => {
+    const cachedImages = cachedLists[index]!;
+    if (promptImages.length !== cachedImages.length) return false;
+    return promptImages.every((image, imageIndex) => {
+      const cachedImage = cachedImages[imageIndex]!;
+      const data = imageData(image, blobStore);
+      const cachedData = imageData(cachedImage, blobStore);
+      return (
+        image.mimeType === cachedImage.mimeType &&
+        data !== undefined &&
+        cachedData !== undefined &&
+        Buffer.from(data).equals(cachedData)
+      );
+    });
+  });
 }
 
-function readTurnImages(
-  turnId: Uint8Array,
+function agentTurnImageLists(
+  turns: readonly Uint8Array[],
   blobStore: ReadonlyMap<string, Uint8Array>,
-): readonly SelectedImage[] | undefined {
-  const turnBytes = readCursorBlob(blobStore, turnId);
-  if (turnBytes === undefined) return undefined;
-  const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
-  if (turn.turn.case !== 'agentConversationTurn') return undefined;
-  const userMessageBytes = readCursorBlob(blobStore, turn.turn.value.userMessage);
-  if (userMessageBytes === undefined) return undefined;
-  return fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? [];
+): readonly (readonly SelectedImage[])[] | undefined {
+  try {
+    const lists: (readonly SelectedImage[])[] = [];
+    for (const turnId of turns) {
+      const turnBytes = readCursorBlob(blobStore, turnId);
+      if (turnBytes === undefined) return undefined;
+      const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+      if (turn.turn.case !== 'agentConversationTurn') {
+        if (turn.turn.case === undefined) return undefined;
+        continue;
+      }
+      const userMessageBytes = readCursorBlob(blobStore, turn.turn.value.userMessage);
+      if (userMessageBytes === undefined) return undefined;
+      lists.push(fromBinary(UserMessageSchema, userMessageBytes).selectedContext?.selectedImages ?? []);
+    }
+    return lists;
+  } catch {
+    return undefined;
+  }
 }
 
 function imageData(image: SelectedImage, blobStore: ReadonlyMap<string, Uint8Array>): Uint8Array | undefined {

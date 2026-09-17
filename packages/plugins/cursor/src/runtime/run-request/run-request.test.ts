@@ -1,12 +1,15 @@
 import { expect, test } from 'bun:test';
 
 import type { LanguageModelV4Prompt, LanguageModelV4ToolResultPart } from '@ai-sdk/provider';
-import { create, fromBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
   AgentClientMessageSchema,
   ConversationStateStructureSchema,
   ConversationTurnStructureSchema,
+  ShellCommandSchema,
+  ShellConversationTurnStructureSchema,
+  ShellOutputSchema,
   UserMessageSchema,
 } from '../../gen/agent_pb';
 import { storeCursorBlob } from '../../store/blobs';
@@ -225,6 +228,105 @@ test('a matching full-history request preserves the reusable Cursor checkpoint',
 
   expect(repeated.conversationState.rootPromptMessagesJson).toEqual(initial.conversationState.rootPromptMessagesJson);
   expect(repeated.conversationState.turns).toEqual(initial.conversationState.turns);
+});
+
+const storeShellTurn = (blobStore: Map<string, Uint8Array>) =>
+  storeCursorBlob(
+    blobStore,
+    toBinary(
+      ConversationTurnStructureSchema,
+      create(ConversationTurnStructureSchema, {
+        turn: {
+          case: 'shellConversationTurn',
+          value: create(ShellConversationTurnStructureSchema, {
+            shellCommand: storeCursorBlob(
+              blobStore,
+              toBinary(ShellCommandSchema, create(ShellCommandSchema, { command: 'ls' })),
+            ),
+            shellOutput: storeCursorBlob(
+              blobStore,
+              toBinary(ShellOutputSchema, create(ShellOutputSchema, { stdout: 'ok', stderr: '', exitCode: 0 })),
+            ),
+          }),
+        },
+      }),
+    ),
+  );
+
+test('a full-history request preserves cached shell turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'user', content: [{ type: 'text', text: 'first user' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-shell-checkpoint', blobStore },
+  });
+  const cachedTurns = [...initial.conversationState.turns, storeShellTurn(blobStore)];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-shell-checkpoint',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
+});
+
+test('a full-history image request preserves cached shell turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-shell-image-checkpoint', blobStore },
+  });
+  const cachedTurns = [...initial.conversationState.turns, storeShellTurn(blobStore)];
+  const repeated = buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-shell-image-checkpoint',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        ...initial.conversationState,
+        turns: cachedTurns,
+      }),
+    },
+  });
+
+  expect(repeated.conversationState.turns).toEqual(cachedTurns);
 });
 
 test.each([
