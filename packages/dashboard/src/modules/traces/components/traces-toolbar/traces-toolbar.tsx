@@ -72,7 +72,8 @@ export const TracesToolbar: React.FC<TracesToolbarProps> = ({ search, autoRefres
           title={autoRefresh ? undefined : m['dashboard.traces.live_off']()}
           onClick={() => onAutoRefresh(!autoRefresh)}
         >
-          <span className={cn('size-1.5 rounded-full bg-current', autoRefresh && 'animate-pulse')} />
+          {/* 开着的时候用成功色，跟图上的绿是同一支，关着的时候跟文字同色，不抢眼。 */}
+          <span className={cn('size-1.5 rounded-full bg-current', autoRefresh && 'animate-pulse bg-chart-success')} />
           {m['dashboard.traces.live']()}
         </Button>
       )}
