@@ -1411,6 +1411,8 @@
       "reset": "Reset",
       "refresh": "Refresh",
       "auto_refresh": "Auto refresh",
+      "live": "Live",
+      "live_off": "Live updates paused",
       "filters": "Filters",
       "collapse_filters": "Collapse filters",
       "advanced_filters": "Advanced filters",

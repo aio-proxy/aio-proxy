@@ -3,7 +3,7 @@ import { DashboardTracePageSizeSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
+import { SidebarInset, SidebarProvider } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { useEffect, useReducer, useRef, useState } from 'react';
@@ -12,6 +12,7 @@ import { PageContainer } from '@/components/page-container';
 
 import { TracesFilters } from '../../components/traces-filters';
 import { TracesTable } from '../../components/traces-table';
+import { TracesToolbar } from '../../components/traces-toolbar';
 import { useTracesQuery } from '../../hooks/use-traces-query';
 import { createDefaultTraceSearch, type TraceSearch, withTraceFilters } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
@@ -42,7 +43,8 @@ interface TracesPageProps {
 }
 
 export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, onTraceSelect }) => {
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  // 进入即轮询会让人一直盯着一张自己在动的表，看不清刚发生了什么。默认关。
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const searchKey = JSON.stringify(search);
   const [buffer, dispatchBuffer] = useReducer(traceBufferReducer, searchKey, (initialSearchKey) => ({
     searchKey: initialSearchKey,
@@ -125,9 +127,12 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
           />
           <SidebarInset className="min-h-0 min-w-0">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div className="flex h-12 shrink-0 items-center border-b px-3">
-                <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
-              </div>
+              <TracesToolbar
+                search={search}
+                autoRefresh={autoRefresh}
+                onChange={onSearchChange}
+                onAutoRefresh={setAutoRefresh}
+              />
               <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
                 {loading && (
                   <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>

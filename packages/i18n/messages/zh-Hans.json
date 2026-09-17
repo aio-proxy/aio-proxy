@@ -1411,6 +1411,8 @@
       "reset": "重置",
       "refresh": "刷新",
       "auto_refresh": "自动刷新",
+      "live": "实时",
+      "live_off": "实时刷新已暂停",
       "filters": "筛选",
       "collapse_filters": "收起筛选",
       "advanced_filters": "高级筛选",
