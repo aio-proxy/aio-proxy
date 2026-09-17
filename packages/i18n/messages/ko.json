@@ -1451,7 +1451,6 @@
       "span_id": "스팬 ID",
       "parent_span_id": "부모 스팬 ID",
       "span_data": "스팬 데이터",
-      "waterfall": "워터폴",
       "select_span": "스팬 {name} ({spanId}) 선택",
       "attributes": "속성",
       "events": "이벤트",

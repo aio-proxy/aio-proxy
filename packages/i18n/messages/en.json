@@ -1451,7 +1451,6 @@
       "span_id": "Span ID",
       "parent_span_id": "Parent Span ID",
       "span_data": "Span data",
-      "waterfall": "Waterfall",
       "select_span": "Select Span {name} ({spanId})",
       "attributes": "Attributes",
       "events": "Events",
