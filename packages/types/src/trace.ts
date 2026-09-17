@@ -154,8 +154,8 @@ export const DashboardTraceSummaryBucketSizeSchema = z.enum(['1m', '5m', '30m', 
  * 一个时间桶里的成功/失败数。注意与 `DashboardTraceSummarySchema` 区分：
  * 那个是一行调用链的摘要，这个是 `GET /dashboard/api/traces/summary` 的聚合结果。
  *
- * `success` 只数 OTel `OK`，`error` 只数 `ERROR`。还在跑的调用链是 `UNSET`，
- * 两边都不计 —— 图上少掉的那一点就是「还没有结果」，不该被算成成功。
+ * 口径跟 `TraceOutcomeSchema` 一致：跑完了没报错算 `success`，报错算 `error`，
+ * 还在跑的两边都不计 —— 图上少掉的那一点就是「还没有结果」，不该被算成成功。
  */
 export const DashboardTraceSummaryBucketSchema = z
   .object({
