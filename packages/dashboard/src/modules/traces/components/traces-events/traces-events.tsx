@@ -30,6 +30,10 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
   // 只剩一个桶就没法再收窄了（1m 粒度下每次缩放的结果都是这个状态），
   // 那就别再摆出可点的样子：提示语收起来，柱子也不显示手型。
   const canZoom = (query.data?.buckets.length ?? 0) > 1;
+  // 只有摘要挂了、列表还好的时候：TanStack Query 留着上一次的 data，图会继续画旧数
+  // 据。不吭声的话那张图看起来就是当前的，所以在提示位上换成错误文案 —— 图还有参考
+  // 价值，不值得把整块换掉。
+  const staleError = query.isError && query.data !== undefined;
 
   const selectBucket = (at: string) => {
     const [first, second] = query.data?.buckets ?? [];
@@ -74,9 +78,10 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
             </button>
           );
         })}
-        {/* span 常在：ml-auto 靠它把折叠按钮顶到右边，提示语只是它的内容。 */}
-        <span className="ml-auto text-xs text-muted-foreground max-sm:hidden">
-          {canZoom && m['dashboard.traces.events_hint']()}
+        {/* span 常在：ml-auto 靠它把折叠按钮顶到右边，提示语只是它的内容。
+            提示语在窄屏可以省，旧数据的警告不行。 */}
+        <span className={cn('ml-auto text-xs text-muted-foreground', !staleError && 'max-sm:hidden')}>
+          {staleError ? m['dashboard.traces.error_title']() : canZoom && m['dashboard.traces.events_hint']()}
         </span>
         <Button
           variant="ghost"
@@ -92,7 +97,7 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
       {!collapsed && (
         <div id={bodyId} className="px-3 pb-3">
           {query.isLoading && <Skeleton className="h-40 w-full" />}
-          {/* 轮询失败后 TanStack Query 会留着上一次的 data，不判 data 就成了错误行压在旧图上面。 */}
+          {/* 从没成功过才铺整块错误：有旧数据时错误只在表头轻提示一句，图留着。 */}
           {query.isError && query.data === undefined && (
             <p className="text-xs text-muted-foreground">{m['dashboard.traces.error_title']()}</p>
           )}

@@ -154,8 +154,9 @@ describe('TracesEvents', () => {
     expect(screen.getByRole('button', { name: 'pick bucket' })).toHaveAttribute('data-can-zoom', 'false');
   });
 
-  test('keeps the last good chart instead of stacking an error line on top of it', () => {
-    // 轮询失败时 TanStack Query 还留着上一次的 data，错误行和旧图会同时出现。
+  test('keeps the last good chart and flags it as stale instead of replacing it with an error', () => {
+    // 轮询失败时 TanStack Query 还留着上一次的 data。图继续画旧数据，所以必须有个
+    // 说明，否则用户看到的是一张假装是当前的图。
     mocks.summary = {
       data: { bucket: '1m', buckets: twoBuckets, totals: { success: 18_307, error: 93 } },
       isLoading: false,
@@ -163,7 +164,10 @@ describe('TracesEvents', () => {
     };
     renderEvents();
 
-    expect(screen.queryByText(/Traces unavailable|无法加载追踪/u)).toBeNull();
     expect(screen.getByRole('button', { name: 'pick bucket' })).toBeInTheDocument();
+    const notice = screen.getByText(/Traces unavailable|无法加载追踪/u);
+    expect(notice).toBeInTheDocument();
+    // 提示落在表头，不是盖在图上的那一整块。
+    expect(notice.closest('header')).not.toBeNull();
   });
 });
