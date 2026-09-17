@@ -212,6 +212,7 @@ function agentTurnImageLists(
       const userMessageBytes = readCursorBlob(blobStore, turn.turn.value.userMessage);
       if (userMessageBytes === undefined) return undefined;
       const userMessage = fromBinary(UserMessageSchema, userMessageBytes);
+      if (userMessage.isSimulatedMsg === true) continue;
       const images = userMessage.selectedContext?.selectedImages ?? [];
       if (userMessage.text.length === 0 && images.length === 0) continue;
       lists.push({ text: userMessage.text, images });
