@@ -200,3 +200,40 @@ test('keeps a paired tool call and output on the raw path', async () => {
 
   expect(await forwarded.text()).toBe(bodyText);
 });
+
+test('holds a call-id-less tool output until the local batch closes', async () => {
+  const body = {
+    model: 'grok-4.6',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+      {
+        type: 'function_call_output',
+        name: 'send_message_to_thread',
+        namespace: 'codex_app',
+        output: 'watch failed',
+      },
+      { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+    ],
+  };
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'grok-4.6', new Set(), {});
+
+  expect(await forwarded.json()).toEqual({
+    model: 'grok-4.6',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '[orphan tool result] watch failed' }],
+      },
+    ],
+  });
+});

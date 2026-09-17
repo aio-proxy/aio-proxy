@@ -173,3 +173,21 @@ test('eager create rewrites only outputs that have no call_id', () => {
     { type: 'function_call_output', call_id: 'call_1', output: 'Sunny' },
   ]);
 });
+
+test('eager create holds a call-id-less note until the local batch closes', () => {
+  expect(
+    repairOpenAIResponsesCallIdlessToolOutputs([
+      { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+      { type: 'function_call_output', name: 'send_message_to_thread', output: 'watch failed' },
+      { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+    ]),
+  ).toEqual([
+    { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+    { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+    {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: '[orphan tool result] watch failed' }],
+    },
+  ]);
+});
