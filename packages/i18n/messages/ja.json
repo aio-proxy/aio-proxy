@@ -1454,8 +1454,6 @@
       "span_metric_total": "総所要時間",
       "span_metric_ttft": "最初のトークンまでの時間",
       "span_metric_upstream": "上流の所要時間",
-      "span_metric_input_tokens": "入力トークン",
-      "span_metric_output_tokens": "出力トークン",
       "span_metric_attempts": "試行回数",
       "select_span": "スパン {name} ({spanId}) を選択",
       "attributes": "属性",

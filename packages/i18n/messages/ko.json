@@ -1454,8 +1454,6 @@
       "span_metric_total": "총 소요 시간",
       "span_metric_ttft": "첫 토큰까지 시간",
       "span_metric_upstream": "업스트림 소요 시간",
-      "span_metric_input_tokens": "입력 토큰",
-      "span_metric_output_tokens": "출력 토큰",
       "span_metric_attempts": "시도 횟수",
       "select_span": "스팬 {name} ({spanId}) 선택",
       "attributes": "속성",

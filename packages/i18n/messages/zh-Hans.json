@@ -1454,8 +1454,6 @@
       "span_metric_total": "总时长",
       "span_metric_ttft": "首字时延",
       "span_metric_upstream": "上游耗时",
-      "span_metric_input_tokens": "输入 Token",
-      "span_metric_output_tokens": "输出 Token",
       "span_metric_attempts": "尝试次数",
       "select_span": "选择 Span {name}（{spanId}）",
       "attributes": "属性",
