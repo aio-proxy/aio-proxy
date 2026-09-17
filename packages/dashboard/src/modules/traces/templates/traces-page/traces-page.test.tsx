@@ -140,7 +140,7 @@ describe('traces page', () => {
     }
   });
 
-  test('renders the events card above the table and routes legend clicks into the status filter', () => {
+  test('renders the events card above the table and routes legend clicks into the outcome filter', () => {
     const search = { ...createDefaultTraceSearch(), pageSize: 20 as const };
     const onSearchChange = rs.fn();
     render(<TracesPage search={search} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
@@ -150,7 +150,7 @@ describe('traces page', () => {
 
     fireEvent.click(within(events).getByRole('button', { name: /Failure|失败|失敗|Failed/u }));
 
-    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ otelStatusCode: 'ERROR' }));
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
   });
 
   test('renders aligned latency and token details without the Session column', () => {

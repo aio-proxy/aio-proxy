@@ -1,5 +1,10 @@
 import { decodeTraceCursor, encodeTraceCursor, type TracesQuery, type TracesSummaryQuery } from '@aio-proxy/core/db';
-import { DashboardTracePageSizeSchema, OtelSpanStatusCodeSchema, TraceTerminationReasonSchema } from '@aio-proxy/types';
+import {
+  DashboardTracePageSizeSchema,
+  OtelSpanStatusCodeSchema,
+  TraceOutcomeSchema,
+  TraceTerminationReasonSchema,
+} from '@aio-proxy/types';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
@@ -20,6 +25,7 @@ const TraceFiltersQuerySchema = z.object({
   sessionSource: z.string().trim().min(1).optional(),
   sessionId: z.string().trim().min(1).max(512).optional(),
   otelStatusCode: OtelSpanStatusCodeSchema.optional(),
+  outcome: TraceOutcomeSchema.optional(),
   terminationReason: TraceTerminationReasonSchema.optional(),
   inboundProtocol: z.string().trim().min(1).optional(),
   requestedModelId: z.string().trim().min(1).optional(),
@@ -79,6 +85,7 @@ function toTraceFilters(query: z.output<typeof TraceFiltersQuerySchema>) {
     ...(query.sessionSource === undefined ? {} : { sessionSource: query.sessionSource }),
     ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId }),
     ...(query.otelStatusCode === undefined ? {} : { otelStatusCode: query.otelStatusCode }),
+    ...(query.outcome === undefined ? {} : { outcome: query.outcome }),
     ...(query.terminationReason === undefined ? {} : { terminationReason: query.terminationReason }),
     ...(query.inboundProtocol === undefined ? {} : { inboundProtocol: query.inboundProtocol }),
     ...(query.requestedModelId === undefined ? {} : { requestedModelId: query.requestedModelId }),

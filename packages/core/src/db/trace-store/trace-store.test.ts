@@ -463,13 +463,21 @@ describe('trace store recover, list, and prune', () => {
   });
 });
 
-const seedTrace = (store: TraceStore, traceId: string, startedAt: string, statusCode: number): void => {
+// 真实的成功调用链是 ended + UNSET：链路上没有任何地方把根 span 设成 OK，所以这里也
+// 不许按 statusCode 播种，否则测试会自己造出一种生产里不存在的形状。
+const seedTrace = (
+  store: TraceStore,
+  traceId: string,
+  startedAt: string,
+  outcome: 'success' | 'error' | 'running',
+): void => {
   const spanId = traceId.slice(0, 16);
   const requestId = `req-${traceId.slice(0, 4)}`;
   const at = new Date(startedAt);
   store.startRoot(rootStart({ traceId, spanId, requestId, startedAt: at }));
-  // statusCode 0 是 UNSET —— 只 startRoot 不 complete，就是一条还在跑的调用链
-  if (statusCode === 0) return;
+  // 只 startRoot 不 complete，就是一条还在跑的调用链
+  if (outcome === 'running') return;
+  const failed = outcome === 'error';
   store.complete(
     completion({
       traceId,
@@ -480,7 +488,8 @@ const seedTrace = (store: TraceStore, traceId: string, startedAt: string, status
           spanId,
           startedAt: at,
           endedAt: new Date(at.getTime() + 100),
-          statusCode,
+          statusCode: failed ? 2 : 0,
+          ...(failed ? { terminationReason: 'failure' as const } : {}),
           // request_id 是唯一列，每条种子调用链都要带上自己的那个
           attributes: { 'aio_proxy.request.id': requestId },
         }),
@@ -488,7 +497,7 @@ const seedTrace = (store: TraceStore, traceId: string, startedAt: string, status
       summary: {
         finalProviderId: 'provider-b',
         finalModelId: 'model-b',
-        finalHttpStatus: statusCode === 2 ? 500 : 200,
+        finalHttpStatus: failed ? 500 : 200,
       },
     }),
   );
@@ -499,11 +508,11 @@ describe('trace store summary', () => {
     const handle = openTestDb();
     try {
       const store = createTraceStore(handle.db);
-      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 1);
-      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 1);
-      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:50.000Z', 2);
-      seedTrace(store, '4'.repeat(32), '2026-07-24T09:30:05.000Z', 2);
-      seedTrace(store, '5'.repeat(32), '2026-07-24T09:45:00.000Z', 0);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 'success');
+      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:50.000Z', 'error');
+      seedTrace(store, '4'.repeat(32), '2026-07-24T09:30:05.000Z', 'error');
+      seedTrace(store, '5'.repeat(32), '2026-07-24T09:45:00.000Z', 'running');
 
       const result = store.summary({
         startedAfter: new Date('2026-07-24T09:00:00.000Z'),
@@ -527,8 +536,8 @@ describe('trace store summary', () => {
     const handle = openTestDb();
     try {
       const store = createTraceStore(handle.db);
-      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 1);
-      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 2);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 'error');
       const range = {
         startedAfter: new Date('2026-07-24T09:00:00.000Z'),
         startedBefore: new Date('2026-07-24T10:00:00.000Z'),
@@ -536,6 +545,27 @@ describe('trace store summary', () => {
 
       expect(store.summary({ ...range, otelStatusCode: 'ERROR' }).totals).toEqual({ success: 0, error: 1 });
       expect(store.summary({ ...range, finalProviderId: 'provider-nope' }).totals).toEqual({ success: 0, error: 0 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('counts the same traces the outcome filter selects', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 'error');
+      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:50.000Z', 'running');
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      // 图上写着几个成功，点掉图例就得列出那几条。两处各判一次成败就是 0 成功那个 bug。
+      expect(store.summary(range).totals).toEqual({ success: 1, error: 1 });
+      expect(store.list({ ...range, pageSize: 50, outcome: 'success' }).items).toHaveLength(1);
+      expect(store.list({ ...range, pageSize: 50, outcome: 'error' }).items).toHaveLength(1);
     } finally {
       handle.close();
     }
@@ -563,7 +593,7 @@ describe('trace store summary', () => {
     const handle = openTestDb();
     try {
       const store = createTraceStore(handle.db);
-      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 1);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
 
       // 年份是客户端传进来的，0000→9999 按 1d 一桶就是三百多万个桶
       const result = store.summary({
