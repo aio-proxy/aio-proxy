@@ -322,7 +322,7 @@ test('hides the cost row when the window has no estimate', () => {
   expect(screen.queryByTestId('provider-quota-cost-weekly')).not.toBeInTheDocument();
 });
 
-test('renders <$0.01 for a positive sub-cent estimate', () => {
+test('renders <$0.01 for a positive sub-cent estimate', async () => {
   queryMocks.data = {
     sampledAt: 1,
     stale: false,
@@ -333,7 +333,13 @@ test('renders <$0.01 for a positive sub-cent estimate', () => {
   render(<ProviderQuotaRing provider={provider} />);
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 
-  expect(screen.getByTestId('provider-quota-cost-weekly')).toHaveTextContent(/<\$0\.01|\$0\.01 未満/u);
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  expect(trigger).toHaveTextContent(/<\$0\.01|\$0\.01 未満/u);
+
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  expect(await screen.findByTestId('provider-quota-cost-used-weekly')).toHaveTextContent(/\$0\.000000002/u);
 });
 
 test('labels a period total approximate when little of the window is consumed', async () => {
