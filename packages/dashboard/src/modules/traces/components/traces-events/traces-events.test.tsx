@@ -165,7 +165,8 @@ describe('TracesEvents', () => {
     renderEvents();
 
     expect(screen.getByRole('button', { name: 'pick bucket' })).toBeInTheDocument();
-    const notice = screen.getByText(/Traces unavailable|无法加载追踪/u);
+    // 图在画数字，文案就得说「这是旧的」而不是「加载不出来」。
+    const notice = screen.getByText(/Showing last loaded data|显示的是上次加载的数据/u);
     expect(notice).toBeInTheDocument();
     // 提示落在表头，不是盖在图上的那一整块。
     expect(notice.closest('header')).not.toBeNull();
