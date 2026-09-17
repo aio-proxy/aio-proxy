@@ -6,6 +6,7 @@ import type {
   DashboardOverviewResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
+  DashboardTracePercentileResponse,
   DashboardTraceSummary,
   DashboardTraceSummaryResponse,
   DashboardUsageOverviewResponse,
@@ -151,6 +152,7 @@ export type TraceStore = {
   readonly list: (query: TracesQuery) => TracesPage;
   readonly summary: (query: TracesSummaryQuery) => DashboardTraceSummaryResponse;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
+  readonly percentile: (traceId: string, now: Date) => DashboardTracePercentileResponse;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
   readonly overviewDashboardDiagnostics: (query: DashboardOverviewQuery) => DashboardOverviewDiagnosticsResponse;
