@@ -14,6 +14,7 @@ import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/to
 import { defineProtocolAdapter } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
+import { repairOpenAIResponsesCallIdlessToolOutputs } from './openai-responses/tool-pairing-retry';
 import { clampSdkReasoning, normalizeEffort, reasoningSettings } from './reasoning-effort/index';
 import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
@@ -254,9 +255,14 @@ async function rewriteOpenAIResponsesRequest(
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
+  const repairedInput = Array.isArray(body['input'])
+    ? repairOpenAIResponsesCallIdlessToolOutputs(body['input'])
+    : undefined;
   // Any of these force a re-serialization: a model rewrite, a stripped
-  // `background` field, or a clamped effort. Only when none apply can we
-  // forward the untouched original bytes.
+  // `background` field, a clamped effort, or a function_call_output with no
+  // call_id (Codex Desktop cross-thread delegation). Outputs that still have a
+  // call_id may belong to previous_response_id / conversation state. Only when
+  // none apply can we forward the untouched original bytes.
   const modelUnchanged = body['model'] === resolvedModel;
   const backgroundStripped = _background !== undefined;
   const effortUnchanged =
@@ -265,12 +271,13 @@ async function rewriteOpenAIResponsesRequest(
       reasoning !== null &&
       (nextReasoning as { effort?: unknown }).effort === (reasoning as { effort?: unknown }).effort);
   const forwardedBody =
-    modelUnchanged && !backgroundStripped && effortUnchanged
+    modelUnchanged && !backgroundStripped && effortUnchanged && repairedInput === undefined
       ? bodyText
       : JSON.stringify({
           ...body,
           model: resolvedModel,
           ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
+          ...(repairedInput === undefined ? {} : { input: repairedInput }),
         });
   return new Request(raw, {
     method: raw.method,

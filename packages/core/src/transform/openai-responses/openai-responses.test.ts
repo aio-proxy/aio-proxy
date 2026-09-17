@@ -227,9 +227,10 @@ test('rejects invalid function arguments', () => {
 });
 
 test('rejects a tool output without a call_id as an unsupported feature', () => {
-  // Parse accepts it so raw passthrough can forward it. A model-only candidate
+  // Parse accepts it so a later raw candidate can run. A model-only candidate
   // cannot pair it with a call, and must reject in a way the pipeline can fall
-  // back from — a terminal 400 would skip a later raw candidate.
+  // back from — a terminal 400 would skip that raw candidate. The raw path
+  // rewrites the item to a user note before the first upstream call.
   const warn = spyOn(console, 'warn').mockImplementation(() => {});
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',

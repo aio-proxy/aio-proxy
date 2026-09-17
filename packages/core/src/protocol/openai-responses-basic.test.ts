@@ -340,6 +340,7 @@ describe('openAIResponsesAdapter', () => {
     const body = JSON.stringify({
       model: 'alias',
       input: [
+        { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
         {
           type: 'function_call_output',
           call_id: 'call_1',
@@ -357,7 +358,10 @@ describe('openAIResponsesAdapter', () => {
     const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'alias', new Set(), {});
 
     expect(await forwarded.json()).toMatchObject({
-      input: [{ output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }] }],
+      input: [
+        { type: 'function_call', call_id: 'call_1' },
+        { output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }] },
+      ],
     });
   });
 
