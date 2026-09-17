@@ -133,7 +133,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---- events chart card ---- */
 .events { padding: 0; overflow: hidden; }
 .events-head { display: flex; align-items: center; gap: 16px; padding: 14px 16px; flex-wrap: wrap; }
-.events-title { font-family: var(--font-heading); font-size: 15px; font-weight: 500; }
 .legend { display: flex; align-items: center; gap: 8px; }
 .legend-chip {
   display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px;
