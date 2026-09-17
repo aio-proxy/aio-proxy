@@ -1417,6 +1417,8 @@
       "reset": "重設",
       "refresh": "重新整理",
       "auto_refresh": "自動重新整理",
+      "live": "即時",
+      "live_off": "即時重新整理已暫停",
       "filters": "篩選",
       "collapse_filters": "收合篩選",
       "advanced_filters": "進階篩選",

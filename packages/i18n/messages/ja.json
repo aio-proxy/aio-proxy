@@ -1417,6 +1417,8 @@
       "reset": "リセット",
       "refresh": "更新",
       "auto_refresh": "自動更新",
+      "live": "リアルタイム",
+      "live_off": "リアルタイム更新は停止中",
       "filters": "フィルター",
       "collapse_filters": "フィルターを折りたたむ",
       "advanced_filters": "詳細フィルター",
