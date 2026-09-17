@@ -822,7 +822,10 @@
         "stale_notice": "显示上一次成功获取的数据，最近一次刷新失败",
         "load_failed": "无法获取该提供商的额度",
         "loading": "正在加载额度",
-        "cost_used": "已用 {amount} · API 等价",
+        "cost_used": "已用 {amount}",
+        "cost_period": "预估周期 {amount}",
+        "cost_period_approx": "预估约 {amount}",
+        "cost_period_hint": "周期额度由已用金额和剩余额度比例反推。本实例 API 等价，不是厂商余额。",
         "cost_note": "本实例按 API 价估算的花费：该 Provider 在此窗口内成功且已定价的全部模型请求。不是该窗口自己的车道消耗，不是账户余额，也不是 Cursor / Grok 积分。外部客户端、其他实例、宕机、未定价模型和 45 天清理都会少计。不是完整账单。重叠窗口的金额不要相加。",
         "cost_less_than": "<$0.01"
       },
