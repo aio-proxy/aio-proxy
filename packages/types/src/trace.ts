@@ -173,12 +173,11 @@ export const DashboardTraceSummaryResponseSchema = z
   })
   .strict();
 
-// 分位对比只在「有意义」时才有值：同模型、同一小时窗口、成功且已结束的调用链
+// 分位对比只在「有意义」时才有值：同模型、目标自己前后一小时、成功且已结束的调用链
 // 够 30 条才给结果，不够就 null，前端整块不渲染而不是画个空条。
 export const DashboardTracePercentileSchema = z
   .object({
     modelId: z.string().min(1),
-    windowMinutes: z.number().int().positive(),
     sampleCount: z.number().int().min(0),
     durationMs: z.number().min(0),
     percentile: z.number().min(0).max(100),

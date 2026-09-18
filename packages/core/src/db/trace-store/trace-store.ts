@@ -17,7 +17,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     list: (query) => list(db, query),
     summary: (query) => summary(db, query),
     find: (traceId, now) => find(db, traceId, now),
-    percentile: (traceId, now) => percentile(db, traceId, now),
+    percentile: (traceId) => percentile(db, traceId),
     overview: (query) => overview(db, query),
     providerWindowCost: (query) => providerWindowCost(db, query),
     overviewDashboard: (query) => overviewDashboard(db, query),

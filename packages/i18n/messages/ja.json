@@ -1461,7 +1461,7 @@
       "span_metric_ttft": "最初のトークンまでの時間",
       "span_metric_upstream": "上流の所要時間",
       "span_metric_attempts": "試行回数",
-      "percentile_caption": "直近 {count} 件の {model} リクエストとの比較 — p{percentile}",
+      "percentile_caption": "前後 1 時間の {model} リクエスト {count} 件との比較 — p{percentile}",
       "select_span": "スパン {name} ({spanId}) を選択",
       "attributes": "属性",
       "attributes_search_placeholder": "属性を検索",
