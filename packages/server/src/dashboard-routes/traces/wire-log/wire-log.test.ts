@@ -7,6 +7,7 @@ import { DashboardTraceWireResponseSchema } from '@aio-proxy/types';
 import { format } from 'date-fns';
 
 import { readTraceWireLog } from '.';
+import { applyWireEvent, createHopDrafts, finalizeHops, type HopDrafts } from './build-hops';
 
 const REQUEST_ID = 'request-a';
 const STARTED_AT = new Date('2026-07-27T08:00:00.000Z');
@@ -85,6 +86,17 @@ function attemptLines(attemptIndex: number, providerId: string): string {
       outcome: 'complete',
     }),
   ].join('');
+}
+
+function applyChunk(drafts: HopDrafts, sequence: number, text: string): void {
+  applyWireEvent(drafts, { event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence, text });
+}
+
+/** 草稿这一刻真正攥在手里的字符数：不是返回值的大小，是读取过程中的驻留量。 */
+function retainedChars(drafts: HopDrafts): number {
+  return [...drafts.values()]
+    .flatMap((draft) => [draft.requestBody, draft.responseBody])
+    .reduce((total, body) => total + (body?.chunks.reduce((sum, chunk) => sum + chunk.text.length, 0) ?? 0), 0);
 }
 
 describe('readTraceWireLog', () => {
@@ -261,6 +273,29 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body?.text).toHaveLength(1_048_576);
     expect(body.hops[0]?.request?.body?.truncated).toBe(true);
     expect(body.hops[0]?.request?.body?.byteLength).toBe(1_400_000);
+  });
+
+  // 预算必须在读取时就兑现。只在 finalize 裁的话，浏览器收到的是 1 MB，代理自己却把日志里
+  // 那 100 MB 整个攥在草稿里 —— 而它还在服务线上流量。这里看的是草稿留了多少，不是返回了多少。
+  test('bounds what it retains while reading, not only what it returns', () => {
+    const drafts = createHopDrafts();
+    const chunk = 'z'.repeat(100_000);
+    for (let sequence = 0; sequence < 64; sequence += 1) applyChunk(drafts, sequence, chunk);
+
+    expect(retainedChars(drafts)).toBeLessThanOrEqual(1_048_576);
+    expect(finalizeHops(drafts)[0]?.request?.body?.text).toHaveLength(1_048_576);
+  });
+
+  // 跨零点会并发读两个文件，分块可能乱序到达。裁剪一律从尾巴上来：留下的必须是 sequence
+  // 最小的那一段，而不是「先到的那一段」。
+  test('keeps the head of the body when chunks arrive out of order', () => {
+    const drafts = createHopDrafts();
+    applyChunk(drafts, 1, 'b'.repeat(1_048_576));
+    applyChunk(drafts, 0, 'a'.repeat(16));
+
+    const text = finalizeHops(drafts)[0]?.request?.body?.text ?? '';
+    expect(text).toHaveLength(1_048_576);
+    expect(text.startsWith('a'.repeat(16))).toBe(true);
   });
 
   test('skips the file entirely for a trace without a request id', async () => {

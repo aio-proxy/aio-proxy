@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import type { DashboardTraceWireResponse } from '@aio-proxy/types';
 import { format } from 'date-fns';
 
-import { buildHops } from './build-hops';
-import { wireEventFromLine, type WireEvent } from './parse-line';
+import { applyWireEvent, createHopDrafts, finalizeHops, type HopDrafts } from './build-hops';
+import { wireEventFromLine } from './parse-line';
 
 type WireLogging = {
   readonly enabled?: boolean;
@@ -48,8 +48,10 @@ export async function readTraceWireLog(input: ReadTraceWireLogInput): Promise<Da
     };
   }
 
-  const events = (await Promise.all(present.map((file) => collectWireEvents(file, input.requestId)))).flat();
-  return { available: true, hops: buildHops(events) };
+  // 两个日志文件可以并发读：回调是同步的，事件进了草稿就立刻可回收，不会先攒成一个大数组。
+  const drafts = createHopDrafts();
+  await Promise.all(present.map((file) => scanWireEvents(file, input.requestId, drafts)));
+  return { available: true, hops: finalizeHops(drafts) };
 }
 
 /**
@@ -65,14 +67,14 @@ function logDatesOf(input: ReadTraceWireLogInput): string[] {
   return started === ended ? [started] : [started, ended];
 }
 
-async function collectWireEvents(file: Bun.BunFile, requestId: string): Promise<WireEvent[]> {
-  const events: WireEvent[] = [];
+async function scanWireEvents(file: Bun.BunFile, requestId: string, drafts: HopDrafts): Promise<void> {
   const decoder = new TextDecoder();
   // 日志文件可能有几百 MB，逐块解码 + carry buffer 切行，绝不整读进内存。
   let carry = '';
   const take = (line: string) => {
     const event = wireEventFromLine(line, requestId);
-    if (event !== undefined) events.push(event);
+    // 解析出来当场灌进草稿：草稿自己带预算，这一行随后就是垃圾。
+    if (event !== undefined) applyWireEvent(drafts, event);
   };
   for await (const chunk of file.stream()) {
     carry += decoder.decode(chunk, { stream: true });
@@ -84,5 +86,4 @@ async function collectWireEvents(file: Bun.BunFile, requestId: string): Promise<
     }
   }
   take(carry + decoder.decode());
-  return events;
 }
