@@ -240,7 +240,7 @@ gen_ai.response.model                      实际应答的模型
 gen_ai.request.stream
 gen_ai.response.id
 gen_ai.response.finish_reasons
-gen_ai.response.time_to_first_chunk        double,秒
+gen_ai.response.time_to_first_chunk        double,秒;起点是本 span 起点
 gen_ai.usage.input_tokens
 gen_ai.usage.output_tokens
 gen_ai.usage.cache_read.input_tokens
@@ -258,13 +258,58 @@ aio_proxy.capability                       六值,始终写
 aio_proxy.attempt.index
 aio_proxy.attempt.provider_id
 aio_proxy.attempt.model_id
-aio_proxy.attempt.ttft_ms                  毫秒,UI 画刻度用
+aio_proxy.attempt.ttft_ms                  毫秒,起点是本 attempt span 起点
 error.type
 ```
 
-TTFT 存两份，职责不同：attempt 上是**观测原值**（毫秒，每次尝试都有，含失败的），
-GenAI span 上的 `gen_ai.response.time_to_first_chunk` 是**标准属性**（秒），取胜出那次
-attempt 的值。前者给 UI 画刻度，后者给第三方消费。不是冗余，是两个受众。
+两个 TTFT **不是同一个量**，不是同一个数存两份。
+
+| | `gen_ai.response.time_to_first_chunk` | `aio_proxy.attempt.ttft_ms` |
+|---|---|---|
+| 挂在 | GenAI span | 每个 attempt span |
+| 起点 | GenAI span 起点 | 该 attempt span 起点 |
+| 终点 | 吐给客户端的第一个 chunk | 从该 provider 观测到的首个内容 |
+| 含失败转移耗时 | **含** | 不含 |
+| 失败时 | 不写 | **写**，这正是它存在的理由 |
+| 单位 | 秒（`double`） | 毫秒 |
+
+一次转移后前者可能 3.2s、后者 0.4s。规范原文是 "measured from request issuance"，
+而 GenAI span 按约定要覆盖含全部重试的逻辑操作，所以它的 issuance 就是逻辑起点。
+引入该属性的 issue（semantic-conventions#3598）写明意图是
+"Client TTFT includes network latency and is the metric users actually experience" ——
+调用方等的就是 3.2s，per-attempt 的 0.4s 没有任何客户体验过。作者的示例是单次
+LangChain 调用，PR #3607 全程没提过 retry / failover，`gen-ai-spans.md` 的
+「Streaming chunks」章节正文至今是 `TODO`。两者重合时他们没区分，分叉时按其写明的意图取逻辑值。
+
+**因此同名不同起点是禁止的**，naming.md 原文：
+"Avoid introducing names and namespaces that would mean different things when used by
+different conventions or instrumentations."
+`gen_ai.response.time_to_first_chunk` 在 `model/gen-ai/spans.yaml:238` 只被
+`gen_ai.inference.client` 一个 group 引用，不在任何共享 `attribute_group` 里——
+它的语义只相对那个 group 定义。attempt 上写这个 key 会让一个 trace 里出现两个起点，
+且没有任何属性能区分，聚合时必然重复计入胜出路径。
+
+attempt 侧也不能借 `gen_ai.` 前缀（`gen_ai.aio_proxy.attempt.*` 之类），同一份 naming.md：
+"It is not recommended to use existing OpenTelemetry semantic convention namespace as a
+prefix for a new company- or application-specific attribute name."
+
+单位不对称是刻意的。秒是硬约束：registry 写明 `in seconds`，姊妹 metric
+`gen_ai.client.operation.time_to_first_chunk` 的 bucket 也是秒，写毫秒等于给每个合规
+消费者一个 1000× 错误。毫秒则是为了跟它加入的那一族对齐——`semantic.ts` 里
+`aio_proxy.response.upstream_headers_ms` / `first_upstream_byte_ms` /
+`first_sse_event_ms` / `content_gap_p95_ms` 全是 `_ms`。命名空间内部一致优先于跨命名空间一致，
+`_ms` 后缀在每个读取点都自带单位。
+
+**第三个起点：两层都不满足字面的「request issuance」。** `raw-retry.ts` 在单次 attempt
+内部做隐藏重试，全程在 usage capture 之前、完全不进 trace。所以
+`aio_proxy.attempt.ttft_ms` 的起点是 attempt span 起点，**不是** 实际发包时刻。这条独立地
+否决了「两层共用标准 key」——树里没有任何一层能诚实地声称自己是 issuance。
+
+代价记一笔：姊妹 metric `gen_ai.client.operation.time_to_first_chunk` 在这个定义下会把
+模型延迟和转移延迟混进同一个分布，呈双峰。这是正确的代价——另一个选择是让网关看起来比
+实际更快——但如果发这个 metric，必须用同一个逻辑值，并接受双峰。
+
+OTel 自己的 reference report 在 13 个库上对这个属性全是 `(none)`，野外没有先例可抄。
 
 ### POST（CLIENT）—— 观测标量落这层
 
@@ -331,8 +376,16 @@ Langfuse 两条路都通：写了属性的走 Priority 3（`chat`→GENERATION�
 ### 任务 2（server）属性改名与下沉
 
 `http.status_code` → `http.response.status_code`；四个自造 `gen_ai.usage.*` 换成标准名并
-从 root 下沉到 GenAI span；TTFT 标准属性按秒（内部 ms 保留给 UI 画刻度）。
+从 root 下沉到 GenAI span。
+
+TTFT 这项是**拆分不是改名**：现有 `aio_proxy.response.ttft_ms`（`semantic.ts:31`，挂 root）
+删掉，换成 `gen_ai.response.time_to_first_chunk`（GenAI span，秒）与
+`aio_proxy.attempt.ttft_ms`（attempt span，毫秒）两个新 key，语义见上文对照表。
 `ALLOWED_ATTRIBUTES`（`span-record.ts:15`）同步。
+
+dashboard 侧 `trace-attribute-names.ts:21` 与 `span-metrics.ts:62` 一并改：
+`span-metrics` 现在只认 root 上那一个 key，拆分后 attempt 行读 `aio_proxy.attempt.ttft_ms`、
+GenAI 行读标准 key 并 ×1000 换算成毫秒展示。
 
 历史数据不迁移、不做兼容。
 

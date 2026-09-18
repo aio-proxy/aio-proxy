@@ -12,6 +12,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "--filter", "@aio-proxy/website", "dev"],
       "port": 3000
+    },
+    {
+      "name": "TracesDemo",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "docs/superpowers/demos/traces-redesign/serve.ts"],
+      "port": 4311
     }
   ]
 }
