@@ -58,12 +58,22 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item, samp
           />
         )}
       </Progress>
-      {item.resetsAt === undefined ? null : (
-        <p className="text-xs text-muted-foreground">
-          {m['dashboard.providers.quota.resets_at']({ value: new Date(item.resetsAt).toLocaleString(getLocale()) })}
-        </p>
+      {item.resetsAt === undefined && estimate === undefined ? null : (
+        <div className="flex items-baseline justify-between gap-3" data-testid={`provider-quota-meta-${item.id}`}>
+          {item.resetsAt === undefined ? (
+            <span />
+          ) : (
+            <p className="min-w-0 truncate text-xs text-muted-foreground">
+              {m['dashboard.providers.quota.resets_at']({
+                value: new Date(item.resetsAt).toLocaleString(getLocale()),
+              })}
+            </p>
+          )}
+          {estimate === undefined ? null : (
+            <ProviderQuotaCost estimate={estimate} itemId={item.id} remainingRatio={item.remainingRatio} />
+          )}
+        </div>
       )}
-      {estimate === undefined ? null : <ProviderQuotaCost estimate={estimate} itemId={item.id} />}
     </li>
   );
 };

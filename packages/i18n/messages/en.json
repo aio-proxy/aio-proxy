@@ -822,7 +822,10 @@
         "stale_notice": "Showing the last successful reading; the latest refresh failed",
         "load_failed": "Quota is unavailable for this Provider",
         "loading": "Loading quota",
-        "cost_used": "Used {amount} · API equivalent",
+        "cost_used": "Used {amount}",
+        "cost_period": "Estimated period {amount}",
+        "cost_period_approx": "About {amount} estimated",
+        "cost_period_hint": "Period total is estimated from this used amount and the remaining quota percent. Local API equivalent, not a vendor balance. Do not add overlapping windows.",
         "cost_note": "Local API-equivalent spend for this Provider's successful priced requests in this window, across all models. Not this window's lane, not an account balance, and not Cursor or Grok credits. Outside clients, other instances, downtime, unpriced models, and 45-day prune undercount. Not a full bill. Do not add overlapping windows.",
         "cost_less_than": "<$0.01"
       },

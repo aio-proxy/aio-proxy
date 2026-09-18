@@ -258,7 +258,7 @@ test('clicking the ring does not bubble to the card', () => {
   expect(onCardClick).not.toHaveBeenCalled();
 });
 
-test('shows Used API-equivalent spend under a window that has an estimate', () => {
+test('shows Used API-equivalent spend under a window that has an estimate', async () => {
   queryMocks.data = {
     sampledAt: 1_700_000_000_000,
     stale: false,
@@ -283,13 +283,20 @@ test('shows Used API-equivalent spend under a window that has an estimate', () =
   render(<ProviderQuotaRing provider={provider} />);
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 
-  const row = screen.getByTestId('provider-quota-cost-five-hour');
-  expect(row).toHaveTextContent(/API/u);
-  expect(row).toHaveTextContent(/\$0\.10/u);
-  expect(row).toHaveAttribute('title', '$0.10');
-  expect(row).toHaveAttribute('aria-description', expect.stringMatching(/all models|全部模型|全モデル|모든 모델/u));
+  const meta = screen.getByTestId('provider-quota-meta-five-hour');
+  const trigger = screen.getByTestId('provider-quota-cost-five-hour');
+  expect(meta).toContainElement(trigger);
+  expect(meta).toHaveClass('justify-between');
+  expect(trigger).toHaveTextContent(/\$0\.10/u);
+  expect(trigger).toHaveClass('text-muted-foreground');
   expect(screen.queryByTestId('provider-quota-cost-unrated')).not.toBeInTheDocument();
-  expect(screen.queryByText(/Est\. total|预估总额|推定合計/u)).not.toBeInTheDocument();
+
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  expect(await screen.findByTestId('provider-quota-cost-period-five-hour')).toHaveTextContent(/\$0\.20/u);
+  expect(screen.getByTestId('provider-quota-cost-used-five-hour')).toHaveTextContent(/\$0\.10/u);
+  expect(screen.getByText(/remaining quota|剩余额度|剩餘額度|残量|할당량/u)).toBeInTheDocument();
 });
 
 test('hides the cost row when the window has no estimate', () => {
@@ -315,7 +322,7 @@ test('hides the cost row when the window has no estimate', () => {
   expect(screen.queryByTestId('provider-quota-cost-weekly')).not.toBeInTheDocument();
 });
 
-test('renders <$0.01 for a positive sub-cent estimate', () => {
+test('renders <$0.01 for a positive sub-cent estimate', async () => {
   queryMocks.data = {
     sampledAt: 1,
     stale: false,
@@ -326,5 +333,73 @@ test('renders <$0.01 for a positive sub-cent estimate', () => {
   render(<ProviderQuotaRing provider={provider} />);
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 
-  expect(screen.getByTestId('provider-quota-cost-weekly')).toHaveTextContent(/<\$0\.01|\$0\.01 未満/u);
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  expect(trigger).toHaveTextContent(/<\$0\.01|\$0\.01 未満/u);
+
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  expect(await screen.findByTestId('provider-quota-cost-used-weekly')).toHaveTextContent(/\$0\.000000002/u);
+});
+
+test('labels a period total approximate when little of the window is consumed', async () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: {
+      items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.91, resetsAt: 2, windowMinutes: 60 }],
+    },
+    estimates: [{ itemId: 'weekly', usedNanoUsd: '10520000000', basis: 'local-api-equivalent' }],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  expect(await screen.findByTestId('provider-quota-cost-period-weekly')).toHaveTextContent(
+    /About|预估约|預估約|推定約|추정 약/u,
+  );
+  expect(trigger).toHaveAttribute('aria-description', expect.stringMatching(/overlapping|重叠|重疊|重なる|겹치는/u));
+});
+
+test('keeps a 10% consumed window as an exact period label', async () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.9, resetsAt: 2, windowMinutes: 60 }] },
+    estimates: [{ itemId: 'weekly', usedNanoUsd: '100000000', basis: 'local-api-equivalent' }],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  const period = await screen.findByTestId('provider-quota-cost-period-weekly');
+  expect(period).toHaveTextContent(/Estimated period|预估周期|預估週期|推定枠|추정 주기/u);
+  expect(period).not.toHaveTextContent(/About|预估约|預估約|推定約|추정 약/u);
+});
+
+test('omits the period total when remaining quota is unused', async () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 1, resetsAt: 2, windowMinutes: 60 }] },
+    estimates: [{ itemId: 'weekly', usedNanoUsd: '100000000', basis: 'local-api-equivalent' }],
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  const trigger = screen.getByTestId('provider-quota-cost-weekly');
+  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(trigger);
+
+  expect(await screen.findByTestId('provider-quota-cost-used-weekly')).toBeInTheDocument();
+  expect(screen.queryByTestId('provider-quota-cost-period-weekly')).not.toBeInTheDocument();
 });
