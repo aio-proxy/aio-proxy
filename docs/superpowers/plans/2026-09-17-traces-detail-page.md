@@ -437,7 +437,6 @@ git add -A && git commit -m "feat(dashboard): span 属性换成可搜索的扁�
 export const DashboardTracePercentileSchema = z
   .object({
     modelId: z.string().min(1),
-    windowMinutes: z.number().int().positive(),
     sampleCount: z.number().int().min(0),
     durationMs: z.number().min(0),
     percentile: z.number().min(0).max(100),
@@ -455,7 +454,7 @@ export const DashboardTracePercentileResponseSchema = z
 
 同时导出 `DashboardTracePercentile` / `DashboardTracePercentileResponse` 两个 `z.output` 类型。
 
-- Produces（core）：`percentile(db, traceId, now): DashboardTracePercentileResponse`，在 `TraceStore` 上加 `readonly percentile: (traceId: string, now: Date) => DashboardTracePercentileResponse;`，`createTraceStore` 里接上。
+- Produces（core）：`percentile(db, traceId): DashboardTracePercentileResponse`，在 `TraceStore` 上加 `readonly percentile: (traceId: string) => DashboardTracePercentileResponse;`，`createTraceStore` 里接上。窗口锚在目标行自己的 `startedAt` 上，所以不需要传 `now`。
 
 SQL 口径（全部只看根 span，`isNull(traceSpan.parentSpanId)`）：
 
