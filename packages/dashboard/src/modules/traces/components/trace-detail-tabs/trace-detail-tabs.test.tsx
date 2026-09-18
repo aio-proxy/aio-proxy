@@ -179,6 +179,24 @@ test('flags a partially recorded body instead of passing it off as the whole thi
   expect(screen.getByText(/not fully recorded|未完整记录|未完整記錄/u)).toBeInTheDocument();
 });
 
+test('flags a body whose tail the 1 MB cap cut off, even though the capture completed', () => {
+  mocks.wire = {
+    available: true,
+    hops: [
+      {
+        id: 'inbound',
+        kind: 'inbound',
+        // 抓包收完了，但服务端把超过单跳单方向上限的尾巴裁掉了：半截 body 不能当全貌读。
+        request: { method: 'POST', body: { text: '{"model":"gpt-5"', outcome: 'complete', truncated: true } },
+      },
+    ],
+  };
+  render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
+
+  expect(screen.getByText(/not fully recorded|未完整记录|未完整記錄/u)).toBeInTheDocument();
+});
+
 test('says nothing about truncation when the capture completed', () => {
   mocks.wire = {
     available: true,
