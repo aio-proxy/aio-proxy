@@ -23,7 +23,7 @@ export const TraceWireUnavailable: React.FC<TraceWireUnavailableProps> = ({ reas
         ? m['dashboard.traces.wire_unavailable_retention']({ days: retentionDays ?? UNKNOWN_RETENTION_DAYS })
         : m['dashboard.traces.wire_unavailable_debug']()}
     </EmptyDescription>
-    <Button variant="outline" render={<Link to="/settings" />}>
+    <Button variant="outline" nativeButton={false} render={<Link to="/settings" />}>
       {m['dashboard.traces.wire_open_settings']()}
     </Button>
   </Empty>
