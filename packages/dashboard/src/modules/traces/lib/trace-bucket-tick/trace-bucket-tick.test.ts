@@ -29,4 +29,10 @@ describe('bucket tick format', () => {
 
     expect(first).toBe(second);
   });
+
+  test('drops the minutes from the 1h ticks, where they are always 00', () => {
+    const format = createBucketTickFormat('en-US', '1h', [at(27, 1), at(27, 12)]);
+
+    expect(format.format(new Date(at(27, 12).at))).not.toContain(':');
+  });
 });
