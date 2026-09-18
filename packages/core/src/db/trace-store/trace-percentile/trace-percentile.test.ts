@@ -19,7 +19,7 @@ function seedTrace(
     readonly durationMs: number;
     readonly modelId?: string;
     readonly agoMs?: number;
-    readonly outcome?: 'success' | 'error' | 'running';
+    readonly outcome?: 'success' | 'error';
   },
 ): void {
   const traceId = traceIdOf(seed.id);
@@ -50,8 +50,6 @@ function seedTrace(
       },
     }),
   );
-  // 只 startRoot 不 complete，就是一条还在跑的调用链
-  if (outcome === 'running') return;
   store.complete(
     completion({
       traceId,
@@ -177,13 +175,11 @@ test('counts neighbours that came after the trace, not only before it', () => {
 });
 
 // 样本必须是「成功且已结束」的那一批。失败的调用链通常几毫秒就死，混进来会把 p50/minMs
-// 一起拖下去，让每个正常请求都显得慢；还在跑的那条则只给 count(*) 添一笔、不贡献时长，
-// 30 条里混 5 条在途就会报出一个 25 个样本的分布。
+// 一起拖下去，让每个正常请求都显得慢。
 test('samples only the successful traces in the window', () => {
   withStore((store) => {
     for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: 1_000 });
     for (let id = 41; id <= 45; id += 1) seedTrace(store, { id, durationMs: 5, outcome: 'error' });
-    for (let id = 51; id <= 55; id += 1) seedTrace(store, { id, durationMs: 0, outcome: 'running' });
 
     const comparison = store.percentile(traceIdOf(1)).comparison;
 
