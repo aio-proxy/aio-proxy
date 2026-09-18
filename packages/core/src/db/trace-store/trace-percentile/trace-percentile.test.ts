@@ -55,12 +55,12 @@ test('withholds the comparison until the window holds enough same-model samples'
   withStore((store) => {
     for (let id = 1; id <= 29; id += 1) seedTrace(store, { id, durationMs: id * 10 });
 
-    expect(store.percentile(traceIdOf(1), NOW).comparison).toBeNull();
+    expect(store.percentile(traceIdOf(1)).comparison).toBeNull();
 
     seedTrace(store, { id: 30, durationMs: 300 });
-    const comparison = store.percentile(traceIdOf(1), NOW).comparison;
+    const comparison = store.percentile(traceIdOf(1)).comparison;
 
-    expect(comparison).toMatchObject({ modelId: 'model-a', sampleCount: 30, windowMinutes: 60, durationMs: 10 });
+    expect(comparison).toMatchObject({ modelId: 'model-a', sampleCount: 30, durationMs: 10 });
     expect(comparison?.minMs).toBe(10);
     expect(comparison?.maxMs).toBe(300);
   });
@@ -70,8 +70,8 @@ test('ranks the slowest trace in the window at the top of the distribution', () 
   withStore((store) => {
     for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: id * 10 });
 
-    const fastest = store.percentile(traceIdOf(1), NOW).comparison;
-    const slowest = store.percentile(traceIdOf(30), NOW).comparison;
+    const fastest = store.percentile(traceIdOf(1)).comparison;
+    const slowest = store.percentile(traceIdOf(30)).comparison;
 
     expect(fastest?.percentile).toBe(0);
     expect(slowest?.percentile).toBe(97);
@@ -80,18 +80,54 @@ test('ranks the slowest trace in the window at the top of the distribution', () 
   });
 });
 
-test('compares only against the same model inside the trailing hour', () => {
+test('compares only against the same model', () => {
   withStore((store) => {
     for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: 100 });
-    // 另一个模型 30 条 + 同模型但一小时之前 30 条，都不该进样本。
     for (let id = 101; id <= 130; id += 1) seedTrace(store, { id, durationMs: 100, modelId: 'model-b' });
-    for (let id = 201; id <= 230; id += 1) seedTrace(store, { id, durationMs: 100, agoMs: 7_200_000 });
 
-    expect(store.percentile(traceIdOf(1), NOW).comparison?.sampleCount).toBe(30);
-    expect(store.percentile(traceIdOf(101), NOW).comparison?.modelId).toBe('model-b');
-    // 窗口外的目标自己也拿不到对比：它的模型在窗口里只剩 30 条，但它不在其中，这里要的是
-    // 「窗口外的样本不参与」——同模型窗口内刚好 30 条，所以有结果，且计数不含那 30 条旧的。
-    expect(store.percentile(traceIdOf(201), NOW).comparison?.sampleCount).toBe(30);
+    expect(store.percentile(traceIdOf(1)).comparison?.sampleCount).toBe(30);
+    expect(store.percentile(traceIdOf(101)).comparison?.modelId).toBe('model-b');
+    // 30 条一模一样快时谁都不比谁快：`lower` 是严格小于，所以是 p0。改成 `<=` 会让每一条都
+    // 变成 p100（「比所有人都慢」），这条断言就是拦那个改动的。
+    expect(store.percentile(traceIdOf(1)).comparison?.percentile).toBe(0);
+  });
+});
+
+test('ranks a trace against the traffic around it, not against the newest traffic', () => {
+  withStore((store) => {
+    // 一分钟前的一批：全都 100ms。
+    for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: 100 });
+    // 两小时前的一批：慢得多，1000..1290ms。两批相距 2 小时，互相不在对方的窗口里。
+    for (let id = 201; id <= 230; id += 1) {
+      seedTrace(store, { id, durationMs: 1_000 + (id - 201) * 10, agoMs: 7_200_000 });
+    }
+
+    const old = store.percentile(traceIdOf(201)).comparison;
+    const recent = store.percentile(traceIdOf(1)).comparison;
+
+    // 两小时前那条要和它当时那批比：窗口锚在自己身上，1000..1290 才是它的分布。
+    // 锚在「现在」的话这里会读到 100/100 —— 一条 1000ms 的调用链被排在一批 100ms 之外，
+    // 于是显示成「最慢」，正是这次要修掉的错觉。
+    expect(old).toMatchObject({ sampleCount: 30, minMs: 1_000, maxMs: 1_290, percentile: 0 });
+    expect(recent).toMatchObject({ sampleCount: 30, minMs: 100, maxMs: 100 });
+  });
+});
+
+test('counts neighbours that came after the trace, not only before it', () => {
+  withStore((store) => {
+    // 目标在 5 小时前，它的邻居全都比它晚（半小时后），窗口必须往后也张开一小时才看得见。
+    seedTrace(store, { id: 700, durationMs: 500, agoMs: 18_000_000 });
+    for (let id = 701; id <= 729; id += 1) seedTrace(store, { id, durationMs: 1_000, agoMs: 16_200_000 });
+    // 目标之后 2 小时的一批：超出 +1h 的边界，不该进样本，否则 maxMs 会变成 9000。
+    for (let id = 731; id <= 735; id += 1) seedTrace(store, { id, durationMs: 9_000, agoMs: 10_800_000 });
+
+    // 锚在「现在」时这条 5 小时前的调用链一个样本都凑不到，整块会消失。
+    expect(store.percentile(traceIdOf(700)).comparison).toMatchObject({
+      sampleCount: 30,
+      minMs: 500,
+      maxMs: 1_000,
+      percentile: 0,
+    });
   });
 });
 
@@ -108,6 +144,6 @@ test('withholds the comparison for a trace that never finished', () => {
       }),
     );
 
-    expect(store.percentile(running, NOW).comparison).toBeNull();
+    expect(store.percentile(running).comparison).toBeNull();
   });
 });

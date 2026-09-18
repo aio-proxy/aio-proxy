@@ -48,7 +48,8 @@ export const TracePercentileBar: React.FC<TracePercentileBarProps> = ({ comparis
       <div className="relative flex justify-between text-xs text-muted-foreground">
         <span>{formatDuration(minMs)}</span>
         {ticks.map(([label, value]) => (
-          <span className="absolute -translate-x-1/2" key={label} style={{ left: `${offset(value)}%` }}>
+          // 条上的刻度，读屏没必要念：上面那行说明已经把名次说清楚了。
+          <span aria-hidden className="absolute -translate-x-1/2" key={label} style={{ left: `${offset(value)}%` }}>
             {label}
           </span>
         ))}

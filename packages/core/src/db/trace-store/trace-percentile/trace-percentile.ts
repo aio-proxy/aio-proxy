@@ -5,6 +5,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { traceSpan } from '../../schema';
 import { SUCCEEDED } from '../trace-filters';
 
+/** 样本窗口的半宽：锚点前后各取这么多，所以整个窗口是两倍宽。 */
 const WINDOW_MS = 3_600_000;
 
 /**
@@ -30,28 +31,37 @@ function durationAt(db: BunSQLiteDatabase, where: SQL, offset: number): number {
 }
 
 /**
- * 把一条调用链的时长放到「最近一小时同模型成功调用链」的分布里。
+ * 把一条调用链的时长放到「它自己前后一小时里同模型成功调用链」的分布里。
+ *
+ * 窗口锚在目标自己的 `startedAt` 而不是当前时间：看一条昨天的调用链，要回答的是
+ * 「它在当时那批流量里算快还是慢」，拿它和今天最近一小时比毫无意义 —— 那批样本里
+ * 根本没有它，它的时长还可能整个落在 [min, max] 之外。
  *
  * 全程只看根 span：分位比的是整个请求的端到端时长，attempt 子 span 各自的耗时不是同一个量。
  * 目标没结束、没有 `finalModelId`、或者本身失败时没有可比的口径，直接不给结论。
  */
-export function percentile(db: BunSQLiteDatabase, traceId: string, now: Date): DashboardTracePercentileResponse {
+export function percentile(db: BunSQLiteDatabase, traceId: string): DashboardTracePercentileResponse {
   const target = db
-    .select({ modelId: traceSpan.finalModelId, durationMs: DURATION_MS.as('duration_ms') })
+    .select({
+      modelId: traceSpan.finalModelId,
+      startedAt: traceSpan.startedAt,
+      durationMs: DURATION_MS.as('duration_ms'),
+    })
     .from(traceSpan)
     .where(
       and(eq(traceSpan.traceId, traceId), isNull(traceSpan.parentSpanId), isNotNull(traceSpan.finalModelId), SUCCEEDED),
     )
     .get();
   const modelId = target?.modelId;
-  if (modelId === undefined || modelId === null) return { comparison: null };
-  const durationMs = Number(target?.durationMs ?? 0);
+  if (modelId === undefined || modelId === null || target?.startedAt === undefined) return { comparison: null };
+  const durationMs = Number(target.durationMs ?? 0);
+  const anchorMs = target.startedAt.getTime();
 
   const sample = and(
     isNull(traceSpan.parentSpanId),
     eq(traceSpan.finalModelId, modelId),
-    gte(traceSpan.startedAt, new Date(now.getTime() - WINDOW_MS)),
-    lte(traceSpan.startedAt, now),
+    gte(traceSpan.startedAt, new Date(anchorMs - WINDOW_MS)),
+    lte(traceSpan.startedAt, new Date(anchorMs + WINDOW_MS)),
     SUCCEEDED,
   ) as SQL;
 
@@ -76,7 +86,6 @@ export function percentile(db: BunSQLiteDatabase, traceId: string, now: Date): D
   return {
     comparison: {
       modelId,
-      windowMinutes: WINDOW_MS / 60_000,
       sampleCount,
       durationMs,
       percentile: Math.round((Number(stats?.lower ?? 0) / sampleCount) * 100),

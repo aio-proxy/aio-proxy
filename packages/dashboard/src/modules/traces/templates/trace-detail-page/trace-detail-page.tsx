@@ -24,7 +24,7 @@ interface TraceDetailPageProps {
 export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => {
   const navigate = useNavigate();
   const query = useTraceQuery(traceId);
-  const percentileQuery = useTracePercentileQuery(traceId);
+  const percentileQuery = useTracePercentileQuery(traceId, query.isSuccess);
   const [selectedSpanId, setSelectedSpanId] = useState<string>();
   const selectedSpan =
     query.data?.spans.find((span) => span.spanId === selectedSpanId) ??

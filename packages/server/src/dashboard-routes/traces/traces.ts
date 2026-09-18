@@ -134,5 +134,5 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
       context.header('cache-control', 'no-store');
       const { traceId } = context.req.valid('param');
       if (state.traceStore.find(traceId) === undefined) return context.json({ error: 'trace not found' }, 404);
-      return context.json(state.traceStore.percentile(traceId, new Date()));
+      return context.json(state.traceStore.percentile(traceId));
     });

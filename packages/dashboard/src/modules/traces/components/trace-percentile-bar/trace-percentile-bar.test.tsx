@@ -6,7 +6,6 @@ import { TracePercentileBar } from './trace-percentile-bar';
 
 const comparison: DashboardTracePercentile = {
   modelId: 'gpt-5',
-  windowMinutes: 60,
   sampleCount: 42,
   durationMs: 800,
   percentile: 73,

@@ -195,8 +195,8 @@ async function paginatedApp(traceCount = 21) {
 }
 
 /**
- * `count` 条已结束的同模型调用链，起点都落在真实当下的前几秒 —— 分位聚合的窗口是
- * 路由自己取的 `new Date()`，所以样本不能用固定日期。
+ * `count` 条已结束的同模型调用链，起点挨在一起 —— 分位窗口锚在目标自己的 `startedAt`
+ * 上、前后各一小时，所以只要这批样本彼此相距够近，它们就都在对方的窗口里。
  */
 async function percentileApp(count: number) {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-traces-percentile-'));
@@ -433,7 +433,7 @@ describe('Dashboard trace routes', () => {
     const body = DashboardTracePercentileResponseSchema.parse(await enough.json());
 
     expect(enough.status).toBe(200);
-    expect(body.comparison).toMatchObject({ modelId: 'gpt-5', sampleCount: 30, windowMinutes: 60, percentile: 0 });
+    expect(body.comparison).toMatchObject({ modelId: 'gpt-5', sampleCount: 30, percentile: 0 });
 
     const sparse = await (
       await percentileApp(29)

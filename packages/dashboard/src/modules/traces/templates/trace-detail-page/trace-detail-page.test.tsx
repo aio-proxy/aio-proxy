@@ -178,7 +178,6 @@ describe('trace detail page', () => {
 
     mocks.comparison = {
       modelId: 'gpt-5.1',
-      windowMinutes: 60,
       sampleCount: 42,
       durationMs: 125,
       percentile: 73,
