@@ -200,7 +200,7 @@ set(ATTR.genAiUsageInputTokens, columns.inputTokens);
 summary 列本身要留 —— 那是记账与列表页排序用的投影，不是 span 属性的副本。要改的是
 「读回时自动把它们重建成 root 的 `gen_ai.*` 属性」这一步。
 
-
+## 陷阱已消失：不回填 `startTime`
 
 上一版方案的核心风险是给 span 传 `startTime` 回填起点。`@opentelemetry/sdk-trace` 2.10.0
 （本仓 pin 的版本）`Span.js` 的 `_getTime(inp)`：
