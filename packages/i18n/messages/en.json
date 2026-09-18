@@ -1495,6 +1495,7 @@
       "hops_label": "Request hops",
       "wire_body_truncated": "Content was not fully recorded",
       "wire_hop_empty": "No wire capture for this hop",
+      "wire_error": "Could not load the wire capture.",
       "wire_unavailable_debug": "Wire capture is only recorded when server.logging.enabled is true and level is debug.",
       "wire_unavailable_retention": "Logs are kept for {days} days, so this trace's capture has already rolled off.",
       "wire_open_settings": "Open settings"

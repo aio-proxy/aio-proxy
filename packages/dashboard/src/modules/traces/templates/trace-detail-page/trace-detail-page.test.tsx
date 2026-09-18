@@ -107,7 +107,9 @@ rs.mock('../../hooks/use-trace-percentile-query', () => ({
   useTracePercentileQuery: () => ({ data: { comparison: mocks.comparison } }),
 }));
 
-rs.mock('../../hooks/use-trace-wire-query', () => ({ useTraceWireQuery: () => ({ data: undefined }) }));
+rs.mock('../../hooks/use-trace-wire-query', () => ({
+  useTraceWireQuery: () => ({ data: { available: true, hops: [] }, isPending: false, isError: false }),
+}));
 
 rs.mock('../../hooks/use-trace-query', () => ({
   useTraceQuery: () => {
@@ -239,7 +241,7 @@ describe('trace detail page', () => {
     expect(screen.getAllByTestId('trace-span')).toHaveLength(3);
     expect(within(screen.getByTestId('span-detail-panel')).getByText('aio_proxy.request')).toBeInTheDocument();
 
-    // 抓包没加载出来时（这里的 hook 桩子固定返回 undefined）只说这一跳没有记录，不去猜。
+    // 抓包桩子返回空 hops：这一跳确实没有记录，就照实说（加载中和读失败由 trace-detail-tabs 的用例盯）。
     fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
     const hops = screen.getByRole('group', { name: /^Request hops$|^请求链路$/u });
     expect(within(hops).getByRole('button', { name: /openai-prompt-cache/u })).toHaveAttribute('aria-pressed', 'true');
