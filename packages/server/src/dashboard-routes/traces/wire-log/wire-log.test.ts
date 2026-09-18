@@ -10,7 +10,7 @@ import { readTraceWireLog } from '.';
 
 const REQUEST_ID = 'request-a';
 const STARTED_AT = new Date('2026-07-27T08:00:00.000Z');
-const DEBUG_LOGGING = { enabled: true, level: 'debug', retentionDays: 3 } as const;
+const DEBUG_LOGGING = { enabled: true, level: 'debug', retentionDays: 7 } as const;
 
 /** `jsonLinesFormatter` 的真实形状：message 是属性的 JSON 文本，属性原样放在 properties 里。 */
 function logLine(properties: Record<string, unknown>): string {
@@ -166,6 +166,8 @@ describe('readTraceWireLog', () => {
           text: 'LEAK',
         }),
         logLine({ event: 'request.rejected', requestId: REQUEST_ID, statusCode: 400 }),
+        // direction 认不出来的 body 事件不该凭空造出一个空的 attempt 跳。
+        logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, attemptIndex: 0, sequence: 0, text: 'GHOST' }),
         '{"@timestamp":"2026-07-27T08:00:00.000Z","level":"DEBUG","prop',
       ].join(''),
     );
@@ -175,6 +177,50 @@ describe('readTraceWireLog', () => {
 
     expect(body.hops).toHaveLength(1);
     expect(body.hops[0]?.request?.body?.text).toBe('abc');
+  });
+
+  // 一条抓包行可以比流的一个分块还长（Bun 大约 512 KB 一块），carry buffer 必须把跨块的
+  // 半行接回去 —— 这个用例是它唯一的护栏。
+  test('reassembles a line that spans stream chunks', async () => {
+    const filler = 'x'.repeat(1_500_000);
+    const dir = await logDirWith(
+      [
+        logLine({
+          event: 'request.body_chunk',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          text: `head${filler}tail`,
+        }),
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 1,
+          byteLength: filler.length + 8,
+          outcome: 'complete',
+        }),
+      ].join(''),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    const text = body.hops[0]?.request?.body?.text ?? '';
+    expect(text).toHaveLength(filler.length + 8);
+    expect(text.startsWith('head')).toBe(true);
+    expect(text.endsWith('tail')).toBe(true);
+    expect(body.hops[0]?.request?.body?.outcome).toBe('complete');
+  });
+
+  test('skips the file entirely for a trace without a request id', async () => {
+    const dir = await logDirWith(inboundSnapshot);
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({ requestId: '', startedAt: STARTED_AT, logging: DEBUG_LOGGING, logDir: dir }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body).toEqual({ available: true, hops: [] });
   });
 
   test('reports an upstream exception as the hop error type', async () => {
@@ -215,6 +261,6 @@ describe('readTraceWireLog', () => {
     const body = await readFrom(dir);
     rmSync(dir, { force: true, recursive: true });
 
-    expect(body).toEqual({ available: false, reason: 'missing', retentionDays: 3, hops: [] });
+    expect(body).toEqual({ available: false, reason: 'missing', retentionDays: 7, hops: [] });
   });
 });

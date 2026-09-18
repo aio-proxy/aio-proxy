@@ -68,16 +68,16 @@ function applyEvent(drafts: Map<string, HopDraft>, event: WireEvent): void {
     hop.errorType = stringField(event, 'errorType');
     return;
   }
+  // direction 先判：不认识的方向连 hop 都不该建，否则会凭空多出一个空跳。
   const direction = stringField(event, 'direction');
+  if (direction !== 'inbound' && direction !== 'upstream_request' && direction !== 'upstream_response') return;
   const hop = direction === 'inbound' ? inboundHop(drafts) : attemptHop(drafts, event);
-  if (hop === undefined || direction === undefined) return;
+  if (hop === undefined) return;
   if (direction === 'upstream_response') {
     hop.responseBody = applyBodyEvent(hop.responseBody, event);
     return;
   }
-  if (direction === 'inbound' || direction === 'upstream_request') {
-    hop.requestBody = applyBodyEvent(hop.requestBody, event);
-  }
+  hop.requestBody = applyBodyEvent(hop.requestBody, event);
 }
 
 function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraft {

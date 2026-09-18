@@ -32,6 +32,8 @@ export async function readTraceWireLog(input: ReadTraceWireLogInput): Promise<Da
   const { logging } = input;
   if (logging?.enabled !== true) return { available: false, reason: 'disabled', hops: [] };
   if (logging.level !== 'debug') return { available: false, reason: 'level', hops: [] };
+  // 没有 requestId 的调用链，扫再大的文件也匹配不到一行。
+  if (input.requestId === '') return { available: true, hops: [] };
 
   // getTimeRotatingFileSink 按**本地**日期滚文件；UTC 切片会在跨零点时读错文件。
   const file = Bun.file(join(input.logDir, `${format(input.startedAt, 'yyyy-MM-dd')}.log`));
