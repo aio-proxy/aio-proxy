@@ -179,6 +179,27 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body?.text).toBe('abc');
   });
 
+  // 进程正好在 JSON 和换行之间被杀掉：最后一行是完整的，只是没有结尾的 `\n`。上面那个
+  // 半行夹具是读不出来的碎片，删掉收尾的 flush 也照样绿；这一条才分得清「解析后被丢掉」
+  // 和「根本没解析」。
+  test('keeps a complete last line that has no trailing newline', async () => {
+    const dir = await logDirWith(
+      inboundSnapshot +
+        logLine({
+          event: 'request.body_chunk',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          text: '{"last":true}',
+        }).trimEnd(),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toBe('{"last":true}');
+  });
+
   // 一条抓包行可以比流的一个分块还长（Bun 大约 512 KB 一块），carry buffer 必须把跨块的
   // 半行接回去 —— 这个用例是它唯一的护栏。填充量要留在单跳 body 上限以内，否则测的就
   // 变成裁剪而不是重组了。
