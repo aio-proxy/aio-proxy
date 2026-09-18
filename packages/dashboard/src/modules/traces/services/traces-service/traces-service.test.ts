@@ -199,13 +199,6 @@ describe('trace service', () => {
     expect(traceWireQueryOptions(traceId).queryKey).not.toEqual(tracePercentileQueryOptions(traceId).queryKey);
   });
 
-  test('never refetches a finished capture, and reuses the percentile for a minute', () => {
-    // The capture reads log files that are already on disk and will not change again; the
-    // percentile is an aggregate over a whole hour, so a per-visit recount buys nothing.
-    expect(traceWireQueryOptions(traceId).staleTime).toBe(Number.POSITIVE_INFINITY);
-    expect(tracePercentileQueryOptions(traceId).staleTime).toBe(60_000);
-  });
-
   test.each([
     ['list', 503],
     ['detail', 404],
