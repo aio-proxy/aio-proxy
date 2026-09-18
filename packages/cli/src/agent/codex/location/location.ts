@@ -33,7 +33,8 @@ const readConfiguredSqliteHome = (
     const parsed: unknown = Bun.TOML.parse(readFileSync(configPath, 'utf8'));
     if (!isPlainObject(parsed)) return { present: false };
     const value = (parsed as { sqlite_home?: unknown }).sqlite_home;
-    if (typeof value !== 'string') return { present: false };
+    if (!Object.hasOwn(parsed, 'sqlite_home')) return { present: false };
+    if (typeof value !== 'string') return { present: true };
     return { present: true, value: resolveStoragePath(value, codexHome, userHome) };
   } catch {
     return { present: false };
