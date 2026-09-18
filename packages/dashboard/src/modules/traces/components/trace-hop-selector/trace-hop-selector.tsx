@@ -32,6 +32,11 @@ export const TraceHopSelector: React.FC<TraceHopSelectorProps> = ({ hops, select
             (hop.attemptIndex === undefined
               ? hop.label
               : m['dashboard.traces.hop_attempt']({ index: hop.attemptIndex + 1, label: hop.label }))}
+          {/* 圆点是 aria-hidden 的，成败就只剩颜色一个载体，而「哪一跳挂了」正是这排 chip 唯一
+              要传达的信息。补一个只给读屏的词，用和 TraceStatus 同一套说法。 */}
+          <span className="sr-only">
+            {hop.failed ? m['dashboard.traces.failure']() : m['dashboard.traces.success']()}
+          </span>
         </Button>
       );
     })}
