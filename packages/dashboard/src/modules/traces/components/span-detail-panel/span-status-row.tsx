@@ -16,7 +16,7 @@ export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) =
   const failed = span.otelStatusCode === 'ERROR' || (metrics.httpStatus !== undefined && metrics.httpStatus >= 400);
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" data-testid="span-status-row">
+    <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="span-status-row">
       {metrics.httpStatus === undefined ? (
         <TraceStatus item={span} />
       ) : (
@@ -24,7 +24,9 @@ export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) =
           {metrics.httpStatus}
         </Badge>
       )}
-      <span className="min-w-0 text-xs wrap-break-word text-muted-foreground">
+      {/* 面板不再有标题，选中的是哪一跳只能靠这里说清楚。 */}
+      <span className="min-w-0 truncate font-medium">{span.name}</span>
+      <span className="ms-auto min-w-0 text-xs wrap-break-word text-muted-foreground">
         {identity.length === 0 ? TRACE_PLACEHOLDER : identity}
       </span>
     </div>

@@ -53,28 +53,26 @@ const span: DashboardTraceSpan = {
   ],
 };
 
-test('shows the selected Span identity, status, attributes, events, and links', () => {
+test('shows the selected Span identity, status, result details, and its incoming links', () => {
   render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />);
 
   const panel = screen.getByTestId('span-detail-panel');
   expect(within(panel).getByText(span.name)).toBeTruthy();
-  expect(within(panel).getByText(span.traceId)).toBeTruthy();
-  expect(within(panel).getByText(span.spanId)).toBeTruthy();
-  expect(within(panel).getByText(span.parentSpanId!)).toBeTruthy();
-  expect(within(panel).getByText(/Failure|失败/u)).toBeTruthy();
-  expect(within(panel).getByText(/Result details|结果详情/u)).toBeTruthy();
   expect(within(panel).getByText('upstream_error · provider_unavailable')).toBeTruthy();
   expect(within(panel).queryByText(/Error type|错误类型/u)).toBeNull();
   expect(within(panel).queryByText(/Error code|错误码/u)).toBeNull();
 
-  fireEvent.click(within(panel).getByRole('tab', { name: /Events|事件/u }));
-  expect(within(panel).getByText('provider.failure')).toBeTruthy();
-  expect(within(panel).getByText(/"attempt": 1/u)).toBeTruthy();
+  // Span events are never recorded, so the panel has no events block at all; links are.
+  const links = within(panel).getByTestId('span-link-list');
+  expect(within(links).getByText(/e{16}/u)).toBeTruthy();
+  expect(within(links).getByText(/"relationship": "retry"/u)).toBeTruthy();
+  expect(within(panel).queryByText('provider.failure')).toBeNull();
+});
 
-  fireEvent.click(within(panel).getByRole('tab', { name: /Links|链接/u }));
-  expect(within(panel).getByText('d'.repeat(32))).toBeTruthy();
-  expect(within(panel).getByText('e'.repeat(16))).toBeTruthy();
-  expect(within(panel).getByText(/"relationship": "retry"/u)).toBeTruthy();
+test('leaves out the links block when the Span has none', () => {
+  render(<SpanDetailPanel span={{ ...span, links: [] }} trace={trace} spans={[span]} onFilter={rs.fn()} />);
+
+  expect(screen.queryByTestId('span-link-list')).toBeNull();
 });
 
 test('lists attributes as searchable rows, and turns one into a list filter', () => {

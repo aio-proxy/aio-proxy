@@ -24,12 +24,14 @@ export const SpanMetricGrid: React.FC<SpanMetricGridProps> = ({ metrics }) => {
     [m['dashboard.traces.span_metric_attempts'](), count(metrics.attemptCount)],
   ] as const;
 
+  // 发丝线网格：容器铺 border 色、格子铺 card 色，1px 的 gap 就是分隔线，
+  // 六个格子之间不用各画一条 border 再去掉重叠的那条。
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3" data-testid="span-metric-grid">
+    <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-md bg-border" data-testid="span-metric-grid">
       {cells.map(([label, value]) => (
-        <div className="min-w-0" key={label}>
-          <dt className="text-xs text-muted-foreground">{label}</dt>
-          <dd className="font-mono wrap-break-word tabular-nums">{value}</dd>
+        <div className="min-w-0 bg-card px-3 py-2.5" key={label}>
+          <dt className="mb-0.5 text-[11px] text-muted-foreground">{label}</dt>
+          <dd className="font-mono text-sm wrap-break-word tabular-nums">{value}</dd>
         </div>
       ))}
     </dl>

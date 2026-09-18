@@ -73,7 +73,7 @@ test('defaults to Detail and exposes request and response tab values', () => {
   render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);
 
   expect(screen.getByRole('tab', { name: /^Detail$|^详情$/u })).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByText(/^Spans$|^Span$/u)).toBeInTheDocument();
+  expect(screen.getAllByTestId('trace-span')).toHaveLength(detail.spans.length);
 
   fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
   expect(screen.getByRole('tab', { name: /^Request$|^请求$/u })).toHaveAttribute('aria-selected', 'true');

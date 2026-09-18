@@ -6,12 +6,13 @@ import { createWaterfallTicks } from '../../lib/trace-waterfall-ticks';
 
 interface WaterfallRulerProps {
   readonly totalDurationMs: number;
+  readonly className?: string;
 }
 
 // aria-hidden 是刻意的：刻度是给眼睛看的装饰，每行 Button 的 aria-label 已经带了 span 名称，
 // 总时长在右侧耗时列里也念得到。
-export const WaterfallRuler: React.FC<WaterfallRulerProps> = ({ totalDurationMs }) => (
-  <div className="relative h-4 border-b" data-testid="waterfall-ruler" aria-hidden="true">
+export const WaterfallRuler: React.FC<WaterfallRulerProps> = ({ totalDurationMs, className }) => (
+  <div className={cn('relative h-4 border-b', className)} data-testid="waterfall-ruler" aria-hidden="true">
     {createWaterfallTicks(totalDurationMs).map((tick) => (
       <span
         key={tick.ratio}

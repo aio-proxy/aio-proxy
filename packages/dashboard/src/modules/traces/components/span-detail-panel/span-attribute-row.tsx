@@ -29,9 +29,13 @@ export const SpanAttributeRow: React.FC<SpanAttributeRowProps> = ({ row, onFilte
   };
 
   return (
-    <div className="group grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-start gap-3 rounded-xl px-2 py-1.5 hover:bg-muted">
-      <span className="font-mono text-xs break-all text-muted-foreground">{row.key}</span>
-      <span className="font-mono text-xs break-all">{row.value}</span>
+    <div className="group grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)_2rem] items-center gap-2.5 bg-card px-2.5 py-1.5 hover:bg-accent">
+      <span className="truncate font-mono text-xs text-muted-foreground" title={row.key}>
+        {row.key}
+      </span>
+      <span className="truncate font-mono text-xs" title={row.value}>
+        {row.value}
+      </span>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
