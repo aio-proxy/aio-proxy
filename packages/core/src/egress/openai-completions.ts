@@ -21,10 +21,13 @@ import {
 const encoder = new TextEncoder();
 const CHAT_COMPLETION_ID_PREFIX = 'chatcmpl-';
 
-type ToolState = {
+type ToolCallIdentity = {
   readonly index: number;
   readonly id: string;
   readonly toolName: string;
+};
+
+type ToolState = ToolCallIdentity & {
   arguments: string;
 };
 
@@ -34,7 +37,7 @@ export function writeOpenAICompletionsSSE(
 ): ModelSseStream {
   const metadata = generatedMetadata(CHAT_COMPLETION_ID_PREFIX, context.modelId);
   return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
-    const tools = new Map<string, ToolState>();
+    const tools = new Map<string, ToolCallIdentity>();
 
     for await (const part of parts) {
       switch (part.type) {
@@ -42,22 +45,16 @@ export function writeOpenAICompletionsSSE(
           enqueue(frame(metadata, { content: completionTextDelta(part) }));
           break;
         case 'tool-input-start': {
-          const tool = { index: tools.size, id: part.id, toolName: part.toolName, arguments: '' };
+          const tool = { index: tools.size, id: part.id, toolName: part.toolName };
           tools.set(part.id, tool);
-          enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
+          enqueue(frame(metadata, { tool_calls: [toolDelta(tool, '')] }));
           break;
         }
         case 'tool-input-delta': {
           const tool = tools.get(part.id);
-          if (tool !== undefined) {
-            tool.arguments += part.delta;
-            enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
-          }
-          break;
-        }
-        case 'tool-input-end': {
-          const tool = tools.get(part.id);
-          if (tool !== undefined) enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
+          // Chat Completions clients concatenate function.arguments across chunks.
+          if (tool === undefined || part.delta.length === 0) break;
+          enqueue(frame(metadata, { tool_calls: [toolDelta(tool, part.delta)] }));
           break;
         }
         case 'finish':
@@ -153,12 +150,12 @@ function frame(
   return encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`);
 }
 
-function toolDelta(tool: ToolState): ChatCompletionChunk.Choice.Delta.ToolCall {
+function toolDelta(tool: ToolCallIdentity, argumentDelta: string): ChatCompletionChunk.Choice.Delta.ToolCall {
   return {
     index: tool.index,
     id: tool.id,
     type: 'function',
-    function: { name: tool.toolName, arguments: tool.arguments },
+    function: { name: tool.toolName, arguments: argumentDelta },
   };
 }
 
