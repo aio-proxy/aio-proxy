@@ -214,7 +214,16 @@ describe('readTraceWireLog', () => {
   });
 
   test('skips the file entirely for a trace without a request id', async () => {
-    const dir = await logDirWith(inboundSnapshot);
+    // 这行自己的 requestId 也是空的：不短路的话它会被 `'' === ''` 匹配上、拼出一跳来，
+    // 用正常的 REQUEST_ID 行做夹具的话删掉守卫测试照样绿，等于什么都没测。
+    const dir = await logDirWith(
+      logLine({
+        event: 'request.inbound_snapshot',
+        requestId: '',
+        method: 'POST',
+        url: 'https://proxy.test/v1/responses',
+      }),
+    );
     const body = DashboardTraceWireResponseSchema.parse(
       await readTraceWireLog({ requestId: '', startedAt: STARTED_AT, logging: DEBUG_LOGGING, logDir: dir }),
     );
