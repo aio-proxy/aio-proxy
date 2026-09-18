@@ -9,6 +9,7 @@ import {
 } from '../plugin-commands';
 import { isProviderLoginUserError } from '../plugin-commands/provider-login';
 import { providerErrors } from '../provider-commands';
+import { SyncCliError } from '../sync';
 
 // Exit-code contract with the OS service manager (see the CLI redesign spec):
 //   0 = normal, 1 = unrecoverable (retrying is futile), >=2 = transient (restart).
@@ -35,6 +36,7 @@ export function isKnownCliUserError(err: unknown): err is Error {
     err instanceof ReloadError ||
     err instanceof StatusNotRunningError ||
     err instanceof ConfigValidationError ||
+    err instanceof SyncCliError ||
     isProviderLoginUserError(err) ||
     err instanceof FormNumberInvalidError ||
     err instanceof FormJsonInvalidError ||
@@ -54,6 +56,7 @@ export function toExitCode(err: unknown): number {
   // code even though they are "known" CLI errors.
   if (err instanceof StatusNotRunningError) return EXIT.transient;
   if (err instanceof ReloadError) return err.transient ? EXIT.transient : EXIT.unrecoverable;
+  if (err instanceof SyncCliError) return err.transient ? EXIT.transient : EXIT.unrecoverable;
   if (isKnownCliUserError(err) || err instanceof AppError) return EXIT.unrecoverable;
   return EXIT.transient;
 }

@@ -4,6 +4,7 @@ import { digestProviderEntry } from '../../config-file';
 import type { DiagnosticFactory } from '../../diagnostic/index';
 import { resolveProviderId } from '../../provider-id';
 import type { PendingAccountOperation, StoredAccount } from '../../repository/index';
+import { SYNC_STAGED_PREFIX } from '../../repository/index';
 import { AccountCleanupPendingError, ProviderAccountChangedError, ProviderFingerprintMismatchError } from '../errors';
 import type { OAuthAccountWriteOptions } from '../login';
 import {
@@ -55,7 +56,7 @@ export function stageAccountWrite(current: ConfigRecord, ctx: StageContext, stat
   const entry = buildProviderEntry(ctx, existingEntry);
   const account = buildAccountWrite(ctx, providerId, currentAccount);
   ctx.signal.throwIfAborted();
-  const targetDigest = digestProviderEntry(entry);
+  const targetDigest = `${ctx.options.beforeAccountOperationComplete === undefined ? '' : SYNC_STAGED_PREFIX}${digestProviderEntry(entry)}`;
   const operation =
     currentAccount === null
       ? ctx.options.repository.stageAccountOperation({ kind: 'create', targetDigest, account })

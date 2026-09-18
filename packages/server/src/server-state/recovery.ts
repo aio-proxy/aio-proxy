@@ -32,6 +32,9 @@ export async function recoverBeforeSnapshot(options: {
   readonly recoverAccounts: RecoverAccounts;
   readonly scheduler: RecoveryScheduler;
   readonly enqueue: FifoQueue;
+  readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  /** Runs only when the Provider is free; see `tryProviderGate` on the recovery options. */
+  readonly tryProviderGate: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
 }): Promise<void> {
   if (options.configFile === undefined) return;
   await options.enqueue(() =>
@@ -43,6 +46,8 @@ export async function recoverBeforeSnapshot(options: {
         canDeleteAccount: () => true,
         deleteMarkerOnProviderPresent: 'retain',
         now: options.scheduler.now,
+        withProviderGate: options.withProviderGate,
+        tryProviderGate: options.tryProviderGate,
       },
       { factory: options.diagnostics, logger: options.logger },
     ),
@@ -59,6 +64,9 @@ export function createRecovery(options: {
   readonly reconciliationRetryMs: number;
   readonly enqueue: FifoQueue;
   readonly canDeleteAccount: (providerId: string) => boolean;
+  readonly withProviderGate: <T>(providerId: string, run: () => Promise<T>) => Promise<T>;
+  /** Runs only when the Provider is free; see `tryProviderGate` on the recovery options. */
+  readonly tryProviderGate: (providerId: string, run: () => Promise<void>) => Promise<boolean>;
   readonly reloadNow: (operations?: readonly PendingAccountOperation[]) => Promise<ConfigReloadResult>;
 }) {
   let timer: RecoveryTimer | undefined;
@@ -66,6 +74,9 @@ export function createRecovery(options: {
   const reconciliationTimers = new Set<ReturnType<typeof setTimeout>>();
   let generation = 0;
   let closed = false;
+  // A recovered publication reads the sync backend while holding the shared FIFO, so shutdown must
+  // be able to end it instead of waiting out its own timeout behind the config transaction.
+  const lifecycle = new AbortController();
 
   function scheduleReconciliation(operations: readonly PendingAccountOperation[], expected = generation): void {
     if (closed || expected !== generation) return;
@@ -103,6 +114,9 @@ export function createRecovery(options: {
           canDeleteAccount: options.canDeleteAccount,
           deleteMarkerOnProviderPresent: 'retain',
           now: options.scheduler.now,
+          withProviderGate: options.withProviderGate,
+          tryProviderGate: options.tryProviderGate,
+          signal: lifecycle.signal,
         },
         { factory: options.diagnostics, logger: options.logger },
       );
@@ -150,6 +164,9 @@ export function createRecovery(options: {
             canDeleteAccount: options.canDeleteAccount,
             deleteMarkerOnProviderPresent: 'retain',
             now: options.scheduler.now,
+            withProviderGate: options.withProviderGate,
+            tryProviderGate: options.tryProviderGate,
+            signal: lifecycle.signal,
           },
           { factory: options.diagnostics, logger: options.logger },
         ),
@@ -161,6 +178,7 @@ export function createRecovery(options: {
     close() {
       if (closed) return;
       closed = true;
+      lifecycle.abort(new Error('SERVER_CLOSED'));
       generation++;
       timer?.clear();
       timer = undefined;

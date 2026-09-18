@@ -4,6 +4,7 @@ import { providerLoginCommand } from '../commands';
 import { IdSchema } from '../common';
 import { type DiagnosticCode, ProviderStateSchema } from '../plugin';
 import { ProviderKind, ProviderProtocolSchema, RoutingPrioritySchema, RoutingWeightSchema } from '../provider';
+import { SyncConnectionStateSchema } from '../sync';
 import {
   DashboardOverviewRangeSchema,
   UsageOverviewGroupBySchema,
@@ -191,6 +192,12 @@ export const DashboardEventSchema = z.discriminatedUnion('event', [
     data: z.object({
       queuedBytes: z.number().int().min(0),
       queuedEvents: z.number().int().min(0),
+    }),
+  }),
+  z.object({
+    event: z.literal('sync.changed'),
+    data: z.object({
+      state: SyncConnectionStateSchema,
     }),
   }),
   z.object({

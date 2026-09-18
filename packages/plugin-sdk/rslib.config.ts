@@ -26,5 +26,10 @@ export default defineLibraryConfig({
       },
       banner: { dts: lobeIconBuild.declaration },
     },
+    {
+      id: 'testing',
+      source: { entry: { 'testing/index': './src/testing/index.ts' } },
+      dts: { bundle: true },
+    },
   ],
 });

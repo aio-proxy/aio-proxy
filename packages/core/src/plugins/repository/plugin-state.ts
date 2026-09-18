@@ -87,7 +87,7 @@ export function createPluginStateRows(sqlite: Database) {
       return;
     }
     if (value.kind === 'missing') sqlite.query('DELETE FROM oauth_catalog WHERE provider_id = ?').run(providerId);
-    upsertDiagnostic(providerId, value.diagnostic);
+    if (value.diagnostic !== undefined) upsertDiagnostic(providerId, value.diagnostic);
   }
   return { readCatalog, readDiagnostics, replaceCatalog, upsertDiagnostic, applyCatalog };
 }

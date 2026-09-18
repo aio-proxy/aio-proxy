@@ -4,6 +4,7 @@ import type { ConfigSpec } from '../config';
 import type { LocalizedText } from '../localized-text';
 import type { Logger } from '../logger';
 import type { OAuthAdapter } from '../oauth';
+import type { SyncBackendDefinition } from '../sync';
 
 export const PLUGIN_API_VERSION = 1 as const;
 export const PLUGIN_API_VERSIONS_SUPPORTED = [1] as const;
@@ -24,6 +25,9 @@ export type PluginMetadata<Options = undefined> = {
 export type PluginApi = {
   readonly oauth: {
     readonly register: <Options, Credential>(adapter: OAuthAdapter<Options, Credential>) => void;
+  };
+  readonly sync: {
+    readonly register: <Options>(backend: SyncBackendDefinition<Options>) => void;
   };
   readonly logger: Logger;
 };

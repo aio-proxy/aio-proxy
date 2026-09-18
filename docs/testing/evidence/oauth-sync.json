@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "plugin": "@aio-proxy/plugin-openrouter",
+  "pluginVersion": "0.20.2",
+  "capability": "default",
+  "formatVersion": 1,
+  "testedAt": "2026-09-09T01:48:44.096Z",
+  "upstream": "unconfigured",
+  "account": {
+    "dedicatedTestAccount": false,
+    "testHomeConfigured": false,
+    "providerConfigured": false,
+    "remoteObjectConfigured": false,
+    "credentialRead": false,
+    "isolatedConfigurations": 0,
+    "backendConnected": false,
+    "remoteObjectObserved": false
+  },
+  "evidence": {
+    "plugin": "@aio-proxy/plugin-openrouter",
+    "pluginVersion": "0.20.2",
+    "capability": "default",
+    "formatVersion": 1,
+    "testedAt": "2026-09-09T01:48:44.096Z",
+    "upstream": "unconfigured",
+    "copiedUse": "blocked",
+    "rotation": "not-applicable",
+    "uncertainRecovery": "blocked",
+    "deviceBinding": "blocked",
+    "loginEffects": "blocked",
+    "independentDetach": "blocked"
+  },
+  "evaluation": {
+    "multiDevice": false,
+    "independentDetach": false
+  },
+  "productionGate": "blocked",
+  "failureCode": "setup-test-home-required",
+  "redaction": {
+    "credentials": "omitted",
+    "accountIdentifiers": "omitted",
+    "errors": "allowlisted-codes-only"
+  }
+}

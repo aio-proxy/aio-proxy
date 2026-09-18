@@ -3,7 +3,7 @@ export * from './builtins';
 export * from './catalog';
 export * from './config-file';
 export * from './config-spec';
-export * from './credential-port';
+export * from './credential-port/index';
 export * from './default-aliases';
 export {
   collectSecretStrings,

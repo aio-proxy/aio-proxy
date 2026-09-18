@@ -57,6 +57,7 @@ export function createXAIGrokPlugin(
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
+    credentialSync: { formatVersion: 1 },
     credentials: credentialSchema,
     login: async (context, options) => {
       await accountOptions.schema.parseAsync(options);

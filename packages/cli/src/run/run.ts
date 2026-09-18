@@ -178,12 +178,22 @@ export const proxyServeOptions = (app: ProxyApp, host: string, port: number) => 
  *  `run()` itself binds a socket, spawns config watchers, and installs signal handlers. */
 export const shutdownProxyServer = (
   server: Pick<ReturnType<typeof Bun.serve>, 'stop'>,
-  app: { readonly close: () => void },
-): void => {
+  app: { readonly close: () => void; readonly closeAsync?: () => Promise<void> },
+): void | Promise<void> => {
+  if (app.closeAsync === undefined) {
+    try {
+      app.close();
+    } finally {
+      server.stop(true);
+    }
+    return;
+  }
   try {
-    app.close();
-  } finally {
+    const closing = app.closeAsync();
+    return closing.finally(() => server.stop(true));
+  } catch (error) {
     server.stop(true);
+    throw error;
   }
 };
 
@@ -238,7 +248,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     if (closing) return;
     closing = true;
     try {
-      shutdownProxyServer(server, app);
+      void shutdownProxyServer(server, app);
     } finally {
       process.off('SIGINT', shutdown);
       process.off('SIGTERM', shutdown);

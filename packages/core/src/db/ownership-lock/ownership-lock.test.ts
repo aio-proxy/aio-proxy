@@ -40,7 +40,10 @@ test('a dead PID/starttime generation is recovered under the existing recovery f
     }),
     { mode: 0o600 },
   );
-  const recovered = await acquireDatabaseOwnershipLock(path, { waitMs: 250 });
+  // The default budget: recovery has to outlast the recovery fence plus two `ps` probes, and this
+  // pins that the dead generation is recovered at all, not how fast. A recovery that never happens
+  // still fails the test.
+  const recovered = await acquireDatabaseOwnershipLock(path);
   recovered.release();
 });
 

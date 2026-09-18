@@ -24,6 +24,8 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
+import { createDefaultSyncCliDeps, type SyncCliDeps } from './sync';
+import { registerSyncCommands } from './sync/commands';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
@@ -35,6 +37,32 @@ const codexAuthInvocation = (argv: readonly string[]): string | undefined => {
   if (argv[0] !== 'agent' || argv[1] !== 'auth' || argv[2] !== 'codex') return undefined;
   if (argv.length !== 5 || argv[3] !== '--installation-id') throw new Error('Codex auth requires --installation-id');
   return argv[4];
+};
+
+const registerProviderCommands = (program: Command): void => {
+  const provider = program.command('provider').description(m['cli.provider.description']());
+  provider
+    .command('list')
+    .description(m['cli.provider.list.description']())
+    .option('--url <url>', m['cli.provider.list.option_url_description']())
+    .option('--filter <provider-id>', m['cli.provider.list.option_filter_description']())
+    .option('--probe', m['cli.provider.list.option_probe_description']())
+    .option('--installed', m['cli.provider.list.option_installed_description']())
+    .action(providerList);
+  provider
+    .command('login [capability]')
+    .description(m['cli.provider.login.description']())
+    .option('--provider <id>', m['cli.provider.login.option_provider_description']())
+    .action(providerLogin);
+  provider
+    .command('import [path]')
+    .description(m['cli.provider.import.description']())
+    .action((path) => providerImport(path));
+  provider
+    .command('test <provider-id>')
+    .description(m['cli.provider.test.description']())
+    .option('--url <url>', m['cli.provider.test.option_url_description']())
+    .action(providerTest);
 };
 
 export function writeStdoutLine(
@@ -157,7 +185,11 @@ const registerHiddenPostUpgrade = (program: Command, deps: CliDeps): void => {
   });
 };
 
-export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invokedProgramName()) => {
+export const buildProgram = (
+  deps: CliDeps = defaultCliDeps,
+  programName = invokedProgramName(),
+  syncDeps: SyncCliDeps = createDefaultSyncCliDeps({ passwordStdin: process.argv.includes('--password-stdin') }),
+) => {
   const program = new Command()
     .name(programName)
     .description(m['cli.root.description']())
@@ -223,29 +255,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
     .action((options) => dashboardCommand(options));
-  const provider = program.command('provider').description(m['cli.provider.description']());
-  provider
-    .command('list')
-    .description(m['cli.provider.list.description']())
-    .option('--url <url>', m['cli.provider.list.option_url_description']())
-    .option('--filter <provider-id>', m['cli.provider.list.option_filter_description']())
-    .option('--probe', m['cli.provider.list.option_probe_description']())
-    .option('--installed', m['cli.provider.list.option_installed_description']())
-    .action(providerList);
-  provider
-    .command('login [capability]')
-    .description(m['cli.provider.login.description']())
-    .option('--provider <id>', m['cli.provider.login.option_provider_description']())
-    .action(providerLogin);
-  provider
-    .command('import [path]')
-    .description(m['cli.provider.import.description']())
-    .action((path) => providerImport(path));
-  provider
-    .command('test <provider-id>')
-    .description(m['cli.provider.test.description']())
-    .option('--url <url>', m['cli.provider.test.option_url_description']())
-    .action(providerTest);
+  registerProviderCommands(program);
   const plugin = program.command('plugin').description(m['cli.plugin.description']());
   plugin
     .command('add <package>')
@@ -274,6 +284,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .option('--yes', m['cli.plugin.prune_option_yes_description']())
     .action((options) => pluginPrune(options));
   registerServiceCommands(program);
+  registerSyncCommands(program, syncDeps);
 
   program
     .command('doctor')

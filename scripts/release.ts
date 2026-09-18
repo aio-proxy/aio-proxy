@@ -50,6 +50,8 @@ import { join } from 'node:path';
 import { $ } from 'bun';
 
 import { canaryVersion } from './canary-version';
+import { prepareCloudKitArtifact, shouldPrepareCloudKitArtifact } from './release-cloudkit-artifact';
+import { cloudKitReleaseGatePassed } from './release-cloudkit-gate';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 // canary：对任意分支手动派发时，把全部包改成一个 prerelease 版本并发到 npm 的
@@ -66,7 +68,6 @@ type PackageJson = {
   peerDependencies?: Record<string, string>;
 };
 
-// --- discover every workspace package -----------------------------------------
 const scan = (pattern: string) => Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: process.cwd(), absolute: true }));
 const globbed = [...(await scan('packages/**/package.json')), ...(await scan('npm/*/package.json'))];
 const allPackages = (
@@ -87,7 +88,26 @@ const platformProvided = new Set(allPackages.flatMap(({ json }) => Object.keys(j
 // that isn't on the registry yet (launcher -> @aio-proxy/cli-*), and a dependent
 // published before its workspace dependency (plugin-sdk -> @aio-proxy/types) is
 // uninstallable if the later publish fails mid-release.
-const unsorted = allPackages.filter(({ json }) => json.private !== true);
+// CloudKit is the one package whose publishability is not a property of the repository: the backend
+// is only releasable once its live gates have been recorded (scripts/release-cloudkit-gate/). It is
+// withheld from the set rather than failing the run, because a blocked native gate is no reason to
+// hold the rest of the release — and the workflow skips signing on the same answer, so a withheld
+// backend costs the run neither Apple secrets nor a notarization.
+// A canary withholds it unconditionally: the signing step reads the version out of the manifest
+// before this script rewrites it, so its signed artifact is stamped with the stable version and
+// `prepareCloudKitArtifact` would reject it — and packing the backend without that bundle publishes a
+// preview whose sync cannot connect.
+const cloudKitReleasable = !CANARY && (await cloudKitReleaseGatePassed());
+if (!cloudKitReleasable) {
+  console.log(
+    CANARY
+      ? 'Withholding @aio-proxy/plugin-cloudkit: a canary carries no signed native bundle.'
+      : 'Withholding @aio-proxy/plugin-cloudkit: docs/testing/evidence/cloudkit-sync.json is not a passed gate.',
+  );
+}
+const unsorted = allPackages.filter(
+  ({ json }) => json.private !== true && (cloudKitReleasable || json.name !== '@aio-proxy/plugin-cloudkit'),
+);
 const names = new Set(unsorted.map((p) => p.json.name));
 const emitted = new Set<string>();
 const publishable: typeof unsorted = [];
@@ -182,6 +202,8 @@ console.log(
     .join('\n')}\n`,
 );
 
+const cloudKitPackage = publishable.find(({ json }) => json.name === '@aio-proxy/plugin-cloudkit');
+
 // --- refresh bun.lock's workspace versions so `bun pm pack` resolves siblings -
 // A plain `bun install` reports "no changes" and leaves the lock's workspace
 // versions stale, so the launcher's `workspace:*` optionalDependencies and
@@ -198,148 +220,171 @@ console.log(
 // root manifest is restored too, so the result stays frozen-install clean.
 const pristineLock = await Bun.file('bun.lock').text();
 const rootOriginal = await Bun.file('package.json').text();
-await $`bun update`;
-await Bun.write('package.json', rootOriginal);
-const LOCK_TAIL_MARKER = '\n  "patchedDependencies":';
-const updatedLock = await Bun.file('bun.lock').text();
-const headEnd = updatedLock.indexOf(LOCK_TAIL_MARKER);
-const tailStart = pristineLock.indexOf(LOCK_TAIL_MARKER);
-if (headEnd < 0 || tailStart < 0) {
-  throw new Error(`bun.lock layout changed: "patchedDependencies" marker not found; update the lock-splice logic.`);
-}
-await Bun.write('bun.lock', updatedLock.slice(0, headEnd) + pristineLock.slice(tailStart));
-
-// --- build: library (rslib) + CLI binaries (bun build --compile, all targets) -
-if (!DRY_RUN) {
-  await $`bun run build`;
-  await $`bun run --filter @aio-proxy/cli build:binary`;
-}
-
-// --- pack (bun, rewrites catalog:/workspace:/optionalDeps) in publish order ---
-const outDir = mkdtempSync(join(tmpdir(), 'release-'));
-const tarballs = new Map<string, string>();
-for (const { path, json } of publishable) {
-  const dir = path.replace(/\/package\.json$/, '');
-  const dest = join(outDir, json.name.replace(/[@/]/g, '-'));
-  console.log(`\nPacking ${json.name}@${version}`);
-  await $`bun pm pack --destination ${dest}`.cwd(dir);
-  const [tgz] = await Array.fromAsync(new Bun.Glob('*.tgz').scan({ cwd: dest, absolute: true }));
-  if (!tgz) throw new Error(`pack produced no tarball for ${json.name}`);
-  tarballs.set(json.name, tgz);
-}
-
-// Fail loudly if any tarball carries an unresolved protocol or a sibling
-// workspace dependency pinned to anything other than this release version.
-const workspaceNames = new Set(allPackages.map((p) => p.json.name));
-const DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const;
-for (const tgz of tarballs.values()) {
-  const files = await new Bun.Archive(await Bun.file(tgz).bytes()).files();
-  const raw = await files.get('package/package.json')?.text();
-  if (!raw) throw new Error(`${tgz} has no package/package.json`);
-  if (/catalog:|workspace:/.test(raw)) {
-    throw new Error(`${tgz} still contains catalog:/workspace: — pack did not resolve protocols`);
+try {
+  await $`bun update`;
+  await Bun.write('package.json', rootOriginal);
+  const LOCK_TAIL_MARKER = '\n  "patchedDependencies":';
+  const updatedLock = await Bun.file('bun.lock').text();
+  const headEnd = updatedLock.indexOf(LOCK_TAIL_MARKER);
+  const tailStart = pristineLock.indexOf(LOCK_TAIL_MARKER);
+  if (headEnd < 0 || tailStart < 0) {
+    throw new Error(`bun.lock layout changed: "patchedDependencies" marker not found; update the lock-splice logic.`);
   }
-  const packed = JSON.parse(raw) as PackageJson;
-  for (const field of DEP_FIELDS) {
-    for (const [dep, range] of Object.entries(packed[field] ?? {})) {
-      if (workspaceNames.has(dep) && range !== version) {
+  await Bun.write('bun.lock', updatedLock.slice(0, headEnd) + pristineLock.slice(tailStart));
+
+  // --- build: library (rslib) + CLI binaries (bun build --compile, all targets) -
+  if (!DRY_RUN) {
+    await $`bun run build`;
+    await $`bun run --filter @aio-proxy/cli build:binary`;
+  }
+
+  // The macOS workflow builds and notarizes the native bundle before invoking this
+  // script. The JS build cleans package dist directories, so restore the signed
+  // archive into CloudKit's publishable dist tree immediately before packing it.
+  // This keeps native signing out of ordinary Bun/Linux builds while making a
+  // release fail closed when the lockstep artifact is absent or stale.
+  if (cloudKitPackage !== undefined && (await shouldPrepareCloudKitArtifact(version))) {
+    await prepareCloudKitArtifact(cloudKitPackage.path.replace(/\/package\.json$/u, ''), version);
+  }
+
+  // --- pack (bun, rewrites catalog:/workspace:/optionalDeps) in publish order ---
+  const outDir = mkdtempSync(join(tmpdir(), 'release-'));
+  const tarballs = new Map<string, string>();
+  for (const { path, json } of publishable) {
+    const dir = path.replace(/\/package\.json$/, '');
+    const dest = join(outDir, json.name.replace(/[@/]/g, '-'));
+    console.log(`\nPacking ${json.name}@${version}`);
+    await $`bun pm pack --destination ${dest}`.cwd(dir);
+    const [tgz] = await Array.fromAsync(new Bun.Glob('*.tgz').scan({ cwd: dest, absolute: true }));
+    if (!tgz) throw new Error(`pack produced no tarball for ${json.name}`);
+    tarballs.set(json.name, tgz);
+  }
+
+  // Fail loudly if any tarball carries an unresolved protocol or a sibling
+  // workspace dependency pinned to anything other than this release version.
+  const workspaceNames = new Set(allPackages.map((p) => p.json.name));
+  const DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const;
+  for (const tgz of tarballs.values()) {
+    const files = await new Bun.Archive(await Bun.file(tgz).bytes()).files();
+    const raw = await files.get('package/package.json')?.text();
+    if (!raw) throw new Error(`${tgz} has no package/package.json`);
+    if (/catalog:|workspace:/.test(raw)) {
+      throw new Error(`${tgz} still contains catalog:/workspace: — pack did not resolve protocols`);
+    }
+    const packed = JSON.parse(raw) as PackageJson;
+    if (packed.name === '@aio-proxy/plugin-cloudkit') {
+      if (packed.dependencies?.['@aio-proxy/plugin-sdk'] !== undefined) {
+        throw new Error('@aio-proxy/plugin-cloudkit must not carry @aio-proxy/plugin-sdk as a runtime dependency');
+      }
+      if (packed.peerDependencies?.['@aio-proxy/plugin-sdk'] !== version) {
         throw new Error(
-          `${packed.name}: ${field}.${dep} is "${range}", expected "${version}" (stale workspace resolution)`,
+          `@aio-proxy/plugin-cloudkit: peerDependencies.@aio-proxy/plugin-sdk must be "${version}" in the packed artifact`,
         );
       }
     }
-  }
-}
-
-if (DRY_RUN) {
-  // A dry run must leave the checkout as it found it. `--canary` rewrote every
-  // manifest above and `bun update` then carried those versions into bun.lock's
-  // `workspaces` block, so put both back (the splice already makes the lock
-  // byte-identical without `--canary`, so this is a no-op there).
-  for (const [path, raw] of pristineManifests) await Bun.write(path, raw);
-  await Bun.write('bun.lock', pristineLock);
-  console.log(`\n[dry-run] Would publish ${tarballs.size} tarball(s) with --provenance. Stopping.`);
-  process.exit(0);
-}
-
-// Stage the same pack output for upload after Changesets creates the GitHub Release.
-// Only local I/O here: npm availability must never delay tagging or Release creation.
-const assetDirectory = process.env['RELEASE_ASSETS_DIR'];
-if (assetDirectory) {
-  const checksums: string[] = [];
-  for (const name of Object.keys(
-    allPackages.find(({ json }) => json.name === 'aio-proxy')!.json.optionalDependencies ?? {},
-  )) {
-    const tarball = tarballs.get(name);
-    if (!tarball) throw new Error(`Missing platform tarball: ${name}`);
-    const filename = `${name.replace('@aio-proxy/', '')}-${version}.tgz`;
-    const bytes = await Bun.file(tarball).bytes();
-    await Bun.write(join(assetDirectory, filename), bytes);
-    checksums.push(`${new Bun.CryptoHasher('sha256').update(bytes).digest('hex')}  ${filename}\n`);
-  }
-  await Bun.write(join(assetDirectory, 'SHA256SUMS'), checksums.join(''));
-}
-
-// --- publish; skip versions already on the registry so a rerun resumes cleanly-
-const outputPath = process.env['CHANGESETS_OUTPUT'];
-// changesets/action reads this file UNCONDITIONALLY after the publish script exits
-// and treats a missing file as a hard error. Create it up front so a cycle that
-// emits no git-tag event (see the single-tag block below) still leaves the action
-// a valid empty NDJSON (0 events = no releases) instead of an ENOENT.
-if (outputPath) await Bun.write(outputPath, '');
-
-// `--tag canary` 是唯一阻止 canary 覆盖 `latest` 的东西，所以双向断言模式与
-// 版本形态一致：canary 必须是 prerelease，正式发布必须不是。这条断言真正拦住的
-// 是「传了 --canary 但版本改写被跳过」——那会把一个正常版本推上 latest。
-if (CANARY !== version.includes('-canary.')) {
-  throw new Error(`--canary=${CANARY} does not match version ${version}; refusing to publish`);
-}
-const distTag = CANARY ? ['--tag', 'canary'] : [];
-
-for (const { json } of publishable) {
-  const name = json.name;
-  const tgz = tarballs.get(name)!;
-  const existing = await $`npm view ${`${name}@${version}`} version`.nothrow().quiet();
-  if (existing.exitCode === 0 && existing.text().trim() === version) {
-    console.log(`\nSkipping ${name}@${version}: already published`);
-    continue;
-  }
-  console.log(`\nPublishing ${tgz}`);
-  await $`npm publish ${tgz} --provenance --access public ${distTag}`;
-}
-
-console.log(`\nReleased v${version}`);
-
-// --- one lockstep tag + GitHub Release for the whole release --------------------
-// Every package shares one version (`fixed`), so this repo cuts a single
-// `v<version>` tag (matching the historical v0.1.0 / v0.0.1), NOT changesets'
-// monorepo default of one `<pkg>@<version>` tag per published package. In
-// publish-script mode changesets/action never creates tags — it only pushes a tag
-// we create here and then builds a GitHub Release whose body is the emitted
-// package's CHANGELOG entry. So create `v<version>` locally and emit ONE event.
-//
-// The Release body must come from a product package that has notes this cycle:
-// prefer the CLI launcher `aio-proxy`, else the SDK (an SDK-only cycle leaves
-// `aio-proxy` without an entry, and the action throws on a missing entry). If
-// neither has an entry — which the changeset convention in AGENTS.md prevents —
-// emit nothing so the action makes no contentless Release. The tag name is also
-// used by the GitHub asset upload and Homebrew notification job.
-if (outputPath) {
-  let releaseOf: string | undefined;
-  for (const name of ['aio-proxy', '@aio-proxy/plugin-sdk']) {
-    const dir = publishable.find((p) => p.json.name === name)?.path.replace(/\/package\.json$/, '');
-    if (dir && (await hasChangelogEntry(dir, version))) {
-      releaseOf = name;
-      break;
+    for (const field of DEP_FIELDS) {
+      for (const [dep, range] of Object.entries(packed[field] ?? {})) {
+        if (workspaceNames.has(dep) && range !== version) {
+          throw new Error(
+            `${packed.name}: ${field}.${dep} is "${range}", expected "${version}" (stale workspace resolution)`,
+          );
+        }
+      }
     }
   }
-  if (releaseOf) {
-    const tag = `v${version}`;
-    // Idempotent for reruns/resumes: create the local tag only if absent, but
-    // always emit so a resumed release still pushes the tag + creates the Release.
-    const tagged = (await $`git tag -l ${tag}`.nothrow().quiet()).text().trim() === tag;
-    if (!tagged) await $`git tag ${tag}`;
-    appendFileSync(outputPath, `${JSON.stringify({ type: 'git-tag', tag, packageName: releaseOf })}\n`);
+
+  if (DRY_RUN) {
+    console.log(`\n[dry-run] Would publish ${tarballs.size} tarball(s) with --provenance. Stopping.`);
+  } else {
+    // Stage the same pack output for upload after Changesets creates the GitHub Release.
+    // Only local I/O here: npm availability must never delay tagging or Release creation.
+    const assetDirectory = process.env['RELEASE_ASSETS_DIR'];
+    if (assetDirectory) {
+      const checksums: string[] = [];
+      for (const name of Object.keys(
+        allPackages.find(({ json }) => json.name === 'aio-proxy')!.json.optionalDependencies ?? {},
+      )) {
+        const tarball = tarballs.get(name);
+        if (!tarball) throw new Error(`Missing platform tarball: ${name}`);
+        const filename = `${name.replace('@aio-proxy/', '')}-${version}.tgz`;
+        const bytes = await Bun.file(tarball).bytes();
+        await Bun.write(join(assetDirectory, filename), bytes);
+        checksums.push(`${new Bun.CryptoHasher('sha256').update(bytes).digest('hex')}  ${filename}\n`);
+      }
+      await Bun.write(join(assetDirectory, 'SHA256SUMS'), checksums.join(''));
+    }
+
+    // --- publish; skip versions already on the registry so a rerun resumes cleanly-
+    const outputPath = process.env['CHANGESETS_OUTPUT'];
+    // changesets/action reads this file UNCONDITIONALLY after the publish script exits
+    // and treats a missing file as a hard error. Create it up front so a cycle that
+    // emits no git-tag event (see the single-tag block below) still leaves the action
+    // a valid empty NDJSON (0 events = no releases) instead of an ENOENT.
+    if (outputPath) await Bun.write(outputPath, '');
+
+    // `--tag canary` 是唯一阻止 canary 覆盖 `latest` 的东西，所以双向断言模式与
+    // 版本形态一致：canary 必须是 prerelease，正式发布必须不是。这条断言真正拦住的
+    // 是「传了 --canary 但版本改写被跳过」——那会把一个正常版本推上 latest。
+    if (CANARY !== version.includes('-canary.')) {
+      throw new Error(`--canary=${CANARY} does not match version ${version}; refusing to publish`);
+    }
+    const distTag = CANARY ? ['--tag', 'canary'] : [];
+
+    for (const { json } of publishable) {
+      const name = json.name;
+      const tgz = tarballs.get(name)!;
+      const existing = await $`npm view ${`${name}@${version}`} version`.nothrow().quiet();
+      if (existing.exitCode === 0 && existing.text().trim() === version) {
+        console.log(`\nSkipping ${name}@${version}: already published`);
+        continue;
+      }
+      console.log(`\nPublishing ${tgz}`);
+      await $`npm publish ${tgz} --provenance --access public ${distTag}`;
+    }
+
+    console.log(`\nReleased v${version}`);
+
+    // --- one lockstep tag + GitHub Release for the whole release --------------------
+    // Every package shares one version (`fixed`), so this repo cuts a single
+    // `v<version>` tag (matching the historical v0.1.0 / v0.0.1), NOT changesets'
+    // monorepo default of one `<pkg>@<version>` tag per published package. In
+    // publish-script mode changesets/action never creates tags — it only pushes a tag
+    // we create here and then builds a GitHub Release whose body is the emitted
+    // package's CHANGELOG entry. So create `v<version>` locally and emit ONE event.
+    //
+    // The Release body must come from a product package that has notes this cycle:
+    // prefer the CLI launcher `aio-proxy`, else the SDK (an SDK-only cycle leaves
+    // `aio-proxy` without an entry, and the action throws on a missing entry). If
+    // neither has an entry — which the changeset convention in AGENTS.md prevents —
+    // emit nothing so the action makes no contentless Release. The tag name is also
+    // what the GitHub asset upload and Homebrew notification job read.
+    if (outputPath) {
+      let releaseOf: string | undefined;
+      for (const name of ['aio-proxy', '@aio-proxy/plugin-sdk']) {
+        const dir = publishable.find((p) => p.json.name === name)?.path.replace(/\/package\.json$/, '');
+        if (dir && (await hasChangelogEntry(dir, version))) {
+          releaseOf = name;
+          break;
+        }
+      }
+      if (releaseOf) {
+        const tag = `v${version}`;
+        // Idempotent for reruns/resumes: create the local tag only if absent, but
+        // always emit so a resumed release still pushes the tag + creates the Release.
+        const tagged = (await $`git tag -l ${tag}`.nothrow().quiet()).text().trim() === tag;
+        if (!tagged) await $`git tag ${tag}`;
+        appendFileSync(outputPath, `${JSON.stringify({ type: 'git-tag', tag, packageName: releaseOf })}\n`);
+      }
+    }
+  }
+} finally {
+  if (DRY_RUN) {
+    // `--canary` rewrote every manifest before `bun update` carried those versions into
+    // bun.lock's `workspaces` block, so both go back (without it the splice already leaves
+    // the lock byte-identical and the map is empty, so this is a no-op).
+    for (const [path, raw] of pristineManifests) await Bun.write(path, raw);
+    await Bun.write('bun.lock', pristineLock);
+    await Bun.write('package.json', rootOriginal);
   }
 }
 

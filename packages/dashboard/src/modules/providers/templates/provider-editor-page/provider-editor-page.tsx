@@ -1,8 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind } from '@aio-proxy/types';
+import type { SyncPreview, SyncPreviewInput } from '@aio-proxy/types';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
+import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { SyncPreviewDialog } from '@/components/sync-preview-dialog';
+import { usePreviewSync, useSetSyncRange, useSyncStatus } from '@/hooks/use-sync';
 
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';
 import { ConnectionSection } from '../../components/provider-editor/connection-section';
@@ -11,6 +15,7 @@ import { IdentitySection } from '../../components/provider-editor/identity-secti
 import { KindCard } from '../../components/provider-editor/kind-card';
 import { ModelValidationPanel } from '../../components/provider-editor/model-validation-panel';
 import { ModelsSection } from '../../components/provider-editor/models-section';
+import { ProviderSyncControl } from '../../components/provider-sync-control';
 import { useActiveSection } from '../../hooks/use-active-section';
 import { editorEffectiveAlias, toAliasRecord } from '../../lib/alias-editor';
 import { ProviderFormMode } from '../../lib/constants';
@@ -20,6 +25,8 @@ import { SectionNav } from './section-nav';
 import { type ProviderEditorPageProps, useProviderEditorPage } from './use-provider-editor-page';
 
 export type { ProviderEditorPageProps };
+
+type ProviderSyncPreviewInput = Extract<SyncPreviewInput, { kind: 'join' | 'overrides' }>;
 
 export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => {
   const {
@@ -45,6 +52,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     setOptionsValid,
     setTransformsValid,
     save,
+    detach,
     saveBlocked,
     isReauthorizing,
     pending,
@@ -53,6 +61,11 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     navigate,
   } = useProviderEditorPage(props);
   const activeId = useActiveSection(kind);
+  const syncStatus = useSyncStatus();
+  const previewMutation = usePreviewSync();
+  const rangeMutation = useSetSyncRange();
+  const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null);
+  const [lastSyncPreviewInput, setLastSyncPreviewInput] = useState<ProviderSyncPreviewInput>();
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
   const models = values.kind === 'oauth' ? [] : (values.models ?? []);
   const exposed =
@@ -70,6 +83,39 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
       : values.alias === undefined
         ? undefined
         : toAliasRecord(values.alias);
+  const providerSync =
+    persistedId === undefined
+      ? undefined
+      : syncStatus.data?.providers.find((entry) => entry.providerId === persistedId);
+  // A preview the dialog asked for can resolve after the user dismissed it with Escape, the overlay
+  // or Cancel, or after the editor moved to another Provider and opened a preview of its own — that
+  // request is not part of `pending`. Swapping only when the preview it was pinned from is still the
+  // open one keeps an abandoned result from reopening the dialog, and keeps Provider A's token from
+  // replacing the dialog the user is now looking at for Provider B.
+  const replaceOpenSyncPreview = (origin: SyncPreview | null, next: SyncPreview): SyncPreview => {
+    setSyncPreview((current) => (current === origin ? next : current));
+    return next;
+  };
+  const openSyncPreview = async () => {
+    if (persistedId === undefined) return;
+    const input: ProviderSyncPreviewInput = { kind: 'join', providerId: persistedId };
+    setLastSyncPreviewInput(input);
+    setSyncPreview(await previewMutation.mutateAsync(input));
+  };
+  const retrySyncPreview = async (input: ProviderSyncPreviewInput): Promise<SyncPreview> => {
+    const origin = syncPreview;
+    setLastSyncPreviewInput(input);
+    return replaceOpenSyncPreview(origin, await previewMutation.mutateAsync(input));
+  };
+  const previewOverrides = async (objectId: string, paths: readonly string[][]): Promise<SyncPreview> => {
+    const origin = syncPreview;
+    // An override is its own operation. The join it was pinned from stays remembered so the dialog
+    // can regenerate it once these paths are applied.
+    return replaceOpenSyncPreview(
+      origin,
+      await previewMutation.mutateAsync({ kind: 'overrides', objectId, paths: paths.map((path) => [...path]) }),
+    );
+  };
 
   const identitySection = <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />;
   const connectionSection = (
@@ -216,6 +262,18 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
                 />
               </CardContent>
             </Card>
+            {providerSync === undefined ? null : (
+              <ProviderSyncControl
+                state={providerSync}
+                onEnable={openSyncPreview}
+                onExclude={() =>
+                  rangeMutation
+                    .mutateAsync({ providerId: providerSync.providerId, included: false })
+                    .then(() => undefined)
+                }
+                onDetach={() => detach()}
+              />
+            )}
           </aside>
         </div>
         <EditorFooter
@@ -227,6 +285,17 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           pending={pending}
         />
       </form>
+      <SyncPreviewDialog
+        preview={syncPreview}
+        onOpenChange={(open) => {
+          if (!open) setSyncPreview(null);
+        }}
+        onRetry={async () => {
+          if (lastSyncPreviewInput === undefined) throw new Error('SYNC_PREVIEW_INPUT_MISSING');
+          return retrySyncPreview(lastSyncPreviewInput);
+        }}
+        onPreviewOverrides={previewOverrides}
+      />
     </PageContainer>
   );
 };

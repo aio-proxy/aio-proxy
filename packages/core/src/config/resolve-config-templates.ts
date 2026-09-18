@@ -9,27 +9,49 @@ const UNSUPPORTED_TEMPLATE = 'Unsupported config template';
 export function resolveConfigTemplates(
   value: unknown,
   env: Readonly<Record<string, string | undefined>> = process.env,
+  onReference?: (name: string) => void,
 ): unknown {
-  if (typeof value === 'string') return resolveString(value, env);
-  if (Array.isArray(value)) return value.map((item) => resolveConfigTemplates(item, env));
+  if (typeof value === 'string') return resolveString(value, env, onReference);
+  if (Array.isArray(value)) return value.map((item) => resolveConfigTemplates(item, env, onReference));
   if (!isPlainObject(value)) return value;
-  return mapValues(value, (child) => resolveConfigTemplates(child, env));
+  return mapValues(value, (child) => resolveConfigTemplates(child, env, onReference));
 }
 
-function resolveString(value: string, env: Readonly<Record<string, string | undefined>>): string {
+/**
+ * The `{{env.NAME}}` references a value would resolve against nothing. Resolution substitutes an
+ * empty string for an absent variable, which silently turns a synchronized `apiKey` into an
+ * unauthenticated one, so callers that must not apply a half-resolved configuration ask first.
+ */
+export function collectMissingTemplateEnv(
+  value: unknown,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string[] {
+  const missing = new Set<string>();
+  resolveConfigTemplates(value, env, (name) => {
+    if (typeof env[name] !== 'string') missing.add(name);
+  });
+  return [...missing];
+}
+
+function resolveString(
+  value: string,
+  env: Readonly<Record<string, string | undefined>>,
+  onReference?: (name: string) => void,
+): string {
   let program: AST.Program;
   try {
     program = parse(value);
   } catch {
     throw new TypeError(UNSUPPORTED_TEMPLATE);
   }
-  return program.body.map((statement) => evaluateStatement(statement, value, env)).join('');
+  return program.body.map((statement) => evaluateStatement(statement, value, env, onReference)).join('');
 }
 
 function evaluateStatement(
   statement: AST.Statement,
   source: string,
   env: Readonly<Record<string, string | undefined>>,
+  onReference?: (name: string) => void,
 ): string {
   if (statement.type === 'ContentStatement') return (statement as AST.ContentStatement).value;
   if (statement.type !== 'MustacheStatement') throw invalidTemplate();
@@ -47,6 +69,7 @@ function evaluateStatement(
   if (typeof name !== 'string' || !ENV_NAME.test(name)) throw invalidTemplate();
   const pathSource = sliceLoc(source, path.loc);
   if (pathSource === undefined || !EXACT_ENV_PATH.test(pathSource)) throw invalidTemplate();
+  onReference?.(name);
   if (!Object.hasOwn(env, name)) return '';
   const resolved = env[name];
   return typeof resolved === 'string' ? resolved : '';

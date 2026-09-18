@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { resolveConfigTemplates } from './resolve-config-templates';
+import { collectMissingTemplateEnv, resolveConfigTemplates } from './resolve-config-templates';
 
 test('returns a plain string without templates unchanged', () => {
   expect(resolveConfigTemplates('plain string', {})).toBe('plain string');
@@ -111,4 +111,25 @@ test('parser failures omit the original source from the error message', () => {
     expect((error as Error).message).toBe('Unsupported config template');
     expect((error as Error).message).not.toContain('secret-value');
   }
+});
+
+test('collectMissingTemplateEnv names only the variables the environment cannot supply', () => {
+  const config = {
+    providers: {
+      work: { apiKey: '{{env.UPSTREAM_KEY}}', baseURL: 'https://{{env.HOST}}/v1' },
+      home: { apiKey: '{{env.UPSTREAM_KEY}}', region: 'eu' },
+      blank: { apiKey: '{{env.DELIBERATELY_EMPTY}}' },
+    },
+    tags: ['{{env.MISSING_TAG}}', 'static'],
+  };
+
+  // Resolution substitutes '' for an absent variable, so without this the config above would apply
+  // as an unauthenticated Provider instead of staying pending.
+  expect(collectMissingTemplateEnv(config, { HOST: 'api.example', DELIBERATELY_EMPTY: '' })).toEqual([
+    'UPSTREAM_KEY',
+    'MISSING_TAG',
+  ]);
+  expect(
+    collectMissingTemplateEnv(config, { UPSTREAM_KEY: 'k', HOST: 'h', DELIBERATELY_EMPTY: '', MISSING_TAG: 't' }),
+  ).toEqual([]);
 });

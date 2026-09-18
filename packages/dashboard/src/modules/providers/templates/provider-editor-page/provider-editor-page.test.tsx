@@ -4,11 +4,13 @@ import type {
   DashboardOAuthProviderEdit,
   DashboardOAuthSession,
   OAuthProvider,
+  SyncPreview,
+  SyncStatus,
 } from '@aio-proxy/types';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { Toaster, toast } from '@aio-proxy/ui/components/toast';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { ProviderFormMode } from '../../lib/constants';
 import { ProviderEditorPage } from './provider-editor-page';
@@ -51,6 +53,17 @@ const mocks = rs.hoisted(() => ({
   refetch: rs.fn(async () => ({ data: { trusted: true, state: 'bundled' }, error: null })),
   session: undefined as DashboardOAuthSession | undefined,
   sessionError: false,
+  previewMutateAsync: rs.fn(),
+  syncStatus: undefined as SyncStatus | undefined,
+}));
+
+rs.mock('@/hooks/use-sync', () => ({
+  useSyncStatus: () => ({ data: mocks.syncStatus, isLoading: false, isError: false }),
+  usePreviewSync: () => ({ mutateAsync: mocks.previewMutateAsync, isPending: false, isError: false }),
+  useApplySync: () => ({ mutate: rs.fn(), isPending: false, error: null, reset: rs.fn() }),
+  useSetSyncRange: () => ({ mutateAsync: rs.fn(async () => undefined), isPending: false }),
+  useDetachSync: () => ({ mutate: rs.fn(), mutateAsync: rs.fn(async () => undefined), isPending: false }),
+  useCancelDetachSync: () => ({ mutate: rs.fn(), isPending: false }),
 }));
 
 rs.mock('@tanstack/react-query', () => ({
@@ -153,6 +166,8 @@ afterEach(() => {
   mocks.refetch.mockImplementation(async () => ({ data: { trusted: true, state: 'bundled' }, error: null }));
   mocks.session = undefined;
   mocks.sessionError = false;
+  mocks.previewMutateAsync.mockReset();
+  mocks.syncStatus = undefined;
 });
 
 const renderPage = (props: React.ComponentProps<typeof ProviderEditorPage>) =>
@@ -1136,4 +1151,82 @@ test('oauth loopback keeps the opener the completion page posts back through', a
   // The redirect ends on the dashboard's own completion page, which closes itself by postMessage through
   // window.opener. Disowning this window the way the third-party statuses do would break that handshake.
   expect(popup.opener).not.toBeNull();
+});
+
+const joinPreview = (previewId: string, logicalKey = 'work'): SyncPreview => ({
+  previewId,
+  kind: 'join',
+  expiresAt: Date.now() + 10_000,
+  retainedSharedPlugins: [],
+  rows: [
+    {
+      objectId: `object-${logicalKey}`,
+      logicalKey,
+      kind: 'provider',
+      change: 'update',
+      local: { limits: { timeout: 1 } },
+      cloud: { limits: { timeout: 2 } },
+      secretChange: 'none',
+      dependencies: [],
+      choices: ['local', 'cloud'],
+    },
+  ],
+});
+
+const joinSwitch = () => screen.getByLabelText(m['dashboard.sync.provider_switch']());
+
+test('does not replace a newer Provider preview with an override abandoned by reopening it', async () => {
+  mocks.syncStatus = {
+    state: 'idle',
+    backend: { plugin: '@aio-proxy/plugin-cloudkit', capability: 'sync', spaceId: 'space-1' },
+    providers: [
+      {
+        providerId: 'existing',
+        objectId: 'object-existing',
+        included: false,
+        credentialState: 'local',
+        pendingReason: null,
+      },
+    ],
+    pendingOperations: 0,
+    lastSuccessAt: null,
+  };
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth,
+    initial: { id: 'existing', enabled: true, models: [] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  mocks.previewMutateAsync.mockResolvedValueOnce(joinPreview('preview-1'));
+  fireEvent.click(joinSwitch());
+  expect(await screen.findByText('work')).toBeTruthy();
+
+  // Pin a local option path: that override preview stays in flight for the rest of the test.
+  let resolveOverrides!: (value: SyncPreview) => void;
+  mocks.previewMutateAsync.mockReturnValueOnce(
+    new Promise<SyncPreview>((resolve) => {
+      resolveOverrides = resolve;
+    }),
+  );
+  fireEvent.change(await screen.findByLabelText(/Option path|选项路径/u), { target: { value: 'limits.timeout' } });
+  fireEvent.click(screen.getByRole('button', { name: /Pin local option|固定本地选项/u }));
+  await waitFor(() => expect(mocks.previewMutateAsync).toHaveBeenCalledTimes(2));
+
+  // The user abandons that dialog and asks for a fresh join, which takes the dialog with its own token.
+  fireEvent.click(screen.getByRole('button', { name: /^(Close|关闭)$/u }));
+  await waitFor(() => expect(screen.queryByLabelText(/Option path|选项路径/u)).toBeNull());
+  mocks.previewMutateAsync.mockResolvedValueOnce(joinPreview('preview-2', 'billing'));
+  fireEvent.click(joinSwitch());
+  expect(await screen.findByText('billing')).toBeTruthy();
+
+  // Adopting the abandoned result here would show the first operation's rows under a token that no
+  // longer applies to what the dialog is reviewing, and Apply would submit that token.
+  resolveOverrides({ ...joinPreview('preview-overrides', 'stranded'), kind: 'overrides' });
+  await act(async () => {});
+  expect(screen.getByText('billing')).toBeTruthy();
+  expect(screen.queryByText('stranded')).toBeNull();
 });

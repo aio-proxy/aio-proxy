@@ -1,0 +1,1 @@
+export { registerSyncCommands } from './commands';

@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 
 import type { ConfigSpec } from './config';
+import type { JsonValue } from './json';
 import type { LocalizedText } from './localized-text';
 import type { ModelCatalog, OAuthRuntimeResult } from './runtime';
 
@@ -195,6 +196,16 @@ export type OAuthCredentialRefreshResult<Credential> = {
   readonly metadata?: { readonly accountLabel?: string; readonly expiresAt?: number };
 };
 
+export type OAuthCredentialSync<Credential> = {
+  readonly formatVersion: number;
+  readonly multiDevice?: { readonly evidenceId: string };
+  readonly canDetach?: (input: {
+    readonly shared: Credential;
+    readonly candidate: Credential;
+    readonly signal: AbortSignal;
+  }) => Promise<boolean>;
+};
+
 export type RuntimeFetchTraffic = 'model' | 'control';
 
 export type RuntimeRequestInit = RequestInit & {
@@ -245,4 +256,7 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly refreshCredential?: (
     context: OAuthCredentialRefreshContext<Credential, AccountOptions>,
   ) => Promise<OAuthCredentialRefreshResult<Credential>>;
+  readonly credentialSync?: OAuthCredentialSync<Credential>;
 };
+
+export type { JsonValue };

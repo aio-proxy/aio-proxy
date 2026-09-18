@@ -33,8 +33,13 @@ test.serial('reclaims a fresh malformed marker left by an interrupted publisher'
 test.serial('acquisition filesystem errors are not translated after the deadline', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-recovery-fence-'));
   const openError = new Error('recovery marker open failed');
+  // The deadline must expire while the marker open is in flight, never before acquisition reaches
+  // it: an abort seen at the loop's own checkpoints is the translated-timeout path this test is not
+  // about. Acquisition gets a margin no loaded runner needs all of, and the open outlives the
+  // deadline by construction rather than by out-sleeping a fixed head start it might lose.
+  const deadline = Date.now() + 1_000;
   const open = spyOn(fsPromises, 'open').mockImplementation((async () => {
-    await Bun.sleep(50);
+    await Bun.sleep(Math.max(0, deadline - Date.now()) + 50);
     throw openError;
   }) as never);
   try {
@@ -44,7 +49,7 @@ test.serial('acquisition filesystem errors are not translated after the deadline
           lockPath: join(dir, 'config.lock'),
           staleMs: 60_000,
           heartbeatMs: 10_000,
-          deadline: Date.now() + 10,
+          deadline,
           timeoutError: () => new Error('acquisition timed out'),
         },
         async () => undefined,

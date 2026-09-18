@@ -300,7 +300,10 @@ async function countCandidates<TRequest, TContext>({
   throwIfCountAborted(session, rawRequest.signal);
   recordLocalEstimate(session);
   const estimate = estimateInputTokens(adapter.protocol as ProtocolId, invocation);
-  const response = Response.json(format(estimate));
+  // The trace span records where the number came from, but a trace is not visible to the caller: an
+  // API client sees only this response, and without the header a local estimate is indistinguishable
+  // from an exact upstream count.
+  const response = Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
   session.finish({ outcome: 'success', finalHttpStatus: 200, clientResponse: response });
   return response;
 }

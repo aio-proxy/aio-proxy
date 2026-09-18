@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { createServer as createBaseServer, createServerTestHome } from '#server-test-lifecycle';
 
+import { createDashboardAuthentication } from './dashboard-auth';
 import { loopbackServer } from './test-support';
 
 const origin = 'http://127.0.0.1:22078';
@@ -152,6 +156,64 @@ describe('dashboard authentication', () => {
     const blocked = await login(app, 'eventually-correct');
 
     expect(blocked.status).toBe(429);
-    expect(blocked.headers.get('retry-after')).toBe('60');
+    // Five password verifications take over a second, so the countdown has already ticked down
+    // from the full window. What the client needs is a bounded wait, not an exact second.
+    const retryAfter = Number(blocked.headers.get('retry-after'));
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
   });
+
+  // `service-access` publishes the Argon2 hash to the sync backend, so signing sessions with it
+  // alone let a read-only breach of that backend mint a token for every Dashboard API.
+  test('a session forged from the published password hash alone is rejected', async () => {
+    const hash = await Bun.password.hash('correct horse');
+    const app = await createServer({ config: { server: { password: hash }, providers: {} } });
+
+    const expiresAt = Date.now() + 60 * 60 * 1_000;
+    const payload = `v1.${expiresAt}.${crypto.randomUUID()}`;
+    const forged = `${payload}.${new Bun.CryptoHasher('sha256', hash)
+      .update(payload)
+      .digest('base64')
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replace(/=+$/u, '')}`;
+
+    const refused = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${forged}`, host: 'proxy.example:22078' } },
+      loopbackServer,
+    );
+    expect(refused.status).toBe(401);
+
+    // The real login still works, so the rejection is the key change and not a broken signer.
+    const token = await tokenFrom(await login(app, 'correct horse'));
+    const accepted = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${token}`, host: 'proxy.example:22078' } },
+      loopbackServer,
+    );
+    expect(accepted.status).toBe(200);
+  });
+});
+
+test('an interrupted provisioning left an empty session key, and login still signs', async () => {
+  const original = process.env.AIO_PROXY_HOME;
+  const home = mkdtempSync(join(tmpdir(), 'aio-session-key-'));
+  try {
+    process.env.AIO_PROXY_HOME = home;
+    writeFileSync(join(home, 'session-key'), '  \n');
+    const hash = await Bun.password.hash('correct horse');
+
+    const result = await createDashboardAuthentication(() => hash).login('correct horse', 'client-1');
+
+    expect(result.status).toBe('authenticated');
+    expect(readFileSync(join(home, 'session-key'), 'utf8').trim()).not.toBe('');
+    // The repair moves the empty file aside before deleting it, so that a racer's real key is
+    // handed back rather than unlinked. The scratch copy must not survive as a second key file.
+    expect(readdirSync(home).filter((entry) => entry.startsWith('session-key'))).toEqual(['session-key']);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+    if (original === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = original;
+  }
 });

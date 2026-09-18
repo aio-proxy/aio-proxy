@@ -1,17 +1,23 @@
+import { createHash } from 'node:crypto';
 import { dirname } from 'node:path';
 
 import {
   AtomicConfigFile,
   createAgentIdentityService,
   createEmbeddedBuiltIns,
+  createOAuthProviderGate,
+  PROVIDER_GATE_BUSY,
   createPluginDiagnosticFactory,
   createPluginRepository,
+  createSyncRepository,
+  encodeCandidate,
   type DiagnosticFactory,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
+import type { OAuthSharingService, SharedOAuthCoordinator } from '@aio-proxy/core';
 import {
   acquireDatabaseOwnershipLock,
   assertSafeOwnedDatabaseFile,
@@ -55,8 +61,16 @@ import {
 import { defaultLogger, defaultPluginLogger } from './logging';
 import { createProviderSummaries } from './probe';
 import { createQuotaIdentityTracker } from './quota-invalidation';
-import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
-import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
+import { defaultRecoveryScheduler } from './recovery';
+import { createSharedCredentialResolver } from './shared-credential-resolver';
+import { buildSnapshot, buildSnapshotWithProviders, emptyPluginSnapshot, type Snapshot } from './snapshot';
+import { recoverBeforeInitialSnapshot } from './startup-recovery';
+import {
+  createSyncControlPlaneIntegration,
+  createSyncIntegration,
+  syncCommitOption,
+  startSyncIntegration,
+} from './sync-integration';
 import type {
   ConfigReloadResult,
   InternalServerStateOptions,
@@ -75,21 +89,20 @@ function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
 }
 
 function createStartupCleanup() {
-  const cleanups: Array<() => void> = [];
+  const cleanups: Array<() => void | Promise<void>> = [];
   let armed = true;
   return {
-    add(cleanup: () => void) {
+    add(cleanup: () => void | Promise<void>) {
       if (!armed) throw new Error('startup cleanup is already disarmed');
       cleanups.push(cleanup);
     },
-    unwind() {
+    async unwind() {
       if (!armed) return;
       armed = false;
-      for (const cleanup of cleanups.reverse()) {
-        try {
-          cleanup();
-        } catch {}
-      }
+      for (const cleanup of cleanups.reverse())
+        await Promise.resolve()
+          .then(cleanup)
+          .catch(() => {});
       cleanups.length = 0;
     },
     disarm() {
@@ -112,16 +125,17 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     startup.disarm();
     return state;
   } catch (error) {
-    startup.unwind();
+    await startup.unwind();
     throw error;
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- startup ordering is intentionally kept together
 async function initializeServerState(
   options: ServerStateOptions,
   dbHandle: OpenDbHandle,
   databaseOwnership: DatabaseOwnershipLock,
-  registerStartupCleanup: (cleanup: () => void) => void,
+  registerStartupCleanup: (cleanup: () => void | Promise<void>) => void,
 ): Promise<ServerState> {
   const internalOptions = options as InternalServerStateOptions;
   const testHooks = internalOptions.__test;
@@ -137,12 +151,56 @@ async function initializeServerState(
   const events = createDashboardEventHub(options.eventLimits);
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
+  const syncRepository = createSyncRepository(dbHandle.sqlite);
+  const providerGate = createOAuthProviderGate();
+  let sharedCoordinator: SharedOAuthCoordinator | undefined;
+  let oauthSharing: OAuthSharingService | undefined;
+  let installedPlugins = emptyPluginSnapshot();
+  const resolveSharedCredential = createSharedCredentialResolver(
+    syncRepository,
+    repository,
+    () => sharedCoordinator,
+    (providerId) => {
+      const account = repository.readAccount(providerId);
+      if (account === null) return undefined;
+      const adapter = installedPlugins.registry.resolveOAuth(account.plugin, account.capability);
+      const pluginVersion = installedPlugins.plugins.get(account.plugin)?.version;
+      return adapter === undefined || pluginVersion === undefined ? undefined : { adapter, pluginVersion };
+    },
+  );
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
   const logger = options.logger ?? defaultLogger;
   const configFile =
     testHooks?.configFile ?? (options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath));
-  const recoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
+  const rawRecoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
+  const recoverAccounts: typeof recoverPendingAccountOperations = (
+    file,
+    accounts,
+    recoveryOptions,
+    diagnosticOptions,
+  ) =>
+    rawRecoverAccounts(
+      file,
+      accounts,
+      recoveryOptions.mode === 'cli'
+        ? recoveryOptions
+        : {
+            ...recoveryOptions,
+            beforeAccountOperationComplete: async (operation, signal) => {
+              if (oauthSharing === undefined) throw new Error('SYNC_OAUTH_COORDINATION_UNAVAILABLE');
+              const account = accounts.readAccount(operation.providerId);
+              if (account === null || account.revision !== operation.appliedRevision)
+                throw new Error('SYNC_OAUTH_LOGIN_CONFLICT');
+              await oauthSharing.synchronizeLogin(
+                operation.providerId,
+                { ...account, catalog: { kind: 'preserve' } },
+                signal,
+              );
+            },
+          },
+      diagnosticOptions,
+    );
   const recoveryScheduler = testHooks?.recoveryScheduler ?? defaultRecoveryScheduler();
   const queue = createFifoQueue();
 
@@ -166,9 +224,39 @@ async function initializeServerState(
     quotaIdentity: undefined,
     recovery: undefined,
     configFile,
+    sync: undefined,
+    syncControl: undefined,
+    syncCommit: undefined,
+    remoteConfigFence: undefined,
+    resolveSharedCredential,
+    withProviderGate: providerGate.run,
+    tryProviderGate: async (providerId, run) => (await providerGate.tryRun(providerId, run)) !== PROVIDER_GATE_BUSY,
   };
 
-  await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
+  let syncIntegration: ReturnType<typeof createSyncIntegration> | undefined;
+  runtime.prepareOAuth = async (plugins) => {
+    installedPlugins = plugins;
+    if (syncIntegration !== undefined) return;
+    syncIntegration = createSyncIntegration(
+      runtime,
+      dbHandle,
+      repository,
+      () => installedPlugins,
+      configFile,
+      options,
+      queue,
+      syncRepository,
+      (coordinator) => {
+        sharedCoordinator = coordinator;
+      },
+      (sharing) => {
+        oauthSharing = sharing;
+      },
+    );
+    runtime.syncCommit = syncCommitOption(syncIntegration);
+    await startSyncIntegration(runtime, syncIntegration, registerStartupCleanup);
+    await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
+  };
 
   const initial =
     options.providerInstances === undefined
@@ -181,8 +269,13 @@ async function initializeServerState(
           pluginLogger,
           () => queueRebuild(runtime),
           createRouter,
+          resolveSharedCredential,
+          providerGate.run,
+          runtime.prepareOAuth,
         )
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
+  if (syncIntegration === undefined) await runtime.prepareOAuth(initial.plugins);
+  const syncCommit = runtime.syncCommit;
   runtime.manager = createSnapshotManager(initial);
   const manager = runtime.manager;
   runtime.managerReady = true;
@@ -192,6 +285,7 @@ async function initializeServerState(
     repository,
     enqueue: queue,
     canDeleteAccount: manager.canDeleteAccount,
+    withProviderGate: runtime.withProviderGate,
     onRecoveryNeeded: (nextRunAt) => runtime.recovery?.schedule(nextRunAt),
   });
   runtime.scheduler = new CatalogScheduler({
@@ -225,6 +319,7 @@ async function initializeServerState(
       recoverAccounts,
       recoveryScheduler,
       reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
+      ...(syncCommit === undefined ? {} : { syncCommit }),
     },
     registerStartupCleanup,
   );
@@ -246,12 +341,43 @@ async function initializeServerState(
     },
   });
 
+  runtime.sync?.activate();
+
   const providerSummaries = createProviderSummaries(manager);
 
-  const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
-  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload);
+  const reload = (): Promise<ConfigReloadResult> =>
+    queue(async () => {
+      const fence = runtime.remoteConfigFence;
+      if (fence !== undefined && runtime.configFile !== undefined && options.configPath !== undefined) {
+        const current = (await runtime.configFile.read()) as Record<string, import('@aio-proxy/plugin-sdk').JsonValue>;
+        const digest = createHash('sha256').update(encodeCandidate(current, options.configPath)).digest('hex');
+        // Observing any digest disarms the fence, including one that does not match. A local edit
+        // that superseded the remote write before this ran makes the fence provably stale, and
+        // leaving it armed would misread a later undo of that edit as the remote write itself —
+        // skipping its sync commit and stranding the cloud on the intervening configuration. The
+        // cost of disarming early is at worst a redundant republish of a body the cloud already has.
+        runtime.remoteConfigFence = undefined;
+        if (digest === fence.digest) return reloadNow(runtime, [], true);
+      }
+      return reloadNow(runtime);
+    });
+  const oauthLoginSessions = startLoginSessions(
+    runtime,
+    configStore,
+    reload,
+    syncCommit,
+    () => oauthSharing,
+    // Connecting a backend after startup must start coordinating logins, and a device that never
+    // connects one — or that has disconnected — must keep logging in without waiting for a service
+    // it does not have. Retired rows stay in `bindings()` forever, so only the active one counts.
+    () => syncRepository.readBinding() !== null,
+  );
   registerStartupCleanup(() => oauthLoginSessions.close());
   failAfter('login_sessions');
+  runtime.syncControl =
+    syncIntegration === undefined
+      ? undefined
+      : createSyncControlPlaneIntegration(runtime, syncIntegration, oauthLoginSessions);
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)
@@ -282,13 +408,11 @@ async function initializeServerState(
     usageCapture,
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
+    sync: runtime.syncControl,
   });
 }
 
-// The cache is published onto the runtime so `commitConfig` can invalidate the entries of Providers
-// whose configuration changed; everything in it is keyed by Provider ID alone.
-// Called exactly once per server: the refresher's per-Provider-ID serialization lives in a closure,
-// so a second instance would mean a second queue and two clicks could race the same credential.
+// Called once per server so cache invalidation and per-Provider serialization share one state owner.
 function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
   const dependencies = {
     acquireSnapshot: manager.acquire,
@@ -296,6 +420,8 @@ function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
     diagnostics: runtime.diagnostics,
     logger: runtime.pluginLogger,
     onDiagnosticChanged: () => queueRebuild(runtime),
+    resolveShared: runtime.resolveSharedCredential,
+    withProviderGate: runtime.withProviderGate,
   };
   const oauthQuota = createOAuthQuotaOperations(dependencies);
   const oauthCredentialRefresh = createOAuthCredentialRefresher(dependencies);
@@ -315,22 +441,6 @@ function createStatePluginControlPlane(runtime: ServerRuntime, configStore: Conf
     importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
     repository,
     ...runtime.internalOptions.__test?.pluginControlPlane,
-  });
-}
-
-function recoverBeforeInitialSnapshot(
-  runtime: ServerRuntime,
-  recoverAccounts: typeof recoverPendingAccountOperations,
-  scheduler: ReturnType<typeof defaultRecoveryScheduler>,
-) {
-  return recoverBeforeSnapshot({
-    configFile: runtime.configFile,
-    repository: runtime.repository,
-    diagnostics: runtime.diagnostics,
-    logger: runtime.pluginLogger,
-    recoverAccounts,
-    scheduler,
-    enqueue: runtime.queue,
   });
 }
 

@@ -7,6 +7,7 @@ import migration4Sql from "./migrations/0004_classy_kabuki.sql?raw";
 import migration5Sql from "./migrations/0005_material_xavin.sql?raw";
 import migration6Sql from "./migrations/0006_furry_mastermind.sql?raw";
 import migration7Sql from "./migrations/0007_confused_puck.sql?raw";
+import migration8Sql from "./migrations/0008_config_sync.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -61,6 +62,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0007_confused_puck.sql",
         sha256: "a125a95a57adf115bc85f175fd4251465e1be639abdb34812707dd6cec50257b",
         sql: migration7Sql
+    },
+    {
+        version: 9,
+        file: "0008_config_sync.sql",
+        sha256: "39a8987d50aecb1e71e63a64d52556a85dd15ed9bc0820cc5fe846c1b8c800fb",
+        sql: migration8Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;

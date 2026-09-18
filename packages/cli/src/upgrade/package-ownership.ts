@@ -72,14 +72,18 @@ const shimReferencesPackageBin = (binPath: string, packageDir: string): boolean 
   const text = readLauncherShim(binPath);
   if (text === undefined) return false;
   const launcherDir = dirname(binPath);
+  const launcherRealDir = tryRealpath(launcherDir);
   return packageBinTargets(packageDir).some((target) => {
     const candidates = new Set<string>([resolve(target)]);
     const real = tryRealpath(target);
     if (real !== undefined) candidates.add(real);
     for (const abs of candidates) {
       if (text.includes(abs)) return true;
-      const rel = relative(launcherDir, abs).replaceAll('\\', '/');
-      if (rel !== '' && !rel.startsWith('/') && text.includes(rel)) return true;
+      for (const base of [launcherDir, launcherRealDir]) {
+        if (base === undefined) continue;
+        const rel = relative(base, abs).replaceAll('\\', '/');
+        if (rel !== '' && !rel.startsWith('/') && text.includes(rel)) return true;
+      }
     }
     return false;
   });

@@ -193,12 +193,25 @@ const pathLauncherTarget = (preferred?: NodeManager): UpgradeTarget | undefined 
   return undefined;
 };
 
-const brewTargetFromCellar = (binPath: string): UpgradeTarget | undefined => {
+const brewTargetFromCellar = (binPath: string, launcherPath = binPath): UpgradeTarget | undefined => {
   const prefix = brewPrefixFromCellar(binPath);
   if (prefix === undefined) return undefined;
-  const command = join(prefix, 'bin', 'brew');
+  const prefixBin = join(prefix, 'bin');
+  // `brew upgrade` retargets the launcher Homebrew links inside its own prefix and nothing else, so
+  // an alias in a directory it does not manage — `/usr/local/bin/aio-proxy` pointing into
+  // `/opt/homebrew/Cellar` — still names the version directory the upgrade replaced: reading the
+  // version back through it reports the old one, the upgrade calls itself unchanged, and the service
+  // is handed the stale path. Only a different spelling of the same directory keeps the launcher's
+  // own path, because a realpath'd prefix renames the directory the user's PATH actually resolves.
+  const launcherReal = tryRealpath(dirname(launcherPath));
+  const launcherDir =
+    launcherReal !== undefined && launcherReal === tryRealpath(prefixBin) ? dirname(launcherPath) : prefixBin;
+  // An alias outside the Homebrew prefix has no `brew` beside it, but the Cellar path already names
+  // the prefix that does. Preferred over that prefix when a sibling exists, because the launcher's
+  // own path is the one the user's PATH resolves.
+  const command = siblingCommand(launcherPath, 'brew') ?? join(prefixBin, 'brew');
   if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
-  return { method: 'brew', command, bin: join(prefix, 'bin', PACKAGE) };
+  return { method: 'brew', command, bin: join(launcherDir, PACKAGE) };
 };
 
 const brewTargetFromResolvedCellar = (binPath: string): UpgradeTarget | undefined => {
@@ -206,7 +219,7 @@ const brewTargetFromResolvedCellar = (binPath: string): UpgradeTarget | undefine
   if (fromPath !== undefined) return fromPath;
   const real = tryRealpath(binPath);
   if (real === undefined || real === binPath) return undefined;
-  return brewTargetFromCellar(real);
+  return brewTargetFromCellar(real, binPath);
 };
 
 const brewTargetFromSibling = (binPath: string): UpgradeTarget | undefined => {

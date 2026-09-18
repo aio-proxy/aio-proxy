@@ -56,6 +56,7 @@ export function createKimiCodePlugin(
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
+    credentialSync: { formatVersion: 1 },
     credentials: zod.object({
       accessToken: zod.string().min(1),
       refreshToken: zod.string().min(1),
