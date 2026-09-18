@@ -134,6 +134,42 @@ describe('createRequestTraceRecorder', () => {
     expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
   });
 
+  test('4xx failure keeps the root span status UNSET but still records failure metadata', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.finish({ outcome: 'failure', finalHttpStatus: 404, errorCode: 'model_not_found' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.statusCode).toBe(SpanStatusCode.UNSET);
+    expect(root?.attributes['aio_proxy.termination.reason']).toBe('failure');
+    expect(root?.attributes['aio_proxy.error.code']).toBe('model_not_found');
+    expect(completions[0]?.summary.terminationReason).toBe('failure');
+  });
+
+  test('5xx failure still sets the root span status to ERROR', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'internal_error' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
+  });
+
+  test('failure without an http status sets the root span status to ERROR', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.finish({ outcome: 'failure', errorCode: 'internal_error' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
+  });
+
   test('cancelled sets ERROR status and cancelled termination reason', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });

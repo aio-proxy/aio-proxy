@@ -27,7 +27,9 @@ export function applyTerminalAttributes(root: Span, finish: RequestTraceFinishIn
   if (finish.outcome === 'success' && finish.usage !== undefined) applyUsageAttributes(root, finish.usage);
 
   if (finish.outcome === 'failure') {
-    root.setStatus({ code: SpanStatusCode.ERROR });
+    // HTTP 语义约定：SERVER span 的 4xx 是客户端错误，span status 保持 UNSET。
+    // 只有 5xx 和拿不到状态码的内部失败才是服务端错误。DB summary 列照旧全写。
+    if (!isClientError(finish.finalHttpStatus)) root.setStatus({ code: SpanStatusCode.ERROR });
     root.setAttribute(attributeName.terminationReason, 'failure' as TraceTerminationReason);
     if (finish.errorType !== undefined) root.setAttribute(attributeName.errorType, finish.errorType);
     if (finish.errorCode !== undefined) root.setAttribute(attributeName.errorCode, finish.errorCode);
@@ -42,6 +44,10 @@ export function applyTerminalAttributes(root: Span, finish: RequestTraceFinishIn
     root.setAttribute(attributeName.sessionId, identity.resolution.identity.id);
     root.setAttribute(attributeName.sessionResolvedBy, identity.resolution.resolvedBy);
   }
+}
+
+function isClientError(status: number | undefined): boolean {
+  return status !== undefined && status >= 400 && status < 500;
 }
 
 function applyUsageAttributes(root: Span, usage: UsageRow): void {
