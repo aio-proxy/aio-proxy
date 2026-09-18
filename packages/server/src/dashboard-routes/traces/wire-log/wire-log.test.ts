@@ -298,6 +298,17 @@ describe('readTraceWireLog', () => {
     expect(text.startsWith('a'.repeat(16))).toBe(true);
   });
 
+  // 上限数的是 code unit，正好切在代理对中间会剩下半个：JSON.stringify 会把它转义掉，
+  // 面板在切口处画一个 U+FFFD。
+  test('does not cut a surrogate pair in half at the cap', () => {
+    const drafts = createHopDrafts();
+    applyChunk(drafts, 0, `${'a'.repeat(1_048_575)}😀`);
+
+    const text = finalizeHops(drafts)[0]?.request?.body?.text ?? '';
+    expect(text.isWellFormed()).toBe(true);
+    expect(text).toHaveLength(1_048_575);
+  });
+
   test('skips the file entirely for a trace without a request id', async () => {
     // 这行自己的 requestId 也是空的：不短路的话它会被 `'' === ''` 匹配上、拼出一跳来，
     // 用正常的 REQUEST_ID 行做夹具的话删掉守卫测试照样绿，等于什么都没测。
