@@ -79,7 +79,10 @@ test('shows the selected Span identity, status, attributes, events, and links', 
 
 test('lists attributes as searchable rows, and turns one into a list filter', () => {
   const onFilter = rs.fn();
-  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={onFilter} />);
+  // The status filter is whole-trace, so it is offered on the root span only; the attempt-span
+  // direction is pinned in `lib/span-attribute-rows`.
+  const root: DashboardTraceSpan = { ...span, spanId: trace.rootSpanId };
+  render(<SpanDetailPanel span={root} trace={trace} spans={[root]} onFilter={onFilter} />);
 
   const table = screen.getByTestId('span-attribute-table');
   expect(within(table).getByText('aio_proxy.provider.id')).toBeTruthy();
