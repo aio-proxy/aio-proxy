@@ -195,8 +195,11 @@ export const DashboardTracePercentileResponseSchema = z
 const DashboardTraceWireBodySchema = z
   .object({
     text: z.string(),
+    // 日志里记的真实字节数，不随 text 被裁剪而变小
     byteLength: z.number().int().min(0).optional(),
     outcome: z.enum(['complete', 'cancelled', 'error']).optional(),
+    // text 超过单跳单方向上限后被裁掉了尾巴，面板需要明说一句，别让人把半截 body 当全貌读
+    truncated: z.boolean().optional(),
   })
   .strict();
 
