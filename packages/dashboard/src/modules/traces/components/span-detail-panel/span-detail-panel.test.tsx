@@ -97,11 +97,14 @@ test('lists attributes as searchable rows, and turns one into a list filter', ()
   expect(onFilter).toHaveBeenCalledWith({ finalHttpStatus: 503 });
 });
 
-test('offers no filter action for an attribute the list page cannot query', () => {
-  const kind: DashboardTraceSpan = { ...span, attributes: { 'aio_proxy.provider.kind': 'api' } };
-  render(<SpanDetailPanel span={kind} trace={trace} spans={[kind]} onFilter={rs.fn()} />);
+test('withholds the whole-trace filter when the selected Span is not the root', () => {
+  // `span` is an attempt span, so its 503 is this hop's status, not the trace's — the same 503 the
+  // test above offers as a filter on the root. Which keys are gated is pinned in
+  // `lib/span-attribute-rows`; what this pins is that the panel tells it which span it is looking at.
+  render(<SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />);
 
   const table = screen.getByTestId('span-attribute-table');
+  fireEvent.change(within(table).getByTestId('span-attribute-search'), { target: { value: 'status' } });
   fireEvent.click(within(table).getByRole('button', { name: /Attribute actions|属性操作/u }));
 
   expect(screen.getByRole('menuitem', { name: /Copy value|复制值/u })).toBeTruthy();
