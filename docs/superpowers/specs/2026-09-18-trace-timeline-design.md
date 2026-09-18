@@ -309,7 +309,18 @@ prefix for a new company- or application-specific attribute name."
 模型延迟和转移延迟混进同一个分布，呈双峰。这是正确的代价——另一个选择是让网关看起来比
 实际更快——但如果发这个 metric，必须用同一个逻辑值，并接受双峰。
 
-OTel 自己的 reference report 在 13 个库上对这个属性全是 `(none)`，野外没有先例可抄。
+OTel 自己的 reference report 在 13 个库上对这个属性全是 `(none)`。野外确有零星实现
+（VS Code Copilot、Sentry、Microsoft.Extensions.AI、litellm 等），但**每一个多层 tracer 都只
+把它挂在最内层那个 per-LLM-call span 上**——哪怕其中有些会把 token 数向上层重复累加。
+两层都发这个 key 的实现一个也没有。
+
+**实现注意：拿不到非废弃的类型常量。** `semantic-conventions-genai` 仓库只有
+`model/` `docs/` `reference/` `templates/`，不发生成代码包；旧家
+`@opentelemetry/semantic-conventions` 里的
+`ATTR_GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK`（`experimental_attributes.ts:7462`）标了
+`@experimental` + `@deprecated Moved to…`。在 `semantic.ts` 里直接写字符串字面量，
+不要 import 那个废弃常量——它的 deprecation 说的是「搬家了」，不是「要删了」，
+但 lint 不认识这个区别。
 
 ### POST（CLIENT）—— 观测标量落这层
 
