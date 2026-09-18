@@ -26,9 +26,12 @@ export const TraceHopSelector: React.FC<TraceHopSelectorProps> = ({ hops, select
             className={cn('size-1.5 rounded-full', hop.failed ? 'bg-chart-error' : 'bg-chart-success')}
             aria-hidden="true"
           />
-          {hop.kind === 'inbound'
-            ? m['dashboard.traces.hop_inbound']({ label: hop.label })
-            : m['dashboard.traces.hop_attempt']({ index: (hop.attemptIndex ?? 0) + 1, label: hop.label })}
+          {hop.kind === 'inbound' && m['dashboard.traces.hop_inbound']({ label: hop.label })}
+          {/* attempt span 没写 index 时不编一个序号：两颗 chip 都叫「尝试 1」比没有序号更糟。 */}
+          {hop.kind === 'attempt' &&
+            (hop.attemptIndex === undefined
+              ? hop.label
+              : m['dashboard.traces.hop_attempt']({ index: hop.attemptIndex + 1, label: hop.label }))}
         </Button>
       );
     })}

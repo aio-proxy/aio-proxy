@@ -1501,6 +1501,7 @@
       "hops_label": "請求鏈路",
       "wire_body_truncated": "內容未完整記錄",
       "wire_hop_empty": "這一跳沒有抓包記錄",
+      "wire_error": "讀取抓包失敗。",
       "wire_unavailable_debug": "需要把 server.logging.enabled 設為 true、level 設為 debug 才會記錄線級抓包。",
       "wire_unavailable_retention": "日誌只保留 {days} 天，這條呼叫鏈的抓包已經滾掉了。",
       "wire_open_settings": "開啟設定"

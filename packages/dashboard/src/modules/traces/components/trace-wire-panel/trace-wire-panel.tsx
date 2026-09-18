@@ -60,6 +60,8 @@ export const TraceWirePanel: React.FC<TraceWirePanelProps> = ({ side, hop }) => 
       {body !== undefined && (
         <section className="space-y-3">
           <h2 className="font-heading text-base font-semibold">{m['dashboard.traces.body']()}</h2>
+          {/* 比 brief 的 `outcome !== 'complete'` 多一个 undefined 判断：
+              服务端只在认得出结果时才写 outcome，缺失不等于截断，否则每条完整正文都挂一句假警告。 */}
           {body.outcome !== undefined && body.outcome !== 'complete' && (
             <p className="text-sm text-muted-foreground" role="status">
               {m['dashboard.traces.wire_body_truncated']()}

@@ -1501,6 +1501,7 @@
       "hops_label": "请求链路",
       "wire_body_truncated": "内容未完整记录",
       "wire_hop_empty": "这一跳没有抓包记录",
+      "wire_error": "读取抓包失败。",
       "wire_unavailable_debug": "需要把 server.logging.enabled 设为 true、level 设为 debug 才会记录线级抓包。",
       "wire_unavailable_retention": "日志只保留 {days} 天，这条调用链的抓包已经滚掉了。",
       "wire_open_settings": "打开设置"

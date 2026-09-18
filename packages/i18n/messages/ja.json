@@ -1501,6 +1501,7 @@
       "hops_label": "リクエストのホップ",
       "wire_body_truncated": "内容は完全には記録されていません",
       "wire_hop_empty": "このホップにはキャプチャがありません",
+      "wire_error": "ワイヤーキャプチャを読み込めませんでした。",
       "wire_unavailable_debug": "server.logging.enabled を true、level を debug にしないとワイヤーキャプチャは記録されません。",
       "wire_unavailable_retention": "ログの保持期間は {days} 日なので、この呼び出しのキャプチャはすでに失われています。",
       "wire_open_settings": "設定を開く"

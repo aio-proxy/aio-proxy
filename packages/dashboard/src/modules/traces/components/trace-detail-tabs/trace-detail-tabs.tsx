@@ -49,10 +49,10 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({
         />
       </TabsContent>
       <TabsContent value="request" className="mt-4">
-        <TraceWireTab side="request" detail={detail} wire={wireQuery.data} />
+        <TraceWireTab side="request" detail={detail} wire={wireQuery} />
       </TabsContent>
       <TabsContent value="response" className="mt-4">
-        <TraceWireTab side="response" detail={detail} wire={wireQuery.data} />
+        <TraceWireTab side="response" detail={detail} wire={wireQuery} />
       </TabsContent>
     </Tabs>
   );
