@@ -1,12 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan } from '@aio-proxy/types';
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@aio-proxy/ui/components/input-group';
 import { SearchIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { layoutTraceSpans } from '../../lib/trace-layout';
-import { TraceWaterfallRow } from './trace-waterfall-row';
+import { TraceWaterfallRow, WATERFALL_GRID } from './trace-waterfall-row';
 import { WaterfallRuler } from './waterfall-ruler';
 
 interface SpanWaterfallProps {
@@ -26,34 +26,28 @@ export const SpanWaterfall: React.FC<SpanWaterfallProps> = ({ spans, selectedSpa
   const totalDurationMs = rows[0]?.scaleDurationMs ?? 0;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{m['dashboard.traces.spans']()}</CardTitle>
-        <CardAction>
-          <InputGroup className="w-full sm:w-56">
-            <InputGroupAddon>
-              <SearchIcon />
-            </InputGroupAddon>
-            <InputGroupInput
-              value={query}
-              data-testid="span-search"
-              aria-label={m['dashboard.traces.span_search_placeholder']()}
-              placeholder={m['dashboard.traces.span_search_placeholder']()}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </InputGroup>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <div className="min-w-3xl space-y-1">
-          <div className="grid grid-cols-[minmax(12rem,1fr)_minmax(16rem,2fr)_auto_auto] items-end gap-3 px-3 text-xs font-medium text-muted-foreground">
-            <span>{m['dashboard.traces.span_name']()}</span>
-            <WaterfallRuler totalDurationMs={totalDurationMs} />
-            <span>{m['dashboard.traces.status']()}</span>
-            <span className="text-right">{m['dashboard.traces.duration']()}</span>
+    <Card className="min-w-0">
+      <CardContent className="space-y-2 overflow-x-auto">
+        <InputGroup>
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={query}
+            data-testid="span-search"
+            aria-label={m['dashboard.traces.span_search_placeholder']()}
+            placeholder={m['dashboard.traces.span_search_placeholder']()}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </InputGroup>
+        <div className="min-w-lg space-y-0.5">
+          {/* 没有列标题：每行是一个 Button，它的 aria-label 已经带了名称，读屏不会把这里当表头。
+              刻度尺只压在柱子那一列上，跨整卡宽度的话标签和柱子就差出一个名称列。 */}
+          <div className={WATERFALL_GRID}>
+            <WaterfallRuler className="col-start-2" totalDurationMs={totalDurationMs} />
           </div>
           {visible.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+            <p className="py-6 text-center text-sm text-muted-foreground">
               {m['dashboard.traces.span_search_empty']()}
             </p>
           ) : (

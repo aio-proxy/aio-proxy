@@ -29,23 +29,32 @@ export const TracePercentileBar: React.FC<TracePercentileBarProps> = ({ comparis
           percentile: comparison.percentile,
         })}
       </p>
-      <div className="relative h-2 rounded-full bg-muted">
+      <div className="relative mt-7 h-1.5 rounded-[3px] bg-muted">
+        {/* 渐变只是「越靠右越慢」的视觉提示，本身不携带数据，所以整条铺满、压低透明度。 */}
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-[3px] bg-gradient-to-r from-chart-success to-chart-error opacity-35"
+        />
         {ticks.map(([label, value]) => (
           <span
             aria-hidden
-            className="absolute inset-y-0 w-px bg-border"
+            className="absolute -top-[3px] h-3 w-0.5 -translate-x-1/2 rounded-[1px] bg-muted-foreground/55"
             key={label}
             style={{ left: `${offset(value)}%` }}
           />
         ))}
         <span
           aria-hidden
-          className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground ring-2 ring-card"
           data-testid="trace-percentile-marker"
           style={{ left: `${offset(comparison.durationMs)}%` }}
-        />
+        >
+          <span className="absolute bottom-3.5 left-1/2 -translate-x-1/2 font-mono text-[11px] whitespace-nowrap text-foreground">
+            {formatDuration(comparison.durationMs)}
+          </span>
+        </span>
       </div>
-      <div className="relative flex justify-between text-xs text-muted-foreground">
+      <div className="relative flex justify-between font-mono text-[11px] text-muted-foreground">
         <span>{formatDuration(minMs)}</span>
         {ticks.map(([label, value]) => (
           // 条上的刻度，读屏没必要念：上面那行说明已经把名次说清楚了。

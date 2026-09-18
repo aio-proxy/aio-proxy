@@ -9,7 +9,6 @@ import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { TraceContextRail } from '../../components/trace-context-rail';
 import { TraceDetailTabs } from '../../components/trace-detail-tabs';
 import { TraceStatus } from '../../components/trace-status';
 import { useTracePercentileQuery } from '../../hooks/use-trace-percentile-query';
@@ -102,35 +101,16 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
         </div>
       }
     >
-      <div
-        className="grid min-w-0 items-start gap-8 lg:grid-cols-[minmax(16rem,0.32fr)_minmax(0,1fr)]"
-        data-testid="trace-detail-layout"
-      >
-        <TraceContextRail
-          trace={trace}
-          onSessionSelect={(session) =>
-            void navigate({
-              to: '/traces',
-              search: {
-                ...createDefaultTraceSearch(),
-                page: 1,
-                sessionSource: session.source,
-                sessionId: session.id,
-              },
-            })
-          }
-        />
-        <TraceDetailTabs
-          detail={query.data}
-          selectedSpan={selectedSpan}
-          comparison={percentileQuery.data?.comparison}
-          onSpanSelect={setSelectedSpanId}
-          // 详情路由自己没有列表的 search 参数，所以从默认区间起算，再叠上这一条属性。
-          onFilter={(patch) =>
-            void navigate({ to: '/traces', search: withTraceFilters(createDefaultTraceSearch(), patch) })
-          }
-        />
-      </div>
+      <TraceDetailTabs
+        detail={query.data}
+        selectedSpan={selectedSpan}
+        comparison={percentileQuery.data?.comparison}
+        onSpanSelect={setSelectedSpanId}
+        // 详情路由自己没有列表的 search 参数，所以从默认区间起算，再叠上这一条属性。
+        onFilter={(patch) =>
+          void navigate({ to: '/traces', search: withTraceFilters(createDefaultTraceSearch(), patch) })
+        }
+      />
     </PageContainer>
   );
 };
