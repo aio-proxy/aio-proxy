@@ -66,6 +66,9 @@ export type TwoDevice = {
   readonly engine: SyncEngine;
   readonly signal: AbortSignal;
   readonly commitProvider: (id: string, body: JsonValue, included: boolean) => Promise<void>;
+  /** Writes the configuration file directly, the way an external editor does: no commit is journaled. */
+  readonly editConfigExternally: (raw: Record<string, JsonValue>) => void;
+  readonly readConfig: () => Promise<Record<string, JsonValue>>;
   readonly removeProvider: (id: string) => Promise<void>;
   readonly queueDelete: (objectId: string, epoch: number) => void;
   readonly queuePut: (objectId: string, logicalKey: string, epoch: number, value: JsonValue) => void;
@@ -296,6 +299,12 @@ export async function withTwoSyncDevices(
             accountOperationIds: [],
           });
           await config.replace(async () => next);
+        },
+        editConfigExternally(raw) {
+          writeFileSync(configPaths[index]!, encodeCandidate(raw, configPaths[index]!));
+        },
+        async readConfig() {
+          return (await config.read()) as Record<string, JsonValue>;
         },
         async commitProvider(id, body, included) {
           const before = (await config.read()) as Record<string, JsonValue>;

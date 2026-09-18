@@ -24,7 +24,7 @@ This release does not synchronize the aio-proxy home directory, SQLite database/
 - Never upload top-level proxy, Provider proxy, their credentials, environment files, expanded environment values or machine-specific settings.
 - Preserve raw {{env.NAME}} references. API keys and management password are shared; backend connection authorization is local.
 - Merge whole entities by successful cloud submission order. Persistent tombstones defeat stale edits; restoration is explicit.
-- Cloud configuration history lasts 30 days; current state does not expire. Configuration rollback never replays old OAuth credentials.
+- Cloud configuration history lasts 30 days, capped at the newest 20 revisions per object; current state does not expire. Configuration rollback never replays old OAuth credentials.
 - Shared OAuth refresh requires confirmed remote coordination. Uncertain exchange outcomes must not cause automatic refresh-token replay.
 - Automatic multi-device OAuth activation and fully local credential detachment require adapter/version-specific verification.
 - Export only committed local state. Remote import must not echo. File and SQLite commits require recovery rather than a claimed cross-resource transaction.
@@ -172,7 +172,7 @@ A crash after reservation leaves the exact revision key discoverable. Cleanup fi
 
 | ID | Requirement |
 | --- | --- |
-| D01 | Keep committed non-current configuration revisions for 30 days from their first storage-assigned payload write time. Current is always retained. Never classify a merely reserved/staged revision as history. |
+| D01 | Keep committed non-current configuration revisions for 30 days from their first storage-assigned payload write time, up to the newest 20 — every publication appends to the head, so an often-updated object would otherwise grow it past the backend's value limit well inside that window, and the resulting `quota` is raised before cleanup can run. Current is always retained. Never classify a merely reserved/staged revision as history. |
 | D02 | Host cleanup uses storage-assigned times; a conditional non-secret maintenance nonce on the space record supplies current server time. Receipt metadata preserves the first payload write time. Clocks do not decide merge winners. Cleanup replaces expired payload records with secret-free receipts before unlinking history references. |
 | D03 | Ordinary deletion sets a permanent head tombstone, blocks new reservations/publication and disables included runtime copies. Retained configuration history remains available for 30 days. Scrub the dedicated account to a tombstone; rollback will not restore its tokens. |
 | D04 | Explicit restore runs only after deletion cleanup completes, increments the entity epoch and creates a new operation in that epoch. A cloud purge cannot restore removed secret payloads; restore uses independently retained local/new input. |

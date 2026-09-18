@@ -138,6 +138,21 @@ export function createSyncEngine(input: EngineInput): SyncEngine {
         return false;
       }
       await publishEntity(store, operation, signal);
+      assertGeneration(generation);
+      // A publication is this device accepting its own body as the cloud's current state, and only
+      // remote reconciliation recorded that. Until it did, the pass that follows this drain read the
+      // head, found a revision the row does not name as its baseline, and applied it back over the
+      // configuration — invisible while the file still holds that body, and a silent revert once an
+      // edit has moved the file on without journaling a commit of its own, which is exactly what
+      // `publishLocalDrift` exists to catch on the next pass. Recorded here, that import is the
+      // no-op it always should have been and the edit survives to be published.
+      const live = input.repo.entities(input.binding.id).find((row) => row.objectId === operation.objectId);
+      if (live !== undefined)
+        input.repo.putEntity(input.binding.id, {
+          ...live,
+          desired: operation.body,
+          baseline: operation.operationId,
+        });
     } else {
       if (superseded || head === null || head.head.state === 'deleted' || head.head.state === 'purged') {
         input.repo.acknowledge(input.binding.id, operation.operationId);

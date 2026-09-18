@@ -509,3 +509,28 @@ test('lock-release uncertainty survives close and reopen before local recovery',
     }
   });
 });
+
+test('a hand edit the runtime cannot load is not published as drift', async () => {
+  await withSyncCommitFixture(async (f) => {
+    f.repo.putEntity(f.bindingId, { ...includedEntity('provider-work', 'provider', 'work'), baseline: 'applied' });
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    const baseline = f.repo.latestConfirmedCommit(f.bindingId)?.commitId;
+
+    // Schema-invalid but syntactically fine, so the reload rejected it and kept the previous
+    // configuration. Read as authored state it declares no Provider at all, which would publish a
+    // deletion for every synchronized object and hand every peer a config the user never wrote.
+    await fsPromises.writeFile(f.configPath, encodeCandidate({ providers: null }, f.configPath));
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)).toEqual([]);
+    expect(f.repo.pendingCommits(f.bindingId)).toEqual([]);
+    expect(f.repo.latestConfirmedCommit(f.bindingId)?.commitId).toBe(baseline);
+
+    // The fix lands and the edit publishes normally.
+    await fsPromises.writeFile(
+      f.configPath,
+      encodeCandidate({ providers: { work: { kind: 'api', baseUrl: 'https://fixed.test' } } }, f.configPath),
+    );
+    await recoverLocalCommits(f.repo, f.bindingId, f.port);
+    expect(f.repo.outbox(f.bindingId)[0]).toMatchObject({ objectId: 'provider-work', kind: 'put' });
+  });
+});

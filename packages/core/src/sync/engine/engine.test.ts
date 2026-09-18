@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { deleteEntity, restoreEntity } from '../cleanup';
 import { retainsSharedOAuth } from '../oauth';
-import { encode, newHead, entityKey, revisionKey, type EntityBody } from '../protocol';
+import { decodeRevision, encode, newHead, entityKey, revisionKey, type EntityBody } from '../protocol';
 import { createSyncObjectStore, publishEntity } from '../publication';
 import { withTwoSyncDevices } from '../test-support';
 import { MAX_BACKOFF_MS, nextBackoffMs } from './scheduler';
@@ -1090,5 +1090,72 @@ test('an outbox entry over the backend value limit yields to every later object'
       ).toEqual(['huge', 'small']);
     },
     { maxValueBytes: 1024 },
+  );
+});
+
+// A commit is one file state, not one object: the projection lists every included row, so publishing
+// it whole made a device the newest writer of objects it never edited. Editing anything then reverted
+// every peer update this device had not polled yet — the offline case reverts a whole day of them.
+test('an unrelated edit does not republish an object this device never changed', async () => {
+  await withTwoSyncDevices(
+    async ({ a, b }) => {
+      await a.commitProvider('kept', { kind: 'api', apiKey: 'v1' }, true);
+      await a.commitProvider('edited', { kind: 'api', apiKey: 'v1' }, true);
+      await a.engine.reconcile(a.signal);
+      await b.engine.reconcile(b.signal);
+      await b.engine.reconcile(b.signal);
+
+      // A moves `kept` forward. B is offline and never sees it.
+      await a.commitProvider('kept', { kind: 'api', apiKey: 'v2' }, true);
+      await a.engine.reconcile(a.signal);
+
+      // B comes back and edits an unrelated Provider.
+      await b.commitProvider('edited', { kind: 'api', apiKey: 'from-b' }, true);
+      expect(b.repo.outbox(b.binding.id).map((operation) => operation.objectId)).toEqual(['provider-edited']);
+      await b.engine.reconcile(b.signal);
+      await a.engine.reconcile(a.signal);
+
+      // One revision for `kept` is A's own v1, moved into history by A's v2. A third would be B
+      // republishing v1 over it, which A would then be told to apply back over its own edit.
+      const store = createSyncObjectStore(a.session);
+      const kept = await store.readHead('provider-kept', a.signal);
+      expect(kept?.head.history).toHaveLength(1);
+      const current = await a.session.read(revisionKey('provider-kept', kept!.head.current!), a.signal);
+      expect(current.kind === 'present' && decodeRevision(current.value).body?.value).toEqual({
+        kind: 'api',
+        apiKey: 'v2',
+      });
+    },
+    { watch: false },
+  );
+});
+
+// Drift is deferred while the outbox still carries work, so the pass that drains it is also the
+// first to read the head back. Nothing recorded that this device had just written that revision, so
+// reconciliation applied it over a configuration the user had meanwhile edited by hand — an edit no
+// commit had journaled yet, and the very edit the next drift pass was supposed to publish.
+test('a queued publication does not revert an external edit made while it waited', async () => {
+  await withTwoSyncDevices(
+    async ({ a }) => {
+      await a.commitProvider('work', { kind: 'api', apiKey: 'queued' }, true);
+      expect(a.repo.outbox(a.binding.id)).toHaveLength(1);
+
+      // An external editor rewrites the file. The reload needs no normalizing write, so nothing
+      // journals a commit for it: only drift can publish this, and drift waits for the outbox.
+      a.editConfigExternally({ providers: { work: { kind: 'api', apiKey: 'edited-by-hand' } } });
+      await a.engine.reconcile(a.signal);
+      expect((await a.readConfig())['providers']).toEqual({ work: { kind: 'api', apiKey: 'edited-by-hand' } });
+
+      // And the next pass publishes it, rather than the body that overwrote it.
+      await a.engine.reconcile(a.signal);
+      const store = createSyncObjectStore(a.session);
+      const head = await store.readHead('provider-work', a.signal);
+      const current = await a.session.read(revisionKey('provider-work', head!.head.current!), a.signal);
+      expect(current.kind === 'present' && decodeRevision(current.value).body?.value).toEqual({
+        kind: 'api',
+        apiKey: 'edited-by-hand',
+      });
+    },
+    { watch: false },
   );
 });

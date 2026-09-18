@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { isEqual } from 'es-toolkit/predicate';
 
+import { parseRuntimeConfig } from '../../config';
 import type { CommittedSource } from '../projection';
 import { authoredPluginPackages, projectCommitted, seedAuthoredEntities } from '../projection';
 import type { LocalEntity } from '../repository';
@@ -64,15 +65,25 @@ function committedOperations(
   bindingId: string,
 ): OutboxOperation[] {
   const entities = repo.entities(bindingId);
+  const byObjectId = new Map(entities.map((entity) => [entity.objectId, entity]));
   const projection = projectCommitted(source, entities);
-  const puts = [...projection.entities].map(([objectId, body]) => ({
-    operationId: operationId(commitId, objectId),
-    objectId,
-    epoch: entities.find((entity) => entity.objectId === objectId)?.epoch ?? 0,
-    kind: 'put' as const,
-    body,
-    commitId,
-  }));
+  const puts = [...projection.entities]
+    // A commit is one file state, not one object, so the projection describes every included row —
+    // including the ones this commit did not touch. Publishing those republishes whatever this device
+    // last accepted, which makes it the newest writer of an object it never edited: a peer's update
+    // this device has not polled yet is reverted by an unrelated edit, and independent objects stop
+    // merging independently. `desired` is exactly the body this device accepted as the cloud's current
+    // state, so a put matching it can only be a no-op or that revert. Anything else — an edit, a row
+    // that never reconciled, a body held back as pending — still publishes.
+    .filter(([objectId, body]) => !isEqual(byObjectId.get(objectId)?.desired, body))
+    .map(([objectId, body]) => ({
+      operationId: operationId(commitId, objectId),
+      objectId,
+      epoch: byObjectId.get(objectId)?.epoch ?? 0,
+      kind: 'put' as const,
+      body,
+      commitId,
+    }));
   const deletes = entities
     .filter((entity) => entity.mode === 'included' && entity.baseline !== null && !authoredEntity(source, entity))
     .filter((entity) => !projection.entities.has(entity.objectId))
@@ -209,6 +220,17 @@ async function publishLocalDrift(repo: SyncRepository, bindingId: string, port: 
   if (latest !== null && afterDigest === latest.afterDigest) return;
   const source = await port.committedSource();
   port.assertCurrent?.();
+  // Drift is the one path that ingests a file nobody validated: every other commit is journaled by
+  // the writer that already loaded its candidate. A hand edit the runtime rejected still parses as
+  // JSON — `"providers": null` is an object — and the projection reads it as a configuration that
+  // authors nothing, so this would publish a deletion for every synchronized object and every peer
+  // would apply it. The runtime kept the previous configuration, so nothing in this file is live;
+  // wait for the edit that fixes it.
+  try {
+    parseRuntimeConfig(source.raw);
+  } catch {
+    return;
+  }
   if (latest === null) {
     seedBaseline(repo, bindingId, afterDigest, source);
     return;
