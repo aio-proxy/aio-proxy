@@ -102,9 +102,14 @@ function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraf
 }
 
 /**
- * 单跳单方向保留的 body 上限。抓包是诊断视图，不是下载通道：一个流式大 body 原样
- * 拼出来能让代理进程多吃几百 MB，再把同样大的 JSON 推给浏览器 —— 而代理本身还在服务
- * 线上流量。超过就裁，并标 `truncated` 让面板说明白。`byteLength` 仍报日志里的真实大小。
+ * 单跳单方向保留的 body 上限，单位是 **JS 字符（UTF-16 code unit）不是字节**：同样 1M 个
+ * 字符，ASCII 序列化出来约 1 MB，中日韩约 3 MB，emoji 最多 4 MB；而且这是每跳每方向各一份，
+ * 一次带 N 次重试的调用链最多有 (1 + N) 份响应正文。按字符计是因为它直接约束进程堆，按字节
+ * 精确切要 encode/slice/decode 走一圈，等于把这个上限想省下的分配又付一遍。
+ *
+ * 抓包是诊断视图，不是下载通道：一个流式大 body 原样拼出来能让代理进程多吃几百 MB，再把
+ * 同样大的 JSON 推给浏览器 —— 而代理本身还在服务线上流量。超过就裁，并标 `truncated` 让面板
+ * 说明白。`byteLength` 仍报日志里的真实大小。
  */
 const MAX_BODY_TEXT = 1_048_576;
 
