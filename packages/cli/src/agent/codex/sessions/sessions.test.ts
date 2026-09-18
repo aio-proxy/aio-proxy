@@ -223,6 +223,76 @@ test('previews existing history before the first managed marker is created', asy
   }
 });
 
+test('discovers and migrates paginated JSONL history from Codex home without sqlite_home', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-paginated-home-'));
+  const sessionId = '01a0b016-5b69-7d91-ba8a-4af6145d4e69';
+  const paginatedRollout = (provider: string) =>
+    `${JSON.stringify({ type: 'turn_context', payload: { model_provider: provider } })}\n${JSON.stringify({ type: 'session_meta', payload: { id: sessionId, model_provider: provider } })}\n`;
+  try {
+    const location = resolveCodexLocation(root, { HOME: root });
+    await prepareMarker(location);
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const rolloutPath = join(root, 'sessions', 'paginated-history.jsonl');
+    await writeFile(rolloutPath, paginatedRollout('newapi'));
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(sessionId, 'newapi', 'paginated', 0, rolloutPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    expect(preview.blocked).toEqual([]);
+    expect(preview.groups).toEqual([{ providerId: 'newapi', active: 1, archived: 0 }]);
+    expect(preview.targets).toHaveLength(1);
+    const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    expect(migrated.status).toBe('completed');
+    expect(await readFile(rolloutPath, 'utf8')).toContain('"model_provider":"aio-proxy"');
+    const migratedDb = new Database(join(root, 'state_5.sqlite'));
+    expect(migratedDb.query('SELECT model_provider FROM threads WHERE id = ?').get(sessionId)).toEqual({
+      model_provider: 'aio-proxy',
+    });
+    migratedDb.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('migrates valid paginated history when a sibling rollout is unreadable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-skip-blocked-'));
+  const blockedId = '22222222-2222-4222-8222-222222222222';
+  try {
+    const location = resolveCodexLocation(root, { HOME: root });
+    await prepareMarker(location);
+    await mkdir(join(root, 'sessions'), { recursive: true });
+    const validPath = join(root, 'sessions', 'valid-history.jsonl');
+    const blockedPath = join(root, 'sessions', 'blocked-history.jsonl');
+    await writeFile(validPath, rollout('newapi'));
+    await writeFile(
+      blockedPath,
+      `${JSON.stringify({ type: 'session_meta', payload: { id: blockedId, model_provider: 'newapi' } })}\n${JSON.stringify({ type: 'session_meta', payload: { id: blockedId, model_provider: 'newapi' } })}\n`,
+    );
+    const db = new Database(join(root, 'state_5.sqlite'));
+    db.exec(
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
+    );
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'newapi', 'paginated', 0, validPath);
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(blockedId, 'newapi', 'paginated', 0, blockedPath);
+    db.close();
+    setSessionTestDeps({ offlineCheck: async () => 'ok' });
+    const preview = await inspectCodexSessions(location);
+    expect(preview.blocked.map((item) => item.id)).toEqual([blockedId]);
+    expect(preview.targets.map((target) => target.id)).toEqual([id]);
+    const migrated = await migrateCodexSessions({ location, targets: preview.targets, targetProviderId: 'aio-proxy' });
+    expect(migrated.status).toBe('partial');
+    expect(migrated.conflicts).toBe(1);
+    expect(await readFile(validPath, 'utf8')).toContain('"model_provider":"aio-proxy"');
+    expect(await readFile(blockedPath, 'utf8')).toContain('"model_provider":"newapi"');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('previews and migrates ordinary legacy history using config-declared sqlite_home', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-config-sqlite-'));
   try {
@@ -405,14 +475,12 @@ test('blocks unverified formats, duplicate IDs, and an invalid managed marker wi
     db.exec(
       'CREATE TABLE threads (id TEXT, model_provider TEXT, history_mode TEXT, archived INTEGER, rollout_path TEXT)',
     );
-    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'paginated', 0, rolloutPath);
+    db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'future', 0, rolloutPath);
     db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'legacy', 0, rolloutPath);
     db.query('INSERT INTO threads VALUES (?, ?, ?, ?, ?)').run(id, 'source-proxy', 'legacy', 0, secondRolloutPath);
     db.close();
     const preview = await inspectCodexSessions(location);
-    expect(preview.blocked.map((item) => item.reason)).toContain(
-      'paginated history format is not verified for offline migration',
-    );
+    expect(preview.blocked.map((item) => item.reason)).toContain('unknown_history_mode');
     expect(preview.blocked.map((item) => item.reason)).toContain('duplicate_session_id');
     expect(preview.targets).toHaveLength(0);
     expect(JSON.stringify(preview)).not.toContain(root);
