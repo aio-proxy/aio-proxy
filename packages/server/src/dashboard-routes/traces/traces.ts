@@ -149,6 +149,8 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
         await readTraceWireLog({
           requestId: detail.trace.requestId,
           startedAt: new Date(detail.trace.startedAt),
+          // 跨本地零点的请求后半截写在第二天的文件里，结束时刻决定了要不要连那个也扫
+          ...(detail.trace.endedAt === null ? {} : { endedAt: new Date(detail.trace.endedAt) }),
           logging,
           logDir: logging?.dir ?? join(aioHome(), 'logs'),
         }),

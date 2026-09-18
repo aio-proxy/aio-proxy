@@ -322,4 +322,35 @@ describe('readTraceWireLog', () => {
 
     expect(body).toEqual({ available: false, reason: 'missing', retentionDays: 7, hops: [] });
   });
+
+  // 23:59 开始、00:02 结束的流式请求：入站快照在昨天的文件里，响应分块和终止事件在今天的。
+  // 只按起点开一个文件就只能拿到半截 body，而且响应里没有任何迹象说明少了东西。
+  // 时刻用本地时间构造：文件名本来就是按本地日期滚的，测试不能自己换算成 UTC。
+  test('scans the next day too when the request crossed local midnight', async () => {
+    const startedAt = new Date(2026, 6, 27, 23, 59, 30);
+    const endedAt = new Date(2026, 6, 28, 0, 2, 0);
+    const chunk = (sequence: number, text: string) =>
+      logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence, text });
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-midnight-'));
+    await Bun.write(join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`), inboundSnapshot + chunk(0, 'before'));
+    await Bun.write(join(dir, `${format(endedAt, 'yyyy-MM-dd')}.log`), chunk(1, 'after'));
+    const read = async (ended: Date | undefined) =>
+      DashboardTraceWireResponseSchema.parse(
+        await readTraceWireLog({
+          requestId: REQUEST_ID,
+          startedAt,
+          ...(ended === undefined ? {} : { endedAt: ended }),
+          logging: DEBUG_LOGGING,
+          logDir: dir,
+        }),
+      );
+
+    const crossed = await read(endedAt);
+    // 还在跑的调用链没有结束时刻，就只该扫起点那天 —— 不能顺手多读一天。
+    const running = await read(undefined);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(crossed.hops[0]?.request?.body?.text).toBe('beforeafter');
+    expect(running.hops[0]?.request?.body?.text).toBe('before');
+  });
 });
