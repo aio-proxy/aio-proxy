@@ -11,16 +11,24 @@ function traceIdOf(id: number): string {
   return id.toString(16).padStart(32, '0');
 }
 
-/** 一条已结束的成功根调用链，起点落在 now 之前 `agoMs` 毫秒。 */
+/** 一条根调用链，起点落在 now 之前 `agoMs` 毫秒，默认已结束且成功。 */
 function seedTrace(
   store: TraceStore,
-  seed: { readonly id: number; readonly durationMs: number; readonly modelId?: string; readonly agoMs?: number },
+  seed: {
+    readonly id: number;
+    readonly durationMs: number;
+    readonly modelId?: string;
+    readonly agoMs?: number;
+    readonly outcome?: 'success' | 'error' | 'running';
+  },
 ): void {
   const traceId = traceIdOf(seed.id);
   const spanId = seed.id.toString(16).padStart(16, '0');
   const modelId = seed.modelId ?? 'model-a';
   const startedAt = new Date(NOW.getTime() - (seed.agoMs ?? 60_000));
   const endedAt = new Date(startedAt.getTime() + seed.durationMs);
+  const outcome = seed.outcome ?? 'success';
+  const failed = outcome === 'error';
   const attributes = {
     'aio_proxy.request.id': `request-${seed.id}`,
     'aio_proxy.protocol.inbound': 'openai-response',
@@ -28,16 +36,53 @@ function seedTrace(
     'gen_ai.response.model': modelId,
     'aio_proxy.route.final_provider_id': 'provider-a',
   };
-  store.startRoot(rootStart({ traceId, spanId, requestId: `request-${seed.id}`, startedAt, attributes }));
+  store.startRoot(
+    rootStart({
+      traceId,
+      spanId,
+      requestId: `request-${seed.id}`,
+      startedAt,
+      // 开跑时还不知道响应模型：final_model_id 只有 complete 才会写，这里不许提前给。
+      attributes: {
+        'aio_proxy.request.id': `request-${seed.id}`,
+        'aio_proxy.protocol.inbound': 'openai-response',
+        'gen_ai.request.model': modelId,
+      },
+    }),
+  );
+  // 只 startRoot 不 complete，就是一条还在跑的调用链
+  if (outcome === 'running') return;
   store.complete(
     completion({
       traceId,
       rootSpanId: spanId,
       spans: [
-        rootSpan({ traceId, spanId, startedAt, endedAt, attributes }),
-        attemptSpan({ traceId, spanId: `${spanId.slice(1)}f`, parentSpanId: spanId, startedAt, endedAt }),
+        rootSpan({
+          traceId,
+          spanId,
+          startedAt,
+          endedAt,
+          attributes,
+          statusCode: failed ? 2 : 0,
+          ...(failed ? { terminationReason: 'failure' as const } : {}),
+        }),
+        // attempt span 必须带上 `gen_ai.response.model`：线上就是这么发的，而投影把它无条件
+        // 写进 final_model_id 列。少了它，attempt 行就满足不了样本过滤的其余条件，
+        // 于是根 span 守卫被删掉也照样绿 —— 而线上每条调用链都会被数两遍。
+        attemptSpan({
+          traceId,
+          spanId: `${spanId.slice(1)}f`,
+          parentSpanId: spanId,
+          startedAt,
+          endedAt,
+          attributes: { 'aio_proxy.attempt.index': 0, 'gen_ai.response.model': modelId },
+        }),
       ],
-      summary: { finalProviderId: 'provider-a', finalModelId: modelId, finalHttpStatus: 200 },
+      summary: {
+        finalProviderId: 'provider-a',
+        finalModelId: modelId,
+        finalHttpStatus: failed ? 500 : 200,
+      },
     }),
   );
 }
@@ -128,6 +173,22 @@ test('counts neighbours that came after the trace, not only before it', () => {
       maxMs: 1_000,
       percentile: 0,
     });
+  });
+});
+
+// 样本必须是「成功且已结束」的那一批。失败的调用链通常几毫秒就死，混进来会把 p50/minMs
+// 一起拖下去，让每个正常请求都显得慢；还在跑的那条则只给 count(*) 添一笔、不贡献时长，
+// 30 条里混 5 条在途就会报出一个 25 个样本的分布。
+test('samples only the successful traces in the window', () => {
+  withStore((store) => {
+    for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: 1_000 });
+    for (let id = 41; id <= 45; id += 1) seedTrace(store, { id, durationMs: 5, outcome: 'error' });
+    for (let id = 51; id <= 55; id += 1) seedTrace(store, { id, durationMs: 0, outcome: 'running' });
+
+    const comparison = store.percentile(traceIdOf(1)).comparison;
+
+    expect(comparison?.sampleCount).toBe(30);
+    expect(comparison?.minMs).toBe(1_000);
   });
 });
 
