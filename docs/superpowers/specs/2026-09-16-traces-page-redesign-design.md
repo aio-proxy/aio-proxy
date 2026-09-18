@@ -91,7 +91,8 @@ chip 上的圆点用状态色标成功/失败。选中后下方显示该跳的�
 ### 2.3 抓包从哪来
 
 `server.logging.enabled: true` 且 `level: debug` 时，`createObservedFetch` 与 `observeInboundRequest`
-已经把完整线级抓包写进 `~/.aio-proxy/logs/*.jsonl`（`jsonLinesFormatter`，按天滚动）：
+已经把完整线级抓包写进 `<logDir>/YYYY-MM-DD.log`（`jsonLinesFormatter`，按**本地时区**每天滚一个文件；
+`logDir` 默认 `~/.aio-proxy/logs`）：
 
 | event | 内容 |
 |---|---|
