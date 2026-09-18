@@ -10,7 +10,20 @@ export type HttpResponseMetadata = {
 };
 
 const REDACTED = '[REDACTED]';
-const credentialHeaders = new Set(['authorization', 'x-api-key']);
+/**
+ * 凭据头一律不落盘。除了 Bearer，各家上游还各有自己的 key 头（Anthropic `x-api-key`、
+ * Google `x-goog-api-key`、Azure `api-key`），cookie 则是会话凭据 —— 拿到就能冒充。
+ * 抓包接口会把这里记下的 headers 原样送进浏览器，所以宁可多脱一个也别漏一个。
+ */
+const credentialHeaders = new Set([
+  'authorization',
+  'proxy-authorization',
+  'x-api-key',
+  'api-key',
+  'x-goog-api-key',
+  'cookie',
+  'set-cookie',
+]);
 
 export function requestMetadata(request: Request): HttpRequestMetadata {
   try {
