@@ -5,13 +5,16 @@ import { headersField, numberField, stringField, type WireEvent } from './parse-
 
 type BodyOutcome = 'complete' | 'cancelled' | 'error';
 
-type BodyDraft = {
-  readonly chunks: { readonly sequence: number; readonly text: string }[];
+export type BodyDraft = {
+  /** 按 `sequence` 升序、已经裁到预算以内的分块；`kept` 是它们的字符数之和。 */
+  readonly chunks: { readonly sequence: number; text: string }[];
+  kept: number;
+  truncated?: boolean;
   byteLength?: number;
   outcome?: BodyOutcome;
 };
 
-type HopDraft = {
+export type HopDraft = {
   readonly id: string;
   readonly kind: 'inbound' | 'attempt';
   attemptIndex?: number;
@@ -28,13 +31,18 @@ type HopDraft = {
   responseBody?: BodyDraft;
 };
 
+/** 逐跳草稿；读取侧一行一行往里灌，读完再 `finalizeHops`。 */
+export type HopDrafts = Map<string, HopDraft>;
+
 const BODY_OUTCOMES = new Set<string>(['complete', 'cancelled', 'error']);
 const INBOUND_HOP_ID = 'inbound';
 
-/** 事件流 -> 逐跳视图：`inbound` 在前，attempt 按 `attemptIndex` 升序。 */
-export function buildHops(events: readonly WireEvent[]): DashboardTraceWireHop[] {
-  const drafts = new Map<string, HopDraft>();
-  for (const event of events) applyEvent(drafts, event);
+export function createHopDrafts(): HopDrafts {
+  return new Map();
+}
+
+/** 草稿 -> 逐跳视图：`inbound` 在前，attempt 按 `attemptIndex` 升序。 */
+export function finalizeHops(drafts: HopDrafts): DashboardTraceWireHop[] {
   const ordered = sortBy(
     [...drafts.values()],
     [(draft) => (draft.kind === 'inbound' ? 0 : 1), (draft) => draft.attemptIndex ?? 0],
@@ -42,7 +50,7 @@ export function buildHops(events: readonly WireEvent[]): DashboardTraceWireHop[]
   return ordered.map(finalizeHop);
 }
 
-function applyEvent(drafts: Map<string, HopDraft>, event: WireEvent): void {
+export function applyWireEvent(drafts: HopDrafts, event: WireEvent): void {
   const eventName = event['event'];
   if (eventName === 'request.inbound_snapshot') {
     const hop = inboundHop(drafts);
@@ -81,10 +89,10 @@ function applyEvent(drafts: Map<string, HopDraft>, event: WireEvent): void {
 }
 
 function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraft {
-  const draft = body ?? { chunks: [] };
+  const draft = body ?? { chunks: [], kept: 0 };
   if (event['event'] === 'request.body_chunk') {
     const text = event['text'];
-    if (typeof text === 'string') draft.chunks.push({ sequence: numberField(event, 'sequence') ?? 0, text });
+    if (typeof text === 'string') keepChunk(draft, numberField(event, 'sequence') ?? 0, text);
     return draft;
   }
   draft.byteLength = numberField(event, 'byteLength');
@@ -93,7 +101,58 @@ function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraf
   return draft;
 }
 
-function inboundHop(drafts: Map<string, HopDraft>): HopDraft {
+/**
+ * 单跳单方向保留的 body 上限。抓包是诊断视图，不是下载通道：一个流式大 body 原样
+ * 拼出来能让代理进程多吃几百 MB，再把同样大的 JSON 推给浏览器 —— 而代理本身还在服务
+ * 线上流量。超过就裁，并标 `truncated` 让面板说明白。`byteLength` 仍报日志里的真实大小。
+ */
+const MAX_BODY_TEXT = 1_048_576;
+
+/**
+ * 预算在**读取时**就兑现：超出上限的分块当场丢掉，事件对象随即可回收，进程峰值由上限
+ * 决定而不是由日志体积决定。放到 finalize 再裁的话，整个 body 早就全在内存里了。
+ *
+ * 日志是追加写的，同方向的分块几乎总是按 `sequence` 到达；跨零点读两个文件时才可能乱序，
+ * 所以插入保持有序、裁剪一律从尾巴上来 —— 留下的永远是最前面那一段。
+ */
+function keepChunk(draft: BodyDraft, sequence: number, text: string): void {
+  const last = draft.chunks.at(-1);
+  if (draft.kept >= MAX_BODY_TEXT && (last === undefined || sequence >= last.sequence)) {
+    // 顺序到达且预算已满：连存都不存，省下 splice 再 pop 的来回。
+    draft.truncated = true;
+    return;
+  }
+  const at =
+    last !== undefined && sequence >= last.sequence ? draft.chunks.length : insertionIndex(draft.chunks, sequence);
+  draft.chunks.splice(at, 0, { sequence, text });
+  draft.kept += text.length;
+  while (draft.kept > MAX_BODY_TEXT) {
+    const tail = draft.chunks.at(-1);
+    if (tail === undefined) break;
+    const excess = draft.kept - MAX_BODY_TEXT;
+    if (excess >= tail.text.length) {
+      draft.chunks.pop();
+      draft.kept -= tail.text.length;
+    } else {
+      tail.text = tail.text.slice(0, tail.text.length - excess);
+      draft.kept = MAX_BODY_TEXT;
+    }
+    draft.truncated = true;
+  }
+}
+
+function insertionIndex(chunks: readonly { readonly sequence: number }[], sequence: number): number {
+  let low = 0;
+  let high = chunks.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if ((chunks[mid]?.sequence ?? 0) <= sequence) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function inboundHop(drafts: HopDrafts): HopDraft {
   const existing = drafts.get(INBOUND_HOP_ID);
   if (existing !== undefined) return existing;
   const created: HopDraft = { id: INBOUND_HOP_ID, kind: 'inbound' };
@@ -101,7 +160,7 @@ function inboundHop(drafts: Map<string, HopDraft>): HopDraft {
   return created;
 }
 
-function attemptHop(drafts: Map<string, HopDraft>, event: WireEvent): HopDraft | undefined {
+function attemptHop(drafts: HopDrafts, event: WireEvent): HopDraft | undefined {
   const attemptIndex = numberField(event, 'attemptIndex');
   // attemptIndex 是这一跳的唯一身份；没有它就无处归类，只能丢掉这一行。
   if (attemptIndex === undefined) return undefined;
@@ -136,34 +195,12 @@ function finalizeHop(draft: HopDraft): DashboardTraceWireHop {
   };
 }
 
-/**
- * 单跳单方向保留的 body 上限。抓包是诊断视图，不是下载通道：一个流式大 body 原样
- * 拼出来能让代理进程多吃几百 MB，再把同样大的 JSON 推给浏览器 —— 而代理本身还在服务
- * 线上流量。超过就裁，并标 `truncated` 让面板说明白。`byteLength` 仍报日志里的真实大小。
- */
-const MAX_BODY_TEXT = 1_048_576;
-
 function finalizeBody(body: BodyDraft | undefined): BodyView {
   if (body === undefined) return undefined;
-  let text = '';
-  let truncated = false;
-  for (const chunk of sortBy(body.chunks, [(item) => item.sequence])) {
-    const room = MAX_BODY_TEXT - text.length;
-    if (room <= 0) {
-      truncated = true;
-      break;
-    }
-    if (chunk.text.length > room) {
-      // 先切再拼：单个分块自己就可能有上百 MB，整段接上去再 slice 等于白付一次内存。
-      text += chunk.text.slice(0, room);
-      truncated = true;
-      break;
-    }
-    text += chunk.text;
-  }
+  const text = body.chunks.map((chunk) => chunk.text).join('');
   return {
     text,
-    ...(truncated ? { truncated: true } : {}),
+    ...(body.truncated === true ? { truncated: true } : {}),
     ...defined({ byteLength: body.byteLength, outcome: body.outcome }),
   };
 }
