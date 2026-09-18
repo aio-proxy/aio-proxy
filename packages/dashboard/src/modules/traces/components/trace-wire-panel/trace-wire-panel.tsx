@@ -60,9 +60,10 @@ export const TraceWirePanel: React.FC<TraceWirePanelProps> = ({ side, hop }) => 
       {body !== undefined && (
         <section className="space-y-3">
           <h2 className="font-heading text-base font-semibold">{m['dashboard.traces.body']()}</h2>
-          {/* 比 brief 的 `outcome !== 'complete'` 多一个 undefined 判断：
-              服务端只在认得出结果时才写 outcome，缺失不等于截断，否则每条完整正文都挂一句假警告。 */}
-          {body.outcome !== undefined && body.outcome !== 'complete' && (
+          {/* 两种残缺都用这一句：服务端把超过单跳单方向上限的尾巴裁掉了（truncated），
+              或者这次抓包本身没收完（outcome 不是 complete）。outcome 缺失不等于截断 ——
+              服务端只在认得出结果时才写它，不判 undefined 会让每条完整正文都挂一句假警告。 */}
+          {(body.truncated === true || (body.outcome !== undefined && body.outcome !== 'complete')) && (
             <p className="text-sm text-muted-foreground" role="status">
               {m['dashboard.traces.wire_body_truncated']()}
             </p>
