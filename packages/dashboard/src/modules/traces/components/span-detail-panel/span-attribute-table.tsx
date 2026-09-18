@@ -9,12 +9,14 @@ import { SpanAttributeRow } from './span-attribute-row';
 
 interface SpanAttributeTableProps {
   readonly attributes: Readonly<Record<string, unknown>>;
+  /** Root-span attributes describe the whole trace; an attempt span's describe one hop only. */
+  readonly isRoot: boolean;
   readonly onFilter: (patch: TraceFilterPatch) => void;
 }
 
-export const SpanAttributeTable: React.FC<SpanAttributeTableProps> = ({ attributes, onFilter }) => {
+export const SpanAttributeTable: React.FC<SpanAttributeTableProps> = ({ attributes, isRoot, onFilter }) => {
   const [query, setQuery] = useState('');
-  const rows = toSpanAttributeRows(attributes, query);
+  const rows = toSpanAttributeRows(attributes, query, isRoot);
 
   return (
     <div className="space-y-2" data-testid="span-attribute-table">

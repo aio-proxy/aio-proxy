@@ -73,7 +73,11 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
                 <TabsTrigger value="links">{m['dashboard.traces.links']()}</TabsTrigger>
               </TabsList>
               <TabsContent value="attributes">
-                <SpanAttributeTable attributes={span.attributes} onFilter={onFilter} />
+                <SpanAttributeTable
+                  attributes={span.attributes}
+                  isRoot={span.spanId === trace.rootSpanId}
+                  onFilter={onFilter}
+                />
               </TabsContent>
               <TabsContent value="events" className="space-y-2">
                 {span.events.length === 0
