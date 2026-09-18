@@ -136,15 +136,46 @@ function finalizeHop(draft: HopDraft): DashboardTraceWireHop {
   };
 }
 
+/**
+ * 单跳单方向保留的 body 上限。抓包是诊断视图，不是下载通道：一个流式大 body 原样
+ * 拼出来能让代理进程多吃几百 MB，再把同样大的 JSON 推给浏览器 —— 而代理本身还在服务
+ * 线上流量。超过就裁，并标 `truncated` 让面板说明白。`byteLength` 仍报日志里的真实大小。
+ */
+const MAX_BODY_TEXT = 1_048_576;
+
 function finalizeBody(body: BodyDraft | undefined): BodyView {
   if (body === undefined) return undefined;
-  const text = sortBy(body.chunks, [(chunk) => chunk.sequence])
-    .map((chunk) => chunk.text)
-    .join('');
-  return { text, ...defined({ byteLength: body.byteLength, outcome: body.outcome }) };
+  let text = '';
+  let truncated = false;
+  for (const chunk of sortBy(body.chunks, [(item) => item.sequence])) {
+    const room = MAX_BODY_TEXT - text.length;
+    if (room <= 0) {
+      truncated = true;
+      break;
+    }
+    if (chunk.text.length > room) {
+      // 先切再拼：单个分块自己就可能有上百 MB，整段接上去再 slice 等于白付一次内存。
+      text += chunk.text.slice(0, room);
+      truncated = true;
+      break;
+    }
+    text += chunk.text;
+  }
+  return {
+    text,
+    ...(truncated ? { truncated: true } : {}),
+    ...defined({ byteLength: body.byteLength, outcome: body.outcome }),
+  };
 }
 
-type BodyView = { readonly text: string; readonly byteLength?: number; readonly outcome?: BodyOutcome } | undefined;
+type BodyView =
+  | {
+      readonly text: string;
+      readonly byteLength?: number;
+      readonly outcome?: BodyOutcome;
+      readonly truncated?: boolean;
+    }
+  | undefined;
 
 /** 去掉值为 `undefined` 的键，`.strict()` 的响应 schema 只接受真正存在的字段。 */
 function defined<T extends object>(value: T): { [K in keyof T]?: NonNullable<T[K]> } | undefined {

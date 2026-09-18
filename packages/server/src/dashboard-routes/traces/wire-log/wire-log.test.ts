@@ -180,9 +180,10 @@ describe('readTraceWireLog', () => {
   });
 
   // 一条抓包行可以比流的一个分块还长（Bun 大约 512 KB 一块），carry buffer 必须把跨块的
-  // 半行接回去 —— 这个用例是它唯一的护栏。
+  // 半行接回去 —— 这个用例是它唯一的护栏。填充量要留在单跳 body 上限以内，否则测的就
+  // 变成裁剪而不是重组了。
   test('reassembles a line that spans stream chunks', async () => {
-    const filler = 'x'.repeat(1_500_000);
+    const filler = 'x'.repeat(900_000);
     const dir = await logDirWith(
       [
         logLine({
@@ -211,6 +212,34 @@ describe('readTraceWireLog', () => {
     expect(text.startsWith('head')).toBe(true);
     expect(text.endsWith('tail')).toBe(true);
     expect(body.hops[0]?.request?.body?.outcome).toBe('complete');
+    expect(body.hops[0]?.request?.body?.truncated).toBeUndefined();
+  });
+
+  // 抓包是诊断视图：一个流式大 body 原样返回能让代理多吃几百 MB、再把同样大的 JSON
+  // 推给浏览器。裁剪必须发生在读取侧，而 byteLength 还得报日志里的真实大小。
+  test('caps the body it keeps per direction and says it was truncated', async () => {
+    const half = 'y'.repeat(700_000);
+    const dir = await logDirWith(
+      [
+        logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence: 0, text: half }),
+        logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence: 1, text: half }),
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 2,
+          byteLength: half.length * 2,
+          outcome: 'complete',
+        }),
+      ].join(''),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toHaveLength(1_048_576);
+    expect(body.hops[0]?.request?.body?.truncated).toBe(true);
+    expect(body.hops[0]?.request?.body?.byteLength).toBe(1_400_000);
   });
 
   test('skips the file entirely for a trace without a request id', async () => {
