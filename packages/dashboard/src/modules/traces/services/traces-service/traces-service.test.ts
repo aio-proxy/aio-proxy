@@ -5,14 +5,24 @@ import { createDefaultTraceSearch } from '../../lib/trace-search';
 import {
   DashboardTracesRequestError,
   getTrace,
+  getTracePercentile,
   getTraces,
   getTraceSummary,
+  getTraceWire,
+  tracePercentileQueryOptions,
   traceQueryOptions,
   tracesQueryOptions,
   traceSummaryQueryOptions,
+  traceWireQueryOptions,
 } from './traces-service';
 
-const mocks = rs.hoisted(() => ({ list: rs.fn(), detail: rs.fn(), summary: rs.fn() }));
+const mocks = rs.hoisted(() => ({
+  list: rs.fn(),
+  detail: rs.fn(),
+  summary: rs.fn(),
+  percentile: rs.fn(),
+  wire: rs.fn(),
+}));
 
 rs.mock('@/lib/dashboard-client', () => ({
   dashboardClient: {
@@ -21,7 +31,7 @@ rs.mock('@/lib/dashboard-client', () => ({
         traces: {
           $get: mocks.list,
           summary: { $get: mocks.summary },
-          ':traceId': { $get: mocks.detail },
+          ':traceId': { $get: mocks.detail, percentile: { $get: mocks.percentile }, wire: { $get: mocks.wire } },
         },
       },
     },
@@ -48,6 +58,8 @@ const summaryBody = {
   buckets: [{ at: '2026-07-12T08:00:00.000Z', success: 3, error: 1 }],
   totals: { success: 3, error: 1 },
 };
+const percentileBody = { sampleSize: 12, percentile: 87, modelId: 'gpt-5' };
+const wireBody = { available: true, hops: [] };
 
 describe('trace service', () => {
   beforeEach(() => {
@@ -57,6 +69,10 @@ describe('trace service', () => {
     mocks.list.mockResolvedValue(new Response(JSON.stringify(listBody), { status: 200 }));
     mocks.detail.mockResolvedValue(new Response(JSON.stringify(detailBody), { status: 200 }));
     mocks.summary.mockResolvedValue(new Response(JSON.stringify(summaryBody), { status: 200 }));
+    mocks.percentile.mockReset();
+    mocks.wire.mockReset();
+    mocks.percentile.mockResolvedValue(new Response(JSON.stringify(percentileBody), { status: 200 }));
+    mocks.wire.mockResolvedValue(new Response(JSON.stringify(wireBody), { status: 200 }));
   });
 
   test('forwards the page token, date bounds, and every active filter to the typed list route', async () => {
@@ -171,6 +187,23 @@ describe('trace service', () => {
     expect(traceSummaryQueryOptions(search, true).refetchInterval).toBe(5_000);
     expect(traceSummaryQueryOptions(paged, true).refetchInterval).toBe(false);
     expect(traceSummaryQueryOptions(search, false).refetchInterval).toBe(false);
+  });
+
+  test('reads the capture and the percentile from their own routes, under their own cache keys', async () => {
+    await expect(getTraceWire(traceId)).resolves.toEqual(wireBody);
+    await expect(getTracePercentile(traceId)).resolves.toEqual(percentileBody);
+    expect(mocks.wire).toHaveBeenCalledWith({ param: { traceId } });
+    expect(mocks.percentile).toHaveBeenCalledWith({ param: { traceId } });
+
+    // Sharing one key would serve each panel the other's response shape.
+    expect(traceWireQueryOptions(traceId).queryKey).not.toEqual(tracePercentileQueryOptions(traceId).queryKey);
+  });
+
+  test('never refetches a finished capture, and reuses the percentile for a minute', () => {
+    // The capture reads log files that are already on disk and will not change again; the
+    // percentile is an aggregate over a whole hour, so a per-visit recount buys nothing.
+    expect(traceWireQueryOptions(traceId).staleTime).toBe(Number.POSITIVE_INFINITY);
+    expect(tracePercentileQueryOptions(traceId).staleTime).toBe(60_000);
   });
 
   test.each([
