@@ -58,4 +58,22 @@ describe('configureLogging', () => {
       rmSync(dir, { force: true, recursive: true });
     }
   });
+
+  // 抓包面板读的是这个文件，而且读的就是刚发生的那个请求。默认缓冲下这里会读到空文件：
+  // 断言「不 reset、不等待就能读到」是这条路径唯一的护栏，别改成去读 bufferSize 选项。
+  test('makes a debug line readable from the file without waiting for a flush', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-logger-debug-'));
+    const debug = spyOn(console, 'debug').mockImplementation(() => undefined);
+    try {
+      await configureLogging({ dir, enabled: true, level: 'debug' });
+      getLogger(['aio-proxy', 'test']).debug('captured', { requestId: 'request-1' });
+
+      const files = readdirSync(dir);
+      expect(files).toHaveLength(1);
+      expect(readFileSync(join(dir, files[0]!), 'utf8')).toContain('"requestId":"request-1"');
+    } finally {
+      debug.mockRestore();
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
 });

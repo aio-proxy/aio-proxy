@@ -33,6 +33,11 @@ export async function configureLogging(config: LoggingConfig): Promise<void> {
       directory: config.dir,
       formatter: jsonLinesFormatter,
       maxAgeMs: (config.retentionDays ?? 3) * DAY_MS,
+      // debug 级别本身就是「我认了这个开销」的开关，而抓包面板要读的正是刚发生的那个请求。
+      // 默认的 8 KB 缓冲 + 5s 间隔只在**下一次写入**时才兑现：空闲的代理上最后一个请求的
+      // 抓包永远留在内存里，面板只能显示成「没有记录」。写穿一次性干掉整类陈旧问题
+      // （空抓包和被悄悄截断的 body），不必再开一个 flush 入口。其余级别保持缓冲。
+      ...(config.level === 'debug' ? { bufferSize: 0 } : {}),
     });
     sinkIds.push('file');
   }
