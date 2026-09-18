@@ -1,1 +1,1 @@
-export { traceAttribute } from './trace-attribute-names';
+export { traceAttribute, traceSpanName } from './trace-attribute-names';

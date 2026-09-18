@@ -1489,7 +1489,15 @@
       "reasoning_tokens": "추론 토큰",
       "usage_provider": "사용량 프로바이더",
       "usage_model": "사용량 모델",
-      "price_model_id": "가격 모델 ID"
+      "price_model_id": "가격 모델 ID",
+      "hop_inbound": "수신 {label}",
+      "hop_attempt": "시도 {index} {label}",
+      "hops_label": "요청 홉",
+      "wire_body_truncated": "내용이 완전히 기록되지 않았습니다",
+      "wire_hop_empty": "이 홉에는 캡처 기록이 없습니다",
+      "wire_unavailable_debug": "server.logging.enabled 를 true 로, level 을 debug 로 설정해야 와이어 캡처가 기록됩니다.",
+      "wire_unavailable_retention": "로그는 {days}일만 보관되므로 이 호출의 캡처는 이미 삭제되었습니다.",
+      "wire_open_settings": "설정 열기"
     },
     "oauth_complete": {
       "title": "인증이 완료되었습니다",
