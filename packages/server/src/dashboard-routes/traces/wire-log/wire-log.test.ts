@@ -369,6 +369,33 @@ describe('readTraceWireLog', () => {
     expect(body).toEqual({ available: false, reason: 'missing', retentionDays: 7, hops: [] });
   });
 
+  // 起止同一天 —— 线上绝大多数已结束的调用链 —— 只该开一个文件。返回 [started, ended]
+  // 两份就是把同一个文件读两遍：每个事件应用两次，body 拼成 'beforebefore'。
+  test('reads the day file once for a trace that started and ended on the same day', async () => {
+    const dir = await logDirWith(
+      inboundSnapshot +
+        logLine({
+          event: 'request.body_chunk',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          text: 'before',
+        }),
+    );
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt: STARTED_AT,
+        endedAt: new Date(STARTED_AT.getTime() + 1_000),
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toBe('before');
+  });
+
   // 23:59 开始、00:02 结束的流式请求：入站快照在昨天的文件里，响应分块和终止事件在今天的。
   // 只按起点开一个文件就只能拿到半截 body，而且响应里没有任何迹象说明少了东西。
   // 时刻用本地时间构造：文件名本来就是按本地日期滚的，测试不能自己换算成 UTC。
