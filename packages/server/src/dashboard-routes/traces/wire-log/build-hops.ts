@@ -1,0 +1,153 @@
+import type { DashboardTraceWireHop } from '@aio-proxy/types';
+import { sortBy } from 'es-toolkit/array';
+
+import { headersField, numberField, stringField, type WireEvent } from './parse-line';
+
+type BodyOutcome = 'complete' | 'cancelled' | 'error';
+
+type BodyDraft = {
+  readonly chunks: { readonly sequence: number; readonly text: string }[];
+  byteLength?: number;
+  outcome?: BodyOutcome;
+};
+
+type HopDraft = {
+  readonly id: string;
+  readonly kind: 'inbound' | 'attempt';
+  attemptIndex?: number;
+  providerId?: string;
+  modelId?: string;
+  method?: string;
+  url?: string;
+  requestHeaders?: Readonly<Record<string, string>>;
+  requestBody?: BodyDraft;
+  statusCode?: number;
+  errorType?: string;
+  durationMs?: number;
+  responseHeaders?: Readonly<Record<string, string>>;
+  responseBody?: BodyDraft;
+};
+
+const BODY_OUTCOMES = new Set<string>(['complete', 'cancelled', 'error']);
+const INBOUND_HOP_ID = 'inbound';
+
+/** 事件流 -> 逐跳视图：`inbound` 在前，attempt 按 `attemptIndex` 升序。 */
+export function buildHops(events: readonly WireEvent[]): DashboardTraceWireHop[] {
+  const drafts = new Map<string, HopDraft>();
+  for (const event of events) applyEvent(drafts, event);
+  const ordered = sortBy(
+    [...drafts.values()],
+    [(draft) => (draft.kind === 'inbound' ? 0 : 1), (draft) => draft.attemptIndex ?? 0],
+  );
+  return ordered.map(finalizeHop);
+}
+
+function applyEvent(drafts: Map<string, HopDraft>, event: WireEvent): void {
+  const eventName = event['event'];
+  if (eventName === 'request.inbound_snapshot') {
+    const hop = inboundHop(drafts);
+    hop.method = stringField(event, 'method');
+    hop.url = stringField(event, 'url');
+    hop.requestHeaders = headersField(event, 'headers');
+    return;
+  }
+  if (eventName === 'request.upstream_snapshot') {
+    const hop = attemptHop(drafts, event);
+    if (hop === undefined) return;
+    hop.method = stringField(event, 'method');
+    hop.url = stringField(event, 'url');
+    hop.requestHeaders = headersField(event, 'headers');
+    return;
+  }
+  if (eventName === 'request.upstream_result') {
+    const hop = attemptHop(drafts, event);
+    if (hop === undefined) return;
+    hop.durationMs = numberField(event, 'durationMs');
+    hop.statusCode = numberField(event, 'statusCode');
+    hop.responseHeaders = headersField(event, 'headers');
+    hop.errorType = stringField(event, 'errorType');
+    return;
+  }
+  const direction = stringField(event, 'direction');
+  const hop = direction === 'inbound' ? inboundHop(drafts) : attemptHop(drafts, event);
+  if (hop === undefined || direction === undefined) return;
+  if (direction === 'upstream_response') {
+    hop.responseBody = applyBodyEvent(hop.responseBody, event);
+    return;
+  }
+  if (direction === 'inbound' || direction === 'upstream_request') {
+    hop.requestBody = applyBodyEvent(hop.requestBody, event);
+  }
+}
+
+function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraft {
+  const draft = body ?? { chunks: [] };
+  if (event['event'] === 'request.body_chunk') {
+    const text = event['text'];
+    if (typeof text === 'string') draft.chunks.push({ sequence: numberField(event, 'sequence') ?? 0, text });
+    return draft;
+  }
+  draft.byteLength = numberField(event, 'byteLength');
+  const outcome = stringField(event, 'outcome');
+  if (outcome !== undefined && BODY_OUTCOMES.has(outcome)) draft.outcome = outcome as BodyOutcome;
+  return draft;
+}
+
+function inboundHop(drafts: Map<string, HopDraft>): HopDraft {
+  const existing = drafts.get(INBOUND_HOP_ID);
+  if (existing !== undefined) return existing;
+  const created: HopDraft = { id: INBOUND_HOP_ID, kind: 'inbound' };
+  drafts.set(INBOUND_HOP_ID, created);
+  return created;
+}
+
+function attemptHop(drafts: Map<string, HopDraft>, event: WireEvent): HopDraft | undefined {
+  const attemptIndex = numberField(event, 'attemptIndex');
+  // attemptIndex 是这一跳的唯一身份；没有它就无处归类，只能丢掉这一行。
+  if (attemptIndex === undefined) return undefined;
+  const id = `attempt-${attemptIndex}`;
+  const hop = drafts.get(id) ?? { id, kind: 'attempt' as const, attemptIndex };
+  hop.providerId ??= stringField(event, 'providerId');
+  hop.modelId ??= stringField(event, 'modelId');
+  drafts.set(id, hop);
+  return hop;
+}
+
+function finalizeHop(draft: HopDraft): DashboardTraceWireHop {
+  const request = defined({
+    method: draft.method,
+    url: draft.url,
+    headers: draft.requestHeaders,
+    body: finalizeBody(draft.requestBody),
+  });
+  const response = defined({
+    statusCode: draft.statusCode,
+    errorType: draft.errorType,
+    durationMs: draft.durationMs,
+    headers: draft.responseHeaders,
+    body: finalizeBody(draft.responseBody),
+  });
+  return {
+    id: draft.id,
+    kind: draft.kind,
+    ...defined({ attemptIndex: draft.attemptIndex, providerId: draft.providerId, modelId: draft.modelId }),
+    ...(request === undefined ? {} : { request }),
+    ...(response === undefined ? {} : { response }),
+  };
+}
+
+function finalizeBody(body: BodyDraft | undefined): BodyView {
+  if (body === undefined) return undefined;
+  const text = sortBy(body.chunks, [(chunk) => chunk.sequence])
+    .map((chunk) => chunk.text)
+    .join('');
+  return { text, ...defined({ byteLength: body.byteLength, outcome: body.outcome }) };
+}
+
+type BodyView = { readonly text: string; readonly byteLength?: number; readonly outcome?: BodyOutcome } | undefined;
+
+/** 去掉值为 `undefined` 的键，`.strict()` 的响应 schema 只接受真正存在的字段。 */
+function defined<T extends object>(value: T): { [K in keyof T]?: NonNullable<T[K]> } | undefined {
+  const entries = Object.entries(value).filter(([, item]) => item !== undefined);
+  return entries.length === 0 ? undefined : (Object.fromEntries(entries) as never);
+}
