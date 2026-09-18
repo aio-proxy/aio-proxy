@@ -61,21 +61,19 @@ export const TracesEvents: React.FC<TracesEventsProps> = ({ search, autoRefresh,
           // 抽屉里还能按别的条件筛，那时两个 chip 都不是按下态，也都不该淡出。
           const filteredOut = search.outcome !== undefined && !pressed;
           return (
-            <button
+            <Button
               key={chip.outcome}
               type="button"
+              size="sm"
+              variant={pressed ? 'secondary' : 'outline'}
               aria-pressed={pressed}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-opacity',
-                pressed && 'border-ring',
-                filteredOut && 'opacity-50',
-              )}
+              className={cn('transition-opacity', filteredOut && 'opacity-50')}
               onClick={() => onChange(withTraceFilters(search, { outcome: pressed ? undefined : chip.outcome }))}
             >
               <span className={cn('size-2 rounded-full', chip.dot)} />
               <span className="font-medium tabular-nums">{formatCount.format(chip.count)}</span>
               <span className="text-muted-foreground">{chip.label}</span>
-            </button>
+            </Button>
           );
         })}
         {/* span 常在：ml-auto 靠它把折叠按钮顶到右边，提示语只是它的内容。
