@@ -2,12 +2,13 @@ import { expect, test } from 'bun:test';
 
 import { requestMetadata, responseMetadata } from '.';
 
-test('preserves query and ordinary headers while redacting only explicit credentials', () => {
+test('preserves query and ordinary headers while redacting every credential header', () => {
   const request = new Request('https://user:pass@upstream.test/v1/responses?token=query-token&prompt=hello', {
     headers: {
       authorization: 'Bearer secret',
-      cookie: 'visible-cookie',
+      cookie: 'session=secret',
       'x-api-key': 'api-secret',
+      'x-goog-api-key': 'google-secret',
       'x-long': 'x'.repeat(700),
     },
   });
@@ -17,19 +18,20 @@ test('preserves query and ordinary headers while redacting only explicit credent
     url: 'https://upstream.test/v1/responses?token=query-token&prompt=hello',
     headers: {
       authorization: '[REDACTED]',
-      cookie: 'visible-cookie',
+      cookie: '[REDACTED]',
       'x-api-key': '[REDACTED]',
+      'x-goog-api-key': '[REDACTED]',
       'x-long': 'x'.repeat(700),
     },
   });
 });
 
-test('preserves response headers other than the two explicit credentials', () => {
+test('redacts credentials on the response side too, keeping ordinary headers', () => {
   const response = new Response(null, {
     status: 202,
     headers: {
       authorization: 'response-auth',
-      'set-cookie': 'visible-cookie',
+      'set-cookie': 'session=secret',
       'x-api-key': 'response-key',
       'x-request-id': 'visible-request-id',
     },
@@ -39,7 +41,7 @@ test('preserves response headers other than the two explicit credentials', () =>
     statusCode: 202,
     headers: {
       authorization: '[REDACTED]',
-      'set-cookie': 'visible-cookie',
+      'set-cookie': '[REDACTED]',
       'x-api-key': '[REDACTED]',
       'x-request-id': 'visible-request-id',
     },
