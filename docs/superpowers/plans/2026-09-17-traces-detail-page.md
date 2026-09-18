@@ -413,7 +413,8 @@ git add -A && git commit -m "feat(dashboard): span 属性换成可搜索的扁�
 ---
 ### Task 4: 分位对比条
 
-「与最近 1 小时内 N 个 `<model>` 请求相比 — 处于 pXX」。聚合走 SQL，样本不足 30 条时整块不渲染。
+「与前后 1 小时内 N 个 `<model>` 请求相比 — 处于 pXX」。聚合走 SQL，样本不足 30 条时整块不渲染。
+窗口锚在该调用链自己的 `startedAt` 上，不是看的人此刻的时间。
 
 **Files:**
 - Modify: `packages/types/src/trace.ts`
@@ -459,7 +460,10 @@ export const DashboardTracePercentileResponseSchema = z
 SQL 口径（全部只看根 span，`isNull(traceSpan.parentSpanId)`）：
 
 - 目标行：`traceId` 对应的根 span，取 `finalModelId` 和 `endedAt - startedAt`。目标行没结束、没有 `finalModelId`，或者本身不满足 `SUCCEEDED` 时，直接返回 `{ comparison: null }`。
-- 样本集：`SUCCEEDED` + `finalModelId = 目标模型` + `startedAt >= now - 3600_000` + `startedAt <= now`。命中 `trace_span_root_model_started_idx`。
+- 样本集：`SUCCEEDED` + `finalModelId = 目标模型` + 落在目标行 `startedAt` 前后各 `WINDOW_MS` 之内。
+  窗口锚在**这条调用链自己的时间**上，不是看的人此刻的时间 —— 否则打开一条四天前的调用链，
+  是拿它跟刚才这一小时的流量比，它压根不在那批样本里，耗时超出 `[minMs, maxMs]` 还会被 clamp
+  悄悄按在条的端点上，显示成「最慢的一个」。
 - 一条聚合 SQL 拿 `count(*)` / `min(d)` / `max(d)` / `sum(case when d < 目标 then 1 else 0 end)`，其中 `d = ended_at - started_at`。
 - `percentile = sampleCount === 0 ? 0 : (lower / sampleCount) * 100`，四舍五入到整数。
 - p50 / p95 各一条 `select d ... order by d limit 1 offset n`，`n = Math.min(sampleCount - 1, Math.floor(sampleCount * 0.5 | 0.95))`。
