@@ -58,8 +58,9 @@ const detail: DashboardTraceDetail = {
   },
 };
 
-const inboundChip = /^(Inbound|入站) codex-cli$/u;
-const secondAttemptChip = /^(Attempt|尝试|嘗試|試行|시도) ?2 openai-backup$/u;
+// chip 的可读名字末尾还带一个只给读屏的成败词，所以这里不锚右端。
+const inboundChip = /^(Inbound|入站) codex-cli\b/u;
+const secondAttemptChip = /^(Attempt|尝试|嘗試|試行|시도) ?2 openai-backup\b/u;
 
 beforeEach(() => {
   mocks.wire = { available: true, hops: [] };
