@@ -107,6 +107,8 @@ rs.mock('../../hooks/use-trace-percentile-query', () => ({
   useTracePercentileQuery: () => ({ data: { comparison: mocks.comparison } }),
 }));
 
+rs.mock('../../hooks/use-trace-wire-query', () => ({ useTraceWireQuery: () => ({ data: undefined }) }));
+
 rs.mock('../../hooks/use-trace-query', () => ({
   useTraceQuery: () => {
     if (mocks.mode === 'loading') return { isLoading: true, isError: false, refetch: mocks.refetch };
@@ -230,19 +232,20 @@ describe('trace detail page', () => {
     expect(within(rail).getByText('15')).toBeInTheDocument();
   });
 
-  test('opens on Detail and switches to the safe request and response diagnostics', () => {
+  test('opens on Detail and switches to the per-hop request and response views', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
     expect(screen.getByRole('tab', { name: /^Detail$|^详情$/u })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByTestId('trace-span')).toHaveLength(3);
     expect(within(screen.getByTestId('span-detail-panel')).getByText('aio_proxy.request')).toBeInTheDocument();
 
+    // 抓包没加载出来时（这里的 hook 桩子固定返回 undefined）只说这一跳没有记录，不去猜。
     fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
-    expect(screen.getByRole('heading', { name: /^Headers$|^标头$/u })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /^Body$|^正文$/u })).toBeInTheDocument();
-    expect(screen.getByText('diagnostics-test/1.0')).toBeInTheDocument();
-    expect(screen.getByText('35')).toBeInTheDocument();
+    const hops = screen.getByRole('group', { name: /^Request hops$|^请求链路$/u });
+    expect(within(hops).getByRole('button', { name: /openai-prompt-cache/u })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status')).toBeInTheDocument();
 
+    // 入站的响应体从来不进抓包，所以这一格仍然是常开的 allowlist 诊断。
     fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
     expect(screen.getByRole('tab', { name: /^Response$|^响应$/u })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByRole('heading', { name: /^Headers$|^标头$/u }).length).toBeGreaterThan(0);
@@ -253,15 +256,12 @@ describe('trace detail page', () => {
     expect(screen.getByText('24')).toBeInTheDocument();
   });
 
-  test.each([
-    ['request', /^Request$|^请求$/u, /Request diagnostics are unavailable|请求诊断不可用/u],
-    ['response', /^Response$|^响应$/u, /Response diagnostics are unavailable|响应诊断不可用/u],
-  ])('shows a precise unavailable state for missing %s diagnostics', (_side, tabName, unavailable) => {
+  test('shows a precise unavailable state for missing response diagnostics', () => {
     mocks.data = { ...detail, diagnostics: undefined };
     render(<TraceDetailPage traceId={traceId} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: tabName }));
-    expect(screen.getByText(unavailable)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
+    expect(screen.getByText(/Response diagnostics are unavailable|响应诊断不可用/u)).toBeInTheDocument();
   });
 
   test.each(['terminal', 'loading', 'not-found', 'error'])(

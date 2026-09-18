@@ -14,6 +14,10 @@ type DashboardTracePercentileResponse = InferResponseType<
   (typeof dashboardClient.dashboard.api.traces)[':traceId']['percentile']['$get'],
   200
 >;
+type DashboardTraceWireResponse = InferResponseType<
+  (typeof dashboardClient.dashboard.api.traces)[':traceId']['wire']['$get'],
+  200
+>;
 
 export class DashboardTracesRequestError extends Error {
   constructor(readonly status: number) {
@@ -43,6 +47,14 @@ export const tracePercentileQueryOptions = (traceId: string) =>
     queryKey: queryKeys.tracePercentile(traceId),
     queryFn: () => getTracePercentile(traceId),
     staleTime: 60_000,
+  });
+
+// 抓包读的是已经落盘的历史日志，同一条调用链不会再变，所以永不过期。
+export const traceWireQueryOptions = (traceId: string) =>
+  queryOptions({
+    queryKey: queryKeys.traceWire(traceId),
+    queryFn: () => getTraceWire(traceId),
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
 const toSummaryFilters = (search: TraceSearch) => omit(search, ['pageSize', 'pageToken']);
@@ -91,6 +103,12 @@ export const getTrace = async (traceId: string): Promise<DashboardTraceResponse>
 
 export const getTracePercentile = async (traceId: string): Promise<DashboardTracePercentileResponse> => {
   const response = await dashboardClient.dashboard.api.traces[':traceId'].percentile.$get({ param: { traceId } });
+  if (!response.ok) throw new DashboardTracesRequestError(response.status);
+  return response.json();
+};
+
+export const getTraceWire = async (traceId: string): Promise<DashboardTraceWireResponse> => {
+  const response = await dashboardClient.dashboard.api.traces[':traceId'].wire.$get({ param: { traceId } });
   if (!response.ok) throw new DashboardTracesRequestError(response.status);
   return response.json();
 };

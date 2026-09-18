@@ -1,6 +1,11 @@
-// OTel attribute keys copied verbatim from `attributeName` in
+// OTel names copied verbatim from `spanName` in
 // `packages/server/src/request-tracing/semantic.ts`. The dashboard cannot import it:
 // `@aio-proxy/server` only exports its root entry.
+export const traceSpanName = {
+  attempt: 'aio_proxy.provider.attempt',
+} as const;
+
+// OTel attribute keys copied verbatim from `attributeName` in the same module.
 export const traceAttribute = {
   attemptIndex: 'aio_proxy.attempt.index',
   requestId: 'aio_proxy.request.id',

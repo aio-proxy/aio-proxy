@@ -1,9 +1,6 @@
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 
-import { traceAttribute } from '../trace-attribute-names';
-
-// Copied verbatim from `spanName.attempt` in `packages/server/src/request-tracing/semantic.ts`.
-const ATTEMPT_SPAN_NAME = 'aio_proxy.provider.attempt';
+import { traceAttribute, traceSpanName } from '../trace-attribute-names';
 
 export interface SpanMetrics {
   readonly httpStatus: number | undefined;
@@ -48,7 +45,7 @@ export const readSpanMetrics = (input: {
   const { span, spans, trace } = input;
   const attributes = span.attributes;
   const isRoot = span.spanId === trace.rootSpanId;
-  const attemptCount = spans.filter((candidate) => candidate.name === ATTEMPT_SPAN_NAME).length;
+  const attemptCount = spans.filter((candidate) => candidate.name === traceSpanName.attempt).length;
 
   return {
     httpStatus: numberAttribute(attributes, traceAttribute.httpStatusCode),

@@ -1495,7 +1495,15 @@
       "reasoning_tokens": "推理 Token",
       "usage_provider": "用量提供商",
       "usage_model": "用量模型",
-      "price_model_id": "計價模型 ID"
+      "price_model_id": "計價模型 ID",
+      "hop_inbound": "入站 {label}",
+      "hop_attempt": "嘗試{index} {label}",
+      "hops_label": "請求鏈路",
+      "wire_body_truncated": "內容未完整記錄",
+      "wire_hop_empty": "這一跳沒有抓包記錄",
+      "wire_unavailable_debug": "需要把 server.logging.enabled 設為 true、level 設為 debug 才會記錄線級抓包。",
+      "wire_unavailable_retention": "日誌只保留 {days} 天，這條呼叫鏈的抓包已經滾掉了。",
+      "wire_open_settings": "開啟設定"
     },
     "oauth_complete": {
       "title": "授權已完成",
