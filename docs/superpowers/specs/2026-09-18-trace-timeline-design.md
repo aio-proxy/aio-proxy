@@ -1,35 +1,100 @@
-# 调用链时间线：统一时间戳契约 + 标量锚定 + 分段柱
+# 调用链：对齐 OTel 语义约定的完整 span 树
 
 日期：2026-09-18
 所属 PR：`claude/traces-detail-page`
 
+## 这一版改了什么
+
+本文件上一版结论是「修时间戳契约，不新增 span 与事件」，落地形态是 2 行 + 分段柱，
+并在末尾留了一个待拍板项：要不要凑够 demo 的 9 行。
+
+**该项已拍板：建树。** 随后的规范核查又推翻了原方案的几处前提，所以整篇重写。
+
+- 保留：全部实测数字、三个已验证事实、「不发里程碑事件」「不做故障位置推断」等结论。
+- 反转：新增 span、GenAI 语义层、属性改名。
+- 作废：`startTime` 回填方案（被重排顺序取代，见「陷阱已消失」）。
+
 ## 背景
 
-改版 demo 画了一棵九行的瀑布树（`POST /v1/messages` → `route.resolve` → `provider.*` →
-`http.request` / `stream.ttft` / `stream.body` → `usage.record`）。真实数据不是这样。
+改版 demo 画了一棵九行的瀑布树。真实数据不是这样。
 
 生产库（41,024 span / ~18.5k trace）实测每 trace 的 span 数：1 个的 25 条，
 2 个（root + 一次尝试）的 14,946 条，3 个的 3,208 条，4 个的 350 条，5 个的 21 条。
 只有四个 span 名被写过。约 80% 的 trace 渲染成两根柱子。
 
-## 核心问题：标量的原点不是 span 的起点
+`semantic.ts` 里有 11 个 `spanName` 常量，生成路径上只有 `request` 和 `attempt` 会被真正
+创建。**另外七个不是垃圾，是这棵树没接线的设计。**
 
-demo 想要的分段耗时确实已经被记下来了，但**不是记在 span 时间轴上**：
+## 规范依据
 
-- `attempt.ts` 候选循环先取 `startedAt = performance.now()`，用它建 observation。
-- `response-observation.ts:59`：所有标量都是 `elapsed(at) = at - options.startedAt`。
-- `usage-capture` 的 `ttftMs = firstTokenAt - startedAt`，同一个原点。
-- 但 attempt span 是**之后**才建的：`model.ts:24-41` 先 `await prepareModelInvocation()`、
-  再 `assertCandidateSupported()`、再打诊断日志，最后才 `startAttempt()`。
-  `emit.ts:46` 的 `startAttempt` 不传 `startTime`，OTel 取「建 span 那一刻」。
+GenAI 语义约定已迁到 `open-telemetry/semantic-conventions-genai`（`gen_ai.*` 在 1.43.0
+主包里标 `@deprecated Moved to…`，是迁移不是删除）。以下为原文：
 
-设 observation 原点为 `t0`，span 起点为 `s = t0 + δ`。响应头的真实位置是 `t0 + H`，
-即 `s + (H − δ)`，而不是 `span.startedAt + H`。**δ 从未被记录，旧数据里已永久丢失。**
+> GenAI spans represent logical operations as observed by the caller.
+> They SHOULD cover the duration of the operation, starting when it is initiated,
+> ending when the response is fully received or the operation is terminated due to
+> an error or cancellation.
+> **If a transient issue happened and the request was retried automatically, the
+> corresponding span SHOULD cover the duration of the logical operation with all retries.**
 
-但这些标量**彼此之间**是一致的（同一个 `startedAt`），所以「响应头 → 首 token」这种
-**区间长度**今天就是准的；错的只有**相对 span 的锚定位置**。
+> GenAI spans SHOULD be named `{gen_ai.operation.name} {gen_ai.request.model}`.
+> Semantic conventions for individual GenAI systems and frameworks
+> **MAY specify different span name format**.
 
-**修好锚点，标量就能直接画。**不需要新 span，也不需要把标量复制成事件。
+两条推论：
+
+1. `{operation} {model}` 是 `SHOULD` 且明确授权自定义格式 —— 保留
+   `aio_proxy.provider.attempt` 不违规，这是规范留的口子。
+2. GenAI span 的边界是**逻辑操作含全部重试**，不是单次 attempt。对一个失败转移路由器，
+   这正是需要单独一层的理由：成功那次 attempt 的耗时不含转移开销，会低估延迟。
+
+`gen_ai.operation.name` 合法值共 9 个：`chat`、`text_completion`、`embeddings`、
+`generate_content`、`execute_tool`、`create_agent`、`invoke_agent`、`invoke_workflow`、
+`retrieval`。
+
+span 状态：成功保持 `UNSET`（`OK` 保留给应用显式使用）；**SERVER span 上的 4xx 不得置
+ERROR**。今天 `rejectRequest()` 把 400/404/413 记成 `outcome: 'failure'` → `SpanStatusCode.ERROR`，
+违反这条。
+
+## 第三方消费约束（Langfuse）
+
+Langfuse 的 observation 类型是闭集，按属性从 span 推断，优先级链关键两档：
+
+- **Priority 3**：`gen_ai.operation.name` ∈ {`chat`,`completion`,`text_completion`,
+  `generate_content`,`generate`} → `GENERATION`；`embeddings` → `EMBEDDING`。
+- **Priority 10 兜底**：span 带下列任一 key 即判 `GENERATION` ——
+  `langfuse.observation.model.name`、`gen_ai.request.model`、`gen_ai.response.model`、
+  `llm.model_name`、裸 `model`。
+
+唯一的豁免 guard 按 `invoke_agent`/`agent_step` 判，**没有给 retry/attempt wrapper 留口子**。
+后果：失败的 attempt 只要带了模型属性就会被当成一次真实生成计费，三次转移 = 四倍成本，
+且无法 opt out。
+
+这直接决定了下面的命名禁区。
+
+已核查：`experimental_telemetry` 全仓零引用，AI SDK 遥测是 opt-in 默认关，所以 Langfuse
+认 Vercel AI SDK 的 Priority 5/6（`operation.name` 前缀 + `ai.model.id`）打不着，
+失败转移不会自己变成 GENERATION。
+
+## 横向对照
+
+调研 LiteLLM / OpenLLMetry / Portkey / Helicone / Langfuse 后的事实：
+
+| 主题 | 行业现状 |
+|---|---|
+| 多级树 | 只有 LiteLLM 自建；其余单 span，层级靠调用方传入或框架装饰器 |
+| 失败转移 | **无人建分组 span**。LiteLLM 同名 sibling 重复靠状态区分；Portkey 不单独记、把响应时间加总进一条日志；Helicone 记成独立请求 |
+| `{operation} {model}` | 只有 2 家，且都藏在 flag 后（LiteLLM 要 `OTEL_SEMCONV_STABILITY_OPT_IN`，Portkey 要 `EXPERIMENTAL_GEN_AI_OTEL_TRACES_ENABLED`，其自家 UI 显示 `POST /v1/chat/completions`） |
+| 计时子阶段 | **从不做 span**。LiteLLM 用 metric + `gen_ai.response.time_to_first_chunk`，Langfuse 用 `completionStartTime` |
+
+两条据此定下的取舍：
+
+- **TTFT 不做 span**，用标准属性 + UI 在 attempt 条上画刻度。全行业一致。
+- **分组 span 保留，但承认是产品自创、零先例。** 理由：规范那句 retry 原文要这个数；
+  Portkey 需要同一个数、用加总日志实现，我们在 span 层做是 OTel 原生解法；
+  Langfuse 成本模型要求全链路恰好一个 GENERATION，有这层归属无歧义。
+
+代价诚实记下：多一行，且没有先例可循。
 
 ## 已验证的事实（推翻了三个想当然）
 
@@ -54,8 +119,7 @@ AI SDK 通道的 fetch 同样被 `createObservedFetch` 包过（`materialize.ts:
 | raw | 6,518 | 4,488 | 4,448 | 3,611 |
 | （无） | 2,418 | 0 | 0 | 0 |
 
-**结论：AI SDK 通道有响应头，只是没有首字节。**它能画「起点 → 响应头 → 首 token → 收尾」
-三段，只是无法在第一段里再切出首字节。之前写的「AI SDK 路径永远没有响应头」是错的。
+**结论：AI SDK 通道有响应头，只是没有首字节。**之前写的「AI SDK 路径永远没有响应头」是错的。
 
 ### 2. `endAttempt` 不是所有标量的汇聚点
 
@@ -71,9 +135,9 @@ TTFT 走另一条路：`settleSuccess`（`emit.ts:93-104`）从 completion 里�
 观测到的首 token 时间被终态整形丢掉了。这解释了为什么 ai_sdk 有 8,255 个 headers
 却只有 5,813 个 ttft。
 
-## 陷阱：传了 `startTime` 会换掉 OTel 计算终点的方式
+## 陷阱已消失：重排顺序取代 startTime 回填
 
-这是本方案最容易埋雷的地方，实现前必须看懂。`@opentelemetry/sdk-trace` 2.10.0
+上一版方案的核心风险是给 span 传 `startTime` 回填起点。`@opentelemetry/sdk-trace` 2.10.0
 （本仓 pin 的版本）`Span.js` 的 `_getTime(inp)`：
 
 ```js
@@ -83,156 +147,261 @@ if (typeof inp === 'number' && inp <= otperformance.now()) {
 if (typeof inp === 'number') return millisToHrTime(inp);  // 分支 2：当成 epoch 毫秒
 ...
 if (this._startTimeProvided) return millisToHrTime(Date.now());  // 分支 3
-return addHrTimes(this.startTime, millisToHrTime(otperformance.now() - this._performanceStartTime));
 ```
 
-`_startTimeProvided = opts.startTime != null`（第 55 行）。`_performanceOffset` 是建 span 时
-一次性算的 `Date.now() - (performance.now() + performance.timeOrigin)`（第 52-54 行）。
+一旦传了 `startTime`，`span.end()` 不带时间戳就走分支 3 用 `Date.now()`：起点是单调时钟
+映射、终点是墙钟采样，请求过程中任何一次时钟校正都直接算进 duration —— 往后跳会让
+`hrTimeDuration` 为负，被夹成 `[0,0]` 的零宽行。
 
-两个后果：
+**新方案不需要回填。** δ（候选循环 `startedAt` 与 attempt span 创建之间那段未记录的偏移）
+的成因是 `model.ts:40-41` 先跑 `prepareModelInvocation()` + `assertCandidateSupported()` +
+诊断日志，最后才 `startAttempt()`。改成**先建 attempt span，再在其中跑 prepare 子 span**，
+δ 就变成一段真实测量的 span 宽度。
 
-1. **一旦传了 `startTime`，`span.end()` 不带时间戳就走分支 3，用 `Date.now()`。**
-   起点是单调时钟映射、终点是墙钟采样，请求过程中任何一次时钟校正都会直接算进 duration。
-   往前跳 30 秒 → 100ms 的 attempt 变成 30.1 秒；往后跳 → `hrTimeDuration` 为负，
-   第 254-257 行把 duration 夹成 `[0, 0]`。**这比 δ 更糟。**
-2. **不要自己加 `timeOrigin`。**`performance.timeOrigin + startedAt` 是个远大于
-   `performance.now()` 的数，会掉进分支 2，绕过 SDK 自己的 `_performanceOffset` 校正，
-   跟其他 span 的映射方式不一致。直接传裸的 `performance.now()` 值，走分支 1 才对。
+顺序问题用顺序解决，不用时间戳补偿。整片 `_getTime` 雷区随之消失。
 
-所以任务 1 的契约不是「传个 startTime」，而是：**同一个 span 的起点、终点、以及任何
-事件时间戳，都传裸 `performance.now()` 数值，全部走分支 1 用同一个 `_performanceOffset`。**
+prepare 产出的属性（provider / model）改为 span 创建后 `setAttribute`，不阻塞建 span。
 
-## 方案：四个任务
+## span 树
 
-### 任务 1（server）统一时间戳契约
+六种能力形状完全一致。以 language + 一次失败转移为例：
 
-`OpenSpan` 的起点与终点成对出现，由 `startPipelineSpan`（`tracing.ts:22`）强制：
+```
+POST /v1/messages                                SERVER
+├─ aio_proxy.request.parse                       INTERNAL
+├─ aio_proxy.session.resolve                     INTERNAL
+├─ aio_proxy.route.resolve                       INTERNAL
+├─ chat claude-sonnet-4-5                        CLIENT    ← 唯一 GENERATION
+│  ├─ aio_proxy.provider.attempt                 INTERNAL  ERROR
+│  │  ├─ aio_proxy.request.prepare               INTERNAL
+│  │  └─ POST                                    CLIENT
+│  └─ aio_proxy.provider.attempt                 INTERNAL
+│     ├─ aio_proxy.request.prepare               INTERNAL
+│     ├─ POST                                    CLIENT
+│     └─ aio_proxy.response.egress               INTERNAL
+└─ aio_proxy.usage.resolve                       INTERNAL
+```
 
-- `startPipelineSpan` 的 options 多接一个 `startedAt?: number`（裸 `performance.now()`）。
-- 传了 `startedAt` 的 span，`end()` 内部改成 `span.end(performance.now())`；没传的保持
-  `span.end()` 不变（走分支 4，跟今天行为一致）。
+失败转移 10 行，干净请求 8 行。**全部是真实代码边界，零合成 span。**
 
-把「传起点必须传终点」做进这一个 helper，调用方就不可能忘。`OpenSpan.end` 的签名不变。
+## 逐个 span
 
-`AttemptInfo`（`attempt-base.ts:85-91`）加 `readonly startedAt: number` —— `attemptBase()`
-现在把它吞进 `durationMs` 就丢了，改成一并带出。`startAttempt`（`emit.ts:46`）把
-`base.startedAt` 传给 `startPipelineSpan`。
+| span 名 | kind | 创建位置 | 状态规则 |
+|---|---|---|---|
+| `{method} {http.route}` | SERVER | `request-trace-recorder.ts:88` | **4xx 不置 ERROR**，仅 5xx / internal |
+| `aio_proxy.request.parse` | INTERNAL | `pipeline/index.ts` `parseProtocolRequest()` | |
+| `aio_proxy.session.resolve` | INTERNAL | `logicalSessionStore.begin()` | |
+| `aio_proxy.route.resolve` | INTERNAL | `router.resolve()` + `filterCandidatesByCapability()` | |
+| `{operation} {request.model}` | CLIENT | `attemptResolvedRequest` 外层（新增） | 全部候选耗尽才 ERROR |
+| `aio_proxy.provider.attempt` | INTERNAL | `attempt/emit.ts:47`（补 `kind`） | 单次失败即 ERROR |
+| `aio_proxy.request.prepare` | INTERNAL | `attempt/model.ts:40` `prepareModelInvocation()` | 这行宽度就是 δ |
+| `POST` | CLIENT | `createObservedFetch` 包一层 | |
+| `aio_proxy.response.egress` | INTERNAL | 出口流 | |
+| `aio_proxy.usage.resolve` | INTERNAL | 用量归集 | |
 
-这同时修两件事：δ 归零；model 路径的 prepare 耗时不再掉进 root 与 attempt 之间的黑洞。
-语义上也更正确 —— attempt 开始于循环挑中这个候选那一刻，raw 路径（`raw.ts:51`）本来就是这样。
+`route.resolve` 的边界：上一版说「包在 `attemptCandidates()` 里只覆盖亲和性重排，名不符实」，
+那是因为当时找错了位置。正确边界在 `attemptResolvedRequest` 内的 `lease.snapshot.router.resolve()`
+加 `filterCandidatesByCapability()`，这两步就是路由解析本身。
 
-**注意 backdating 只改记录的几何，不改历史上下文。**prepare 期间的工作不会追溯性地变成
-这个 span 的活跃上下文；等 prepare 自己有了插桩，这个区别会显出来。
+### POST span 的终点只到响应头
 
-**测试**：在 `prepareModelInvocation` 里插入可观测延迟，断言 attempt span 的 `startedAt`
-等于循环的 `startedAt`；以及请求过程中把墙钟前后跳，断言 duration 不被污染、不被夹成 0。
+`POST` span 从发起 fetch 起，**到拿到响应头结束**，不覆盖 body 流。
 
-### 任务 2（server）标记时间基准
+理由：body 终点在两条通道上可观测性不同（raw 有受控流能看到 EOF，AI SDK 没有），
+让同一个 span 名在两条通道上表达不同几何比少一段信息更糟。而且当前 trace 的结算**可能早于
+body EOF** —— AI SDK capture 在 `finish` 分片就结算而传输仍活着，raw capture 在终止帧结算
+并刻意不因后续取消改判，所以「attempt 终点 = body 终点」本身就是错的。
 
-部署之后新旧 attempt 会共存，dashboard 不能假设每个标量都相对它自己的 span 起点。
-加一个属性 `aio_proxy.response.timing_basis = "attempt_start_v1"`，写进 `ALLOWED_ATTRIBUTES`
-（`span-record.ts:15`）。无需迁移、无需新列。
+body 阶段由 `aio_proxy.response.egress` 表达（我们向客户端写出的那段），首 token 位置由
+TTFT 属性在 UI 上画成刻度。时间轴读起来是：prepare → POST（到响应头）→ egress（流式写出），
+每段边界都诚实。
 
-规则是「有标记 = 基准已知；无标记 = 基准未知」，不需要推断为什么未知。
+一个覆盖上游 body 消费全程的 span（`upstream.body.consume`：开始消费 → EOF / 读失败 / 取消）
+是可能诚实的，但它会在 attempt / root 结算**之后**才结束，持久化与布局要另行设计。推后。
 
-### 任务 3（server）首内容观测归一到 observation
+## 属性
 
-今天 TTFT 挂在 completion 的返回值上，被终态整形吃掉（见上文事实 3）。改成让
-usage capture 观测到首个内容时写进 `AttemptResponseObservation`，由 `snapshot()` 带出，
-`endAttempt` 统一落属性。
+### root（SERVER）—— 纯 HTTP，不带任何 `gen_ai.*`
+
+```
+http.request.method   http.route   url.path
+http.response.status_code          ← 改名，原 http.status_code
+error.type
+aio_proxy.request_id  aio_proxy.inbound_protocol
+```
+
+### `{operation} {model}`（CLIENT）—— 唯一带 `gen_ai.*` 的 span
+
+```
+gen_ai.operation.name                      仅合法值时写，见下
+gen_ai.provider.name                       取代已废弃的 gen_ai.system
+gen_ai.request.model                       请求的模型
+gen_ai.response.model                      实际应答的模型
+gen_ai.request.stream
+gen_ai.response.id
+gen_ai.response.finish_reasons
+gen_ai.response.time_to_first_chunk        double,秒
+gen_ai.usage.input_tokens
+gen_ai.usage.output_tokens
+gen_ai.usage.cache_read.input_tokens
+gen_ai.usage.cache_write.input_tokens
+gen_ai.usage.reasoning.output_tokens
+aio_proxy.capability                       六值,始终写
+```
+
+现有四个自造 `gen_ai.usage.*` 一一对上，还多出 cache / reasoning 两档。
+这些属性今天挂在 root 上，**不只是名字不对，是挂错层了**，要下沉到这一层。
+
+### attempt（INTERNAL）
+
+```
+aio_proxy.attempt.index
+aio_proxy.attempt.provider_id
+aio_proxy.attempt.model_id
+aio_proxy.attempt.ttft_ms                  毫秒,UI 画刻度用
+error.type
+```
+
+TTFT 存两份，职责不同：attempt 上是**观测原值**（毫秒，每次尝试都有，含失败的），
+GenAI span 上的 `gen_ai.response.time_to_first_chunk` 是**标准属性**（秒），取胜出那次
+attempt 的值。前者给 UI 画刻度，后者给第三方消费。不是冗余，是两个受众。
+
+### POST（CLIENT）—— 观测标量落这层
+
+```
+http.request.method   server.address   url.full
+http.response.status_code
+aio_proxy.upstream.headers_ms
+aio_proxy.upstream.first_byte_ms
+aio_proxy.upstream.first_sse_event_ms
+aio_proxy.upstream.transport            sse|body|unavailable|ambiguous
+aio_proxy.upstream.content_encoding
+```
+
+### egress（INTERNAL）
+
+```
+aio_proxy.egress.content_gap_p95_ms
+aio_proxy.egress.max_sse_frames_per_read
+```
+
+## 命名禁区
+
+**attempt span 上禁止出现：`gen_ai.request.model`、`gen_ai.response.model`、
+`llm.model_name`、裸 `model`。**
+
+命中任一个，Langfuse Priority 10 兜底会把这个 span 判成 `GENERATION`，每次失败转移都变成
+一次真实生成计费。provider / model 走 `aio_proxy.attempt.*`。
+
+语义上也自洽：attempt 不是 GenAI span，它是 aio-proxy 的转移机制，本来就不该带 `gen_ai.*`。
+
+## 六种能力统一命名
+
+span 名与 `gen_ai.operation.name` 属性是两回事：规范只说名字 `SHOULD` 长成
+`{operation} {model}`、且 `MAY` 自定义格式，没说属性必须存在。所以拆开处理。
+
+- **span 名**：六种能力一律 `{operation} {model}`，词表固定六个，低基数。
+- **`gen_ai.operation.name`**：只在合法时写。非法的四个不写，不往标准属性里塞非法枚举值。
+
+| capability | span 名 | `gen_ai.operation.name` |
+|---|---|---|
+| language | `chat claude-sonnet-4-5` | `chat` |
+| embedding | `embeddings text-embedding-3` | `embeddings` |
+| image | `image dall-e-3` | 不写 |
+| speech | `speech tts-1` | 不写 |
+| transcription | `transcription whisper-1` | 不写 |
+| video | `video veo-3` | 不写 |
+
+`aio_proxy.capability` 始终写（六值），查询按它 group by，不用去匹配 span 名字符串。
+
+Langfuse 两条路都通：写了属性的走 Priority 3（`chat`→GENERATION，`embeddings`→EMBEDDING）；
+没写的靠 `gen_ai.request.model` 走 Priority 10 兜底成 GENERATION。都是恰好一个，不重复计费。
+
+代码上只多一处条件：属性写入时查白名单。**结构零分支。**
+
+## 实现任务
+
+### 任务 1（server）span 注册表
+
+`semantic.ts` 的 11 个裸字符串常量改成注册表：每个 span 声明 `{ name, kind, parent }`，
+配一个校验测试。抄 LiteLLM v2 的 `SPAN_REGISTRY` + `validate_registry()` 思路。
+
+「常量存在但没人创建」这种事结构上就不可能再发生 —— 这正是本次七个死常量的成因。
+
+### 任务 2（server）属性改名与下沉
+
+`http.status_code` → `http.response.status_code`；四个自造 `gen_ai.usage.*` 换成标准名并
+从 root 下沉到 GenAI span；TTFT 标准属性按秒（内部 ms 保留给 UI 画刻度）。
+`ALLOWED_ATTRIBUTES`（`span-record.ts:15`）同步。
+
+历史数据不迁移、不做兼容。
+
+### 任务 3（server）4xx 状态修正
+
+`completion.ts:29-37` 今天 `failure` 与 `cancelled` 都置 `SpanStatusCode.ERROR`。
+SERVER span 上的 4xx 要保持 UNSET。`rejectRequest()` 的 400/404/413 归到这一类。
+
+`cancelled` 保持 ERROR 不变 —— 规范只约束 4xx。
+
+### 任务 4（server）接线七个 span
+
+按「逐个 span」表接线。含 attempt 与 prepare 的顺序重排：先建 attempt span，再在其中跑
+prepare 子 span（理由见「陷阱已消失」）。
+`AttemptInfo`（`attempt-base.ts:85-107`）现在把 `startedAt` 吞进 `durationMs` 就丢了，
+改成一并带出。
+
+### 任务 5（server）首内容观测归一到 observation
+
+今天 TTFT 挂在 completion 的返回值上，被终态整形吃掉（见事实 3）。改成让 usage capture
+观测到首个内容时写进 `AttemptResponseObservation`，由 `snapshot()` 带出，`endAttempt` 统一落属性。
 
 这不是为了画图，是修一个真实的观测丢失：**保留时间不该依赖终态形状。**
-副作用是失败路径也有 TTFT 了，而 `endAttempt` 真正变成单一汇聚点（之前的 spec 误以为它已经是）。
+副作用是失败路径也有 TTFT 了，而 `endAttempt` 真正变成单一汇聚点（上一版误以为它已经是）。
 
 **不要**为了保住时间戳把失败的 egress 改判成成功。时间与结论分开存。
 
-### 任务 4（dashboard）分段柱
+### 任务 6（dashboard）瀑布树渲染
 
-一个纯函数（`modules/traces/lib/` 下，不 import React），输入一个 attempt span，
-输出分段与刻度。坐标系明确写成 **attempt 相对毫秒**，由展示层再换算成 trace 全局位置。
+`trace-layout.ts` 现在只管深度与柱宽，要支持真实多级嵌套。TTFT 在 attempt 条上画刻度，
+不画成子行。
 
-有 `timing_basis` 标记时：
+`transportObservation === 'ambiguous'` 时不画刻度，并在 UI 上说明「同一 attempt 内观测到
+多次响应」，而不是显示成普通的缺数据。
 
-| 段 | 端点 | 可用通道 |
-|---|---|---|
-| 到上游响应头 | `0 → upstreamHeadersMs` | raw + ai_sdk |
-| （细分）到首字节 | `upstreamHeadersMs → firstUpstreamByteMs` | 仅 raw |
-| 等待首个 token | `→ ttftMs` | 两者，视观测是否存活 |
-| 首 token 至尝试收尾 | `ttftMs → durationMs` | 两者 |
-
-区间命名必须对得起观测点，不沿用 demo 的错误标签（`connect+send` / `stream.ttft` /
-`stream.body` 全是错的：响应头之前包含本地准备、连接、发送、上游排队与计算，
-只有一个时间点无法拆开；attempt 终点也不是上游 body 终点）。
-
-**画段的前提不只是「同一基准」，还要端点有效、顺序合理、观测身份相同。**
-第一次发送的响应头配第二次发送的内容，不会因为共用一个时钟就变成一个有意义的阶段 ——
-这正是 `ambiguous` 抑制存在的理由。`transportObservation === 'ambiguous'` 时不画段，
-并且要在 UI 上说明「同一 attempt 内观测到多次响应」，而不是显示成普通的缺数据。
-
-不引入 `exact: boolean`。既然不精确的段一律不生成，这个字段永远是 `true`，是死分支。
-需要的是一个明确的「基准未知」诊断项，而不是一个没人取 `false` 的布尔。
-
-标量本身是 `Math.round` 过的，span 时间戳走 `Date` 转换，所以边界点可能差 1ms。
-容差策略写死在这个纯函数里：负长度归零、超出 span 边界的刻度夹到边界，不抛错。
-
-没有标记的行（旧数据）：柱子照今天画，指标区照今天显示数字，不画段。
-`trace-waterfall-row.tsx:43-48` 的单色柱保留为这条退路。
-`trace-layout.ts` 保持只管 span 的深度与柱宽，不合并。
+旧数据（2 行，无新 span）照今天的单色柱渲染，`trace-waterfall-row.tsx:43-48` 保留为退路。
 
 ## 明确不做
 
-- **不发里程碑事件。** 三个事件是现有标量加一个正确锚点的确定性再编码，不带来任何新观测。
-  锚点修好之后 `attempt 起点 + 标量` 就够画。事件是合法的 OTel 表达方式，但不是这个功能的
-  前提，还要额外背上「标量与事件必须一致、都要活过持久化、所有终态路径都要发」的义务。
-  真要发事件，该发的是**独立观测到的失败阶段**，不是复制已有标量。
-- **不建 `route.resolve` span。** `attemptCandidates()`（`attempt.ts:214-228`）拿到的
-  `candidates` 与 `resolution` 已经是解析好的，包在这里的 span 只覆盖亲和性重排与冷却过滤，
-  叫 `route.resolve` 名不符实。真要做得先定错误契约（入参为空 / 全在冷却 / 后续能力拒绝
-  是三件事），优先级低于隐藏重试。顺带一句：两行的 trace 加第三行是 50% 行数增长，
-  「不改 schema」不等于「没有存储成本」。
-- **不建 `http.request` / `stream.ttft` / `stream.body` / `usage.resolve` 子 span。**
-  `stream.body = 首 token → attempt 终点` 是不诚实的。但换个边界是有可能诚实的
-  （`upstream.body.consume`：开始消费响应体 → 观测到 EOF / 读失败 / 取消），
-  代价是它需要独立的生命周期插桩，而且**当前 trace 的结算可能早于 body EOF**：
-  AI SDK capture 在 `finish` 分片就结算而传输仍活着，raw capture 在终止帧结算并刻意不因
-  后续取消改判。所以「attempt 终点 = body 终点 + 收尾」也是错的，它可能**早于** body 结束。
-  一个诚实的 body span 会在 attempt/root 结算之后才结束，持久化与布局怎么处理要另行设计。
-  推后是合理的，但理由是「需要独立插桩与布局设计」，不是「概念上不成立」。
-- **不做故障位置推断。** 「有 `first_token` 且失败 = 首 token 之后断的」不成立：
-  失败可能出在 egress、序列化、取消或后续终态处理。「只有 `upstream_headers` = 没等到内容」
-  更是把「没有记录」当成「没有发生」—— 观测可能不可用、被歧义抑制、被终态整形丢掉，
-  或者根本不覆盖那类输出（AI SDK 的 `firstTokenAt` 只在 `text-delta` / `reasoning-delta`
-  上设，纯 tool-call 不算）。**「首个 token」是一个特定的内容观测约定，不是「之前什么都没发生」的证据。**
-- **不改 retention、不加采样。** 本 PR 不新增 span 行。
-- **不给旧数据合成分段。** δ 已永久丢失，虚线段照样在传达一个位置。
+- **不发里程碑事件。** 锚点问题已由重排顺序解决，`attempt 起点 + 标量` 就够画。事件是合法的
+  OTel 表达方式，但要额外背上「标量与事件必须一致、都要活过持久化、所有终态路径都要发」的
+  义务。真要发事件，该发的是**独立观测到的失败阶段**，不是复制已有标量。
+- **不做 TTFT / stream.body 子 span。** 计时子阶段全行业从不做 span（见横向对照）。
+  `stream.body = 首 token → attempt 终点` 是不诚实的。
+- **不做故障位置推断。** 「有 `first_token` 且失败 = 首 token 之后断的」不成立：失败可能出在
+  egress、序列化、取消或后续终态处理。「只有 `upstream_headers` = 没等到内容」更是把「没有
+  记录」当成「没有发生」—— 观测可能不可用、被歧义抑制、被终态整形丢掉，或者根本不覆盖那类
+  输出（AI SDK 的 `firstTokenAt` 只在 `text-delta` / `reasoning-delta` 上设，纯 tool-call
+  不算）。**「首个 token」是一个特定的内容观测约定，不是「之前什么都没发生」的证据。**
+- **不给旧数据合成 span。** δ 已永久丢失。
+- **不做模态细分 usage。** `gen_ai.usage.text.*` / `.image.*` / `.audio.*` 那套等真有人要分
+  模态计费再说。
+- **不加采样、不改 retention。** 本 PR 每 trace 的 span 数从 2 涨到 8–10，是 4–5 倍。
+  存储影响要在实施时实测，但采样是独立决策。
 
 ## 缺失的含义
 
-一条规则：**缺失不代表旧版本。**新记录也会缺段 —— 没走受控流（AI SDK 没有首字节）、
+一条规则：**缺失不代表旧版本。**新记录也会缺属性 —— 没走受控流（AI SDK 没有首字节）、
 观测到多次响应（`ambiguous`）、`markTransportUnavailable()` 未被后续 fetch 清掉、
-或者该阶段根本没发生。所以判断依据是「这个 span 上有没有这个标量 + 有没有 `timing_basis`」，
-不引版本号、不写迁移。
-
-已知时长在没有全局位置时仍然有用：`ttftMs − upstreamHeadersMs` 是一个准确的时长，
-可以放进 tooltip 或不与时间轴对齐的明细区，只是不画成柱子上的一段。
-
-## 与 demo 的偏差（需要拍板）
-
-本方案做完是 **2 行 + 分段柱**（root / attempt 分段），不是 demo 的 9 行树。
-
-要凑够 9 行只能靠上面「明确不做」里那几个 span，而它们今天表达的是错误的时间语义。
-如果视觉上必须要行数，可以让展示层把段渲染成缩进行（视觉像子行，但标注为派生区间、
-不冒充 span、不进 span 计数）—— 这是展示层决定，不改记录层。**需要确认走哪个。**
+或者该阶段根本没发生。判断依据是「这个 span 上有没有这个属性」，不引版本号、不写迁移。
 
 ## 后续（不在本 PR）
 
-`raw-retry.ts` 的同 attempt 内隐藏重试**完全不进 trace**，注释里写明了。
-`resolveRawRetry()` 会消费并分类第一个响应、改写请求、再次发起，全程在 usage capture 之前。
-「到底发了几次请求？哪次失败？最终内容来自哪次？」今天无法回答 —— 这是真正缺信息的地方，
-价值高于 `route.resolve`，也高于把三个标量复制成事件。
+`raw-retry.ts` 的同 attempt 内隐藏重试**完全不进 trace**。`resolveRawRetry()` 会消费并分类
+第一个响应、改写请求、再次发起，全程在 usage capture 之前。「到底发了几次请求？哪次失败？
+最终内容来自哪次？」今天无法回答 —— 这是真正缺信息的地方。
 
-独立 server PR。做的时候：插桩**实际发送**而不是 `raw.invoke()` 调用（一次调用可能是多次发送），
-区分候选下标与候选内重发下标，显式把发送 span 挂到 attempt 下 ——
+独立 server PR。做的时候：插桩**实际发送**而不是 `raw.invoke()` 调用（一次调用可能是多次
+发送），区分候选下标与候选内重发下标，显式把发送 span 挂到 attempt 下 ——
 现有的 `inAttempt()` 装的是观测与日志上下文，**不是** `OpenSpan.run()` 的 span 上下文。
 
 ## 测试
@@ -240,17 +409,20 @@ usage capture 观测到首个内容时写进 `AttemptResponseObservation`，由 
 端到端契约测试，不是给 React 喂手写 fixture：
 
 ```
-真实 pipeline 场景 → span 记录 → sanitize → 落库与读取 → 分段投影
+真实 pipeline 场景 → span 记录 → sanitize → 落库与读取 → 瀑布投影
 ```
 
 | 场景 | 断言 |
 |---|---|
-| 请求前后墙钟前跳 / 后跳 | 起点、终点留在同一映射上；duration 不被污染、不被夹成 0 |
-| prepare 有延迟 / prepare 抛错 / 能力拒绝 | 候选的逻辑起点一致，含追溯发出的失败 span |
-| AI SDK 有内容无首字节、纯 tool-call 输出 | 仍画出可用的段；没有 TTFT 不等于没有输出 |
+| 注册表校验 | 每个声明的 span 都有创建点；kind 与 parent 与声明一致 |
+| 一次失败转移 | 恰好一个 span 带 `gen_ai.request.model`；attempt 上零 `gen_ai.*` |
+| 六种能力各一 | 树形状一致；非法 operation 不写 `gen_ai.operation.name` |
+| 4xx 拒绝 | root 状态 UNSET；`http.response.status_code` 正确 |
+| prepare 有延迟 / prepare 抛错 / 能力拒绝 | prepare span 宽度反映真实耗时，不再是黑洞 |
+| 请求前后墙钟前跳 / 后跳 | duration 不被污染、不被夹成 0 |
+| AI SDK 有内容无首字节、纯 tool-call 输出 | 仍有可用属性；没有 TTFT 不等于没有输出 |
 | 首内容之后 egress 报错 | 观测活过终态替换；不把它标成上游 body 失败 |
-| 同 attempt 内隐藏重试后成功 | 不跨响应造段；歧义可见 |
+| 同 attempt 内隐藏重试后成功 | 不跨响应造刻度；歧义可见 |
 | 终止帧之后延迟 EOF 或取消 | 不把 trace 结算当成 body 完成或客户端送达成功 |
-| 零值标量、小数时间戳 | 零里程碑不被丢掉；取整不产生负长度或越界刻度 |
 
-断言的是**时间边界与错误归属正确**，不是「每条 trace 恰好有 N 行」。
+断言的是**时间边界、层级归属与错误归属正确**，不是「每条 trace 恰好有 N 行」。
