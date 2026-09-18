@@ -9,6 +9,7 @@ import {
   DashboardTracePercentileResponseSchema,
   DashboardTracesResponseSchema,
   DashboardTraceSummaryResponseSchema,
+  DashboardTraceWireResponseSchema,
 } from '@aio-proxy/types';
 
 import { createServer } from '#server-test-lifecycle';
@@ -441,6 +442,17 @@ describe('Dashboard trace routes', () => {
 
     expect(sparse.status).toBe(200);
     expect(DashboardTracePercentileResponseSchema.parse(await sparse.json()).comparison).toBeNull();
+  });
+
+  // 抓包是可选的：日志关着的时候端点要说清楚「为什么没有」，而不是给个空壳。
+  test('explains that wire capture is off when request logging is disabled', async () => {
+    const app = await seededApp();
+    const response = await app.request(`/dashboard/api/traces/${TRACE_ID}/wire`, undefined, loopbackServer);
+    const body = DashboardTraceWireResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(body).toEqual({ available: false, reason: 'disabled', hops: [] });
   });
 
   test('returns 404 when the compared trace does not exist', async () => {

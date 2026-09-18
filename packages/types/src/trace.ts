@@ -192,6 +192,54 @@ export const DashboardTracePercentileResponseSchema = z
   .object({ comparison: DashboardTracePercentileSchema.nullable() })
   .strict();
 
+const DashboardTraceWireBodySchema = z
+  .object({
+    text: z.string(),
+    byteLength: z.number().int().min(0).optional(),
+    outcome: z.enum(['complete', 'cancelled', 'error']).optional(),
+  })
+  .strict();
+
+export const DashboardTraceWireHopSchema = z
+  .object({
+    // 'inbound' | `attempt-${attemptIndex}`
+    id: z.string().min(1),
+    kind: z.enum(['inbound', 'attempt']),
+    attemptIndex: z.number().int().min(0).optional(),
+    providerId: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional(),
+    request: z
+      .object({
+        method: z.string().min(1).optional(),
+        url: z.string().min(1).optional(),
+        headers: z.record(z.string(), z.string()).optional(),
+        body: DashboardTraceWireBodySchema.optional(),
+      })
+      .strict()
+      .optional(),
+    response: z
+      .object({
+        statusCode: z.number().int().optional(),
+        errorType: z.string().min(1).optional(),
+        durationMs: z.number().min(0).optional(),
+        headers: z.record(z.string(), z.string()).optional(),
+        body: DashboardTraceWireBodySchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const DashboardTraceWireResponseSchema = z
+  .object({
+    available: z.boolean(),
+    // disabled: server.logging.enabled 不是 true；level: 级别不是 debug；missing: 当天日志文件已经滚掉了
+    reason: z.enum(['disabled', 'level', 'missing']).optional(),
+    retentionDays: z.number().int().positive().optional(),
+    hops: z.array(DashboardTraceWireHopSchema),
+  })
+  .strict();
+
 export type OtelSpanStatusCode = z.output<typeof OtelSpanStatusCodeSchema>;
 export type TraceOutcome = z.output<typeof TraceOutcomeSchema>;
 export type TraceTerminationReason = z.output<typeof TraceTerminationReasonSchema>;
@@ -212,3 +260,5 @@ export type DashboardTraceSummaryBucket = z.output<typeof DashboardTraceSummaryB
 export type DashboardTraceSummaryResponse = z.output<typeof DashboardTraceSummaryResponseSchema>;
 export type DashboardTracePercentile = z.output<typeof DashboardTracePercentileSchema>;
 export type DashboardTracePercentileResponse = z.output<typeof DashboardTracePercentileResponseSchema>;
+export type DashboardTraceWireHop = z.output<typeof DashboardTraceWireHopSchema>;
+export type DashboardTraceWireResponse = z.output<typeof DashboardTraceWireResponseSchema>;

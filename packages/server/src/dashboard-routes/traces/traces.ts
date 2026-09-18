@@ -1,3 +1,6 @@
+import { join } from 'node:path';
+
+import { aioHome } from '@aio-proxy/core';
 import { decodeTraceCursor, encodeTraceCursor, type TracesQuery, type TracesSummaryQuery } from '@aio-proxy/core/db';
 import {
   DashboardTracePageSizeSchema,
@@ -11,6 +14,7 @@ import { z } from 'zod';
 
 import { traceDiagnosticsFromAttributes } from '../../request-tracing/semantic';
 import type { ServerState } from '../../server-state';
+import { readTraceWireLog } from './wire-log';
 
 const isoDate = z.iso.datetime().transform((value) => new Date(value));
 
@@ -135,4 +139,18 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
       const { traceId } = context.req.valid('param');
       if (state.traceStore.find(traceId) === undefined) return context.json({ error: 'trace not found' }, 404);
       return context.json(state.traceStore.percentile(traceId));
+    })
+    .get('/:traceId/wire', traceIdParamsValidator, async (context) => {
+      context.header('cache-control', 'no-store');
+      const detail = state.traceStore.find(context.req.valid('param').traceId);
+      if (detail === undefined) return context.json({ error: 'trace not found' }, 404);
+      const logging = state.currentConfig().server.logging;
+      return context.json(
+        await readTraceWireLog({
+          requestId: detail.trace.requestId,
+          startedAt: new Date(detail.trace.startedAt),
+          logging,
+          logDir: logging?.dir ?? join(aioHome(), 'logs'),
+        }),
+      );
     });
