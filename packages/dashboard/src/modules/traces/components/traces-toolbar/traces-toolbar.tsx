@@ -40,7 +40,8 @@ export const TracesToolbar: React.FC<TracesToolbarProps> = ({ search, autoRefres
         type="button"
         size="sm"
         variant="outline"
-        aria-controls="traces-filters"
+        // 移动端那份抽屉是 Dialog，收起时整块不在 DOM 里，那会儿不能声称控制一个不存在的元素。
+        aria-controls={isMobile && !openMobile ? undefined : 'traces-filters'}
         aria-expanded={isMobile ? openMobile : open}
         onClick={toggleSidebar}
       >

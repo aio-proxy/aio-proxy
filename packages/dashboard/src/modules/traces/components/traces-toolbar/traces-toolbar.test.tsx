@@ -3,6 +3,7 @@ import { describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
+import { TracesFilters } from '../traces-filters';
 import { TracesToolbar } from './traces-toolbar';
 
 const renderToolbar = (overrides: Partial<React.ComponentProps<typeof TracesToolbar>> = {}) => {
@@ -22,12 +23,30 @@ const renderToolbar = (overrides: Partial<React.ComponentProps<typeof TracesTool
 };
 
 describe('TracesToolbar', () => {
-  test('points the filters trigger at the filter drawer', () => {
-    renderToolbar();
+  test('points the filters trigger at a drawer element that really exists', () => {
+    const search = createDefaultTraceSearch();
+    render(
+      <SidebarProvider defaultOpen={false}>
+        <TracesToolbar search={search} autoRefresh={false} onChange={rs.fn()} onAutoRefresh={rs.fn()} />
+        <TracesFilters
+          search={search}
+          autoRefresh={false}
+          refreshing={false}
+          onChange={rs.fn()}
+          onAutoRefresh={rs.fn()}
+          onRefresh={rs.fn()}
+        />
+      </SidebarProvider>,
+    );
 
     const trigger = screen.getByRole('button', { name: /Filters|筛选/u });
-    expect(trigger).toHaveAttribute('aria-controls', 'traces-filters');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    // 只比对按钮上的 id 字面量是假护栏：抽屉那头把 id 挂在一个移动端根本不渲染的节点上时，
+    // 它照样是绿的。要验的是这条关系落到了一个真实存在的元素上。
+    const controls = trigger.getAttribute('aria-controls');
+    expect(controls).not.toBeNull();
+    expect(document.getElementById(controls ?? '')).not.toBeNull();
 
     fireEvent.click(trigger);
 
