@@ -252,6 +252,7 @@ describe('readTraceWireLog', () => {
   // 推给浏览器。裁剪必须发生在读取侧，而 byteLength 还得报日志里的真实大小。
   test('caps the body it keeps per direction and says it was truncated', async () => {
     const half = 'y'.repeat(700_000);
+    const identity = { requestId: REQUEST_ID, attemptIndex: 0, providerId: 'provider-a', modelId: 'gpt-5' };
     const dir = await logDirWith(
       [
         logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence: 0, text: half }),
@@ -260,6 +261,18 @@ describe('readTraceWireLog', () => {
           event: 'request.body_terminal',
           requestId: REQUEST_ID,
           direction: 'inbound',
+          sequence: 2,
+          byteLength: half.length * 2,
+          outcome: 'complete',
+        }),
+        // 预算是每跳每方向各一份：响应方向不该和入站请求共用同一份，否则第二个方向会拿到
+        // 一个已经花光的预算、在面板上显示成空的。
+        logLine({ event: 'request.body_chunk', ...identity, direction: 'upstream_response', sequence: 0, text: half }),
+        logLine({ event: 'request.body_chunk', ...identity, direction: 'upstream_response', sequence: 1, text: half }),
+        logLine({
+          event: 'request.body_terminal',
+          ...identity,
+          direction: 'upstream_response',
           sequence: 2,
           byteLength: half.length * 2,
           outcome: 'complete',
@@ -273,6 +286,8 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body?.text).toHaveLength(1_048_576);
     expect(body.hops[0]?.request?.body?.truncated).toBe(true);
     expect(body.hops[0]?.request?.body?.byteLength).toBe(1_400_000);
+    expect(body.hops[1]?.response?.body?.text).toHaveLength(1_048_576);
+    expect(body.hops[1]?.response?.body?.truncated).toBe(true);
   });
 
   // 预算必须在读取时就兑现。只在 finalize 裁的话，浏览器收到的是 1 MB，代理自己却把日志里
