@@ -202,12 +202,19 @@ function finalizeHop(draft: HopDraft): DashboardTraceWireHop {
 
 function finalizeBody(body: BodyDraft | undefined): BodyView {
   if (body === undefined) return undefined;
-  const text = body.chunks.map((chunk) => chunk.text).join('');
+  let text = body.chunks.map((chunk) => chunk.text).join('');
+  // 上限按 code unit 数，可能正好切在代理对中间。留下的半个 JSON.stringify 会转义掉，
+  // 面板就在切口处画一个 U+FFFD —— 退一格，宁可少一个字符。
+  if (body.truncated === true && isHighSurrogate(text.charCodeAt(text.length - 1))) text = text.slice(0, -1);
   return {
     text,
     ...(body.truncated === true ? { truncated: true } : {}),
     ...defined({ byteLength: body.byteLength, outcome: body.outcome }),
   };
+}
+
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd8_00 && code <= 0xdb_ff;
 }
 
 type BodyView =
