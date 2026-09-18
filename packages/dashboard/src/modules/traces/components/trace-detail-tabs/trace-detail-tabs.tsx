@@ -25,6 +25,9 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({
   onFilter,
 }) => {
   const [tab, setTab] = useState('detail');
+  // 选中的那一跳跟 tab 平级：Base UI 会卸载非活跃面板，放在 TraceWireTab 里的话，
+  // 在请求页认准了第 4 次尝试、切到响应页就不声不响地回到入站那一跳。
+  const [selectedHopId, setSelectedHopId] = useState<string>();
   // 两个 tab 共用一份抓包（同一个 key，TanStack Query 自己去重），并且只在其中之一打开时才去读日志。
   const wireQuery = useTraceWireQuery(detail.trace.traceId, tab === 'request' || tab === 'response');
 
@@ -49,10 +52,22 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({
         />
       </TabsContent>
       <TabsContent value="request" className="mt-4">
-        <TraceWireTab side="request" detail={detail} wire={wireQuery} />
+        <TraceWireTab
+          side="request"
+          detail={detail}
+          wire={wireQuery}
+          selectedHopId={selectedHopId}
+          onSelectHop={setSelectedHopId}
+        />
       </TabsContent>
       <TabsContent value="response" className="mt-4">
-        <TraceWireTab side="response" detail={detail} wire={wireQuery} />
+        <TraceWireTab
+          side="response"
+          detail={detail}
+          wire={wireQuery}
+          selectedHopId={selectedHopId}
+          onSelectHop={setSelectedHopId}
+        />
       </TabsContent>
     </Tabs>
   );

@@ -123,6 +123,33 @@ test('lists one chip per hop from the spans and renders the selected hop capture
   expect(inbound).toHaveAttribute('aria-pressed', 'false');
 });
 
+test('carries the selected hop across the request and response tabs', () => {
+  mocks.wire = {
+    available: true,
+    hops: [
+      { id: 'inbound', kind: 'inbound', request: { method: 'POST', url: 'https://proxy.local/v1/responses' } },
+      {
+        id: 'attempt-1',
+        kind: 'attempt',
+        attemptIndex: 1,
+        request: { method: 'POST', url: 'https://api.openai.com/v1/responses' },
+        response: { statusCode: 503 },
+      },
+    ],
+  };
+  render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
+  fireEvent.click(screen.getByRole('button', { name: secondAttemptChip }));
+
+  fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
+
+  // 认准了某一次尝试再去看它的响应是主路径。悄悄回到入站那一跳，两个 tab 在第一跳上
+  // 又长得一模一样，人会以为看的就是刚选的那一跳。
+  expect(screen.getByText(/HTTP 503/u)).toBeInTheDocument();
+  // 回到入站的话这里画的是入站响应的 allowlist 诊断，状态码是 200。
+  expect(screen.queryByText('200')).toBeNull();
+});
+
 test('falls back to the allowlist diagnostics for the inbound response, which capture never records', () => {
   mocks.wire = { available: true, hops: [] };
   render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);
