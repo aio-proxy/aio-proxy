@@ -177,6 +177,43 @@ describe('trace store lifecycle', () => {
     }
   });
 
+  test('keeps gen_ai attributes off the root span while summaries stay intact', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+      store.complete(
+        completion({
+          // 默认的 rootSpan() 属性里就带着 'gen_ai.response.model'，写库时会被抽进
+          // finalModelId 列、不留在 JSON 里。所以这条测的是「读回时不再凭列挂回去」，
+          // 而不是「输入里本来就没有」。
+          spans: [rootSpan()],
+          session: {
+            identity: { source: 'body-session', id: 'session-a' },
+            requestedModelId: 'my-alias',
+            resolvedBy: 'body-session',
+          },
+          summary: {
+            finalProviderId: 'provider-b',
+            finalModelId: 'upstream-model',
+            usage: { providerId: 'provider-b', modelId: 'upstream-model', inputTokens: 11, totalTokens: 12 },
+          },
+        }),
+      );
+
+      const found = store.find(TRACE_ID);
+      const root = found?.spans.find((span) => span.spanId === ROOT_SPAN_ID);
+      expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
+      expect(found?.trace).toMatchObject({
+        requestedModelId: 'my-alias',
+        finalModelId: 'upstream-model',
+        usage: expect.objectContaining({ inputTokens: 11 }),
+      });
+    } finally {
+      handle.close();
+    }
+  });
+
   test('projects root fast-mode intent into trace summaries', () => {
     const handle = openTestDb();
     try {

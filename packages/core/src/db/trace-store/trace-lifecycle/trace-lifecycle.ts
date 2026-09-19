@@ -111,6 +111,9 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
     const { columns, remaining } = projectAttributes(rootSpan.attributes, true);
     const terminalColumns = {
       ...columns,
+      // 「用户请求的模型」的源头就是 summary。root span 不再发 gen_ai.request.model，
+      // 绕道属性只是历史；列没了首页列表和筛选就丢掉 requested model。
+      ...(input.session?.requestedModelId !== undefined ? { requestedModelId: input.session.requestedModelId } : {}),
       ...(input.summary.terminationReason !== undefined ? { terminationReason: input.summary.terminationReason } : {}),
       ...(input.summary.errorType !== undefined ? { errorType: input.summary.errorType } : {}),
       ...(input.summary.errorCode !== undefined ? { errorCode: input.summary.errorCode } : {}),

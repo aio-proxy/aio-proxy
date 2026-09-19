@@ -12,6 +12,14 @@ const STARTED_AT = new Date('2026-07-24T10:00:00.000Z');
 const ENDED_AT = new Date('2026-07-24T10:00:00.100Z');
 
 describe('span projection', () => {
+  test('serves gen_ai.request.model from the legacy model_id column when it is not in the stored json', () => {
+    // 老库里的 attempt span 把这个 key 抽进了 model_id 列，JSON 里没有。新写入反过来：
+    // key 留在 JSON、列为空。两种行都得读出模型，所以列兜底不能跟着 root 一起删。
+    expect(mergeAttributes({ modelId: 'legacy-model' }, {}, false)).toEqual({ 'gen_ai.request.model': 'legacy-model' });
+    // 而 root 无论列里有什么都不再挂 gen_ai.*。
+    expect(mergeAttributes({ modelId: 'legacy-model', requestedModelId: 'alias' }, {}, true)).toEqual({});
+  });
+
   test('keeps routing v2 attributes in remaining attributes_json', () => {
     const attributes = {
       'aio_proxy.route.contract_version': 2,
@@ -140,10 +148,10 @@ describe('span projection', () => {
       expect(rootAttrs['aio_proxy.request.id']).toBe('request-a');
       expect(rootAttrs['aio_proxy.protocol.inbound']).toBe('openai-compatible');
       expect(rootAttrs['aio_proxy.operation']).toBe('model');
-      expect(rootAttrs['gen_ai.request.model']).toBe('requested-model');
-      expect(rootAttrs['gen_ai.response.model']).toBe('final-model');
-      expect(rootAttrs['gen_ai.usage.input_tokens']).toBe(12);
-      expect(rootAttrs['gen_ai.usage.output_tokens']).toBe(7);
+      // root 发射的 gen_ai.* 仍然入列（requestedModelId 靠它兼容旧数据），但读回时
+      // 不再挂回属性上：root 是纯 HTTP span，带着它们就成了第二个 GENERATION。
+      expect(Object.keys(rootAttrs).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
+      expect(rootRow.requestedModelId).toBe('requested-model');
       expect(rootAttrs['aio_proxy.route.final_provider_id']).toBe('provider-x');
       expect(rootAttrs['long.tail.custom']).toBe('keep-me');
 
@@ -155,6 +163,8 @@ describe('span projection', () => {
         'aio_proxy.route.priority_source': 'model',
         'aio_proxy.route.weight_source': 'provider',
         'aio_proxy.route.selection_source': 'deterministic_session',
+        // 非 root 的 gen_ai.request.model 是 GenAI span 自己的属性，原样留在 JSON 里。
+        'gen_ai.request.model': 'final-model',
         'long.tail.attempt': 'also-kept',
       });
       expect(attemptRow.providerWeight).toBe(100);

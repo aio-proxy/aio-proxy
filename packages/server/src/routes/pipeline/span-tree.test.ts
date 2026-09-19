@@ -60,6 +60,35 @@ test('the route span records how many candidates survived capability filtering',
   expect(tree(spans).find(spanName.route)?.attributes[attributeName.routeCandidateCount]).toBe(1);
 });
 
+test('the root span carries no gen_ai attributes', async () => {
+  const { spans } = await runOnce();
+
+  const root = spans.find((span) => span.name === spanName.request);
+  expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
+  // GenAI span 的名字是 `{operation} {model}` 动态拼的，所以按结构找而不按名字找：
+  // root 的子 span 里只有它是 CLIENT，parse/session/route 都是默认的 INTERNAL。
+  const inference = spans.find((span) => span.parentSpanId === root?.spanId && span.kind === SpanKind.CLIENT);
+  expect(inference?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
+});
+
+test('a settled usage row still leaves no gen_ai attributes on the root span', async () => {
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => textStream('ok') })], {
+    immediateStreamCompletion: {
+      outcome: 'success',
+      usage: { providerId: 'primary', modelId: 'upstream-model', inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+    },
+  });
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await response.text();
+  await settleRecording(harness.recording);
+
+  // 先钉住这一趟确实结算出了 usage。没有这条，下面的断言在 usage 为空时会空过 ——
+  // runOnce() 的 raw 直通就是这种情况，删掉 usage setter 也照样绿。
+  expect(harness.recording.finals[0]).toMatchObject({ usage: expect.objectContaining({ inputTokens: 3 }) });
+  const root = harness.recording.spans.find((span) => span.name === spanName.request);
+  expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
+});
+
 test('a parse failure ends the parse span before the root settles', async () => {
   const harness = pipeline([rawProvider({ id: 'raw' })]);
   const response = await harness.run(jsonRequest({ prompt: 'missing model' }));

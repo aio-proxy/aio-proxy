@@ -80,8 +80,10 @@ function asNumber(value: unknown): number | undefined {
  * Split a span's full attribute object into typed-column values and the
  * remaining long-tail attributes that stay in `attributes_json`.
  *
- * `isRoot` controls whether `gen_ai.request.model` maps to `requestedModelId`
- * (root) or `modelId` (attempt).
+ * `isRoot` controls whether `gen_ai.request.model` maps to `requestedModelId`;
+ * on any other span it stays in `remaining` so the GenAI span keeps the key as
+ * its own attribute. The `modelId` column is therefore only ever read now, for
+ * rows written before that split.
  */
 export function projectAttributes(
   attributes: SpanAttributesJson,
@@ -149,10 +151,12 @@ export function projectAttributes(
         setStr('terminationReason', value);
         break;
       case ATTR.genAiRequestModel:
+        // 只有 root 需要它入列（喂 requestedModelId，旧数据兼容）。GenAI span 上
+        // 这个 key 就是它自己的属性，原样留在 JSON 里。
         if (isRoot) {
           setStr('requestedModelId', value);
         } else {
-          setStr('modelId', value);
+          remaining[key] = value;
         }
         break;
       case ATTR.genAiResponseModel:
@@ -221,14 +225,20 @@ export function mergeAttributes(
   set(ATTR.selectionReason, columns.selectionReason);
   set(ATTR.errorCode, columns.errorCode);
   set(ATTR.terminationReason, columns.terminationReason);
-  set(ATTR.genAiRequestModel, isRoot ? columns.requestedModelId : columns.modelId);
-  set(ATTR.genAiResponseModel, columns.finalModelId);
-  set(ATTR.genAiUsageInputTokens, columns.inputTokens);
-  set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
-  set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
-  set(ATTR.genAiUsageCacheReadTokens, columns.cacheReadTokens);
-  set(ATTR.genAiUsageCacheWriteTokens, columns.cacheWriteTokens);
-  set(ATTR.genAiUsageReasoningTokens, columns.reasoningTokens);
+  // root 的 usage / model 列来自 summary，不是它自己的属性。挂回去会让 root 变成
+  // 第二个「带 gen_ai.* 的 span」，Langfuse 那边一条 trace 就出现两个 GENERATION。
+  // 非 root 走这里只为旧数据：新写入的 gen_ai.request.model 留在 JSON 里，
+  // columns.modelId 是空的，`set` 遇到 undefined 不覆盖已有的 stored 值。
+  if (!isRoot) {
+    set(ATTR.genAiRequestModel, columns.modelId);
+    set(ATTR.genAiResponseModel, columns.finalModelId);
+    set(ATTR.genAiUsageInputTokens, columns.inputTokens);
+    set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
+    set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
+    set(ATTR.genAiUsageCacheReadTokens, columns.cacheReadTokens);
+    set(ATTR.genAiUsageCacheWriteTokens, columns.cacheWriteTokens);
+    set(ATTR.genAiUsageReasoningTokens, columns.reasoningTokens);
+  }
   set(ATTR.errorType, columns.errorType);
 
   return merged;
