@@ -31,6 +31,12 @@ const STREAM_TAIL_MS = 240;
 const FAILOVER_BURN_MS = 80;
 const FIRST_CHUNK_DELAY_MS = 340;
 
+// Floor for the TTFT fixture's self-check. Deliberately a fixed number rather
+// than a fraction of the three constants above, so shrinking one of them to
+// zero fails the self-check instead of moving the floor down with it. Any real
+// sleep clears it; an interval that did not happen measures single digits.
+const MIN_FIXTURE_INTERVAL_MS = 40;
+
 // Indexes one recording's spans by name and projects "who is whose parent" in
 // readable terms. `find` keeps the first span of a name so repeated names (many
 // provider attempts) resolve to the earliest one.
@@ -512,12 +518,20 @@ test('time_to_first_chunk is this span own start to its first chunk, in seconds'
   // `firstChunkAt` exists to prevent.
   const attemptMs = spans.find((span) => span.name === spanName.request)?.attributes[attributeName.ttftMs] as number;
   const spanMs = (inference?.endedAt.getTime() ?? 0) - (inference?.startedAt.getTime() ?? 0);
+  // The burn and the tail, measured off the attempt spans rather than read back
+  // from `genAiMs` — the value under test cannot be its own witness.
+  const attemptSpans = spans.filter((span) => span.name === spanName.attempt);
+  const burnMs = (attemptSpans[0]?.endedAt.getTime() ?? 0) - (attemptSpans[0]?.startedAt.getTime() ?? 0);
+  const tailMs = spanMs - burnMs - attemptMs;
 
-  // Fixture self-check: one line per interval, so a fixture that quietly stops
-  // producing one of the three fails here instead of leaving a bound inert.
+  // Fixture self-check, one line per interval, against a floor that is NOT
+  // derived from the constants above: trimming one of them to zero has to fail
+  // here. Trimming it only relaxes the matching bound below into a tautology
+  // (`genAiMs < spanMs` always holds), which is how these holes keep opening.
   expect(harness.recording.attempts.map((attempt) => attempt.outcome)).toEqual(['failure', 'success']);
-  expect(attemptMs).toBeGreaterThan(FIRST_CHUNK_DELAY_MS / 2);
-  expect(spanMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS + STREAM_TAIL_MS / 2);
+  expect(burnMs).toBeGreaterThan(MIN_FIXTURE_INTERVAL_MS);
+  expect(attemptMs).toBeGreaterThan(MIN_FIXTURE_INTERVAL_MS);
+  expect(tailMs).toBeGreaterThan(MIN_FIXTURE_INTERVAL_MS);
   // Above the attempt origin: failover time counts.
   expect(genAiMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS / 2);
   // Below the span's own duration: the tail does not count. This also excludes
