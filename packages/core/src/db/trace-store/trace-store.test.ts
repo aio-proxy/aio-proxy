@@ -532,6 +532,26 @@ describe('trace store summary', () => {
     }
   });
 
+  // startedBefore 是闭区间：正好落在末端的那条算出来的桶号是 count，越界一格。不夹一刀
+  // 它就会连 totals 一起被悄悄丢掉 —— 图上少一条、总数也少一条，而没有任何报错。
+  test('keeps a trace that lands exactly on the closed upper bound', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T10:00:00.000Z', 'success');
+
+      const result = store.summary({
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      });
+
+      expect(result.totals).toEqual({ success: 1, error: 0 });
+      expect(result.buckets.at(-1)).toEqual({ at: '2026-07-24T09:59:00.000Z', success: 1, error: 0 });
+    } finally {
+      handle.close();
+    }
+  });
+
   test('reuses the list filters', () => {
     const handle = openTestDb();
     try {
@@ -578,6 +598,8 @@ describe('trace store summary', () => {
       const startedAfter = new Date('2026-06-24T00:00:00.000Z');
       const at = (days: number) => new Date(startedAfter.getTime() + days * 86_400_000);
 
+      // 3h 正好是 180 个 1m 桶，也就是上界本身：闭区间，还该选最细的那一档。
+      expect(store.summary({ startedAfter, startedBefore: at(0.125) }).bucket).toBe('1m');
       expect(store.summary({ startedAfter, startedBefore: at(0.25) }).bucket).toBe('5m');
       expect(store.summary({ startedAfter, startedBefore: at(1) }).bucket).toBe('30m');
       expect(store.summary({ startedAfter, startedBefore: at(7) }).bucket).toBe('1h');

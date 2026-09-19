@@ -1,3 +1,6 @@
+import { join } from 'node:path';
+
+import { aioHome } from '@aio-proxy/core';
 import { decodeTraceCursor, encodeTraceCursor, type TracesQuery, type TracesSummaryQuery } from '@aio-proxy/core/db';
 import {
   DashboardTracePageSizeSchema,
@@ -11,6 +14,7 @@ import { z } from 'zod';
 
 import { traceDiagnosticsFromAttributes } from '../../request-tracing/semantic';
 import type { ServerState } from '../../server-state';
+import { readTraceWireLog } from './wire-log';
 
 const isoDate = z.iso.datetime().transform((value) => new Date(value));
 
@@ -127,4 +131,28 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
       const root = detail.spans.find((span) => span.spanId === detail.trace.rootSpanId);
       const diagnostics = root === undefined ? undefined : traceDiagnosticsFromAttributes(root.attributes);
       return context.json({ ...detail, ...(diagnostics === undefined ? {} : { diagnostics }) });
+    })
+    // 分位对比自己算不出「调用链不存在」和「调用链不可比」的区别，所以先按详情路由的口径
+    // 确认它存在，再去聚合 —— 否则一个打错的 traceId 会拿到一个安静的 null。
+    .get('/:traceId/percentile', traceIdParamsValidator, (context) => {
+      context.header('cache-control', 'no-store');
+      const { traceId } = context.req.valid('param');
+      if (state.traceStore.find(traceId) === undefined) return context.json({ error: 'trace not found' }, 404);
+      return context.json(state.traceStore.percentile(traceId));
+    })
+    .get('/:traceId/wire', traceIdParamsValidator, async (context) => {
+      context.header('cache-control', 'no-store');
+      const detail = state.traceStore.find(context.req.valid('param').traceId);
+      if (detail === undefined) return context.json({ error: 'trace not found' }, 404);
+      const logging = state.currentConfig().server.logging;
+      return context.json(
+        await readTraceWireLog({
+          requestId: detail.trace.requestId,
+          startedAt: new Date(detail.trace.startedAt),
+          // 跨本地零点的请求后半截写在第二天的文件里，结束时刻决定了要不要连那个也扫
+          ...(detail.trace.endedAt === null ? {} : { endedAt: new Date(detail.trace.endedAt) }),
+          logging,
+          logDir: logging?.dir ?? join(aioHome(), 'logs'),
+        }),
+      );
     });

@@ -171,4 +171,16 @@ describe('TracesEvents', () => {
     // 提示落在表头，不是盖在图上的那一整块。
     expect(notice.closest('header')).not.toBeNull();
   });
+
+  test('calls a first-load failure a failure, not stale data', () => {
+    // 一次都没成功过就没有「上次加载的数据」可言。两句话同时出现的话，表头和正文
+    // 会对同一次请求给出互相矛盾的说法。
+    mocks.summary = { data: undefined, isLoading: false, isError: true };
+    renderEvents();
+
+    expect(
+      screen.getByText(/Traces unavailable|无法加载追踪|無法載入追蹤|トレースを利用できません|사용할 수 없음/u),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Showing last loaded data|显示的是上次加载的数据|顯示的是上次載入的資料/u)).toBeNull();
+  });
 });

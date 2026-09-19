@@ -5,6 +5,8 @@ export interface TraceSpanLayout extends DashboardTraceSpan {
   readonly offsetRatio: number;
   readonly widthRatio: number;
   readonly durationMs: number;
+  /** Total trace span the ratios are relative to. Identical on every row. */
+  readonly scaleDurationMs: number;
 }
 
 const minimumBarRatio = 0.002;
@@ -39,6 +41,6 @@ export const layoutTraceSpans = (spans: readonly DashboardTraceSpan[], now: Date
       current = parent;
     }
 
-    return { ...span, depth, offsetRatio, widthRatio, durationMs };
+    return { ...span, depth, offsetRatio, widthRatio, durationMs, scaleDurationMs };
   });
 };
