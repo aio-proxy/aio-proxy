@@ -8,8 +8,24 @@ import {
   writeOpenAICompletionsSSE,
 } from './openai-completions.test-support';
 
+function concatenateToolArguments(sse: string): Map<string, string> {
+  const argumentsById = new Map<string, string>();
+  for (const block of sse.split('\n\n')) {
+    if (!block.startsWith('data: {')) continue;
+    const chunk = JSON.parse(block.slice('data: '.length)) as {
+      choices?: Array<{ delta?: { tool_calls?: Array<{ id?: string; function?: { arguments?: string } }> } }>;
+    };
+    for (const toolCall of chunk.choices?.[0]?.delta?.tool_calls ?? []) {
+      const id = toolCall.id;
+      if (id === undefined) continue;
+      argumentsById.set(id, (argumentsById.get(id) ?? '') + (toolCall.function?.arguments ?? ''));
+    }
+  }
+  return argumentsById;
+}
+
 describe('writeOpenAICompletionsSSE', () => {
-  test('Given tool-call stream When encoded Then emits accumulated arguments', async () => {
+  test('Given tool-call stream When encoded Then emits argument deltas only', async () => {
     const stream = partStream([
       { type: 'tool-input-start', id: 'call_1', toolName: 'lookup' },
       { type: 'tool-input-delta', id: 'call_1', delta: '{"q":"' },
@@ -26,12 +42,37 @@ describe('writeOpenAICompletionsSSE', () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
+    const sse = await collectSSE(writeOpenAICompletionsSSE(stream));
+    expect(sse).toBe(
       'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\":\\""}}]},"index":0}]}\n\n' +
-        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\":\\"pizza\\"}"}}]},"index":0}]}\n\n' +
-        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\":\\"pizza\\"}"}}]},"index":0}]}\n\n' +
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"pizza\\"}"}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}],"usage":{"total_tokens":9}}\n\n' +
+        doneFrame,
+    );
+    expect(concatenateToolArguments(sse).get('call_1')).toBe('{"q":"pizza"}');
+  });
+
+  test('Given empty tool-input-delta When encoded Then skips the empty chunk', async () => {
+    const stream = partStream([
+      { type: 'tool-input-start', id: 'call_1', toolName: 'lookup' },
+      { type: 'tool-input-delta', id: 'call_1', delta: '' },
+      { type: 'tool-input-delta', id: 'call_1', delta: '{"q":1}' },
+      {
+        type: 'finish',
+        finishReason: 'tool-calls',
+        usage: {
+          inputTokens: undefined,
+          outputTokens: undefined,
+          totalTokens: undefined,
+        },
+      },
+    ]);
+
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
+      'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]},"index":0}]}\n\n' +
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\":1}"}}]},"index":0}]}\n\n' +
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}\n\n' +
         doneFrame,
     );
   });
@@ -58,7 +99,6 @@ describe('writeOpenAICompletionsSSE', () => {
       'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"content":"Checking "},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"index":0}]}\n\n' +
-        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"content":"done"},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}\n\n' +
         doneFrame,
@@ -84,15 +124,20 @@ describe('writeOpenAICompletionsSSE', () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
+    const sse = await collectSSE(writeOpenAICompletionsSSE(stream));
+    expect(sse).toBe(
       'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"name":"second","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_a","type":"function","function":{"name":"first","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_a","type":"function","function":{"name":"first","arguments":"{\\"a\\":1}"}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"name":"second","arguments":"{\\"b\\":2}"}}]},"index":0}]}\n\n' +
-        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_a","type":"function","function":{"name":"first","arguments":"{\\"a\\":1}"}}]},"index":0}]}\n\n' +
-        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"name":"second","arguments":"{\\"b\\":2}"}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}\n\n' +
         doneFrame,
+    );
+    expect(concatenateToolArguments(sse)).toEqual(
+      new Map([
+        ['call_b', '{"b":2}'],
+        ['call_a', '{"a":1}'],
+      ]),
     );
   });
 
