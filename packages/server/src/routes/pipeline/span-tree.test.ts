@@ -273,8 +273,15 @@ test('prepare runs inside the attempt span, not before it', async () => {
   expect(tree(spans).parentNameOf(spanName.prepare)).toBe(spanName.attempt);
   for (const [index, prepare] of prepares.entries()) {
     const attempt = attempts[index];
-    expect(prepare.startedAt.getTime()).toBeGreaterThanOrEqual(attempt?.startedAt.getTime() ?? 0);
-    expect(prepare.endedAt.getTime()).toBeLessThanOrEqual(attempt?.endedAt.getTime() ?? 0);
+    // 1ms of slack on each side: StoredSpan timestamps are `new Date(fractional
+    // ms)`, which truncates, and the two spans' hrtimes do not share an epoch
+    // anchor, so a containment that holds to the nanosecond can still land one
+    // integer millisecond the wrong way (~1 run in 30). A real containment bug
+    // is prepare left open across its parent's end — tens of ms at least, and
+    // anyway an unended parent is dropped, which the parentNameOf check above
+    // already catches. Nothing real fits inside one millisecond.
+    expect(prepare.startedAt.getTime()).toBeGreaterThanOrEqual((attempt?.startedAt.getTime() ?? 0) - 1);
+    expect(prepare.endedAt.getTime()).toBeLessThanOrEqual((attempt?.endedAt.getTime() ?? 0) + 1);
   }
 });
 
@@ -466,6 +473,41 @@ test('time_to_first_chunk is measured in seconds from the GenAI span start', asy
   // is the whole reason firstChunkAt is an absolute instant instead of ttftMs.
   expect(chunk as number).toBeGreaterThan(FIRST_CHUNK_DELAY_MS / 1000 / 2);
   expect(chunk as number).toBeLessThan((FIRST_CHUNK_DELAY_MS / 1000) * 5);
+});
+
+// Candidate 0 burns wall clock and then yields nothing, so the loop fails over.
+// This is what separates the GenAI span's origin from the attempt's: the burn
+// lands inside the GenAI span but before candidate 1 is ever dispatched.
+function slowEmptyStream(delayMs: number): ModelEventStream {
+  return new ReadableStream<TextStreamPart<ToolSet>>({
+    async pull(controller) {
+      await Bun.sleep(delayMs);
+      controller.close();
+    },
+  });
+}
+
+test('the GenAI span TTFT counts failover time; the attempt TTFT does not', async () => {
+  const harness = pipeline([
+    modelProvider({ id: 'primary', invoke: () => slowEmptyStream(FIRST_CHUNK_DELAY_MS) }),
+    modelProvider({ id: 'backup', invoke: () => usageStream() }),
+  ]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await response.text();
+  await settleRecording(harness.recording);
+  const spans = harness.recording.spans;
+  const root = spans.find((span) => span.name === spanName.request);
+  const genAiMs = (inferenceSpanOf(spans)?.attributes[attributeName.genAiTimeToFirstChunk] as number) * 1000;
+  // The attempt-origin TTFT: measured from candidate 1's dispatch, so the burn
+  // is not in it. Reusing it for the GenAI span is the tempting wrong move that
+  // `firstChunkAt` exists to prevent, and it is the number to stay away from.
+  const attemptMs = root?.attributes[attributeName.ttftMs] as number;
+
+  // Without a real failover the two origins coincide and nothing below bites.
+  expect(harness.recording.attempts.map((attempt) => attempt.outcome)).toEqual(['failure', 'success']);
+  expect(genAiMs).toBeGreaterThan(attemptMs + FIRST_CHUNK_DELAY_MS / 2);
+  // And still its own start, not the process's.
+  expect(genAiMs).toBeLessThan(FIRST_CHUNK_DELAY_MS * 5);
 });
 
 test('a settlement that failed after the first chunk still records its TTFT', async () => {
