@@ -3,7 +3,10 @@ const storageKey = 'aio-proxy.dashboard-session';
 export function readDashboardAuthToken(): string | undefined {
   try {
     const token = globalThis.localStorage.getItem(storageKey);
-    if (token !== null && token !== '') return token;
+    if (token !== null && token !== '') {
+      discardLegacySessionToken();
+      return token;
+    }
     return adoptLegacySessionToken();
   } catch {
     return undefined;
@@ -37,6 +40,20 @@ export function writeDashboardAuthToken(token: string): void {
 export function clearDashboardAuthToken(): void {
   try {
     globalThis.localStorage.removeItem(storageKey);
+  } catch {}
+  discardLegacySessionToken();
+}
+
+/**
+ * Retire this tab's legacy copy whenever it is not the token in use. Logout removes only the shared
+ * one, and nothing can reach another tab's `sessionStorage`, so a copy left behind here would be
+ * adopted on the next reload and re-authenticate every tab — logout is client-side only, so a
+ * retained token is still a valid one. Both reading and clearing retire it, so one run of this build
+ * per tab is enough.
+ */
+function discardLegacySessionToken(): void {
+  try {
+    if (globalThis.sessionStorage.getItem(storageKey) !== null) globalThis.sessionStorage.removeItem(storageKey);
   } catch {}
 }
 

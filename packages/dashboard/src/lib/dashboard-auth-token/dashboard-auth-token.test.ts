@@ -34,6 +34,26 @@ test('a legacy session never overrides a current one', () => {
   expect(readDashboardAuthToken()).toBe('current-token');
 });
 
+test('logging out leaves no legacy token behind to resurrect the session', () => {
+  // A sibling tab reloaded first and populated the shared token, so this tab's own legacy copy was
+  // never adopted — it has to be retired anyway, or the next reload would adopt it.
+  globalThis.sessionStorage.setItem('aio-proxy.dashboard-session', 'legacy-token');
+  writeDashboardAuthToken('shared-token');
+  expect(readDashboardAuthToken()).toBe('shared-token');
+
+  clearDashboardAuthToken();
+
+  expect(readDashboardAuthToken()).toBeUndefined();
+});
+
+test('logging out discards a legacy token this tab never read', () => {
+  globalThis.sessionStorage.setItem('aio-proxy.dashboard-session', 'legacy-token');
+
+  clearDashboardAuthToken();
+
+  expect(readDashboardAuthToken()).toBeUndefined();
+});
+
 test('clearing the token removes it from storage', () => {
   writeDashboardAuthToken('dashboard-session-token');
   clearDashboardAuthToken();

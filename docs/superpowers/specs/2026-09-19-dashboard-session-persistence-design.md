@@ -153,6 +153,13 @@ the password — the one logout this change exists to prevent. `readDashboardAut
 a legacy `sessionStorage` value across on first read, once, and the helper can be deleted when no tab
 can still be running the previous build.
 
+Retaining a legacy copy is not safe, because logout here is client-side only: a token that survives
+anywhere is still a valid one. With several pre-upgrade tabs, whichever reloads first populates
+`localStorage`, so the others return the shared token and never adopt — leaving their own copy behind,
+which the next reload after a logout would adopt and use to re-authenticate every tab. Both reading
+and clearing the session therefore retire this tab's legacy copy, so one run of the new build per tab
+removes it.
+
 `packages/dashboard/src/lib/dashboard-client/dashboard-client.ts` reads the renewal header in
 `dashboardFetch`:
 
