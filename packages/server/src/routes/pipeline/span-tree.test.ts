@@ -21,12 +21,16 @@ import { attributeName, spanName } from '../../request-tracing';
 import { pipeline } from './test-support';
 
 // Long enough that the settlement of a streamed completion is unambiguously
-// later than the moment the Response was handed back.
+// later than the moment the Response was handed back. Also used as the stream
+// tail that separates "time to first chunk" from the GenAI span's duration.
 const STREAM_TAIL_MS = 120;
 
-// Wall-clock delay before the first chunk. Large enough that the seconds value
-// (~0.12) and the millisecond value (~120) cannot be confused for each other.
+// Wall-clock delay before the first chunk, and the time candidate 0 burns before
+// failing over. Both bounds in the TTFT test are relational, and because each of
+// these is >= 120ms the two margins are structurally >= 60ms whatever the load:
+// the upper margin is the tail, the lower margin is the burn.
 const FIRST_CHUNK_DELAY_MS = 120;
+const FAILOVER_BURN_MS = 120;
 
 // Indexes one recording's spans by name and projects "who is whose parent" in
 // readable terms. `find` keeps the first span of a name so repeated names (many
@@ -388,12 +392,21 @@ test('candidate invocation runs inside the attempt span context', async () => {
 
 // A stream carrying non-zero usage. pipeline-helpers' textStream() reports all
 // zeros, which cannot tell "which key got which number" apart. `delayMs` holds
-// the first chunk back so the recorded TTFT has a magnitude worth asserting.
-function usageStream(delayMs = 0): ModelEventStream {
+// the first chunk back and `tailMs` keeps the stream open after it, so a test
+// can separate "time to first chunk" from "how long the whole thing took".
+// Two-phase `pull`, not `start`: a `start` that awaits runs to completion before
+// any read resolves, which would fold the tail back into the first chunk.
+function usageStream(delayMs = 0, tailMs = 0): ModelEventStream {
+  let opened = false;
   return new ReadableStream<TextStreamPart<ToolSet>>({
-    async start(controller) {
-      if (delayMs > 0) await Bun.sleep(delayMs);
-      controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'ok' });
+    async pull(controller) {
+      if (!opened) {
+        opened = true;
+        if (delayMs > 0) await Bun.sleep(delayMs);
+        controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'ok' });
+        return;
+      }
+      if (tailMs > 0) await Bun.sleep(tailMs);
       controller.enqueue({
         type: 'finish',
         finishReason: 'stop',
@@ -460,24 +473,9 @@ test('the GenAI span carries the model the upstream actually answered with', asy
   expect(inference?.attributes[attributeName.genAiResponseModel]).toBe('primary-model');
 });
 
-test('time_to_first_chunk is measured in seconds from the GenAI span start', async () => {
-  const inference = await runWithUsage(() => usageStream(FIRST_CHUNK_DELAY_MS));
-  const chunk = inference?.attributes['gen_ai.response.time_to_first_chunk'];
-
-  expect(typeof chunk).toBe('number');
-  // The held-back first chunk gives this a known magnitude: ~0.12 in seconds.
-  // Plain `toBeLessThan(1)` does not guard the unit — an undelayed unit-test
-  // request takes well under a millisecond, so milliseconds would also be < 1.
-  // The upper bound is deliberately tight rather than merely "not milliseconds":
-  // with slack it also passes for a value measured from *process* start, which
-  // is the whole reason firstChunkAt is an absolute instant instead of ttftMs.
-  expect(chunk as number).toBeGreaterThan(FIRST_CHUNK_DELAY_MS / 1000 / 2);
-  expect(chunk as number).toBeLessThan((FIRST_CHUNK_DELAY_MS / 1000) * 5);
-});
-
 // Candidate 0 burns wall clock and then yields nothing, so the loop fails over.
-// This is what separates the GenAI span's origin from the attempt's: the burn
-// lands inside the GenAI span but before candidate 1 is ever dispatched.
+// The burn lands inside the GenAI span but before candidate 1 is ever
+// dispatched, which is what separates the GenAI origin from the attempt origin.
 function slowEmptyStream(delayMs: number): ModelEventStream {
   return new ReadableStream<TextStreamPart<ToolSet>>({
     async pull(controller) {
@@ -487,27 +485,40 @@ function slowEmptyStream(delayMs: number): ModelEventStream {
   });
 }
 
-test('the GenAI span TTFT counts failover time; the attempt TTFT does not', async () => {
+test('time_to_first_chunk is this span own start to its first chunk, in seconds', async () => {
+  // Three intervals, deliberately all present at once, because every wrong
+  // implementation of this attribute is a quantity that coincides with the right
+  // one as soon as one of them is missing:
+  //   burn (candidate 0 fails)  -> drop it and the attempt origin looks correct
+  //   delay (before 1st chunk)  -> drop it and milliseconds look like seconds
+  //   tail  (after 1st chunk)   -> drop it and the span duration looks correct
+  // Bounds are relational rather than absolute so they scale with load.
   const harness = pipeline([
-    modelProvider({ id: 'primary', invoke: () => slowEmptyStream(FIRST_CHUNK_DELAY_MS) }),
-    modelProvider({ id: 'backup', invoke: () => usageStream() }),
+    modelProvider({ id: 'primary', invoke: () => slowEmptyStream(FAILOVER_BURN_MS) }),
+    modelProvider({ id: 'backup', invoke: () => usageStream(FIRST_CHUNK_DELAY_MS, STREAM_TAIL_MS) }),
   ]);
   const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
   await response.text();
   await settleRecording(harness.recording);
   const spans = harness.recording.spans;
-  const root = spans.find((span) => span.name === spanName.request);
-  const genAiMs = (inferenceSpanOf(spans)?.attributes[attributeName.genAiTimeToFirstChunk] as number) * 1000;
-  // The attempt-origin TTFT: measured from candidate 1's dispatch, so the burn
-  // is not in it. Reusing it for the GenAI span is the tempting wrong move that
-  // `firstChunkAt` exists to prevent, and it is the number to stay away from.
-  const attemptMs = root?.attributes[attributeName.ttftMs] as number;
+  const inference = inferenceSpanOf(spans);
+  // NaN if the attribute is missing, and every comparison below is then false.
+  const genAiMs = (inference?.attributes[attributeName.genAiTimeToFirstChunk] as number) * 1000;
+  // The attempt-origin TTFT, measured from candidate 1's dispatch: the burn is
+  // not in it. Reusing this for the GenAI span is the tempting wrong move that
+  // `firstChunkAt` exists to prevent.
+  const attemptMs = spans.find((span) => span.name === spanName.request)?.attributes[attributeName.ttftMs] as number;
+  const spanMs = (inference?.endedAt.getTime() ?? 0) - (inference?.startedAt.getTime() ?? 0);
 
-  // Without a real failover the two origins coincide and nothing below bites.
+  // Fixture self-check: without these the bounds below have nothing to bite on.
   expect(harness.recording.attempts.map((attempt) => attempt.outcome)).toEqual(['failure', 'success']);
-  expect(genAiMs).toBeGreaterThan(attemptMs + FIRST_CHUNK_DELAY_MS / 2);
-  // And still its own start, not the process's.
-  expect(genAiMs).toBeLessThan(FIRST_CHUNK_DELAY_MS * 5);
+  expect(spanMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS + STREAM_TAIL_MS / 2);
+  // Above the attempt origin: failover time counts.
+  expect(genAiMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS / 2);
+  // Below the span's own duration: the tail does not count. This also excludes
+  // the process origin (seconds of uptime) and a millisecond-valued attribute,
+  // both of which land orders of magnitude above this ceiling.
+  expect(genAiMs).toBeLessThan(spanMs - STREAM_TAIL_MS / 2);
 });
 
 test('a settlement that failed after the first chunk still records its TTFT', async () => {
