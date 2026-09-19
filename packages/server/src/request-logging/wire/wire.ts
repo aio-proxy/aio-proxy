@@ -322,12 +322,11 @@ function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, 
 // response headers; the body timeline is carried by first_upstream_byte_ms /
 // ttft_ms on the attempt.
 //
-// The active-span check guards a reachable path, not a theoretical one: token
-// counting opens an attempt span but never enters its context, so under debug
-// logging a real request arrives here with a debug scope and no active span
-// (routes/token-count/token-count.ts). Parenting that span to nothing would put
-// it on a fresh trace id the buffering processor was never told to register, so
-// it would be built and thrown away rather than persisted.
+// The active-span check guards a reachable path, not a theoretical one: this
+// fetcher also serves callers that run outside any trace session at all —
+// dashboard, OAuth and plugin-host requests. Parenting a span to nothing would
+// put it on a fresh trace id the buffering processor was never told to
+// register, so it would be built and thrown away rather than persisted.
 async function fetchWithSpan(
   fetcher: typeof globalThis.fetch,
   input: Parameters<typeof globalThis.fetch>[0],
