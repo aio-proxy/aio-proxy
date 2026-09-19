@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Traces 列表 — 静态 demo</title>
+    <link rel="stylesheet" href="./demo.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <div class="topbar">
+        <nav class="crumbs"><span>可观测性</span><span>/</span><span style="color: var(--foreground)">调用链</span></nav>
+        <div class="spacer"></div>
+        <a class="btn" href="./detail.html">打开详情页 demo →</a>
+        <button class="btn" data-variant="ghost" data-theme-toggle>深浅色</button>
+      </div>
+
+      <div class="card" style="padding: 0">
+        <!-- toolbar: range picker + live toggle promoted out of the filter drawer -->
+        <div class="row" style="padding: 12px 16px; gap: 8px; border-bottom: 1px solid var(--border)">
+          <button class="btn" id="filters" aria-expanded="false" aria-controls="drawer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+            筛选<span class="badge" data-status="outline" style="margin-left: 2px">2</span>
+          </button>
+          <div class="spacer"></div>
+          <button class="btn" id="range">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+            过去 1 小时
+          </button>
+          <!-- requirement: OFF on entry -->
+          <button class="btn" id="live" data-active="false" aria-pressed="false">
+            <span class="live-dot"></span> 实时
+          </button>
+          <button class="btn" data-variant="ghost" id="refresh" title="刷新">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+          </button>
+        </div>
+
+        <div class="with-drawer" id="body" data-open="false">
+          <aside class="drawer" id="drawer" aria-label="筛选">
+            <header class="drawer-head">筛选</header>
+            <div class="drawer-body">
+              <section><h3>请求</h3>
+                <label>Trace ID<input class="input" placeholder="32 位十六进制" /></label>
+                <label>Request ID<input class="input" /></label>
+                <label>会话来源<input class="input" placeholder="claude-code" /></label>
+                <label>会话 ID<input class="input" /></label>
+                <label>请求模型<input class="input" value="claude-sonnet-4-6" /></label>
+                <label>协议<select class="input"><option>全部</option><option selected>anthropic-messages</option><option>openai-response</option></select></label>
+              </section>
+              <section><h3>结果</h3>
+                <label>OTel 状态<select class="input"><option>全部</option><option>OK</option><option>ERROR</option></select></label>
+                <label>终止原因<select class="input"><option>全部</option><option>failure</option><option>cancelled</option><option>interrupted</option></select></label>
+                <label>最终 Provider<input class="input" /></label>
+                <label>最终模型<input class="input" /></label>
+                <label>HTTP 状态码<input class="input" inputmode="numeric" /></label>
+              </section>
+            </div>
+            <footer class="drawer-foot">
+              <button class="btn" style="flex:1">重置</button>
+            </footer>
+          </aside>
+          <div class="with-drawer-main">
+
+        <!-- events / success-vs-error histogram -->
+        <section class="events" id="events" data-collapsed="false" style="border-bottom: 1px solid var(--border)">
+          <header class="events-head">
+            <div class="legend">
+              <button class="legend-chip" data-series="success" data-off="false">
+                <span class="legend-swatch" style="background: var(--chart-success)"></span>
+                <span class="legend-count" id="c-success">0</span> 成功
+              </button>
+              <button class="legend-chip" data-series="error" data-off="false">
+                <span class="legend-swatch" style="background: var(--chart-error)"></span>
+                <span class="legend-count" id="c-error">0</span> 失败
+              </button>
+            </div>
+            <div class="spacer"></div>
+            <span class="muted" style="font-size: 12px">点击柱体可缩放到该时间段</span>
+            <button class="btn" data-variant="ghost" id="collapse" aria-expanded="true" title="折叠">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 15 6-6 6 6"/></svg>
+            </button>
+          </header>
+          <div class="events-body">
+            <div class="chart" id="chart"><div class="tooltip" data-open="false"></div></div>
+          </div>
+        </section>
+
+        <div class="table-wrap" style="padding: 12px 4px 4px">
+          <table class="t">
+            <thead>
+              <tr>
+                <th>开始时间</th><th>Trace ID</th><th>协议</th><th>模型</th>
+                <th>Provider</th><th style="text-align:right">HTTP</th><th>状态</th>
+                <th style="text-align:right">时延</th><th style="text-align:right">Token</th><th style="text-align:right">花费</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { theme, buckets, renderChart } from './demo.js';
+      theme();
+
+      const data = buckets();
+      const series = { success: true, error: true };
+      const chart = document.getElementById('chart');
+      const draw = () => renderChart(chart, data, series, (bucket) => {
+        document.getElementById('range').textContent = new Date(bucket.at).toISOString().slice(11, 16) + ' 起 1 分钟';
+      });
+
+      const total = (key) => data.reduce((sum, d) => sum + d[key], 0);
+      document.getElementById('c-success').textContent = total('success').toLocaleString('zh-CN');
+      document.getElementById('c-error').textContent = total('error').toLocaleString('zh-CN');
+
+      document.querySelectorAll('.legend-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const key = chip.dataset.series;
+          const other = key === 'success' ? 'error' : 'success';
+          if (series[key] && !series[other]) return; // never hide both
+          series[key] = !series[key];
+          chip.dataset.off = String(!series[key]);
+          draw();
+          renderRows();
+        });
+      });
+
+      const events = document.getElementById('events');
+      document.getElementById('collapse').addEventListener('click', (e) => {
+        const collapsed = events.dataset.collapsed === 'true';
+        events.dataset.collapsed = String(!collapsed);
+        e.currentTarget.setAttribute('aria-expanded', String(collapsed));
+        e.currentTarget.querySelector('svg path').setAttribute('d', collapsed ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6');
+        if (collapsed) draw();
+      });
+
+      const body = document.getElementById('body');
+      document.getElementById('filters').addEventListener('click', (e) => {
+        const open = body.dataset.open !== 'true';
+        body.dataset.open = String(open);
+        e.currentTarget.setAttribute('aria-expanded', String(open));
+        e.currentTarget.dataset.active = String(open);
+        draw();
+      });
+
+      const live = document.getElementById('live');
+      live.addEventListener('click', () => {
+        const on = live.dataset.active !== 'true';
+        live.dataset.active = String(on);
+        live.setAttribute('aria-pressed', String(on));
+      });
+
+      const models = ['claude-sonnet-4-6', 'gpt-5.2', 'gemini-3-pro', 'claude-opus-5'];
+      const providers = ['anthropic', 'openai', 'vertex', 'bedrock'];
+      const protocols = ['anthropic-messages', 'openai-response', 'openai-chat', 'gemini-generate'];
+      const usd = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'USD', minimumFractionDigits: 4 });
+      const trace = (i) => ({
+        status: i % 9 === 3 ? 'failure' : i === 0 ? 'running' : 'success',
+        at: new Date(Date.UTC(2026, 8, 16, 8, 59 - i, 12)),
+        id: (0xabc1230 + i * 7919).toString(16).padStart(8, '0') + 'd41f9a3b7c5e0e2',
+        model: models[i % 4],
+        provider: providers[(i + 1) % 4],
+        ms: 320 + ((i * 977) % 5400),
+        tokens: 1200 + ((i * 613) % 9000),
+        protocol: protocols[i % 4],
+        // routed away from the requested model on retry
+        finalModel: i % 5 === 2 ? models[(i + 1) % 4] : undefined,
+        http: i % 9 === 3 ? 502 : i === 0 ? undefined : 200,
+        cost: (1200 + ((i * 613) % 9000)) * 0.0000042,
+      });
+      const label = { success: '成功', failure: '失败', running: '进行中' };
+      const rows = document.getElementById('rows');
+      const renderRows = () => {
+        rows.innerHTML = Array.from({ length: 14 }, (_, i) => trace(i))
+          .filter((t) => t.status === 'running' || series[t.status === 'failure' ? 'error' : 'success'])
+          .map(
+            (t) => `<tr onclick="location.href='./detail.html'">
+              <td class="num muted">${t.at.toISOString().slice(11, 19)}</td>
+              <td class="num">${t.id.slice(0, 12)}…</td>
+              <td class="muted">${t.protocol}</td>
+              <td>${t.model}${t.finalModel ? `<div class="muted" style="font-size:11px">${t.finalModel}</div>` : ''}</td>
+              <td class="muted">${t.provider}</td>
+              <td class="num" style="text-align:right">${t.http ?? '—'}</td>
+              <td><span class="badge" data-status="${t.status}">${label[t.status]}</span></td>
+              <td class="num" style="text-align:right">${(t.ms / 1000).toFixed(2)}s</td>
+              <td class="num" style="text-align:right">${t.tokens.toLocaleString('zh-CN')}</td>
+              <td class="num" style="text-align:right">${t.cost ? usd.format(t.cost) : '—'}</td>
+            </tr>`,
+          )
+          .join('');
+      };
+
+      renderRows();
+      draw();
+      addEventListener('resize', draw);
+      document.addEventListener('demo:theme', draw);
+    </script>
+  </body>
+</html>

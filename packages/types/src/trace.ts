@@ -35,6 +35,9 @@ export type TraceEventInput = z.input<typeof TraceEventSchema>;
 export type TraceEvent = z.output<typeof TraceEventSchema>;
 
 export const OtelSpanStatusCodeSchema = z.enum(['UNSET', 'OK', 'ERROR']);
+// 调用链的成败，按人看到的那个口径：跑完了没报错算成功，报错算失败，还在跑的两边都不算。
+// 跟 OTel 的状态码不是一回事 —— 成功的根 span 是 UNSET，OK 从来没人写过。
+export const TraceOutcomeSchema = z.enum(['success', 'error']);
 export const TraceTerminationReasonSchema = z.enum(['failure', 'cancelled', 'interrupted']);
 export const TraceSpanKindSchema = z.enum(['INTERNAL', 'SERVER', 'CLIENT', 'PRODUCER', 'CONSUMER']);
 export const DashboardTracePageSizeSchema = z.union([z.literal(10), z.literal(20), z.literal(50), z.literal(100)]);
@@ -145,7 +148,33 @@ export const DashboardTraceDetailSchema = z.object({
   diagnostics: DashboardTraceDiagnosticsSchema.optional(),
 });
 
+export const DashboardTraceSummaryBucketSizeSchema = z.enum(['1m', '5m', '30m', '1h', '1d']);
+
+/**
+ * 一个时间桶里的成功/失败数。注意与 `DashboardTraceSummarySchema` 区分：
+ * 那个是一行调用链的摘要，这个是 `GET /dashboard/api/traces/summary` 的聚合结果。
+ *
+ * 口径跟 `TraceOutcomeSchema` 一致：跑完了没报错算 `success`，报错算 `error`，
+ * 还在跑的两边都不计 —— 图上少掉的那一点就是「还没有结果」，不该被算成成功。
+ */
+export const DashboardTraceSummaryBucketSchema = z
+  .object({
+    at: z.iso.datetime(),
+    success: z.number().int().min(0),
+    error: z.number().int().min(0),
+  })
+  .strict();
+
+export const DashboardTraceSummaryResponseSchema = z
+  .object({
+    bucket: DashboardTraceSummaryBucketSizeSchema,
+    buckets: z.array(DashboardTraceSummaryBucketSchema),
+    totals: z.object({ success: z.number().int().min(0), error: z.number().int().min(0) }).strict(),
+  })
+  .strict();
+
 export type OtelSpanStatusCode = z.output<typeof OtelSpanStatusCodeSchema>;
+export type TraceOutcome = z.output<typeof TraceOutcomeSchema>;
 export type TraceTerminationReason = z.output<typeof TraceTerminationReasonSchema>;
 export type TraceSpanKind = z.output<typeof TraceSpanKindSchema>;
 export type DashboardTracePageSize = z.output<typeof DashboardTracePageSizeSchema>;
@@ -159,3 +188,6 @@ export type DashboardTraceDiagnosticsInput = z.input<typeof DashboardTraceDiagno
 export type DashboardTraceDiagnostics = z.output<typeof DashboardTraceDiagnosticsSchema>;
 export type DashboardTraceDetailInput = z.input<typeof DashboardTraceDetailSchema>;
 export type DashboardTraceDetail = z.output<typeof DashboardTraceDetailSchema>;
+export type DashboardTraceSummaryBucketSize = z.output<typeof DashboardTraceSummaryBucketSizeSchema>;
+export type DashboardTraceSummaryBucket = z.output<typeof DashboardTraceSummaryBucketSchema>;
+export type DashboardTraceSummaryResponse = z.output<typeof DashboardTraceSummaryResponseSchema>;

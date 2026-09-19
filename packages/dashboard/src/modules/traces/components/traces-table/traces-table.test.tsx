@@ -43,11 +43,11 @@ describe('traces table', () => {
     expect(headers).toEqual([
       expect.stringMatching(/Started|开始/u),
       'Trace ID',
-      expect.stringMatching(/Status|状态/u),
       expect.stringMatching(/Protocol|协议/u),
       expect.stringMatching(/Model|模型/u),
       expect.stringMatching(/Provider ID/u),
       expect.stringMatching(/HTTP status|HTTP 状态/u),
+      expect.stringMatching(/Status|状态/u),
       expect.stringMatching(/Latency|延迟/u),
       expect.stringMatching(/Tokens|Token/u),
       expect.stringMatching(/cost|成本/iu),
@@ -57,8 +57,8 @@ describe('traces table', () => {
     const cells = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole('cell');
     expect(cells[0].querySelector('time')).toHaveAttribute('datetime', trace.startedAt);
     expect(cells[1]).toHaveTextContent(trace.traceId);
-    expect(cells[3]).toHaveTextContent(trace.inboundProtocol);
-    expect(cells[3].querySelector('[data-slot="badge"]')).toBeNull();
+    expect(cells[2]).toHaveTextContent(trace.inboundProtocol);
+    expect(cells[2].querySelector('[data-slot="badge"]')).toBeNull();
     expect(view.container.querySelector('[data-column-controls]')).toBeNull();
   });
 
@@ -66,7 +66,7 @@ describe('traces table', () => {
     const view = renderTable();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[4];
+    )[3];
     expect(modelCell.children).toHaveLength(2);
     expect(modelCell).toHaveTextContent('requested-model');
     expect(modelCell).toHaveTextContent('upstream-model');
@@ -84,7 +84,7 @@ describe('traces table', () => {
     );
     const sameModelCell = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[4];
+    )[3];
     expect(sameModelCell.children).toHaveLength(1);
     expect(sameModelCell).toHaveTextContent('requested-model');
   });

@@ -3,15 +3,19 @@ import { DashboardTracePageSizeSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
+import { SidebarInset, SidebarProvider } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { cn } from '@aio-proxy/ui/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { queryKeys } from '@/lib/query-keys';
 
+import { TracesEvents } from '../../components/traces-events';
 import { TracesFilters } from '../../components/traces-filters';
 import { TracesTable } from '../../components/traces-table';
+import { TracesToolbar } from '../../components/traces-toolbar';
 import { useTracesQuery } from '../../hooks/use-traces-query';
 import { createDefaultTraceSearch, type TraceSearch, withTraceFilters } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
@@ -42,7 +46,12 @@ interface TracesPageProps {
 }
 
 export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, onTraceSelect }) => {
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  // 进入即轮询会让人一直盯着一张自己在动的表，看不清刚发生了什么。默认关。
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const queryClient = useQueryClient();
+  // 手动刷新要同时动表和图。只 refetch 表的 query 会让图停在上一个区间，
+  // 两块在同一屏上互相打脸 —— 自动刷新默认关着，手动刷新就是主路径。
+  const refreshAll = () => void queryClient.invalidateQueries({ queryKey: queryKeys.tracesAll });
   const searchKey = JSON.stringify(search);
   const [buffer, dispatchBuffer] = useReducer(traceBufferReducer, searchKey, (initialSearchKey) => ({
     searchKey: initialSearchKey,
@@ -121,13 +130,17 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
             refreshing={query.isFetching}
             onChange={onSearchChange}
             onAutoRefresh={setAutoRefresh}
-            onRefresh={() => void query.refetch()}
+            onRefresh={refreshAll}
           />
           <SidebarInset className="min-h-0 min-w-0">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div className="flex h-12 shrink-0 items-center border-b px-3">
-                <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
-              </div>
+              <TracesToolbar
+                search={search}
+                autoRefresh={autoRefresh}
+                onChange={onSearchChange}
+                onAutoRefresh={setAutoRefresh}
+              />
+              <TracesEvents search={search} autoRefresh={autoRefresh} onChange={onSearchChange} />
               <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
                 {loading && (
                   <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>
@@ -152,7 +165,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                         {m['dashboard.traces.reset']()}
                       </Button>
                     ) : (
-                      <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
+                      <Button onClick={refreshAll}>{m['dashboard.traces.refresh']()}</Button>
                     )}
                   </Empty>
                 )}

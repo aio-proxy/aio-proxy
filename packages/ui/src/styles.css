@@ -25,6 +25,8 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-error: var(--chart-error);
+  --color-chart-success: var(--chart-success);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -76,6 +78,12 @@
   --border: var(--color-olive-200);
   --input: var(--color-olive-200);
   --ring: var(--color-olive-400);
+  /* 状态色，不是分类色：失败永远是红，不参与 chart-1..5 的轮转。
+     成功是图上面积最大的那一块，深一档就整片发闷，所以取各自 surface 上还合规的
+     最亮一档：白底能到 teal-500，暗底 teal-600 已经是亮度带的上限（再亮就出带）。
+     teal-500 对白底只有 2.4:1，靠图例上的数字和下面的表格兜底可读性。 */
+  --chart-success: var(--color-teal-500);
+  --chart-error: var(--color-red-500);
   --chart-1: var(--color-teal-300);
   --chart-2: var(--color-teal-500);
   --chart-3: var(--color-teal-600);
@@ -112,6 +120,7 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: var(--color-olive-500);
+  --chart-success: var(--color-teal-600);
   --chart-1: var(--color-teal-300);
   --chart-2: var(--color-teal-500);
   --chart-3: var(--color-teal-600);

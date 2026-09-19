@@ -4,6 +4,7 @@ import { usageDaily } from '../schema';
 import { createTraceStore, decodeTraceCursor, encodeTraceCursor } from './index';
 import { openTestDb } from './test-support';
 import { attemptSpan, completion, ROOT_SPAN_ID, rootSpan, rootStart, TRACE_ID } from './trace-store.test-support';
+import type { TraceStore } from './types';
 
 describe('trace cursor codec', () => {
   test('round-trips a versioned opaque cursor and rejects malformed tokens', () => {
@@ -456,6 +457,162 @@ describe('trace store recover, list, and prune', () => {
 
       expect(store.find(oldTrace)).toBeUndefined();
       expect(store.find(newTrace)).toBeDefined();
+    } finally {
+      handle.close();
+    }
+  });
+});
+
+// 真实的成功调用链是 ended + UNSET：链路上没有任何地方把根 span 设成 OK，所以这里也
+// 不许按 statusCode 播种，否则测试会自己造出一种生产里不存在的形状。
+const seedTrace = (
+  store: TraceStore,
+  traceId: string,
+  startedAt: string,
+  outcome: 'success' | 'error' | 'running',
+): void => {
+  const spanId = traceId.slice(0, 16);
+  const requestId = `req-${traceId.slice(0, 4)}`;
+  const at = new Date(startedAt);
+  store.startRoot(rootStart({ traceId, spanId, requestId, startedAt: at }));
+  // 只 startRoot 不 complete，就是一条还在跑的调用链
+  if (outcome === 'running') return;
+  const failed = outcome === 'error';
+  store.complete(
+    completion({
+      traceId,
+      rootSpanId: spanId,
+      spans: [
+        rootSpan({
+          traceId,
+          spanId,
+          startedAt: at,
+          endedAt: new Date(at.getTime() + 100),
+          statusCode: failed ? 2 : 0,
+          ...(failed ? { terminationReason: 'failure' as const } : {}),
+          // request_id 是唯一列，每条种子调用链都要带上自己的那个
+          attributes: { 'aio_proxy.request.id': requestId },
+        }),
+      ],
+      summary: {
+        finalProviderId: 'provider-b',
+        finalModelId: 'model-b',
+        finalHttpStatus: failed ? 500 : 200,
+      },
+    }),
+  );
+};
+
+describe('trace store summary', () => {
+  test('buckets success and error counts from the range start and leaves running traces out', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 'success');
+      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:50.000Z', 'error');
+      seedTrace(store, '4'.repeat(32), '2026-07-24T09:30:05.000Z', 'error');
+      seedTrace(store, '5'.repeat(32), '2026-07-24T09:45:00.000Z', 'running');
+
+      const result = store.summary({
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      });
+
+      expect(result.bucket).toBe('1m');
+      expect(result.buckets).toHaveLength(60);
+      expect(result.buckets[0]).toEqual({ at: '2026-07-24T09:00:00.000Z', success: 2, error: 1 });
+      expect(result.buckets[1]).toEqual({ at: '2026-07-24T09:01:00.000Z', success: 0, error: 0 });
+      expect(result.buckets[30]).toEqual({ at: '2026-07-24T09:30:00.000Z', success: 0, error: 1 });
+      // 那条还在跑的落在 09:45 桶里，两边都不该数它
+      expect(result.buckets[45]).toEqual({ at: '2026-07-24T09:45:00.000Z', success: 0, error: 0 });
+      expect(result.totals).toEqual({ success: 2, error: 2 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('reuses the list filters', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 'error');
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      expect(store.summary({ ...range, otelStatusCode: 'ERROR' }).totals).toEqual({ success: 0, error: 1 });
+      expect(store.summary({ ...range, finalProviderId: 'provider-nope' }).totals).toEqual({ success: 0, error: 0 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('counts the same traces the outcome filter selects', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:40.000Z', 'error');
+      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:50.000Z', 'running');
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      // 图上写着几个成功，点掉图例就得列出那几条。两处各判一次成败就是 0 成功那个 bug。
+      expect(store.summary(range).totals).toEqual({ success: 1, error: 1 });
+      expect(store.list({ ...range, pageSize: 50, outcome: 'success' }).items).toHaveLength(1);
+      expect(store.list({ ...range, pageSize: 50, outcome: 'error' }).items).toHaveLength(1);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('coarsens the bucket as the range widens', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      const startedAfter = new Date('2026-06-24T00:00:00.000Z');
+      const at = (days: number) => new Date(startedAfter.getTime() + days * 86_400_000);
+
+      expect(store.summary({ startedAfter, startedBefore: at(0.25) }).bucket).toBe('5m');
+      expect(store.summary({ startedAfter, startedBefore: at(1) }).bucket).toBe('30m');
+      expect(store.summary({ startedAfter, startedBefore: at(7) }).bucket).toBe('1h');
+      const retention = store.summary({ startedAfter, startedBefore: at(45) });
+      expect(retention.bucket).toBe('1d');
+      expect(retention.buckets).toHaveLength(45);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('keeps the bucket array bounded for an absurd range', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+
+      // 年份是客户端传进来的，0000→9999 按 1d 一桶就是三百多万个桶
+      const result = store.summary({
+        startedAfter: new Date('0000-01-01T00:00:00.000Z'),
+        startedBefore: new Date('9999-12-31T23:59:59.000Z'),
+      });
+
+      // 上界是多少不重要，重要的是有上界，而且跨度再离谱也不会跟着涨
+      expect(result.buckets.length).toBeLessThan(1000);
+      expect(result.bucket).toBe('1d');
+      const wider = store.summary({
+        startedAfter: new Date('0000-01-01T00:00:00.000Z'),
+        startedBefore: new Date('9999-12-31T23:59:59.999Z'),
+      });
+      expect(wider.buckets).toHaveLength(result.buckets.length);
+      // 每个桶的 at 还是真实的 1d 间隔，宽度没有为了收敛而被偷偷拉大
+      expect(Date.parse(result.buckets[1]!.at) - Date.parse(result.buckets[0]!.at)).toBe(86_400_000);
+      // 窗口被截断了，落在窗口外的调用链不能被塞进最后一个桶
+      expect(result.totals).toEqual({ success: 0, error: 0 });
     } finally {
       handle.close();
     }

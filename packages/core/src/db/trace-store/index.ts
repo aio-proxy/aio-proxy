@@ -14,5 +14,6 @@ export type {
   TraceTerminalSummary,
   TracesPage,
   TracesQuery,
+  TracesSummaryQuery,
   UsageOverviewQuery,
 } from './types';
