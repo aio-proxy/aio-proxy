@@ -53,11 +53,9 @@ export type RequestShapeRejection = {
   readonly error: unknown;
 };
 
-// Terminates the whole request on a materialization failure. Today no attempt
-// span is open yet at this point, so endAttemptSpan always synthesizes one; it
-// is used anyway so that once preparation moves inside the attempt span, the
-// already-open span is reused instead of being abandoned and a second one
-// synthesized.
+// Terminates the whole request on a materialization failure. The model path
+// opens the attempt span before preparation, so endAttemptSpan reuses that
+// already-open span instead of abandoning it and synthesizing a second one.
 export function rejectRequestShape<TRequest, TContext>(
   ctx: AnyAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,

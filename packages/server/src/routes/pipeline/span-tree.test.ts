@@ -94,7 +94,7 @@ test('a model invocation failure produces exactly one attempt span', async () =>
   // passes through without ever materializing a model invocation.
   const harness = pipeline(
     [
-      modelProvider({ id: 'primary', invoke: () => textStream('unused') }),
+      modelProvider({ id: 'primary', invoke: () => textStream('unused'), targetProtocol: ProviderProtocol.Anthropic }),
       modelProvider({ id: 'backup', invoke: () => textStream('unused') }),
     ],
     {
@@ -106,9 +106,13 @@ test('a model invocation failure produces exactly one attempt span', async () =>
 
   const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
   await settleRecording(harness.recording);
+  const attempts = harness.recording.spans.filter((span) => span.name === spanName.attempt);
 
   expect(response.status).toBe(400);
-  expect(harness.recording.spans.filter((span) => span.name === spanName.attempt)).toHaveLength(1);
+  expect(attempts).toHaveLength(1);
+  // The span is opened before prepare resolves the target protocol, so this exit
+  // has to attach it after the fact — it is not in the creation attributes.
+  expect(attempts[0]?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.Anthropic);
   // 请求整形失败不是候选特有的，所以**不**转移到 backup —— 断言这一点，
   // 免得后人误以为「只有一个 attempt」是因为 hasNext 为 false。
   expect(harness.recording.finals).toEqual([
@@ -213,4 +217,49 @@ test('a request that settles as failure marks the inference span with the settle
   expect(inference?.statusCode).toBe(SpanStatusCode.ERROR);
   expect(inference?.attributes[attributeName.errorCode]).toBe('invalid_request');
   expect(inference?.attributes[attributeName.httpStatusCode]).toBe(400);
+});
+
+test('prepare runs inside the attempt span, not before it', async () => {
+  const spans = await runFailover();
+  const attempts = spans.filter((span) => span.name === spanName.attempt);
+  const prepares = spans.filter((span) => span.name === spanName.prepare);
+
+  expect(prepares).toHaveLength(2);
+  expect(prepares.map((span) => span.parentSpanId)).toEqual(attempts.map((span) => span.spanId));
+  // 这条是「attempt span 被开着不关」的唯一警报。未结束的 span 在导出时被直接丢弃，
+  // 所以数 attempt 的条数永远数不出这个坑（任务 4 的那条计数断言实测抓不到）；
+  // 但被丢掉的父亲会让已导出的 prepare 变成孤儿，parentNameOf 于是返回 undefined。
+  expect(tree(spans).parentNameOf(spanName.prepare)).toBe(spanName.attempt);
+  for (const [index, prepare] of prepares.entries()) {
+    const attempt = attempts[index];
+    expect(prepare.startedAt.getTime()).toBeGreaterThanOrEqual(attempt?.startedAt.getTime() ?? 0);
+    expect(prepare.endedAt.getTime()).toBeLessThanOrEqual(attempt?.endedAt.getTime() ?? 0);
+  }
+});
+
+test('only the first candidate materializes the invocation', async () => {
+  const prepares = (await runFailover()).filter((span) => span.name === spanName.prepare);
+
+  expect(prepares.map((span) => span.attributes[attributeName.prepareMode])).toEqual(['materialize', 'reuse']);
+});
+
+test('a prepare throw still leaves an ended prepare span behind', async () => {
+  // Not a SyntaxError: the test adapter's requestError maps only those, so this
+  // one is rethrown out of prepare instead of coming back as a 'reject'.
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => textStream('unused') })], {
+    adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+      modelInvocationError: new RangeError('materialize exploded'),
+    }),
+  });
+
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
+  await settleRecording(harness.recording);
+  const prepare = tree(harness.recording.spans).find(spanName.prepare);
+
+  expect(response.status).toBe(502);
+  // The throw runs to the loop's catch and on to session.finish(), which drains
+  // the span buffer: a prepare span not closed on the way out is dropped from
+  // the trace instead of showing where the attempt died.
+  expect(prepare?.endedAt).toBeInstanceOf(Date);
+  expect(prepare?.statusCode).toBe(SpanStatusCode.ERROR);
 });
