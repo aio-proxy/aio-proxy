@@ -2,10 +2,11 @@ import { expect, test } from 'bun:test';
 
 import type { StoredSpan } from '@aio-proxy/core/db';
 import { ProviderProtocol } from '@aio-proxy/types';
-import { SpanStatusCode } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 import {
   defineProtocolAdapter,
+  emptyStream,
   jsonRequest,
   modelProvider,
   rawProvider,
@@ -108,4 +109,74 @@ test('a model invocation failure produces exactly one attempt span', async () =>
   expect(harness.recording.finals).toEqual([
     expect.objectContaining({ errorCode: 'invalid_request', finalProviderId: 'primary', outcome: 'failure' }),
   ]);
+});
+
+async function runFailover() {
+  const primary = modelProvider({ id: 'primary', invoke: emptyStream });
+  const backup = modelProvider({ id: 'backup', invoke: () => textStream('backup') });
+  const harness = pipeline([primary, backup]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await response.text();
+  await settleRecording(harness.recording);
+  return harness.recording.spans;
+}
+
+test('every attempt hangs under the inference span, which hangs under the root', async () => {
+  const spans = await runFailover();
+  const inference = spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
+
+  expect(inference).toBeDefined();
+  expect(inference?.kind).toBe(SpanKind.CLIENT);
+  expect(tree(spans).parentNameOf(inference?.name ?? '')).toBe(spanName.request);
+  const attempts = spans.filter((span) => span.name === spanName.attempt);
+  expect(attempts).toHaveLength(2);
+  expect(attempts.map((span) => span.parentSpanId)).toEqual([inference?.spanId, inference?.spanId]);
+});
+
+test('the inference span carries the requested model and the gen_ai operation', async () => {
+  const spans = await runFailover();
+  const inference = spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
+
+  expect(inference?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
+  expect(inference?.attributes[attributeName.genAiOperationName]).toBe('chat');
+  expect(inference?.attributes[attributeName.capability]).toBe('language');
+});
+
+test('a failover that eventually succeeds leaves the inference span OK', async () => {
+  const spans = await runFailover();
+  const inference = spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
+  const attempts = spans.filter((span) => span.name === spanName.attempt);
+
+  // ERROR is decided by how this logical operation settled, not by whether an
+  // attempt failed along the way.
+  expect(inference?.statusCode).not.toBe(SpanStatusCode.ERROR);
+  expect(attempts[0]?.statusCode).toBe(SpanStatusCode.ERROR);
+});
+
+test('the inference span ends on terminal settlement, not when the stream Response returns', async () => {
+  const spans = await runFailover();
+  const inference = spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
+  const attempts = spans.filter((span) => span.name === spanName.attempt);
+  const lastAttempt = attempts.at(-1);
+
+  // A streaming request returns the Response first and settles the completion
+  // afterwards. A span closed at function return would end before the last
+  // attempt does.
+  expect(inference?.endedAt.getTime()).toBeGreaterThanOrEqual(lastAttempt?.endedAt.getTime() ?? 0);
+});
+
+test('a request that settles as failure marks the inference span with the settled error', async () => {
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => textStream('unused') })], {
+    adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+      modelInvocationError: new SyntaxError('invalid invocation'),
+    }),
+  });
+
+  await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
+  await settleRecording(harness.recording);
+  const inference = harness.recording.spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
+
+  expect(inference?.statusCode).toBe(SpanStatusCode.ERROR);
+  expect(inference?.attributes[attributeName.errorCode]).toBe('invalid_request');
+  expect(inference?.attributes[attributeName.httpStatusCode]).toBe(400);
 });

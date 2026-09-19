@@ -7,7 +7,6 @@ export const spanName = {
   route: 'aio_proxy.route.resolve',
   attempt: 'aio_proxy.provider.attempt',
   prepare: 'aio_proxy.request.prepare',
-  inference: 'gen_ai.client.inference',
   tokenCount: 'aio_proxy.token_count',
   candidateSkipped: 'aio_proxy.token_count.candidate_skipped',
   egress: 'aio_proxy.response.egress',
@@ -26,6 +25,8 @@ export const eventName = {
 export const attributeName = {
   requestId: 'aio_proxy.request.id',
   operation: 'aio_proxy.operation',
+  capability: 'aio_proxy.capability',
+  genAiOperationName: 'gen_ai.operation.name',
   stream: 'aio_proxy.request.stream',
   fast: 'aio_proxy.request.fast',
   ttftMs: 'aio_proxy.response.ttft_ms',

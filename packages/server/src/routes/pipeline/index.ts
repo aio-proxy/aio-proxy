@@ -15,6 +15,7 @@ import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
+import { startInferenceSpan } from './inference-span';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 import { startPipelineSpan } from './tracing';
@@ -312,22 +313,31 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
       });
     }
     routeSpan.end();
-    return await attemptCandidates({
-      adapter,
-      candidates: eligible,
-      config: lease.snapshot.config,
-      context,
-      deferRelease,
-      rawRequest,
-      release: lease.release,
-      request,
-      requestedModelId: requestedModel,
-      resolution,
-      session,
-      source,
-      streamRequested,
-      ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
-    });
+    const inference = startInferenceSpan(session, adapter.capability, requestedModel);
+    try {
+      return await attemptCandidates({
+        adapter,
+        candidates: eligible,
+        config: lease.snapshot.config,
+        context,
+        deferRelease,
+        rawRequest,
+        release: lease.release,
+        request,
+        requestedModelId: requestedModel,
+        resolution,
+        session: inference.session,
+        source,
+        streamRequested,
+        ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
+      });
+    } catch (error) {
+      // The only exit that bypasses session settlement. Do NOT turn this into a
+      // finally: a streaming path returns its Response before the completion
+      // settles, so a finally would close the span while the stream still runs.
+      inference.end({ outcome: 'failure' });
+      throw error;
+    }
   } catch (error) {
     if (!(error instanceof RouterModelNotFoundError)) throw error;
     return rejectRequest({
