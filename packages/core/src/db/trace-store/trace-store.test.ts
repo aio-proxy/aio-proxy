@@ -465,11 +465,27 @@ describe('trace store recover, list, and prune', () => {
 
 // 真实的成功调用链是 ended + UNSET：链路上没有任何地方把根 span 设成 OK，所以这里也
 // 不许按 statusCode 播种，否则测试会自己造出一种生产里不存在的形状。
+// 每种结局对应生产里真实出现的一种根 span：上游 5xx 是 ERROR + 500；4xx 拒绝的 span
+// status 按 HTTP 语义约定保持 UNSET，只有 finalHttpStatus 说明它失败了；也有结束了却
+// 没记下状态码的（finalHttpStatus 为 NULL），它仍然是成功。
+type SeedShape = {
+  readonly statusCode: number;
+  readonly finalHttpStatus?: number;
+  readonly terminationReason?: 'failure';
+};
+
+const SEED_SHAPES = {
+  success: { statusCode: 0, finalHttpStatus: 200 },
+  'success-without-http-status': { statusCode: 0 },
+  error: { statusCode: 2, finalHttpStatus: 500, terminationReason: 'failure' },
+  rejected: { statusCode: 0, finalHttpStatus: 400, terminationReason: 'failure' },
+} as const satisfies Record<string, SeedShape>;
+
 const seedTrace = (
   store: TraceStore,
   traceId: string,
   startedAt: string,
-  outcome: 'success' | 'error' | 'running',
+  outcome: keyof typeof SEED_SHAPES | 'running',
 ): void => {
   const spanId = traceId.slice(0, 16);
   const requestId = `req-${traceId.slice(0, 4)}`;
@@ -477,7 +493,7 @@ const seedTrace = (
   store.startRoot(rootStart({ traceId, spanId, requestId, startedAt: at }));
   // 只 startRoot 不 complete，就是一条还在跑的调用链
   if (outcome === 'running') return;
-  const failed = outcome === 'error';
+  const shape: SeedShape = SEED_SHAPES[outcome];
   store.complete(
     completion({
       traceId,
@@ -488,16 +504,17 @@ const seedTrace = (
           spanId,
           startedAt: at,
           endedAt: new Date(at.getTime() + 100),
-          statusCode: failed ? 2 : 0,
-          ...(failed ? { terminationReason: 'failure' as const } : {}),
+          statusCode: shape.statusCode,
           // request_id 是唯一列，每条种子调用链都要带上自己的那个
           attributes: { 'aio_proxy.request.id': requestId },
         }),
       ],
+      // terminationReason / finalHttpStatus 两列都只从 summary 落库，写在 span 上会被丢掉
       summary: {
         finalProviderId: 'provider-b',
         finalModelId: 'model-b',
-        finalHttpStatus: failed ? 500 : 200,
+        ...(shape.finalHttpStatus === undefined ? {} : { finalHttpStatus: shape.finalHttpStatus }),
+        ...(shape.terminationReason === undefined ? {} : { terminationReason: shape.terminationReason }),
       },
     }),
   );
@@ -586,6 +603,56 @@ describe('trace store summary', () => {
       expect(store.summary(range).totals).toEqual({ success: 1, error: 1 });
       expect(store.list({ ...range, pageSize: 50, outcome: 'success' }).items).toHaveLength(1);
       expect(store.list({ ...range, pageSize: 50, outcome: 'error' }).items).toHaveLength(1);
+    } finally {
+      handle.close();
+    }
+  });
+
+  // 4xx 的 root span status 是 UNSET（HTTP 语义约定），成败判定只看 statusCode 的话
+  // 一条被拒的请求会被数进「成功」，运维在图上根本看不出客户端在乱发请求。
+  test('counts a 4xx rejection as an error even though its root span status is UNSET', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      const rejected = '2'.repeat(32);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, rejected, '2026-07-24T09:00:40.000Z', 'rejected');
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      expect(store.summary(range).totals).toEqual({ success: 1, error: 1 });
+      // 图和图例筛选必须框住同一批：被拒的那条只能出现在 error 那一侧
+      expect(store.list({ ...range, pageSize: 50, outcome: 'error' }).items.map((item) => item.traceId)).toEqual([
+        rejected,
+      ]);
+      expect(store.list({ ...range, pageSize: 50, outcome: 'success' }).items.map((item) => item.traceId)).toEqual([
+        '1'.repeat(32),
+      ]);
+    } finally {
+      handle.close();
+    }
+  });
+
+  // finalHttpStatus 可空，而 SQL 里 NULL >= 400 是 NULL、NOT NULL 也是 NULL：判定没夹
+  // IS NOT NULL 的话，这条调用链会从成功和失败两个桶里一起消失，图上凭空少一条还不报错。
+  test('counts a finished trace with no recorded http status as a success', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      const noStatus = '1'.repeat(32);
+      seedTrace(store, noStatus, '2026-07-24T09:00:10.000Z', 'success-without-http-status');
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      expect(store.summary(range).totals).toEqual({ success: 1, error: 0 });
+      expect(store.list({ ...range, pageSize: 50, outcome: 'success' }).items.map((item) => item.traceId)).toEqual([
+        noStatus,
+      ]);
+      expect(store.list({ ...range, pageSize: 50, outcome: 'error' }).items).toHaveLength(0);
     } finally {
       handle.close();
     }
