@@ -68,7 +68,12 @@ readonly refresh: (token: string) => string | undefined;
 It returns a freshly signed token when the argument passes every check `verify` applies — shape,
 `v1` prefix, unexpired, signature match under the current password hash — and is older than
 `REFRESH_AFTER_MS` (one day). It returns `undefined` in every other case. Token age needs no stored
-state: `expiresAt` is encoded in the token, so `age = SESSION_TTL_MS - (expiresAt - now)`.
+state: `expiresAt` is encoded in the token, so `age = SESSION_TTL_MS - (expiresAt - now)`. That
+identity makes `SESSION_TTL_MS` do double duty — inactivity window *and* the key for recovering a
+token's mint time — so changing it misdates every token already in circulation.
+
+Like `verify`, `refresh` does not consult `available()`. Sessions therefore keep renewing while the
+Dashboard is returning 503. This is deliberate, for consistency within the module.
 
 Renewed tokens are structurally identical to minted ones (`v1.<expiresAt>.<uuid>.<signature>`, signed
 with the password hash), so the scheme stays stateless and password changes keep invalidating
@@ -78,10 +83,14 @@ everything.
 `bearerAuth` composition untouched:
 
 ```ts
+export const isDashboardAuthRoutePath = (path: string): boolean =>
+  path.startsWith('/dashboard/api/auth/');
+
 export const attachDashboardSessionRefresh =
   (auth: DashboardAuthentication): MiddlewareHandler =>
   async (context, next) => {
     await next();
+    if (isDashboardAuthRoutePath(context.req.path)) return;
     const token = dashboardSessionToken(context);
     if (token === undefined) return;
     const renewed = auth.refresh(token);
@@ -90,8 +99,21 @@ export const attachDashboardSessionRefresh =
 ```
 
 `create-routes.ts` mounts it on `/dashboard/api/*` ahead of the authentication middleware; Hono's
-onion model runs the header write after authentication resolves. Unauthenticated requests reach
-`refresh` with an invalid token and get `undefined`, so a rejected request carries no header.
+onion model runs the header write after authentication resolves.
+
+The `/dashboard/api/auth/*` subtree is exempt from renewal, because `create-routes.ts` also exempts
+it from *authentication*. Without the guard, a caller holding a valid aged token who posts a wrong
+password receives `401` with a live renewal header, and the logout response hands back a new session.
+That is not an authority escalation — the caller already holds a valid token — but a refused login
+must not extend a session, and logout must not return one. `isDashboardAuthRoutePath` is the single
+definition of that subtree, shared with the authentication exemption so the two cannot desynchronise.
+`/dashboard/api/auth/session` forgoes renewal along with them; every other `/dashboard/api/*` request
+still renews, so a user who opens the Dashboard at all still renews on the overview queries.
+
+The registration position buys only Hono's onion ordering. It is *not* what confines renewals to
+authenticated callers — this middleware reads only the inbound `authorization` header, so it consumes
+nothing the authentication middleware sets. The confinement comes from `refresh` re-verifying the
+token against the password hash read at call time.
 
 Dashboard and API are same-origin, so the header needs no `Access-Control-Expose-Headers`.
 
@@ -118,7 +140,9 @@ export function subscribeDashboardAuthTokenCleared(handler: () => void): void;
 ```
 
 It listens for `storage` events and invokes the handler when that key is removed, which keeps the
-storage key private to the module.
+storage key private to the module. A wholesale `localStorage.clear()` in a sibling tab arrives as a
+`storage` event with `key === null`, and counts as a clear too. There is no unsubscribe, so it must be
+registered once at module load and never from a React effect.
 
 `packages/dashboard/src/lib/dashboard-client/dashboard-client.ts` reads the renewal header in
 `dashboardFetch`:
@@ -134,8 +158,8 @@ The `readDashboardAuthToken() !== undefined` guard is required, not defensive pa
 renewal header arriving after the user logs out mid-flight would rewrite the token that
 `clearDashboardAuthToken()` just removed and resurrect the session.
 
-`packages/dashboard/src/modules/auth/services/auth-service.ts` registers cross-tab logout alongside
-its existing handlers:
+`packages/dashboard/src/modules/auth/services/auth-service/auth-service.ts` registers cross-tab
+logout alongside its existing handlers:
 
 ```ts
 subscribeDashboardAuthTokenCleared(() => void logoutDashboard());
@@ -147,13 +171,18 @@ authenticated UI while every request returns 401. It routes through `logoutDashb
 `markDashboardSessionExpired()` because the latter renders a "session expired" notice, which is the
 wrong message for a deliberate logout.
 
+Deliberate logout is not the only trigger. `markDashboardSessionExpired` (the 401 handler) and
+`markDashboardUnavailable` (the 503 handler) both clear the token too, so a sibling tab lands on the
+plain login screen rather than the notice its sibling is showing. Accepted: the user is logged out
+either way, and the alternative is propagating a reason code across tabs for little gain.
+
 ## Scope
 
-- `refresh` on `DashboardAuthentication`, plus the `attachDashboardSessionRefresh` middleware and its
-  registration on `/dashboard/api/*`.
+- `refresh` on `DashboardAuthentication`, plus the `attachDashboardSessionRefresh` middleware, the
+  shared `isDashboardAuthRoutePath` predicate, and their registration on `/dashboard/api/*`.
 - `localStorage` persistence, the cleared-token subscription, renewal-header handling, and cross-tab
   logout in the Dashboard.
-- A note in `README.zh-Hans.md` on how long a Dashboard login lasts.
+- A note in `README.zh-Hans.md` and `README.md` on how long a Dashboard login lasts.
 - A changeset covering `aio-proxy`, `@aio-proxy/server`, and `@aio-proxy/dashboard` at `minor`.
 
 ## Non-goals
@@ -181,7 +210,8 @@ so that renewal cannot silently defeat it during a later refactor.
 
 Route tests: a request carrying an aged token receives the renewal header and the returned token
 works on a subsequent request; a request carrying a fresh token receives no header; a 401 response
-carries no header.
+carries no header; and the `/dashboard/api/auth/*` routes never renew — one aged token gets no header
+from logout or from a refused login, but does get one from a non-auth route.
 
 Dashboard tests: `dashboardFetch` replaces the stored token when the renewal header is present; a
 renewal header arriving after the token was cleared does not resurrect the session; clearing the key
@@ -192,3 +222,14 @@ the numeric value of the TTL constants. Both are implementation literals, and th
 read/write/clear contract tests already cover the storage surface.
 
 `bun run preflight` must pass.
+
+It does not, and did not before this work. The branch inherited 25 `lint:types` errors (23 in
+`packages/cli`, two in `packages/dashboard/src/modules/providers/`, none in `packages/server`) and 21
+failing `@aio-proxy/cli` tests, both reproducible with this branch's files reverted. `preflight`
+short-circuits on the first, so it cannot complete for any branch until those are repaired — a
+separate concern. What this work owns is green: `@aio-proxy/server` and `@aio-proxy/dashboard` suites
+pass in full, with `lint` and `format:check` clean.
+
+Two behaviors resist automation and need a manual check before release: that a login survives quitting
+and reopening the browser, and that changing `server.password` invalidates open tabs on other devices.
+The second is the design's only revocation mechanism.
