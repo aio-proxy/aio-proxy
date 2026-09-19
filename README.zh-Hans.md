@@ -347,7 +347,7 @@ Dashboard 默认位于 `http://127.0.0.1:9317/dashboard`，用于管理 Provider
 - 查看请求量、Token 用量和费用趋势。
 - 搜索完整请求链路，检查每次 Provider 尝试的状态与耗时。
 
-可以通过 `server.password` 设置 Dashboard 密码。该密码只保护 Dashboard，不保护模型 API。
+可以通过 `server.password` 设置 Dashboard 密码。该密码只保护 Dashboard，不保护模型 API。登录状态会保存在浏览器中，新标签页和重启浏览器都无需重新输入密码；只要每 7 天内至少访问一次，登录就会自动续期。修改 `server.password` 会立即让所有设备上的登录失效。
 
 ## 网络与安全
 
