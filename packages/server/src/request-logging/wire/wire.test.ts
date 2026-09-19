@@ -339,3 +339,33 @@ test('upstream fetch opens a CLIENT span under the active span', async () => {
   });
   expect(JSON.stringify(post?.attributes)).not.toContain('secret');
 });
+
+test('the upstream span is named after the request method, normalized', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 200 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, async () => {
+      // Every real model call arrives as a POST Request object, never the bare
+      // URL the other tests here use.
+      await fetcher(new Request('https://upstream.test/v1/messages', { method: 'POST' }));
+      // An explicit init method wins over the input, and is upcased.
+      await fetcher('https://upstream.test/v1/models', { method: 'patch' });
+    }),
+  );
+  parent.end();
+
+  const spans = processor.take(traceId);
+  expect(spans.find((span) => span.name === 'POST')?.attributes).toMatchObject({
+    'http.request.method': 'POST',
+    'url.path': '/v1/messages',
+  });
+  expect(spans.find((span) => span.name === 'PATCH')?.attributes).toMatchObject({
+    'http.request.method': 'PATCH',
+    'url.path': '/v1/models',
+  });
+});

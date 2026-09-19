@@ -318,11 +318,16 @@ function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, 
   }
 }
 
-// The upstream HTTP call as a CLIENT child of the attempt. Only opened when a
-// span is already active: a parentless span would start its own trace, which
-// the buffering processor never registered, so it is allocated and thrown away
-// rather than showing up anywhere. The span stops at the response headers; the
-// body timeline is carried by first_upstream_byte_ms / ttft_ms on the attempt.
+// The upstream HTTP call as a CLIENT child of the attempt. The span stops at the
+// response headers; the body timeline is carried by first_upstream_byte_ms /
+// ttft_ms on the attempt.
+//
+// The active-span check guards a reachable path, not a theoretical one: token
+// counting opens an attempt span but never enters its context, so under debug
+// logging a real request arrives here with a debug scope and no active span
+// (routes/token-count/token-count.ts). Parenting that span to nothing would put
+// it on a fresh trace id the buffering processor was never told to register, so
+// it would be built and thrown away rather than persisted.
 async function fetchWithSpan(
   fetcher: typeof globalThis.fetch,
   input: Parameters<typeof globalThis.fetch>[0],
