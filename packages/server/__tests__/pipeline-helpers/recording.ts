@@ -91,7 +91,7 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
   const statusCode = num(attrs, attributeName.httpStatusCode);
   const errorCode = str(attrs, attributeName.errorCode);
   const stream = bool(attrs, attributeName.stream);
-  const ttftMs = num(attrs, attributeName.ttftMs);
+  const ttftMs = num(attrs, attributeName.attemptTtftMs);
   const transportObservation = str(
     attrs,
     attributeName.transportObservation,
@@ -104,7 +104,7 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
   const contentEncoding = str(attrs, attributeName.contentEncoding) as RecordedAttempt['contentEncoding'];
   return {
     providerId: str(attrs, attributeName.providerId) ?? '',
-    modelId: str(attrs, attributeName.genAiResponseModel) ?? '',
+    modelId: str(attrs, attributeName.attemptModelId) ?? '',
     providerKind: (str(attrs, attributeName.providerKind) ?? '') as RecordedAttempt['providerKind'],
     durationMs: Math.max(0, span.endedAt.getTime() - span.startedAt.getTime()),
     outcome: (str(attrs, attributeName.terminationReason) ?? 'success') as RecordedAttempt['outcome'],

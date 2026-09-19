@@ -52,5 +52,5 @@ test('a failed attempt span carries the observed time to first content', () => {
   session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
 
   const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
-  expect(attempt?.attributes[attributeName.ttftMs]).toBe(60);
+  expect(attempt?.attributes[attributeName.attemptTtftMs]).toBe(60);
 });

@@ -44,6 +44,10 @@ export const attributeName = {
   finalProviderId: 'aio_proxy.route.final_provider_id',
   routeCandidateCount: 'aio_proxy.route.candidate_count',
   attemptIndex: 'aio_proxy.attempt.index',
+  // attempt span 是 aio-proxy 自己的转移机制，不是 GenAI span：它的模型和 TTFT 用自己的
+  // 命名空间，否则一条 trace 里 N 个 attempt 都长得像 GENERATION，token 数按 N 倍算。
+  attemptModelId: 'aio_proxy.attempt.model_id',
+  attemptTtftMs: 'aio_proxy.attempt.ttft_ms',
   providerId: 'aio_proxy.provider.id',
   providerKind: 'aio_proxy.provider.kind',
   providerWeight: 'aio_proxy.provider.weight',
@@ -79,7 +83,9 @@ export const attributeName = {
   serverAddress: 'server.address',
   urlPath: 'url.path',
   errorType: 'error.type',
-  httpStatusCode: 'http.status_code',
+  // `http.status_code` 2023 年就废弃了。旧数据落库时用的是老 key，dashboard 侧留兜底，
+  // 不做数据迁移。
+  httpStatusCode: 'http.response.status_code',
   diagnosticRequestProtocol: 'aio_proxy.diagnostics.request.protocol',
   diagnosticRequestMethod: 'aio_proxy.diagnostics.request.method',
   diagnosticRequestContentType: 'aio_proxy.diagnostics.request.content_type',

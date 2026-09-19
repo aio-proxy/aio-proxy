@@ -64,9 +64,10 @@ function seedTrace(
           statusCode: failed ? 2 : 0,
           ...(failed ? { terminationReason: 'failure' as const } : {}),
         }),
-        // attempt span 必须带上 `gen_ai.response.model`：线上就是这么发的，而投影把它无条件
-        // 写进 final_model_id 列。少了它，attempt 行就满足不了样本过滤的其余条件，
-        // 于是根 span 守卫被删掉也照样绿 —— 而线上每条调用链都会被数两遍。
+        // attempt span 必须带上 `gen_ai.response.model`：改名前线上就是这么发的，库里的老
+        // attempt 行都有它，而投影把它无条件写进 final_model_id 列。少了它，attempt 行就
+        // 满足不了样本过滤的其余条件，于是根 span 守卫被删掉也照样绿 —— 而那些老调用链
+        // 会被数两遍。
         attemptSpan({
           traceId,
           spanId: `${spanId.slice(1)}f`,

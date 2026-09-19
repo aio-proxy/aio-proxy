@@ -224,8 +224,8 @@ describe('trace store lifecycle', () => {
   });
 
   // 钉住 trace-queries.ts 里 `setStr('modelId', row.modelId)` 那一行。它是 model_id 列
-  // 通往 mergeAttributes 的唯一通道，而列已经没有任何写路径，所以这一行看上去和它喂的
-  // 那个分支一样像死代码 —— 少了这条测试，删掉它同样让老库的 attempt 行读不出模型。
+  // 通往 mergeAttributes 的唯一通道，而老库里那些行的模型只存在于这一列里 —— 少了这条
+  // 测试，删掉它就让它们读不出模型。
   test('a span row written before the split still reports its model from the legacy model_id column', () => {
     const handle = openTestDb();
     const legacySpanId = 'd'.repeat(16);
@@ -253,7 +253,8 @@ describe('trace store lifecycle', () => {
         .run();
 
       const legacy = store.find(TRACE_ID)?.spans.find((span) => span.spanId === legacySpanId);
-      expect(legacy?.attributes['gen_ai.request.model']).toBe('legacy-model');
+      // 列读回时挂的是今天 attempt span 的 key：两边装的都是「这一跳用的模型」。
+      expect(legacy?.attributes['aio_proxy.attempt.model_id']).toBe('legacy-model');
     } finally {
       handle.close();
     }

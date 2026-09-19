@@ -75,12 +75,12 @@ function toRequest(root: DashboardTraceSummary, spans: readonly DashboardTraceSp
 function toAttempt(span: DashboardTraceSpan): RecordedAttempt {
   const attrs = span.attributes;
   const protocol = str(attrs, 'aio_proxy.protocol.target');
-  const statusCode = num(attrs, 'http.status_code');
+  const statusCode = num(attrs, 'http.response.status_code');
   const errorCode = str(attrs, 'aio_proxy.error.code');
   return {
     index: num(attrs, 'aio_proxy.attempt.index') ?? 0,
     providerId: str(attrs, 'aio_proxy.provider.id') ?? '',
-    modelId: str(attrs, 'gen_ai.response.model') ?? '',
+    modelId: str(attrs, 'aio_proxy.attempt.model_id') ?? '',
     providerKind: str(attrs, 'aio_proxy.provider.kind') ?? '',
     outcome: (span.terminationReason ?? 'success') as RecordedAttempt['outcome'],
     durationMs: span.durationMs,

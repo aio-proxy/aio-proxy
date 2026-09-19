@@ -11,10 +11,18 @@ import { traceAttribute } from '../trace-attribute-names';
 const isFailed = (otelStatusCode: DashboardTraceSpan['otelStatusCode'], httpStatus: number | undefined): boolean =>
   otelStatusCode === 'ERROR' || (httpStatus !== undefined && httpStatus >= 400);
 
-const spanHttpStatus = (attributes: DashboardTraceSpan['attributes']): number | undefined => {
-  const value = attributes[traceAttribute.httpStatusCode];
+const numberAttribute = (attributes: DashboardTraceSpan['attributes'], key: string): number | undefined => {
+  const value = attributes[key];
   return typeof value === 'number' ? value : undefined;
 };
+
+// 老 key 的兜底和 span-metrics 那条是同一条，理由也一样：库里现存的 span 全是
+// `http.status_code` 写的，不迁移数据。少了它，历史 trace 的 4xx/5xx 读回来是
+// 「没有状态码」，而它们的 OTel status 按语义约定是 UNSET —— 于是瀑布图在一条失败
+// 请求下面画一根绿柱子，正是上面那条服务端/前端必须一致的规则被悄悄破掉的样子。
+const spanHttpStatus = (attributes: DashboardTraceSpan['attributes']): number | undefined =>
+  numberAttribute(attributes, traceAttribute.httpStatusCode) ??
+  numberAttribute(attributes, traceAttribute.legacyHttpStatusCode);
 
 /** 单个 span 失败与否。状态码挂在 span 属性上，只有 root 和 attempt span 会记。 */
 export const isFailedSpan = (span: Pick<DashboardTraceSpan, 'otelStatusCode' | 'attributes'>): boolean =>

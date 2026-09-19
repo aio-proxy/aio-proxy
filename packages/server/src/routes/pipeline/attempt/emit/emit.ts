@@ -49,7 +49,7 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
         [attributeName.attemptIndex]: index,
         [attributeName.providerId]: base.providerId,
         [attributeName.providerKind]: base.providerKind,
-        [attributeName.genAiResponseModel]: base.modelId,
+        [attributeName.attemptModelId]: base.modelId,
         [attributeName.stream]: streamRequested,
         ...routingSpanAttributes(base),
         ...(base.transport === undefined ? {} : { [attributeName.transport]: base.transport }),
@@ -83,7 +83,7 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
       attemptSpan.span.setAttribute(attributeName.contentEncoding, snapshot.contentEncoding);
     }
     if (snapshot.firstContentMs !== undefined) {
-      attemptSpan.span.setAttribute(attributeName.ttftMs, snapshot.firstContentMs);
+      attemptSpan.span.setAttribute(attributeName.attemptTtftMs, snapshot.firstContentMs);
     }
     attemptSpan.end(terminal);
   };

@@ -335,7 +335,7 @@ test('upstream fetch opens a CLIENT span under the active span', async () => {
     'http.request.method': 'GET',
     'server.address': 'upstream.test',
     'url.path': '/v1/chat',
-    'http.status_code': 503,
+    'http.response.status_code': 503,
   });
   expect(JSON.stringify(post?.attributes)).not.toContain('secret');
 });

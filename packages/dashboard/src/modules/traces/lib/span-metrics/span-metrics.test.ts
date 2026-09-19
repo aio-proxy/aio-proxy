@@ -45,13 +45,12 @@ test('reads provider, model, and latency straight off an attempt span', () => {
     parentSpanId: trace.rootSpanId,
     durationMs: 2_400,
     attributes: {
-      'http.status_code': 429,
+      'http.response.status_code': 429,
       'aio_proxy.provider.id': 'anthropic-primary',
-      'gen_ai.response.model': 'claude-sonnet-4-6-20260101',
-      'gen_ai.request.model': 'claude-sonnet-4-6',
+      'aio_proxy.attempt.model_id': 'claude-sonnet-4-6-20260101',
       'gen_ai.usage.input_tokens': 12,
       'gen_ai.usage.output_tokens': 34,
-      'aio_proxy.response.ttft_ms': 900,
+      'aio_proxy.attempt.ttft_ms': 900,
       'aio_proxy.response.upstream_headers_ms': 640,
     },
   });
@@ -134,10 +133,10 @@ test('counts only provider attempt spans as attempts', () => {
 test('rejects attribute values that are not finite numbers or non-empty strings', () => {
   const span = createSpan({
     attributes: {
-      'http.status_code': 'nope',
+      'http.response.status_code': 'nope',
       'aio_proxy.provider.id': '',
       'aio_proxy.route.final_provider_id': '',
-      'gen_ai.response.model': false,
+      'aio_proxy.attempt.model_id': false,
       'gen_ai.usage.input_tokens': Number.NaN,
       'aio_proxy.response.upstream_headers_ms': Number.POSITIVE_INFINITY,
     },
@@ -150,4 +149,21 @@ test('rejects attribute values that are not finite numbers or non-empty strings'
   expect(metrics.modelId).toBe('claude-sonnet-4-6-20260101');
   expect(metrics.inputTokens).toBeUndefined();
   expect(metrics.upstreamMs).toBeUndefined();
+});
+
+// 库里现存的 trace 全是老 key 写的，不迁移数据 —— 兜底就是迁移。
+test('still reads the legacy attempt keys recorded before the rename', () => {
+  const span = createSpan({
+    parentSpanId: trace.rootSpanId,
+    attributes: {
+      'http.status_code': 503,
+      'gen_ai.response.model': 'claude-sonnet-4-6-20260101',
+      'aio_proxy.response.ttft_ms': 700,
+    },
+  });
+  const metrics = readSpanMetrics({ span, spans: [span], trace });
+
+  expect(metrics.httpStatus).toBe(503);
+  expect(metrics.modelId).toBe('claude-sonnet-4-6-20260101');
+  expect(metrics.ttftMs).toBe(700);
 });

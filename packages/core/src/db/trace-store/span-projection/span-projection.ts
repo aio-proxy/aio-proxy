@@ -14,6 +14,7 @@ const ATTR = {
   sessionResolvedBy: 'aio_proxy.session.resolved_by',
   finalProviderId: 'aio_proxy.route.final_provider_id',
   attemptIndex: 'aio_proxy.attempt.index',
+  attemptModelId: 'aio_proxy.attempt.model_id',
   providerId: 'aio_proxy.provider.id',
   providerKind: 'aio_proxy.provider.kind',
   providerWeight: 'aio_proxy.provider.weight',
@@ -82,8 +83,9 @@ function asNumber(value: unknown): number | undefined {
  *
  * `isRoot` controls whether `gen_ai.request.model` maps to `requestedModelId`;
  * on any other span it stays in `remaining` so the GenAI span keeps the key as
- * its own attribute. The `modelId` column is therefore only ever read now, for
- * rows written before that split.
+ * its own attribute. The `modelId` column now belongs to the attempt span's
+ * candidate model (`aio_proxy.attempt.model_id`); rows written before that also
+ * kept their non-root `gen_ai.request.model` there.
  */
 export function projectAttributes(
   attributes: SpanAttributesJson,
@@ -122,6 +124,9 @@ export function projectAttributes(
         break;
       case ATTR.attemptIndex:
         setNum('attemptIndex', value);
+        break;
+      case ATTR.attemptModelId:
+        setStr('modelId', value);
         break;
       case ATTR.providerId:
         setStr('providerId', value);
@@ -228,12 +233,13 @@ export function mergeAttributes(
   // root 的 usage / model 列来自 summary，不是它自己的属性。挂回去会让 root 变成
   // 第二个「带 gen_ai.* 的 span」，Langfuse 那边一条 trace 就出现两个 GENERATION。
   if (!isRoot) {
-    // 老数据专用，没有写路径了：新写入的 gen_ai.request.model 留在 JSON 里，
-    // columns.modelId 是空的，`set` 遇到 undefined 不覆盖 stored 里已有的值。
-    // 唯一的喂料在 trace-queries.ts 的 `setStr('modelId', row.modelId)`。
-    set(ATTR.genAiRequestModel, columns.modelId);
-    // 这一行是活的：attempt/emit/emit.ts 与 token-count/shared.ts 给 span 挂
-    // gen_ai.response.model，被抽进 final_model_id 列，瀑布图上那一格的模型全靠它还原。
+    // attempt span 的候选模型。写路径是活的（attempt/emit/emit.ts 与 token-count/shared.ts
+    // 发 aio_proxy.attempt.model_id，上面抽进 model_id 列）。同一列还装着老数据：任务 8
+    // 之前非 root 的 gen_ai.request.model 也投在这里，那些行读回时会挂成新 key —— 都是
+    // 「这一跳用的模型」，语义一致，不迁移数据。
+    set(ATTR.attemptModelId, columns.modelId);
+    // GenAI span（inference-span.ts）发 gen_ai.response.model，被抽进 final_model_id 列。
+    // 老库里的 attempt 行也有：改名前 attempt span 发的就是这个 key。
     set(ATTR.genAiResponseModel, columns.finalModelId);
     // 以下六行今天取不到值：gen_ai.usage.* 从引入 tracing 起就只在 root 上发过，
     // 所以没有任何子 span 行的这些列非空。**但不要删** —— 上面的 projectAttributes

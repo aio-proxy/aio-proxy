@@ -33,7 +33,7 @@ const span: DashboardTraceSpan = {
   errorCode: 'provider_unavailable',
   attributes: {
     'aio_proxy.provider.id': 'provider-a',
-    'http.status_code': 503,
+    'http.response.status_code': 503,
     'aio_proxy.response.upstream_headers_ms': 40,
     'gen_ai.usage.input_tokens': 8412,
   },

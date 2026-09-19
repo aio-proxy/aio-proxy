@@ -48,18 +48,26 @@ export const readSpanMetrics = (input: {
   const attemptCount = spans.filter((candidate) => candidate.name === traceSpanName.attempt).length;
 
   return {
-    httpStatus: numberAttribute(attributes, traceAttribute.httpStatusCode),
+    httpStatus:
+      numberAttribute(attributes, traceAttribute.httpStatusCode) ??
+      numberAttribute(attributes, traceAttribute.legacyHttpStatusCode),
     providerId:
       stringAttribute(attributes, traceAttribute.providerId) ??
       stringAttribute(attributes, traceAttribute.finalProviderId) ??
       trace.finalProviderId,
+    // attemptModelId 排在前面：新版 attempt span 只有它，新版 GenAI span 只有
+    // responseModel，两个都没有的老 span 走后面的链。
     modelId:
+      stringAttribute(attributes, traceAttribute.attemptModelId) ??
       stringAttribute(attributes, traceAttribute.responseModel) ??
       stringAttribute(attributes, traceAttribute.requestModel) ??
       trace.finalModelId ??
       trace.requestedModelId,
     durationMs: span.durationMs,
-    ttftMs: numberAttribute(attributes, traceAttribute.ttftMs) ?? (isRoot ? trace.ttftMs : undefined),
+    ttftMs:
+      numberAttribute(attributes, traceAttribute.attemptTtftMs) ??
+      numberAttribute(attributes, traceAttribute.ttftMs) ??
+      (isRoot ? trace.ttftMs : undefined),
     upstreamMs: numberAttribute(attributes, traceAttribute.upstreamHeadersMs),
     inputTokens:
       numberAttribute(attributes, traceAttribute.inputTokens) ?? (isRoot ? trace.usage?.inputTokens : undefined),

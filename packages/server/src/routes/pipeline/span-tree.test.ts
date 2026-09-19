@@ -559,3 +559,20 @@ test('a settlement that failed after the first chunk still records its TTFT', as
   expect(harness.recording.finals[0]).toMatchObject({ outcome: 'failure' });
   expect(typeof inference?.attributes[attributeName.genAiTimeToFirstChunk]).toBe('number');
 });
+
+test('the attempt span stays out of the gen_ai namespace', async () => {
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => usageStream() })]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await response.text();
+  await settleRecording(harness.recording);
+  const attempt = harness.recording.spans.find((span) => span.name === spanName.attempt);
+
+  // 一条 trace 里只许有一个 span 长得像 GenAI span，否则 Langfuse 的分类会把每个 attempt
+  // 都算成一次 GENERATION，token 数按 attempt 数翻倍。
+  expect(Object.keys(attempt?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
+  // 候选配置里的模型，不是上游回的 response model —— 后者是 GenAI span 的
+  // gen_ai.response.model，由上面 'the GenAI span carries the model the upstream
+  // actually answered with' 钉住。这一趟两者恰好同值，所以这里断言的是 key 的归属。
+  expect(attempt?.attributes[attributeName.attemptModelId]).toBe('primary-model');
+  expect(typeof attempt?.attributes[attributeName.attemptTtftMs]).toBe('number');
+});

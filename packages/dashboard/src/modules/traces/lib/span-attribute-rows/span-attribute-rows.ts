@@ -28,14 +28,18 @@ const filterBuilders: FilterBuilders = {
   [traceAttribute.requestId]: (value) => ({ requestId: value }),
 };
 
+const finalHttpStatusFilter = (value: string): TraceFilterPatch | undefined =>
+  /^[1-5]\d{2}$/u.test(value) ? { finalHttpStatus: Number(value) } : undefined;
+
 // Attempt spans write these two as well, but there they mean "this hop", while the list page can
 // only filter on the trace's final result. Offering the filter on a failed attempt would jump to a
 // result set that excludes the very trace the user came from (429 attempt inside a 200 trace).
 // `aio_proxy.provider.id` is attempt-only and has no whole-trace meaning at all, so it maps nowhere.
 const rootOnlyFilterBuilders: FilterBuilders = {
   [traceAttribute.responseModel]: (value) => ({ finalModelId: value }),
-  [traceAttribute.httpStatusCode]: (value) =>
-    /^[1-5]\d{2}$/u.test(value) ? { finalHttpStatus: Number(value) } : undefined,
+  [traceAttribute.httpStatusCode]: finalHttpStatusFilter,
+  // 老 root span 的状态码挂在废弃的 key 上，少了这条就点不出「按最终状态码过滤」。
+  [traceAttribute.legacyHttpStatusCode]: finalHttpStatusFilter,
 };
 
 const toFilter = (key: string, value: string, isRoot: boolean): TraceFilterPatch | undefined => {

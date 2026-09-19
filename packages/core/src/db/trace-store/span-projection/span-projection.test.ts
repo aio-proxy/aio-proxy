@@ -12,11 +12,14 @@ const STARTED_AT = new Date('2026-07-24T10:00:00.000Z');
 const ENDED_AT = new Date('2026-07-24T10:00:00.100Z');
 
 describe('span projection', () => {
-  test('serves gen_ai.request.model from the legacy model_id column when it is not in the stored json', () => {
-    // 老库里的 attempt span 把这个 key 抽进了 model_id 列，JSON 里没有。新写入反过来：
-    // key 留在 JSON、列为空。两种行都得读出模型，所以列兜底不能跟着 root 一起删。
-    expect(mergeAttributes({ modelId: 'legacy-model' }, {}, false)).toEqual({ 'gen_ai.request.model': 'legacy-model' });
-    // 而 root 无论列里有什么都不再挂 gen_ai.*。
+  test('serves the attempt model from the model_id column when it is not in the stored json', () => {
+    // 今天 attempt span 发 aio_proxy.attempt.model_id，被抽进 model_id 列；老库里那些行
+    // 抽进同一列的是非 root 的 gen_ai.request.model。两种行都得读出模型，所以列兜底
+    // 不能跟着 root 一起删 —— 读回时统一挂成今天的 key。
+    expect(mergeAttributes({ modelId: 'legacy-model' }, {}, false)).toEqual({
+      'aio_proxy.attempt.model_id': 'legacy-model',
+    });
+    // 而 root 无论列里有什么都不再挂模型属性。
     expect(mergeAttributes({ modelId: 'legacy-model', requestedModelId: 'alias' }, {}, true)).toEqual({});
   });
 
@@ -125,8 +128,8 @@ describe('span projection', () => {
               'aio_proxy.route.selection_source': 'deterministic_session',
               'gen_ai.request.model': 'final-model',
               // attempt/emit/emit.ts 给每个 attempt span 都挂这个 key，它会被抽进
-              // final_model_id 列。读回时靠 mergeAttributes 的 !isRoot 分支还原。
-              'gen_ai.response.model': 'attempt-model',
+              // model_id 列。读回时靠 mergeAttributes 的 !isRoot 分支还原。
+              'aio_proxy.attempt.model_id': 'attempt-model',
               'aio_proxy.transport': 'raw',
               'long.tail.attempt': 'also-kept',
             },
@@ -172,7 +175,7 @@ describe('span projection', () => {
       });
       expect(attemptRow.providerWeight).toBe(100);
       expect(attemptRow.selectionReason).toBe('weight');
-      expect(attemptRow.finalModelId).toBe('attempt-model');
+      expect(attemptRow.modelId).toBe('attempt-model');
       expect(attemptRow).not.toHaveProperty('routingContractVersion');
       expect(attemptRow).not.toHaveProperty('effectivePriority');
       expect(attemptRow).not.toHaveProperty('effectiveWeight');
@@ -192,7 +195,7 @@ describe('span projection', () => {
       expect(attemptAttrs['aio_proxy.route.weight_source']).toBe('provider');
       expect(attemptAttrs['aio_proxy.route.selection_source']).toBe('deterministic_session');
       expect(attemptAttrs['gen_ai.request.model']).toBe('final-model');
-      expect(attemptAttrs['gen_ai.response.model']).toBe('attempt-model');
+      expect(attemptAttrs['aio_proxy.attempt.model_id']).toBe('attempt-model');
       expect(attemptAttrs['aio_proxy.transport']).toBe('raw');
       expect(attemptAttrs['long.tail.attempt']).toBe('also-kept');
     } finally {
