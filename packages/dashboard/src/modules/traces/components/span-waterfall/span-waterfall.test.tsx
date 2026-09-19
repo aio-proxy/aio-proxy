@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import { formatDuration } from '@/lib/format-duration';
 
+import { traceAttribute } from '../../lib/trace-attribute-names';
 import { SpanWaterfall } from './span-waterfall';
 
 const traceId = 'a'.repeat(32);
@@ -85,6 +86,27 @@ test('filters rows by span name and falls back to an empty message', () => {
 
   expect(screen.queryAllByTestId('trace-span')).toEqual([]);
   expect(screen.getByText(m['dashboard.traces.span_search_empty']())).toBeTruthy();
+});
+
+test('marks a 4xx root Span failed even though its OTel status is UNSET', () => {
+  // HTTP 语义约定不许把 SERVER span 的 4xx 记成 ERROR，所以这条 404 的状态是 UNSET。
+  // 柱子的颜色测不到，这里锁的是同一处判定给出的读屏文案。
+  const rejectedRoot: DashboardTraceSpan = {
+    ...spans[0]!,
+    otelStatusCode: 'UNSET',
+    attributes: { [traceAttribute.httpStatusCode]: 404 },
+  };
+
+  render(
+    <SpanWaterfall
+      spans={[rejectedRoot]}
+      selectedSpanId={rootSpanId}
+      now={new Date('2026-07-12T08:00:00.100Z')}
+      onSelect={rs.fn()}
+    />,
+  );
+
+  expect(screen.getByTestId('trace-span').textContent).toContain(m['dashboard.traces.failure']());
 });
 
 test('scales ruler ticks to the whole trace, not to the root Span duration', () => {
