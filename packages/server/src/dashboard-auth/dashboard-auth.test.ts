@@ -255,6 +255,12 @@ describe('dashboard authentication', () => {
     const hash = await Bun.password.hash('no-renewal-header');
     const app = await createServer({ config: { server: { password: hash }, providers: {} } });
     const token = await tokenFrom(await login(app, 'no-renewal-header'));
+    const aged = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 2 * 24 * 60 * 60 * 1_000,
+    );
+    const agedLogin = await aged.login('no-renewal-header', '127.0.0.1');
+    if (agedLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
 
     const freshResponse = await app.request(
       '/dashboard/api/config',
@@ -266,10 +272,53 @@ describe('dashboard authentication', () => {
       { headers: { authorization: 'Bearer v1.9999999999999.nope.nope' } },
       loopbackServer,
     );
+    const agedResponse = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${agedLogin.token}` } },
+      loopbackServer,
+    );
 
     expect(freshResponse.status).toBe(200);
     expect(freshResponse.headers.get('x-dashboard-session-refresh')).toBeNull();
     expect(rejected.status).toBe(401);
     expect(rejected.headers.get('x-dashboard-session-refresh')).toBeNull();
+    // Positive control: the same route does write the header when the session is old enough, so
+    // these assertions cannot be satisfied by a middleware that stopped writing it altogether.
+    expect(agedResponse.status).toBe(200);
+    expect(agedResponse.headers.get('x-dashboard-session-refresh')).toBeString();
+  });
+
+  test('never renews a session on the authentication routes', async () => {
+    const hash = await Bun.password.hash('auth-route-renewal');
+    const app = await createServer({ config: { server: { password: hash }, providers: {} } });
+    const aged = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 2 * 24 * 60 * 60 * 1_000,
+    );
+    const agedLogin = await aged.login('auth-route-renewal', '127.0.0.1');
+    if (agedLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
+    const headers = { authorization: `Bearer ${agedLogin.token}`, host: '127.0.0.1:22078', origin };
+
+    const logout = await app.request('/dashboard/api/auth/logout', { headers, method: 'POST' }, loopbackServer);
+    const rejectedLogin = await app.request(
+      '/dashboard/api/auth/login',
+      {
+        body: JSON.stringify({ password: 'wrong' }),
+        headers: { ...headers, 'content-type': 'application/json' },
+        method: 'POST',
+      },
+      loopbackServer,
+    );
+    const outsideAuth = await app.request('/dashboard/api/config', { headers }, loopbackServer);
+
+    // Ending a session must not offer a new one, and a refused password must not extend the
+    // session the caller already holds.
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get('x-dashboard-session-refresh')).toBeNull();
+    expect(rejectedLogin.status).toBe(401);
+    expect(rejectedLogin.headers.get('x-dashboard-session-refresh')).toBeNull();
+    // Positive control: the same aged token renews everywhere else under `/dashboard/api/*`.
+    expect(outsideAuth.status).toBe(200);
+    expect(outsideAuth.headers.get('x-dashboard-session-refresh')).toBeString();
   });
 });

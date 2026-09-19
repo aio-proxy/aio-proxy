@@ -72,6 +72,8 @@ export function createDashboardAuthentication(
   // now. A password change therefore still revokes every session: `prepareDashboardConfig` strips
   // `server.password` when the configured hash is unusable, so `passwordHash()` returns `undefined`
   // and both `verify` and `refresh` fail by construction rather than by an explicit check here.
+  // Like `verify`, `refresh` deliberately ignores `available()`, so a reload that leaves the
+  // Dashboard unavailable keeps renewing the sessions whose hash is still live in memory.
   function refresh(token: string): string | undefined {
     const hash = passwordHash();
     if (hash === undefined || !verify(token)) return undefined;

@@ -47,13 +47,19 @@ export const requireDashboardAuthentication =
     return context.json({ error: 'authentication_required' }, 401);
   };
 
-// Registered ahead of the authentication middleware so Hono's onion runs this body on the way out,
-// after authentication has resolved. A request that failed authentication either carries no token
-// or carries one `refresh` rejects, so a rejected response never gains the header.
+// Renewals are confined to callers holding a currently valid session by `refresh` itself, which
+// re-verifies the token against the password hash read at call time; this middleware reads only the
+// inbound `authorization` header, so it consumes nothing the authentication middleware sets. The
+// registration position — ahead of that middleware — buys only Hono's onion ordering: registering
+// first runs this body last, on the way out.
 export const attachDashboardSessionRefresh =
   (auth: DashboardAuthentication): MiddlewareHandler =>
   async (context, next) => {
     await next();
+    // Authentication routes never hand out renewed sessions: a refused password must not extend the
+    // session the caller already holds, and logout must not return a live one. `/auth/session`
+    // forgoes renewal with them; every other `/dashboard/api/*` request still renews.
+    if (context.req.path.startsWith('/dashboard/api/auth/')) return;
     const token = dashboardSessionToken(context);
     if (token === undefined) return;
     const renewed = auth.refresh(token);
