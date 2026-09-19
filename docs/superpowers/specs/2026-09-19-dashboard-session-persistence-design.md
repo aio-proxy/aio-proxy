@@ -147,18 +147,13 @@ storage key private to the module. A wholesale `localStorage.clear()` in a sibli
 `storage` event with `key === null`, and counts as a clear too. There is no unsubscribe, so it must be
 registered once at module load and never from a React effect.
 
-The unchanged key does not by itself carry existing sessions over: `sessionStorage` and `localStorage`
-are separate areas, so a tab open across the upgrade would find an empty `localStorage` and ask for
-the password — the one logout this change exists to prevent. `readDashboardAuthToken` therefore moves
-a legacy `sessionStorage` value across on first read, once, and the helper can be deleted when no tab
-can still be running the previous build.
-
-Retaining a legacy copy is not safe, because logout here is client-side only: a token that survives
-anywhere is still a valid one. With several pre-upgrade tabs, whichever reloads first populates
-`localStorage`, so the others return the shared token and never adopt — leaving their own copy behind,
-which the next reload after a logout would adopt and use to re-authenticate every tab. Both reading
-and clearing the session therefore retire this tab's legacy copy, so one run of the new build per tab
-removes it.
+The unchanged key does not carry existing sessions over — `sessionStorage` and `localStorage` are
+separate areas — so a tab open across the upgrade finds an empty `localStorage` and asks for the
+password once. That is accepted rather than migrated. Reading the legacy value across was implemented
+and then removed: because logout here is client-side only, a token retained anywhere is still a valid
+one, and with several pre-upgrade tabs the ones that found `localStorage` already populated kept their
+own copy, which a later reload would adopt to re-authenticate after a logout. Keeping the migration
+safe cost a second helper that ran on every token read, forever, to buy one avoided password entry.
 
 `packages/dashboard/src/lib/dashboard-client/dashboard-client.ts` reads the renewal header in
 `dashboardFetch`:
