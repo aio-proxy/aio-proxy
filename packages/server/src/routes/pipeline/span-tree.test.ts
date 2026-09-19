@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { StoredSpan } from '@aio-proxy/core/db';
+import { SpanStatusCode } from '@opentelemetry/api';
 
 import { jsonRequest, rawProvider, REQUESTED_MODEL, settleRecording } from '../../../__tests__/pipeline-helpers';
 import { attributeName, spanName } from '../../request-tracing';
@@ -53,4 +54,22 @@ test('a parse failure ends the parse span before the root settles', async () => 
   // take() drains the buffer right after root.end(): a parse span that did not
   // get in ahead of that disappears from the trace entirely.
   expect(tree(harness.recording.spans).find(spanName.parse)).toBeDefined();
+});
+
+test('a throwing session store still leaves an ended session span behind', async () => {
+  const harness = pipeline([rawProvider({ id: 'raw' })]);
+  harness.source.logicalSessionStore.begin = () => {
+    throw new Error('logical session store unavailable');
+  };
+
+  await expect(harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }))).rejects.toThrow(
+    'logical session store unavailable',
+  );
+  await settleRecording(harness.recording);
+
+  // The outer catch settles the root, so an unended session span is dropped on
+  // export and the failed request shows no session-resolve segment at all.
+  const sessionSpan = tree(harness.recording.spans).find(spanName.session);
+  expect(sessionSpan?.endedAt).toBeInstanceOf(Date);
+  expect(sessionSpan?.statusCode).toBe(SpanStatusCode.ERROR);
 });

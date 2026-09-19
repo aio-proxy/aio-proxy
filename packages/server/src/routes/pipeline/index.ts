@@ -96,14 +96,22 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     const streamRequested = adapter.wantsStream(request, context);
     requestedModelId = requestedModel;
     const sessionSpan = startPipelineSpan(session.rootContext, spanName.session);
-    const resolution = sessionSpan.run(() =>
-      source.logicalSessionStore.begin({
-        requestedModelId: requestedModel,
-        requestId: session.requestId,
-        hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
-        headers: rawRequest.headers,
-      }),
-    );
+    let resolution;
+    try {
+      resolution = sessionSpan.run(() =>
+        source.logicalSessionStore.begin({
+          requestedModelId: requestedModel,
+          requestId: session.requestId,
+          hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
+          headers: rawRequest.headers,
+        }),
+      );
+    } catch (error) {
+      // The outer catch settles the root via session.finish(); this span has to
+      // close first or it is dropped on export.
+      sessionSpan.end({ outcome: 'failure' });
+      throw error;
+    }
     sessionSpan.end();
     session.identify({
       requestedModelId: requestedModel,
