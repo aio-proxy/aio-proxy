@@ -42,7 +42,7 @@
 | `request-logging/wire/wire.ts` | 现有：`createObservedFetch`。任务 7 在这里开上游 `POST` CLIENT span。 |
 | `routes/pipeline/index.ts` | 现有：parse / session / route 插桩点与候选调用。任务 3 加三个请求级 span，任务 5 在 `routeSpan.end()` 之后开 GenAI span。 |
 | `routes/pipeline/inference-span.ts` | **新建（任务 5）**：GenAI CLIENT span 的开启与经 session 包装的结算。任务 9 往它上面落 `gen_ai.*` 属性。 |
-| `routes/pipeline/attempt/emit.ts` | 现有：attempt span 的开/关。任务 2 把 TTFT 收口到 `endAttempt`，任务 9 带出 response model/id，任务 10 改属性名。 |
+| `routes/pipeline/attempt/emit/emit.ts` | 现有：attempt span 的开/关。任务 2 把 TTFT 收口到 `endAttempt`，任务 9 带出 response model/id，任务 10 改属性名。 |
 | `routes/pipeline/attempt/error.ts` | 现有：attempt 失败整形。任务 4 新增导出 `rejectRequestShape`。 |
 | `routes/pipeline/attempt/model-prepare.ts` | 现有：`resolveInvocation` 的双重结算点。任务 4 改成返回 `'reject'` 分支。 |
 | `routes/pipeline/attempt/image.ts` | 现有：与 model-prepare 同形的双重结算点。任务 4 一并改。 |
@@ -1667,7 +1667,7 @@ git commit -m "refactor(core): gen_ai 属性不再挂在 root span 上"
 - Modify: `packages/server/src/request-tracing/semantic.ts:64-71`
 - Modify: `packages/server/src/request-tracing/request-trace-recorder/types.ts:13-20`
 - Modify: `packages/server/src/usage-capture/shared.ts:10-13,89-95`
-- Modify: `packages/server/src/routes/pipeline/attempt/emit.ts:93-103`
+- Modify: `packages/server/src/routes/pipeline/attempt/emit/emit.ts` 的 `settleSuccess`（任务 2 把 `emit.ts` 拆成了同名目录，行号已变，按函数名定位）
 - Modify: `packages/server/src/routes/pipeline/inference-span.ts`（任务 5 建的文件）
 - Modify: `packages/core/src/db/trace-store/span-projection/span-projection.ts:33-35`
 - Test: `packages/server/src/routes/pipeline/span-tree.test.ts`
@@ -1861,7 +1861,7 @@ export function ttftProperty(
   readonly firstChunkAt?: number;
 ```
 
-`packages/server/src/routes/pipeline/attempt/emit.ts` 的 `settleSuccess`（`:98-102`），
+`packages/server/src/routes/pipeline/attempt/emit/emit.ts` 的 `settleSuccess`，
 在 `...(ttftMs === undefined ? {} : { ttftMs }),` 下面加一行：
 
 ```typescript
@@ -1944,7 +1944,7 @@ Expected: PASS。
 - [ ] **Step 8: 提交**
 
 ```bash
-git add packages/server/src/request-tracing/semantic.ts packages/server/src/request-tracing/request-trace-recorder/types.ts packages/server/src/usage-capture/shared.ts packages/server/src/routes/pipeline/attempt/emit.ts packages/server/src/routes/pipeline/inference-span.ts packages/server/src/routes/pipeline/span-tree.test.ts packages/core/src/db/trace-store/span-projection/span-projection.ts
+git add packages/server/src/request-tracing/semantic.ts packages/server/src/request-tracing/request-trace-recorder/types.ts packages/server/src/usage-capture/shared.ts packages/server/src/routes/pipeline/attempt/emit packages/server/src/routes/pipeline/inference-span.ts packages/server/src/routes/pipeline/span-tree.test.ts packages/core/src/db/trace-store/span-projection/span-projection.ts
 git commit -m "feat(server): GenAI span 落标准 gen_ai 属性"
 ```
 
@@ -1954,7 +1954,7 @@ git commit -m "feat(server): GenAI span 落标准 gen_ai 属性"
 
 **Files:**
 - Modify: `packages/server/src/request-tracing/semantic.ts:44,73`
-- Modify: `packages/server/src/routes/pipeline/attempt/emit.ts:52,96`
+- Modify: `packages/server/src/routes/pipeline/attempt/emit/emit.ts` 的 `startAttempt` 与 `endAttempt`（任务 2 把 `emit.ts` 拆成了同名目录，行号已变，按函数名定位）
 - Modify: `packages/server/src/routes/token-count/shared.ts:34-40`
 - Modify: `packages/core/src/db/trace-store/span-projection/span-projection.ts`
 - Modify: `packages/dashboard/src/modules/traces/lib/trace-attribute-names/trace-attribute-names.ts`
@@ -2036,7 +2036,7 @@ attempt 上还有 `gen_ai.response.model`。
 
 - [ ] **Step 4: 两个发射点改名**
 
-`packages/server/src/routes/pipeline/attempt/emit.ts`，`startAttempt` 的属性对象里：
+`packages/server/src/routes/pipeline/attempt/emit/emit.ts`，`startAttempt` 的属性对象里：
 
 ```ts
         [attributeName.attemptModelId]: base.modelId,
@@ -2220,8 +2220,7 @@ Expected: PASS。会红的老测试与改法：
 
 ```bash
 git add packages/server/src/request-tracing/semantic.ts \
-  packages/server/src/routes/pipeline/attempt/emit.ts \
-  packages/server/src/routes/pipeline/attempt/emit.test.ts \
+  packages/server/src/routes/pipeline/attempt/emit \
   packages/server/src/routes/token-count/shared.ts \
   packages/server/src/routes/pipeline/span-tree.test.ts \
   packages/server/__tests__/trace-recording.test-support.ts \
@@ -2395,7 +2394,7 @@ export const spanRegistry = {
     kind: SpanKind.INTERNAL,
     // token-count 没有 GenAI span（它不生成 token，只数 token），那条路上 attempt 直接挂 root。
     parent: ['inference', 'request'],
-    createdBy: 'routes/pipeline/attempt/emit.ts',
+    createdBy: 'routes/pipeline/attempt/emit/emit.ts',
   },
   prepare: {
     name: spanName.prepare,
