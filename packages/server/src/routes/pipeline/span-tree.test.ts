@@ -21,16 +21,15 @@ import { attributeName, spanName } from '../../request-tracing';
 import { pipeline } from './test-support';
 
 // Long enough that the settlement of a streamed completion is unambiguously
-// later than the moment the Response was handed back. Also used as the stream
-// tail that separates "time to first chunk" from the GenAI span's duration.
-const STREAM_TAIL_MS = 120;
+// later than the moment the Response was handed back. Also the TTFT fixture's
+// stream tail.
+const STREAM_TAIL_MS = 240;
 
-// Wall-clock delay before the first chunk, and the time candidate 0 burns before
-// failing over. Both bounds in the TTFT test are relational, and because each of
-// these is >= 120ms the two margins are structurally >= 60ms whatever the load:
-// the upper margin is the tail, the lower margin is the burn.
-const FIRST_CHUNK_DELAY_MS = 120;
-const FAILOVER_BURN_MS = 120;
+// The TTFT fixture's three intervals. They are deliberately unequal: the bounds
+// admit a ~160ms window, so equal intervals would let a wrong implementation
+// summing the wrong two of them land inside it. See the table on the test.
+const FAILOVER_BURN_MS = 80;
+const FIRST_CHUNK_DELAY_MS = 340;
 
 // Indexes one recording's spans by name and projects "who is whose parent" in
 // readable terms. `find` keeps the first span of a name so repeated names (many
@@ -392,10 +391,8 @@ test('candidate invocation runs inside the attempt span context', async () => {
 
 // A stream carrying non-zero usage. pipeline-helpers' textStream() reports all
 // zeros, which cannot tell "which key got which number" apart. `delayMs` holds
-// the first chunk back and `tailMs` keeps the stream open after it, so a test
-// can separate "time to first chunk" from "how long the whole thing took".
-// Two-phase `pull`, not `start`: a `start` that awaits runs to completion before
-// any read resolves, which would fold the tail back into the first chunk.
+// the first chunk back; `tailMs` keeps the stream open after it, so a test can
+// separate "time to first chunk" from "how long the whole thing took".
 function usageStream(delayMs = 0, tailMs = 0): ModelEventStream {
   let opened = false;
   return new ReadableStream<TextStreamPart<ToolSet>>({
@@ -473,9 +470,9 @@ test('the GenAI span carries the model the upstream actually answered with', asy
   expect(inference?.attributes[attributeName.genAiResponseModel]).toBe('primary-model');
 });
 
-// Candidate 0 burns wall clock and then yields nothing, so the loop fails over.
-// The burn lands inside the GenAI span but before candidate 1 is ever
-// dispatched, which is what separates the GenAI origin from the attempt origin.
+// Candidate 0 sleeps, then closes without yielding anything, so the loop fails
+// over to candidate 1. Candidates run in sequence, so this sleep elapses before
+// candidate 1 is dispatched.
 function slowEmptyStream(delayMs: number): ModelEventStream {
   return new ReadableStream<TextStreamPart<ToolSet>>({
     async pull(controller) {
@@ -486,13 +483,19 @@ function slowEmptyStream(delayMs: number): ModelEventStream {
 }
 
 test('time_to_first_chunk is this span own start to its first chunk, in seconds', async () => {
-  // Three intervals, deliberately all present at once, because every wrong
-  // implementation of this attribute is a quantity that coincides with the right
-  // one as soon as one of them is missing:
-  //   burn (candidate 0 fails)  -> drop it and the attempt origin looks correct
-  //   delay (before 1st chunk)  -> drop it and milliseconds look like seconds
-  //   tail  (after 1st chunk)   -> drop it and the span duration looks correct
-  // Bounds are relational rather than absolute so they scale with load.
+  // The fixture lays down three intervals, in this order:
+  //   burn  80ms  candidate 0 sleeps, yields nothing, fails
+  //   delay 340ms candidate 1 sleeps, then emits the first chunk
+  //   tail  240ms the stream stays open, then finishes
+  // so the correct value is burn+delay = 420, and the two relational bounds
+  // below admit (delay + burn/2, burn + delay + tail/2) = (380, 540).
+  // The three are unequal on purpose. Every wrong implementation seen so far is
+  // some sum of a subset of them, and exactly one subset is inside the window:
+  //   80 burn | 340 delay (attempt origin) | 240 tail | 320 burn+tail
+  //   580 delay+tail | 660 burn+delay+tail (span duration) -- all >=40ms outside
+  //   420 burn+delay -- INSIDE, the only one
+  // With all three equal (as they were) several of those collapse into the
+  // window and the bounds stop discriminating.
   const harness = pipeline([
     modelProvider({ id: 'primary', invoke: () => slowEmptyStream(FAILOVER_BURN_MS) }),
     modelProvider({ id: 'backup', invoke: () => usageStream(FIRST_CHUNK_DELAY_MS, STREAM_TAIL_MS) }),
@@ -510,8 +513,10 @@ test('time_to_first_chunk is this span own start to its first chunk, in seconds'
   const attemptMs = spans.find((span) => span.name === spanName.request)?.attributes[attributeName.ttftMs] as number;
   const spanMs = (inference?.endedAt.getTime() ?? 0) - (inference?.startedAt.getTime() ?? 0);
 
-  // Fixture self-check: without these the bounds below have nothing to bite on.
+  // Fixture self-check: one line per interval, so a fixture that quietly stops
+  // producing one of the three fails here instead of leaving a bound inert.
   expect(harness.recording.attempts.map((attempt) => attempt.outcome)).toEqual(['failure', 'success']);
+  expect(attemptMs).toBeGreaterThan(FIRST_CHUNK_DELAY_MS / 2);
   expect(spanMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS + STREAM_TAIL_MS / 2);
   // Above the attempt origin: failover time counts.
   expect(genAiMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS / 2);
