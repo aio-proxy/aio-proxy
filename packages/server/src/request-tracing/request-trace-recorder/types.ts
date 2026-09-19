@@ -15,6 +15,8 @@ type RequestTraceFinishBase = {
   readonly finalModelId?: string;
   readonly finalHttpStatus?: number;
   readonly ttftMs?: number;
+  /** performance.now() at the first chunk, not a duration; spans subtract their own start. */
+  readonly firstChunkAt?: number;
   /** Metadata source for response diagnostics: the final Response returned to the client. */
   readonly clientResponse?: Response;
 };

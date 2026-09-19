@@ -101,6 +101,7 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
         return {
           ...completionFinish(value, ids, getResponseId?.()),
           ...(ttftMs === undefined ? {} : { ttftMs }),
+          ...(value.firstChunkAt === undefined ? {} : { firstChunkAt: value.firstChunkAt }),
           clientResponse,
         };
       });

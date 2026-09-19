@@ -30,9 +30,9 @@ const ATTR = {
   genAiUsageInputTokens: 'gen_ai.usage.input_tokens',
   genAiUsageOutputTokens: 'gen_ai.usage.output_tokens',
   genAiUsageTotalTokens: 'gen_ai.usage.total_tokens',
-  genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read_tokens',
-  genAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write_tokens',
-  genAiUsageReasoningTokens: 'gen_ai.usage.reasoning_tokens',
+  genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read.input_tokens',
+  genAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write.input_tokens',
+  genAiUsageReasoningTokens: 'gen_ai.usage.reasoning.output_tokens',
   errorType: 'error.type',
 } as const;
 

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
-import type { StoredSpan } from '@aio-proxy/core/db';
+import type { ModelEventStream, TextStreamPart, ToolSet } from '@aio-proxy/core';
+import { projectAttributes, type StoredSpan } from '@aio-proxy/core/db';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 
@@ -22,6 +23,10 @@ import { pipeline } from './test-support';
 // later than the moment the Response was handed back.
 const STREAM_TAIL_MS = 120;
 
+// Wall-clock delay before the first chunk. Large enough that the seconds value
+// (~0.12) and the millisecond value (~120) cannot be confused for each other.
+const FIRST_CHUNK_DELAY_MS = 120;
+
 // Indexes one recording's spans by name and projects "who is whose parent" in
 // readable terms. `find` keeps the first span of a name so repeated names (many
 // provider attempts) resolve to the earliest one.
@@ -35,6 +40,15 @@ function tree(spans: readonly StoredSpan[]) {
       return parentId === undefined ? undefined : byId.get(parentId)?.name;
     },
   };
+}
+
+// The GenAI span's name is `{operation} {model}`, assembled at runtime, so find
+// it structurally rather than by name: of the root's children only it is a
+// CLIENT span, parse/session/route are all the default INTERNAL. The upstream
+// HTTP CLIENT spans hang under an attempt, not under root.
+function inferenceSpanOf(spans: readonly StoredSpan[]): StoredSpan | undefined {
+  const root = spans.find((span) => span.name === spanName.request);
+  return spans.find((span) => span.parentSpanId === root?.spanId && span.kind === SpanKind.CLIENT);
 }
 
 async function runOnce() {
@@ -65,10 +79,7 @@ test('the root span carries no gen_ai attributes', async () => {
 
   const root = spans.find((span) => span.name === spanName.request);
   expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
-  // GenAI span 的名字是 `{operation} {model}` 动态拼的，所以按结构找而不按名字找：
-  // root 的子 span 里只有它是 CLIENT，parse/session/route 都是默认的 INTERNAL。
-  const inference = spans.find((span) => span.parentSpanId === root?.spanId && span.kind === SpanKind.CLIENT);
-  expect(inference?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
+  expect(inferenceSpanOf(spans)?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
 });
 
 test('a settled usage row still leaves no gen_ai attributes on the root span', async () => {
@@ -365,4 +376,86 @@ test('candidate invocation runs inside the attempt span context', async () => {
   const attempt = harness.recording.spans.find((span) => span.name === spanName.attempt);
   expect(attempt?.spanId).toBeDefined();
   expect(activeSpanId).toBe(attempt?.spanId);
+});
+
+// A stream carrying non-zero usage. pipeline-helpers' textStream() reports all
+// zeros, which cannot tell "which key got which number" apart. `delayMs` holds
+// the first chunk back so the recorded TTFT has a magnitude worth asserting.
+function usageStream(delayMs = 0): ModelEventStream {
+  return new ReadableStream<TextStreamPart<ToolSet>>({
+    async start(controller) {
+      if (delayMs > 0) await Bun.sleep(delayMs);
+      controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'ok' });
+      controller.enqueue({
+        type: 'finish',
+        finishReason: 'stop',
+        rawFinishReason: 'stop',
+        totalUsage: {
+          inputTokenDetails: { cacheReadTokens: 7, cacheWriteTokens: 3, noCacheTokens: 11 },
+          inputTokens: 21,
+          outputTokenDetails: { reasoningTokens: 5, textTokens: 9 },
+          outputTokens: 14,
+          totalTokens: 35,
+        },
+      });
+      controller.close();
+    },
+  });
+}
+
+async function runWithUsage(invoke: () => ModelEventStream = () => usageStream()) {
+  const harness = pipeline([modelProvider({ id: 'primary', invoke })]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await response.text();
+  await settleRecording(harness.recording);
+  return inferenceSpanOf(harness.recording.spans);
+}
+
+test('the GenAI span carries usage under the standard gen_ai names', async () => {
+  const inference = await runWithUsage();
+
+  expect(inference?.attributes[attributeName.genAiUsageInputTokens]).toBe(21);
+  expect(inference?.attributes[attributeName.genAiUsageOutputTokens]).toBe(14);
+  expect(inference?.attributes[attributeName.genAiUsageTotalTokens]).toBe(35);
+  expect(inference?.attributes['gen_ai.usage.cache_read.input_tokens']).toBe(7);
+  expect(inference?.attributes['gen_ai.usage.cache_write.input_tokens']).toBe(3);
+  expect(inference?.attributes['gen_ai.usage.reasoning.output_tokens']).toBe(5);
+  // None of the invented names may survive.
+  expect(inference?.attributes['gen_ai.usage.cache_read_tokens']).toBeUndefined();
+});
+
+test('the usage the GenAI span emits still lands in the trace-store token columns', async () => {
+  const inference = await runWithUsage();
+
+  // The only executable check that the recorder's attributeName strings and the
+  // store's ATTR map still agree byte-for-byte. Rename one side and every token
+  // stays in attributes_json instead of a column, and the dashboard silently
+  // shows no tokens — nothing else in the suite notices.
+  expect(projectAttributes(inference?.attributes ?? {}, false).columns).toMatchObject({
+    cacheReadTokens: 7,
+    cacheWriteTokens: 3,
+    inputTokens: 21,
+    outputTokens: 14,
+    reasoningTokens: 5,
+    totalTokens: 35,
+  });
+});
+
+test('the GenAI span carries the model the upstream actually answered with', async () => {
+  const inference = await runWithUsage();
+
+  expect(inference?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
+  expect(inference?.attributes[attributeName.genAiResponseModel]).toBe('primary-model');
+});
+
+test('time_to_first_chunk is measured in seconds from the GenAI span start', async () => {
+  const inference = await runWithUsage(() => usageStream(FIRST_CHUNK_DELAY_MS));
+  const chunk = inference?.attributes['gen_ai.response.time_to_first_chunk'];
+
+  expect(typeof chunk).toBe('number');
+  // The held-back first chunk gives this a known magnitude: ~0.12 in seconds.
+  // Plain `toBeLessThan(1)` does not guard the unit — an undelayed unit-test
+  // request takes well under a millisecond, so milliseconds would also be < 1.
+  expect(chunk as number).toBeGreaterThan(FIRST_CHUNK_DELAY_MS / 1000 / 2);
+  expect(chunk as number).toBeLessThan(FIRST_CHUNK_DELAY_MS / 10);
 });

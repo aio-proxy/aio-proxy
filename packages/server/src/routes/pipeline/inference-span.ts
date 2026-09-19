@@ -1,5 +1,6 @@
 import type { InboundCapability } from '@aio-proxy/core';
-import { SpanKind } from '@opentelemetry/api';
+import type { UsageRow } from '@aio-proxy/types';
+import { type Attributes, SpanKind } from '@opentelemetry/api';
 
 import { attributeName, type RequestTraceFinishInput, type RequestTraceSession } from '../../request-tracing';
 import { type SpanTerminal, startPipelineSpan } from './tracing';
@@ -30,6 +31,35 @@ function inferenceTerminal(input: RequestTraceFinishInput): SpanTerminal {
   };
 }
 
+// This span's own TTFT: from **this span's start** to the first chunk, in
+// seconds. It therefore includes the time failover burned — not the same
+// quantity as the attempt span's milliseconds-from-attempt-dispatch value.
+function inferenceAttributes(input: RequestTraceFinishInput, startedAt: number): Attributes {
+  const usage = input.outcome === 'success' ? input.usage : undefined;
+  return {
+    ...(input.finalModelId === undefined ? {} : { [attributeName.genAiResponseModel]: input.finalModelId }),
+    ...(input.outcome === 'success' && input.responseId !== undefined
+      ? { [attributeName.genAiResponseId]: input.responseId }
+      : {}),
+    ...(input.firstChunkAt === undefined
+      ? {}
+      : { [attributeName.genAiTimeToFirstChunk]: Math.max(0, input.firstChunkAt - startedAt) / 1000 }),
+    ...(usage === undefined ? {} : usageAttributes(usage)),
+  };
+}
+
+function usageAttributes(usage: UsageRow): Attributes {
+  const pairs: ReadonlyArray<readonly [string, number | undefined]> = [
+    [attributeName.genAiUsageInputTokens, usage.inputTokens],
+    [attributeName.genAiUsageOutputTokens, usage.outputTokens],
+    [attributeName.genAiUsageTotalTokens, usage.totalTokens],
+    [attributeName.genAiUsageCacheReadTokens, usage.cacheReadTokens],
+    [attributeName.genAiUsageCacheWriteTokens, usage.cacheWriteTokens],
+    [attributeName.genAiUsageReasoningTokens, usage.reasoningTokens],
+  ];
+  return Object.fromEntries(pairs.filter(([, value]) => value !== undefined));
+}
+
 export type InferenceSpan = {
   // Same session with rootContext swapped for the inference span's context, so
   // everything the candidate loop opens hangs under it instead of under root.
@@ -45,6 +75,7 @@ export function startInferenceSpan(
   capability: InboundCapability,
   requestedModelId: string,
 ): InferenceSpan {
+  const startedAt = performance.now();
   const genAiOperation = GEN_AI_OPERATION[capability];
   const open = startPipelineSpan(session.rootContext, `${OPERATION_VERB[capability]} ${requestedModelId}`, {
     kind: SpanKind.CLIENT,
@@ -54,13 +85,19 @@ export function startInferenceSpan(
       ...(genAiOperation === undefined ? {} : { [attributeName.genAiOperationName]: genAiOperation }),
     },
   });
+  // Attributes have to land before end(): setAttributes is discarded once a span
+  // is ended, and the buffering processor copies the record out at onEnd.
+  const settle = (input: RequestTraceFinishInput): void => {
+    open.span.setAttributes(inferenceAttributes(input, startedAt));
+    open.end(inferenceTerminal(input));
+  };
   return {
     end: open.end,
     session: {
       ...session,
       rootContext: open.context,
       finish: (input) => {
-        open.end(inferenceTerminal(input));
+        settle(input);
         return session.finish(input);
       },
       // Attaching our callback to the completion BEFORE handing it to the
@@ -71,7 +108,7 @@ export function startInferenceSpan(
         session.finishFrom(
           completion.then(
             (input) => {
-              open.end(inferenceTerminal(input));
+              settle(input);
               return input;
             },
             (error: unknown) => {
