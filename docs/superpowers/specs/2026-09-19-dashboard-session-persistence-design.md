@@ -98,9 +98,11 @@ Dashboard and API are same-origin, so the header needs no `Access-Control-Expose
 Concurrent requests may each mint a different renewed token. All of them are independently valid
 under the same signing key, and the last write wins.
 
-`/admin/*` and the SSE events route do not participate: the former is CLI-facing, and the latter is a
-long-lived stream with no response header left to write. Both benefit from renewals driven by other
-requests on the same session.
+`/admin/*` does not participate: it is CLI-facing, and the middleware is mounted only on
+`/dashboard/api/*`. The SSE events route is inside that prefix and is therefore wrapped, which is
+harmless — the header write is legal on a streaming response, but the Dashboard consumes that stream
+without reading response headers, so the renewal is inert there. Both surfaces are renewed by
+ordinary requests on the same session.
 
 When the configured password hash is invalid, `prepareDashboardConfig` strips `password` from the
 config, so `passwordHash()` returns `undefined` and `refresh` fails exactly as `verify` does. This
