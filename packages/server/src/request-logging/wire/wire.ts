@@ -330,7 +330,10 @@ function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, 
 async function fetchWithSpan(
   fetcher: typeof globalThis.fetch,
   input: Parameters<typeof globalThis.fetch>[0],
-  init?: Parameters<typeof globalThis.fetch>[1],
+  // BunFetchInit, not RequestInit: `globalThis.fetch` is overloaded and accepts
+  // Bun's `decompress`, but `Parameters<>` collapses to the last overload and
+  // drops it, so the caller at the debug branch would not type-check.
+  init?: BunFetchInit,
 ): Promise<Response> {
   const parent = context.active();
   if (trace.getSpan(parent) === undefined) return fetcher(input, init);
