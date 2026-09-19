@@ -15,6 +15,7 @@ import {
   settleRecording,
   slowTextStream,
   textStream,
+  textThenErrorStream,
 } from '../../../__tests__/pipeline-helpers';
 import { attributeName, spanName } from '../../request-tracing';
 import { pipeline } from './test-support';
@@ -431,6 +432,10 @@ test('the usage the GenAI span emits still lands in the trace-store token column
   // store's ATTR map still agree byte-for-byte. Rename one side and every token
   // stays in attributes_json instead of a column, and the dashboard silently
   // shows no tokens — nothing else in the suite notices.
+  // `projectAttributes` is resolved from packages/core's built `dist`, so this
+  // test only sees a core-side rename after core is rebuilt. CI is safe (turbo
+  // gives test:unit `dependsOn: ["build", "^build"]`); running this file by hand
+  // against a stale dist reports a false green.
   expect(projectAttributes(inference?.attributes ?? {}, false).columns).toMatchObject({
     cacheReadTokens: 7,
     cacheWriteTokens: 3,
@@ -456,6 +461,27 @@ test('time_to_first_chunk is measured in seconds from the GenAI span start', asy
   // The held-back first chunk gives this a known magnitude: ~0.12 in seconds.
   // Plain `toBeLessThan(1)` does not guard the unit — an undelayed unit-test
   // request takes well under a millisecond, so milliseconds would also be < 1.
+  // The upper bound is deliberately tight rather than merely "not milliseconds":
+  // with slack it also passes for a value measured from *process* start, which
+  // is the whole reason firstChunkAt is an absolute instant instead of ttftMs.
   expect(chunk as number).toBeGreaterThan(FIRST_CHUNK_DELAY_MS / 1000 / 2);
-  expect(chunk as number).toBeLessThan(FIRST_CHUNK_DELAY_MS / 10);
+  expect(chunk as number).toBeLessThan((FIRST_CHUNK_DELAY_MS / 1000) * 5);
+});
+
+test('a settlement that failed after the first chunk still records its TTFT', async () => {
+  // `emit.ts` forwards firstChunkAt on presence, not on outcome, and
+  // inferenceAttributes writes the TTFT for every outcome. A stream that
+  // answered and then died is exactly the case where "how long until it started
+  // answering" is still worth knowing, so the ungated form is the intent.
+  const harness = pipeline([
+    modelProvider({ id: 'primary', invoke: () => textThenErrorStream('partial', new Error('upstream died')) }),
+  ]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await expect(response.text()).rejects.toThrow('upstream died');
+  await settleRecording(harness.recording);
+  const inference = inferenceSpanOf(harness.recording.spans);
+
+  // Without this the assertion below would pass vacuously on a success path.
+  expect(harness.recording.finals[0]).toMatchObject({ outcome: 'failure' });
+  expect(typeof inference?.attributes[attributeName.genAiTimeToFirstChunk]).toBe('number');
 });
