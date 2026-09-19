@@ -7,6 +7,7 @@ export type AttemptResponseSnapshot = {
   readonly upstreamHeadersMs?: number;
   readonly firstUpstreamByteMs?: number;
   readonly firstSseEventMs?: number;
+  readonly firstContentMs?: number;
   readonly contentGapP95Ms?: number;
   readonly maxSseFramesPerRead?: number;
   readonly contentEncoding?: 'identity' | 'gzip' | 'deflate' | 'br' | 'zstd' | 'multiple' | 'other';
@@ -52,6 +53,7 @@ export function createAttemptResponseObservation(options: {
   let firstSseEventMs: number | undefined;
   let maxSseFramesPerRead: number | undefined;
   let contentEncoding: ContentEncoding | undefined;
+  let firstContentMs: number | undefined;
   let lastContentAt: number | undefined;
   let gapCount = 0;
   let overflowMax = 0;
@@ -94,6 +96,7 @@ export function createAttemptResponseObservation(options: {
       }
     },
     observeContent(at = now()) {
+      firstContentMs ??= elapsed(at);
       if (lastContentAt !== undefined) {
         const gap = Math.max(0, at - lastContentAt);
         const bucket = gapBucket(gap);
@@ -112,6 +115,9 @@ export function createAttemptResponseObservation(options: {
         ...(raw && upstreamHeadersMs !== undefined ? { upstreamHeadersMs } : {}),
         ...(raw && firstUpstreamByteMs !== undefined ? { firstUpstreamByteMs } : {}),
         ...(raw && firstSseEventMs !== undefined ? { firstSseEventMs } : {}),
+        // 不走 observed fetch 的 provider 也有内容流，所以这里不能用 raw 闸门；
+        // 只有 attempt 内隐藏重试（ambiguous）才让首内容无法归因。
+        ...(transportObservation === 'ambiguous' || firstContentMs === undefined ? {} : { firstContentMs }),
         ...(contentGapP95Ms === undefined ? {} : { contentGapP95Ms }),
         ...(raw && maxSseFramesPerRead !== undefined ? { maxSseFramesPerRead } : {}),
         ...(raw && contentEncoding !== undefined ? { contentEncoding } : {}),

@@ -31,6 +31,7 @@ test('records one controlled SSE response against the candidate baseline', () =>
     firstUpstreamByteMs: 18,
     firstSseEventMs: 21,
     contentGapP95Ms: 11,
+    firstContentMs: 30,
     maxSseFramesPerRead: 2,
     contentEncoding: 'identity',
   });
@@ -68,6 +69,7 @@ test('keeps meaningful zero timings and ignores empty reads', () => {
     firstUpstreamByteMs: 0,
     firstSseEventMs: 0,
     contentGapP95Ms: 0,
+    firstContentMs: 0,
     maxSseFramesPerRead: 0,
     contentEncoding: 'identity',
   });
@@ -85,6 +87,24 @@ test('keeps content gaps local to each response after two responses', () => {
   observation.observeContent(100);
   observation.observeContent(105);
   expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', contentGapP95Ms: 10 });
+});
+
+test('records the first content timestamp against the candidate baseline', () => {
+  const observation = createAttemptResponseObservation({ startedAt: 100, now: () => 100 });
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('body'), { controlledStream: false });
+  observation.observeContent(180);
+  observation.observeContent(240);
+
+  expect(observation.snapshot().firstContentMs).toBe(80);
+});
+
+test('records the first content timestamp even when no response was observed', () => {
+  const observation = createAttemptResponseObservation({ startedAt: 100, now: () => 100 });
+  observation.markTransportUnavailable();
+  observation.observeContent(150);
+
+  expect(observation.snapshot().firstContentMs).toBe(50);
 });
 
 test('returns the sampled absolute content timestamp while tracking relative gaps', () => {

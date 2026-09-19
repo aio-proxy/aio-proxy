@@ -3,13 +3,13 @@ import {
   type RequestTraceFinishInput,
   type RequestTraceSession,
   spanName,
-} from '../../../request-tracing';
-import type { AttemptResponseObservation } from '../../../response-observation';
-import type { UsageCompletion } from '../../../usage-capture';
-import { type AttemptInfo, routingSpanAttributes } from '../attempt-base';
-import { completionFinish, completionTerminal } from '../failure';
-import type { AttemptLog } from '../logging';
-import { type OpenSpan, type SpanTerminal, startPipelineSpan } from '../tracing';
+} from '../../../../request-tracing';
+import type { AttemptResponseObservation } from '../../../../response-observation';
+import type { UsageCompletion } from '../../../../usage-capture';
+import { type AttemptInfo, routingSpanAttributes } from '../../attempt-base';
+import { completionFinish, completionTerminal } from '../../failure';
+import type { AttemptLog } from '../../logging';
+import { type OpenSpan, type SpanTerminal, startPipelineSpan } from '../../tracing';
 
 // Shapes a provider attempt into the failure log payload; attempt facts already
 // live on the span, so this only layers on the optional status/error codes.
@@ -82,6 +82,9 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
     if (snapshot.contentEncoding !== undefined) {
       attemptSpan.span.setAttribute(attributeName.contentEncoding, snapshot.contentEncoding);
     }
+    if (snapshot.firstContentMs !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.ttftMs, snapshot.firstContentMs);
+    }
     attemptSpan.end(terminal);
   };
   return {
@@ -92,8 +95,8 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
     },
     settleSuccess(attemptSpan, observation, completion, ids, clientResponse, getResponseId) {
       return completion.then((value) => {
+        // attempt span 的 TTFT 由 endAttempt 从 observation 统一落，这里只负责 root/DB 的那份。
         const ttftMs = 'ttftMs' in value ? value.ttftMs : undefined;
-        if (ttftMs !== undefined) attemptSpan.span.setAttribute(attributeName.ttftMs, ttftMs);
         endAttempt(attemptSpan, observation, completionTerminal(value));
         return {
           ...completionFinish(value, ids, getResponseId?.()),
