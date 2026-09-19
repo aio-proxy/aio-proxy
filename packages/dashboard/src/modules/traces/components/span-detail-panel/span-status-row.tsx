@@ -3,6 +3,7 @@ import { Badge } from '@aio-proxy/ui/components/badge';
 
 import type { SpanMetrics } from '../../lib/span-metrics';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
+import { isFailedSpan } from '../../lib/trace-failure';
 import { TraceStatus } from '../trace-status';
 
 interface SpanStatusRowProps {
@@ -13,7 +14,7 @@ interface SpanStatusRowProps {
 export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) => {
   // Provider ID and model ID are identifiers: never translated, joined only when both exist.
   const identity = [metrics.providerId, metrics.modelId].filter((value) => value !== undefined).join(' · ');
-  const failed = span.otelStatusCode === 'ERROR' || (metrics.httpStatus !== undefined && metrics.httpStatus >= 400);
+  const failed = isFailedSpan(span);
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="span-status-row">

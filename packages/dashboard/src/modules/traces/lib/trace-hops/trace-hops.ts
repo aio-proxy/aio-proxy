@@ -2,6 +2,7 @@ import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types
 import { sortBy } from 'es-toolkit/array';
 
 import { traceAttribute, traceSpanName } from '../trace-attribute-names';
+import { isFailedSpan, isFailedTrace } from '../trace-failure';
 
 export interface TraceHopChip {
   readonly id: string;
@@ -43,7 +44,7 @@ export const toTraceHopChips = (input: {
       label: trace.session?.source ?? trace.inboundProtocol,
       kind: 'inbound',
       attemptIndex: undefined,
-      failed: trace.otelStatusCode === 'ERROR',
+      failed: isFailedTrace(trace),
     },
     // index 缺失的 attempt span 排在最后，并退回 spanId 做 id：抓包里对不上号，但仍要看得见这一跳。
     ...sortBy(attempts, [(span) => numberAttribute(span, traceAttribute.attemptIndex) ?? Number.MAX_SAFE_INTEGER]).map(
@@ -55,7 +56,7 @@ export const toTraceHopChips = (input: {
           label: stringAttribute(span, traceAttribute.providerId) ?? id,
           kind: 'attempt',
           attemptIndex,
-          failed: span.otelStatusCode === 'ERROR',
+          failed: isFailedSpan(span),
         };
       },
     ),

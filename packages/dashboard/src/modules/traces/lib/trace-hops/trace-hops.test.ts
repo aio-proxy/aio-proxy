@@ -56,6 +56,17 @@ test('marks inbound failed from the trace status', () => {
   expect(chips[0]?.failed).toBe(true);
 });
 
+// 4xx 的 span 状态按 HTTP 语义约定是 UNSET，只看状态码的话被拒的那一跳会显示成正常。
+test('marks a 4xx hop failed even though its OTel status is UNSET', () => {
+  const chips = toTraceHopChips({
+    spans: [createSpan({ attributes: { 'aio_proxy.attempt.index': 0, 'http.status_code': 429 } })],
+    trace: { ...trace, finalHttpStatus: 404 },
+  });
+
+  expect(chips[0]?.failed).toBe(true);
+  expect(chips[1]?.failed).toBe(true);
+});
+
 test('orders attempts by attempt index rather than span order', () => {
   const chips = toTraceHopChips({
     spans: [

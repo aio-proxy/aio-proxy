@@ -5,6 +5,7 @@ import { CircleAlert } from 'lucide-react';
 
 import { formatDuration } from '@/lib/format-duration';
 
+import { isFailedSpan } from '../../lib/trace-failure';
 import type { layoutTraceSpans } from '../../lib/trace-layout';
 
 type TraceWaterfallRowItem = ReturnType<typeof layoutTraceSpans>[number];
@@ -20,7 +21,7 @@ interface TraceWaterfallRowProps {
 }
 
 export const TraceWaterfallRow: React.FC<TraceWaterfallRowProps> = ({ row, selectedSpanId, onSelect }) => {
-  const failed = row.otelStatusCode === 'ERROR';
+  const failed = isFailedSpan(row);
   let barClassName = 'bg-chart-success';
   if (row.endedAt === null) barClassName = 'bg-muted-foreground/40';
   if (failed) barClassName = 'bg-chart-error';
