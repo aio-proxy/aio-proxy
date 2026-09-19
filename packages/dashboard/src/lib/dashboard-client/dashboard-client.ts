@@ -24,9 +24,14 @@ const dashboardFetch = (async (input, init) => {
   const renewed = response.headers.get('x-dashboard-session-refresh');
   // Re-read rather than reuse `token`: a logout during this request already cleared storage, and
   // writing here would resurrect the session the user just ended.
-  if (renewed !== null && renewed !== '' && readDashboardAuthToken() !== undefined) {
+  const stored = readDashboardAuthToken();
+  if (renewed !== null && renewed !== '' && stored !== undefined) {
     writeDashboardAuthToken(renewed);
   }
+  // Storage is shared across tabs, so the session may have changed while this request was in
+  // flight. Tearing down on a response the current session never produced would let one tab's
+  // stale 401 clear a login another tab had just completed, logging every tab out.
+  if (stored !== token) return response;
   if (response.status === 401) handleDashboardUnauthorized();
   if (await isDashboardUnavailable(response)) handleDashboardUnavailable();
   return response;

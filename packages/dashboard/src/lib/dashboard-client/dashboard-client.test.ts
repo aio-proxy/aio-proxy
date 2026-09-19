@@ -6,6 +6,7 @@ import { setDashboardAuthSession } from '@/modules/auth/services/auth-session-st
 
 import { createDashboardClient } from '.';
 import { queryClient } from '../query-client';
+import { queryKeys } from '../query-keys';
 
 beforeEach(() => {
   queryClient.clear();
@@ -91,4 +92,30 @@ test('a renewal arriving after logout does not resurrect the session', async () 
   await createDashboardClient('http://localhost').dashboard.api.providers.$get();
 
   expect(readDashboardAuthToken()).toBeUndefined();
+});
+
+test('a stale 401 does not tear down a session another tab has since established', async () => {
+  setDashboardAuthSession({ status: 'authenticated' });
+  writeDashboardAuthToken('expired-token');
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    // Stands in for a sibling tab logging in while this request was in flight.
+    writeDashboardAuthToken('fresh-token-from-another-tab');
+    return new Response('{"error":"authentication_required"}', { status: 401 });
+  });
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBe('fresh-token-from-another-tab');
+  expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'authenticated' });
+});
+
+test('a 401 for the session that sent it still expires that session', async () => {
+  setDashboardAuthSession({ status: 'authenticated' });
+  writeDashboardAuthToken('expired-token');
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"error":"authentication_required"}', { status: 401 }));
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBeUndefined();
+  expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'unauthenticated', reason: 'expired' });
 });

@@ -9,12 +9,29 @@ import {
 
 afterEach(() => {
   clearDashboardAuthToken();
+  globalThis.sessionStorage.removeItem('aio-proxy.dashboard-session');
 });
 
 test('round-trips a stored Dashboard session token', () => {
   writeDashboardAuthToken('dashboard-session-token');
 
   expect(readDashboardAuthToken()).toBe('dashboard-session-token');
+});
+
+test('adopts a session left behind by the previous sessionStorage build', () => {
+  globalThis.sessionStorage.setItem('aio-proxy.dashboard-session', 'legacy-token');
+
+  expect(readDashboardAuthToken()).toBe('legacy-token');
+  // Moved rather than copied, so the next read no longer depends on the legacy area.
+  expect(globalThis.sessionStorage.getItem('aio-proxy.dashboard-session')).toBeNull();
+  expect(readDashboardAuthToken()).toBe('legacy-token');
+});
+
+test('a legacy session never overrides a current one', () => {
+  globalThis.sessionStorage.setItem('aio-proxy.dashboard-session', 'legacy-token');
+  writeDashboardAuthToken('current-token');
+
+  expect(readDashboardAuthToken()).toBe('current-token');
 });
 
 test('clearing the token removes it from storage', () => {

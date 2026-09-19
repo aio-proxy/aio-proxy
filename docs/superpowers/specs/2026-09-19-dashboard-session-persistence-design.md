@@ -50,8 +50,11 @@ Content Security Policy that prevents script injection, not a shorter browser st
 - Any authenticated `/dashboard/api/*` response may carry a renewed token, which the Dashboard stores
   in place of the old one.
 - `SESSION_TTL_MS` keeps its seven-day value but changes meaning, from "expires seven days after
-  login" to "expires after seven days of inactivity". A user active at least once a week is never
-  logged out; a user away longer than that logs in again.
+  login" to "expires after seven days of inactivity". Because a token younger than `REFRESH_AFTER_MS`
+  is not renewed, the *guaranteed* window is seven days minus one: a visit at any age under a day
+  leaves the original expiry in place. A user active at least once every six days is never logged
+  out; between six and seven days it depends on when the last renewal landed; beyond seven, they log
+  in again.
 - Logging out in one tab logs out every other tab.
 - Changing `server.password` still invalidates every session on every device. It remains the only
   revocation mechanism, and renewal must not circumvent it.
@@ -144,6 +147,12 @@ storage key private to the module. A wholesale `localStorage.clear()` in a sibli
 `storage` event with `key === null`, and counts as a clear too. There is no unsubscribe, so it must be
 registered once at module load and never from a React effect.
 
+The unchanged key does not by itself carry existing sessions over: `sessionStorage` and `localStorage`
+are separate areas, so a tab open across the upgrade would find an empty `localStorage` and ask for
+the password — the one logout this change exists to prevent. `readDashboardAuthToken` therefore moves
+a legacy `sessionStorage` value across on first read, once, and the helper can be deleted when no tab
+can still be running the previous build.
+
 `packages/dashboard/src/lib/dashboard-client/dashboard-client.ts` reads the renewal header in
 `dashboardFetch`:
 
@@ -157,6 +166,12 @@ if (renewed !== null && renewed !== '' && readDashboardAuthToken() !== undefined
 The `readDashboardAuthToken() !== undefined` guard is required, not defensive padding. Without it, a
 renewal header arriving after the user logs out mid-flight would rewrite the token that
 `clearDashboardAuthToken()` just removed and resurrect the session.
+
+Shared storage also means the session can change *during* a request, so `dashboardFetch` compares the
+token it sent against the one in storage when the response lands, and skips the 401 and 503 teardown
+when they differ. Otherwise one tab's stale 401 would clear a login another tab had just completed
+and, through the cross-tab subscription below, log every tab out. Renewal is deliberately not subject
+to that check: concurrent renewals are all independently valid and last-write-wins is fine.
 
 `packages/dashboard/src/modules/auth/services/auth-service/auth-service.ts` registers cross-tab
 logout alongside its existing handlers:

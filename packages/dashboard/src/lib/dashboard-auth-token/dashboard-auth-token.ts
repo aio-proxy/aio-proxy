@@ -3,7 +3,26 @@ const storageKey = 'aio-proxy.dashboard-session';
 export function readDashboardAuthToken(): string | undefined {
   try {
     const token = globalThis.localStorage.getItem(storageKey);
-    return token === null || token === '' ? undefined : token;
+    if (token !== null && token !== '') return token;
+    return adoptLegacySessionToken();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Sessions that predate the move to `localStorage` hold their token in `sessionStorage` under the
+ * same key. An unchanged key does not migrate them by itself — the two are separate storage areas —
+ * so without this the very upgrade that makes logins survive a restart would log everyone out once.
+ * Safe to delete once no open tab can still be running the previous build.
+ */
+function adoptLegacySessionToken(): string | undefined {
+  try {
+    const legacy = globalThis.sessionStorage.getItem(storageKey);
+    if (legacy === null || legacy === '') return undefined;
+    globalThis.sessionStorage.removeItem(storageKey);
+    globalThis.localStorage.setItem(storageKey, legacy);
+    return legacy;
   } catch {
     return undefined;
   }
