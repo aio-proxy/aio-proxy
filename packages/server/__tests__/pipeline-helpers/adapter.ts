@@ -11,6 +11,10 @@ export function defineProtocolAdapter(
   protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible,
   options: {
     readonly modelInvocationError?: Error;
+    // Opt-in: without it the adapter has no modelUnsupported mapper at all, so
+    // a modelInvocationError falls through to requestError instead of being
+    // memoized on the holder as an unsupported invocation.
+    readonly modelUnsupported?: boolean;
     readonly onModelEgress?: (value: unknown) => void;
     readonly parseError?: Error;
   } = {},
@@ -78,6 +82,12 @@ export function defineProtocolAdapter(
     errors: {
       requestError: (error) =>
         error instanceof SyntaxError ? errorResponse(400, 'request_error', 'Invalid test request') : undefined,
+      ...(options.modelUnsupported === true
+        ? {
+            modelUnsupported: (error: unknown) =>
+              error instanceof Error ? errorResponse(501, 'unsupported_feature', error.message) : undefined,
+          }
+        : {}),
       modelNotFound: (message) => errorResponse(404, 'model_not_found', message),
       previousResponseConflict: () => errorResponse(409, 'previous_response_conflict', 'ambiguous previous response'),
       tooLarge: () => errorResponse(413, 'too_large', 'Request body too large'),

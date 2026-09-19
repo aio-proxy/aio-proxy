@@ -19,7 +19,12 @@ export type PreparedInvocation =
       readonly targetProtocol: ProviderProtocol | undefined;
     }
   | ({ readonly kind: 'reject' } & RequestShapeRejection)
-  | { readonly kind: 'step'; readonly step: AttemptStep };
+  // The adapter cannot express this request as a model invocation for ANY
+  // candidate. Carried back as data rather than settled here: preparation runs
+  // inside the attempt span, and emitting a rejection ends that span (and can
+  // finish the request), which must not happen until the caller has closed its
+  // prepare span.
+  | { readonly kind: 'unsupported'; readonly response: Response };
 
 // Rejects a candidate whose materialized invocation needs a capability this
 // provider lacks (image input or a provider-native tool). Returns an early
@@ -66,14 +71,15 @@ export async function prepareModelInvocation<TRequest, TContext>(
     slot.candidate.modelId,
     slot.candidate.provider.upstreamMetadata?.[slot.candidate.modelId],
   );
-  return resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol, supportedEfforts);
+  return resolveInvocation(ctx, holder, slot.trace.targetProtocol, supportedEfforts);
 }
 
 // Materializes the model invocation once and reuses it across candidates,
-// mapping conversion failures onto the protocol's error shapes.
+// mapping conversion failures onto the protocol's error shapes. Pure with
+// respect to tracing: every failure is returned, never emitted, so the caller
+// controls when the attempt and prepare spans close.
 export function resolveInvocation<TRequest, TContext>(
   ctx: LanguageAttemptLoopContext<TRequest, TContext>,
-  slot: CandidateSlot,
   holder: InvocationHolder,
   targetProtocol: ProviderProtocol | undefined,
   supportedEfforts: ReadonlySet<string>,
@@ -100,7 +106,7 @@ export function resolveInvocation<TRequest, TContext>(
     }
   }
   if (holder.invocationUnsupported !== undefined) {
-    return { kind: 'step', step: emitReject(ctx, slot, holder.invocationUnsupported, 'unsupported_feature') };
+    return { kind: 'unsupported', response: holder.invocationUnsupported };
   }
   if (holder.invocation === undefined) throw new TypeError('Protocol adapter returned no model invocation');
   return {

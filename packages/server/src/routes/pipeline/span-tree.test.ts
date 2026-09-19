@@ -263,3 +263,54 @@ test('a prepare throw still leaves an ended prepare span behind', async () => {
   expect(prepare?.endedAt).toBeInstanceOf(Date);
   expect(prepare?.statusCode).toBe(SpanStatusCode.ERROR);
 });
+
+test('an unsupported invocation still leaves an ended prepare span under the attempt', async () => {
+  const harness = pipeline(
+    [modelProvider({ id: 'primary', invoke: () => textStream('unused'), targetProtocol: ProviderProtocol.Anthropic })],
+    {
+      adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+        modelInvocationError: new SyntaxError('unsupported invocation'),
+        modelUnsupported: true,
+      }),
+    },
+  );
+
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
+  await settleRecording(harness.recording);
+  const spanTree = tree(harness.recording.spans);
+
+  expect(response.status).toBe(501);
+  // Emitting this rejection ends the attempt span and finishes the request,
+  // which drains the span buffer. Emitted from inside prepare — as it was when
+  // resolveInvocation called emitReject itself — it takes the still-open prepare
+  // span down with it and the trace shows no preparation at all.
+  expect(spanTree.find(spanName.prepare)?.endedAt).toBeInstanceOf(Date);
+  expect(spanTree.parentNameOf(spanName.prepare)).toBe(spanName.attempt);
+  // Same ordering hazard for the attribute: it is attached after prepare
+  // resolves it, so it only lands if the span is still open at that point.
+  expect(spanTree.find(spanName.attempt)?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.Anthropic);
+});
+
+test('a candidate reusing a memoized unsupported invocation does not report materialize', async () => {
+  const harness = pipeline(
+    [
+      modelProvider({ id: 'primary', invoke: () => textStream('unused') }),
+      modelProvider({ id: 'backup', invoke: () => textStream('unused') }),
+    ],
+    {
+      adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+        modelInvocationError: new SyntaxError('unsupported invocation'),
+        modelUnsupported: true,
+      }),
+    },
+  );
+
+  await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
+  await settleRecording(harness.recording);
+  const prepares = harness.recording.spans.filter((span) => span.name === spanName.prepare);
+
+  // Candidate 0 memoized a rejection rather than an invocation, so holder
+  // .invocation stays undefined while there is still nothing left to
+  // materialize: candidate 1 must not claim it materialized anything.
+  expect(prepares.map((span) => span.attributes[attributeName.prepareMode])).toEqual(['materialize', 'reuse']);
+});

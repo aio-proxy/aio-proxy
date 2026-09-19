@@ -9,7 +9,7 @@ import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
 import { startPipelineSpan } from '../tracing';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
-import { rejectRequestShape } from './error';
+import { emitReject, rejectRequestShape } from './error';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
 // Model dispatch for one candidate. The attempt span opens before preparation
@@ -51,14 +51,14 @@ export async function attemptModelCandidate<TRequest, TContext>(
       throw error;
     },
   );
-  // Resolved by prepare, so it cannot be an attribute at span creation. Read
-  // from slot.trace (prepare's first act) rather than the 'ok' result, so the
-  // reject and unsupported exits carry it too — they used to get it from
-  // attemptBase back when they ran before the span existed.
+  // Every exit below is settled here rather than inside prepare, so this runs
+  // while the attempt span is still open: prepare resolves the target protocol
+  // too late for it to be a creation attribute, and the reject and unsupported
+  // exits end the span the moment they are emitted.
   const target = slot.trace.targetProtocol;
   if (target !== undefined) attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
   if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
-  if (prepared.kind !== 'ok') return prepared.step;
+  if (prepared.kind === 'unsupported') return emitReject(ctx, slot, prepared.response, 'unsupported_feature');
   const { candidateInvocation, targetProtocol } = prepared;
 
   const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
