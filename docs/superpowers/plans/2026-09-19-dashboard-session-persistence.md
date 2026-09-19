@@ -568,35 +568,35 @@ Append to `packages/dashboard/src/lib/dashboard-client/dashboard-client.test.ts`
 ```ts
 test('replaces the stored session token when a response carries a renewal', async () => {
   writeDashboardAuthToken('aged-token');
-  fetchSpy.mockResolvedValue(
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } }),
   );
 
-  await createDashboardClient('http://localhost').dashboard.api.config.$get();
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
 
   expect(readDashboardAuthToken()).toBe('renewed-token');
 });
 
 test('a renewal arriving after logout does not resurrect the session', async () => {
   writeDashboardAuthToken('aged-token');
-  fetchSpy.mockImplementation(async () => {
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
     clearDashboardAuthToken();
     return new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } });
   });
 
-  await createDashboardClient('http://localhost').dashboard.api.config.$get();
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
 
   expect(readDashboardAuthToken()).toBeUndefined();
 });
 ```
 
-Extend the file's import from `@/lib/dashboard-auth-token` to cover `clearDashboardAuthToken`, `readDashboardAuthToken`, and `writeDashboardAuthToken`. Reuse the existing `fetchSpy` (`rs.spyOn(globalThis, 'fetch')`) and `createDashboardClient` bindings already set up in this file; if the existing spy is configured per-test rather than in a shared `beforeEach`, follow whichever pattern the file already uses rather than introducing a second one.
+Extend the file's existing import from `@/lib/dashboard-auth-token` to add `readDashboardAuthToken` (it already imports `clearDashboardAuthToken` and `writeDashboardAuthToken`).
 
-Clear the token after these tests so they do not leak into neighbors — if the file has no `afterEach(clearDashboardAuthToken)` yet, add one.
+Match the file's established conventions, which these tests already follow: each test creates its own spy with `rs.spyOn(globalThis, 'fetch')` — there is no shared `fetchSpy` binding — and requests go through `.dashboard.api.providers.$get()`. The existing `beforeEach`/`afterEach` pair already clears the token and calls `rs.restoreAllMocks()`, so add no new lifecycle hooks.
 
 The second test clears the token from *inside* the mocked `fetch`, which is precisely the mid-flight logout: storage is emptied between the request starting and the response being inspected.
 
-While you are in this file, note the duplicated `test.each(['authenticated', 'disabled'])` block (it appears at roughly lines 20–33 and again at 47–60). It is pre-existing and unrelated to this change. Leave it alone; do not fold it into this commit.
+While you are in this file, note the duplicated `test.each(['authenticated', 'disabled'])` block — it appears verbatim at lines 20–33 and again at 47–60. It is pre-existing and unrelated to this change. Leave it alone; do not fold a cleanup into this commit.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
