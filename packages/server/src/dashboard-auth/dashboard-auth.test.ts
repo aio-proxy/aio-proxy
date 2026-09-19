@@ -220,4 +220,56 @@ describe('dashboard authentication', () => {
 
     expect(auth.refresh(login.token)).toBeUndefined();
   });
+
+  test('hands an aged session a renewed token that authenticates the next request', async () => {
+    const hash = await Bun.password.hash('renewing-route');
+    const app = await createServer({ config: { server: { password: hash }, providers: {} } });
+    const aged = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 2 * 24 * 60 * 60 * 1_000,
+    );
+    const agedLogin = await aged.login('renewing-route', '127.0.0.1');
+    if (agedLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
+
+    const response = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${agedLogin.token}` } },
+      loopbackServer,
+    );
+    const renewed = response.headers.get('x-dashboard-session-refresh');
+
+    expect(response.status).toBe(200);
+    expect(renewed).toBeString();
+    expect(
+      (
+        await app.request(
+          '/dashboard/api/config',
+          { headers: { authorization: `Bearer ${renewed ?? ''}` } },
+          loopbackServer,
+        )
+      ).status,
+    ).toBe(200);
+  });
+
+  test('omits the renewal header for fresh sessions and for rejected requests', async () => {
+    const hash = await Bun.password.hash('no-renewal-header');
+    const app = await createServer({ config: { server: { password: hash }, providers: {} } });
+    const token = await tokenFrom(await login(app, 'no-renewal-header'));
+
+    const freshResponse = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: `Bearer ${token}` } },
+      loopbackServer,
+    );
+    const rejected = await app.request(
+      '/dashboard/api/config',
+      { headers: { authorization: 'Bearer v1.9999999999999.nope.nope' } },
+      loopbackServer,
+    );
+
+    expect(freshResponse.status).toBe(200);
+    expect(freshResponse.headers.get('x-dashboard-session-refresh')).toBeNull();
+    expect(rejected.status).toBe(401);
+    expect(rejected.headers.get('x-dashboard-session-refresh')).toBeNull();
+  });
 });

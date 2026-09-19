@@ -14,6 +14,7 @@ import {
 import type { AutoUpdateController } from '../auto-update';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
+  attachDashboardSessionRefresh,
   createDashboardAuthentication,
   createDashboardAuthRoutes,
   isDashboardLoopbackRequest,
@@ -259,6 +260,7 @@ export const createRoutes = (
   app.use('/dashboard/*', requireDashboardAccess);
 
   app.use('/dashboard/api/*', requireLoopbackHost);
+  app.use('/dashboard/api/*', attachDashboardSessionRefresh(dashboardAuth));
   app.use('/dashboard/api/*', async (context, next) => {
     if (dashboardAuth.enabled()) {
       await next();

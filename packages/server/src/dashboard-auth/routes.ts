@@ -47,6 +47,19 @@ export const requireDashboardAuthentication =
     return context.json({ error: 'authentication_required' }, 401);
   };
 
+// Registered ahead of the authentication middleware so Hono's onion runs this body on the way out,
+// after authentication has resolved. A request that failed authentication either carries no token
+// or carries one `refresh` rejects, so a rejected response never gains the header.
+export const attachDashboardSessionRefresh =
+  (auth: DashboardAuthentication): MiddlewareHandler =>
+  async (context, next) => {
+    await next();
+    const token = dashboardSessionToken(context);
+    if (token === undefined) return;
+    const renewed = auth.refresh(token);
+    if (renewed !== undefined) context.header('x-dashboard-session-refresh', renewed);
+  };
+
 export const requireDashboardLoopback: MiddlewareHandler = async (context, next) => {
   if (!isDashboardLoopbackRequest(context)) return context.notFound();
   await next();
