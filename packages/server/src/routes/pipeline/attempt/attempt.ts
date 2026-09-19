@@ -249,6 +249,7 @@ export async function attemptCandidates<TRequest, TContext>(
     if (resolution.affinity?.active === true && resolution.affinity.providerId === provider.id)
       selectionReason = 'affinity';
     if (resolution.responseOwner?.providerId === provider.id) selectionReason = 'response_owner';
+    const spanRef: CandidateSlot['spanRef'] = { current: undefined };
     const slot: CandidateSlot = {
       index,
       candidate,
@@ -260,8 +261,12 @@ export async function attemptCandidates<TRequest, TContext>(
         sourceProtocol: adapter.protocol,
         selectionReason,
       },
-      inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T =>
-        withAttemptResponseObservation(observation, () =>
+      // Read at call time, not at slot construction: the attempt span is not
+      // open yet when this literal is built. Still undefined on the paths that
+      // call inAttempt before opening one, which then behave exactly as before.
+      inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T => {
+        const open = spanRef.current;
+        return withAttemptResponseObservation(observation, () =>
           withAttemptLogContext(
             {
               attemptIndex: index,
@@ -271,10 +276,11 @@ export async function attemptCandidates<TRequest, TContext>(
               sourceProtocol: adapter.protocol,
               ...(targetProtocol === undefined ? {} : { targetProtocol }),
             },
-            operation,
+            open === undefined ? operation : () => open.run(operation),
           ),
-        ),
-      spanRef: { current: undefined },
+        );
+      },
+      spanRef,
     };
     try {
       const step = await dispatchCandidate(dispatch, slot, holder);

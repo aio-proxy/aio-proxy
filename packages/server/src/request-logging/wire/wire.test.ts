@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
+import { context, SpanKind, trace } from '@opentelemetry/api';
 
 import { createObservedFetch, observeInboundRequest } from '.';
+import { getTraceRuntime } from '../../request-tracing';
 import {
   createAttemptResponseObservation,
   type AttemptResponseObservation,
@@ -308,4 +310,32 @@ test('debug fetch preserves the thrown transport error', async () => {
       exceptionCode: 'ConnectionRefused',
     }),
   );
+});
+
+test('upstream fetch opens a CLIENT span under the active span', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  // The processor only buffers traces it was told about; an unregistered trace
+  // is dropped on end and take() would come back empty.
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 503 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, () => fetcher('https://upstream.test/v1/chat?key=secret')),
+  );
+  parent.end();
+
+  const spans = processor.take(traceId);
+  const post = spans.find((span) => span.name === 'GET');
+  expect(post?.kind).toBe(SpanKind.CLIENT);
+  expect(post?.parentSpanId).toBe(parent.spanContext().spanId);
+  expect(post?.attributes).toMatchObject({
+    'http.request.method': 'GET',
+    'server.address': 'upstream.test',
+    'url.path': '/v1/chat',
+    'http.status_code': 503,
+  });
+  expect(JSON.stringify(post?.attributes)).not.toContain('secret');
 });

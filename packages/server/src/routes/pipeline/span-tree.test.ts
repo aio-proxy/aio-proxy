@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { StoredSpan } from '@aio-proxy/core/db';
 import { ProviderProtocol } from '@aio-proxy/types';
-import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 
 import {
   defineProtocolAdapter,
@@ -313,4 +313,27 @@ test('a candidate reusing a memoized unsupported invocation does not report mate
   // .invocation stays undefined while there is still nothing left to
   // materialize: candidate 1 must not claim it materialized anything.
   expect(prepares.map((span) => span.attributes[attributeName.prepareMode])).toEqual(['materialize', 'reuse']);
+});
+
+test('candidate invocation runs inside the attempt span context', async () => {
+  let activeSpanId: string | undefined;
+  const harness = pipeline([
+    modelProvider({
+      id: 'primary',
+      invoke: () => {
+        activeSpanId = trace.getSpan(context.active())?.spanContext().spanId;
+        return textStream('ok');
+      },
+    }),
+  ]);
+
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
+  await response.text();
+  await settleRecording(harness.recording);
+
+  // Not just "some span": the upstream HTTP span in wire.ts hangs off whatever
+  // context.active() holds here, so this is what keeps it inside the attempt.
+  const attempt = harness.recording.spans.find((span) => span.name === spanName.attempt);
+  expect(attempt?.spanId).toBeDefined();
+  expect(activeSpanId).toBe(attempt?.spanId);
 });

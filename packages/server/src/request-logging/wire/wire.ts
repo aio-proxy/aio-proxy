@@ -1,6 +1,8 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { createParser } from 'eventsource-parser';
 
+import { attributeName, getTraceRuntime } from '../../request-tracing';
 import type { ResponseBodyObservation } from '../../response-observation';
 import { currentAttemptResponseObservation } from '../../response-observation';
 import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
@@ -59,7 +61,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
     }
     safely(() => observation?.observeFetchStart());
     if (debug === undefined) {
-      const response = await fetcher(input, init);
+      const response = await fetchWithSpan(fetcher, input, init);
       const bodyObservation = safely(() =>
         observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
       );
@@ -80,7 +82,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         ? request
         : requestWithObservedBody(request, { ...debug.identity, direction: 'upstream_request' }, debug.logger);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
-      const response = await fetcher(delegated, decompress === undefined ? undefined : { decompress });
+      const response = await fetchWithSpan(fetcher, delegated, decompress === undefined ? undefined : { decompress });
       const bodyObservation = safely(() =>
         observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
       );
@@ -313,5 +315,57 @@ function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, 
     return wrapped;
   } catch {
     return original;
+  }
+}
+
+// The upstream HTTP call as a CLIENT child of the attempt. Only opened when a
+// span is already active: a parentless span would start its own trace, which
+// the buffering processor never registered, so it is allocated and thrown away
+// rather than showing up anywhere. The span stops at the response headers; the
+// body timeline is carried by first_upstream_byte_ms / ttft_ms on the attempt.
+async function fetchWithSpan(
+  fetcher: typeof globalThis.fetch,
+  input: Parameters<typeof globalThis.fetch>[0],
+  init?: Parameters<typeof globalThis.fetch>[1],
+): Promise<Response> {
+  const parent = context.active();
+  if (trace.getSpan(parent) === undefined) return fetcher(input, init);
+  const request = typeof input === 'object' && 'url' in input ? input : undefined;
+  const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+  const span = getTraceRuntime().tracer.startSpan(
+    method,
+    {
+      kind: SpanKind.CLIENT,
+      attributes: {
+        [attributeName.httpRequestMethod]: method,
+        ...targetAttributes(request?.url ?? String(input)),
+      },
+    },
+    parent,
+  );
+  try {
+    const response = await fetcher(input, init);
+    span.setAttribute(attributeName.httpStatusCode, response.status);
+    return response;
+  } catch (error) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.setAttribute(attributeName.errorType, serverErrorType(error));
+    throw error;
+  } finally {
+    // Safe here, unlike the pipeline spans: this wraps a single await with no
+    // request settlement inside it, so the span cannot outlive its buffer drain.
+    span.end();
+  }
+}
+
+// The spec says url.full; only host + path are recorded. Several providers put
+// the key in the query string (`?key=`), and span attributes are persisted by
+// default and rendered straight into the dashboard.
+function targetAttributes(href: string): Record<string, string> {
+  try {
+    const url = new URL(href);
+    return { [attributeName.serverAddress]: url.host, [attributeName.urlPath]: url.pathname };
+  } catch {
+    return {};
   }
 }
