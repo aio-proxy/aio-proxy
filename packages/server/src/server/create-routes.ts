@@ -14,8 +14,10 @@ import {
 import type { AutoUpdateController } from '../auto-update';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
+  attachDashboardSessionRefresh,
   createDashboardAuthentication,
   createDashboardAuthRoutes,
+  isDashboardAuthRoutePath,
   isDashboardLoopbackRequest,
   requireDashboardAuthentication,
 } from '../dashboard-auth';
@@ -259,6 +261,7 @@ export const createRoutes = (
   app.use('/dashboard/*', requireDashboardAccess);
 
   app.use('/dashboard/api/*', requireLoopbackHost);
+  app.use('/dashboard/api/*', attachDashboardSessionRefresh(dashboardAuth));
   app.use('/dashboard/api/*', async (context, next) => {
     if (dashboardAuth.enabled()) {
       await next();
@@ -268,7 +271,7 @@ export const createRoutes = (
   });
 
   app.use('/dashboard/api/*', async (context, next) => {
-    if (context.req.path.startsWith('/dashboard/api/auth/')) {
+    if (isDashboardAuthRoutePath(context.req.path)) {
       await next();
       return;
     }

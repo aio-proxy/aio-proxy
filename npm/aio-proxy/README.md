@@ -403,7 +403,7 @@ The Dashboard is available at `http://127.0.0.1:9317/dashboard`. Use it to manag
 - View request volume, token usage, and cost trends.
 - Search complete request traces and inspect the status and latency of each Provider attempt.
 
-Set `server.password` to protect the Dashboard. It does not protect model API endpoints; use `server.apiKeys` for those.
+Set `server.password` to protect the Dashboard. It does not protect model API endpoints; use `server.apiKeys` for those. The login is kept in the browser, so new tabs and browser restarts do not ask for the password again; visiting at least once every 6 days renews it automatically. Changing `server.password` immediately invalidates the login on every device.
 
 ## Network and security
 

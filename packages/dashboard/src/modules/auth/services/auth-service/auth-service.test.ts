@@ -71,3 +71,18 @@ test('a successful login stores the session token and logout clears it', async (
   expect(readDashboardAuthToken()).toBeUndefined();
   expect(queryClient.getQueryData(['dashboard-auth'])).toEqual({ status: 'unauthenticated' });
 });
+
+test('a sibling tab clearing the token logs this tab out without an expiry notice', async () => {
+  mocks.login.mockResolvedValue(
+    Response.json({ ok: true, token: 'dashboard-session-token', expiresAt: '2026-08-18T00:00:00.000Z' }),
+  );
+  await loginDashboard('password');
+
+  clearDashboardAuthToken();
+  globalThis.dispatchEvent(
+    new StorageEvent('storage', { key: 'aio-proxy.dashboard-session', newValue: null, storageArea: localStorage }),
+  );
+  await Promise.resolve();
+
+  expect(queryClient.getQueryData(['dashboard-auth'])).toEqual({ status: 'unauthenticated' });
+});

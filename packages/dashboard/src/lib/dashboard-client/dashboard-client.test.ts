@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, expect, rs, test } from '@rstest/core';
 
-import { clearDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
+import { clearDashboardAuthToken, readDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
 import '@/modules/auth/services/auth-service';
 import { setDashboardAuthSession } from '@/modules/auth/services/auth-session-store';
 
 import { createDashboardClient } from '.';
 import { queryClient } from '../query-client';
+import { queryKeys } from '../query-keys';
 
 beforeEach(() => {
   queryClient.clear();
@@ -58,3 +59,78 @@ test.each(['authenticated', 'disabled'] as const)(
     expect(queryClient.getQueryData(['providers'])).toBeUndefined();
   },
 );
+
+test('replaces the stored session token when a response carries a renewal', async () => {
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } }),
+  );
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBe('renewed-token');
+});
+
+test('an empty renewal header leaves the stored session token untouched', async () => {
+  writeDashboardAuthToken('live-token');
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response('{}', { headers: { 'x-dashboard-session-refresh': '' } }),
+  );
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBe('live-token');
+});
+
+test('a renewal arriving after logout does not resurrect the session', async () => {
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    clearDashboardAuthToken();
+    return new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } });
+  });
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBeUndefined();
+});
+
+test('a renewal does not overwrite a login completed while the request was in flight', async () => {
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    // Another tab changed the password and logged in again. This response's renewal was signed
+    // under the old hash, so writing it would leave every tab with a token the server rejects.
+    writeDashboardAuthToken('token-from-new-login');
+    return new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewal-under-old-password' } });
+  });
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBe('token-from-new-login');
+});
+
+test('a 401 still expires the session when a sibling renewal changed stored token', async () => {
+  const client = createDashboardClient('http://localhost');
+  setDashboardAuthSession({ status: 'authenticated' });
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    // A concurrent request renewed the shared token while this one was in flight. That is not a
+    // replacement login, so it must not stop this 401 from tearing the session down.
+    writeDashboardAuthToken('renewed-token');
+    return new Response('{"error":"authentication_required"}', { status: 401 });
+  });
+
+  await client.dashboard.api.config.$get();
+
+  expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'unauthenticated', reason: 'expired' });
+});
+
+test('a 401 for the session that sent it still expires that session', async () => {
+  setDashboardAuthSession({ status: 'authenticated' });
+  writeDashboardAuthToken('expired-token');
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"error":"authentication_required"}', { status: 401 }));
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBeUndefined();
+  expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'unauthenticated', reason: 'expired' });
+});

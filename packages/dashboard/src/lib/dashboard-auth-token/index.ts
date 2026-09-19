@@ -1,1 +1,6 @@
-export { clearDashboardAuthToken, readDashboardAuthToken, writeDashboardAuthToken } from './dashboard-auth-token';
+export {
+  clearDashboardAuthToken,
+  readDashboardAuthToken,
+  subscribeDashboardAuthTokenCleared,
+  writeDashboardAuthToken,
+} from './dashboard-auth-token';
