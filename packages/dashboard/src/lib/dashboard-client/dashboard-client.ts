@@ -6,6 +6,19 @@ import { readDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard
 let handleDashboardUnauthorized = (): void => {};
 let handleDashboardUnavailable = (): void => {};
 
+/**
+ * Tokens this client wrote as renewals. A concurrent request can renew the shared token while another
+ * is still in flight, which would otherwise look indistinguishable from a replacement login and
+ * silently suppress that request's 401 or 503 handling. Only a few can be outstanding at once, so a
+ * short window is enough; renewals are all valid under the same key and last-write-wins.
+ */
+const renewalsWritten: string[] = [];
+
+function recordRenewal(token: string): void {
+  renewalsWritten.push(token);
+  if (renewalsWritten.length > 8) renewalsWritten.shift();
+}
+
 export function setDashboardUnauthorizedHandler(handler: () => void): void {
   handleDashboardUnauthorized = handler;
 }
@@ -27,11 +40,14 @@ const dashboardFetch = (async (input, init) => {
   const stored = readDashboardAuthToken();
   if (renewed !== null && renewed !== '' && stored !== undefined) {
     writeDashboardAuthToken(renewed);
+    recordRenewal(renewed);
   }
-  // Storage is shared across tabs, so the session may have changed while this request was in
-  // flight. Tearing down on a response the current session never produced would let one tab's
-  // stale 401 clear a login another tab had just completed, logging every tab out.
-  if (stored !== token) return response;
+  // Storage is shared across tabs, so the session may have been replaced while this request was in
+  // flight. Tearing down on a response the current session never produced would let one tab's stale
+  // 401 clear a login another tab had just completed. A renewal of this same session is not such a
+  // replacement, so it must not suppress teardown — otherwise a sibling request's renewal would
+  // swallow a real 401 and leave the tab looking authenticated.
+  if (stored !== token && !(stored !== undefined && renewalsWritten.includes(stored))) return response;
   if (response.status === 401) handleDashboardUnauthorized();
   if (await isDashboardUnavailable(response)) handleDashboardUnavailable();
   return response;

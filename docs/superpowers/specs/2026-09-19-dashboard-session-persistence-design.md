@@ -172,8 +172,14 @@ renewal header arriving after the user logs out mid-flight would rewrite the tok
 Shared storage also means the session can change *during* a request, so `dashboardFetch` compares the
 token it sent against the one in storage when the response lands, and skips the 401 and 503 teardown
 when they differ. Otherwise one tab's stale 401 would clear a login another tab had just completed
-and, through the cross-tab subscription below, log every tab out. Renewal is deliberately not subject
-to that check: concurrent renewals are all independently valid and last-write-wins is fine.
+and, through the cross-tab subscription below, log every tab out.
+
+Only a *replacement* session may suppress teardown. A concurrent request renewing the same session
+also changes what storage holds, and treating that as a replacement would swallow a genuine 401 —
+leaving the tab authenticated on stale data until some later request happened to fail. The client
+therefore remembers the tokens it wrote as renewals and does not count them as replacements. Renewal
+itself stays exempt from the comparison: concurrent renewals are all independently valid and
+last-write-wins is fine.
 
 `packages/dashboard/src/modules/auth/services/auth-service/auth-service.ts` registers cross-tab
 logout alongside its existing handlers:

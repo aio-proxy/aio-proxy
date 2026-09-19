@@ -109,6 +109,29 @@ test('a stale 401 does not tear down a session another tab has since established
   expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'authenticated' });
 });
 
+test('a sibling request renewing the same session does not swallow a real 401', async () => {
+  const client = createDashboardClient('http://localhost');
+  setDashboardAuthSession({ status: 'authenticated' });
+  writeDashboardAuthToken('aged-token');
+  // One request renews the shared token, so the client knows `renewed-token` as its own renewal.
+  rs.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } }),
+  );
+  await client.dashboard.api.providers.$get();
+
+  // A concurrent request carried the aged token, and the renewal lands before its response does.
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    writeDashboardAuthToken('renewed-token');
+    return new Response('{"error":"authentication_required"}', { status: 401 });
+  });
+  await client.dashboard.api.config.$get();
+
+  // Storage no longer holds the token that request sent, but that is this session renewing itself,
+  // not a replacement login, so the 401 must still expire the session.
+  expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'unauthenticated', reason: 'expired' });
+});
+
 test('a 401 for the session that sent it still expires that session', async () => {
   setDashboardAuthSession({ status: 'authenticated' });
   writeDashboardAuthToken('expired-token');
