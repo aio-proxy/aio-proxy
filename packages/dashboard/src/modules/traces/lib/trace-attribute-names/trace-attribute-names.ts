@@ -1,5 +1,5 @@
 // OTel names copied verbatim from `spanName` in
-// `packages/server/src/request-tracing/semantic.ts`. The dashboard cannot import it:
+// `packages/server/src/request-tracing/semantic/semantic.ts`. The dashboard cannot import it:
 // `@aio-proxy/server` only exports its root entry.
 export const traceSpanName = {
   attempt: 'aio_proxy.provider.attempt',

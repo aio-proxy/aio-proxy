@@ -34,7 +34,7 @@ const stringAttribute = (attributes: SpanAttributes, key: string): string | unde
  * Provider and model describe the request outcome, so they fall back trace-wide.
  *
  * `httpStatus` never falls back to the trace row: only the root span and attempt spans
- * record a status code, so lending the trace's final code to a parse or egress span would
+ * record a status code, so lending the trace's final code to a parse span would
  * attribute someone else's outcome to it. Spans without one show their OTel status instead.
  * The `??` on it reads the same span's deprecated `http.status_code`, which is a spelling
  * fallback, not a trace fallback.

@@ -105,14 +105,14 @@ test('still falls back to the trace row when the root span records unusable numb
 });
 
 test('keeps trace fallbacks off non-root spans so a child never borrows the request totals', () => {
-  const child = createSpan({ spanId: 'd'.repeat(16), name: 'aio_proxy.response.egress', kind: 'INTERNAL' });
+  const child = createSpan({ spanId: 'd'.repeat(16), name: 'aio_proxy.request.parse', kind: 'INTERNAL' });
 
   const metrics = readSpanMetrics({ span: child, spans: [child], trace });
 
   expect(metrics.ttftMs).toBeUndefined();
   expect(metrics.inputTokens).toBeUndefined();
   expect(metrics.outputTokens).toBeUndefined();
-  // A parse or egress span never records a status code; the trace's final code is not its outcome.
+  // A parse span never records a status code; the trace's final code is not its outcome.
   expect(metrics.httpStatus).toBeUndefined();
   // provider / model stay trace-wide facts, so those still fall back.
   expect(metrics.providerId).toBe('anthropic-backup');

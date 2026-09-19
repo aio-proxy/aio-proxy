@@ -1,4 +1,5 @@
 import type { DashboardTraceDiagnostics } from '@aio-proxy/types';
+import { SpanKind } from '@opentelemetry/api';
 
 export const spanName = {
   request: 'aio_proxy.request',
@@ -9,9 +10,75 @@ export const spanName = {
   prepare: 'aio_proxy.request.prepare',
   tokenCount: 'aio_proxy.token_count',
   candidateSkipped: 'aio_proxy.token_count.candidate_skipped',
-  egress: 'aio_proxy.response.egress',
-  usage: 'aio_proxy.usage.resolve',
 } as const;
+
+type SpanDeclaration = {
+  /** 固定 span 名；动态名的 span 不给这个字段，只给 nameShape。 */
+  readonly name?: string;
+  readonly nameShape?: string;
+  readonly kind: SpanKind;
+  /** 允许的父 span（registry 的 key）。root 为空。 */
+  readonly parent: readonly string[];
+  /** 创建点，相对 packages/server/src。colocated 测试按它校验「声明即存在」。 */
+  readonly createdBy: string;
+};
+
+// 一个 span 的完整声明只有这一处。加 span 先加声明，测试会逼着你把创建点补上；
+// 删创建点不删声明，测试同样会红 —— 本次重构起因的七个死常量再也长不出来。
+export const spanRegistry = {
+  request: {
+    name: spanName.request,
+    kind: SpanKind.SERVER,
+    parent: [],
+    createdBy: 'request-tracing/request-trace-recorder/request-trace-recorder.ts',
+  },
+  parse: { name: spanName.parse, kind: SpanKind.INTERNAL, parent: ['request'], createdBy: 'routes/pipeline/index.ts' },
+  session: {
+    name: spanName.session,
+    kind: SpanKind.INTERNAL,
+    parent: ['request'],
+    createdBy: 'routes/pipeline/index.ts',
+  },
+  route: { name: spanName.route, kind: SpanKind.INTERNAL, parent: ['request'], createdBy: 'routes/pipeline/index.ts' },
+  inference: {
+    nameShape: '{operation} {model}',
+    kind: SpanKind.CLIENT,
+    parent: ['request'],
+    createdBy: 'routes/pipeline/inference-span.ts',
+  },
+  attempt: {
+    name: spanName.attempt,
+    kind: SpanKind.INTERNAL,
+    // startInferenceSpan 只在 routes/pipeline 里调用，token-count 那条路上没有 GenAI span，
+    // 它的 attempt 直接挂 root。
+    parent: ['inference', 'request'],
+    createdBy: 'routes/pipeline/attempt/emit/emit.ts',
+  },
+  prepare: {
+    name: spanName.prepare,
+    kind: SpanKind.INTERNAL,
+    parent: ['attempt'],
+    createdBy: 'routes/pipeline/attempt/model.ts',
+  },
+  upstream: {
+    nameShape: '{http.request.method}',
+    kind: SpanKind.CLIENT,
+    parent: ['attempt'],
+    createdBy: 'request-logging/wire/wire.ts',
+  },
+  tokenCount: {
+    name: spanName.tokenCount,
+    kind: SpanKind.INTERNAL,
+    parent: ['request'],
+    createdBy: 'routes/token-count/shared.ts',
+  },
+  candidateSkipped: {
+    name: spanName.candidateSkipped,
+    kind: SpanKind.INTERNAL,
+    parent: ['request'],
+    createdBy: 'routes/token-count/shared.ts',
+  },
+} as const satisfies Record<string, SpanDeclaration>;
 
 export const eventName = {
   firstUpstreamResponse: 'aio_proxy.response.first_upstream',
