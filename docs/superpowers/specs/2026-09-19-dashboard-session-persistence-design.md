@@ -223,12 +223,16 @@ read/write/clear contract tests already cover the storage surface.
 
 `bun run preflight` must pass.
 
-It does not, and did not before this work. The branch inherited 25 `lint:types` errors (23 in
-`packages/cli`, two in `packages/dashboard/src/modules/providers/`, none in `packages/server`) and 21
-failing `@aio-proxy/cli` tests, both reproducible with this branch's files reverted. `preflight`
-short-circuits on the first, so it cannot complete for any branch until those are repaired — a
-separate concern. What this work owns is green: `@aio-proxy/server` and `@aio-proxy/dashboard` suites
-pass in full, with `lint` and `format:check` clean.
+It does not, and did not before this work — but not for the reason it first appeared. `preflight` is
+`lint:types && format:check && test`, and `lint:types` reports 25 errors (23 in `packages/cli`, two in
+`packages/dashboard/src/modules/providers/`, none in `packages/server`), reproducible with this
+branch's files reverted. CI does not run `lint:types` at all — its gate is `bun run check`, which is
+only `lint` and `format:check` — so these errors have accumulated ungated. Repairing them is a
+separate concern.
+
+What CI does run is green on `main` and green for the code this change owns: `@aio-proxy/server`
+1976 pass / 0 fail, `@aio-proxy/dashboard` 1002 pass / 1 skipped / 0 fail, `lint` clean of errors,
+`format:check` clean.
 
 Two behaviors resist automation and need a manual check before release: that a login survives quitting
 and reopening the browser, and that changing `server.password` invalidates open tabs on other devices.
