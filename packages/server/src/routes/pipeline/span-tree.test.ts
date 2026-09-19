@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import type { ModelEventStream, TextStreamPart, ToolSet } from '@aio-proxy/core';
-import { projectAttributes, type StoredSpan } from '@aio-proxy/core/db';
+import { createTraceStore, openDb, projectAttributes, type StoredSpan } from '@aio-proxy/core/db';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 
@@ -575,4 +578,59 @@ test('the attempt span stays out of the gen_ai namespace', async () => {
   // actually answered with' 钉住。这一趟两者恰好同值，所以这里断言的是 key 的归属。
   expect(attempt?.attributes[attributeName.attemptModelId]).toBe('primary-model');
   expect(typeof attempt?.attributes[attributeName.attemptTtftMs]).toBe('number');
+});
+
+test('the root span TTFT key still feeds the list page summary column', async () => {
+  // `completion.ts` writes request-level TTFT onto the root span under
+  // `attributeName.ttftMs`, and core's `rowToSummary` reads it back as a **literal**
+  // (`trace-queries.ts`, 'aio_proxy.response.ttft_ms') to fill the list page's TTFT
+  // column. Nothing else joins those two sides: every server-side reader goes through
+  // the constant and follows a rename, so renaming the value blanks the whole column
+  // with a fully green suite. This drives a real request and reads the number back out
+  // of the real store, so the two spellings have to keep agreeing.
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => usageStream() })]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  await response.text();
+  await settleRecording(harness.recording);
+  const spans = harness.recording.spans;
+  const root = spans.find((span) => span.parentSpanId === undefined);
+
+  // Fixture self-check: this run really did settle a streamed TTFT onto the root span.
+  // Without it a fixture that produces none would leave the assertion below comparing
+  // undefined against undefined.
+  expect(typeof root?.attributes[attributeName.ttftMs]).toBe('number');
+
+  const home = mkdtempSync(join(tmpdir(), 'aio-span-tree-ttft-'));
+  const handle = openDb({ home });
+  try {
+    const store = createTraceStore(handle.db);
+    store.startRoot({
+      traceId: root!.traceId,
+      spanId: root!.spanId,
+      requestId: 'request-ttft',
+      inboundProtocol: 'openai-chat',
+      name: root!.name,
+      kind: root!.kind,
+      startedAt: root!.startedAt,
+      statusCode: root!.statusCode,
+      attributes: {},
+      events: [],
+      links: [],
+    });
+    store.complete({
+      traceId: root!.traceId,
+      rootSpanId: root!.spanId,
+      spans,
+      summary: { finalProviderId: 'primary', finalModelId: 'primary-model', finalHttpStatus: 200 },
+    });
+
+    // `ttftMs` is not a projected column — it survives only as this attribute in
+    // attributes_json, so a summary that still reports it proves the key round-tripped.
+    const summary = store.find(root!.traceId)?.trace;
+    expect(typeof summary?.ttftMs).toBe('number');
+    expect(summary?.ttftMs).toBe(root!.attributes[attributeName.ttftMs]);
+  } finally {
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
 });

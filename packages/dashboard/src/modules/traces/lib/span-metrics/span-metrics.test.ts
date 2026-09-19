@@ -167,3 +167,34 @@ test('still reads the legacy attempt keys recorded before the rename', () => {
   expect(metrics.modelId).toBe('claude-sonnet-4-6-20260101');
   expect(metrics.ttftMs).toBe(700);
 });
+
+// 兜底链的顺序是有含义的，而只带一个 key 的夹具证明不了顺序 —— 两个 key 同时在场才行。
+// 一条 attempt span 同时带着自己的 model 和 GenAI span 那份 response model 时，要显示的是
+// 前者：新版 attempt span 只有 attemptModelId，老 attempt 行读回时两个都会有（列里的
+// final_model_id 会被 mergeAttributes 挂成 gen_ai.response.model），那时候「这一跳用的模型」
+// 才是这一格该显示的东西。
+test('prefers the attempt model over the response model when a span carries both', () => {
+  const span = createSpan({
+    attributes: {
+      'aio_proxy.attempt.model_id': 'attempt-candidate-model',
+      'gen_ai.response.model': 'genai-answered-model',
+      'gen_ai.request.model': 'inbound-requested-model',
+    },
+  });
+
+  expect(readSpanMetrics({ span, spans: [span], trace }).modelId).toBe('attempt-candidate-model');
+});
+
+// 同理：attempt span 上两份 TTFT 都在场时，要显示这一跳自己的那份，而不是请求级的那份。
+// 一条失败转移的 attempt 和整个请求的 TTFT 差着前面几跳烧掉的时间。
+test('prefers the attempt TTFT over the request-level TTFT when a span carries both', () => {
+  const span = createSpan({
+    parentSpanId: trace.rootSpanId,
+    attributes: {
+      'aio_proxy.attempt.ttft_ms': 120,
+      'aio_proxy.response.ttft_ms': 980,
+    },
+  });
+
+  expect(readSpanMetrics({ span, spans: [span], trace }).ttftMs).toBe(120);
+});
