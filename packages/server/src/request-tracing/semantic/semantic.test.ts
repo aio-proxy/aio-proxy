@@ -12,10 +12,12 @@ async function sourceFiles(): Promise<readonly string[]> {
 }
 
 // 只要文件里出现过常量就算「有创建点」是不够的：一次比较、一次过滤、一行日志都能蒙过去。
-// 下面两条都要求名字落在某个 `start*Span(` 的参数表里 —— 本包开 span 只有这一种写法
-// （OTel 的 `tracer.startSpan` 与包内的 `startPipelineSpan`）。`[^;]` 不跨分号，所以同文件里
-// 另一处 span 的创建点借不到位置；但它放行括号，`startPipelineSpan(rootOf(session), …)`
-// 这种把前一个参数改成计算式的普通重构不会被误判成「创建点没了」。
+// 下面两条要求的是：名字与某个 `start*Span(` 之间不隔分号 —— 本包开 span 只有这一种写法
+// （OTel 的 `tracer.startSpan` 与包内的 `startPipelineSpan`）。这是个近似，不是解析：
+// 它放行括号，所以 `startPipelineSpan(rootOf(session), …)` 这种把前一个参数改成计算式的
+// 普通重构不会被误判成「创建点没了」；代价是同一条语句里的任何位置都算数，包括另一个
+// span 的参数表。实测每个真实创建点到分号之间不超过 14 行，所以只有刻意构造才骗得过它，
+// 而「创建点被删/被改成纯读取/createdBy 指错文件」这几种真实回归都照抓不误。
 const OPENS_A_SPAN = /\bstart\w*Span\s*\(/u;
 
 function opensSpanNamed(key: string): RegExp {
