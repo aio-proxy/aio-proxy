@@ -20,7 +20,7 @@ import type {
 } from '../../../runtime';
 import { pipeline } from '../test-support';
 
-function imageAdapter() {
+function imageAdapter(options: { readonly imageInvocationError?: Error } = {}) {
   return defineImageProtocolAdapter({
     protocol: ProviderProtocol.OpenAIImage,
     async parse(raw, context) {
@@ -62,12 +62,15 @@ function imageAdapter() {
       if (request.response_format === 'url') return 'response_format=url';
       return undefined;
     },
-    imageInvocation: (request) => ({
-      operation: 'generate',
-      prompt: request.prompt,
-      n: 1,
-      responseFormat: 'b64_json',
-    }),
+    imageInvocation: (request) => {
+      if (options.imageInvocationError !== undefined) throw options.imageInvocationError;
+      return {
+        operation: 'generate',
+        prompt: request.prompt,
+        n: 1,
+        responseFormat: 'b64_json',
+      };
+    },
     imageJson: async (result) => ({ created: result.created ?? 1, count: result.images.length }),
     errors: {
       requestError: (error) =>
@@ -374,4 +377,46 @@ test('language inbound never calls image transport', async () => {
   expect(await response.json()).toEqual({ output: 'ok' });
   expect(imageCalls).toHaveLength(0);
   expect(language.calls.model).toHaveLength(1);
+});
+
+// The real OpenAI image adapter throws OpenAIImagesInvalidRequestError out of
+// imageInvocation, so this catch is a live production path: it must settle the
+// request itself rather than fall through to the next candidate.
+test('an image invocation failure settles the request as 400 without trying the next candidate', async () => {
+  const primary = convertProvider({ id: 'primary' });
+  const backup = convertProvider({ id: 'backup' });
+  const route = pipeline([primary, backup], {
+    adapter: imageAdapter({ imageInvocationError: new SyntaxError('invalid image request') }),
+  });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat' }));
+  await settleRecording(route.recording);
+
+  expect(response.status).toBe(400);
+  expect(primary.imageCalls).toHaveLength(0);
+  expect(backup.imageCalls).toHaveLength(0);
+  expect(route.recording.finals).toEqual([
+    expect.objectContaining({
+      errorCode: 'invalid_request',
+      finalModelId: 'primary-model',
+      finalProviderId: 'primary',
+      finalStatusCode: 400,
+      outcome: 'failure',
+      attempt: expect.objectContaining({
+        errorCode: 'invalid_request',
+        modelId: 'primary-model',
+        outcome: 'failure',
+        providerId: 'primary',
+        statusCode: 400,
+      }),
+    }),
+  ]);
+  expect(route.logs).toEqual([
+    expect.objectContaining({
+      event: 'request.rejected',
+      errorCode: 'invalid_request',
+      errorType: 'SyntaxError',
+      statusCode: 400,
+    }),
+  ]);
 });
