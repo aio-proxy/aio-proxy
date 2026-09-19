@@ -56,6 +56,7 @@
 | 文件 | 责任 |
 |---|---|
 | `span-projection/span-projection.ts` | 现有：读回时重建 root 的 `gen_ai.*`。任务 8 停止重建并保留非 root 的原样属性，任务 9、10 同步 usage / 状态码新 key。 |
+| `trace-filters.ts` | 现有：`SUCCEEDED` / `FAILED` 的唯一判定点。任务 1 追加：root 状态不再是 4xx 的唯一信号，`FAILED` 改成 `statusCode = 2 OR finalHttpStatus >= 400`。 |
 | `trace-lifecycle/trace-lifecycle.ts` | 现有：列表页摘要列的投影。任务 8 让 `modelId` 改从 `aio_proxy.attempt.model_id` 取。 |
 
 **dashboard（`packages/dashboard/src/modules/traces/`）**
@@ -79,6 +80,13 @@
 ---
 
 ### Task 1: root SERVER span 的 4xx 不再置 ERROR
+
+> **执行期修订（人类裁定）：** root 的 4xx 从 ERROR 变 UNSET 会让 dashboard 把 4xx 拒绝
+> 计成**成功** —— `trace-filters.ts:11` 的 `SUCCEEDED = 结束了 AND statusCode != 2` 是
+> 分桶图、outcome 筛选、延迟分位共用的唯一判定。本任务一并把它改成
+> `FAILED = statusCode = 2 OR finalHttpStatus >= 400`、`SUCCEEDED = endedAt 非空 AND NOT FAILED`。
+> `finalHttpStatus` 可空，比较必须先 `isNotNull` 闸一道，否则 `NOT NULL` 让这些行从两个桶里
+> 同时消失。
 
 **Files:**
 - Modify: `packages/server/src/request-tracing/request-trace-recorder/completion.ts:29-37`
