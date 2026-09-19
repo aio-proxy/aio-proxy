@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { createServer as createBaseServer, createServerTestHome } from '#server-test-lifecycle';
 
+import { createDashboardAuthentication } from './dashboard-auth';
 import { loopbackServer } from './test-support';
 
 const origin = 'http://127.0.0.1:22078';
@@ -153,5 +154,70 @@ describe('dashboard authentication', () => {
 
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('retry-after')).toBe('60');
+  });
+
+  test('renews a session that has been used for a day without churning fresh tokens', async () => {
+    const hash = await Bun.password.hash('renewable');
+    const fresh = createDashboardAuthentication(() => hash);
+    const freshLogin = await fresh.login('renewable', '127.0.0.1');
+    if (freshLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
+
+    const aged = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 2 * 24 * 60 * 60 * 1_000,
+    );
+    const agedLogin = await aged.login('renewable', '127.0.0.1');
+    if (agedLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
+    const renewed = fresh.refresh(agedLogin.token);
+
+    expect(fresh.refresh(freshLogin.token)).toBeUndefined();
+    expect(renewed).toBeString();
+    if (renewed === undefined) throw new Error('expected a renewed session');
+    expect(fresh.verify(renewed)).toBe(true);
+    expect(Number(renewed.split('.')[1])).toBeGreaterThan(Number(agedLogin.token.split('.')[1]));
+  });
+
+  test('does not renew expired or tampered tokens', async () => {
+    const hash = await Bun.password.hash('not-renewable');
+    const auth = createDashboardAuthentication(() => hash);
+    const expiredAt = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 8 * 24 * 60 * 60 * 1_000,
+    );
+    const expiredLogin = await expiredAt.login('not-renewable', '127.0.0.1');
+    if (expiredLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
+
+    const aged = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 2 * 24 * 60 * 60 * 1_000,
+    );
+    const agedLogin = await aged.login('not-renewable', '127.0.0.1');
+    if (agedLogin.status !== 'authenticated') throw new Error('expected an authenticated login');
+    const parts = agedLogin.token.split('.');
+    const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${'A'.repeat(String(parts[3]).length)}`;
+
+    expect(auth.refresh(expiredLogin.token)).toBeUndefined();
+    expect(auth.refresh(tampered)).toBeUndefined();
+    expect(auth.refresh('not-a-token')).toBeUndefined();
+  });
+
+  test('does not renew a session minted under the previous password', async () => {
+    const oldHash = await Bun.password.hash('old-password');
+    const newHash = await Bun.password.hash('new-password');
+    let hash = oldHash;
+    // The token has to be minted two days in the past for `refresh` to consider it aged, so the
+    // minting and renewing instances need separate clocks; both read the same `hash` binding.
+    const aged = createDashboardAuthentication(
+      () => hash,
+      () => Date.now() - 2 * 24 * 60 * 60 * 1_000,
+    );
+    const auth = createDashboardAuthentication(() => hash);
+    const login = await aged.login('old-password', '127.0.0.1');
+    if (login.status !== 'authenticated') throw new Error('expected an authenticated login');
+
+    expect(auth.refresh(login.token)).toBeString();
+    hash = newHash;
+
+    expect(auth.refresh(login.token)).toBeUndefined();
   });
 });

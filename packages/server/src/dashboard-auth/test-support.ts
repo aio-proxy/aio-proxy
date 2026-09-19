@@ -4,6 +4,7 @@ export const disabledDashboardAuthentication: DashboardAuthentication = {
   available: () => true,
   enabled: () => false,
   login: async () => ({ status: 'disabled' }),
+  refresh: () => undefined,
   verify: () => false,
 };
 
