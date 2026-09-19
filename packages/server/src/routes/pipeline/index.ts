@@ -10,13 +10,14 @@ import type { ProviderProtocol } from '@aio-proxy/types';
 import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
-import { requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
+import { attributeName, requestAsksFastMode, type RequestTraceSession, spanName } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
+import { startPipelineSpan } from './tracing';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly adapter: PipelineAdapter<TRequest, TContext>;
@@ -94,12 +95,16 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     const requestedModel = adapter.model(request, context);
     const streamRequested = adapter.wantsStream(request, context);
     requestedModelId = requestedModel;
-    const resolution = source.logicalSessionStore.begin({
-      requestedModelId: requestedModel,
-      requestId: session.requestId,
-      hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
-      headers: rawRequest.headers,
-    });
+    const sessionSpan = startPipelineSpan(session.rootContext, spanName.session);
+    const resolution = sessionSpan.run(() =>
+      source.logicalSessionStore.begin({
+        requestedModelId: requestedModel,
+        requestId: session.requestId,
+        hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
+        headers: rawRequest.headers,
+      }),
+    );
+    sessionSpan.end();
     session.identify({
       requestedModelId: requestedModel,
       resolution,
@@ -177,10 +182,16 @@ async function parseProtocolRequest<TRequest, TContext>(options: {
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
 }): Promise<ParsedProtocolRequest<TRequest>> {
-  const { adapter, context, rawRequest } = options;
+  const { adapter, context, rawRequest, session } = options;
+  const span = startPipelineSpan(session.rootContext, spanName.parse);
   try {
-    return { request: await adapter.parse(rawRequest, context) };
+    const request = await span.run(() => adapter.parse(rawRequest, context));
+    span.end();
+    return { request };
   } catch (error) {
+    // Every branch below reaches rejectParsedRequest -> session.finish ->
+    // processor.take(), so the span has to end before we enter them.
+    span.end({ outcome: 'failure' });
     await cancelRetainedRequestBody(rawRequest, error);
     if (error instanceof RequestBodyTooLargeError) {
       return rejectParsedRequest(adapter.errors.tooLarge(), 'request_too_large', error, options);
@@ -256,14 +267,30 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     deferred = true;
   };
   try {
-    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
-      session: resolution.context.session,
-    });
-    const eligible = filterCandidatesByCapability(candidates, adapter.capability, {
-      requestedModelId: requestedModel,
-      routerModels: lease.snapshot.config?.router.models,
-    });
+    const routeSpan = startPipelineSpan(session.rootContext, spanName.route);
+    let eligible;
+    try {
+      const candidates = routeSpan.run(() =>
+        lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
+          session: resolution.context.session,
+        }),
+      );
+      eligible = filterCandidatesByCapability(candidates, adapter.capability, {
+        requestedModelId: requestedModel,
+        routerModels: lease.snapshot.config?.router.models,
+      });
+    } catch (error) {
+      // The outer catch turns RouterModelNotFoundError into a 404 and settles
+      // the root; this span has to be closed first.
+      routeSpan.end({
+        outcome: 'failure',
+        ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
+      });
+      throw error;
+    }
+    routeSpan.span.setAttribute(attributeName.routeCandidateCount, eligible.length);
     if (eligible.length === 0) {
+      routeSpan.end({ outcome: 'failure', errorCode: 'not_implemented' });
       const error = new Error('No eligible provider candidates for inbound capability');
       return rejectRequest({
         source,
@@ -276,6 +303,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         error,
       });
     }
+    routeSpan.end();
     return await attemptCandidates({
       adapter,
       candidates: eligible,

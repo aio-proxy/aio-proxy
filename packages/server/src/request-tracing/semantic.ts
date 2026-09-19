@@ -41,6 +41,7 @@ export const attributeName = {
   sessionId: 'aio_proxy.session.id',
   sessionResolvedBy: 'aio_proxy.session.resolved_by',
   finalProviderId: 'aio_proxy.route.final_provider_id',
+  routeCandidateCount: 'aio_proxy.route.candidate_count',
   attemptIndex: 'aio_proxy.attempt.index',
   providerId: 'aio_proxy.provider.id',
   providerKind: 'aio_proxy.provider.kind',
