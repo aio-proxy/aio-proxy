@@ -6,6 +6,7 @@ export {
   errorStream,
   jsonRequest,
   settleRecording,
+  slowTextStream,
   textStream,
   textThenErrorStream,
 } from './streams';

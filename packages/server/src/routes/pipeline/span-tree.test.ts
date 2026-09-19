@@ -12,10 +12,15 @@ import {
   rawProvider,
   REQUESTED_MODEL,
   settleRecording,
+  slowTextStream,
   textStream,
 } from '../../../__tests__/pipeline-helpers';
 import { attributeName, spanName } from '../../request-tracing';
 import { pipeline } from './test-support';
+
+// Long enough that the settlement of a streamed completion is unambiguously
+// later than the moment the Response was handed back.
+const STREAM_TAIL_MS = 120;
 
 // Indexes one recording's spans by name and projects "who is whose parent" in
 // readable terms. `find` keeps the first span of a name so repeated names (many
@@ -154,15 +159,44 @@ test('a failover that eventually succeeds leaves the inference span OK', async (
 });
 
 test('the inference span ends on terminal settlement, not when the stream Response returns', async () => {
-  const spans = await runFailover();
-  const inference = spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
-  const attempts = spans.filter((span) => span.name === spanName.attempt);
-  const lastAttempt = attempts.at(-1);
+  // The finish part lands well after the Response does, so a span closed at
+  // function return ends a measurable distance before the completion settles —
+  // millisecond timestamps cannot tell those two apart without this gap.
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => slowTextStream('slow', STREAM_TAIL_MS) })]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+  const returnedAt = Date.now();
+  await response.text();
+  await settleRecording(harness.recording);
+  const inference = harness.recording.spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
 
-  // A streaming request returns the Response first and settles the completion
-  // afterwards. A span closed at function return would end before the last
-  // attempt does.
-  expect(inference?.endedAt.getTime()).toBeGreaterThanOrEqual(lastAttempt?.endedAt.getTime() ?? 0);
+  expect(inference?.endedAt.getTime()).toBeGreaterThan(returnedAt + STREAM_TAIL_MS / 2);
+});
+
+test('an unmapped provider throw still leaves an ended inference span behind', async () => {
+  // The test adapter maps only Error instances onto a provider response, so this
+  // one propagates out of the candidate loop without any session settlement.
+  const fault = { reason: 'unmapped provider fault' };
+  const harness = pipeline([
+    modelProvider({
+      id: 'primary',
+      invoke: () => {
+        throw fault;
+      },
+    }),
+  ]);
+
+  await expect(harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }))).rejects.toBe(fault);
+  await settleRecording(harness.recording);
+  const spans = harness.recording.spans;
+  const inference = spans.find((span) => span.name === `chat ${REQUESTED_MODEL}`);
+
+  // The attempt span ended before the throw and is already buffered. Root
+  // settlement then drains the buffer, so an unended inference span vanishes and
+  // leaves that attempt pointing at a parent the trace does not contain.
+  expect(inference?.endedAt).toBeInstanceOf(Date);
+  expect(spans.filter((span) => span.name === spanName.attempt).map((span) => span.parentSpanId)).toEqual([
+    inference?.spanId,
+  ]);
 });
 
 test('a request that settles as failure marks the inference span with the settled error', async () => {

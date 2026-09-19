@@ -36,6 +36,25 @@ export function emptyStream(): ModelEventStream {
   });
 }
 
+// First delta immediately, finish part `delayMs` later. A streaming response is
+// handed back right after the first delta, so the gap is a window in which the
+// request has returned but the completion has not settled.
+export function slowTextStream(text: string, delayMs: number): ModelEventStream {
+  let opened = false;
+  return new ReadableStream<ModelPart>({
+    async pull(controller) {
+      if (!opened) {
+        opened = true;
+        controller.enqueue({ type: 'text-delta', id: 'text-1', text });
+        return;
+      }
+      await Bun.sleep(delayMs);
+      controller.enqueue(finishPart());
+      controller.close();
+    },
+  });
+}
+
 export function errorStream(error: unknown): ModelEventStream {
   return new ReadableStream<ModelPart>({
     start(controller) {
