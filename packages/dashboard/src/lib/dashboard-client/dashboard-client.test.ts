@@ -94,41 +94,33 @@ test('a renewal arriving after logout does not resurrect the session', async () 
   expect(readDashboardAuthToken()).toBeUndefined();
 });
 
-test('a stale 401 does not tear down a session another tab has since established', async () => {
-  setDashboardAuthSession({ status: 'authenticated' });
-  writeDashboardAuthToken('expired-token');
+test('a renewal does not overwrite a login completed while the request was in flight', async () => {
+  writeDashboardAuthToken('aged-token');
   rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-    // Stands in for a sibling tab logging in while this request was in flight.
-    writeDashboardAuthToken('fresh-token-from-another-tab');
-    return new Response('{"error":"authentication_required"}', { status: 401 });
+    // Another tab changed the password and logged in again. This response's renewal was signed
+    // under the old hash, so writing it would leave every tab with a token the server rejects.
+    writeDashboardAuthToken('token-from-new-login');
+    return new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewal-under-old-password' } });
   });
 
   await createDashboardClient('http://localhost').dashboard.api.providers.$get();
 
-  expect(readDashboardAuthToken()).toBe('fresh-token-from-another-tab');
-  expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'authenticated' });
+  expect(readDashboardAuthToken()).toBe('token-from-new-login');
 });
 
-test('a sibling request renewing the same session does not swallow a real 401', async () => {
+test('a 401 still expires the session when a sibling renewal changed stored token', async () => {
   const client = createDashboardClient('http://localhost');
   setDashboardAuthSession({ status: 'authenticated' });
   writeDashboardAuthToken('aged-token');
-  // One request renews the shared token, so the client knows `renewed-token` as its own renewal.
-  rs.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-    new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } }),
-  );
-  await client.dashboard.api.providers.$get();
-
-  // A concurrent request carried the aged token, and the renewal lands before its response does.
-  writeDashboardAuthToken('aged-token');
   rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    // A concurrent request renewed the shared token while this one was in flight. That is not a
+    // replacement login, so it must not stop this 401 from tearing the session down.
     writeDashboardAuthToken('renewed-token');
     return new Response('{"error":"authentication_required"}', { status: 401 });
   });
+
   await client.dashboard.api.config.$get();
 
-  // Storage no longer holds the token that request sent, but that is this session renewing itself,
-  // not a replacement login, so the 401 must still expire the session.
   expect(queryClient.getQueryData(queryKeys.auth)).toEqual({ status: 'unauthenticated', reason: 'expired' });
 });
 

@@ -6,19 +6,6 @@ import { readDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard
 let handleDashboardUnauthorized = (): void => {};
 let handleDashboardUnavailable = (): void => {};
 
-/**
- * Tokens this client wrote as renewals. A concurrent request can renew the shared token while another
- * is still in flight, which would otherwise look indistinguishable from a replacement login and
- * silently suppress that request's 401 or 503 handling. Only a few can be outstanding at once, so a
- * short window is enough; renewals are all valid under the same key and last-write-wins.
- */
-const renewalsWritten: string[] = [];
-
-function recordRenewal(token: string): void {
-  renewalsWritten.push(token);
-  if (renewalsWritten.length > 8) renewalsWritten.shift();
-}
-
 export function setDashboardUnauthorizedHandler(handler: () => void): void {
   handleDashboardUnauthorized = handler;
 }
@@ -38,16 +25,19 @@ const dashboardFetch = (async (input, init) => {
   // Re-read rather than reuse `token`: a logout during this request already cleared storage, and
   // writing here would resurrect the session the user just ended.
   const stored = readDashboardAuthToken();
-  if (renewed !== null && renewed !== '' && stored !== undefined) {
+  // Renew only the session this request was actually sent with. Storage is shared across tabs and
+  // can change mid-flight: a logout must not be undone, and a login completed after a password
+  // change must not be overwritten by a renewal signed under the old hash, which would leave every
+  // tab holding a token the server rejects. Skipping a renewal costs nothing — the next request
+  // renews again.
+  if (renewed !== null && renewed !== '' && token !== undefined && stored === token) {
     writeDashboardAuthToken(renewed);
-    recordRenewal(renewed);
   }
-  // Storage is shared across tabs, so the session may have been replaced while this request was in
-  // flight. Tearing down on a response the current session never produced would let one tab's stale
-  // 401 clear a login another tab had just completed. A renewal of this same session is not such a
-  // replacement, so it must not suppress teardown — otherwise a sibling request's renewal would
-  // swallow a real 401 and leave the tab looking authenticated.
-  if (stored !== token && !(stored !== undefined && renewalsWritten.includes(stored))) return response;
+  // The teardown handlers run unconditionally. Suppressing them when storage no longer matches was
+  // tried and withdrawn: a token string cannot distinguish a replacement login from a routine
+  // renewal, least of all one written by another tab, so the guard swallowed genuine 401s and 503s
+  // and left tabs authenticated on dead sessions. Acting on a stale response can at worst log the
+  // user out a second time, which is the safe direction to fail.
   if (response.status === 401) handleDashboardUnauthorized();
   if (await isDashboardUnavailable(response)) handleDashboardUnavailable();
   return response;

@@ -120,8 +120,9 @@ token against the password hash read at call time.
 
 Dashboard and API are same-origin, so the header needs no `Access-Control-Expose-Headers`.
 
-Concurrent requests may each mint a different renewed token. All of them are independently valid
-under the same signing key, and the last write wins.
+Concurrent requests may each mint a different renewed token. All of them are independently valid under
+the same signing key, so the Dashboard keeps whichever one it can attribute to the session it sent —
+see the Dashboard section — and discards the rest.
 
 `/admin/*` does not participate: it is CLI-facing, and the middleware is mounted only on
 `/dashboard/api/*`. The SSE events route is inside that prefix and is therefore wrapped, which is
@@ -169,17 +170,17 @@ The `readDashboardAuthToken() !== undefined` guard is required, not defensive pa
 renewal header arriving after the user logs out mid-flight would rewrite the token that
 `clearDashboardAuthToken()` just removed and resurrect the session.
 
-Shared storage also means the session can change *during* a request, so `dashboardFetch` compares the
-token it sent against the one in storage when the response lands, and skips the 401 and 503 teardown
-when they differ. Otherwise one tab's stale 401 would clear a login another tab had just completed
-and, through the cross-tab subscription below, log every tab out.
+Storage is shared across tabs and can change while a request is in flight, so `dashboardFetch` applies
+a renewal only when storage still holds exactly the token that request sent. That covers the logout
+above and one more case: if the password changes and another tab logs in while this response is
+delayed, its renewal is signed under the old hash, and writing it would leave every tab holding a
+token the server rejects. Skipping a renewal costs nothing, since the next request renews again.
 
-Only a *replacement* session may suppress teardown. A concurrent request renewing the same session
-also changes what storage holds, and treating that as a replacement would swallow a genuine 401 —
-leaving the tab authenticated on stale data until some later request happened to fail. The client
-therefore remembers the tokens it wrote as renewals and does not count them as replacements. Renewal
-itself stays exempt from the comparison: concurrent renewals are all independently valid and
-last-write-wins is fine.
+The 401 and 503 handlers, by contrast, run unconditionally. Suppressing them when storage no longer
+matches was implemented and withdrawn: a token string cannot distinguish a replacement login from a
+routine renewal — least of all one written by another tab, which this tab never observes — so the
+guard swallowed genuine failures and left tabs authenticated on dead sessions. Acting on a stale
+response can at worst log the user out a second time, which is the safe direction to fail.
 
 `packages/dashboard/src/modules/auth/services/auth-service/auth-service.ts` registers cross-tab
 logout alongside its existing handlers:
