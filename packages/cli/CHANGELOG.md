@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.27.0
+
+### Patch Changes
+
+- [#384](https://github.com/aio-proxy/aio-proxy/pull/384) [`da17aef`](https://github.com/aio-proxy/aio-proxy/commit/da17aefae1728ebe418a8d8c30c42714568ffbb0) Thanks [@baranwang](https://github.com/baranwang)! - Fix Codex history migration so existing JSONL threads keep working after `aiop agent configure codex`. Desktop sessions stored as paginated history, including those still labeled `newapi`, are rewritten to the managed provider instead of being skipped.
+- Updated dependencies [[`37ac185`](https://github.com/aio-proxy/aio-proxy/commit/37ac185ab77e4f4d4b59e541f7f4399217a0f801), [`bafe0fa`](https://github.com/aio-proxy/aio-proxy/commit/bafe0fa2277d32ff502cf03f0cdb7e96c7970c30)]:
+  - @aio-proxy/dashboard@0.27.0
+  - @aio-proxy/server@0.27.0
+  - @aio-proxy/i18n@0.27.0
+  - @aio-proxy/core@0.27.0
+  - @aio-proxy/opencode-provider@0.27.0
+  - @aio-proxy/pi-provider@0.27.0
+  - @aio-proxy/agent-provider-runtime@0.27.0
+  - @aio-proxy/logger@0.27.0
+  - @aio-proxy/plugin-sdk@0.27.0
+  - @aio-proxy/shared@0.27.0
+  - @aio-proxy/types@0.27.0
+
 ## 0.26.0
 
 ### Patch Changes
