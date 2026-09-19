@@ -124,6 +124,9 @@ describe('span projection', () => {
               'aio_proxy.route.weight_source': 'provider',
               'aio_proxy.route.selection_source': 'deterministic_session',
               'gen_ai.request.model': 'final-model',
+              // attempt/emit/emit.ts 给每个 attempt span 都挂这个 key，它会被抽进
+              // final_model_id 列。读回时靠 mergeAttributes 的 !isRoot 分支还原。
+              'gen_ai.response.model': 'attempt-model',
               'aio_proxy.transport': 'raw',
               'long.tail.attempt': 'also-kept',
             },
@@ -169,6 +172,7 @@ describe('span projection', () => {
       });
       expect(attemptRow.providerWeight).toBe(100);
       expect(attemptRow.selectionReason).toBe('weight');
+      expect(attemptRow.finalModelId).toBe('attempt-model');
       expect(attemptRow).not.toHaveProperty('routingContractVersion');
       expect(attemptRow).not.toHaveProperty('effectivePriority');
       expect(attemptRow).not.toHaveProperty('effectiveWeight');
@@ -188,6 +192,7 @@ describe('span projection', () => {
       expect(attemptAttrs['aio_proxy.route.weight_source']).toBe('provider');
       expect(attemptAttrs['aio_proxy.route.selection_source']).toBe('deterministic_session');
       expect(attemptAttrs['gen_ai.request.model']).toBe('final-model');
+      expect(attemptAttrs['gen_ai.response.model']).toBe('attempt-model');
       expect(attemptAttrs['aio_proxy.transport']).toBe('raw');
       expect(attemptAttrs['long.tail.attempt']).toBe('also-kept');
     } finally {

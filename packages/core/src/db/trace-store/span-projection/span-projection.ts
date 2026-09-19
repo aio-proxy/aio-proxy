@@ -227,11 +227,17 @@ export function mergeAttributes(
   set(ATTR.terminationReason, columns.terminationReason);
   // root 的 usage / model 列来自 summary，不是它自己的属性。挂回去会让 root 变成
   // 第二个「带 gen_ai.* 的 span」，Langfuse 那边一条 trace 就出现两个 GENERATION。
-  // 非 root 走这里只为旧数据：新写入的 gen_ai.request.model 留在 JSON 里，
-  // columns.modelId 是空的，`set` 遇到 undefined 不覆盖已有的 stored 值。
   if (!isRoot) {
+    // 老数据专用，没有写路径了：新写入的 gen_ai.request.model 留在 JSON 里，
+    // columns.modelId 是空的，`set` 遇到 undefined 不覆盖 stored 里已有的值。
+    // 唯一的喂料在 trace-queries.ts 的 `setStr('modelId', row.modelId)`。
     set(ATTR.genAiRequestModel, columns.modelId);
+    // 这一行是活的：attempt/emit/emit.ts 给每个 attempt span 挂 gen_ai.response.model，
+    // 被抽进 final_model_id 列，瀑布图上那一格的模型全靠它还原。
     set(ATTR.genAiResponseModel, columns.finalModelId);
+    // 以下六行今天到不了：gen_ai.usage.* 从引入 tracing 起就只在 root 上发过，
+    // 所以没有任何 span 行的这些列非空。留着是为了和上面那行对称 —— 哪天 usage
+    // 挪到 GenAI span 上，它就地生效，不必再想起这里。
     set(ATTR.genAiUsageInputTokens, columns.inputTokens);
     set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
     set(ATTR.genAiUsageTotalTokens, columns.totalTokens);

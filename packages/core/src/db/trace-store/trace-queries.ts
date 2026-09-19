@@ -151,6 +151,12 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Dat
   setStr('providerId', row.providerId);
   setStr('providerKind', row.providerKind);
   setNum('providerWeight', row.providerWeight);
+  // NOT dead, despite having no writer: nothing populates `model_id` since
+  // gen_ai.request.model stopped being projected off non-root spans, but rows
+  // written before that still keep their model here and nowhere else. This is
+  // the column's only route into mergeAttributes, which restores it as
+  // gen_ai.request.model. Pinned by trace-store.test.ts, 'a span row written
+  // before the split still reports its model from the legacy model_id column'.
   setStr('modelId', row.modelId);
   setStr('transport', row.transport);
   setStr('sourceProtocol', row.sourceProtocol);

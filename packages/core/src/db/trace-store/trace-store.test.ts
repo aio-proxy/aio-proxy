@@ -1,9 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 
-import { usageDaily } from '../schema';
+import { traceSpan, usageDaily } from '../schema';
 import { createTraceStore, decodeTraceCursor, encodeTraceCursor } from './index';
 import { openTestDb } from './test-support';
-import { attemptSpan, completion, ROOT_SPAN_ID, rootSpan, rootStart, TRACE_ID } from './trace-store.test-support';
+import {
+  attemptSpan,
+  completion,
+  ENDED_AT,
+  ROOT_SPAN_ID,
+  rootSpan,
+  rootStart,
+  STARTED_AT,
+  TRACE_ID,
+} from './trace-store.test-support';
 import type { TraceStore } from './types';
 
 describe('trace cursor codec', () => {
@@ -208,6 +217,77 @@ describe('trace store lifecycle', () => {
         requestedModelId: 'my-alias',
         finalModelId: 'upstream-model',
         usage: expect.objectContaining({ inputTokens: 11 }),
+      });
+    } finally {
+      handle.close();
+    }
+  });
+
+  // 钉住 trace-queries.ts 里 `setStr('modelId', row.modelId)` 那一行。它是 model_id 列
+  // 通往 mergeAttributes 的唯一通道，而列已经没有任何写路径，所以这一行看上去和它喂的
+  // 那个分支一样像死代码 —— 少了这条测试，删掉它同样让老库的 attempt 行读不出模型。
+  test('a span row written before the split still reports its model from the legacy model_id column', () => {
+    const handle = openTestDb();
+    const legacySpanId = 'd'.repeat(16);
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+      // 老库里的 attempt 行：gen_ai.request.model 被抽进了 model_id 列，JSON 里没有。
+      // 现在没有任何写路径会再产生这种行，只能直接插。
+      handle.db
+        .insert(traceSpan)
+        .values({
+          traceId: TRACE_ID,
+          spanId: legacySpanId,
+          parentSpanId: ROOT_SPAN_ID,
+          name: 'aio_proxy.provider.attempt',
+          kind: 2,
+          startedAt: STARTED_AT,
+          endedAt: ENDED_AT,
+          statusCode: 0,
+          modelId: 'legacy-model',
+          attributes: {},
+          events: [],
+          links: [],
+        })
+        .run();
+
+      const legacy = store.find(TRACE_ID)?.spans.find((span) => span.spanId === legacySpanId);
+      expect(legacy?.attributes['gen_ai.request.model']).toBe('legacy-model');
+    } finally {
+      handle.close();
+    }
+  });
+
+  // requestedModelId 的新来源是 summary，而 summary 在失败/取消时照样带着 session。
+  // 老的属性路径在这条路上也是能用的，所以这里是回归最不容易被发现的地方：
+  // 列表页上一条失败调用链的「请求模型」会变空。
+  test('a failed trace still records the requested model from the completion session', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+      store.complete(
+        completion({
+          spans: [rootSpan({ statusCode: 2 })],
+          session: {
+            identity: { source: 'body-session', id: 'session-a' },
+            requestedModelId: 'my-alias',
+            resolvedBy: 'body-session',
+          },
+          summary: {
+            finalProviderId: 'provider-b',
+            finalHttpStatus: 502,
+            terminationReason: 'failure',
+            errorCode: 'upstream_error',
+          },
+        }),
+      );
+
+      expect(store.find(TRACE_ID)?.trace).toMatchObject({
+        requestedModelId: 'my-alias',
+        terminationReason: 'failure',
+        finalHttpStatus: 502,
       });
     } finally {
       handle.close();
