@@ -1,6 +1,10 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { clearDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
+import {
+  clearDashboardAuthToken,
+  subscribeDashboardAuthTokenCleared,
+  writeDashboardAuthToken,
+} from '@/lib/dashboard-auth-token';
 import {
   dashboardClient,
   setDashboardUnauthorizedHandler,
@@ -19,6 +23,10 @@ import {
 
 setDashboardUnauthorizedHandler(markDashboardSessionExpired);
 setDashboardUnavailableHandler(markDashboardUnavailable);
+// `localStorage` is shared, so a sibling tab's logout must take this tab down too — otherwise it
+// keeps rendering the authenticated UI while every request 401s. Not `markDashboardSessionExpired`:
+// this was a deliberate logout, and an "expired" notice would be the wrong message.
+subscribeDashboardAuthTokenCleared(() => void logoutDashboard());
 
 export type DashboardLoginResult =
   | { readonly ok: true }
