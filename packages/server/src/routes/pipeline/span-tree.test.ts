@@ -33,8 +33,9 @@ const FIRST_CHUNK_DELAY_MS = 340;
 
 // Floor for the TTFT fixture's self-check. Deliberately a fixed number rather
 // than a fraction of the three constants above, so shrinking one of them to
-// zero fails the self-check instead of moving the floor down with it. Any real
-// sleep clears it; an interval that did not happen measures single digits.
+// zero fails the self-check instead of moving the floor down with it. Each of
+// the three constants is well clear of it; an interval that did not happen
+// measures single digits.
 const MIN_FIXTURE_INTERVAL_MS = 40;
 
 // Indexes one recording's spans by name and projects "who is whose parent" in
@@ -518,8 +519,9 @@ test('time_to_first_chunk is this span own start to its first chunk, in seconds'
   // `firstChunkAt` exists to prevent.
   const attemptMs = spans.find((span) => span.name === spanName.request)?.attributes[attributeName.ttftMs] as number;
   const spanMs = (inference?.endedAt.getTime() ?? 0) - (inference?.startedAt.getTime() ?? 0);
-  // The burn and the tail, measured off the attempt spans rather than read back
-  // from `genAiMs` — the value under test cannot be its own witness.
+  // The burn off attempt[0]'s own span and the tail as the inference span's
+  // remainder — neither is read back from `genAiMs`, because the value under
+  // test cannot be its own witness.
   const attemptSpans = spans.filter((span) => span.name === spanName.attempt);
   const burnMs = (attemptSpans[0]?.endedAt.getTime() ?? 0) - (attemptSpans[0]?.startedAt.getTime() ?? 0);
   const tailMs = spanMs - burnMs - attemptMs;
