@@ -1,5 +1,17 @@
 # aio-proxy
 
+## 0.27.0
+
+### Minor Changes
+
+- [#390](https://github.com/aio-proxy/aio-proxy/pull/390) [`37ac185`](https://github.com/aio-proxy/aio-proxy/commit/37ac185ab77e4f4d4b59e541f7f4399217a0f801) Thanks [@baranwang](https://github.com/baranwang)! - The Dashboard login now persists in the browser, so opening a new tab or restarting the browser no longer asks for the password again. The login renews itself while you keep using the Dashboard, so visiting at least once every 6 days keeps you signed in, and an unused login expires after seven days. Logging out in one tab logs out every other tab, and changing `server.password` still invalidates the login on every device immediately.
+
+- [#383](https://github.com/aio-proxy/aio-proxy/pull/383) [`bafe0fa`](https://github.com/aio-proxy/aio-proxy/commit/bafe0fa2277d32ff502cf03f0cdb7e96c7970c30) Thanks [@baranwang](https://github.com/baranwang)! - Quota details put this window's used API-equivalent spend on the reset row. Hover it for the exact used amount and an estimated period total from used versus remaining quota. That estimate is local API equivalent, not a vendor balance.
+
+### Patch Changes
+
+- [#384](https://github.com/aio-proxy/aio-proxy/pull/384) [`da17aef`](https://github.com/aio-proxy/aio-proxy/commit/da17aefae1728ebe418a8d8c30c42714568ffbb0) Thanks [@baranwang](https://github.com/baranwang)! - Fix Codex history migration so existing JSONL threads keep working after `aiop agent configure codex`. Desktop sessions stored as paginated history, including those still labeled `newapi`, are rewritten to the managed provider instead of being skipped.
+
 ## 0.26.0
 
 ### Minor Changes
