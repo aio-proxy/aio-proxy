@@ -47,6 +47,13 @@ export const requireDashboardAuthentication =
     return context.json({ error: 'authentication_required' }, 401);
   };
 
+/**
+ * The single definition of the authentication subtree, shared by the renewal guard below and the
+ * authentication exemption in `createRoutes`. The two must cover the same paths: one exempt from
+ * authentication but not from renewal would attach a renewed session to a refused login.
+ */
+export const isDashboardAuthRoutePath = (path: string): boolean => path.startsWith('/dashboard/api/auth/');
+
 // Renewals are confined to callers holding a currently valid session by `refresh` itself, which
 // re-verifies the token against the password hash read at call time; this middleware reads only the
 // inbound `authorization` header, so it consumes nothing the authentication middleware sets. The
@@ -59,7 +66,7 @@ export const attachDashboardSessionRefresh =
     // Authentication routes never hand out renewed sessions: a refused password must not extend the
     // session the caller already holds, and logout must not return a live one. `/auth/session`
     // forgoes renewal with them; every other `/dashboard/api/*` request still renews.
-    if (context.req.path.startsWith('/dashboard/api/auth/')) return;
+    if (isDashboardAuthRoutePath(context.req.path)) return;
     const token = dashboardSessionToken(context);
     if (token === undefined) return;
     const renewed = auth.refresh(token);

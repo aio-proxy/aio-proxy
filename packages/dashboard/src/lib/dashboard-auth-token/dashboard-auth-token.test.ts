@@ -34,6 +34,8 @@ test('notifies subscribers when another tab clears the session token', () => {
   globalThis.dispatchEvent(
     new StorageEvent('storage', { key: 'aio-proxy.dashboard-session', newValue: null, storageArea: localStorage }),
   );
+  // A sibling tab calling `localStorage.clear()` reports a null key rather than the cleared one.
+  globalThis.dispatchEvent(new StorageEvent('storage', { key: null, newValue: null, storageArea: localStorage }));
   globalThis.dispatchEvent(
     new StorageEvent('storage', { key: 'aio-proxy.dashboard-session', newValue: 'renewed', storageArea: localStorage }),
   );
@@ -41,5 +43,5 @@ test('notifies subscribers when another tab clears the session token', () => {
     new StorageEvent('storage', { key: 'unrelated', newValue: null, storageArea: localStorage }),
   );
 
-  expect(cleared).toBe(1);
+  expect(cleared).toBe(2);
 });

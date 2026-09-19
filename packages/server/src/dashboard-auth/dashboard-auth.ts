@@ -69,15 +69,19 @@ export function createDashboardAuthentication(
   }
 
   // `refresh` re-runs `verify` rather than trusting the caller, and re-signs under the hash read
-  // now. A password change therefore still revokes every session: `prepareDashboardConfig` strips
-  // `server.password` when the configured hash is unusable, so `passwordHash()` returns `undefined`
-  // and both `verify` and `refresh` fail by construction rather than by an explicit check here.
+  // now. A password change therefore still revokes every session: the new hash keys a different
+  // HMAC, so every token minted under the old one fails `verify`. Separately, when the configured
+  // hash is unusable `prepareDashboardConfig` strips `server.password`, so `passwordHash()` returns
+  // `undefined` and both `verify` and `refresh` fail by construction rather than by an explicit
+  // check here.
   // Like `verify`, `refresh` deliberately ignores `available()`, so a reload that leaves the
   // Dashboard unavailable keeps renewing the sessions whose hash is still live in memory.
   function refresh(token: string): string | undefined {
     const hash = passwordHash();
     if (hash === undefined || !verify(token)) return undefined;
     const expiresAt = Number(token.split('.')[1]);
+    // `SESSION_TTL_MS` is also how a token's mint time is recovered, so changing it misdates every
+    // token already in circulation.
     const age = SESSION_TTL_MS - (expiresAt - now());
     if (age < REFRESH_AFTER_MS) return undefined;
     return mint(hash).token;

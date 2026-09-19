@@ -70,6 +70,17 @@ test('replaces the stored session token when a response carries a renewal', asyn
   expect(readDashboardAuthToken()).toBe('renewed-token');
 });
 
+test('an empty renewal header leaves the stored session token untouched', async () => {
+  writeDashboardAuthToken('live-token');
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response('{}', { headers: { 'x-dashboard-session-refresh': '' } }),
+  );
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBe('live-token');
+});
+
 test('a renewal arriving after logout does not resurrect the session', async () => {
   writeDashboardAuthToken('aged-token');
   rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {

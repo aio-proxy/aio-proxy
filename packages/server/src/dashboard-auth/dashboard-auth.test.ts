@@ -196,6 +196,8 @@ describe('dashboard authentication', () => {
     const parts = agedLogin.token.split('.');
     const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${'A'.repeat(String(parts[3]).length)}`;
 
+    // Positive control: without it a `refresh` hardwired to `return undefined` passes this test.
+    expect(typeof auth.refresh(agedLogin.token)).toBe('string');
     expect(auth.refresh(expiredLogin.token)).toBeUndefined();
     expect(auth.refresh(tampered)).toBeUndefined();
     expect(auth.refresh('not-a-token')).toBeUndefined();

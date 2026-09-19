@@ -17,6 +17,7 @@ import {
   attachDashboardSessionRefresh,
   createDashboardAuthentication,
   createDashboardAuthRoutes,
+  isDashboardAuthRoutePath,
   isDashboardLoopbackRequest,
   requireDashboardAuthentication,
 } from '../dashboard-auth';
@@ -270,7 +271,7 @@ export const createRoutes = (
   });
 
   app.use('/dashboard/api/*', async (context, next) => {
-    if (context.req.path.startsWith('/dashboard/api/auth/')) {
+    if (isDashboardAuthRoutePath(context.req.path)) {
       await next();
       return;
     }

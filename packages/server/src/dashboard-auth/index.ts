@@ -4,6 +4,7 @@ export {
   attachDashboardSessionRefresh,
   createDashboardAuthRoutes,
   dashboardSessionToken,
+  isDashboardAuthRoutePath,
   requireDashboardAuthentication,
   requireDashboardLoopback,
   isDashboardLoopbackRequest,
