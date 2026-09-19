@@ -1098,6 +1098,10 @@ test('prepare runs inside the attempt span, not before it', async () => {
 
   expect(prepares).toHaveLength(2);
   expect(prepares.map((span) => span.parentSpanId)).toEqual(attempts.map((span) => span.spanId));
+  // 这条是「attempt span 被开着不关」的唯一警报。未结束的 span 在导出时被直接丢弃，
+  // 所以数 attempt 的条数永远数不出这个坑（任务 4 的那条计数断言实测抓不到）；
+  // 但被丢掉的父亲会让已导出的 prepare 变成孤儿，parentNameOf 于是返回 undefined。
+  expect(tree(spans).parentNameOf(spanName.prepare)).toBe(spanName.attempt);
   for (const [index, prepare] of prepares.entries()) {
     const attempt = attempts[index];
     expect(prepare.startedAt.getTime()).toBeGreaterThanOrEqual(attempt?.startedAt.getTime() ?? 0);
@@ -1172,7 +1176,7 @@ import { startPipelineSpan } from '../tracing';
 - `const base = ...` 那行没了 —— `base` 原本只喂 `startAttempt`。所有错误路径上的 `attemptBase(...)` 都是各自现算的（`error.ts:37` / `:64`），不受影响。
 - prepare 抛错（`requestError` 映射不出来时的 rethrow、`assertImageInputSupported` 的 rethrow）走 `.then` 的第二个回调关 span，再让异常继续往上走。**这条路上不能用 `finally`** 之外的写法偷懒：异常会一路走到候选循环的 catch → `handleAttemptError` → `session.finish()` → `processor.take()`，prepare span 没在那之前关掉就整段消失。
 - `assertCandidateSupported` 与诊断日志留在 prepare span**外面**：它们是能力校验与日志，不是 materialize。
-- 现在 `rejectRequestShape` 拿到的 `slot.spanRef.current` 是**开着的** attempt span，`error.ts:19` 的 `endAttemptSpan` 会复用它 —— 任务 4 的那条「恰好一个 attempt span」的测试从这一刻起才真正在防事。
+- 现在 `rejectRequestShape` 拿到的 `slot.spanRef.current` 是**开着的** attempt span，`error.ts:19` 的 `endAttemptSpan` 会复用它。注意任务 4 那条「恰好一个 attempt span」的计数断言**防不住这件事**（实测过：未结束的 span 在导出时被丢弃，条数仍然是 1）—— 真正的警报是 Step 1 里那条 `parentNameOf(spanName.prepare)`。顺手把 `error.ts:56-58` 那段注释里「once prepare moves inside the attempt span」的限定语删掉：到这一步它描述的就是现实了。
 
 - [ ] **Step 4: 跑测试确认通过**
 
