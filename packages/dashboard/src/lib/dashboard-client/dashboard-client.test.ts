@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, rs, test } from '@rstest/core';
 
-import { clearDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
+import { clearDashboardAuthToken, readDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
 import '@/modules/auth/services/auth-service';
 import { setDashboardAuthSession } from '@/modules/auth/services/auth-session-store';
 
@@ -58,3 +58,26 @@ test.each(['authenticated', 'disabled'] as const)(
     expect(queryClient.getQueryData(['providers'])).toBeUndefined();
   },
 );
+
+test('replaces the stored session token when a response carries a renewal', async () => {
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } }),
+  );
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBe('renewed-token');
+});
+
+test('a renewal arriving after logout does not resurrect the session', async () => {
+  writeDashboardAuthToken('aged-token');
+  rs.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    clearDashboardAuthToken();
+    return new Response('{}', { headers: { 'x-dashboard-session-refresh': 'renewed-token' } });
+  });
+
+  await createDashboardClient('http://localhost').dashboard.api.providers.$get();
+
+  expect(readDashboardAuthToken()).toBeUndefined();
+});

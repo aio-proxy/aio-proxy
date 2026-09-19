@@ -1,7 +1,7 @@
 import type { AppType } from '@aio-proxy/server';
 import { hc } from 'hono/client';
 
-import { readDashboardAuthToken } from '@/lib/dashboard-auth-token';
+import { readDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
 
 let handleDashboardUnauthorized = (): void => {};
 let handleDashboardUnavailable = (): void => {};
@@ -21,6 +21,12 @@ const dashboardFetch = (async (input, init) => {
   const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
   if (shouldAuthenticate && token !== undefined) headers.set('authorization', `Bearer ${token}`);
   const response = await fetch(input, { ...init, headers });
+  const renewed = response.headers.get('x-dashboard-session-refresh');
+  // Re-read rather than reuse `token`: a logout during this request already cleared storage, and
+  // writing here would resurrect the session the user just ended.
+  if (renewed !== null && renewed !== '' && readDashboardAuthToken() !== undefined) {
+    writeDashboardAuthToken(renewed);
+  }
   if (response.status === 401) handleDashboardUnauthorized();
   if (await isDashboardUnavailable(response)) handleDashboardUnavailable();
   return response;
