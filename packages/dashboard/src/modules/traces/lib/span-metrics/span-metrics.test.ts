@@ -169,10 +169,10 @@ test('still reads the legacy attempt keys recorded before the rename', () => {
 });
 
 // 兜底链的顺序是有含义的，而只带一个 key 的夹具证明不了顺序 —— 两个 key 同时在场才行。
-// 一条 attempt span 同时带着自己的 model 和 GenAI span 那份 response model 时，要显示的是
-// 前者：新版 attempt span 只有 attemptModelId，老 attempt 行读回时两个都会有（列里的
-// final_model_id 会被 mergeAttributes 挂成 gen_ai.response.model），那时候「这一跳用的模型」
-// 才是这一格该显示的东西。
+// 两个 key 同时出现是真实存在的形状，但来自任务 8 之前的 GenAI/inference 行：它自己发
+// gen_ai.request.model，而 final_model_id 列被 mergeAttributes 挂回成 gen_ai.response.model。
+// （老的 attempt 行只发过 gen_ai.response.model，model_id 列是 NULL，所以只有一个 key。）
+// 不论哪种来源，一格里两个都在时该显示的是「这一跳用的模型」，也就是 attemptModelId。
 test('prefers the attempt model over the response model when a span carries both', () => {
   const span = createSpan({
     attributes: {
