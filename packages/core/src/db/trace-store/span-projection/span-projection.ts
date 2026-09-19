@@ -232,12 +232,14 @@ export function mergeAttributes(
     // columns.modelId 是空的，`set` 遇到 undefined 不覆盖 stored 里已有的值。
     // 唯一的喂料在 trace-queries.ts 的 `setStr('modelId', row.modelId)`。
     set(ATTR.genAiRequestModel, columns.modelId);
-    // 这一行是活的：attempt/emit/emit.ts 给每个 attempt span 挂 gen_ai.response.model，
-    // 被抽进 final_model_id 列，瀑布图上那一格的模型全靠它还原。
+    // 这一行是活的：attempt/emit/emit.ts 与 token-count/shared.ts 给 span 挂
+    // gen_ai.response.model，被抽进 final_model_id 列，瀑布图上那一格的模型全靠它还原。
     set(ATTR.genAiResponseModel, columns.finalModelId);
-    // 以下六行今天到不了：gen_ai.usage.* 从引入 tracing 起就只在 root 上发过，
-    // 所以没有任何 span 行的这些列非空。留着是为了和上面那行对称 —— 哪天 usage
-    // 挪到 GenAI span 上，它就地生效，不必再想起这里。
+    // 以下六行今天取不到值：gen_ai.usage.* 从引入 tracing 起就只在 root 上发过，
+    // 所以没有任何子 span 行的这些列非空。**但不要删** —— 上面的 projectAttributes
+    // 抽这六个 key 进列时并没有 isRoot 判断（和 genAiRequestModel 不同），写路径是
+    // 活的：一旦有子 span 带上 usage，属性会被抽走、不留在 JSON 里，删了这六行就
+    // 再也还原不回来，变成静默丢数据。
     set(ATTR.genAiUsageInputTokens, columns.inputTokens);
     set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
     set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
