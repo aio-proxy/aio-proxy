@@ -7,6 +7,7 @@ import { logModelInvocationDiagnostics } from '../logging';
 import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
+import { rejectRequestShape } from './error';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
 // Model dispatch for one candidate. The attempt span opens before the provider
@@ -22,6 +23,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const provider = candidate.provider;
 
   const prepared = await prepareModelInvocation(ctx, slot, model, holder);
+  if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
   if (prepared.kind !== 'ok') return prepared.step;
   const { candidateInvocation, targetProtocol } = prepared;
 

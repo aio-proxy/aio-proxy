@@ -3,6 +3,7 @@ import { upstreamRetryInfo } from '@aio-proxy/core';
 import { isInboundAbort } from '../../../route-observation';
 import { type AttemptInfo, attemptBase } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
+import { logRequestRejected } from '../logging';
 import type { SpanTerminal } from '../tracing';
 import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
@@ -40,6 +41,41 @@ export function emitReject<TRequest, TContext>(
     return { kind: 'fallback', lastFailure: response };
   }
   ctx.session.finish({ ...finalFailure(base, response.status, errorCode), clientResponse: response });
+  return { kind: 'return', response };
+}
+
+// A rejection produced while materializing the request: the protocol adapter
+// could not convert this request at all. Not candidate-specific, so it never
+// falls back to the next candidate.
+export type RequestShapeRejection = {
+  readonly response: Response;
+  readonly errorCode: string;
+  readonly error: unknown;
+};
+
+// Terminates the whole request on a materialization failure. Goes through
+// endAttemptSpan so an already-open attempt span is reused instead of being
+// abandoned and a second one synthesized.
+export function rejectRequestShape<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+  rejection: RequestShapeRejection,
+): AttemptStep {
+  const { adapter, rawRequest, session, source, requestedModelId } = ctx;
+  const { response, errorCode, error } = rejection;
+  const base = attemptBase(slot.candidate.provider, slot.candidate.modelId, slot.startedAt, slot.trace);
+  endAttemptSpan(ctx, slot, base, failureTerminal(response.status, errorCode));
+  session.finish({ ...finalFailure(base, response.status, errorCode), clientResponse: response });
+  logRequestRejected({
+    source,
+    requestId: session.requestId,
+    rawRequest,
+    inboundProtocol: adapter.protocol,
+    requestedModelId,
+    statusCode: response.status,
+    errorCode,
+    error,
+  });
   return { kind: 'return', response };
 }
 

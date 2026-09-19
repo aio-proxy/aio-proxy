@@ -2,9 +2,6 @@ import { assertImageInputSupported, type ModelInvocation } from '@aio-proxy/core
 import type { ProviderProtocol } from '@aio-proxy/types';
 
 import type { ModelTransport } from '../../../runtime';
-import { attemptBase } from '../attempt-base';
-import { failureTerminal, finalFailure } from '../failure';
-import { logRequestRejected } from '../logging';
 import type {
   AttemptLoopContext,
   AttemptStep,
@@ -13,7 +10,7 @@ import type {
   LanguageAttemptLoopContext,
 } from './context';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
-import { emitReject } from './error';
+import { emitReject, type RequestShapeRejection } from './error';
 
 export type PreparedInvocation =
   | {
@@ -21,6 +18,7 @@ export type PreparedInvocation =
       readonly candidateInvocation: ModelInvocation;
       readonly targetProtocol: ProviderProtocol | undefined;
     }
+  | ({ readonly kind: 'reject' } & RequestShapeRejection)
   | { readonly kind: 'step'; readonly step: AttemptStep };
 
 // Rejects a candidate whose materialized invocation needs a capability this
@@ -80,8 +78,7 @@ export function resolveInvocation<TRequest, TContext>(
   targetProtocol: ProviderProtocol | undefined,
   supportedEfforts: ReadonlySet<string>,
 ): PreparedInvocation {
-  const { adapter, request, context, rawRequest, session, source, requestedModelId } = ctx;
-  const { index, candidate, startedAt } = slot;
+  const { adapter, request, context } = ctx;
 
   if (holder.invocation === undefined && holder.invocationUnsupported === undefined) {
     try {
@@ -93,21 +90,12 @@ export function resolveInvocation<TRequest, TContext>(
       } else {
         const mapped = adapter.errors.requestError(error);
         if (mapped === undefined) throw error;
-        const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
-        const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
-        ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(mapped.status, errorCode));
-        session.finish({ ...finalFailure(base, mapped.status, errorCode), clientResponse: mapped });
-        logRequestRejected({
-          source,
-          requestId: session.requestId,
-          rawRequest,
-          inboundProtocol: adapter.protocol,
-          requestedModelId,
-          statusCode: mapped.status,
-          errorCode,
+        return {
+          kind: 'reject',
+          response: mapped,
+          errorCode: mapped.status === 501 ? 'unsupported_feature' : 'invalid_request',
           error,
-        });
-        return { kind: 'step', step: { kind: 'return', response: mapped } };
+        };
       }
     }
   }
