@@ -2474,11 +2474,16 @@ git commit -m "feat(server): span 注册表，声明与创建点由测试绑定"
 
 **先说清楚两件本任务不做的事，省下的就是省下的：**
 
-1. **不做 DFS 重排。** spec 说「`trace-layout.ts` 现在只管深度与柱宽，要支持真实多级嵌套」——
-   读完代码发现深度早就是顺着 `parentSpanId` 链一路数上去的，层数没有上限，多级嵌套本来就成立。
-   行序也不用动：API 按 `startedAt asc` 出（`trace-queries.ts:245`），而新树里父 span 总是
-   早于子 span 开始、兄弟 span 依次发生，时间序与 DFS 序重合。`trace-layout.test.ts` 那条
-   `'keeps API order while laying out nested and overlapping Spans'` 因此保持原契约不变。
+1. **要做 DFS 重排。**（2026-09-20 修订：原文说不做，理由是「时间序与 DFS 序重合」，实测被证伪。）
+   深度的计算本来就沿 `parentSpanId` 链上溯、没有层数上限，多级嵌套一直成立；错的是**行序**。
+   `trace-queries.ts` 按 `asc(startedAt), asc(spanId)` 排，而 `started_at` 只到毫秒，
+   `attempt/model.ts` 开 attempt 之后紧接着开 prepare、中间没有 await —— 两者几乎总在同一毫秒，
+   于是谁在前由 spanId 随机决定，约一半的真实 trace 会把深度 3 的 prepare 行画到它深度 2 的
+   父亲上面。更糟的是 hrtime 没有共同锚点且会截断，子 span 存下来的毫秒数有约 1/30 的概率
+   **严格小于**父亲的 —— 所以「按时间排、指望父亲自然在前」也不成立，必须先按结构、
+   时间只用于兄弟之间。旧的两层树不受影响（每对父子之间都隔着 await），这是本 PR 自己引入的。
+   `'keeps API order while laying out nested and overlapping Spans'` 那条契约因此**有意改掉**，
+   改为断言 DFS 序，并补一条「父子同毫秒时父亲仍在上面」。
 2. **旧数据不特殊处理。** 老 trace 只有 root + attempt 两行、没有 `aio_proxy.attempt.ttft_ms`，
    `ttftRatio` 就是 `undefined`，柱子还是今天那根单色柱 —— `trace-waterfall-row.tsx` 的现有
    分支就是退路，不需要为它加判断。
@@ -2820,6 +2825,6 @@ git commit -m "docs(demo): 静态 demo 对齐真实 span 树"
 
 10. **`aio_proxy.response.egress` span 不实现，常量删除。** spec:304 自己已经放弃了这个 span（egress 转换是同步的、微秒级）。任务 11 的注册表校验会逼出这个常量，直接删掉它而不是补一个创建点。
 
-11. **`trace-layout.ts` 不做 DFS 重排。** spec 要求「真实多级嵌套」，而 depth 的计算已经沿父链上溯、没有深度上限；`trace-queries.ts:245` 按 `startedAt asc` 排序，对这棵树而言时间序恰好等于 DFS 序。现有 test `'keeps API order while laying out nested and overlapping Spans'` 锁的就是「保持 API 顺序」这个契约，重排会直接违约。
+11. ~~**`trace-layout.ts` 不做 DFS 重排。**~~ **撤销（2026-09-20）。** 「时间序等于 DFS 序」这个前提在本 PR 的四层树上不成立：prepare 与它的父 attempt 之间没有 await，共享同一毫秒，排序退化成按 spanId 随机；而且 hrtime 未锚定 + 截断会让子 span 的毫秒数偶尔严格小于父亲的。任务 12 因此改为按父子结构做 DFS 排序、时间只用于兄弟之间，并有意替换掉那条「保持 API 顺序」的契约测试。详见任务 12。
 
 12. **不加「六种能力各一」的矩阵测试。** spec 测试表里这一条要求断言 image / speech / transcription / video 不写 `gen_ai.operation.name`。`__tests__/pipeline-helpers` 今天只有 language/raw 的 provider fixture，为四种能力各造一套 adapter fixture 的成本远大于收益；gating 本身是 `inference-span.ts` 里两张表的差集，语言路径那条 test（`genAiOperationName === 'chat'`）已经锁住了写入侧。spec 测试表的其余条目分布如下：墙钟前跳/后跳由「不回填 `startTime`」的硬约束从根上消除（任务 5 之后不存在传 `startTime` 的调用点）；延迟 EOF、取消、出口流报错由现有 `model-stream.*.test.ts` / `response-observation.test.ts` 覆盖，本 PR 不改这些行为。「不可重试状态但仍有候选」不另造场景 —— 判据由任务 5 那条「失败转移后成功则 GenAI span 不是 ERROR」从反面锁住，它测的是同一个东西：状态取自结算，不取自候选是否耗尽。
