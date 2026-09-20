@@ -225,3 +225,34 @@ describe('parseSystemOneBody content-encoding', () => {
     );
   });
 });
+
+// The non-finite scan visits every value in the body. A walk that recursed once per
+// level overflowed the call stack here, and a RangeError is not a SystemOneParseError,
+// so the pipeline answered a 5xx for a body `JSON.parse` accepted without complaint.
+// 50_000 levels is ~100 KB, far inside the encoded-body limit, and ~1.5x the depth at
+// which the recursive walk died, so the guard keeps biting as available stack varies.
+describe('parseSystemOneBody nesting depth', () => {
+  const DEPTH = 50_000;
+  // Built programmatically: the fixture is two repeated strings, not a pasted literal.
+  const nest = (leaf: string) => '['.repeat(DEPTH) + leaf + ']'.repeat(DEPTH);
+  const withDeep = (leaf: string) =>
+    post(`{"model":"m","state":"s","questions":{"q":{"type":"noul","instructions":"i"}},"deep":${nest(leaf)}}`);
+
+  it('accepts a deeply nested body of finite numbers rather than overflowing the stack', async () => {
+    expect((await parseSystemOneBody(withDeep('0'))).model).toBe('m');
+  });
+
+  it('still rejects a non-finite number buried at the bottom of that nesting', async () => {
+    await expect(parseSystemOneBody(withDeep('1e400'))).rejects.toBeInstanceOf(SystemOneParseError);
+    await expect(parseSystemOneBody(withDeep('1e400'))).rejects.toThrow('Request body contains a non-finite number');
+  });
+
+  // A 64 MiB body can hold millions of siblings, so pushing children with
+  // `push(...children)` would spread through the argument stack and reintroduce the
+  // very RangeError this walk exists to avoid — on a wide body instead of a deep one.
+  it('accepts a very wide array without overflowing the argument stack', async () => {
+    const wide = `[${new Array(2_000_000).fill('0').join(',')}]`;
+    const raw = post(`{"model":"m","state":"s","questions":{"q":{"type":"noul","instructions":"i"}},"wide":${wide}}`);
+    expect((await parseSystemOneBody(raw)).model).toBe('m');
+  });
+});

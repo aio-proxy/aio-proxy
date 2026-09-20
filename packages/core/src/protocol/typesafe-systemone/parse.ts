@@ -31,10 +31,29 @@ const isInputValue = (value: unknown): boolean =>
   typeof value === 'string' || Array.isArray(value) || isPlainObject(value);
 
 // JSON has no Infinity literal, but `JSON.parse('1e400')` yields Infinity.
-const hasNonFinite = (value: unknown): boolean => {
-  if (typeof value === 'number') return !Number.isFinite(value);
-  if (Array.isArray(value)) return value.some(hasNonFinite);
-  if (isPlainObject(value)) return Object.values(value).some(hasNonFinite);
+//
+// The walk is iterative over an explicit stack because recursing once per level
+// overflows the call stack on a deeply nested body, and a `RangeError` is not a
+// `SystemOneParseError`: the pipeline would answer a 5xx for a body this endpoint
+// should reject with a protocol-shaped 400. `JSON.parse` accepts far deeper input
+// than any recursive walk survives, so the depth is reachable well inside the body
+// size limit. Children are pushed in a loop rather than with `push(...children)`,
+// which spreads through the argument stack and throws the same `RangeError` on a
+// wide array. No cycle detection: `JSON.parse` cannot yield a self-referential
+// value, so every node is reached once and the total work stays bounded by the
+// already-enforced body size.
+const hasNonFinite = (root: unknown): boolean => {
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return true;
+    } else if (Array.isArray(value)) {
+      for (const item of value) pending.push(item);
+    } else if (isPlainObject(value)) {
+      for (const item of Object.values(value)) pending.push(item);
+    }
+  }
   return false;
 };
 
