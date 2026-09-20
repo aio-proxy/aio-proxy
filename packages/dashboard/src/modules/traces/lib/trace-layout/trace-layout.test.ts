@@ -1,8 +1,9 @@
+import { spawnSync } from 'node:child_process';
+
 import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { describe, expect, test } from '@rstest/core';
 
 import { layoutTraceSpans } from './trace-layout';
-
 const traceId = 'a'.repeat(32);
 const span = (
   spanId: string,
@@ -146,5 +147,50 @@ describe('layoutTraceSpans', () => {
         { ...route, startedAt: parse.startedAt },
       ]),
     ).toEqual(['root', 'route', 'parse']);
+  });
+
+  // 走在子进程里，因为这条测试守的是「不死循环」：删掉 measureDepths 里那句
+  // `seen.add(parent.spanId)`，挂在环下面的 span 会让向上走的循环永不退出。那是同步循环，
+  // 同进程的 test timeout 救不了它 —— 事件循环被占住，整个 suite 卡死。子进程 + SIGKILL
+  // 看门狗让回归在几秒内变红，而不是把 CI 挂到超时。
+  test('terminates on cyclic parents instead of looping, and still renders every row once', () => {
+    const moduleUrl = new URL('./trace-layout.ts', import.meta.url).href;
+    // `below` / `deeper` 是关键形状：它们自己不在环里，所以 seen 的初始值救不了，
+    // 只有把走过的父亲记进 seen 才能停下来。self 和两点环则由初始值兜住。
+    const probe = `
+      const { layoutTraceSpans } = await import(${JSON.stringify(moduleUrl)});
+      const span = (spanId, startedAt, parentSpanId) => ({
+        traceId: 'a'.repeat(32), spanId, parentSpanId, name: spanId, kind: 'INTERNAL',
+        startedAt, endedAt: startedAt, durationMs: 0, otelStatusCode: 'OK',
+        attributes: {}, events: [], links: [],
+      });
+      const rows = layoutTraceSpans([
+        span('cycle-a', '2026-07-12T08:00:00.010Z', 'cycle-b'),
+        span('cycle-b', '2026-07-12T08:00:00.020Z', 'cycle-a'),
+        span('below', '2026-07-12T08:00:00.030Z', 'cycle-a'),
+        span('deeper', '2026-07-12T08:00:00.040Z', 'below'),
+        span('self', '2026-07-12T08:00:00.050Z', 'self'),
+      ], new Date('2026-07-12T08:00:01.000Z'));
+      console.log(JSON.stringify(rows.map((row) => [row.spanId, row.depth])));
+    `;
+
+    const probeTimeoutMs = 5_000; // 正常跑完约 0.4s，这里只是看门狗，不是性能断言。
+    const result = spawnSync('bun', ['-e', probe], {
+      encoding: 'utf8',
+      timeout: probeTimeoutMs,
+      killSignal: 'SIGKILL',
+    });
+
+    // 被看门狗杀掉 == 没能自己停下来。这是这条测试真正守的那件事。
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+    // 环里的、环下面的、自己指自己的，全都退化成深度 0 的根，一行不多一行不少。
+    expect(JSON.parse(result.stdout)).toEqual([
+      ['cycle-a', 0],
+      ['cycle-b', 0],
+      ['below', 0],
+      ['deeper', 0],
+      ['self', 0],
+    ]);
   });
 });

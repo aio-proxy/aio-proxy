@@ -144,3 +144,35 @@ test('draws the TTFT tick on an attempt bar that measured first content', () => 
   // 只有 attempt 行画刻度，root 行没有这个属性。
   expect(screen.getAllByTestId('waterfall-ttft-tick')).toHaveLength(1);
 });
+
+// 首字是一个时刻，不是一段时间。刻度一旦有了宽度就变成「从 attempt 起点到首字」那根柱子，
+// 读者会把它当成一个独立阶段 —— 正是这个设计明确不要的东西。所以定位而不定宽是它的定义性质，
+// 光数出一个元素证明不了。
+test('positions the TTFT tick without giving it a width that tracks the value', () => {
+  const tickFor = (ttftMs: number) => {
+    const { unmount } = render(
+      <SpanWaterfall
+        spans={[spans[0]!, { ...spans[1]!, attributes: { [traceAttribute.attemptTtftMs]: ttftMs } }]}
+        selectedSpanId={undefined}
+        now={new Date('2026-07-12T08:00:01.000Z')}
+        onSelect={rs.fn()}
+      />,
+    );
+    const tick = screen.getByTestId('waterfall-ttft-tick');
+    const seen = { left: tick.style.left, width: tick.style.width, ariaHidden: tick.getAttribute('aria-hidden') };
+    unmount();
+    return seen;
+  };
+
+  // attempt 起点 10ms + TTFT 30ms，整条 trace 100ms → 40%。
+  const early = tickFor(30);
+  const late = tickFor(60);
+
+  expect(early.left).toBe('40%');
+  expect(late.left).toBe('70%');
+  // 位置随 TTFT 走，尺寸不跟着走：宽度完全交给类名里的 1px，没有内联宽度。
+  expect(early.width).toBe('');
+  expect(late.width).toBe('');
+  // 同一个数在详情面板的 TTFT 格子里有文字版，所以不往行的读屏文案里再塞一个数。
+  expect(early.ariaHidden).toBe('true');
+});
