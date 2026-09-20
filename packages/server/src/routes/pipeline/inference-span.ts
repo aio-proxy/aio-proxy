@@ -100,10 +100,12 @@ export function startInferenceSpan(
         settle(input);
         return session.finish(input);
       },
-      // Attaching our callback to the completion BEFORE handing it to the
-      // recorder is what keeps this span alive across a streaming response and
-      // still closes it before root.end() runs processor.take(), which drops
-      // every span still open.
+      // Hand the recorder a DERIVED promise rather than the caller's: our
+      // callback runs as a link in the chain, not as a co-registered listener,
+      // so the ordering is structural instead of depending on registration
+      // order. That is what keeps this span alive across a streaming response
+      // and still closes it before root.end() runs processor.take(), which
+      // drops every span still open.
       finishFrom: (completion) => {
         session.finishFrom(
           completion.then(

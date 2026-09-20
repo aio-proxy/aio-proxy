@@ -262,8 +262,10 @@ export async function attemptCandidates<TRequest, TContext>(
         selectionReason,
       },
       // Read at call time, not at slot construction: the attempt span is not
-      // open yet when this literal is built. Still undefined on the paths that
-      // call inAttempt before opening one, which then behave exactly as before.
+      // open yet when this literal is built. All five dispatch paths now assign
+      // spanRef before their first inAttempt call, so the undefined branch is
+      // unreachable today; it stays as the safe default for a future path that
+      // calls inAttempt first.
       inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T => {
         const open = spanRef.current;
         return withAttemptResponseObservation(observation, () =>
