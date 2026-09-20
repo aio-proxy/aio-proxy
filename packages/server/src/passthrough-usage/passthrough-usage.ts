@@ -259,6 +259,7 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
     case ProviderProtocol.OpenAIVideo:
+    // Placeholder arm; the real terminal-sentinel check lands in Task 12.
     case ProviderProtocol.TypeSafeSystemOne:
       return false;
     default:

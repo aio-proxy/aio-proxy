@@ -32,6 +32,12 @@ export function filterCandidatesByCapability<
       return candidateSupportsAudio(candidate, capability);
     }
     if (capability === 'video') return supportsVideo(candidate.provider.capabilityIndex, candidate.modelId);
+    // Evaluation is never language. A later task replaces this with
+    // `supportsEvaluation(candidate.provider.capabilityIndex, candidate.modelId)`
+    // once the capability index exposes it; until then decline explicitly, because
+    // the `supportsLanguage` fallthrough below would otherwise claim this capability
+    // and no type error would ever reveal it.
+    if (capability === 'evaluation') return false;
     return supportsLanguage(candidate.provider.capabilityIndex, candidate.modelId);
   });
 }
