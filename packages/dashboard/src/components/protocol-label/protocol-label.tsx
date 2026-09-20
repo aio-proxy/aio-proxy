@@ -1,5 +1,6 @@
 import { ProviderProtocol } from '@aio-proxy/types';
 import { cn } from '@aio-proxy/ui/lib/utils';
+import { Scale } from 'lucide-react';
 
 import { withLobeIcon } from '../lobe-icon';
 
@@ -48,16 +49,24 @@ const PROTOCOL_LABELS: Record<
   },
   [ProviderProtocol.TypeSafeSystemOne]: {
     label: 'TypeSafe System One',
-    icon: withLobeIcon('typesafe-ai'),
+    // Not a lobehub slug: `@lobehub/icons-static-*` publishes no TypeSafe asset,
+    // and `withLobeIcon` renders an <img> whatever the slug, so a missing one is
+    // an empty box in both themes rather than a visible failure. A lucide glyph
+    // is the honest fallback until an asset exists; scales read as evaluation
+    // beside the vendor logos above.
+    icon: Scale,
   },
 };
 
 /**
  * Protocol order for pickers. Rendering coverage and picker coverage are different questions:
  * `PROTOCOL_LABELS` must be exhaustive so a card never renders a blank icon, while the pickers offer
- * only the protocols a user may configure or filter by. `openai-image`, `openai-audio`, `openai-video`,
- * and `typesafe-systemone` render but are not offered.
+ * only the protocols a user may configure or filter by. `openai-image`, `openai-audio`, and
+ * `openai-video` render but are not offered.
  * OpenAI Compatible leads because it is what most third-party gateways speak.
+ * TypeSafe System One is last: it serves evaluation only, so it is a deliberate choice rather than
+ * one of the chat protocols a provider is usually reached on. Leaving it out would make the feature
+ * unconfigurable from the dashboard and hide its own traffic from the traces protocol filter.
  */
 export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
   ProviderProtocol.OpenAICompatible,
@@ -65,6 +74,7 @@ export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
   ProviderProtocol.Anthropic,
   ProviderProtocol.Gemini,
   ProviderProtocol.GeminiInteractions,
+  ProviderProtocol.TypeSafeSystemOne,
 ];
 
 const isProviderProtocol = (value: string): value is ProviderProtocol =>
