@@ -259,7 +259,9 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
     case ProviderProtocol.OpenAIVideo:
-    // Placeholder arm; the real terminal-sentinel check lands in Task 12.
+    // System One has no SSE terminal sentinel because it has no SSE: the response
+    // is one buffered JSON body, so completion is settled at EOF, which is where
+    // the whole payload — and therefore the usage object — is observed anyway.
     case ProviderProtocol.TypeSafeSystemOne:
       return false;
     default:

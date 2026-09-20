@@ -32,14 +32,32 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return openAIAudioUsage(value);
     case ProviderProtocol.OpenAIVideo:
       return openAIVideoUsage(value);
-    // Placeholder arm; real token extraction lands in Task 12. Reporting "absent"
-    // leaves the raw path recording no tokens rather than guessing at a payload
-    // shape this task does not yet read.
     case ProviderProtocol.TypeSafeSystemOne:
-      return { kind: 'absent' };
+      return systemOneUsage(value);
     default:
       return assertNever(protocol);
   }
+}
+
+// System One reports `usage.input_tokens` / `output_tokens` on the evaluation
+// response and no total, so the total is derived the way the Anthropic arm
+// derives its own. Both fields are nullish upstream, so an explicit `null` is
+// coerced to absent the way the Anthropic arm coerces its own: it is a
+// schema-conformant "not reported", not a malformed count, and treating it as
+// invalid would discard the whole row and bill nothing for a legitimate
+// response. Malformed counts (negative, fractional, non-numeric) still invalidate.
+function systemOneUsage(value: unknown): UsageExtraction {
+  if (!isPlainObject(value) || !isPlainObject(value['usage'])) return { kind: 'absent' };
+  const usage = value['usage'];
+  const inputTokens = usageNumber(usage['input_tokens'] ?? undefined, 'inputTokens');
+  const outputTokens = usageNumber(usage['output_tokens'] ?? undefined, 'outputTokens');
+  const input = fieldValue(inputTokens);
+  const output = fieldValue(outputTokens);
+  return tokenUsage({
+    inputTokens,
+    outputTokens,
+    totalTokens: usageNumber(input === undefined || output === undefined ? undefined : input + output, 'totalTokens'),
+  });
 }
 
 function interactionsUsage(value: unknown): UsageExtraction {

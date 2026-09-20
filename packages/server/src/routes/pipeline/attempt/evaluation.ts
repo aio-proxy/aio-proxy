@@ -3,7 +3,9 @@ import { EvaluationDistributionError } from '@aio-proxy/core';
 import { terminalCompletion } from '../../../route-observation';
 import type { LazyEvaluationTransport } from '../../../runtime';
 import { withoutCallerCredentialsOnRequest } from '../../../server/api-key-auth';
-import { attemptBase } from '../attempt-base';
+import type { UsageCompletion } from '../../../usage-capture';
+import { attemptBase, candidateConfigPrice } from '../attempt-base';
+import { publicSlug } from '../public-slug';
 import type { AttemptStep, CandidateSlot, EvaluationAttemptLoopContext } from './context';
 import { attemptLog } from './emit';
 import { emitReject } from './error';
@@ -94,11 +96,27 @@ async function convertEvaluationCandidate<TRequest, TContext>(
   }
   const response = Response.json(body);
   slot.spanRef.current = undefined;
+  const configPrice = candidateConfigPrice(
+    ctx.routerModels,
+    publicSlug(ctx.requestedModelId, candidate),
+    provider.id,
+    provider.upstreamMetadata?.[candidate.modelId]?.cost,
+  );
+  // Capture runs even without token counts: System One marks `usage` and both
+  // token fields nullish, so an unreported count is a legitimate row rather than
+  // a reason to bill nothing, and a flat per-request fee still applies.
+  const completion: Promise<UsageCompletion> = ctx.source.usageCapture.evaluation({
+    usage: result.usage,
+    providerId: provider.id,
+    modelId: candidate.modelId,
+    requestedModelId: ctx.requestedModelId,
+    ...(configPrice === undefined ? {} : { configPrice }),
+  });
   session.finishFrom(
     ctx.emitter.settleSuccess(
       attemptSpan,
       observation,
-      terminalCompletion(Promise.resolve({ outcome: 'success', statusCode: response.status }), rawRequest.signal),
+      terminalCompletion(completion, rawRequest.signal),
       { providerId: provider.id, modelId: candidate.modelId },
       response,
     ),

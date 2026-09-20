@@ -517,3 +517,56 @@ test('a candidate whose evaluate throws falls back to a healthy one through the 
   await route.recording.settle();
   expect(route.recording.attempts.map((attempt) => attempt.providerId)).toEqual(['flaky', 'healthy']);
 });
+
+test('records the reported evaluation tokens on the finished trace', async () => {
+  // Without this the convert path settles a synthetic success and bills nothing:
+  // a 200 leaves no usage row at all, so the request is served for free.
+  const provider = convertProvider(
+    'gateway',
+    discoveredTransport(async () => NOUL_RESULT),
+  );
+  const { ctx, route } = await harness();
+
+  const step = await attemptEvaluationCandidate(ctx, slot(provider));
+
+  expect(step.kind).toBe('return');
+  await route.recording.settle();
+  expect(route.recording.finals[0]).toMatchObject({
+    outcome: 'success',
+    finalProviderId: 'gateway',
+    usage: { providerId: 'gateway', modelId: MODEL_ID, inputTokens: 312, outputTokens: 48, totalTokens: 360 },
+  });
+});
+
+test('records an attributed row when convert reports no usage at all', async () => {
+  // `usage` is nullish in the System One schema, so an upstream that reports no
+  // counts is not an error. The row still has to exist to attribute the request.
+  const provider = convertProvider(
+    'gateway',
+    discoveredTransport(async () => ({ answers: { q: { type: 'noul', noul: 0.5 } } })),
+  );
+  const { ctx, route } = await harness();
+
+  const step = await attemptEvaluationCandidate(ctx, slot(provider));
+
+  expect(step.kind).toBe('return');
+  await route.recording.settle();
+  expect(route.recording.finals[0]?.usage).toMatchObject({ providerId: 'gateway', modelId: MODEL_ID });
+  expect(route.recording.finals[0]?.usage?.inputTokens).toBeUndefined();
+});
+
+test('bills evaluation against the upstream cost the provider reports', async () => {
+  const provider: RuntimeProviderInstance = {
+    ...convertProvider(
+      'oauth',
+      discoveredTransport(async () => NOUL_RESULT),
+    ),
+    upstreamMetadata: { [MODEL_ID]: { cost: { input: 5 } } },
+  };
+  const { ctx, route } = await harness();
+
+  const step = await attemptEvaluationCandidate(ctx, slot(provider));
+
+  expect(step.kind).toBe('return');
+  expect(route.usage.evaluation[0]?.configPrice).toEqual({ id: MODEL_ID, input: 5 });
+});

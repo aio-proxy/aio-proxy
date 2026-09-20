@@ -5,6 +5,7 @@ export {
   createUsageCapture,
   type Captured,
   type EmbeddingUsageOptions,
+  type EvaluationUsageOptions,
   type PassthroughUsageOptions,
   type StreamUsageOptions,
   type UsageCapture,

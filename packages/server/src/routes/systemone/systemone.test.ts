@@ -5,7 +5,7 @@ import { ProviderKind } from '@aio-proxy/types';
 
 import { createServer } from '#server-test-lifecycle';
 
-import type { RuntimeProviderInstance } from '../runtime';
+import type { RuntimeProviderInstance } from '../../runtime';
 
 const MODEL_ID = 'jev-latest';
 
