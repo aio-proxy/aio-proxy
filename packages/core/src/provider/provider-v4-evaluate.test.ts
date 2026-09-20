@@ -229,6 +229,31 @@ describe('createProviderV4Evaluate', () => {
     expect(() => createProviderV4Evaluate('p', provider)).not.toThrow();
   });
 
+  // A resolver that reads `this` is the shape a plain-object double cannot catch:
+  // extracting `provider.evaluationModel` once and calling it bare drops the
+  // receiver, so a class-based provider passes the capability probe and then fails
+  // every evaluation. `@ai-sdk/*` packages resolve off a closure and survive that;
+  // a class does not, and AGENTS.md admits class instances on capability contracts.
+  it('resolves through a class method that reads this', async () => {
+    class ClassProvider {
+      constructor(private readonly model: Experimental_EvaluationMockModelV4) {}
+      evaluationModel(_modelId: string): Experimental_EvaluationMockModelV4 {
+        return this.model;
+      }
+    }
+    const transport = createProviderV4Evaluate(
+      'p',
+      new ClassProvider(mock({ answers: { q: { type: 'boolean', probability: 0.61 } } })),
+    );
+
+    const result = await transport.evaluate(
+      { state: 's', questions: { q: { type: 'noul', instructions: 'i' } } },
+      { modelId: 'm' },
+    );
+
+    expect(result.answers['q']).toEqual({ type: 'noul', noul: 0.61 });
+  });
+
   it('still rejects a callable that resolves no evaluation model', () => {
     const callableWithout = Object.assign(() => undefined, { languageModel: () => undefined });
     expect(() => createProviderV4Evaluate('p', callableWithout)).toThrow(AiSdkProviderError);

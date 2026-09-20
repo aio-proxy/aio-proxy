@@ -340,12 +340,14 @@ export function createProviderV4Evaluate(providerId: string, provider: unknown):
   if (!hasEvaluationModel(provider)) {
     throw new AiSdkProviderError(providerId, 'ai-sdk provider does not expose an evaluation model resolver');
   }
-  const resolveModel = provider.evaluationModel;
-
   return {
     async evaluate(invocation, options) {
       const result = await experimental_evaluate({
-        model: asEvaluationModel(providerId, resolveModel(options.modelId)),
+        // Called as a method, like the language and embedding siblings above. A
+        // provider implemented as a class resolves its model through `this`, so
+        // extracting the function would pass the capability probe and then fail
+        // every evaluation on a receiver that is no longer there.
+        model: asEvaluationModel(providerId, provider.evaluationModel(options.modelId)),
         state: invocation.state as Experimental_EvaluationModelV4Input,
         questions: toSdkQuestions(invocation),
         // The pipeline owns retry and fallback. An SDK-level retry would hide the
