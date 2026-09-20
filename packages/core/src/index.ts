@@ -44,7 +44,7 @@ export {
 export { writeGeminiEmbeddingsResponse } from './egress/gemini-embeddings';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
 export { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from './egress/gemini-interactions';
-export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions';
+export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions/index';
 export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
   type OpenAIResponsesResponse,

@@ -4,7 +4,7 @@ import type { TextStreamPart, ToolSet } from 'ai';
 import {
   writeOpenAICompletionsResponse as writeOpenAICompletionsResponseRaw,
   writeOpenAICompletionsSSE as writeOpenAICompletionsSSERaw,
-} from '../../src/index';
+} from './openai-completions';
 
 const defaultEgress = { modelId: 'test-model' };
 export const writeOpenAICompletionsResponse = (
