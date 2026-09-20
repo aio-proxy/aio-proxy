@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -148,6 +149,28 @@ test('keeps all six metric cells, filling missing values with the placeholder', 
   const values = Array.from(grid.querySelectorAll('dd')).map((cell) => cell.textContent);
 
   expect(values).toEqual(['80 ms', '—', '40 ms', '8,412', '—', '1']);
+});
+
+// attempt 内隐藏重试时服务端不写 TTFT，格子会退回 `—`，和「没测到」长得一样。
+test('explains an unattributable TTFT instead of showing the missing-value placeholder', () => {
+  const ambiguous: DashboardTraceSpan = {
+    ...span,
+    attributes: { ...span.attributes, 'aio_proxy.response.transport_observation': 'ambiguous' },
+  };
+  const ttftCell = (subject: DashboardTraceSpan) => {
+    const { unmount } = render(<SpanDetailPanel span={subject} trace={trace} spans={[subject]} onFilter={rs.fn()} />);
+    const grid = within(screen.getByTestId('span-detail-panel')).getByTestId('span-metric-grid');
+    const value = Array.from(grid.querySelectorAll('dd'))[1]?.textContent;
+    unmount();
+    return value;
+  };
+
+  expect(ttftCell(ambiguous)).toBe(m['dashboard.traces.span_metric_ttft_ambiguous']());
+
+  // 老数据在 ambiguous 时也写过 TTFT。有数就显示数：解释只替换那个 `—`，不盖掉测到的值。
+  expect(ttftCell({ ...ambiguous, attributes: { ...ambiguous.attributes, 'aio_proxy.attempt.ttft_ms': 30 } })).toBe(
+    '30 ms',
+  );
 });
 
 test('renders the placeholder when no Span is selected', () => {

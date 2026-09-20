@@ -8,6 +8,7 @@ export interface SpanMetrics {
   readonly modelId: string | undefined;
   readonly durationMs: number;
   readonly ttftMs: number | undefined;
+  readonly transportObservation: string | undefined;
   readonly upstreamMs: number | undefined;
   readonly inputTokens: number | undefined;
   readonly outputTokens: number | undefined;
@@ -70,6 +71,7 @@ export const readSpanMetrics = (input: {
       numberAttribute(attributes, traceAttribute.attemptTtftMs) ??
       numberAttribute(attributes, traceAttribute.ttftMs) ??
       (isRoot ? trace.ttftMs : undefined),
+    transportObservation: stringAttribute(attributes, traceAttribute.transportObservation),
     upstreamMs: numberAttribute(attributes, traceAttribute.upstreamHeadersMs),
     inputTokens:
       numberAttribute(attributes, traceAttribute.inputTokens) ?? (isRoot ? trace.usage?.inputTokens : undefined),

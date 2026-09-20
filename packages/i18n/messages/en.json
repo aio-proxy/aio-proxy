@@ -1445,6 +1445,7 @@
       "span_status": "Status",
       "span_metric_total": "Total duration",
       "span_metric_ttft": "Time to first token",
+      "span_metric_ttft_ambiguous": "Not attributable (retried within this attempt)",
       "span_metric_upstream": "Upstream latency",
       "span_metric_attempts": "Attempts",
       "percentile_caption": "Compared with {count} {model} requests from the surrounding hour — at p{percentile}",

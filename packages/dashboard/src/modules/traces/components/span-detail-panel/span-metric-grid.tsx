@@ -14,10 +14,16 @@ export const SpanMetricGrid: React.FC<SpanMetricGridProps> = ({ metrics }) => {
   const duration = (value: number | undefined) => (value === undefined ? TRACE_PLACEHOLDER : formatDuration(value));
   const count = (value: number | undefined) => (value === undefined ? TRACE_PLACEHOLDER : formatCount.format(value));
 
+  // 测不到 TTFT 且 attempt 内观测到多次响应时，`—` 会被读成「没记到」。说清楚是归因不了。
+  const ttft =
+    metrics.ttftMs === undefined && metrics.transportObservation === 'ambiguous'
+      ? m['dashboard.traces.span_metric_ttft_ambiguous']()
+      : duration(metrics.ttftMs);
+
   // Always six cells: a stable position beats saving space when a value is missing.
   const cells = [
     [m['dashboard.traces.span_metric_total'](), duration(metrics.durationMs)],
-    [m['dashboard.traces.span_metric_ttft'](), duration(metrics.ttftMs)],
+    [m['dashboard.traces.span_metric_ttft'](), ttft],
     [m['dashboard.traces.span_metric_upstream'](), duration(metrics.upstreamMs)],
     [m['dashboard.traces.input_tokens'](), count(metrics.inputTokens)],
     [m['dashboard.traces.output_tokens'](), count(metrics.outputTokens)],

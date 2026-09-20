@@ -46,6 +46,17 @@ export const TraceWaterfallRow: React.FC<TraceWaterfallRowProps> = ({ row, selec
           className={cn('absolute inset-y-0 rounded-[3px]', barClassName)}
           style={{ left: `${row.offsetRatio * 100}%`, width: `${row.widthRatio * 100}%` }}
         />
+        {row.ttftRatio === undefined ? null : (
+          /* 首字刻度。装饰性重复：同一个数在详情面板的 TTFT 格子里有文字版，
+             所以这里 aria-hidden，不往行的读屏文案里再塞一个数。
+             比柱子高一点才看得见：压在柱子里面会被圆角和填充色吃掉。 */
+          <span
+            className="absolute inset-y-[-3px] w-px bg-foreground/70"
+            style={{ left: `${row.ttftRatio * 100}%` }}
+            data-testid="waterfall-ttft-tick"
+            aria-hidden="true"
+          />
+        )}
       </span>
       <span className="text-right font-mono text-xs text-muted-foreground tabular-nums">
         {formatDuration(row.durationMs)}

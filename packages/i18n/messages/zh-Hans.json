@@ -1445,6 +1445,7 @@
       "span_status": "状态",
       "span_metric_total": "总时长",
       "span_metric_ttft": "首字时延",
+      "span_metric_ttft_ambiguous": "无法归因（该 attempt 内发生了重试）",
       "span_metric_upstream": "上游耗时",
       "span_metric_attempts": "尝试次数",
       "percentile_caption": "与前后一小时内的 {count} 个 {model} 请求相比 — 处于 p{percentile}",

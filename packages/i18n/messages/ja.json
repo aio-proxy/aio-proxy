@@ -1445,6 +1445,7 @@
       "span_status": "ステータス",
       "span_metric_total": "総所要時間",
       "span_metric_ttft": "最初のトークンまでの時間",
+      "span_metric_ttft_ambiguous": "帰属不能（この試行内で再試行が発生）",
       "span_metric_upstream": "上流の所要時間",
       "span_metric_attempts": "試行回数",
       "percentile_caption": "前後 1 時間の {model} リクエスト {count} 件との比較 — p{percentile}",

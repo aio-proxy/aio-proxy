@@ -73,4 +73,37 @@ describe('layoutTraceSpans', () => {
     expect(rows[0]).toEqual(expect.objectContaining({ durationMs: 100, widthRatio: 100 / 160 }));
     expect(rows[1]).toEqual(expect.objectContaining({ offsetRatio: 10 / 160, widthRatio: 150 / 160 }));
   });
+
+  test('places a TTFT tick inside the attempt bar', () => {
+    const root = span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z');
+    const attempt = span('attempt', '2026-07-12T08:00:00.020Z', '2026-07-12T08:00:00.090Z', 'root');
+    const rows = layoutTraceSpans(
+      [root, { ...attempt, attributes: { 'aio_proxy.attempt.ttft_ms': 30 } }],
+      new Date('2026-07-12T08:00:01.000Z'),
+    );
+
+    // attempt 起点 20ms + TTFT 30ms = 整条 trace 的 50ms 处，100ms 跨度 → 0.5。
+    expect(rows[1]?.ttftRatio).toBe(0.5);
+    expect(rows[0]?.ttftRatio).toBeUndefined();
+  });
+
+  test('drops the TTFT tick when the attempt saw more than one response', () => {
+    const root = span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z');
+    const attempt = span('attempt', '2026-07-12T08:00:00.020Z', '2026-07-12T08:00:00.090Z', 'root');
+    const rows = layoutTraceSpans(
+      [
+        root,
+        {
+          ...attempt,
+          attributes: {
+            'aio_proxy.attempt.ttft_ms': 30,
+            'aio_proxy.response.transport_observation': 'ambiguous',
+          },
+        },
+      ],
+      new Date('2026-07-12T08:00:01.000Z'),
+    );
+
+    expect(rows[1]?.ttftRatio).toBeUndefined();
+  });
 });

@@ -130,3 +130,17 @@ test('scales ruler ticks to the whole trace, not to the root Span duration', () 
     [0, 40, 80, 120, 160].map((ms) => formatDuration(ms)).join(''),
   );
 });
+
+test('draws the TTFT tick on an attempt bar that measured first content', () => {
+  render(
+    <SpanWaterfall
+      spans={[spans[0]!, { ...spans[1]!, attributes: { [traceAttribute.attemptTtftMs]: 30 } }]}
+      selectedSpanId={undefined}
+      now={new Date('2026-07-12T08:00:01.000Z')}
+      onSelect={rs.fn()}
+    />,
+  );
+
+  // 只有 attempt 行画刻度，root 行没有这个属性。
+  expect(screen.getAllByTestId('waterfall-ttft-tick')).toHaveLength(1);
+});
