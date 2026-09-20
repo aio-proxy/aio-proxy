@@ -18,7 +18,12 @@ type FilterBuilders = Readonly<Record<string, (value: string) => TraceFilterPatc
 
 // Only the attributes the list page can actually query, keyed by the `traceSearchSchema` field they
 // filter on. Everything else gets no filter action rather than a link that silently matches nothing.
-// These keys are written by the root span alone, so their value already describes the whole trace.
+//
+// 这些 key 的值都描述整条调用链，所以哪个 span 带着它都能点。注意 `gen_ai.request.model`
+// 从任务 8 起不在 root 上了，改由那条推理 span 发 —— 路由解析阶段就被拒的调用链（比如
+// 模型名不存在）压根没有推理 span，于是没有任何 span 能点出「按请求模型筛选」，尽管 root
+// 行的 requestedModelId 列是有值的。要补这个缺口得在 root 上发一个 aio_proxy.* 名字的属性
+// （不能用 gen_ai.*，那等于把 root 重新变成 GenAI span），是一次会落库的新属性，待定。
 const filterBuilders: FilterBuilders = {
   [traceAttribute.finalProviderId]: (value) => ({ finalProviderId: value }),
   [traceAttribute.requestModel]: (value) => ({ requestedModelId: value }),
