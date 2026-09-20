@@ -1593,15 +1593,23 @@ The composed admission rule lives here. Two guarantees are easy to break and sil
 - Consumes: `supportsEvaluation` (Task 8), `EvaluationDiscovery` (Task 9), `isEvaluationProtocolAdapter` (Task 3), `EvaluationDistributionError` (Task 5).
 - Produces: `attemptEvaluationCandidate(ctx, slot): Promise<AttemptStep>`.
 
-- [ ] **Step 1: Add the capability-filter arm first**
+- [ ] **Step 1: Replace the placeholder capability-filter arm**
 
-`filterCandidatesByCapability` falls through to `supportsLanguage` for any capability without an explicit arm. Adding `'evaluation'` without touching this file compiles and then silently filters evaluation candidates by language support.
+`filterCandidatesByCapability` falls through to `supportsLanguage` for any capability without an explicit arm, and `capability` is a plain string union so TypeScript never flags it. Commit `7ad126f3` already put a placeholder guard there:
+
+```ts
+    if (capability === 'evaluation') return false;
+```
+
+**REPLACE that line.** Do not add an arm below it — that is dead code which still returns `false`, with no type error and no test failure, which is the exact silence the guard exists to prevent.
 
 ```ts
     if (capability === 'evaluation') {
       return supportsEvaluation(candidate.provider.capabilityIndex, candidate.modelId);
     }
 ```
+
+The durable protection is a test, not the comment. Assert that a provider whose capability index grants **only** `'evaluation'` **survives** this filter. That assertion fails loudly against both the placeholder `return false` and an appended-below arm, which no comment can do.
 
 - [ ] **Step 2: Write the failing test**
 
