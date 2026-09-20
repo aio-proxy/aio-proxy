@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.27.1
+
+### Patch Changes
+
+- [#395](https://github.com/aio-proxy/aio-proxy/pull/395) [`46d63d1`](https://github.com/aio-proxy/aio-proxy/commit/46d63d187f1e91165f6a29a63dbe960826e128e9) Thanks [@baranwang](https://github.com/baranwang)! - Route Pi-family gpt-, claude-, and gemini- models through their native Responses, Anthropic, and Gemini APIs while preserving OpenAI Completions as the fallback. GPT sessions now forward stable cache and affinity identifiers to aio-proxy. Pi and OMP display the provider as AIO Proxy.
+
 ## 0.27.0
 
 ### Minor Changes
