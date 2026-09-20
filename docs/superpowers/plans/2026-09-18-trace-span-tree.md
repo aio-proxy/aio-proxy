@@ -2805,21 +2805,21 @@ git commit -m "docs(demo): 静态 demo 对齐真实 span 树"
 
 以下 12 处是本计划**有意**不照 spec 做的地方。实施时按本计划执行；复核时不要把这些当成遗漏。
 
-1. **不实现 `aio_proxy.usage.resolve` span**（spec 的用量结算子 span）。`finalizeUsage()` 的 6 个调用点全部在 async 边界之后（流结束回调、`completion.then`），拿不到 pipeline 的 `Context`，要么回填 `startTime`（Global Constraints 明令禁止），要么把 context 一路穿进 6 个签名。收益是一个恒定几毫秒的叶子 span，不值这个改动面。
+1. **不实现 `aio_proxy.usage.resolve` span**（spec 的用量结算子 span）。**理由已更正（2026-09-20）：** 原文写「6 个调用点全部在 async 边界之后，拿不到 pipeline 的 `Context`」，两处都不对。`finalizeUsage()` 的调用点是 **5 个**，其中 `image-capture.ts:25`、`audio-capture.ts:20`、`embedding-capture.ts:14` 三处是普通 async 函数体里的直接调用，由 attempt 路径内联调起，attempt span 当时就是活动 context —— 拿不到 context 的只有 `stream-capture.ts:78`（流的 `complete()` 回调里）和 `passthrough-capture.ts:272`（observation 结算之后）这两处。真实的取舍因此窄得多：为了那两处要么回填 `startTime`（Global Constraints 明令禁止），要么把 context 穿进签名，而收益只是一个恒定几毫秒的叶子 span。结论不变，理由换成这一条。
 
-2. **root 上用 `server.address` + `url.path` 代替 spec 的 `url.full`。** query string 会带 API key、签名、`?token=`。写入 trace 就写进了 SQLite 和任何下游导出。两个分量拼起来足够定位路由，缺的只有参数。
+2. ~~**root 上用 `server.address` + `url.path` 代替 spec 的 `url.full`。**~~ **改写（2026-09-20）：落点写错了。** 这两个属性从来没上过 root —— 它们只在 `request-logging/wire/wire.ts:374` 的 `targetAttributes()` 里产生，挂在**上游 POST span** 上，记的是上游地址而不是入站 URL。root span 至今**没有任何 URL 属性**（recorder 只写 `request.id` / `protocol.inbound` / `operation` / `stream` / `fast`）。所以偏差其实是两条：spec 的 `url.full` 在 root 上整节没有实现；而上游那一跳记地址时，仍按下面的理由拆成 host + path。避开 query string 的理由不变：它会带 API key、签名、`?token=`，写进 trace 就写进了 SQLite 和任何下游导出。
 
 3. **`upstream.headers_ms` 留在 attempt span 上，不搬到 POST span。** 它由 `response-observation` 产出，挂在 attempt 的生命周期里；POST span 的 duration 本身就已经是「到响应头」的时长，搬过去是同一个数换个地方存。
 
-4. **不做 attempt 侧 `aio_proxy.provider.id` / `aio_proxy.response.*` → `aio_proxy.attempt.*` / `aio_proxy.upstream.*` 的整体改名。** 4 个文件的连锁改动、dashboard 的 key 表要跟着动，而用户看到的字段名在详情面板里本来就是翻译过的。只有任务 10 里那两个有实际语义冲突的（Langfuse 误判、OTel 已弃用名）才改。
+4. **不做 attempt 侧 `aio_proxy.provider.id` / `aio_proxy.response.*` → `aio_proxy.attempt.*` / `aio_proxy.upstream.*` 的整体改名。** 4 个文件的连锁改动、dashboard 的 key 表要跟着动，而用户看到的字段名在详情面板里本来就是翻译过的。**数目已更正（2026-09-20）：** 任务 10 实际改的是**三个** key，不是两个 —— Langfuse 误判那条理由覆盖了 attempt span 上的两个（`gen_ai.response.model` → `aio_proxy.attempt.model_id`、`aio_proxy.response.ttft_ms` → `aio_proxy.attempt.ttft_ms`），OTel 已弃用名那条覆盖第三个（`http.status_code` → `http.response.status_code`，只改常量的值）。这三个改动落在 **22 个文件**（`922f33e68`），也就是说「整体改名」被拒的成本参照系本身比原文记的更大。
 
-5. **root 继续保留 `aio_proxy.response.ttft_ms`。** 列表页的 `rowToSummary` 把它当字面量读，去掉就要动列表投影和历史行的读回。它与 attempt 的 `aio_proxy.attempt.ttft_ms`、GenAI span 的 `gen_ai.response.time_to_first_chunk` 是三个不同起点的量，共存不矛盾（见 Global Constraints）。
+5. **root 继续保留 `aio_proxy.response.ttft_ms`。** 列表页的 `rowToSummary` 把它当字面量读，去掉就要动列表投影和历史行的读回。**更正（2026-09-20）：原文说这是「三个不同起点的量」，其实只有两个起点。** root 的 `aio_proxy.response.ttft_ms` 和 attempt 的 `aio_proxy.attempt.ttft_ms` 都从**这一次 attempt 的起点**量起（`usage-capture/shared.ts:111-114` 的注释写明了这一点），两者是同一个起点的两份落点；只有 GenAI span 的 `gen_ai.response.time_to_first_chunk` 换了起点，从 inference span 自己的 `startedAt` 量起（`inference-span.ts:46`）。三个 key、两个起点，共存仍然不矛盾（见 Global Constraints）。
 
 6. **`AttemptInfo` 不新增 `startedAt`。** TTFT 改由 observation 观测、`snapshot()` 带出（任务 2），attempt span 自己的起点就是 span 的 `startTime`，不需要再传一份时间戳出来。
 
-7. **prepare span 只在 model 路径上开**（`attempt/model.ts`）。raw / image / audio / embedding 四条路径没有 `resolveInvocation` 那段可观测的准备工作，给它们加一个近乎零耗时的 span 只是噪声。`open === undefined` 的分支因此保留。
+7. **prepare span 只在 model 路径上开**（`attempt/model.ts`）。raw / image / audio / embedding 四条路径没有 `resolveInvocation` 那段可观测的准备工作，给它们加一个近乎零耗时的 span 只是噪声。**更正（2026-09-20）：** 原文接着说「`open === undefined` 的分支因此保留」，把两件事挂错了因果。`attempt.ts:279` 那个 `open` 是 **attempt span**（`spanRef.current`），与 prepare 无关；而五条路径（`raw.ts:55`、`model.ts:32`、`image.ts:69`、`audio.ts:102`、`embedding.ts:75`）都在自己的第一个 `inAttempt` 调用**之前**就赋了值，清空又都在其后，所以生产代码里这个分支**已经取不到**。分支保留着，但今天只有把 `inAttempt` 整个替掉的测试替身（`embedding.test.ts:124`、`audio.test.ts:128`）会走等价路径。留着是防御，不是活路径 —— `attempt.ts:265-266` 那句「Still undefined on the paths that call inAttempt before opening one」同样已经过时。
 
-8. **GenAI span 的结算走 session 包装，不改 13 个结算点。** spec 描述的是「在终态结算处关闭 GenAI span」；13 处 `session.finish` / `finishFrom` 调用点逐个改动风险远大于包一层 `RequestTraceSession`。依据是 `finishFrom` 的实现是 `void completion.then(...)`，同 promise 上先注册的回调先跑，GenAI span 一定关在 `root.end()` 之前。
+8. **GenAI span 的结算走 session 包装，不改 13 个结算点。** spec 描述的是「在终态结算处关闭 GenAI span」；13 处 `session.finish` / `finishFrom` 调用点逐个改动风险远大于包一层 `RequestTraceSession`。**依据已更正（2026-09-20）：** 原文说依据是「同 promise 上先注册的回调先跑」，那从来不是代码的样子，而且是个比实际弱的保证。`inference-span.ts:107-119` 交给 `session.finishFrom` 的是一个**派生 promise**（`completion.then(...)`），不是在同一个 promise 上多挂一个回调：recorder 能看到的那个 promise 必须等 `settle()` 跑完才会 resolve。这是数据依赖，不依赖注册顺序，因此 GenAI span 必定关在 `root.end()` 跑 `processor.take()` 之前。
 
 9. **不实现 spec 列出的三个 GenAI 属性**：`gen_ai.provider.name`（我们的 provider id 是用户自定义的 key，映射不到语义约定的枚举值）、`gen_ai.request.stream`（非标准，且 root 上已有等价信息）、`gen_ai.response.finish_reasons`（AI SDK 与 raw 两条路径的终止原因形状不同，归一本身就是一个独立课题）。
 
