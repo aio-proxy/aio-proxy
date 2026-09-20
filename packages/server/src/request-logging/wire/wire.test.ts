@@ -51,6 +51,7 @@ test('observes controlled identity SSE without enabling debug body logs', async 
     firstSseEventMs: 25,
     maxSseFramesPerRead: 2,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
 });
 
@@ -80,6 +81,7 @@ test('does not map compressed source reads to decoded SSE frames', async () => {
     upstreamHeadersMs: 10,
     firstUpstreamByteMs: 20,
     contentEncoding: 'gzip',
+    httpSends: 1,
   });
 });
 
@@ -92,7 +94,7 @@ test('records non-stream headers without controlled body metrics', async () => {
   const response = await withAttemptResponseObservation(observation, () => fetcher('https://upstream.test'));
   await response.text();
 
-  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10 });
+  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10, httpSends: 1 });
 });
 
 test('marks two resolved fetch responses as ambiguous', async () => {
@@ -104,7 +106,8 @@ test('marks two resolved fetch responses as ambiguous', async () => {
     await fetcher('https://upstream.test/two');
   });
 
-  expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous' });
+  // 同一 attempt 内两次 fetch —— httpSends 数到 2 正是同 provider 重试的可见证据。
+  expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', httpSends: 2 });
 });
 
 test('does not let response metric failures alter the fetch response', async () => {

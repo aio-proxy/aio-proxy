@@ -9,6 +9,7 @@ import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
 import { startPipelineSpan } from '../tracing';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
+import { genAiProviderNameFor } from './emit';
 import { emitReject, rejectRequestShape } from './error';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
@@ -56,7 +57,13 @@ export async function attemptModelCandidate<TRequest, TContext>(
   // too late for it to be a creation attribute, and the reject and unsupported
   // exits end the span the moment they are emitted.
   const target = slot.trace.targetProtocol;
-  if (target !== undefined) attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
+  if (target !== undefined) {
+    attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
+    // gen_ai.provider.name rides along: it is derived from the very protocol
+    // resolved here, so it cannot be a creation attribute either.
+    const providerName = genAiProviderNameFor(target);
+    if (providerName !== undefined) attemptSpan.span.setAttribute(attributeName.genAiProviderName, providerName);
+  }
   if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
   if (prepared.kind === 'unsupported') return emitReject(ctx, slot, prepared.response, 'unsupported_feature');
   const { candidateInvocation, targetProtocol } = prepared;

@@ -31,7 +31,10 @@ type RecordedRequest = {
   readonly attempts: readonly RecordedAttempt[];
 };
 
-const ATTEMPT_SPAN = 'aio_proxy.provider.attempt';
+// Attempt spans are now inference spans named `{operation} {model}`, so the name
+// is no longer a stable key. `aio_proxy.attempt.index` is: it exists on exactly
+// the spans that represent one provider attempt.
+const ATTEMPT_INDEX_ATTRIBUTE = 'aio_proxy.attempt.index';
 const UNPARSED_REQUESTED_MODEL_ID = '<unparsed>';
 
 export async function recorded(home: string) {
@@ -56,7 +59,7 @@ export async function recorded(home: string) {
 
 function toRequest(root: DashboardTraceSummary, spans: readonly DashboardTraceSpan[]): RecordedRequest {
   const attempts = spans
-    .filter((span) => span.name === ATTEMPT_SPAN)
+    .filter((span) => typeof span.attributes[ATTEMPT_INDEX_ATTRIBUTE] === 'number')
     .map(toAttempt)
     .sort((a, b) => a.index - b.index);
   return {

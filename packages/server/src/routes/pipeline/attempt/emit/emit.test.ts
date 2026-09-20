@@ -42,7 +42,7 @@ test('a failed attempt span carries the observed time to first content', () => {
     inboundRequest: new Request('http://localhost'),
     inboundProtocol: 'openai-chat',
   });
-  const emitter = createAttemptEmitter(session, true);
+  const emitter = createAttemptEmitter({ session, streamRequested: true, capability: 'language' });
   const observation = createAttemptResponseObservation({ startedAt: 100, now: () => 100 });
   observation.observeFetchStart();
   observation.observeResponse(new Response('body'), { controlledStream: false });

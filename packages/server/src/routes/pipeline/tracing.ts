@@ -39,7 +39,10 @@ export function startPipelineSpan(parent: Context, name: string, options: SpanOp
 
 export function applySpanTerminal(span: Span, terminal?: SpanTerminal): void {
   if (terminal === undefined || terminal.outcome === 'success') return;
-  span.setStatus({ code: SpanStatusCode.ERROR });
+  // 调用方主动取消不置 ERROR（http-spans.md：status left unset, error.type not set）。
+  // 终止原因照记 —— 区分取消靠它，不靠 span status。root span 那侧同规则，
+  // 见 request-trace-recorder/completion.ts。
+  if (terminal.outcome !== 'cancelled') span.setStatus({ code: SpanStatusCode.ERROR });
   span.setAttribute(attributeName.terminationReason, terminal.outcome);
   if (terminal.errorType !== undefined) span.setAttribute(attributeName.errorType, terminal.errorType);
   if (terminal.errorCode !== undefined) span.setAttribute(attributeName.errorCode, terminal.errorCode);

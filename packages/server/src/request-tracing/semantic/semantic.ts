@@ -6,6 +6,7 @@ export const spanName = {
   parse: 'aio_proxy.request.parse',
   session: 'aio_proxy.session.resolve',
   route: 'aio_proxy.route.resolve',
+  inference: 'aio_proxy.inference',
   attempt: 'aio_proxy.provider.attempt',
   prepare: 'aio_proxy.request.prepare',
   tokenCount: 'aio_proxy.token_count',
@@ -39,31 +40,46 @@ export const spanRegistry = {
     parent: ['request'],
     createdBy: 'routes/pipeline/index.ts',
   },
-  route: { name: spanName.route, kind: SpanKind.INTERNAL, parent: ['request'], createdBy: 'routes/pipeline/index.ts' },
+  route: {
+    name: spanName.route,
+    kind: SpanKind.INTERNAL,
+    parent: ['inference'],
+    createdBy: 'routes/pipeline/index.ts',
+  },
+  // 逻辑操作层：一次请求一条，覆盖路由解析与全部候选尝试。**不是** inference span ——
+  // 它没有单一上游，所以不带 gen_ai.operation.name / gen_ai.provider.name。
+  // 依据见 spec「三层模型」与 semantic-conventions-genai PR #475。
   inference: {
-    nameShape: '{operation} {model}',
-    kind: SpanKind.CLIENT,
+    name: spanName.inference,
+    kind: SpanKind.INTERNAL,
     parent: ['request'],
     createdBy: 'routes/pipeline/inference-span.ts',
   },
+  // 真正的 inference span：每个 provider 尝试一条，带该次尝试的真实 gen_ai.*。
+  // 同 provider 的退避重试收在一条里，表现为多条 POST 子 span。
+  inferenceAttempt: {
+    nameShape: '{operation} {model}',
+    kind: SpanKind.CLIENT,
+    parent: ['inference'],
+    createdBy: 'routes/pipeline/attempt/emit/emit.ts',
+  },
+  // token-count 路径专用：它调上游但不做推理，所以保留原名与 INTERNAL，直接挂 root。
   attempt: {
     name: spanName.attempt,
     kind: SpanKind.INTERNAL,
-    // startInferenceSpan 只在 routes/pipeline 里调用，token-count 那条路上没有 GenAI span，
-    // 它的 attempt 直接挂 root。
-    parent: ['inference', 'request'],
-    createdBy: 'routes/pipeline/attempt/emit/emit.ts',
+    parent: ['request'],
+    createdBy: 'routes/token-count/shared.ts',
   },
   prepare: {
     name: spanName.prepare,
     kind: SpanKind.INTERNAL,
-    parent: ['attempt'],
+    parent: ['inferenceAttempt'],
     createdBy: 'routes/pipeline/attempt/model.ts',
   },
   upstream: {
     nameShape: '{http.request.method}',
     kind: SpanKind.CLIENT,
-    parent: ['attempt'],
+    parent: ['inferenceAttempt', 'attempt'],
     createdBy: 'request-logging/wire/wire.ts',
   },
   tokenCount: {
@@ -111,10 +127,16 @@ export const attributeName = {
   finalProviderId: 'aio_proxy.route.final_provider_id',
   routeCandidateCount: 'aio_proxy.route.candidate_count',
   attemptIndex: 'aio_proxy.attempt.index',
-  // attempt span 是 aio-proxy 自己的转移机制，不是 GenAI span：它的模型和 TTFT 用自己的
-  // 命名空间，否则一条 trace 里 N 个 attempt 都长得像 GENERATION，token 数按 N 倍算。
+  // attempt span 现在就是 inference span，带标准 gen_ai.*。这几个 aio_proxy.attempt.* 与它们
+  // 并存不重复：model_id 是我们配置里的模型、ttft_ms 是不含转移的毫秒值、http_sends 数的是
+  // 本次尝试实际发了几次 HTTP（同 provider 的退避重试会让它 >1）。
   attemptModelId: 'aio_proxy.attempt.model_id',
   attemptTtftMs: 'aio_proxy.attempt.ttft_ms',
+  attemptHttpSends: 'aio_proxy.attempt.http_sends',
+  // 逻辑操作层专属：试了几个 provider，以及转移烧掉多少毫秒。
+  // gen_ai.gateway.* 落地后这两个自造 key 应换成标准名（见 spec「后续」）。
+  inferenceAttemptCount: 'aio_proxy.inference.attempt_count',
+  inferenceFailoverMs: 'aio_proxy.inference.failover_ms',
   providerId: 'aio_proxy.provider.id',
   providerKind: 'aio_proxy.provider.kind',
   providerWeight: 'aio_proxy.provider.weight',
@@ -135,6 +157,10 @@ export const attributeName = {
   errorCode: 'aio_proxy.error.code',
   terminationReason: 'aio_proxy.termination.reason',
   genAiRequestModel: 'gen_ai.request.model',
+  // Required 在 inference span 上。取该次尝试的上游协议口味，不是我们的 provider id ——
+  // 语义约定把它定义成 telemetry format 的判别器，明说 "may differ from the actual upstream
+  // provider … configured against a proxy"。映射见 emit.ts 的 PROVIDER_NAME。
+  genAiProviderName: 'gen_ai.provider.name',
   genAiResponseModel: 'gen_ai.response.model',
   genAiUsageInputTokens: 'gen_ai.usage.input_tokens',
   genAiUsageOutputTokens: 'gen_ai.usage.output_tokens',

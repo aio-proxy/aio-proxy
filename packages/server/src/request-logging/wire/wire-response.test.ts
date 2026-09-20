@@ -77,6 +77,7 @@ test('an unconsumed controlled response does not read its source', async () => {
     transportObservation: 'sse',
     upstreamHeadersMs: 10,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
 });
 
@@ -103,6 +104,7 @@ test('counts dispatched SSE events instead of comment blocks', async () => {
     firstSseEventMs: 10,
     maxSseFramesPerRead: 2,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
 });
 
@@ -129,6 +131,7 @@ test('continues counting after recoverable SSE parser errors', async () => {
     firstSseEventMs: 10,
     maxSseFramesPerRead: 1,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
 });
 

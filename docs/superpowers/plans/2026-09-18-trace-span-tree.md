@@ -23,7 +23,7 @@
 - 两个 TTFT 是**不同的量**，不是同一个数存两份：
   - `gen_ai.response.time_to_first_chunk` — GenAI span，**秒**（double），起点是 GenAI span 起点，**含**失败转移耗时，失败时**不写**。
   - `aio_proxy.attempt.ttft_ms` — 每个 attempt span，**毫秒**，起点是该 attempt span 起点，不含转移耗时，失败时**写**。
-- 六种能力的 span 名一律 `{operation} {model}`；`gen_ai.operation.name` **只在** `language` → `chat`、`embedding` → `embeddings` 时写，image / speech / transcription / video **不写**。`aio_proxy.capability` 始终写。
+- 六种能力的 span 名一律 `{operation} {model}`；`gen_ai.operation.name` **只在** `language` → `chat`、`embedding` → `embeddings` 时写，image / speech / transcription / video **不写**。`aio_proxy.capability` 始终写。**待拍板**：该属性在 GenAI span 上是 `Required`，不写等于这四种能力的 span 不是合规 GenAI span；而枚举是开集（"otherwise, a custom value MAY be used"），所以也可以给它们各写一个自定义值。本版保持不写，理由从「没有合法值可用」改为「不想造自定义值」。
 - **结算所有权硬约束**：`request-trace-recorder.ts:142-143` 是 `root.end()` 紧接 `processor.take(traceId)`，`take` 把 buffer 抽干删除，此后任何子 span 的 `onEnd` 都被静默丢弃；`Span.js:80-82` 也会拒绝对已结束 span 写属性。所以**不能把 span 包在自己结算 root 的函数外面**。
 - **不回填 `startTime`。** 任何 `tracer.startSpan(name, { startTime })` 都是错的：一旦传了 `startTime`，`span.end()` 不带时间戳会走 `Date.now()` 分支，起点是单调时钟、终点是墙钟，时钟校正直接算进 duration。顺序问题用重排顺序解决。
 - changeset 必须同时带上产品包 `aio-proxy` 和内部包（`@aio-proxy/core` / `server` 视改动而定），bump 级别一致；正文一段、≤5 行、不带区域前缀。
@@ -820,7 +820,7 @@ git commit -m "refactor(server): 请求整形失败改为返回拒绝信息由�
 
 **两个坑，都在 spec 里被点名：**
 
-1. **不能包在 `attemptResolvedRequest` 外面。** 路由解析在这个函数**内部**（`index.ts:259-265`），而 `route.resolve` span 是 GenAI span 的**兄弟**。所以 GenAI span 只能在函数内、`routeSpan.end()` 之后开。
+1. **起点在 `attemptResolvedRequest` 内、路由解析之前。** ~~不能包在外面，所以只能在 `routeSpan.end()` 之后开~~ —— **这条反了**（核一手 OTel 原文后更正，见 spec「三条被否决的画法」(a)）。规范要求 GenAI span 覆盖「含全部重试的逻辑操作」，而选出第一次 attempt 靠的就是路由解析，所以 `route.resolve` 是 GenAI span 的**子 span**。`requestedModel` 是 `attemptResolvedRequest` 的入参，起点前移后 `gen_ai.request.model` 当场就有。收益：路由失败的 trace 自然带一条 ERROR 的 GenAI span。
 2. **终点必须取终态结算，不是函数返回。** 流式路径在 completion 结算之前就 `return` 掉 `Response` 了（`raw.ts:169` / `image.ts:108` 的 `session.finishFrom`）。所以**绝不能**写 `finally { inference.end() }` —— 那会在流还在跑的时候就把 span 关掉，`gen_ai.*` 用量属性（任务 9）就永远写不进去。
 
 结算的钩子挂在 session 上而不是靠 `finally`：包一层 `RequestTraceSession`，`finish` 先关 GenAI span 再委托，`finishFrom` 则**先挂自己的 `.then` 再交给原 session**。后者成立的依据是 `request-trace-recorder.ts` 的 `finishFrom` 实现是 `void completion.then(...)` —— 同一个 promise 上先注册的回调先跑，所以 GenAI span 一定关在 `root.end()` → `processor.take()` 之前。
@@ -1011,11 +1011,16 @@ export function startInferenceSpan(
 
 `packages/server/src/routes/pipeline/index.ts`。import 区补 `import { startInferenceSpan } from './inference-span';`。
 
-任务 3 已经把 `routeSpan.end();` 放在了 `return await attemptCandidates({` 之前。把从 `routeSpan.end();` 到 `attemptCandidates({...})` 那一段改成：
+任务 3 已经把 `routeSpan.end();` 放在了 `return await attemptCandidates({` 之前。**GenAI span 要开在 `routeSpan` 之前**，`routeSpan` 改在它的 context 里创建，并且路由的两条失败出口都要先关掉 GenAI span：
 
 ```typescript
-    routeSpan.end();
     const inference = startInferenceSpan(session, adapter.capability, requestedModel);
+    const routeSpan = startPipelineSpan(inference.session.rootContext, spanName.route);
+    // …router.resolve() / filterCandidatesByCapability() 不变…
+    // catch 分支（RouterModelNotFoundError → 404）：routeSpan.end({outcome:'failure'}) 之后
+    // 补 inference.end({ outcome: 'failure' })，再 throw。
+    // eligible.length === 0 分支：同样在 rejectRequest 之前补 inference.end({ outcome: 'failure' })。
+    routeSpan.end();
     try {
       return await attemptCandidates({
         adapter,
@@ -1701,10 +1706,19 @@ git commit -m "refactor(core): gen_ai 属性不再挂在 root span 上"
 `ttftProperty()` 是**全部** 13 个结算点唯一的 ttft 来源（都是 `...ttftProperty(...)` 展开），
 改它一个函数就够，不用碰任何一个结算点。
 
-**不做的三个（记进「与 spec 的偏差」）：** `gen_ai.provider.name`（语义约定给的是
-`openai`/`anthropic` 这种固定枚举，我们手上只有 provider id 和 protocol，映射不干净）、
-`gen_ai.request.stream`（不是约定里的属性，root 上的 `aio_proxy.request.stream` 已经覆盖）、
-`gen_ai.response.finish_reasons`（全链路没有任何地方捕获 finish reason，属于新采集，不在本 PR）。
+**原本记成「不做的三个」，核一手原文后两条理由是错的：**
+
+1. `gen_ai.provider.name` —— 原因写「语义约定给的是固定枚举，我们只有 provider id 和 protocol，
+   映射不干净」。**两处都错。** 枚举是开集（"otherwise, a custom value MAY be used"）；更关键的是
+   这个属性**不是**上游 provider id ——1.43.0 自己的 JSDoc（`experimental_attributes.d.ts:6408-6413`）
+   就写着它是 "a discriminator that identifies the GenAI telemetry format flavor"，且
+   "may differ from the actual upstream provider… configured against a **proxy**"。
+   它取**入站协议口味**，我们手上一直有，而且它在 GenAI span 上是 `Required`。**改为要做。**
+2. `gen_ai.request.stream` —— 原因写「不是约定里的属性」。**错**，1.43.0 就导出
+   `ATTR_GEN_AI_REQUEST_STREAM`（`:6632`），registry 里是 `Conditionally Required` 的 boolean。
+   若因为 root 上已有等价信息而不做，那是**去重理由**，不是「非标准」。
+3. `gen_ai.response.finish_reasons` —— 这条**不做的理由成立**：全链路没有任何地方捕获 finish
+   reason，属于新采集。（注：属性本身是标准的，`ATTR_GEN_AI_RESPONSE_FINISH_REASONS`，`:6673`。）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2718,12 +2732,12 @@ git commit -m "feat(dashboard): 瀑布图画 TTFT 刻度，归因不了时给出
         { name: 'aio_proxy.request', start: 0, dur: 3420, depth: 0, status: 'success' },
         { name: 'aio_proxy.request.parse', start: 2, dur: 3, depth: 1, status: 'success' },
         { name: 'aio_proxy.session.resolve', start: 5, dur: 4, depth: 1, status: 'success' },
-        { name: 'aio_proxy.route.resolve', start: 9, dur: 6, depth: 1, status: 'success' },
-        { name: 'chat claude-sonnet-4-6', start: 16, dur: 3390, depth: 1, status: 'success' },
-        { name: 'aio_proxy.provider.attempt', start: 18, dur: 1186, depth: 2, status: 'failure' },
+        { name: 'aio_proxy.inference', start: 9, dur: 3397, depth: 1, status: 'success' },
+        { name: 'aio_proxy.route.resolve', start: 9, dur: 6, depth: 2, status: 'success' },
+        { name: 'chat claude-sonnet-4-6', start: 18, dur: 1186, depth: 2, status: 'failure' },
         { name: 'aio_proxy.request.prepare', start: 19, dur: 4, depth: 3, status: 'success' },
         { name: 'POST', start: 24, dur: 1174, depth: 3, status: 'failure' },
-        { name: 'aio_proxy.provider.attempt', start: 1210, dur: 2196, depth: 2, status: 'success', ttft: 612 },
+        { name: 'chat claude-sonnet-4-6', start: 1210, dur: 2196, depth: 2, status: 'success', ttft: 612 },
         { name: 'aio_proxy.request.prepare', start: 1211, dur: 1, depth: 3, status: 'success' },
         { name: 'POST', start: 1216, dur: 590, depth: 3, status: 'success' },
       ];
@@ -2821,10 +2835,194 @@ git commit -m "docs(demo): 静态 demo 对齐真实 span 树"
 
 8. **GenAI span 的结算走 session 包装，不改 13 个结算点。** spec 描述的是「在终态结算处关闭 GenAI span」；13 处 `session.finish` / `finishFrom` 调用点逐个改动风险远大于包一层 `RequestTraceSession`。**依据已更正（2026-09-20）：** 原文说依据是「同 promise 上先注册的回调先跑」，那从来不是代码的样子，而且是个比实际弱的保证。`inference-span.ts:107-119` 交给 `session.finishFrom` 的是一个**派生 promise**（`completion.then(...)`），不是在同一个 promise 上多挂一个回调：recorder 能看到的那个 promise 必须等 `settle()` 跑完才会 resolve。这是数据依赖，不依赖注册顺序，因此 GenAI span 必定关在 `root.end()` 跑 `processor.take()` 之前。
 
-9. **不实现 spec 列出的三个 GenAI 属性**：`gen_ai.provider.name`（我们的 provider id 是用户自定义的 key，映射不到语义约定的枚举值）、`gen_ai.request.stream`（非标准，且 root 上已有等价信息）、`gen_ai.response.finish_reasons`（AI SDK 与 raw 两条路径的终止原因形状不同，归一本身就是一个独立课题）。
+9. **不实现 spec 列出的 GenAI 属性里的两个**：`gen_ai.request.stream`（属性本身是标准的，`ATTR_GEN_AI_REQUEST_STREAM`；不做的理由是 root 上的 `aio_proxy.request.stream` 已覆盖，属去重）、`gen_ai.response.finish_reasons`（AI SDK 与 raw 两条路径的终止原因形状不同，归一本身就是一个独立课题）。**`gen_ai.provider.name` 已从本条移出，改为要做** —— 原先「provider id 映射不到固定枚举」的理由站不住：枚举是开集，且该属性取的是入站协议口味而不是上游 provider id（1.43.0 JSDoc `:6408-6413`），在 GenAI span 上还是 `Required`。
 
 10. **`aio_proxy.response.egress` span 不实现，常量删除。** spec:304 自己已经放弃了这个 span（egress 转换是同步的、微秒级）。任务 11 的注册表校验会逼出这个常量，直接删掉它而不是补一个创建点。
 
 11. ~~**`trace-layout.ts` 不做 DFS 重排。**~~ **撤销（2026-09-20）。** 「时间序等于 DFS 序」这个前提在本 PR 的四层树上不成立：prepare 与它的父 attempt 之间没有 await，共享同一毫秒，排序退化成按 spanId 随机；而且 hrtime 未锚定 + 截断会让子 span 的毫秒数偶尔严格小于父亲的。任务 12 因此改为按父子结构做 DFS 排序、时间只用于兄弟之间，并有意替换掉那条「保持 API 顺序」的契约测试。详见任务 12。
 
 12. **不加「六种能力各一」的矩阵测试。** spec 测试表里这一条要求断言 image / speech / transcription / video 不写 `gen_ai.operation.name`。`__tests__/pipeline-helpers` 今天只有 language/raw 的 provider fixture，为四种能力各造一套 adapter fixture 的成本远大于收益；gating 本身是 `inference-span.ts` 里两张表的差集，语言路径那条 test（`genAiOperationName === 'chat'`）已经锁住了写入侧。spec 测试表的其余条目分布如下：墙钟前跳/后跳由「不回填 `startTime`」的硬约束从根上消除（任务 5 之后不存在传 `startTime` 的调用点）；延迟 EOF、取消、出口流报错由现有 `model-stream.*.test.ts` / `response-observation.test.ts` 覆盖，本 PR 不改这些行为。「不可重试状态但仍有候选」不另造场景 —— 判据由任务 5 那条「失败转移后成功则 GenAI span 不是 ERROR」从反面锁住，它测的是同一个东西：状态取自结算，不取自候选是否耗尽。
+
+---
+
+## Task 14: 改三层 —— 逻辑操作层 / inference span / POST
+
+**2026-09-21 追加。** 任务 1–13 已由提交落地，本任务是它们之上的增量重构。
+起因见 spec「第三轮：查完 OTel 的 gateway 现状后，改成三层」。一句话：
+今天那条横跨全部 attempt 的 `{operation} {model}` CLIENT span 承担了两个互相冲突的角色 ——
+既要测「整个逻辑操作含转移」，又要带 `gen_ai.provider.name` 这个单值 Required 属性。
+拆成两层各管一件事。
+
+### 目标形状
+
+```
+aio_proxy.request                    SERVER
+├─ aio_proxy.request.parse           INTERNAL
+├─ aio_proxy.session.resolve         INTERNAL
+├─ aio_proxy.inference               INTERNAL   ← 原 {operation} {model}，改名改 kind
+│  ├─ aio_proxy.route.resolve        INTERNAL   ← 从 request 改挂到这里
+│  ├─ chat claude-sonnet-4-5         CLIENT     ← 原 aio_proxy.provider.attempt
+│  │  ├─ aio_proxy.request.prepare   INTERNAL
+│  │  └─ POST                        CLIENT     ← 可多条（见 Step 6）
+│  └─ chat claude-sonnet-4-5         CLIENT
+│     ├─ aio_proxy.request.prepare   INTERNAL
+│     └─ POST                        CLIENT
+└─ aio_proxy.usage.resolve           INTERNAL
+```
+
+**token-count 路径不变**：`routes/token-count/shared.ts:45` 仍创建 INTERNAL 的
+`aio_proxy.provider.attempt`，挂 root。它不是推理调用，不能叫 `{operation} {model}`。
+这是 `spanName.attempt` 的两个创建点分道扬镳的地方，注册表要拆成两条声明。
+
+### 属性重新分配
+
+| 属性 | 原位置 | 新位置 |
+|---|---|---|
+| `gen_ai.request.model` | `{operation} {model}` | **两层都有**（父层用于路由失败时可检索，子层是送给该 provider 的） |
+| `aio_proxy.capability` | 同上 | 父层 |
+| `gen_ai.response.time_to_first_chunk` | 同上 | 父层（含转移） |
+| `gen_ai.operation.name` | 同上 | **子层**（父层不写 —— 它不是 inference span） |
+| `gen_ai.provider.name` | 不存在 | **子层，新增**，取该次尝试的上游协议口味 |
+| `gen_ai.response.model` / `response.id` / 全套 `usage.*` | 父层 | **子层** |
+| `aio_proxy.inference.attempt_count` / `failover_ms` | 不存在 | 父层，新增 |
+| `aio_proxy.attempt.http_sends` | 不存在 | 子层，新增 |
+| `aio_proxy.attempt.*`（index / provider_id / model_id / ttft_ms） | 子层 | 不变 |
+
+### Step 1: 注册表拆成两条声明
+
+`request-tracing/semantic/semantic.ts`：
+
+- `spanName` 加 `inference: 'aio_proxy.inference'`，`attempt` 保持
+  `'aio_proxy.provider.attempt'`（token-count 还在用）。
+- `spanRegistry.inference` 改成 `{ name: spanName.inference, kind: INTERNAL, parent: ['request'],
+  createdBy: 'routes/pipeline/inference-span.ts' }`。
+- 新增 `spanRegistry.inferenceAttempt`：`{ nameShape: '{operation} {model}', kind: CLIENT,
+  parent: ['inference'], createdBy: 'routes/pipeline/attempt/emit/emit.ts' }`。
+- `spanRegistry.attempt` 改成 `{ name: spanName.attempt, kind: INTERNAL, parent: ['request'],
+  createdBy: 'routes/token-count/shared.ts' }` —— 只剩 token-count 一个创建点，
+  parent 里的 `'inference'` 删掉。
+- `spanRegistry.prepare.parent` 与 POST span 的 parent 从 `['attempt']` 改成
+  `['inferenceAttempt', 'attempt']`（token-count 路径不开 prepare，但 POST 两边都有）。
+- 属性名加：`inferenceAttemptCount: 'aio_proxy.inference.attempt_count'`、
+  `inferenceFailoverMs: 'aio_proxy.inference.failover_ms'`、
+  `attemptHttpSends: 'aio_proxy.attempt.http_sends'`、
+  `genAiProviderName: 'gen_ai.provider.name'`。
+
+注册表的 colocated 测试会逼着 Step 2/3 把创建点对上，所以这一步单独跑会红 —— 允许，
+Step 1–3 是一个提交。
+
+### Step 2: `inference-span.ts` 改成父层
+
+- span 名从 `` `${OPERATION_VERB[capability]} ${requestedModelId}` `` 改成 `spanName.inference`，
+  kind 从 `CLIENT` 改 `INTERNAL`。
+- 创建时的属性只留 `capability` + `genAiRequestModel`。**删掉** `genAiOperationName`
+  —— 它归子层。`GEN_AI_OPERATION` 这张表整个移到 `emit.ts`。
+- `inferenceAttributes()` 只留 `genAiTimeToFirstChunk`。**删掉** `genAiResponseModel`、
+  `genAiResponseId`、`usageAttributes()` —— 三项归子层。`usageAttributes` 整个函数移走。
+- 新增：`InferenceSpan` 暴露一个 `noteAttempt()` 回调，候选循环每开一条子 span 调一次，
+  用来累计 `attempt_count`；`settle()` 时把 `attempt_count` 与
+  `failover_ms = 本层耗时 − 最后一条子 span 耗时` 落上去。
+  最后一条子 span 的耗时由 `endAttempt` 回填给父层（新增一个 setter，别从 span 读）。
+- `OPERATION_VERB` 六个值改成 spec 的新词表：`image` → `image_generation`、
+  `video` → `video_generation`，`speech` / `transcription` 不变。
+
+### Step 3: `emit.ts` 的 attempt 改成 inference span
+
+`routes/pipeline/attempt/emit/emit.ts`：
+
+- `createAttemptEmitter(session, streamRequested)` 加两个入参：`capability` 与
+  `requestedModelId`（`attempt.ts:108` 的调用点一并改，那里两者都在手）。
+- `startAttempt()`：span 名从 `spanName.attempt` 改成
+  `` `${OPERATION_VERB[capability]} ${base.modelId}` ``，`kind: SpanKind.CLIENT`。
+  注意用 `base.modelId`（**这个 provider 实际收到的模型**）而不是 `requestedModelId`，
+  两者在有模型重写时不同。
+- 创建属性里加：
+  - `genAiOperationName`：六种能力全写，`language` → `chat`、`embedding` → `embeddings`，
+    其余四个写自定义值（与 `OPERATION_VERB` 同表，见 Step 2）。
+  - `genAiProviderName`：取该次尝试的上游协议口味，映射见 Step 4。
+  - `genAiRequestModel`：`base.modelId`。
+- `endAttempt()` 里加：`genAiResponseModel`、`genAiResponseId`、`usageAttributes(usage)`。
+  这三项目前只在 `settleSuccess` 的 `completion.then(value)` 里拿得到，所以
+  `endAttempt` 要多收一个可选的 `completion` 参数；失败路径不传，三项就不写。
+  `usageAttributes()` 从 `inference-span.ts` 搬过来。
+- `attemptHttpSends`：见 Step 6。
+
+**命名禁区作废**：`gen_ai.request.model` / `gen_ai.response.model` 现在**允许**出现在这一层，
+这正是三层模型的要点。原先禁它们的测试要反过来断言它们存在。
+
+### Step 4: `gen_ai.provider.name` 的取值
+
+取**该次尝试实际打的上游协议口味**，不是我们的 provider id。`AttemptInfo` 上已有
+`targetProtocol`（`ProviderProtocol`），映射到语义约定的 well-known 值：
+
+| `targetProtocol` | `gen_ai.provider.name` |
+|---|---|
+| `anthropic` | `anthropic` |
+| `openai-response` / `openai-compatible` | `openai` |
+| `gemini` | `gcp.gemini` |
+| 其余 / `undefined` | 不写该属性 |
+
+依据：registry 的 well-known 值列表里 `anthropic`、`openai`、`gcp.gemini` 都在；
+且枚举是开集（"otherwise, a custom value MAY be used"），所以不在表里的将来可以加。
+`targetProtocol` 为空时**宁可不写**，也不要瞎猜 —— 它是 `Conditionally Required`
+在 metric 上、`Required` 在 span 上，但写错值比缺值更糟（它是聚合的判别器）。
+
+⚠ 实现时先确认 `ProviderProtocol` 的实际取值，别照抄上表 —— 以 `@aio-proxy/types`
+里的联合类型为准，缺哪个补哪个。
+
+### Step 5: `route.resolve` 改挂到父层
+
+`routes/pipeline/index.ts`：`startInferenceSpan(...)` 从 `:316`（`routeSpan.end()` 之后）
+上移到 `:279` 的 `startPipelineSpan(..., spanName.route)` **之前**，routeSpan 改用
+`inference.session.rootContext` 创建。两条路由失败出口要在 root 结算前关掉父层并置 ERROR：
+
+- `:298` 的 `throw`（`RouterModelNotFoundError` → 404）
+- `:301-313` 的 `eligible.length === 0` → `rejectRequest`
+
+两处都是 `inference.end({ outcome: 'failure' })`，放在现有 `routeSpan.end({outcome:'failure'})`
+之后、`throw` / `rejectRequest` 之前。
+
+### Step 6: POST span 表达多次发送 + `http_sends`
+
+今天 `createObservedFetch` 每次 fetch 开一条 POST span，父节点取当前 attempt 上下文，
+所以**多条 POST 已经能画出来** —— 这一步只补计数与文档：
+
+- `AttemptResponseObservation` 加一个 `httpSends` 计数，`createObservedFetch` 每次发送 +1。
+- `endAttempt` 从 `snapshot()` 读出来落 `attemptHttpSends`。
+- 两个来源要在注释里写清：`raw-retry.ts` 的隐藏重放（至多 +1），以及
+  **AI SDK `maxRetries` 默认 2**（`ai@7.0.8`，我们从不赋值，一次尝试最多 3 次 HTTP）。
+  `onLanguageModelCallStart` 在 `retry()` 外面（`dist/index.js:5334` notify、`:5342` retry），
+  所以 hook 看不到重试，HTTP 层是唯一观测点。
+
+**本 PR 不改 `maxRetries` 的值，也不加配置项。** 只让它可见。
+
+### Step 7: 取消的 span 状态改 UNSET
+
+`request-tracing/.../completion.ts:29-37` 今天 `failure` 与 `cancelled` 都置
+`SpanStatusCode.ERROR`。`cancelled` 改成不置状态（UNSET）且不写 `error.type`。
+
+依据：`http-spans.md` "the cancellation SHOULD NOT be treated as an error: the span status
+SHOULD be left unset and `error.type` SHOULD NOT be set"。
+
+⚠ 与 `adaf2e63`「取消的 span 不再画成绿色」交互：那次改动靠 `TraceStatus` 而不是 span status
+区分取消，所以这里改 UNSET 不会让取消又变绿。**必须带一个断言锁住这一点**，否则下次有人把
+渲染改回读 span status 就静默回归。
+
+### Step 8: 读路径与 dashboard 跟上
+
+- `span-record.ts` 的 `ALLOWED_ATTRIBUTES` 补四个新 key。
+- `span-projection.ts:225-231` 的 root 重建：断言从「唯一一个带 `gen_ai.*` 的 span」
+  改成「root 上没有任何 `gen_ai.*`」。
+- dashboard `span-metrics.ts` / `trace-attribute-names.ts`：TTFT 两个 key 的读取层变了
+  （父层读 `gen_ai.response.time_to_first_chunk`，子层读 `aio_proxy.attempt.ttft_ms`），
+  「按最终模型筛选」的入口 span 从原 GenAI span 变成父层。
+- demo fixture（本文件 Task 13 那段）跟上三层深度。
+
+### 验收
+
+- `span-tree.test.ts`：一次失败转移断言 5 层深度、父层 INTERNAL、两条子 span 各自 CLIENT
+  且 `gen_ai.provider.name` 不同、父层无 `gen_ai.operation.name`。
+- 路由失败：父层存在、ERROR、带 `gen_ai.request.model`，没有任何子 inference span。
+- 转移后成功：父层 UNSET，失败那条子 span ERROR。
+- 取消：span status UNSET 且 dashboard 仍判为取消（不是成功）。
+- token-count 路径：span 名仍是 `aio_proxy.provider.attempt`、kind INTERNAL、挂 root。

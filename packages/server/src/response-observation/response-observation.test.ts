@@ -34,6 +34,7 @@ test('records one controlled SSE response against the candidate baseline', () =>
     firstContentMs: 30,
     maxSseFramesPerRead: 2,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
 });
 
@@ -57,6 +58,7 @@ test('keeps meaningful zero timings and ignores empty reads', () => {
     transportObservation: 'sse',
     upstreamHeadersMs: 0,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
 
   body?.observeRead(1, 0);
@@ -72,7 +74,24 @@ test('keeps meaningful zero timings and ignores empty reads', () => {
     firstContentMs: 0,
     maxSseFramesPerRead: 0,
     contentEncoding: 'identity',
+    httpSends: 1,
   });
+});
+
+// 同 provider 的退避重试是 AI SDK 默认 maxRetries=2 与 raw-retry 隐藏重放的共同出口，
+// 而两者都绕过 SDK 回调（onLanguageModelCallStart 在 retry() 外面）。HTTP 层的这个计数
+// 是它们唯一的可见证据，掉了就等于「一次 attempt 打了三次」这件事再也看不见。
+test('counts every upstream send inside one attempt', () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('first'), { controlledStream: false });
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('retry'), { controlledStream: false });
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('retry again'), { controlledStream: false });
+
+  expect(observation.snapshot().httpSends).toBe(3);
 });
 
 test('keeps content gaps local to each response after two responses', () => {
@@ -86,7 +105,7 @@ test('keeps content gaps local to each response after two responses', () => {
   observation.observeResponse(new Response('two'), { controlledStream: false });
   observation.observeContent(100);
   observation.observeContent(105);
-  expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', contentGapP95Ms: 10 });
+  expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', contentGapP95Ms: 10, httpSends: 2 });
 });
 
 test('records the first content timestamp against the candidate baseline', () => {
@@ -118,7 +137,7 @@ test('records headers but omits controlled-body metrics for a platform-managed r
   const observation = createAttemptResponseObservation({ startedAt: 10, now: () => 10 });
   observation.observeFetchStart();
   expect(observation.observeResponse(new Response('body'), { controlledStream: false })).toBeUndefined();
-  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 0 });
+  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 0, httpSends: 1 });
 });
 
 describe('content encoding', () => {

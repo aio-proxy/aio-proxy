@@ -11,6 +11,13 @@ export type AttemptResponseSnapshot = {
   readonly contentGapP95Ms?: number;
   readonly maxSseFramesPerRead?: number;
   readonly contentEncoding?: 'identity' | 'gzip' | 'deflate' | 'br' | 'zstd' | 'multiple' | 'other';
+  // Upstream responses seen inside this one attempt. >1 means same-provider
+  // retries happened underneath us: raw-retry's hidden replay (at most one), or
+  // the AI SDK's maxRetries, which defaults to 2 and that we never set. Those
+  // retries are invisible to the SDK's own callbacks -- onLanguageModelCallStart
+  // fires outside its retry() wrapper -- so the HTTP layer is the only place
+  // they can be counted.
+  readonly httpSends?: number;
 };
 
 export type ResponseBodyObservation = {
@@ -121,6 +128,7 @@ export function createAttemptResponseObservation(options: {
         ...(contentGapP95Ms === undefined ? {} : { contentGapP95Ms }),
         ...(raw && maxSseFramesPerRead !== undefined ? { maxSseFramesPerRead } : {}),
         ...(raw && contentEncoding !== undefined ? { contentEncoding } : {}),
+        ...(responseCount === 0 ? {} : { httpSends: responseCount }),
       };
     },
   };

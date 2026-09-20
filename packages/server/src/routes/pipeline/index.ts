@@ -276,7 +276,13 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     deferred = true;
   };
   try {
-    const routeSpan = startPipelineSpan(session.rootContext, spanName.route);
+    // The logical-operation layer opens BEFORE route resolution: it has to cover
+    // the step that picks the first candidate, otherwise it cannot claim to span
+    // "the logical operation with all retries". That also means a routing failure
+    // still produces this span, carrying gen_ai.request.model, so those traces
+    // stay retrievable by model. requestedModel is already an argument here.
+    const inference = startInferenceSpan(session, adapter.capability, requestedModel);
+    const routeSpan = startPipelineSpan(inference.session.rootContext, spanName.route);
     let eligible;
     try {
       const candidates = routeSpan.run(() =>
@@ -290,8 +296,12 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
       });
     } catch (error) {
       // The outer catch turns RouterModelNotFoundError into a 404 and settles
-      // the root; this span has to be closed first.
+      // the root; both spans have to be closed first, innermost first.
       routeSpan.end({
+        outcome: 'failure',
+        ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
+      });
+      inference.end({
         outcome: 'failure',
         ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
       });
@@ -300,6 +310,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     routeSpan.span.setAttribute(attributeName.routeCandidateCount, eligible.length);
     if (eligible.length === 0) {
       routeSpan.end({ outcome: 'failure', errorCode: 'not_implemented' });
+      inference.end({ outcome: 'failure', errorCode: 'not_implemented' });
       const error = new Error('No eligible provider candidates for inbound capability');
       return rejectRequest({
         source,
@@ -313,7 +324,6 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
       });
     }
     routeSpan.end();
-    const inference = startInferenceSpan(session, adapter.capability, requestedModel);
     try {
       return await attemptCandidates({
         adapter,
@@ -329,6 +339,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         session: inference.session,
         source,
         streamRequested,
+        onAttemptEnd: inference.noteAttempt,
         ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
       });
     } catch (error) {

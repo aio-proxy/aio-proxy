@@ -31,7 +31,11 @@ export function applyTerminalAttributes(root: Span, finish: RequestTraceFinishIn
     if (finish.errorType !== undefined) root.setAttribute(attributeName.errorType, finish.errorType);
     if (finish.errorCode !== undefined) root.setAttribute(attributeName.errorCode, finish.errorCode);
   } else if (finish.outcome === 'cancelled') {
-    root.setStatus({ code: SpanStatusCode.ERROR });
+    // HTTP 语义约定：调用方主动取消不是错误 —— "the cancellation SHOULD NOT be treated as
+    // an error: the span status SHOULD be left unset and `error.type` SHOULD NOT be set"。
+    // 客户端断连就是这种取消，所以这里只记终止原因，不置 ERROR。
+    // 仪表盘区分取消靠的是 terminationReason（TraceStatus），不是 span status ——
+    // completion.test.ts 有断言钉住这一点，别把渲染改回读 span status。
     root.setAttribute(attributeName.terminationReason, 'cancelled' as TraceTerminationReason);
   }
 

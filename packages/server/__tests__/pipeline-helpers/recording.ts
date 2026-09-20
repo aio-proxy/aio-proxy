@@ -71,7 +71,15 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
 }
 
 function projectAttempts(spans: readonly StoredSpan[]): RecordedAttempt[] {
-  return spans.filter((span) => span.name === spanName.attempt).map(projectAttempt);
+  // Attempt spans are inference spans now, named `{operation} {model}` at
+  // runtime, so the name is no longer a key. `aio_proxy.attempt.index` is the
+  // stable marker — but token-count's skipped-candidate spans carry it too, and
+  // those are passed-over candidates, not attempts. Exclude them by name.
+  return spans
+    .filter(
+      (span) => span.attributes[attributeName.attemptIndex] !== undefined && span.name !== spanName.candidateSkipped,
+    )
+    .map(projectAttempt);
 }
 
 function projectAttempt(span: StoredSpan): RecordedAttempt {

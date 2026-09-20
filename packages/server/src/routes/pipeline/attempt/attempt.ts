@@ -55,6 +55,9 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly deferRelease: () => void;
   readonly resolution: LogicalSessionResolution;
   readonly release: () => void;
+  // Reports each finished attempt's duration to the logical-operation layer so it
+  // can record how many providers were tried and what failover cost.
+  readonly onAttemptEnd?: (durationMs: number) => void;
   readonly onSuccessfulAttempt?: (info: {
     readonly provider: RuntimeProviderInstance;
     readonly modelId: string;
@@ -105,7 +108,12 @@ function createAttemptLoopContext<TRequest, TContext>(
     },
     sessionIdentity: resolution.identity,
     streamRequested,
-    emitter: createAttemptEmitter(session, streamRequested),
+    emitter: createAttemptEmitter({
+      session,
+      streamRequested,
+      capability: adapter.capability,
+      ...(options.onAttemptEnd === undefined ? {} : { onAttemptEnd: options.onAttemptEnd }),
+    }),
     release,
     deferRelease,
     logFailure: (index, attempt: AttemptLog, failureKind, fallback, detail = {}) =>

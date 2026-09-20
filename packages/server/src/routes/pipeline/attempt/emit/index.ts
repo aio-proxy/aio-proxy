@@ -1,1 +1,1 @@
-export { type AttemptEmitter, attemptLog, createAttemptEmitter } from './emit';
+export { type AttemptEmitter, attemptLog, createAttemptEmitter, genAiProviderNameFor } from './emit';
