@@ -1,0 +1,173 @@
+import { describe, expect, it } from 'bun:test';
+
+import { APICallError, type Experimental_EvaluationModelV4Result as SdkEvaluationResult } from '@ai-sdk/provider';
+import { Experimental_EvaluationMockModelV4 } from 'ai/test';
+
+import { createProviderV4Evaluate } from './provider-v4';
+
+const providerWith = (model: unknown) => ({ evaluationModel: () => model });
+
+const mock = (options: {
+  readonly answers: SdkEvaluationResult['answers'];
+  readonly providerMetadata?: SdkEvaluationResult['providerMetadata'];
+  readonly usage?: SdkEvaluationResult['usage'];
+}) =>
+  new Experimental_EvaluationMockModelV4({
+    supportedQuestionTypes: ['boolean', 'choice', 'score'],
+    doEvaluate: async () => ({
+      answers: options.answers,
+      warnings: [],
+      ...(options.providerMetadata === undefined ? {} : { providerMetadata: options.providerMetadata }),
+      ...(options.usage === undefined ? {} : { usage: options.usage }),
+    }),
+  });
+
+describe('createProviderV4Evaluate', () => {
+  it('sends noul as boolean and maps the answer back to noul', async () => {
+    let seen: unknown;
+    const model = new Experimental_EvaluationMockModelV4({
+      supportedQuestionTypes: ['boolean'],
+      doEvaluate: async (options) => {
+        seen = options.questions;
+        return { answers: { q: { type: 'boolean', probability: 0.97 } }, warnings: [] };
+      },
+    });
+    const transport = createProviderV4Evaluate('p', providerWith(model));
+    const result = await transport.evaluate(
+      { state: 's', questions: { q: { type: 'noul', instructions: 'i' } } },
+      { modelId: 'm' },
+    );
+    expect((seen as Record<string, { type: string }>)['q']?.type).toBe('boolean');
+    expect(result.answers['q']).toEqual({ type: 'noul', noul: 0.97 });
+  });
+
+  it('lifts confidence out of providerMetadata keyed by question id', async () => {
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(
+        mock({
+          answers: { c: { type: 'choice', choice: 'billing', probabilities: { billing: 1 } } },
+          providerMetadata: { typesafe: { confidence: { c: 0.84 } } },
+        }),
+      ),
+    );
+    const result = await transport.evaluate(
+      {
+        state: 's',
+        questions: { c: { type: 'choice', instructions: 'i', criteria: { billing: null } } },
+      },
+      { modelId: 'm' },
+    );
+    expect(result.answers['c']).toEqual({
+      type: 'choice',
+      choice: 'billing',
+      probabilities: { billing: 1 },
+      confidence: 0.84,
+    });
+  });
+
+  it('passes probabilities through and omits them when the provider sends none', async () => {
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(mock({ answers: { s: { type: 'score', score: 1 } } })),
+    );
+    const result = await transport.evaluate(
+      { state: 's', questions: { s: { type: 'score', instructions: 'i', criteria: ['lo', 'hi'] } } },
+      { modelId: 'm' },
+    );
+    expect(result.answers['s']).toEqual({ type: 'score', score: 1 });
+  });
+
+  it('omits usage when neither token count is reported', async () => {
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(mock({ answers: { q: { type: 'boolean', probability: 0.5 } } })),
+    );
+    const result = await transport.evaluate(
+      { state: 's', questions: { q: { type: 'noul', instructions: 'i' } } },
+      { modelId: 'm' },
+    );
+    expect(result).toEqual({ answers: { q: { type: 'noul', noul: 0.5 } } });
+  });
+
+  it('maps reported input and output token counts onto usage', async () => {
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(
+        mock({
+          answers: { q: { type: 'boolean', probability: 0.5 } },
+          usage: { inputTokens: 11, outputTokens: 3 },
+        }),
+      ),
+    );
+    const result = await transport.evaluate(
+      { state: 's', questions: { q: { type: 'noul', instructions: 'i' } } },
+      { modelId: 'm' },
+    );
+    expect(result.usage).toEqual({ inputTokens: 11, outputTokens: 3 });
+  });
+
+  it('carries string, object, and array state through to doEvaluate intact', async () => {
+    for (const state of ['text', { a: 1 }, [1, 2]]) {
+      let seen: unknown;
+      const model = new Experimental_EvaluationMockModelV4({
+        supportedQuestionTypes: ['boolean'],
+        doEvaluate: async (options) => {
+          seen = options.state;
+          return { answers: { q: { type: 'boolean', probability: 0.5 } }, warnings: [] };
+        },
+      });
+      await createProviderV4Evaluate('p', providerWith(model)).evaluate(
+        { state, questions: { q: { type: 'noul', instructions: 'i' } } },
+        { modelId: 'm' },
+      );
+      expect(seen).toEqual(state);
+    }
+  });
+
+  it('forwards the abort signal to the SDK call', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(mock({ answers: { q: { type: 'boolean', probability: 0.5 } } })),
+    );
+    await expect(
+      transport.evaluate(
+        { state: 's', questions: { q: { type: 'noul', instructions: 'i' } } },
+        { modelId: 'm', signal: controller.signal },
+      ),
+    ).rejects.toThrow();
+  });
+
+  // A retryable non-abort failure is the only shape that proves `maxRetries: 0`:
+  // the SDK checks the abort signal before every attempt, so an aborted call
+  // would report one attempt even with retries enabled. It must also be a real
+  // `APICallError` — the SDK's `shouldRetry` ignores an `isRetryable` property on
+  // a plain Error, so a hand-rolled one would never be retried either way.
+  it('does not retry a retryable provider failure: exactly one doEvaluate call', async () => {
+    let calls = 0;
+    const model = new Experimental_EvaluationMockModelV4({
+      supportedQuestionTypes: ['boolean'],
+      doEvaluate: async () => {
+        calls += 1;
+        throw new APICallError({
+          message: 'upstream 503',
+          url: 'https://example.invalid/evaluate',
+          requestBodyValues: {},
+          statusCode: 503,
+          isRetryable: true,
+        });
+      },
+    });
+    const transport = createProviderV4Evaluate('p', providerWith(model));
+    await expect(
+      transport.evaluate({ state: 's', questions: { q: { type: 'noul', instructions: 'i' } } }, { modelId: 'm' }),
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
+  it('throws when the package exposes no evaluationModel', () => {
+    expect(() => createProviderV4Evaluate('p', {})).toThrow(/evaluation/);
+  });
+});

@@ -1,4 +1,12 @@
-import type { ProviderV4 } from '@ai-sdk/provider';
+import type {
+  Experimental_EvaluationModelV4,
+  Experimental_EvaluationModelV4Input,
+  Experimental_EvaluationModelV4Question,
+  Experimental_EvaluationModelV4Result,
+  ProviderV4,
+} from '@ai-sdk/provider';
+import { isRecord } from '@aio-proxy/shared';
+import { experimental_evaluate } from 'ai';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { embed, embedMany, streamAiSdkText } from '../ai-sdk-bridge';
@@ -8,6 +16,9 @@ import type {
   EmbeddingProviderOptions,
   EmbeddingResult,
   EmbeddingValue,
+  EvaluationAnswer,
+  EvaluationInvocation,
+  EvaluationResult,
 } from '../protocol/adapter';
 import type { AiSdkProviderInstance } from './ai-sdk/index';
 
@@ -290,4 +301,107 @@ function promptTokenCount(body: unknown): unknown {
 
 function isUsableTokenCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+export type ProviderV4EvaluateOptions = {
+  readonly modelId: string;
+  readonly signal?: AbortSignal;
+};
+
+export type ProviderV4EvaluateTransport = {
+  readonly evaluate: (
+    invocation: EvaluationInvocation,
+    options: ProviderV4EvaluateOptions,
+  ) => Promise<EvaluationResult>;
+};
+
+export function createProviderV4Evaluate(providerId: string, provider: unknown): ProviderV4EvaluateTransport {
+  if (!isRecord(provider) || typeof provider['evaluationModel'] !== 'function') {
+    throw new AiSdkProviderError(providerId, 'ai-sdk provider does not expose an evaluation model resolver');
+  }
+  const resolveModel = provider['evaluationModel'] as (modelId: string) => unknown;
+
+  return {
+    async evaluate(invocation, options) {
+      const result = await experimental_evaluate({
+        // Always an explicitly resolved model INSTANCE, never a bare string id. At
+        // ai@7.0.107 a string resolves through `AI_SDK_DEFAULT_PROVIDER ?? gateway`,
+        // so passing one would silently route to Gateway instead of the candidate the
+        // pipeline selected: the call would succeed against the wrong provider and
+        // bill the wrong account.
+        model: resolveModel(options.modelId) as Experimental_EvaluationModelV4,
+        state: invocation.state as Experimental_EvaluationModelV4Input,
+        questions: toSdkQuestions(invocation),
+        // The pipeline owns retry and fallback. An SDK-level retry would hide the
+        // extra attempts from traces and double this candidate's time budget.
+        maxRetries: 0,
+        ...(options.signal === undefined ? {} : { abortSignal: options.signal }),
+      });
+
+      const answers = Object.fromEntries(
+        Object.entries(result.answers).map(([id, answer]): [string, EvaluationAnswer] => [
+          id,
+          toEvaluationAnswer(id, answer, result.providerMetadata),
+        ]),
+      );
+      const usage = toEvaluationUsage(result.usage);
+      return { answers, ...(usage === undefined ? {} : { usage }) };
+    },
+  };
+}
+
+type SdkEvaluationAnswer = Experimental_EvaluationModelV4Result['answers'][string];
+
+// SDK questions use `boolean` where the System One wire uses `noul`. Only that
+// envelope is rebuilt: `validateEvaluationInput` accepts choice/score questions
+// unchanged, so passing them through verbatim is both correct and cheaper.
+function toSdkQuestions(invocation: EvaluationInvocation): Record<string, Experimental_EvaluationModelV4Question> {
+  return Object.fromEntries(
+    Object.entries(invocation.questions).map(([id, question]): [string, Experimental_EvaluationModelV4Question] => [
+      id,
+      (question.type === 'noul'
+        ? { ...question, type: 'boolean' }
+        : question) as Experimental_EvaluationModelV4Question,
+    ]),
+  );
+}
+
+function toEvaluationAnswer(id: string, answer: SdkEvaluationAnswer, metadata: unknown): EvaluationAnswer {
+  // A noul answer carries no confidence: `probability` is already P(true).
+  if (answer.type === 'boolean') {
+    return { type: 'noul', noul: answer.probability };
+  }
+
+  const confidence = confidenceFor(metadata, id);
+  const extras = {
+    // Distributions pass through untouched. Refusing an absent one is egress's
+    // concern, not the transport's.
+    ...(answer.probabilities === undefined ? {} : { probabilities: answer.probabilities }),
+    ...(confidence === undefined ? {} : { confidence }),
+  };
+  return answer.type === 'choice'
+    ? { type: 'choice', choice: answer.choice, ...extras }
+    : { type: 'score', score: answer.score, ...extras };
+}
+
+// `confidence` has no home in the SDK's neutral answer shape, so TypeSafe reports
+// it as provider metadata keyed by question id.
+function confidenceFor(metadata: unknown, id: string): number | undefined {
+  if (!isRecord(metadata)) return undefined;
+  const typesafe = metadata['typesafe'];
+  if (!isRecord(typesafe)) return undefined;
+  const confidence = typesafe['confidence'];
+  if (!isRecord(confidence)) return undefined;
+  const value = confidence[id];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function toEvaluationUsage(usage: Experimental_EvaluationModelV4Result['usage']): EvaluationResult['usage'] {
+  const inputTokens = usage?.inputTokens;
+  const outputTokens = usage?.outputTokens;
+  if (inputTokens === undefined && outputTokens === undefined) return undefined;
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+  };
 }
