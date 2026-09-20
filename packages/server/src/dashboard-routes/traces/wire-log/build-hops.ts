@@ -1,9 +1,16 @@
 import type { DashboardTraceWireHop } from '@aio-proxy/types';
 import { sortBy } from 'es-toolkit/array';
 
+import { redactUrlCredentials } from '../../../request-logging/request-metadata';
 import { headersField, numberField, stringField, type WireEvent } from './parse-line';
 
 type BodyOutcome = 'complete' | 'cancelled' | 'error';
+
+// 这个修复之前落盘的行里，query 凭据是明文。写侧的脱敏只对新日志生效，所以读出来再过一遍。
+const redactedUrlField = (event: WireEvent): string | undefined => {
+  const url = stringField(event, 'url');
+  return url === undefined ? undefined : redactUrlCredentials(url);
+};
 
 export type BodyDraft = {
   /** 按 `sequence` 升序、已经裁到预算以内的分块；`kept` 是它们的字符数之和。 */
@@ -55,7 +62,7 @@ export function applyWireEvent(drafts: HopDrafts, event: WireEvent): void {
   if (eventName === 'request.inbound_snapshot') {
     const hop = inboundHop(drafts);
     hop.method = stringField(event, 'method');
-    hop.url = stringField(event, 'url');
+    hop.url = redactedUrlField(event);
     hop.requestHeaders = headersField(event, 'headers');
     return;
   }
@@ -63,7 +70,7 @@ export function applyWireEvent(drafts: HopDrafts, event: WireEvent): void {
     const hop = attemptHop(drafts, event);
     if (hop === undefined) return;
     hop.method = stringField(event, 'method');
-    hop.url = stringField(event, 'url');
+    hop.url = redactedUrlField(event);
     hop.requestHeaders = headersField(event, 'headers');
     return;
   }

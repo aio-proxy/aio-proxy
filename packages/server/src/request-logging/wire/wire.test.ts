@@ -216,7 +216,7 @@ test('debug fetch does not tap openai-video request bodies', async () => {
 
 test('debug inbound observation logs complete consumed input', async () => {
   const logs: ServerLog[] = [];
-  const request = new Request('https://proxy.test/v1/responses?api_key=visible-query', {
+  const request = new Request('https://proxy.test/v1/responses?api_key=query-secret', {
     method: 'POST',
     headers: { authorization: 'hidden', 'content-type': 'application/json', 'x-client': 'visible' },
     body: '{"input":"visible-input","token":"visible-body-token"}',
@@ -232,7 +232,7 @@ test('debug inbound observation logs complete consumed input', async () => {
   expect(logs).toContainEqual(
     expect.objectContaining({
       event: 'request.inbound_snapshot',
-      url: 'https://proxy.test/v1/responses?api_key=visible-query',
+      url: 'https://proxy.test/v1/responses?api_key=%5BREDACTED%5D',
       headers: expect.objectContaining({ authorization: '[REDACTED]', 'x-client': 'visible' }),
     }),
   );
@@ -252,7 +252,7 @@ test('debug fetch logs complete delegated request and consumed response', async 
 
   const response = await inDebugAttempt(logs, () =>
     fetcher(
-      new Request('https://upstream.test/v1/responses?token=visible-query', {
+      new Request('https://upstream.test/v1/responses?token=query-secret', {
         method: 'POST',
         headers: {
           authorization: 'Bearer hidden',
@@ -278,7 +278,7 @@ test('debug fetch logs complete delegated request and consumed response', async 
   expect(logs).toContainEqual(
     expect.objectContaining({
       event: 'request.upstream_snapshot',
-      url: 'https://upstream.test/v1/responses?token=visible-query',
+      url: 'https://upstream.test/v1/responses?token=%5BREDACTED%5D',
       headers: expect.objectContaining({ authorization: '[REDACTED]', 'x-observable': 'visible-header' }),
     }),
   );
@@ -391,4 +391,26 @@ test('the upstream span is named after the request method, normalized', async ()
     'http.request.method': 'PATCH',
     'url.path': '/v1/models',
   });
+});
+
+// URL 认证是真实形状（Google 的 ?key=、各家的 ?api_key=），而 header 那份名单保护不到它。
+// 抓包接口把记下的 URL 原样送进浏览器，所以这里漏一个就是把可直接冒用的凭据交出去。
+test('redacts credential query parameters from captured urls', async () => {
+  const logs: ServerLog[] = [];
+  const request = new Request(
+    'https://proxy.test/v1/responses?api_key=query-secret&access_token=tok-secret&sig=sig-secret&keyword=visible&stream=true',
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' },
+  );
+
+  withRequestLogContext({ requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) }, () =>
+    observeInboundRequest(request, 'openai-response'),
+  );
+
+  const snapshot = JSON.stringify(logs.find((entry) => entry.event === 'request.inbound_snapshot'));
+  expect(snapshot).not.toContain('query-secret');
+  expect(snapshot).not.toContain('tok-secret');
+  expect(snapshot).not.toContain('sig-secret');
+  // 按词匹配而不是整串包含：`keyword` 里有 key，但它不是凭据，误脱了调试就难查。
+  expect(snapshot).toContain('keyword=visible');
+  expect(snapshot).toContain('stream=true');
 });
