@@ -1,5 +1,27 @@
 # @aio-proxy/core
 
+## 0.27.0
+
+### Patch Changes
+
+- [#386](https://github.com/aio-proxy/aio-proxy/pull/386) [`6273746`](https://github.com/aio-proxy/aio-proxy/commit/62737462d25a35c9d6051a7dd3ad510fb0125cc5) Thanks [@foriLLL](https://github.com/foriLLL)! - Chat Completions streaming now shapes tool-call chunks the way OpenAI does: the first chunk carries the call id and function name, every chunk after it carries only the argument delta. Clients that concatenate the fields they receive no longer end up with duplicated JSON, a repeated call id or tool name, or broken tool calls such as a bash `command` of `{`.
+- Updated dependencies [[`bafe0fa`](https://github.com/aio-proxy/aio-proxy/commit/bafe0fa2277d32ff502cf03f0cdb7e96c7970c30)]:
+  - @aio-proxy/i18n@0.27.0
+  - @aio-proxy/logger@0.27.0
+  - @aio-proxy/plugin-sdk@0.27.0
+  - @aio-proxy/plugin-claude-code@0.27.0
+  - @aio-proxy/plugin-cursor@0.27.0
+  - @aio-proxy/plugin-github-copilot@0.27.0
+  - @aio-proxy/plugin-google-antigravity@0.27.0
+  - @aio-proxy/plugin-kimi-code@0.27.0
+  - @aio-proxy/plugin-muse-code@0.27.0
+  - @aio-proxy/plugin-openai-chatgpt@0.27.0
+  - @aio-proxy/plugin-opencode-go@0.27.0
+  - @aio-proxy/plugin-openrouter@0.27.0
+  - @aio-proxy/plugin-xai-grok@0.27.0
+  - @aio-proxy/shared@0.27.0
+  - @aio-proxy/types@0.27.0
+
 ## 0.26.0
 
 ### Minor Changes
