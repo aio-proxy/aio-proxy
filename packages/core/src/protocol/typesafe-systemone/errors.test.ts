@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { Experimental_EvaluationUnsupportedQuestionTypeError } from 'ai';
+
 import {
   InvalidCompressedRequestBodyError,
   RequestBodyTooLargeError,
@@ -147,6 +149,26 @@ describe('systemOneErrors.provider', () => {
       systemOneErrors.provider(new RequestBodyTooLargeError('Request body too large')),
     ];
     expect(declined).toEqual([undefined, undefined]);
+  });
+
+  // Raised by `experimental_evaluate` itself, before the model is called. Reporting
+  // an upstream fault for it tells the caller a provider failed when none was
+  // contacted, and hides that the requested evaluation shape is the problem.
+  it('reports an unsupported question type as 501, not as an upstream failure', async () => {
+    const response = systemOneErrors.provider(
+      new Experimental_EvaluationUnsupportedQuestionTypeError({
+        questionId: 'q',
+        questionType: 'choice',
+        provider: 'gateway',
+        modelId: 'jev-latest',
+      }),
+    );
+
+    expect(response?.status).toBe(501);
+    expect(await response?.json()).toEqual({
+      message: 'Unsupported: evaluation_question_type',
+      error_type: 'not_supported_error',
+    });
   });
 
   // The stance that made this mapper decline in the first place: an attempt failure

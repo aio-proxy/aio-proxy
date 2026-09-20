@@ -1,3 +1,5 @@
+import { Experimental_EvaluationUnsupportedQuestionTypeError } from 'ai';
+
 import type { ProtocolErrorMapper } from '../adapter';
 import {
   InvalidCompressedRequestBodyError,
@@ -16,6 +18,8 @@ const json = (message: string, errorType: string, status: number): Response =>
     status,
     headers: { 'content-type': 'application/json' },
   });
+
+const unsupportedFeature = (feature: string): Response => json(`Unsupported: ${feature}`, 'not_supported_error', 501);
 
 export const systemOneErrors: ProtocolErrorMapper = {
   // Selective by design: the caller's fault arrives as `SystemOneParseError` (bad
@@ -36,7 +40,7 @@ export const systemOneErrors: ProtocolErrorMapper = {
   previousResponseConflict: () => json('Not supported for evaluation', 'invalid_request_error', 400),
   tooLarge: () => json('Request body is too large', 'invalid_request_error', 413),
   unsupportedContentEncoding: () => json('Unsupported content encoding', 'invalid_request_error', 415),
-  unsupported: (feature) => json(`Unsupported: ${feature}`, 'not_supported_error', 501),
+  unsupported: (feature) => unsupportedFeature(feature),
   // Every throw from an attempt must map to a response: `handleAttemptError`
   // rethrows what it cannot map, which exits the candidate loop, so a request
   // whose next candidate is healthy would die here and no cooldown would be
@@ -55,6 +59,16 @@ export const systemOneErrors: ProtocolErrorMapper = {
   provider: (error) => {
     if (error instanceof UnsupportedContentEncodingError || error instanceof RequestBodyTooLargeError) {
       return undefined;
+    }
+    // `experimental_evaluate` raises this itself, before the model is called, when
+    // the resolved evaluation model's `supportedQuestionTypes` does not cover a
+    // question. Nothing upstream was contacted, so 502 `upstream_error` would name
+    // the wrong fault: the requested evaluation shape is what this candidate cannot
+    // serve, which is the 501 answer the distribution refusal already gives. It is
+    // still a mapped attempt failure, so another candidate may support the shape and
+    // fallback continues. Matched on the SDK's own marker rather than a message.
+    if (Experimental_EvaluationUnsupportedQuestionTypeError.isInstance(error)) {
+      return unsupportedFeature('evaluation_question_type');
     }
     return error instanceof Error && error.name === 'AbortError'
       ? json('Evaluation cancelled', 'cancelled_error', 499)

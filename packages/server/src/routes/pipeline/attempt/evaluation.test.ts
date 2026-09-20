@@ -8,6 +8,7 @@ import {
   typeSafeSystemOneAdapter,
 } from '@aio-proxy/core';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { Experimental_EvaluationUnsupportedQuestionTypeError } from 'ai';
 
 import { defineProviderRouteSource } from '../../../../__tests__/pipeline-helpers';
 import { lazyEvaluationTransport } from '../../../provider-runtime';
@@ -201,6 +202,17 @@ function convertProvider(
     },
     ...(options.priority === undefined ? {} : { priority: options.priority }),
   };
+}
+
+// The SDK's own rejection, constructed as `experimental_evaluate` constructs it, so
+// the classification is matched on the real marker rather than on a message.
+function unsupportedQuestionType(): Error {
+  return new Experimental_EvaluationUnsupportedQuestionTypeError({
+    questionId: 'q',
+    questionType: 'choice',
+    provider: 'noul-only',
+    modelId: MODEL_ID,
+  });
 }
 
 test('prefers raw when the candidate resolves a System One transport', async () => {
@@ -516,6 +528,50 @@ test('a candidate whose evaluate throws falls back to a healthy one through the 
   expect(healthyEvaluate).toHaveBeenCalled();
   await route.recording.settle();
   expect(route.recording.attempts.map((attempt) => attempt.providerId)).toEqual(['flaky', 'healthy']);
+});
+
+test('an unsupported question type is answered as 501, not as an upstream 502', async () => {
+  // The SDK raises this locally, before the model is called, when the resolved
+  // evaluation model's `supportedQuestionTypes` does not cover a question. Falling
+  // through to `errors.provider`'s generic branch reports an upstream fault for a
+  // provider that was never contacted, and hides the real reason: the requested
+  // evaluation shape is one this candidate cannot serve.
+  const provider = convertProvider(
+    'noul-only',
+    discoveredTransport(async () => {
+      throw unsupportedQuestionType();
+    }),
+  );
+  const { runLoop } = await harness();
+
+  const response = await runLoop([provider]);
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    message: 'Unsupported: evaluation_question_type',
+    error_type: 'not_supported_error',
+  });
+});
+
+test('an unsupported question type still falls back to a candidate that supports it', async () => {
+  // Question-type support is per evaluation model, so this must stay a candidate
+  // failure rather than a terminal answer: the next candidate may well serve it.
+  const narrow = convertProvider(
+    'noul-only',
+    discoveredTransport(async () => {
+      throw unsupportedQuestionType();
+    }),
+  );
+  const healthyEvaluate = mock(async () => NOUL_RESULT);
+  const healthy = convertProvider('healthy', discoveredTransport(healthyEvaluate));
+  const { route, runLoop } = await harness();
+
+  const response = await runLoop([narrow, healthy]);
+
+  expect(response.status).toBe(200);
+  expect(healthyEvaluate).toHaveBeenCalled();
+  await route.recording.settle();
+  expect(route.recording.attempts.map((attempt) => attempt.providerId)).toEqual(['noul-only', 'healthy']);
 });
 
 test('records the reported evaluation tokens on the finished trace', async () => {
