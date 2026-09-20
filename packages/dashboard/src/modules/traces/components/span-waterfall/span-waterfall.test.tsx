@@ -65,6 +65,49 @@ test('keeps server order and selects Span rows through native button activation'
   expect(onSelect).toHaveBeenNthCalledWith(2, rootSpanId);
 });
 
+// 树形是这个组件的主可见产物，而它整个不进文本：一棵三层树和一张平表的行 textContent
+// 逐字节相同。行序来自 trace-layout 的结构序，缩进只是内联 padding —— 两者都得单独钉。
+// fixture 的数组顺序和 startedAt 顺序都**不是**深度优先序（attempt 的存储毫秒比它父
+// span 还早，hrtime 截断后真会这样，见 trace-layout 的注释），所以照数组渲染、或在组件
+// 里按时间重排，都会把行序打乱；顺序一致的 fixture 对错实现都能过，证明不了任何事。
+test('orders rows depth-first and indents by depth, following neither array nor time order', () => {
+  const attemptSpanId = 'd'.repeat(16);
+  const prepareSpanId = 'e'.repeat(16);
+  const tree: readonly DashboardTraceSpan[] = [
+    {
+      ...spans[1]!,
+      spanId: prepareSpanId,
+      parentSpanId: attemptSpanId,
+      name: 'aio_proxy.request.prepare',
+      otelStatusCode: 'OK',
+      startedAt: '2026-07-12T08:00:00.005Z',
+    },
+    { ...spans[0]!, startedAt: '2026-07-12T08:00:00.010Z' },
+    { ...spans[1]!, spanId: attemptSpanId, otelStatusCode: 'OK', startedAt: '2026-07-12T08:00:00.000Z' },
+  ];
+
+  render(
+    <SpanWaterfall
+      spans={tree}
+      selectedSpanId={undefined}
+      now={new Date('2026-07-12T08:00:00.100Z')}
+      onSelect={rs.fn()}
+    />,
+  );
+
+  // 名称格（行的第一格）而不是整行的 textContent：整行还带耗时，而且 `aio_proxy.request`
+  // 是 `aio_proxy.request.prepare` 的前缀，用 stringContaining 的话错误的行序照样能过。
+  const nameCells = screen.getAllByTestId('trace-span').map((row) => row.firstElementChild as HTMLElement);
+
+  expect(nameCells.map((cell) => cell.textContent)).toEqual([
+    'aio_proxy.request',
+    'aio_proxy.provider.attempt',
+    'aio_proxy.request.prepare',
+  ]);
+  // 缩进是唯一画出父子关系的东西，而它不产生文本：删掉这行内联样式，上面那条断言全过。
+  expect(nameCells.map((cell) => cell.style.paddingInlineStart)).toEqual(['0px', '14px', '28px']);
+});
+
 test('filters rows by span name and falls back to an empty message', () => {
   render(
     <SpanWaterfall
