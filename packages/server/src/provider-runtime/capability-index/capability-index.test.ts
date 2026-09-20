@@ -6,6 +6,7 @@ import {
   buildModelCapabilityIndex,
   routerModelsGrantImage,
   supportsEmbedding,
+  supportsEvaluation,
   supportsImage,
   supportsLanguage,
   supportsSpeech,
@@ -29,6 +30,9 @@ import {
 // | API/ai-sdk finite ids with no catalog and a chat primary | language + embedding |
 // | primary protocol absent from PROTOCOL_CAPABILITIES | nothing |
 // | V4 imageModel function exists | never |
+// | hasEvaluationTransport, with or without a protocol | evaluation |
+// | typesafe-systemone endpoint, primary or extra | evaluation |
+// | a protocol whose PROTOCOL_CAPABILITIES row lists evaluation, on its own | never evaluation |
 
 describe('buildModelCapabilityIndex', () => {
   test('unions catalog language and image membership', () => {
@@ -395,6 +399,84 @@ describe('buildModelCapabilityIndex', () => {
       models: ['v1'],
     });
     expect([...withImagePrimary['v1']!]).toEqual(['image']);
+  });
+});
+
+describe('evaluation capability', () => {
+  test('grants evaluation from a discovered transport even with no protocol', () => {
+    // The unclassified Gateway case: `@ai-sdk/gateway` is deliberately left without a
+    // primary protocol (pinning a multi-capability package would break chat) and has no
+    // extra endpoints, so a protocol-union rule would deny it and the documented
+    // direct-primary / Gateway-backup failover could never dispatch.
+    const index = buildModelCapabilityIndex({
+      models: ['some-eval-model'],
+      hasEvaluationTransport: true,
+    });
+    expect(supportsEvaluation(index, 'some-eval-model')).toBe(true);
+    // The transport, and nothing else, must be what granted it. Without this the
+    // assertion above also passes under a rule that grants whenever no catalog was
+    // supplied, which is true of every protocol-less provider and pins nothing.
+    const withoutTransport = buildModelCapabilityIndex({ models: ['some-eval-model'] });
+    expect(supportsEvaluation(withoutTransport, 'some-eval-model')).toBe(false);
+  });
+
+  test('grants evaluation from a System One endpoint even with no transport', () => {
+    // The origin may be an EXTRA endpoint, so this must not mirror synthesizesEmbedding,
+    // which reads the primary protocol alone.
+    const index = buildModelCapabilityIndex({
+      models: ['m'],
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      extraProtocols: [ProviderProtocol.TypeSafeSystemOne],
+    });
+    expect(supportsEvaluation(index, 'm')).toBe(true);
+  });
+
+  test('denies evaluation for openai-compatible with no transport and no System One endpoint', () => {
+    const index = buildModelCapabilityIndex({
+      models: ['m'],
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+    });
+    expect(supportsEvaluation(index, 'm')).toBe(false);
+  });
+
+  test('denies evaluation for a non-System-One extra endpoint', () => {
+    // openai-response appears in PROTOCOL_CAPABILITIES, but API convert materializes
+    // from the primary package only, so this provider has no usable transport, and
+    // inbound typesafe-systemone cannot raw-match a non-System-One endpoint. Granting
+    // it would select a candidate that can only ever answer 501.
+    const index = buildModelCapabilityIndex({
+      models: ['m'],
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      extraProtocols: [ProviderProtocol.OpenAIResponse],
+    });
+    expect(supportsEvaluation(index, 'm')).toBe(false);
+  });
+
+  test('never grants evaluation from the protocol table alone', () => {
+    // PROTOCOL_CAPABILITIES answers "could this wire family serve evaluation at all".
+    // It is NOT what makes convert reachable - the transport is. These three rows list
+    // evaluation, yet without a discovered transport or a System One endpoint each
+    // provider must stay out of the evaluation pool. This is the invariant that a
+    // synthesizesEmbedding-shaped rewrite of the grant would break.
+    for (const primaryProtocol of [
+      ProviderProtocol.OpenAIResponse,
+      ProviderProtocol.Anthropic,
+      ProviderProtocol.Gemini,
+    ]) {
+      const index = buildModelCapabilityIndex({ models: ['m'], primaryProtocol });
+      expect(supportsEvaluation(index, 'm')).toBe(false);
+      expect(supportsLanguage(index, 'm')).toBe(true);
+    }
+  });
+
+  test('does not put a System One provider in the language pool', () => {
+    const index = buildModelCapabilityIndex({
+      models: ['m'],
+      primaryProtocol: ProviderProtocol.TypeSafeSystemOne,
+    });
+    expect(supportsLanguage(index, 'm')).toBe(false);
+    expect(supportsEmbedding(index, 'm')).toBe(false);
+    expect(supportsEvaluation(index, 'm')).toBe(true);
   });
 });
 

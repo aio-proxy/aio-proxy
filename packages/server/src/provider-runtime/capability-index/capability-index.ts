@@ -23,6 +23,11 @@ export type CapabilityIndexInput = {
    */
   readonly catalogMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
   readonly hasImageModel?: boolean;
+  /**
+   * True when materialization actually discovered an `evaluationModel` on the loaded
+   * package. Unlike the protocol table this reflects a transport that exists.
+   */
+  readonly hasEvaluationTransport?: boolean;
   readonly primaryProtocol?: ProviderProtocol;
   readonly extraProtocols?: readonly ProviderProtocol[];
   readonly aliasTargets?: readonly string[];
@@ -75,6 +80,10 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
       (videoIds.has(id) || imageIds.has(id) || embeddingIds.has(id) || speechIds.has(id) || transcriptionIds.has(id));
     if (finiteIds.has(id) && synthesizesLanguage(input) && !catalogNonLanguage) capabilities.add('language');
     if (finiteIds.has(id) && synthesizesEmbedding(input) && !imageOnly) capabilities.add('embedding');
+    // Granted across every finite id, like the audio endpoints below: an evaluation
+    // origin names no per-model direction, so the upstream rejects an id it does not
+    // serve. A narrower rule would leave the provider unroutable for evaluation.
+    if (finiteIds.has(id) && synthesizesEvaluation(input)) capabilities.add('evaluation');
     if (finiteIds.has(id) && protocolServed.has('speech')) capabilities.add('speech');
     if (finiteIds.has(id) && protocolServed.has('transcription')) capabilities.add('transcription');
     if (finiteIds.has(id) && protocolServed.has('video')) capabilities.add('video');
@@ -94,12 +103,18 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
  * `language`/`embedding` rows are necessary but not sufficient - a listed
  * protocol still has to clear the no-catalog and catalog-membership rules in
  * `synthesizesLanguage`/`synthesizesEmbedding`, which this table cannot see.
+ *
+ * `evaluation` rows are NOT a grant at all, not even a necessary one. This table
+ * answers "could this wire family serve evaluation?"; only a real transport or a
+ * System One endpoint makes convert reachable, so `synthesizesEvaluation` never
+ * consults it. Reintroducing that link is the defect the transport predicate
+ * replaced - see its comment for the two configurations it gets wrong.
  */
 const PROTOCOL_CAPABILITIES: Readonly<Record<ProviderProtocol, readonly InboundCapability[]>> = {
-  [ProviderProtocol.OpenAIResponse]: ['language', 'embedding'],
+  [ProviderProtocol.OpenAIResponse]: ['language', 'embedding', 'evaluation'],
   [ProviderProtocol.OpenAICompatible]: ['language', 'embedding'],
-  [ProviderProtocol.Anthropic]: ['language', 'embedding'],
-  [ProviderProtocol.Gemini]: ['language', 'embedding'],
+  [ProviderProtocol.Anthropic]: ['language', 'embedding', 'evaluation'],
+  [ProviderProtocol.Gemini]: ['language', 'embedding', 'evaluation'],
   [ProviderProtocol.GeminiInteractions]: ['language', 'embedding'],
   [ProviderProtocol.OpenAIImage]: ['image'],
   // One audio base URL serves /audio/speech and /audio/transcriptions alike and
@@ -167,6 +182,31 @@ function synthesizesEmbedding(input: CapabilityIndexInput): boolean {
   return input.catalog === undefined;
 }
 
+// Does this provider speak `protocol` on ANY endpoint? Unlike the primary-only
+// reads above, an evaluation origin is just as valid as an extra endpoint.
+function hasProtocol(input: CapabilityIndexInput, protocol: ProviderProtocol): boolean {
+  return input.primaryProtocol === protocol || (input.extraProtocols ?? []).includes(protocol);
+}
+
+/**
+ * Capability comes from a REAL transport, never from protocol metadata. This
+ * deliberately does not mirror `synthesizesEmbedding`, whose primary-protocol
+ * union is wrong here in both directions, and both are reachable from documented
+ * config:
+ *
+ * - False negative: a `@ai-sdk/gateway` provider has no primary protocol (pinning
+ *   a multi-capability package would break chat) and no extra endpoints, so a
+ *   protocol rule denies it and the direct-primary / Gateway-backup failover can
+ *   never dispatch.
+ * - False positive: an `openai-compatible` primary with an extra `openai-response`
+ *   endpoint looks eligible by protocol, but API convert materializes from the
+ *   PRIMARY package only and inbound `typesafe-systemone` cannot raw-match a
+ *   non-System-One endpoint, so the candidate could only ever answer 501.
+ */
+function synthesizesEvaluation(input: CapabilityIndexInput): boolean {
+  return input.hasEvaluationTransport === true || hasProtocol(input, ProviderProtocol.TypeSafeSystemOne);
+}
+
 export function supportsLanguage(index: ModelCapabilityIndex, modelId: string): boolean {
   return index[modelId]?.has('language') === true;
 }
@@ -177,6 +217,10 @@ export function supportsImage(index: ModelCapabilityIndex, modelId: string): boo
 
 export function supportsEmbedding(index: ModelCapabilityIndex, modelId: string): boolean {
   return index[modelId]?.has('embedding') === true;
+}
+
+export function supportsEvaluation(index: ModelCapabilityIndex, modelId: string): boolean {
+  return index[modelId]?.has('evaluation') === true;
 }
 
 export function supportsSpeech(index: ModelCapabilityIndex, modelId: string): boolean {

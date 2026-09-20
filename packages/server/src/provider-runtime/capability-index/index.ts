@@ -3,6 +3,7 @@ export {
   metadataHasImageOutput,
   routerModelsGrantImage,
   supportsEmbedding,
+  supportsEvaluation,
   supportsImage,
   supportsLanguage,
   supportsSpeech,
