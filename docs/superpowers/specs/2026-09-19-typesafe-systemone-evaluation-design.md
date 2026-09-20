@@ -30,9 +30,12 @@ Live checkout `53b68fa2` on branch `claude/recursing-swartz-3e1975`:
   `experimental_evaluate` nor `Experimental_EvaluationModelV4` exists at those versions.
 - `ai-sdk` provider loading is generic: `loadCachedProvider` picks the first `create*` function
   export from the named package, so `createTypeSafeAi` already works with no allowlist change.
-- `createAiSdkProvider` derives its primary protocol from `imageTargetProtocolForPackage`
-  (`packages/core/src/image-input/image-input.ts:112-125`), a closed switch over four packages that
-  returns `undefined` by default.
+- `createAiSdkProvider` derives its primary protocol from the AI SDK package classifier. At the time
+  this spec was written that was `imageTargetProtocolForPackage`
+  (`packages/core/src/image-input/image-input.ts:112-125`), a closed switch over four packages
+  returning `undefined` by default. **As of commit `f99c3237` it is `aiSdkPackagePrimaryProtocol` in
+  `packages/core/src/ai-sdk-package-protocol/`**, renamed and relocated because the name no longer
+  described what it decides. Behavior for the original four packages is unchanged.
 - `UsageCapture` (`packages/server/src/usage-capture/shared.ts:77-83`) has `stream`, `passthrough`,
   and `embedding`. Image usage bypasses it via the free function `captureImageUsage`.
 - 17 non-test files hold exhaustive `ProviderProtocol` switches or `Record<ProviderProtocol, ...>`.
