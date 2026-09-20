@@ -26,7 +26,7 @@
 - `maxRetries: 0` on every `experimental_evaluate` call. The pipeline owns retry.
 - Handwritten non-test implementation files stay under 500 lines.
 - One changeset targeting BOTH `aio-proxy` and `@aio-proxy/plugin-sdk`, plus every changed internal package, at matching bump levels.
-- Run `bun run preflight` before declaring the work complete.
+- **Do not gate on `bun run preflight`. It cannot pass on macOS.** `lint:types` is red on a pristine tree and gated by nothing in CI, and 21 `@aio-proxy/cli` tests are Linux-only. Use the differential gate in `.superpowers/sdd/baseline.md` instead: `bun run check` PASS, every touched package's tests green, `types`/`plugin-sdk`/`core` at 0 fail, and no new `lint:types` file or error beyond the recorded baseline. Linux CI is the final authority.
 
 ## File structure
 
@@ -95,10 +95,9 @@ The feature cannot work on the pinned versions: `experimental_evaluate` arrived 
 - Consumes: nothing.
 - Produces: `experimental_evaluate`, `Experimental_EvaluationMockModelV4` (from `ai/test`), and `Experimental_EvaluationModelV4` (from `@ai-sdk/provider`) become importable. `openai.evaluationModel`, `anthropic.evaluationModel`, `google.evaluationModel` become available.
 
-- [ ] **Step 1: Record the current baseline**
+- [ ] **Step 1: Read the recorded baseline**
 
-Run: `bun run preflight 2>&1 | tail -30`
-Expected: PASS. If it already fails, stop and report — you cannot attribute later failures to the bump without a green baseline.
+Read `.superpowers/sdd/baseline.md`. The tree is already red in known places and your job is to add nothing to it. Do NOT run `bun run preflight` — it cannot pass on macOS.
 
 - [ ] **Step 2: Edit the catalog**
 
@@ -128,10 +127,20 @@ bun -e "import('ai/test').then(m => console.log('mock:', typeof m.Experimental_E
 ```
 Expected: `experimental_evaluate: function` and `mock: function`. If either is `undefined`, the bump did not take — do not proceed.
 
-- [ ] **Step 5: Run the full preflight**
+- [ ] **Step 5: Run the differential gate**
 
-Run: `bun run preflight 2>&1 | tail -40`
-Expected: PASS. A ~95-patch `ai` jump touches every provider path; fixing whatever it surfaces is part of this task, not a follow-up. Do not silence a failure with a skipped test.
+Run, in order:
+```bash
+bun run check
+bun run --filter @aio-proxy/types test:unit
+bun run --filter @aio-proxy/plugin-sdk test:unit
+bun run --filter @aio-proxy/core test:unit
+bun run --filter @aio-proxy/server test:unit
+bun run lint:types 2>&1 | grep -oE "packages/[a-z-]+/src/[^:]+" | sort | uniq -c | sort -rn
+```
+Expected: `check` PASS; types 406/0, plugin-sdk 91/0, core 1924/0; server green (record its counts, this is its first measurement); the `lint:types` per-file table identical to `.superpowers/sdd/baseline-lint-types.txt`.
+
+A ~95-patch `ai` jump touches every provider path. Any NEW failure or type error is in scope: fix it. Do not silence one with a skipped or deleted test.
 
 - [ ] **Step 6: Commit**
 
@@ -2060,10 +2069,11 @@ package exposes an evaluation model are served by conversion.
 
 Keep it to one paragraph and do not prefix it with an area label.
 
-- [ ] **Step 7: Full preflight**
+- [ ] **Step 7: Full differential gate**
 
-Run: `bun run preflight 2>&1 | tail -40`
-Expected: PASS, including everything the five-package AI SDK bump touches.
+Run the same gate Task 1 Step 5 defines, plus the dashboard and i18n packages you touched. Expected: `check` PASS, every touched package green, and the `lint:types` per-file table identical to `.superpowers/sdd/baseline-lint-types.txt`. Do NOT run `bun run preflight`.
+
+Then push and let Linux CI run `check`, `test:unit`, and `test:e2e:api` — CI is the authority on the 21 `@aio-proxy/cli` failures that are macOS-only here.
 
 - [ ] **Step 8: Commit**
 
@@ -2091,7 +2101,7 @@ Every box above is checked and:
 - Evaluation routing ignores session affinity and response ownership.
 - Usage records tokens when reported and omits the fields when not.
 - Every other inbound protocol behaves as it does today.
-- `bun run preflight` passes.
+- The differential gate in `.superpowers/sdd/baseline.md` is clean: `check` PASS, touched packages green, no new `lint:types` entry, and Linux CI green.
 
 ## Deferred, with the reason
 
