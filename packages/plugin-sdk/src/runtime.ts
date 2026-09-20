@@ -4,6 +4,12 @@ import type { LanguageModelCallOptions, ModelMessage, RequestOptions, ToolSet } 
 
 import type { JsonValue } from './json';
 
+/**
+ * Protocols a plugin may be asked about. `typesafe-systemone` is here so a raw
+ * resolver can recognise an evaluation probe and DECLINE it; plugins do not
+ * serve evaluation, and the host has no plugin evaluation transport and no
+ * `ModelCatalog` bucket to route one through.
+ */
 export type ProtocolId =
   | 'openai-compatible'
   | 'openai-response'
@@ -86,6 +92,9 @@ export type RawResolver = (input: {
   readonly protocol: ProtocolId;
   readonly modelId: string;
   readonly extra?: JsonValue;
+  // `'evaluation'` is listed so a resolver can recognise the probe and return
+  // `undefined`, not so it can serve one: the host never routes evaluation to a
+  // plugin. See `ProtocolId`.
   readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription' | 'evaluation';
   // Inbound URL pathname when the pipeline is choosing between raw and model.
   // Absent for capability probes that are not tied to a request.
