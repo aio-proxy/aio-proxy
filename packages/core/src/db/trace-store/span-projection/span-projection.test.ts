@@ -202,4 +202,88 @@ describe('span projection', () => {
       handle.close();
     }
   });
+
+  // mergeAttributes 的 !isRoot 分支里那六行 gen_ai.usage.* 是 GENERATION span
+  // （inference-span.ts 发的那个非 root CLIENT span）token usage 的唯一还原路径：
+  // projectAttributes 抽这六个 key 时没有 isRoot 判断，属性全进列、attributes_json
+  // 里一个都不留。删掉那六行，仪表盘上每个 generation span 的 token 就静默消失，而
+  // 在这条测试之前整个 core 套件都不会红。
+  test('a non-root GENERATION span still reports all six token counts after a write/read cycle', () => {
+    const handle = openTestDb();
+    const generationSpanId = 'e'.repeat(16);
+    const usage = {
+      'gen_ai.usage.input_tokens': 21,
+      'gen_ai.usage.output_tokens': 14,
+      'gen_ai.usage.total_tokens': 35,
+      'gen_ai.usage.cache_read.input_tokens': 7,
+      'gen_ai.usage.cache_write.input_tokens': 3,
+      'gen_ai.usage.reasoning.output_tokens': 5,
+    };
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot({
+        traceId: TRACE_ID,
+        spanId: ROOT_SPAN_ID,
+        requestId: 'request-a',
+        inboundProtocol: 'openai-compatible',
+        name: 'aio_proxy.request',
+        kind: 1,
+        startedAt: STARTED_AT,
+        statusCode: 0,
+        attributes: {},
+        events: [],
+        links: [],
+      });
+      store.complete({
+        traceId: TRACE_ID,
+        rootSpanId: ROOT_SPAN_ID,
+        spans: [
+          {
+            traceId: TRACE_ID,
+            spanId: ROOT_SPAN_ID,
+            name: 'aio_proxy.request',
+            kind: 1,
+            startedAt: STARTED_AT,
+            endedAt: ENDED_AT,
+            statusCode: 0,
+            attributes: {},
+            events: [],
+            links: [],
+          },
+          {
+            // 就是 startInferenceSpan 发出来的形状：CLIENT，挂在 root 下，名字是
+            // 「{operation} {model}」，六个 usage key 一次性挂齐。
+            traceId: TRACE_ID,
+            spanId: generationSpanId,
+            parentSpanId: ROOT_SPAN_ID,
+            name: 'chat final-model',
+            kind: 2,
+            startedAt: STARTED_AT,
+            endedAt: ENDED_AT,
+            statusCode: 0,
+            attributes: { ...usage, 'long.tail.generation': 'keep-me' },
+            events: [],
+            links: [],
+          },
+        ],
+        summary: { finalProviderId: 'provider-x', finalModelId: 'final-model' },
+      });
+
+      // 先确认这六个 key 真的被抽走了：JSON 里只剩长尾那个。少了这一条，即使
+      // projectAttributes 根本没投过列、六个 key 原样躺在 JSON 里，下面那条断言
+      // 也照样过 —— 那就测不到还原路径了。
+      const storedRow = handle.db
+        .select()
+        .from(traceSpan)
+        .all()
+        .find((row) => row.spanId === generationSpanId)!;
+      expect(storedRow.attributes).toEqual({ 'long.tail.generation': 'keep-me' });
+
+      // 仪表盘读到的就是这个：六个 token 数带着值回来。
+      const generationAttrs = store.find(TRACE_ID)?.spans.find((span) => span.spanId === generationSpanId)?.attributes;
+      expect(generationAttrs).toEqual({ ...usage, 'long.tail.generation': 'keep-me' });
+    } finally {
+      handle.close();
+    }
+  });
 });

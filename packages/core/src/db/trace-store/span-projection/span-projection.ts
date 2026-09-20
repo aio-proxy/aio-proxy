@@ -245,8 +245,9 @@ export function mergeAttributes(
     // usage 只能从这六列还原：它是非 root（CLIENT，挂在 root 下），settle 时发全部六个
     // gen_ai.usage.*，而上面的 projectAttributes 抽这六个 key 时没有 isRoot 判断（和
     // genAiRequestModel 不同），属性全被抽进列、attributes_json 里一个都不留。删掉这六行，
-    // 每个 generation span 的 usage 读回来就是空的，而 core 套件 1930 条照样全绿 —— 没有
-    // 任何测试盯着这条还原路径，只有仪表盘上的 token 悄悄消失。
+    // 每个 generation span 的 usage 读回来就是空的，仪表盘上的 token 静默消失。由
+    // span-projection.test.ts 的 'a non-root GENERATION span still reports all six token
+    // counts after a write/read cycle' 钉住 —— 那条测试走完整的写入/读回，六行少一行就红。
     set(ATTR.genAiUsageInputTokens, columns.inputTokens);
     set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
     set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
