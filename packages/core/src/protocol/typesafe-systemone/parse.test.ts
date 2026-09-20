@@ -16,6 +16,12 @@ const valid = {
 };
 const withBody = (patch: Record<string, unknown>) => post(JSON.stringify({ ...valid, ...patch }));
 
+// JSON.stringify cannot emit Infinity, so a quoted 1e400 marks where the literal belongs.
+const nonFinite = (patch: Record<string, unknown>) =>
+  JSON.stringify({ ...valid, ...patch }).replace('"1e400"', '1e400');
+
+const withQuestion = (q: Record<string, unknown>) => JSON.stringify({ ...valid, questions: { q } });
+
 describe('parseSystemOneBody accepts', () => {
   it('string, object, and array state', async () => {
     for (const state of ['text', { a: 1 }, [1, 2]]) {
@@ -45,11 +51,29 @@ describe('parseSystemOneBody accepts', () => {
     const questions = {
       q: { type: 'noul', instructions: 'i', criteria: { true: 't', weird: 'w' }, extra: 1 },
     };
-    const parsed = await parseSystemOneBody(withBody({ questions, topLevelExtra: 'keep' }));
+    const posted = { ...valid, questions, topLevelExtra: 'keep' };
+    const parsed = await parseSystemOneBody(post(JSON.stringify(posted)));
     expect((parsed.body as Record<string, unknown>).topLevelExtra).toBe('keep');
     const q = (parsed.body as { questions: Record<string, Record<string, unknown>> }).questions.q;
     expect(q.extra).toBe(1);
     expect((q.criteria as Record<string, unknown>).weird).toBe('w');
+    // Raw rewrite forwards `body` verbatim: nothing may be dropped, added, or normalized.
+    expect(parsed.body).toEqual(posted);
+  });
+
+  it('noul criteria with string labels, keeping undeclared keys', async () => {
+    const criteria = { true: 'yes', false: 'no', weird: 'w' };
+    const parsed = await parseSystemOneBody(
+      withBody({ questions: { q: { type: 'noul', instructions: 'i', criteria } } }),
+    );
+    const q = (parsed.body as { questions: Record<string, Record<string, unknown>> }).questions.q;
+    expect(q.criteria).toEqual(criteria);
+  });
+
+  it('noul criteria that omits one or both declared labels', async () => {
+    for (const criteria of [{}, { true: 'yes' }, { false: 'no' }]) {
+      await parseSystemOneBody(withBody({ questions: { q: { type: 'noul', instructions: 'i', criteria } } }));
+    }
   });
 
   it('a missing content-type when the body is valid JSON, and a charset parameter', async () => {
@@ -59,82 +83,118 @@ describe('parseSystemOneBody accepts', () => {
 });
 
 describe('parseSystemOneBody rejects', () => {
-  const cases: ReadonlyArray<readonly [string, string]> = [
-    ['invalid JSON', '{nope'],
-    ['a JSON primitive body', '42'],
-    ['null state', JSON.stringify({ ...valid, state: null })],
-    ['number state', JSON.stringify({ ...valid, state: 1 })],
-    ['boolean state', JSON.stringify({ ...valid, state: true })],
-    ['an absent state key', JSON.stringify({ model: 'm', questions: valid.questions })],
-    ['a missing model', JSON.stringify({ state: 's', questions: valid.questions })],
-    ['an empty model', JSON.stringify({ ...valid, model: '' })],
-    ['missing questions', JSON.stringify({ model: 'm', state: 's' })],
-    ['array questions', JSON.stringify({ ...valid, questions: [] })],
-    ['empty questions', JSON.stringify({ ...valid, questions: {} })],
-    ['an unknown type', JSON.stringify({ ...valid, questions: { q: { type: 'nope', instructions: 'i' } } })],
-    ['missing instructions', JSON.stringify({ ...valid, questions: { q: { type: 'noul' } } })],
-    ['null instructions', JSON.stringify({ ...valid, questions: { q: { type: 'noul', instructions: null } } })],
-    ['number instructions', JSON.stringify({ ...valid, questions: { q: { type: 'noul', instructions: 1 } } })],
-    ['choice without criteria', JSON.stringify({ ...valid, questions: { q: { type: 'choice', instructions: 'i' } } })],
+  // The third element is a substring of the expected message: it pins WHICH guard fired, so a
+  // guard whose case a neighbour also catches cannot be deleted or reordered unnoticed.
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    ['invalid JSON', '{nope', 'Request body is not valid JSON'],
+    ['a JSON primitive body', '42', 'Request body must be a JSON object'],
+    ['null state', JSON.stringify({ ...valid, state: null }), 'state must be a string, object, or array'],
+    ['number state', JSON.stringify({ ...valid, state: 1 }), 'state must be a string, object, or array'],
+    ['boolean state', JSON.stringify({ ...valid, state: true }), 'state must be a string, object, or array'],
+    ['an absent state key', JSON.stringify({ model: 'm', questions: valid.questions }), 'state is required'],
+    ['a missing model', JSON.stringify({ state: 's', questions: valid.questions }), 'model must be a nonempty string'],
+    ['an empty model', JSON.stringify({ ...valid, model: '' }), 'model must be a nonempty string'],
+    ['missing questions', JSON.stringify({ model: 'm', state: 's' }), 'questions must be a nonempty question map'],
+    ['array questions', JSON.stringify({ ...valid, questions: [] }), 'questions must be a nonempty question map'],
+    // The two rows above share one guard, so they share a message; this row fires a different
+    // guard (`ids.length === 0`) and must therefore be distinguishable by message.
+    ['empty questions', JSON.stringify({ ...valid, questions: {} }), 'questions must declare at least one question'],
+    ['an unknown type', withQuestion({ type: 'nope', instructions: 'i' }), 'q.type must be noul, choice, or score'],
+    ['missing instructions', withQuestion({ type: 'noul' }), 'q.instructions must be a string, object, or array'],
+    [
+      'null instructions',
+      withQuestion({ type: 'noul', instructions: null }),
+      'q.instructions must be a string, object, or array',
+    ],
+    [
+      'number instructions',
+      withQuestion({ type: 'noul', instructions: 1 }),
+      'q.instructions must be a string, object, or array',
+    ],
+    [
+      'noul criteria that is not an object',
+      withQuestion({ type: 'noul', instructions: 'i', criteria: 5 }),
+      'q.criteria must be an object',
+    ],
+    [
+      'a non-string noul criteria.true',
+      withQuestion({ type: 'noul', instructions: 'i', criteria: { true: 5 } }),
+      'q.criteria.true must be a string',
+    ],
+    [
+      'a non-string noul criteria.false',
+      withQuestion({ type: 'noul', instructions: 'i', criteria: { true: 'yes', false: [] } }),
+      'q.criteria.false must be a string',
+    ],
+    [
+      'choice without criteria',
+      withQuestion({ type: 'choice', instructions: 'i' }),
+      'q.criteria must be an option map',
+    ],
     [
       'empty choice criteria',
-      JSON.stringify({
-        ...valid,
-        questions: { q: { type: 'choice', instructions: 'i', criteria: {} } },
-      }),
+      withQuestion({ type: 'choice', instructions: 'i', criteria: {} }),
+      'q.criteria must be nonempty',
     ],
     [
       'a non-string non-null criteria value',
-      JSON.stringify({
-        ...valid,
-        questions: { q: { type: 'choice', instructions: 'i', criteria: { a: 5 } } },
-      }),
+      withQuestion({ type: 'choice', instructions: 'i', criteria: { a: 5 } }),
+      'q.criteria.a must be a string or null',
     ],
     [
       'score criteria that is not an array',
-      JSON.stringify({
-        ...valid,
-        questions: { q: { type: 'score', instructions: 'i', criteria: {} } },
-      }),
+      withQuestion({ type: 'score', instructions: 'i', criteria: {} }),
+      'q.criteria must be an array',
     ],
     [
       'one score level',
-      JSON.stringify({
-        ...valid,
-        questions: { q: { type: 'score', instructions: 'i', criteria: ['only'] } },
-      }),
+      withQuestion({ type: 'score', instructions: 'i', criteria: ['only'] }),
+      'q.criteria needs at least 2 levels',
     ],
     [
       'a non-string score level',
-      JSON.stringify({
-        ...valid,
-        questions: { q: { type: 'score', instructions: 'i', criteria: ['a', 2] } },
-      }),
+      withQuestion({ type: 'score', instructions: 'i', criteria: ['a', 2] }),
+      'q.criteria levels must be strings',
     ],
     [
       'a non-finite number nested in state',
       JSON.stringify({ ...valid }).replace('"the agent closed the ticket"', '{"n":1e400}'),
+      'Request body contains a non-finite number',
+    ],
+    [
+      'a non-finite number nested in a questions entry',
+      nonFinite({ questions: { q: { type: 'noul', instructions: 'i', weight: '1e400' } } }),
+      'Request body contains a non-finite number',
+    ],
+    [
+      'a non-finite number in a top-level unknown field',
+      nonFinite({ topLevelExtra: { n: '1e400' } }),
+      'Request body contains a non-finite number',
     ],
   ];
 
-  it.each(cases)('%s', async (_label, body) => {
+  it.each(cases)('%s', async (_label, body, message) => {
     await expect(parseSystemOneBody(post(body))).rejects.toBeInstanceOf(SystemOneParseError);
+    await expect(parseSystemOneBody(post(body))).rejects.toThrow(message);
   });
 
   it('256 choice options and 11 score levels', async () => {
     const criteria = Object.fromEntries([...Array(256)].map((_, i) => [`o${i}`, null]));
     await expect(
       parseSystemOneBody(withBody({ questions: { q: { type: 'choice', instructions: 'i', criteria } } })),
-    ).rejects.toBeInstanceOf(SystemOneParseError);
+    ).rejects.toThrow('q.criteria supports at most 255 options');
     const score = [...Array(11)].map((_, i) => `l${i}`);
     await expect(
       parseSystemOneBody(withBody({ questions: { q: { type: 'score', instructions: 'i', criteria: score } } })),
-    ).rejects.toBeInstanceOf(SystemOneParseError);
+    ).rejects.toThrow('q.criteria supports at most 10 levels');
   });
 
   it('an unsupported media type even when the body is valid JSON', async () => {
     await expect(parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'))).rejects.toBeInstanceOf(
       SystemOneParseError,
+    );
+    await expect(parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'))).rejects.toThrow(
+      'Unsupported content type: text/plain',
     );
   });
 });

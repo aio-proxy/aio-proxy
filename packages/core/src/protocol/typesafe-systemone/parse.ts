@@ -2,6 +2,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { EvaluationQuestion } from '../adapter';
 
+const NOUL_CRITERIA_KEYS = ['true', 'false'] as const;
 const MAX_CHOICE_OPTIONS = 255;
 const MIN_SCORE_LEVELS = 2;
 const MAX_SCORE_LEVELS = 10;
@@ -45,8 +46,15 @@ const parseQuestion = (id: string, value: unknown): EvaluationQuestion => {
   }
   const criteria = value['criteria'];
   if (value['type'] === 'noul') {
-    if (criteria !== undefined && !isPlainObject(criteria)) {
-      return reject(`questions.${id}.criteria must be an object`);
+    if (criteria !== undefined) {
+      if (!isPlainObject(criteria)) return reject(`questions.${id}.criteria must be an object`);
+      // Only the two declared labels are typed; every other key is preserved untouched.
+      for (const key of NOUL_CRITERIA_KEYS) {
+        const label = criteria[key];
+        if (label !== undefined && typeof label !== 'string') {
+          reject(`questions.${id}.criteria.${key} must be a string`);
+        }
+      }
     }
     return value as unknown as EvaluationQuestion;
   }
@@ -99,7 +107,7 @@ export async function parseSystemOneBody(raw: Request): Promise<SystemOneRequest
   if (!isInputValue(state)) reject('state must be a string, object, or array');
   if (!isPlainObject(questions)) return reject('questions must be a nonempty question map');
   const ids = Object.keys(questions);
-  if (ids.length === 0) reject('questions must be a nonempty question map');
+  if (ids.length === 0) reject('questions must declare at least one question');
 
   const parsed = Object.fromEntries(ids.map((id) => [id, parseQuestion(id, questions[id])]));
   return { model: model as string, state, questions: parsed, body };
