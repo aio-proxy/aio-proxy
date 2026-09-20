@@ -315,7 +315,8 @@ test('a prepare throw still leaves an ended prepare span behind', async () => {
 
   const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
   await settleRecording(harness.recording);
-  const prepare = tree(harness.recording.spans).find(spanName.prepare);
+  const spanTree = tree(harness.recording.spans);
+  const prepare = spanTree.find(spanName.prepare);
 
   expect(response.status).toBe(502);
   // The throw runs to the loop's catch and on to session.finish(), which drains
@@ -323,6 +324,12 @@ test('a prepare throw still leaves an ended prepare span behind', async () => {
   // the trace instead of showing where the attempt died.
   expect(prepare?.endedAt).toBeInstanceOf(Date);
   expect(prepare?.statusCode).toBe(SpanStatusCode.ERROR);
+  // Pins where `slot.spanRef.current = attemptSpan` sits in attempt/model.ts:
+  // the catch path closes the attempt span through that ref, so assigning it
+  // only after the prepare await leaves the attempt unended on a throw, dropped
+  // from the buffer, and this prepare span orphaned under a parent id that is
+  // no longer in the trace. Duration and status both survive that unharmed.
+  expect(spanTree.parentNameOf(spanName.prepare)).toBe(spanName.attempt);
 });
 
 test('an unsupported invocation still leaves an ended prepare span under the attempt', async () => {
