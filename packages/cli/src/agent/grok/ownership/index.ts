@@ -12,4 +12,5 @@ export {
   peekManagedFormat,
   recoverGrokOwnership,
   tryReadLeaf,
+  type CompletedGrokRemoval,
 } from './ownership';

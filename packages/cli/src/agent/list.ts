@@ -122,8 +122,9 @@ const applySnapshot = (
   return targets.map((row) => {
     if (row.target === 'grok') {
       if (row.integration !== 'managed' || row.marker === undefined) return row;
+      const { marker } = row;
       const match = snapshot.installations.find(
-        (item) => item.installationId === row.marker.installationId && item.target === row.marker.agent,
+        (item) => item.installationId === marker.installationId && item.target === marker.agent,
       );
       return { ...row, authorization: match?.authorization ?? 'missing' };
     }
@@ -143,8 +144,10 @@ const authorizationItems = (
 ): readonly AgentAuthorizationListItem[] => {
   const configured = new Set(
     targets.flatMap((row) => {
-      if (row.marker === undefined || row.integration !== 'managed') return [];
-      return [localMarkerKey(row.marker.installationId, row.marker.agent)];
+      // `integration` first: only the managed variants of the union carry a marker at all.
+      if (row.integration !== 'managed' || row.marker === undefined) return [];
+      const { marker } = row;
+      return [localMarkerKey(marker.installationId, marker.agent)];
     }),
   );
   if (codex.installationId !== undefined) configured.add(localMarkerKey(codex.installationId, 'codex'));

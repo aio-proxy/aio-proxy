@@ -1,4 +1,4 @@
-import type { JSONObject } from '@ai-sdk/provider';
+import type { JSONObject, JSONSchema7 } from '@ai-sdk/provider';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
@@ -34,9 +34,13 @@ export function functionToolSet(tools: readonly FunctionToolDefinition[] | undef
   return result;
 }
 
-function jsonSchemaObject(value: unknown): Parameters<typeof jsonSchema>[0] {
+function jsonSchemaObject(value: unknown): JSONSchema7 {
   const parsed = jsonValue(value);
-  return isPlainObject(parsed) ? parsed : {};
+  // Tool schemas arrive verbatim from client wire payloads. `JSONSchema7` types each keyword, so no
+  // plain JSON object is structurally assignable to it; we confirm it is a JSON object and forward it
+  // unvalidated rather than checking it against the JSON Schema meta-schema, which is the upstream
+  // provider's job. A non-object degrades to an empty schema instead of throwing.
+  return isPlainObject(parsed) ? (parsed as JSONSchema7) : {};
 }
 
 function jsonValue(value: unknown): JSONValue | undefined {

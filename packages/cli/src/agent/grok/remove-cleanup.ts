@@ -19,7 +19,12 @@ import {
   readRemovalJournal,
   restoreOwnershipFromRemovalJournal,
 } from './lifecycle';
-import { isBootstrapGrokJournal, isCompletedGrokRemoval, parseGrokOwnership } from './ownership';
+import {
+  isBootstrapGrokJournal,
+  isCompletedGrokRemoval,
+  parseGrokOwnership,
+  type CompletedGrokRemoval,
+} from './ownership';
 import { equalGrokLeaf } from './toml';
 import type { GrokDeadline, GrokOwnership } from './types';
 
@@ -133,7 +138,7 @@ export async function cleanupPrivateDir(
   return leftover;
 }
 
-function requireCompletedOwnership(text: string): GrokOwnership {
+function requireCompletedOwnership(text: string): CompletedGrokRemoval {
   let ownership: GrokOwnership;
   try {
     ownership = parseGrokOwnership(text);

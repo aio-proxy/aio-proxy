@@ -32,6 +32,7 @@ import {
 } from '../managed-config';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
 import {
+  advanceAuthOperation,
   authOperationPath,
   clearAuthOperation,
   readAuthOperation,
@@ -158,7 +159,7 @@ async function commitKeepChatgpt(
       providerId,
     });
     await revokeAndClear(context, lease, installationId);
-    await writeAuthOperation(context.location, { ...operation, phase: 'revoked' });
+    await advanceAuthOperation(context.location, operation, 'revoked');
   }
   const commit = await configureCodexConfig(
     {
@@ -247,15 +248,21 @@ async function commitCommand(
       },
       lease,
     ));
-  const operation = await writeAuthOperation(context.location, {
+  // `kind` and `fromMode` are decided by the same condition, so they are built in one branch each:
+  // spreading them independently lets a `configure` draft pick up a `fromMode` it does not accept.
+  const draft = {
     configPath: context.location.configPath,
-    kind: inspection.authMode === undefined ? 'configure' : 'switch',
-    ...(inspection.authMode === undefined ? {} : { fromMode: inspection.authMode }),
     targetMode: 'command',
     phase: 'prepared',
     installationId: prepared.marker.installationId,
     providerId,
-  });
+  } as const;
+  const operation = await writeAuthOperation(
+    context.location,
+    inspection.authMode === undefined
+      ? { ...draft, kind: 'configure' }
+      : { ...draft, kind: 'switch', fromMode: inspection.authMode },
+  );
   const authorization = await commandAuthorizationNeed(prepared, context);
   if ('authorize' in authorization) {
     await authorizeCodexInstallation(
@@ -268,7 +275,7 @@ async function commitCommand(
       },
       lease,
     );
-    await writeAuthOperation(context.location, { ...operation, phase: 'authorized' });
+    await advanceAuthOperation(context.location, operation, 'authorized');
   }
   const commit = await configureCodexConfig(
     {
@@ -283,7 +290,7 @@ async function commitCommand(
     },
     lease,
   );
-  await writeAuthOperation(context.location, { ...operation, phase: 'config-written' });
+  await advanceAuthOperation(context.location, operation, 'config-written');
   if (prepared.providerId !== providerId)
     await rebindCodexCommandInstallation(context.location, prepared.marker.installationId, providerId, lease);
   await activateCodexCommandInstallation(context.location, prepared.marker.installationId, lease);
@@ -313,10 +320,9 @@ export async function commitCodexSetup(
 
 async function recoverComplete(
   context: CodexSetupContext,
-  operation: AuthOperation,
+  operation: Extract<AuthOperation, { targetMode: 'command' }>,
   lease: CodexLease,
 ): Promise<boolean> {
-  if (operation.targetMode !== 'command' || operation.installationId === undefined) return false;
   let identity = await readCodexCommandIdentity(context.location);
   if (identity?.marker.installationId !== operation.installationId || identity.marker.endpoint !== context.endpoint)
     return false;

@@ -691,7 +691,7 @@ test('oauth success ignores a session that belongs to a different provider', asy
     onSessionIdChange: rs.fn(),
   });
 
-  await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ search: {}, replace: true }));
+  await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: '.', search: {}, replace: true }));
   expect(mocks.fetchQuery).not.toHaveBeenCalled();
   expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('');
 });
