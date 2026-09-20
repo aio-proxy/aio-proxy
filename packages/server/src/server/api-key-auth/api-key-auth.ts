@@ -161,5 +161,10 @@ export function authenticationError(context: Context): Response {
   if (context.req.path.startsWith('/v1beta/')) {
     return context.json({ error: { code: 401, message: 'Invalid API key', status: 'UNAUTHENTICATED' } }, 401);
   }
+  // System One parses a flat envelope; the OpenAI default below carries neither field
+  // where its client looks for them.
+  if (context.req.path.startsWith('/v1/systemone')) {
+    return context.json({ message: 'Invalid API key', error_type: 'authentication_error' }, 401);
+  }
   return context.json({ error: { message: 'Invalid API key', type: 'authentication_error' } }, 401);
 }

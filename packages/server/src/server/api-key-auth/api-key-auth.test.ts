@@ -50,6 +50,16 @@ test('returns a Gemini authentication error for invalid credentials', async () =
   });
 });
 
+/** The fall-through envelope, asserted on a path that owns no branch of its own: every
+ *  protocol without one is an OpenAI client reading `error.message` and `error.type`, so
+ *  a new branch added above must not capture them. */
+test('returns an OpenAI authentication error for invalid credentials', async () => {
+  const response = await appWithKeys().request('/v1/chat/completions', { method: 'POST' });
+
+  expect(response.status).toBe(401);
+  expect(await response.json()).toEqual({ error: { message: 'Invalid API key', type: 'authentication_error' } });
+});
+
 test('accepts bearer authentication and removes caller credentials before dispatch', async () => {
   const response = await appWithKeys().request('/v1/models', {
     headers: { authorization: 'Bearer caller-secret', 'x-api-key': 'other-value' },
