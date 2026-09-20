@@ -69,15 +69,47 @@ test('POST /v1/systemone dispatches an evaluation candidate and returns System O
   });
 });
 
+/** The reason the depth cap exists, observable only from here. A body nested past what
+ *  the onward transports' recursive third-party code survives used to throw inside the
+ *  candidate attempt, where the provider mapper answers 502 `upstream_error` and the
+ *  pipeline cools the provider down -- one cheap request blaming and sidelining a
+ *  healthy upstream. A live candidate is registered precisely so that path is available:
+ *  the request must be refused at parse, so `evaluate` is never reached and no attempt,
+ *  and therefore no cooldown, is recorded against it. */
+test('POST /v1/systemone answers 400 for a body nested past the cap without trying a candidate', async () => {
+  let evaluated = 0;
+  const app = await createServer({
+    config: { providers: {} },
+    providerInstances: [evaluationProvider(() => (evaluated += 1))],
+  });
+
+  // Deeper than the recursion limits of both onward transports, so this is exactly the
+  // body that used to reach one of them; ~40 KB, far inside the encoded-body limit.
+  const deep = '['.repeat(20_000) + '0' + ']'.repeat(20_000);
+  const response = await app.request('/v1/systemone', {
+    body: `{"model":"${MODEL_ID}","state":"s","questions":{"q":{"type":"noul","instructions":"i"}},"deep":${deep}}`,
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    message: 'Request body is nested more than 512 levels deep',
+    error_type: 'invalid_request_error',
+  });
+  expect(evaluated).toBe(0);
+});
+
 const NOUL_RESULT: EvaluationResult = {
   answers: { q: { type: 'noul', noul: 0.93 } },
   usage: { inputTokens: 312, outputTokens: 48 },
-};
-
-// `model` rides along because `evaluation` alone is not one of the runtime's transport
+}; // `model` rides along because `evaluation` alone is not one of the runtime's transport
 // arms; it must never be called on this path.
-function evaluationProvider(): RuntimeProviderInstance {
-  const evaluate = async (): Promise<EvaluationResult> => NOUL_RESULT;
+function evaluationProvider(onEvaluate: () => void = () => undefined): RuntimeProviderInstance {
+  const evaluate = async (): Promise<EvaluationResult> => {
+    onEvaluate();
+    return NOUL_RESULT;
+  };
   return {
     capabilityIndex: { [MODEL_ID]: new Set(['evaluation']) },
     enabled: true,
