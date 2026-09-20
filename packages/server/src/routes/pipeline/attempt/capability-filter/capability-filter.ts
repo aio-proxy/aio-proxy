@@ -37,7 +37,7 @@ export function filterCandidatesByCapability<
     // otherwise claim this capability with no type error to reveal it. The grant
     // comes from a real transport or a System One endpoint, never from protocol
     // metadata - see `synthesizesEvaluation`.
-    if (capability === 'evaluation') return candidateSupportsEvaluation(candidate);
+    if (capability === 'evaluation') return candidateMayEvaluate(candidate);
     return supportsLanguage(candidate.provider.capabilityIndex, candidate.modelId);
   });
 }
@@ -60,8 +60,12 @@ export function filterCandidatesByCapability<
  * candidate position with normal fallback instead of being served. Encoding the
  * probe's answer here is impossible, not merely inconvenient: a boolean cannot
  * express "preparation failed", which must stay a candidate failure.
+ *
+ * Module-local on purpose, and named for admission rather than support: unlike
+ * its image and audio siblings this is NOT the same predicate dispatch applies,
+ * so nothing downstream should reach for it.
  */
-export function candidateSupportsEvaluation(candidate: {
+function candidateMayEvaluate(candidate: {
   readonly provider: Pick<RuntimeProviderInstance, 'capabilityIndex' | 'evaluation'>;
   readonly modelId: string;
 }): boolean {
