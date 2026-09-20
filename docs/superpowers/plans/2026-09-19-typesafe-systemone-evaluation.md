@@ -815,6 +815,13 @@ export function systemOneJson(result: EvaluationResult, context: EvaluationEgres
 
 Create `packages/core/src/protocol/typesafe-systemone/errors.ts`. The body shape is the one TypeSafe's own provider package parses.
 
+**Why a new file rather than `packages/core/src/protocol/errors.ts`**, where the other nine mappers live. Two reasons, and both must hold or move it back:
+
+1. That file is already **485 lines**. A tenth mapper pushes it past the repo's 500-line limit for handwritten implementation files, and CLAUDE.md says a file over 500 must not grow and should be split when materially modified. Splitting a file nine adapters import is not this task's job.
+2. Every helper in that file — `openAIInvalid`, `openAIRateLimited`, `openAIProviderError` — emits the OpenAI envelope. System One's shape is `{ message, error_type }`, so none of them are reusable and a tenth mapper there would carry its own private helper anyway.
+
+Do NOT move this into the shared file, and do NOT reuse `openAIInvalid`. Import `ProtocolErrorMapper` from `../adapter` and build the responses locally.
+
 ```ts
 import type { ProtocolErrorMapper } from '../adapter';
 
