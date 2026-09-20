@@ -76,6 +76,20 @@ export function responseMetadata(response: Response): HttpResponseMetadata {
 }
 
 /**
+ * 同样给读侧用：凭据头这份名单是后来才扩的（原来只有 authorization 和 x-api-key），
+ * 在那之前落盘的日志里 cookie / api-key / x-goog-api-key 都是明文。抓包接口读的是
+ * 磁盘上已经存在的那些行，所以读出来也要按当前名单再脱一遍。
+ */
+export function redactCredentialHeaders(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [
+      name,
+      credentialHeaders.has(name.toLowerCase()) ? REDACTED : value,
+    ]),
+  );
+}
+
+/**
  * 也给读侧用：这个修复之前写下的日志文件里，query 凭据是明文。写侧只能挡住新的，
  * 抓包接口读的是磁盘上已经存在的那些行，所以两个边界都要过一遍。
  */

@@ -1,15 +1,22 @@
 import type { DashboardTraceWireHop } from '@aio-proxy/types';
 import { sortBy } from 'es-toolkit/array';
 
-import { redactUrlCredentials } from '../../../request-logging/request-metadata';
+import { redactCredentialHeaders, redactUrlCredentials } from '../../../request-logging/request-metadata';
 import { headersField, numberField, stringField, type WireEvent } from './parse-line';
 
 type BodyOutcome = 'complete' | 'cancelled' | 'error';
 
-// 这个修复之前落盘的行里，query 凭据是明文。写侧的脱敏只对新日志生效，所以读出来再过一遍。
+// 这个修复之前落盘的行里，query 凭据和一部分凭据头都是明文（header 名单是后来才扩的）。
+// 写侧的脱敏只对新日志生效，抓包读的是磁盘上已有的那些行，所以 URL 和 headers 读出来都要
+// 按当前名单再过一遍。
 const redactedUrlField = (event: WireEvent): string | undefined => {
   const url = stringField(event, 'url');
   return url === undefined ? undefined : redactUrlCredentials(url);
+};
+
+const redactedHeadersField = (event: WireEvent): Readonly<Record<string, string>> | undefined => {
+  const headers = headersField(event, 'headers');
+  return headers === undefined ? undefined : redactCredentialHeaders(headers);
 };
 
 export type BodyDraft = {
@@ -63,7 +70,7 @@ export function applyWireEvent(drafts: HopDrafts, event: WireEvent): void {
     const hop = inboundHop(drafts);
     hop.method = stringField(event, 'method');
     hop.url = redactedUrlField(event);
-    hop.requestHeaders = headersField(event, 'headers');
+    hop.requestHeaders = redactedHeadersField(event);
     return;
   }
   if (eventName === 'request.upstream_snapshot') {
@@ -71,7 +78,7 @@ export function applyWireEvent(drafts: HopDrafts, event: WireEvent): void {
     if (hop === undefined) return;
     hop.method = stringField(event, 'method');
     hop.url = redactedUrlField(event);
-    hop.requestHeaders = headersField(event, 'headers');
+    hop.requestHeaders = redactedHeadersField(event);
     return;
   }
   if (eventName === 'request.upstream_result') {
@@ -79,7 +86,7 @@ export function applyWireEvent(drafts: HopDrafts, event: WireEvent): void {
     if (hop === undefined) return;
     hop.durationMs = numberField(event, 'durationMs');
     hop.statusCode = numberField(event, 'statusCode');
-    hop.responseHeaders = headersField(event, 'headers');
+    hop.responseHeaders = redactedHeadersField(event);
     hop.errorType = stringField(event, 'errorType');
     return;
   }

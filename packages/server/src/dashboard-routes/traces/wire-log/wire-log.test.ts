@@ -442,3 +442,31 @@ describe('readTraceWireLog', () => {
     expect(running.hops[0]?.request?.body?.text).toBe('before');
   });
 });
+
+// 凭据头这份名单是后来才扩的（原来只有 authorization 和 x-api-key）。在那之前落盘的日志里
+// cookie / api-key / x-goog-api-key 都是明文，而抓包接口读的正是磁盘上已有的那些行 ——
+// 写侧的脱敏对它们一点用都没有，读出来必须按当前名单再过一遍。
+test('redacts credentials that older log files recorded in plaintext', () => {
+  const drafts = createHopDrafts();
+  applyWireEvent(drafts, {
+    event: 'request.inbound_snapshot',
+    requestId: REQUEST_ID,
+    method: 'POST',
+    url: 'https://proxy.test/v1/messages?api_key=legacy-query-secret',
+    headers: {
+      cookie: 'session=legacy-cookie-secret',
+      'api-key': 'legacy-azure-secret',
+      'x-goog-api-key': 'legacy-google-secret',
+      'x-observable': 'visible-header',
+    },
+  });
+
+  const serialized = JSON.stringify(finalizeHops(drafts));
+
+  expect(serialized).not.toContain('legacy-cookie-secret');
+  expect(serialized).not.toContain('legacy-azure-secret');
+  expect(serialized).not.toContain('legacy-google-secret');
+  expect(serialized).not.toContain('legacy-query-secret');
+  // 普通头照常可见，别把脱敏写成全抹。
+  expect(serialized).toContain('visible-header');
+});

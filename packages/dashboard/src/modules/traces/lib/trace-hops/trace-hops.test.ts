@@ -38,7 +38,7 @@ test('puts inbound first and labels it with the session source', () => {
     label: 'claude-cli',
     kind: 'inbound',
     attemptIndex: undefined,
-    failed: false,
+    status: 'success',
   });
 });
 
@@ -46,25 +46,25 @@ test('falls back to the inbound protocol when the trace has no session', () => {
   const chips = toTraceHopChips({ spans: [], trace: { ...trace, session: undefined } });
 
   expect(chips).toEqual([
-    { id: 'inbound', label: 'anthropic-messages', kind: 'inbound', attemptIndex: undefined, failed: false },
+    { id: 'inbound', label: 'anthropic-messages', kind: 'inbound', attemptIndex: undefined, status: 'success' },
   ]);
 });
 
-test('marks inbound failed from the trace status', () => {
+test('marks inbound as failure from the trace status', () => {
   const chips = toTraceHopChips({ spans: [], trace: { ...trace, otelStatusCode: 'ERROR' } });
 
-  expect(chips[0]?.failed).toBe(true);
+  expect(chips[0]?.status).toBe('failure');
 });
 
 // 4xx 的 span 状态按 HTTP 语义约定是 UNSET，只看状态码的话被拒的那一跳会显示成正常。
-test('marks a 4xx hop failed even though its OTel status is UNSET', () => {
+test('marks a 4xx hop as failure even though its OTel status is UNSET', () => {
   const chips = toTraceHopChips({
     spans: [createSpan({ attributes: { 'aio_proxy.attempt.index': 0, 'http.response.status_code': 429 } })],
     trace: { ...trace, finalHttpStatus: 404 },
   });
 
-  expect(chips[0]?.failed).toBe(true);
-  expect(chips[1]?.failed).toBe(true);
+  expect(chips[0]?.status).toBe('failure');
+  expect(chips[1]?.status).toBe('failure');
 });
 
 test('orders attempts by attempt index rather than span order', () => {
@@ -98,7 +98,7 @@ test('falls back to the hop id as label when the attempt span has no provider id
     label: 'attempt-1',
     kind: 'attempt',
     attemptIndex: 1,
-    failed: false,
+    status: 'success',
   });
 });
 
@@ -118,7 +118,7 @@ test('reflects an attempt span ERROR status on that chip only', () => {
     trace,
   });
 
-  expect(chips.map((chip) => chip.failed)).toEqual([false, true, false]);
+  expect(chips.map((chip) => chip.status)).toEqual(['success', 'failure', 'success']);
 });
 
 test('ignores spans that are not provider attempts', () => {
@@ -131,4 +131,17 @@ test('ignores spans that are not provider attempts', () => {
   });
 
   expect(chips.map((chip) => chip.id)).toEqual(['inbound']);
+});
+
+// 取消和「还在跑」都不是失败，但也不是成功。用布尔的时候它们一律落进 false，于是画成绿点、
+// 读屏念「成功」—— 取消从失败判定里摘出去之后，这个谎才显出来。
+test('keeps running and cancelled hops out of both success and failure', () => {
+  const running = toTraceHopChips({ spans: [], trace: { ...trace, endedAt: null } });
+  expect(running[0]?.status).toBe('running');
+
+  const cancelled = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, otelStatusCode: 'ERROR', terminationReason: 'cancelled' },
+  });
+  expect(cancelled[0]?.status).toBe('cancelled');
 });

@@ -1,1 +1,1 @@
-export { toTraceHopChips, type TraceHopChip } from './trace-hops';
+export { type TraceHopStatus, toTraceHopChips, type TraceHopChip } from './trace-hops';

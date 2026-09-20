@@ -4,13 +4,31 @@ import { sortBy } from 'es-toolkit/array';
 import { traceAttribute, traceSpanName } from '../trace-attribute-names';
 import { isFailedSpan, isFailedTrace } from '../trace-failure';
 
+/**
+ * 四态而不是 failed 布尔：把「不是失败」一律翻译成成功，会让还在跑的和被取消的那几跳画成
+ * 绿点、读屏念「成功」—— 取消从失败判定里摘出去之后尤其明显。用的是 `TraceStatus` 同一套
+ * 词，所以文案键也是现成的。
+ */
+export type TraceHopStatus = 'running' | 'cancelled' | 'failure' | 'success';
+
 export interface TraceHopChip {
   readonly id: string;
   readonly label: string;
   readonly kind: 'inbound' | 'attempt';
   readonly attemptIndex: number | undefined;
-  readonly failed: boolean;
+  readonly status: TraceHopStatus;
 }
+
+// 失败判定继续走 isFailedSpan / isFailedTrace（它带着 4xx 那条规则，而 TraceStatus 自己的
+// displayStatus 没有），这里只在它之前先把「还在跑」和「已取消」分出来。
+const hopStatus = (
+  item: Pick<DashboardTraceSpan, 'endedAt' | 'terminationReason'>,
+  failed: boolean,
+): TraceHopStatus => {
+  if (item.endedAt === null) return 'running';
+  if (item.terminationReason === 'cancelled') return 'cancelled';
+  return failed ? 'failure' : 'success';
+};
 
 const numberAttribute = (span: DashboardTraceSpan, key: string): number | undefined => {
   const value = span.attributes[key];
@@ -44,7 +62,7 @@ export const toTraceHopChips = (input: {
       label: trace.session?.source ?? trace.inboundProtocol,
       kind: 'inbound',
       attemptIndex: undefined,
-      failed: isFailedTrace(trace),
+      status: hopStatus(trace, isFailedTrace(trace)),
     },
     // index 缺失的 attempt span 排在最后，并退回 spanId 做 id：抓包里对不上号，但仍要看得见这一跳。
     ...sortBy(attempts, [(span) => numberAttribute(span, traceAttribute.attemptIndex) ?? Number.MAX_SAFE_INTEGER]).map(
@@ -56,7 +74,7 @@ export const toTraceHopChips = (input: {
           label: stringAttribute(span, traceAttribute.providerId) ?? id,
           kind: 'attempt',
           attemptIndex,
-          failed: isFailedSpan(span),
+          status: hopStatus(span, isFailedSpan(span)),
         };
       },
     ),
