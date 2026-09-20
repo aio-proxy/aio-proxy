@@ -324,12 +324,7 @@ export function createProviderV4Evaluate(providerId: string, provider: unknown):
   return {
     async evaluate(invocation, options) {
       const result = await experimental_evaluate({
-        // Always an explicitly resolved model INSTANCE, never a bare string id. At
-        // ai@7.0.107 a string resolves through `AI_SDK_DEFAULT_PROVIDER ?? gateway`,
-        // so passing one would silently route to Gateway instead of the candidate the
-        // pipeline selected: the call would succeed against the wrong provider and
-        // bill the wrong account.
-        model: resolveModel(options.modelId) as Experimental_EvaluationModelV4,
+        model: asEvaluationModel(providerId, resolveModel(options.modelId)),
         state: invocation.state as Experimental_EvaluationModelV4Input,
         questions: toSdkQuestions(invocation),
         // The pipeline owns retry and fallback. An SDK-level retry would hide the
@@ -351,6 +346,22 @@ export function createProviderV4Evaluate(providerId: string, provider: unknown):
 }
 
 type SdkEvaluationAnswer = Experimental_EvaluationModelV4Result['answers'][string];
+
+// `experimental_evaluate` accepts `string | Experimental_EvaluationModelV4`, and at
+// ai@7.0.107 a bare string id resolves through `AI_SDK_DEFAULT_PROVIDER ?? gateway`. A
+// package whose `evaluationModel` returned the id instead of a model would therefore
+// route to Gateway instead of the candidate the pipeline selected, succeed against the
+// wrong provider, and bill the wrong account — silently, because the answers still come
+// back well formed. The resolver is untyped, so this rejects anything that is not a real
+// v4 model instance rather than casting the hazard away. `specificationVersion` is
+// mandatory on the contract, so it is a reliable marker. The sibling embedding wrapper
+// needs no such guard: `embed` has no string overload, so a stray string fails there.
+function asEvaluationModel(providerId: string, model: unknown): Experimental_EvaluationModelV4 {
+  if (!isRecord(model) || model['specificationVersion'] !== 'v4') {
+    throw new AiSdkProviderError(providerId, 'ai-sdk provider did not resolve an evaluation model instance');
+  }
+  return model as unknown as Experimental_EvaluationModelV4;
+}
 
 // SDK questions use `boolean` where the System One wire uses `noul`. Only that
 // envelope is rebuilt: `validateEvaluationInput` accepts choice/score questions

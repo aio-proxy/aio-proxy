@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { APICallError, type Experimental_EvaluationModelV4Result as SdkEvaluationResult } from '@ai-sdk/provider';
 import { Experimental_EvaluationMockModelV4 } from 'ai/test';
 
+import { AiSdkProviderError } from '../error';
 import { createProviderV4Evaluate } from './provider-v4';
 
 const providerWith = (model: unknown) => ({ evaluationModel: () => model });
@@ -107,6 +108,42 @@ describe('createProviderV4Evaluate', () => {
     expect(result.usage).toEqual({ inputTokens: 11, outputTokens: 3 });
   });
 
+  // A half-reported usage must omit the missing key outright rather than emit it as an
+  // explicit `undefined`, which would serialize into the response envelope as a null.
+  it.each([
+    ['input', { inputTokens: 11 }, 'outputTokens'] as const,
+    ['output', { outputTokens: 3 }, 'inputTokens'] as const,
+  ])('omits the absent token count when only %s is reported', async (_label, usage, absent) => {
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(mock({ answers: { q: { type: 'boolean', probability: 0.5 } }, usage })),
+    );
+    const result = await transport.evaluate(
+      { state: 's', questions: { q: { type: 'noul', instructions: 'i' } } },
+      { modelId: 'm' },
+    );
+    expect(result.usage).toEqual(usage);
+    expect(result.usage).not.toHaveProperty(absent);
+  });
+
+  it('degrades to no confidence when providerMetadata has the wrong shape', async () => {
+    const transport = createProviderV4Evaluate(
+      'p',
+      providerWith(
+        mock({
+          answers: { c: { type: 'choice', choice: 'billing', probabilities: { billing: 1 } } },
+          providerMetadata: { typesafe: 'not-an-object' } as unknown as SdkEvaluationResult['providerMetadata'],
+        }),
+      ),
+    );
+    const result = await transport.evaluate(
+      { state: 's', questions: { c: { type: 'choice', instructions: 'i', criteria: { billing: null } } } },
+      { modelId: 'm' },
+    );
+    expect(result.answers['c']).toEqual({ type: 'choice', choice: 'billing', probabilities: { billing: 1 } });
+    expect(result.answers['c']).not.toHaveProperty('confidence');
+  });
+
   it('carries string, object, and array state through to doEvaluate intact', async () => {
     for (const state of ['text', { a: 1 }, [1, 2]]) {
       let seen: unknown;
@@ -169,5 +206,15 @@ describe('createProviderV4Evaluate', () => {
 
   it('throws when the package exposes no evaluationModel', () => {
     expect(() => createProviderV4Evaluate('p', {})).toThrow(/evaluation/);
+  });
+
+  // `experimental_evaluate` also accepts a bare model id, which it resolves through the
+  // Vercel Gateway. A resolver that returned one would bill the wrong account while still
+  // answering correctly, so the transport must refuse it instead of calling the SDK.
+  it('rejects a resolver that returns a model id string instead of an instance', async () => {
+    const transport = createProviderV4Evaluate('p', providerWith('gpt-4o-mini'));
+    await expect(
+      transport.evaluate({ state: 's', questions: { q: { type: 'noul', instructions: 'i' } } }, { modelId: 'm' }),
+    ).rejects.toThrow(AiSdkProviderError);
   });
 });
