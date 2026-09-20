@@ -39,10 +39,11 @@ const catalog: AgentCatalogV1 = {
 };
 
 test('maps the common Pi-family surface without inventing modalities or prices', () => {
-  expect(toPiFamilyModels(catalog)).toEqual([
+  expect(toPiFamilyModels(catalog, marker.endpoint)).toEqual([
     {
       id: 'gpt-x',
       name: 'GPT X',
+      api: 'openai-responses',
       reasoning: true,
       input: ['text', 'image'],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -56,9 +57,27 @@ test('uses host-required numeric defaults only for null limits', () => {
   const nullLimits = structuredClone(catalog);
   nullLimits.models[0]!.context_window = null;
   nullLimits.models[0]!.max_output_tokens = null;
-  expect(toPiFamilyModels(nullLimits)[0]).toMatchObject({ contextWindow: 128_000, maxTokens: 16_384 });
+  expect(toPiFamilyModels(nullLimits, marker.endpoint)[0]).toMatchObject({
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+  });
   nullLimits.models[0]!.context_window = 8_000;
-  expect(toPiFamilyModels(nullLimits)[0]).toMatchObject({ contextWindow: 8_000, maxTokens: 8_000 });
+  expect(toPiFamilyModels(nullLimits, marker.endpoint)[0]).toMatchObject({ contextWindow: 8_000, maxTokens: 8_000 });
+});
+
+test.each([
+  ['gpt-5.6', 'openai-responses', undefined],
+  ['claude-opus-5', 'anthropic-messages', undefined],
+  ['gemini-3.8-flash', 'google-generative-ai', 'http://127.0.0.1:9317/v1beta'],
+  ['grok-4.5', 'openai-completions', undefined],
+] as const)('maps %s to %s', (id, api, baseUrl) => {
+  const input = structuredClone(catalog);
+  input.models[0]!.id = id;
+  expect(toPiFamilyModels(input, marker.endpoint)[0]).toMatchObject({
+    api,
+    ...(baseUrl === undefined ? {} : { baseUrl }),
+  });
+  if (baseUrl === undefined) expect(toPiFamilyModels(input, marker.endpoint)[0]).not.toHaveProperty('baseUrl');
 });
 
 test('login presents the exact Device response and returns host-owned OAuth credentials', async () => {
@@ -342,7 +361,7 @@ test('undefined access token rereads LKG without a catalog request', async () =>
       refreshAgentCatalog: refresh,
     }),
   ).resolves.toEqual({
-    models: toPiFamilyModels(catalog),
+    models: toPiFamilyModels(catalog, marker.endpoint),
     source: 'lkg',
     status: 'stale',
   });

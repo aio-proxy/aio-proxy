@@ -407,7 +407,7 @@ const ompCatalog = (id = 'compat-model'): AgentCatalogV1 => ({
     },
   ],
 });
-const fModels = (id = 'compat-model') => toPiFamilyModels(ompCatalog(id));
+const fModels = (id = 'compat-model') => toPiFamilyModels(ompCatalog(id), OMP_MARKER.endpoint);
 
 async function fixture(
   options: {

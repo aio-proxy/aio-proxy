@@ -37,6 +37,7 @@ test('refreshModels consumes host-refreshed context credential and publishes exa
   expect(models[0]).toEqual({
     id: 'compat-model',
     name: 'compat-model',
+    api: 'openai-completions',
     reasoning: false,
     input: ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -49,7 +50,7 @@ test('catalog 401 keeps host LKG and returns a stable re-login diagnostic', asyn
   const f = await fixture({
     catalogResults: [
       {
-        models: toPiFamilyModels(hostCatalog('lkg')),
+        models: toPiFamilyModels(hostCatalog('lkg'), HOST_MARKER.endpoint),
         source: 'lkg',
         status: 'stale',
         error: 'unauthorized',
@@ -297,7 +298,7 @@ async function fixture(
       if (catalogHold !== undefined) await catalogHold;
       return (
         catalogResults.shift() ?? {
-          models: toPiFamilyModels(lkg),
+          models: toPiFamilyModels(lkg, HOST_MARKER.endpoint),
           source: 'network',
           status: 'fresh',
         }
