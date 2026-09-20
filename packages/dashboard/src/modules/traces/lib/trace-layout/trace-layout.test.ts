@@ -25,13 +25,15 @@ const span = (
 });
 
 describe('layoutTraceSpans', () => {
-  test('keeps API order while laying out nested and overlapping Spans', () => {
+  test('orders rows depth-first while laying out nested and overlapping Spans', () => {
     const root = span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z');
     const attempt = span('attempt', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.090Z', 'root');
     const inference = span('inference', '2026-07-12T08:00:00.020Z', '2026-07-12T08:00:00.070Z', 'attempt');
     const egress = span('egress', '2026-07-12T08:00:00.050Z', '2026-07-12T08:00:00.080Z', 'attempt');
 
-    const rows = layoutTraceSpans([root, attempt, inference, egress], new Date('2026-07-12T08:00:01.000Z'));
+    // Deliberately not handed over in tree order: the rows must come from the parent/child
+    // structure, not from the order the API happened to return.
+    const rows = layoutTraceSpans([egress, root, inference, attempt], new Date('2026-07-12T08:00:01.000Z'));
 
     expect(rows).toEqual([
       expect.objectContaining({ spanId: 'root', depth: 0, offsetRatio: 0, widthRatio: 1 }),
@@ -51,6 +53,10 @@ describe('layoutTraceSpans', () => {
 
     const rows = layoutTraceSpans([root, running, orphan, cycleA, cycleB], new Date('2026-07-12T08:00:00.150Z'));
 
+    // A span whose parent is missing or cyclic becomes its own root rather than being dropped:
+    // a partly fetched or corrupt trace still shows every row it has, exactly once.
+    expect(rows).toHaveLength(5);
+    expect(new Set(rows.map((row) => row.spanId)).size).toBe(5);
     expect(rows.map(({ spanId, depth }) => ({ spanId, depth }))).toEqual([
       { spanId: 'root', depth: 0 },
       { spanId: 'running', depth: 1 },
@@ -105,5 +111,40 @@ describe('layoutTraceSpans', () => {
     );
 
     expect(rows[1]?.ttftRatio).toBeUndefined();
+  });
+
+  // 行序不能来自 startedAt 排序：服务端开 attempt 之后紧接着开 prepare，中间没有 await，
+  // 两者落在同一毫秒是常态；而它们的 hrtime 没有共同 epoch 锚点，截断后子 span 的毫秒数
+  // 甚至可能比父 span 小。两种情况都会把缩进更深的行排到它的父行上面。
+  test('puts a parent before its child even when the API order does not', () => {
+    const root = span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z');
+    // 同一毫秒：API 的 tie-break 是随机 spanId，这里 'a-prepare' 排在 'b-attempt' 前面。
+    const attempt = span('b-attempt', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.090Z', 'root');
+    const prepare = span('a-prepare', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.020Z', 'b-attempt');
+    // 截断造成的真实倒置：子 span 的毫秒数严格小于父 span 的。
+    const upstream = span('upstream', '2026-07-12T08:00:00.009Z', '2026-07-12T08:00:00.080Z', 'b-attempt');
+
+    // API 会按 (startedAt, spanId) 给出这个顺序，两个孩子都排在父亲前面。
+    const rows = layoutTraceSpans([root, upstream, prepare, attempt], new Date('2026-07-12T08:00:01.000Z'));
+
+    expect(rows.map((row) => row.spanId)).toEqual(['root', 'b-attempt', 'upstream', 'a-prepare']);
+    expect(rows.map((row) => row.depth)).toEqual([0, 1, 2, 2]);
+  });
+
+  test('orders siblings by start time', () => {
+    const root = span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z');
+    const parse = span('parse', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.020Z', 'root');
+    const route = span('route', '2026-07-12T08:00:00.030Z', '2026-07-12T08:00:00.040Z', 'root');
+    const order = (children: readonly DashboardTraceSpan[]) =>
+      layoutTraceSpans([root, ...children], new Date('2026-07-12T08:00:01.000Z')).map((row) => row.spanId);
+
+    expect(order([parse, route])).toEqual(['root', 'parse', 'route']);
+    // Swapping only the timestamps swaps the rows: structure fixes nesting, time orders siblings.
+    expect(
+      order([
+        { ...parse, startedAt: route.startedAt },
+        { ...route, startedAt: parse.startedAt },
+      ]),
+    ).toEqual(['root', 'route', 'parse']);
   });
 });
