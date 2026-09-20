@@ -414,3 +414,43 @@ test('redacts credential query parameters from captured urls', async () => {
   expect(snapshot).toContain('keyword=visible');
   expect(snapshot).toContain('stream=true');
 });
+
+// server.address 只放主机名：带端口的 `provider.example:8443` 不是合法值，按标准聚合的
+// 后端会认不出来。端口单独走 server.port，走默认端口时干脆不发 —— 补一个猜出来的默认值
+// 等于把「没说」写成「说了」。
+test('splits the upstream port out of server.address', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 200 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, () => fetcher('https://provider.example:8443/v1/chat')),
+  );
+  parent.end();
+
+  const post = processor.take(traceId).find((span) => span.name === 'GET');
+  expect(post?.attributes['server.address']).toBe('provider.example');
+  expect(post?.attributes['server.port']).toBe(8443);
+});
+
+test('omits server.port on the default port and unwraps an IPv6 address', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 200 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, () => fetcher('https://[::1]/v1/chat')),
+  );
+  parent.end();
+
+  const post = processor.take(traceId).find((span) => span.name === 'GET');
+  // 方括号是 URL 语法，不属于地址本身。
+  expect(post?.attributes['server.address']).toBe('::1');
+  expect(post?.attributes['server.port']).toBeUndefined();
+});

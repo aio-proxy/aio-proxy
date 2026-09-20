@@ -1,5 +1,5 @@
 import { ProviderProtocol } from '@aio-proxy/types';
-import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
+import { type Attributes, context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { createParser } from 'eventsource-parser';
 
 import { attributeName, getTraceRuntime } from '../../request-tracing';
@@ -372,10 +372,19 @@ async function fetchWithSpan(
 // The spec says url.full; only host + path are recorded. Several providers put
 // the key in the query string (`?key=`), and span attributes are persisted by
 // default and rendered straight into the dashboard.
-function targetAttributes(href: string): Record<string, string> {
+function targetAttributes(href: string): Attributes {
   try {
     const url = new URL(href);
-    return { [attributeName.serverAddress]: url.host, [attributeName.urlPath]: url.pathname };
+    return {
+      // hostname 而不是 host：语义约定里 server.address 只放主机名或 IP，端口是单独的
+      // server.port。用 host 的话自建或非标端口的上游会得到 `provider.example:8443`，
+      // 按标准做筛选和聚合的后端认不出来。IPv6 的方括号是 URL 语法，同样不属于地址本身。
+      [attributeName.serverAddress]: url.hostname.replace(/^\[|\]$/gu, ''),
+      // 走默认端口时 URL.port 是空串，那种情况不发这个属性 —— 补一个猜出来的默认值
+      // 等于把「没说」写成「说了」。
+      ...(url.port === '' ? {} : { [attributeName.serverPort]: Number(url.port) }),
+      [attributeName.urlPath]: url.pathname,
+    };
   } catch {
     return {};
   }

@@ -148,6 +148,7 @@ export const attributeName = {
   genAiTimeToFirstChunk: 'gen_ai.response.time_to_first_chunk',
   httpRequestMethod: 'http.request.method',
   serverAddress: 'server.address',
+  serverPort: 'server.port',
   urlPath: 'url.path',
   errorType: 'error.type',
   // `http.status_code` 2023 年就废弃了。旧数据落库时用的是老 key，dashboard 侧留兜底，
