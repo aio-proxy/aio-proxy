@@ -154,8 +154,11 @@ export const DashboardTraceSummaryBucketSizeSchema = z.enum(['1m', '5m', '30m', 
  * 一个时间桶里的成功/失败数。注意与 `DashboardTraceSummarySchema` 区分：
  * 那个是一行调用链的摘要，这个是 `GET /dashboard/api/traces/summary` 的聚合结果。
  *
- * 口径跟 `TraceOutcomeSchema` 一致：跑完了没报错算 `success`，报错算 `error`，
- * 还在跑的两边都不计 —— 图上少掉的那一点就是「还没有结果」，不该被算成成功。
+ * 口径跟 `TraceOutcomeSchema` 一致：跑完了没报错算 `success`，报错算 `error`。
+ * 两边都不计的有两种：还在跑的（「还没有结果」，不该被算成成功），以及被取消的
+ * —— 取消的根 span 也是 ERROR，但表格把它标成「已取消」而不是失败，算进 `error`
+ * 就会让图和表对同一条调用链给两个说法。要单独看取消的走 `terminationReason`。
+ * 所以 `success + error` 一般小于同一范围内的调用链总数。
  */
 export const DashboardTraceSummaryBucketSchema = z
   .object({
