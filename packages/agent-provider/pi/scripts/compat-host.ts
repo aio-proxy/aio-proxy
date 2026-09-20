@@ -10,7 +10,7 @@ const INITIAL_ACCESS = `aio_agent_at_v1_${'a'.repeat(43)}`;
 const INITIAL_REFRESH = `aio_agent_rt_v1_${'b'.repeat(43)}`;
 const ROTATED_ACCESS = `aio_agent_at_v1_${'c'.repeat(43)}`;
 const ROTATED_REFRESH = `aio_agent_rt_v1_${'d'.repeat(43)}`;
-const PRINT_ARGS = ['-p', '--no-session', '--model', 'aio-proxy/compat-model', 'compat'] as const;
+const PRINT_ARGS = ['-p', '--no-session', '--model', 'aio-proxy/gpt-compat-model', 'compat'] as const;
 
 type Target = 'pi' | 'omp';
 type Scenario = 'concurrent' | 'crash';
@@ -150,6 +150,24 @@ async function run(
   return { stdout, stderr, exitCode };
 }
 
+async function inferenceResponse(request: Request, target: Target): Promise<Response> {
+  if (target === 'pi') {
+    const sessionId = request.headers.get('session_id');
+    check(sessionId !== null && sessionId.length > 0, 'official Pi omitted session_id');
+    check(request.headers.get('x-client-request-id') === sessionId, 'official Pi sent mismatched session headers');
+    const body = (await request.json()) as Record<string, unknown>;
+    check(body['prompt_cache_key'] === sessionId, 'official Pi sent a mismatched prompt_cache_key');
+  }
+  const stream = [
+    'data: {"type":"response.created","response":{"id":"resp_compat"}}\n\n',
+    'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_compat","type":"message","role":"assistant","status":"in_progress","content":[]}}\n\n',
+    'data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":"msg_compat","delta":"compat-ok"}\n\n',
+    'data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_compat","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"compat-ok","annotations":[]}]}}\n\n',
+    'data: {"type":"response.completed","response":{"id":"resp_compat","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}}}}\n\n',
+  ].join('');
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+}
+
 function startFakeProxy(target: Target) {
   const clientId = `aio-proxy-${target}`;
   let refreshRequests = 0;
@@ -265,8 +283,8 @@ function startFakeProxy(target: Target) {
           agent: target,
           models: [
             {
-              id: 'compat-model',
-              name: 'Compat Model',
+              id: 'gpt-compat-model',
+              name: 'GPT Compat Model',
               reasoning: false,
               tool_call: true,
               temperature: false,
@@ -278,18 +296,13 @@ function startFakeProxy(target: Target) {
           ],
         });
       }
-      if (url.pathname === '/v1/chat/completions') {
+      if (url.pathname === '/v1/responses') {
         if (authorization === null) anonymousInferenceCalls += 1;
         assertAllowedInstallationAuthorization(authorization, 'inference');
         if (authorization === `Bearer ${INITIAL_ACCESS}`) return new Response('', { status: 401 });
         if (authorization !== `Bearer ${ROTATED_ACCESS}`) return new Response('', { status: 401 });
         successfulInferenceCalls += 1;
-        const stream = [
-          'data: {"id":"compat","object":"chat.completion.chunk","created":0,"model":"compat-model","choices":[{"index":0,"delta":{"role":"assistant","content":"compat-ok"},"finish_reason":null}]}\n\n',
-          'data: {"id":"compat","object":"chat.completion.chunk","created":0,"model":"compat-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
-          'data: [DONE]\n\n',
-        ].join('');
-        return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+        return inferenceResponse(request, target);
       }
       return new Response('not found', { status: 404 });
     },
@@ -442,8 +455,9 @@ async function runProbe(
   check(
     JSON.stringify(models[0]) ===
       JSON.stringify({
-        id: 'compat-model',
-        name: 'Compat Model',
+        id: 'gpt-compat-model',
+        name: 'GPT Compat Model',
+        api: 'openai-responses',
         reasoning: false,
         input: ['text'],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

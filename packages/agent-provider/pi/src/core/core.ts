@@ -17,6 +17,8 @@ export type OAuthCredentials = { readonly access: string; readonly refresh: stri
 export type PiFamilyModel = {
   readonly id: string;
   readonly name: string;
+  readonly api: 'openai-responses' | 'anthropic-messages' | 'google-generative-ai' | 'openai-completions';
+  readonly baseUrl?: string;
   readonly reasoning: boolean;
   readonly input: Array<'text' | 'image'>;
   readonly cost: { readonly input: 0; readonly output: 0; readonly cacheRead: 0; readonly cacheWrite: 0 };
@@ -36,12 +38,22 @@ export function piFamilyUnavailableMessage(error: RefreshCatalogResult['error'])
   return 'aio-proxy server required';
 }
 
-export const toPiFamilyModels = (catalog: AgentCatalogV1): PiFamilyModel[] =>
+const apiForModel = (id: string): PiFamilyModel['api'] => {
+  if (id.startsWith('gpt-')) return 'openai-responses';
+  if (id.startsWith('claude-')) return 'anthropic-messages';
+  if (id.startsWith('gemini-')) return 'google-generative-ai';
+  return 'openai-completions';
+};
+
+export const toPiFamilyModels = (catalog: AgentCatalogV1, endpoint: string): PiFamilyModel[] =>
   catalog.models.map((model) => {
     const contextWindow = model.context_window ?? DEFAULT_CONTEXT;
+    const api = apiForModel(model.id);
     return {
       id: model.id,
       name: model.name,
+      api,
+      ...(api === 'google-generative-ai' ? { baseUrl: new URL('/v1beta', endpoint).href.replace(/\/$/u, '') } : {}),
       reasoning: model.reasoning,
       input: model.input.filter((value): value is 'text' | 'image' => value === 'text' || value === 'image'),
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -141,7 +153,7 @@ export async function readPiFamilyModels(
     const lkg = await (options.readLastKnownCatalog ?? readLastKnownCatalog)(managed.statePath, managed.marker.agent);
     return lkg === null
       ? { models: [], source: 'missing', status: 'missing' }
-      : { models: toPiFamilyModels(lkg), source: 'lkg', status: 'stale' };
+      : { models: toPiFamilyModels(lkg, managed.marker.endpoint), source: 'lkg', status: 'stale' };
   }
   const result = await (options.refreshAgentCatalog ?? refreshAgentCatalog)({
     marker: managed.marker,
@@ -152,7 +164,7 @@ export async function readPiFamilyModels(
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   return {
-    models: result.catalog === null ? [] : toPiFamilyModels(result.catalog),
+    models: result.catalog === null ? [] : toPiFamilyModels(result.catalog, managed.marker.endpoint),
     source: result.source,
     status: result.status,
     ...(result.error === undefined ? {} : { error: result.error }),
