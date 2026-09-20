@@ -100,6 +100,26 @@ test('evaluation inbound drops a language-only candidate', () => {
   expect(filterCandidatesByCapability([language], 'evaluation', noPolicy)).toEqual([]);
 });
 
+test('evaluation inbound keeps a candidate whose convert transport has not been probed', () => {
+  // An `ai-sdk` provider names an arbitrary npm package, so the index cannot
+  // grant evaluation up front and only `discover()` knows - asynchronously, while
+  // this filter is synchronous. Reading the unprobed state as a denial drops the
+  // documented Gateway backup on the first evaluation request of the process, and
+  // the failover it exists for never dispatches.
+  const cold = candidate('typesafe-ai/jev', { 'typesafe-ai/jev': new Set(['language']) }, 'weighted_random', {
+    evaluation: unprobedEvaluation(),
+  });
+  expect(filterCandidatesByCapability([cold], 'evaluation', noPolicy)).toEqual([cold]);
+});
+
+test('evaluation inbound drops the same candidate when no transport is attached', () => {
+  // The companion negative. Without it the test above passes against a rule that
+  // admits every candidate, which is the failure mode an index-free admission is
+  // one edit away from.
+  const noTransport = candidate('typesafe-ai/jev', { 'typesafe-ai/jev': new Set(['language']) });
+  expect(filterCandidatesByCapability([noTransport], 'evaluation', noPolicy)).toEqual([]);
+});
+
 test('speech inbound keeps only speech-capable candidates', () => {
   // A language-only candidate reaching a speech request is the regression this
   // guards: the filter's trailing branch is `supportsLanguage`, so a missing
@@ -197,7 +217,7 @@ function candidate(
   modelId: string,
   capabilityIndex: ModelCapabilityIndex,
   selectionSource: 'provider_qualified' | 'weighted_random' = 'weighted_random',
-  transports: Partial<Pick<RuntimeProviderInstance, 'speech' | 'transcription'>> = {},
+  transports: Partial<Pick<RuntimeProviderInstance, 'evaluation' | 'speech' | 'transcription'>> = {},
 ) {
   const provider: RuntimeProviderInstance = {
     id: 'provider',
@@ -212,4 +232,13 @@ function candidate(
     ...transports,
   };
   return { provider, modelId, selectionSource };
+}
+
+// A transport whose package has never been loaded. Calling either member is the
+// failure this models: admission must decide without probing.
+function unprobedEvaluation(): NonNullable<RuntimeProviderInstance['evaluation']> {
+  const unreached = () => {
+    throw new Error('admission must not probe the package');
+  };
+  return { discover: unreached, evaluate: unreached };
 }

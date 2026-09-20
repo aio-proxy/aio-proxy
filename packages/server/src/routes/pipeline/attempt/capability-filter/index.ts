@@ -1,1 +1,6 @@
-export { candidateSupportsAudio, candidateSupportsImage, filterCandidatesByCapability } from './capability-filter';
+export {
+  candidateSupportsAudio,
+  candidateSupportsEvaluation,
+  candidateSupportsImage,
+  filterCandidatesByCapability,
+} from './capability-filter';
