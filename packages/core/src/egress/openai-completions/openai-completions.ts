@@ -47,14 +47,13 @@ export function writeOpenAICompletionsSSE(
         case 'tool-input-start': {
           const tool = { index: tools.size, id: part.id, toolName: part.toolName };
           tools.set(part.id, tool);
-          enqueue(frame(metadata, { tool_calls: [toolDelta(tool, '')] }));
+          enqueue(frame(metadata, { tool_calls: [toolCallStart(tool)] }));
           break;
         }
         case 'tool-input-delta': {
           const tool = tools.get(part.id);
-          // Chat Completions clients concatenate function.arguments across chunks.
           if (tool === undefined || part.delta.length === 0) break;
-          enqueue(frame(metadata, { tool_calls: [toolDelta(tool, part.delta)] }));
+          enqueue(frame(metadata, { tool_calls: [toolArgumentsDelta(tool, part.delta)] }));
           break;
         }
         case 'finish':
@@ -150,13 +149,19 @@ function frame(
   return encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`);
 }
 
-function toolDelta(tool: ToolCallIdentity, argumentDelta: string): ChatCompletionChunk.Choice.Delta.ToolCall {
+function toolCallStart(tool: ToolCallIdentity): ChatCompletionChunk.Choice.Delta.ToolCall {
   return {
     index: tool.index,
     id: tool.id,
     type: 'function',
-    function: { name: tool.toolName, arguments: argumentDelta },
+    function: { name: tool.toolName, arguments: '' },
   };
+}
+
+// Continuation chunks carry only `index`: clients key tool calls by it and concatenate every
+// string field they receive, so repeating id/type/name corrupts them the way arguments were.
+function toolArgumentsDelta(tool: ToolCallIdentity, argumentDelta: string): ChatCompletionChunk.Choice.Delta.ToolCall {
+  return { index: tool.index, function: { arguments: argumentDelta } };
 }
 
 function messageToolCall(tool: ToolState): ChatCompletionMessageToolCall {

@@ -1,6 +1,6 @@
 import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
 
-import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from '../../egress/openai-completions';
+import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from '../../egress/openai-completions/index';
 import { type OpenAICompletionsRequest, parseOpenAICompletions } from '../../ingress/openai-completions';
 import { openAICompletionsToModelMessages } from '../../transform/openai-completions/index';
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
