@@ -227,3 +227,87 @@ export function defineEmbeddingProtocolAdapter<TRequest, TContext>(
     wantsStream: definition.wantsStream ?? (() => false),
   });
 }
+
+export type EvaluationQuestion =
+  | {
+      readonly type: 'noul';
+      readonly instructions: unknown;
+      readonly criteria?: { readonly true?: string; readonly false?: string };
+    }
+  | {
+      readonly type: 'choice';
+      readonly instructions: unknown;
+      readonly criteria: Readonly<Record<string, string | null>>;
+    }
+  | { readonly type: 'score'; readonly instructions: unknown; readonly criteria: readonly string[] };
+
+export type EvaluationInvocation = {
+  readonly state: unknown;
+  readonly questions: Readonly<Record<string, EvaluationQuestion>>;
+};
+
+export type EvaluationAnswer =
+  | { readonly type: 'noul'; readonly noul: number }
+  | {
+      readonly type: 'choice';
+      readonly choice: string;
+      readonly probabilities?: Readonly<Record<string, number>>;
+      readonly confidence?: number;
+    }
+  | {
+      readonly type: 'score';
+      readonly score: number;
+      readonly probabilities?: Readonly<Record<string, number>>;
+      readonly confidence?: number;
+    };
+
+export type EvaluationResult = {
+  readonly answers: Readonly<Record<string, EvaluationAnswer>>;
+  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number };
+};
+
+export type EvaluationEgressContext = { readonly responseModelId: string };
+
+export type EvaluationProtocolAdapter<TRequest, TContext> = Readonly<{
+  capability: 'evaluation';
+  protocol: ProviderProtocol;
+  bodyLimits: (raw: Request, context: TContext) => RequestBodyLimits;
+  parse: (raw: Request, context: TContext) => Promise<TRequest>;
+  model: (request: TRequest, context: TContext) => string;
+  dimensions: (request: TRequest, context: TContext) => AliasDimensions;
+  requestDiagnostics: (request: TRequest, context: TContext) => readonly ProtocolRequestDiagnostic[];
+  // Evaluation never resolves a logical session. Declared so the shared pipeline
+  // can read `session` off any adapter, exactly as the embedding adapter does.
+  session?: undefined;
+  wantsStream: (request: TRequest, context: TContext) => boolean;
+  rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
+  evaluationInvocation: (request: TRequest, context: TContext) => EvaluationInvocation;
+  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext) => unknown;
+  errors: ProtocolErrorMapper;
+}>;
+
+export function isEvaluationProtocolAdapter<TRequest, TContext>(adapter: {
+  readonly capability?: string;
+}): adapter is EvaluationProtocolAdapter<TRequest, TContext> {
+  return adapter.capability === 'evaluation';
+}
+
+export function defineEvaluationProtocolAdapter<TRequest, TContext>(
+  definition: Omit<
+    EvaluationProtocolAdapter<TRequest, TContext>,
+    'capability' | 'bodyLimits' | 'dimensions' | 'requestDiagnostics' | 'session' | 'wantsStream'
+  > & {
+    readonly bodyLimits?: EvaluationProtocolAdapter<TRequest, TContext>['bodyLimits'];
+    readonly dimensions?: EvaluationProtocolAdapter<TRequest, TContext>['dimensions'];
+    readonly requestDiagnostics?: EvaluationProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
+  },
+): EvaluationProtocolAdapter<TRequest, TContext> {
+  return Object.freeze({
+    ...definition,
+    capability: 'evaluation',
+    bodyLimits: definition.bodyLimits ?? defaultBodyLimits,
+    dimensions: definition.dimensions ?? noDimensions,
+    requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
+    wantsStream: () => false,
+  });
+}
