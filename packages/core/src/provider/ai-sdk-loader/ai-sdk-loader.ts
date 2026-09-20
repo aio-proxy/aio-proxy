@@ -19,9 +19,9 @@ export const BUNDLED_PROVIDER_PACKAGES = [
 export type BundledAiSdkProviderPackage = (typeof BUNDLED_PROVIDER_PACKAGES)[number];
 
 export const BUNDLED_PROVIDER_VERSIONS = {
-  '@ai-sdk/openai': '4.0.4',
-  '@ai-sdk/anthropic': '4.0.3',
-  '@ai-sdk/google': '4.0.3',
+  '@ai-sdk/openai': '4.0.71',
+  '@ai-sdk/anthropic': '4.0.58',
+  '@ai-sdk/google': '4.0.76',
   '@ai-sdk/openai-compatible': '3.0.2',
   '@ai-sdk/mistral': '4.0.2',
   '@ai-sdk/groq': '4.0.2',
