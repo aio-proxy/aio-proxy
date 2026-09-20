@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
-import { context, SpanKind, trace } from '@opentelemetry/api';
+import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 
 import { createObservedFetch, observeInboundRequest } from '.';
 import { getTraceRuntime } from '../../request-tracing';
@@ -338,6 +338,29 @@ test('upstream fetch opens a CLIENT span under the active span', async () => {
     'http.response.status_code': 503,
   });
   expect(JSON.stringify(post?.attributes)).not.toContain('secret');
+  // 4xx/5xx 的响应也要把 CLIENT span 标成 ERROR —— 只记状态码的话，外部追踪后端会把一次
+  // 失败的上游调用显示成成功的，而它的父 attempt 明明是失败的。语义约定里 SERVER span 的
+  // 4xx 保持 UNSET 是另一回事，不适用于发起方。
+  expect(post?.statusCode).toBe(SpanStatusCode.ERROR);
+});
+
+test('an upstream response that succeeded leaves the CLIENT span unset', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 200 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, () => fetcher('https://upstream.test/v1/chat')),
+  );
+  parent.end();
+
+  // 没有这条，「4xx/5xx 设 ERROR」那句可以用无条件 setStatus(ERROR) 蒙混过关。
+  const post = processor.take(traceId).find((span) => span.name === 'GET');
+  expect(post?.attributes['http.response.status_code']).toBe(200);
+  expect(post?.statusCode).not.toBe(SpanStatusCode.ERROR);
 });
 
 test('the upstream span is named after the request method, normalized', async () => {

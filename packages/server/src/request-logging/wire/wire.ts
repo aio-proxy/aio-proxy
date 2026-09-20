@@ -353,6 +353,10 @@ async function fetchWithSpan(
   try {
     const response = await fetcher(input, init);
     span.setAttribute(attributeName.httpStatusCode, response.status);
+    // CLIENT span 的 4xx 也算错误，和 SERVER span 相反：语义约定只对 SERVER 网开一面
+    // （客户端发错请求不是服务端的故障），而对发起方来说，拿回 4xx 的这次上游调用就是
+    // 失败的。root 那边保持 UNSET 是同一条约定的另一半，别照搬过来。
+    if (response.status >= 400) span.setStatus({ code: SpanStatusCode.ERROR });
     return response;
   } catch (error) {
     span.setStatus({ code: SpanStatusCode.ERROR });
