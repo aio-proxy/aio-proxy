@@ -27,6 +27,13 @@ const stringAttribute = (attributes: SpanAttributes, key: string): string | unde
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 };
 
+// 推理 span 上的 TTFT 是语义约定里的 `gen_ai.response.time_to_first_chunk`，单位秒；
+// 面板的格子统一按毫秒显示，所以在这里换算，而不是让调用方记住哪个 key 是什么单位。
+const genAiTtftMs = (attributes: SpanAttributes): number | undefined => {
+  const seconds = numberAttribute(attributes, traceAttribute.genAiTimeToFirstChunk);
+  return seconds === undefined ? undefined : seconds * 1000;
+};
+
 /**
  * Pulls the six panel metrics plus the status-row identifiers out of one span.
  *
@@ -70,6 +77,9 @@ export const readSpanMetrics = (input: {
     ttftMs:
       numberAttribute(attributes, traceAttribute.attemptTtftMs) ??
       numberAttribute(attributes, traceAttribute.ttftMs) ??
+      // 推理 span 的 TTFT 走语义约定的 key，单位是**秒**（`inferenceAttributes` 除了 1000）。
+      // 少了这一条，选中那条 span 时 TTFT 格子是「—」，而它明明记了这个数。
+      genAiTtftMs(attributes) ??
       (isRoot ? trace.ttftMs : undefined),
     transportObservation: stringAttribute(attributes, traceAttribute.transportObservation),
     upstreamMs: numberAttribute(attributes, traceAttribute.upstreamHeadersMs),

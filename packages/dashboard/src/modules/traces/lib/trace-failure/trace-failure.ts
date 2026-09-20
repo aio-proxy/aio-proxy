@@ -8,8 +8,15 @@ import { traceAttribute } from '../trace-attribute-names';
 // 一条 404 / 413 的 root span 状态是 UNSET。服务端的成败判定
 //（`packages/core/src/db/trace-store/trace-filters.ts` 的 FAILED）用的就是下面这条规则，
 // 两边必须一致 —— 否则桶状图和列表说失败，而瀑布图画一根绿柱子。
-const isFailed = (otelStatusCode: DashboardTraceSpan['otelStatusCode'], httpStatus: number | undefined): boolean =>
-  otelStatusCode === 'ERROR' || (httpStatus !== undefined && httpStatus >= 400);
+// 取消不算失败。取消的根 span 也是 ERROR，但 `TraceStatus` 把它渲染成中性的「已取消」，
+// 服务端的 FAILED 也显式排除了它 —— 少了这一条，取消的调用链在瀑布图上是一根红柱子、
+// 读屏还念「失败」，而同一条链在列表和分桶图里既不算成功也不算失败。
+const isFailed = (
+  otelStatusCode: DashboardTraceSpan['otelStatusCode'],
+  httpStatus: number | undefined,
+  terminationReason: DashboardTraceSpan['terminationReason'],
+): boolean =>
+  terminationReason !== 'cancelled' && (otelStatusCode === 'ERROR' || (httpStatus !== undefined && httpStatus >= 400));
 
 const numberAttribute = (attributes: DashboardTraceSpan['attributes'], key: string): number | undefined => {
   const value = attributes[key];
@@ -25,9 +32,11 @@ const spanHttpStatus = (attributes: DashboardTraceSpan['attributes']): number | 
   numberAttribute(attributes, traceAttribute.legacyHttpStatusCode);
 
 /** 单个 span 失败与否。状态码挂在 span 属性上，只有 root 和 attempt span 会记。 */
-export const isFailedSpan = (span: Pick<DashboardTraceSpan, 'otelStatusCode' | 'attributes'>): boolean =>
-  isFailed(span.otelStatusCode, spanHttpStatus(span.attributes));
+export const isFailedSpan = (
+  span: Pick<DashboardTraceSpan, 'otelStatusCode' | 'attributes' | 'terminationReason'>,
+): boolean => isFailed(span.otelStatusCode, spanHttpStatus(span.attributes), span.terminationReason);
 
 /** 整条调用链失败与否。列表行只有汇总，状态码是 `finalHttpStatus` 那一列。 */
-export const isFailedTrace = (trace: Pick<DashboardTraceSummary, 'otelStatusCode' | 'finalHttpStatus'>): boolean =>
-  isFailed(trace.otelStatusCode, trace.finalHttpStatus);
+export const isFailedTrace = (
+  trace: Pick<DashboardTraceSummary, 'otelStatusCode' | 'finalHttpStatus' | 'terminationReason'>,
+): boolean => isFailed(trace.otelStatusCode, trace.finalHttpStatus, trace.terminationReason);

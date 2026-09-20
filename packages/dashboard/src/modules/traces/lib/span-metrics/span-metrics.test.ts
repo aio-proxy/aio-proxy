@@ -198,3 +198,26 @@ test('prefers the attempt TTFT over the request-level TTFT when a span carries b
 
   expect(readSpanMetrics({ span, spans: [span], trace }).ttftMs).toBe(120);
 });
+
+// 推理 span 的 TTFT 走语义约定的 key、单位是秒。少了换算，选中那条 span 时格子是「—」。
+test('reads the inference span TTFT from the GenAI attribute and converts seconds to milliseconds', () => {
+  const inference = createSpan({
+    parentSpanId: trace.rootSpanId,
+    kind: 'CLIENT',
+    name: 'chat claude-sonnet-4-6',
+    attributes: { 'gen_ai.response.time_to_first_chunk': 0.612 },
+  });
+
+  expect(readSpanMetrics({ span: inference, spans: [inference], trace }).ttftMs).toBe(612);
+});
+
+// 毫秒的那两个 key 优先：attempt span 上两者不会同时出现，但兜底链的顺序得钉住，
+// 否则把秒当毫秒读会让 TTFT 差三个数量级而不报错。
+test('prefers the millisecond TTFT keys over the GenAI seconds one', () => {
+  const span = createSpan({
+    parentSpanId: trace.rootSpanId,
+    attributes: { 'aio_proxy.attempt.ttft_ms': 120, 'gen_ai.response.time_to_first_chunk': 9.9 },
+  });
+
+  expect(readSpanMetrics({ span, spans: [span], trace }).ttftMs).toBe(120);
+});

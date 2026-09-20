@@ -22,6 +22,7 @@ export const traceAttribute = {
   attemptTtftMs: 'aio_proxy.attempt.ttft_ms',
   // 请求级 TTFT，root span 今天仍然用这个 key —— 不只是 attempt 的兜底。
   ttftMs: 'aio_proxy.response.ttft_ms',
+  genAiTimeToFirstChunk: 'gen_ai.response.time_to_first_chunk',
   transportObservation: 'aio_proxy.response.transport_observation',
   upstreamHeadersMs: 'aio_proxy.response.upstream_headers_ms',
   httpStatusCode: 'http.response.status_code',

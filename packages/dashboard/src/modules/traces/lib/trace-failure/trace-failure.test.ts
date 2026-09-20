@@ -38,3 +38,18 @@ test('ignores a non-numeric status attribute instead of reading it as a failure'
     }),
   ).toBe(true);
 });
+
+// 服务端的 FAILED 显式排除了取消，前端这一处必须跟着 —— 否则取消的链在瀑布图上是红柱子、
+// 读屏念「失败」，而列表和分桶图既不算它成功也不算失败。
+test('does not call a cancelled trace failed even though its root span is ERROR', () => {
+  expect(isFailedSpan({ otelStatusCode: 'ERROR', attributes: {}, terminationReason: 'cancelled' })).toBe(false);
+  expect(isFailedTrace({ otelStatusCode: 'ERROR', finalHttpStatus: undefined, terminationReason: 'cancelled' })).toBe(
+    false,
+  );
+  // 原因为空的 ERROR 仍然算失败，别把排除写成「只有 failure 才算」。
+  expect(isFailedSpan({ otelStatusCode: 'ERROR', attributes: {}, terminationReason: undefined })).toBe(true);
+  // 4xx + 取消也不算失败：取消是一个独立类别，不是失败的子集。
+  expect(
+    isFailedSpan({ otelStatusCode: 'UNSET', attributes: { 'http.status_code': 499 }, terminationReason: 'cancelled' }),
+  ).toBe(false);
+});
