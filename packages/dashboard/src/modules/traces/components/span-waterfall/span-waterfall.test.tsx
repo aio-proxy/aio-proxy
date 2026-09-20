@@ -159,7 +159,12 @@ test('positions the TTFT tick without giving it a width that tracks the value', 
       />,
     );
     const tick = screen.getByTestId('waterfall-ttft-tick');
-    const seen = { left: tick.style.left, width: tick.style.width, ariaHidden: tick.getAttribute('aria-hidden') };
+    const seen = {
+      left: tick.style.left,
+      width: tick.style.width,
+      ariaHidden: tick.getAttribute('aria-hidden'),
+      absolute: tick.classList.contains('absolute'),
+    };
     unmount();
     return seen;
   };
@@ -173,6 +178,9 @@ test('positions the TTFT tick without giving it a width that tracks the value', 
   // 位置随 TTFT 走，尺寸不跟着走：宽度完全交给类名里的 1px，没有内联宽度。
   expect(early.width).toBe('');
   expect(late.width).toBe('');
+  // `left` 只有在脱离文档流时才定位得动。jsdom 只读内联样式、不算布局，所以少了 absolute
+  // 这一条：刻度会退回容器左边缘、对任何 TTFT 都画在同一处，而上面三条断言照样全过。
+  expect(early.absolute).toBe(true);
   // 同一个数在详情面板的 TTFT 格子里有文字版，所以不往行的读屏文案里再塞一个数。
   expect(early.ariaHidden).toBe('true');
 });

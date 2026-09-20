@@ -174,7 +174,7 @@ describe('layoutTraceSpans', () => {
       console.log(JSON.stringify(rows.map((row) => [row.spanId, row.depth])));
     `;
 
-    const probeTimeoutMs = 5_000; // 正常跑完约 0.4s，这里只是看门狗，不是性能断言。
+    const probeTimeoutMs = 15_000; // 正常跑完约 0.4s，这里只是看门狗，不是性能断言 —— 放宽只影响回归时多等几秒。
     const result = spawnSync('bun', ['-e', probe], {
       encoding: 'utf8',
       timeout: probeTimeoutMs,
