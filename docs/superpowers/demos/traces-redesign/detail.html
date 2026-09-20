@@ -36,7 +36,7 @@
 
         <div class="card stack">
           <div class="row">
-            <span class="badge" data-status="success">200</span>
+            <span class="badge" data-status="success">成功</span>
             <span style="font-weight: 500">aio_proxy.provider.attempt</span>
             <span class="spacer"></span>
             <span class="muted">anthropic-backup · claude-sonnet-4-6</span>
@@ -139,6 +139,8 @@
       // Only this span's attributes are listed: `gen_ai.usage.*` and `gen_ai.response.*`
       // belong to the GenAI span, and the request/session/route keys belong to the root.
       // Mixing all three into one table is exactly the mental model this redesign drops.
+      // No status code: a succeeding attempt never writes one — the terminal only records
+      // a status for failures — so the panel shows a success label instead of a `200` badge.
       const attributes = [
         ['aio_proxy.attempt.index', '1'],
         ['aio_proxy.attempt.model_id', 'claude-sonnet-4-6'],
@@ -152,7 +154,6 @@
         ['aio_proxy.route.selection_reason', 'weight'],
         ['aio_proxy.route.selection_source', 'weighted_random'],
         ['aio_proxy.transport', 'ai_sdk'],
-        ['http.response.status_code', '200'],
       ];
       const list = document.getElementById('attrs');
       const count = document.getElementById('count');
