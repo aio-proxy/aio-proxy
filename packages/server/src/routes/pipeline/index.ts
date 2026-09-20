@@ -98,7 +98,16 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       requestedModelId: requestedModel,
       requestId: session.requestId,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
-      headers: rawRequest.headers,
+      // An adapter with no `session` hook does not participate in logical
+      // sessions, so it must not pick one up from the inbound headers either.
+      // Evaluation is the case this protects: a `session_id` header would
+      // otherwise resolve a stable session, which establishes affinity on the
+      // first successful attempt and silently pins every later request in that
+      // session to whichever candidate happened to answer - so a backup that
+      // served one failover keeps the traffic instead of returning it to the
+      // recovered primary. Candidate order for these capabilities is priority
+      // and weight only.
+      headers: adapter.session === undefined ? new Headers() : rawRequest.headers,
     });
     session.identify({
       requestedModelId: requestedModel,
