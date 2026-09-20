@@ -27,8 +27,8 @@ describe('systemOneJson', () => {
       probabilities: { billing: 1 },
       confidence: 0.8,
     });
-    expect(body.answers['s']?.['confidence']).toBeUndefined();
-    expect(body.answers['s']?.['legend']).toBeUndefined();
+    expect(body.answers['s']).not.toHaveProperty('confidence');
+    expect(body.answers['s']).not.toHaveProperty('legend');
   });
 
   it('refuses a choice or score answer with no distribution', () => {

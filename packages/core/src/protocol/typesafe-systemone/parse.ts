@@ -1,6 +1,7 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { EvaluationQuestion } from '../adapter';
+import { readRequestText, REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
 
 const NOUL_CRITERIA_KEYS = ['true', 'false'] as const;
 const MAX_CHOICE_OPTIONS = 255;
@@ -89,12 +90,21 @@ const parseQuestion = (id: string, value: unknown): EvaluationQuestion => {
   return reject(`questions.${id}.type must be noul, choice, or score`);
 };
 
-export async function parseSystemOneBody(raw: Request): Promise<SystemOneRequest> {
+export async function parseSystemOneBody(
+  raw: Request,
+  limits: RequestBodyLimits = REQUEST_BODY_LIMITS,
+): Promise<SystemOneRequest> {
   assertMediaType(raw);
+
+  // Read outside the JSON try on purpose: `readRequestText` is what enforces the
+  // streamed size limits and rejects unknown content encodings, and the pipeline
+  // maps those rejections to 413/415. Wrapping them in SystemOneParseError would
+  // downgrade both to a 400 that blames the caller's JSON.
+  const text = await readRequestText(raw, limits);
 
   let body: unknown;
   try {
-    body = JSON.parse(await raw.text());
+    body = JSON.parse(text);
   } catch {
     return reject('Request body is not valid JSON');
   }

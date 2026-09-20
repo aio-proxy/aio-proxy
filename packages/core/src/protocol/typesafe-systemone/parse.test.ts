@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { UnsupportedContentEncodingError } from '../request';
 import { parseSystemOneBody, SystemOneParseError } from './parse';
 
 const post = (body: string, contentType: string | undefined = 'application/json') =>
@@ -195,6 +196,30 @@ describe('parseSystemOneBody rejects', () => {
     );
     await expect(parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'))).rejects.toThrow(
       'Unsupported content type: text/plain',
+    );
+  });
+});
+
+describe('parseSystemOneBody content-encoding', () => {
+  const encoded = (body: BodyInit, contentEncoding: string) =>
+    new Request('https://proxy.test/v1/systemone', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-encoding': contentEncoding },
+      body,
+    });
+
+  it('decodes a gzip body instead of parsing the compressed bytes as JSON', async () => {
+    const gzipped = Bun.gzipSync(new TextEncoder().encode(JSON.stringify(valid)));
+    expect((await parseSystemOneBody(encoded(gzipped, 'gzip'))).model).toBe('jev-latest');
+  });
+
+  it('lets an unsupported encoding escape unwrapped so the pipeline answers 415, not 400', async () => {
+    const rejection = parseSystemOneBody(encoded(JSON.stringify(valid), 'compress'));
+    await expect(rejection).rejects.toBeInstanceOf(UnsupportedContentEncodingError);
+    // A SystemOneParseError here would be mapped to a 400 blaming the caller's JSON
+    // and would leave `systemOneErrors.unsupportedContentEncoding` unreachable.
+    await expect(parseSystemOneBody(encoded(JSON.stringify(valid), 'compress'))).rejects.not.toBeInstanceOf(
+      SystemOneParseError,
     );
   });
 });

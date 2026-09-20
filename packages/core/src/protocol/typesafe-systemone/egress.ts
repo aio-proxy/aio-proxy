@@ -14,7 +14,7 @@ const answerJson = (id: string, answer: EvaluationAnswer): Record<string, unknow
     type: answer.type,
     ...scalar,
     probabilities: answer.probabilities,
-    // `confidence` is nullish upstream: omit rather than write null.
+    // `confidence` is optional upstream: omit the key rather than emit `undefined`.
     ...(answer.confidence === undefined ? {} : { confidence: answer.confidence }),
   };
 };

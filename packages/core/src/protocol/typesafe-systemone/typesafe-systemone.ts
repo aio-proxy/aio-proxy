@@ -31,15 +31,23 @@ export const typeSafeSystemOneAdapter = defineEvaluationProtocolAdapter<SystemOn
   protocol: ProviderProtocol.TypeSafeSystemOne,
   parse: (raw) => parseSystemOneBody(raw),
   model: (request) => request.model,
-  rawRequest: (raw, request, resolvedModel) =>
-    Promise.resolve(
-      new Request(raw.url, {
+  rawRequest: (raw, request, resolvedModel) => {
+    // Re-serializing the body invalidates the inbound encoding and length.
+    const headers = new Headers(raw.headers);
+    headers.delete('content-encoding');
+    headers.delete('content-length');
+    // Constructed from `raw`, not `raw.url`: the raw transport takes no separate
+    // signal, so inheriting the inbound one is the only way a client disconnect
+    // cancels the upstream evaluation.
+    return Promise.resolve(
+      new Request(raw, {
         method: raw.method,
-        headers: raw.headers,
+        headers,
         // Forward the original body with only `model` rewritten, preserving unknown fields.
         body: JSON.stringify({ ...request.body, model: resolvedModel }),
       }),
-    ),
+    );
+  },
   evaluationInvocation: (request) => ({
     state: request.state,
     questions: Object.fromEntries(
