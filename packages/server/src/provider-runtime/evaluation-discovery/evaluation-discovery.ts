@@ -1,20 +1,8 @@
-import { createProviderV4Evaluate } from '@aio-proxy/core';
-import { isRecord } from '@aio-proxy/shared';
+import { createProviderV4Evaluate, hasEvaluationModel } from '@aio-proxy/core';
 
-import type { EvaluationTransport } from '../../runtime';
+import type { EvaluationDiscovery, LazyEvaluationTransport } from '../../runtime';
 
-/**
- * The outcome of probing a lazily loaded package for an evaluation resolver.
- *
- * Three states, deliberately not a boolean. `unsupported` and `failed` mean
- * opposite things to the caller: the first is a routing fact (this candidate can
- * never serve evaluation convert), the second is a transient attempt failure that
- * must fall back to the next candidate rather than surface as a router miss.
- */
-export type EvaluationDiscovery =
-  | { readonly kind: 'supported'; readonly evaluate: EvaluationTransport['evaluate'] }
-  | { readonly kind: 'unsupported' }
-  | { readonly kind: 'failed'; readonly error: Error };
+export type { EvaluationDiscovery, LazyEvaluationTransport } from '../../runtime';
 
 /**
  * Probe a lazily loaded AI SDK package for `evaluationModel`, once.
@@ -51,7 +39,7 @@ async function probe(providerId: string, loadProvider: () => Promise<unknown>): 
     if (provider === null || provider === undefined) {
       return { kind: 'failed', error: new Error(`Provider ${providerId} could not load its AI SDK package`) };
     }
-    if (!isRecord(provider) || typeof provider['evaluationModel'] !== 'function') {
+    if (!hasEvaluationModel(provider)) {
       return { kind: 'unsupported' };
     }
     // Constructed inside the try: the factory throws SYNCHRONOUSLY when the
@@ -61,11 +49,6 @@ async function probe(providerId: string, loadProvider: () => Promise<unknown>): 
     return { kind: 'failed', error: error instanceof Error ? error : new Error(String(error)) };
   }
 }
-
-/** An `EvaluationTransport` that also exposes the probe backing it. */
-export type LazyEvaluationTransport = EvaluationTransport & {
-  readonly discover: () => Promise<EvaluationDiscovery>;
-};
 
 /**
  * Attach-time transport for a package that has not been loaded yet.

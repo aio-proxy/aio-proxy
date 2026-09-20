@@ -1,4 +1,9 @@
-import { aiSdkPackagePrimaryProtocol, loadAiSdkProvider, type ProviderFetch, resolveApiKey } from '@aio-proxy/core';
+import {
+  aiSdkPackagePrimaryProtocol,
+  apiEndpointLoadOptions,
+  loadAiSdkProvider,
+  type ProviderFetch,
+} from '@aio-proxy/core';
 import type { AiSdkProvider, ApiProvider, Provider } from '@aio-proxy/types';
 import { apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
@@ -72,16 +77,14 @@ function apiEvaluation(
   if (!protocolSupportsEvaluation(primary.protocol)) return undefined;
   const packageName = EVALUATION_BRIDGE_PACKAGES[primary.protocol];
   if (packageName === undefined) return undefined;
-  const apiKey = resolveApiKey(config.apiKey);
   return {
     // A bundled package pinned by protocol: the table already answers whether it
     // resolves evaluation models, so the index need not wait on the probe.
     grantsCapability: true,
-    transport: transportFor(config.id, packageName, options, {
-      ...(apiKey === undefined ? {} : { apiKey }),
-      baseURL: primary.baseURL,
-      ...(config.headers === undefined ? {} : { headers: config.headers }),
-    }),
+    // Shared with the language bridge so evaluation authenticates identically.
+    // Hand-building these options drops the bearer-auth branch, which leaves a
+    // bearer Anthropic provider working for chat and 401ing on evaluation alone.
+    transport: transportFor(config.id, packageName, options, apiEndpointLoadOptions(config, primary)),
   };
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { APICallError, type Experimental_EvaluationModelV4Result as SdkEvaluationResult } from '@ai-sdk/provider';
 import { Experimental_EvaluationMockModelV4 } from 'ai/test';
 
@@ -216,5 +217,25 @@ describe('createProviderV4Evaluate', () => {
     await expect(
       transport.evaluate({ state: 's', questions: { q: { type: 'noul', instructions: 'i' } } }, { modelId: 'm' }),
     ).rejects.toThrow(AiSdkProviderError);
+  });
+
+  // Every fixture above is a plain object, but a real AI SDK provider factory
+  // returns a CALLABLE. An object-only guard rejects the genuine article while
+  // all of those doubles keep passing, so this constructs the real package.
+  it('accepts a real callable AI SDK provider', () => {
+    const provider = createAnthropic({ apiKey: 'test' });
+
+    expect(typeof provider).toBe('function');
+    expect(() => createProviderV4Evaluate('p', provider)).not.toThrow();
+  });
+
+  it('still rejects a callable that resolves no evaluation model', () => {
+    const callableWithout = Object.assign(() => undefined, { languageModel: () => undefined });
+    expect(() => createProviderV4Evaluate('p', callableWithout)).toThrow(AiSdkProviderError);
+  });
+
+  it('rejects null and undefined without throwing a TypeError', () => {
+    expect(() => createProviderV4Evaluate('p', null)).toThrow(AiSdkProviderError);
+    expect(() => createProviderV4Evaluate('p', undefined)).toThrow(AiSdkProviderError);
   });
 });

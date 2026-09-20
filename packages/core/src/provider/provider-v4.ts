@@ -315,11 +315,32 @@ export type ProviderV4EvaluateTransport = {
   ) => Promise<EvaluationResult>;
 };
 
+type EvaluationModelResolver = { readonly evaluationModel: (modelId: string) => unknown };
+
+/**
+ * Whether `value` can resolve evaluation models.
+ *
+ * Admits callables as well as objects, like `validateProviderV4`: every AI SDK
+ * provider factory returns a FUNCTION carrying its resolvers, so an object-only
+ * guard such as `isRecord` answers false for `@ai-sdk/anthropic`, `@ai-sdk/openai`
+ * and every other real package. That reads as "this provider cannot evaluate" and
+ * turns the feature off in production, while plain-object test doubles keep
+ * passing — so this predicate is shared with the discovery probe rather than
+ * restated there, because two copies of it can disagree and only one is tested.
+ */
+export function hasEvaluationModel(value: unknown): value is EvaluationModelResolver {
+  const valueType = typeof value;
+  if ((valueType !== 'object' && valueType !== 'function') || value === null) {
+    return false;
+  }
+  return typeof Reflect.get(value as object, 'evaluationModel') === 'function';
+}
+
 export function createProviderV4Evaluate(providerId: string, provider: unknown): ProviderV4EvaluateTransport {
-  if (!isRecord(provider) || typeof provider['evaluationModel'] !== 'function') {
+  if (!hasEvaluationModel(provider)) {
     throw new AiSdkProviderError(providerId, 'ai-sdk provider does not expose an evaluation model resolver');
   }
-  const resolveModel = provider['evaluationModel'] as (modelId: string) => unknown;
+  const resolveModel = provider.evaluationModel;
 
   return {
     async evaluate(invocation, options) {

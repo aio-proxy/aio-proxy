@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createAnthropic } from '@ai-sdk/anthropic';
+
 import { createEvaluationDiscovery, lazyEvaluationTransport } from './evaluation-discovery';
 
 const evaluationModel = () => ({
@@ -7,14 +9,50 @@ const evaluationModel = () => ({
   doEvaluate: async () => ({ answers: {} }),
 });
 
+/**
+ * The default double is CALLABLE, because every real AI SDK provider factory
+ * returns a function carrying its resolvers. A plain-object double cannot fail
+ * an object-only guard, so it silently certifies a probe that reports every real
+ * package unsupported.
+ */
+const callableProvider = () => Object.assign(() => undefined, { evaluationModel });
+
 describe('createEvaluationDiscovery', () => {
   it('reports supported when the loaded package exposes evaluationModel', async () => {
+    const discover = createEvaluationDiscovery('p', async () => callableProvider());
+    expect((await discover()).kind).toBe('supported');
+  });
+
+  // Not every provider is callable — a hand-rolled or wrapped one may be a plain
+  // object — so the guard must keep admitting that shape too.
+  it('reports supported for a plain-object provider as well', async () => {
     const discover = createEvaluationDiscovery('p', async () => ({ evaluationModel }));
+    expect((await discover()).kind).toBe('supported');
+  });
+
+  // The regression this whole guard exists for. `@ai-sdk/anthropic` is the real
+  // package, not a shape guess: an object-only check reports it unsupported and
+  // memoizes that, which turns evaluation routing off in production while every
+  // plain-object double above stays green.
+  it('reports supported for a real @ai-sdk/anthropic provider', async () => {
+    const provider = createAnthropic({ apiKey: 'test' });
+    expect(typeof provider).toBe('function');
+
+    const discover = createEvaluationDiscovery('anthropic', async () => provider);
     expect((await discover()).kind).toBe('supported');
   });
 
   it('reports unsupported when the package genuinely lacks it', async () => {
     const discover = createEvaluationDiscovery('p', async () => ({}));
+    expect((await discover()).kind).toBe('unsupported');
+  });
+
+  // A callable that resolves no evaluation model is still unsupported: accepting
+  // functions must not degrade into accepting anything callable.
+  it('reports unsupported for a callable package without the resolver', async () => {
+    const discover = createEvaluationDiscovery('p', async () =>
+      Object.assign(() => undefined, { languageModel: () => undefined }),
+    );
     expect((await discover()).kind).toBe('unsupported');
   });
 
@@ -55,7 +93,7 @@ describe('createEvaluationDiscovery', () => {
     let loads = 0;
     const discover = createEvaluationDiscovery('p', async () => {
       loads += 1;
-      return { evaluationModel };
+      return callableProvider();
     });
     await Promise.all([discover(), discover(), discover()]);
     await discover();
@@ -79,7 +117,7 @@ describe('createEvaluationDiscovery', () => {
     let loads = 0;
     createEvaluationDiscovery('p', async () => {
       loads += 1;
-      return { evaluationModel };
+      return callableProvider();
     });
     expect(loads).toBe(0);
   });
@@ -91,7 +129,7 @@ describe('lazyEvaluationTransport', () => {
   // The transport is attached before anything is probed, so a cold provider on
   // the first evaluation request of the process must still be dispatchable.
   it('exposes its discovery handle so the attempt layer can await a cold probe', async () => {
-    const transport = lazyEvaluationTransport('p', async () => ({ evaluationModel }));
+    const transport = lazyEvaluationTransport('p', async () => callableProvider());
     expect((await transport.discover()).kind).toBe('supported');
   });
 
@@ -111,7 +149,7 @@ describe('lazyEvaluationTransport', () => {
     let loads = 0;
     const transport = lazyEvaluationTransport('p', async () => {
       loads += 1;
-      return { evaluationModel };
+      return callableProvider();
     });
     await transport.discover();
     await transport.evaluate(invocation, { modelId: 'm' }).catch(() => undefined);

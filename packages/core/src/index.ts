@@ -237,6 +237,7 @@ export {
   resolveApiKey,
 } from './provider/api/index';
 export {
+  apiEndpointLoadOptions,
   bridgeApiProviderToAiSdk,
   hasLanguageBridgeEndpoint,
   resolveOpenAIResponsesModel,
@@ -254,6 +255,7 @@ export {
   createProviderV4Embed,
   createProviderV4Evaluate,
   createProviderV4Invoke,
+  hasEvaluationModel,
   type ProviderV4Embed,
   type ProviderV4EvaluateOptions,
   type ProviderV4EvaluateTransport,

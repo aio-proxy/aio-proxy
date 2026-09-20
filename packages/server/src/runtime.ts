@@ -82,6 +82,30 @@ export type EvaluationTransport = {
   ) => Promise<EvaluationResult>;
 };
 
+/**
+ * The outcome of probing a lazily loaded package for an evaluation resolver.
+ *
+ * Three states, deliberately not a boolean. `unsupported` and `failed` mean
+ * opposite things to the caller: the first is a routing fact (this candidate can
+ * never serve evaluation convert), the second is a transient attempt failure that
+ * must fall back to the next candidate rather than surface as a router miss.
+ */
+export type EvaluationDiscovery =
+  | { readonly kind: 'supported'; readonly evaluate: EvaluationTransport['evaluate'] }
+  | { readonly kind: 'unsupported' }
+  | { readonly kind: 'failed'; readonly error: Error };
+
+/**
+ * An `EvaluationTransport` that also exposes the probe backing it.
+ *
+ * Declared here rather than beside the probe so the runtime type can name it
+ * without importing back from `provider-runtime`, which would make the two
+ * modules circular.
+ */
+export type LazyEvaluationTransport = EvaluationTransport & {
+  readonly discover: () => Promise<EvaluationDiscovery>;
+};
+
 export type ModelTransport = {
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: AiSdkProviderInstance['invoke'];
@@ -180,8 +204,14 @@ export type RuntimeProviderInstance = RuntimeProviderBase & {
    * `model` too, and an `api` candidate always carries `raw`, so admitting an
    * evaluation-only provider would only widen the type without a caller that
    * could dispatch it.
+   *
+   * Typed as the LAZY transport, not the bare one: presence here proves only that
+   * the provider might evaluate, since the package behind it has not been loaded
+   * yet. Callers must disprove a candidate by awaiting `discover()` rather than by
+   * testing `evaluation !== undefined`, so `discover` has to stay reachable on the
+   * materialized instance instead of being erased by a widened field type.
    */
-  readonly evaluation?: EvaluationTransport;
+  readonly evaluation?: LazyEvaluationTransport;
 } & AtLeastOneRuntimeTransport;
 
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;

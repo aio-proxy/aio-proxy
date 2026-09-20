@@ -70,31 +70,51 @@ function languageBridgeEndpoint(endpoints: readonly NormalizedApiEndpoint[]): No
   return endpoints.find((endpoint) => !NON_LANGUAGE_PROTOCOLS.has(endpoint.protocol));
 }
 
-function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, providerId: string): BridgeMapping {
+/**
+ * The AI SDK load options for an API provider's endpoint: credentials, base URL,
+ * headers, and the per-protocol auth shaping that goes with them.
+ *
+ * Exported because every surface that loads a package on an API provider's behalf
+ * needs the SAME shaping, not just the language bridge. Rebuilding the object
+ * inline silently drops the bearer branch below, which authenticates correctly on
+ * whichever surface kept it and 401s forever on the one that did not.
+ *
+ * Deliberately protocol-shaping only, with no package selection and no throw for
+ * non-language protocols: callers that serve System One pick their own package,
+ * and `bridgeMapping` is the one that rejects protocols it cannot bridge.
+ */
+export function apiEndpointLoadOptions(
+  provider: ApiProvider,
+  endpoint: NormalizedApiEndpoint,
+): AiSdkProviderLoadOptions {
   const apiKey = resolveApiKey(provider.apiKey);
-  const sharedOptions = {
+  const shared = {
     ...(apiKey === undefined ? {} : { apiKey }),
-    baseURL: primary.baseURL,
+    baseURL: endpoint.baseURL,
     ...(provider.headers === undefined ? {} : { headers: provider.headers }),
   } satisfies AiSdkProviderLoadOptions;
 
+  if (endpoint.protocol !== ProviderProtocol.Anthropic || endpoint.auth !== 'bearer') {
+    return shared;
+  }
+  // @ai-sdk/anthropic rejects apiKey+authToken together; bearer endpoints hand the key over as authToken.
+  const { apiKey: bearerToken, ...withoutApiKey } = shared;
+  return { ...withoutApiKey, ...(bearerToken === undefined ? {} : { authToken: bearerToken }) };
+}
+
+function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, providerId: string): BridgeMapping {
+  const options = apiEndpointLoadOptions(provider, primary);
+
   switch (primary.protocol) {
     case ProviderProtocol.OpenAICompatible:
-      return { packageName: '@ai-sdk/openai-compatible', options: { ...sharedOptions, name: providerId } };
-    case ProviderProtocol.Anthropic: {
-      if (primary.auth !== 'bearer') return { packageName: '@ai-sdk/anthropic', options: sharedOptions };
-      // @ai-sdk/anthropic rejects apiKey+authToken together; bearer endpoints hand the key over as authToken.
-      const { apiKey: bearerToken, ...withoutApiKey } = sharedOptions;
-      return {
-        packageName: '@ai-sdk/anthropic',
-        options: { ...withoutApiKey, ...(bearerToken === undefined ? {} : { authToken: bearerToken }) },
-      };
-    }
+      return { packageName: '@ai-sdk/openai-compatible', options: { ...options, name: providerId } };
+    case ProviderProtocol.Anthropic:
+      return { packageName: '@ai-sdk/anthropic', options };
     case ProviderProtocol.Gemini:
     case ProviderProtocol.GeminiInteractions:
-      return { packageName: '@ai-sdk/google', options: sharedOptions };
+      return { packageName: '@ai-sdk/google', options };
     case ProviderProtocol.OpenAIResponse:
-      return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
+      return { packageName: '@ai-sdk/openai', options, resolveModel: resolveOpenAIResponsesModel };
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
     case ProviderProtocol.OpenAIVideo:

@@ -124,6 +124,34 @@ test('routes the provider fetch and endpoint credentials into the evaluation pac
   expect(loaded?.options['fetch']).toBe(fetch);
 });
 
+// @ai-sdk/anthropic rejects apiKey and authToken together, so a bearer endpoint
+// must hand the key over as authToken exactly as the language bridge does.
+// Getting this wrong authenticates chat correctly and 401s evaluation alone.
+// `auth` rides on an `endpoints` entry, never on the legacy protocol/baseURL pair.
+test('hands a bearer-auth Anthropic key to the evaluation package as authToken', async () => {
+  let loaded: Record<string, unknown> | undefined;
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        kind: 'api',
+        models: ['judge-1'],
+        apiKey: 'secret',
+        endpoints: [{ protocol: 'anthropic', baseURL: 'https://api.anthropic.com', auth: 'bearer' }],
+      },
+    },
+  });
+  const materialized = evaluationMaterialization(config.providers[0]!, {
+    loadProvider: async (_packageName, options) => {
+      loaded = options ?? {};
+      return {};
+    },
+  });
+
+  await materialized!.transport.discover();
+  expect(loaded?.['authToken']).toBe('secret');
+  expect(loaded?.['apiKey']).toBeUndefined();
+});
+
 function materializeOne(provider: Record<string, unknown>) {
   const config = ConfigSchema.parse({ providers: { p: { models: ['judge-1'], ...provider } } });
   return materializeProviders(config).providers[0]!;
@@ -137,6 +165,20 @@ test('an Anthropic API provider reaches the capability index with evaluation gra
 
   expect(supportsEvaluation(instance.capabilityIndex, 'judge-1')).toBe(true);
   expect(instance.evaluation).toBeDefined();
+});
+
+// `evaluation` is the one field whose presence proves nothing: the package behind
+// it has not been loaded yet. The disproof must therefore be reachable on the
+// materialized instance, so a caller can await `discover()` instead of settling
+// for `evaluation !== undefined`. Typing the field as the bare transport erases
+// `discover` and makes this unwriteable without a cast.
+test('exposes discover() on the materialized instance so admission can disprove a candidate', async () => {
+  const instance = materializeOne({ kind: 'api', protocol: 'anthropic', baseURL: 'https://api.anthropic.com' });
+
+  expect(typeof instance.evaluation?.discover).toBe('function');
+  // @ai-sdk/anthropic is bundled and genuinely resolves evaluation models, so the
+  // probe must reach `supported` through the real package, not a double.
+  expect((await instance.evaluation!.discover()).kind).toBe('supported');
 });
 
 // The cause-side companion. Same model, same shape, a protocol the table
