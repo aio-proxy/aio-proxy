@@ -9,14 +9,14 @@ import { SpanAttributeRow } from './span-attribute-row';
 
 interface SpanAttributeTableProps {
   readonly attributes: Readonly<Record<string, unknown>>;
-  /** Root-span attributes describe the whole trace; an attempt span's describe one hop only. */
-  readonly isRoot: boolean;
+  /** 这个 span 的值说的是整条调用链（root 或推理 span），而不是某一跳。 */
+  readonly tracewide: boolean;
   readonly onFilter: (patch: TraceFilterPatch) => void;
 }
 
-export const SpanAttributeTable: React.FC<SpanAttributeTableProps> = ({ attributes, isRoot, onFilter }) => {
+export const SpanAttributeTable: React.FC<SpanAttributeTableProps> = ({ attributes, tracewide, onFilter }) => {
   const [query, setQuery] = useState('');
-  const rows = toSpanAttributeRows(attributes, query, isRoot);
+  const rows = toSpanAttributeRows(attributes, query, tracewide);
   const total = Object.keys(attributes).length;
 
   return (

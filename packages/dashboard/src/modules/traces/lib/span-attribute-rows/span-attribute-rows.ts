@@ -31,33 +31,38 @@ const filterBuilders: FilterBuilders = {
 const finalHttpStatusFilter = (value: string): TraceFilterPatch | undefined =>
   /^[1-5]\d{2}$/u.test(value) ? { finalHttpStatus: Number(value) } : undefined;
 
-// Attempt spans write these two as well, but there they mean "this hop", while the list page can
-// only filter on the trace's final result. Offering the filter on a failed attempt would jump to a
-// result set that excludes the very trace the user came from (429 attempt inside a 200 trace).
-// `aio_proxy.provider.id` is attempt-only and has no whole-trace meaning at all, so it maps nowhere.
-const rootOnlyFilterBuilders: FilterBuilders = {
+// 这两个键在 attempt span 上也有，但那里说的是「这一跳」，而列表页只能按整条调用链的最终
+// 结果筛选。在一条失败的 attempt 上提供筛选，会跳到一个把用户来处那条链排除掉的结果集
+// （200 的链里有一条 429 的 attempt）。`aio_proxy.provider.id` 是 attempt 专属、没有整链
+// 含义，所以不映射到任何筛选。
+//
+// 能提供它们的不只有 root：任务 8 之后 root 上一个 gen_ai.* 都没有了，`gen_ai.response.model`
+// 只在那条推理 span 上，而它说的正是「这条链最终用的模型」。少了它，新数据里没有任何 span
+// 能点出「按最终模型筛选」—— 选推理 span 没有动作，选 root 连这一行都不存在。
+const tracewideFilterBuilders: FilterBuilders = {
   [traceAttribute.responseModel]: (value) => ({ finalModelId: value }),
   [traceAttribute.httpStatusCode]: finalHttpStatusFilter,
   // 老 root span 的状态码挂在废弃的 key 上，少了这条就点不出「按最终状态码过滤」。
   [traceAttribute.legacyHttpStatusCode]: finalHttpStatusFilter,
 };
 
-const toFilter = (key: string, value: string, isRoot: boolean): TraceFilterPatch | undefined => {
+const toFilter = (key: string, value: string, tracewide: boolean): TraceFilterPatch | undefined => {
   if (value === '') return undefined;
-  const build = filterBuilders[key] ?? (isRoot ? rootOnlyFilterBuilders[key] : undefined);
+  const build = filterBuilders[key] ?? (tracewide ? tracewideFilterBuilders[key] : undefined);
   return build?.(value);
 };
 
 export const toSpanAttributeRows = (
   attributes: Readonly<Record<string, unknown>>,
   query: string,
-  isRoot: boolean,
+  /** 这个 span 的值说的是整条调用链，而不是某一跳：root 和那条推理 span。 */
+  tracewide: boolean,
 ): readonly SpanAttributeRow[] => {
   const needle = query.trim().toLowerCase();
   return Object.entries(attributes)
     .map(([key, rawValue]) => {
       const value = formatValue(rawValue);
-      return { key, value, filter: toFilter(key, value, isRoot) };
+      return { key, value, filter: toFilter(key, value, tracewide) };
     })
     .filter(
       (row) => needle === '' || row.key.toLowerCase().includes(needle) || row.value.toLowerCase().includes(needle),

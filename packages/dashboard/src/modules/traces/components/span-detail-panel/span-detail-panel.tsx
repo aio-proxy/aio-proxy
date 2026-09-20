@@ -44,7 +44,13 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
             <TracePercentileBar comparison={comparison} />
             <SpanAttributeTable
               attributes={span.attributes}
-              isRoot={span.spanId === trace.rootSpanId}
+              // root 和那条推理 span 说的都是整条链。推理 span 的结构特征是「CLIENT 且父亲
+              // 是 root」：parse / session.resolve / route.resolve 都是默认的 INTERNAL，
+              // 上游 HTTP 那些 CLIENT span 挂在 attempt 下而不是 root 下，attempt 自己也是
+              // INTERNAL —— 包括老数据里直接挂在 root 下的那些。
+              tracewide={
+                span.spanId === trace.rootSpanId || (span.kind === 'CLIENT' && span.parentSpanId === trace.rootSpanId)
+              }
               onFilter={onFilter}
             />
             {span.links.length === 0 ? null : <SpanLinkList links={span.links} />}
