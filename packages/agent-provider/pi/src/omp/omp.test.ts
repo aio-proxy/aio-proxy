@@ -6,13 +6,18 @@ import type { ExtensionAPI, ProviderConfig } from '@oh-my-pi/pi-coding-agent';
 import { toPiFamilyModels, type PiFamilyCatalogResult } from '../core';
 import { registerOmp, type OmpDeps } from './omp';
 
+test('registers AIO Proxy as the OAuth display name', async () => {
+  const { provider } = await fixture();
+  expect(provider.oauth?.name).toBe('AIO Proxy');
+});
+
 test('OMP login presents verification_uri_complete through onAuth', async () => {
   const f = await fixture();
   const onAuth = mock(() => {});
   await f.provider.oauth!.login({ onAuth, onPrompt: async () => '' });
   expect(onAuth).toHaveBeenCalledWith({
     url: 'http://127.0.0.1:9317/dashboard/agents/authorize#code=ABCD-EFGH',
-    instructions: 'Approve aio-proxy with code ABCD-EFGH',
+    instructions: 'Approve AIO Proxy with code ABCD-EFGH',
   });
 });
 

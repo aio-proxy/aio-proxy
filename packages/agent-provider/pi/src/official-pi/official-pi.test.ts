@@ -6,6 +6,12 @@ import type { ExtensionAPI, ProviderConfig } from '@earendil-works/pi-coding-age
 import { toPiFamilyModels, type PiFamilyCatalogResult } from '../core';
 import { registerOfficialPi, type OfficialPiDeps } from './official-pi';
 
+test('registers AIO Proxy as the provider and OAuth display name', async () => {
+  const { provider } = await fixture();
+  expect(provider.name).toBe('AIO Proxy');
+  expect(provider.oauth?.name).toBe('AIO Proxy');
+});
+
 test('uses onDeviceCode and returns credentials without touching auth storage', async () => {
   const f = await fixture();
   const onDeviceCode = mock(() => {});

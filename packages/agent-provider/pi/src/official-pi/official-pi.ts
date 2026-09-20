@@ -20,6 +20,7 @@ import {
 } from '../core';
 
 const PROVIDER_ID = 'aio-proxy';
+const PROVIDER_NAME = 'AIO Proxy';
 type RefreshModelsContext = Parameters<NonNullable<ProviderConfig['refreshModels']>>[0];
 
 export type OfficialPiDeps = {
@@ -68,14 +69,14 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
   };
 
   const config: ProviderConfig = {
-    name: PROVIDER_ID,
+    name: PROVIDER_NAME,
     baseUrl: new URL('/v1', managed.marker.endpoint).href.replace(/\/$/u, ''),
     api: 'openai-completions',
     authHeader: true,
     models: lkg === null ? [] : [...toPiFamilyModels(lkg, managed.marker.endpoint)],
     refreshModels,
     oauth: {
-      name: PROVIDER_ID,
+      name: PROVIDER_NAME,
       login: (callbacks) =>
         deps.loginPiFamily(
           managed,
