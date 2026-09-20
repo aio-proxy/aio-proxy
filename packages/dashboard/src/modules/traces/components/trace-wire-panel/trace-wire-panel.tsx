@@ -60,10 +60,12 @@ export const TraceWirePanel: React.FC<TraceWirePanelProps> = ({ side, hop }) => 
       {body !== undefined && (
         <section className="space-y-3">
           <h2 className="font-heading text-base font-semibold">{m['dashboard.traces.body']()}</h2>
-          {/* 两种残缺都用这一句：服务端把超过单跳单方向上限的尾巴裁掉了（truncated），
-              或者这次抓包本身没收完（outcome 不是 complete）。outcome 缺失不等于截断 ——
-              服务端只在认得出结果时才写它，不判 undefined 会让每条完整正文都挂一句假警告。 */}
-          {(body.truncated === true || (body.outcome !== undefined && body.outcome !== 'complete')) && (
+          {/* 三种残缺都用这一句：服务端把超过单跳单方向上限的尾巴裁掉了（truncated），
+              抓包收完了但结果不是 complete（cancelled / error），或者**压根没看到终止事件**。
+              最后这种就是 outcome 缺失：`body-tap.ts` 四个 terminal 调用点全都带 outcome，
+              所以有正文却没有 outcome 只可能是流还在跑、或者那行日志在崩溃/半截读里丢了 ——
+              两种都不是完整正文，按完整展示会让人拿着半截 body 去查问题。 */}
+          {(body.truncated === true || body.outcome !== 'complete') && (
             <p className="text-sm text-muted-foreground" role="status">
               {m['dashboard.traces.wire_body_truncated']()}
             </p>

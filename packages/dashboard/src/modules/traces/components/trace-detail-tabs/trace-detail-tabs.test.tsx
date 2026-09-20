@@ -204,8 +204,9 @@ test('says nothing about truncation when the capture completed', () => {
       {
         id: 'inbound',
         kind: 'inbound',
-        // outcome 缺失是常态，不能当成截断
-        request: { method: 'POST', body: { text: '{"model":"gpt-5"}' } },
+        // 完整抓包带 outcome: 'complete' —— body-tap 的每个 terminal 调用点都写了它。
+        // 缺 outcome 不是常态，那意味着终止事件没见到（流还在跑，或那行日志丢了）。
+        request: { method: 'POST', body: { text: '{"model":"gpt-5"}', outcome: 'complete' } },
       },
     ],
   };
