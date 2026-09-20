@@ -5,11 +5,11 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { defineEvaluationProtocolAdapter, isEvaluationProtocolAdapter, type EvaluationResult } from './adapter';
 import { REQUEST_BODY_LIMITS } from './request';
 
-type Request_ = { readonly model: string };
-type Context_ = Record<never, never>;
+type EvalRequest = { readonly model: string };
+type EvalContext = Record<never, never>;
 
 const define = (overrides: Record<string, unknown> = {}) =>
-  defineEvaluationProtocolAdapter<Request_, Context_>({
+  defineEvaluationProtocolAdapter<EvalRequest, EvalContext>({
     protocol: ProviderProtocol.TypeSafeSystemOne,
     parse: async () => ({ model: 'm' }),
     model: (request) => request.model,
@@ -34,6 +34,8 @@ describe('defineEvaluationProtocolAdapter', () => {
     expect(define({ wantsStream: () => true }).wantsStream(request, context)).toBe(false);
 
     const bodyLimits = { encoded: 11, decoded: 22 };
+    // Also the only proof the override spread reaches the factory at all; without it
+    // a dead spread would leave the wantsStream assertion passing vacuously on the default.
     expect(define({ bodyLimits: () => bodyLimits }).bodyLimits(new Request('https://x'), context)).toBe(bodyLimits);
 
     expect(adapter.bodyLimits(new Request('https://x'), context)).toBe(REQUEST_BODY_LIMITS);
