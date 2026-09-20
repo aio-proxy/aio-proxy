@@ -205,3 +205,20 @@ test('renders the placeholder when no Span is selected', () => {
   expect(within(panel).queryByTestId('span-metric-grid')).toBeNull();
   expect(within(panel).getByText('—')).toBeTruthy();
 });
+
+// raw 流式可能先回 200、之后在消费 body 时被取消：completionFinish 两个都记下来了。
+// 只显示状态码等于把中止说成正常完成 —— 终态必须和状态码并排出现，而不是被它替掉。
+test('shows the terminal status next to the http code instead of letting the code stand alone', () => {
+  const cancelledAfter200: DashboardTraceSpan = {
+    ...span,
+    spanId: trace.rootSpanId,
+    otelStatusCode: 'ERROR',
+    terminationReason: 'cancelled',
+    attributes: { 'http.response.status_code': 200 },
+  };
+  render(<SpanDetailPanel span={cancelledAfter200} trace={trace} spans={[cancelledAfter200]} onFilter={rs.fn()} />);
+
+  const row = within(screen.getByTestId('span-detail-panel')).getByTestId('span-status-row');
+  expect(within(row).getByText('200')).toBeTruthy();
+  expect(within(row).getByText(/Cancelled|已取消|已取消/u)).toBeTruthy();
+});

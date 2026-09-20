@@ -22,8 +22,10 @@ interface TraceWaterfallRowProps {
 
 export const TraceWaterfallRow: React.FC<TraceWaterfallRowProps> = ({ row, selectedSpanId, onSelect }) => {
   const failed = isFailedSpan(row);
+  // 取消从失败判定里摘出去之后，它会落到成功那一格 —— 客户端主动中止的操作画成绿柱子。
+  // 中性的两态（还在跑 / 已取消）共用一个弱化色，和跳选择器的圆点同一套判据。
   let barClassName = 'bg-chart-success';
-  if (row.endedAt === null) barClassName = 'bg-muted-foreground/40';
+  if (row.endedAt === null || row.terminationReason === 'cancelled') barClassName = 'bg-muted-foreground/40';
   if (failed) barClassName = 'bg-chart-error';
   return (
     <Button

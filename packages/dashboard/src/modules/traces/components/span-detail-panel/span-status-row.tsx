@@ -18,12 +18,16 @@ export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) =
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="span-status-row">
-      {metrics.httpStatus === undefined ? (
-        <TraceStatus item={span} />
-      ) : (
+      {/* 有状态码也要把终态说出来，不能用它替掉：raw 流式可能先回 200、之后在消费 body 时被
+          取消或失败，completionFinish 两个都记下来了。只显示 200 等于把中止说成正常完成，
+          而失败则只剩徽章颜色一个载体。 */}
+      {metrics.httpStatus !== undefined && (
         <Badge variant={failed ? 'destructive' : 'secondary'} className="font-mono tabular-nums">
           {metrics.httpStatus}
         </Badge>
+      )}
+      {(metrics.httpStatus === undefined || span.terminationReason !== undefined || span.endedAt === null) && (
+        <TraceStatus item={span} />
       )}
       {/* 面板不再有标题，选中的是哪一跳只能靠这里说清楚。 */}
       <span className="min-w-0 truncate font-medium">{span.name}</span>

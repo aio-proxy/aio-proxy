@@ -227,3 +227,22 @@ test('positions the TTFT tick without giving it a width that tracks the value', 
   // 同一个数在详情面板的 TTFT 格子里有文字版，所以不往行的读屏文案里再塞一个数。
   expect(early.ariaHidden).toBe('true');
 });
+
+// 取消从失败判定里摘出去之后，它会落到成功那一格：客户端主动中止的操作画成绿柱子。
+// 颜色是瀑布图上表达成败的唯一载体，所以这条钉的是「不是失败」不等于「成功」。
+test('paints a cancelled span neutral instead of green', () => {
+  const cancelled: DashboardTraceSpan = { ...spans[0]!, otelStatusCode: 'ERROR', terminationReason: 'cancelled' };
+  render(
+    <SpanWaterfall
+      spans={[cancelled]}
+      selectedSpanId={undefined}
+      now={new Date('2026-07-12T08:00:00.100Z')}
+      onSelect={rs.fn()}
+    />,
+  );
+
+  const bar = screen.getByTestId('trace-span').querySelector('[class*="bg-"]');
+  expect(screen.getByTestId('trace-span').querySelector('.bg-chart-success')).toBeNull();
+  expect(screen.getByTestId('trace-span').querySelector('.bg-chart-error')).toBeNull();
+  expect(bar).toBeTruthy();
+});
