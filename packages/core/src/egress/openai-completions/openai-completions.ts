@@ -5,8 +5,8 @@ import type {
 } from 'openai/resources/chat/completions/completions';
 import type { CompletionUsage } from 'openai/resources/completions';
 
-import type { ModelEgressContext, ModelSseStream } from '../protocol/adapter';
-import { createCancellableEgressStream } from './cancellable-stream';
+import type { ModelEgressContext, ModelSseStream } from '../../protocol/adapter';
+import { createCancellableEgressStream } from '../cancellable-stream';
 import {
   completionFinishUsage,
   completionTextDelta,
@@ -16,7 +16,7 @@ import {
   type OpenAICompletionMetadata,
   type OpenAICompletionStreamPart,
   upstreamMetadata,
-} from './openai-completion-metadata/index';
+} from '../openai-completion-metadata/index';
 
 const encoder = new TextEncoder();
 const CHAT_COMPLETION_ID_PREFIX = 'chatcmpl-';
