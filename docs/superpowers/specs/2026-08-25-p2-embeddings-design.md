@@ -164,7 +164,8 @@ type EmbeddingProtocolAdapter<TRequest, TContext> = {
 Defaults:
 
 - `wantsStream` is always false. There is no SSE egress.
-- `session` is omitted. Empty candidates fall through to a generated session unless the client sent an existing session header. Embeddings do not hash the input text as a transcript key and do not commit response ownership.
+- `session` is omitted, so every request gets a generated session and an inbound session header is ignored. Embeddings do not hash the input text as a transcript key and do not commit response ownership.
+  > **Revised (2026-09-20):** this line previously read "unless the client sent an existing session header", and the pipeline honoured that header. It no longer does: a header-resolved session is stable, so the first successful attempt established affinity and pinned every later request in that session to whichever candidate answered, leaving a backup that served one failover holding the traffic. An adapter with no `session` hook now takes candidate order from priority and weight only.
 - `dimensions()` (alias effort bag) is empty. Embeddings do not clamp reasoning effort.
 - `requestDiagnostics` is empty. Convert does not silently drop representable embed settings. `dimensions` / `outputDimensionality`, Gemini `taskType`, and OpenAI `user` are normalized onto per-value `providerOptions`. Gemini `title` and `autoTruncate` are kept for grouping and are 501 on convert unless a transport is proven to put them on the Google upstream body. OpenAI token-id `input` is parse-legal and raw-forwarded; convert is 501 because AI SDK embed is string-only. `encoding_format` is egress-only and is never sent to the SDK.
 
