@@ -200,7 +200,8 @@ export type EmbeddingProtocolAdapter<TRequest, TContext> = Readonly<{
 
 export type AnyProtocolAdapter<TRequest, TContext> =
   | ProtocolAdapter<TRequest, TContext>
-  | EmbeddingProtocolAdapter<TRequest, TContext>;
+  | EmbeddingProtocolAdapter<TRequest, TContext>
+  | EvaluationProtocolAdapter<TRequest, TContext>;
 
 export function isEmbeddingProtocolAdapter<TRequest, TContext>(adapter: {
   readonly capability?: string;

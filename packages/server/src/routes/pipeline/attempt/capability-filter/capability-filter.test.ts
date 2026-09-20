@@ -84,6 +84,22 @@ test('router metadata does not grant language or embedding capability', () => {
   ).toEqual([]);
 });
 
+test('evaluation inbound keeps a candidate whose index grants only evaluation', () => {
+  // The placeholder `return false` this arm replaced filtered every evaluation
+  // request to zero candidates, surfacing as "no provider supports this model".
+  // An arm appended BELOW that line is dead code with the same effect and no type
+  // error, so the survival assertion is the only thing that reports either shape.
+  const evaluation = candidate('jev-latest', { 'jev-latest': new Set(['evaluation']) });
+  expect(filterCandidatesByCapability([evaluation], 'evaluation', noPolicy)).toEqual([evaluation]);
+});
+
+test('evaluation inbound drops a language-only candidate', () => {
+  // The filter's trailing branch is `supportsLanguage`, so a missing evaluation
+  // arm silently routes /v1/systemone into the chat pool.
+  const language = candidate('gpt-5', { 'gpt-5': new Set(['language']) });
+  expect(filterCandidatesByCapability([language], 'evaluation', noPolicy)).toEqual([]);
+});
+
 test('speech inbound keeps only speech-capable candidates', () => {
   // A language-only candidate reaching a speech request is the regression this
   // guards: the filter's trailing branch is `supportsLanguage`, so a missing

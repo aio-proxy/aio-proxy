@@ -53,7 +53,7 @@ export type RawTransport = {
 export type RawResolveInput = {
   readonly protocol: ProviderProtocol;
   readonly modelId: string;
-  readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription';
+  readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription' | 'evaluation';
   readonly requestPath?: string;
 };
 

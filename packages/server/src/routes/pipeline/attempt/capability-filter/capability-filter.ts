@@ -4,6 +4,7 @@ import type { RouterModelPolicy } from '@aio-proxy/types';
 import {
   metadataHasImageOutput,
   supportsEmbedding,
+  supportsEvaluation,
   supportsImage,
   supportsLanguage,
   supportsSpeech,
@@ -32,12 +33,13 @@ export function filterCandidatesByCapability<
       return candidateSupportsAudio(candidate, capability);
     }
     if (capability === 'video') return supportsVideo(candidate.provider.capabilityIndex, candidate.modelId);
-    // Evaluation is never language. A later task replaces this with
-    // `supportsEvaluation(candidate.provider.capabilityIndex, candidate.modelId)`
-    // once the capability index exposes it; until then decline explicitly, because
-    // the `supportsLanguage` fallthrough below would otherwise claim this capability
-    // and no type error would ever reveal it.
-    if (capability === 'evaluation') return false;
+    // Evaluation is never language: the `supportsLanguage` fallthrough below would
+    // otherwise claim this capability with no type error to reveal it. The grant
+    // comes from a real transport or a System One endpoint, never from protocol
+    // metadata - see `synthesizesEvaluation`.
+    if (capability === 'evaluation') {
+      return supportsEvaluation(candidate.provider.capabilityIndex, candidate.modelId);
+    }
     return supportsLanguage(candidate.provider.capabilityIndex, candidate.modelId);
   });
 }
