@@ -12,7 +12,8 @@ export type ProtocolId =
   | 'gemini-interactions'
   | 'openai-image'
   | 'openai-audio'
-  | 'openai-video';
+  | 'openai-video'
+  | 'typesafe-systemone';
 
 /** Non-deprecated replacement for the AI SDK `CallSettings` type. */
 export type AiSdkCallSettings = LanguageModelCallOptions &
@@ -85,7 +86,7 @@ export type RawResolver = (input: {
   readonly protocol: ProtocolId;
   readonly modelId: string;
   readonly extra?: JsonValue;
-  readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription';
+  readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription' | 'evaluation';
   // Inbound URL pathname when the pipeline is choosing between raw and model.
   // Absent for capability probes that are not tied to a request.
   readonly requestPath?: string;

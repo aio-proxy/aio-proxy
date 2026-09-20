@@ -182,6 +182,7 @@ function toBillableUsage(
     }
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIVideo:
+    case ProviderProtocol.TypeSafeSystemOne:
       return usage;
     default: {
       const _exhaustive: never = accounting.protocol;

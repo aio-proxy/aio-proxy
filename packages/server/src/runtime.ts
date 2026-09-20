@@ -77,7 +77,14 @@ export type ModelTransport = {
   readonly targetProtocol?: (modelId: string) => ProviderProtocol | undefined;
 };
 
-export type InboundCapability = 'language' | 'image' | 'embedding' | 'speech' | 'transcription' | 'video';
+export type InboundCapability =
+  | 'language'
+  | 'image'
+  | 'embedding'
+  | 'speech'
+  | 'transcription'
+  | 'video'
+  | 'evaluation';
 export type ModelCapabilityIndex = Readonly<Record<string, ReadonlySet<InboundCapability>>>;
 
 export type ImageTransportInvokeRequest = {

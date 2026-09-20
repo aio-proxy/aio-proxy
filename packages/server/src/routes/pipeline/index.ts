@@ -321,6 +321,8 @@ function noCandidateFeature(capability: InboundCapability): string {
       return 'audio';
     case 'video':
       return 'video';
+    case 'evaluation':
+      return 'evaluation';
     case 'language':
     case 'embedding':
       return 'transform_dispatch';

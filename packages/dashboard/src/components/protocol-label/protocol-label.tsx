@@ -46,13 +46,17 @@ const PROTOCOL_LABELS: Record<
     label: 'OpenAI Video',
     icon: withLobeIcon('openai'),
   },
+  [ProviderProtocol.TypeSafeSystemOne]: {
+    label: 'TypeSafe System One',
+    icon: withLobeIcon('typesafe-ai'),
+  },
 };
 
 /**
  * Protocol order for pickers. Rendering coverage and picker coverage are different questions:
  * `PROTOCOL_LABELS` must be exhaustive so a card never renders a blank icon, while the pickers offer
- * only the protocols a user may configure or filter by. `openai-image`, `openai-audio`, and `openai-video`
- * render but are not offered.
+ * only the protocols a user may configure or filter by. `openai-image`, `openai-audio`, `openai-video`,
+ * and `typesafe-systemone` render but are not offered.
  * OpenAI Compatible leads because it is what most third-party gateways speak.
  */
 export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [

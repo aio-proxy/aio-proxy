@@ -15,6 +15,7 @@ export function wrapOpenAIProtocolFetch(protocol: ProviderProtocol, fetcher: Pro
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
     case ProviderProtocol.OpenAIVideo:
+    case ProviderProtocol.TypeSafeSystemOne:
       return fetcher as OpenAIStreamFetch;
   }
 }

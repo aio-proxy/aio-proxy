@@ -32,6 +32,11 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return openAIAudioUsage(value);
     case ProviderProtocol.OpenAIVideo:
       return openAIVideoUsage(value);
+    // Placeholder arm; real token extraction lands in Task 12. Reporting "absent"
+    // leaves the raw path recording no tokens rather than guessing at a payload
+    // shape this task does not yet read.
+    case ProviderProtocol.TypeSafeSystemOne:
+      return { kind: 'absent' };
     default:
       return assertNever(protocol);
   }

@@ -59,6 +59,7 @@ test('maps every internal provider protocol to the plugin SDK protocol', () => {
     [ProviderProtocol.OpenAIImage]: 'openai-image',
     [ProviderProtocol.OpenAIAudio]: 'openai-audio',
     [ProviderProtocol.OpenAIVideo]: 'openai-video',
+    [ProviderProtocol.TypeSafeSystemOne]: 'typesafe-systemone',
   });
 });
 

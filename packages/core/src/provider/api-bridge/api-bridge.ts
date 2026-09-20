@@ -12,6 +12,7 @@ const NON_LANGUAGE_PROTOCOLS: ReadonlySet<ProviderProtocol> = new Set([
   ProviderProtocol.OpenAIImage,
   ProviderProtocol.OpenAIAudio,
   ProviderProtocol.OpenAIVideo,
+  ProviderProtocol.TypeSafeSystemOne,
 ]);
 
 /**
@@ -97,6 +98,7 @@ function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, pr
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
     case ProviderProtocol.OpenAIVideo:
+    case ProviderProtocol.TypeSafeSystemOne:
       throw new Error(`Unsupported provider protocol: ${primary.protocol}`);
     default:
       return assertNever(primary.protocol);

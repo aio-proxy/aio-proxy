@@ -108,6 +108,7 @@ const PROTOCOL_CAPABILITIES: Readonly<Record<ProviderProtocol, readonly InboundC
   // audio-only provider unroutable.
   [ProviderProtocol.OpenAIAudio]: ['speech', 'transcription'],
   [ProviderProtocol.OpenAIVideo]: ['video'],
+  [ProviderProtocol.TypeSafeSystemOne]: ['evaluation'],
 };
 
 // The optional chain is load-bearing despite the total Record type: a protocol
