@@ -20,6 +20,8 @@ import type {
 } from 'ai';
 import { embed, embedMany, generateSpeech, jsonSchema, streamText, transcribe } from 'ai';
 
+import { withUnenforcedToolChoice } from './tool-choice';
+
 /**
  * Non-deprecated replacement for the AI SDK `CallSettings` type: model-behavior
  * options plus the request controls we forward to `streamText`.
@@ -83,10 +85,11 @@ export function streamAiSdkText({
 }: AiSdkTextStreamRequest): AiSdkTextStreamResult {
   const instructions = messages.filter((message) => message.role === 'system');
   const inputMessages = messages.filter((message) => message.role !== 'system');
+  const call = withUnenforcedToolChoice({ model, settings });
 
   return streamText({
-    ...settings,
-    model,
+    ...call.settings,
+    model: call.model,
     ...(instructions.length === 0 ? {} : { instructions: [...instructions] }),
     messages: [...inputMessages],
     ...(tools === undefined ? {} : { tools }),
