@@ -95,12 +95,66 @@ describe('systemOneErrors.requestError', () => {
     expect(declined).toEqual([undefined, undefined]);
   });
 
-  it('declines an internal error and never writes its message to the caller', async () => {
-    const internal = new Error('internal boom');
-    const responses = [systemOneErrors.requestError(internal), systemOneErrors.provider(internal)];
-    expect(responses).toEqual([undefined, undefined]);
+  it('declines an internal error so the parse path does not blame the caller', () => {
+    expect(systemOneErrors.requestError(new Error('internal boom'))).toBeUndefined();
+  });
+});
 
-    const bodies = await Promise.all(responses.map((response) => response?.text() ?? Promise.resolve('')));
-    expect(bodies.join('')).not.toContain('internal boom');
+describe('systemOneErrors.provider', () => {
+  // The rule this enforces: "On provider failure, try the next candidate for the
+  // same model." `handleAttemptError` rethrows whatever it cannot map, and a throw
+  // out of the candidate loop skips both the fallback and the cooldown write. So a
+  // transport failure has to come back as a response, not as undefined.
+  it('maps a transport failure to a 502 the candidate loop can fall back from', async () => {
+    const response = systemOneErrors.provider(new Error('socket hang up'));
+
+    expect(response?.status).toBe(502);
+    expect(response?.headers.get('content-type')).toBe('application/json');
+    expect(await response?.json()).toEqual({
+      message: 'Upstream evaluation provider failed',
+      error_type: 'upstream_error',
+    });
+  });
+
+  // An upstream 429 is one provider's verdict, so it maps here and falls back.
+  // `rateLimited` is the route-level answer for "every candidate is cooling down",
+  // which the pipeline decides before any attempt runs. The two must not overlap.
+  it('routes an upstream rate limit through the fallback path, not the route-level 429', async () => {
+    const rateLimit = Object.assign(new Error('Too Many Requests'), { statusCode: 429 });
+
+    const response = systemOneErrors.provider(rateLimit);
+
+    expect(response?.status).toBe(502);
+    expect(response?.headers.get('retry-after')).toBeNull();
+    expect(await response?.json()).toMatchObject({ error_type: 'upstream_error' });
+  });
+
+  it('reports an aborted attempt as a cancellation rather than an upstream fault', async () => {
+    const response = systemOneErrors.provider(
+      Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }),
+    );
+
+    expect(response?.status).toBe(499);
+    expect(await response?.json()).toEqual({ message: 'Evaluation cancelled', error_type: 'cancelled_error' });
+  });
+
+  // Mapping everything is what fixes the rethrow, so the two rejections the
+  // pipeline answers as 415 and 413 have to be excluded by name or this mapper
+  // silently downgrades both to 502.
+  it('declines the encoding and size rejections the pipeline maps to 415 and 413', () => {
+    const declined = [
+      systemOneErrors.provider(new UnsupportedContentEncodingError('compress')),
+      systemOneErrors.provider(new RequestBodyTooLargeError('Request body too large')),
+    ];
+    expect(declined).toEqual([undefined, undefined]);
+  });
+
+  // The stance that made this mapper decline in the first place: an attempt failure
+  // is an upstream fault or a bug of ours, and the caller reads neither. Mapping it
+  // must not start echoing internal text back out.
+  it('never writes the underlying message to the caller', async () => {
+    const response = systemOneErrors.provider(new Error('postgres://user:hunter2@10.0.0.4/internal'));
+
+    expect(await response?.text()).not.toContain('hunter2');
   });
 });

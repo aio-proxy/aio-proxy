@@ -1,5 +1,9 @@
 import type { ProtocolErrorMapper } from '../adapter';
-import { InvalidCompressedRequestBodyError } from '../request';
+import {
+  InvalidCompressedRequestBodyError,
+  RequestBodyTooLargeError,
+  UnsupportedContentEncodingError,
+} from '../request';
 import { SystemOneParseError } from './parse';
 
 // System One's own client parses `{ message, error_type }`, so none of the shared
@@ -33,7 +37,29 @@ export const systemOneErrors: ProtocolErrorMapper = {
   tooLarge: () => json('Request body is too large', 'invalid_request_error', 413),
   unsupportedContentEncoding: () => json('Unsupported content encoding', 'invalid_request_error', 415),
   unsupported: (feature) => json(`Unsupported: ${feature}`, 'not_supported_error', 501),
-  provider: () => undefined,
+  // Every throw from an attempt must map to a response: `handleAttemptError`
+  // rethrows what it cannot map, which exits the candidate loop, so a request
+  // whose next candidate is healthy would die here and no cooldown would be
+  // written for the provider that just failed. The two body-read rejections are
+  // the deliberate exception -- the pipeline owns them and answers 415 and 413.
+  //
+  // The message is a constant. An attempt failure is an upstream fault or a bug
+  // of ours, and neither is the caller's to read; the cause reaches the operator
+  // through the attempt log, as it does for a failed discovery. No status is
+  // extracted from the error: the pipeline already calls `upstreamRetryInfo` to
+  // size the cooldown, and an upstream `retry-after` describes one provider
+  // rather than this route, so echoing it here would misdescribe the failure. A
+  // single upstream 429 therefore maps to 502 and falls back like any other
+  // candidate failure; `rateLimited` stays reserved for the pre-attempt state
+  // where every candidate is already cooling down and none was tried.
+  provider: (error) => {
+    if (error instanceof UnsupportedContentEncodingError || error instanceof RequestBodyTooLargeError) {
+      return undefined;
+    }
+    return error instanceof Error && error.name === 'AbortError'
+      ? json('Evaluation cancelled', 'cancelled_error', 499)
+      : json('Upstream evaluation provider failed', 'upstream_error', 502);
+  },
   rateLimited: (retryAfterSeconds) =>
     new Response(body('Rate limited', 'rate_limit_error'), {
       status: 429,

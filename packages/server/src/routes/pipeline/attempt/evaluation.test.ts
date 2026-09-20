@@ -387,9 +387,9 @@ test('excludes a candidate whose package genuinely has no evaluation resolver', 
 
 test('surfaces a failed discovery in the candidate position, then falls back', async () => {
   // A package that could not be installed is a candidate failure, not a routing
-  // fact. `errors.provider` declines an internal error, so routing this through
-  // `handleAttemptError` would rethrow and take down a request whose next
-  // candidate is healthy.
+  // fact. It stays off `handleAttemptError` so the answer names the real fault
+  // rather than the generic upstream 502 `errors.provider` returns for an
+  // unrecognized throw.
   const provider = convertProvider(
     'broken',
     lazyEvaluationTransport('broken', async () => null),
@@ -467,4 +467,53 @@ test('a failed discovery falls back to the next candidate through the real loop'
   expect(response.status).toBe(200);
   await route.recording.settle();
   expect(route.recording.attempts.map((attempt) => attempt.providerId)).toEqual(['broken', 'healthy']);
+});
+
+test('a throw from the evaluation transport is answered, not propagated', async () => {
+  // Discovery succeeded and `evaluate` itself threw -- a network drop, a wrapped
+  // upstream 5xx, a provider bug. The throw leaves `attemptEvaluationCandidate` and
+  // is caught by the loop, which hands it to `handleAttemptError`; that rethrows
+  // whatever `errors.provider` cannot map. As the only candidate there is nothing
+  // to fall back to, so mapping is the whole difference between a 502 and an
+  // exception escaping the pipeline.
+  const provider = convertProvider(
+    'flaky',
+    discoveredTransport(async () => {
+      throw new Error('socket hang up');
+    }),
+  );
+  const { runLoop } = await harness();
+
+  const response = await runLoop([provider]);
+
+  expect(response.status).toBe(502);
+  expect(response.headers.get('content-type')).toBe('application/json');
+  expect(await response.json()).toEqual({
+    message: 'Upstream evaluation provider failed',
+    error_type: 'upstream_error',
+  });
+});
+
+test('a candidate whose evaluate throws falls back to a healthy one through the real loop', async () => {
+  // CLAUDE.md's routing rule made executable: "On provider failure, try the next
+  // candidate for the same model." With `errors.provider` declining, the throw
+  // leaves the loop through `handleAttemptError` and the healthy second candidate
+  // is never reached, so this request fails with a working provider available.
+  const failing = convertProvider(
+    'flaky',
+    discoveredTransport(async () => {
+      throw new Error('socket hang up');
+    }),
+  );
+  const healthyEvaluate = mock(async () => NOUL_RESULT);
+  const healthy = convertProvider('healthy', discoveredTransport(healthyEvaluate));
+  const { route, runLoop } = await harness();
+
+  const response = await runLoop([failing, healthy]);
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ model: MODEL_ID, answers: { q: { type: 'noul', noul: 0.93 } } });
+  expect(healthyEvaluate).toHaveBeenCalled();
+  await route.recording.settle();
+  expect(route.recording.attempts.map((attempt) => attempt.providerId)).toEqual(['flaky', 'healthy']);
 });

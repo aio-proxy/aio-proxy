@@ -85,9 +85,10 @@ async function convertEvaluationCandidate<TRequest, TContext>(
   try {
     body = adapter.evaluationJson(result, { responseModelId: ctx.requestedModelId });
   } catch (error) {
-    // `errors.provider` declines this deliberately, so `handleAttemptError` would
-    // rethrow rather than fall back. The adapter owns the refusal; this layer owns
-    // turning it into the next candidate's turn.
+    // Caught here so the refusal keeps its precise 501 `evaluation_distribution`:
+    // `errors.provider` maps an unrecognized throw to a generic upstream 502, which
+    // would describe an egress shape mismatch as an upstream fault. Either way the
+    // candidate falls back; this layer owns saying why.
     if (!(error instanceof EvaluationDistributionError)) throw error;
     return emitReject(ctx, slot, adapter.errors.unsupported('evaluation_distribution'), 'unsupported_feature');
   }
@@ -121,11 +122,11 @@ function unsupportedConvert<TRequest, TContext>(
  *
  * Distinct from `unsupported` on purpose: this is a transient attempt failure, so
  * it must occupy this candidate's own position and fall back, never be hoisted
- * ahead of a healthy primary and never surface as a router miss. It cannot go
- * through `handleAttemptError` either — `errors.provider` declines an internal
- * error rather than echo its message to the caller, and that path rethrows what it
- * cannot map, which would take down a request whose next candidate is healthy. The
- * cause reaches the operator through the attempt log instead of the response body.
+ * ahead of a healthy primary and never surface as a router miss. It stays off
+ * `handleAttemptError` so the answer names the real fault: that path would map a
+ * local install failure to the generic upstream 502 `errors.provider` returns for
+ * an unrecognized throw. The cause reaches the operator through the attempt log
+ * rather than the response body.
  */
 function discoveryFailure<TRequest, TContext>(
   ctx: EvaluationAttemptLoopContext<TRequest, TContext>,
