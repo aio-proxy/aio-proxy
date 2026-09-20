@@ -465,11 +465,13 @@ describe('trace store recover, list, and prune', () => {
 
 // 真实的成功调用链是 ended + UNSET：链路上没有任何地方把根 span 设成 OK，所以这里也
 // 不许按 statusCode 播种，否则测试会自己造出一种生产里不存在的形状。
+// `cancelled` 和 `error-no-reason` 与 `error` 一样是 statusCode 2 —— 三者只在
+// terminationReason 上分家，失败判定要的正是这个区分。
 const seedTrace = (
   store: TraceStore,
   traceId: string,
   startedAt: string,
-  outcome: 'success' | 'error' | 'running',
+  outcome: 'success' | 'error' | 'cancelled' | 'error-no-reason' | 'running',
 ): void => {
   const spanId = traceId.slice(0, 16);
   const requestId = `req-${traceId.slice(0, 4)}`;
@@ -477,7 +479,8 @@ const seedTrace = (
   store.startRoot(rootStart({ traceId, spanId, requestId, startedAt: at }));
   // 只 startRoot 不 complete，就是一条还在跑的调用链
   if (outcome === 'running') return;
-  const failed = outcome === 'error';
+  const errored = outcome !== 'success';
+  const reason = outcome === 'error' ? 'failure' : outcome === 'cancelled' ? 'cancelled' : undefined;
   store.complete(
     completion({
       traceId,
@@ -488,8 +491,7 @@ const seedTrace = (
           spanId,
           startedAt: at,
           endedAt: new Date(at.getTime() + 100),
-          statusCode: failed ? 2 : 0,
-          ...(failed ? { terminationReason: 'failure' as const } : {}),
+          statusCode: errored ? 2 : 0,
           // request_id 是唯一列，每条种子调用链都要带上自己的那个
           attributes: { 'aio_proxy.request.id': requestId },
         }),
@@ -497,7 +499,10 @@ const seedTrace = (
       summary: {
         finalProviderId: 'provider-b',
         finalModelId: 'model-b',
-        finalHttpStatus: failed ? 500 : 200,
+        // termination_reason 这一列只认 summary（trace-lifecycle 的 terminalColumns）和根
+        // span 的 aio_proxy.termination.reason 属性 —— 往 rootSpan() 上传这个字段没人读。
+        ...(reason === undefined ? {} : { terminationReason: reason }),
+        ...(outcome === 'error' ? { finalHttpStatus: 500 } : outcome === 'success' ? { finalHttpStatus: 200 } : {}),
       },
     }),
   );
@@ -527,6 +532,44 @@ describe('trace store summary', () => {
       // 那条还在跑的落在 09:45 桶里，两边都不该数它
       expect(result.buckets[45]).toEqual({ at: '2026-07-24T09:45:00.000Z', success: 0, error: 0 });
       expect(result.totals).toEqual({ success: 2, error: 2 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  // 取消的根 span 也是 ERROR，但表格把它标成「已取消」。只按 statusCode 判失败的话，
+  // 失败柱会把取消算进去、点「失败」也会把它们捞出来，图和表对同一条链给两个说法。
+  // 同时钉住 NULL 那一半：terminationReason 为空的 ERROR 行（老数据，或任何设了 ERROR
+  // 却没写原因的路径）必须仍然算失败 —— SQL 里 `NULL <> 'cancelled'` 是 NULL、当假，
+  // 少写 isNull 就会把这批行从失败里整批抹掉。
+  test('keeps cancelled traces out of the error series without dropping ERROR rows that have no reason', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      seedTrace(store, '1'.repeat(32), '2026-07-24T09:00:10.000Z', 'success');
+      seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:20.000Z', 'error');
+      seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:30.000Z', 'cancelled');
+      seedTrace(store, '4'.repeat(32), '2026-07-24T09:00:40.000Z', 'error-no-reason');
+
+      const range = {
+        startedAfter: new Date('2026-07-24T09:00:00.000Z'),
+        startedBefore: new Date('2026-07-24T10:00:00.000Z'),
+      };
+
+      // 四条都结束了，但取消的那条两边都不计，所以合计只有 3。
+      expect(store.summary(range).totals).toEqual({ success: 1, error: 2 });
+
+      // 图例点「失败」要和柱子框住同一批：两条，且不含被取消的那条。
+      const errors = store.list({ ...range, outcome: 'error', pageSize: 10 });
+      expect(errors.items.map((item) => item.traceId).sort()).toEqual(['2'.repeat(32), '4'.repeat(32)]);
+
+      // 取消既没被算进成功，也仍然查得到 —— 出口是 terminationReason。
+      expect(store.list({ ...range, outcome: 'success', pageSize: 10 }).items.map((item) => item.traceId)).toEqual([
+        '1'.repeat(32),
+      ]);
+      expect(
+        store.list({ ...range, terminationReason: 'cancelled', pageSize: 10 }).items.map((item) => item.traceId),
+      ).toEqual(['3'.repeat(32)]);
     } finally {
       handle.close();
     }
