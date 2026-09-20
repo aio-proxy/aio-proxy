@@ -26,6 +26,7 @@ export type {
   ToolSet,
 } from './ai-sdk-bridge';
 export { jsonSchema } from './ai-sdk-bridge';
+export { aiSdkPackagePrimaryProtocol } from './ai-sdk-package-protocol';
 export { fileCacheStorage } from './cache/index';
 export {
   acquireProcessFileLock,
@@ -88,7 +89,6 @@ export {
 export {
   assertImageInputSupported,
   imageFilePart,
-  imageTargetProtocolForPackage,
   type ImageFilePartOptions,
   type ImageFileSource,
   type ImageInputDetail,

@@ -109,21 +109,6 @@ function normalizeSource(source: ImageFileSource): { readonly data: FileData; re
   return { mediaType, data: { type: 'url', url } };
 }
 
-export function imageTargetProtocolForPackage(packageName: string): ProviderProtocol | undefined {
-  switch (packageName) {
-    case '@ai-sdk/openai':
-      return ProviderProtocol.OpenAIResponse;
-    case '@ai-sdk/openai-compatible':
-      return ProviderProtocol.OpenAICompatible;
-    case '@ai-sdk/anthropic':
-      return ProviderProtocol.Anthropic;
-    case '@ai-sdk/google':
-      return ProviderProtocol.Gemini;
-    default:
-      return undefined;
-  }
-}
-
 export function assertImageInputSupported(
   messages: readonly ModelMessage[],
   targetProtocol: ProviderProtocol | undefined,
