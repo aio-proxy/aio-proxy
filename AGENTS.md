@@ -18,7 +18,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 - Bun workspace monorepo (`packages/*`) orchestrated by Turborepo.
 - `packages/dashboard/AGENTS.md` is the authority for dashboard/frontend rules.
-- Before considering a change complete, run `bun run preflight` (oxlint + oxfmt check + all unit tests), or at minimum `bun run check` plus the affected package's tests.
+- Before considering a change complete, run `bun run preflight` (type-aware oxlint + oxfmt check + all unit tests), or at minimum `bun run check` plus the affected package's tests. CI enforces `lint:types` as well, after a build — it resolves cross-package types through each package's built `dist`, so it cannot run on an unbuilt tree.
 - Pull request titles follow commitlint / Conventional Commits (`type(scope): subject`). Do not put that prefix on changeset bodies.
 
 ## Changesets

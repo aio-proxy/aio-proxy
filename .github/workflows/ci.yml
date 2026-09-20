@@ -39,5 +39,10 @@ jobs:
       - run: test -z "$(git status --short --untracked-files=all -- packages/core/src/db/migrations)"
       - run: bun run --filter @aio-proxy/brand build:assets
       - run: test -z "$(git status --short --untracked-files=all -- packages/brand/src)"
+      # lint:types resolves cross-package imports through each package's built dist/*.d.ts, so the
+      # build has to land first — unbuilt, every workspace import reports as an unresolved type.
+      # test:unit already dependsOn build, so this only moves that work earlier and warms its cache.
+      - run: bun run build
+      - run: bun run lint:types
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
