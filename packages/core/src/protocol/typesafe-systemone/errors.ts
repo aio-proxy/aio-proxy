@@ -1,4 +1,5 @@
 import type { ProtocolErrorMapper } from '../adapter';
+import { SystemOneParseError } from './parse';
 
 // System One's own client parses `{ message, error_type }`, so none of the shared
 // OpenAI-envelope helpers in `../errors` are reusable here. That file is also
@@ -12,7 +13,14 @@ const json = (message: string, errorType: string, status: number): Response =>
   });
 
 export const systemOneErrors: ProtocolErrorMapper = {
-  requestError: (error) => (error instanceof Error ? json(error.message, 'invalid_request_error', 400) : undefined),
+  // Selective by design: `parseSystemOneBody` funnels every inbound rejection it
+  // can see -- bad media type, unreadable body, schema violations -- through
+  // `SystemOneParseError`, whose message is written for callers. Anything else
+  // reaching here is an egress failure or a bug of ours, so it must fall through
+  // to its own handler instead of becoming a 400 that blames the caller and
+  // echoes an internal message back to them.
+  requestError: (error) =>
+    error instanceof SystemOneParseError ? json(error.message, 'invalid_request_error', 400) : undefined,
   modelNotFound: (message) => json(message, 'not_found_error', 404),
   previousResponseConflict: () => json('Not supported for evaluation', 'invalid_request_error', 400),
   tooLarge: () => json('Request body is too large', 'invalid_request_error', 413),
