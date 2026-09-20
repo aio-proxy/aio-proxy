@@ -187,13 +187,18 @@ table.t tbody tr:hover { background: var(--accent); }
 
 .ruler { position: relative; height: 18px; margin: 10px 0 4px; border-bottom: 1px solid var(--border); }
 .ruler span { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: var(--muted-foreground); font-family: var(--font-mono); }
-.wf-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) 62px; gap: 10px; align-items: center; padding: 5px 6px; border-radius: var(--radius-md); }
+/* 224px, not 200: `aio_proxy.request.prepare` at depth 3 (42px of indent) overflows
+   200px by 2px and loses its last letter to the ellipsis. */
+.wf-row { display: grid; grid-template-columns: 224px minmax(0, 1fr) 62px; gap: 10px; align-items: center; padding: 5px 6px; border-radius: var(--radius-md); }
 .wf-row:hover { background: var(--accent); }
 .wf-row[data-selected='true'] { background: color-mix(in oklab, var(--primary) 10%, transparent); }
 .wf-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wf-track { position: relative; height: 16px; }
 .wf-bar { position: absolute; top: 3px; height: 10px; border-radius: 3px; background: var(--chart-success); }
 .wf-bar[data-status='failure'] { background: var(--chart-error); }
+/* TTFT is a moment: a hairline across the full track height, with 3px poking out
+   above and below the 10px bar so it reads on top of both bar colours. */
+.wf-tick { position: absolute; top: 0; width: 1px; height: 16px; background: color-mix(in oklab, var(--foreground) 70%, transparent); }
 .wf-dur { font-size: 12px; text-align: right; color: var(--muted-foreground); font-family: var(--font-mono); }
 
 .kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); border-radius: var(--radius-md); overflow: hidden; }

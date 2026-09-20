@@ -36,17 +36,21 @@
 
         <div class="card stack">
           <div class="row">
-            <span class="badge" data-status="success">200 OK</span>
+            <span class="badge" data-status="success">200</span>
+            <span style="font-weight: 500">aio_proxy.provider.attempt</span>
+            <span class="spacer"></span>
             <span class="muted">anthropic-backup · claude-sonnet-4-6</span>
           </div>
 
+          <!-- The six cells are the selected span's own numbers. Token counts live on the
+               GenAI span, so an attempt shows `—` there rather than borrowing the trace's. -->
           <dl class="kv" style="margin: 0">
-            <div><dt>总时长</dt><dd>3.42s</dd></div>
-            <div><dt>首字时延</dt><dd>1.82s</dd></div>
-            <div><dt>上游耗时</dt><dd>2.20s</dd></div>
-            <div><dt>输入 Token</dt><dd>8,412</dd></div>
-            <div><dt>输出 Token</dt><dd>1,096</dd></div>
-            <div><dt>尝试次数</dt><dd>2 / 3</dd></div>
+            <div><dt>总时长</dt><dd>2.20s</dd></div>
+            <div><dt>首字时延</dt><dd>612ms</dd></div>
+            <div><dt>上游耗时</dt><dd>596ms</dd></div>
+            <div><dt>输入 Token</dt><dd>—</dd></div>
+            <div><dt>输出 Token</dt><dd>—</dd></div>
+            <div><dt>尝试次数</dt><dd>2</dd></div>
           </dl>
 
           <!-- percentile comparison, the Cloudflare "compared with N spans" bar -->
@@ -87,18 +91,28 @@
       theme();
 
       // A failover trace: anthropic-primary rate-limits, anthropic-backup serves it.
+      // Names and nesting come straight from the server's span registry: the GenAI span is
+      // named `{operation} {model}`, the upstream HTTP span is named after the method. Both
+      // providers are `ai-sdk` kind, which is why each attempt has a `prepare` child.
+      // TTFT is a moment, so it is a tick on the attempt bar, never a row of its own. The
+      // 429 attempt has none because it never produced content — a failed attempt that did
+      // stream something does get one.
       const spans = [
-        { name: 'POST /v1/messages', start: 0, dur: 3420, depth: 0, status: 'success' },
-        { name: 'route.resolve', start: 4, dur: 11, depth: 1, status: 'success' },
-        { name: 'provider.anthropic-primary', start: 18, dur: 1186, depth: 1, status: 'failure' },
-        { name: 'http.request', start: 24, dur: 1174, depth: 2, status: 'failure' },
-        { name: 'provider.anthropic-backup', start: 1210, dur: 2196, depth: 1, status: 'success' },
-        { name: 'http.request', start: 1216, dur: 590, depth: 2, status: 'success' },
-        { name: 'stream.ttft', start: 1822, dur: 2, depth: 2, status: 'success' },
-        { name: 'stream.body', start: 1824, dur: 1578, depth: 2, status: 'success' },
-        { name: 'usage.record', start: 3406, dur: 12, depth: 1, status: 'success' },
+        { name: 'aio_proxy.request', start: 0, dur: 3420, depth: 0, status: 'success' },
+        { name: 'aio_proxy.request.parse', start: 2, dur: 3, depth: 1, status: 'success' },
+        { name: 'aio_proxy.session.resolve', start: 5, dur: 4, depth: 1, status: 'success' },
+        { name: 'aio_proxy.route.resolve', start: 9, dur: 6, depth: 1, status: 'success' },
+        { name: 'chat claude-sonnet-4-6', start: 16, dur: 3390, depth: 1, status: 'success' },
+        { name: 'aio_proxy.provider.attempt', start: 18, dur: 1186, depth: 2, status: 'failure' },
+        { name: 'aio_proxy.request.prepare', start: 19, dur: 4, depth: 3, status: 'success' },
+        { name: 'POST', start: 24, dur: 1174, depth: 3, status: 'failure' },
+        { name: 'aio_proxy.provider.attempt', start: 1210, dur: 2196, depth: 2, status: 'success', ttft: 612 },
+        { name: 'aio_proxy.request.prepare', start: 1211, dur: 1, depth: 3, status: 'success' },
+        { name: 'POST', start: 1216, dur: 590, depth: 3, status: 'success' },
       ];
       const total = 3420;
+      // The right-hand panel shows this row: the attempt that served the response.
+      const selectedRow = 8;
       const fmt = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`);
 
       document.getElementById('ruler').innerHTML = [0, 0.25, 0.5, 0.75, 1]
@@ -107,9 +121,9 @@
 
       document.getElementById('waterfall').innerHTML = spans
         .map(
-          (s, i) => `<div class="wf-row" data-selected="${i === 0}">
+          (s, i) => `<div class="wf-row" data-selected="${i === selectedRow}">
             <div class="wf-name" style="padding-left:${s.depth * 14}px">${s.name}</div>
-            <div class="wf-track"><div class="wf-bar" data-status="${s.status}" style="left:${(s.start / total) * 100}%;width:${Math.max((s.dur / total) * 100, 0.6)}%"></div></div>
+            <div class="wf-track"><div class="wf-bar" data-status="${s.status}" style="left:${(s.start / total) * 100}%;width:${Math.max((s.dur / total) * 100, 0.6)}%"></div>${s.ttft === undefined ? '' : `<div class="wf-tick" style="left:${((s.start + s.ttft) / total) * 100}%" title="首字 ${fmt(s.ttft)}"></div>`}</div>
             <div class="wf-dur">${fmt(s.dur)}</div>
           </div>`,
         )
@@ -121,21 +135,24 @@
         }),
       );
 
+      // The selected attempt span's own attributes, sorted by key like the real table.
+      // Only this span's attributes are listed: `gen_ai.usage.*` and `gen_ai.response.*`
+      // belong to the GenAI span, and the request/session/route keys belong to the root.
+      // Mixing all three into one table is exactly the mental model this redesign drops.
       const attributes = [
-        ['aio.request.id', 'req_01JQ8Z3M7YK2'],
-        ['aio.session.source', 'claude-code'],
-        ['aio.session.id', 'ses_7c5e0e2d41f9'],
-        ['aio.inbound.protocol', 'anthropic-messages'],
-        ['aio.model.requested', 'claude-sonnet-4-6'],
-        ['aio.model.final', 'claude-sonnet-4-6'],
-        ['aio.provider.final', 'anthropic-backup'],
-        ['aio.provider.attempts', '2'],
+        ['aio_proxy.attempt.index', '1'],
+        ['aio_proxy.attempt.model_id', 'claude-sonnet-4-6'],
+        ['aio_proxy.attempt.ttft_ms', '612'],
+        ['aio_proxy.protocol.source', 'anthropic'],
+        ['aio_proxy.provider.id', 'anthropic-backup'],
+        ['aio_proxy.provider.kind', 'ai-sdk'],
+        ['aio_proxy.request.stream', 'true'],
+        ['aio_proxy.response.transport_observation', 'sse'],
+        ['aio_proxy.response.upstream_headers_ms', '596'],
+        ['aio_proxy.route.selection_reason', 'weight'],
+        ['aio_proxy.route.selection_source', 'weighted_random'],
+        ['aio_proxy.transport', 'ai_sdk'],
         ['http.response.status_code', '200'],
-        ['http.request.method', 'POST'],
-        ['gen_ai.usage.input_tokens', '8412'],
-        ['gen_ai.usage.output_tokens', '1096'],
-        ['gen_ai.usage.cache_read_tokens', '6100'],
-        ['aio.stream', 'true'],
       ];
       const list = document.getElementById('attrs');
       const count = document.getElementById('count');
