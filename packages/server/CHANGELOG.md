@@ -1,5 +1,21 @@
 # @aio-proxy/server
 
+## 0.27.0
+
+### Minor Changes
+
+- [#390](https://github.com/aio-proxy/aio-proxy/pull/390) [`37ac185`](https://github.com/aio-proxy/aio-proxy/commit/37ac185ab77e4f4d4b59e541f7f4399217a0f801) Thanks [@baranwang](https://github.com/baranwang)! - The Dashboard login now persists in the browser, so opening a new tab or restarting the browser no longer asks for the password again. The login renews itself while you keep using the Dashboard, so visiting at least once every 6 days keeps you signed in, and an unused login expires after seven days. Logging out in one tab logs out every other tab, and changing `server.password` still invalidates the login on every device immediately.
+
+### Patch Changes
+
+- Updated dependencies [[`6273746`](https://github.com/aio-proxy/aio-proxy/commit/62737462d25a35c9d6051a7dd3ad510fb0125cc5), [`bafe0fa`](https://github.com/aio-proxy/aio-proxy/commit/bafe0fa2277d32ff502cf03f0cdb7e96c7970c30)]:
+  - @aio-proxy/core@0.27.0
+  - @aio-proxy/i18n@0.27.0
+  - @aio-proxy/logger@0.27.0
+  - @aio-proxy/plugin-sdk@0.27.0
+  - @aio-proxy/shared@0.27.0
+  - @aio-proxy/types@0.27.0
+
 ## 0.26.0
 
 ### Minor Changes
