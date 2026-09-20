@@ -413,14 +413,7 @@ export function defineEvaluationProtocolAdapter<TRequest, TContext>(
 }
 ```
 
-Also extend the union so the pipeline can accept it:
-
-```ts
-export type AnyProtocolAdapter<TRequest, TContext> =
-  | ProtocolAdapter<TRequest, TContext>
-  | EmbeddingProtocolAdapter<TRequest, TContext>
-  | EvaluationProtocolAdapter<TRequest, TContext>;
-```
+Do **not** add `EvaluationProtocolAdapter` to `AnyProtocolAdapter` in this task. That widening and the `attemptDispatch` arm are one atomic change: the union is precisely what forces the arm, because `attemptDispatch` uses **audio as its fallthrough**, so an evaluation adapter reaching it is a type error. Both land together in Task 10. Widening the union here leaves seven tasks of broken types for no benefit — nothing between here and Task 10 consumes the union.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1715,9 +1708,20 @@ export async function attemptEvaluationCandidate<TRequest, TContext>(
 
 Wrap the `evaluationJson` call so `EvaluationDistributionError` becomes `adapter.errors.unsupported('evaluation_distribution')` plus fallback, and any other throw follows existing provider error mapping.
 
-- [ ] **Step 5: Add the dispatch arm**
+- [ ] **Step 5: Widen the adapter union and add the dispatch arm — together**
 
-In `attempt.ts`, add the union member, the `attemptDispatch` arm before the audio fallthrough, and the `dispatchCandidate` case. Audio must stay the fallthrough — its `capability` is a union and cannot be narrowed away.
+These are one change. `AnyProtocolAdapter` gaining the evaluation member is exactly what makes the audio fallthrough a type error, so the arm must land in the same commit or the tree is broken.
+
+In `packages/core/src/protocol/adapter.ts`:
+
+```ts
+export type AnyProtocolAdapter<TRequest, TContext> =
+  | ProtocolAdapter<TRequest, TContext>
+  | EmbeddingProtocolAdapter<TRequest, TContext>
+  | EvaluationProtocolAdapter<TRequest, TContext>;
+```
+
+In `attempt.ts`, add the union member, the `attemptDispatch` arm before the audio fallthrough, and the `dispatchCandidate` case. Audio must stay the fallthrough — its `capability` is a union (`'speech' | 'transcription'`) and cannot be narrowed away.
 
 ```ts
   if (adapter.capability === 'evaluation') return { kind: 'evaluation', ctx: { ...ctx, adapter } };
@@ -1727,6 +1731,8 @@ In `attempt.ts`, add the union member, the `attemptDispatch` arm before the audi
     case 'evaluation':
       return await attemptEvaluationCandidate(dispatch.ctx, slot);
 ```
+
+Verify with `bun run lint:types`: `packages/server/src/routes/pipeline/attempt/attempt.ts` must NOT appear in the per-file table. If it does, the arm is missing or misplaced.
 
 - [ ] **Step 6: Run the tests**
 
