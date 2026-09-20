@@ -241,11 +241,12 @@ export function mergeAttributes(
     // GenAI span（inference-span.ts）发 gen_ai.response.model，被抽进 final_model_id 列。
     // 老库里的 attempt 行也有：改名前 attempt span 发的就是这个 key。
     set(ATTR.genAiResponseModel, columns.finalModelId);
-    // 以下六行今天取不到值：gen_ai.usage.* 从引入 tracing 起就只在 root 上发过，
-    // 所以没有任何子 span 行的这些列非空。**但不要删** —— 上面的 projectAttributes
-    // 抽这六个 key 进列时并没有 isRoot 判断（和 genAiRequestModel 不同），写路径是
-    // 活的：一旦有子 span 带上 usage，属性会被抽走、不留在 JSON 里，删了这六行就
-    // 再也还原不回来，变成静默丢数据。
+    // GENERATION span（`{operation} {model}`，routes/pipeline/inference-span.ts）的 token
+    // usage 只能从这六列还原：它是非 root（CLIENT，挂在 root 下），settle 时发全部六个
+    // gen_ai.usage.*，而上面的 projectAttributes 抽这六个 key 时没有 isRoot 判断（和
+    // genAiRequestModel 不同），属性全被抽进列、attributes_json 里一个都不留。删掉这六行，
+    // 每个 generation span 的 usage 读回来就是空的，而 core 套件 1930 条照样全绿 —— 没有
+    // 任何测试盯着这条还原路径，只有仪表盘上的 token 悄悄消失。
     set(ATTR.genAiUsageInputTokens, columns.inputTokens);
     set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
     set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
