@@ -141,7 +141,7 @@ const captureTimed = async (
   const timeoutMs = remainingMs(budget);
   if (timeoutMs === 0) throw new Error(UNVERIFIABLE);
   const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(budget === undefined ? [] : [budget.signal])]);
-  const proc = Bun.spawn(command, {
+  const proc = Bun.spawn([...command], {
     stdin: stdin === undefined ? 'ignore' : new Blob([stdin]),
     stdout: 'pipe',
     stderr: 'pipe',

@@ -1,4 +1,5 @@
 export {
+  advanceAuthOperation,
   authOperationPath,
   clearAuthOperation,
   readAuthOperation,

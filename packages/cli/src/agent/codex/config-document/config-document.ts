@@ -51,14 +51,17 @@ export function readCodexDocument(text: string): CodexDocument {
   parseCodexDocument(text);
   const inspected = inspectTomlPaths(text, SYNTAX);
   const active = readManagedField(text, ['model_provider']);
-  if (active.present && typeof active.value !== 'string') throw new Error('model_provider must be a TOML string');
+  // Resolve the value first, then assert on the resolved string: checking `present` and the value's
+  // type as one condition validates but narrows nothing, leaving `ManagedValue` at the use site.
+  const activeProviderId = active.present ? active.value : '';
+  if (typeof activeProviderId !== 'string') throw new Error('model_provider must be a TOML string');
   const providerIds = new Set<string>();
   for (const path of [...inspected.tablePaths, ...inspected.fieldPaths]) {
     if (path.length >= 2 && path[0] === 'model_providers') providerIds.add(path[1]!);
   }
   return {
     text,
-    activeProviderId: active.present ? active.value : '',
+    activeProviderId,
     providerIds: [...providerIds],
   };
 }

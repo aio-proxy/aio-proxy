@@ -14,7 +14,7 @@ import {
   recoverCodexConfigOperation,
   removeCodexConfig,
 } from '../managed-config';
-import { clearAuthOperation, writeAuthOperation } from '../setup/journal';
+import { advanceAuthOperation, clearAuthOperation, writeAuthOperation } from '../setup/journal';
 import { withCodexInstallation } from '../storage/installation-lock';
 
 export type CodexLifecycleDeps = {
@@ -143,7 +143,7 @@ export async function removeCodexLifecycle(input: CodexLifecycleDeps): Promise<C
         if (input.revoke !== undefined) status = await input.revoke(endpoint, installationId);
         authorization = status;
         if (!terminalRevocations.has(status)) return blockedResult(input.location, authorization);
-        await writeAuthOperation(input.location, { ...operation, phase: 'revoked' });
+        await advanceAuthOperation(input.location, operation, 'revoked');
         await clearCodexCommandInstallation({ location: input.location, installationId, revocation: status }, lease);
       } catch {
         return blockedResult(input.location, 'pending');

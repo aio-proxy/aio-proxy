@@ -41,6 +41,23 @@ const readConfiguredSqliteHome = (
   }
 };
 
+/**
+ * Resolve the SQLite root and whether config.toml is what redirected it. Both answers come from the
+ * same branch on purpose: deciding them in separate expressions guarded by one shared boolean hides
+ * the correlation, so nothing stops a later edit from reading the config result on the explicit path.
+ */
+const resolveSqliteHome = (
+  explicit: string | undefined,
+  codexHome: string,
+  userHome: string,
+): { readonly sqliteHome: string | undefined; readonly redirectedByConfig: boolean } => {
+  if (explicit !== undefined && explicit.length > 0)
+    return { sqliteHome: resolveStoragePath(explicit, userHome, userHome), redirectedByConfig: false };
+  const configured = readConfiguredSqliteHome(join(codexHome, 'config.toml'), codexHome, userHome);
+  if (!configured.present) return { sqliteHome: codexHome, redirectedByConfig: false };
+  return { sqliteHome: configured.value, redirectedByConfig: configured.value !== undefined };
+};
+
 /** Resolve the global Codex home without making a relative CODEX_HOME cwd-relative. */
 export function resolveCodexLocation(home: string, env: Readonly<Record<string, string | undefined>>): CodexLocation {
   const userHome = env['HOME']?.trim() || homedir();
@@ -49,16 +66,7 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
     ? expandHome(configured, userHome)
     : expandHome(home.trim(), userHome) || join(userHome, '.codex');
   const actualHome = normalize(isAbsolute(candidate) ? candidate : resolve(userHome, candidate));
-  const explicitSqliteHome = env['CODEX_SQLITE_HOME']?.trim();
-  const useConfigSqliteHome = explicitSqliteHome === undefined || explicitSqliteHome.length === 0;
-  const configuredSqliteHome = useConfigSqliteHome
-    ? readConfiguredSqliteHome(join(actualHome, 'config.toml'), actualHome, userHome)
-    : resolveStoragePath(explicitSqliteHome, userHome, userHome);
-  const sqliteHome = useConfigSqliteHome
-    ? configuredSqliteHome.present
-      ? configuredSqliteHome.value
-      : actualHome
-    : configuredSqliteHome;
+  const { sqliteHome, redirectedByConfig } = resolveSqliteHome(env['CODEX_SQLITE_HOME']?.trim(), actualHome, userHome);
   const managedRoot = join(actualHome, '.aio-proxy');
   return {
     home: actualHome,
@@ -66,8 +74,6 @@ export function resolveCodexLocation(home: string, env: Readonly<Record<string, 
     managedRoot,
     markerPath: join(managedRoot, 'codex-config.json'),
     sqliteHome,
-    legacyScanAllowed:
-      env['CODEX_LEGACY_SCAN_ALLOWED'] === '1' ||
-      (useConfigSqliteHome && configuredSqliteHome.present && configuredSqliteHome.value !== undefined),
+    legacyScanAllowed: env['CODEX_LEGACY_SCAN_ALLOWED'] === '1' || redirectedByConfig,
   };
 }

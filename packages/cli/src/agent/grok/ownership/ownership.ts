@@ -134,13 +134,14 @@ export const encodeGrokMarker = (marker: GrokMarker): string => `${JSON.stringif
 export const encodeGrokOwnership = (ownership: GrokOwnership): string =>
   `${JSON.stringify(GrokOwnershipSchema.parse(ownership))}\n`;
 
-export const isCompletedGrokRemoval = (
-  ownership: GrokOwnership,
-): ownership is GrokOwnership & {
+/** A removal journal that finished cleanup, so its revoke status is known rather than pending. */
+export type CompletedGrokRemoval = GrokOwnership & {
   readonly status: 'removing';
   readonly cleanupComplete: true;
   readonly revokeStatus: AgentRevokeStatus;
-} =>
+};
+
+export const isCompletedGrokRemoval = (ownership: GrokOwnership): ownership is CompletedGrokRemoval =>
   ownership.status === 'removing' &&
   ownership.cleanupComplete === true &&
   ownership.pending === undefined &&

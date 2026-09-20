@@ -51,6 +51,15 @@ const schema = z.union([
 
 export type AuthOperation = z.infer<typeof schema>;
 
+// `Omit<AuthOperation, …>` would reduce the union to the keys every variant shares, dropping the
+// per-variant `targetMode` and `fromMode`. Distributing keeps each variant whole, so a caller still
+// has to supply one coherent variant rather than a mix of two.
+type OperationDraft<T extends AuthOperation> = T extends unknown
+  ? Omit<T, 'format' | 'operationId'> & Partial<Pick<T, 'operationId'>>
+  : never;
+
+export type AuthOperationDraft = OperationDraft<AuthOperation>;
+
 const invalidOperation = (): Error => new Error('Codex authentication operation is invalid');
 
 const pathFor = (location: CodexLocation): string => `${location.managedRoot}/codex-auth-operation.json`;
@@ -78,7 +87,7 @@ export async function readAuthOperation(location: CodexLocation): Promise<AuthOp
 
 export async function writeAuthOperation(
   location: CodexLocation,
-  operation: Omit<AuthOperation, 'format' | 'operationId'> & Partial<Pick<AuthOperation, 'operationId'>>,
+  operation: AuthOperationDraft,
 ): Promise<AuthOperation> {
   await ensureManagedRoot(location);
   const current = await readRegularFile(pathFor(location));
@@ -90,6 +99,23 @@ export async function writeAuthOperation(
     },
     location.configPath,
   );
+  await durableWrite(pathFor(location), `${JSON.stringify(next)}\n`, 0o600, current);
+  return next;
+}
+
+/**
+ * Move an operation already on disk to its next phase. Spreading the operation at the call site
+ * instead would widen it back to the whole union and pair variants with phases they never accept
+ * (a `configure` operation has no `revoked` phase); keeping the phase tied to `T` preserves that.
+ */
+export async function advanceAuthOperation<T extends AuthOperation>(
+  location: CodexLocation,
+  operation: T,
+  phase: T['phase'],
+): Promise<AuthOperation> {
+  await ensureManagedRoot(location);
+  const current = await readRegularFile(pathFor(location));
+  const next = parseAuthOperation({ ...operation, phase }, location.configPath);
   await durableWrite(pathFor(location), `${JSON.stringify(next)}\n`, 0o600, current);
   return next;
 }

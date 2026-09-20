@@ -16,7 +16,7 @@ import {
   startOAuthSession,
   submitOAuthCallback,
 } from '../../services/oauth-service';
-import { providerEditViewQueryOptions } from '../../services/providers-service';
+import { fetchProviderEditView } from '../../services/providers-service';
 
 const oauthFromEditView = (data: unknown): DashboardOAuthProviderEdit | undefined => {
   if (!isPlainObject(data) || 'error' in data) return undefined;
@@ -96,7 +96,11 @@ export const useOAuthEditorSession = (
       session.providerId !== providerId
     ) {
       handledSuccess.current = session.id;
-      void navigate({ search: {}, replace: true });
+      // `to: '.'` is the current route, which is exactly what an omitted `to` resolves to. It has to
+      // be spelled out: this hook serves both the create and the edit route, so `useNavigate` has no
+      // single `from` to narrow with, and with an unresolvable destination the router types drop the
+      // object form of `search` and accept only `true` (keep the params) or a reducer.
+      void navigate({ to: '.', search: {}, replace: true });
     } else if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
       handledSuccess.current = session.id;
       setAuthorizedProviderId(session.providerId);
@@ -116,8 +120,13 @@ export const useOAuthEditorSession = (
         try {
           await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
           next = oauthFromEditView(
+            // Spelled out rather than spread from `providerEditViewQueryOptions`: the Hono client's
+            // `edit-view` response type is too deep for `fetchQuery` to instantiate through its five
+            // generics, and the guard below only reads the response at runtime, so this read does not
+            // need the response type at all.
             await queryClient.fetchQuery({
-              ...providerEditViewQueryOptions(session.providerId),
+              queryKey: queryKeys.providerEditView(session.providerId),
+              queryFn: (): Promise<unknown> => fetchProviderEditView(session.providerId),
               staleTime: 0,
             }),
           );

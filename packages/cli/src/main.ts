@@ -119,7 +119,7 @@ const bindAgentCommands = (program: Command, deps: CliDeps): void => {
             root: resolveGrokRoot(process.env, homedir()),
             installationId: options.installationId,
             adapterVersion: commandDeps.adapterVersion,
-            expired: process.env.GROK_AUTH_EXPIRED === '1',
+            expired: process.env['GROK_AUTH_EXPIRED'] === '1',
           },
           {
             now: Date.now,

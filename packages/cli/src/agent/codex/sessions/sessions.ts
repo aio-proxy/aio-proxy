@@ -46,7 +46,9 @@ const tryOptionalCommand = (command: string[]) => {
   try {
     return Bun.spawnSync(command);
   } catch (error) {
-    if (isFsCode(error, 'ENOENT')) return { exitCode: 127, stdout: '', stderr: '' };
+    // Empty buffers, not '': callers decode stdout, and a string there would only fail once some
+    // future caller stopped short-circuiting on exit code 127.
+    if (isFsCode(error, 'ENOENT')) return { exitCode: 127, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
     throw error;
   }
 };
