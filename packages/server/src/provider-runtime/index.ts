@@ -1,6 +1,7 @@
 export {
   buildModelCapabilityIndex,
   metadataHasImageOutput,
+  protocolSupportsEvaluation,
   routerModelsGrantImage,
   supportsEmbedding,
   supportsEvaluation,
@@ -11,6 +12,12 @@ export {
   supportsVideo,
 } from './capability-index';
 export type { CapabilityIndexInput } from './capability-index';
+export {
+  createEvaluationDiscovery,
+  type EvaluationDiscovery,
+  type LazyEvaluationTransport,
+  lazyEvaluationTransport,
+} from './evaluation-discovery';
 export {
   effectiveProxy,
   materializeProviders,

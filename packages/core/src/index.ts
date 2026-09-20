@@ -252,8 +252,11 @@ export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export {
   assertConvertSupported,
   createProviderV4Embed,
+  createProviderV4Evaluate,
   createProviderV4Invoke,
   type ProviderV4Embed,
+  type ProviderV4EvaluateOptions,
+  type ProviderV4EvaluateTransport,
   validateProviderV4,
 } from './provider/provider-v4';
 export {

@@ -3,6 +3,8 @@ import type {
   ApiProviderInstance,
   EmbeddingInvocation,
   EmbeddingResult,
+  EvaluationInvocation,
+  EvaluationResult,
   ImageInvocation,
   ImageTransportResult,
   PluginRegistrySnapshot,
@@ -68,6 +70,16 @@ export type EmbeddingTransport = {
       readonly logicalRequest: LogicalRequestContext;
     },
   ) => Promise<EmbeddingResult>;
+};
+
+export type EvaluationTransport = {
+  readonly evaluate: (
+    invocation: EvaluationInvocation,
+    options: {
+      readonly modelId: string;
+      readonly signal?: AbortSignal;
+    },
+  ) => Promise<EvaluationResult>;
 };
 
 export type ModelTransport = {
@@ -162,6 +174,14 @@ type AtLeastOneRuntimeTransport = {
 
 export type RuntimeProviderInstance = RuntimeProviderBase & {
   readonly capabilityIndex: ModelCapabilityIndex;
+  /**
+   * Evaluation convert. Deliberately NOT one of the `AtLeastOneRuntimeTransport`
+   * arms: it is never sufficient on its own. An `ai-sdk` candidate always carries
+   * `model` too, and an `api` candidate always carries `raw`, so admitting an
+   * evaluation-only provider would only widen the type without a caller that
+   * could dispatch it.
+   */
+  readonly evaluation?: EvaluationTransport;
 } & AtLeastOneRuntimeTransport;
 
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;

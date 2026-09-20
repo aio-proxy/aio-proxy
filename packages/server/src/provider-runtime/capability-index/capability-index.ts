@@ -133,6 +133,22 @@ function protocolServes(protocol: ProviderProtocol, capability: InboundCapabilit
   return PROTOCOL_CAPABILITIES[protocol]?.includes(capability) === true;
 }
 
+/**
+ * Can this wire family serve evaluation convert at all?
+ *
+ * The single reader of the table's `evaluation` column, and therefore the only
+ * thing that gives those rows behavioral meaning. Materialization uses it to
+ * decide which `api` primary endpoints get an evaluation transport, so the three
+ * qualifying protocols are declared in exactly one place. A second hardcoded
+ * list would drift from the table silently, with no test to report it.
+ *
+ * Note this is NOT the capability grant: `synthesizesEvaluation` deliberately
+ * ignores the table and requires a real transport or a System One endpoint.
+ */
+export function protocolSupportsEvaluation(protocol: ProviderProtocol): boolean {
+  return protocolServes(protocol, 'evaluation');
+}
+
 // Every protocol this provider serves, primary plus extra endpoints.
 function protocolCapabilitySet(input: CapabilityIndexInput): ReadonlySet<InboundCapability> {
   const protocols = [
