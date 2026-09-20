@@ -190,12 +190,14 @@ describe('parseSystemOneBody rejects', () => {
     ).rejects.toThrow('q.criteria supports at most 10 levels');
   });
 
-  it('an unsupported media type even when the body is valid JSON', async () => {
-    await expect(parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'))).rejects.toBeInstanceOf(
+  // 415 covers an unsupported media type as well as an unsupported encoding, so this
+  // rejection has to escape unwrapped like the encoding one. A `SystemOneParseError`
+  // would be mapped to a 400 that blames JSON this endpoint accepted as written.
+  it('an unsupported media type unwrapped, so the pipeline answers 415 rather than 400', async () => {
+    const rejection = parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'));
+    await expect(rejection).rejects.toBeInstanceOf(UnsupportedContentEncodingError);
+    await expect(parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'))).rejects.not.toBeInstanceOf(
       SystemOneParseError,
-    );
-    await expect(parseSystemOneBody(post(JSON.stringify(valid), 'text/plain'))).rejects.toThrow(
-      'Unsupported content type: text/plain',
     );
   });
 });

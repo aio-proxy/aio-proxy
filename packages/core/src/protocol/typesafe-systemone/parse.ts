@@ -1,7 +1,12 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { EvaluationQuestion } from '../adapter';
-import { readRequestText, REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import {
+  readRequestText,
+  REQUEST_BODY_LIMITS,
+  type RequestBodyLimits,
+  UnsupportedContentEncodingError,
+} from '../request';
 
 const NOUL_CRITERIA_KEYS = ['true', 'false'] as const;
 const MAX_CHOICE_OPTIONS = 255;
@@ -33,11 +38,17 @@ const hasNonFinite = (value: unknown): boolean => {
   return false;
 };
 
+// A media type other than `application/json` is 415, not 400: the caller sent a
+// representation this endpoint cannot accept rather than malformed JSON, and the
+// client has to be able to tell those apart. `UnsupportedContentEncodingError` is
+// the rejection the pipeline already answers with `errors.unsupportedContentEncoding`,
+// so it escapes this parse unwrapped exactly as the encoding check does; a
+// `SystemOneParseError` here would be downgraded to a 400 blaming the body.
 const assertMediaType = (raw: Request): void => {
   const header = raw.headers.get('content-type');
   if (header === null) return;
   const mediaType = header.split(';')[0]?.trim().toLowerCase();
-  if (mediaType !== 'application/json') reject(`Unsupported content type: ${mediaType}`);
+  if (mediaType !== 'application/json') throw new UnsupportedContentEncodingError(mediaType ?? '');
 };
 
 const parseQuestion = (id: string, value: unknown): EvaluationQuestion => {

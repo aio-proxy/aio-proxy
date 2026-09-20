@@ -30,6 +30,26 @@ test('POST /v1/systemone is mounted and answers with the adapter parse error', a
   expect(await response.json()).toEqual({ message: 'state is required', error_type: 'invalid_request_error' });
 });
 
+/** Status is the whole point: the adapter-level test can only see which error class
+ *  the parse threw, and both 400 and 415 come out of the same rejection there. A
+ *  wrong media type is an unacceptable representation, not malformed JSON, so the
+ *  client can only tell the two apart if this answers 415. */
+test('POST /v1/systemone answers 415 for an unsupported media type with a valid JSON body', async () => {
+  const app = await createServer({ config: { providers: {} } });
+
+  const response = await app.request('/v1/systemone', {
+    body: JSON.stringify({ model: MODEL_ID, state: 'the assistant replied in French', questions: QUESTION }),
+    headers: { 'content-type': 'text/plain' },
+    method: 'POST',
+  });
+
+  expect(response.status).toBe(415);
+  expect(await response.json()).toEqual({
+    message: 'Unsupported content encoding',
+    error_type: 'invalid_request_error',
+  });
+});
+
 /** The whole chain in one request: route -> pipeline -> capability filter -> evaluation
  *  dispatch -> System One egress. The candidate carries `evaluation` only, so a filter
  *  that still rejects the capability answers 404 `not_found_error` instead. */
