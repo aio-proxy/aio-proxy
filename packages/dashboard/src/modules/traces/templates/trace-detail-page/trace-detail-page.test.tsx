@@ -16,6 +16,7 @@ const mocks = rs.hoisted(() => ({
   writeText: rs.fn(async () => undefined),
   data: undefined as DashboardTraceDetail | undefined,
   comparison: null as DashboardTracePercentile | null,
+  percentileEnabled: [] as boolean[],
 }));
 const traceId = 'a'.repeat(32);
 const detail: DashboardTraceDetail = {
@@ -112,7 +113,10 @@ const detail: DashboardTraceDetail = {
 };
 
 rs.mock('../../hooks/use-trace-percentile-query', () => ({
-  useTracePercentileQuery: () => ({ data: { comparison: mocks.comparison } }),
+  useTracePercentileQuery: (_traceId: string, enabled: boolean) => {
+    mocks.percentileEnabled.push(enabled);
+    return { data: { comparison: mocks.comparison } };
+  },
 }));
 
 rs.mock('../../hooks/use-trace-wire-query', () => ({
@@ -179,6 +183,7 @@ describe('trace detail page', () => {
     });
     mocks.data = undefined;
     mocks.comparison = null;
+    mocks.percentileEnabled = [];
   });
 
   afterEach(() => rs.restoreAllMocks());
@@ -205,6 +210,7 @@ describe('trace detail page', () => {
     expect(bar.textContent).toContain('42');
     expect(bar.textContent).toContain('gpt-5.1');
     expect(bar.textContent).toContain('73');
+    expect(mocks.percentileEnabled.at(-1)).toBe(true);
   });
 
   test('renders every span in API order, marking the failing ones without relying on color', () => {
@@ -314,6 +320,7 @@ describe('trace detail page', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
     expect(screen.getAllByText(/Running|运行中/u).length).toBeGreaterThan(0);
+    expect(mocks.percentileEnabled.at(-1)).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: /Refresh|刷新/u }));
     const invalidated = mocks.invalidateQueries.mock.calls[0]?.[0]?.queryKey as readonly unknown[];
     for (const covered of [
