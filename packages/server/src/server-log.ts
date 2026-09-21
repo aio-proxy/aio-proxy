@@ -210,9 +210,10 @@ export type RequestBodyChunkLog = RequestBodyIdentity & {
 export type RequestBodyTerminalLog = RequestBodyIdentity & {
   readonly event: 'request.body_terminal';
   readonly sequence: number;
-  readonly byteLength: number;
+  readonly byteLength?: number;
   readonly outcome: 'complete' | 'cancelled' | 'error';
   readonly errorType?: string;
+  readonly omitted?: boolean;
 };
 
 export type RealtimeCallCreatedLog = {
