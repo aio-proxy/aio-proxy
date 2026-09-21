@@ -153,6 +153,19 @@ test('redacts credentials inside URL-valued headers on write and when replaying 
   expect(replayed.accept).toBe('application/json');
 });
 
+test('redacts credential parameters in a URL fragment on write and when replaying old logs', () => {
+  const callback = 'https://client.example/cb#access_token=frag-secret&state=xyz';
+  const metadata = responseMetadata(new Response(null, { status: 302, headers: { location: callback } }));
+
+  expect(metadata.headers.location).not.toContain('frag-secret');
+  expect(metadata.headers.location).toContain('state=xyz');
+
+  const replayed = redactUrlCredentials(callback);
+  expect(replayed).not.toContain('frag-secret');
+  expect(replayed).toContain('state=xyz');
+  expect(redactUrlCredentials('https://client.example/cb#section')).toBe('https://client.example/cb#section');
+});
+
 test('redacts credentials in a relative Location and leaves a non-URL Location alone', () => {
   const relative = responseMetadata(
     new Response(null, { status: 302, headers: { location: '/v1/ops?access_token=rel-secret&page=2' } }),

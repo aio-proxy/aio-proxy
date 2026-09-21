@@ -120,7 +120,24 @@ function stripUrlCredentials(url: URL): URL {
   for (const param of [...url.searchParams.keys()]) {
     if (isCredentialParam(param)) url.searchParams.set(param, REDACTED);
   }
+  url.hash = redactCredentialFragment(url.hash);
   return url;
+}
+
+// OAuth implicit / 前端回调常把 token 放在 `#access_token=`，query 那条扫不到。
+// 没有 `=` 的 `#section` 原样留下，避免把锚点改写成空参数。
+function redactCredentialFragment(hash: string): string {
+  if (hash === '' || hash === '#') return hash;
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!raw.includes('=')) return hash;
+  const params = new URLSearchParams(raw);
+  let changed = false;
+  for (const key of [...params.keys()]) {
+    if (!isCredentialParam(key)) continue;
+    params.set(key, REDACTED);
+    changed = true;
+  }
+  return changed ? `#${params.toString()}` : hash;
 }
 
 function redactUrlValue(value: string): string {
