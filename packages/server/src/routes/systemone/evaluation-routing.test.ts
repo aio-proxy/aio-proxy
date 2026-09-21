@@ -344,8 +344,13 @@ async function attemptSpans(home: string): Promise<readonly DashboardTraceSpan[]
   try {
     const store = createTraceStore(handle.db);
     const root = store.list({ pageSize: 10 }).items.find((item) => item.requestId === requestId);
+    // Attempt spans are named `{operation} {model}` now, so the old
+    // `aio_proxy.provider.attempt` constant is no longer a key. Index is the
+    // stable marker; token-count's skipped-candidate spans also carry it.
     return (root === undefined ? [] : (store.find(root.traceId)?.spans ?? []))
-      .filter((span) => span.name === spanName.attempt)
+      .filter(
+        (span) => span.attributes[attributeName.attemptIndex] !== undefined && span.name !== spanName.candidateSkipped,
+      )
       .sort(
         (a, b) => Number(a.attributes[attributeName.attemptIndex]) - Number(b.attributes[attributeName.attemptIndex]),
       );
