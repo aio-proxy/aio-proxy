@@ -104,17 +104,25 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         outcome: 'response',
         ...responseMetadata(response),
       });
+      const debugResponse = hideVideoBodies
+        ? undefined
+        : {
+            identity: { ...debug.identity, direction: 'upstream_response' as const },
+            logger: debug.logger,
+            signal: request.signal,
+          };
+      // 视频正文故意不抓。不记一行 complete 的话，结算后选择器会把这一跳一直标成
+      // running，请求/响应页也会每 5 秒重扫当天日志。
+      if (hideVideoBodies) {
+        emitEmptyBodyTerminal({
+          identity: { ...debug.identity, direction: 'upstream_response' },
+          logger: debug.logger,
+          signal: request.signal,
+        });
+      }
       return responseWithObservedBody(response, {
         ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
-        ...(hideVideoBodies
-          ? {}
-          : {
-              debug: {
-                identity: { ...debug.identity, direction: 'upstream_response' },
-                logger: debug.logger,
-                signal: request.signal,
-              },
-            }),
+        ...(debugResponse === undefined ? {} : { debug: debugResponse }),
       });
     } catch (error) {
       logServerEvent(debug.logger, {

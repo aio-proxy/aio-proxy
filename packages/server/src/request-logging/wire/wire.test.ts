@@ -215,6 +215,10 @@ test('debug fetch does not tap openai-video request bodies', async () => {
 
   expect(JSON.stringify(logs)).not.toContain(sentinel);
   expect(reconstructed(logs, 'upstream_request')).toBe('');
+  expect(reconstructed(logs, 'upstream_response')).toBe('');
+  expect(terminals(logs, 'upstream_response')).toEqual([
+    expect.objectContaining({ outcome: 'complete', byteLength: 0, direction: 'upstream_response' }),
+  ]);
 });
 
 test('debug inbound observation logs complete consumed input', async () => {
