@@ -29,10 +29,14 @@ const credentialHeaders = new Set([
  * query 里的凭据同样要脱。不少上游认证走 URL（Google 的 `?key=`、各家的 `?api_key=`），
  * 而 header 那份名单保护不到它 —— 抓包接口会把这里记下的 URL 原样送进浏览器。
  *
- * 参数名是无界的，所以按词匹配而不是整串包含：把名字按非字母数字切开，任一段命中就脱。
+ * 参数名是无界的，所以按词匹配而不是整串包含：把名字切成词，任一段命中就脱。
  * `api_key` / `apikey` / `access_token` / `x-goog-api-key` / `client_secret` / `sig` 都中，
  * 而 `keyword`、`monkey` 这种不会被误伤。宁可多脱一个：一个被打码的调试字段只是不好查，
  * 一个漏掉的凭据是能直接拿去冒用的。
+ *
+ * 切词必须**同时**认非字母数字和 camelCase 边界。只切前者的话 `accessToken` 小写成
+ * `accesstoken` 是一个整词，单词表里没有，于是明文落盘 —— `authToken`、`clientSecret`、
+ * `refreshToken` 同理。（`apiKey` 侥幸命中，因为 `apikey` 恰好在表里。）
  */
 const credentialQueryWords = new Set([
   'key',
@@ -49,10 +53,16 @@ const credentialQueryWords = new Set([
 ]);
 
 function isCredentialParam(name: string): boolean {
-  return name
-    .toLowerCase()
-    .split(/[^a-z0-9]+/u)
-    .some((word) => credentialQueryWords.has(word));
+  return (
+    name
+      // 小写化之前先在 camelCase 边界插空格，否则大小写信息就没了。两条规则：
+      // `accessToken` → `access Token`，以及 `APIKey` → `API Key`（缩写接单词）。
+      .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+      .replace(/([A-Z]+)([A-Z][a-z])/gu, '$1 $2')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/u)
+      .some((word) => credentialQueryWords.has(word))
+  );
 }
 
 export function requestMetadata(request: Request): HttpRequestMetadata {
