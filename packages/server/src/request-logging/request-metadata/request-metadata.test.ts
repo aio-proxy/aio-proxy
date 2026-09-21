@@ -161,13 +161,20 @@ test('redacts credentials in a relative Location and leaves a non-URL Location a
   expect(relative.headers.location).toContain('page=2');
   expect(relative.headers.location?.startsWith('/')).toBe(true);
 
+  const pathRelative = responseMetadata(
+    new Response(null, { status: 302, headers: { location: 'jobs/next?access_token=path-secret&page=2' } }),
+  );
+  expect(pathRelative.headers.location).not.toContain('path-secret');
+  expect(pathRelative.headers.location).toContain('page=2');
+  expect(pathRelative.headers.location?.startsWith('jobs/next')).toBe(true);
+
   const opaque = responseMetadata(new Response(null, { status: 302, headers: { location: 'not a url at all ///' } }));
   expect(opaque.headers.location).toBe('not a url at all ///');
 });
 
 test('redacts signed URL targets inside Link headers on write and when replaying old logs', () => {
   const link =
-    '<https://provider.example/jobs/next?access_token=live-secret>; rel="next", </v1/ops?sig=sig-secret>; rel="prev"';
+    '<https://provider.example/jobs/next?access_token=live-secret>; rel="next", <next?X-Amz-Signature=sig-secret>; rel="prev"';
   const metadata = responseMetadata(new Response(null, { status: 200, headers: { link } }));
 
   expect(metadata.headers.link).not.toContain('live-secret');

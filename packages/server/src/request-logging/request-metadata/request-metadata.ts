@@ -132,12 +132,14 @@ function redactBareUrl(value: string): string {
   try {
     return stripUrlCredentials(new URL(value)).toString();
   } catch {
-    // Location 经常是相对路径：`/ops?access_token=...`。没有 base 时 `new URL`
-    // 会扔，旧实现就把整段明文留下了。
-    if (!value.startsWith('/') && !value.startsWith('?')) return value;
+    // Location / Link 目标经常是相对引用：`/ops?token=`、`?token=`、`jobs/next?token=`。
+    // 只认 `/` 和 `?` 前缀会把 path-relative 签名 URL 原样留下。
     try {
       const url = stripUrlCredentials(new URL(value, 'https://aio-proxy.invalid'));
-      return `${url.pathname}${url.search}${url.hash}`;
+      if (value.startsWith('/') || value.startsWith('?')) return `${url.pathname}${url.search}${url.hash}`;
+      // 空格这种明显不是 URL 的值不要改写成编码路径。
+      if (/\s/u.test(value)) return value;
+      return `${url.pathname.replace(/^\//u, '')}${url.search}${url.hash}`;
     } catch {
       return value;
     }
