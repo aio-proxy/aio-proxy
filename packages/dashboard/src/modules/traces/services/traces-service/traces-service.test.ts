@@ -132,7 +132,16 @@ describe('trace service', () => {
     expect(tracesQueryOptions({ ...search, pageToken: 'next-page-token' }, true).refetchInterval).toBe(false);
     expect(tracesQueryOptions(search, false).refetchInterval).toBe(false);
     expect(traceQueryOptions(traceId).queryKey).toEqual(['dashboard', 'traces', traceId]);
-    expect(traceQueryOptions(traceId).refetchInterval).toBeUndefined();
+    const interval = traceQueryOptions(traceId).refetchInterval;
+    expect(interval).toBeTypeOf('function');
+    if (typeof interval !== 'function') throw new Error('Expected running-trace polling');
+    expect(interval({ state: { data: detailBody } } as never)).toBe(5_000);
+    expect(
+      interval({
+        state: { data: { ...detailBody, trace: { ...detailBody.trace, endedAt: '2026-07-12T08:00:01.000Z' } } },
+      } as never),
+    ).toBe(false);
+    expect(interval({ state: { data: undefined } } as never)).toBe(false);
   });
 
   test('sends the same filters as the list route to the summary route, without pagination', async () => {

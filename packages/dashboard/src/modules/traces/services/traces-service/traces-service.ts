@@ -39,6 +39,9 @@ export const traceQueryOptions = (traceId: string) =>
   queryOptions({
     queryKey: queryKeys.trace(traceId),
     queryFn: () => getTrace(traceId),
+    // 打开还在跑的详情时，endedAt 要跟着刷，请求/响应那两页才知道何时停扫日志。
+    refetchInterval: (query) => (query.state.data?.trace.endedAt === null ? 5_000 : false),
+    refetchIntervalInBackground: false,
   });
 
 // 一小时窗口的聚合，逐秒刷新没有意义：一分钟内复用缓存，翻回这一页不再打一次请求。
