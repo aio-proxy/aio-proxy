@@ -31,6 +31,15 @@ export async function attemptModelCandidate<TRequest, TContext>(
   // untracked offset between the candidate's startedAt and the span.
   const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
+  // prepare 先写下 targetProtocol，后面的 materialize / ForTarget 才可能抛。
+  // 抛出去的那条走 handleAttemptError，必须在这里先把协议口味挂上。
+  const attachResolvedProtocol = (): void => {
+    const target = slot.trace.targetProtocol;
+    if (target === undefined) return;
+    attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
+    const providerName = genAiProviderNameFor(target);
+    if (providerName !== undefined) attemptSpan.span.setAttribute(attributeName.genAiProviderName, providerName);
+  };
 
   // Mirrors resolveInvocation's memoization guard: the invocation is
   // materialized once for the request and reused by every later candidate.
@@ -49,6 +58,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     },
     (error: unknown) => {
       prepareSpan.end({ outcome: 'failure' });
+      attachResolvedProtocol();
       throw error;
     },
   );
@@ -56,14 +66,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   // while the attempt span is still open: prepare resolves the target protocol
   // too late for it to be a creation attribute, and the reject and unsupported
   // exits end the span the moment they are emitted.
-  const target = slot.trace.targetProtocol;
-  if (target !== undefined) {
-    attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
-    // gen_ai.provider.name rides along: it is derived from the very protocol
-    // resolved here, so it cannot be a creation attribute either.
-    const providerName = genAiProviderNameFor(target);
-    if (providerName !== undefined) attemptSpan.span.setAttribute(attributeName.genAiProviderName, providerName);
-  }
+  attachResolvedProtocol();
   if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
   if (prepared.kind === 'unsupported') return emitReject(ctx, slot, prepared.response, 'unsupported_feature');
   const { candidateInvocation, targetProtocol } = prepared;

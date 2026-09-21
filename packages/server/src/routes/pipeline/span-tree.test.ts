@@ -335,11 +335,14 @@ test('only the first candidate materializes the invocation', async () => {
 test('a prepare throw still leaves an ended prepare span behind', async () => {
   // Not a SyntaxError: the test adapter's requestError maps only those, so this
   // one is rethrown out of prepare instead of coming back as a 'reject'.
-  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => textStream('unused') })], {
-    adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
-      modelInvocationError: new RangeError('materialize exploded'),
-    }),
-  });
+  const harness = pipeline(
+    [modelProvider({ id: 'primary', invoke: () => textStream('unused'), targetProtocol: ProviderProtocol.Anthropic })],
+    {
+      adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+        modelInvocationError: new RangeError('materialize exploded'),
+      }),
+    },
+  );
 
   const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }));
   await settleRecording(harness.recording);
@@ -358,6 +361,10 @@ test('a prepare throw still leaves an ended prepare span behind', async () => {
   // from the buffer, and this prepare span orphaned under a parent id that is
   // no longer in the trace. Duration and status both survive that unharmed.
   expect(spanTree.parentNameOf(spanName.prepare)).toBe(attemptSpansOf(harness.recording.spans)[0]?.name);
+  // targetProtocol 在 materialize 抛之前就已经写下；漏挂的话失败那一跳没有厂商口味。
+  const attempt = attemptSpansOf(harness.recording.spans)[0];
+  expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.Anthropic);
+  expect(attempt?.attributes[attributeName.genAiProviderName]).toBe('anthropic');
 });
 
 test('an unsupported invocation still leaves an ended prepare span under the attempt', async () => {
