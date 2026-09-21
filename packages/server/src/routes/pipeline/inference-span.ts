@@ -67,6 +67,7 @@ export function startInferenceSpan(
     ...(input.firstChunkAt === undefined
       ? {}
       : { [attributeName.genAiTimeToFirstChunk]: Math.max(0, input.firstChunkAt - startedAt) / 1000 }),
+    ...(input.finalModelId === undefined ? {} : { [attributeName.genAiResponseModel]: input.finalModelId }),
   });
 
   // Attributes have to land before end(): setAttributes is discarded once a span

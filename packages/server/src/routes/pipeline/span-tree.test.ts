@@ -103,6 +103,7 @@ test('the root span carries no gen_ai attributes', async () => {
   const root = spans.find((span) => span.name === spanName.request);
   expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
   expect(inferenceSpanOf(spans)?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
+  expect(inferenceSpanOf(spans)?.attributes[attributeName.genAiResponseModel]).toBe('raw-model');
 });
 
 test('a settled usage row still leaves no gen_ai attributes on the root span', async () => {

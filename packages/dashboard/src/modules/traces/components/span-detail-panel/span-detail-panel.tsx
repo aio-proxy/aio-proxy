@@ -2,7 +2,7 @@ import type { DashboardTracePercentile, DashboardTraceSpan, DashboardTraceSummar
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 
 import { readSpanMetrics } from '../../lib/span-metrics';
-import { traceSpanName } from '../../lib/trace-attribute-names';
+import { traceAttribute, traceSpanName } from '../../lib/trace-attribute-names';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceResultDetails } from '../../lib/trace-formatters';
 import type { TraceFilterPatch } from '../../lib/trace-search';
@@ -44,12 +44,12 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
             <SpanMetricGrid metrics={metrics} />
             <TracePercentileBar comparison={comparison} />
             <SpanAttributeTable
-              attributes={span.attributes}
+              attributes={attributesForTable(span, trace)}
               // root 和逻辑操作层说的都是整条链，它们的属性才能当整链筛选条件。
               // 原先靠「CLIENT 且父亲是 root」认那一层 —— 三层之后这个结构特征失效了：
               // 逻辑操作层是 INTERNAL，而 CLIENT 的是每个 provider 尝试（它只描述一跳）。
               // `aio_proxy.inference` 是固定名，直接认名字。
-              tracewide={span.spanId === trace.rootSpanId || span.name === traceSpanName.inference}
+              tracewide={isTracewideSpan(span, trace)}
               onFilter={onFilter}
             />
             {span.links.length === 0 ? null : <SpanLinkList links={span.links} />}
@@ -59,3 +59,20 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
     </Card>
   );
 };
+
+function isTracewideSpan(span: DashboardTraceSpan, trace: DashboardTraceSummary): boolean {
+  return span.spanId === trace.rootSpanId || span.name === traceSpanName.inference;
+}
+
+// 最终模型在 summary 上，不一定在这个 span 的属性里：root 读回故意不挂 gen_ai.*，
+// 老的逻辑操作层也没写过。表要从 summary 补一行，否则「加为筛选条件」无处可点。
+function attributesForTable(span: DashboardTraceSpan, trace: DashboardTraceSummary): Readonly<Record<string, unknown>> {
+  if (
+    !isTracewideSpan(span, trace) ||
+    trace.finalModelId === undefined ||
+    span.attributes[traceAttribute.responseModel] !== undefined
+  ) {
+    return span.attributes;
+  }
+  return { ...span.attributes, [traceAttribute.responseModel]: trace.finalModelId };
+}

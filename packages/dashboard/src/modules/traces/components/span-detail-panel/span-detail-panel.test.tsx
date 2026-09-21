@@ -103,6 +103,7 @@ test('lists attributes as searchable rows, and turns one into a list filter', ()
 // root 上一个 gen_ai.* 都没有了，只认 root 的话新数据里没有任何 span 能点出「按最终模型筛选」。
 // 能代表整条链的是逻辑操作层 `aio_proxy.inference`（固定名、INTERNAL、父亲是 root）——
 // 不是 CLIENT 的那些：CLIENT 现在是每个 provider 尝试，它只说得清自己那一跳。
+// 生产形状：逻辑操作层可能还没写过这个 key（或 root 读回被压掉），表从 summary 补。
 test('offers the whole-trace filter on the logical-operation layer, which speaks for the whole trace', () => {
   const onFilter = rs.fn();
   const inference: DashboardTraceSpan = {
@@ -111,7 +112,7 @@ test('offers the whole-trace filter on the logical-operation layer, which speaks
     parentSpanId: trace.rootSpanId,
     name: 'aio_proxy.inference',
     kind: 'INTERNAL',
-    attributes: { 'gen_ai.response.model': 'claude-sonnet-4-6-20260101' },
+    attributes: {},
   };
   render(<SpanDetailPanel span={inference} trace={trace} spans={[inference]} onFilter={onFilter} />);
 
