@@ -344,6 +344,35 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body?.byteLength).toBe(1_200_000);
   });
 
+  // 换行在 JSON 行里是两个字符。按行长裁只会留下约一半正文，keepChunk 还标不出 truncated。
+  test('caps decoded text of an escaped oversized line and marks it truncated', async () => {
+    const huge = '\n'.repeat(1_200_000);
+    const dir = await logDirWith(
+      logLine({
+        event: 'request.body_chunk',
+        requestId: REQUEST_ID,
+        direction: 'inbound',
+        sequence: 0,
+        text: huge,
+      }) +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 1,
+          byteLength: huge.length,
+          outcome: 'complete',
+        }),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toHaveLength(1_048_576);
+    expect(body.hops[0]?.request?.body?.truncated).toBe(true);
+    expect(body.hops[0]?.request?.body?.byteLength).toBe(1_200_000);
+  });
+
   test('skips an oversized line that belongs to another request', async () => {
     const huge = 'H'.repeat(1_200_000);
     const dir = await logDirWith(
@@ -671,6 +700,48 @@ describe('readTraceWireLog', () => {
     expect(JSON.stringify(body)).not.toContain('LEAK');
   });
 
+  test('does not scan the next day for an omitted video request body', async () => {
+    const startedAt = new Date(2026, 6, 27, 8, 0, 0);
+    const endedAt = new Date(2026, 6, 27, 8, 0, 2);
+    const nextDay = new Date(2026, 6, 28, 0, 0, 0);
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-omitted-'));
+    await Bun.write(
+      join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`),
+      inboundSnapshot +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          outcome: 'complete',
+          omitted: true,
+        }),
+    );
+    await Bun.write(
+      join(dir, `${format(nextDay, 'yyyy-MM-dd')}.log`),
+      logLine({
+        event: 'request.body_chunk',
+        requestId: REQUEST_ID,
+        direction: 'inbound',
+        sequence: 1,
+        text: 'LEAK',
+      }),
+    );
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt,
+        endedAt,
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body).toMatchObject({ outcome: 'complete', omitted: true });
+    expect(JSON.stringify(body)).not.toContain('LEAK');
+  });
+
   test('keeps two HTTP sends of the same attempt as separate hops', async () => {
     const first = attemptLines(0, 'provider-a', { sendIndex: 0, requestText: '{"in":1}', responseText: 'one' });
     const second = attemptLines(0, 'provider-a', { sendIndex: 1, requestText: '{"in":2}', responseText: 'two' });
@@ -690,6 +761,20 @@ describe('readTraceWireLog', () => {
 // 凭据头这份名单是后来才扩的（原来只有 authorization 和 x-api-key）。在那之前落盘的日志里
 // cookie / api-key / x-goog-api-key 都是明文，而抓包接口读的正是磁盘上已有的那些行 ——
 // 写侧的脱敏对它们一点用都没有，读出来必须按当前名单再过一遍。
+test('keeps an explicit omitted terminal even without byteLength', () => {
+  const drafts = createHopDrafts();
+  applyWireEvent(drafts, {
+    event: 'request.body_terminal',
+    requestId: REQUEST_ID,
+    direction: 'inbound',
+    sequence: 0,
+    outcome: 'complete',
+    omitted: true,
+  });
+
+  expect(finalizeHops(drafts)[0]?.request?.body).toEqual({ text: '', outcome: 'complete', omitted: true });
+});
+
 test('marks a complete empty body with a nonzero byteLength as omitted', () => {
   const drafts = createHopDrafts();
   applyWireEvent(drafts, {

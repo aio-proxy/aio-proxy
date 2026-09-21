@@ -51,14 +51,41 @@ function propertiesOnlyJson(line: string): string {
   if (properties.endsWith('}')) properties = properties.slice(0, -1);
   const textKey = '"text":"';
   const textAt = properties.lastIndexOf(textKey);
-  if (textAt < 0 || properties.length - (textAt + textKey.length) <= MAX_BODY_TEXT + 8) {
-    return `{"properties":${properties}}`;
-  }
+  if (textAt < 0) return `{"properties":${properties}}`;
   const textStart = textAt + textKey.length;
-  let end = textStart + MAX_BODY_TEXT + 1;
-  // 切在反斜杠上会把 `\n` / `\"` 裁成非法 JSON；往回退到非转义位置。
-  while (end > textStart && properties[end - 1] === '\\') end -= 1;
-  return `{"properties":${properties.slice(0, end)}"}}`;
+  const cut = cutJsonString(properties, textStart, MAX_BODY_TEXT + 1);
+  if (cut === undefined) return `{"properties":${properties}}`;
+  return `{"properties":${properties.slice(0, textStart)}${cut}}}`;
+}
+
+/**
+ * 按**解码后**的字符数裁 JSON 字符串。`\n` 在行里占两个字符，按行长裁会只留下一半正文，
+ * 而且 `keepChunk` 看不到超预算、标不出 truncated。切在 `\\uXXXX` 中间会整段 parse 失败。
+ *
+ * 返回已闭合的字符串字面量（含结尾引号）；整段装得下则 `undefined`。
+ */
+function cutJsonString(source: string, start: number, maxDecoded: number): string | undefined {
+  let index = start;
+  let decoded = 0;
+  while (index < source.length) {
+    const current = source[index];
+    if (current === '"') return undefined;
+    if (decoded >= maxDecoded) return `${source.slice(start, index)}"`;
+    if (current === '\\') {
+      const next = source[index + 1];
+      if (next === undefined) throw new SyntaxError('unterminated escape');
+      if (next === 'u') {
+        if (index + 5 >= source.length) throw new SyntaxError('unterminated unicode escape');
+        index += 6;
+      } else {
+        index += 2;
+      }
+    } else {
+      index += 1;
+    }
+    decoded += 1;
+  }
+  throw new SyntaxError('unterminated string');
 }
 
 export function stringField(event: WireEvent, key: string): string | undefined {
