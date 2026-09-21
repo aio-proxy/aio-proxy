@@ -39,19 +39,19 @@ export async function readTraceWireLog(input: ReadTraceWireLogInput): Promise<Da
   const files = logDatesOf(input).map((date) => Bun.file(join(input.logDir, `${date}.log`)));
   const present: Bun.BunFile[] = [];
   for (const file of files) if (await file.exists()) present.push(file);
+  const retentionDays = logging.retentionDays ?? DEFAULT_RETENTION_DAYS;
   if (present.length === 0) {
-    return {
-      available: false,
-      reason: 'missing',
-      retentionDays: logging.retentionDays ?? DEFAULT_RETENTION_DAYS,
-      hops: [],
-    };
+    return { available: false, reason: 'missing', retentionDays, hops: [] };
   }
 
   // 两个日志文件可以并发读：回调是同步的，事件进了草稿就立刻可回收，不会先攒成一个大数组。
   const drafts = createHopDrafts();
   await Promise.all(present.map((file) => scanWireEvents(file, input.requestId, drafts)));
-  return { available: true, hops: finalizeHops(drafts) };
+  // 跨零点时昨天的文件可能已经按保留期滚掉了。只看「是不是一个都没有」会把后一天
+  // 的终态当成完整抓包，半截请求体没有任何截断提示。
+  return present.length === files.length
+    ? { available: true, hops: finalizeHops(drafts) }
+    : { available: true, reason: 'partial', retentionDays, hops: finalizeHops(drafts) };
 }
 
 /**

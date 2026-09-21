@@ -208,10 +208,11 @@ const DashboardTraceWireBodySchema = z
 
 export const DashboardTraceWireHopSchema = z
   .object({
-    // 'inbound' | `attempt-${attemptIndex}`
+    // 'inbound' | `attempt-${attemptIndex}` | `attempt-${attemptIndex}.${sendIndex}`
     id: z.string().min(1),
     kind: z.enum(['inbound', 'attempt']),
     attemptIndex: z.number().int().min(0).optional(),
+    sendIndex: z.number().int().min(0).optional(),
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     request: z
@@ -239,8 +240,8 @@ export const DashboardTraceWireHopSchema = z
 export const DashboardTraceWireResponseSchema = z
   .object({
     available: z.boolean(),
-    // disabled: server.logging.enabled 不是 true；level: 级别不是 debug；missing: 当天日志文件已经滚掉了
-    reason: z.enum(['disabled', 'level', 'missing']).optional(),
+    // disabled / level / missing: 整份抓包没有。partial: 期望的日期文件缺了几天，hops 是剩下的那些。
+    reason: z.enum(['disabled', 'level', 'missing', 'partial']).optional(),
     retentionDays: z.number().int().positive().optional(),
     hops: z.array(DashboardTraceWireHopSchema),
   })

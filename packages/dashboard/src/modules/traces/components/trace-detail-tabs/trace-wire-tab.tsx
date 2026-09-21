@@ -36,6 +36,11 @@ export const TraceWireTab: React.FC<TraceWireTabProps> = ({ side, detail, wire, 
   return (
     <div className="space-y-4">
       <TraceHopSelector hops={hops} selectedHopId={selected?.id ?? ''} onSelect={onSelectHop} />
+      {wire.data?.available === true && wire.data.reason === 'partial' && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {m['dashboard.traces.wire_body_truncated']()}
+        </p>
+      )}
       {/* 入站的响应体不在抓包里（只记上游三个方向），所以那一格换成常开的 allowlist 诊断 —— 它不依赖 debug，也不依赖这次请求。 */}
       {side === 'response' && selected?.kind === 'inbound' ? (
         <TraceHttpDiagnostics side="response" diagnostics={detail.diagnostics?.response} />

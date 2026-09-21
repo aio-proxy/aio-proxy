@@ -287,6 +287,26 @@ test('reports a failed read as a failure, not as a hop without capture', () => {
   expect(mocks.refetch).toHaveBeenCalled();
 });
 
+test('warns when some rotated log days are missing but still shows the surviving hops', () => {
+  mocks.wire = {
+    available: true,
+    reason: 'partial',
+    retentionDays: 7,
+    hops: [
+      {
+        id: 'inbound',
+        kind: 'inbound',
+        request: { method: 'POST', body: { text: '{"model":"gpt-5"}', outcome: 'complete' } },
+      },
+    ],
+  };
+  render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
+
+  expect(screen.getByText(/not fully recorded|未完整记录|未完整記錄/u)).toBeInTheDocument();
+  expect(screen.getByText('{"model":"gpt-5"}')).toBeInTheDocument();
+});
+
 test('keeps the hop chips and explains why capture is missing when it is off', () => {
   mocks.wire = { available: false, reason: 'level', hops: [] };
   render(<TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />);

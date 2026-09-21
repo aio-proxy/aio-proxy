@@ -49,8 +49,20 @@ const inboundSnapshot = logLine({
   headers: { 'content-type': 'application/json', authorization: '[REDACTED]' },
 });
 
-function attemptLines(attemptIndex: number, providerId: string): string {
-  const identity = { requestId: REQUEST_ID, attemptIndex, providerId, modelId: 'gpt-5' };
+function attemptLines(
+  attemptIndex: number,
+  providerId: string,
+  extras?: { readonly sendIndex?: number; readonly requestText?: string; readonly responseText?: string },
+): string {
+  const requestText = extras?.requestText ?? '{"in":1}';
+  const responseText = extras?.responseText ?? 'out';
+  const identity = {
+    requestId: REQUEST_ID,
+    attemptIndex,
+    providerId,
+    modelId: 'gpt-5',
+    ...(extras?.sendIndex === undefined ? {} : { sendIndex: extras.sendIndex }),
+  };
   return [
     logLine({
       event: 'request.upstream_snapshot',
@@ -59,13 +71,19 @@ function attemptLines(attemptIndex: number, providerId: string): string {
       url: `https://${providerId}.test/v1/responses`,
       headers: { authorization: '[REDACTED]' },
     }),
-    logLine({ event: 'request.body_chunk', ...identity, direction: 'upstream_request', sequence: 0, text: '{"in":1}' }),
+    logLine({
+      event: 'request.body_chunk',
+      ...identity,
+      direction: 'upstream_request',
+      sequence: 0,
+      text: requestText,
+    }),
     logLine({
       event: 'request.body_terminal',
       ...identity,
       direction: 'upstream_request',
       sequence: 1,
-      byteLength: 8,
+      byteLength: requestText.length,
       outcome: 'complete',
     }),
     logLine({
@@ -76,13 +94,19 @@ function attemptLines(attemptIndex: number, providerId: string): string {
       statusCode: 200,
       headers: { 'content-type': 'text/event-stream' },
     }),
-    logLine({ event: 'request.body_chunk', ...identity, direction: 'upstream_response', sequence: 0, text: 'out' }),
+    logLine({
+      event: 'request.body_chunk',
+      ...identity,
+      direction: 'upstream_response',
+      sequence: 0,
+      text: responseText,
+    }),
     logLine({
       event: 'request.body_terminal',
       ...identity,
       direction: 'upstream_response',
       sequence: 1,
-      byteLength: 3,
+      byteLength: responseText.length,
       outcome: 'complete',
     }),
   ].join('');
@@ -462,6 +486,59 @@ describe('readTraceWireLog', () => {
     rmSync(dir, { force: true, recursive: true });
 
     expect(body.hops[0]?.request?.body?.text).toBe('beforeafter');
+  });
+
+  test('reports a missing earlier day as a partial capture when a later file survives', async () => {
+    const startedAt = new Date(2026, 6, 27, 23, 59, 30);
+    const endedAt = new Date(2026, 6, 28, 0, 2, 0);
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-partial-'));
+    await Bun.write(
+      join(dir, `${format(endedAt, 'yyyy-MM-dd')}.log`),
+      inboundSnapshot +
+        logLine({
+          event: 'request.body_chunk',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          text: 'after',
+        }) +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 1,
+          byteLength: 5,
+          outcome: 'complete',
+        }),
+    );
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt,
+        endedAt,
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body).toMatchObject({ available: true, reason: 'partial', retentionDays: 7 });
+    expect(body.hops[0]?.request?.body).toMatchObject({ text: 'after', outcome: 'complete' });
+  });
+
+  test('keeps two HTTP sends of the same attempt as separate hops', async () => {
+    const first = attemptLines(0, 'provider-a', { sendIndex: 0, requestText: '{"in":1}', responseText: 'one' });
+    const second = attemptLines(0, 'provider-a', { sendIndex: 1, requestText: '{"in":2}', responseText: 'two' });
+    const dir = await logDirWith(inboundSnapshot + first + second);
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops.map((hop) => hop.id)).toEqual(['inbound', 'attempt-0', 'attempt-0.1']);
+    expect(body.hops[1]?.request?.body?.text).toBe('{"in":1}');
+    expect(body.hops[1]?.response?.body?.text).toBe('one');
+    expect(body.hops[2]?.request?.body?.text).toBe('{"in":2}');
+    expect(body.hops[2]?.response?.body?.text).toBe('two');
+    expect(body.hops[2]?.sendIndex).toBe(1);
   });
 });
 
