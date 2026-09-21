@@ -64,15 +64,17 @@ function isTracewideSpan(span: DashboardTraceSpan, trace: DashboardTraceSummary)
   return span.spanId === trace.rootSpanId || span.name === traceSpanName.inference;
 }
 
-// 最终模型在 summary 上，不一定在这个 span 的属性里：root 读回故意不挂 gen_ai.*，
-// 老的逻辑操作层也没写过。表要从 summary 补一行，否则「加为筛选条件」无处可点。
+// 请求/最终模型在 summary 上，不一定在这个 span 的属性里：root 读回故意不挂 gen_ai.*，
+// 老的逻辑操作层也没写过，计 token 调用链更没有 `aio_proxy.inference`。表要从 summary
+// 补行，否则「加为筛选条件」无处可点。
 function attributesForTable(span: DashboardTraceSpan, trace: DashboardTraceSummary): Readonly<Record<string, unknown>> {
-  if (
-    !isTracewideSpan(span, trace) ||
-    trace.finalModelId === undefined ||
-    span.attributes[traceAttribute.responseModel] !== undefined
-  ) {
-    return span.attributes;
+  if (!isTracewideSpan(span, trace)) return span.attributes;
+  const extras: Record<string, unknown> = {};
+  if (trace.requestedModelId !== undefined && span.attributes[traceAttribute.requestModel] === undefined) {
+    extras[traceAttribute.requestModel] = trace.requestedModelId;
   }
-  return { ...span.attributes, [traceAttribute.responseModel]: trace.finalModelId };
+  if (trace.finalModelId !== undefined && span.attributes[traceAttribute.responseModel] === undefined) {
+    extras[traceAttribute.responseModel] = trace.finalModelId;
+  }
+  return Object.keys(extras).length === 0 ? span.attributes : { ...span.attributes, ...extras };
 }

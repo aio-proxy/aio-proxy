@@ -117,10 +117,35 @@ test('offers the whole-trace filter on the logical-operation layer, which speaks
   render(<SpanDetailPanel span={inference} trace={trace} spans={[inference]} onFilter={onFilter} />);
 
   const table = screen.getByTestId('span-attribute-table');
-  fireEvent.click(within(table).getByRole('button', { name: /Attribute actions|属性操作/u }));
+  const responseRow = within(table).getByText('gen_ai.response.model').closest('div');
+  if (responseRow === null) throw new Error('expected the response-model attribute row');
+  fireEvent.click(within(responseRow).getByRole('button', { name: /Attribute actions|属性操作/u }));
   fireEvent.click(screen.getByRole('menuitem', { name: /Add as filter|加为筛选条件/u }));
 
   expect(onFilter).toHaveBeenCalledWith({ finalModelId: 'claude-sonnet-4-6-20260101' });
+});
+
+test('offers the requested-model filter on a token-count root that stored no gen_ai attributes', () => {
+  const onFilter = rs.fn();
+  const root: DashboardTraceSpan = {
+    ...span,
+    spanId: trace.rootSpanId,
+    parentSpanId: undefined,
+    name: 'aio_proxy.request',
+    kind: 'SERVER',
+    attributes: {},
+  };
+  render(
+    <SpanDetailPanel span={root} trace={{ ...trace, finalModelId: undefined }} spans={[root]} onFilter={onFilter} />,
+  );
+
+  const table = screen.getByTestId('span-attribute-table');
+  const requestRow = within(table).getByText('gen_ai.request.model').closest('div');
+  if (requestRow === null) throw new Error('expected the request-model attribute row');
+  fireEvent.click(within(requestRow).getByRole('button', { name: /Attribute actions|属性操作/u }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /Add as filter|加为筛选条件/u }));
+
+  expect(onFilter).toHaveBeenCalledWith({ requestedModelId: 'claude-sonnet-4-6' });
 });
 
 test('withholds the whole-trace filter when the selected Span is not the root', () => {
