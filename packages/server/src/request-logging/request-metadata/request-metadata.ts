@@ -94,7 +94,7 @@ function isCredentialHeader(name: string): boolean {
 }
 
 // 头名字本身不是凭据，值却是可复用的签名 URL。只按名字判的话 `Location` /
-// `Operation-Location` 会带着 `?access_token=` / `?X-Amz-Signature=` 明文落盘，
+// `Operation-Location` / `Link` 会带着 `?access_token=` / `?X-Amz-Signature=` 明文落盘，
 // 再经抓包接口送进浏览器。名单是「值按约定是 URL」的头，不是「看起来像 URL」的值。
 const urlValuedHeaders = new Set([
   'location',
@@ -102,6 +102,7 @@ const urlValuedHeaders = new Set([
   'operation-location',
   'azure-asyncoperation',
   'referer',
+  'link',
 ]);
 
 function visibleHeaderValue(name: string, value: string): string {
@@ -119,6 +120,15 @@ function stripUrlCredentials(url: URL): URL {
 }
 
 function redactUrlValue(value: string): string {
+  // RFC 8288 Link：`<url>; rel="next"`。整段不是 URL，`new URL` 解析不了，
+  // 只改尖括号里的目标，参数原样留下。
+  if (value.includes('<')) {
+    return value.replace(/<([^>]+)>/gu, (_, url: string) => `<${redactBareUrl(url)}>`);
+  }
+  return redactBareUrl(value);
+}
+
+function redactBareUrl(value: string): string {
   try {
     return stripUrlCredentials(new URL(value)).toString();
   } catch {

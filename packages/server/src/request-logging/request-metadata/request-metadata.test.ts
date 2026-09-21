@@ -165,6 +165,22 @@ test('redacts credentials in a relative Location and leaves a non-URL Location a
   expect(opaque.headers.location).toBe('not a url at all ///');
 });
 
+test('redacts signed URL targets inside Link headers on write and when replaying old logs', () => {
+  const link =
+    '<https://provider.example/jobs/next?access_token=live-secret>; rel="next", </v1/ops?sig=sig-secret>; rel="prev"';
+  const metadata = responseMetadata(new Response(null, { status: 200, headers: { link } }));
+
+  expect(metadata.headers.link).not.toContain('live-secret');
+  expect(metadata.headers.link).not.toContain('sig-secret');
+  expect(metadata.headers.link).toContain('rel="next"');
+  expect(metadata.headers.link).toContain('rel="prev"');
+
+  const replayed = redactCredentialHeaders({ Link: link, accept: 'application/json' });
+  expect(replayed.Link).not.toContain('live-secret');
+  expect(replayed.Link).not.toContain('sig-secret');
+  expect(replayed.accept).toBe('application/json');
+});
+
 test('leaves a URL it cannot parse alone instead of throwing', () => {
   expect(redactUrlCredentials('not a url')).toBe('not a url');
   expect(redactCredentialHeaders({ authorization: 'Bearer x', accept: 'application/json' })).toEqual({
