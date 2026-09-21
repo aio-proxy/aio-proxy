@@ -23,10 +23,11 @@ const span: DashboardTraceSpan = {
   traceId: 'a'.repeat(32),
   spanId: 'c'.repeat(16),
   parentSpanId: 'b'.repeat(16),
-  name: 'aio_proxy.provider.attempt',
-  // 实测过的生产形状：attempt span 是 INTERNAL（startPipelineSpan 不传 kind），只有那条推理
-  // span 是 CLIENT。写成 CLIENT 会让它撞上「CLIENT 且父亲是 root」这个推理 span 的判据。
-  kind: 'INTERNAL',
+  name: 'chat claude-sonnet-4-6',
+  // 生产形状：provider 尝试就是 inference span —— CLIENT，名字运行时拼成 `{operation} {model}`，
+  // 挂在 INTERNAL 的 `aio_proxy.inference` 逻辑操作层下。认它靠 `aio_proxy.attempt.index`，
+  // 不靠名字（名字是动态的）。
+  kind: 'CLIENT',
   startedAt: '2026-07-12T08:00:00.010Z',
   endedAt: '2026-07-12T08:00:00.090Z',
   durationMs: 80,
@@ -35,6 +36,7 @@ const span: DashboardTraceSpan = {
   errorType: 'upstream_error',
   errorCode: 'provider_unavailable',
   attributes: {
+    'aio_proxy.attempt.index': 0,
     'aio_proxy.provider.id': 'provider-a',
     'http.response.status_code': 503,
     'aio_proxy.response.upstream_headers_ms': 40,
@@ -98,18 +100,17 @@ test('lists attributes as searchable rows, and turns one into a list filter', ()
   expect(onFilter).toHaveBeenCalledWith({ finalHttpStatus: 503 });
 });
 
-// 任务 8 之后 root 上一个 gen_ai.* 都没有了，`gen_ai.response.model` 只在那条推理 span 上。
-// 只认 root 的话，新数据里没有任何 span 能点出「按最终模型筛选」—— 选推理 span 没有动作，
-// 选 root 连这一行都不存在。推理 span 的判据是「CLIENT 且父亲是 root」：attempt 是 INTERNAL，
-// 上游 HTTP 的 CLIENT span 挂在 attempt 下，所以这个判据只命中它一个。
-test('offers the whole-trace filter on the inference Span, which is where the response model now lives', () => {
+// root 上一个 gen_ai.* 都没有了，只认 root 的话新数据里没有任何 span 能点出「按最终模型筛选」。
+// 能代表整条链的是逻辑操作层 `aio_proxy.inference`（固定名、INTERNAL、父亲是 root）——
+// 不是 CLIENT 的那些：CLIENT 现在是每个 provider 尝试，它只说得清自己那一跳。
+test('offers the whole-trace filter on the logical-operation layer, which speaks for the whole trace', () => {
   const onFilter = rs.fn();
   const inference: DashboardTraceSpan = {
     ...span,
     spanId: 'd'.repeat(16),
     parentSpanId: trace.rootSpanId,
-    name: 'chat claude-sonnet-4-6',
-    kind: 'CLIENT',
+    name: 'aio_proxy.inference',
+    kind: 'INTERNAL',
     attributes: { 'gen_ai.response.model': 'claude-sonnet-4-6-20260101' },
   };
   render(<SpanDetailPanel span={inference} trace={trace} spans={[inference]} onFilter={onFilter} />);

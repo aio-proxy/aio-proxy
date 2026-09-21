@@ -1,7 +1,7 @@
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 import { sortBy } from 'es-toolkit/array';
 
-import { traceAttribute, traceSpanName } from '../trace-attribute-names';
+import { isAttemptSpan, traceAttribute } from '../trace-attribute-names';
 import { isFailedSpan, isFailedTrace } from '../trace-failure';
 
 /**
@@ -54,7 +54,7 @@ export const toTraceHopChips = (input: {
   readonly trace: DashboardTraceSummary;
 }): readonly TraceHopChip[] => {
   const { spans, trace } = input;
-  const attempts = spans.filter((span) => span.name === traceSpanName.attempt);
+  const attempts = spans.filter(isAttemptSpan);
 
   return [
     {

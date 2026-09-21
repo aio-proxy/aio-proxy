@@ -1,6 +1,6 @@
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 
-import { traceAttribute, traceSpanName } from '../trace-attribute-names';
+import { isAttemptSpan, traceAttribute } from '../trace-attribute-names';
 
 export interface SpanMetrics {
   readonly httpStatus: number | undefined;
@@ -47,6 +47,26 @@ const genAiTtftMs = (attributes: SpanAttributes): number | undefined => {
  * The `??` on it reads the same span's deprecated `http.status_code`, which is a spelling
  * fallback, not a trace fallback.
  */
+// 上游 HTTP 的 CLIENT span 自己不带 provider / model —— 它们挂在所属的 attempt 上。没有这一步，
+// 兜底链会一路摸到 trace 的**最终成功**身份，于是失败转移里 A 的 429 会被标成 B 的名字和模型。
+// 往上找所属 attempt，而不是借用整条链的结论。`seen` 是环保护：父链来自持久化数据，不能假设它无环。
+const ancestorAttempt = (
+  span: DashboardTraceSpan,
+  spans: readonly DashboardTraceSpan[],
+): DashboardTraceSpan | undefined => {
+  const byId = new Map(spans.map((candidate) => [candidate.spanId, candidate]));
+  const seen = new Set([span.spanId]);
+  let current = span;
+  while (current.parentSpanId !== undefined) {
+    const parent = byId.get(current.parentSpanId);
+    if (parent === undefined || seen.has(parent.spanId)) return undefined;
+    if (isAttemptSpan(parent)) return parent;
+    seen.add(parent.spanId);
+    current = parent;
+  }
+  return undefined;
+};
+
 export const readSpanMetrics = (input: {
   readonly span: DashboardTraceSpan;
   readonly spans: readonly DashboardTraceSpan[];
@@ -55,7 +75,10 @@ export const readSpanMetrics = (input: {
   const { span, spans, trace } = input;
   const attributes = span.attributes;
   const isRoot = span.spanId === trace.rootSpanId;
-  const attemptCount = spans.filter((candidate) => candidate.name === traceSpanName.attempt).length;
+  const attemptCount = spans.filter(isAttemptSpan).length;
+  // 自己就是 attempt 的不用往上找；找到 attempt 祖先的，身份取那一跳的，绝不借整条链的结论。
+  const owner = isAttemptSpan(span) ? undefined : ancestorAttempt(span, spans);
+  const ownerAttributes = owner?.attributes;
 
   return {
     httpStatus:
@@ -63,16 +86,19 @@ export const readSpanMetrics = (input: {
       numberAttribute(attributes, traceAttribute.legacyHttpStatusCode),
     providerId:
       stringAttribute(attributes, traceAttribute.providerId) ??
-      stringAttribute(attributes, traceAttribute.finalProviderId) ??
-      trace.finalProviderId,
+      (ownerAttributes === undefined
+        ? (stringAttribute(attributes, traceAttribute.finalProviderId) ?? trace.finalProviderId)
+        : stringAttribute(ownerAttributes, traceAttribute.providerId)),
     // attemptModelId 排在前面：新版 attempt span 只有它，新版 GenAI span 只有
     // responseModel，两个都没有的老 span 走后面的链。
     modelId:
       stringAttribute(attributes, traceAttribute.attemptModelId) ??
       stringAttribute(attributes, traceAttribute.responseModel) ??
       stringAttribute(attributes, traceAttribute.requestModel) ??
-      trace.finalModelId ??
-      trace.requestedModelId,
+      (ownerAttributes === undefined
+        ? (trace.finalModelId ?? trace.requestedModelId)
+        : (stringAttribute(ownerAttributes, traceAttribute.attemptModelId) ??
+          stringAttribute(ownerAttributes, traceAttribute.responseModel))),
     durationMs: span.durationMs,
     ttftMs:
       numberAttribute(attributes, traceAttribute.attemptTtftMs) ??

@@ -1,1 +1,1 @@
-export { traceAttribute, traceSpanName } from './trace-attribute-names';
+export { isAttemptSpan, traceAttribute, traceSpanName } from './trace-attribute-names';

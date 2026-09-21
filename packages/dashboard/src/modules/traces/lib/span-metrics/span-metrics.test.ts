@@ -40,8 +40,22 @@ const createSpan = (span: Partial<DashboardTraceSpan>): DashboardTraceSpan => ({
   ...span,
 });
 
+// 生产里 `startAttempt` 一定写 `aio_proxy.attempt.index`，而 attempt span 的名字是运行时拼的
+// `{operation} {model}`。夹具照这个形状造，别让测试比实现宽松 —— 这正是「按名字认 attempt」
+// 那个漏洞能在全绿的测试下活下来的原因。
+let attemptSeq = 0;
+const createAttemptSpan = (span: Partial<DashboardTraceSpan>): DashboardTraceSpan => {
+  const index = attemptSeq++;
+  return createSpan({
+    name: 'chat claude-sonnet-4-6',
+    kind: 'CLIENT',
+    ...span,
+    attributes: { 'aio_proxy.attempt.index': index, ...span.attributes },
+  });
+};
+
 test('reads provider, model, and latency straight off an attempt span', () => {
-  const span = createSpan({
+  const span = createAttemptSpan({
     parentSpanId: trace.rootSpanId,
     durationMs: 2_400,
     attributes: {
@@ -122,9 +136,9 @@ test('counts only provider attempt spans as attempts', () => {
   const spans = [
     createSpan({ spanId: trace.rootSpanId, name: 'aio_proxy.request', kind: 'SERVER' }),
     createSpan({ spanId: '1'.repeat(16), name: 'aio_proxy.route.resolve', kind: 'INTERNAL' }),
-    createSpan({ spanId: '2'.repeat(16), name: 'aio_proxy.provider.attempt' }),
-    createSpan({ spanId: '3'.repeat(16), name: 'aio_proxy.provider.attempt' }),
-    createSpan({ spanId: '4'.repeat(16), name: 'gen_ai.client.inference' }),
+    createAttemptSpan({ spanId: '2'.repeat(16) }),
+    createAttemptSpan({ spanId: '3'.repeat(16) }),
+    createSpan({ spanId: '4'.repeat(16), name: 'aio_proxy.inference', kind: 'INTERNAL' }),
   ];
 
   expect(readSpanMetrics({ span: spans[2]!, spans, trace }).attemptCount).toBe(2);
@@ -220,4 +234,39 @@ test('prefers the millisecond TTFT keys over the GenAI seconds one', () => {
   });
 
   expect(readSpanMetrics({ span, spans: [span], trace }).ttftMs).toBe(120);
+});
+
+// 失败转移里选中 A 的上游 HTTP span：它自己不带 provider / model，而 trace 的最终身份是 B。
+// 借整条链的结论就会把 A 的 429 标成 B 的名字和模型 —— 这是在指着错误的 provider 查问题。
+test('reads a child span identity from its own attempt, not from the trace outcome', () => {
+  const attemptA = createAttemptSpan({
+    spanId: 'a'.repeat(16),
+    parentSpanId: trace.rootSpanId,
+    attributes: {
+      'aio_proxy.provider.id': 'anthropic-primary',
+      'aio_proxy.attempt.model_id': 'claude-sonnet-4-6-20251001',
+    },
+  });
+  const postA = createSpan({
+    spanId: 'f'.repeat(16),
+    parentSpanId: attemptA.spanId,
+    name: 'POST',
+    kind: 'CLIENT',
+    attributes: { 'http.response.status_code': 429 },
+  });
+
+  const metrics = readSpanMetrics({ span: postA, spans: [attemptA, postA], trace });
+
+  // trace.finalProviderId 是 anthropic-backup、finalModelId 是 ...20260101，两个都不该出现。
+  expect(metrics.providerId).toBe('anthropic-primary');
+  expect(metrics.modelId).toBe('claude-sonnet-4-6-20251001');
+  expect(metrics.httpStatus).toBe(429);
+});
+
+// 没有 attempt 祖先的 span（root、parse、推理 span）照旧可以借整条链的身份 —— 那些值本来
+// 就描述整条链。少了这条，上面那个改动会顺手把 root 的 provider 也抹掉。
+test('keeps the trace-wide identity fallback for spans that have no attempt ancestor', () => {
+  const root = createSpan({ spanId: trace.rootSpanId, name: 'aio_proxy.request', kind: 'SERVER' });
+
+  expect(readSpanMetrics({ span: root, spans: [root], trace }).providerId).toBe('anthropic-backup');
 });

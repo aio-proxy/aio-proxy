@@ -124,8 +124,15 @@ test('reflects an attempt span ERROR status on that chip only', () => {
 test('ignores spans that are not provider attempts', () => {
   const chips = toTraceHopChips({
     spans: [
-      createSpan({ name: 'aio_proxy.request.parse', attributes: { 'aio_proxy.attempt.index': 0 } }),
-      createSpan({ name: 'gen_ai.client.inference', attributes: { 'aio_proxy.attempt.index': 1 } }),
+      // 真实形状：请求级 span 不带 attempt index。原先这里给它们硬塞了 index，
+      // 于是「按名字排除」看着能过，其实夹具本身不可能出现在库里。
+      createSpan({ name: 'aio_proxy.request.parse', attributes: {} }),
+      createSpan({ name: 'aio_proxy.inference', attributes: {} }),
+      // 唯一真带 index 却不算尝试的：token-count 里被略过的候选。
+      createSpan({
+        name: 'aio_proxy.token_count.candidate_skipped',
+        attributes: { 'aio_proxy.attempt.index': 0 },
+      }),
     ],
     trace,
   });

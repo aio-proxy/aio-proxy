@@ -2,6 +2,7 @@ import type { DashboardTracePercentile, DashboardTraceSpan, DashboardTraceSummar
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 
 import { readSpanMetrics } from '../../lib/span-metrics';
+import { traceSpanName } from '../../lib/trace-attribute-names';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceResultDetails } from '../../lib/trace-formatters';
 import type { TraceFilterPatch } from '../../lib/trace-search';
@@ -44,13 +45,11 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span, trace, s
             <TracePercentileBar comparison={comparison} />
             <SpanAttributeTable
               attributes={span.attributes}
-              // root 和那条推理 span 说的都是整条链。推理 span 的结构特征是「CLIENT 且父亲
-              // 是 root」：parse / session.resolve / route.resolve 都是默认的 INTERNAL，
-              // 上游 HTTP 那些 CLIENT span 挂在 attempt 下而不是 root 下，attempt 自己也是
-              // INTERNAL —— 包括老数据里直接挂在 root 下的那些。
-              tracewide={
-                span.spanId === trace.rootSpanId || (span.kind === 'CLIENT' && span.parentSpanId === trace.rootSpanId)
-              }
+              // root 和逻辑操作层说的都是整条链，它们的属性才能当整链筛选条件。
+              // 原先靠「CLIENT 且父亲是 root」认那一层 —— 三层之后这个结构特征失效了：
+              // 逻辑操作层是 INTERNAL，而 CLIENT 的是每个 provider 尝试（它只描述一跳）。
+              // `aio_proxy.inference` 是固定名，直接认名字。
+              tracewide={span.spanId === trace.rootSpanId || span.name === traceSpanName.inference}
               onFilter={onFilter}
             />
             {span.links.length === 0 ? null : <SpanLinkList links={span.links} />}
