@@ -239,6 +239,33 @@ describe('trace service', () => {
         },
       } as never),
     ).toBe(false);
+    expect(
+      settledInterval({
+        state: {
+          data: {
+            available: true,
+            hops: [{ id: 'attempt-0', kind: 'attempt', response: { errorType: 'TypeError' } }],
+          },
+        },
+      } as never),
+    ).toBe(false);
+    expect(
+      settledInterval({
+        state: {
+          data: {
+            available: true,
+            hops: [
+              {
+                id: 'attempt-0',
+                kind: 'attempt',
+                request: { body: { text: 'partial' } },
+                response: { errorType: 'TypeError' },
+              },
+            ],
+          },
+        },
+      } as never),
+    ).toBe(5_000);
     expect(settledInterval({ state: { data: { available: false, hops: [] } } } as never)).toBe(false);
     expect(traceWireQueryOptions(traceId, false).staleTime).toBe(0);
     const liveInterval = traceWireQueryOptions(traceId, false).refetchInterval;

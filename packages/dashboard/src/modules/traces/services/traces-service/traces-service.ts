@@ -56,7 +56,10 @@ const WIRE_BODY_TERMINAL = new Set(['complete', 'cancelled', 'error']);
 
 const hopHasUnterminatedBody = (hop: DashboardTraceWireResponse['hops'][number]): boolean => {
   if (hop.request?.body !== undefined && !WIRE_BODY_TERMINAL.has(hop.request.body.outcome ?? '')) return true;
-  return hop.response !== undefined && !WIRE_BODY_TERMINAL.has(hop.response.body?.outcome ?? '');
+  if (hop.response === undefined) return false;
+  // fetch 在出 Response 之前抛错时只有 errorType，不会再有 body 终态。
+  if (hop.response.errorType !== undefined) return false;
+  return !WIRE_BODY_TERMINAL.has(hop.response.body?.outcome ?? '');
 };
 
 const shouldPollWireCapture = (settled: boolean, data: DashboardTraceWireResponse | undefined): boolean => {
