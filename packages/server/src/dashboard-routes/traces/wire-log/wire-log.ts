@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 
 import type { DashboardTraceWireResponse } from '@aio-proxy/types';
-import { format } from 'date-fns';
+import { eachDayOfInterval, format } from 'date-fns';
 
 import { applyWireEvent, createHopDrafts, finalizeHops, type HopDrafts } from './build-hops';
 import { wireEventFromLine } from './parse-line';
@@ -16,7 +16,7 @@ type WireLogging = {
 type ReadTraceWireLogInput = {
   readonly requestId: string;
   readonly startedAt: Date;
-  /** 调用链的结束时刻；还在跑的话没有，那就只有起点那天一个文件。 */
+  /** 调用链的结束时刻；还在跑的话没有，就扫到今天（本地日期）。 */
   readonly endedAt?: Date | undefined;
   readonly logging: WireLogging | undefined;
   readonly logDir: string;
@@ -61,10 +61,10 @@ export async function readTraceWireLog(input: ReadTraceWireLogInput): Promise<Da
  * 在今天的：只按起点开一个文件会拿到一段被截断的 body，而且没有任何迹象说明少了东西。
  */
 function logDatesOf(input: ReadTraceWireLogInput): string[] {
+  const end = input.endedAt ?? new Date();
   const started = format(input.startedAt, 'yyyy-MM-dd');
-  if (input.endedAt === undefined) return [started];
-  const ended = format(input.endedAt, 'yyyy-MM-dd');
-  return started === ended ? [started] : [started, ended];
+  if (format(end, 'yyyy-MM-dd') <= started) return [started];
+  return eachDayOfInterval({ start: input.startedAt, end }).map((day) => format(day, 'yyyy-MM-dd'));
 }
 
 async function scanWireEvents(file: Bun.BunFile, requestId: string, drafts: HopDrafts): Promise<void> {

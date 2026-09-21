@@ -434,12 +434,34 @@ describe('readTraceWireLog', () => {
       );
 
     const crossed = await read(endedAt);
-    // 还在跑的调用链没有结束时刻，就只该扫起点那天 —— 不能顺手多读一天。
-    const running = await read(undefined);
     rmSync(dir, { force: true, recursive: true });
 
     expect(crossed.hops[0]?.request?.body?.text).toBe('beforeafter');
-    expect(running.hops[0]?.request?.body?.text).toBe('before');
+  });
+
+  // 还在跑、且已经跨过本地零点：后半夜的分块写在今天的文件里。没有 endedAt 时
+  // 用今天做临时终点，否则轮询一直只看见昨天那半截。
+  test('scans through today while a request that started yesterday is still running', async () => {
+    const now = new Date();
+    const startedAt = new Date(now);
+    startedAt.setDate(startedAt.getDate() - 1);
+    startedAt.setHours(23, 59, 30, 0);
+    const chunk = (sequence: number, text: string) =>
+      logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence, text });
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-running-midnight-'));
+    await Bun.write(join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`), inboundSnapshot + chunk(0, 'before'));
+    await Bun.write(join(dir, `${format(now, 'yyyy-MM-dd')}.log`), chunk(1, 'after'));
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt,
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toBe('beforeafter');
   });
 });
 
