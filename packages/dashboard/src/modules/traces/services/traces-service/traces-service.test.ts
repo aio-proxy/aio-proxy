@@ -209,9 +209,42 @@ describe('trace service', () => {
     // Running and settled share a cache so Request/Response do not each keep a stale snapshot.
     expect(traceWireQueryOptions(traceId, false).queryKey).toEqual(traceWireQueryOptions(traceId, true).queryKey);
     expect(traceWireQueryOptions(traceId, true).staleTime).toBe(Number.POSITIVE_INFINITY);
-    expect(traceWireQueryOptions(traceId, true).refetchInterval).toBe(false);
+    const settledInterval = traceWireQueryOptions(traceId, true).refetchInterval;
+    expect(settledInterval).toBeTypeOf('function');
+    if (typeof settledInterval !== 'function') throw new Error('Expected capture-settlement polling');
+    expect(settledInterval({ state: { data: wireBody } } as never)).toBe(false);
+    expect(
+      settledInterval({
+        state: {
+          data: {
+            available: true,
+            hops: [{ id: 'attempt-0', kind: 'attempt', response: { statusCode: 502 } }],
+          },
+        },
+      } as never),
+    ).toBe(5_000);
+    expect(
+      settledInterval({
+        state: {
+          data: {
+            available: true,
+            hops: [
+              {
+                id: 'attempt-0',
+                kind: 'attempt',
+                response: { statusCode: 502, body: { text: 'err', outcome: 'complete' } },
+              },
+            ],
+          },
+        },
+      } as never),
+    ).toBe(false);
+    expect(settledInterval({ state: { data: { available: false, hops: [] } } } as never)).toBe(false);
     expect(traceWireQueryOptions(traceId, false).staleTime).toBe(0);
-    expect(traceWireQueryOptions(traceId, false).refetchInterval).toBe(5_000);
+    const liveInterval = traceWireQueryOptions(traceId, false).refetchInterval;
+    expect(liveInterval).toBeTypeOf('function');
+    if (typeof liveInterval !== 'function') throw new Error('Expected live-capture polling');
+    expect(liveInterval({ state: { data: wireBody } } as never)).toBe(5_000);
   });
 
   test.each([

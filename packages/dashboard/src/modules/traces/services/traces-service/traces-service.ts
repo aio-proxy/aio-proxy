@@ -52,14 +52,27 @@ export const tracePercentileQueryOptions = (traceId: string) =>
     staleTime: 60_000,
   });
 
-// 已结束的调用链抓包不会再变，永不过期。还在跑的那条会继续往日志里写，
-// 跟列表一样 5 秒拉一次，否则先打开请求/响应再等它结束，后半段永远不出现。
+const WIRE_BODY_TERMINAL = new Set(['complete', 'cancelled', 'error']);
+
+const hopHasUnterminatedBody = (hop: DashboardTraceWireResponse['hops'][number]): boolean => {
+  if (hop.request?.body !== undefined && !WIRE_BODY_TERMINAL.has(hop.request.body.outcome ?? '')) return true;
+  return hop.response !== undefined && !WIRE_BODY_TERMINAL.has(hop.response.body?.outcome ?? '');
+};
+
+const shouldPollWireCapture = (settled: boolean, data: DashboardTraceWireResponse | undefined): boolean => {
+  if (!settled) return true;
+  return data !== undefined && data.available && data.hops.some(hopHasUnterminatedBody);
+};
+
+// 还在跑的调用链会继续往日志里写，跟列表一样 5 秒拉一次。
+// 根 span 先结算、响应 body 后被消费时（raw 失败路径），endedAt 已经有了，
+// 但 hop 上还没有 body 终态 —— 这时不能按「调用结束」把半截抓包冻住。
 export const traceWireQueryOptions = (traceId: string, settled: boolean) =>
   queryOptions({
     queryKey: queryKeys.traceWire(traceId),
     queryFn: () => getTraceWire(traceId),
     staleTime: settled ? Number.POSITIVE_INFINITY : 0,
-    refetchInterval: settled ? false : 5_000,
+    refetchInterval: (query) => (shouldPollWireCapture(settled, query.state.data) ? 5_000 : false),
     refetchIntervalInBackground: false,
   });
 
