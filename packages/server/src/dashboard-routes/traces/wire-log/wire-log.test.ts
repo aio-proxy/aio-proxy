@@ -621,6 +621,56 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body).toMatchObject({ text: 'beforeafter', outcome: 'complete' });
   });
 
+  // 已终态的昨天调用链不该再扫今天整份 debug 日志。下一天文件里的行是夹具，扫到了就会拼进 body。
+  test('does not scan the next day when the settled capture already has terminals', async () => {
+    const startedAt = new Date(2026, 6, 27, 8, 0, 0);
+    const endedAt = new Date(2026, 6, 27, 8, 0, 2);
+    const nextDay = new Date(2026, 6, 28, 0, 0, 0);
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-no-extra-'));
+    await Bun.write(
+      join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`),
+      inboundSnapshot +
+        logLine({
+          event: 'request.body_chunk',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          text: 'before',
+        }) +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 1,
+          byteLength: 6,
+          outcome: 'complete',
+        }),
+    );
+    await Bun.write(
+      join(dir, `${format(nextDay, 'yyyy-MM-dd')}.log`),
+      logLine({
+        event: 'request.body_chunk',
+        requestId: REQUEST_ID,
+        direction: 'inbound',
+        sequence: 2,
+        text: 'LEAK',
+      }),
+    );
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt,
+        endedAt,
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body).toMatchObject({ text: 'before', outcome: 'complete' });
+    expect(JSON.stringify(body)).not.toContain('LEAK');
+  });
+
   test('keeps two HTTP sends of the same attempt as separate hops', async () => {
     const first = attemptLines(0, 'provider-a', { sendIndex: 0, requestText: '{"in":1}', responseText: 'one' });
     const second = attemptLines(0, 'provider-a', { sendIndex: 1, requestText: '{"in":2}', responseText: 'two' });
@@ -640,6 +690,25 @@ describe('readTraceWireLog', () => {
 // 凭据头这份名单是后来才扩的（原来只有 authorization 和 x-api-key）。在那之前落盘的日志里
 // cookie / api-key / x-goog-api-key 都是明文，而抓包接口读的正是磁盘上已有的那些行 ——
 // 写侧的脱敏对它们一点用都没有，读出来必须按当前名单再过一遍。
+test('marks a complete empty body with a nonzero byteLength as omitted', () => {
+  const drafts = createHopDrafts();
+  applyWireEvent(drafts, {
+    event: 'request.body_terminal',
+    requestId: REQUEST_ID,
+    direction: 'inbound',
+    sequence: 0,
+    byteLength: 4096,
+    outcome: 'complete',
+  });
+
+  expect(finalizeHops(drafts)[0]?.request?.body).toEqual({
+    text: '',
+    byteLength: 4096,
+    outcome: 'complete',
+    omitted: true,
+  });
+});
+
 test('redacts credentials that older log files recorded in plaintext', () => {
   const drafts = createHopDrafts();
   applyWireEvent(drafts, {

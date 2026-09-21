@@ -16,7 +16,7 @@ type WireLogging = {
 type ReadTraceWireLogInput = {
   readonly requestId: string;
   readonly startedAt: Date;
-  /** 调用链的结束时刻；还在跑的话没有，就扫到今天。已结束的再多看本地下一天（结算后才写完的正文）。 */
+  /** 调用链的结束时刻；还在跑的话没有，就扫到今天。已结束且正文未终态时再看本地下一天。 */
   readonly endedAt?: Date | undefined;
   readonly logging: WireLogging | undefined;
   readonly logDir: string;
@@ -37,31 +37,27 @@ export async function readTraceWireLog(input: ReadTraceWireLogInput): Promise<Da
   if (input.requestId === '') return { available: true, hops: [] };
 
   const expected = logDatesOf(input);
-  const present: Bun.BunFile[] = [];
+  const expectedFiles: Bun.BunFile[] = [];
   for (const date of expected) {
     const file = Bun.file(join(input.logDir, `${date}.log`));
-    if (await file.exists()) present.push(file);
+    if (await file.exists()) expectedFiles.push(file);
   }
-  const expectedPresent = present.length;
-  // 临近零点结算后，正文分块/终态可能写进下一天；那天缺文件不该把同日抓包标成 partial。
-  if (input.endedAt !== undefined) {
-    const after = format(addDays(input.endedAt, 1), 'yyyy-MM-dd');
-    if (!expected.includes(after)) {
-      const extra = Bun.file(join(input.logDir, `${after}.log`));
-      if (await extra.exists()) present.push(extra);
-    }
-  }
+  const extra = await extraDayFile(input, expected);
   const retentionDays = logging.retentionDays ?? DEFAULT_RETENTION_DAYS;
-  if (present.length === 0) {
+  if (expectedFiles.length === 0 && extra === undefined) {
     return { available: false, reason: 'missing', retentionDays, hops: [] };
   }
 
-  // 两个日志文件可以并发读：回调是同步的，事件进了草稿就立刻可回收，不会先攒成一个大数组。
+  // 期望日可以并发读。下一天只在正文还没终态、或期望日整份都丢了时才扫，
+  // 否则昨天已结束的调用链每次打开都要啃掉今天整份 debug 日志。
   const drafts = createHopDrafts();
-  await Promise.all(present.map((file) => scanWireEvents(file, input.requestId, drafts)));
+  await Promise.all(expectedFiles.map((file) => scanWireEvents(file, input.requestId, drafts)));
+  if (extra !== undefined && (expectedFiles.length === 0 || hopsNeedNextDay(finalizeHops(drafts)))) {
+    await scanWireEvents(extra, input.requestId, drafts);
+  }
   // 跨零点时昨天的文件可能已经按保留期滚掉了。只看「是不是一个都没有」会把后一天
   // 的终态当成完整抓包，半截请求体没有任何截断提示。
-  return expectedPresent === expected.length
+  return expectedFiles.length === expected.length
     ? { available: true, hops: finalizeHops(drafts) }
     : { available: true, reason: 'partial', retentionDays, hops: finalizeHops(drafts) };
 }
@@ -75,6 +71,30 @@ export async function readTraceWireLog(input: ReadTraceWireLogInput): Promise<Da
  * 临近零点结算的 raw 失败会先写下 `endedAt`，正文分块/终态再写进下一天；调用方按
  * `endedAt` 扫的话永远看不到那天的文件。
  */
+async function extraDayFile(
+  input: ReadTraceWireLogInput,
+  expected: readonly string[],
+): Promise<Bun.BunFile | undefined> {
+  if (input.endedAt === undefined) return undefined;
+  const after = format(addDays(input.endedAt, 1), 'yyyy-MM-dd');
+  if (expected.includes(after)) return undefined;
+  const file = Bun.file(join(input.logDir, `${after}.log`));
+  return (await file.exists()) ? file : undefined;
+}
+
+/** 期望日已经终态齐全就不必再扫下一天。 */
+function hopsNeedNextDay(hops: DashboardTraceWireResponse['hops']): boolean {
+  return hops.some((hop) => {
+    if (bodyOpen(hop.request?.body) || bodyOpen(hop.response?.body)) return true;
+    if (hop.request !== undefined && hop.request.body === undefined) return true;
+    return hop.kind === 'attempt' && hop.response?.body === undefined && hop.response?.errorType === undefined;
+  });
+}
+
+function bodyOpen(body: { readonly outcome?: string } | undefined): boolean {
+  return body !== undefined && body.outcome === undefined;
+}
+
 function logDatesOf(input: ReadTraceWireLogInput): string[] {
   const end = input.endedAt ?? new Date();
   const started = format(input.startedAt, 'yyyy-MM-dd');
