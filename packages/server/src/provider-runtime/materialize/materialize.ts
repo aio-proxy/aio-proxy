@@ -5,9 +5,10 @@ import {
   createApiProvider,
   createProxyFetch,
   type OutboundProxy,
+  type ProviderFetch,
   hasLanguageBridgeEndpoint,
 } from '@aio-proxy/core';
-import type { AliasConfig, Config, ModelMetadata } from '@aio-proxy/types';
+import type { AliasConfig, Config, ModelMetadata, Provider } from '@aio-proxy/types';
 import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
@@ -15,9 +16,11 @@ import { createProviderRequestTransformFetch } from '../../provider-request-tran
 import { createObservedFetch } from '../../request-logging';
 import type { ModelCapabilityIndex, RuntimeProviderInput, RuntimeProviderInstance } from '../../runtime';
 import { buildModelCapabilityIndex } from '../capability-index';
+import type { LazyEvaluationTransport } from '../evaluation-discovery';
 import { attachAudioTransports } from '../materialize-audio';
 import { attachImageTransport } from '../materialize-image';
 import { probeAiSdk, probeApi, type ProviderProbe } from '../probe';
+import { type EvaluationMaterialization, evaluationMaterialization } from './evaluation-transport';
 import {
   providerConfigSummary,
   type ProviderRuntimeSummary,
@@ -47,9 +50,10 @@ export function materializeRuntimeProvider(
   options: {
     readonly apiBridge?: AiSdkProviderInstance;
     readonly catalogMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
+    readonly evaluation?: EvaluationMaterialization;
   } = {},
 ): RuntimeProviderInstance {
-  const { catalogMetadata } = options;
+  const { catalogMetadata, evaluation } = options;
   if (isMaterializedRuntimeProvider(provider)) {
     if (provider.capabilityIndex !== undefined) return provider;
     return {
@@ -82,8 +86,10 @@ export function materializeRuntimeProvider(
         catalogMetadata,
         primaryProtocol: primary.protocol,
         extraProtocols: rest.map((endpoint) => endpoint.protocol),
+        hasEvaluationTransport: evaluation?.grantsCapability,
       }),
       hasApiKey: provider.apiKey !== undefined,
+      ...evaluationCapability(evaluation),
       raw: {
         resolve: ({ protocol }) => {
           const transport = provider.endpointTransports.find((endpoint) => endpoint.protocol === protocol);
@@ -117,12 +123,14 @@ export function materializeRuntimeProvider(
         alias: provider.alias,
         catalogMetadata,
         primaryProtocol: provider.targetProtocol,
+        hasEvaluationTransport: evaluation?.grantsCapability,
       }),
       model: {
         ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
         invoke: provider.invoke,
         ...(provider.targetProtocol === undefined ? {} : { targetProtocol: () => provider.targetProtocol }),
       },
+      ...evaluationCapability(evaluation),
       ...embeddingTransport(provider),
     };
   }
@@ -138,14 +146,32 @@ function capabilityIndexFromRoutable(provider: {
   readonly primaryProtocol?: ProviderProtocol;
   readonly extraProtocols?: readonly ProviderProtocol[];
   readonly catalogMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
+  readonly hasEvaluationTransport?: boolean;
 }): ModelCapabilityIndex {
   return buildModelCapabilityIndex({
     models: provider.models,
     primaryProtocol: provider.primaryProtocol,
     extraProtocols: provider.extraProtocols,
     catalogMetadata: provider.catalogMetadata,
+    ...(provider.hasEvaluationTransport === undefined
+      ? {}
+      : { hasEvaluationTransport: provider.hasEvaluationTransport }),
     aliasTargets: provider.alias === undefined ? undefined : aliasTargets(provider.alias),
   });
+}
+
+function evaluationCapability(
+  evaluation: EvaluationMaterialization | undefined,
+): { readonly evaluation: LazyEvaluationTransport } | Record<never, never> {
+  return evaluation === undefined ? {} : { evaluation: evaluation.transport };
+}
+
+function evaluationOption(
+  provider: Provider,
+  fetch: ProviderFetch,
+): { readonly evaluation: EvaluationMaterialization } | Record<never, never> {
+  const evaluation = evaluationMaterialization(provider, { fetch });
+  return evaluation === undefined ? {} : { evaluation };
 }
 
 function aliasTargets(alias: Readonly<Record<string, AliasConfig>>): string[] {
@@ -200,6 +226,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
             attachImageTransport(
               materializeRuntimeProvider(api, {
                 catalogMetadata: options.catalogMetadata,
+                ...evaluationOption(provider, providerFetch),
                 ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
               }),
               { config: provider, fetch: providerFetch, routerModels: config.router.models },
@@ -221,11 +248,17 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
         const instance = withRoutingDefaults(
           attachAudioTransports(
-            attachImageTransport(materializeRuntimeProvider(aiSdk, { catalogMetadata: options.catalogMetadata }), {
-              config: provider,
-              fetch: providerFetch,
-              routerModels: config.router.models,
-            }),
+            attachImageTransport(
+              materializeRuntimeProvider(aiSdk, {
+                catalogMetadata: options.catalogMetadata,
+                ...evaluationOption(provider, providerFetch),
+              }),
+              {
+                config: provider,
+                fetch: providerFetch,
+                routerModels: config.router.models,
+              },
+            ),
             { config: provider, fetch: providerFetch },
           ),
           provider,

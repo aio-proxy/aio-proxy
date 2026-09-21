@@ -45,6 +45,12 @@ export function defineProtocolAdapter(
       };
     },
     model: (request) => request.model,
+    // Every real language adapter declares `session`, and the pipeline reads its
+    // presence as "this protocol participates in logical sessions" - a request to
+    // a sessionless capability must not pick a session up from its headers. This
+    // helper stands in for a language protocol, so it has to declare one too, or
+    // header-derived sessions and the deterministic draw never engage here.
+    session: (request) => ({ candidates: [], transcript: request.prompt }),
     wantsStream: (request) => request.stream,
     async rawRequest(raw, request, resolvedModel, _supportedEfforts, context) {
       context.rawRequestCalls += 1;

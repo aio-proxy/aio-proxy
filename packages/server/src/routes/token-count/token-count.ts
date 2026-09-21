@@ -116,7 +116,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
     const resolution = source.logicalSessionStore.begin({
       requestedModelId: requestedModel,
       requestId: session.requestId,
-      hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
+      ...(adapter.session === undefined ? {} : { hints: adapter.session(request, context) }),
       headers: rawRequest.headers,
     });
     session.identify({

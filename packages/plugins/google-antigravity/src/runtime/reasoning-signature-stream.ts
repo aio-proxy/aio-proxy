@@ -2,6 +2,7 @@ import type { LanguageModelV4StreamPart, SharedV4ProviderMetadata } from '@ai-sd
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { validThoughtSignature } from '../protocol/signatures';
+import { unwrapSdkStreamFailure } from './errors';
 
 type ActiveReasoning = {
   readonly id: string;
@@ -122,8 +123,9 @@ export function bridgeLateReasoningSignatures(
           }
         }
       } catch (error) {
-        await cancel(error).catch(() => undefined);
-        controller.error(error);
+        const reason = unwrapSdkStreamFailure(error);
+        await cancel(reason).catch(() => undefined);
+        controller.error(reason);
       }
     },
     cancel,

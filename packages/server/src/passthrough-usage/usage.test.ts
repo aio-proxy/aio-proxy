@@ -268,4 +268,70 @@ describe('passthrough usage extraction', () => {
       cacheReadTokens: 3,
     });
   });
+
+  test('extracts System One usage and derives the total the wire omits', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.TypeSafeSystemOne,
+        JSON.stringify({
+          model: 'jev-latest',
+          answers: { q: { type: 'noul', noul: 0.93 } },
+          usage: { input_tokens: 312, output_tokens: 48 },
+        }),
+      ),
+    ).toEqual({ inputTokens: 312, outputTokens: 48, totalTokens: 360 });
+  });
+
+  // Both token fields are nullish in the System One response schema, so a body
+  // that reports neither is legitimate and must not be flagged as invalid usage.
+  test('treats an absent System One usage object as absent, not invalid', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.TypeSafeSystemOne,
+        JSON.stringify({ model: 'jev-latest', answers: { q: { type: 'noul', noul: 0.93 } } }),
+      ),
+    ).toBeUndefined();
+  });
+
+  test('reports a malformed System One token count as invalid', () => {
+    expect(
+      extractPassthroughObservation(
+        ProviderProtocol.TypeSafeSystemOne,
+        JSON.stringify({ model: 'jev-latest', answers: {}, usage: { input_tokens: -3, output_tokens: 48 } }),
+      ),
+    ).toMatchObject({ issues: [{ code: 'invalid_token_count', path: ['inputTokens'] }] });
+  });
+
+  // An explicit `null` count is schema-conformant "not reported": the reported
+  // side still has to bill, so the null field is omitted rather than zeroed and
+  // the row must survive instead of being discarded as invalid usage.
+  test('treats a null System One input_tokens as absent and keeps the reported output', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.TypeSafeSystemOne,
+      JSON.stringify({
+        model: 'jev-latest',
+        answers: { q: { type: 'noul', noul: 0.93 } },
+        usage: { input_tokens: null, output_tokens: 48 },
+      }),
+    );
+
+    expect(usage).toEqual({ outputTokens: 48 });
+    expect(usage).not.toHaveProperty('inputTokens');
+    expect(usage).not.toHaveProperty('totalTokens');
+  });
+
+  test('treats a null System One output_tokens as absent and keeps the reported input', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.TypeSafeSystemOne,
+      JSON.stringify({
+        model: 'jev-latest',
+        answers: { q: { type: 'noul', noul: 0.93 } },
+        usage: { input_tokens: 312, output_tokens: null },
+      }),
+    );
+
+    expect(usage).toEqual({ inputTokens: 312 });
+    expect(usage).not.toHaveProperty('outputTokens');
+    expect(usage).not.toHaveProperty('totalTokens');
+  });
 });

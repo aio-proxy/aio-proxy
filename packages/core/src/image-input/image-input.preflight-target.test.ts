@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { assertImageInputSupported, imageFilePart, imageTargetProtocolForPackage } from '.';
+import { assertImageInputSupported, imageFilePart } from '.';
 import type { ModelMessage } from '../ai-sdk-bridge';
 import { ImageInputUnsupportedError } from '../error';
 
@@ -117,13 +117,5 @@ describe('image compatibility preflight', () => {
     expect(() => assertImageInputSupported(reference, ProviderProtocol.Anthropic)).toThrow(
       new ImageInputUnsupportedError('provider-reference', 'messages.0.content.0'),
     );
-  });
-
-  test('maps only the four known AI SDK packages', () => {
-    expect(imageTargetProtocolForPackage('@ai-sdk/openai')).toBe(ProviderProtocol.OpenAIResponse);
-    expect(imageTargetProtocolForPackage('@ai-sdk/openai-compatible')).toBe(ProviderProtocol.OpenAICompatible);
-    expect(imageTargetProtocolForPackage('@ai-sdk/anthropic')).toBe(ProviderProtocol.Anthropic);
-    expect(imageTargetProtocolForPackage('@ai-sdk/google')).toBe(ProviderProtocol.Gemini);
-    expect(imageTargetProtocolForPackage('@vendor/unknown')).toBeUndefined();
   });
 });

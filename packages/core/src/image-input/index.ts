@@ -1,7 +1,6 @@
 export {
   assertImageInputSupported,
   imageFilePart,
-  imageTargetProtocolForPackage,
   type ImageFilePart,
   type ImageFilePartOptions,
   type ImageFileSource,

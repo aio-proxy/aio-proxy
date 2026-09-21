@@ -1,4 +1,10 @@
-import { type EmbeddingResult, type OpenRouterModelPrice, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import {
+  type EmbeddingResult,
+  type EvaluationResult,
+  type OpenRouterModelPrice,
+  type TextStreamPart,
+  type ToolSet,
+} from '@aio-proxy/core';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import type { AttemptResponseObservation } from '../response-observation';
@@ -91,12 +97,26 @@ export type EmbeddingUsageOptions = {
   readonly configPrice?: OpenRouterModelPrice;
 };
 
+export type EvaluationUsageOptions = {
+  // Upstream-reported evaluation usage. Both the object and either token field
+  // are nullish in the System One response schema, so absence is not an error.
+  readonly usage?: EvaluationResult['usage'];
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly requestedModelId?: string;
+  // Per-provider price override for the hit channel; when present it wins over
+  // the models.dev catalog and marks the usage row's priceSource as 'config'.
+  readonly configPrice?: OpenRouterModelPrice;
+};
+
 export type UsageCapture = {
   readonly stream: (options: StreamUsageOptions) => Captured<ReadableStream<TextStreamPart<ToolSet>>>;
   readonly passthrough: (options: PassthroughUsageOptions) => Captured<Response>;
   // Embedding responses are buffered JSON with no transport to wrap, so this
   // resolves the completion directly instead of returning a captured value.
   readonly embedding: (options: EmbeddingUsageOptions) => Promise<UsageCompletion>;
+  // Evaluation responses are buffered JSON too, and never stream: same shape.
+  readonly evaluation: (options: EvaluationUsageOptions) => Promise<UsageCompletion>;
 };
 
 export function usageProperty(usage: UsageRow | undefined): { readonly usage?: UsageRow } {

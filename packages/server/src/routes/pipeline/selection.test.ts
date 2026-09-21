@@ -203,6 +203,9 @@ describe('shared protocol routing pipeline capability selection', () => {
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream }));
     await response.body?.cancel();
 
-    expect(egress).toEqual([{ modelId: 'model-model' }]);
+    // `onResponseId` rides along because the harness adapter declares `session`,
+    // as every real language adapter does; a sessionless capability gets neither
+    // it nor `onCommit`.
+    expect(egress).toEqual([{ modelId: 'model-model', onResponseId: expect.any(Function) }]);
   });
 });

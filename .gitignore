@@ -17,3 +17,6 @@ npm/cli-*/bin/
 .reference
 .claude/worktrees/
 .claude/settings.local.json
+
+# subagent-driven-development scratch
+.superpowers/

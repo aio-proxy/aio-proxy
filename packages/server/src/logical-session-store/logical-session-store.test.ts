@@ -66,6 +66,32 @@ describe('LogicalSessionStore', () => {
     ).toBe('generated');
   });
 
+  test('ignores an inbound session header when the caller passes no hints', () => {
+    const store = new LogicalSessionStore({
+      repository: stubRepository({
+        affinities: new Map([['header-session:pinned:gpt', { providerId: 'provider-a', revision: 1, active: true }]]),
+      }),
+    });
+    const headers = new Headers({ 'x-session-id': 'pinned' });
+
+    // A protocol with a `session` hook still resolves the header, and affinity
+    // pins the session to whichever candidate answered first.
+    const participating = store.begin({
+      requestedModelId: 'gpt',
+      hints: { candidates: [], transcript: ['hello'] },
+      headers,
+    });
+    expect(participating.resolvedBy).toBe('header-session');
+    expect(participating.affinity).toEqual({ providerId: 'provider-a', revision: 1, active: true });
+
+    // Without hints the protocol does not participate, so the same header neither
+    // resolves a stable session nor reaches affinity - candidate order stays
+    // priority and weight only.
+    const sessionless = store.begin({ requestedModelId: 'gpt', headers });
+    expect(sessionless.resolvedBy).toBe('generated');
+    expect(sessionless.affinity).toBeUndefined();
+  });
+
   test('builds context requestId from input and session key from identity', () => {
     const store = new LogicalSessionStore({ repository: stubRepository() });
     const resolution = store.begin({

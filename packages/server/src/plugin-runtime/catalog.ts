@@ -5,7 +5,8 @@ import {
   type Diagnostic,
   type OAuthProvider,
   ProviderKind,
-  ProviderProtocol,
+  type ProviderProtocol,
+  ProviderProtocolSchema,
   type ProviderState,
 } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
@@ -141,20 +142,16 @@ function descriptorMetadata(descriptor: ModelCatalog['language'][number]): Runti
   };
 }
 
+/**
+ * Every `ProviderProtocol` is reportable metadata, so this validates membership
+ * instead of re-listing the members. The allowlist this replaces silently
+ * dropped `typesafe-systemone` when that protocol was added - `default:
+ * undefined` means a missing arm is not a type error, so the omission survived
+ * until review. Reporting a protocol is display metadata only and grants no
+ * capability: plugins still do not serve evaluation.
+ */
 function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
   if (!isPlainObject(metadata)) return undefined;
-  const protocol = Reflect.get(metadata, 'protocol');
-  switch (protocol) {
-    case ProviderProtocol.OpenAICompatible:
-    case ProviderProtocol.OpenAIResponse:
-    case ProviderProtocol.Anthropic:
-    case ProviderProtocol.Gemini:
-    case ProviderProtocol.GeminiInteractions:
-    case ProviderProtocol.OpenAIImage:
-    case ProviderProtocol.OpenAIAudio:
-    case ProviderProtocol.OpenAIVideo:
-      return protocol;
-    default:
-      return undefined;
-  }
+  const protocol = ProviderProtocolSchema.safeParse(Reflect.get(metadata, 'protocol'));
+  return protocol.success ? protocol.data : undefined;
 }

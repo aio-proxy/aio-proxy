@@ -23,6 +23,7 @@ import type {
   AudioAttemptLoopContext,
   CandidateSlot,
   EmbeddingAttemptLoopContext,
+  EvaluationAttemptLoopContext,
   ImageAttemptLoopContext,
   InvocationHolder,
   VideoAttemptLoopContext,
@@ -31,6 +32,7 @@ import { selectLiveCandidates } from './cooldown-write';
 import { attemptEmbeddingCandidate } from './embedding';
 import { createAttemptEmitter } from './emit';
 import { emitReject, handleAttemptError, unsupportedDispatch } from './error';
+import { attemptEvaluationCandidate } from './evaluation';
 import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
@@ -125,6 +127,7 @@ function createAttemptLoopContext<TRequest, TContext>(
 
 type AttemptDispatch<TRequest, TContext> =
   | { readonly kind: 'embedding'; readonly ctx: EmbeddingAttemptLoopContext<TRequest, TContext> }
+  | { readonly kind: 'evaluation'; readonly ctx: EvaluationAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'image'; readonly ctx: ImageAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'video'; readonly ctx: VideoAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'audio'; readonly ctx: AudioAttemptLoopContext<TRequest, TContext> }
@@ -150,6 +153,8 @@ async function dispatchCandidate<TRequest, TContext>(
   switch (dispatch.kind) {
     case 'embedding':
       return await attemptEmbeddingCandidate(dispatch.ctx, slot);
+    case 'evaluation':
+      return await attemptEvaluationCandidate(dispatch.ctx, slot);
     case 'image':
       return await dispatchImageCandidate(dispatch.ctx, slot);
     case 'video':
@@ -166,6 +171,7 @@ function attemptDispatch<TRequest, TContext>(
 ): AttemptDispatch<TRequest, TContext> {
   const { adapter } = ctx;
   if (adapter.capability === 'embedding') return { kind: 'embedding', ctx: { ...ctx, adapter } };
+  if (adapter.capability === 'evaluation') return { kind: 'evaluation', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'image') return { kind: 'image', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'video') return { kind: 'video', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'language') return { kind: 'language', ctx: { ...ctx, adapter } };

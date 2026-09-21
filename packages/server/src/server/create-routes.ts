@@ -31,6 +31,7 @@ import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
 import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
+import { createSystemOneRoutes } from '../routes/systemone';
 import { createOpenAIVideosRoutes, type VideosRouteSource } from '../routes/videos';
 import type { ServerState } from '../server-state';
 import { requireModelAuthentication } from './agent-auth';
@@ -301,6 +302,7 @@ export const createRoutes = (
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const openAIImagesRoutes = createOpenAIImagesRoutes(state);
   const openAIAudioRoutes = createOpenAIAudioRoutes(state);
+  const systemOneRoutes = createSystemOneRoutes(state);
   // Mounted (below) only after `app.use('/v1/*', modelAuthentication)`: a realtime route
   // registered ahead of that middleware reads every caller as the anonymous principal,
   // and the create/attach ownership check would then admit anyone.
@@ -318,6 +320,7 @@ export const createRoutes = (
     .route('/', openAIResponsesRoutes)
     .route('/', openAIImagesRoutes)
     .route('/', openAIAudioRoutes)
+    .route('/', systemOneRoutes)
     .route('/', videoRoutes)
     .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)

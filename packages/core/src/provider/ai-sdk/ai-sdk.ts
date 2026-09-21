@@ -18,8 +18,8 @@ import type {
   ToolSet,
 } from '../../ai-sdk-bridge';
 import { streamAiSdkText } from '../../ai-sdk-bridge';
+import { aiSdkPackagePrimaryProtocol } from '../../ai-sdk-package-protocol';
 import { AiSdkProviderError, ProviderNotInstalledError } from '../../error';
-import { imageTargetProtocolForPackage } from '../../image-input';
 import type { EmbeddingInvocation, EmbeddingResult } from '../../protocol/adapter';
 import type { AiSdkProviderLoadOptions } from '../ai-sdk-loader/index';
 import { loadAiSdkProvider } from '../ai-sdk-loader/index';
@@ -94,7 +94,7 @@ export function createAiSdkProvider(
 ): AiSdkProviderInstance {
   const loadProvider = options.loadProvider ?? loadAiSdkProvider;
   const providerFetch = wrapOpenAIPackageFetch(config.packageName, options.fetch);
-  const targetProtocol = imageTargetProtocolForPackage(config.packageName);
+  const targetProtocol = aiSdkPackagePrimaryProtocol(config.packageName);
   let loadedProviderTask: Promise<LoadedAiSdkRuntimeProvider | null> | undefined;
 
   function providerTask(): Promise<LoadedAiSdkRuntimeProvider | null> {

@@ -4,6 +4,7 @@ import type { RouterModelPolicy } from '@aio-proxy/types';
 import {
   metadataHasImageOutput,
   supportsEmbedding,
+  supportsEvaluation,
   supportsImage,
   supportsLanguage,
   supportsSpeech,
@@ -32,8 +33,46 @@ export function filterCandidatesByCapability<
       return candidateSupportsAudio(candidate, capability);
     }
     if (capability === 'video') return supportsVideo(candidate.provider.capabilityIndex, candidate.modelId);
+    // Evaluation is never language: the `supportsLanguage` fallthrough below would
+    // otherwise claim this capability with no type error to reveal it. The grant
+    // comes from a real transport or a System One endpoint, never from protocol
+    // metadata - see `synthesizesEvaluation`.
+    if (capability === 'evaluation') return candidateMayEvaluate(candidate);
     return supportsLanguage(candidate.provider.capabilityIndex, candidate.modelId);
   });
+}
+
+/**
+ * Effective evaluation support: the upstream-id index, OR an attached convert
+ * transport whose verdict is not in yet.
+ *
+ * The index can only carry grants that are knowable synchronously - a System One
+ * endpoint, or an `api` primary whose package the protocol table pins. An
+ * `ai-sdk` provider names an arbitrary npm package, so nothing static speaks for
+ * it; only `discover()` can, and that is async while this filter is not. Reading
+ * "not yet probed" as a denial drops a cold candidate on the first evaluation
+ * request of the process, which is the documented direct-primary /
+ * Gateway-backup failover silently never dispatching.
+ *
+ * Presence of the transport is ADMISSION, never proof of support. Dispatch
+ * awaits the probe and resolves all three states there - convert, unsupported,
+ * or a load failure - so a package with no resolver is skipped in its own
+ * candidate position with normal fallback instead of being served. Encoding the
+ * probe's answer here is impossible, not merely inconvenient: a boolean cannot
+ * express "preparation failed", which must stay a candidate failure.
+ *
+ * Module-local on purpose, and named for admission rather than support: unlike
+ * its image and audio siblings this is NOT the same predicate dispatch applies,
+ * so nothing downstream should reach for it.
+ */
+function candidateMayEvaluate(candidate: {
+  readonly provider: Pick<RuntimeProviderInstance, 'capabilityIndex' | 'evaluation'>;
+  readonly modelId: string;
+}): boolean {
+  return (
+    supportsEvaluation(candidate.provider.capabilityIndex, candidate.modelId) ||
+    candidate.provider.evaluation !== undefined
+  );
 }
 
 // Effective image support: the upstream-id index OR the requested slug's

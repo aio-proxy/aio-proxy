@@ -16,6 +16,7 @@ import type {
 import {
   createUsageCapture,
   type EmbeddingUsageOptions,
+  type EvaluationUsageOptions,
   type PassthroughUsageOptions,
   type StreamUsageOptions,
   type UsageCapture,
@@ -121,6 +122,7 @@ export function defineProviderRouteSource(
   const usage = {
     capturedStreams: [] as ModelEventStream[],
     embedding: [] as EmbeddingUsageOptions[],
+    evaluation: [] as EvaluationUsageOptions[],
     passthrough: [] as PassthroughUsageOptions[],
     stream: [] as StreamUsageOptions[],
   };
@@ -131,6 +133,11 @@ export function defineProviderRouteSource(
     embedding(options) {
       usage.embedding.push(options);
       return realUsageCapture.embedding(options);
+    },
+    // Evaluation is buffered JSON like embedding: same recording, same real helper.
+    evaluation(options) {
+      usage.evaluation.push(options);
+      return realUsageCapture.evaluation(options);
     },
     passthrough(options) {
       usage.passthrough.push(options);

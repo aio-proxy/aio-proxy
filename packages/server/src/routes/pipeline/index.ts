@@ -103,7 +103,9 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         source.logicalSessionStore.begin({
           requestedModelId: requestedModel,
           requestId: session.requestId,
-          hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
+          // Passed through as-is: absent hints tell the store this protocol does not
+          // participate in logical sessions, and it withholds the headers itself.
+          ...(adapter.session === undefined ? {} : { hints: adapter.session(request, context) }),
           headers: rawRequest.headers,
         }),
       );
@@ -378,6 +380,8 @@ function noCandidateFeature(capability: InboundCapability): string {
       return 'audio';
     case 'video':
       return 'video';
+    case 'evaluation':
+      return 'evaluation';
     case 'language':
     case 'embedding':
       return 'transform_dispatch';

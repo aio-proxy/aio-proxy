@@ -59,6 +59,7 @@ test('maps every internal provider protocol to the plugin SDK protocol', () => {
     [ProviderProtocol.OpenAIImage]: 'openai-image',
     [ProviderProtocol.OpenAIAudio]: 'openai-audio',
     [ProviderProtocol.OpenAIVideo]: 'openai-video',
+    [ProviderProtocol.TypeSafeSystemOne]: 'typesafe-systemone',
   });
 });
 
@@ -595,6 +596,47 @@ test('forwards embedding capability and catalog extra to the plugin raw resolver
     modelId: 'embed',
     extra: { region: 'us', protocol: 'gemini' },
     capability: 'embedding',
+  });
+});
+
+test('a capability with no catalog modality still resolves the plugin raw transport', async () => {
+  // `evaluation` is a raw-resolver capability with no catalog of its own. Indexing
+  // the modality map by it reads `undefined`, and the `.get` on that throws before
+  // the plugin is ever consulted.
+  const observed: Parameters<RawResolver>[0][] = [];
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: { ...catalog, language: [{ id: 'jev-latest', extra: { region: 'us' } }] },
+      createRuntime: async () =>
+        ({
+          provider: providerV4(),
+          raw(input: Parameters<RawResolver>[0]) {
+            observed.push(input);
+            return { invoke: async () => new Response('ok') };
+          },
+        }) as never,
+    },
+  );
+  fixture.repository.writeCatalog(
+    'person',
+    { ...catalog, language: [{ id: 'jev-latest', extra: { region: 'us' } }] },
+    1_000,
+  );
+
+  const result = await materializeFixture(fixture);
+  const transport = result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.TypeSafeSystemOne,
+    modelId: 'jev-latest',
+    capability: 'evaluation',
+  });
+
+  expect(await transport?.invoke(new Request('https://example.test'))).toBeInstanceOf(Response);
+  expect(observed[0]).toEqual({
+    protocol: 'typesafe-systemone',
+    modelId: 'jev-latest',
+    extra: { region: 'us' },
+    capability: 'evaluation',
   });
 });
 

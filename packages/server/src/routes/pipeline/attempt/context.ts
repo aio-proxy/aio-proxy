@@ -2,6 +2,7 @@ import type {
   AnyProtocolAdapter,
   AudioProtocolAdapter,
   EmbeddingProtocolAdapter,
+  EvaluationProtocolAdapter,
   ImageProtocolAdapter,
   ModelInvocation,
   ProtocolAdapter,
@@ -91,6 +92,12 @@ export type EmbeddingAttemptLoopContext<TRequest, TContext> = AttemptLoopContext
   TRequest,
   TContext,
   EmbeddingProtocolAdapter<TRequest, TContext>
+>;
+
+export type EvaluationAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  EvaluationProtocolAdapter<TRequest, TContext>
 >;
 
 export type ImageAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
