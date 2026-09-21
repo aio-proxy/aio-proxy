@@ -22,6 +22,7 @@ describe('OpenAI ChatGPT runtime', () => {
     });
 
     expect(runtime.provider.specificationVersion).toBe('v4');
+    expect(runtime.genAiProviderName).toBe('openai');
     expect(runtime.provider.languageModel('gpt-5.5')).toBeDefined();
     expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5' })).toBeDefined();
     expect(runtime.raw?.({ protocol: 'openai-image', modelId: 'gpt-image-2' })).toBeDefined();

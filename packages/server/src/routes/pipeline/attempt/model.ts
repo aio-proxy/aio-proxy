@@ -1,4 +1,5 @@
 import { type ModelEgressContext } from '@aio-proxy/core';
+import { ProviderProtocol } from '@aio-proxy/types';
 
 import { attributeName, spanName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
@@ -9,7 +10,6 @@ import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
 import { startPipelineSpan } from '../tracing';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
-import { genAiProviderNameFor } from './emit';
 import { emitReject, rejectRequestShape } from './error';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
@@ -29,7 +29,11 @@ export async function attemptModelCandidate<TRequest, TContext>(
 
   // The attempt span opens FIRST: prepare is a measured child of it, not an
   // untracked offset between the candidate's startedAt and the span.
-  const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
+  const attemptSpan = ctx.emitter.startAttempt(
+    attemptBase(provider, candidate.modelId, startedAt, slot.trace),
+    index,
+    true,
+  );
   slot.spanRef.current = attemptSpan;
   // prepare 先写下 targetProtocol，后面的 materialize / ForTarget 才可能抛。
   // 抛出去的那条走 handleAttemptError，必须在这里先把协议口味挂上。
@@ -37,8 +41,6 @@ export async function attemptModelCandidate<TRequest, TContext>(
     const target = slot.trace.targetProtocol;
     if (target === undefined) return;
     attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
-    const providerName = genAiProviderNameFor(target);
-    if (providerName !== undefined) attemptSpan.span.setAttribute(attributeName.genAiProviderName, providerName);
   };
 
   // Mirrors resolveInvocation's memoization guard: the invocation is
@@ -70,6 +72,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
   if (prepared.kind === 'unsupported') return emitReject(ctx, slot, prepared.response, 'unsupported_feature');
   const { candidateInvocation, targetProtocol } = prepared;
+  const urlTemplate = languageUrlTemplate(targetProtocol);
 
   const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
   if (unsupported !== undefined) return unsupported;
@@ -83,7 +86,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     providerId: provider.id,
     attemptIndex: index,
   });
-  await inAttempt(targetProtocol, () => model.ensureAvailable?.());
+  await inAttempt(targetProtocol, () => model.ensureAvailable?.(), urlTemplate);
   const configPrice = candidateConfigPrice(
     ctx.routerModels,
     publicSlug(ctx.requestedModelId, candidate),
@@ -97,21 +100,25 @@ export async function attemptModelCandidate<TRequest, TContext>(
     startedAt,
     observation,
     ...(configPrice === undefined ? {} : { configPrice }),
-    stream: inAttempt(targetProtocol, () => {
-      observation.markTransportUnavailable();
-      return model.invoke({
-        context: logicalRequest,
-        messages: candidateInvocation.messages,
-        modelId: candidate.modelId,
-        routingContinuity,
-        signal: rawRequest.signal,
-        ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
-        ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
-        ...(candidateInvocation.providerTools === undefined
-          ? {}
-          : { providerTools: candidateInvocation.providerTools }),
-      });
-    }),
+    stream: inAttempt(
+      targetProtocol,
+      () => {
+        observation.markTransportUnavailable();
+        return model.invoke({
+          context: logicalRequest,
+          messages: candidateInvocation.messages,
+          modelId: candidate.modelId,
+          routingContinuity,
+          signal: rawRequest.signal,
+          ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
+          ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
+          ...(candidateInvocation.providerTools === undefined
+            ? {}
+            : { providerTools: candidateInvocation.providerTools }),
+        });
+      },
+      urlTemplate,
+    ),
   });
   let capturedResponseId: string | undefined;
   const egressContext = {
@@ -187,4 +194,23 @@ export async function attemptModelCandidate<TRequest, TContext>(
     ),
   );
   return { kind: 'return', response };
+}
+
+function languageUrlTemplate(protocol: ProviderProtocol | undefined): string | undefined {
+  switch (protocol) {
+    case ProviderProtocol.OpenAIResponse:
+      return '/v1/responses';
+    case ProviderProtocol.OpenAICompatible:
+      return '/v1/chat/completions';
+    case ProviderProtocol.Anthropic:
+      return '/v1/messages';
+    case ProviderProtocol.Gemini:
+      return '/v1beta/models/{model}:generateContent';
+    case ProviderProtocol.GeminiInteractions:
+      return '/v1beta/interactions';
+    case ProviderProtocol.TypeSafeSystemOne:
+      return '/v1/systemone';
+    default:
+      return undefined;
+  }
 }

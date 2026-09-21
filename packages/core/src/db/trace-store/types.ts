@@ -26,6 +26,7 @@ export type StoredSpan = {
   readonly traceId: string;
   readonly spanId: string;
   readonly parentSpanId?: string;
+  readonly startSequence?: number;
   readonly name: string;
   readonly kind: number;
   readonly startedAt: Date;
@@ -64,6 +65,7 @@ export type TraceRootStart = {
   readonly name: string;
   readonly kind: number;
   readonly startedAt: Date;
+  readonly startSequence?: number;
   readonly statusCode: number;
   readonly attributes: SpanAttributesJson;
   readonly events: readonly SpanEventJson[];

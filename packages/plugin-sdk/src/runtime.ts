@@ -193,6 +193,9 @@ export type RealtimeTransport = {
 };
 
 export type OAuthRuntimeResult = {
+  /** Stable, non-empty, low-cardinality OpenTelemetry GenAI provider identity.
+   *  Omit it when the runtime does not know the upstream service identity. */
+  readonly genAiProviderName?: string;
   readonly provider: ProviderV4;
   readonly raw?: RawResolver;
   readonly tokenCount?: TokenCountCapability;

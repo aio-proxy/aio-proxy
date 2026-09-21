@@ -73,6 +73,18 @@ test('rejects an array runtime carrying a provider property', async () => {
   expect(result.state).toMatchObject({ status: 'unavailable', diagnostic: { code: 'RUNTIME_CREATE_FAILED' } });
 });
 
+test('rejects an empty gen_ai provider identity at the plugin boundary', async () => {
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    { createRuntime: async () => ({ genAiProviderName: ' ', provider: providerV4() }) },
+  );
+
+  const result = await materializeFixture(fixture);
+
+  expect(result.provider).toBeUndefined();
+  expect(result.state).toMatchObject({ status: 'unavailable', diagnostic: { code: 'RUNTIME_CREATE_FAILED' } });
+});
+
 test('rejects an array raw transport carrying an invoke property', async () => {
   const transport = Object.assign([], { invoke: async () => new Response('ok') });
   const fixture = runtimeFixture(

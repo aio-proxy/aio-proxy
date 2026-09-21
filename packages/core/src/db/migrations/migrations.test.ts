@@ -28,6 +28,7 @@ function expectCurrentPersistenceContract(sqlite: Database): void {
       expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' }),
       expect.objectContaining({ name: 'provider_weight', type: 'REAL' }),
       expect.objectContaining({ name: 'selection_reason', type: 'TEXT' }),
+      expect.objectContaining({ name: 'start_sequence', type: 'INTEGER' }),
     ]),
   );
   expect(traceColumns.some(({ name }) => name === 'estimated_cost_usd')).toBeFalse();

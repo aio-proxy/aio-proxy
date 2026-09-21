@@ -68,7 +68,7 @@ describe('POST /v1/chat/completions', () => {
         expect.objectContaining({
           outcome: 'cancelled',
           finalStatusCode: 200,
-          attempts: [expect.objectContaining({ outcome: 'cancelled', statusCode: 200 })],
+          attempts: [expect.objectContaining({ outcome: 'cancelled' })],
         }),
       ],
       usages: [],
@@ -111,7 +111,7 @@ describe('POST /v1/chat/completions', () => {
         expect.objectContaining({
           outcome: 'failure',
           finalStatusCode: 200,
-          attempts: [expect.objectContaining({ outcome: 'failure', statusCode: 200 })],
+          attempts: [expect.objectContaining({ outcome: 'failure' })],
         }),
       ],
       usages: [],

@@ -9,6 +9,7 @@ export function createGeminiInteractionsRoutes(source: ProviderRouteSource) {
     handleProtocolRequest({
       adapter: geminiInteractionsAdapter,
       context: {},
+      httpRoute: '/v1beta/interactions',
       rawRequest: context.req.raw,
       source,
     }),

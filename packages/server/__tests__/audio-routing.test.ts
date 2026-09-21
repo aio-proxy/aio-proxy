@@ -111,7 +111,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
     expect(broken.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(healthy.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(await recordedAttempts(home)).toEqual([
-      expect.objectContaining({ outcome: 'failure', providerId: 'broken', statusCode: 500 }),
+      expect.objectContaining({ outcome: 'failure', providerId: 'broken' }),
       expect.objectContaining({ outcome: 'success', providerId: 'azure' }),
     ]);
   });

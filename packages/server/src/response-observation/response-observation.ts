@@ -19,6 +19,12 @@ export type AttemptResponseSnapshot = {
   // onLanguageModelCallStart fires outside its retry() wrapper -- so the HTTP
   // layer is the only place they can be counted.
   readonly httpSends?: number;
+  readonly serverAddress?: string;
+  readonly serverPort?: number;
+};
+
+export type AttemptResponseEndpoint = Pick<AttemptResponseSnapshot, 'serverAddress' | 'serverPort'> & {
+  readonly serverAddress: string;
 };
 
 export type ResponseBodyObservation = {
@@ -27,7 +33,7 @@ export type ResponseBodyObservation = {
 
 export type AttemptResponseObservation = {
   readonly markTransportUnavailable: () => void;
-  readonly observeFetchStart: () => void;
+  readonly observeFetchStart: (endpoint?: AttemptResponseEndpoint) => void;
   readonly observeResponse: (
     response: Response,
     options: { readonly controlledStream: boolean },
@@ -56,6 +62,8 @@ export function createAttemptResponseObservation(options: {
   const gapBuckets = new Uint32Array(GAP_BUCKET_UPPER_BOUNDS.length + 1);
   let transportObservation: TransportObservation | undefined;
   let sendCount = 0;
+  let endpoint: AttemptResponseEndpoint | undefined;
+  let endpointAmbiguous = false;
   let responseCount = 0;
   let upstreamHeadersMs: number | undefined;
   let firstUpstreamByteMs: number | undefined;
@@ -73,8 +81,15 @@ export function createAttemptResponseObservation(options: {
     markTransportUnavailable() {
       if (responseCount === 0) transportObservation = 'unavailable';
     },
-    observeFetchStart() {
+    observeFetchStart(target) {
       sendCount++;
+      if (target !== undefined && !endpointAmbiguous) {
+        if (endpoint === undefined) endpoint = target;
+        else if (endpoint.serverAddress !== target.serverAddress || endpoint.serverPort !== target.serverPort) {
+          endpoint = undefined;
+          endpointAmbiguous = true;
+        }
+      }
       if (transportObservation === 'unavailable') transportObservation = undefined;
     },
     observeResponse(response, { controlledStream }) {
@@ -132,6 +147,7 @@ export function createAttemptResponseObservation(options: {
         ...(raw && maxSseFramesPerRead !== undefined ? { maxSseFramesPerRead } : {}),
         ...(raw && contentEncoding !== undefined ? { contentEncoding } : {}),
         ...(sendCount === 0 ? {} : { httpSends: sendCount }),
+        ...(endpoint === undefined ? {} : endpoint),
       };
     },
   };

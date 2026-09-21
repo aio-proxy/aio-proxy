@@ -84,7 +84,7 @@ async function harness(rawRequest: Request = inbound()): Promise<Harness> {
     routingContinuity: { updatesAffinity: false },
     sessionIdentity: resolution.identity,
     streamRequested: false,
-    emitter: createAttemptEmitter({ session, streamRequested: false, capability: 'evaluation' }),
+    emitter: createAttemptEmitter({ session, capability: 'evaluation' }),
     release: () => {},
     deferRelease: () => {},
     logFailure: () => {},

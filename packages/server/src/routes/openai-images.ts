@@ -10,6 +10,7 @@ export function createOpenAIImagesRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAIImagesAdapter,
         context: { operation: 'generations' },
+        httpRoute: '/v1/images/generations',
         rawRequest: context.req.raw,
         source,
       }),
@@ -18,6 +19,7 @@ export function createOpenAIImagesRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAIImagesAdapter,
         context: { operation: 'edits' },
+        httpRoute: '/v1/images/edits',
         rawRequest: context.req.raw,
         source,
       }),

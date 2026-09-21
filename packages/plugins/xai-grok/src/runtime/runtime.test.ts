@@ -62,6 +62,7 @@ describe('xAI Grok runtime', () => {
       fetch: globalThis.fetch,
     });
     expect(runtime.provider.specificationVersion).toBe('v4');
+    expect(runtime.genAiProviderName).toBe('xai');
     expect(runtime.provider.languageModel('grok-4.5').modelId).toBe('grok-4.5');
     expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'grok-4.5' })).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'openai-video', modelId: 'grok-imagine-video' })).toBeDefined();

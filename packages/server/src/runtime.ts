@@ -156,6 +156,7 @@ export type TranscriptionTransport = {
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;
 type RuntimeProviderBase = {
   readonly id: string;
+  readonly genAiProviderName?: string;
   readonly kind: ProviderKind;
   readonly enabled: boolean;
   readonly priority?: number;

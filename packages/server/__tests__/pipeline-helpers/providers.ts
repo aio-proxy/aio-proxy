@@ -48,6 +48,7 @@ function seedEmptyPriceCatalog(): void {
 }
 
 export function rawProvider(options: {
+  readonly genAiProviderName?: string;
   readonly id: string;
   readonly invoke?: RawTransport['invoke'];
   readonly model?: {
@@ -72,6 +73,7 @@ export function rawProvider(options: {
     baseURL: `https://${options.id}.example.test/v1`,
     capabilityIndex: languageCapabilityIndex(modelId),
     enabled: true,
+    ...(options.genAiProviderName === undefined ? {} : { genAiProviderName: options.genAiProviderName }),
     id: options.id,
     kind: ProviderKind.Api,
     passthrough: rawInvoke,
@@ -85,6 +87,7 @@ export function rawProvider(options: {
 
 export function modelProvider(options: {
   readonly ensureAvailable?: () => Promise<void>;
+  readonly genAiProviderName?: string;
   readonly id: string;
   readonly invoke: ModelTransport['invoke'];
   readonly modelId?: string;
@@ -99,6 +102,7 @@ export function modelProvider(options: {
     alias: routeAlias(modelId),
     capabilityIndex: languageCapabilityIndex(modelId),
     enabled: true,
+    ...(options.genAiProviderName === undefined ? {} : { genAiProviderName: options.genAiProviderName }),
     id: options.id,
     invoke: model.invoke,
     kind: ProviderKind.AiSdk,

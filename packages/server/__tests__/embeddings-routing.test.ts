@@ -66,7 +66,7 @@ describe('embeddings HTTP dispatch matrix', () => {
     expect(first.calls).toEqual({ model: 0, raw: 0, embed: 0 });
     expect(second.calls).toEqual({ model: 0, raw: 1, embed: 0 });
     expect(await recordedAttempts(home)).toEqual([
-      expect.objectContaining({ outcome: 'failure', providerId: 'anthropic', statusCode: 501 }),
+      expect.objectContaining({ outcome: 'failure', providerId: 'anthropic' }),
       expect.objectContaining({ outcome: 'success', providerId: 'compatible' }),
     ]);
   });

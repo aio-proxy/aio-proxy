@@ -83,7 +83,7 @@ function toAttempt(span: DashboardTraceSpan): RecordedAttempt {
   return {
     index: num(attrs, 'aio_proxy.attempt.index') ?? 0,
     providerId: str(attrs, 'aio_proxy.provider.id') ?? '',
-    modelId: str(attrs, 'aio_proxy.attempt.model_id') ?? '',
+    modelId: str(attrs, 'gen_ai.request.model') ?? str(attrs, 'aio_proxy.attempt.model_id') ?? '',
     providerKind: str(attrs, 'aio_proxy.provider.kind') ?? '',
     outcome: (span.terminationReason ?? 'success') as RecordedAttempt['outcome'],
     durationMs: span.durationMs,

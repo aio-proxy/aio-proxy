@@ -84,6 +84,7 @@ export function routingSpanAttributes(
 // shaping helpers and the attempt-span emitter. Independent of the recorder.
 export type AttemptInfo = AttemptTraceMetadata & {
   readonly providerId: string;
+  readonly genAiProviderName?: string;
   readonly modelId: string;
   readonly providerKind: RuntimeProviderInstance['kind'];
   readonly protocol?: ProviderProtocol;
@@ -99,6 +100,7 @@ export function attemptBase(
   return {
     ...metadata,
     providerId: provider.id,
+    ...(provider.genAiProviderName === undefined ? {} : { genAiProviderName: provider.genAiProviderName }),
     modelId,
     providerKind: provider.kind,
     ...(metadata.targetProtocol === undefined ? {} : { protocol: metadata.targetProtocol }),

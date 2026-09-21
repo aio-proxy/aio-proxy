@@ -17,6 +17,7 @@ export async function createOpenRouterRuntime(
     compatibility: 'strict',
   });
   return {
+    genAiProviderName: 'openrouter',
     provider: {
       specificationVersion: 'v4',
       languageModel: ((modelId: string) =>

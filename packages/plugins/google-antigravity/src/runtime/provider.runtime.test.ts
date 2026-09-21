@@ -29,6 +29,7 @@ describe('Google Antigravity ProviderV4', () => {
     } as never);
 
     expect(result.content).toContainEqual(expect.objectContaining({ type: 'text', text: 'runtime' }));
+    expect(runtime.genAiProviderName).toBe('gcp.gemini');
     expect(envelope).toMatchObject({
       model: 'claude-sonnet-4-6',
       request: {

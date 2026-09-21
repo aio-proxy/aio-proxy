@@ -37,7 +37,7 @@ describe('shared protocol routing pipeline raw exception logging', () => {
     expect(primary.calls.raw).toHaveLength(1);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: 200 },
     ]);
     expect(harness.logs).toContainEqual(

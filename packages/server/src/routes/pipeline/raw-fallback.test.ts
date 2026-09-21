@@ -23,7 +23,7 @@ describe('shared protocol routing pipeline raw fallback', () => {
     expect(primary.calls.raw).toHaveLength(1);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: status },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: 200 },
     ]);
     expect(harness.recording.finals[0]).toEqual(
@@ -66,7 +66,7 @@ describe('shared protocol routing pipeline raw fallback', () => {
     await settleRecording(harness.recording);
     expect(cancelCalls).toBe(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 503 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: 200 },
     ]);
   });

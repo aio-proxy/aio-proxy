@@ -1,5 +1,5 @@
 import type { InboundCapability } from '@aio-proxy/core';
-import { ProviderProtocol, type UsageRow } from '@aio-proxy/types';
+import type { UsageRow } from '@aio-proxy/types';
 import { type Attributes, SpanKind } from '@opentelemetry/api';
 
 import { attributeName, type RequestTraceFinishInput, type RequestTraceSession } from '../../../../request-tracing';
@@ -25,44 +25,12 @@ const OPERATION_NAME: Record<InboundCapability, string> = {
   evaluation: 'evaluation',
 };
 
-// gen_ai.provider.name discriminates the telemetry FORMAT flavour, not our
-// provider id: the convention says it "may differ from the actual upstream
-// provider ... configured against a proxy". So it maps from the wire protocol we
-// actually spoke -- an openai-compatible upstream emits OpenAI-shaped telemetry
-// whoever runs it. Our own key stays on aio_proxy.attempt.provider_id.
-//
-// Attached alongside aio_proxy.protocol.target: at span creation when the
-// protocol is already known (raw passthrough), or later in attempt/model.ts
-// after prepare resolves it. A protocol we cannot name leaves the attribute
-// off -- it is an aggregation discriminator, so a wrong value is worse than
-// a missing one.
-const PROVIDER_NAME: Record<ProviderProtocol, string | undefined> = {
-  [ProviderProtocol.Anthropic]: 'anthropic',
-  [ProviderProtocol.OpenAIResponse]: 'openai',
-  [ProviderProtocol.OpenAICompatible]: 'openai',
-  [ProviderProtocol.OpenAIImage]: 'openai',
-  [ProviderProtocol.OpenAIAudio]: 'openai',
-  [ProviderProtocol.OpenAIVideo]: 'openai',
-  [ProviderProtocol.Gemini]: 'gcp.gemini',
-  [ProviderProtocol.GeminiInteractions]: 'gcp.gemini',
-  // System One is not a well-known telemetry flavour. Naming it `openai` (or
-  // anything else) would mix evaluation hops into another vendor's series.
-  [ProviderProtocol.TypeSafeSystemOne]: undefined,
-};
-
-// Exported so attempt/model.ts can attach it after prepare, the first moment
-// the protocol is known on the model path.
-export function genAiProviderNameFor(protocol: ProviderProtocol): string | undefined {
-  return PROVIDER_NAME[protocol];
-}
-
 function usageAttributes(usage: UsageRow): Attributes {
   const pairs: ReadonlyArray<readonly [string, number | undefined]> = [
     [attributeName.genAiUsageInputTokens, usage.inputTokens],
     [attributeName.genAiUsageOutputTokens, usage.outputTokens],
-    [attributeName.genAiUsageTotalTokens, usage.totalTokens],
     [attributeName.genAiUsageCacheReadTokens, usage.cacheReadTokens],
-    [attributeName.genAiUsageCacheWriteTokens, usage.cacheWriteTokens],
+    [attributeName.genAiUsageCacheCreationTokens, usage.cacheWriteTokens],
     [attributeName.genAiUsageReasoningTokens, usage.reasoningTokens],
   ];
   return Object.fromEntries(pairs.filter(([, value]) => value !== undefined));
@@ -87,7 +55,7 @@ export type AttemptOutcomeFacts = {
 };
 
 export type AttemptEmitter = {
-  readonly startAttempt: (base: AttemptInfo, index: number, httpStatus?: number) => OpenSpan;
+  readonly startAttempt: (base: AttemptInfo, index: number, upstreamStream?: boolean) => OpenSpan;
   readonly endAttempt: (
     span: OpenSpan,
     observation: AttemptResponseObservation,
@@ -112,7 +80,6 @@ export type AttemptEmitter = {
 
 export type AttemptEmitterOptions = {
   readonly session: RequestTraceSession;
-  readonly streamRequested: boolean;
   readonly capability: InboundCapability;
   // Reports each finished attempt's duration up to the logical-operation layer,
   // which uses it for aio_proxy.inference.attempt_count / failover_ms.
@@ -125,15 +92,9 @@ export type AttemptEmitterOptions = {
 // inside a single span and show up as several POST children -- the convention
 // says a span "SHOULD cover the duration of the logical operation with all
 // retries", and a retry is the same call, whereas a different provider is not.
-export function createAttemptEmitter({
-  session,
-  streamRequested,
-  capability,
-  onAttemptEnd,
-}: AttemptEmitterOptions): AttemptEmitter {
+export function createAttemptEmitter({ session, capability, onAttemptEnd }: AttemptEmitterOptions): AttemptEmitter {
   const startedAt = new WeakMap<OpenSpan, number>();
-  const startAttempt = (base: AttemptInfo, index: number, httpStatus?: number): OpenSpan => {
-    const providerName = base.targetProtocol === undefined ? undefined : genAiProviderNameFor(base.targetProtocol);
+  const startAttempt = (base: AttemptInfo, index: number, upstreamStream?: boolean): OpenSpan => {
     const span = startPipelineSpan(session.rootContext, `${OPERATION_NAME[capability]} ${base.modelId}`, {
       kind: SpanKind.CLIENT,
       attributes: {
@@ -142,15 +103,13 @@ export function createAttemptEmitter({
         [attributeName.attemptIndex]: index,
         [attributeName.providerId]: base.providerId,
         [attributeName.providerKind]: base.providerKind,
-        [attributeName.attemptModelId]: base.modelId,
-        [attributeName.stream]: streamRequested,
+        ...(upstreamStream === undefined ? {} : { [attributeName.genAiRequestStream]: upstreamStream }),
         ...routingSpanAttributes(base),
         ...(base.transport === undefined ? {} : { [attributeName.transport]: base.transport }),
         [attributeName.sourceProtocol]: base.sourceProtocol,
         ...(base.targetProtocol === undefined ? {} : { [attributeName.targetProtocol]: base.targetProtocol }),
-        ...(providerName === undefined ? {} : { [attributeName.genAiProviderName]: providerName }),
+        ...(base.genAiProviderName === undefined ? {} : { [attributeName.genAiProviderName]: base.genAiProviderName }),
         [attributeName.selectionReason]: base.selectionReason,
-        ...(httpStatus === undefined ? {} : { [attributeName.httpStatusCode]: httpStatus }),
       },
     });
     startedAt.set(span, performance.now());
@@ -165,9 +124,6 @@ export function createAttemptEmitter({
     const snapshot = observation.snapshot();
     if (snapshot.transportObservation !== undefined) {
       attemptSpan.span.setAttribute(attributeName.transportObservation, snapshot.transportObservation);
-    }
-    if (snapshot.upstreamHeadersMs !== undefined) {
-      attemptSpan.span.setAttribute(attributeName.upstreamHeadersMs, snapshot.upstreamHeadersMs);
     }
     if (snapshot.firstUpstreamByteMs !== undefined) {
       attemptSpan.span.setAttribute(attributeName.firstUpstreamByteMs, snapshot.firstUpstreamByteMs);
@@ -184,8 +140,14 @@ export function createAttemptEmitter({
     if (snapshot.contentEncoding !== undefined) {
       attemptSpan.span.setAttribute(attributeName.contentEncoding, snapshot.contentEncoding);
     }
+    if (snapshot.serverAddress !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.serverAddress, snapshot.serverAddress);
+    }
+    if (snapshot.serverPort !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.serverPort, snapshot.serverPort);
+    }
     if (snapshot.firstContentMs !== undefined) {
-      attemptSpan.span.setAttribute(attributeName.attemptTtftMs, snapshot.firstContentMs);
+      attemptSpan.span.setAttribute(attributeName.genAiTimeToFirstChunk, snapshot.firstContentMs / 1000);
     }
     // How many HTTP sends this one attempt actually made. >1 means same-provider
     // retries happened underneath: raw-retry's hidden replay (at most one), or
@@ -206,7 +168,8 @@ export function createAttemptEmitter({
     }
     const begun = startedAt.get(attemptSpan);
     if (begun !== undefined) onAttemptEnd?.(Math.max(0, performance.now() - begun));
-    attemptSpan.end(terminal);
+    const { httpStatus: _httpStatus, ...providerTerminal } = terminal;
+    attemptSpan.end(providerTerminal);
   };
   return {
     startAttempt,

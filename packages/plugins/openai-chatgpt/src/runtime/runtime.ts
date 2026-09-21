@@ -32,6 +32,7 @@ export async function createOpenAIChatGPTRuntime(
   });
 
   return {
+    genAiProviderName: 'openai',
     provider: {
       specificationVersion: 'v4',
       languageModel: (modelId) => openAI.languageModel(modelId),

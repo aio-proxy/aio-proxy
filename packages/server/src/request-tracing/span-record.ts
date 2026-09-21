@@ -37,13 +37,14 @@ function sanitizeLinks(links: readonly Link[]): SpanLinkJson[] {
   }));
 }
 
-export function spanToRecord(span: ReadableSpan): StoredSpan {
+export function spanToRecord(span: ReadableSpan, startSequence?: number): StoredSpan {
   const ctx = span.spanContext();
   const parentSpanId = span.parentSpanContext?.spanId;
   return {
     traceId: ctx.traceId,
     spanId: ctx.spanId,
     ...(parentSpanId !== undefined ? { parentSpanId } : {}),
+    ...(startSequence === undefined ? {} : { startSequence }),
     name: span.name,
     kind: span.kind as SpanKind,
     startedAt: new Date(epochMilliseconds(span.startTime)),

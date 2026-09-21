@@ -4,6 +4,7 @@ export {
   withAttemptResponseObservation,
 } from './response-observation';
 export type {
+  AttemptResponseEndpoint,
   AttemptResponseObservation,
   AttemptResponseSnapshot,
   ResponseBodyObservation,

@@ -149,6 +149,22 @@ describe('layoutTraceSpans', () => {
     ).toEqual(['root', 'route', 'parse']);
   });
 
+  test('orders same-millisecond siblings by persisted start sequence before span id', () => {
+    const root = { ...span('root', '2026-07-12T08:00:00.000Z', '2026-07-12T08:00:00.100Z'), startSequence: 0 };
+    const first = {
+      ...span('z-first', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.020Z', 'root'),
+      startSequence: 1,
+    };
+    const second = {
+      ...span('a-second', '2026-07-12T08:00:00.010Z', '2026-07-12T08:00:00.020Z', 'root'),
+      startSequence: 2,
+    };
+
+    expect(
+      layoutTraceSpans([root, second, first], new Date('2026-07-12T08:00:01.000Z')).map((row) => row.spanId),
+    ).toEqual(['root', 'z-first', 'a-second']);
+  });
+
   // 走在子进程里，因为这条测试守的是「不死循环」：删掉 measureDepths 里那句
   // `seen.add(parent.spanId)`，挂在环下面的 span 会让向上走的循环永不退出。那是同步循环，
   // 同进程的 test timeout 救不了它 —— 事件循环被占住，整个 suite 卡死。子进程 + SIGKILL

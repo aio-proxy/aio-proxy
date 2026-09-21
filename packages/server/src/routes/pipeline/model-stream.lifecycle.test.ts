@@ -21,7 +21,7 @@ import {
   textStream,
   textThenErrorStream,
 } from '../../../__tests__/pipeline-helpers';
-import { attributeName, spanName } from '../../request-tracing';
+import { attributeName } from '../../request-tracing';
 import { handleProtocolRequest } from './index';
 import { attemptsOf, pipeline } from './test-support';
 
@@ -38,7 +38,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(primary.calls.model).toHaveLength(1);
     expect(backup.calls.model).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.usage.capturedStreams.every((stream) => !stream.locked)).toBe(true);
@@ -79,8 +79,8 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     await settleRecording(harness.recording);
 
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
-    const root = harness.recording.spans.find((span) => span.name === spanName.request);
-    expect(root?.attributes[attributeName.diagnosticResponseContentType]).toBe('text/event-stream; charset=utf-8');
+    const root = harness.recording.spans.find((span) => span.parentSpanId === undefined);
+    expect(root?.attributes[attributeName.httpResponseContentType]).toEqual(['text/event-stream; charset=utf-8']);
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: 'provider', outcome: 'success' }),
     );
@@ -183,7 +183,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(attempt?.ttftMs).toBeGreaterThanOrEqual(0);
   });
 
-  test('records stream=false and a numeric ttft for a buffered upstream model stream', async () => {
+  test('records the streaming upstream call for a buffered client response', async () => {
     const provider = modelProvider({ id: 'provider', invoke: () => textStream('hello') });
     const harness = pipeline([provider]);
 
@@ -192,7 +192,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     await settleRecording(harness.recording);
 
     const attempt = harness.recording.attempts[0];
-    expect(attempt?.stream).toBe(false);
+    expect(attempt?.stream).toBe(true);
     expect(typeof attempt?.ttftMs).toBe('number');
     expect(attempt?.ttftMs).toBeGreaterThanOrEqual(0);
   });
@@ -242,7 +242,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(primary.calls.model).toHaveLength(1);
     expect(backup.calls.model).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.usage.capturedStreams.every((stream) => !stream.locked)).toBe(true);

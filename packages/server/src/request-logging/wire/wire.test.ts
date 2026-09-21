@@ -52,6 +52,7 @@ test('observes controlled identity SSE without enabling debug body logs', async 
     maxSseFramesPerRead: 2,
     contentEncoding: 'identity',
     httpSends: 1,
+    serverAddress: 'upstream.test',
   });
 });
 
@@ -82,6 +83,7 @@ test('does not map compressed source reads to decoded SSE frames', async () => {
     firstUpstreamByteMs: 20,
     contentEncoding: 'gzip',
     httpSends: 1,
+    serverAddress: 'upstream.test',
   });
 });
 
@@ -94,7 +96,12 @@ test('records non-stream headers without controlled body metrics', async () => {
   const response = await withAttemptResponseObservation(observation, () => fetcher('https://upstream.test'));
   await response.text();
 
-  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10, httpSends: 1 });
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'body',
+    upstreamHeadersMs: 10,
+    httpSends: 1,
+    serverAddress: 'upstream.test',
+  });
 });
 
 test('marks two resolved fetch responses as ambiguous', async () => {
@@ -107,7 +114,11 @@ test('marks two resolved fetch responses as ambiguous', async () => {
   });
 
   // 同一 attempt 内两次 fetch —— httpSends 数到 2 正是同 provider 重试的可见证据。
-  expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', httpSends: 2 });
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'ambiguous',
+    httpSends: 2,
+    serverAddress: 'upstream.test',
+  });
 });
 
 test('does not let response metric failures alter the fetch response', async () => {
@@ -525,6 +536,47 @@ test('the upstream span is named after the request method, normalized', async ()
   });
 });
 
+test('an explicit upstream template names the span and redacts url.full', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 200 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withRequestLogContext({ requestId: 'request-1', debug: false, logger: () => {} }, () =>
+      withAttemptLogContext(
+        {
+          attemptIndex: 0,
+          providerId: 'provider-a',
+          modelId: 'model-a',
+          urlTemplate: '/v1/responses',
+        },
+        () =>
+          fetcher(
+            new Request('https://user:password@upstream.test/v1/responses?key=secret&visible=value', {
+              method: 'POST',
+            }),
+          ),
+      ),
+    ),
+  );
+  parent.end();
+
+  const upstream = processor.take(traceId).find((span) => span.name === 'POST /v1/responses');
+  expect(upstream?.attributes).toMatchObject({
+    'http.request.method': 'POST',
+    'url.template': '/v1/responses',
+    'url.full': 'https://upstream.test/v1/responses?key=REDACTED&visible=REDACTED',
+    'url.path': '/v1/responses',
+    'server.address': 'upstream.test',
+    'http.response.status_code': 200,
+  });
+  expect(typeof upstream?.attributes['aio_proxy.upstream.headers_ms']).toBe('number');
+  expect(JSON.stringify(upstream?.attributes)).not.toContain('password');
+  expect(JSON.stringify(upstream?.attributes)).not.toContain('secret');
+});
+
 // URL 认证是真实形状（Google 的 ?key=、各家的 ?api_key=），而 header 那份名单保护不到它。
 // 抓包接口把记下的 URL 原样送进浏览器，所以这里漏一个就是把可直接冒用的凭据交出去。
 test('redacts credential query parameters from captured urls', async () => {
@@ -566,6 +618,7 @@ test('splits the upstream port out of server.address', async () => {
   const post = processor.take(traceId).find((span) => span.name === 'GET');
   expect(post?.attributes['server.address']).toBe('provider.example');
   expect(post?.attributes['server.port']).toBe(8443);
+  expect(observation.snapshot()).toMatchObject({ serverAddress: 'provider.example', serverPort: 8443 });
 });
 
 test('omits server.port on the default port and unwraps an IPv6 address', async () => {

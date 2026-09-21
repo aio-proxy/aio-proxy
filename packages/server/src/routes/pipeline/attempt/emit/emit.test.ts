@@ -7,7 +7,7 @@ import { attributeName, createRequestTraceRecorder } from '../../../../request-t
 import { createAttemptResponseObservation } from '../../../../response-observation';
 import type { AttemptInfo } from '../../attempt-base';
 import { failureTerminal } from '../../failure';
-import { createAttemptEmitter, genAiProviderNameFor } from './emit';
+import { createAttemptEmitter } from './emit';
 
 const base: AttemptInfo = {
   routingContractVersion: 2,
@@ -25,7 +25,7 @@ const base: AttemptInfo = {
   durationMs: 7,
 };
 
-test('a failed attempt span carries the observed time to first content', () => {
+test('a failed attempt span carries provider TTFT in seconds under the standard key', () => {
   const completions: TraceCompletion[] = [];
   const recorder = createRequestTraceRecorder({
     store: {
@@ -42,7 +42,7 @@ test('a failed attempt span carries the observed time to first content', () => {
     inboundRequest: new Request('http://localhost'),
     inboundProtocol: 'openai-chat',
   });
-  const emitter = createAttemptEmitter({ session, streamRequested: true, capability: 'language' });
+  const emitter = createAttemptEmitter({ session, capability: 'language' });
   const observation = createAttemptResponseObservation({ startedAt: 100, now: () => 100 });
   observation.observeFetchStart();
   observation.observeResponse(new Response('body'), { controlledStream: false });
@@ -52,7 +52,8 @@ test('a failed attempt span carries the observed time to first content', () => {
   session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
 
   const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
-  expect(attempt?.attributes[attributeName.attemptTtftMs]).toBe(60);
+  expect(attempt?.attributes[attributeName.genAiTimeToFirstChunk]).toBe(0.06);
+  expect(attempt?.attributes[attributeName.attemptTtftMs]).toBeUndefined();
 });
 
 test('an evaluation attempt is named as evaluation, not as chat', () => {
@@ -72,7 +73,7 @@ test('an evaluation attempt is named as evaluation, not as chat', () => {
     inboundRequest: new Request('http://localhost'),
     inboundProtocol: 'typesafe-systemone',
   });
-  const emitter = createAttemptEmitter({ session, streamRequested: false, capability: 'evaluation' });
+  const emitter = createAttemptEmitter({ session, capability: 'evaluation' });
   const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
 
   emitter.emitAttempt(base, 0, observation, failureTerminal(502, 'upstream_error'));
@@ -83,12 +84,7 @@ test('an evaluation attempt is named as evaluation, not as chat', () => {
   expect(attempt?.attributes[attributeName.genAiOperationName]).toBe('evaluation');
 });
 
-test('does not label System One as a well-known gen_ai provider', () => {
-  // A wrong well-known value would fold evaluation hops into another vendor's series.
-  expect(genAiProviderNameFor(ProviderProtocol.TypeSafeSystemOne)).toBeUndefined();
-});
-
-test('a known target protocol labels gen_ai.provider.name at span creation', () => {
+test('a generic provider does not derive gen_ai.provider.name from its target protocol', () => {
   const completions: TraceCompletion[] = [];
   const recorder = createRequestTraceRecorder({
     store: {
@@ -105,7 +101,7 @@ test('a known target protocol labels gen_ai.provider.name at span creation', () 
     inboundRequest: new Request('http://localhost'),
     inboundProtocol: 'openai-chat',
   });
-  const emitter = createAttemptEmitter({ session, streamRequested: false, capability: 'language' });
+  const emitter = createAttemptEmitter({ session, capability: 'language' });
   const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
 
   emitter.emitAttempt(
@@ -117,11 +113,11 @@ test('a known target protocol labels gen_ai.provider.name at span creation', () 
   session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
 
   const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
-  expect(attempt?.attributes[attributeName.genAiProviderName]).toBe('openai');
+  expect(attempt?.attributes[attributeName.genAiProviderName]).toBeUndefined();
   expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.OpenAICompatible);
 });
 
-test('a known but unnamed target protocol still omits gen_ai.provider.name', () => {
+test('an explicitly named runtime attaches gen_ai.provider.name independently of protocol', () => {
   const completions: TraceCompletion[] = [];
   const recorder = createRequestTraceRecorder({
     store: {
@@ -138,11 +134,13 @@ test('a known but unnamed target protocol still omits gen_ai.provider.name', () 
     inboundRequest: new Request('http://localhost'),
     inboundProtocol: 'typesafe-systemone',
   });
-  const emitter = createAttemptEmitter({ session, streamRequested: false, capability: 'evaluation' });
+  const emitter = createAttemptEmitter({ session, capability: 'evaluation' });
   const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
 
   emitter.emitAttempt(
-    { ...base, targetProtocol: ProviderProtocol.TypeSafeSystemOne },
+    { ...base, genAiProviderName: 'openrouter', targetProtocol: ProviderProtocol.OpenAICompatible } as AttemptInfo & {
+      readonly genAiProviderName: string;
+    },
     0,
     observation,
     failureTerminal(502, 'upstream_error'),
@@ -150,6 +148,35 @@ test('a known but unnamed target protocol still omits gen_ai.provider.name', () 
   session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
 
   const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
-  expect(attempt?.attributes[attributeName.genAiProviderName]).toBeUndefined();
-  expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.TypeSafeSystemOne);
+  expect(attempt?.attributes[attributeName.genAiProviderName]).toBe('openrouter');
+  expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.OpenAICompatible);
+});
+
+test('an unambiguous observed endpoint is attached to the provider inference span', () => {
+  const completions: TraceCompletion[] = [];
+  const recorder = createRequestTraceRecorder({
+    store: {
+      startRoot: () => {},
+      complete: (input: TraceCompletion) => {
+        completions.push(input);
+        return true;
+      },
+      prune: () => {},
+      recover: () => {},
+    },
+  });
+  const session = recorder.begin({
+    inboundRequest: new Request('http://localhost'),
+    inboundProtocol: 'openai-chat',
+  });
+  const emitter = createAttemptEmitter({ session, capability: 'language' });
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+  observation.observeFetchStart({ serverAddress: 'provider.test', serverPort: 8443 });
+
+  emitter.emitAttempt(base, 0, observation, failureTerminal(502, 'upstream_error'));
+  session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
+
+  const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
+  expect(attempt?.attributes[attributeName.serverAddress]).toBe('provider.test');
+  expect(attempt?.attributes[attributeName.serverPort]).toBe(8443);
 });

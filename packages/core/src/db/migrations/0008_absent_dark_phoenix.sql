@@ -1,0 +1,1 @@
+ALTER TABLE `trace_span` ADD `start_sequence` integer;

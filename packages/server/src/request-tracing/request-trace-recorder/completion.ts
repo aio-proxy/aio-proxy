@@ -21,8 +21,6 @@ export function applyTerminalAttributes(root: Span, finish: RequestTraceFinishIn
   // 会把一条 trace 读成两个 GENERATION。root 行的 model / usage 列来自 summary。
   if (finalProviderId !== undefined) root.setAttribute(attributeName.finalProviderId, finalProviderId);
   if (finish.finalHttpStatus !== undefined) root.setAttribute(attributeName.httpStatusCode, finish.finalHttpStatus);
-  if (finish.ttftMs !== undefined) root.setAttribute(attributeName.ttftMs, finish.ttftMs);
-
   if (finish.outcome === 'failure') {
     // HTTP 语义约定：SERVER span 的 4xx 是客户端错误，span status 保持 UNSET。
     // 只有 5xx 和拿不到状态码的内部失败才是服务端错误。DB summary 列照旧全写。

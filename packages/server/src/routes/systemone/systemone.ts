@@ -9,6 +9,7 @@ export function createSystemOneRoutes(source: ProviderRouteSource) {
     handleProtocolRequest({
       adapter: typeSafeSystemOneAdapter,
       context: {},
+      httpRoute: '/v1/systemone',
       rawRequest: context.req.raw,
       source,
     }),

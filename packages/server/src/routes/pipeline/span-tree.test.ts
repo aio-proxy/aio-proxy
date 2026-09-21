@@ -63,6 +63,10 @@ function inferenceSpanOf(spans: readonly StoredSpan[]): StoredSpan | undefined {
   return spans.find((span) => span.name === spanName.inference);
 }
 
+function rootSpanOf(spans: readonly StoredSpan[]): StoredSpan | undefined {
+  return spans.find((span) => span.parentSpanId === undefined);
+}
+
 // Each provider attempt IS an inference span now: CLIENT, named `{operation}
 // {model}` at runtime. Find them structurally — the CLIENT children of the
 // logical-operation layer. (The upstream HTTP CLIENT spans sit one level deeper,
@@ -84,8 +88,8 @@ test('parse, session and route spans hang directly under the root span', async (
   const { spans } = await runOnce();
   const spanTree = tree(spans);
 
-  expect(spanTree.parentNameOf(spanName.parse)).toBe(spanName.request);
-  expect(spanTree.parentNameOf(spanName.session)).toBe(spanName.request);
+  expect(spanTree.parentNameOf(spanName.parse)).toBe(rootSpanOf(spans)?.name);
+  expect(spanTree.parentNameOf(spanName.session)).toBe(rootSpanOf(spans)?.name);
   // 路由解析是「选出第一个候选」，属于逻辑操作的一部分，所以挂在它下面而不是 root 下。
   // 这也是路由失败时仍然有一条带 gen_ai.request.model 的 span 的原因。
   expect(spanTree.parentNameOf(spanName.route)).toBe(spanName.inference);
@@ -100,10 +104,10 @@ test('the route span records how many candidates survived capability filtering',
 test('the root span carries no gen_ai attributes', async () => {
   const { spans } = await runOnce();
 
-  const root = spans.find((span) => span.name === spanName.request);
+  const root = rootSpanOf(spans);
   expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
   expect(inferenceSpanOf(spans)?.attributes[attributeName.genAiRequestModel]).toBe(REQUESTED_MODEL);
-  expect(inferenceSpanOf(spans)?.attributes[attributeName.genAiResponseModel]).toBe('raw-model');
+  expect(inferenceSpanOf(spans)?.attributes[attributeName.genAiResponseModel]).toBeUndefined();
 });
 
 test('a settled usage row still leaves no gen_ai attributes on the root span', async () => {
@@ -120,7 +124,7 @@ test('a settled usage row still leaves no gen_ai attributes on the root span', a
   // 先钉住这一趟确实结算出了 usage。没有这条，下面的断言在 usage 为空时会空过 ——
   // runOnce() 的 raw 直通就是这种情况，删掉 usage setter 也照样绿。
   expect(harness.recording.finals[0]).toMatchObject({ usage: expect.objectContaining({ inputTokens: 3 }) });
-  const root = harness.recording.spans.find((span) => span.name === spanName.request);
+  const root = rootSpanOf(harness.recording.spans);
   expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
 });
 
@@ -201,7 +205,7 @@ test('every attempt hangs under the inference span, which hangs under the root',
   expect(inference).toBeDefined();
   // 逻辑操作层没有单一上游，所以是 INTERNAL，不是 inference span。
   expect(inference?.kind).toBe(SpanKind.INTERNAL);
-  expect(tree(spans).parentNameOf(spanName.inference)).toBe(spanName.request);
+  expect(tree(spans).parentNameOf(spanName.inference)).toBe(rootSpanOf(spans)?.name);
   const attempts = attemptSpansOf(spans);
   expect(attempts).toHaveLength(2);
   expect(attempts.map((span) => span.parentSpanId)).toEqual([inference?.spanId, inference?.spanId]);
@@ -224,15 +228,26 @@ test('the two layers split the gen_ai attributes by what each of them can honest
   for (const attempt of attempts) {
     expect(attempt.kind).toBe(SpanKind.CLIENT);
     expect(attempt.attributes[attributeName.genAiOperationName]).toBe('chat');
-    expect(attempt.attributes[attributeName.genAiRequestModel]).toBe(attempt.attributes[attributeName.attemptModelId]);
+    expect(attempt.attributes[attributeName.attemptModelId]).toBeUndefined();
   }
-  expect(attempts[0]?.attributes[attributeName.genAiRequestModel]).not.toBe(REQUESTED_MODEL);
+  expect(attempts.map((attempt) => attempt.attributes[attributeName.genAiRequestModel])).toEqual([
+    'primary-model',
+    'backup-model',
+  ]);
 });
 
 test('the logical-operation layer counts the providers it went through', async () => {
   const spans = await runFailover();
 
   expect(inferenceSpanOf(spans)?.attributes[attributeName.inferenceAttemptCount]).toBe(2);
+  expect(typeof inferenceSpanOf(spans)?.attributes[attributeName.inferenceFailoverMs]).toBe('number');
+});
+
+test('a successful single-provider operation omits failover duration', async () => {
+  const { spans } = await runOnce();
+
+  expect(inferenceSpanOf(spans)?.attributes[attributeName.inferenceAttemptCount]).toBe(1);
+  expect(inferenceSpanOf(spans)?.attributes[attributeName.inferenceFailoverMs]).toBeUndefined();
 });
 
 test('a failover that eventually succeeds leaves the inference span OK', async () => {
@@ -285,7 +300,7 @@ test('an unmapped provider throw still leaves an ended inference span behind', a
   expect(attemptSpansOf(spans).map((span) => span.parentSpanId)).toEqual([inference?.spanId]);
   // raw inference.end used to skip the layer attributes noteAttempt already counted.
   expect(inference?.attributes[attributeName.inferenceAttemptCount]).toBe(1);
-  expect(typeof inference?.attributes[attributeName.inferenceFailoverMs]).toBe('number');
+  expect(inference?.attributes[attributeName.inferenceFailoverMs]).toBeUndefined();
 });
 
 test('a request that settles as failure marks the inference span with the settled error', async () => {
@@ -301,7 +316,8 @@ test('a request that settles as failure marks the inference span with the settle
 
   expect(inference?.statusCode).toBe(SpanStatusCode.ERROR);
   expect(inference?.attributes[attributeName.errorCode]).toBe('invalid_request');
-  expect(inference?.attributes[attributeName.httpStatusCode]).toBe(400);
+  expect(inference?.attributes[attributeName.httpStatusCode]).toBeUndefined();
+  expect(attemptSpansOf(harness.recording.spans)[0]?.attributes[attributeName.httpStatusCode]).toBeUndefined();
 });
 
 test('prepare runs inside the attempt span, not before it', async () => {
@@ -367,7 +383,7 @@ test('a prepare throw still leaves an ended prepare span behind', async () => {
   // targetProtocol 在 materialize 抛之前就已经写下；漏挂的话失败那一跳没有厂商口味。
   const attempt = attemptSpansOf(harness.recording.spans)[0];
   expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.Anthropic);
-  expect(attempt?.attributes[attributeName.genAiProviderName]).toBe('anthropic');
+  expect(attempt?.attributes[attributeName.genAiProviderName]).toBeUndefined();
 });
 
 test('an unsupported invocation still leaves an ended prepare span under the attempt', async () => {
@@ -493,9 +509,10 @@ test('the inference span carries usage under the standard gen_ai names', async (
 
   expect(inference?.attributes[attributeName.genAiUsageInputTokens]).toBe(21);
   expect(inference?.attributes[attributeName.genAiUsageOutputTokens]).toBe(14);
-  expect(inference?.attributes[attributeName.genAiUsageTotalTokens]).toBe(35);
+  expect(inference?.attributes['gen_ai.usage.total_tokens']).toBeUndefined();
   expect(inference?.attributes['gen_ai.usage.cache_read.input_tokens']).toBe(7);
-  expect(inference?.attributes['gen_ai.usage.cache_write.input_tokens']).toBe(3);
+  expect(inference?.attributes['gen_ai.usage.cache_creation.input_tokens']).toBe(3);
+  expect(inference?.attributes['gen_ai.usage.cache_write.input_tokens']).toBeUndefined();
   expect(inference?.attributes['gen_ai.usage.reasoning.output_tokens']).toBe(5);
   // None of the invented names may survive.
   expect(inference?.attributes['gen_ai.usage.cache_read_tokens']).toBeUndefined();
@@ -518,7 +535,6 @@ test('the usage the inference span emits still lands in the trace-store token co
     inputTokens: 21,
     outputTokens: 14,
     reasoningTokens: 5,
-    totalTokens: 35,
   });
 });
 
@@ -542,7 +558,7 @@ function slowEmptyStream(delayMs: number): ModelEventStream {
   });
 }
 
-test('time_to_first_chunk is this span own start to its first chunk, in seconds', async () => {
+test('logical TTFT spans failover and is recorded in milliseconds', async () => {
   // The fixture lays down three intervals, in this order:
   //   burn  80ms  candidate 0 sleeps, yields nothing, fails
   //   delay 340ms candidate 1 sleeps, then emits the first chunk
@@ -566,11 +582,11 @@ test('time_to_first_chunk is this span own start to its first chunk, in seconds'
   const spans = harness.recording.spans;
   const inference = inferenceSpanOf(spans);
   // NaN if the attribute is missing, and every comparison below is then false.
-  const genAiMs = (inference?.attributes[attributeName.genAiTimeToFirstChunk] as number) * 1000;
+  const logicalTtftMs = inference?.attributes[attributeName.inferenceTtftMs] as number;
   // The attempt-origin TTFT, measured from candidate 1's dispatch: the burn is
   // not in it. Reusing this for the GenAI span is the tempting wrong move that
   // `firstChunkAt` exists to prevent.
-  const attemptMs = spans.find((span) => span.name === spanName.request)?.attributes[attributeName.ttftMs] as number;
+  const attemptMs = (attemptSpansOf(spans).at(-1)?.attributes[attributeName.genAiTimeToFirstChunk] as number) * 1000;
   const spanMs = (inference?.endedAt.getTime() ?? 0) - (inference?.startedAt.getTime() ?? 0);
   // The burn off attempt[0]'s own span and the tail as the inference span's
   // remainder — neither is read back from `genAiMs`, because the value under
@@ -588,11 +604,11 @@ test('time_to_first_chunk is this span own start to its first chunk, in seconds'
   expect(attemptMs).toBeGreaterThan(MIN_FIXTURE_INTERVAL_MS);
   expect(tailMs).toBeGreaterThan(MIN_FIXTURE_INTERVAL_MS);
   // Above the attempt origin: failover time counts.
-  expect(genAiMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS / 2);
+  expect(logicalTtftMs).toBeGreaterThan(attemptMs + FAILOVER_BURN_MS / 2);
   // Below the span's own duration: the tail does not count. This also excludes
   // the process origin (seconds of uptime) and a millisecond-valued attribute,
   // both of which land orders of magnitude above this ceiling.
-  expect(genAiMs).toBeLessThan(spanMs - STREAM_TAIL_MS / 2);
+  expect(logicalTtftMs).toBeLessThan(spanMs - STREAM_TAIL_MS / 2);
 });
 
 test('a settlement that failed after the first chunk still records its TTFT', async () => {
@@ -610,10 +626,10 @@ test('a settlement that failed after the first chunk still records its TTFT', as
 
   // Without this the assertion below would pass vacuously on a success path.
   expect(harness.recording.finals[0]).toMatchObject({ outcome: 'failure' });
-  expect(typeof inference?.attributes[attributeName.genAiTimeToFirstChunk]).toBe('number');
+  expect(typeof inference?.attributes[attributeName.inferenceTtftMs]).toBe('number');
 });
 
-test('the attempt span owns the gen_ai namespace, and keeps its own keys alongside', async () => {
+test('the attempt span owns provider GenAI facts without duplicate aio-proxy keys', async () => {
   const harness = pipeline([modelProvider({ id: 'primary', invoke: () => usageStream() })]);
   const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
   await response.text();
@@ -629,17 +645,29 @@ test('the attempt span owns the gen_ai namespace, and keeps its own keys alongsi
   // 这个夹具没有 targetProtocol，所以 provider.name 按设计**不写** —— 它是聚合的判别器，
   // 写错值比缺值更糟。有协议时写什么由下一条钉住。
   expect(attempt?.attributes[attributeName.genAiProviderName]).toBeUndefined();
-  // aio_proxy.attempt.* 与标准 key 并存不重复：provider_id 是用户自定义的配置 key，
-  // 与 gen_ai.provider.name 这个厂商判别值不是一回事。
-  expect(attempt?.attributes[attributeName.attemptModelId]).toBe('primary-model');
-  expect(typeof attempt?.attributes[attributeName.attemptTtftMs]).toBe('number');
+  expect(attempt?.attributes[attributeName.genAiRequestModel]).toBe('primary-model');
+  expect(attempt?.attributes[attributeName.genAiRequestStream]).toBe(true);
+  expect(typeof attempt?.attributes[attributeName.genAiTimeToFirstChunk]).toBe('number');
+  expect(attempt?.attributes[attributeName.attemptModelId]).toBeUndefined();
+  expect(attempt?.attributes[attributeName.attemptTtftMs]).toBeUndefined();
 });
 
-// provider.name 取的是**上游协议口味**，不是我们的 provider id —— 语义约定把它定义成
-// telemetry format 的判别器，还专门点名 proxy 场景说它可以与真实上游不同。
-test('gen_ai.provider.name comes from the protocol actually spoken, not our provider id', async () => {
+test('provider stream records the actual AI SDK call rather than the non-streaming client response mode', async () => {
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => usageStream() })]);
+  await (await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: false }))).text();
+  await settleRecording(harness.recording);
+
+  expect(attemptSpansOf(harness.recording.spans)[0]?.attributes[attributeName.genAiRequestStream]).toBe(true);
+});
+
+test('gen_ai.provider.name comes only from explicit runtime metadata', async () => {
   const harness = pipeline([
-    modelProvider({ id: 'primary', invoke: () => textStream('ok'), targetProtocol: ProviderProtocol.Anthropic }),
+    modelProvider({
+      id: 'primary',
+      genAiProviderName: 'anthropic',
+      invoke: () => textStream('ok'),
+      targetProtocol: ProviderProtocol.OpenAICompatible,
+    }),
   ]);
   await (await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }))).text();
   await settleRecording(harness.recording);
@@ -649,30 +677,36 @@ test('gen_ai.provider.name comes from the protocol actually spoken, not our prov
   expect(attempt?.attributes[attributeName.providerId]).toBe('primary');
 });
 
-test('a raw passthrough attempt records gen_ai.provider.name from the inbound protocol', async () => {
+test('a generic raw passthrough omits gen_ai.provider.name', async () => {
   const { spans } = await runOnce();
-  expect(attemptSpansOf(spans)[0]?.attributes[attributeName.genAiProviderName]).toBe('openai');
+  expect(attemptSpansOf(spans)[0]?.attributes[attributeName.genAiProviderName]).toBeUndefined();
 });
 
-test('the root span TTFT key still feeds the list page summary column', async () => {
-  // `completion.ts` writes request-level TTFT onto the root span under
-  // `attributeName.ttftMs`, and core's `rowToSummary` reads it back as a **literal**
-  // (`trace-queries.ts`, 'aio_proxy.response.ttft_ms') to fill the list page's TTFT
-  // column. Nothing else joins those two sides: every server-side reader goes through
-  // the constant and follows a rename, so renaming the value blanks the whole column
-  // with a fully green suite. This drives a real request and reads the number back out
-  // of the real store, so the two spellings have to keep agreeing.
+test('usage resolution is a root child only when usage validation runs', async () => {
+  const missing = await runOnce();
+  expect(missing.spans.some((span) => span.name === spanName.usageResolve)).toBe(false);
+
+  const harness = pipeline([modelProvider({ id: 'primary', invoke: () => usageStream() })]);
+  await (await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }))).text();
+  await settleRecording(harness.recording);
+  const root = rootSpanOf(harness.recording.spans);
+  const usage = harness.recording.spans.find((span) => span.name === spanName.usageResolve);
+
+  expect(usage?.parentSpanId).toBe(root?.spanId);
+  expect(usage?.statusCode).toBe(SpanStatusCode.UNSET);
+});
+
+test('the logical TTFT key feeds the list page summary column', async () => {
   const harness = pipeline([modelProvider({ id: 'primary', invoke: () => usageStream() })]);
   const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
   await response.text();
   await settleRecording(harness.recording);
   const spans = harness.recording.spans;
-  const root = spans.find((span) => span.parentSpanId === undefined);
+  const root = rootSpanOf(spans);
+  const inference = inferenceSpanOf(spans);
 
-  // Fixture self-check: this run really did settle a streamed TTFT onto the root span.
-  // Without it a fixture that produces none would leave the assertion below comparing
-  // undefined against undefined.
-  expect(typeof root?.attributes[attributeName.ttftMs]).toBe('number');
+  expect(root?.attributes[attributeName.ttftMs]).toBeUndefined();
+  expect(typeof inference?.attributes[attributeName.inferenceTtftMs]).toBe('number');
 
   const home = mkdtempSync(join(tmpdir(), 'aio-span-tree-ttft-'));
   const handle = openDb({ home });
@@ -698,11 +732,9 @@ test('the root span TTFT key still feeds the list page summary column', async ()
       summary: { finalProviderId: 'primary', finalModelId: 'primary-model', finalHttpStatus: 200 },
     });
 
-    // `ttftMs` is not a projected column — it survives only as this attribute in
-    // attributes_json, so a summary that still reports it proves the key round-tripped.
     const summary = store.find(root!.traceId)?.trace;
     expect(typeof summary?.ttftMs).toBe('number');
-    expect(summary?.ttftMs).toBe(root!.attributes[attributeName.ttftMs]);
+    expect(summary?.ttftMs).toBe(inference!.attributes[attributeName.inferenceTtftMs]);
   } finally {
     handle.close();
     rmSync(home, { recursive: true, force: true });

@@ -130,6 +130,75 @@ describe('trace store lifecycle', () => {
     }
   });
 
+  test('round-trips nullable start sequence without backfilling historical rows', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart({ startSequence: 0 }));
+      store.complete(
+        completion({
+          spans: [rootSpan({ startSequence: 0 }), attemptSpan({ startSequence: 1 })],
+        }),
+      );
+
+      expect(store.find(TRACE_ID)?.spans.map(({ startSequence }) => startSequence)).toEqual([0, 1]);
+
+      const mixedTraceId = 'e'.repeat(32);
+      const mixedRootSpanId = 'e'.repeat(16);
+      const mixedChildSpanId = 'd'.repeat(16);
+      store.startRoot(rootStart({ traceId: mixedTraceId, spanId: mixedRootSpanId, requestId: 'request-mixed' }));
+      store.complete(
+        completion({
+          traceId: mixedTraceId,
+          rootSpanId: mixedRootSpanId,
+          spans: [
+            rootSpan({
+              traceId: mixedTraceId,
+              spanId: mixedRootSpanId,
+              attributes: { 'aio_proxy.request.id': 'request-mixed' },
+            }),
+            attemptSpan({
+              traceId: mixedTraceId,
+              spanId: mixedChildSpanId,
+              parentSpanId: mixedRootSpanId,
+              startSequence: undefined,
+              startedAt: new Date(STARTED_AT.getTime() + 1),
+            }),
+          ],
+        }),
+      );
+      expect(store.find(mixedTraceId)?.spans.map(({ spanId }) => spanId)).toEqual([mixedRootSpanId, mixedChildSpanId]);
+
+      expect(
+        handle.db
+          .insert(traceSpan)
+          .values({
+            traceId: 'f'.repeat(32),
+            spanId: 'f'.repeat(16),
+            parentSpanId: null,
+            name: 'legacy',
+            kind: 1,
+            startedAt: STARTED_AT,
+            endedAt: ENDED_AT,
+            statusCode: 0,
+            attributes: {},
+            events: [],
+            links: [],
+          })
+          .run(),
+      ).toBeDefined();
+      expect(
+        handle.db
+          .select()
+          .from(traceSpan)
+          .all()
+          .find((row) => row.name === 'legacy')?.startSequence,
+      ).toBeNull();
+    } finally {
+      handle.close();
+    }
+  });
+
   test('rolls usage up under the requested model alias, not the upstream model', () => {
     const handle = openTestDb();
     try {
@@ -160,7 +229,7 @@ describe('trace store lifecycle', () => {
     }
   });
 
-  test('projects root stream intent and TTFT into trace summaries', () => {
+  test('projects root stream intent and logical inference TTFT into trace summaries', () => {
     const handle = openTestDb();
     try {
       const store = createTraceStore(handle.db);
@@ -173,14 +242,45 @@ describe('trace store lifecycle', () => {
                 'aio_proxy.request.id': 'request-a',
                 'aio_proxy.protocol.inbound': 'openai-compatible',
                 'aio_proxy.request.stream': true,
-                'aio_proxy.response.ttft_ms': 42,
               },
+            }),
+            attemptSpan({
+              name: 'aio_proxy.inference',
+              kind: 0,
+              attributes: { 'aio_proxy.inference.ttft_ms': 42 },
             }),
           ],
         }),
       );
 
       expect(store.find(TRACE_ID)?.trace).toMatchObject({ stream: true, ttftMs: 42 });
+      expect(store.list({ pageSize: 10 }).items[0]).toMatchObject({ stream: true, ttftMs: 42 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('keeps reading historical root TTFT attributes', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+      store.complete(
+        completion({
+          spans: [
+            rootSpan({
+              attributes: {
+                'aio_proxy.request.id': 'request-a',
+                'aio_proxy.protocol.inbound': 'openai-compatible',
+                'aio_proxy.response.ttft_ms': 24,
+              },
+            }),
+          ],
+        }),
+      );
+
+      expect(store.find(TRACE_ID)?.trace.ttftMs).toBe(24);
+      expect(store.list({ pageSize: 10 }).items[0]?.ttftMs).toBe(24);
     } finally {
       handle.close();
     }

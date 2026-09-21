@@ -39,6 +39,7 @@ export async function createXAIGrokRuntime(
     fetch: dynamicFetch,
   });
   return {
+    genAiProviderName: 'xai',
     provider: {
       specificationVersion: 'v4',
       languageModel: (modelId) => xaiCompatibleResponsesModel(openai.responses(modelId)),
