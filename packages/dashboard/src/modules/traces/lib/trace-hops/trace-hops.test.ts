@@ -302,6 +302,20 @@ test('does not let a still-running wire hop wipe a settled span chip', () => {
   expect(chips[1]).toMatchObject({ label: 'anthropic-primary', status: 'success' });
 });
 
+test('fills missing attempt chips from wire hops after an interrupted recovery', () => {
+  const chips = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, otelStatusCode: 'ERROR', terminationReason: 'interrupted' },
+    wireHops: [
+      { id: 'inbound', kind: 'inbound' },
+      { id: 'attempt-0', kind: 'attempt', attemptIndex: 0, providerId: 'anthropic-primary' },
+    ],
+  });
+
+  expect(chips.map((chip) => chip.id)).toEqual(['inbound', 'attempt-0']);
+  expect(chips[1]).toMatchObject({ label: 'anthropic-primary', status: 'running' });
+});
+
 test('keeps extra HTTP sends of a known attempt after the trace has settled', () => {
   const chips = toTraceHopChips({
     spans: [

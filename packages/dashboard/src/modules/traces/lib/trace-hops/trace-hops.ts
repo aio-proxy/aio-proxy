@@ -47,6 +47,7 @@ const stringAttribute = (span: DashboardTraceSpan, key: string): string | undefi
  *
  * 还在跑的调用链例外：子 span 要等结算才落盘，抓包却已经在写上游跳。这时把
  * `wireHops` 里还没有 chip 的 attempt 补进来，否则选择器只剩入站，正文看得到也点不到。
+ * 进程中断后恢复的也一样：根 span 被标成 interrupted，子 attempt span 丢了，抓包里的上游跳仍要进选择器。
  *
  * hop `id` 和服务端 `wire-log/build-hops.ts` 的口径一致（`inbound` / `attempt-${attemptIndex}`），
  * 抓包结果按它对号入座。`attemptIndex` 是 0 起数的原始值，给人看的序号由调用方加一。
@@ -84,7 +85,7 @@ export const toTraceHopChips = (input: {
       },
     ),
   ];
-  return mergeWireHops(chips, wireHops, trace.endedAt === null);
+  return mergeWireHops(chips, wireHops, trace.endedAt === null || trace.terminationReason === 'interrupted');
 };
 
 const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
