@@ -355,7 +355,9 @@ describe('trace detail page', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
     const table = screen.getByTestId('span-attribute-table');
-    fireEvent.click(within(table).getByRole('button', { name: /Attribute actions|属性操作/u }));
+    const sessionRow = within(table).getByText('aio_proxy.session.id').closest('div');
+    if (sessionRow === null) throw new Error('expected the session-id attribute row');
+    fireEvent.click(within(sessionRow).getByRole('button', { name: /Attribute actions|属性操作/u }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Add as filter|加为筛选条件/u }));
 
     expect(mocks.navigate).toHaveBeenCalledWith(
