@@ -108,14 +108,11 @@ test.each([
 });
 
 // 按词匹配的代价是可能误伤，所以反面也要钉住：这些名字含凭据词的**子串**但不是凭据。
-test.each(['keyword', 'monkey', 'tokenizer', 'authority', 'signal'])(
-  'keeps the ordinary parameter %s readable',
-  (name) => {
-    const metadata = requestMetadata(new Request(`https://upstream.test/v1?${name}=plain-value`));
+test.each(['keyword', 'tokenizer', 'authority', 'signal'])('keeps the ordinary parameter %s readable', (name) => {
+  const metadata = requestMetadata(new Request(`https://upstream.test/v1?${name}=plain-value`));
 
-    expect(metadata.url).toContain('plain-value');
-  },
-);
+  expect(metadata.url).toContain('plain-value');
+});
 
 // 读侧走的是同一个 isCredentialParam，但抓包接口读的是磁盘上**已经落盘**的旧行 —— 那些行是
 // camelCase 漏脱之前写的，明文就在里面。所以读侧这条断言不是重复，它保护的是历史数据。
@@ -178,11 +175,27 @@ test.each(['X-ClientSecret', 'X-AccessToken', 'X-AuthToken', 'X-RefreshToken', '
 
 // 后缀匹配的代价是可能误伤，所以短词 key / sig 刻意留在整词匹配里。这几个名字都以凭据词的
 // **子串**结尾或开头但不是凭据，掉了这条守卫就会把普通调试字段也打码。
-test.each(['monkey', 'keyword', 'tokenizer', 'authority', 'signal', 'design'])(
+// `monkey` 曾经在这份名单里，加 `key` 后缀之后它会被打码 —— 那是自觉付出的代价（见源码注释），
+// 不是回归。留下的这几个验的是「后缀 ≠ 子串」：它们**含**凭据词但不以之结尾。
+test.each(['keyword', 'tokenizer', 'authority', 'signal', 'design'])(
   'keeps the ordinary name %s readable under suffix matching',
   (name) => {
     const metadata = requestMetadata(new Request(`https://upstream.test/v1?${name}=plain-value`));
 
     expect(metadata.url).toContain('plain-value');
+  },
+);
+
+// `*Key` 结尾的复合名是最后一类漏网的：Headers 小写化后它们切不开，而 `key` 一度被排除在
+// 后缀表外。这几个都是真实上游用过的认证头形态。
+test.each(['X-SecretKey', 'X-PrivateKey', 'X-ClientKey', 'X-SigningKey', 'X-MasterKey'])(
+  'redacts the compact key-suffixed credential header %s',
+  (name) => {
+    const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
+
+    expect(Object.values(metadata.headers)).not.toContain('real-secret');
+    expect(Object.values(redactCredentialHeaders({ [name.toLowerCase()]: 'real-secret' }))).not.toContain(
+      'real-secret',
+    );
   },
 );

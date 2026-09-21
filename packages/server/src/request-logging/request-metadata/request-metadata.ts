@@ -44,11 +44,14 @@ const credentialHeaders = new Set([
  *
  * 但 camelCase 切词救不了 header：Fetch 的 `Headers` 在构造时就把名字小写化了，所以
  * `X-ClientSecret` 到这里已经是 `x-clientsecret`，大小写信息没了，切出来是 `clientsecret`
- * 一个整词。于是整词之外再判后缀 —— `CREDENTIAL_SUFFIXES` 只收长且无歧义的词，`key` 与
- * `sig` 不在其中：否则 `monkey`、`design` 之类会被误伤。
+ * 一个整词。于是整词之外再判后缀，覆盖这类切不开的复合名。
  *
- * 残留缺口：`key` 结尾的紧凑复合名（`secretkey`、`privatekey`）仍漏。要补就得把 `key` 放进
- * 后缀表，代价是 `monkey` 这种普通名也被打码 —— 按现有用例的取向没这么做。
+ * 后缀表收 `key` 是刻意的，代价是 `monkey`、`turnkey` 这种普通词也被打码 —— 按本文件开头
+ * 那条取舍（漏一个凭据的代价远高于多打一个调试字段），`X-SecretKey` / `X-PrivateKey` /
+ * `X-ClientKey` 这些真实存在的认证头必须命中。`sig` 仍留在整词匹配里：它太短，收进后缀会
+ * 连 `design`、`signal` 一起打掉，而这两个是真会出现的字段名。
+ *
+ * 后缀不等于子串：`keyword`、`tokenizer` 不以凭据词结尾，所以不受影响。
  */
 const credentialQueryWords = new Set([
   'key',
@@ -64,8 +67,8 @@ const credentialQueryWords = new Set([
   'credentials',
 ]);
 
-// 后缀匹配用的子集：短词（`key`、`sig`）留在整词匹配里，避免 `monkey` / `signal` 被误伤。
-const CREDENTIAL_SUFFIXES = [...credentialQueryWords].filter((word) => word !== 'key' && word !== 'sig');
+// 后缀匹配用的子集：只排掉 `sig`（太短，会连 `design` / `signal` 一起打掉）。
+const CREDENTIAL_SUFFIXES = [...credentialQueryWords].filter((word) => word !== 'sig');
 
 function isCredentialParam(name: string): boolean {
   return (
