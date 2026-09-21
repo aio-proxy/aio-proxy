@@ -246,6 +246,62 @@ test('keeps 4xx and cancelled wire hops out of the streamed running state', () =
   expect(cancelled[1]?.status).toBe('cancelled');
 });
 
+// 同一次尝试先 429 再成功时，attempt span 是成功的；同 id 的抓包跳不能丢掉，否则第一发还是绿点。
+test('uses the first send wire status when a later retry makes the attempt span succeed', () => {
+  const chips = toTraceHopChips({
+    spans: [
+      createSpan({
+        attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.provider.id': 'anthropic-primary' },
+      }),
+    ],
+    trace,
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'anthropic-primary',
+        response: { statusCode: 429 },
+      },
+      {
+        id: 'attempt-0.1',
+        kind: 'attempt',
+        attemptIndex: 0,
+        sendIndex: 1,
+        providerId: 'anthropic-primary',
+        response: { statusCode: 200, body: { text: '{}', outcome: 'complete' } },
+      },
+    ],
+  });
+
+  expect(chips.map((chip) => chip.id)).toEqual(['inbound', 'attempt-0', 'attempt-0.1']);
+  expect(chips[1]).toMatchObject({ label: 'anthropic-primary', status: 'failure' });
+  expect(chips[2]).toMatchObject({ status: 'success' });
+});
+
+test('does not let a still-running wire hop wipe a settled span chip', () => {
+  const chips = toTraceHopChips({
+    spans: [
+      createSpan({
+        attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.provider.id': 'anthropic-primary' },
+      }),
+    ],
+    trace,
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'anthropic-primary',
+        request: { body: { text: '{}', outcome: 'complete' } },
+        response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' } },
+      },
+    ],
+  });
+
+  expect(chips[1]).toMatchObject({ label: 'anthropic-primary', status: 'success' });
+});
+
 test('keeps extra HTTP sends of a known attempt after the trace has settled', () => {
   const chips = toTraceHopChips({
     spans: [

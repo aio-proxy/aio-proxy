@@ -102,16 +102,32 @@ const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
   return 'running';
 };
 
+const overlayWireStatus = (chip: TraceHopChip, hop: DashboardTraceWireHop): TraceHopChip => {
+  const status = wireHopStatus(hop);
+  // 还在跑的抓包不能盖掉已经结算的 span：流式响应一到 headers 就有 hop.response。
+  if (status === 'running' && chip.status !== 'running') return chip;
+  return status === chip.status ? chip : { ...chip, status };
+};
+
 const mergeWireHops = (
   chips: readonly TraceHopChip[],
   wireHops: readonly DashboardTraceWireHop[] | undefined,
-  live: boolean,
+  admitUnknownAttempts: boolean,
 ): readonly TraceHopChip[] => {
   if (wireHops === undefined || wireHops.length === 0) return chips;
-  const seen = new Set(chips.map((chip) => chip.id));
-  const knownAttempts = new Set(chips.map((chip) => chip.attemptIndex));
+  const hopById = new Map(wireHops.map((hop) => [hop.id, hop]));
+  const overlaid = chips.map((chip) => {
+    if (chip.kind !== 'attempt') return chip;
+    const hop = hopById.get(chip.id);
+    return hop === undefined ? chip : overlayWireStatus(chip, hop);
+  });
+  const seen = new Set(overlaid.map((chip) => chip.id));
+  const knownAttempts = new Set(overlaid.map((chip) => chip.attemptIndex));
   const extras = wireHops
-    .filter((hop) => hop.kind === 'attempt' && !seen.has(hop.id) && (live || knownAttempts.has(hop.attemptIndex)))
+    .filter(
+      (hop) =>
+        hop.kind === 'attempt' && !seen.has(hop.id) && (admitUnknownAttempts || knownAttempts.has(hop.attemptIndex)),
+    )
     .map((hop): TraceHopChip => ({
       id: hop.id,
       label: hop.providerId ?? hop.id,
@@ -120,12 +136,12 @@ const mergeWireHops = (
       sendIndex: hop.sendIndex,
       status: wireHopStatus(hop),
     }));
-  if (extras.length === 0) return chips;
-  const inbound = chips[0]!;
+  if (extras.length === 0) return overlaid;
+  const inbound = overlaid[0]!;
   return [
     inbound,
     ...sortBy(
-      [...chips.slice(1), ...extras],
+      [...overlaid.slice(1), ...extras],
       [(chip) => chip.attemptIndex ?? Number.MAX_SAFE_INTEGER, (chip) => chip.sendIndex ?? 0],
     ),
   ];
