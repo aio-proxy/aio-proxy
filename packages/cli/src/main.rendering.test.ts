@@ -82,6 +82,9 @@ describe('cli rendering', () => {
       );
       expect(endpoint.message).not.toContain('19000');
       expect(endpoint.message).not.toBe('Unexpected internal error');
+      const protocol = formatCliError(new Error('grok does not support inbound protocol responses'), 'en');
+      expect(protocol.message).toBe('grok does not support inbound protocol responses.');
+      expect(protocol.message).not.toBe('Unexpected internal error');
     } finally {
       await setLocale(originalLocale);
     }

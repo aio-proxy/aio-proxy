@@ -1,15 +1,27 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { AgentManagedMarkerSchema, AgentManagedStateV1Schema, type AgentManagedMarker } from '@aio-proxy/types';
+import {
+  AGENT_DEFAULT_INBOUND_PROTOCOL,
+  AGENT_MANAGED_PREFERENCES_FILE,
+  AgentManagedMarkerSchema,
+  AgentManagedPreferencesV1Schema,
+  AgentManagedStateV1Schema,
+  isAgentInboundProtocolSupported,
+  type AgentInboundProtocol,
+  type AgentManagedMarker,
+} from '@aio-proxy/types';
 
 import type { AgentPluginLocation } from '../hosts';
 
 const STALE_AFTER_MS = 600_000;
 
+export type LocalInboundProtocolSource = 'configured' | 'default' | 'invalid';
 export type LocalIntegrationStatus = {
   readonly integration: 'absent' | 'managed' | 'conflict';
   readonly marker?: AgentManagedMarker;
+  readonly inboundProtocol?: AgentInboundProtocol;
+  readonly inboundProtocolSource?: LocalInboundProtocolSource;
   readonly entry?: 'present' | 'missing';
   readonly catalog: 'fresh' | 'stale' | 'missing';
   readonly lastSuccessfulAt?: string;
@@ -33,6 +45,32 @@ const inspectPath = async (path: string) => {
   } catch (error) {
     if (isEnoent(error)) return undefined;
     throw error;
+  }
+};
+
+const readInboundProtocol = async (
+  managedDir: string,
+  target: AgentManagedMarker['agent'],
+): Promise<{
+  readonly inboundProtocol: AgentInboundProtocol;
+  readonly inboundProtocolSource: LocalInboundProtocolSource;
+}> => {
+  const fallback = AGENT_DEFAULT_INBOUND_PROTOCOL[target];
+  let raw: string;
+  try {
+    raw = await readFile(join(managedDir, AGENT_MANAGED_PREFERENCES_FILE), 'utf8');
+  } catch (error) {
+    if (isEnoent(error)) return { inboundProtocol: fallback, inboundProtocolSource: 'default' };
+    throw error;
+  }
+  try {
+    const parsed = AgentManagedPreferencesV1Schema.safeParse(JSON.parse(raw));
+    if (!parsed.success || !isAgentInboundProtocolSupported(target, parsed.data.inboundProtocol)) {
+      return { inboundProtocol: fallback, inboundProtocolSource: 'invalid' };
+    }
+    return { inboundProtocol: parsed.data.inboundProtocol, inboundProtocolSource: 'configured' };
+  } catch {
+    return { inboundProtocol: fallback, inboundProtocolSource: 'invalid' };
   }
 };
 
@@ -114,9 +152,11 @@ export async function inspectManagedInstallation(
   }
 
   const catalog = await readCatalog(location.managedDir, now);
+  const protocol = await readInboundProtocol(location.managedDir, marker.agent);
   return {
     integration: 'managed',
     marker,
+    ...protocol,
     ...(entry === undefined ? {} : { entry }),
     ...catalog,
   };

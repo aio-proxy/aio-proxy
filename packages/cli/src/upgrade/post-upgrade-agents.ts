@@ -154,6 +154,7 @@ export async function runAgentPostUpgrade(
         endpoint: status.marker.endpoint,
         adapterVersion: deps.adapterVersion,
         requestedInstallationId: status.marker.installationId,
+        inboundProtocol: status.inboundProtocol ?? 'chat-completions',
         readAssets: () => deps.readAssets(row.target),
         managedOnly: true,
       });

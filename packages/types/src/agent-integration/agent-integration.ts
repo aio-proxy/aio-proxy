@@ -51,6 +51,52 @@ export const AgentManagedMarkerSchema = z.strictObject({
 });
 export type AgentManagedMarker = z.output<typeof AgentManagedMarkerSchema>;
 
+export const AgentInboundProtocolSchema = z.enum(['chat-completions', 'responses', 'anthropic']);
+export type AgentInboundProtocol = z.output<typeof AgentInboundProtocolSchema>;
+export const AGENT_MANAGED_PREFERENCES_FILE = '.aio-proxy-preferences.json';
+export const AgentManagedPreferencesV1Schema = z.strictObject({
+  format: z.literal(1),
+  inboundProtocol: AgentInboundProtocolSchema,
+});
+export type AgentManagedPreferencesV1 = z.output<typeof AgentManagedPreferencesV1Schema>;
+
+export const AGENT_DEFAULT_INBOUND_PROTOCOL = {
+  opencode: 'chat-completions',
+  pi: 'chat-completions',
+  omp: 'chat-completions',
+  codex: 'responses',
+  grok: 'chat-completions',
+} as const satisfies Record<AgentTarget, AgentInboundProtocol>;
+
+export const AGENT_SUPPORTED_INBOUND_PROTOCOLS = {
+  opencode: ['chat-completions'],
+  pi: ['chat-completions', 'responses', 'anthropic'],
+  omp: ['chat-completions', 'responses', 'anthropic'],
+  codex: ['responses'],
+  grok: ['chat-completions'],
+} as const satisfies Record<AgentTarget, readonly AgentInboundProtocol[]>;
+
+export const PI_FAMILY_HOST_API = {
+  'chat-completions': 'openai-completions',
+  responses: 'openai-responses',
+  anthropic: 'anthropic-messages',
+} as const satisfies Record<AgentInboundProtocol, 'openai-completions' | 'openai-responses' | 'anthropic-messages'>;
+
+export function isAgentInboundProtocolSupported(target: AgentTarget, protocol: AgentInboundProtocol): boolean {
+  return (AGENT_SUPPORTED_INBOUND_PROTOCOLS[target] as readonly AgentInboundProtocol[]).includes(protocol);
+}
+
+export function resolveAgentInboundProtocol(
+  target: AgentTarget,
+  requested?: AgentInboundProtocol,
+): AgentInboundProtocol {
+  const protocol = requested ?? AGENT_DEFAULT_INBOUND_PROTOCOL[target];
+  if (!isAgentInboundProtocolSupported(target, protocol)) {
+    throw new Error(`${target} does not support inbound protocol ${protocol}`);
+  }
+  return protocol;
+}
+
 export const AgentCatalogModelV1Schema = z.strictObject({
   id: z.string().min(1),
   name: z.string().min(1),

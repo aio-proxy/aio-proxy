@@ -1,15 +1,17 @@
 import { m } from '@aio-proxy/i18n';
+import { AGENT_DEFAULT_INBOUND_PROTOCOL, AgentInboundProtocolSchema } from '@aio-proxy/types';
 import type { Command } from 'commander';
 import { z } from 'zod';
 
 import type {
+  AgentConfigureOptions,
   AgentConfigureResult,
   AgentListResult,
   AgentRemoveResult,
   AgentRevokeResult,
   GrokAgentListTargetResult,
 } from './agent';
-import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
+import type { CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
 
 const renderCodexList = (result: CodexListResult) => [
   m['cli.agent.codex.list']({
@@ -97,6 +99,7 @@ const grokListLines = (target: GrokAgentListTargetResult): string[] => {
       endpointMatch: target.endpointMatches === undefined ? 'unknown' : target.endpointMatches ? 'match' : 'mismatch',
       catalog: m['cli.agent.host_managed_catalog'](),
       lastSuccessfulAt: '-',
+      inboundProtocol: AGENT_DEFAULT_INBOUND_PROTOCOL.grok,
       authorization: target.authorization,
       schemaCompatibility: target.schemaCompatibility,
     }),
@@ -142,6 +145,7 @@ export function renderAgentList(result: AgentListResult, json: boolean): string[
         endpointMatch: target.endpointMatches === undefined ? 'unknown' : target.endpointMatches ? 'match' : 'mismatch',
         catalog: target.catalog,
         lastSuccessfulAt: target.lastSuccessfulAt ?? '-',
+        inboundProtocol: target.inboundProtocol ?? '-',
         authorization: target.authorization,
         schemaCompatibility: target.schemaCompatibility,
       }),
@@ -200,6 +204,7 @@ export function renderAgentConfigure(result: AgentConfigureResult): string[] {
   } else {
     lines.push(m['cli.agent.configure.login']({ command: result.loginCommand }));
   }
+  lines.push(m['cli.agent.configure.protocol']({ protocol: result.inboundProtocol }));
   lines.push(m['cli.agent.configure.reload']({ target: result.target }));
   return lines;
 }
@@ -225,7 +230,7 @@ export type AgentCliActions = {
     readonly authorizations: boolean;
     readonly json: boolean;
   }) => Promise<AgentListResult>;
-  readonly configure: (target: string, options?: CodexConfigureOptions) => Promise<AgentConfigureResult>;
+  readonly configure: (target: string, options?: AgentConfigureOptions) => Promise<AgentConfigureResult>;
   readonly remove: (target: string) => Promise<AgentRemoveResult>;
   readonly revoke: (installationId: string) => Promise<AgentRevokeResult>;
   readonly authCodex?: (installationId: string) => Promise<void>;
@@ -256,6 +261,7 @@ export function registerAgentCommands(
   agent
     .command('configure <opencode|pi|omp|codex|grok>')
     .option('--restore-migration <operation-id>', m['cli.agent.codex.restore_option']())
+    .option('--protocol <chat-completions|responses|anthropic>', m['cli.agent.configure.option_protocol']())
     .action(async (target, options) => {
       if (target !== 'codex' && options.restoreMigration !== undefined)
         throw new Error('--restore-migration is only supported for codex');
@@ -263,6 +269,9 @@ export function registerAgentCommands(
         renderAgentConfigure(
           await input.actions.configure(target, {
             ...(options.restoreMigration === undefined ? {} : { restoreMigration: options.restoreMigration }),
+            ...(options.protocol === undefined
+              ? {}
+              : { inboundProtocol: AgentInboundProtocolSchema.parse(options.protocol) }),
           }),
         ),
       );

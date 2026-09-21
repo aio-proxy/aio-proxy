@@ -255,6 +255,7 @@ const configureResult: AgentConfigureResult = {
     version: '1.17.10',
     minimumVersion: '1.17.10',
   },
+  inboundProtocol: 'chat-completions',
   loginCommand: 'opencode auth login --provider aio-proxy',
   reloadRequired: true,
 };
@@ -348,6 +349,12 @@ test('agent configure and remove help render the supported target grammar', () =
   expect(help).toContain('remove <opencode|pi|omp|codex|grok>');
   expect(help).toContain('auth');
   expect(help).not.toContain('<target>');
+});
+
+test('agent configure --protocol forwards the inbound protocol', async () => {
+  const f = agentProgram();
+  await f.program.parseAsync(['node', 'aio-proxy', 'agent', 'configure', 'pi', '--protocol', 'responses']);
+  expect(f.actions.configure).toHaveBeenCalledWith('pi', { inboundProtocol: 'responses' });
 });
 
 test.each([

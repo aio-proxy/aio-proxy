@@ -282,7 +282,7 @@
         "option_check": "Check live control-plane status",
         "option_authorizations": "Include control-plane authorizations",
         "unresolved": "{target}: unresolved ({reason}); host {hostVersion} (minimum {minimumVersion}, {support}); authorization {authorization}; schema {schemaCompatibility}",
-        "target": "{target}: host {hostVersion} (minimum {minimumVersion}, {support}); integration {integration}; installation {installationId}; adapter {adapterVersion}; endpoint {endpoint} ({endpointMatch}); catalog {catalog} (last success {lastSuccessfulAt}); authorization {authorization}; schema {schemaCompatibility}",
+        "target": "{target}: host {hostVersion} (minimum {minimumVersion}, {support}); integration {integration}; installation {installationId}; adapter {adapterVersion}; endpoint {endpoint} ({endpointMatch}); catalog {catalog} (last success {lastSuccessfulAt}); protocol {inboundProtocol}; authorization {authorization}; schema {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "Device authorization {deviceAuthorization}; catalog schemas {catalogSchemaVersions}",
         "authorization": "{installationId}: {target}, {authorization}, {local}"
@@ -295,6 +295,9 @@
         "server_offline": "The integration is installed, but aio-proxy is not running. Start it before signing in.",
         "password_required": "Set server.password before Agent authorization can be approved while server.apiKeys is enabled.",
         "login": "Sign in with: {command}",
+        "protocol": "Inbound protocol: {protocol}.",
+        "protocol_unsupported": "{target} does not support inbound protocol {protocol}.",
+        "option_protocol": "Inbound protocol the agent uses to talk to aio-proxy (chat-completions, responses, or anthropic)",
         "reload": "Reload or restart {target} to load the updated integration.",
         "newer": "{target} already has a newer adapter; it was not downgraded."
       },

@@ -2,8 +2,11 @@ import { link, lstat, mkdir, mkdtemp, rename, rmdir } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import {
+  AGENT_MANAGED_PREFERENCES_FILE,
   AgentManagedMarkerSchema,
+  AgentManagedPreferencesV1Schema,
   AgentManagedStateV1Schema,
+  type AgentInboundProtocol,
   type AgentManagedMarker,
   type AgentPluginTarget,
 } from '@aio-proxy/types';
@@ -29,6 +32,7 @@ export type ManagedInstallInput = {
   readonly endpoint: string;
   readonly adapterVersion: string;
   readonly requestedInstallationId: string;
+  readonly inboundProtocol: AgentInboundProtocol;
   readonly readAssets: () => Promise<ReadonlyMap<string, Uint8Array>>;
   readonly managedOnly?: boolean;
 };
@@ -58,6 +62,7 @@ const writeStagingTree = async (
   stagingDir: string,
   assets: ReadonlyMap<string, Uint8Array>,
   marker: AgentManagedMarker,
+  inboundProtocol: AgentInboundProtocol,
 ): Promise<void> => {
   for (const [relativePath, bytes] of assets) {
     const absolute = resolveAssetPath(stagingDir, relativePath);
@@ -67,6 +72,10 @@ const writeStagingTree = async (
   await writeDurable(
     join(stagingDir, '.aio-proxy-managed.json'),
     `${JSON.stringify(AgentManagedMarkerSchema.parse(marker))}\n`,
+  );
+  await writeDurable(
+    join(stagingDir, AGENT_MANAGED_PREFERENCES_FILE),
+    `${JSON.stringify(AgentManagedPreferencesV1Schema.parse({ format: 1, inboundProtocol }))}\n`,
   );
   await syncDirectory(stagingDir);
 };
@@ -206,14 +215,19 @@ const runStagedInstall = async (
   try {
     const stagingDir = await mkdtemp(join(location.hostRoot, '.aio-proxy-stage-'));
     staging = await captureIdentity(stagingDir);
-    await writeStagingTree(stagingDir, assets, {
-      format: 1,
-      managedBy: 'aio-proxy',
-      agent: location.target,
-      installationId,
-      adapterVersion: input.adapterVersion,
-      endpoint: input.endpoint,
-    });
+    await writeStagingTree(
+      stagingDir,
+      assets,
+      {
+        format: 1,
+        managedBy: 'aio-proxy',
+        agent: location.target,
+        installationId,
+        adapterVersion: input.adapterVersion,
+        endpoint: input.endpoint,
+      },
+      input.inboundProtocol,
+    );
     await testDeps?.failpoint?.('staged');
 
     if (updating) {

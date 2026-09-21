@@ -1,4 +1,5 @@
 import { CATALOG_REFRESH_INTERVAL_MS, readManagedInstallation } from '@aio-proxy/agent-provider-runtime';
+import { PI_FAMILY_HOST_API } from '@aio-proxy/types';
 import type { ExtensionAPI, ExtensionContext, ProviderModelConfig } from '@oh-my-pi/pi-coding-agent';
 
 import { loginPiFamily, piFamilyUnavailableMessage, readPiFamilyModels, refreshPiFamilyCredential } from '../core';
@@ -103,7 +104,7 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
 
   pi.registerProvider(PROVIDER_ID, {
     baseUrl: new URL('/v1', managed.marker.endpoint).href.replace(/\/$/u, ''),
-    api: 'openai-completions',
+    api: PI_FAMILY_HOST_API[managed.inboundProtocol],
     authHeader: true,
     oauth: {
       name: PROVIDER_NAME,

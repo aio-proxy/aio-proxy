@@ -39,6 +39,7 @@ async function installationFixture(
     readonly markerAgent?: AgentPluginTarget;
     readonly entryInstallationId?: string;
     readonly missingEntry?: boolean;
+    readonly preferences?: string;
   } = {},
 ): Promise<{ readonly location: AgentPluginLocation }> {
   const root = await mkdtemp(join(tmpdir(), 'aio-proxy-agent-inspect-'));
@@ -59,6 +60,9 @@ async function installationFixture(
   await writeFile(markerPath, JSON.stringify(marker));
   if (options.state !== undefined) {
     await writeFile(join(managedDir, '.aio-proxy-state.json'), JSON.stringify(options.state));
+  }
+  if (options.preferences !== undefined) {
+    await writeFile(join(managedDir, '.aio-proxy-preferences.json'), options.preferences);
   }
   const entryId = options.entryInstallationId ?? INSPECT_INSTALLATION;
   if (options.missingEntry !== true) {
@@ -125,6 +129,37 @@ test('a legal OpenCode marker exposes a missing adjacent entry as repairable sta
     integration: 'managed',
     entry: 'missing',
     catalog: 'missing',
+  });
+});
+
+test('missing preferences sidecar reports the target default protocol', async () => {
+  const f = await installationFixture();
+  await expect(inspectManagedInstallation(f.location, Date.now)).resolves.toMatchObject({
+    integration: 'managed',
+    inboundProtocol: 'chat-completions',
+    inboundProtocolSource: 'default',
+  });
+});
+
+test('configured preferences sidecar is visible without becoming a marker conflict', async () => {
+  const f = await installationFixture({
+    preferences: JSON.stringify({ format: 1, inboundProtocol: 'chat-completions' }),
+  });
+  await expect(inspectManagedInstallation(f.location, Date.now)).resolves.toMatchObject({
+    integration: 'managed',
+    inboundProtocol: 'chat-completions',
+    inboundProtocolSource: 'configured',
+  });
+});
+
+test('an unsupported sidecar protocol falls back without becoming a conflict', async () => {
+  const f = await installationFixture({
+    preferences: JSON.stringify({ format: 1, inboundProtocol: 'responses' }),
+  });
+  await expect(inspectManagedInstallation(f.location, Date.now)).resolves.toMatchObject({
+    integration: 'managed',
+    inboundProtocol: 'chat-completions',
+    inboundProtocolSource: 'invalid',
   });
 });
 

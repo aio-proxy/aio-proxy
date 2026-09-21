@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'bun:test';
 
-import type { AgentCatalogV1, AgentManagedMarker } from '@aio-proxy/types';
+import type { AgentCatalogV1, AgentInboundProtocol, AgentManagedMarker } from '@aio-proxy/types';
 import type { ExtensionAPI, ProviderConfig } from '@oh-my-pi/pi-coding-agent';
 
 import { toPiFamilyModels, type PiFamilyCatalogResult } from '../core';
@@ -9,6 +9,12 @@ import { registerOmp, type OmpDeps } from './omp';
 test('registers AIO Proxy as the OAuth display name', async () => {
   const { provider } = await fixture();
   expect(provider.oauth?.name).toBe('AIO Proxy');
+});
+
+test('registers openai-completions by default and openai-responses from the sidecar', async () => {
+  expect((await fixture()).provider.api).toBe('openai-completions');
+  expect((await fixture({ inboundProtocol: 'responses' })).provider.api).toBe('openai-responses');
+  expect((await fixture({ inboundProtocol: 'anthropic' })).provider.api).toBe('anthropic-messages');
 });
 
 test('OMP login presents verification_uri_complete through onAuth', async () => {
@@ -419,6 +425,7 @@ async function fixture(
     readonly catalogResults?: PiFamilyCatalogResult[];
     readonly holdCatalog?: boolean;
     readonly resolveCatalog?: (access: string | undefined) => PiFamilyCatalogResult;
+    readonly inboundProtocol?: AgentInboundProtocol;
   } = {},
 ) {
   let provider: ProviderConfig | undefined;
@@ -454,7 +461,10 @@ async function fixture(
     rootDir: '/managed',
     markerPath: '/managed/.aio-proxy-managed.json',
     statePath: '/managed/.aio-proxy-state.json',
+    preferencesPath: '/managed/.aio-proxy-preferences.json',
     marker: OMP_MARKER,
+    inboundProtocol: options.inboundProtocol ?? 'chat-completions',
+    inboundProtocolSource: options.inboundProtocol === undefined ? ('default' as const) : ('configured' as const),
   } as const;
   const credentials = {
     access: 'aio_agent_at_v1_access',

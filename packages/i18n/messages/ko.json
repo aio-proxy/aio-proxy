@@ -282,7 +282,7 @@
         "option_check": "실시간 컨트롤 플레인 상태를 확인합니다",
         "option_authorizations": "컨트롤 플레인 권한을 포함합니다",
         "unresolved": "{target}: 미해결({reason}); 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 권한 {authorization}; 스키마 {schemaCompatibility}",
-        "target": "{target}: 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 연동 {integration}; 설치 {installationId}; 어댑터 {adapterVersion}; 엔드포인트 {endpoint}({endpointMatch}); 카탈로그 {catalog}(마지막 성공 {lastSuccessfulAt}); 권한 {authorization}; 스키마 {schemaCompatibility}",
+        "target": "{target}: 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 연동 {integration}; 설치 {installationId}; 어댑터 {adapterVersion}; 엔드포인트 {endpoint}({endpointMatch}); 카탈로그 {catalog}(마지막 성공 {lastSuccessfulAt}); 프로토콜 {inboundProtocol}; 권한 {authorization}; 스키마 {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "디바이스 권한 {deviceAuthorization}; 카탈로그 스키마 {catalogSchemaVersions}",
         "authorization": "{installationId}: {target}, {authorization}, {local}"
@@ -295,6 +295,9 @@
         "server_offline": "연동은 설치되었지만 aio-proxy가 실행 중이 아닙니다. 로그인하기 전에 시작하세요.",
         "password_required": "server.apiKeys가 켜져 있으면 Agent 권한을 승인하기 전에 server.password를 설정해야 합니다.",
         "login": "다음 명령으로 로그인하세요: {command}",
+        "protocol": "인바운드 프로토콜: {protocol}.",
+        "protocol_unsupported": "{target}은(는) 인바운드 프로토콜 {protocol}을(를) 지원하지 않습니다.",
+        "option_protocol": "에이전트가 aio-proxy와 통신할 때 사용하는 인바운드 프로토콜(chat-completions, responses 또는 anthropic)",
         "reload": "업데이트된 연동을 불러오려면 {target}을(를) 다시 로드하거나 재시작하세요.",
         "newer": "{target}에 이미 더 새로운 어댑터가 있습니다. 다운그레이드하지 않았습니다."
       },

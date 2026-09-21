@@ -282,7 +282,7 @@
         "option_check": "稼働中のコントロールプレーン状態を確認します",
         "option_authorizations": "コントロールプレーンの認可を表示します",
         "unresolved": "{target}: 未解決 ({reason})；ホスト {hostVersion}（最低 {minimumVersion}、{support}）；認可 {authorization}；スキーマ {schemaCompatibility}",
-        "target": "{target}: ホスト {hostVersion}（最低 {minimumVersion}、{support}）；連携 {integration}；インストール {installationId}；アダプター {adapterVersion}；エンドポイント {endpoint}（{endpointMatch}）；カタログ {catalog}（前回の成功 {lastSuccessfulAt}）；認可 {authorization}；スキーマ {schemaCompatibility}",
+        "target": "{target}: ホスト {hostVersion}（最低 {minimumVersion}、{support}）；連携 {integration}；インストール {installationId}；アダプター {adapterVersion}；エンドポイント {endpoint}（{endpointMatch}）；カタログ {catalog}（前回の成功 {lastSuccessfulAt}）；プロトコル {inboundProtocol}；認可 {authorization}；スキーマ {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "デバイス認可 {deviceAuthorization}；カタログスキーマ {catalogSchemaVersions}",
         "authorization": "{installationId}: {target}、{authorization}、{local}"
@@ -295,6 +295,9 @@
         "server_offline": "連携はインストール済みですが、aio-proxy が起動していません。サインインする前に起動してください。",
         "password_required": "server.apiKeys が有効な場合、Agent 認可を承認する前に server.password を設定してください。",
         "login": "次のコマンドでサインインします: {command}",
+        "protocol": "インバウンドプロトコル: {protocol}。",
+        "protocol_unsupported": "{target} はインバウンドプロトコル {protocol} をサポートしていません。",
+        "option_protocol": "エージェントが aio-proxy と通信するインバウンドプロトコル（chat-completions、responses、または anthropic）",
         "reload": "更新した連携を読み込むには {target} を再読み込みまたは再起動してください。",
         "newer": "{target} には既により新しいアダプターがあります。ダウングレードしませんでした。"
       },

@@ -64,6 +64,8 @@ const postUpgradeFixture = (
       return {
         integration: 'managed',
         catalog: 'fresh',
+        inboundProtocol: 'responses',
+        inboundProtocolSource: 'configured',
         marker: {
           format: 1,
           managedBy: 'aio-proxy',
@@ -91,6 +93,7 @@ test('post-upgrade updates only passed, re-resolved, already-managed targets', a
   ]);
   expect(f.install).toHaveBeenCalledTimes(1);
   expect(f.install.mock.calls[0]![0].adapterVersion).toBe('2.0.0');
+  expect(f.install.mock.calls[0]![0].inboundProtocol).toBe('responses');
 });
 
 test.each(['path mismatch', 'marker conflict', 'entry conflict'] as const)(

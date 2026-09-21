@@ -3,7 +3,9 @@ import { homedir } from 'node:os';
 import {
   AgentPluginTargetSchema,
   AgentRevokeResponseSchema,
+  resolveAgentInboundProtocol,
   type AgentAdminSnapshot,
+  type AgentInboundProtocol,
   type AgentInstallationSummary,
   type AgentPluginTarget,
   type AgentRevokeStatus,
@@ -128,6 +130,7 @@ export type PluginAgentConfigureResult = {
   readonly host: AgentHost;
   readonly installed: true;
   readonly status: 'installed' | 'updated' | 'newer';
+  readonly inboundProtocol: AgentInboundProtocol;
   readonly server: 'reachable' | 'unreachable';
   readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
   readonly loginCommand: 'opencode auth login --provider aio-proxy' | '/login aio-proxy';
@@ -139,10 +142,15 @@ export type GrokAgentConfigureResult = {
   readonly host: AgentHost;
   readonly installed: true;
   readonly status: 'installed' | 'updated' | 'newer';
+  readonly inboundProtocol: AgentInboundProtocol;
   readonly server: 'reachable' | 'unreachable';
   readonly deviceAuthorization?: AgentAdminSnapshot['deviceAuthorization'];
   readonly loginCommand: 'grok login';
   readonly reloadRequired: true;
+};
+
+export type AgentConfigureOptions = CodexConfigureOptions & {
+  readonly inboundProtocol?: AgentInboundProtocol;
 };
 
 export type PluginAgentRemoveResult = {
@@ -227,17 +235,23 @@ export const requireDetectedHost = async (target: AgentTarget, deps: AgentComman
 
 export async function agentConfigure(
   target: string,
-  optionsOrDeps?: CodexConfigureOptions | AgentCommandDeps,
+  optionsOrDeps?: AgentConfigureOptions | AgentCommandDeps,
   suppliedDeps?: AgentCommandDeps,
 ): Promise<AgentConfigureResult> {
-  const options =
-    suppliedDeps === undefined && optionsOrDeps !== undefined && !('detectHost' in optionsOrDeps) ? optionsOrDeps : {};
+  const options: AgentConfigureOptions =
+    optionsOrDeps !== undefined && !('detectHost' in optionsOrDeps) ? optionsOrDeps : {};
   const deps =
     suppliedDeps ?? (optionsOrDeps !== undefined && 'detectHost' in optionsOrDeps ? optionsOrDeps : undefined);
   const resolved = commandDeps(deps);
-  if (target === 'codex') return resolved.codex.configure(options);
+  if (target === 'codex') {
+    if (options.inboundProtocol !== undefined) resolveAgentInboundProtocol('codex', options.inboundProtocol);
+    return resolved.codex.configure(
+      options.restoreMigration === undefined ? {} : { restoreMigration: options.restoreMigration },
+    );
+  }
   if (options.restoreMigration !== undefined) throw new Error('--restore-migration is only supported for codex');
   if (target === 'grok') {
+    const inboundProtocol = resolveAgentInboundProtocol('grok', options.inboundProtocol);
     const host = await requireDetectedHost('grok', resolved);
     const location = await resolved.resolveLocation('grok');
     const endpoint = await resolved.resolveEndpoint();
@@ -256,6 +270,7 @@ export async function agentConfigure(
       host,
       installed: true,
       status: installed.status,
+      inboundProtocol,
       server: snapshot === undefined ? 'unreachable' : 'reachable',
       ...(snapshot === undefined ? {} : { deviceAuthorization: snapshot.deviceAuthorization }),
       loginCommand: 'grok login',
@@ -267,6 +282,10 @@ export async function agentConfigure(
   const location = await resolved.resolveLocation(parsed);
   const existing = await resolved.inspect(location, resolved.now);
   const endpoint = await resolved.resolveEndpoint();
+  const inboundProtocol = resolveAgentInboundProtocol(
+    parsed,
+    options.inboundProtocol ?? (existing.integration === 'managed' ? existing.inboundProtocol : undefined),
+  );
   const requestedInstallationId =
     existing.integration === 'managed' && existing.marker !== undefined
       ? existing.marker.installationId
@@ -276,6 +295,7 @@ export async function agentConfigure(
     endpoint,
     adapterVersion: resolved.adapterVersion,
     requestedInstallationId,
+    inboundProtocol,
     readAssets: () => resolved.readAssets(parsed),
   });
 
@@ -294,6 +314,7 @@ export async function agentConfigure(
     host,
     installed: true,
     status,
+    inboundProtocol,
     server,
     ...(deviceAuthorization === undefined ? {} : { deviceAuthorization }),
     loginCommand: loginCommand(parsed),

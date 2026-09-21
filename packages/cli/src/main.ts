@@ -342,6 +342,15 @@ export function formatCliError(err: unknown, locale: Parameters<typeof formatUse
     const modified = /^Grok configuration modified: (.+)$/u.exec(err.message);
     if (modified?.[1] !== undefined) return { message: m['cli.agent.configuration_modified']({ fields: modified[1] }) };
     if (err.message === 'Grok endpoint changed') return { message: m['cli.agent.grok_endpoint_changed']() };
+    const unsupportedProtocol = /^(\S+) does not support inbound protocol (\S+)$/u.exec(err.message);
+    if (unsupportedProtocol?.[1] !== undefined && unsupportedProtocol[2] !== undefined) {
+      return {
+        message: m['cli.agent.configure.protocol_unsupported']({
+          target: unsupportedProtocol[1],
+          protocol: unsupportedProtocol[2],
+        }),
+      };
+    }
   }
   if (err instanceof CommanderError || isKnownCliUserError(err)) {
     return { message: err.message };

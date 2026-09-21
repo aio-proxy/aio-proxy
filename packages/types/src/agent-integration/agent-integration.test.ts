@@ -5,7 +5,10 @@ import {
   AgentCatalogV1Schema,
   AgentDeviceCodeRequestSchema,
   AgentManagedMarkerSchema,
+  AgentManagedPreferencesV1Schema,
   AgentManagedStateV1Schema,
+  PI_FAMILY_HOST_API,
+  resolveAgentInboundProtocol,
   AgentPluginTargetSchema,
   AgentTargetSchema,
   AgentTokenResponseSchema,
@@ -46,6 +49,34 @@ const managedMarker = {
   adapterVersion: '1.2.3',
   endpoint: 'http://127.0.0.1:9317',
 } as const;
+
+test('managed preferences accept only the inbound protocols adapters can consume', () => {
+  expect(AgentManagedPreferencesV1Schema.safeParse({ format: 1, inboundProtocol: 'responses' }).success).toBe(true);
+  expect(AgentManagedPreferencesV1Schema.safeParse({ format: 1, inboundProtocol: 'openai-completions' }).success).toBe(
+    false,
+  );
+  expect(
+    AgentManagedPreferencesV1Schema.safeParse({
+      format: 1,
+      inboundProtocol: 'responses',
+      extra: true,
+    }).success,
+  ).toBe(false);
+});
+
+test('marker stays strict when preferences live in a sidecar', () => {
+  expect(AgentManagedMarkerSchema.safeParse({ ...managedMarker, inboundProtocol: 'responses' }).success).toBe(false);
+});
+
+test('Pi-family host APIs map from inbound protocol without changing omitted defaults', () => {
+  expect(resolveAgentInboundProtocol('pi')).toBe('chat-completions');
+  expect(resolveAgentInboundProtocol('pi', 'responses')).toBe('responses');
+  expect(resolveAgentInboundProtocol('grok')).toBe('chat-completions');
+  expect(resolveAgentInboundProtocol('codex')).toBe('responses');
+  expect(() => resolveAgentInboundProtocol('opencode', 'responses')).toThrow('opencode does not support');
+  expect(() => resolveAgentInboundProtocol('grok', 'responses')).toThrow('grok does not support');
+  expect(PI_FAMILY_HOST_API.responses).toBe('openai-responses');
+});
 
 test('marker accepts only canonical loopback installations', () => {
   expect(AgentManagedMarkerSchema.safeParse(managedMarker).success).toBe(true);

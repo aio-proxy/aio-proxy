@@ -36,6 +36,24 @@ test('first configure writes files, marker, and fixed OpenCode entry', async () 
   expect(
     AgentManagedMarkerSchema.parse(await Bun.file(join(f.location.managedDir, '.aio-proxy-managed.json')).json()),
   ).toMatchObject({ installationId: f.installationId, endpoint: 'http://127.0.0.1:9317' });
+  expect(await Bun.file(join(f.location.managedDir, '.aio-proxy-preferences.json')).json()).toEqual({
+    format: 1,
+    inboundProtocol: 'chat-completions',
+  });
+});
+
+test('reconfigure writes the requested inbound protocol into the preferences sidecar', async () => {
+  const f = await installFixture('pi', { existing: true });
+  await expect(installManagedIntegration({ ...f.input, inboundProtocol: 'responses' }, f.deps)).resolves.toBe(
+    'updated',
+  );
+  expect(await Bun.file(join(f.location.managedDir, '.aio-proxy-preferences.json')).json()).toEqual({
+    format: 1,
+    inboundProtocol: 'responses',
+  });
+  expect(
+    AgentManagedMarkerSchema.parse(await Bun.file(join(f.location.managedDir, '.aio-proxy-managed.json')).json()),
+  ).not.toHaveProperty('inboundProtocol');
 });
 
 test('update preserves only a valid schema-1 state and keeps installation identity', async () => {

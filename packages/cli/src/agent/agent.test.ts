@@ -174,6 +174,8 @@ function commandFixture(
       return {
         integration: 'managed',
         catalog: 'fresh',
+        inboundProtocol: 'chat-completions',
+        inboundProtocolSource: 'default',
         marker: {
           format: 1,
           managedBy: 'aio-proxy',
@@ -248,11 +250,13 @@ test('configure installs while an offline server remains an explicit warning', a
   await expect(agentConfigure('opencode', f.deps)).resolves.toMatchObject({
     target: 'opencode',
     installed: true,
+    inboundProtocol: 'chat-completions',
     server: 'unreachable',
     host: { version: '99.0.0', minimumVersion: '1.17.10', support: 'supported' },
     loginCommand: 'opencode auth login --provider aio-proxy',
   });
   expect(f.install).toHaveBeenCalledTimes(1);
+  expect(f.install).toHaveBeenCalledWith(expect.objectContaining({ inboundProtocol: 'chat-completions' }));
 });
 
 test('configure returns the host compatibility fields needed for its warning', async () => {
@@ -264,6 +268,40 @@ test('configure returns the host compatibility fields needed for its warning', a
   await expect(agentConfigure('opencode', f.deps)).resolves.toMatchObject({
     host: { version: '1.17.9', minimumVersion: '1.17.10', support: 'unsupported' },
   });
+});
+
+test('configure pi --protocol responses persists the sidecar protocol', async () => {
+  const f = commandFixture({ target: 'pi' });
+  await expect(agentConfigure('pi', { inboundProtocol: 'responses' }, f.deps)).resolves.toMatchObject({
+    target: 'pi',
+    inboundProtocol: 'responses',
+  });
+  expect(f.install).toHaveBeenCalledWith(expect.objectContaining({ inboundProtocol: 'responses' }));
+});
+
+test('reconfigure without --protocol keeps the existing sidecar protocol', async () => {
+  const f = commandFixture({ target: 'pi' });
+  const inspect = f.deps.inspect;
+  f.deps.inspect = async (location, now) => {
+    const status = await inspect(location, now);
+    if (status.integration !== 'managed') return status;
+    return { ...status, inboundProtocol: 'responses', inboundProtocolSource: 'configured' };
+  };
+  await expect(agentConfigure('pi', f.deps)).resolves.toMatchObject({ inboundProtocol: 'responses' });
+  expect(f.install).toHaveBeenCalledWith(expect.objectContaining({ inboundProtocol: 'responses' }));
+});
+
+test.each([
+  ['opencode', 'responses'],
+  ['grok', 'responses'],
+  ['codex', 'chat-completions'],
+] as const)('configure %s rejects unsupported inbound protocol %s', async (target, protocol) => {
+  const f = commandFixture({ target: target === 'opencode' ? 'opencode' : undefined });
+  await expect(agentConfigure(target, { inboundProtocol: protocol }, f.deps)).rejects.toThrow(
+    `${target} does not support inbound protocol ${protocol}`,
+  );
+  expect(f.install).not.toHaveBeenCalled();
+  expect(f.grokConfigure).not.toHaveBeenCalled();
 });
 
 test('configure rejects explicit non-loopback bind before writing', async () => {
@@ -509,6 +547,7 @@ test('configure grok uses resolveEndpoint, resolveGrokExecutable, and grok.deps 
     target: 'grok',
     installed: true,
     status: 'installed',
+    inboundProtocol: 'chat-completions',
     loginCommand: 'grok login',
     reloadRequired: true,
   });

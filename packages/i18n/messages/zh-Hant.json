@@ -282,7 +282,7 @@
         "option_check": "檢查即時控制面狀態",
         "option_authorizations": "列出控制面授權",
         "unresolved": "{target}：未解析（{reason}）；主機 {hostVersion}（最低 {minimumVersion}，{support}）；授權 {authorization}；架構 {schemaCompatibility}",
-        "target": "{target}：主機 {hostVersion}（最低 {minimumVersion}，{support}）；整合 {integration}；安裝 {installationId}；配接器 {adapterVersion}；端點 {endpoint}（{endpointMatch}）；目錄 {catalog}（上次成功 {lastSuccessfulAt}）；授權 {authorization}；架構 {schemaCompatibility}",
+        "target": "{target}：主機 {hostVersion}（最低 {minimumVersion}，{support}）；整合 {integration}；安裝 {installationId}；配接器 {adapterVersion}；端點 {endpoint}（{endpointMatch}）；目錄 {catalog}（上次成功 {lastSuccessfulAt}）；協定 {inboundProtocol}；授權 {authorization}；架構 {schemaCompatibility}",
         "server": "aio-proxy：{status}",
         "capabilities": "裝置授權 {deviceAuthorization}；目錄架構 {catalogSchemaVersions}",
         "authorization": "{installationId}：{target}，{authorization}，{local}"
@@ -295,6 +295,9 @@
         "server_offline": "整合已安裝，但 aio-proxy 未在執行。請先啟動再登入。",
         "password_required": "在啟用 server.apiKeys 時，必須先設定 server.password，才能核准 Agent 授權。",
         "login": "使用以下命令登入：{command}",
+        "protocol": "入站協定：{protocol}。",
+        "protocol_unsupported": "{target} 不支援入站協定 {protocol}。",
+        "option_protocol": "Agent 連線 aio-proxy 時使用的入站協定（chat-completions、responses 或 anthropic）",
         "reload": "重新載入或重新啟動 {target} 以載入更新後的整合。",
         "newer": "{target} 已有較新的配接器；未降級。"
       },

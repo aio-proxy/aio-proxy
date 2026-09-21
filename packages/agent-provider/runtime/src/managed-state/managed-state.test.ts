@@ -9,7 +9,12 @@ import { pathToFileURL } from 'node:url';
 import type { AgentCatalogV1, AgentManagedMarker, AgentManagedStateV1 } from '@aio-proxy/types';
 
 import * as managedState from './index';
-import { writeManagedState, writeManagedStateForTest } from './managed-state';
+import {
+  readManagedInstallation,
+  readManagedPreferences,
+  writeManagedState,
+  writeManagedStateForTest,
+} from './managed-state';
 
 const CATALOG: AgentCatalogV1 = {
   schema_version: 1,
@@ -93,6 +98,39 @@ test('atomic state failure leaves the prior bytes and successful replacement is 
   expect(await Bun.file(f.statePath).bytes()).toEqual(before);
   await writeManagedState(f.statePath, freshState(CATALOG, 2_000));
   expect((await stat(f.statePath)).mode & 0o777).toBe(0o600);
+});
+
+test('missing preferences sidecar uses the target default inbound protocol', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-runtime-'));
+  runtimeRoots.push(root);
+  await expect(readManagedPreferences(join(root, '.aio-proxy-preferences.json'), 'pi')).resolves.toEqual({
+    inboundProtocol: 'chat-completions',
+    source: 'default',
+  });
+});
+
+test('configured preferences sidecar is what Pi-family adapters consume', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-runtime-'));
+  runtimeRoots.push(root);
+  const marker = { ...RUNTIME_MARKER, agent: 'pi' as const };
+  writeFileSync(join(root, '.aio-proxy-managed.json'), `${JSON.stringify(marker)}\n`);
+  writeFileSync(
+    join(root, '.aio-proxy-preferences.json'),
+    `${JSON.stringify({ format: 1, inboundProtocol: 'responses' })}\n`,
+  );
+  const installation = await readManagedInstallation(pathToFileURL(join(root, 'plugin.js')).href, 'pi');
+  expect(installation.inboundProtocol).toBe('responses');
+  expect(installation.inboundProtocolSource).toBe('configured');
+});
+
+test('invalid preferences sidecar falls back without treating the installation as missing', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-runtime-'));
+  runtimeRoots.push(root);
+  writeFileSync(join(root, '.aio-proxy-managed.json'), `${JSON.stringify(RUNTIME_MARKER)}\n`);
+  writeFileSync(join(root, '.aio-proxy-preferences.json'), '{not-json');
+  const installation = await readManagedInstallation(pathToFileURL(join(root, 'plugin.js')).href, 'opencode');
+  expect(installation.inboundProtocol).toBe('chat-completions');
+  expect(installation.inboundProtocolSource).toBe('invalid');
 });
 
 test('reads managed marker and state when hosted by node', async () => {

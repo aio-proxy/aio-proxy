@@ -282,7 +282,7 @@
         "option_check": "检查实时控制面状态",
         "option_authorizations": "列出控制面授权",
         "unresolved": "{target}：未解析（{reason}）；主机 {hostVersion}（最低 {minimumVersion}，{support}）；授权 {authorization}；架构 {schemaCompatibility}",
-        "target": "{target}：主机 {hostVersion}（最低 {minimumVersion}，{support}）；集成 {integration}；安装 {installationId}；适配器 {adapterVersion}；端点 {endpoint}（{endpointMatch}）；目录 {catalog}（上次成功 {lastSuccessfulAt}）；授权 {authorization}；架构 {schemaCompatibility}",
+        "target": "{target}：主机 {hostVersion}（最低 {minimumVersion}，{support}）；集成 {integration}；安装 {installationId}；适配器 {adapterVersion}；端点 {endpoint}（{endpointMatch}）；目录 {catalog}（上次成功 {lastSuccessfulAt}）；协议 {inboundProtocol}；授权 {authorization}；架构 {schemaCompatibility}",
         "server": "aio-proxy：{status}",
         "capabilities": "设备授权 {deviceAuthorization}；目录架构 {catalogSchemaVersions}",
         "authorization": "{installationId}：{target}，{authorization}，{local}"
@@ -295,6 +295,9 @@
         "server_offline": "集成已安装，但 aio-proxy 未在运行。请先启动再登录。",
         "password_required": "在启用 server.apiKeys 时，必须先设置 server.password，才能批准 Agent 授权。",
         "login": "使用以下命令登录：{command}",
+        "protocol": "入站协议：{protocol}。",
+        "protocol_unsupported": "{target} 不支持入站协议 {protocol}。",
+        "option_protocol": "Agent 连接 aio-proxy 时使用的入站协议（chat-completions、responses 或 anthropic）",
         "reload": "重新加载或重启 {target} 以加载更新后的集成。",
         "newer": "{target} 已有更新的适配器；未降级。"
       },

@@ -5,6 +5,7 @@ export {
   createAgentCommandDeps,
   type AgentAuthorizationListItem,
   type AgentCommandDeps,
+  type AgentConfigureOptions,
   type AgentConfigureResult,
   type PluginAgentConfigureResult,
   type AgentListResult,

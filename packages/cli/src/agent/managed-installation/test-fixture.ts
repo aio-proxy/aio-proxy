@@ -110,6 +110,7 @@ export async function installFixture(
     endpoint: 'http://127.0.0.1:9317',
     adapterVersion: '2.0.0',
     requestedInstallationId: INSTALL_ID,
+    inboundProtocol: 'chat-completions',
     readAssets,
   };
   const failpointByFailure = {

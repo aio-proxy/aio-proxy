@@ -3,6 +3,7 @@ import {
   readLastKnownCatalog,
   readManagedInstallation,
 } from '@aio-proxy/agent-provider-runtime';
+import { PI_FAMILY_HOST_API } from '@aio-proxy/types';
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -71,7 +72,7 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
   const config: ProviderConfig = {
     name: PROVIDER_NAME,
     baseUrl: new URL('/v1', managed.marker.endpoint).href.replace(/\/$/u, ''),
-    api: 'openai-completions',
+    api: PI_FAMILY_HOST_API[managed.inboundProtocol],
     authHeader: true,
     models: lkg === null ? [] : [...toPiFamilyModels(lkg, managed.marker.endpoint)],
     refreshModels,
