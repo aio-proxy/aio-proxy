@@ -11,9 +11,9 @@ import { traceWireQueryOptions } from '../services/traces-service';
  * `settled` 来自详情的 `endedAt`：还在跑就跟着刷。刚结算再失效一次，
  * 抓包轮询可能比详情慢一拍；若 hop 上还有未终态的 body，query 自己继续扫。
  */
-export const useTraceWireQuery = (traceId: string, enabled: boolean, settled: boolean) => {
+export const useTraceWireQuery = (traceId: string, enabled: boolean, settled: boolean, terminationReason?: string) => {
   const queryClient = useQueryClient();
-  const query = useQuery({ ...traceWireQueryOptions(traceId, settled), enabled });
+  const query = useQuery({ ...traceWireQueryOptions(traceId, settled, terminationReason), enabled });
   const wasSettled = useRef(settled);
   useEffect(() => {
     if (!wasSettled.current && settled) {

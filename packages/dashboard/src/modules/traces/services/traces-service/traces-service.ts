@@ -62,7 +62,13 @@ const hopHasUnterminatedBody = (hop: DashboardTraceWireResponse['hops'][number])
   return !WIRE_BODY_TERMINAL.has(hop.response.body?.outcome ?? '');
 };
 
-const shouldPollWireCapture = (settled: boolean, data: DashboardTraceWireResponse | undefined): boolean => {
+const shouldPollWireCapture = (
+  settled: boolean,
+  terminationReason: string | undefined,
+  data: DashboardTraceWireResponse | undefined,
+): boolean => {
+  // 进程中断后恢复的调用链不会再写出缺失的 body 终态，再扫也只是空转。
+  if (terminationReason === 'interrupted') return false;
   if (!settled) return true;
   return data !== undefined && data.available && data.hops.some(hopHasUnterminatedBody);
 };
@@ -70,12 +76,12 @@ const shouldPollWireCapture = (settled: boolean, data: DashboardTraceWireRespons
 // 还在跑的调用链会继续往日志里写，跟列表一样 5 秒拉一次。
 // 根 span 先结算、响应 body 后被消费时（raw 失败路径），endedAt 已经有了，
 // 但 hop 上还没有 body 终态 —— 这时不能按「调用结束」把半截抓包冻住。
-export const traceWireQueryOptions = (traceId: string, settled: boolean) =>
+export const traceWireQueryOptions = (traceId: string, settled: boolean, terminationReason?: string) =>
   queryOptions({
     queryKey: queryKeys.traceWire(traceId),
     queryFn: () => getTraceWire(traceId),
     staleTime: settled ? Number.POSITIVE_INFINITY : 0,
-    refetchInterval: (query) => (shouldPollWireCapture(settled, query.state.data) ? 5_000 : false),
+    refetchInterval: (query) => (shouldPollWireCapture(settled, terminationReason, query.state.data) ? 5_000 : false),
     refetchIntervalInBackground: false,
   });
 

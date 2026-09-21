@@ -33,6 +33,7 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({
     detail.trace.traceId,
     tab === 'request' || tab === 'response',
     detail.trace.endedAt !== null,
+    detail.trace.terminationReason,
   );
 
   return (

@@ -266,6 +266,19 @@ describe('trace service', () => {
         },
       } as never),
     ).toBe(5_000);
+    const interruptedInterval = traceWireQueryOptions(traceId, true, 'interrupted').refetchInterval;
+    expect(interruptedInterval).toBeTypeOf('function');
+    if (typeof interruptedInterval !== 'function') throw new Error('Expected capture-settlement polling');
+    expect(
+      interruptedInterval({
+        state: {
+          data: {
+            available: true,
+            hops: [{ id: 'attempt-0', kind: 'attempt', request: { body: { text: 'partial' } } }],
+          },
+        },
+      } as never),
+    ).toBe(false);
     expect(settledInterval({ state: { data: { available: false, hops: [] } } } as never)).toBe(false);
     expect(traceWireQueryOptions(traceId, false).staleTime).toBe(0);
     const liveInterval = traceWireQueryOptions(traceId, false).refetchInterval;
