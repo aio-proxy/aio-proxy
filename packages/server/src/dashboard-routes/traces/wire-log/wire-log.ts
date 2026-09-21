@@ -4,7 +4,7 @@ import type { DashboardTraceWireResponse } from '@aio-proxy/types';
 import { addDays, eachDayOfInterval, format } from 'date-fns';
 
 import { applyWireEvent, createHopDrafts, finalizeHops, type HopDrafts } from './build-hops';
-import { MAX_PARSE_LINE, wireEventFromLine } from './parse-line';
+import { MAX_PARSE_LINE, MAX_PROPERTIES_CARRY, PROPERTIES_KEY, wireEventFromLine } from './parse-line';
 
 type WireLogging = {
   readonly enabled?: boolean;
@@ -86,9 +86,18 @@ async function extraDayFile(
 function hopsNeedNextDay(hops: DashboardTraceWireResponse['hops']): boolean {
   return hops.some((hop) => {
     if (bodyOpen(hop.request?.body) || bodyOpen(hop.response?.body)) return true;
-    if (hop.request !== undefined && hop.request.body === undefined) return true;
+    if (requestBodyPending(hop)) return true;
     return hop.kind === 'attempt' && hop.response?.body === undefined && hop.response?.errorType === undefined;
   });
+}
+
+function requestBodyPending(hop: DashboardTraceWireResponse['hops'][number]): boolean {
+  if (hop.request === undefined || hop.request.body !== undefined) return false;
+  const method = hop.request.method?.toUpperCase();
+  // GET / HEAD 本来就没有请求体；旧日志也没终态，不能据此去扫下一天。
+  if (method === 'GET' || method === 'HEAD') return false;
+  // 已经有上游结果，请求体要么当时记过，要么不会再来。
+  return hop.response === undefined;
 }
 
 function bodyOpen(body: { readonly outcome?: string } | undefined): boolean {
@@ -106,12 +115,43 @@ async function scanWireEvents(file: Bun.BunFile, requestId: string, drafts: HopD
   const decoder = new TextDecoder();
   // 日志文件可能有几百 MB，逐块解码 + carry buffer 切行，绝不整读进内存。
   let carry = '';
-  // 别人的超长行：预算够了还没换行就丢掉，等下一行，避免 carry 跟着涨到整段正文。
+  // 超长行裁过 properties 之后丢掉换行前的尾巴，避免 carry 跟着涨到整段正文。
   let skipLine = false;
   const take = (line: string) => {
     const event = wireEventFromLine(line, requestId);
     // 解析出来当场灌进草稿：草稿自己带预算，这一行随后就是垃圾。
     if (event !== undefined) applyWireEvent(drafts, event);
+  };
+  const takeProperties = (end: number) => {
+    const propertiesAt = carry.lastIndexOf(PROPERTIES_KEY, end);
+    if (propertiesAt >= 0 && propertiesAt < end) {
+      take(carry.slice(propertiesAt, Math.min(end, propertiesAt + MAX_PROPERTIES_CARRY)));
+    }
+  };
+  const drain = () => {
+    while (true) {
+      const newline = carry.indexOf('\n');
+      if (newline < 0) {
+        shrinkIncompleteCarry();
+        return;
+      }
+      takeProperties(newline);
+      carry = carry.slice(newline + 1);
+    }
+  };
+  const shrinkIncompleteCarry = () => {
+    const propertiesAt = carry.lastIndexOf(PROPERTIES_KEY);
+    if (propertiesAt < 0) {
+      if (carry.length > MAX_PARSE_LINE) carry = carry.slice(1 - PROPERTIES_KEY.length);
+      return;
+    }
+    if (carry.length - propertiesAt > MAX_PROPERTIES_CARRY) {
+      take(carry.slice(propertiesAt, propertiesAt + MAX_PROPERTIES_CARRY));
+      skipLine = true;
+      carry = '';
+      return;
+    }
+    if (propertiesAt > 0 && carry.length > MAX_PARSE_LINE) carry = carry.slice(propertiesAt);
   };
   for await (const chunk of file.stream()) {
     const decoded = decoder.decode(chunk, { stream: true });
@@ -123,16 +163,7 @@ async function scanWireEvents(file: Bun.BunFile, requestId: string, drafts: HopD
     } else {
       carry += decoded;
     }
-    let newline = carry.indexOf('\n');
-    while (newline >= 0) {
-      take(carry.slice(0, newline));
-      carry = carry.slice(newline + 1);
-      newline = carry.indexOf('\n');
-    }
-    if (carry.length > MAX_PARSE_LINE && !carry.includes(requestId)) {
-      skipLine = true;
-      carry = '';
-    }
+    drain();
   }
   if (!skipLine) take(carry + decoder.decode());
 }

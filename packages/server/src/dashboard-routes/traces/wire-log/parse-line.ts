@@ -13,6 +13,10 @@ const WIRE_EVENTS = new Set([
 const MAX_BODY_TEXT = 1_048_576;
 /** 时间戳 / logger / 字段名的余量。超过就不再整行 parse，避免 `message` 再复制一份正文。 */
 export const MAX_PARSE_LINE = MAX_BODY_TEXT + 16_384;
+/** 最坏 `\uXXXX`：一个解码字符 6 个源字符。properties 段按这个封顶，message 仍然先丢掉。 */
+export const MAX_PROPERTIES_CARRY = (MAX_BODY_TEXT + 1) * 6 + 16_384;
+/** `jsonLinesFormatter` 行末字段。扫描时只留从这里起的一段，丢掉前面重复的 message。 */
+export const PROPERTIES_KEY = '"properties":';
 
 export type WireEvent = Readonly<Record<string, unknown>>;
 
@@ -26,7 +30,9 @@ export function wireEventFromLine(line: string, requestId: string): WireEvent | 
   if (line.length > MAX_PARSE_LINE && !line.includes(requestId)) return undefined;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(line.length > MAX_PARSE_LINE ? propertiesOnlyJson(line) : line);
+    parsed = JSON.parse(
+      line.length > MAX_PARSE_LINE || line.startsWith(PROPERTIES_KEY) ? propertiesOnlyJson(line) : line,
+    );
   } catch {
     return undefined;
   }
@@ -44,10 +50,9 @@ export function wireEventFromLine(line: string, requestId: string): WireEvent | 
  * `jsonLinesFormatter` 行末是 `,"properties":{...}}`，多出来的 `}` 属于外层记录。
  */
 function propertiesOnlyJson(line: string): string {
-  const key = '"properties":';
-  const at = line.lastIndexOf(key);
+  const at = line.lastIndexOf(PROPERTIES_KEY);
   if (at < 0) throw new SyntaxError('wire line missing properties');
-  let properties = line.slice(at + key.length);
+  let properties = line.slice(at + PROPERTIES_KEY.length);
   if (properties.endsWith('}')) properties = properties.slice(0, -1);
   const textKey = '"text":"';
   const textAt = properties.lastIndexOf(textKey);
@@ -73,9 +78,10 @@ function cutJsonString(source: string, start: number, maxDecoded: number): strin
     if (decoded >= maxDecoded) return `${source.slice(start, index)}"`;
     if (current === '\\') {
       const next = source[index + 1];
-      if (next === undefined) throw new SyntaxError('unterminated escape');
+      // 边读边裁时行还没写完：半截转义丢掉，闭合已有的前缀，别整行 parse 失败。
+      if (next === undefined) return `${source.slice(start, index)}"`;
       if (next === 'u') {
-        if (index + 5 >= source.length) throw new SyntaxError('unterminated unicode escape');
+        if (index + 5 >= source.length) return `${source.slice(start, index)}"`;
         index += 6;
       } else {
         index += 2;
@@ -85,7 +91,7 @@ function cutJsonString(source: string, start: number, maxDecoded: number): strin
     }
     decoded += 1;
   }
-  throw new SyntaxError('unterminated string');
+  return `${source.slice(start, index)}"`;
 }
 
 export function stringField(event: WireEvent, key: string): string | undefined {

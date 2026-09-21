@@ -162,6 +162,21 @@ test('non-debug inbound observation preserves Request identity', () => {
   ).toBe(request);
 });
 
+test('debug inbound GET still emits an empty request terminal', () => {
+  const logs: ServerLog[] = [];
+  const request = new Request('https://proxy.test/v1/models');
+
+  const observed = withRequestLogContext(
+    { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
+    () => observeInboundRequest(request, 'openai-response'),
+  );
+
+  expect(observed).toBe(request);
+  expect(terminals(logs, 'inbound')).toEqual([
+    expect.objectContaining({ outcome: 'complete', byteLength: 0, sequence: 0 }),
+  ]);
+});
+
 test('debug inbound observation does not tap openai-video bodies', async () => {
   const logs: ServerLog[] = [];
   const sentinel = 'data:image/png;base64,VIDEO_DATA_URL_SENTINEL';

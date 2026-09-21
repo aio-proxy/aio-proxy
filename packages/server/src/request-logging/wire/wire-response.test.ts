@@ -13,6 +13,9 @@ test('a bodyless 204 still emits a complete response terminal', async () => {
 
   expect(response.status).toBe(204);
   expect(response.body).toBeNull();
+  expect(terminals(logs, 'upstream_request')).toEqual([
+    expect.objectContaining({ outcome: 'complete', byteLength: 0, sequence: 0 }),
+  ]);
   expect(terminals(logs, 'upstream_response')).toEqual([
     expect.objectContaining({ outcome: 'complete', byteLength: 0, sequence: 0 }),
   ]);
@@ -179,5 +182,8 @@ test('never-consumed responses emit no body events', async () => {
   await Bun.sleep(0);
 
   expect(logs.filter((entry) => entry.event === 'request.body_chunk')).toHaveLength(0);
-  expect(logs.filter((entry) => entry.event === 'request.body_terminal')).toHaveLength(0);
+  expect(terminals(logs, 'upstream_request')).toEqual([
+    expect.objectContaining({ outcome: 'complete', byteLength: 0, sequence: 0 }),
+  ]);
+  expect(terminals(logs, 'upstream_response')).toEqual([]);
 });

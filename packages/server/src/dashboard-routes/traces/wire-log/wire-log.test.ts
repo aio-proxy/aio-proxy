@@ -373,6 +373,33 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body?.byteLength).toBe(1_200_000);
   });
 
+  // message 里可以先堆 2 MiB 填充，requestId 只在行末 properties。预算到了也不能当别人的行丢掉。
+  test('keeps a matching event whose request id appears only after a huge prefix', async () => {
+    const prefix = `{"@timestamp":"${STARTED_AT.toISOString()}","level":"DEBUG","message":"${'H'.repeat(2_000_000)}","logger":"aio-proxy.server",`;
+    const dir = await logDirWith(
+      `${prefix}"properties":${JSON.stringify({
+        event: 'request.body_chunk',
+        requestId: REQUEST_ID,
+        direction: 'inbound',
+        sequence: 0,
+        text: 'kept',
+      })}}\n` +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 1,
+          byteLength: 4,
+          outcome: 'complete',
+        }),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body).toMatchObject({ text: 'kept', outcome: 'complete' });
+  });
+
   test('skips an oversized line that belongs to another request', async () => {
     const huge = 'H'.repeat(1_200_000);
     const dir = await logDirWith(
@@ -739,6 +766,69 @@ describe('readTraceWireLog', () => {
     rmSync(dir, { force: true, recursive: true });
 
     expect(body.hops[0]?.request?.body).toMatchObject({ outcome: 'complete', omitted: true });
+    expect(JSON.stringify(body)).not.toContain('LEAK');
+  });
+
+  test('does not scan the next day for a bodyless GET request', async () => {
+    const startedAt = new Date(2026, 6, 27, 8, 0, 0);
+    const endedAt = new Date(2026, 6, 27, 8, 0, 2);
+    const nextDay = new Date(2026, 6, 28, 0, 0, 0);
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-get-'));
+    await Bun.write(
+      join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`),
+      logLine({
+        event: 'request.upstream_snapshot',
+        requestId: REQUEST_ID,
+        attemptIndex: 0,
+        providerId: 'provider-a',
+        modelId: 'gpt-5',
+        method: 'GET',
+        url: 'https://provider-a.test/v1/models',
+      }) +
+        logLine({
+          event: 'request.upstream_result',
+          requestId: REQUEST_ID,
+          attemptIndex: 0,
+          providerId: 'provider-a',
+          modelId: 'gpt-5',
+          durationMs: 4,
+          outcome: 'response',
+          statusCode: 200,
+        }) +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          attemptIndex: 0,
+          direction: 'upstream_response',
+          sequence: 0,
+          byteLength: 2,
+          outcome: 'complete',
+        }),
+    );
+    await Bun.write(
+      join(dir, `${format(nextDay, 'yyyy-MM-dd')}.log`),
+      logLine({
+        event: 'request.body_chunk',
+        requestId: REQUEST_ID,
+        attemptIndex: 0,
+        direction: 'upstream_request',
+        sequence: 0,
+        text: 'LEAK',
+      }),
+    );
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt,
+        endedAt,
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.method).toBe('GET');
+    expect(body.hops[0]?.request?.body).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain('LEAK');
   });
 

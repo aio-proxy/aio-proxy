@@ -236,7 +236,12 @@ function observedBody(
 function requestWithObservedBody(request: Request, identity: BodyIdentity, logger: ServerLogSink): Request {
   try {
     const body = request.body;
-    if (body === null) return request;
+    if (body === null) {
+      // GET / HEAD：没有 body 可读。不记 complete 的话 hopsNeedNextDay 会把这次发送
+      // 当成正文还没到，已结束的历史调用链每次打开都去啃下一天的 debug 日志。
+      emitEmptyBodyTerminal({ identity, logger });
+      return request;
+    }
     const contentType = request.headers.get('content-type');
     const init: RequestInit = {
       cache: request.cache,
@@ -260,7 +265,9 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
   }
 }
 
-function emitEmptyBodyTerminal(debug: DebugResponseObservation | undefined): void {
+function emitEmptyBodyTerminal(
+  debug: { readonly identity: BodyIdentity; readonly logger: ServerLogSink } | undefined,
+): void {
   if (debug === undefined) return;
   logServerEvent(debug.logger, {
     event: 'request.body_terminal',
