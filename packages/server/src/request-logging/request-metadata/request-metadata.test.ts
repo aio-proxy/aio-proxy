@@ -121,6 +121,19 @@ test('redacts an OAuth authorization code without treating every *code field as 
   expect(ordinary.url).toContain('unicode=plain-value');
 });
 
+test('redacts jwt credentials on write and when replaying old logs', () => {
+  const request = new Request('https://upstream.test/v1?jwt=query-secret&prompt=hi', {
+    headers: { 'X-JWT': 'header-secret' },
+  });
+  const metadata = requestMetadata(request);
+
+  expect(metadata.url).not.toContain('query-secret');
+  expect(metadata.url).toContain('prompt=hi');
+  expect(Object.values(metadata.headers)).not.toContain('header-secret');
+  expect(redactUrlCredentials('https://upstream.test/v1?jwt=leaked-secret&prompt=hi')).not.toContain('leaked-secret');
+  expect(Object.values(redactCredentialHeaders({ 'x-jwt': 'leaked-secret' }))).not.toContain('leaked-secret');
+});
+
 test.each(['keyword', 'tokenizer', 'authority', 'signal'])('keeps the ordinary parameter %s readable', (name) => {
   const metadata = requestMetadata(new Request(`https://upstream.test/v1?${name}=plain-value`));
 

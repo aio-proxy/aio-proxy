@@ -68,6 +68,7 @@ const credentialQueryWords = new Set([
   'signature',
   'credential',
   'credentials',
+  'jwt',
 ]);
 
 // 后缀匹配用的子集：只排掉 `sig`（太短，会连 `design` / `signal` 一起打掉）。
@@ -91,9 +92,9 @@ function isCredentialParam(name: string): boolean {
 /**
  * 固定名单命中，或名字里含凭据词。后者兜住 provider 配置里的自定义认证头 ——
  * `X-Secret` → `['x','secret']`、`X-Auth-Token` → `['x','auth','token']` 都中。
- * `X-Authorization` / `X-Authentication` / `X-Bearer` 小写化后切出
- * `authorization` / `authentication` / `bearer`，这三个词必须在表里：
- * 前两个不以 `auth` 结尾，`bearer` 更对不上任何现有词。
+ * `X-Authorization` / `X-Authentication` / `X-Bearer` / `X-JWT` 小写化后切出
+ * `authorization` / `authentication` / `bearer` / `jwt`，这几个词必须在表里：
+ * 前两个不以 `auth` 结尾，`bearer` / `jwt` 更对不上任何现有词。
  * `content-type`、`x-request-id`、`user-agent` 这些不含凭据词，不受影响。
  */
 function isCredentialHeader(name: string): boolean {
