@@ -93,6 +93,47 @@ function isCredentialHeader(name: string): boolean {
   return credentialHeaders.has(lower) || isCredentialParam(lower);
 }
 
+// 头名字本身不是凭据，值却是可复用的签名 URL。只按名字判的话 `Location` /
+// `Operation-Location` 会带着 `?access_token=` / `?X-Amz-Signature=` 明文落盘，
+// 再经抓包接口送进浏览器。名单是「值按约定是 URL」的头，不是「看起来像 URL」的值。
+const urlValuedHeaders = new Set([
+  'location',
+  'content-location',
+  'operation-location',
+  'azure-asyncoperation',
+  'referer',
+]);
+
+function visibleHeaderValue(name: string, value: string): string {
+  if (isCredentialHeader(name)) return REDACTED;
+  return urlValuedHeaders.has(name.toLowerCase()) ? redactUrlValue(value) : value;
+}
+
+function stripUrlCredentials(url: URL): URL {
+  url.username = '';
+  url.password = '';
+  for (const param of [...url.searchParams.keys()]) {
+    if (isCredentialParam(param)) url.searchParams.set(param, REDACTED);
+  }
+  return url;
+}
+
+function redactUrlValue(value: string): string {
+  try {
+    return stripUrlCredentials(new URL(value)).toString();
+  } catch {
+    // Location 经常是相对路径：`/ops?access_token=...`。没有 base 时 `new URL`
+    // 会扔，旧实现就把整段明文留下了。
+    if (!value.startsWith('/') && !value.startsWith('?')) return value;
+    try {
+      const url = stripUrlCredentials(new URL(value, 'https://aio-proxy.invalid'));
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      return value;
+    }
+  }
+}
+
 export function requestMetadata(request: Request): HttpRequestMetadata {
   try {
     return {
@@ -119,9 +160,7 @@ export function responseMetadata(response: Response): HttpResponseMetadata {
  * 磁盘上已经存在的那些行，所以读出来也要按当前名单再脱一遍。
  */
 export function redactCredentialHeaders(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
-  return Object.fromEntries(
-    Object.entries(headers).map(([name, value]) => [name, isCredentialHeader(name) ? REDACTED : value]),
-  );
+  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, visibleHeaderValue(name, value)]));
 }
 
 /**
@@ -129,23 +168,13 @@ export function redactCredentialHeaders(headers: Readonly<Record<string, string>
  * 抓包接口读的是磁盘上已经存在的那些行，所以两个边界都要过一遍。
  */
 export function redactUrlCredentials(value: string): string {
-  try {
-    return visibleUrl(value);
-  } catch {
-    return value;
-  }
+  return redactUrlValue(value);
 }
 
 function visibleUrl(value: string): string {
-  const url = new URL(value);
-  url.username = '';
-  url.password = '';
-  for (const name of [...url.searchParams.keys()]) {
-    if (isCredentialParam(name)) url.searchParams.set(name, REDACTED);
-  }
-  return url.toString();
+  return stripUrlCredentials(new URL(value)).toString();
 }
 
 function visibleHeaders(headers: Headers): Readonly<Record<string, string>> {
-  return Object.fromEntries([...headers].map(([name, value]) => [name, isCredentialHeader(name) ? REDACTED : value]));
+  return Object.fromEntries([...headers].map(([name, value]) => [name, visibleHeaderValue(name, value)]));
 }

@@ -126,6 +126,45 @@ test('redacts camelCase credentials again when replaying an already-persisted UR
   expect(replayed).toContain('prompt=hi');
 });
 
+// Location / Operation-Location 的值是可复用的签名 URL。只按头名字判的话 query
+// 凭据（`access_token`、`X-Amz-Signature`）会明文落盘，再经抓包接口送进浏览器。
+test('redacts credentials inside URL-valued headers on write and when replaying old logs', () => {
+  const signed = 'https://blob.test/job?access_token=live-secret&X-Amz-Signature=sig-secret&page=2';
+  const metadata = responseMetadata(
+    new Response(null, {
+      status: 202,
+      headers: { location: signed, 'operation-location': signed, 'x-request-id': 'visible-request-id' },
+    }),
+  );
+
+  expect(metadata.headers.location).not.toContain('live-secret');
+  expect(metadata.headers.location).not.toContain('sig-secret');
+  expect(metadata.headers.location).toContain('page=2');
+  expect(metadata.headers['operation-location']).not.toContain('live-secret');
+  expect(metadata.headers['x-request-id']).toBe('visible-request-id');
+
+  const replayed = redactCredentialHeaders({
+    location: signed,
+    'Operation-Location': signed,
+    accept: 'application/json',
+  });
+  expect(replayed.location).not.toContain('live-secret');
+  expect(replayed['Operation-Location']).not.toContain('sig-secret');
+  expect(replayed.accept).toBe('application/json');
+});
+
+test('redacts credentials in a relative Location and leaves a non-URL Location alone', () => {
+  const relative = responseMetadata(
+    new Response(null, { status: 302, headers: { location: '/v1/ops?access_token=rel-secret&page=2' } }),
+  );
+  expect(relative.headers.location).not.toContain('rel-secret');
+  expect(relative.headers.location).toContain('page=2');
+  expect(relative.headers.location?.startsWith('/')).toBe(true);
+
+  const opaque = responseMetadata(new Response(null, { status: 302, headers: { location: 'not a url at all ///' } }));
+  expect(opaque.headers.location).toBe('not a url at all ///');
+});
+
 test('leaves a URL it cannot parse alone instead of throwing', () => {
   expect(redactUrlCredentials('not a url')).toBe('not a url');
   expect(redactCredentialHeaders({ authorization: 'Bearer x', accept: 'application/json' })).toEqual({
