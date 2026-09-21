@@ -6,9 +6,12 @@ import type {
   DashboardOverviewResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
+  DashboardTracePercentileResponse,
   DashboardTraceSummary,
+  DashboardTraceSummaryResponse,
   DashboardUsageOverviewResponse,
   OtelSpanStatusCode,
+  TraceOutcome,
   TraceTerminationReason,
   UsageOverviewGroupBy,
   UsageOverviewMetric,
@@ -17,6 +20,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { SpanAttributesJson, SpanEventJson, SpanLinkJson } from '../schema/trace-span';
+import type { TraceFilters } from './trace-filters';
 
 export type StoredSpan = {
   readonly traceId: string;
@@ -108,6 +112,7 @@ export type TracesQuery = {
   readonly sessionSource?: string;
   readonly sessionId?: string;
   readonly otelStatusCode?: OtelSpanStatusCode;
+  readonly outcome?: TraceOutcome;
   readonly terminationReason?: TraceTerminationReason;
   readonly inboundProtocol?: string;
   readonly requestedModelId?: string;
@@ -120,6 +125,12 @@ export type TracesPage = {
   readonly items: DashboardTraceSummary[];
   readonly nextCursor?: TraceCursor;
   readonly previousCursor?: TraceCursor;
+};
+
+/** 摘要的时间范围是必填的：桶要对齐到范围起点，没有起点就没有桶界。 */
+export type TracesSummaryQuery = Omit<TraceFilters, 'startedAfter' | 'startedBefore'> & {
+  readonly startedAfter: Date;
+  readonly startedBefore: Date;
 };
 
 export type UsageOverviewQuery = {
@@ -145,7 +156,9 @@ export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
   readonly list: (query: TracesQuery) => TracesPage;
+  readonly summary: (query: TracesSummaryQuery) => DashboardTraceSummaryResponse;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
+  readonly percentile: (traceId: string) => DashboardTracePercentileResponse;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
   readonly overviewDashboardDiagnostics: (query: DashboardOverviewQuery) => DashboardOverviewDiagnosticsResponse;

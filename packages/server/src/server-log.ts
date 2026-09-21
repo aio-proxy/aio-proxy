@@ -84,6 +84,7 @@ export type RequestUpstreamSnapshotLog = {
   readonly event: 'request.upstream_snapshot';
   readonly requestId: string;
   readonly attemptIndex: number;
+  readonly sendIndex?: number;
   readonly providerId: string;
   readonly modelId: string;
 } & HttpRequestMetadata;
@@ -92,6 +93,7 @@ type RequestUpstreamResultBase = {
   readonly event: 'request.upstream_result';
   readonly requestId: string;
   readonly attemptIndex: number;
+  readonly sendIndex?: number;
   readonly providerId: string;
   readonly modelId: string;
   readonly durationMs: number;
@@ -194,6 +196,7 @@ type RequestBodyIdentity = {
   readonly requestId: string;
   readonly direction: RequestBodyDirection;
   readonly attemptIndex?: number;
+  readonly sendIndex?: number;
   readonly providerId?: string;
   readonly modelId?: string;
 };
@@ -207,9 +210,10 @@ export type RequestBodyChunkLog = RequestBodyIdentity & {
 export type RequestBodyTerminalLog = RequestBodyIdentity & {
   readonly event: 'request.body_terminal';
   readonly sequence: number;
-  readonly byteLength: number;
+  readonly byteLength?: number;
   readonly outcome: 'complete' | 'cancelled' | 'error';
   readonly errorType?: string;
+  readonly omitted?: boolean;
 };
 
 export type RealtimeCallCreatedLog = {

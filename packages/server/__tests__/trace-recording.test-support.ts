@@ -31,7 +31,10 @@ type RecordedRequest = {
   readonly attempts: readonly RecordedAttempt[];
 };
 
-const ATTEMPT_SPAN = 'aio_proxy.provider.attempt';
+// Attempt spans are now inference spans named `{operation} {model}`, so the name
+// is no longer a stable key. `aio_proxy.attempt.index` is: it exists on exactly
+// the spans that represent one provider attempt.
+const ATTEMPT_INDEX_ATTRIBUTE = 'aio_proxy.attempt.index';
 const UNPARSED_REQUESTED_MODEL_ID = '<unparsed>';
 
 export async function recorded(home: string) {
@@ -56,7 +59,7 @@ export async function recorded(home: string) {
 
 function toRequest(root: DashboardTraceSummary, spans: readonly DashboardTraceSpan[]): RecordedRequest {
   const attempts = spans
-    .filter((span) => span.name === ATTEMPT_SPAN)
+    .filter((span) => typeof span.attributes[ATTEMPT_INDEX_ATTRIBUTE] === 'number')
     .map(toAttempt)
     .sort((a, b) => a.index - b.index);
   return {
@@ -75,12 +78,12 @@ function toRequest(root: DashboardTraceSummary, spans: readonly DashboardTraceSp
 function toAttempt(span: DashboardTraceSpan): RecordedAttempt {
   const attrs = span.attributes;
   const protocol = str(attrs, 'aio_proxy.protocol.target');
-  const statusCode = num(attrs, 'http.status_code');
+  const statusCode = num(attrs, 'http.response.status_code');
   const errorCode = str(attrs, 'aio_proxy.error.code');
   return {
     index: num(attrs, 'aio_proxy.attempt.index') ?? 0,
     providerId: str(attrs, 'aio_proxy.provider.id') ?? '',
-    modelId: str(attrs, 'gen_ai.response.model') ?? '',
+    modelId: str(attrs, 'aio_proxy.attempt.model_id') ?? '',
     providerKind: str(attrs, 'aio_proxy.provider.kind') ?? '',
     outcome: (span.terminationReason ?? 'success') as RecordedAttempt['outcome'],
     durationMs: span.durationMs,

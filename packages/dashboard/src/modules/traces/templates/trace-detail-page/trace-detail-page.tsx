@@ -3,17 +3,19 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { toast } from '@aio-proxy/ui/components/toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Copy, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { queryKeys } from '@/lib/query-keys';
 
-import { TraceContextRail } from '../../components/trace-context-rail';
 import { TraceDetailTabs } from '../../components/trace-detail-tabs';
 import { TraceStatus } from '../../components/trace-status';
+import { useTracePercentileQuery } from '../../hooks/use-trace-percentile-query';
 import { useTraceQuery } from '../../hooks/use-trace-query';
-import { createDefaultTraceSearch } from '../../lib/trace-search';
+import { createDefaultTraceSearch, withTraceFilters } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 
 interface TraceDetailPageProps {
@@ -22,15 +24,20 @@ interface TraceDetailPageProps {
 
 export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const query = useTraceQuery(traceId);
+  const percentileQuery = useTracePercentileQuery(traceId, query.data?.trace.endedAt != null);
   const [selectedSpanId, setSelectedSpanId] = useState<string>();
   const selectedSpan =
     query.data?.spans.find((span) => span.spanId === selectedSpanId) ??
     query.data?.spans.find((span) => span.spanId === query.data?.trace.rootSpanId) ??
     query.data?.spans[0];
+  // 详情、分位、抓包共用 `trace(traceId)` 前缀。只 refetch 详情的话，
+  // 请求/响应还停在第一次打开时缓存的半截日志。
+  const refreshAll = () => void queryClient.invalidateQueries({ queryKey: queryKeys.trace(traceId) });
 
   const refresh = (
-    <Button variant="outline" onClick={() => void query.refetch()}>
+    <Button variant="outline" onClick={refreshAll}>
       <RefreshCw />
       {m['dashboard.traces.refresh']()}
     </Button>
@@ -71,7 +78,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
               ? m['dashboard.traces.not_found_description']()
               : m['dashboard.traces.detail_error_description']()}
           </EmptyDescription>
-          <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
+          <Button onClick={refreshAll}>{m['dashboard.traces.refresh']()}</Button>
         </Empty>
       </PageContainer>
     );
@@ -100,26 +107,19 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
         </div>
       }
     >
-      <div
-        className="grid min-w-0 items-start gap-8 lg:grid-cols-[minmax(16rem,0.32fr)_minmax(0,1fr)]"
-        data-testid="trace-detail-layout"
-      >
-        <TraceContextRail
-          trace={trace}
-          onSessionSelect={(session) =>
-            void navigate({
-              to: '/traces',
-              search: {
-                ...createDefaultTraceSearch(),
-                page: 1,
-                sessionSource: session.source,
-                sessionId: session.id,
-              },
-            })
-          }
-        />
-        <TraceDetailTabs detail={query.data} selectedSpan={selectedSpan} onSpanSelect={setSelectedSpanId} />
-      </div>
+      <TraceDetailTabs
+        detail={query.data}
+        selectedSpan={selectedSpan}
+        comparison={percentileQuery.data?.comparison}
+        onSpanSelect={setSelectedSpanId}
+        // 详情路由没有列表的 search。区间按这条调用链的当地日，否则历史详情会筛到今天、把自己筛没。
+        onFilter={(patch) =>
+          void navigate({
+            to: '/traces',
+            search: withTraceFilters(createDefaultTraceSearch(new Date(trace.startedAt)), patch),
+          })
+        }
+      />
     </PageContainer>
   );
 };

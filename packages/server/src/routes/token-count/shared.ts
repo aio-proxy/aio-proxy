@@ -35,7 +35,8 @@ function countIdentityAttributes(attempt: CountAttempt) {
   return {
     [attributeName.providerId]: attempt.providerId,
     [attributeName.providerKind]: attempt.providerKind,
-    [attributeName.genAiResponseModel]: attempt.modelId,
+    // token-count 的 attempt span 不生成 token，只数 token：禁区同样适用。
+    [attributeName.attemptModelId]: attempt.modelId,
     ...routingSpanAttributes(attempt),
   };
 }

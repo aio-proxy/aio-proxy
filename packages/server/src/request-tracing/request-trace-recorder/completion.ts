@@ -1,5 +1,5 @@
 import type { StoredSpan, TraceCompletion } from '@aio-proxy/core/db';
-import type { TraceTerminationReason, UsageRow } from '@aio-proxy/types';
+import type { TraceTerminationReason } from '@aio-proxy/types';
 import { type Span, SpanStatusCode } from '@opentelemetry/api';
 
 import type { LogicalSessionResolution } from '../../logical-session-store';
@@ -16,44 +16,38 @@ export function applyTerminalAttributes(root: Span, finish: RequestTraceFinishIn
   const finalProviderId =
     finish.finalProviderId ??
     (finish.outcome === 'success' && finish.usage !== undefined ? finish.usage.providerId : undefined);
-  const finalModelId =
-    finish.finalModelId ??
-    (finish.outcome === 'success' && finish.usage !== undefined ? finish.usage.modelId : undefined);
 
+  // 纯 HTTP 语义：gen_ai.* 只挂在 GenAI span 上。root 也带一份的话，Langfuse
+  // 会把一条 trace 读成两个 GENERATION。root 行的 model / usage 列来自 summary。
   if (finalProviderId !== undefined) root.setAttribute(attributeName.finalProviderId, finalProviderId);
-  if (finalModelId !== undefined) root.setAttribute(attributeName.genAiResponseModel, finalModelId);
   if (finish.finalHttpStatus !== undefined) root.setAttribute(attributeName.httpStatusCode, finish.finalHttpStatus);
   if (finish.ttftMs !== undefined) root.setAttribute(attributeName.ttftMs, finish.ttftMs);
-  if (finish.outcome === 'success' && finish.usage !== undefined) applyUsageAttributes(root, finish.usage);
 
   if (finish.outcome === 'failure') {
-    root.setStatus({ code: SpanStatusCode.ERROR });
+    // HTTP 语义约定：SERVER span 的 4xx 是客户端错误，span status 保持 UNSET。
+    // 只有 5xx 和拿不到状态码的内部失败才是服务端错误。DB summary 列照旧全写。
+    if (!isClientError(finish.finalHttpStatus)) root.setStatus({ code: SpanStatusCode.ERROR });
     root.setAttribute(attributeName.terminationReason, 'failure' as TraceTerminationReason);
     if (finish.errorType !== undefined) root.setAttribute(attributeName.errorType, finish.errorType);
     if (finish.errorCode !== undefined) root.setAttribute(attributeName.errorCode, finish.errorCode);
   } else if (finish.outcome === 'cancelled') {
-    root.setStatus({ code: SpanStatusCode.ERROR });
+    // HTTP 语义约定：调用方主动取消不是错误 —— "the cancellation SHOULD NOT be treated as
+    // an error: the span status SHOULD be left unset and `error.type` SHOULD NOT be set"。
+    // 客户端断连就是这种取消，所以这里只记终止原因，不置 ERROR。
+    // 仪表盘区分取消靠的是 terminationReason（TraceStatus），不是 span status ——
+    // completion.test.ts 有断言钉住这一点，别把渲染改回读 span status。
     root.setAttribute(attributeName.terminationReason, 'cancelled' as TraceTerminationReason);
   }
 
   if (identity.resolution !== undefined && identity.requestedModelId !== undefined) {
-    root.setAttribute(attributeName.genAiRequestModel, identity.requestedModelId);
     root.setAttribute(attributeName.sessionSource, identity.resolution.identity.source);
     root.setAttribute(attributeName.sessionId, identity.resolution.identity.id);
     root.setAttribute(attributeName.sessionResolvedBy, identity.resolution.resolvedBy);
   }
 }
 
-function applyUsageAttributes(root: Span, usage: UsageRow): void {
-  if (usage.inputTokens !== undefined) root.setAttribute(attributeName.genAiUsageInputTokens, usage.inputTokens);
-  if (usage.outputTokens !== undefined) root.setAttribute(attributeName.genAiUsageOutputTokens, usage.outputTokens);
-  if (usage.totalTokens !== undefined) root.setAttribute(attributeName.genAiUsageTotalTokens, usage.totalTokens);
-  if (usage.cacheReadTokens !== undefined)
-    root.setAttribute(attributeName.genAiUsageCacheReadTokens, usage.cacheReadTokens);
-  if (usage.cacheWriteTokens !== undefined)
-    root.setAttribute(attributeName.genAiUsageCacheWriteTokens, usage.cacheWriteTokens);
-  if (usage.reasoningTokens !== undefined)
-    root.setAttribute(attributeName.genAiUsageReasoningTokens, usage.reasoningTokens);
+function isClientError(status: number | undefined): boolean {
+  return status !== undefined && status >= 400 && status < 500;
 }
 
 export function buildCompletion(deps: {

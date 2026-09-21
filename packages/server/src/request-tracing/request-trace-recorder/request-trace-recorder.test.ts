@@ -134,7 +134,45 @@ describe('createRequestTraceRecorder', () => {
     expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
   });
 
-  test('cancelled sets ERROR status and cancelled termination reason', () => {
+  test('4xx failure keeps the root span status UNSET but still records failure metadata', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.finish({ outcome: 'failure', finalHttpStatus: 404, errorCode: 'model_not_found' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.statusCode).toBe(SpanStatusCode.UNSET);
+    expect(root?.attributes['aio_proxy.termination.reason']).toBe('failure');
+    expect(root?.attributes['aio_proxy.error.code']).toBe('model_not_found');
+    expect(completions[0]?.summary.terminationReason).toBe('failure');
+  });
+
+  test('5xx failure still sets the root span status to ERROR', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'internal_error' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
+  });
+
+  test('failure without an http status sets the root span status to ERROR', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.finish({ outcome: 'failure', errorCode: 'internal_error' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
+  });
+
+  // 调用方主动取消不是错误（http-spans.md）。仪表盘靠 terminationReason 区分取消，
+  // 不靠 span status —— 两条断言一起，防止有人把渲染改回读 status 时静默回归。
+  test('cancelled leaves span status UNSET but still records the termination reason', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
     const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
@@ -143,7 +181,8 @@ describe('createRequestTraceRecorder', () => {
 
     expect(completions[0]?.summary.terminationReason).toBe('cancelled');
     const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
-    expect(root?.statusCode).toBe(SpanStatusCode.ERROR);
+    expect(root?.statusCode).toBe(SpanStatusCode.UNSET);
+    expect(root?.attributes['error.type']).toBeUndefined();
   });
 
   test('double finish is a no-op', () => {

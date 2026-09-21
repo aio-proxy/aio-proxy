@@ -2,6 +2,7 @@ import type { ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { withAttemptLogContext } from '../../../request-logging';
 import { attributeName, type RequestTraceSession } from '../../../request-tracing';
 import { isInboundAbort } from '../../../route-observation';
 import type { RuntimeProviderInstance } from '../../../runtime';
@@ -79,7 +80,11 @@ export async function attemptRawCount<TRequest, TContext>({
       supportedEfforts,
       context,
     );
-    response = await raw.invoke(upstream, logicalRequest, { upstreamStream: false });
+    response = await attemptSpan.run(() =>
+      withAttemptLogContext({ attemptIndex, providerId: candidate.provider.id, modelId: candidate.modelId }, () =>
+        raw.invoke(upstream, logicalRequest, { upstreamStream: false }),
+      ),
+    );
     if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     rawRequest.signal.throwIfAborted();
     attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);

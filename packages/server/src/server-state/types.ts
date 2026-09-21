@@ -104,6 +104,8 @@ export type ServerState = ProviderRouteSource & {
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;
+  /** LogTape 按启动配置落盘；热重载改 level/目录要等重启。抓包读这一份，不读 currentConfig。 */
+  readonly logging: Config['server']['logging'];
   readonly realtimeCalls: RealtimeCallStore;
   readonly videoJobs: VideoJobStore;
   readonly traceStore: TraceStore;

@@ -4,11 +4,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createTraceStore, openDb } from '@aio-proxy/core/db';
-import { DashboardTraceDetailSchema, DashboardTracesResponseSchema } from '@aio-proxy/types';
+import {
+  DashboardTraceDetailSchema,
+  DashboardTracePercentileResponseSchema,
+  DashboardTracesResponseSchema,
+  DashboardTraceSummaryResponseSchema,
+  DashboardTraceWireResponseSchema,
+} from '@aio-proxy/types';
+import { format } from 'date-fns';
 
 import { createServer } from '#server-test-lifecycle';
 
 import { loopbackServer } from '../../dashboard-auth/test-support';
+import type { ServerState } from '../../server-state';
+import { createDashboardTraceRoutes } from './traces';
 
 const TRACE_ID = 'a'.repeat(32);
 const ROOT_SPAN_ID = 'b'.repeat(16);
@@ -94,7 +103,7 @@ async function seededApp() {
         kind: 1,
         startedAt,
         endedAt,
-        statusCode: 1,
+        statusCode: 0,
         attributes: rootAttributes,
         events: [],
         links: [],
@@ -107,7 +116,7 @@ async function seededApp() {
         kind: 2,
         startedAt: new Date(startedAt.getTime() + 10),
         endedAt: new Date(endedAt.getTime() - 10),
-        statusCode: 1,
+        statusCode: 0,
         attributes: { 'aio_proxy.provider.id': 'provider-a' },
         events: [],
         links: [],
@@ -120,7 +129,7 @@ async function seededApp() {
         kind: 2,
         startedAt: new Date(startedAt.getTime() + 20),
         endedAt: new Date(endedAt.getTime() - 20),
-        statusCode: 1,
+        statusCode: 0,
         attributes: { 'gen_ai.response.model': 'gpt-5' },
         events: [],
         links: [],
@@ -182,6 +191,61 @@ async function paginatedApp(traceCount = 21) {
       attributes: {},
       events: [],
       links: [],
+    });
+  }
+
+  handle.close();
+  return app;
+}
+
+/**
+ * `count` 条已结束的同模型调用链，起点挨在一起 —— 分位窗口锚在目标自己的 `startedAt`
+ * 上、前后各一小时，所以只要这批样本彼此相距够近，它们就都在对方的窗口里。
+ */
+async function percentileApp(count: number) {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-traces-percentile-'));
+  homes.push(home);
+  const app = await createServer({ config: { providers: {} }, dbHome: home });
+  const handle = openDb({ home });
+  const store = createTraceStore(handle.db);
+
+  for (let index = 1; index <= count; index += 1) {
+    const traceId = index.toString(16).padStart(32, '0');
+    const spanId = index.toString(16).padStart(16, '0');
+    const startedAt = new Date(Date.now() - 10_000);
+    const endedAt = new Date(startedAt.getTime() + index * 10);
+    const attributes = { 'gen_ai.response.model': 'gpt-5' };
+    store.startRoot({
+      traceId,
+      spanId,
+      requestId: `request-${index}`,
+      inboundProtocol: 'openai-response',
+      name: 'aio_proxy.request',
+      kind: 1,
+      startedAt,
+      statusCode: 0,
+      attributes,
+      events: [],
+      links: [],
+    });
+    store.complete({
+      traceId,
+      rootSpanId: spanId,
+      spans: [
+        {
+          traceId,
+          spanId,
+          name: 'aio_proxy.request',
+          kind: 1,
+          startedAt,
+          endedAt,
+          statusCode: 0,
+          attributes,
+          events: [],
+          links: [],
+        },
+      ],
+      summary: { finalProviderId: 'provider-a', finalModelId: 'gpt-5', finalHttpStatus: 200 },
     });
   }
 
@@ -312,6 +376,7 @@ describe('Dashboard trace routes', () => {
     '?traceId=bad',
     `?traceId=${'A'.repeat(32)}`,
     '?otelStatusCode=BAD',
+    '?outcome=BAD',
     '?terminationReason=success',
     '?finalHttpStatus=abc',
     '?finalHttpStatus=99',
@@ -323,5 +388,127 @@ describe('Dashboard trace routes', () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: 'validation failed', details: expect.any(Array) });
+  });
+
+  test('summarizes traces into buckets over the requested range', async () => {
+    const app = await seededApp();
+    const response = await app.request(
+      '/dashboard/api/traces/summary?startedAfter=2026-07-27T08:00:00.000Z&startedBefore=2026-07-27T09:00:00.000Z',
+      undefined,
+      loopbackServer,
+    );
+    const body = DashboardTraceSummaryResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body.bucket).toBe('1m');
+    expect(body.buckets).toHaveLength(60);
+    expect(body.buckets[0]).toEqual({ at: '2026-07-27T08:00:00.000Z', success: 1, error: 0 });
+    // 08:01 那条还在跑，成功和失败都不该算上它
+    expect(body.buckets[1]).toEqual({ at: '2026-07-27T08:01:00.000Z', success: 0, error: 0 });
+    expect(body.totals).toEqual({ success: 1, error: 0 });
+  });
+
+  // 图例 chip 点下去后，列表要跟摘要数的是同一批调用链：摘要说这个范围里 1 成功 0 失败，
+  // outcome=success 就该给回那一条，outcome=error 一条都不给。
+  test('filters the list by the same outcome the summary counts', async () => {
+    const app = await seededApp();
+    const range = 'startedAfter=2026-07-27T08:00:00.000Z&startedBefore=2026-07-27T09:00:00.000Z';
+    const succeeded = await app.request(`/dashboard/api/traces?${range}&outcome=success`, undefined, loopbackServer);
+    const failed = await app.request(`/dashboard/api/traces?${range}&outcome=error`, undefined, loopbackServer);
+
+    expect(DashboardTracesResponseSchema.parse(await succeeded.json()).items.map((item) => item.traceId)).toEqual([
+      TRACE_ID,
+    ]);
+    expect(DashboardTracesResponseSchema.parse(await failed.json()).items).toEqual([]);
+  });
+
+  test('rejects a trace summary request without a time range', async () => {
+    const app = await seededApp();
+    const response = await app.request('/dashboard/api/traces/summary', undefined, loopbackServer);
+
+    expect(response.status).toBe(400);
+  });
+
+  test('compares a trace against the same-model hour once the sample clears the threshold', async () => {
+    const traceId = '00000000000000000000000000000001';
+    const enough = await (
+      await percentileApp(30)
+    ).request(`/dashboard/api/traces/${traceId}/percentile`, undefined, loopbackServer);
+    const body = DashboardTracePercentileResponseSchema.parse(await enough.json());
+
+    expect(enough.status).toBe(200);
+    expect(body.comparison).toMatchObject({ modelId: 'gpt-5', sampleCount: 30, percentile: 0 });
+
+    const sparse = await (
+      await percentileApp(29)
+    ).request(`/dashboard/api/traces/${traceId}/percentile`, undefined, loopbackServer);
+
+    expect(sparse.status).toBe(200);
+    expect(DashboardTracePercentileResponseSchema.parse(await sparse.json()).comparison).toBeNull();
+  });
+
+  // 热重载会改 currentConfig 的 level/目录，LogTape 还在写启动时那份。读 currentConfig
+  // 会把还在落盘的抓包判成 level，或去扫一个从来没写过的目录。
+  test('reads wire logs from the process logging config after authored level changes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-runtime-'));
+    homes.push(dir);
+    const startedAt = new Date('2026-07-27T08:00:00.000Z');
+    await Bun.write(
+      join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`),
+      `${JSON.stringify({
+        '@timestamp': startedAt.toISOString(),
+        level: 'DEBUG',
+        message: '{}',
+        logger: 'aio-proxy.server',
+        properties: {
+          event: 'request.inbound_snapshot',
+          requestId: 'request-a',
+          method: 'POST',
+          url: 'https://proxy.test/v1/responses',
+        },
+      })}\n`,
+    );
+    const app = createDashboardTraceRoutes({
+      logging: { enabled: true, level: 'debug', dir },
+      currentConfig: () => ({ server: { logging: { enabled: true, level: 'info', dir: '/not-the-sink' } } }),
+      traceStore: {
+        find: () => ({
+          trace: {
+            traceId: TRACE_ID,
+            requestId: 'request-a',
+            startedAt: startedAt.toISOString(),
+            endedAt: '2026-07-27T08:00:00.100Z',
+          },
+        }),
+      },
+    } as unknown as ServerState);
+
+    const response = await app.request(`/${TRACE_ID}/wire`);
+    const body = DashboardTraceWireResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body.available).toBe(true);
+    expect(body.reason).toBeUndefined();
+    expect(body.hops[0]?.request?.method).toBe('POST');
+  });
+
+  // 抓包是可选的：日志关着的时候端点要说清楚「为什么没有」，而不是给个空壳。
+  test('explains that wire capture is off when request logging is disabled', async () => {
+    const app = await seededApp();
+    const response = await app.request(`/dashboard/api/traces/${TRACE_ID}/wire`, undefined, loopbackServer);
+    const body = DashboardTraceWireResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(body).toEqual({ available: false, reason: 'disabled', hops: [] });
+  });
+
+  test('returns 404 when the compared trace does not exist', async () => {
+    const response = await (
+      await percentileApp(30)
+    ).request(`/dashboard/api/traces/${'f'.repeat(32)}/percentile`, undefined, loopbackServer);
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: 'trace not found' });
   });
 });

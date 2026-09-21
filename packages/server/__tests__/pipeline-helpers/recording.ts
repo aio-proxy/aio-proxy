@@ -71,7 +71,15 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
 }
 
 function projectAttempts(spans: readonly StoredSpan[]): RecordedAttempt[] {
-  return spans.filter((span) => span.name === spanName.attempt).map(projectAttempt);
+  // Attempt spans are inference spans now, named `{operation} {model}` at
+  // runtime, so the name is no longer a key. `aio_proxy.attempt.index` is the
+  // stable marker — but token-count's skipped-candidate spans carry it too, and
+  // those are passed-over candidates, not attempts. Exclude them by name.
+  return spans
+    .filter(
+      (span) => span.attributes[attributeName.attemptIndex] !== undefined && span.name !== spanName.candidateSkipped,
+    )
+    .map(projectAttempt);
 }
 
 function projectAttempt(span: StoredSpan): RecordedAttempt {
@@ -91,7 +99,7 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
   const statusCode = num(attrs, attributeName.httpStatusCode);
   const errorCode = str(attrs, attributeName.errorCode);
   const stream = bool(attrs, attributeName.stream);
-  const ttftMs = num(attrs, attributeName.ttftMs);
+  const ttftMs = num(attrs, attributeName.attemptTtftMs);
   const transportObservation = str(
     attrs,
     attributeName.transportObservation,
@@ -104,7 +112,7 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
   const contentEncoding = str(attrs, attributeName.contentEncoding) as RecordedAttempt['contentEncoding'];
   return {
     providerId: str(attrs, attributeName.providerId) ?? '',
-    modelId: str(attrs, attributeName.genAiResponseModel) ?? '',
+    modelId: str(attrs, attributeName.attemptModelId) ?? '',
     providerKind: (str(attrs, attributeName.providerKind) ?? '') as RecordedAttempt['providerKind'],
     durationMs: Math.max(0, span.endedAt.getTime() - span.startedAt.getTime()),
     outcome: (str(attrs, attributeName.terminationReason) ?? 'success') as RecordedAttempt['outcome'],

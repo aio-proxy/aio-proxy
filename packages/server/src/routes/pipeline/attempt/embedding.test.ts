@@ -67,7 +67,7 @@ function harness<TRequest, TContext>(
       routingContinuity: { updatesAffinity: false },
       sessionIdentity: resolution.identity,
       streamRequested: false,
-      emitter: createAttemptEmitter(session, false),
+      emitter: createAttemptEmitter({ session, streamRequested: false, capability: 'embedding' }),
       release: () => {},
       deferRelease: () => {},
       logFailure: () => {},

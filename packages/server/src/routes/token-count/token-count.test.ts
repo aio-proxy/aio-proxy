@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { anthropicMessagesAdapter, geminiGenerateContentAdapter } from '@aio-proxy/core';
 import { ConfigSchema } from '@aio-proxy/types';
+import { context, trace } from '@opentelemetry/api';
 
 import {
   defineProviderRouteSource,
@@ -47,6 +48,22 @@ test('uses routing order and falls through candidates without count support', as
     expect.objectContaining({ outcome: 'success', providerId: 'real', statusCode: 200 }),
   ]);
   expect(fixture.releases()).toBe(1);
+});
+
+test('runs countTokens under the attempt span so upstream fetches parent to it', async () => {
+  let parentName: string | undefined;
+  const fixture = countFixture([
+    provider({
+      id: 'counter',
+      tokenCount: async () => {
+        parentName = trace.getSpan(context.active())?.name;
+        return { inputTokens: 3 };
+      },
+    }),
+  ]);
+
+  expect(await (await fixture.anthropic()).json()).toEqual({ input_tokens: 3 });
+  expect(parentName).toBe(spanName.attempt);
 });
 
 test('opens the attempt span before the counter runs so the provider attempt gets real duration', async () => {

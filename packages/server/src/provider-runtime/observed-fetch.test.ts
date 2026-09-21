@@ -180,7 +180,7 @@ test('materialized provider fetches observe final upstream requests only inside 
       providerId: 'api',
       modelId: 'api-model',
       method: 'POST',
-      url: 'https://final-api.test/v1/responses?api_key=api-query-secret',
+      url: 'https://final-api.test/v1/responses?api_key=%5BREDACTED%5D',
       headers: {
         'content-type': 'application/json',
         'user-agent': 'api-generated-agent',
@@ -193,7 +193,7 @@ test('materialized provider fetches observe final upstream requests only inside 
       providerId: 'sdk',
       modelId: 'sdk-model',
       method: 'POST',
-      url: 'https://final-sdk.test/v1/chat/completions?token=sdk-query-secret',
+      url: 'https://final-sdk.test/v1/chat/completions?token=%5BREDACTED%5D',
       headers: {
         accept: 'application/json',
         authorization: '[REDACTED]',
@@ -226,6 +226,6 @@ test('materialized provider fetches record transport headers without debug loggi
   );
 
   expect(response.status).toBe(204);
-  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10 });
+  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10, httpSends: 1 });
   expect(fixture.logs).toEqual([]);
 });

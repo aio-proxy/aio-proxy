@@ -2,9 +2,6 @@ import { assertImageInputSupported, type ModelInvocation } from '@aio-proxy/core
 import type { ProviderProtocol } from '@aio-proxy/types';
 
 import type { ModelTransport } from '../../../runtime';
-import { attemptBase } from '../attempt-base';
-import { failureTerminal, finalFailure } from '../failure';
-import { logRequestRejected } from '../logging';
 import type {
   AttemptLoopContext,
   AttemptStep,
@@ -13,7 +10,7 @@ import type {
   LanguageAttemptLoopContext,
 } from './context';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
-import { emitReject } from './error';
+import { emitReject, type RequestShapeRejection } from './error';
 
 export type PreparedInvocation =
   | {
@@ -21,7 +18,13 @@ export type PreparedInvocation =
       readonly candidateInvocation: ModelInvocation;
       readonly targetProtocol: ProviderProtocol | undefined;
     }
-  | { readonly kind: 'step'; readonly step: AttemptStep };
+  | ({ readonly kind: 'reject' } & RequestShapeRejection)
+  // The adapter cannot express this request as a model invocation for ANY
+  // candidate. Carried back as data rather than settled here: preparation runs
+  // inside the attempt span, and emitting a rejection ends that span (and can
+  // finish the request), which must not happen until the caller has closed its
+  // prepare span.
+  | { readonly kind: 'unsupported'; readonly response: Response };
 
 // Rejects a candidate whose materialized invocation needs a capability this
 // provider lacks (image input or a provider-native tool). Returns an early
@@ -68,20 +71,20 @@ export async function prepareModelInvocation<TRequest, TContext>(
     slot.candidate.modelId,
     slot.candidate.provider.upstreamMetadata?.[slot.candidate.modelId],
   );
-  return resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol, supportedEfforts);
+  return resolveInvocation(ctx, holder, slot.trace.targetProtocol, supportedEfforts);
 }
 
 // Materializes the model invocation once and reuses it across candidates,
-// mapping conversion failures onto the protocol's error shapes.
+// mapping conversion failures onto the protocol's error shapes. Pure with
+// respect to tracing: every failure is returned, never emitted, so the caller
+// controls when the attempt and prepare spans close.
 export function resolveInvocation<TRequest, TContext>(
   ctx: LanguageAttemptLoopContext<TRequest, TContext>,
-  slot: CandidateSlot,
   holder: InvocationHolder,
   targetProtocol: ProviderProtocol | undefined,
   supportedEfforts: ReadonlySet<string>,
 ): PreparedInvocation {
-  const { adapter, request, context, rawRequest, session, source, requestedModelId } = ctx;
-  const { index, candidate, startedAt } = slot;
+  const { adapter, request, context } = ctx;
 
   if (holder.invocation === undefined && holder.invocationUnsupported === undefined) {
     try {
@@ -93,26 +96,17 @@ export function resolveInvocation<TRequest, TContext>(
       } else {
         const mapped = adapter.errors.requestError(error);
         if (mapped === undefined) throw error;
-        const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
-        const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
-        ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(mapped.status, errorCode));
-        session.finish({ ...finalFailure(base, mapped.status, errorCode), clientResponse: mapped });
-        logRequestRejected({
-          source,
-          requestId: session.requestId,
-          rawRequest,
-          inboundProtocol: adapter.protocol,
-          requestedModelId,
-          statusCode: mapped.status,
-          errorCode,
+        return {
+          kind: 'reject',
+          response: mapped,
+          errorCode: mapped.status === 501 ? 'unsupported_feature' : 'invalid_request',
           error,
-        });
-        return { kind: 'step', step: { kind: 'return', response: mapped } };
+        };
       }
     }
   }
   if (holder.invocationUnsupported !== undefined) {
-    return { kind: 'step', step: emitReject(ctx, slot, holder.invocationUnsupported, 'unsupported_feature') };
+    return { kind: 'unsupported', response: holder.invocationUnsupported };
   }
   if (holder.invocation === undefined) throw new TypeError('Protocol adapter returned no model invocation');
   return {

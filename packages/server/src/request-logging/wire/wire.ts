@@ -1,6 +1,8 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { type Attributes, context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { createParser } from 'eventsource-parser';
 
+import { attributeName, getTraceRuntime } from '../../request-tracing';
 import type { ResponseBodyObservation } from '../../response-observation';
 import { currentAttemptResponseObservation } from '../../response-observation';
 import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
@@ -15,9 +17,19 @@ type BodyIdentity = {
   readonly requestId: string;
   readonly direction: RequestBodyDirection;
   readonly attemptIndex?: number;
+  readonly sendIndex?: number;
   readonly providerId?: string;
   readonly modelId?: string;
 };
+
+function takeSendIndex(scope: { readonly attemptIndex?: number; readonly sendCounts?: Map<number, number> }): number {
+  const attempt = scope.attemptIndex;
+  const bag = scope.sendCounts;
+  if (attempt === undefined || bag === undefined) return 0;
+  const index = bag.get(attempt) ?? 0;
+  bag.set(attempt, index + 1);
+  return index;
+}
 
 type ResponseMetadata = ResponseInit & {
   readonly redirected: boolean;
@@ -29,6 +41,7 @@ type DebugResponseObservation = {
   readonly identity: BodyIdentity;
   readonly logger: ServerLogSink;
   readonly signal: AbortSignal | undefined;
+  readonly omitChunks?: boolean;
 };
 
 type ResponseObservationOptions = {
@@ -49,17 +62,18 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
             identity: {
               requestId: scope.requestId,
               attemptIndex: scope.attemptIndex,
+              sendIndex: takeSendIndex(scope),
               providerId: scope.providerId,
               modelId: scope.modelId,
             },
             logger: scope.logger,
           };
     if (debug === undefined && observation === undefined) {
-      return fetcher(input, init);
+      return fetchWithSpan(fetcher, input, init);
     }
     safely(() => observation?.observeFetchStart());
     if (debug === undefined) {
-      const response = await fetcher(input, init);
+      const response = await fetchWithSpan(fetcher, input, init);
       const bodyObservation = safely(() =>
         observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
       );
@@ -76,11 +90,11 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         ...requestMetadata(request),
       });
       const hideVideoBodies = scope?.sourceProtocol === ProviderProtocol.OpenAIVideo;
-      const delegated = hideVideoBodies
-        ? request
-        : requestWithObservedBody(request, { ...debug.identity, direction: 'upstream_request' }, debug.logger);
+      const requestIdentity = { ...debug.identity, direction: 'upstream_request' as const };
+      if (hideVideoBodies) logOmittedBody(debug.logger, requestIdentity);
+      const delegated = hideVideoBodies ? request : requestWithObservedBody(request, requestIdentity, debug.logger);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
-      const response = await fetcher(delegated, decompress === undefined ? undefined : { decompress });
+      const response = await fetchWithSpan(fetcher, delegated, decompress === undefined ? undefined : { decompress });
       const bodyObservation = safely(() =>
         observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
       );
@@ -91,17 +105,16 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         outcome: 'response',
         ...responseMetadata(response),
       });
+      // 视频正文故意不抓 chunk，但终态跟着客户端真正读完/失败/取消走：
+      // 头到达时写 complete 会让 hop 提前变绿，消费失败也洗不掉。
       return responseWithObservedBody(response, {
         ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
-        ...(hideVideoBodies
-          ? {}
-          : {
-              debug: {
-                identity: { ...debug.identity, direction: 'upstream_response' },
-                logger: debug.logger,
-                signal: request.signal,
-              },
-            }),
+        debug: {
+          identity: { ...debug.identity, direction: 'upstream_response' },
+          logger: debug.logger,
+          signal: request.signal,
+          ...(hideVideoBodies ? { omitChunks: true } : {}),
+        },
       });
     } catch (error) {
       logServerEvent(debug.logger, {
@@ -125,10 +138,23 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
     inboundProtocol,
     ...requestMetadata(request),
   });
-  // Videos create can carry `input_reference` data URLs and multipart bytes.
-  // Snapshot headers stay; body chunks do not.
-  if (inboundProtocol === ProviderProtocol.OpenAIVideo) return request;
+  // Videos create 可能带 data URL / multipart。头照常记；正文不落 chunk，但要有终态，
+  // 否则面板当没抓、hopsNeedNextDay 还会去扫下一天。
+  if (inboundProtocol === ProviderProtocol.OpenAIVideo) {
+    logOmittedBody(scope.logger, { requestId: scope.requestId, direction: 'inbound' });
+    return request;
+  }
   return requestWithObservedBody(request, { requestId: scope.requestId, direction: 'inbound' }, scope.logger);
+}
+
+function logOmittedBody(logger: ServerLogSink, identity: BodyIdentity): void {
+  logServerEvent(logger, {
+    event: 'request.body_terminal',
+    ...identity,
+    sequence: 0,
+    outcome: 'complete',
+    omitted: true,
+  });
 }
 
 function observedBody(
@@ -168,7 +194,7 @@ function observedBody(
     contentType,
     {
       chunk(text) {
-        if (debug !== undefined) {
+        if (debug !== undefined && debug.omitChunks !== true) {
           logServerEvent(debug.logger, { event: 'request.body_chunk', ...debug.identity, sequence: sequence++, text });
         }
         if (!parserActive || parser === undefined) return;
@@ -210,7 +236,12 @@ function observedBody(
 function requestWithObservedBody(request: Request, identity: BodyIdentity, logger: ServerLogSink): Request {
   try {
     const body = request.body;
-    if (body === null) return request;
+    if (body === null) {
+      // GET / HEAD：没有 body 可读。不记 complete 的话 hopsNeedNextDay 会把这次发送
+      // 当成正文还没到，已结束的历史调用链每次打开都去啃下一天的 debug 日志。
+      emitEmptyBodyTerminal({ identity, logger });
+      return request;
+    }
     const contentType = request.headers.get('content-type');
     const init: RequestInit = {
       cache: request.cache,
@@ -234,6 +265,19 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
   }
 }
 
+function emitEmptyBodyTerminal(
+  debug: { readonly identity: BodyIdentity; readonly logger: ServerLogSink } | undefined,
+): void {
+  if (debug === undefined) return;
+  logServerEvent(debug.logger, {
+    event: 'request.body_terminal',
+    ...debug.identity,
+    sequence: 0,
+    byteLength: 0,
+    outcome: 'complete',
+  });
+}
+
 function responseWithObservedBody(response: Response, options: ResponseObservationOptions): Response {
   let source: ReadableStream<Uint8Array>;
   let contentType: string | null;
@@ -241,7 +285,12 @@ function responseWithObservedBody(response: Response, options: ResponseObservati
   let metadata: ResponseMetadata;
   try {
     const body = response.body;
-    if (body === null) return response;
+    if (body === null) {
+      // 204 / HEAD：没有 body 可读，也就没有 tap 终态。不记一行 complete 的话
+      // 抓包会把这次发送一直标成 running。
+      emitEmptyBodyTerminal(options.debug);
+      return response;
+    }
     source = body;
     const headers = response.headers;
     contentType = headers.get('content-type');
@@ -313,5 +362,77 @@ function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, 
     return wrapped;
   } catch {
     return original;
+  }
+}
+
+// The upstream HTTP call as a CLIENT child of the attempt. The span stops at the
+// response headers; the body timeline is carried by first_upstream_byte_ms /
+// ttft_ms on the attempt.
+//
+// The active-span check guards a reachable path, not a theoretical one: this
+// fetcher also serves callers that run outside any trace session at all —
+// dashboard, OAuth and plugin-host requests. Parenting a span to nothing would
+// put it on a fresh trace id the buffering processor was never told to
+// register, so it would be built and thrown away rather than persisted.
+async function fetchWithSpan(
+  fetcher: typeof globalThis.fetch,
+  input: Parameters<typeof globalThis.fetch>[0],
+  // BunFetchInit, not RequestInit: `globalThis.fetch` is overloaded and accepts
+  // Bun's `decompress`, but `Parameters<>` collapses to the last overload and
+  // drops it, so the caller at the debug branch would not type-check.
+  init?: BunFetchInit,
+): Promise<Response> {
+  const parent = context.active();
+  if (trace.getSpan(parent) === undefined) return fetcher(input, init);
+  const request = typeof input === 'object' && 'url' in input ? input : undefined;
+  const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+  const span = getTraceRuntime().tracer.startSpan(
+    method,
+    {
+      kind: SpanKind.CLIENT,
+      attributes: {
+        [attributeName.httpRequestMethod]: method,
+        ...targetAttributes(request?.url ?? String(input)),
+      },
+    },
+    parent,
+  );
+  try {
+    const response = await fetcher(input, init);
+    span.setAttribute(attributeName.httpStatusCode, response.status);
+    // CLIENT span 的 4xx 也算错误，和 SERVER span 相反：语义约定只对 SERVER 网开一面
+    // （客户端发错请求不是服务端的故障），而对发起方来说，拿回 4xx 的这次上游调用就是
+    // 失败的。root 那边保持 UNSET 是同一条约定的另一半，别照搬过来。
+    if (response.status >= 400) span.setStatus({ code: SpanStatusCode.ERROR });
+    return response;
+  } catch (error) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.setAttribute(attributeName.errorType, serverErrorType(error));
+    throw error;
+  } finally {
+    // Safe here, unlike the pipeline spans: this wraps a single await with no
+    // request settlement inside it, so the span cannot outlive its buffer drain.
+    span.end();
+  }
+}
+
+// The spec says url.full; only host + path are recorded. Several providers put
+// the key in the query string (`?key=`), and span attributes are persisted by
+// default and rendered straight into the dashboard.
+function targetAttributes(href: string): Attributes {
+  try {
+    const url = new URL(href);
+    return {
+      // hostname 而不是 host：语义约定里 server.address 只放主机名或 IP，端口是单独的
+      // server.port。用 host 的话自建或非标端口的上游会得到 `provider.example:8443`，
+      // 按标准做筛选和聚合的后端认不出来。IPv6 的方括号是 URL 语法，同样不属于地址本身。
+      [attributeName.serverAddress]: url.hostname.replace(/^\[|\]$/gu, ''),
+      // 走默认端口时 URL.port 是空串，那种情况不发这个属性 —— 补一个猜出来的默认值
+      // 等于把「没说」写成「说了」。
+      ...(url.port === '' ? {} : { [attributeName.serverPort]: Number(url.port) }),
+      [attributeName.urlPath]: url.pathname,
+    };
+  } catch {
+    return {};
   }
 }

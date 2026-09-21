@@ -14,9 +14,26 @@ export const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 export const STREAM_IDLE_TIMEOUT_MS = 300_000;
 
 export type UsageCompletion =
-  | { readonly outcome: 'success'; readonly usage?: UsageRow; readonly statusCode?: number; readonly ttftMs?: number }
-  | { readonly outcome: 'failure'; readonly statusCode?: number; readonly errorCode?: string; readonly ttftMs?: number }
-  | { readonly outcome: 'cancelled'; readonly statusCode?: number; readonly ttftMs?: number };
+  | {
+      readonly outcome: 'success';
+      readonly usage?: UsageRow;
+      readonly statusCode?: number;
+      readonly ttftMs?: number;
+      readonly firstChunkAt?: number;
+    }
+  | {
+      readonly outcome: 'failure';
+      readonly statusCode?: number;
+      readonly errorCode?: string;
+      readonly ttftMs?: number;
+      readonly firstChunkAt?: number;
+    }
+  | {
+      readonly outcome: 'cancelled';
+      readonly statusCode?: number;
+      readonly ttftMs?: number;
+      readonly firstChunkAt?: number;
+    };
 
 export type Captured<T> = {
   readonly value: T;
@@ -109,9 +126,12 @@ export function usageProperty(usage: UsageRow | undefined): { readonly usage?: U
 export function ttftProperty(
   startedAt: number | undefined,
   firstTokenAt: number | undefined,
-): { readonly ttftMs?: number } {
+): { readonly ttftMs?: number; readonly firstChunkAt?: number } {
   if (startedAt === undefined || firstTokenAt === undefined) return {};
-  return { ttftMs: Math.max(0, Math.round(firstTokenAt - startedAt)) };
+  // ttftMs is measured from this attempt's dispatch; firstChunkAt is the raw
+  // performance.now() instant, so a consumer with a different origin (the GenAI
+  // span measures from its own start) can subtract its own.
+  return { firstChunkAt: firstTokenAt, ttftMs: Math.max(0, Math.round(firstTokenAt - startedAt)) };
 }
 
 export function observeContentAt(observation: AttemptResponseObservation | undefined): number {

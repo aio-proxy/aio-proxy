@@ -7,9 +7,18 @@ export type AttemptResponseSnapshot = {
   readonly upstreamHeadersMs?: number;
   readonly firstUpstreamByteMs?: number;
   readonly firstSseEventMs?: number;
+  readonly firstContentMs?: number;
   readonly contentGapP95Ms?: number;
   readonly maxSseFramesPerRead?: number;
   readonly contentEncoding?: 'identity' | 'gzip' | 'deflate' | 'br' | 'zstd' | 'multiple' | 'other';
+  // Upstream HTTP sends started inside this one attempt. Counted at fetch start
+  // so a timeout/reset that never produced a Response still counts. >1 means
+  // same-provider retries happened underneath us: raw-retry's hidden replay (at
+  // most one), or the AI SDK's maxRetries, which defaults to 2 and that we never
+  // set. Those retries are invisible to the SDK's own callbacks --
+  // onLanguageModelCallStart fires outside its retry() wrapper -- so the HTTP
+  // layer is the only place they can be counted.
+  readonly httpSends?: number;
 };
 
 export type ResponseBodyObservation = {
@@ -46,12 +55,14 @@ export function createAttemptResponseObservation(options: {
   const now = options.now ?? performance.now.bind(performance);
   const gapBuckets = new Uint32Array(GAP_BUCKET_UPPER_BOUNDS.length + 1);
   let transportObservation: TransportObservation | undefined;
+  let sendCount = 0;
   let responseCount = 0;
   let upstreamHeadersMs: number | undefined;
   let firstUpstreamByteMs: number | undefined;
   let firstSseEventMs: number | undefined;
   let maxSseFramesPerRead: number | undefined;
   let contentEncoding: ContentEncoding | undefined;
+  let firstContentMs: number | undefined;
   let lastContentAt: number | undefined;
   let gapCount = 0;
   let overflowMax = 0;
@@ -63,6 +74,7 @@ export function createAttemptResponseObservation(options: {
       if (responseCount === 0) transportObservation = 'unavailable';
     },
     observeFetchStart() {
+      sendCount++;
       if (transportObservation === 'unavailable') transportObservation = undefined;
     },
     observeResponse(response, { controlledStream }) {
@@ -94,6 +106,7 @@ export function createAttemptResponseObservation(options: {
       }
     },
     observeContent(at = now()) {
+      firstContentMs ??= elapsed(at);
       if (lastContentAt !== undefined) {
         const gap = Math.max(0, at - lastContentAt);
         const bucket = gapBucket(gap);
@@ -112,9 +125,13 @@ export function createAttemptResponseObservation(options: {
         ...(raw && upstreamHeadersMs !== undefined ? { upstreamHeadersMs } : {}),
         ...(raw && firstUpstreamByteMs !== undefined ? { firstUpstreamByteMs } : {}),
         ...(raw && firstSseEventMs !== undefined ? { firstSseEventMs } : {}),
+        // 不走 observed fetch 的 provider 也有内容流，所以这里不能用 raw 闸门；
+        // 只有 attempt 内隐藏重试（ambiguous）才让首内容无法归因。
+        ...(transportObservation === 'ambiguous' || firstContentMs === undefined ? {} : { firstContentMs }),
         ...(contentGapP95Ms === undefined ? {} : { contentGapP95Ms }),
         ...(raw && maxSseFramesPerRead !== undefined ? { maxSseFramesPerRead } : {}),
         ...(raw && contentEncoding !== undefined ? { contentEncoding } : {}),
+        ...(sendCount === 0 ? {} : { httpSends: sendCount }),
       };
     },
   };

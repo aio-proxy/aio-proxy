@@ -1,16 +1,23 @@
-import type { DashboardTraceDetail } from '@aio-proxy/types';
+import type { DashboardTraceDetail, DashboardTracePercentile } from '@aio-proxy/types';
 import { afterEach, beforeEach, describe, expect, rs, test } from '@rstest/core';
+import * as reactQuery from '@tanstack/react-query' with { rstest: 'importActual' };
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+import { queryKeys } from '@/lib/query-keys';
+
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TraceDetailPage } from './trace-detail-page';
 
 const mocks = rs.hoisted(() => ({
   mode: 'terminal',
   refetch: rs.fn(),
+  invalidateQueries: rs.fn(),
   navigate: rs.fn(),
   writeText: rs.fn(async () => undefined),
   data: undefined as DashboardTraceDetail | undefined,
+  comparison: null as DashboardTracePercentile | null,
+  percentileEnabled: [] as boolean[],
 }));
 const traceId = 'a'.repeat(32);
 const detail: DashboardTraceDetail = {
@@ -52,7 +59,11 @@ const detail: DashboardTraceDetail = {
       durationMs: 125,
       otelStatusCode: 'ERROR',
       terminationReason: 'failure',
-      attributes: {},
+      // 真实的根 span 会带上失败原因（`request-trace-recorder` 的 completion 写进行里），
+      // 详情面板就是从这里读出来渲染的。
+      errorType: 'upstream_error',
+      errorCode: 'provider_unavailable',
+      attributes: { 'aio_proxy.session.id': 'cache-a' },
       events: [],
       links: [],
     },
@@ -102,6 +113,17 @@ const detail: DashboardTraceDetail = {
   },
 };
 
+rs.mock('../../hooks/use-trace-percentile-query', () => ({
+  useTracePercentileQuery: (_traceId: string, enabled: boolean) => {
+    mocks.percentileEnabled.push(enabled);
+    return { data: { comparison: mocks.comparison } };
+  },
+}));
+
+rs.mock('../../hooks/use-trace-wire-query', () => ({
+  useTraceWireQuery: () => ({ data: { available: true, hops: [] }, isPending: false, isError: false }),
+}));
+
 rs.mock('../../hooks/use-trace-query', () => ({
   useTraceQuery: () => {
     if (mocks.mode === 'loading') return { isLoading: true, isError: false, refetch: mocks.refetch };
@@ -126,6 +148,12 @@ rs.mock('../../hooks/use-trace-query', () => ({
   },
 }));
 
+// 只替掉 useQueryClient，其余照旧：traces-service 在模块加载时就要用真的 queryOptions。
+rs.mock('@tanstack/react-query', () => ({
+  ...reactQuery,
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
+}));
+
 rs.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
@@ -143,16 +171,11 @@ rs.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
 }));
 
-const summaryRow = (label: RegExp): HTMLElement => {
-  const row = within(screen.getByTestId('trace-summary')).getByText(label, { selector: 'dt' }).closest('div');
-  if (row === null) throw new Error(`Missing summary row: ${label.source}`);
-  return row;
-};
-
 describe('trace detail page', () => {
   beforeEach(() => {
     mocks.mode = 'terminal';
     mocks.refetch.mockReset();
+    mocks.invalidateQueries.mockReset();
     mocks.navigate.mockReset();
     mocks.writeText.mockReset();
     Object.defineProperty(navigator, 'clipboard', {
@@ -160,76 +183,79 @@ describe('trace detail page', () => {
       value: { writeText: mocks.writeText },
     });
     mocks.data = undefined;
+    mocks.comparison = null;
+    mocks.percentileEnabled = [];
   });
 
   afterEach(() => rs.restoreAllMocks());
 
-  test('renders a terminal summary, usage, and every span in API order', () => {
+  // 分位对比一路要穿过 template -> tabs -> 详情面板才到条上，中间任何一层漏传 prop 都是静默消失。
+  test('shows the latency comparison only once the sample is large enough', () => {
+    const { unmount } = render(<TraceDetailPage traceId={traceId} />);
+    expect(screen.queryByTestId('trace-percentile-bar')).toBeNull();
+    unmount();
+
+    mocks.comparison = {
+      modelId: 'gpt-5.1',
+      sampleCount: 42,
+      durationMs: 125,
+      percentile: 73,
+      minMs: 100,
+      maxMs: 900,
+      p50Ms: 300,
+      p95Ms: 800,
+    };
     render(<TraceDetailPage traceId={traceId} />);
 
-    expect(screen.getAllByText(/Failure|失败/u).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('provider-a').length).toBeGreaterThan(0);
-    expect(screen.getByText('15')).toBeTruthy();
+    const bar = screen.getByTestId('trace-percentile-bar');
+    expect(bar.textContent).toContain('42');
+    expect(bar.textContent).toContain('gpt-5.1');
+    expect(bar.textContent).toContain('73');
+    expect(mocks.percentileEnabled.at(-1)).toBe(true);
+  });
+
+  test('renders every span in API order, marking the failing ones without relying on color', () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
     expect(screen.getAllByTestId('trace-span').map((row) => row.textContent)).toEqual([
       expect.stringContaining('aio_proxy.request'),
       expect.stringContaining('aio_proxy.provider.attempt'),
       expect.stringContaining('gen_ai.inference'),
     ]);
-    expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/SERVER/u);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/Failure|失败/u);
+    expect(screen.getAllByTestId('trace-span')[2]).not.toHaveTextContent(/Failure|失败/u);
   });
 
-  test('puts complete identifiers, timing, routing, result, and usage in an unbordered context rail', () => {
-    render(<TraceDetailPage traceId={traceId} />);
-
-    const rail = screen.getByTestId('trace-context-rail');
-    expect(rail.querySelector('[data-slot="card"]')).toBeNull();
-    expect(within(rail).getByText(traceId)).toBeInTheDocument();
-    expect(within(rail).getByText('request-a')).toBeInTheDocument();
-    expect(within(rail).getByRole('button', { name: 'cache-a' })).toBeInTheDocument();
-    expect(
-      within(summaryRow(/Started|开始时间/u)).getByText(new Date(detail.trace.startedAt).toLocaleString()),
-    ).toBeInTheDocument();
-    expect(
-      within(summaryRow(/Ended|结束时间/u)).getByText(new Date(detail.trace.endedAt!).toLocaleString()),
-    ).toBeInTheDocument();
-    expect(within(rail).getByText(/OpenAI Response|OpenAI 响应/u)).toBeInTheDocument();
-    expect(within(rail).getByText('gpt-5')).toBeInTheDocument();
-    expect(within(rail).getAllByText('provider-a').length).toBeGreaterThan(0);
-    expect(within(rail).getByText('HTTP 503 · upstream_error · provider_unavailable')).toBeInTheDocument();
-    expect(within(rail).getByText('15')).toBeInTheDocument();
-  });
-
-  test('opens on Detail and switches to the safe request and response diagnostics', () => {
+  test('opens on Detail and switches to the per-hop request and response views', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
     expect(screen.getByRole('tab', { name: /^Detail$|^详情$/u })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByTestId('trace-span')).toHaveLength(3);
     expect(within(screen.getByTestId('span-detail-panel')).getByText('aio_proxy.request')).toBeInTheDocument();
 
+    // 抓包桩子返回空 hops：这一跳确实没有记录，就照实说（加载中和读失败由 trace-detail-tabs 的用例盯）。
     fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
-    expect(screen.getByRole('heading', { name: /^Headers$|^标头$/u })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /^Body$|^正文$/u })).toBeInTheDocument();
-    expect(screen.getByText('diagnostics-test/1.0')).toBeInTheDocument();
-    expect(screen.getByText('35')).toBeInTheDocument();
+    const hops = screen.getByRole('group', { name: /^Request hops$|^请求链路$/u });
+    expect(within(hops).getByRole('button', { name: /openai-prompt-cache/u })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status')).toBeInTheDocument();
 
+    // 入站的响应体从来不进抓包，所以这一格仍然是常开的 allowlist 诊断。
     fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
     expect(screen.getByRole('tab', { name: /^Response$|^响应$/u })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByRole('heading', { name: /^Headers$|^标头$/u }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('heading', { name: /^Body$|^正文$/u }).length).toBeGreaterThan(0);
-    expect(screen.getByText('503')).toBeInTheDocument();
+    // Scoped to the response metadata: the Detail tab's status row shows the same code.
+    const httpStatus = screen.getByText(/^HTTP status$|^HTTP 状态码$/u).parentElement!;
+    expect(within(httpStatus).getByText('503')).toBeInTheDocument();
     expect(screen.getByText('24')).toBeInTheDocument();
   });
 
-  test.each([
-    ['request', /^Request$|^请求$/u, /Request diagnostics are unavailable|请求诊断不可用/u],
-    ['response', /^Response$|^响应$/u, /Response diagnostics are unavailable|响应诊断不可用/u],
-  ])('shows a precise unavailable state for missing %s diagnostics', (_side, tabName, unavailable) => {
+  test('shows a precise unavailable state for missing response diagnostics', () => {
     mocks.data = { ...detail, diagnostics: undefined };
     render(<TraceDetailPage traceId={traceId} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: tabName }));
-    expect(screen.getByText(unavailable)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
+    expect(screen.getByText(/Response diagnostics are unavailable|响应诊断不可用/u)).toBeInTheDocument();
   });
 
   test.each(['terminal', 'loading', 'not-found', 'error'])(
@@ -256,41 +282,11 @@ describe('trace detail page', () => {
     await waitFor(() => expect(mocks.writeText).toHaveBeenCalledWith(traceId));
   });
 
-  test('shows only the Session ID and discloses its source in a tooltip', async () => {
+  test('states the failure reason of the selected Span once, without label rows', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
-    const session = screen.getByRole('button', { name: 'cache-a' });
-    expect(within(screen.getByTestId('trace-summary')).queryByText('openai-prompt-cache')).toBeNull();
-
-    fireEvent.focus(session);
-    expect(await screen.findByText(/Session source: openai-prompt-cache|会话来源：openai-prompt-cache/u)).toBeTruthy();
-  });
-
-  test('shows the requested model and discloses a different upstream model', async () => {
-    render(<TraceDetailPage traceId={traceId} />);
-
-    const row = summaryRow(/^Model$|^模型$/u);
-    const requestedModel = within(row).getByText('gpt-5');
-    expect(within(row).queryByText('gpt-5.1')).toBeNull();
-
-    fireEvent.focus(requestedModel);
-    expect(await screen.findByText(/Upstream model: gpt-5.1|上游模型：gpt-5.1/u)).toBeTruthy();
-  });
-
-  test('does not add an upstream-model tooltip when models match', () => {
-    mocks.data = { ...detail, trace: { ...detail.trace, finalModelId: 'gpt-5' } };
-    render(<TraceDetailPage traceId={traceId} />);
-
-    fireEvent.focus(within(summaryRow(/^Model$|^模型$/u)).getByText('gpt-5'));
-    expect(screen.queryByText(/Upstream model|上游模型/u)).toBeNull();
-  });
-
-  test('combines HTTP and error metadata into one result row', () => {
-    render(<TraceDetailPage traceId={traceId} />);
-
-    const row = summaryRow(/Result details|结果详情/u);
-    expect(within(row).getByText('HTTP 503 · upstream_error · provider_unavailable')).toBeTruthy();
-    expect(screen.queryByText(/Final HTTP status|最终 HTTP 状态码/u)).toBeNull();
+    const panel = screen.getByTestId('span-detail-panel');
+    expect(within(panel).getByText('upstream_error · provider_unavailable')).toBeTruthy();
     expect(screen.queryByText(/Error type|错误类型/u)).toBeNull();
     expect(screen.queryByText(/Error code|错误码/u)).toBeNull();
   });
@@ -319,50 +315,22 @@ describe('trace detail page', () => {
     expect(screen.queryByText(/UNSET|未设置/u)).toBeNull();
   });
 
-  test('renders the root Span ID in the complete summary', () => {
-    render(<TraceDetailPage traceId={traceId} />);
-    expect(within(screen.getByTestId('trace-summary')).getByText('b'.repeat(16))).toBeTruthy();
-  });
-
-  test('renders the price model ID in the usage summary', () => {
-    render(<TraceDetailPage traceId={traceId} />);
-    expect(screen.getByText('priced-gpt-5.1')).toBeTruthy();
-  });
-
-  test('renders every token usage field with compact token formatting', () => {
-    mocks.data = {
-      ...detail,
-      trace: {
-        ...detail.trace,
-        usage: {
-          ...detail.trace.usage!,
-          inputTokens: 1_200,
-          outputTokens: 2_300,
-          totalTokens: 13_600,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 4_500,
-          reasoningTokens: 5_600,
-        },
-      },
-    };
-
-    render(<TraceDetailPage traceId={traceId} />);
-
-    expect(within(summaryRow(/Input tokens|输入 Token/u)).getByText('1.2K')).toHaveClass('tabular-nums');
-    expect(within(summaryRow(/Output tokens|输出 Token/u)).getByText('2.3K')).toHaveClass('tabular-nums');
-    expect(within(summaryRow(/Cache read tokens|缓存读取 Token/u)).getByText('0')).toHaveClass('tabular-nums');
-    expect(within(summaryRow(/Cache write tokens|缓存写入 Token/u)).getByText('4.5K')).toHaveClass('tabular-nums');
-    expect(within(summaryRow(/Reasoning tokens|推理 Token/u)).getByText('5.6K')).toHaveClass('tabular-nums');
-  });
-
   test('renders a running root and manually refreshes it', () => {
     const interval = rs.spyOn(globalThis, 'setInterval');
     mocks.mode = 'running';
     render(<TraceDetailPage traceId={traceId} />);
 
     expect(screen.getAllByText(/Running|运行中/u).length).toBeGreaterThan(0);
+    expect(mocks.percentileEnabled.at(-1)).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: /Refresh|刷新/u }));
-    expect(mocks.refetch).toHaveBeenCalledTimes(1);
+    const invalidated = mocks.invalidateQueries.mock.calls[0]?.[0]?.queryKey as readonly unknown[];
+    for (const covered of [
+      queryKeys.trace(traceId),
+      queryKeys.traceWire(traceId),
+      queryKeys.tracePercentile(traceId),
+    ]) {
+      expect(covered.slice(0, invalidated.length)).toEqual(invalidated);
+    }
     expect(interval).not.toHaveBeenCalled();
   });
 
@@ -383,21 +351,29 @@ describe('trace detail page', () => {
     await waitFor(() => expect(within(panel).getByText('aio_proxy.request')).toBeTruthy());
   });
 
-  test('navigates from Session identity to page one with exact source and ID filters', () => {
+  // 属性行的筛选动作要穿过 面板 -> tabs -> template 才能落到 navigate 上，中间漏一层就是点了没反应。
+  test('navigates from a Span attribute to the first page of the filtered list', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'cache-a' }));
+    const table = screen.getByTestId('span-attribute-table');
+    const sessionRow = within(table).getByText('aio_proxy.session.id').closest('div');
+    if (sessionRow === null) throw new Error('expected the session-id attribute row');
+    fireEvent.click(within(sessionRow).getByRole('button', { name: /Attribute actions|属性操作/u }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Add as filter|加为筛选条件/u }));
 
+    const day = createDefaultTraceSearch(new Date(detail.trace.startedAt));
     expect(mocks.navigate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: '/traces',
         search: expect.objectContaining({
-          page: 1,
-          sessionSource: 'openai-prompt-cache',
           sessionId: 'cache-a',
+          startedAfter: day.startedAfter,
+          startedBefore: day.startedBefore,
         }),
       }),
     );
+    // 游标分页：带着上一页的 pageToken 跳过去，筛出来的第一页就被跳过了。
+    expect(mocks.navigate.mock.calls[0]![0].search).not.toHaveProperty('pageToken');
   });
 
   test.each([

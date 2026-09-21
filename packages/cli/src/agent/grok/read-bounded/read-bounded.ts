@@ -109,8 +109,15 @@ export async function readOpenFileText(
     let offset = 0;
     while (offset < size) {
       if (signal.aborted) throw options.limitError();
-      const { bytesRead } = await withReadBudget(options.budget, options.limitError, () =>
-        handle.read(buffer, offset, size - offset, offset),
+      // 墙钟 deadline 先到、AbortSignal.timeout 还没 fire 时，withReadBudget 会直接
+      // throw，abort 监听来不及 close。limitError 里补一次，和 abort 路径同一把锁。
+      const { bytesRead } = await withReadBudget(
+        options.budget,
+        () => {
+          cancel();
+          return options.limitError();
+        },
+        () => handle.read(buffer, offset, size - offset, offset),
       );
       if (bytesRead === 0) break;
       offset += bytesRead;

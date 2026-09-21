@@ -201,6 +201,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     configStore: parts.configStore,
     currentProviderSnapshot: manager.current,
     debugLogging: options.config.server.logging?.level === 'debug',
+    logging: options.config.server.logging,
     events,
     logicalSessionStore: parts.logicalSessionStore,
     modelRouting: parts.modelRouting,

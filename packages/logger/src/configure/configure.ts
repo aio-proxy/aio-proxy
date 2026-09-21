@@ -33,6 +33,15 @@ export async function configureLogging(config: LoggingConfig): Promise<void> {
       directory: config.dir,
       formatter: jsonLinesFormatter,
       maxAgeMs: (config.retentionDays ?? 3) * DAY_MS,
+      // debug 级别本身就是「我认了这个开销」的开关，而抓包面板要读的正是刚发生的那个请求。
+      // 默认的 8 KB 缓冲 + 5s 间隔只在**下一次写入**时才兑现：空闲的代理上最后一个请求的
+      // 抓包永远留在内存里，面板只能显示成「没有记录」。写穿一次性干掉整类陈旧问题
+      // （空抓包和被悄悄截断的 body），不必再开一个 flush 入口。其余级别保持缓冲。
+      //
+      // 代价（实测 20 000 条，本地 APFS SSD）：默认 231/251 ms（0.012 ms/条）对
+      // bufferSize: 0 的 783/819 ms（0.040 ms/条），约 3.2 倍，每条一次 fsync 且发生在
+      // 事件循环线程上。一个 500 帧的 SSE 流大约要付 20 ms 同步写，网络文件系统上更多。
+      ...(config.level === 'debug' ? { bufferSize: 0 } : {}),
     });
     sinkIds.push('file');
   }

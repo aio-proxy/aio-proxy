@@ -25,6 +25,8 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-error: var(--chart-error);
+  --color-chart-success: var(--chart-success);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -76,6 +78,13 @@
   --border: var(--color-olive-200);
   --input: var(--color-olive-200);
   --ring: var(--color-olive-400);
+  /* 状态色，不是分类色：失败永远是红，不参与 chart-1..5 的轮转。
+     teal-600 / red-500 这一对在白底和 olive-900 暗底上跑同一套校验都全 PASS
+     （亮度带、彩度下限、CVD 相邻分离 ΔE 14.4 deutan/protan、常视觉 ΔE 34.1、对比度 ≥3:1），
+     所以两个模式共用一组值，.dark 不再单独覆盖。teal-500 更亮但对白底只有 2.45:1，
+     低于 WCAG 1.4.11 对图形对象的 3:1，不能用。 */
+  --chart-success: var(--color-teal-600);
+  --chart-error: var(--color-red-500);
   --chart-1: var(--color-teal-300);
   --chart-2: var(--color-teal-500);
   --chart-3: var(--color-teal-600);

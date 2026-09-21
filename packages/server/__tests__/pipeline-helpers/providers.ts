@@ -186,21 +186,6 @@ function providerCalls(): FakeProvider['calls'] {
   return { ensure: 0, model: [], raw: [] };
 }
 
-function _finishPart(): ModelPart {
-  return {
-    type: 'finish',
-    finishReason: 'stop',
-    rawFinishReason: 'stop',
-    totalUsage: {
-      inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 },
-      inputTokens: 0,
-      outputTokenDetails: { reasoningTokens: 0, textTokens: 0 },
-      outputTokens: 0,
-      totalTokens: 0,
-    },
-  };
-}
-
 function instrumentModel(
   model: {
     readonly ensureAvailable?: () => Promise<void>;

@@ -5,15 +5,13 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@aio-proxy/ui/components/sidebar';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, useSidebar } from '@aio-proxy/ui/components/sidebar';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
-import { endOfDay, startOfDay } from 'date-fns';
 import { RefreshCw, RotateCcw } from 'lucide-react';
 import { useEffect } from 'react';
 import { z } from 'zod';
 
-import { DateTimeRangePicker } from '@/components/date-time-range-picker';
 import { PROTOCOL_ORDER, ProtocolLabel } from '@/components/protocol-label';
 
 import {
@@ -24,7 +22,6 @@ import {
 } from '../../lib/trace-search';
 import { TracesRequestFilters } from '../traces-request-filters';
 import { TracesResultFilters } from '../traces-result-filters';
-import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from './date-range';
 
 interface TracesFiltersProps {
   readonly search: TraceSearch;
@@ -36,7 +33,6 @@ interface TracesFiltersProps {
 }
 
 const schema = z.object({
-  dateRange: z.object({ from: z.date(), to: z.date() }),
   requestedModelId: z.string(),
   otelStatusCode: z.string(),
   inboundProtocol: z.string(),
@@ -51,11 +47,9 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
   onAutoRefresh,
   onRefresh,
 }) => {
-  const now = new Date();
-  const retentionStart = startOfDay(new Date(now.getTime() - 45 * 86_400_000));
+  const { open, isMobile } = useSidebar();
   const form = useForm({
     defaultValues: {
-      dateRange: toPickerRange(search),
       requestedModelId: search.requestedModelId ?? '',
       otelStatusCode: search.otelStatusCode ?? '',
       inboundProtocol: search.inboundProtocol ?? '',
@@ -64,45 +58,34 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
     validators: { onChange: schema },
   });
   const patch = (value: TraceFilterPatch) => onChange(withTraceFilters(search, value));
-  const { startedAfter, startedBefore, requestedModelId, otelStatusCode, inboundProtocol } = search;
+  const { requestedModelId, otelStatusCode, inboundProtocol } = search;
 
   useEffect(() => {
-    form.setFieldValue('dateRange', toPickerRange({ startedAfter, startedBefore }));
     form.setFieldValue('requestedModelId', requestedModelId ?? '');
     form.setFieldValue('otelStatusCode', otelStatusCode ?? '');
     form.setFieldValue('inboundProtocol', inboundProtocol ?? '');
-  }, [form, startedAfter, startedBefore, requestedModelId, otelStatusCode, inboundProtocol]);
+  }, [form, requestedModelId, otelStatusCode, inboundProtocol]);
+
+  // 工具栏的实时按钮和这个开关绑同一个 autoRefresh，从工具栏改过来时要跟上。
+  useEffect(() => {
+    form.setFieldValue('autoRefresh', autoRefresh);
+  }, [form, autoRefresh]);
 
   return (
-    <Sidebar className="absolute! inset-y-0! h-full! border-r" aria-label={m['dashboard.traces.filters']()}>
+    <Sidebar
+      className="absolute! inset-y-0! h-full! border-r"
+      // offcanvas 收起来只是把面板平移出屏幕，既不 hidden 也不 inert：工具栏那颗按钮报着
+      // aria-expanded="false"，键盘却还能 tab 进一整片看不见的筛选控件。移动端那份是
+      // Dialog，收起时整块不在 DOM 里，`Sidebar` 也不会把这个属性转下去。
+      inert={!isMobile && !open}
+    >
       <SidebarHeader className="flex h-12 justify-center border-b px-4">
         <h2 className="font-heading text-base font-medium">{m['dashboard.traces.filters']()}</h2>
       </SidebarHeader>
-      <SidebarContent>
-        <Accordion multiple defaultValue={['range']} className="rounded-none border-0 **:data-open:bg-transparent">
-          <AccordionItem value="range">
-            <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
-              {m['dashboard.traces.range']()}
-            </AccordionTrigger>
-            <AccordionContent className="pb-3">
-              <form.Field name="dateRange">
-                {(field) => (
-                  <Field className="w-full min-w-0">
-                    <DateTimeRangePicker
-                      value={field.state.value}
-                      presets={createTraceDateTimeRangePresets()}
-                      min={retentionStart}
-                      max={endOfDay(now)}
-                      onChange={(value) => {
-                        field.handleChange(value);
-                        patch(toQueryRange(value));
-                      }}
-                    />
-                  </Field>
-                )}
-              </form.Field>
-            </AccordionContent>
-          </AccordionItem>
+      {/* id 和可读名字挂在这里而不是 `Sidebar` 上：移动端 `Sidebar` 把 props 转给 Base UI 的
+          Dialog.Root，它不渲染任何节点，两个属性会被静默丢掉，工具栏就指着一个不存在的元素。 */}
+      <SidebarContent id="traces-filters" role="group" aria-label={m['dashboard.traces.filters']()}>
+        <Accordion multiple defaultValue={['request']} className="rounded-none border-0 **:data-open:bg-transparent">
           <AccordionItem value="request">
             <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
               {m['dashboard.traces.request_tab']()}

@@ -19,7 +19,7 @@ describe('TracesFilters', () => {
 
     const heading = screen.getByRole('heading', { level: 2, name: /Filters|筛选/u });
     expect(heading.closest('[data-slot="sidebar"]')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /Time range|时间范围/u })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /Time range|时间范围/u })).toBeNull();
     expect(screen.getByRole('button', { name: /^Request$|^请求$/u })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Result details|结果详情/u })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /More filters|更多筛选/u })).toBeNull();

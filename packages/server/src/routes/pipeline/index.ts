@@ -10,13 +10,15 @@ import type { ProviderProtocol } from '@aio-proxy/types';
 import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
-import { requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
+import { attributeName, requestAsksFastMode, type RequestTraceSession, spanName } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
+import { startInferenceSpan } from './inference-span';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
+import { startPipelineSpan } from './tracing';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly adapter: PipelineAdapter<TRequest, TContext>;
@@ -94,14 +96,26 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     const requestedModel = adapter.model(request, context);
     const streamRequested = adapter.wantsStream(request, context);
     requestedModelId = requestedModel;
-    const resolution = source.logicalSessionStore.begin({
-      requestedModelId: requestedModel,
-      requestId: session.requestId,
-      // Passed through as-is: absent hints tell the store this protocol does not
-      // participate in logical sessions, and it withholds the headers itself.
-      ...(adapter.session === undefined ? {} : { hints: adapter.session(request, context) }),
-      headers: rawRequest.headers,
-    });
+    const sessionSpan = startPipelineSpan(session.rootContext, spanName.session);
+    let resolution;
+    try {
+      resolution = sessionSpan.run(() =>
+        source.logicalSessionStore.begin({
+          requestedModelId: requestedModel,
+          requestId: session.requestId,
+          // Passed through as-is: absent hints tell the store this protocol does not
+          // participate in logical sessions, and it withholds the headers itself.
+          ...(adapter.session === undefined ? {} : { hints: adapter.session(request, context) }),
+          headers: rawRequest.headers,
+        }),
+      );
+    } catch (error) {
+      // The outer catch settles the root via session.finish(); this span has to
+      // close first or it is dropped on export.
+      sessionSpan.end({ outcome: 'failure' });
+      throw error;
+    }
+    sessionSpan.end();
     session.identify({
       requestedModelId: requestedModel,
       resolution,
@@ -179,10 +193,16 @@ async function parseProtocolRequest<TRequest, TContext>(options: {
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
 }): Promise<ParsedProtocolRequest<TRequest>> {
-  const { adapter, context, rawRequest } = options;
+  const { adapter, context, rawRequest, session } = options;
+  const span = startPipelineSpan(session.rootContext, spanName.parse);
   try {
-    return { request: await adapter.parse(rawRequest, context) };
+    const request = await span.run(() => adapter.parse(rawRequest, context));
+    span.end();
+    return { request };
   } catch (error) {
+    // Every branch below reaches rejectParsedRequest -> session.finish ->
+    // processor.take(), so the span has to end before we enter them.
+    span.end({ outcome: 'failure' });
     await cancelRetainedRequestBody(rawRequest, error);
     if (error instanceof RequestBodyTooLargeError) {
       return rejectParsedRequest(adapter.errors.tooLarge(), 'request_too_large', error, options);
@@ -258,14 +278,41 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     deferred = true;
   };
   try {
-    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
-      session: resolution.context.session,
-    });
-    const eligible = filterCandidatesByCapability(candidates, adapter.capability, {
-      requestedModelId: requestedModel,
-      routerModels: lease.snapshot.config?.router.models,
-    });
+    // The logical-operation layer opens BEFORE route resolution: it has to cover
+    // the step that picks the first candidate, otherwise it cannot claim to span
+    // "the logical operation with all retries". That also means a routing failure
+    // still produces this span, carrying gen_ai.request.model, so those traces
+    // stay retrievable by model. requestedModel is already an argument here.
+    const inference = startInferenceSpan(session, adapter.capability, requestedModel);
+    const routeSpan = startPipelineSpan(inference.session.rootContext, spanName.route);
+    let eligible;
+    try {
+      const candidates = routeSpan.run(() =>
+        lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
+          session: resolution.context.session,
+        }),
+      );
+      eligible = filterCandidatesByCapability(candidates, adapter.capability, {
+        requestedModelId: requestedModel,
+        routerModels: lease.snapshot.config?.router.models,
+      });
+    } catch (error) {
+      // The outer catch turns RouterModelNotFoundError into a 404 and settles
+      // the root; both spans have to be closed first, innermost first.
+      routeSpan.end({
+        outcome: 'failure',
+        ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
+      });
+      inference.end({
+        outcome: 'failure',
+        ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
+      });
+      throw error;
+    }
+    routeSpan.span.setAttribute(attributeName.routeCandidateCount, eligible.length);
     if (eligible.length === 0) {
+      routeSpan.end({ outcome: 'failure', errorCode: 'not_implemented' });
+      inference.end({ outcome: 'failure', errorCode: 'not_implemented' });
       const error = new Error('No eligible provider candidates for inbound capability');
       return rejectRequest({
         source,
@@ -278,22 +325,32 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         error,
       });
     }
-    return await attemptCandidates({
-      adapter,
-      candidates: eligible,
-      config: lease.snapshot.config,
-      context,
-      deferRelease,
-      rawRequest,
-      release: lease.release,
-      request,
-      requestedModelId: requestedModel,
-      resolution,
-      session,
-      source,
-      streamRequested,
-      ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
-    });
+    routeSpan.end();
+    try {
+      return await attemptCandidates({
+        adapter,
+        candidates: eligible,
+        config: lease.snapshot.config,
+        context,
+        deferRelease,
+        rawRequest,
+        release: lease.release,
+        request,
+        requestedModelId: requestedModel,
+        resolution,
+        session: inference.session,
+        source,
+        streamRequested,
+        onAttemptEnd: inference.noteAttempt,
+        ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),
+      });
+    } catch (error) {
+      // The only exit that bypasses session settlement. Do NOT turn this into a
+      // finally: a streaming path returns its Response before the completion
+      // settles, so a finally would close the span while the stream still runs.
+      inference.end({ outcome: 'failure' });
+      throw error;
+    }
   } catch (error) {
     if (!(error instanceof RouterModelNotFoundError)) throw error;
     return rejectRequest({

@@ -1,16 +1,22 @@
 import { type ModelEgressContext } from '@aio-proxy/core';
 
+import { attributeName, spanName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { logModelInvocationDiagnostics } from '../logging';
 import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
+import { startPipelineSpan } from '../tracing';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
+import { genAiProviderNameFor } from './emit';
+import { emitReject, rejectRequestShape } from './error';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
-// Model dispatch for one candidate. The attempt span opens before the provider
-// invocation so buffered (non-stream) requests still get a real span duration.
+// Model dispatch for one candidate. The attempt span opens before preparation
+// and the provider invocation, so it measures the whole attempt: preparation is
+// a child span rather than an untracked offset, and buffered (non-stream)
+// requests still get a real span duration.
 export async function attemptModelCandidate<TRequest, TContext>(
   ctx: LanguageAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
@@ -21,8 +27,48 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const { index, candidate, startedAt, observation, inAttempt } = slot;
   const provider = candidate.provider;
 
-  const prepared = await prepareModelInvocation(ctx, slot, model, holder);
-  if (prepared.kind !== 'ok') return prepared.step;
+  // The attempt span opens FIRST: prepare is a measured child of it, not an
+  // untracked offset between the candidate's startedAt and the span.
+  const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
+  slot.spanRef.current = attemptSpan;
+  // prepare 先写下 targetProtocol，后面的 materialize / ForTarget 才可能抛。
+  // 抛出去的那条走 handleAttemptError，必须在这里先把协议口味挂上。
+  const attachResolvedProtocol = (): void => {
+    const target = slot.trace.targetProtocol;
+    if (target === undefined) return;
+    attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
+    const providerName = genAiProviderNameFor(target);
+    if (providerName !== undefined) attemptSpan.span.setAttribute(attributeName.genAiProviderName, providerName);
+  };
+
+  // Mirrors resolveInvocation's memoization guard: the invocation is
+  // materialized once for the request and reused by every later candidate.
+  const prepareMode =
+    holder.invocation === undefined && holder.invocationUnsupported === undefined ? 'materialize' : 'reuse';
+  const prepareSpan = startPipelineSpan(attemptSpan.context, spanName.prepare, {
+    attributes: { [attributeName.prepareMode]: prepareMode },
+  });
+  // Not `finally`: a prepare throw travels to the candidate loop's catch and on
+  // to session.finish(), which drains the span buffer — a span left open past
+  // that point is dropped from the trace entirely.
+  const prepared = await prepareModelInvocation(ctx, slot, model, holder).then(
+    (value) => {
+      prepareSpan.end(value.kind === 'ok' ? undefined : { outcome: 'failure' });
+      return value;
+    },
+    (error: unknown) => {
+      prepareSpan.end({ outcome: 'failure' });
+      attachResolvedProtocol();
+      throw error;
+    },
+  );
+  // Every exit below is settled here rather than inside prepare, so this runs
+  // while the attempt span is still open: prepare resolves the target protocol
+  // too late for it to be a creation attribute, and the reject and unsupported
+  // exits end the span the moment they are emitted.
+  attachResolvedProtocol();
+  if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
+  if (prepared.kind === 'unsupported') return emitReject(ctx, slot, prepared.response, 'unsupported_feature');
   const { candidateInvocation, targetProtocol } = prepared;
 
   const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
@@ -37,9 +83,6 @@ export async function attemptModelCandidate<TRequest, TContext>(
     providerId: provider.id,
     attemptIndex: index,
   });
-  const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
-  const attemptSpan = ctx.emitter.startAttempt(base, index);
-  slot.spanRef.current = attemptSpan;
   await inAttempt(targetProtocol, () => model.ensureAvailable?.());
   const configPrice = candidateConfigPrice(
     ctx.routerModels,

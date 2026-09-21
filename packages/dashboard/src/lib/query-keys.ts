@@ -36,7 +36,14 @@ export const queryKeys = {
   settings: ['settings'],
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],
+  tracePercentile: (traceId: string) => ['dashboard', 'traces', traceId, 'percentile'],
+  traceWire: (traceId: string) => ['dashboard', 'traces', traceId, 'wire'],
   traces: (search: object) => ['dashboard', 'traces', search],
+  // 所有 traces key 的公共前缀：失效它就能让列表和摘要图一起刷新。
+  // 手动刷新必须两个都动，否则图会停在上一个区间。
+  tracesAll: ['dashboard', 'traces'],
+  // 摘要 key 不含分页参数：图覆盖整个时间范围，翻页不该让它重新请求。
+  tracesSummary: (filters: object) => ['dashboard', 'traces', 'summary', filters],
   usage: (range: string, metric: string, groupBy: string, maxResults?: number) => [
     'dashboard',
     'usage',

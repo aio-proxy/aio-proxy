@@ -14,6 +14,7 @@ const ATTR = {
   sessionResolvedBy: 'aio_proxy.session.resolved_by',
   finalProviderId: 'aio_proxy.route.final_provider_id',
   attemptIndex: 'aio_proxy.attempt.index',
+  attemptModelId: 'aio_proxy.attempt.model_id',
   providerId: 'aio_proxy.provider.id',
   providerKind: 'aio_proxy.provider.kind',
   providerWeight: 'aio_proxy.provider.weight',
@@ -30,9 +31,9 @@ const ATTR = {
   genAiUsageInputTokens: 'gen_ai.usage.input_tokens',
   genAiUsageOutputTokens: 'gen_ai.usage.output_tokens',
   genAiUsageTotalTokens: 'gen_ai.usage.total_tokens',
-  genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read_tokens',
-  genAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write_tokens',
-  genAiUsageReasoningTokens: 'gen_ai.usage.reasoning_tokens',
+  genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read.input_tokens',
+  genAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write.input_tokens',
+  genAiUsageReasoningTokens: 'gen_ai.usage.reasoning.output_tokens',
   errorType: 'error.type',
 } as const;
 
@@ -80,8 +81,11 @@ function asNumber(value: unknown): number | undefined {
  * Split a span's full attribute object into typed-column values and the
  * remaining long-tail attributes that stay in `attributes_json`.
  *
- * `isRoot` controls whether `gen_ai.request.model` maps to `requestedModelId`
- * (root) or `modelId` (attempt).
+ * `isRoot` controls whether `gen_ai.request.model` maps to `requestedModelId`;
+ * on any other span it stays in `remaining` so the GenAI span keeps the key as
+ * its own attribute. The `modelId` column now belongs to the attempt span's
+ * candidate model (`aio_proxy.attempt.model_id`); rows written before that also
+ * kept their non-root `gen_ai.request.model` there.
  */
 export function projectAttributes(
   attributes: SpanAttributesJson,
@@ -121,6 +125,9 @@ export function projectAttributes(
       case ATTR.attemptIndex:
         setNum('attemptIndex', value);
         break;
+      case ATTR.attemptModelId:
+        setStr('modelId', value);
+        break;
       case ATTR.providerId:
         setStr('providerId', value);
         break;
@@ -149,10 +156,12 @@ export function projectAttributes(
         setStr('terminationReason', value);
         break;
       case ATTR.genAiRequestModel:
+        // 只有 root 需要它入列（喂 requestedModelId，旧数据兼容）。GenAI span 上
+        // 这个 key 就是它自己的属性，原样留在 JSON 里。
         if (isRoot) {
           setStr('requestedModelId', value);
         } else {
-          setStr('modelId', value);
+          remaining[key] = value;
         }
         break;
       case ATTR.genAiResponseModel:
@@ -221,14 +230,31 @@ export function mergeAttributes(
   set(ATTR.selectionReason, columns.selectionReason);
   set(ATTR.errorCode, columns.errorCode);
   set(ATTR.terminationReason, columns.terminationReason);
-  set(ATTR.genAiRequestModel, isRoot ? columns.requestedModelId : columns.modelId);
-  set(ATTR.genAiResponseModel, columns.finalModelId);
-  set(ATTR.genAiUsageInputTokens, columns.inputTokens);
-  set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
-  set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
-  set(ATTR.genAiUsageCacheReadTokens, columns.cacheReadTokens);
-  set(ATTR.genAiUsageCacheWriteTokens, columns.cacheWriteTokens);
-  set(ATTR.genAiUsageReasoningTokens, columns.reasoningTokens);
+  // root 的 usage / model 列来自 summary，不是它自己的属性。挂回去会让 root 变成
+  // 第二个「带 gen_ai.* 的 span」，Langfuse 那边一条 trace 就出现两个 GENERATION。
+  if (!isRoot) {
+    // attempt span 的候选模型。写路径是活的（attempt/emit/emit.ts 与 token-count/shared.ts
+    // 发 aio_proxy.attempt.model_id，上面抽进 model_id 列）。同一列还装着老数据：任务 8
+    // 之前非 root 的 gen_ai.request.model 也投在这里，那些行读回时会挂成新 key —— 都是
+    // 「这一跳用的模型」，语义一致，不迁移数据。
+    set(ATTR.attemptModelId, columns.modelId);
+    // GenAI span（inference-span.ts）发 gen_ai.response.model，被抽进 final_model_id 列。
+    // 老库里的 attempt 行也有：改名前 attempt span 发的就是这个 key。
+    set(ATTR.genAiResponseModel, columns.finalModelId);
+    // GENERATION span（`{operation} {model}`，routes/pipeline/inference-span.ts）的 token
+    // usage 只能从这六列还原：它是非 root（CLIENT，挂在 root 下），settle 时发全部六个
+    // gen_ai.usage.*，而上面的 projectAttributes 抽这六个 key 时没有 isRoot 判断（和
+    // genAiRequestModel 不同），属性全被抽进列、attributes_json 里一个都不留。删掉这六行，
+    // 每个 generation span 的 usage 读回来就是空的，仪表盘上的 token 静默消失。由
+    // span-projection.test.ts 的 'a non-root GENERATION span still reports all six token
+    // counts after a write/read cycle' 钉住 —— 那条测试走完整的写入/读回，六行少一行就红。
+    set(ATTR.genAiUsageInputTokens, columns.inputTokens);
+    set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
+    set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
+    set(ATTR.genAiUsageCacheReadTokens, columns.cacheReadTokens);
+    set(ATTR.genAiUsageCacheWriteTokens, columns.cacheWriteTokens);
+    set(ATTR.genAiUsageReasoningTokens, columns.reasoningTokens);
+  }
   set(ATTR.errorType, columns.errorType);
 
   return merged;

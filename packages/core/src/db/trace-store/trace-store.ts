@@ -4,7 +4,9 @@ import { overviewDashboard, overviewDashboardActivity, overviewDashboardDiagnost
 import { providerWindowCost } from './provider-window-cost';
 import { findAffinity, markResponseAmbiguous, resolveResponse } from './session-state';
 import { complete, prune, recover, startRoot } from './trace-lifecycle/index';
+import { percentile } from './trace-percentile';
 import { find, list } from './trace-queries';
+import { summary } from './trace-summary';
 import type { TraceStore } from './types';
 import { overview } from './usage-overview';
 
@@ -13,7 +15,9 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     startRoot: (input) => startRoot(db, input),
     complete: (input) => complete(db, input),
     list: (query) => list(db, query),
+    summary: (query) => summary(db, query),
     find: (traceId, now) => find(db, traceId, now),
+    percentile: (traceId) => percentile(db, traceId),
     overview: (query) => overview(db, query),
     providerWindowCost: (query) => providerWindowCost(db, query),
     overviewDashboard: (query) => overviewDashboard(db, query),

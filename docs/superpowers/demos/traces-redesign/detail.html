@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trace 详情 — 静态 demo</title>
+    <link rel="stylesheet" href="./demo.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <div class="topbar">
+        <nav class="crumbs">
+          <a href="./index.html">调用链</a><span>/</span>
+          <span class="mono" style="color: var(--foreground)">abc1230d41f9a3b7c5e0e2</span>
+          <span class="badge" data-status="success">成功</span>
+        </nav>
+        <div class="spacer"></div>
+        <!-- demo-only: flips between "debug 抓包可用" and the default degraded state -->
+        <button class="btn" data-variant="ghost" id="capture-toggle" data-active="true">抓包：开</button>
+        <button class="btn" data-variant="ghost" data-theme-toggle>深浅色</button>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="detail" data-active="true">详情</button>
+        <button role="tab" data-tab="request">请求</button>
+        <button role="tab" data-tab="response">响应</button>
+      </div>
+
+      <!-- 详情：瀑布图 + 选中 span 的属性 -->
+      <div data-tabpanel="detail" class="detail-grid">
+        <div class="card">
+          <input class="input" style="width: 100%" placeholder="搜索 Span 名称" />
+          <div class="ruler" id="ruler"></div>
+          <div id="waterfall"></div>
+        </div>
+
+        <div class="card stack">
+          <div class="row">
+            <span class="badge" data-status="success">成功</span>
+            <span style="font-weight: 500">aio_proxy.provider.attempt</span>
+            <span class="spacer"></span>
+            <span class="muted">anthropic-backup · claude-sonnet-4-6</span>
+          </div>
+
+          <!-- The six cells are the selected span's own numbers. Token counts live on the
+               GenAI span, so an attempt shows `—` there rather than borrowing the trace's. -->
+          <dl class="kv" style="margin: 0">
+            <div><dt>总时长</dt><dd>2.20s</dd></div>
+            <div><dt>首字时延</dt><dd>612ms</dd></div>
+            <div><dt>上游耗时</dt><dd>596ms</dd></div>
+            <div><dt>输入 Token</dt><dd>—</dd></div>
+            <div><dt>输出 Token</dt><dd>—</dd></div>
+            <div><dt>尝试次数</dt><dd>2</dd></div>
+          </dl>
+
+          <!-- percentile comparison, the Cloudflare "compared with N spans" bar -->
+          <section class="pct">
+            <div class="pct-cap">与最近 1 小时内 <b class="mono">2,046</b> 个 <b>claude-sonnet-4-6</b> 请求相比 — 处于 <b>p73</b></div>
+            <div class="pct-track">
+              <div class="pct-fill"></div>
+              <div class="pct-tick" style="left: 38%" title="p50 1.9s"></div>
+              <div class="pct-tick" style="left: 86%" title="p95 5.1s"></div>
+              <div class="pct-mark" style="left: 73%"><span>3.42s</span></div>
+            </div>
+            <div class="pct-ends"><span>最小值 180ms</span><span>最大值 5.52s</span></div>
+          </section>
+
+          <section>
+            <div class="row">
+              <input class="input" style="flex: 1" id="q" placeholder="搜索属性" />
+              <span class="muted" style="font-size: 12px" id="count"></span>
+            </div>
+            <div class="attrs" id="attrs"></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- 请求 / 响应：每个 hop 一组抓包 -->
+      <div data-tabpanel="request" class="card" hidden>
+        <div class="hops" id="hops-request"></div>
+        <div id="wire-request"></div>
+      </div>
+      <div data-tabpanel="response" class="card" hidden>
+        <div class="hops" id="hops-response"></div>
+        <div id="wire-response"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { theme } from './demo.js';
+      theme();
+
+      // A failover trace: anthropic-primary rate-limits, anthropic-backup serves it.
+      // Names and nesting come straight from the server's span registry: the GenAI span is
+      // named `{operation} {model}`, the upstream HTTP span is named after the method. Both
+      // providers are `ai-sdk` kind, which is why each attempt has a `prepare` child.
+      // TTFT is a moment, so it is a tick on the attempt bar, never a row of its own. The
+      // 429 attempt has none because it never produced content — a failed attempt that did
+      // stream something does get one.
+      const spans = [
+        { name: 'aio_proxy.request', start: 0, dur: 3420, depth: 0, status: 'success' },
+        { name: 'aio_proxy.request.parse', start: 2, dur: 3, depth: 1, status: 'success' },
+        { name: 'aio_proxy.session.resolve', start: 5, dur: 4, depth: 1, status: 'success' },
+        { name: 'aio_proxy.route.resolve', start: 9, dur: 6, depth: 1, status: 'success' },
+        { name: 'chat claude-sonnet-4-6', start: 16, dur: 3390, depth: 1, status: 'success' },
+        { name: 'aio_proxy.provider.attempt', start: 18, dur: 1186, depth: 2, status: 'failure' },
+        { name: 'aio_proxy.request.prepare', start: 19, dur: 4, depth: 3, status: 'success' },
+        { name: 'POST', start: 24, dur: 1174, depth: 3, status: 'failure' },
+        { name: 'aio_proxy.provider.attempt', start: 1210, dur: 2196, depth: 2, status: 'success', ttft: 612 },
+        { name: 'aio_proxy.request.prepare', start: 1211, dur: 1, depth: 3, status: 'success' },
+        { name: 'POST', start: 1216, dur: 590, depth: 3, status: 'success' },
+      ];
+      const total = 3420;
+      // The right-hand panel shows this row: the attempt that served the response.
+      const selectedRow = 8;
+      const fmt = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`);
+
+      document.getElementById('ruler').innerHTML = [0, 0.25, 0.5, 0.75, 1]
+        .map((f) => `<span style="left:${f * 100}%;transform:translateX(${f * -100}%)">${fmt(Math.round(total * f))}</span>`)
+        .join('');
+
+      document.getElementById('waterfall').innerHTML = spans
+        .map(
+          (s, i) => `<div class="wf-row" data-selected="${i === selectedRow}">
+            <div class="wf-name" style="padding-left:${s.depth * 14}px">${s.name}</div>
+            <div class="wf-track"><div class="wf-bar" data-status="${s.status}" style="left:${(s.start / total) * 100}%;width:${Math.max((s.dur / total) * 100, 0.6)}%"></div>${s.ttft === undefined ? '' : `<div class="wf-tick" style="left:${((s.start + s.ttft) / total) * 100}%" title="首字 ${fmt(s.ttft)}"></div>`}</div>
+            <div class="wf-dur">${fmt(s.dur)}</div>
+          </div>`,
+        )
+        .join('');
+      document.querySelectorAll('.wf-row').forEach((row) =>
+        row.addEventListener('click', () => {
+          document.querySelectorAll('.wf-row').forEach((r) => (r.dataset.selected = 'false'));
+          row.dataset.selected = 'true';
+        }),
+      );
+
+      // The selected attempt span's own attributes, sorted by key like the real table.
+      // Only this span's attributes are listed: `gen_ai.usage.*` and `gen_ai.response.*`
+      // belong to the GenAI span, and the request/session/route keys belong to the root.
+      // Mixing all three into one table is exactly the mental model this redesign drops.
+      // No status code: a succeeding attempt never writes one — the terminal only records
+      // a status for failures — so the panel shows a success label instead of a `200` badge.
+      const attributes = [
+        ['aio_proxy.attempt.index', '1'],
+        ['aio_proxy.attempt.model_id', 'claude-sonnet-4-6'],
+        ['aio_proxy.attempt.ttft_ms', '612'],
+        ['aio_proxy.protocol.source', 'anthropic'],
+        ['aio_proxy.provider.id', 'anthropic-backup'],
+        ['aio_proxy.provider.kind', 'ai-sdk'],
+        ['aio_proxy.request.stream', 'true'],
+        ['aio_proxy.response.transport_observation', 'sse'],
+        ['aio_proxy.response.upstream_headers_ms', '596'],
+        ['aio_proxy.route.selection_reason', 'weight'],
+        ['aio_proxy.route.selection_source', 'weighted_random'],
+        ['aio_proxy.transport', 'ai_sdk'],
+      ];
+      const list = document.getElementById('attrs');
+      const count = document.getElementById('count');
+      const renderAttrs = (q = '') => {
+        const rows = attributes.filter(([k, v]) => (k + v).toLowerCase().includes(q.toLowerCase()));
+        count.textContent = `${rows.length} / ${attributes.length}`;
+        list.innerHTML = rows
+          .map(([k, v]) => `<div class="attr"><span class="k">${k}</span><span class="v">${v}</span><button class="more" title="操作">⋯</button></div>`)
+          .join('');
+      };
+      document.getElementById('q').addEventListener('input', (e) => renderAttrs(e.target.value));
+      renderAttrs();
+
+      // One entry per captured request/response pair, in wire order.
+      // `debugOnly` pairs exist only when server.logging.level is debug — the
+      // inbound pair's headers come from the always-on allowlisted diagnostics.
+      const hops = [
+        {
+          id: 'inbound',
+          label: '入站',
+          detail: 'claude-cli',
+          status: 'success',
+          request: {
+            line: 'POST /v1/messages',
+            headers: [
+              ['content-type', 'application/json'],
+              ['anthropic-version', '2023-06-01'],
+              ['user-agent', 'claude-cli/2.1.0'],
+              ['x-api-key', '••••••••redacted'],
+            ],
+            body: `{
+  "model": "claude-sonnet-4-6",
+  "stream": true,
+  "max_tokens": 4096,
+  "messages": [
+    { "role": "user", "content": "把这段 SQL 改成用窗口函数" }
+  ]
+}`,
+            note: '1 帧 · 2.1 KB',
+          },
+          response: {
+            line: '200 OK',
+            status: 'success',
+            headers: [
+              ['content-type', 'text/event-stream'],
+              ['cache-control', 'no-cache'],
+            ],
+            body: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_01ABC","model":"claude-sonnet-4-6","usage":{"input_tokens":8412,"cache_read_input_tokens":6100}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"用 ROW_NUMBER() "}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1096}}`,
+            note: '1,284 帧 · 42.8 KB · complete',
+          },
+        },
+        {
+          id: 'attempt-1',
+          label: '尝试 1',
+          detail: 'anthropic-primary',
+          status: 'failure',
+          debugOnly: true,
+          request: {
+            line: 'POST https://api.anthropic.com/v1/messages',
+            headers: [
+              ['content-type', 'application/json'],
+              ['anthropic-version', '2023-06-01'],
+              ['authorization', '••••••••redacted'],
+            ],
+            body: `{
+  "model": "claude-sonnet-4-6",
+  "stream": true,
+  "max_tokens": 4096,
+  "messages": [
+    { "role": "user", "content": "把这段 SQL 改成用窗口函数" }
+  ]
+}`,
+            note: '1 帧 · 2.1 KB',
+          },
+          response: {
+            line: '429 Too Many Requests',
+            status: 'failure',
+            headers: [
+              ['content-type', 'application/json'],
+              ['retry-after', '2'],
+              ['anthropic-ratelimit-requests-remaining', '0'],
+            ],
+            body: `{
+  "type": "error",
+  "error": {
+    "type": "rate_limit_error",
+    "message": "Number of request tokens has exceeded your per-minute rate limit"
+  }
+}`,
+            note: '1 帧 · 168 B · complete · 1.17s',
+          },
+        },
+        {
+          id: 'attempt-2',
+          label: '尝试 2',
+          detail: 'anthropic-backup',
+          status: 'success',
+          debugOnly: true,
+          request: {
+            line: 'POST https://api.anthropic.com/v1/messages',
+            headers: [
+              ['content-type', 'application/json'],
+              ['anthropic-version', '2023-06-01'],
+              ['authorization', '••••••••redacted'],
+            ],
+            body: `{
+  "model": "claude-sonnet-4-6",
+  "stream": true,
+  "max_tokens": 4096,
+  "messages": [
+    { "role": "user", "content": "把这段 SQL 改成用窗口函数" }
+  ]
+}`,
+            note: '1 帧 · 2.1 KB',
+          },
+          response: {
+            line: '200 OK',
+            status: 'success',
+            headers: [
+              ['content-type', 'text/event-stream'],
+              ['anthropic-ratelimit-requests-remaining', '48'],
+            ],
+            body: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_01ABC","model":"claude-sonnet-4-6","usage":{"input_tokens":8412,"cache_read_input_tokens":6100}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"用 ROW_NUMBER() "}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1096}}`,
+            note: '1,284 帧 · 42.8 KB · complete · 2.20s',
+          },
+        },
+      ];
+
+      const escape = (value) => value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+      const captureNotice = (side) => `<div class="notice">
+        <b>未捕获${side === 'request' ? '请求' : '响应'}体</b>
+        <p>线级抓包需要 <code>server.logging.enabled: true</code> 且 <code>server.logging.level: debug</code>，
+           并且只保留 <code>server.logging.retentionDays</code> 天（默认 3 天）。超出保留期的调用链只剩下上面这些元数据。</p>
+        <p><a href="#">前往设置开启</a></p>
+      </div>`;
+
+      let captureOn = true;
+      const selected = { request: 'inbound', response: 'inbound' };
+
+      const wireBlock = (side, hop) => {
+        const part = hop[side];
+        return `<div class="wire">
+          <div class="wire-line">
+            <span class="badge" data-status="${side === 'response' ? part.status : 'outline'}">${escape(part.line)}</span>
+          </div>
+          <div class="wire-head">${part.headers
+            .map(([k, v]) => `<div><span class="k">${escape(k)}:</span><span>${escape(v)}</span></div>`)
+            .join('')}</div>
+          ${
+            captureOn
+              ? `<div class="wire-cap"><span>${escape(part.note)}</span><span class="spacer"></span><button class="btn" data-variant="ghost">复制</button></div>
+                 <pre class="wire-body">${escape(part.body)}</pre>`
+              : captureNotice(side)
+          }
+        </div>`;
+      };
+
+
+      const renderSide = (side) => {
+        // Upstream attempts only exist in the debug capture; inbound always has metadata.
+        const visible = hops.filter((hop) => captureOn || hop.debugOnly !== true);
+        if (!visible.some((hop) => hop.id === selected[side])) selected[side] = visible[0].id;
+        document.getElementById(`hops-${side}`).innerHTML = visible
+          .map(
+            (hop) => `<button class="hop" data-status="${hop.status}" data-active="${hop.id === selected[side]}" data-hop="${hop.id}">
+              <span class="dot"></span>${hop.label}<span class="mono">${escape(hop.detail)}</span>
+            </button>`,
+          )
+          .join('');
+        document.getElementById(`wire-${side}`).innerHTML = wireBlock(
+          side,
+          visible.find((hop) => hop.id === selected[side]),
+        );
+        document.querySelectorAll(`#hops-${side} .hop`).forEach((button) =>
+          button.addEventListener('click', () => {
+            selected[side] = button.dataset.hop;
+            renderSide(side);
+          }),
+        );
+      };
+
+      const renderWire = () => {
+        renderSide('request');
+        renderSide('response');
+      };
+      renderWire();
+
+      document.getElementById('capture-toggle').addEventListener('click', (event) => {
+        captureOn = !captureOn;
+        event.currentTarget.dataset.active = String(captureOn);
+        event.currentTarget.textContent = `抓包：${captureOn ? '开' : '关'}`;
+        renderWire();
+      });
+
+      document.querySelectorAll('.tabs button').forEach((tab) =>
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tabs button').forEach((t) => (t.dataset.active = String(t === tab)));
+          document
+            .querySelectorAll('[data-tabpanel]')
+            .forEach((panel) => (panel.hidden = panel.dataset.tabpanel !== tab.dataset.tab));
+        }),
+      );
+    </script>
+  </body>
+</html>
