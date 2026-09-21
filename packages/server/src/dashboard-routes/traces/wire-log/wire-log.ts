@@ -4,7 +4,13 @@ import type { DashboardTraceWireResponse } from '@aio-proxy/types';
 import { addDays, eachDayOfInterval, format } from 'date-fns';
 
 import { applyWireEvent, createHopDrafts, finalizeHops, type HopDrafts } from './build-hops';
-import { MAX_PARSE_LINE, MAX_PROPERTIES_CARRY, PROPERTIES_KEY, wireEventFromLine } from './parse-line';
+import {
+  indexOfOuterProperties,
+  MAX_PARSE_LINE,
+  MAX_PROPERTIES_CARRY,
+  PROPERTIES_KEY,
+  wireEventFromLine,
+} from './parse-line';
 
 type WireLogging = {
   readonly enabled?: boolean;
@@ -123,7 +129,7 @@ async function scanWireEvents(file: Bun.BunFile, requestId: string, drafts: HopD
     if (event !== undefined) applyWireEvent(drafts, event);
   };
   const takeProperties = (end: number) => {
-    const propertiesAt = carry.lastIndexOf(PROPERTIES_KEY, end);
+    const propertiesAt = indexOfOuterProperties(carry, end);
     if (propertiesAt >= 0 && propertiesAt < end) {
       take(carry.slice(propertiesAt, Math.min(end, propertiesAt + MAX_PROPERTIES_CARRY)));
     }
@@ -140,7 +146,7 @@ async function scanWireEvents(file: Bun.BunFile, requestId: string, drafts: HopD
     }
   };
   const shrinkIncompleteCarry = () => {
-    const propertiesAt = carry.lastIndexOf(PROPERTIES_KEY);
+    const propertiesAt = indexOfOuterProperties(carry);
     if (propertiesAt < 0) {
       if (carry.length > MAX_PARSE_LINE) carry = carry.slice(1 - PROPERTIES_KEY.length);
       return;

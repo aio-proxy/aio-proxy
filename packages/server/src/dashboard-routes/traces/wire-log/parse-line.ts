@@ -18,6 +18,43 @@ export const MAX_PROPERTIES_CARRY = (MAX_BODY_TEXT + 1) * 6 + 16_384;
 /** `jsonLinesFormatter` 行末字段。扫描时只留从这里起的一段，丢掉前面重复的 message。 */
 export const PROPERTIES_KEY = '"properties":';
 
+/**
+ * 外层 logtape `properties`。header 名也可以叫 properties，lastIndexOf 会切到嵌套键上。
+ * 扫过字符串字面量，只认深度 1 的键；已经切下来的 `"properties":{...` 就在开头。
+ */
+export function indexOfOuterProperties(source: string, end = source.length): number {
+  const limit = Math.min(end, source.length);
+  if (limit >= PROPERTIES_KEY.length && source.startsWith(PROPERTIES_KEY)) return 0;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < limit; i += 1) {
+    const current = source[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (current === '\\') {
+        escape = true;
+        continue;
+      }
+      if (current === '"') inString = false;
+      continue;
+    }
+    if (current === '"') {
+      if (depth === 1 && i + PROPERTIES_KEY.length <= limit && source.startsWith(PROPERTIES_KEY, i)) return i;
+      inString = true;
+      continue;
+    }
+    if (current === '{') depth += 1;
+    else if (current === '}') depth -= 1;
+  }
+  // 超长行会先丢掉开头的 `{`，深度对不上。嵌套键在外层后面，第一个就是 logtape 字段。
+  const at = source.indexOf(PROPERTIES_KEY);
+  return at >= 0 && at < limit ? at : -1;
+}
+
 export type WireEvent = Readonly<Record<string, unknown>>;
 
 /**
@@ -50,7 +87,7 @@ export function wireEventFromLine(line: string, requestId: string): WireEvent | 
  * `jsonLinesFormatter` 行末是 `,"properties":{...}}`，多出来的 `}` 属于外层记录。
  */
 function propertiesOnlyJson(line: string): string {
-  const at = line.lastIndexOf(PROPERTIES_KEY);
+  const at = indexOfOuterProperties(line);
   if (at < 0) throw new SyntaxError('wire line missing properties');
   let properties = line.slice(at + PROPERTIES_KEY.length);
   if (properties.endsWith('}')) properties = properties.slice(0, -1);

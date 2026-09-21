@@ -400,6 +400,28 @@ describe('readTraceWireLog', () => {
     expect(body.hops[0]?.request?.body).toMatchObject({ text: 'kept', outcome: 'complete' });
   });
 
+  test('keeps a snapshot whose headers include a properties field', async () => {
+    const dir = await logDirWith(
+      logLine({
+        event: 'request.inbound_snapshot',
+        requestId: REQUEST_ID,
+        inboundProtocol: 'openai-response',
+        method: 'POST',
+        url: 'https://proxy.test/v1/responses',
+        headers: { properties: 'nested-header', 'x-observable': 'visible' },
+      }),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request).toEqual({
+      method: 'POST',
+      url: 'https://proxy.test/v1/responses',
+      headers: { properties: 'nested-header', 'x-observable': 'visible' },
+    });
+  });
+
   test('skips an oversized line that belongs to another request', async () => {
     const huge = 'H'.repeat(1_200_000);
     const dir = await logDirWith(
