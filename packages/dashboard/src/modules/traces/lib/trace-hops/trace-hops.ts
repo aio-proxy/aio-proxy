@@ -98,10 +98,11 @@ const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
   }
   const statusCode = hop.response?.statusCode;
   if (statusCode !== undefined && statusCode >= 400) return 'failure';
-  if (responseOutcome === 'cancelled' || requestOutcome === 'cancelled') return 'cancelled';
   // 流式响应一到 headers 就有 `hop.response`，请求 body 也常常已经 complete；
   // 成功只认响应 body 的终态，否则整段 SSE 都会先画成绿点再可能翻成失败。
+  // raw 缓存 2xx 不读请求正文时也会 cancel 那份 body —— 成功终态必须先于取消。
   if (responseOutcome === 'complete') return 'success';
+  if (responseOutcome === 'cancelled' || requestOutcome === 'cancelled') return 'cancelled';
   return 'running';
 };
 
