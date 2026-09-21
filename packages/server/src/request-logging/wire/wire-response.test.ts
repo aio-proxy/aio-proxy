@@ -5,6 +5,19 @@ import { createAttemptResponseObservation, withAttemptResponseObservation } from
 import type { ServerLog } from '../../server-log';
 import { captureFetch, inDebugAttempt, reconstructed, terminals } from '../test-support';
 
+test('a bodyless 204 still emits a complete response terminal', async () => {
+  const logs: ServerLog[] = [];
+  const response = await inDebugAttempt(logs, () =>
+    createObservedFetch(captureFetch([], () => new Response(null, { status: 204 })))('https://upstream.test/v1'),
+  );
+
+  expect(response.status).toBe(204);
+  expect(response.body).toBeNull();
+  expect(terminals(logs, 'upstream_response')).toEqual([
+    expect.objectContaining({ outcome: 'complete', byteLength: 0, sequence: 0 }),
+  ]);
+});
+
 test('consumed response emits complete terminal and preserves response metadata', async () => {
   const logs: ServerLog[] = [];
   const source = new Response('complete', { headers: { 'content-type': 'application/json' }, status: 201 });
@@ -155,16 +168,13 @@ test('response errors remain observable and emit error terminal', async () => {
   ]);
 });
 
-test('null and never-consumed responses emit no body events', async () => {
+test('never-consumed responses emit no body events', async () => {
   const logs: ServerLog[] = [];
 
   await inDebugAttempt(logs, () =>
     createObservedFetch(
       captureFetch([], () => new Response('not-consumed', { headers: { 'content-type': 'application/json' } })),
     )('https://upstream.test/v1'),
-  );
-  await inDebugAttempt(logs, () =>
-    createObservedFetch(captureFetch([], () => new Response(null, { status: 204 })))('https://upstream.test/v1'),
   );
   await Bun.sleep(0);
 
