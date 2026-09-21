@@ -246,6 +246,22 @@ test('keeps 4xx and cancelled wire hops out of the streamed running state', () =
   expect(cancelled[1]?.status).toBe('cancelled');
 });
 
+test('treats a discarded 4xx response body as failure, not cleanup cancellation', () => {
+  const chips = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, endedAt: null },
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        response: { statusCode: 429, body: { text: '', outcome: 'cancelled' } },
+      },
+    ],
+  });
+  expect(chips[1]?.status).toBe('failure');
+});
+
 // 同一次尝试先 429 再成功时，attempt span 是成功的；同 id 的抓包跳不能丢掉，否则第一发还是绿点。
 test('uses the first send wire status when a later retry makes the attempt span succeed', () => {
   const chips = toTraceHopChips({
