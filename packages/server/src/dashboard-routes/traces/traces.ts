@@ -144,7 +144,7 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
       context.header('cache-control', 'no-store');
       const detail = state.traceStore.find(context.req.valid('param').traceId);
       if (detail === undefined) return context.json({ error: 'trace not found' }, 404);
-      const logging = state.currentConfig().server.logging;
+      const logging = state.logging;
       return context.json(
         await readTraceWireLog({
           requestId: detail.trace.requestId,

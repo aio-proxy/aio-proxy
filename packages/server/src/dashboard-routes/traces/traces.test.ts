@@ -11,10 +11,13 @@ import {
   DashboardTraceSummaryResponseSchema,
   DashboardTraceWireResponseSchema,
 } from '@aio-proxy/types';
+import { format } from 'date-fns';
 
 import { createServer } from '#server-test-lifecycle';
 
 import { loopbackServer } from '../../dashboard-auth/test-support';
+import type { ServerState } from '../../server-state';
+import { createDashboardTraceRoutes } from './traces';
 
 const TRACE_ID = 'a'.repeat(32);
 const ROOT_SPAN_ID = 'b'.repeat(16);
@@ -442,6 +445,51 @@ describe('Dashboard trace routes', () => {
 
     expect(sparse.status).toBe(200);
     expect(DashboardTracePercentileResponseSchema.parse(await sparse.json()).comparison).toBeNull();
+  });
+
+  // 热重载会改 currentConfig 的 level/目录，LogTape 还在写启动时那份。读 currentConfig
+  // 会把还在落盘的抓包判成 level，或去扫一个从来没写过的目录。
+  test('reads wire logs from the process logging config after authored level changes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-runtime-'));
+    homes.push(dir);
+    const startedAt = new Date('2026-07-27T08:00:00.000Z');
+    await Bun.write(
+      join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`),
+      `${JSON.stringify({
+        '@timestamp': startedAt.toISOString(),
+        level: 'DEBUG',
+        message: '{}',
+        logger: 'aio-proxy.server',
+        properties: {
+          event: 'request.inbound_snapshot',
+          requestId: 'request-a',
+          method: 'POST',
+          url: 'https://proxy.test/v1/responses',
+        },
+      })}\n`,
+    );
+    const app = createDashboardTraceRoutes({
+      logging: { enabled: true, level: 'debug', dir },
+      currentConfig: () => ({ server: { logging: { enabled: true, level: 'info', dir: '/not-the-sink' } } }),
+      traceStore: {
+        find: () => ({
+          trace: {
+            traceId: TRACE_ID,
+            requestId: 'request-a',
+            startedAt: startedAt.toISOString(),
+            endedAt: '2026-07-27T08:00:00.100Z',
+          },
+        }),
+      },
+    } as unknown as ServerState);
+
+    const response = await app.request(`/${TRACE_ID}/wire`);
+    const body = DashboardTraceWireResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body.available).toBe(true);
+    expect(body.reason).toBeUndefined();
+    expect(body.hops[0]?.request?.method).toBe('POST');
   });
 
   // 抓包是可选的：日志关着的时候端点要说清楚「为什么没有」，而不是给个空壳。
