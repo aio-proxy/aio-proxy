@@ -182,6 +182,9 @@ test('debug inbound observation does not tap openai-video bodies', async () => {
   expect(logs).toContainEqual(
     expect.objectContaining({ event: 'request.inbound_snapshot', inboundProtocol: 'openai-video' }),
   );
+  expect(terminals(logs, 'inbound')).toEqual([
+    expect.objectContaining({ outcome: 'complete', omitted: true, direction: 'inbound' }),
+  ]);
 });
 
 test('debug fetch does not tap openai-video request or response bodies', async () => {
@@ -222,6 +225,9 @@ test('debug fetch does not tap openai-video request or response bodies', async (
   expect(reconstructed(logs, 'upstream_request')).toBe('');
   expect(reconstructed(logs, 'upstream_response')).toBe('');
   expect(logs.filter((entry) => entry.event === 'request.body_chunk')).toHaveLength(0);
+  expect(terminals(logs, 'upstream_request')).toEqual([
+    expect.objectContaining({ outcome: 'complete', omitted: true, direction: 'upstream_request' }),
+  ]);
   expect(terminals(logs, 'upstream_response')).toEqual([
     expect.objectContaining({ outcome: 'complete', direction: 'upstream_response' }),
   ]);

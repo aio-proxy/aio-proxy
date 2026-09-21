@@ -90,9 +90,9 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         ...requestMetadata(request),
       });
       const hideVideoBodies = scope?.sourceProtocol === ProviderProtocol.OpenAIVideo;
-      const delegated = hideVideoBodies
-        ? request
-        : requestWithObservedBody(request, { ...debug.identity, direction: 'upstream_request' }, debug.logger);
+      const requestIdentity = { ...debug.identity, direction: 'upstream_request' as const };
+      if (hideVideoBodies) logOmittedBody(debug.logger, requestIdentity);
+      const delegated = hideVideoBodies ? request : requestWithObservedBody(request, requestIdentity, debug.logger);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
       const response = await fetchWithSpan(fetcher, delegated, decompress === undefined ? undefined : { decompress });
       const bodyObservation = safely(() =>
@@ -138,10 +138,23 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
     inboundProtocol,
     ...requestMetadata(request),
   });
-  // Videos create can carry `input_reference` data URLs and multipart bytes.
-  // Snapshot headers stay; body chunks do not.
-  if (inboundProtocol === ProviderProtocol.OpenAIVideo) return request;
+  // Videos create 可能带 data URL / multipart。头照常记；正文不落 chunk，但要有终态，
+  // 否则面板当没抓、hopsNeedNextDay 还会去扫下一天。
+  if (inboundProtocol === ProviderProtocol.OpenAIVideo) {
+    logOmittedBody(scope.logger, { requestId: scope.requestId, direction: 'inbound' });
+    return request;
+  }
   return requestWithObservedBody(request, { requestId: scope.requestId, direction: 'inbound' }, scope.logger);
+}
+
+function logOmittedBody(logger: ServerLogSink, identity: BodyIdentity): void {
+  logServerEvent(logger, {
+    event: 'request.body_terminal',
+    ...identity,
+    sequence: 0,
+    outcome: 'complete',
+    omitted: true,
+  });
 }
 
 function observedBody(

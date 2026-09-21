@@ -24,6 +24,7 @@ export type BodyDraft = {
   readonly chunks: { readonly sequence: number; text: string }[];
   kept: number;
   truncated?: boolean;
+  omitted?: boolean;
   byteLength?: number;
   outcome?: BodyOutcome;
 };
@@ -117,6 +118,7 @@ function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraf
   draft.byteLength = numberField(event, 'byteLength');
   const outcome = stringField(event, 'outcome');
   if (outcome !== undefined && BODY_OUTCOMES.has(outcome)) draft.outcome = outcome as BodyOutcome;
+  if (event['omitted'] === true) draft.omitted = true;
   return draft;
 }
 
@@ -238,8 +240,10 @@ function finalizeBody(body: BodyDraft | undefined): BodyView {
   // 上限按 code unit 数，可能正好切在代理对中间。留下的半个 JSON.stringify 会转义掉，
   // 面板就在切口处画一个 U+FFFD —— 退一格，宁可少一个字符。
   if (body.truncated === true && isHighSurrogate(text.charCodeAt(text.length - 1))) text = text.slice(0, -1);
-  // omitChunks 的视频终态：有字节、无分块、outcome 仍是 complete。空 text 不是空正文。
-  const omitted = text === '' && (body.byteLength ?? 0) > 0 && body.outcome === 'complete' && body.truncated !== true;
+  // 写侧 omitChunks / 请求侧直接标 omitted；旧日志没有标记时，空 text + 有字节 + complete 也算。
+  const omitted =
+    body.omitted === true ||
+    (text === '' && (body.byteLength ?? 0) > 0 && body.outcome === 'complete' && body.truncated !== true);
   return {
     text,
     ...(body.truncated === true ? { truncated: true } : {}),
