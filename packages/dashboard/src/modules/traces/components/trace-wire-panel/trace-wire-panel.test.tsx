@@ -47,3 +47,23 @@ test('warns when the server truncated the body even though the capture completed
 
   expect(screen.getByText(WARNING())).toBeTruthy();
 });
+
+test('says the body was omitted instead of showing an empty complete capture', () => {
+  render(
+    <TraceWirePanel
+      side="response"
+      hop={{
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        response: {
+          statusCode: 200,
+          body: { text: '', byteLength: 4096, outcome: 'complete', omitted: true },
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByText(m['dashboard.traces.wire_body_omitted']())).toBeTruthy();
+  expect(screen.queryByText(WARNING())).toBeNull();
+});

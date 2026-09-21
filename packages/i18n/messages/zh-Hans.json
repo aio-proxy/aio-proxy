@@ -1479,6 +1479,7 @@
       "hop_attempt": "尝试{index} {label}",
       "hops_label": "请求链路",
       "wire_body_truncated": "内容未完整记录",
+      "wire_body_omitted": "抓包未记录这段正文",
       "wire_hop_empty": "这一跳没有抓包记录",
       "wire_error": "读取抓包失败。",
       "wire_unavailable_debug": "需要把 server.logging.enabled 设为 true、level 设为 debug 才会记录线级抓包。",

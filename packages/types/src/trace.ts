@@ -203,6 +203,8 @@ const DashboardTraceWireBodySchema = z
     outcome: z.enum(['complete', 'cancelled', 'error']).optional(),
     // text 超过单跳单方向上限后被裁掉了尾巴，面板需要明说一句，别让人把半截 body 当全貌读
     truncated: z.boolean().optional(),
+    // 视频等二进制正文写侧不落 chunk，终态仍是 complete + 真实 byteLength + 空 text
+    omitted: z.boolean().optional(),
   })
   .strict();
 

@@ -238,9 +238,12 @@ function finalizeBody(body: BodyDraft | undefined): BodyView {
   // 上限按 code unit 数，可能正好切在代理对中间。留下的半个 JSON.stringify 会转义掉，
   // 面板就在切口处画一个 U+FFFD —— 退一格，宁可少一个字符。
   if (body.truncated === true && isHighSurrogate(text.charCodeAt(text.length - 1))) text = text.slice(0, -1);
+  // omitChunks 的视频终态：有字节、无分块、outcome 仍是 complete。空 text 不是空正文。
+  const omitted = text === '' && (body.byteLength ?? 0) > 0 && body.outcome === 'complete' && body.truncated !== true;
   return {
     text,
     ...(body.truncated === true ? { truncated: true } : {}),
+    ...(omitted ? { omitted: true } : {}),
     ...defined({ byteLength: body.byteLength, outcome: body.outcome }),
   };
 }
@@ -255,6 +258,7 @@ type BodyView =
       readonly byteLength?: number;
       readonly outcome?: BodyOutcome;
       readonly truncated?: boolean;
+      readonly omitted?: boolean;
     }
   | undefined;
 

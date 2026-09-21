@@ -1479,6 +1479,7 @@
       "hop_attempt": "시도 {index} {label}",
       "hops_label": "요청 홉",
       "wire_body_truncated": "내용이 완전히 기록되지 않았습니다",
+      "wire_body_omitted": "이 캡처에는 본문이 기록되지 않았습니다",
       "wire_hop_empty": "이 홉에는 캡처 기록이 없습니다",
       "wire_error": "와이어 캡처를 불러오지 못했습니다.",
       "wire_unavailable_debug": "server.logging.enabled 를 true 로, level 을 debug 로 설정해야 와이어 캡처가 기록됩니다.",

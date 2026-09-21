@@ -1479,6 +1479,7 @@
       "hop_attempt": "試行 {index} {label}",
       "hops_label": "リクエストのホップ",
       "wire_body_truncated": "内容は完全には記録されていません",
+      "wire_body_omitted": "このキャプチャには本文が記録されていません",
       "wire_hop_empty": "このホップにはキャプチャがありません",
       "wire_error": "ワイヤーキャプチャを読み込めませんでした。",
       "wire_unavailable_debug": "server.logging.enabled を true、level を debug にしないとワイヤーキャプチャは記録されません。",

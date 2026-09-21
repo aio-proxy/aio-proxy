@@ -65,14 +65,22 @@ export const TraceWirePanel: React.FC<TraceWirePanelProps> = ({ side, hop }) => 
               最后这种就是 outcome 缺失：`body-tap.ts` 四个 terminal 调用点全都带 outcome，
               所以有正文却没有 outcome 只可能是流还在跑、或者那行日志在崩溃/半截读里丢了 ——
               两种都不是完整正文，按完整展示会让人拿着半截 body 去查问题。 */}
-          {(body.truncated === true || body.outcome !== 'complete') && (
+          {body.omitted === true ? (
             <p className="text-sm text-muted-foreground" role="status">
-              {m['dashboard.traces.wire_body_truncated']()}
+              {m['dashboard.traces.wire_body_omitted']()}
             </p>
+          ) : (
+            <>
+              {(body.truncated === true || body.outcome !== 'complete') && (
+                <p className="text-sm text-muted-foreground" role="status">
+                  {m['dashboard.traces.wire_body_truncated']()}
+                </p>
+              )}
+              <pre className="max-h-96 overflow-auto rounded-2xl bg-muted p-3 font-mono text-xs wrap-break-word whitespace-pre-wrap">
+                {body.text}
+              </pre>
+            </>
           )}
-          <pre className="max-h-96 overflow-auto rounded-2xl bg-muted p-3 font-mono text-xs wrap-break-word whitespace-pre-wrap">
-            {body.text}
-          </pre>
         </section>
       )}
     </div>

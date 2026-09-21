@@ -1479,6 +1479,7 @@
       "hop_attempt": "Attempt {index} {label}",
       "hops_label": "Request hops",
       "wire_body_truncated": "Content was not fully recorded",
+      "wire_body_omitted": "This body was omitted from the capture",
       "wire_hop_empty": "No wire capture for this hop",
       "wire_error": "Could not load the wire capture.",
       "wire_unavailable_debug": "Wire capture is only recorded when server.logging.enabled is true and level is debug.",
