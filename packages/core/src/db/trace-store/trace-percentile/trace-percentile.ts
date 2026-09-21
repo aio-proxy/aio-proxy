@@ -17,6 +17,10 @@ const MIN_SAMPLES = 30;
 // 两列都是 timestamp_ms（底层就是整数），相减直接得到毫秒。
 const DURATION_MS = sql<number>`(${traceSpan.endedAt} - ${traceSpan.startedAt})`;
 
+// `aio_proxy.operation` 留在 JSON 里。计 token 和生成可以落到同一个 finalModelId，
+// 时长差一个数量级；老数据没这个键，按生成（`model`）算。
+const OPERATION = sql<string>`coalesce(json_extract(${traceSpan.attributes}, '$."aio_proxy.operation"'), 'model')`;
+
 /** 排序后取第 n 条的时长。样本数已过门槛，offset 必然落在结果集里。 */
 function durationAt(db: BunSQLiteDatabase, where: SQL, offset: number): number {
   const row = db
@@ -38,7 +42,8 @@ function durationAt(db: BunSQLiteDatabase, where: SQL, offset: number): number {
  * 根本没有它，它的时长还可能整个落在 [min, max] 之外。
  *
  * 全程只看根 span：分位比的是整个请求的端到端时长，attempt 子 span 各自的耗时不是同一个量。
- * 目标没结束、没有 `finalModelId`、或者本身失败时没有可比的口径，直接不给结论。
+ * 同模型还要同操作：计 token 和生成不是一个分布。目标没结束、没有 `finalModelId`、
+ * 或者本身失败时没有可比的口径，直接不给结论。
  */
 export function percentile(db: BunSQLiteDatabase, traceId: string): DashboardTracePercentileResponse {
   const target = db
@@ -46,6 +51,7 @@ export function percentile(db: BunSQLiteDatabase, traceId: string): DashboardTra
       modelId: traceSpan.finalModelId,
       startedAt: traceSpan.startedAt,
       durationMs: DURATION_MS.as('duration_ms'),
+      operation: OPERATION.as('operation'),
     })
     .from(traceSpan)
     .where(
@@ -56,10 +62,12 @@ export function percentile(db: BunSQLiteDatabase, traceId: string): DashboardTra
   if (modelId === undefined || modelId === null || target?.startedAt === undefined) return { comparison: null };
   const durationMs = Number(target.durationMs ?? 0);
   const anchorMs = target.startedAt.getTime();
+  const operation = target.operation;
 
   const sample = and(
     isNull(traceSpan.parentSpanId),
     eq(traceSpan.finalModelId, modelId),
+    eq(OPERATION, operation),
     gte(traceSpan.startedAt, new Date(anchorMs - WINDOW_MS)),
     lte(traceSpan.startedAt, new Date(anchorMs + WINDOW_MS)),
     SUCCEEDED,

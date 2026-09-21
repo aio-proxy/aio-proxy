@@ -20,6 +20,7 @@ function seedTrace(
     readonly modelId?: string;
     readonly agoMs?: number;
     readonly outcome?: 'success' | 'error';
+    readonly operation?: 'model' | 'token_count';
   },
 ): void {
   const traceId = traceIdOf(seed.id);
@@ -32,6 +33,7 @@ function seedTrace(
   const attributes = {
     'aio_proxy.request.id': `request-${seed.id}`,
     'aio_proxy.protocol.inbound': 'openai-response',
+    ...(seed.operation === undefined ? {} : { 'aio_proxy.operation': seed.operation }),
     'gen_ai.request.model': modelId,
     'gen_ai.response.model': modelId,
     'aio_proxy.route.final_provider_id': 'provider-a',
@@ -177,6 +179,18 @@ test('counts neighbours that came after the trace, not only before it', () => {
 
 // 样本必须是「成功且已结束」的那一批。失败的调用链通常几毫秒就死，混进来会把 p50/minMs
 // 一起拖下去，让每个正常请求都显得慢。
+test('compares only against the same operation, not every call to that model', () => {
+  withStore((store) => {
+    for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: 1_000 });
+    for (let id = 201; id <= 230; id += 1) {
+      seedTrace(store, { id, durationMs: 5, operation: 'token_count' });
+    }
+
+    expect(store.percentile(traceIdOf(1)).comparison).toMatchObject({ sampleCount: 30, minMs: 1_000, maxMs: 1_000 });
+    expect(store.percentile(traceIdOf(201)).comparison).toMatchObject({ sampleCount: 30, minMs: 5, maxMs: 5 });
+  });
+});
+
 test('samples only the successful traces in the window', () => {
   withStore((store) => {
     for (let id = 1; id <= 30; id += 1) seedTrace(store, { id, durationMs: 1_000 });
