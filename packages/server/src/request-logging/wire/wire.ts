@@ -22,11 +22,12 @@ type BodyIdentity = {
   readonly modelId?: string;
 };
 
-const nextSendIndex = new WeakMap<object, number>();
-
-function takeSendIndex(scope: object): number {
-  const index = nextSendIndex.get(scope) ?? 0;
-  nextSendIndex.set(scope, index + 1);
+function takeSendIndex(scope: { readonly attemptIndex?: number; readonly sendCounts?: Map<number, number> }): number {
+  const attempt = scope.attemptIndex;
+  const bag = scope.sendCounts;
+  if (attempt === undefined || bag === undefined) return 0;
+  const index = bag.get(attempt) ?? 0;
+  bag.set(attempt, index + 1);
   return index;
 }
 
@@ -246,6 +247,17 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
   }
 }
 
+function emitEmptyBodyTerminal(debug: DebugResponseObservation | undefined): void {
+  if (debug === undefined) return;
+  logServerEvent(debug.logger, {
+    event: 'request.body_terminal',
+    ...debug.identity,
+    sequence: 0,
+    byteLength: 0,
+    outcome: 'complete',
+  });
+}
+
 function responseWithObservedBody(response: Response, options: ResponseObservationOptions): Response {
   let source: ReadableStream<Uint8Array>;
   let contentType: string | null;
@@ -253,7 +265,12 @@ function responseWithObservedBody(response: Response, options: ResponseObservati
   let metadata: ResponseMetadata;
   try {
     const body = response.body;
-    if (body === null) return response;
+    if (body === null) {
+      // 204 / HEAD：没有 body 可读，也就没有 tap 终态。不记一行 complete 的话
+      // 抓包会把这次发送一直标成 running。
+      emitEmptyBodyTerminal(options.debug);
+      return response;
+    }
     source = body;
     const headers = response.headers;
     contentType = headers.get('content-type');

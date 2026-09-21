@@ -74,7 +74,7 @@ test('debug scopes expose the trusted logger only when debugging is enabled', ()
     expect(currentDebugRequestLogScope()).toBeUndefined();
   });
   withRequestLogContext({ requestId: 'debug', debug: true, logger }, () => {
-    expect(currentDebugRequestLogScope()).toEqual({ requestId: 'debug', debug: true, logger });
+    expect(currentDebugRequestLogScope()).toMatchObject({ requestId: 'debug', debug: true, logger });
   });
 
   expect(currentDebugRequestLogScope()).toBeUndefined();

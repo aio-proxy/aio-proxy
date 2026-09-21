@@ -313,6 +313,29 @@ test('debug fetch numbers each HTTP send inside one attempt', async () => {
   ]);
 });
 
+test('debug fetch keeps send indexes across separate inAttempt entries', async () => {
+  const logs: ServerLog[] = [];
+  const fetcher = createObservedFetch((async () => new Response(null, { status: 204 })) as typeof globalThis.fetch);
+  const attempt = {
+    attemptIndex: 0,
+    providerId: 'provider-a',
+    modelId: 'model-a',
+  } as const;
+
+  await withRequestLogContext(
+    { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
+    async () => {
+      await withAttemptLogContext(attempt, () => fetcher(new Request('https://upstream.test/v1/a')));
+      await withAttemptLogContext(attempt, () => fetcher(new Request('https://upstream.test/v1/b')));
+    },
+  );
+
+  expect(logs.filter((entry) => entry.event === 'request.upstream_snapshot')).toEqual([
+    expect.objectContaining({ sendIndex: 0 }),
+    expect.objectContaining({ sendIndex: 1 }),
+  ]);
+});
+
 test('debug fetch preserves the thrown transport error', async () => {
   const logs: ServerLog[] = [];
   const failure = Object.assign(new Error('offline'), { code: 'ConnectionRefused' });

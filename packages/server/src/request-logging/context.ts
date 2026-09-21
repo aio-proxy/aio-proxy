@@ -26,12 +26,17 @@ export type RequestLogScope = RequestLogContext &
   Partial<Omit<ProviderAttemptContext, 'providerId' | 'modelId'>> & {
     readonly debug: boolean;
     readonly logger: ServerLogSink;
+    /** 同一次 attempt 里多次 inAttempt 要共用计数；spread 会换对象，Map 要按引用带着走。 */
+    readonly sendCounts?: Map<number, number>;
   };
 
 const storage = new AsyncLocalStorage<RequestLogScope>();
 
 export function withRequestLogContext<T>(input: RequestLogScope, operation: () => T): T {
-  return storage.run(input, operation);
+  return storage.run(
+    input.sendCounts === undefined ? { ...input, sendCounts: new Map<number, number>() } : input,
+    operation,
+  );
 }
 
 export function withAttemptLogContext<T>(input: AttemptLogContext, operation: () => T): T {
