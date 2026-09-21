@@ -31,10 +31,11 @@ const OPERATION_NAME: Record<InboundCapability, string> = {
 // actually spoke -- an openai-compatible upstream emits OpenAI-shaped telemetry
 // whoever runs it. Our own key stays on aio_proxy.attempt.provider_id.
 //
-// Attached alongside aio_proxy.protocol.target in attempt/model.ts, NOT at span
-// creation: prepare resolves the protocol too late to be a creation attribute.
-// A protocol we cannot name leaves the attribute off -- it is an aggregation
-// discriminator, so a wrong value is worse than a missing one.
+// Attached alongside aio_proxy.protocol.target: at span creation when the
+// protocol is already known (raw passthrough), or later in attempt/model.ts
+// after prepare resolves it. A protocol we cannot name leaves the attribute
+// off -- it is an aggregation discriminator, so a wrong value is worse than
+// a missing one.
 const PROVIDER_NAME: Record<ProviderProtocol, string | undefined> = {
   [ProviderProtocol.Anthropic]: 'anthropic',
   [ProviderProtocol.OpenAIResponse]: 'openai',
@@ -49,8 +50,8 @@ const PROVIDER_NAME: Record<ProviderProtocol, string | undefined> = {
   [ProviderProtocol.TypeSafeSystemOne]: undefined,
 };
 
-// Exported so attempt/model.ts can attach it at the same point it attaches
-// aio_proxy.protocol.target, which is the first moment the protocol is known.
+// Exported so attempt/model.ts can attach it after prepare, the first moment
+// the protocol is known on the model path.
 export function genAiProviderNameFor(protocol: ProviderProtocol): string | undefined {
   return PROVIDER_NAME[protocol];
 }
@@ -132,6 +133,7 @@ export function createAttemptEmitter({
 }: AttemptEmitterOptions): AttemptEmitter {
   const startedAt = new WeakMap<OpenSpan, number>();
   const startAttempt = (base: AttemptInfo, index: number, httpStatus?: number): OpenSpan => {
+    const providerName = base.targetProtocol === undefined ? undefined : genAiProviderNameFor(base.targetProtocol);
     const span = startPipelineSpan(session.rootContext, `${OPERATION_NAME[capability]} ${base.modelId}`, {
       kind: SpanKind.CLIENT,
       attributes: {
@@ -146,6 +148,7 @@ export function createAttemptEmitter({
         ...(base.transport === undefined ? {} : { [attributeName.transport]: base.transport }),
         [attributeName.sourceProtocol]: base.sourceProtocol,
         ...(base.targetProtocol === undefined ? {} : { [attributeName.targetProtocol]: base.targetProtocol }),
+        ...(providerName === undefined ? {} : { [attributeName.genAiProviderName]: providerName }),
         [attributeName.selectionReason]: base.selectionReason,
         ...(httpStatus === undefined ? {} : { [attributeName.httpStatusCode]: httpStatus }),
       },

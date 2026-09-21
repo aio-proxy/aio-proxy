@@ -639,6 +639,11 @@ test('gen_ai.provider.name comes from the protocol actually spoken, not our prov
   expect(attempt?.attributes[attributeName.providerId]).toBe('primary');
 });
 
+test('a raw passthrough attempt records gen_ai.provider.name from the inbound protocol', async () => {
+  const { spans } = await runOnce();
+  expect(attemptSpansOf(spans)[0]?.attributes[attributeName.genAiProviderName]).toBe('openai');
+});
+
 test('the root span TTFT key still feeds the list page summary column', async () => {
   // `completion.ts` writes request-level TTFT onto the root span under
   // `attributeName.ttftMs`, and core's `rowToSummary` reads it back as a **literal**

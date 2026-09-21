@@ -87,3 +87,69 @@ test('does not label System One as a well-known gen_ai provider', () => {
   // A wrong well-known value would fold evaluation hops into another vendor's series.
   expect(genAiProviderNameFor(ProviderProtocol.TypeSafeSystemOne)).toBeUndefined();
 });
+
+test('a known target protocol labels gen_ai.provider.name at span creation', () => {
+  const completions: TraceCompletion[] = [];
+  const recorder = createRequestTraceRecorder({
+    store: {
+      startRoot: () => {},
+      complete: (input: TraceCompletion) => {
+        completions.push(input);
+        return true;
+      },
+      prune: () => {},
+      recover: () => {},
+    },
+  });
+  const session = recorder.begin({
+    inboundRequest: new Request('http://localhost'),
+    inboundProtocol: 'openai-chat',
+  });
+  const emitter = createAttemptEmitter({ session, streamRequested: false, capability: 'language' });
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+
+  emitter.emitAttempt(
+    { ...base, targetProtocol: ProviderProtocol.OpenAICompatible },
+    0,
+    observation,
+    failureTerminal(502, 'upstream_error'),
+  );
+  session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
+
+  const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
+  expect(attempt?.attributes[attributeName.genAiProviderName]).toBe('openai');
+  expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.OpenAICompatible);
+});
+
+test('a known but unnamed target protocol still omits gen_ai.provider.name', () => {
+  const completions: TraceCompletion[] = [];
+  const recorder = createRequestTraceRecorder({
+    store: {
+      startRoot: () => {},
+      complete: (input: TraceCompletion) => {
+        completions.push(input);
+        return true;
+      },
+      prune: () => {},
+      recover: () => {},
+    },
+  });
+  const session = recorder.begin({
+    inboundRequest: new Request('http://localhost'),
+    inboundProtocol: 'typesafe-systemone',
+  });
+  const emitter = createAttemptEmitter({ session, streamRequested: false, capability: 'evaluation' });
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+
+  emitter.emitAttempt(
+    { ...base, targetProtocol: ProviderProtocol.TypeSafeSystemOne },
+    0,
+    observation,
+    failureTerminal(502, 'upstream_error'),
+  );
+  session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
+
+  const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
+  expect(attempt?.attributes[attributeName.genAiProviderName]).toBeUndefined();
+  expect(attempt?.attributes[attributeName.targetProtocol]).toBe(ProviderProtocol.TypeSafeSystemOne);
+});
