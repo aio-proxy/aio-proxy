@@ -314,6 +314,63 @@ describe('readTraceWireLog', () => {
     expect(body.hops[1]?.response?.body?.truncated).toBe(true);
   });
 
+  // 单行就可以比预算大：jsonLinesFormatter 还把正文写两遍。必须在 JSON.parse 之前裁
+  // `text`，否则打开抓包时先分配整段记录，keepChunk 的 1 MiB 上限等于没设。
+  test('truncates an oversized matching chunk before parsing the line', async () => {
+    const huge = 'H'.repeat(1_200_000);
+    const dir = await logDirWith(
+      logLine({
+        event: 'request.body_chunk',
+        requestId: REQUEST_ID,
+        direction: 'inbound',
+        sequence: 0,
+        text: huge,
+      }) +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 1,
+          byteLength: huge.length,
+          outcome: 'complete',
+        }),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toHaveLength(1_048_576);
+    expect(body.hops[0]?.request?.body?.truncated).toBe(true);
+    expect(body.hops[0]?.request?.body?.byteLength).toBe(1_200_000);
+  });
+
+  test('skips an oversized line that belongs to another request', async () => {
+    const huge = 'H'.repeat(1_200_000);
+    const dir = await logDirWith(
+      logLine({
+        event: 'request.body_chunk',
+        requestId: 'request-other',
+        direction: 'inbound',
+        sequence: 0,
+        text: huge,
+      }) +
+        inboundSnapshot +
+        logLine({
+          event: 'request.body_chunk',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 0,
+          text: 'ok',
+        }),
+    );
+
+    const body = await readFrom(dir);
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.hops[0]?.request?.body?.text).toBe('ok');
+    expect(JSON.stringify(body)).not.toContain(huge.slice(0, 32));
+  });
+
   // 预算必须在读取时就兑现。只在 finalize 裁的话，浏览器收到的是 1 MB，代理自己却把日志里
   // 那 100 MB 整个攥在草稿里 —— 而它还在服务线上流量。这里看的是草稿留了多少，不是返回了多少。
   test('bounds what it retains while reading, not only what it returns', () => {
@@ -524,6 +581,44 @@ describe('readTraceWireLog', () => {
 
     expect(body).toMatchObject({ available: true, reason: 'partial', retentionDays: 7 });
     expect(body.hops[0]?.request?.body).toMatchObject({ text: 'after', outcome: 'complete' });
+  });
+
+  // 临近零点的 raw 失败先结算再消费正文：endedAt 还在昨天，分块和终态写进今天。
+  // 只扫到 endedAt 那天会永远缺终态，面板一直显示半截 body。
+  test('scans the next local day when body events land after endedAt', async () => {
+    const startedAt = new Date(2026, 6, 27, 23, 50, 0);
+    const endedAt = new Date(2026, 6, 27, 23, 59, 50);
+    const nextDay = new Date(2026, 6, 28, 0, 0, 5);
+    const chunk = (sequence: number, text: string) =>
+      logLine({ event: 'request.body_chunk', requestId: REQUEST_ID, direction: 'inbound', sequence, text });
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-wire-log-post-settle-'));
+    await Bun.write(join(dir, `${format(startedAt, 'yyyy-MM-dd')}.log`), inboundSnapshot + chunk(0, 'before'));
+    await Bun.write(
+      join(dir, `${format(nextDay, 'yyyy-MM-dd')}.log`),
+      chunk(1, 'after') +
+        logLine({
+          event: 'request.body_terminal',
+          requestId: REQUEST_ID,
+          direction: 'inbound',
+          sequence: 2,
+          byteLength: 11,
+          outcome: 'complete',
+        }),
+    );
+    const body = DashboardTraceWireResponseSchema.parse(
+      await readTraceWireLog({
+        requestId: REQUEST_ID,
+        startedAt,
+        endedAt,
+        logging: DEBUG_LOGGING,
+        logDir: dir,
+      }),
+    );
+    rmSync(dir, { force: true, recursive: true });
+
+    expect(body.available).toBe(true);
+    expect(body.reason).toBeUndefined();
+    expect(body.hops[0]?.request?.body).toMatchObject({ text: 'beforeafter', outcome: 'complete' });
   });
 
   test('keeps two HTTP sends of the same attempt as separate hops', async () => {
