@@ -1,5 +1,6 @@
 import type { ServerLogSink } from '../server-log';
 import { embeddingCapture } from './embedding-capture';
+import { evaluationCapture } from './evaluation-capture';
 import { passthroughCapture } from './passthrough-capture';
 import type { UsageCapture } from './shared';
 import { streamCapture } from './stream-capture';
@@ -7,6 +8,7 @@ import { streamCapture } from './stream-capture';
 export type {
   Captured,
   EmbeddingUsageOptions,
+  EvaluationUsageOptions,
   PassthroughUsageOptions,
   StreamUsageOptions,
   UsageCapture,
@@ -18,5 +20,6 @@ export function createUsageCapture(options: { readonly logger?: ServerLogSink } 
     stream: (streamOptions) => streamCapture(streamOptions, options.logger),
     passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.logger),
     embedding: (embeddingOptions) => embeddingCapture(embeddingOptions, options.logger),
+    evaluation: (evaluationOptions) => evaluationCapture(evaluationOptions, options.logger),
   };
 }

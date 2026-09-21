@@ -7,7 +7,12 @@ import { ResponseOwnershipCache } from './response-cache';
 export type LogicalSessionInput = {
   readonly requestId?: string;
   readonly requestedModelId?: string;
-  readonly hints: ProtocolSessionHints;
+  /**
+   * Omitted when the caller's protocol adapter declares no `session` hook. That
+   * absence is the participation signal the store acts on, so callers pass the
+   * hook's result straight through rather than substituting empty hints.
+   */
+  readonly hints?: ProtocolSessionHints;
   readonly headers: Headers;
   readonly internalSessionId?: string;
 };
@@ -102,7 +107,7 @@ export class LogicalSessionStore {
     const now = this.#now();
     const requestId = input.requestId ?? crypto.randomUUID();
     const requestedModelId = input.requestedModelId ?? 'unknown';
-    const response = this.#previousResponse(input.hints.previousResponseId, now, requestId);
+    const response = this.#previousResponse(input.hints?.previousResponseId, now, requestId);
     const selected = this.#select(input, response?.status === 'owned' ? response.selected : undefined);
     const context: LogicalRequestContext = { requestId, session: selected.session };
 
@@ -146,11 +151,23 @@ export class LogicalSessionStore {
     const internal = this.#internalCandidate(input.internalSessionId);
     if (internal !== undefined) return internal;
 
-    const candidate = this.#firstCandidate(input.hints.candidates);
-    if (candidate !== undefined) return candidate;
+    // Absent hints mean the caller's adapter has no `session` hook, so its
+    // protocol does not participate in logical sessions and must not pick one up
+    // from the inbound headers either. Evaluation is the case this protects: a
+    // `session_id` header would otherwise resolve a stable session, which
+    // establishes affinity on the first successful attempt and silently pins
+    // every later request in that session to whichever candidate happened to
+    // answer - so a backup that served one failover keeps the traffic instead of
+    // returning it to the recovered primary. Candidate order for these
+    // capabilities is priority and weight only. The rule lives here so every
+    // caller gets it from the store rather than having to reproduce it.
+    if (input.hints !== undefined) {
+      const candidate = this.#firstCandidate(input.hints.candidates);
+      if (candidate !== undefined) return candidate;
 
-    const header = this.#headerCandidate(input.headers);
-    if (header !== undefined) return header;
+      const header = this.#headerCandidate(input.headers);
+      if (header !== undefined) return header;
+    }
 
     if (previous !== undefined) return previous;
 

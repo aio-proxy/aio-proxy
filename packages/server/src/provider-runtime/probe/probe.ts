@@ -103,6 +103,11 @@ export function providerProbeRequest(
     case ProviderProtocol.OpenAIVideo:
       // A create request bills a real job, so probe connectivity with models list.
       return { method: 'GET', path: '/v1/models' };
+    // Evaluation is not a chat origin, so there is no cheap generative probe to
+    // send: an evaluation request bills real work, exactly like video. Probe
+    // connectivity only, matching the audio and video arms.
+    case ProviderProtocol.TypeSafeSystemOne:
+      return { method: 'GET', path: '/v1/models' };
     default:
       return assertNever(primary.protocol);
   }

@@ -293,6 +293,7 @@ router:
 | OpenAI Videos remix         | `POST /v1/videos/:video_id/remix`                   |
 | OpenAI Videos edits         | `POST /v1/videos/edits`                             |
 | OpenAI Videos extensions    | `POST /v1/videos/extensions`                        |
+| TypeSafe System One         | `POST /v1/systemone`                                |
 
 Images 说明：
 

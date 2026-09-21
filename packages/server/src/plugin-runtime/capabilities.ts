@@ -45,6 +45,7 @@ export const pluginProtocol = {
   'openai-image': 'openai-image',
   'openai-audio': 'openai-audio',
   'openai-video': 'openai-video',
+  'typesafe-systemone': 'typesafe-systemone',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
 export function catalogModelIds(
@@ -117,6 +118,16 @@ const MODALITY_FALLBACK: readonly CatalogModality[] = [
   'video',
 ];
 
+// `RawResolveInput['capability']` is wider than the catalog's modalities, so a
+// capability without a catalog of its own must not be indexed into `catalogs`:
+// that read is `undefined` and the `.get` on it throws. Derived from the list
+// above so a modality added there needs no second edit.
+const CATALOG_MODALITIES = new Set<string>(MODALITY_FALLBACK);
+
+function isCatalogModality(value: string): value is CatalogModality {
+  return CATALOG_MODALITIES.has(value);
+}
+
 function descriptorsById(descriptors: readonly ModelDescriptor[]): ReadonlyMap<string, ModelDescriptor> {
   return new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
 }
@@ -148,7 +159,7 @@ function preferredModalities(
   capability: RawResolveInput['capability'],
   protocol: ProviderProtocol,
 ): readonly CatalogModality[] {
-  if (capability !== undefined) return [capability];
+  if (capability !== undefined) return isCatalogModality(capability) ? [capability] : [];
   if (protocol === ProviderProtocol.OpenAIVideo) return ['video'];
   if (protocol === ProviderProtocol.OpenAIImage) return ['image'];
   if (protocol === ProviderProtocol.OpenAIAudio) return ['speech', 'transcription'];

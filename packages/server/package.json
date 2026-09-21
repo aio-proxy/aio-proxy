@@ -33,6 +33,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/provider": "catalog:",
     "@aio-proxy/infra": "workspace:*",
     "@aio-proxy/plugin-google-antigravity": "workspace:*",

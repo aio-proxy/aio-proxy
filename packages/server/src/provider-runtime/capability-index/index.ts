@@ -1,8 +1,10 @@
 export {
   buildModelCapabilityIndex,
   metadataHasImageOutput,
+  protocolSupportsEvaluation,
   routerModelsGrantImage,
   supportsEmbedding,
+  supportsEvaluation,
   supportsImage,
   supportsLanguage,
   supportsSpeech,

@@ -26,6 +26,7 @@ export type {
   ToolSet,
 } from './ai-sdk-bridge';
 export { jsonSchema } from './ai-sdk-bridge';
+export { aiSdkPackagePrimaryProtocol } from './ai-sdk-package-protocol';
 export { fileCacheStorage } from './cache/index';
 export {
   acquireProcessFileLock,
@@ -88,7 +89,6 @@ export {
 export {
   assertImageInputSupported,
   imageFilePart,
-  imageTargetProtocolForPackage,
   type ImageFilePartOptions,
   type ImageFileSource,
   type ImageInputDetail,
@@ -237,6 +237,7 @@ export {
   resolveApiKey,
 } from './provider/api/index';
 export {
+  apiEndpointLoadOptions,
   bridgeApiProviderToAiSdk,
   hasLanguageBridgeEndpoint,
   resolveOpenAIResponsesModel,
@@ -252,8 +253,12 @@ export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export {
   assertConvertSupported,
   createProviderV4Embed,
+  createProviderV4Evaluate,
   createProviderV4Invoke,
+  hasEvaluationModel,
   type ProviderV4Embed,
+  type ProviderV4EvaluateOptions,
+  type ProviderV4EvaluateTransport,
   validateProviderV4,
 } from './provider/provider-v4';
 export {

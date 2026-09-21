@@ -1,0 +1,1 @@
+export { createSystemOneRoutes } from './systemone';
