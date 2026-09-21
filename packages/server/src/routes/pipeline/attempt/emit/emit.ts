@@ -12,8 +12,9 @@ import { type OpenSpan, type SpanTerminal, startPipelineSpan } from '../../traci
 
 // Span-name verb and gen_ai.operation.name per capability. The enum is open
 // ("otherwise, a custom value MAY be used") and the attribute is Required on an
-// inference span, so all six get a value rather than only the two predefined
-// ones. If upstream later defines values for these four, rename to match.
+// inference span, so every inbound capability gets a value rather than only the
+// two predefined ones. If upstream later defines values for the custom verbs,
+// rename to match.
 const OPERATION_NAME: Record<InboundCapability, string> = {
   language: 'chat',
   embedding: 'embeddings',
@@ -21,6 +22,7 @@ const OPERATION_NAME: Record<InboundCapability, string> = {
   speech: 'speech',
   transcription: 'transcription',
   video: 'video_generation',
+  evaluation: 'evaluation',
 };
 
 // gen_ai.provider.name discriminates the telemetry FORMAT flavour, not our
@@ -33,7 +35,7 @@ const OPERATION_NAME: Record<InboundCapability, string> = {
 // creation: prepare resolves the protocol too late to be a creation attribute.
 // A protocol we cannot name leaves the attribute off -- it is an aggregation
 // discriminator, so a wrong value is worse than a missing one.
-const PROVIDER_NAME: Record<ProviderProtocol, string> = {
+const PROVIDER_NAME: Record<ProviderProtocol, string | undefined> = {
   [ProviderProtocol.Anthropic]: 'anthropic',
   [ProviderProtocol.OpenAIResponse]: 'openai',
   [ProviderProtocol.OpenAICompatible]: 'openai',
@@ -42,6 +44,9 @@ const PROVIDER_NAME: Record<ProviderProtocol, string> = {
   [ProviderProtocol.OpenAIVideo]: 'openai',
   [ProviderProtocol.Gemini]: 'gcp.gemini',
   [ProviderProtocol.GeminiInteractions]: 'gcp.gemini',
+  // System One is not a well-known telemetry flavour. Naming it `openai` (or
+  // anything else) would mix evaluation hops into another vendor's series.
+  [ProviderProtocol.TypeSafeSystemOne]: undefined,
 };
 
 // Exported so attempt/model.ts can attach it at the same point it attaches

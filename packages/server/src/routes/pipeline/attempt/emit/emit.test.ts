@@ -7,7 +7,7 @@ import { attributeName, createRequestTraceRecorder } from '../../../../request-t
 import { createAttemptResponseObservation } from '../../../../response-observation';
 import type { AttemptInfo } from '../../attempt-base';
 import { failureTerminal } from '../../failure';
-import { createAttemptEmitter } from './emit';
+import { createAttemptEmitter, genAiProviderNameFor } from './emit';
 
 const base: AttemptInfo = {
   routingContractVersion: 2,
@@ -53,4 +53,37 @@ test('a failed attempt span carries the observed time to first content', () => {
 
   const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
   expect(attempt?.attributes[attributeName.attemptTtftMs]).toBe(60);
+});
+
+test('an evaluation attempt is named as evaluation, not as chat', () => {
+  const completions: TraceCompletion[] = [];
+  const recorder = createRequestTraceRecorder({
+    store: {
+      startRoot: () => {},
+      complete: (input: TraceCompletion) => {
+        completions.push(input);
+        return true;
+      },
+      prune: () => {},
+      recover: () => {},
+    },
+  });
+  const session = recorder.begin({
+    inboundRequest: new Request('http://localhost'),
+    inboundProtocol: 'typesafe-systemone',
+  });
+  const emitter = createAttemptEmitter({ session, streamRequested: false, capability: 'evaluation' });
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+
+  emitter.emitAttempt(base, 0, observation, failureTerminal(502, 'upstream_error'));
+  session.finish({ outcome: 'failure', finalHttpStatus: 502, errorCode: 'upstream_error' });
+
+  const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
+  expect(attempt?.name).toBe(`evaluation ${base.modelId}`);
+  expect(attempt?.attributes[attributeName.genAiOperationName]).toBe('evaluation');
+});
+
+test('does not label System One as a well-known gen_ai provider', () => {
+  // A wrong well-known value would fold evaluation hops into another vendor's series.
+  expect(genAiProviderNameFor(ProviderProtocol.TypeSafeSystemOne)).toBeUndefined();
 });
