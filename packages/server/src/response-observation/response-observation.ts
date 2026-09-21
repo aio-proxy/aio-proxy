@@ -11,12 +11,13 @@ export type AttemptResponseSnapshot = {
   readonly contentGapP95Ms?: number;
   readonly maxSseFramesPerRead?: number;
   readonly contentEncoding?: 'identity' | 'gzip' | 'deflate' | 'br' | 'zstd' | 'multiple' | 'other';
-  // Upstream responses seen inside this one attempt. >1 means same-provider
-  // retries happened underneath us: raw-retry's hidden replay (at most one), or
-  // the AI SDK's maxRetries, which defaults to 2 and that we never set. Those
-  // retries are invisible to the SDK's own callbacks -- onLanguageModelCallStart
-  // fires outside its retry() wrapper -- so the HTTP layer is the only place
-  // they can be counted.
+  // Upstream HTTP sends started inside this one attempt. Counted at fetch start
+  // so a timeout/reset that never produced a Response still counts. >1 means
+  // same-provider retries happened underneath us: raw-retry's hidden replay (at
+  // most one), or the AI SDK's maxRetries, which defaults to 2 and that we never
+  // set. Those retries are invisible to the SDK's own callbacks --
+  // onLanguageModelCallStart fires outside its retry() wrapper -- so the HTTP
+  // layer is the only place they can be counted.
   readonly httpSends?: number;
 };
 
@@ -54,6 +55,7 @@ export function createAttemptResponseObservation(options: {
   const now = options.now ?? performance.now.bind(performance);
   const gapBuckets = new Uint32Array(GAP_BUCKET_UPPER_BOUNDS.length + 1);
   let transportObservation: TransportObservation | undefined;
+  let sendCount = 0;
   let responseCount = 0;
   let upstreamHeadersMs: number | undefined;
   let firstUpstreamByteMs: number | undefined;
@@ -72,6 +74,7 @@ export function createAttemptResponseObservation(options: {
       if (responseCount === 0) transportObservation = 'unavailable';
     },
     observeFetchStart() {
+      sendCount++;
       if (transportObservation === 'unavailable') transportObservation = undefined;
     },
     observeResponse(response, { controlledStream }) {
@@ -128,7 +131,7 @@ export function createAttemptResponseObservation(options: {
         ...(contentGapP95Ms === undefined ? {} : { contentGapP95Ms }),
         ...(raw && maxSseFramesPerRead !== undefined ? { maxSseFramesPerRead } : {}),
         ...(raw && contentEncoding !== undefined ? { contentEncoding } : {}),
-        ...(responseCount === 0 ? {} : { httpSends: responseCount }),
+        ...(sendCount === 0 ? {} : { httpSends: sendCount }),
       };
     },
   };

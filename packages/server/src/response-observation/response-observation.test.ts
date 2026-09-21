@@ -44,7 +44,7 @@ test('omits unobserved values instead of writing zero', () => {
   observation.markTransportUnavailable();
   expect(observation.snapshot()).toEqual({ transportObservation: 'unavailable' });
   observation.observeFetchStart();
-  expect(observation.snapshot()).toEqual({});
+  expect(observation.snapshot()).toEqual({ httpSends: 1 });
 });
 
 test('keeps meaningful zero timings and ignores empty reads', () => {
@@ -92,6 +92,14 @@ test('counts every upstream send inside one attempt', () => {
   observation.observeResponse(new Response('retry again'), { controlledStream: false });
 
   expect(observation.snapshot().httpSends).toBe(3);
+});
+
+test('counts a send that never produced a Response', () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+  observation.observeFetchStart();
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('ok'), { controlledStream: false });
+  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 0, httpSends: 2 });
 });
 
 test('keeps content gaps local to each response after two responses', () => {
