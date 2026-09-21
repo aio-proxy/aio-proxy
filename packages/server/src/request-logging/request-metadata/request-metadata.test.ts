@@ -198,16 +198,22 @@ test('leaves a URL it cannot parse alone instead of throwing', () => {
 
 // provider 配置允许写任意 header，api.ts 会把它们逐条 set 到上游请求上。固定名单认不出
 // `X-Secret` 这种自定义认证头，于是凭据明文落盘并经抓包接口送进浏览器。
-test.each(['X-Secret', 'X-Auth-Token', 'X-Access-Token', 'My-Api-Key', 'X-Client-Secret', 'X-Signature'])(
-  'redacts the custom credential header %s',
-  (name) => {
-    const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
+test.each([
+  'X-Secret',
+  'X-Auth-Token',
+  'X-Access-Token',
+  'My-Api-Key',
+  'X-Client-Secret',
+  'X-Signature',
+  'X-Authorization',
+  'X-Bearer',
+])('redacts the custom credential header %s', (name) => {
+  const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
 
-    expect(Object.values(metadata.headers)).not.toContain('real-secret');
-    // 读侧走同一个判定，旧日志重放时也要脱。
-    expect(Object.values(redactCredentialHeaders({ [name]: 'real-secret' }))).not.toContain('real-secret');
-  },
-);
+  expect(Object.values(metadata.headers)).not.toContain('real-secret');
+  // 读侧走同一个判定，旧日志重放时也要脱。
+  expect(Object.values(redactCredentialHeaders({ [name]: 'real-secret' }))).not.toContain('real-secret');
+});
 
 // 按词匹配的代价是误伤，头这边同样要钉反面：这些是常见的普通头，脱了它们等于把调试信息
 // 白白打码。`authority` 尤其重要 —— HTTP/2 的 :authority 伪头长这样。
@@ -223,17 +229,20 @@ test.each(['content-type', 'x-request-id', 'user-agent', 'accept-encoding', 'x-a
 // 上一轮补的自定义头用例全用了**带连字符**的写法（`X-Client-Secret`），恰好绕开了真正的坑：
 // Fetch 的 Headers 在构造时就小写化，`X-ClientSecret` 到脱敏函数手上已经是 `x-clientsecret`,
 // camelCase 切词救不了，切出来是一个整词。所以这里专测不带连字符的紧凑形态。
-test.each(['X-ClientSecret', 'X-AccessToken', 'X-AuthToken', 'X-RefreshToken', 'X-SessionCredential'])(
-  'redacts the compact credential header %s after Headers lowercases it',
-  (name) => {
-    const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
+test.each([
+  'X-ClientSecret',
+  'X-AccessToken',
+  'X-AuthToken',
+  'X-RefreshToken',
+  'X-SessionCredential',
+  'XAuthorization',
+  'XBearer',
+])('redacts the compact credential header %s after Headers lowercases it', (name) => {
+  const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
 
-    expect(Object.values(metadata.headers)).not.toContain('real-secret');
-    expect(Object.values(redactCredentialHeaders({ [name.toLowerCase()]: 'real-secret' }))).not.toContain(
-      'real-secret',
-    );
-  },
-);
+  expect(Object.values(metadata.headers)).not.toContain('real-secret');
+  expect(Object.values(redactCredentialHeaders({ [name.toLowerCase()]: 'real-secret' }))).not.toContain('real-secret');
+});
 
 // 后缀匹配的代价是可能误伤，所以短词 key / sig 刻意留在整词匹配里。这几个名字都以凭据词的
 // **子串**结尾或开头但不是凭据，掉了这条守卫就会把普通调试字段也打码。

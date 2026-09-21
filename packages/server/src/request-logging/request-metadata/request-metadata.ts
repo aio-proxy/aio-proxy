@@ -61,6 +61,8 @@ const credentialQueryWords = new Set([
   'password',
   'passwd',
   'auth',
+  'authorization',
+  'bearer',
   'sig',
   'signature',
   'credential',
@@ -86,6 +88,8 @@ function isCredentialParam(name: string): boolean {
 /**
  * 固定名单命中，或名字里含凭据词。后者兜住 provider 配置里的自定义认证头 ——
  * `X-Secret` → `['x','secret']`、`X-Auth-Token` → `['x','auth','token']` 都中。
+ * `X-Authorization` / `X-Bearer` 小写化后切出 `authorization` / `bearer`，这两个词必须在表里：
+ * `authorization` 不以 `auth` 结尾，`bearer` 更对不上任何现有词。
  * `content-type`、`x-request-id`、`user-agent` 这些不含凭据词，不受影响。
  */
 function isCredentialHeader(name: string): boolean {
