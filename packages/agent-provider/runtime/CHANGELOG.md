@@ -1,5 +1,12 @@
 # @aio-proxy/agent-provider-runtime
 
+## 0.27.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/types@0.27.1
+
 ## 0.27.0
 
 ### Patch Changes

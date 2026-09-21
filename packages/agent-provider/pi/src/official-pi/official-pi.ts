@@ -20,6 +20,7 @@ import {
 } from '../core';
 
 const PROVIDER_ID = 'aio-proxy';
+const PROVIDER_NAME = 'AIO Proxy';
 type RefreshModelsContext = Parameters<NonNullable<ProviderConfig['refreshModels']>>[0];
 
 export type OfficialPiDeps = {
@@ -53,27 +54,29 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
     const access = context.credential?.type === 'oauth' ? context.credential.access : undefined;
     const result: PiFamilyCatalogResult = context.allowNetwork
       ? await deps.readPiFamilyModels(managed, access, { signal: context.signal })
-      : await deps
-          .readLastKnownCatalog(managed.statePath, 'pi')
-          .then((current) =>
-            current === null
-              ? { models: [], source: 'missing' as const, status: 'missing' as const }
-              : { models: toPiFamilyModels(current), source: 'lkg' as const, status: 'stale' as const },
-          );
+      : await deps.readLastKnownCatalog(managed.statePath, 'pi').then((current) =>
+          current === null
+            ? { models: [], source: 'missing' as const, status: 'missing' as const }
+            : {
+                models: toPiFamilyModels(current, managed.marker.endpoint),
+                source: 'lkg' as const,
+                status: 'stale' as const,
+              },
+        );
     if (result.error === 'unauthorized') throw new Error('aio-proxy login required');
     if (result.source === 'missing') throw new Error(piFamilyUnavailableMessage(result.error));
     return [...result.models];
   };
 
   const config: ProviderConfig = {
-    name: PROVIDER_ID,
+    name: PROVIDER_NAME,
     baseUrl: new URL('/v1', managed.marker.endpoint).href.replace(/\/$/u, ''),
     api: 'openai-completions',
     authHeader: true,
-    models: lkg === null ? [] : [...toPiFamilyModels(lkg)],
+    models: lkg === null ? [] : [...toPiFamilyModels(lkg, managed.marker.endpoint)],
     refreshModels,
     oauth: {
-      name: PROVIDER_ID,
+      name: PROVIDER_NAME,
       login: (callbacks) =>
         deps.loginPiFamily(
           managed,

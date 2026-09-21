@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext, ProviderModelConfig } from '@oh-my
 import { loginPiFamily, piFamilyUnavailableMessage, readPiFamilyModels, refreshPiFamilyCredential } from '../core';
 
 const PROVIDER_ID = 'aio-proxy';
+const PROVIDER_NAME = 'AIO Proxy';
 
 export type OmpDeps = {
   readonly readManagedInstallation: typeof readManagedInstallation;
@@ -105,14 +106,14 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
     api: 'openai-completions',
     authHeader: true,
     oauth: {
-      name: PROVIDER_ID,
+      name: PROVIDER_NAME,
       login: (callbacks) =>
         deps.loginPiFamily(
           managed,
           (device) =>
             callbacks.onAuth({
               url: device.verification_uri_complete,
-              instructions: `Approve aio-proxy with code ${device.user_code}`,
+              instructions: `Approve ${PROVIDER_NAME} with code ${device.user_code}`,
             }),
           callbacks.signal === undefined ? {} : { signal: callbacks.signal },
         ),
