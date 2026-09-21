@@ -152,3 +152,46 @@ test('keeps running and cancelled hops out of both success and failure', () => {
   });
   expect(cancelled[0]?.status).toBe('cancelled');
 });
+
+// 子 span 要等结算才落盘。还在跑时抓包已经有上游跳，选择器必须能点进去。
+test('fills missing attempt chips from live wire hops while the trace is running', () => {
+  const chips = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, endedAt: null },
+    wireHops: [
+      { id: 'inbound', kind: 'inbound' },
+      { id: 'attempt-1', kind: 'attempt', attemptIndex: 1, providerId: 'anthropic-backup' },
+      { id: 'attempt-0', kind: 'attempt', attemptIndex: 0, providerId: 'anthropic-primary' },
+    ],
+  });
+
+  expect(chips.map((chip) => chip.id)).toEqual(['inbound', 'attempt-0', 'attempt-1']);
+  expect(chips.map((chip) => chip.label)).toEqual(['claude-cli', 'anthropic-primary', 'anthropic-backup']);
+  expect(chips[1]?.status).toBe('running');
+});
+
+test('does not invent chips from wire hops after the trace has settled', () => {
+  const chips = toTraceHopChips({
+    spans: [],
+    trace,
+    wireHops: [{ id: 'attempt-0', kind: 'attempt', attemptIndex: 0, providerId: 'anthropic-primary' }],
+  });
+
+  expect(chips.map((chip) => chip.id)).toEqual(['inbound']);
+});
+
+test('keeps the span chip when the same hop already exists in the wire capture', () => {
+  const chips = toTraceHopChips({
+    spans: [
+      createSpan({
+        otelStatusCode: 'ERROR',
+        attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.provider.id': 'anthropic-primary' },
+      }),
+    ],
+    trace: { ...trace, endedAt: null },
+    wireHops: [{ id: 'attempt-0', kind: 'attempt', attemptIndex: 0, providerId: 'stale-label' }],
+  });
+
+  expect(chips).toHaveLength(2);
+  expect(chips[1]).toMatchObject({ id: 'attempt-0', label: 'anthropic-primary', status: 'failure' });
+});

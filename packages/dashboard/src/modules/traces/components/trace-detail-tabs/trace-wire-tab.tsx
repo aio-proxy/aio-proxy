@@ -26,7 +26,11 @@ interface TraceWireTabProps {
  * 选中的那一跳由父级持有：这个组件每个 tab 一份，面板一切走就整个卸载。
  */
 export const TraceWireTab: React.FC<TraceWireTabProps> = ({ side, detail, wire, selectedHopId, onSelectHop }) => {
-  const hops = toTraceHopChips({ spans: detail.spans, trace: detail.trace });
+  const hops = toTraceHopChips({
+    spans: detail.spans,
+    trace: detail.trace,
+    ...(wire.data?.available === true ? { wireHops: wire.data.hops } : {}),
+  });
   const selected = hops.find((hop) => hop.id === selectedHopId) ?? hops[0];
 
   return (

@@ -1,4 +1,4 @@
-import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
+import type { DashboardTraceSpan, DashboardTraceSummary, DashboardTraceWireHop } from '@aio-proxy/types';
 import { sortBy } from 'es-toolkit/array';
 
 import { isAttemptSpan, traceAttribute } from '../trace-attribute-names';
@@ -41,10 +41,11 @@ const stringAttribute = (span: DashboardTraceSpan, key: string): string | undefi
 };
 
 /**
- * 一条调用链的逐跳列表，只从 span 推导，不看抓包。
+ * 一条调用链的逐跳列表，主源是 span。抓包只在 `level: debug` 才写，所以降级态下
+ * 这排 chip 依然完整 —— 能看到有几跳、哪一跳失败，只是点进去没有正文。
  *
- * attempt span 常开，线级抓包只在 `level: debug` 才写，所以降级态下这排 chip 依然是完整的
- * —— 用户能看到有几跳、哪一跳失败，只是点进去没有正文。
+ * 还在跑的调用链例外：子 span 要等结算才落盘，抓包却已经在写上游跳。这时把
+ * `wireHops` 里还没有 chip 的 attempt 补进来，否则选择器只剩入站，正文看得到也点不到。
  *
  * hop `id` 和服务端 `wire-log/build-hops.ts` 的口径一致（`inbound` / `attempt-${attemptIndex}`），
  * 抓包结果按它对号入座。`attemptIndex` 是 0 起数的原始值，给人看的序号由调用方加一。
@@ -52,11 +53,12 @@ const stringAttribute = (span: DashboardTraceSpan, key: string): string | undefi
 export const toTraceHopChips = (input: {
   readonly spans: readonly DashboardTraceSpan[];
   readonly trace: DashboardTraceSummary;
+  readonly wireHops?: readonly DashboardTraceWireHop[];
 }): readonly TraceHopChip[] => {
-  const { spans, trace } = input;
+  const { spans, trace, wireHops } = input;
   const attempts = spans.filter(isAttemptSpan);
 
-  return [
+  const chips: TraceHopChip[] = [
     {
       id: 'inbound',
       label: trace.session?.source ?? trace.inboundProtocol,
@@ -79,4 +81,35 @@ export const toTraceHopChips = (input: {
       },
     ),
   ];
+  return trace.endedAt === null ? mergeLiveWireHops(chips, wireHops) : chips;
+};
+
+const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
+  const outcome = hop.response?.body?.outcome ?? hop.request?.body?.outcome;
+  if (outcome === 'cancelled') return 'cancelled';
+  if (outcome === 'error' || hop.response?.errorType !== undefined) return 'failure';
+  const statusCode = hop.response?.statusCode;
+  if (statusCode !== undefined && statusCode >= 400) return 'failure';
+  if (hop.response !== undefined || outcome === 'complete') return 'success';
+  return 'running';
+};
+
+const mergeLiveWireHops = (
+  chips: readonly TraceHopChip[],
+  wireHops: readonly DashboardTraceWireHop[] | undefined,
+): readonly TraceHopChip[] => {
+  if (wireHops === undefined || wireHops.length === 0) return chips;
+  const seen = new Set(chips.map((chip) => chip.id));
+  const extras = wireHops
+    .filter((hop) => hop.kind === 'attempt' && !seen.has(hop.id))
+    .map((hop): TraceHopChip => ({
+      id: hop.id,
+      label: hop.providerId ?? hop.id,
+      kind: 'attempt',
+      attemptIndex: hop.attemptIndex,
+      status: wireHopStatus(hop),
+    }));
+  if (extras.length === 0) return chips;
+  const inbound = chips[0]!;
+  return [inbound, ...sortBy([...chips.slice(1), ...extras], [(chip) => chip.attemptIndex ?? Number.MAX_SAFE_INTEGER])];
 };

@@ -118,6 +118,34 @@ test('only asks for the wire capture once one of its tabs is open', () => {
   expect(mocks.enabledCalls.at(-1)).toBe(false);
 });
 
+test('lists live wire hops while the trace is still running and no attempt spans have landed', () => {
+  mocks.wire = {
+    available: true,
+    hops: [
+      { id: 'inbound', kind: 'inbound', request: { method: 'POST', url: 'https://proxy.local/v1/responses' } },
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'openai-primary',
+        request: { method: 'POST', url: 'https://api.openai.com/v1/responses' },
+      },
+    ],
+  };
+  render(
+    <TraceDetailTabs
+      detail={{ ...detail, trace: { ...detail.trace, endedAt: null }, spans: [] }}
+      selectedSpan={undefined}
+      onSpanSelect={rs.fn()}
+      onFilter={rs.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
+
+  fireEvent.click(screen.getByRole('button', { name: /^(Attempt|尝试|嘗試|試行|시도) ?1 openai-primary\b/u }));
+  expect(screen.getByText('POST https://api.openai.com/v1/responses')).toBeInTheDocument();
+});
+
 test('lists one chip per hop from the spans and renders the selected hop capture', () => {
   mocks.wire = {
     available: true,
