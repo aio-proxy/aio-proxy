@@ -283,6 +283,9 @@ test('an unmapped provider throw still leaves an ended inference span behind', a
   // leaves that attempt pointing at a parent the trace does not contain.
   expect(inference?.endedAt).toBeInstanceOf(Date);
   expect(attemptSpansOf(spans).map((span) => span.parentSpanId)).toEqual([inference?.spanId]);
+  // raw inference.end used to skip the layer attributes noteAttempt already counted.
+  expect(inference?.attributes[attributeName.inferenceAttemptCount]).toBe(1);
+  expect(typeof inference?.attributes[attributeName.inferenceFailoverMs]).toBe('number');
 });
 
 test('a request that settles as failure marks the inference span with the settled error', async () => {

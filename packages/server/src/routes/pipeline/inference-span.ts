@@ -72,12 +72,21 @@ export function startInferenceSpan(
 
   // Attributes have to land before end(): setAttributes is discarded once a span
   // is ended, and the buffering processor copies the record out at onEnd.
-  const settle = (input: RequestTraceFinishInput): void => {
+  // Exception exits call end() rather than finish(); they still need the counts
+  // noteAttempt already accumulated.
+  const stampLayer = (input: RequestTraceFinishInput = { outcome: 'success' }): void => {
     open.span.setAttributes(layerAttributes(input));
+  };
+  const settle = (input: RequestTraceFinishInput): void => {
+    stampLayer(input);
     open.end(inferenceTerminal(input));
   };
+  const end = (terminal?: SpanTerminal): void => {
+    stampLayer();
+    open.end(terminal);
+  };
   return {
-    end: open.end,
+    end,
     noteAttempt: (durationMs) => {
       attemptCount += 1;
       lastAttemptMs = durationMs;
@@ -103,7 +112,7 @@ export function startInferenceSpan(
               return input;
             },
             (error: unknown) => {
-              open.end({ outcome: 'failure' });
+              end({ outcome: 'failure' });
               throw error;
             },
           ),
