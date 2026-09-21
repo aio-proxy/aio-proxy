@@ -586,8 +586,9 @@ describe('trace store recover, list, and prune', () => {
 // 每种结局对应生产里真实出现的一种根 span：上游 5xx 是 ERROR + 500；4xx 拒绝的 span
 // status 按 HTTP 语义约定保持 UNSET，只有 finalHttpStatus 说明它失败了；也有结束了却
 // 没记下状态码的（finalHttpStatus 为 NULL），它仍然是成功。
-// `cancelled` 与 `error-no-reason` 同样是 statusCode 2，只在 terminationReason 上跟
-// `error` 分家 —— 取消两边都不计，而原因为空的 ERROR 仍然算失败，判定要的正是这个区分。
+// 生产里取消的根 span 是 UNSET + terminationReason=cancelled（http-spans.md 不把
+// 调用方取消记成 ERROR）。老数据里取消仍可能是 statusCode 2。`error-no-reason` 是
+// ERROR 且原因为空，必须仍算失败。
 type SeedShape = {
   readonly statusCode: number;
   readonly finalHttpStatus?: number;
@@ -599,7 +600,9 @@ const SEED_SHAPES = {
   'success-without-http-status': { statusCode: 0 },
   error: { statusCode: 2, finalHttpStatus: 500, terminationReason: 'failure' },
   rejected: { statusCode: 0, finalHttpStatus: 400, terminationReason: 'failure' },
-  cancelled: { statusCode: 2, terminationReason: 'cancelled' },
+  cancelled: { statusCode: 0, terminationReason: 'cancelled' },
+  'cancelled-after-200': { statusCode: 0, finalHttpStatus: 200, terminationReason: 'cancelled' },
+  'cancelled-legacy-error': { statusCode: 2, terminationReason: 'cancelled' },
   'error-no-reason': { statusCode: 2 },
 } as const satisfies Record<string, SeedShape>;
 
@@ -691,13 +694,10 @@ describe('trace store summary', () => {
     }
   });
 
-  // 取消的根 span 也是 ERROR，但表格把它标成「已取消」。只按 ERRORED 判失败的话，
-  // 失败柱会把取消算进去、点「失败」也会把它们捞出来，图和表对同一条链给两个说法。
-  // 只有 FAILED 需要显式减掉取消：取消的根 span 是 ERROR，SUCCEEDED 里的 not(ERRORED)
-  // 已经把它挡在成功之外了。
-  // 同时钉住 NULL 那一半：terminationReason 为空的 ERROR 行（老数据，或任何设了 ERROR
-  // 却没写原因的路径）必须仍然算失败 —— SQL 里 `NULL <> 'cancelled'` 是 NULL、当假，
-  // 少写 isNull 就会把这批行从失败里整批抹掉。
+  // 取消两边都不计：现在的根 span 是 UNSET（含先拿到 200 再断连的），老数据仍可能
+  // 是 ERROR。只按 ERRORED 判的话，新取消会进成功柱、老取消会进失败柱。
+  // 同时钉住 NULL 那一半：terminationReason 为空的 ERROR 行必须仍然算失败 ——
+  // SQL 里 `NULL <> 'cancelled'` 是 NULL、当假，少写 isNull 就会把这批行抹掉。
   test('keeps cancelled traces out of both series without dropping ERROR rows that have no reason', () => {
     const handle = openTestDb();
     try {
@@ -706,16 +706,18 @@ describe('trace store summary', () => {
       seedTrace(store, '2'.repeat(32), '2026-07-24T09:00:20.000Z', 'error');
       seedTrace(store, '3'.repeat(32), '2026-07-24T09:00:30.000Z', 'cancelled');
       seedTrace(store, '4'.repeat(32), '2026-07-24T09:00:40.000Z', 'error-no-reason');
+      seedTrace(store, '5'.repeat(32), '2026-07-24T09:00:50.000Z', 'cancelled-after-200');
+      seedTrace(store, '6'.repeat(32), '2026-07-24T09:01:00.000Z', 'cancelled-legacy-error');
 
       const range = {
         startedAfter: new Date('2026-07-24T09:00:00.000Z'),
         startedBefore: new Date('2026-07-24T10:00:00.000Z'),
       };
 
-      // 四条都结束了，但取消的那条两边都不计，所以合计只有 3。
+      // 六条都结束了，三条取消两边都不计，所以合计只有 3。
       expect(store.summary(range).totals).toEqual({ success: 1, error: 2 });
 
-      // 图例点「失败」要和柱子框住同一批：两条，且不含被取消的那条。
+      // 图例点「失败」要和柱子框住同一批：两条，且不含被取消的那些。
       const errors = store.list({ ...range, outcome: 'error', pageSize: 10 });
       expect(errors.items.map((item) => item.traceId).sort()).toEqual(['2'.repeat(32), '4'.repeat(32)]);
 
@@ -724,8 +726,11 @@ describe('trace store summary', () => {
         '1'.repeat(32),
       ]);
       expect(
-        store.list({ ...range, terminationReason: 'cancelled', pageSize: 10 }).items.map((item) => item.traceId),
-      ).toEqual(['3'.repeat(32)]);
+        store
+          .list({ ...range, terminationReason: 'cancelled', pageSize: 10 })
+          .items.map((item) => item.traceId)
+          .sort(),
+      ).toEqual(['3'.repeat(32), '5'.repeat(32), '6'.repeat(32)]);
     } finally {
       handle.close();
     }

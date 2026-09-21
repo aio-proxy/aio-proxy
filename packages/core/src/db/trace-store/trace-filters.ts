@@ -19,14 +19,10 @@ const ERRORED = or(
   and(isNotNull(traceSpan.finalHttpStatus), gte(traceSpan.finalHttpStatus, 400)),
 ) as SQL;
 
-// 取消不算失败，也不算成功。`request-trace-recorder/completion.ts` 给取消的请求同样设
-// ERROR，只靠 ERRORED 判的话，表格里标「已取消」的那些会被计进失败柱、点「失败」也会把
-// 它们捞出来 —— 图和表对同一条调用链给两个说法。取消跟「还在跑」一样两边都不计，要单独
-// 看它走 `terminationReason` 筛选（下面那条）。
-//
-// 只有 FAILED 需要显式减掉它：取消的根 span 是 ERROR，所以 SUCCEEDED 里那个 not(ERRORED)
-// 已经把它挡在成功之外了，再写一遍是够不到的死条件。这条依赖跨了包 —— 哪天 completion.ts
-// 不再给取消设 ERROR，取消就会变成「结束了且不是错误」掉进成功里，那时候要连这里一起改。
+// 取消不算失败，也不算成功。`request-trace-recorder/completion.ts` 按 HTTP 语义约定
+// 只写 terminationReason，根 span 保持 UNSET。不在 SUCCEEDED 里减掉它的话，结束了
+// 又不是错误的取消会进成功柱、点「成功」也会捞出来，还能进延迟分位。FAILED 同样要减：
+// 老数据里取消的根 span 仍可能是 ERROR。
 //
 // terminationReason 可能为 NULL（老数据，以及任何设了 ERROR 却没写原因的路径），而 SQL 里
 // `NULL <> 'cancelled'` 求值为 NULL、在 WHERE 里当假 —— 少了 isNull 这一半，那些行会从
@@ -34,7 +30,7 @@ const ERRORED = or(
 const NOT_CANCELLED = or(isNull(traceSpan.terminationReason), ne(traceSpan.terminationReason, 'cancelled')) as SQL;
 
 export const FAILED = and(ERRORED, NOT_CANCELLED) as SQL;
-export const SUCCEEDED = and(isNotNull(traceSpan.endedAt), not(ERRORED)) as SQL;
+export const SUCCEEDED = and(isNotNull(traceSpan.endedAt), not(ERRORED), NOT_CANCELLED) as SQL;
 
 export function traceFilterConditions(filters: TraceFilters): (SQL | undefined)[] {
   return [
