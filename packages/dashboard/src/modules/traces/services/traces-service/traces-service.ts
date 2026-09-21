@@ -49,12 +49,15 @@ export const tracePercentileQueryOptions = (traceId: string) =>
     staleTime: 60_000,
   });
 
-// 抓包读的是已经落盘的历史日志，同一条调用链不会再变，所以永不过期。
-export const traceWireQueryOptions = (traceId: string) =>
+// 已结束的调用链抓包不会再变，永不过期。还在跑的那条会继续往日志里写，
+// 跟列表一样 5 秒拉一次，否则先打开请求/响应再等它结束，后半段永远不出现。
+export const traceWireQueryOptions = (traceId: string, settled: boolean) =>
   queryOptions({
     queryKey: queryKeys.traceWire(traceId),
     queryFn: () => getTraceWire(traceId),
-    staleTime: Number.POSITIVE_INFINITY,
+    staleTime: settled ? Number.POSITIVE_INFINITY : 0,
+    refetchInterval: settled ? false : 5_000,
+    refetchIntervalInBackground: false,
   });
 
 const toSummaryFilters = (search: TraceSearch) => omit(search, ['pageSize', 'pageToken']);

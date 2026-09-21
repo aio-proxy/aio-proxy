@@ -29,7 +29,11 @@ export const TraceDetailTabs: React.FC<TraceDetailTabsProps> = ({
   // 在请求页认准了第 4 次尝试、切到响应页就不声不响地回到入站那一跳。
   const [selectedHopId, setSelectedHopId] = useState<string>();
   // 两个 tab 共用一份抓包（同一个 key，TanStack Query 自己去重），并且只在其中之一打开时才去读日志。
-  const wireQuery = useTraceWireQuery(detail.trace.traceId, tab === 'request' || tab === 'response');
+  const wireQuery = useTraceWireQuery(
+    detail.trace.traceId,
+    tab === 'request' || tab === 'response',
+    detail.trace.endedAt !== null,
+  );
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="min-w-0">

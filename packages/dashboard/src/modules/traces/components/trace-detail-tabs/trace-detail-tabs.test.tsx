@@ -8,12 +8,14 @@ const mocks = rs.hoisted(() => ({
   wire: undefined as DashboardTraceWireResponse | undefined,
   state: 'success' as 'success' | 'pending' | 'error',
   enabledCalls: [] as boolean[],
+  settledCalls: [] as boolean[],
   refetch: rs.fn(),
 }));
 
 rs.mock('../../hooks/use-trace-wire-query', () => ({
-  useTraceWireQuery: (_traceId: string, enabled: boolean) => {
+  useTraceWireQuery: (_traceId: string, enabled: boolean, settled: boolean) => {
     mocks.enabledCalls.push(enabled);
+    mocks.settledCalls.push(settled);
     return {
       data: mocks.wire,
       isPending: mocks.state === 'pending',
@@ -66,6 +68,7 @@ beforeEach(() => {
   mocks.wire = { available: true, hops: [] };
   mocks.state = 'success';
   mocks.enabledCalls = [];
+  mocks.settledCalls = [];
   mocks.refetch = rs.fn();
 });
 
@@ -80,6 +83,23 @@ test('defaults to Detail and exposes request and response tab values', () => {
 
   fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
   expect(screen.getByRole('tab', { name: /^Response$|^响应$/u })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('polls the wire capture only while the trace is still running', () => {
+  const { rerender } = render(
+    <TraceDetailTabs detail={detail} selectedSpan={undefined} onSpanSelect={rs.fn()} onFilter={rs.fn()} />,
+  );
+  expect(mocks.settledCalls.at(-1)).toBe(true);
+
+  rerender(
+    <TraceDetailTabs
+      detail={{ ...detail, trace: { ...detail.trace, endedAt: null } }}
+      selectedSpan={undefined}
+      onSpanSelect={rs.fn()}
+      onFilter={rs.fn()}
+    />,
+  );
+  expect(mocks.settledCalls.at(-1)).toBe(false);
 });
 
 test('only asks for the wire capture once one of its tabs is open', () => {

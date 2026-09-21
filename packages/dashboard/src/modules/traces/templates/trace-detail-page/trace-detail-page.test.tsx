@@ -1,6 +1,9 @@
 import type { DashboardTraceDetail, DashboardTracePercentile } from '@aio-proxy/types';
 import { afterEach, beforeEach, describe, expect, rs, test } from '@rstest/core';
+import * as reactQuery from '@tanstack/react-query' with { rstest: 'importActual' };
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+import { queryKeys } from '@/lib/query-keys';
 
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TraceDetailPage } from './trace-detail-page';
@@ -8,6 +11,7 @@ import { TraceDetailPage } from './trace-detail-page';
 const mocks = rs.hoisted(() => ({
   mode: 'terminal',
   refetch: rs.fn(),
+  invalidateQueries: rs.fn(),
   navigate: rs.fn(),
   writeText: rs.fn(async () => undefined),
   data: undefined as DashboardTraceDetail | undefined,
@@ -139,6 +143,12 @@ rs.mock('../../hooks/use-trace-query', () => ({
   },
 }));
 
+// 只替掉 useQueryClient，其余照旧：traces-service 在模块加载时就要用真的 queryOptions。
+rs.mock('@tanstack/react-query', () => ({
+  ...reactQuery,
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
+}));
+
 rs.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
@@ -160,6 +170,7 @@ describe('trace detail page', () => {
   beforeEach(() => {
     mocks.mode = 'terminal';
     mocks.refetch.mockReset();
+    mocks.invalidateQueries.mockReset();
     mocks.navigate.mockReset();
     mocks.writeText.mockReset();
     Object.defineProperty(navigator, 'clipboard', {
@@ -304,7 +315,14 @@ describe('trace detail page', () => {
 
     expect(screen.getAllByText(/Running|运行中/u).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /Refresh|刷新/u }));
-    expect(mocks.refetch).toHaveBeenCalledTimes(1);
+    const invalidated = mocks.invalidateQueries.mock.calls[0]?.[0]?.queryKey as readonly unknown[];
+    for (const covered of [
+      queryKeys.trace(traceId),
+      queryKeys.traceWire(traceId),
+      queryKeys.tracePercentile(traceId),
+    ]) {
+      expect(covered.slice(0, invalidated.length)).toEqual(invalidated);
+    }
     expect(interval).not.toHaveBeenCalled();
   });
 

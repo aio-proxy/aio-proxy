@@ -196,7 +196,13 @@ describe('trace service', () => {
     expect(mocks.percentile).toHaveBeenCalledWith({ param: { traceId } });
 
     // Sharing one key would serve each panel the other's response shape.
-    expect(traceWireQueryOptions(traceId).queryKey).not.toEqual(tracePercentileQueryOptions(traceId).queryKey);
+    expect(traceWireQueryOptions(traceId, true).queryKey).not.toEqual(tracePercentileQueryOptions(traceId).queryKey);
+    // Running and settled share a cache so Request/Response do not each keep a stale snapshot.
+    expect(traceWireQueryOptions(traceId, false).queryKey).toEqual(traceWireQueryOptions(traceId, true).queryKey);
+    expect(traceWireQueryOptions(traceId, true).staleTime).toBe(Number.POSITIVE_INFINITY);
+    expect(traceWireQueryOptions(traceId, true).refetchInterval).toBe(false);
+    expect(traceWireQueryOptions(traceId, false).staleTime).toBe(0);
+    expect(traceWireQueryOptions(traceId, false).refetchInterval).toBe(5_000);
   });
 
   test.each([
