@@ -81,6 +81,8 @@ export type TokenCountCapability = {
 export type RawTransportOptions = { readonly upstreamStream: boolean };
 
 export type RawTransport = {
+  /** Authoritative low-cardinality template for the upstream request URL. */
+  readonly urlTemplate?: string;
   readonly invoke: (
     request: Request,
     context?: LogicalRequestContext,
@@ -99,6 +101,8 @@ export type RawResolver = (input: {
   // Inbound URL pathname when the pipeline is choosing between raw and model.
   // Absent for capability probes that are not tied to a request.
   readonly requestPath?: string;
+  /** Low-cardinality client route template. Use only to derive an upstream template. */
+  readonly urlTemplate?: string;
 }) => RawTransport | undefined;
 
 /**

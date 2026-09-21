@@ -14,7 +14,7 @@ export function createGeminiRawResolver(
   catalogOrBinder?: ModelCatalog | ThinkingBinder,
 ): RawResolver {
   const { geminiThinkingConfig } = resolveThinkingBinder(catalogOrBinder);
-  return ({ protocol, modelId, capability }) => {
+  return ({ protocol, modelId, capability, requestPath }) => {
     // Language-only upstream: decline embeddings so the candidate can convert,
     // and audio because a generateContent endpoint has no /v1/audio surface at
     // all. Every non-language capability is declined so a capability added later
@@ -22,7 +22,9 @@ export function createGeminiRawResolver(
     // dispatch resolves without naming a capability.
     if (capability !== undefined && capability !== 'language') return undefined;
     if (protocol !== 'gemini') return undefined;
+    const urlTemplate = upstreamUrlTemplate(requestPath);
     return {
+      ...(urlTemplate === undefined ? {} : { urlTemplate }),
       async invoke(request, context) {
         if (context === undefined) return createGeminiErrorResponse(500);
         const stream = operation(request);
@@ -79,6 +81,12 @@ export function createGeminiRawResolver(
       },
     };
   };
+}
+
+function upstreamUrlTemplate(requestPath: string | undefined): string | undefined {
+  if (requestPath?.endsWith(':generateContent')) return '/v1internal:generateContent';
+  if (requestPath?.endsWith(':streamGenerateContent')) return '/v1internal:streamGenerateContent';
+  return undefined;
 }
 
 function resolveThinkingBinder(catalogOrBinder: ModelCatalog | ThinkingBinder | undefined): ThinkingBinder {

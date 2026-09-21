@@ -21,7 +21,7 @@ export async function dispatchImageCandidate<TRequest, TContext>(
     ? provider.raw?.resolve({
         protocol: ctx.adapter.protocol,
         modelId: slot.candidate.modelId,
-        ...requestPathProperty(ctx.rawRequest),
+        ...requestPathProperty(ctx.rawRequest, ctx.httpRoute),
       })
     : undefined;
   if (raw !== undefined) {

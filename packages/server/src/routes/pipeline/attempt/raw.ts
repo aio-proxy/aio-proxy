@@ -75,7 +75,7 @@ export async function completeRawAttempt<TRequest, TContext>(
     const result = await inAttempt(
       adapter.protocol,
       () => raw.invoke(request, logicalRequest, { upstreamStream: ctx.streamRequested }),
-      ctx.httpRoute,
+      raw.urlTemplate,
     );
     if (!(result instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     return result;

@@ -565,8 +565,10 @@ operation"。
 自动生成名字；动态模型 ID、资源 ID 或自定义路径会把 span 名变成高基数。没有可靠模板时退化为
 `{method}`，例如 `POST`。
 
-模板必须由知道上游协议路由的 runtime / adapter 显式提供给观测层；`createObservedFetch` 只消费，
-不猜模板。自定义 endpoint 没有提供模板时同样退化为 `{method}`。
+模板必须来自实际发起请求的 transport 权威元数据；`createObservedFetch` 只消费，不猜模板。
+入站 Hono route 只能作为 transport 计算改写后模板的输入，不能直接当作上游模板；wire protocol
+也不能单独决定实际 path。raw transport 改写路径时必须声明改写后的模板，converted model transport
+没有权威模板时退化为 `{method}`。
 
 HTTP client span 从发起 fetch 起，**到拿到响应头结束**，不覆盖 body 流。
 
@@ -757,8 +759,9 @@ http.response.status_code
 aio_proxy.upstream.headers_ms
 ```
 
-`url.template` 只有在 runtime / adapter 能提供低基数模板时才写，同时参与 span 命名；`url.full`
-记录实际请求地址但不参与命名。不得拿 `url.path` 代替 `url.template`。
+`url.template` 只有在实际 transport 能提供权威的低基数模板时才写，同时参与 span 命名；
+`url.full` 记录实际请求地址但不参与命名。不得拿入站 route、wire protocol 或实际 `url.path`
+直接代替 `url.template`。
 
 `headers_ms` 可以留在这里：`response-observation.ts:77` 的 `upstreamHeadersMs` 写在
 `observeResponse` 里、早于 `controlledStream` 判断，正是本 span 的终点时刻。
@@ -872,8 +875,8 @@ status 区分取消，所以状态改 UNSET 不会让取消又变绿 —— 但*
   ERROR 取逻辑失败（不是候选耗尽）。两条路由失败出口 —— `:298` 的 `throw` 与 `:301-313` 的
   `eligible.length === 0` —— 都要在 root 结算前把它置 ERROR 并关闭。
 - **HTTP client span 按实际发送插桩，且必须能表达一条 inference span 下的多条。** 名字优先
-  `{method} {url.template}`，无模板时退化为 `{method}`；模板由 runtime / adapter 显式传入，
-  `createObservedFetch` 不从实际 path 推断。多次发送有两个来源：
+  `{method} {url.template}`，无模板时退化为 `{method}`；模板由实际 transport 显式声明，
+  不能拿入站 route 或 target protocol 冒充，`createObservedFetch` 也不从实际 path 推断。多次发送有两个来源：
   `raw-retry.ts` 的隐藏重放（至多 +1），以及 **AI SDK `maxRetries` 默认 2**（再 +2，覆盖所有
   ai-sdk provider，量级远大于前者）。同时落 `aio_proxy.attempt.http_sends` 计数。
   现有的 `inAttempt()` 装的是观测与日志上下文，**不是** `OpenSpan.run()` 的 span 上下文，要补。

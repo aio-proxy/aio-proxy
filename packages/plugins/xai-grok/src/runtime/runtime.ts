@@ -39,16 +39,16 @@ export async function createXAIGrokRuntime(
     fetch: dynamicFetch,
   });
   return {
-    genAiProviderName: 'xai',
+    genAiProviderName: 'x_ai',
     provider: {
       specificationVersion: 'v4',
       languageModel: (modelId) => xaiCompatibleResponsesModel(openai.responses(modelId)),
       embeddingModel: () => unsupported('embedding'),
       imageModel: (modelId) => xai.imageModel(modelId),
     },
-    raw: ({ protocol, modelId, capability }) =>
+    raw: ({ protocol, modelId, capability, requestPath }) =>
       protocol === 'openai-video' && capability === undefined
-        ? createXAIGrokVideoTransport(dynamicFetch, modelId)
+        ? createXAIGrokVideoTransport(dynamicFetch, modelId, requestPath)
         : undefined,
   };
 }

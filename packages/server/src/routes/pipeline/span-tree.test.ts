@@ -20,6 +20,7 @@ import {
   textStream,
   textThenErrorStream,
 } from '../../../__tests__/pipeline-helpers';
+import { currentUpstreamUrlTemplate } from '../../request-logging/context';
 import { attributeName, spanName } from '../../request-tracing';
 import { pipeline } from './test-support';
 
@@ -680,6 +681,64 @@ test('gen_ai.provider.name comes only from explicit runtime metadata', async () 
 test('a generic raw passthrough omits gen_ai.provider.name', async () => {
   const { spans } = await runOnce();
   expect(attemptSpansOf(spans)[0]?.attributes[attributeName.genAiProviderName]).toBeUndefined();
+});
+
+test('raw attempts use only the upstream template declared by the transport', async () => {
+  const observed: Array<string | undefined> = [];
+  const request = jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' });
+  const explicit = pipeline(
+    [
+      rawProvider({
+        id: 'raw',
+        urlTemplate: '/upstream/responses',
+        invoke: async () => {
+          observed.push(currentUpstreamUrlTemplate());
+          return Response.json({ ok: true });
+        },
+      }),
+    ],
+    { httpRoute: '/client/responses' },
+  );
+  await (await explicit.run(request.clone())).text();
+  await settleRecording(explicit.recording);
+
+  const omitted = pipeline(
+    [
+      rawProvider({
+        id: 'raw',
+        invoke: async () => {
+          observed.push(currentUpstreamUrlTemplate());
+          return Response.json({ ok: true });
+        },
+      }),
+    ],
+    { httpRoute: '/client/responses' },
+  );
+  await (await omitted.run(request)).text();
+  await settleRecording(omitted.recording);
+
+  expect(observed).toEqual(['/upstream/responses', undefined]);
+});
+
+test('converted model attempts do not infer an upstream template from the protocol', async () => {
+  let observed: string | undefined;
+  const harness = pipeline(
+    [
+      modelProvider({
+        id: 'converted',
+        targetProtocol: ProviderProtocol.OpenAICompatible,
+        invoke: () => {
+          observed = currentUpstreamUrlTemplate();
+          return textStream('ok');
+        },
+      }),
+    ],
+    { httpRoute: '/v1/responses' },
+  );
+  await (await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'ping' }))).text();
+  await settleRecording(harness.recording);
+
+  expect(observed).toBeUndefined();
 });
 
 test('usage resolution is a root child only when usage validation runs', async () => {

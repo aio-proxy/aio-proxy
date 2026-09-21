@@ -1,5 +1,4 @@
 import { type ModelEgressContext } from '@aio-proxy/core';
-import { ProviderProtocol } from '@aio-proxy/types';
 
 import { attributeName, spanName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
@@ -72,7 +71,6 @@ export async function attemptModelCandidate<TRequest, TContext>(
   if (prepared.kind === 'reject') return rejectRequestShape(ctx, slot, prepared);
   if (prepared.kind === 'unsupported') return emitReject(ctx, slot, prepared.response, 'unsupported_feature');
   const { candidateInvocation, targetProtocol } = prepared;
-  const urlTemplate = languageUrlTemplate(targetProtocol);
 
   const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
   if (unsupported !== undefined) return unsupported;
@@ -86,7 +84,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     providerId: provider.id,
     attemptIndex: index,
   });
-  await inAttempt(targetProtocol, () => model.ensureAvailable?.(), urlTemplate);
+  await inAttempt(targetProtocol, () => model.ensureAvailable?.());
   const configPrice = candidateConfigPrice(
     ctx.routerModels,
     publicSlug(ctx.requestedModelId, candidate),
@@ -100,25 +98,21 @@ export async function attemptModelCandidate<TRequest, TContext>(
     startedAt,
     observation,
     ...(configPrice === undefined ? {} : { configPrice }),
-    stream: inAttempt(
-      targetProtocol,
-      () => {
-        observation.markTransportUnavailable();
-        return model.invoke({
-          context: logicalRequest,
-          messages: candidateInvocation.messages,
-          modelId: candidate.modelId,
-          routingContinuity,
-          signal: rawRequest.signal,
-          ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
-          ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
-          ...(candidateInvocation.providerTools === undefined
-            ? {}
-            : { providerTools: candidateInvocation.providerTools }),
-        });
-      },
-      urlTemplate,
-    ),
+    stream: inAttempt(targetProtocol, () => {
+      observation.markTransportUnavailable();
+      return model.invoke({
+        context: logicalRequest,
+        messages: candidateInvocation.messages,
+        modelId: candidate.modelId,
+        routingContinuity,
+        signal: rawRequest.signal,
+        ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
+        ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
+        ...(candidateInvocation.providerTools === undefined
+          ? {}
+          : { providerTools: candidateInvocation.providerTools }),
+      });
+    }),
   });
   let capturedResponseId: string | undefined;
   const egressContext = {
@@ -194,23 +188,4 @@ export async function attemptModelCandidate<TRequest, TContext>(
     ),
   );
   return { kind: 'return', response };
-}
-
-function languageUrlTemplate(protocol: ProviderProtocol | undefined): string | undefined {
-  switch (protocol) {
-    case ProviderProtocol.OpenAIResponse:
-      return '/v1/responses';
-    case ProviderProtocol.OpenAICompatible:
-      return '/v1/chat/completions';
-    case ProviderProtocol.Anthropic:
-      return '/v1/messages';
-    case ProviderProtocol.Gemini:
-      return '/v1beta/models/{model}:generateContent';
-    case ProviderProtocol.GeminiInteractions:
-      return '/v1beta/interactions';
-    case ProviderProtocol.TypeSafeSystemOne:
-      return '/v1/systemone';
-    default:
-      return undefined;
-  }
 }

@@ -51,6 +51,7 @@ export function rawProvider(options: {
   readonly genAiProviderName?: string;
   readonly id: string;
   readonly invoke?: RawTransport['invoke'];
+  readonly urlTemplate?: string;
   readonly model?: {
     readonly ensureAvailable?: () => Promise<void>;
     readonly invoke: ModelTransport['invoke'];
@@ -78,7 +79,15 @@ export function rawProvider(options: {
     kind: ProviderKind.Api,
     passthrough: rawInvoke,
     protocol,
-    raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: rawInvoke } : undefined) },
+    raw: {
+      resolve: ({ protocol: inbound }) =>
+        inbound === protocol
+          ? {
+              invoke: rawInvoke,
+              ...(options.urlTemplate === undefined ? {} : { urlTemplate: options.urlTemplate }),
+            }
+          : undefined,
+    },
     ...(model === undefined ? {} : { model }),
     ...routingFields(options),
   } satisfies RuntimeProviderInstance;

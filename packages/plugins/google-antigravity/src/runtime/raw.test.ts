@@ -14,6 +14,25 @@ describe('Gemini raw resolver', () => {
     expect(resolve(resolver, 'openai-response')).toBeUndefined();
   });
 
+  test('declares the rewritten upstream URL template', () => {
+    const resolver = createGeminiRawResolver({ execute: async () => Response.json({ response: {} }) });
+
+    expect(
+      resolver({
+        protocol: 'gemini',
+        modelId: 'gemini-3-flash-agent',
+        requestPath: '/v1beta/models/gemini-3-flash-agent:generateContent',
+      })?.urlTemplate,
+    ).toBe('/v1internal:generateContent');
+    expect(
+      resolver({
+        protocol: 'gemini',
+        modelId: 'gemini-3-flash-agent',
+        requestPath: '/v1beta/models/gemini-3-flash-agent:streamGenerateContent',
+      })?.urlTemplate,
+    ).toBe('/v1internal:streamGenerateContent');
+  });
+
   test('declines embeddings so convert can run on the same candidate', () => {
     const resolver = createGeminiRawResolver({ execute: async () => Response.json({ response: {} }) });
 

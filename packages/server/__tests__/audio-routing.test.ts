@@ -49,6 +49,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
         modelId: SPEECH_MODEL,
         capability: 'speech',
         requestPath: SPEECH,
+        urlTemplate: SPEECH,
       },
     ]);
   });
@@ -86,6 +87,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
         modelId: TRANSCRIPTION_MODEL,
         capability: 'transcription',
         requestPath: TRANSLATIONS,
+        urlTemplate: TRANSLATIONS,
       },
     ]);
 

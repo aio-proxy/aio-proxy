@@ -37,6 +37,7 @@ test('primary transport keeps frozen origin semantics and passthrough alias', as
     ProviderProtocol.Anthropic,
     ProviderProtocol.Gemini,
   ]);
+  expect(instance.endpointTransports[0].urlTemplate?.('/v1/chat/completions')).toBe('/v1/chat/completions');
   await instance.passthrough(
     new Request('http://proxy.local/v1/chat/completions?a=1', { method: 'POST', body: '{}' }),
     { upstreamStream: false },
@@ -50,6 +51,8 @@ test('sdk anthropic endpoint joins operation path and honors bearer auth', async
   const captured: Captured[] = [];
   const instance = createApiProvider(provider, { fetch: capturingFetch(captured) });
   const anthropic = instance.endpointTransports.find((e) => e.protocol === ProviderProtocol.Anthropic);
+
+  expect(anthropic?.urlTemplate?.('/v1/messages')).toBe('/api/anthropic/v1/messages');
 
   await anthropic?.passthrough(new Request('http://proxy.local/v1/messages', { method: 'POST', body: '{}' }), {
     upstreamStream: false,

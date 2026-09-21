@@ -21,6 +21,7 @@ export function pipeline(
     readonly debugLogging?: boolean;
     readonly immediateStreamCompletion?: UsageCompletion;
     readonly config?: Config;
+    readonly httpRoute?: string;
     readonly random?: () => number;
   } = {},
 ) {
@@ -34,7 +35,14 @@ export function pipeline(
     ...route,
     adapter,
     context,
-    run: (rawRequest: Request) => handleProtocolRequest({ adapter, context, rawRequest, source: route.source }),
+    run: (rawRequest: Request) =>
+      handleProtocolRequest({
+        adapter,
+        context,
+        rawRequest,
+        source: route.source,
+        ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
+      }),
   };
 }
 

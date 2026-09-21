@@ -72,7 +72,7 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
     video: descriptorsById(catalog.video ?? []),
   };
   return {
-    resolve({ protocol, modelId, capability, requestPath }: RawResolveInput) {
+    resolve({ protocol, modelId, capability, requestPath, urlTemplate }: RawResolveInput) {
       const descriptor = requestDescriptor(catalogsByModality, { modelId, capability, protocol });
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
@@ -80,17 +80,27 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
         ...(descriptor?.extra === undefined ? {} : { extra: descriptor.extra }),
         ...(capability === undefined ? {} : { capability }),
         ...(requestPath === undefined ? {} : { requestPath }),
+        ...(urlTemplate === undefined ? {} : { urlTemplate }),
       });
       if (transport === undefined) return undefined;
       if (
         typeof transport !== 'object' ||
         transport === null ||
         Array.isArray(transport) ||
-        typeof transport.invoke !== 'function'
+        typeof transport.invoke !== 'function' ||
+        (transport.urlTemplate !== undefined &&
+          (typeof transport.urlTemplate !== 'string' ||
+            transport.urlTemplate.length === 0 ||
+            transport.urlTemplate.length > 2_048 ||
+            transport.urlTemplate.trim() !== transport.urlTemplate ||
+            !transport.urlTemplate.startsWith('/') ||
+            transport.urlTemplate.includes('?') ||
+            transport.urlTemplate.includes('#')))
       ) {
         throw new PluginRawResolverError();
       }
       return {
+        ...(transport.urlTemplate === undefined ? {} : { urlTemplate: transport.urlTemplate }),
         async invoke(
           request: Request,
           context?: LogicalRequestContext,

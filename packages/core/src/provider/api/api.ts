@@ -32,6 +32,7 @@ export type ApiProviderConfig = ApiProvider & { readonly trace?: ApiProviderTrac
 
 export type ApiEndpointTransport = {
   readonly protocol: ProviderProtocol;
+  readonly urlTemplate?: (inboundTemplate: string) => string;
   readonly passthrough: (req: Request, options?: RawTransportOptions) => Promise<Response>;
 };
 
@@ -81,6 +82,10 @@ function endpointTransport(
   const fetchUpstream = wrapOpenAIProtocolFetch(endpoint.protocol, fetcher);
   return {
     protocol: endpoint.protocol,
+    urlTemplate: (inboundTemplate) =>
+      endpoint.mode === 'origin'
+        ? inboundTemplate
+        : sdkUrlTemplate(endpoint.baseURL, inboundTemplate, endpoint.protocol),
     async passthrough(req, options) {
       const upstreamUrl =
         endpoint.mode === 'origin'
@@ -102,6 +107,16 @@ function endpointTransport(
       return new Response(returnedBody, decodedBodyResponseInit(response));
     },
   };
+}
+
+function sdkUrlTemplate(baseURL: string, inboundTemplate: string, protocol: ProviderProtocol): string {
+  const prefix = SDK_VERSION_PREFIXES[protocol];
+  const operationPath =
+    inboundTemplate === prefix || inboundTemplate.startsWith(`${prefix}/`)
+      ? inboundTemplate.slice(prefix.length)
+      : inboundTemplate;
+  const basePath = new URL(baseURL).pathname.replace(/\/$/u, '');
+  return `${basePath}${operationPath}` || '/';
 }
 
 // sdk 模式：baseURL 即 @ai-sdk/* 的入参；剥去 inbound 标准路径的版本前缀，

@@ -187,7 +187,7 @@ async function attemptVideoCandidate<TRequest, TContext>(
   const raw = slot.candidate.provider.raw?.resolve({
     protocol: ctx.adapter.protocol,
     modelId: slot.candidate.modelId,
-    ...requestPathProperty(ctx.rawRequest),
+    ...requestPathProperty(ctx.rawRequest, ctx.httpRoute),
   });
   if (raw !== undefined) {
     slot.trace.transport = 'raw';
@@ -214,7 +214,7 @@ async function attemptLanguageCandidate<TRequest, TContext>(
   const raw = provider.raw?.resolve({
     protocol: ctx.adapter.protocol,
     modelId: slot.candidate.modelId,
-    ...requestPathProperty(ctx.rawRequest),
+    ...requestPathProperty(ctx.rawRequest, ctx.httpRoute),
   });
   if (raw !== undefined) return await attemptRawCandidate(ctx, slot, raw);
   if (provider.model !== undefined) {

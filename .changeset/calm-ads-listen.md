@@ -12,4 +12,4 @@
 '@aio-proxy/plugin-openrouter': minor
 ---
 
-Trace timelines now use stable start ordering, standard HTTP and GenAI semantics, redacted upstream URLs, and accurate provider, failover, TTFT, and usage attribution. OAuth runtimes can explicitly declare their GenAI provider identity without inferring it from wire protocols.
+Trace timelines now use stable start ordering, standard HTTP and GenAI semantics, redacted upstream URLs, and accurate provider, failover, TTFT, and usage attribution. OAuth runtimes can explicitly declare their GenAI provider identity and raw upstream URL template without inferring either from wire protocols.
