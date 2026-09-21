@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { context as otelContext, trace } from '@opentelemetry/api';
 
+import { currentRequestLogContext } from '../../../request-logging';
 import { spanName } from '../../../request-tracing';
 import type { RuntimeProviderInstance } from '../../../runtime';
 import { counter, countFixture, requestedModel } from '../token-count.test-support';
@@ -41,14 +42,25 @@ function rawAnthropicProvider(
 
 test('invokes raw count under the attempt span so upstream fetches parent to it', async () => {
   let parentName: string | undefined;
-  const fixture = countFixture([
-    rawAnthropicProvider('relay', {}, ProviderKind.Api, () => {
-      parentName = trace.getSpan(otelContext.active())?.name;
-    }),
-  ]);
+  let seen: ReturnType<typeof currentRequestLogContext>;
+  const fixture = countFixture(
+    [
+      rawAnthropicProvider('relay', {}, ProviderKind.Api, () => {
+        parentName = trace.getSpan(otelContext.active())?.name;
+        seen = currentRequestLogContext();
+      }),
+    ],
+    { debugLogging: true },
+  );
 
   expect(await (await fixture.anthropic()).json()).toEqual({ input_tokens: 4242 });
   expect(parentName).toBe(spanName.attempt);
+  expect(seen).toEqual({
+    requestId: 'request-1',
+    attemptIndex: 0,
+    providerId: 'relay',
+    modelId: 'relay-wire',
+  });
 });
 
 test('forwards count_tokens upstream when a same-protocol raw provider is available', async () => {
