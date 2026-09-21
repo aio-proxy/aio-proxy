@@ -317,6 +317,52 @@ test('uses the first send wire status when a later retry makes the attempt span 
   expect(chips[2]).toMatchObject({ status: 'success' });
 });
 
+test('keeps a cancelled attempt when the wire hop is only an abort exception', () => {
+  const chips = toTraceHopChips({
+    spans: [
+      createSpan({
+        terminationReason: 'cancelled',
+        attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.provider.id': 'anthropic-primary' },
+      }),
+    ],
+    trace: { ...trace, terminationReason: 'cancelled' },
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'anthropic-primary',
+        response: { errorType: 'DOMException' },
+      },
+    ],
+  });
+
+  expect(chips[1]?.status).toBe('cancelled');
+});
+
+test('still paints a discarded 4xx over a cancelled attempt span as failure', () => {
+  const chips = toTraceHopChips({
+    spans: [
+      createSpan({
+        terminationReason: 'cancelled',
+        attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.provider.id': 'anthropic-primary' },
+      }),
+    ],
+    trace: { ...trace, terminationReason: 'cancelled' },
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'anthropic-primary',
+        response: { statusCode: 429, body: { text: '', outcome: 'cancelled' } },
+      },
+    ],
+  });
+
+  expect(chips[1]?.status).toBe('failure');
+});
+
 test('does not let a still-running wire hop wipe a settled span chip', () => {
   const chips = toTraceHopChips({
     spans: [

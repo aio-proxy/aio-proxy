@@ -106,10 +106,18 @@ const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
   return 'running';
 };
 
+const exceptionOnlyFailure = (hop: DashboardTraceWireHop): boolean =>
+  hop.response?.errorType !== undefined &&
+  hop.response.statusCode === undefined &&
+  hop.response.body?.outcome !== 'error' &&
+  hop.request?.body?.outcome !== 'error';
+
 const overlayWireStatus = (chip: TraceHopChip, hop: DashboardTraceWireHop): TraceHopChip => {
   const status = wireHopStatus(hop);
   // 还在跑的抓包不能盖掉已经结算的 span：流式响应一到 headers 就有 hop.response。
   if (status === 'running' && chip.status !== 'running') return chip;
+  // fetch 在出 Response 之前 abort 只记 errorType；span 已经是 cancelled，不要盖成失败。
+  if (status === 'failure' && chip.status === 'cancelled' && exceptionOnlyFailure(hop)) return chip;
   return status === chip.status ? chip : { ...chip, status };
 };
 
