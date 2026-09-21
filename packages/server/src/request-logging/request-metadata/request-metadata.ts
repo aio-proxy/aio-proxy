@@ -14,6 +14,10 @@ const REDACTED = '[REDACTED]';
  * 凭据头一律不落盘。除了 Bearer，各家上游还各有自己的 key 头（Anthropic `x-api-key`、
  * Google `x-goog-api-key`、Azure `api-key`），cookie 则是会话凭据 —— 拿到就能冒充。
  * 抓包接口会把这里记下的 headers 原样送进浏览器，所以宁可多脱一个也别漏一个。
+ *
+ * 这份固定名单**不够**：provider 配置允许写任意 header（`api.ts` 会把 `config.headers` 逐条
+ * set 到上游请求上），所以 `X-Secret`、`X-Auth-Token` 这类自定义认证头一个都不在名单里。
+ * 因此名单之外再按词判一次，与 query 参数共用同一套凭据词表。
  */
 const credentialHeaders = new Set([
   'authorization',
@@ -65,6 +69,16 @@ function isCredentialParam(name: string): boolean {
   );
 }
 
+/**
+ * 固定名单命中，或名字里含凭据词。后者兜住 provider 配置里的自定义认证头 ——
+ * `X-Secret` → `['x','secret']`、`X-Auth-Token` → `['x','auth','token']` 都中。
+ * `content-type`、`x-request-id`、`user-agent` 这些不含凭据词，不受影响。
+ */
+function isCredentialHeader(name: string): boolean {
+  const lower = name.toLowerCase();
+  return credentialHeaders.has(lower) || isCredentialParam(lower);
+}
+
 export function requestMetadata(request: Request): HttpRequestMetadata {
   try {
     return {
@@ -92,10 +106,7 @@ export function responseMetadata(response: Response): HttpResponseMetadata {
  */
 export function redactCredentialHeaders(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
   return Object.fromEntries(
-    Object.entries(headers).map(([name, value]) => [
-      name,
-      credentialHeaders.has(name.toLowerCase()) ? REDACTED : value,
-    ]),
+    Object.entries(headers).map(([name, value]) => [name, isCredentialHeader(name) ? REDACTED : value]),
   );
 }
 
@@ -122,7 +133,5 @@ function visibleUrl(value: string): string {
 }
 
 function visibleHeaders(headers: Headers): Readonly<Record<string, string>> {
-  return Object.fromEntries(
-    [...headers].map(([name, value]) => [name, credentialHeaders.has(name.toLowerCase()) ? REDACTED : value]),
-  );
+  return Object.fromEntries([...headers].map(([name, value]) => [name, isCredentialHeader(name) ? REDACTED : value]));
 }

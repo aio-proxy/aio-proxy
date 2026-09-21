@@ -52,14 +52,20 @@ test('filters the trace by its final status and model from the root span', () =>
   expect(byKey.get('aio_proxy.route.candidates')).toBeUndefined();
 });
 
-test('withholds the final-status and final-model filters on a non-root span', () => {
+test('withholds the whole-trace filters on a non-root span', () => {
   const byKey = filtersOf(false);
 
   // A 429 attempt inside a 200 trace: filtering on it would exclude the trace the user came from.
   expect(byKey.get('http.response.status_code')).toBeUndefined();
   expect(byKey.get('gen_ai.response.model')).toBeUndefined();
-  // The inbound requested model is the same on every span, so its filter survives the gate.
-  expect(byKey.get('gen_ai.request.model')).toEqual({ requestedModelId: 'claude-sonnet-4-6' });
+  // `gen_ai.request.model` 曾经**不**门控，理由是「每个 span 上都一样」。三层之后不成立了：
+  // attempt 上记的是送给那个候选的上游模型（`startAttempt` 写 `base.modelId`），别名与候选
+  // 模型不一致时，按它筛选会跳到一个把当前这条链排除掉的结果集。
+  expect(byKey.get('gen_ai.request.model')).toBeUndefined();
+});
+
+test('offers the requested-model filter on a trace-wide span', () => {
+  expect(filtersOf(true).get('gen_ai.request.model')).toEqual({ requestedModelId: 'claude-sonnet-4-6' });
 });
 
 // Every span already in the store recorded its status under the deprecated key. Without the

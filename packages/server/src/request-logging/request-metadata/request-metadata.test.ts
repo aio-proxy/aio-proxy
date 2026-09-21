@@ -136,3 +136,27 @@ test('leaves a URL it cannot parse alone instead of throwing', () => {
     accept: 'application/json',
   });
 });
+
+// provider 配置允许写任意 header，api.ts 会把它们逐条 set 到上游请求上。固定名单认不出
+// `X-Secret` 这种自定义认证头，于是凭据明文落盘并经抓包接口送进浏览器。
+test.each(['X-Secret', 'X-Auth-Token', 'X-Access-Token', 'My-Api-Key', 'X-Client-Secret', 'X-Signature'])(
+  'redacts the custom credential header %s',
+  (name) => {
+    const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
+
+    expect(Object.values(metadata.headers)).not.toContain('real-secret');
+    // 读侧走同一个判定，旧日志重放时也要脱。
+    expect(Object.values(redactCredentialHeaders({ [name]: 'real-secret' }))).not.toContain('real-secret');
+  },
+);
+
+// 按词匹配的代价是误伤，头这边同样要钉反面：这些是常见的普通头，脱了它们等于把调试信息
+// 白白打码。`authority` 尤其重要 —— HTTP/2 的 :authority 伪头长这样。
+test.each(['content-type', 'x-request-id', 'user-agent', 'accept-encoding', 'x-authority', 'x-api-version'])(
+  'keeps the ordinary header %s readable',
+  (name) => {
+    const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'plain-value' } }));
+
+    expect(Object.values(metadata.headers)).toContain('plain-value');
+  },
+);
