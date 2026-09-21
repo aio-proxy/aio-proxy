@@ -74,6 +74,8 @@ const credentialQueryWords = new Set([
 const CREDENTIAL_SUFFIXES = [...credentialQueryWords].filter((word) => word !== 'sig');
 
 function isCredentialParam(name: string): boolean {
+  // OAuth 授权码就是 `code`。放进词表会连 `*code` 后缀一起打（zipcode / unicode）。
+  if (name.toLowerCase() === 'code') return true;
   return (
     name
       // 小写化之前先在 camelCase 边界插空格，否则大小写信息就没了。两条规则：
@@ -162,7 +164,9 @@ function redactBareUrl(value: string): string {
       // `//cdn.example/jobs` 也以 `/` 开头，但 authority 在 host 上；按 path-only 会把
       // 签名目标收成 `/jobs`，丢掉跳转还在用的 host。
       if (value.startsWith('//')) return `//${url.host}${url.pathname}${url.search}${url.hash}`;
-      if (value.startsWith('/') || value.startsWith('?')) return `${url.pathname}${url.search}${url.hash}`;
+      // `?token=` 相对当前路径，合成 base 后 pathname 是 `/`，不能写成站点根。
+      if (value.startsWith('?')) return `${url.search}${url.hash}`;
+      if (value.startsWith('/')) return `${url.pathname}${url.search}${url.hash}`;
       // 空格这种明显不是 URL 的值不要改写成编码路径。
       if (/\s/u.test(value)) return value;
       return `${url.pathname.replace(/^\//u, '')}${url.search}${url.hash}`;

@@ -108,6 +108,19 @@ test.each([
 });
 
 // 按词匹配的代价是可能误伤，所以反面也要钉住：这些名字含凭据词的**子串**但不是凭据。
+test('redacts an OAuth authorization code without treating every *code field as a credential', () => {
+  const callback = 'https://client.example/cb?code=oauth-secret&state=xyz';
+  const metadata = responseMetadata(new Response(null, { status: 302, headers: { location: callback } }));
+
+  expect(metadata.headers.location).not.toContain('oauth-secret');
+  expect(metadata.headers.location).toContain('state=xyz');
+  expect(redactUrlCredentials(callback)).not.toContain('oauth-secret');
+
+  const ordinary = requestMetadata(new Request('https://upstream.test/v1?error_code=plain-value&unicode=plain-value'));
+  expect(ordinary.url).toContain('error_code=plain-value');
+  expect(ordinary.url).toContain('unicode=plain-value');
+});
+
 test.each(['keyword', 'tokenizer', 'authority', 'signal'])('keeps the ordinary parameter %s readable', (name) => {
   const metadata = requestMetadata(new Request(`https://upstream.test/v1?${name}=plain-value`));
 
@@ -180,6 +193,14 @@ test('redacts credentials in a relative Location and leaves a non-URL Location a
   expect(pathRelative.headers.location).not.toContain('path-secret');
   expect(pathRelative.headers.location).toContain('page=2');
   expect(pathRelative.headers.location?.startsWith('jobs/next')).toBe(true);
+
+  const queryOnly = responseMetadata(
+    new Response(null, { status: 302, headers: { location: '?access_token=rel-secret&page=2' } }),
+  );
+  expect(queryOnly.headers.location).not.toContain('rel-secret');
+  expect(queryOnly.headers.location).toContain('page=2');
+  expect(queryOnly.headers.location?.startsWith('?')).toBe(true);
+  expect(queryOnly.headers.location?.startsWith('/')).toBe(false);
 
   const opaque = responseMetadata(new Response(null, { status: 302, headers: { location: 'not a url at all ///' } }));
   expect(opaque.headers.location).toBe('not a url at all ///');

@@ -112,9 +112,12 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
         selectedSpan={selectedSpan}
         comparison={percentileQuery.data?.comparison}
         onSpanSelect={setSelectedSpanId}
-        // 详情路由自己没有列表的 search 参数，所以从默认区间起算，再叠上这一条属性。
+        // 详情路由没有列表的 search。区间按这条调用链的当地日，否则历史详情会筛到今天、把自己筛没。
         onFilter={(patch) =>
-          void navigate({ to: '/traces', search: withTraceFilters(createDefaultTraceSearch(), patch) })
+          void navigate({
+            to: '/traces',
+            search: withTraceFilters(createDefaultTraceSearch(new Date(trace.startedAt)), patch),
+          })
         }
       />
     </PageContainer>

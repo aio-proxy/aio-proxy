@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 
 import { queryKeys } from '@/lib/query-keys';
 
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TraceDetailPage } from './trace-detail-page';
 
@@ -360,10 +361,15 @@ describe('trace detail page', () => {
     fireEvent.click(within(sessionRow).getByRole('button', { name: /Attribute actions|属性操作/u }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Add as filter|加为筛选条件/u }));
 
+    const day = createDefaultTraceSearch(new Date(detail.trace.startedAt));
     expect(mocks.navigate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: '/traces',
-        search: expect.objectContaining({ sessionId: 'cache-a' }),
+        search: expect.objectContaining({
+          sessionId: 'cache-a',
+          startedAfter: day.startedAfter,
+          startedBefore: day.startedBefore,
+        }),
       }),
     );
     // 游标分页：带着上一页的 pageToken 跳过去，筛出来的第一页就被跳过了。
