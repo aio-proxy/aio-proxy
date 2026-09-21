@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { APICallError, type Experimental_EvaluationModelV4Result as SdkEvaluationResult } from '@ai-sdk/provider';
 import { Experimental_EvaluationMockModelV4 } from 'ai/test';
 
-import { AiSdkProviderError } from '../error';
+import { AiSdkProviderError } from '../../error';
 import { createProviderV4Evaluate } from './provider-v4';
 
 const providerWith = (model: unknown) => ({ evaluationModel: () => model });

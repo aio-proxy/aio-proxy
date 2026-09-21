@@ -9,8 +9,8 @@ import { YAML } from 'bun';
 
 import { createServer, createServerTestHome } from '#server-test-lifecycle';
 
-import { attributeName, spanName } from '../src/request-tracing';
-import { recorded } from './trace-recording.test-support';
+import { recorded } from '../../../__tests__/trace-recording.test-support';
+import { attributeName, spanName } from '../../request-tracing';
 
 /**
  * Routing tests that start from REAL config YAML rather than hand-built runtime

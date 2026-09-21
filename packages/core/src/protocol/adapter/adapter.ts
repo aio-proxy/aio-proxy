@@ -1,9 +1,9 @@
 import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 import type { AliasDimensions, ProviderProtocol } from '@aio-proxy/types';
 
-import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../ai-sdk-bridge';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from './request';
-import type { ProtocolSessionHints } from './session';
+import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
+import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import type { ProtocolSessionHints } from '../session';
 
 export type EmptyProtocolContext = Readonly<Record<never, never>>;
 export type ModelEventStream = ReadableStream<TextStreamPart<ToolSet>>;

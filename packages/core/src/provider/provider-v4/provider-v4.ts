@@ -9,8 +9,8 @@ import { isRecord } from '@aio-proxy/shared';
 import { experimental_evaluate } from 'ai';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { embed, embedMany, streamAiSdkText } from '../ai-sdk-bridge';
-import { AiSdkProviderError, EmbeddingConvertUnsupportedError, EmbeddingCountMismatchError } from '../error';
+import { embed, embedMany, streamAiSdkText } from '../../ai-sdk-bridge';
+import { AiSdkProviderError, EmbeddingConvertUnsupportedError, EmbeddingCountMismatchError } from '../../error';
 import type {
   EmbeddingInvocation,
   EmbeddingProviderOptions,
@@ -19,8 +19,8 @@ import type {
   EvaluationAnswer,
   EvaluationInvocation,
   EvaluationResult,
-} from '../protocol/adapter';
-import type { AiSdkProviderInstance } from './ai-sdk/index';
+} from '../../protocol/adapter';
+import type { AiSdkProviderInstance } from '../ai-sdk/index';
 
 const required = ['languageModel', 'imageModel', 'embeddingModel'] as const;
 const optional = ['speechModel', 'transcriptionModel', 'rerankingModel', 'files', 'skills'] as const;
