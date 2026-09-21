@@ -85,12 +85,17 @@ export const toTraceHopChips = (input: {
 };
 
 const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
-  const outcome = hop.response?.body?.outcome ?? hop.request?.body?.outcome;
-  if (outcome === 'cancelled') return 'cancelled';
-  if (outcome === 'error' || hop.response?.errorType !== undefined) return 'failure';
+  const responseOutcome = hop.response?.body?.outcome;
+  const requestOutcome = hop.request?.body?.outcome;
+  if (responseOutcome === 'cancelled' || requestOutcome === 'cancelled') return 'cancelled';
+  if (responseOutcome === 'error' || requestOutcome === 'error' || hop.response?.errorType !== undefined) {
+    return 'failure';
+  }
   const statusCode = hop.response?.statusCode;
   if (statusCode !== undefined && statusCode >= 400) return 'failure';
-  if (hop.response !== undefined || outcome === 'complete') return 'success';
+  // 流式响应一到 headers 就有 `hop.response`，请求 body 也常常已经 complete；
+  // 成功只认响应 body 的终态，否则整段 SSE 都会先画成绿点再可能翻成失败。
+  if (responseOutcome === 'complete') return 'success';
   return 'running';
 };
 

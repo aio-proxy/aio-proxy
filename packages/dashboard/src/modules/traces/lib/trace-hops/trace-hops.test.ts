@@ -180,6 +180,63 @@ test('does not invent chips from wire hops after the trace has settled', () => {
   expect(chips.map((chip) => chip.id)).toEqual(['inbound']);
 });
 
+test('keeps a streamed hop running after headers arrive until the response body terminates', () => {
+  const live = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, endedAt: null },
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'anthropic-primary',
+        request: { body: { text: '{}', outcome: 'complete' } },
+        response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' } },
+      },
+    ],
+  });
+  expect(live[1]?.status).toBe('running');
+
+  const finished = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, endedAt: null },
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        providerId: 'anthropic-primary',
+        request: { body: { text: '{}', outcome: 'complete' } },
+        response: { statusCode: 200, body: { text: 'data: done\n', outcome: 'complete' } },
+      },
+    ],
+  });
+  expect(finished[1]?.status).toBe('success');
+});
+
+test('keeps 4xx and cancelled wire hops out of the streamed running state', () => {
+  const rejected = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, endedAt: null },
+    wireHops: [{ id: 'attempt-0', kind: 'attempt', attemptIndex: 0, response: { statusCode: 429 } }],
+  });
+  expect(rejected[1]?.status).toBe('failure');
+
+  const cancelled = toTraceHopChips({
+    spans: [],
+    trace: { ...trace, endedAt: null },
+    wireHops: [
+      {
+        id: 'attempt-0',
+        kind: 'attempt',
+        attemptIndex: 0,
+        request: { body: { text: '', outcome: 'cancelled' } },
+      },
+    ],
+  });
+  expect(cancelled[1]?.status).toBe('cancelled');
+});
+
 test('keeps the span chip when the same hop already exists in the wire capture', () => {
   const chips = toTraceHopChips({
     spans: [
