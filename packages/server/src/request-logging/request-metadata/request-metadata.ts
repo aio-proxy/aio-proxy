@@ -62,6 +62,7 @@ const credentialQueryWords = new Set([
   'passwd',
   'auth',
   'authorization',
+  'authentication',
   'bearer',
   'sig',
   'signature',
@@ -88,8 +89,9 @@ function isCredentialParam(name: string): boolean {
 /**
  * 固定名单命中，或名字里含凭据词。后者兜住 provider 配置里的自定义认证头 ——
  * `X-Secret` → `['x','secret']`、`X-Auth-Token` → `['x','auth','token']` 都中。
- * `X-Authorization` / `X-Bearer` 小写化后切出 `authorization` / `bearer`，这两个词必须在表里：
- * `authorization` 不以 `auth` 结尾，`bearer` 更对不上任何现有词。
+ * `X-Authorization` / `X-Authentication` / `X-Bearer` 小写化后切出
+ * `authorization` / `authentication` / `bearer`，这三个词必须在表里：
+ * 前两个不以 `auth` 结尾，`bearer` 更对不上任何现有词。
  * `content-type`、`x-request-id`、`user-agent` 这些不含凭据词，不受影响。
  */
 function isCredentialHeader(name: string): boolean {
@@ -157,6 +159,9 @@ function redactBareUrl(value: string): string {
     // 只认 `/` 和 `?` 前缀会把 path-relative 签名 URL 原样留下。
     try {
       const url = stripUrlCredentials(new URL(value, 'https://aio-proxy.invalid'));
+      // `//cdn.example/jobs` 也以 `/` 开头，但 authority 在 host 上；按 path-only 会把
+      // 签名目标收成 `/jobs`，丢掉跳转还在用的 host。
+      if (value.startsWith('//')) return `//${url.host}${url.pathname}${url.search}${url.hash}`;
       if (value.startsWith('/') || value.startsWith('?')) return `${url.pathname}${url.search}${url.hash}`;
       // 空格这种明显不是 URL 的值不要改写成编码路径。
       if (/\s/u.test(value)) return value;

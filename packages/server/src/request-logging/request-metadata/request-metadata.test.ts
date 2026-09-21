@@ -185,6 +185,20 @@ test('redacts credentials in a relative Location and leaves a non-URL Location a
   expect(opaque.headers.location).toBe('not a url at all ///');
 });
 
+test('redacts credentials in a protocol-relative Location and Link target', () => {
+  const networkPath = '//cdn.example/jobs?access_token=net-secret&page=2';
+  const location = responseMetadata(new Response(null, { status: 302, headers: { location: networkPath } }));
+  expect(location.headers.location).not.toContain('net-secret');
+  expect(location.headers.location).toContain('page=2');
+  expect(location.headers.location?.startsWith('//cdn.example/jobs')).toBe(true);
+
+  const link = `<${networkPath}>; rel="next"`;
+  const metadata = responseMetadata(new Response(null, { status: 200, headers: { link } }));
+  expect(metadata.headers.link).not.toContain('net-secret');
+  expect(metadata.headers.link).toContain('rel="next"');
+  expect(metadata.headers.link).toContain('//cdn.example/jobs');
+});
+
 test('redacts signed URL targets inside Link headers on write and when replaying old logs', () => {
   const link =
     '<https://provider.example/jobs/next?access_token=live-secret>; rel="next", <next?X-Amz-Signature=sig-secret>; rel="prev"';
@@ -219,6 +233,7 @@ test.each([
   'X-Client-Secret',
   'X-Signature',
   'X-Authorization',
+  'X-Authentication',
   'X-Bearer',
 ])('redacts the custom credential header %s', (name) => {
   const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
