@@ -202,6 +202,16 @@ test('redacts credentials in a relative Location and leaves a non-URL Location a
   expect(queryOnly.headers.location?.startsWith('?')).toBe(true);
   expect(queryOnly.headers.location?.startsWith('/')).toBe(false);
 
+  const parentRelative = responseMetadata(
+    new Response(null, { status: 302, headers: { location: '../jobs?access_token=rel-secret&page=2' } }),
+  );
+  expect(parentRelative.headers.location).not.toContain('rel-secret');
+  expect(parentRelative.headers.location).toContain('page=2');
+  expect(parentRelative.headers.location?.startsWith('../jobs')).toBe(true);
+  expect(redactUrlCredentials('..?access_token=rel-secret').startsWith('..?')).toBe(true);
+  expect(redactUrlCredentials('.?access_token=rel-secret').startsWith('.?')).toBe(true);
+  expect(redactUrlCredentials('./next?access_token=rel-secret').startsWith('./next')).toBe(true);
+
   const opaque = responseMetadata(new Response(null, { status: 302, headers: { location: 'not a url at all ///' } }));
   expect(opaque.headers.location).toBe('not a url at all ///');
 });

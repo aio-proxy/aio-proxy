@@ -164,12 +164,11 @@ function redactBareUrl(value: string): string {
       // `//cdn.example/jobs` 也以 `/` 开头，但 authority 在 host 上；按 path-only 会把
       // 签名目标收成 `/jobs`，丢掉跳转还在用的 host。
       if (value.startsWith('//')) return `//${url.host}${url.pathname}${url.search}${url.hash}`;
-      // `?token=` 相对当前路径，合成 base 后 pathname 是 `/`，不能写成站点根。
-      if (value.startsWith('?')) return `${url.search}${url.hash}`;
-      if (value.startsWith('/')) return `${url.pathname}${url.search}${url.hash}`;
       // 空格这种明显不是 URL 的值不要改写成编码路径。
       if (/\s/u.test(value)) return value;
-      return `${url.pathname.replace(/^\//u, '')}${url.search}${url.hash}`;
+      // `../jobs` / `.` 相对合成根会丢掉 `../` 甚至变成空路径。query/hash 用解析结果，路径原文留下。
+      const cut = value.search(/[?#]/u);
+      return `${cut < 0 ? value : value.slice(0, cut)}${url.search}${url.hash}`;
     } catch {
       return value;
     }
