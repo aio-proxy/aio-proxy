@@ -41,6 +41,14 @@ const credentialHeaders = new Set([
  * 切词必须**同时**认非字母数字和 camelCase 边界。只切前者的话 `accessToken` 小写成
  * `accesstoken` 是一个整词，单词表里没有，于是明文落盘 —— `authToken`、`clientSecret`、
  * `refreshToken` 同理。（`apiKey` 侥幸命中，因为 `apikey` 恰好在表里。）
+ *
+ * 但 camelCase 切词救不了 header：Fetch 的 `Headers` 在构造时就把名字小写化了，所以
+ * `X-ClientSecret` 到这里已经是 `x-clientsecret`，大小写信息没了，切出来是 `clientsecret`
+ * 一个整词。于是整词之外再判后缀 —— `CREDENTIAL_SUFFIXES` 只收长且无歧义的词，`key` 与
+ * `sig` 不在其中：否则 `monkey`、`design` 之类会被误伤。
+ *
+ * 残留缺口：`key` 结尾的紧凑复合名（`secretkey`、`privatekey`）仍漏。要补就得把 `key` 放进
+ * 后缀表，代价是 `monkey` 这种普通名也被打码 —— 按现有用例的取向没这么做。
  */
 const credentialQueryWords = new Set([
   'key',
@@ -56,6 +64,9 @@ const credentialQueryWords = new Set([
   'credentials',
 ]);
 
+// 后缀匹配用的子集：短词（`key`、`sig`）留在整词匹配里，避免 `monkey` / `signal` 被误伤。
+const CREDENTIAL_SUFFIXES = [...credentialQueryWords].filter((word) => word !== 'key' && word !== 'sig');
+
 function isCredentialParam(name: string): boolean {
   return (
     name
@@ -65,7 +76,7 @@ function isCredentialParam(name: string): boolean {
       .replace(/([A-Z]+)([A-Z][a-z])/gu, '$1 $2')
       .toLowerCase()
       .split(/[^a-z0-9]+/u)
-      .some((word) => credentialQueryWords.has(word))
+      .some((word) => credentialQueryWords.has(word) || CREDENTIAL_SUFFIXES.some((suffix) => word.endsWith(suffix)))
   );
 }
 

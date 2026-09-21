@@ -160,3 +160,29 @@ test.each(['content-type', 'x-request-id', 'user-agent', 'accept-encoding', 'x-a
     expect(Object.values(metadata.headers)).toContain('plain-value');
   },
 );
+
+// 上一轮补的自定义头用例全用了**带连字符**的写法（`X-Client-Secret`），恰好绕开了真正的坑：
+// Fetch 的 Headers 在构造时就小写化，`X-ClientSecret` 到脱敏函数手上已经是 `x-clientsecret`,
+// camelCase 切词救不了，切出来是一个整词。所以这里专测不带连字符的紧凑形态。
+test.each(['X-ClientSecret', 'X-AccessToken', 'X-AuthToken', 'X-RefreshToken', 'X-SessionCredential'])(
+  'redacts the compact credential header %s after Headers lowercases it',
+  (name) => {
+    const metadata = requestMetadata(new Request('https://upstream.test/v1', { headers: { [name]: 'real-secret' } }));
+
+    expect(Object.values(metadata.headers)).not.toContain('real-secret');
+    expect(Object.values(redactCredentialHeaders({ [name.toLowerCase()]: 'real-secret' }))).not.toContain(
+      'real-secret',
+    );
+  },
+);
+
+// 后缀匹配的代价是可能误伤，所以短词 key / sig 刻意留在整词匹配里。这几个名字都以凭据词的
+// **子串**结尾或开头但不是凭据，掉了这条守卫就会把普通调试字段也打码。
+test.each(['monkey', 'keyword', 'tokenizer', 'authority', 'signal', 'design'])(
+  'keeps the ordinary name %s readable under suffix matching',
+  (name) => {
+    const metadata = requestMetadata(new Request(`https://upstream.test/v1?${name}=plain-value`));
+
+    expect(metadata.url).toContain('plain-value');
+  },
+);
