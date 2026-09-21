@@ -41,6 +41,7 @@ type DebugResponseObservation = {
   readonly identity: BodyIdentity;
   readonly logger: ServerLogSink;
   readonly signal: AbortSignal | undefined;
+  readonly omitChunks?: boolean;
 };
 
 type ResponseObservationOptions = {
@@ -68,7 +69,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
             logger: scope.logger,
           };
     if (debug === undefined && observation === undefined) {
-      return fetcher(input, init);
+      return fetchWithSpan(fetcher, input, init);
     }
     safely(() => observation?.observeFetchStart());
     if (debug === undefined) {
@@ -104,25 +105,16 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         outcome: 'response',
         ...responseMetadata(response),
       });
-      const debugResponse = hideVideoBodies
-        ? undefined
-        : {
-            identity: { ...debug.identity, direction: 'upstream_response' as const },
-            logger: debug.logger,
-            signal: request.signal,
-          };
-      // 视频正文故意不抓。不记一行 complete 的话，结算后选择器会把这一跳一直标成
-      // running，请求/响应页也会每 5 秒重扫当天日志。
-      if (hideVideoBodies) {
-        emitEmptyBodyTerminal({
+      // 视频正文故意不抓 chunk，但终态跟着客户端真正读完/失败/取消走：
+      // 头到达时写 complete 会让 hop 提前变绿，消费失败也洗不掉。
+      return responseWithObservedBody(response, {
+        ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
+        debug: {
           identity: { ...debug.identity, direction: 'upstream_response' },
           logger: debug.logger,
           signal: request.signal,
-        });
-      }
-      return responseWithObservedBody(response, {
-        ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
-        ...(debugResponse === undefined ? {} : { debug: debugResponse }),
+          ...(hideVideoBodies ? { omitChunks: true } : {}),
+        },
       });
     } catch (error) {
       logServerEvent(debug.logger, {
@@ -189,7 +181,7 @@ function observedBody(
     contentType,
     {
       chunk(text) {
-        if (debug !== undefined) {
+        if (debug !== undefined && debug.omitChunks !== true) {
           logServerEvent(debug.logger, { event: 'request.body_chunk', ...debug.identity, sequence: sequence++, text });
         }
         if (!parserActive || parser === undefined) return;

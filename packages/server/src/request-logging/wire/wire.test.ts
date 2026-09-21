@@ -184,7 +184,7 @@ test('debug inbound observation does not tap openai-video bodies', async () => {
   );
 });
 
-test('debug fetch does not tap openai-video request bodies', async () => {
+test('debug fetch does not tap openai-video request or response bodies', async () => {
   const logs: ServerLog[] = [];
   const sentinel = 'data:image/png;base64,VIDEO_DATA_URL_SENTINEL';
   const fetcher = createObservedFetch((async (input) => {
@@ -193,31 +193,69 @@ test('debug fetch does not tap openai-video request bodies', async () => {
     return Response.json({ id: 'video_abc' });
   }) as typeof globalThis.fetch);
 
-  await withRequestLogContext({ requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) }, () =>
-    withAttemptLogContext(
-      {
-        attemptIndex: 0,
-        providerId: 'openai',
-        modelId: 'sora-2',
-        requestedModelId: 'sora-2',
-        sourceProtocol: ProviderProtocol.OpenAIVideo,
-      },
-      () =>
-        fetcher(
-          new Request('https://upstream.test/v1/videos', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ prompt: 'a cat', input_reference: { image_url: sentinel } }),
-          }),
-        ),
-    ),
+  const response = await withRequestLogContext(
+    { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
+    () =>
+      withAttemptLogContext(
+        {
+          attemptIndex: 0,
+          providerId: 'openai',
+          modelId: 'sora-2',
+          requestedModelId: 'sora-2',
+          sourceProtocol: ProviderProtocol.OpenAIVideo,
+        },
+        () =>
+          fetcher(
+            new Request('https://upstream.test/v1/videos', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ prompt: 'a cat', input_reference: { image_url: sentinel } }),
+            }),
+          ),
+      ),
   );
+  expect(terminals(logs, 'upstream_response')).toEqual([]);
+  expect(await response.text()).toContain('video_abc');
 
   expect(JSON.stringify(logs)).not.toContain(sentinel);
+  expect(JSON.stringify(logs)).not.toContain('video_abc');
   expect(reconstructed(logs, 'upstream_request')).toBe('');
   expect(reconstructed(logs, 'upstream_response')).toBe('');
+  expect(logs.filter((entry) => entry.event === 'request.body_chunk')).toHaveLength(0);
   expect(terminals(logs, 'upstream_response')).toEqual([
-    expect.objectContaining({ outcome: 'complete', byteLength: 0, direction: 'upstream_response' }),
+    expect.objectContaining({ outcome: 'complete', direction: 'upstream_response' }),
+  ]);
+});
+
+test('suppressed video bodies still record a failed consume as error', async () => {
+  const logs: ServerLog[] = [];
+  const failure = new Error('source failed');
+  const source = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(failure);
+    },
+  });
+  const fetcher = createObservedFetch(async () => new Response(source, { headers: { 'content-type': 'video/mp4' } }));
+
+  const response = await withRequestLogContext(
+    { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
+    () =>
+      withAttemptLogContext(
+        {
+          attemptIndex: 0,
+          providerId: 'openai',
+          modelId: 'sora-2',
+          requestedModelId: 'sora-2',
+          sourceProtocol: ProviderProtocol.OpenAIVideo,
+        },
+        () => fetcher('https://upstream.test/v1/videos/video_abc/content'),
+      ),
+  );
+
+  await expect(response.text()).rejects.toBe(failure);
+  expect(logs.filter((entry) => entry.event === 'request.body_chunk')).toHaveLength(0);
+  expect(terminals(logs, 'upstream_response')).toEqual([
+    expect.objectContaining({ outcome: 'error', errorType: 'Error', direction: 'upstream_response' }),
   ]);
 });
 
@@ -359,6 +397,30 @@ test('debug fetch preserves the thrown transport error', async () => {
       exceptionCode: 'ConnectionRefused',
     }),
   );
+});
+
+test('upstream fetch opens a CLIENT span without an observer or debug scope', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const fetcher = createObservedFetch(async () => new Response(null, { status: 200 }));
+
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    fetcher('https://upstream.test/v1/messages?key=secret'),
+  );
+  parent.end();
+
+  const post = processor.take(traceId).find((span) => span.name === 'GET');
+  expect(post?.kind).toBe(SpanKind.CLIENT);
+  expect(post?.parentSpanId).toBe(parent.spanContext().spanId);
+  expect(post?.attributes).toMatchObject({
+    'http.request.method': 'GET',
+    'server.address': 'upstream.test',
+    'url.path': '/v1/messages',
+    'http.response.status_code': 200,
+  });
+  expect(JSON.stringify(post?.attributes)).not.toContain('secret');
 });
 
 test('upstream fetch opens a CLIENT span under the active span', async () => {

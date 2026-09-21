@@ -79,7 +79,7 @@ export async function attemptRawCount<TRequest, TContext>({
       supportedEfforts,
       context,
     );
-    response = await raw.invoke(upstream, logicalRequest, { upstreamStream: false });
+    response = await attemptSpan.run(() => raw.invoke(upstream, logicalRequest, { upstreamStream: false }));
     if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     rawRequest.signal.throwIfAborted();
     attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);

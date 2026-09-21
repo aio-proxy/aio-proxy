@@ -250,9 +250,8 @@ async function countCandidates<TRequest, TContext>({
     const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
     let inputTokens: number;
     try {
-      const result = await withAttemptLogContext(
-        { attemptIndex, providerId: provider.id, modelId: candidate.modelId },
-        () =>
+      const result = await attemptSpan.run(() =>
+        withAttemptLogContext({ attemptIndex, providerId: provider.id, modelId: candidate.modelId }, () =>
           count.countTokens({
             protocol: adapter.protocol,
             modelId: candidate.modelId,
@@ -260,6 +259,7 @@ async function countCandidates<TRequest, TContext>({
             context: logicalRequest,
             invocation: candidateInvocation,
           } satisfies TokenCountInput),
+        ),
       );
       rawRequest.signal.throwIfAborted();
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
