@@ -17,9 +17,18 @@ type BodyIdentity = {
   readonly requestId: string;
   readonly direction: RequestBodyDirection;
   readonly attemptIndex?: number;
+  readonly sendIndex?: number;
   readonly providerId?: string;
   readonly modelId?: string;
 };
+
+const nextSendIndex = new WeakMap<object, number>();
+
+function takeSendIndex(scope: object): number {
+  const index = nextSendIndex.get(scope) ?? 0;
+  nextSendIndex.set(scope, index + 1);
+  return index;
+}
 
 type ResponseMetadata = ResponseInit & {
   readonly redirected: boolean;
@@ -51,6 +60,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
             identity: {
               requestId: scope.requestId,
               attemptIndex: scope.attemptIndex,
+              sendIndex: takeSendIndex(scope),
               providerId: scope.providerId,
               modelId: scope.modelId,
             },

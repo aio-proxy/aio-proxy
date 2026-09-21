@@ -294,6 +294,25 @@ test('debug fetch logs complete delegated request and consumed response', async 
   );
 });
 
+test('debug fetch numbers each HTTP send inside one attempt', async () => {
+  const logs: ServerLog[] = [];
+  const fetcher = createObservedFetch((async () => new Response('ok')) as typeof globalThis.fetch);
+
+  await inDebugAttempt(logs, async () => {
+    await fetcher(new Request('https://upstream.test/v1/a'));
+    await fetcher(new Request('https://upstream.test/v1/b'));
+  });
+
+  expect(logs.filter((entry) => entry.event === 'request.upstream_snapshot')).toEqual([
+    expect.objectContaining({ event: 'request.upstream_snapshot', sendIndex: 0 }),
+    expect.objectContaining({ event: 'request.upstream_snapshot', sendIndex: 1 }),
+  ]);
+  expect(logs.filter((entry) => entry.event === 'request.upstream_result')).toEqual([
+    expect.objectContaining({ event: 'request.upstream_result', sendIndex: 0 }),
+    expect.objectContaining({ event: 'request.upstream_result', sendIndex: 1 }),
+  ]);
+});
+
 test('debug fetch preserves the thrown transport error', async () => {
   const logs: ServerLog[] = [];
   const failure = Object.assign(new Error('offline'), { code: 'ConnectionRefused' });

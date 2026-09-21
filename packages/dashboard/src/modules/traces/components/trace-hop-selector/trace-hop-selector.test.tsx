@@ -9,6 +9,7 @@ const attempt = (label: string, attemptIndex: number, status: TraceHopChip['stat
   label,
   kind: 'attempt',
   attemptIndex,
+  sendIndex: undefined,
   status,
 });
 

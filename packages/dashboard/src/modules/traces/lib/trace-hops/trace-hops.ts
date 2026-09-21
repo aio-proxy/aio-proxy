@@ -16,6 +16,7 @@ export interface TraceHopChip {
   readonly label: string;
   readonly kind: 'inbound' | 'attempt';
   readonly attemptIndex: number | undefined;
+  readonly sendIndex: number | undefined;
   readonly status: TraceHopStatus;
 }
 
@@ -64,6 +65,7 @@ export const toTraceHopChips = (input: {
       label: trace.session?.source ?? trace.inboundProtocol,
       kind: 'inbound',
       attemptIndex: undefined,
+      sendIndex: undefined,
       status: hopStatus(trace, isFailedTrace(trace)),
     },
     // index 缺失的 attempt span 排在最后，并退回 spanId 做 id：抓包里对不上号，但仍要看得见这一跳。
@@ -76,12 +78,13 @@ export const toTraceHopChips = (input: {
           label: stringAttribute(span, traceAttribute.providerId) ?? id,
           kind: 'attempt',
           attemptIndex,
+          sendIndex: undefined,
           status: hopStatus(span, isFailedSpan(span)),
         };
       },
     ),
   ];
-  return trace.endedAt === null ? mergeLiveWireHops(chips, wireHops) : chips;
+  return mergeWireHops(chips, wireHops, trace.endedAt === null);
 };
 
 const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
@@ -99,22 +102,31 @@ const wireHopStatus = (hop: DashboardTraceWireHop): TraceHopStatus => {
   return 'running';
 };
 
-const mergeLiveWireHops = (
+const mergeWireHops = (
   chips: readonly TraceHopChip[],
   wireHops: readonly DashboardTraceWireHop[] | undefined,
+  live: boolean,
 ): readonly TraceHopChip[] => {
   if (wireHops === undefined || wireHops.length === 0) return chips;
   const seen = new Set(chips.map((chip) => chip.id));
+  const knownAttempts = new Set(chips.map((chip) => chip.attemptIndex));
   const extras = wireHops
-    .filter((hop) => hop.kind === 'attempt' && !seen.has(hop.id))
+    .filter((hop) => hop.kind === 'attempt' && !seen.has(hop.id) && (live || knownAttempts.has(hop.attemptIndex)))
     .map((hop): TraceHopChip => ({
       id: hop.id,
       label: hop.providerId ?? hop.id,
       kind: 'attempt',
       attemptIndex: hop.attemptIndex,
+      sendIndex: hop.sendIndex,
       status: wireHopStatus(hop),
     }));
   if (extras.length === 0) return chips;
   const inbound = chips[0]!;
-  return [inbound, ...sortBy([...chips.slice(1), ...extras], [(chip) => chip.attemptIndex ?? Number.MAX_SAFE_INTEGER])];
+  return [
+    inbound,
+    ...sortBy(
+      [...chips.slice(1), ...extras],
+      [(chip) => chip.attemptIndex ?? Number.MAX_SAFE_INTEGER, (chip) => chip.sendIndex ?? 0],
+    ),
+  ];
 };

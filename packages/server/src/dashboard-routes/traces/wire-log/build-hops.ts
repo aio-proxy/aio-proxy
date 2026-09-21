@@ -32,6 +32,7 @@ export type HopDraft = {
   readonly id: string;
   readonly kind: 'inbound' | 'attempt';
   attemptIndex?: number;
+  sendIndex?: number;
   providerId?: string;
   modelId?: string;
   method?: string;
@@ -59,7 +60,11 @@ export function createHopDrafts(): HopDrafts {
 export function finalizeHops(drafts: HopDrafts): DashboardTraceWireHop[] {
   const ordered = sortBy(
     [...drafts.values()],
-    [(draft) => (draft.kind === 'inbound' ? 0 : 1), (draft) => draft.attemptIndex ?? 0],
+    [
+      (draft) => (draft.kind === 'inbound' ? 0 : 1),
+      (draft) => draft.attemptIndex ?? 0,
+      (draft) => draft.sendIndex ?? 0,
+    ],
   );
   return ordered.map(finalizeHop);
 }
@@ -181,10 +186,18 @@ function inboundHop(drafts: HopDrafts): HopDraft {
 
 function attemptHop(drafts: HopDrafts, event: WireEvent): HopDraft | undefined {
   const attemptIndex = numberField(event, 'attemptIndex');
-  // attemptIndex 是这一跳的唯一身份；没有它就无处归类，只能丢掉这一行。
+  // attemptIndex 是这一跳的身份；没有它就无处归类，只能丢掉这一行。
+  // 同一次 attempt 里 SDK / raw retry 会再发 HTTP，sequence 从 0 重来，必须再按 sendIndex 拆开。
   if (attemptIndex === undefined) return undefined;
-  const id = `attempt-${attemptIndex}`;
-  const hop = drafts.get(id) ?? { id, kind: 'attempt' as const, attemptIndex };
+  const sendIndex = numberField(event, 'sendIndex');
+  const id =
+    sendIndex === undefined || sendIndex === 0 ? `attempt-${attemptIndex}` : `attempt-${attemptIndex}.${sendIndex}`;
+  const hop = drafts.get(id) ?? {
+    id,
+    kind: 'attempt' as const,
+    attemptIndex,
+    ...(sendIndex === undefined ? {} : { sendIndex }),
+  };
   hop.providerId ??= stringField(event, 'providerId');
   hop.modelId ??= stringField(event, 'modelId');
   drafts.set(id, hop);
@@ -208,7 +221,12 @@ function finalizeHop(draft: HopDraft): DashboardTraceWireHop {
   return {
     id: draft.id,
     kind: draft.kind,
-    ...defined({ attemptIndex: draft.attemptIndex, providerId: draft.providerId, modelId: draft.modelId }),
+    ...defined({
+      attemptIndex: draft.attemptIndex,
+      sendIndex: draft.sendIndex,
+      providerId: draft.providerId,
+      modelId: draft.modelId,
+    }),
     ...(request === undefined ? {} : { request }),
     ...(response === undefined ? {} : { response }),
   };

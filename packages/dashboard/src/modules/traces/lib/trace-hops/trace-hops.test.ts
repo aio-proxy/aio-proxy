@@ -38,6 +38,7 @@ test('puts inbound first and labels it with the session source', () => {
     label: 'claude-cli',
     kind: 'inbound',
     attemptIndex: undefined,
+    sendIndex: undefined,
     status: 'success',
   });
 });
@@ -46,7 +47,14 @@ test('falls back to the inbound protocol when the trace has no session', () => {
   const chips = toTraceHopChips({ spans: [], trace: { ...trace, session: undefined } });
 
   expect(chips).toEqual([
-    { id: 'inbound', label: 'anthropic-messages', kind: 'inbound', attemptIndex: undefined, status: 'success' },
+    {
+      id: 'inbound',
+      label: 'anthropic-messages',
+      kind: 'inbound',
+      attemptIndex: undefined,
+      sendIndex: undefined,
+      status: 'success',
+    },
   ]);
 });
 
@@ -98,6 +106,7 @@ test('falls back to the hop id as label when the attempt span has no provider id
     label: 'attempt-1',
     kind: 'attempt',
     attemptIndex: 1,
+    sendIndex: undefined,
     status: 'success',
   });
 });
@@ -235,6 +244,24 @@ test('keeps 4xx and cancelled wire hops out of the streamed running state', () =
     ],
   });
   expect(cancelled[1]?.status).toBe('cancelled');
+});
+
+test('keeps extra HTTP sends of a known attempt after the trace has settled', () => {
+  const chips = toTraceHopChips({
+    spans: [
+      createSpan({
+        attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.provider.id': 'anthropic-primary' },
+      }),
+    ],
+    trace,
+    wireHops: [
+      { id: 'attempt-0', kind: 'attempt', attemptIndex: 0, providerId: 'anthropic-primary' },
+      { id: 'attempt-0.1', kind: 'attempt', attemptIndex: 0, sendIndex: 1, providerId: 'anthropic-primary' },
+    ],
+  });
+
+  expect(chips.map((chip) => chip.id)).toEqual(['inbound', 'attempt-0', 'attempt-0.1']);
+  expect(chips[2]).toMatchObject({ sendIndex: 1, label: 'anthropic-primary' });
 });
 
 test('keeps the span chip when the same hop already exists in the wire capture', () => {
