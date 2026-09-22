@@ -25,6 +25,16 @@ describe('redactSecrets', () => {
     });
   });
 
+  test('leaves a non-otel url field visible', () => {
+    expect(
+      redactSecrets({
+        plugins: [{ options: { url: 'https://plugin.example/callback' } }],
+      }),
+    ).toEqual({
+      plugins: [{ options: { url: 'https://plugin.example/callback' } }],
+    });
+  });
+
   test('masks an otel destination url and its headers', () => {
     expect(
       redactSecrets({
