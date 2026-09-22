@@ -22,7 +22,7 @@
     },
     "npm/aio-proxy": {
       "name": "aio-proxy",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "aio-proxy": "bin/aio-proxy.js",
       },
@@ -35,23 +35,23 @@
     },
     "npm/cli-darwin-arm64": {
       "name": "@aio-proxy/cli-darwin-arm64",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "npm/cli-darwin-x64": {
       "name": "@aio-proxy/cli-darwin-x64",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "npm/cli-linux-arm64": {
       "name": "@aio-proxy/cli-linux-arm64",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "npm/cli-linux-x64": {
       "name": "@aio-proxy/cli-linux-x64",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/agent-provider/opencode": {
       "name": "@aio-proxy/opencode-provider",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/agent-provider-runtime": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -66,7 +66,7 @@
     },
     "packages/agent-provider/pi": {
       "name": "@aio-proxy/pi-provider",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/agent-provider-runtime": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -82,7 +82,7 @@
     },
     "packages/agent-provider/runtime": {
       "name": "@aio-proxy/agent-provider-runtime",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/types": "workspace:*",
       },
@@ -95,7 +95,7 @@
     },
     "packages/brand": {
       "name": "@aio-proxy/brand",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "cn": "catalog:",
       },
@@ -112,7 +112,7 @@
     },
     "packages/cli": {
       "name": "@aio-proxy/cli",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/agent-provider-runtime": "workspace:*",
         "@aio-proxy/core": "workspace:*",
@@ -125,6 +125,7 @@
         "@aio-proxy/server": "workspace:*",
         "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
+        "@clack/prompts": "1.8.1",
         "@inquirer/prompts": "^8.7.1",
         "commander": "15",
         "es-toolkit": "catalog:",
@@ -139,7 +140,7 @@
     },
     "packages/core": {
       "name": "@aio-proxy/core",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/google": "catalog:",
@@ -189,7 +190,7 @@
     },
     "packages/dashboard": {
       "name": "@aio-proxy/dashboard",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/brand": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
@@ -259,7 +260,7 @@
     },
     "packages/i18n": {
       "name": "@aio-proxy/i18n",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@inlang/paraglide-js": "catalog:",
         "date-fns": "catalog:",
@@ -275,7 +276,7 @@
     },
     "packages/infra": {
       "name": "@aio-proxy/infra",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@rslib/core": "catalog:",
       },
@@ -285,7 +286,7 @@
     },
     "packages/logger": {
       "name": "@aio-proxy/logger",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@logtape/file": "2.2.4",
@@ -300,7 +301,7 @@
     },
     "packages/plugin-sdk": {
       "name": "@aio-proxy/plugin-sdk",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/shared": "workspace:*",
@@ -322,7 +323,7 @@
     },
     "packages/plugins/claude-code": {
       "name": "@aio-proxy/plugin-claude-code",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -337,7 +338,7 @@
     },
     "packages/plugins/cursor": {
       "name": "@aio-proxy/plugin-cursor",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -355,7 +356,7 @@
     },
     "packages/plugins/github-copilot": {
       "name": "@aio-proxy/plugin-github-copilot",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai": "catalog:",
@@ -372,7 +373,7 @@
     },
     "packages/plugins/google-antigravity": {
       "name": "@aio-proxy/plugin-google-antigravity",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
@@ -391,7 +392,7 @@
     },
     "packages/plugins/kimi-code": {
       "name": "@aio-proxy/plugin-kimi-code",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
@@ -407,7 +408,7 @@
     },
     "packages/plugins/muse-code": {
       "name": "@aio-proxy/plugin-muse-code",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -422,7 +423,7 @@
     },
     "packages/plugins/openai-chatgpt": {
       "name": "@aio-proxy/plugin-openai-chatgpt",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -439,7 +440,7 @@
     },
     "packages/plugins/opencode-go": {
       "name": "@aio-proxy/plugin-opencode-go",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai": "catalog:",
@@ -456,7 +457,7 @@
     },
     "packages/plugins/openrouter": {
       "name": "@aio-proxy/plugin-openrouter",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@openrouter/ai-sdk-provider": "catalog:",
@@ -471,7 +472,7 @@
     },
     "packages/plugins/xai-grok": {
       "name": "@aio-proxy/plugin-xai-grok",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/xai": "catalog:",
@@ -488,7 +489,7 @@
     },
     "packages/server": {
       "name": "@aio-proxy/server",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
@@ -523,7 +524,7 @@
     },
     "packages/shared": {
       "name": "@aio-proxy/shared",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
         "@rslib/core": "catalog:",
@@ -533,7 +534,7 @@
     },
     "packages/types": {
       "name": "@aio-proxy/types",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "es-toolkit": "catalog:",
         "zod": "catalog:",
@@ -546,7 +547,7 @@
     },
     "packages/ui": {
       "name": "@aio-proxy/ui",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@base-ui/react": "^1.8.0",
         "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -899,9 +900,9 @@
 
     "@changesets/write": ["@changesets/write@1.0.1", "", { "dependencies": { "@changesets/format": "^0.1.1", "@changesets/types": "^7.0.0", "human-id": "^4.2.0" } }, "sha512-q/ThtP9gcnEP6xlv7LrY26C2mHqdGBti/MmOVngt/M/oIGYkssmQGxPK9WzBNt2juVcH/vml2WQ+ra8LXYOTaA=="],
 
-    "@clack/core": ["@clack/core@1.4.3", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-/kr3UWNtdJfxZtPgDqUOmG2pvwlmcLGheex5yiZKdwbzZJxhV+HMNR9QNmyY5cGwTNV6LrR7Jtp+KjhUAP1qBQ=="],
+    "@clack/core": ["@clack/core@1.5.1", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-iHTrHA8MtVuLl2TfZySmcKv1qO2PoyC9Z7pfSDozEuV5vtY3/wcOPKJXlqJ5Oq2Cx5DDGQGAMVx6HZfRRoVEbQ=="],
 
-    "@clack/prompts": ["@clack/prompts@1.7.0", "", { "dependencies": { "@clack/core": "1.4.3", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A=="],
+    "@clack/prompts": ["@clack/prompts@1.8.1", "", { "dependencies": { "@clack/core": "1.5.1", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ=="],
 
     "@codemirror/autocomplete": ["@codemirror/autocomplete@6.20.3", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.17.0", "@lezer/common": "^1.0.0" } }, "sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g=="],
 
@@ -3359,6 +3360,8 @@
 
     "@base-ui/utils/reselect": ["reselect@5.2.0", "", {}, "sha512-AgZ3UOZm3YndfrJ4OYjgrT7bmCm/1iqkjvEfH/oYjzh6PD2qw4QuT3jjnXIrpdt4MTpMXclMT3lXbmRY+XRakw=="],
 
+    "@changesets/cli/@clack/prompts": ["@clack/prompts@1.7.0", "", { "dependencies": { "@clack/core": "1.4.3", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A=="],
+
     "@commitlint/cli/tinyexec": ["tinyexec@1.2.4", "", {}, "sha512-SHf/r48b7vOrjve9PxJo3MN5v5yuyjHvdUcrQffT3WXMUfnGmHDVbC4k3sHJaJTgZCwpUplIaAo5ANtMyp3YHg=="],
 
     "@commitlint/config-validator/ajv": ["ajv@8.20.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
@@ -3746,6 +3749,8 @@
     "@ai-sdk/openai-compatible/@ai-sdk/provider-utils/eventsource-parser": ["eventsource-parser@3.1.0", "", {}, "sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg=="],
 
     "@ai-sdk/xai/@ai-sdk/provider-utils/eventsource-parser": ["eventsource-parser@3.1.0", "", {}, "sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg=="],
+
+    "@changesets/cli/@clack/prompts/@clack/core": ["@clack/core@1.4.3", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-/kr3UWNtdJfxZtPgDqUOmG2pvwlmcLGheex5yiZKdwbzZJxhV+HMNR9QNmyY5cGwTNV6LrR7Jtp+KjhUAP1qBQ=="],
 
     "@dotenvx/dotenvx/execa/get-stream": ["get-stream@6.0.1", "", {}, "sha512-ts6Wi+2j3jQjqi70w5AlN8DFnkSwC+MqmxEzdEALB2qXZYV3X/b1CTfgPLGJNMeAWxdPfU8FO1ms3NUfaHCPYg=="],
 

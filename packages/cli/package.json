@@ -26,6 +26,7 @@
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/shared": "workspace:*",
     "@aio-proxy/types": "workspace:*",
+    "@clack/prompts": "1.8.1",
     "@inquirer/prompts": "^8.7.1",
     "commander": "15",
     "es-toolkit": "catalog:",
