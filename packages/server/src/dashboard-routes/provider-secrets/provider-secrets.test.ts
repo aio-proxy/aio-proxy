@@ -37,6 +37,30 @@ describe('redactSecrets', () => {
     });
   });
 
+  test('leaves a plugin-nested server.otel destination url visible', () => {
+    expect(
+      redactSecrets({
+        plugins: [
+          {
+            options: {
+              server: { otel: { destinations: [{ url: 'https://plugin.example/nested-otel' }] } },
+            },
+          },
+        ],
+        server: { otel: { destinations: [{ url: 'https://collector.example/v1/traces' }] } },
+      }),
+    ).toEqual({
+      plugins: [
+        {
+          options: {
+            server: { otel: { destinations: [{ url: 'https://plugin.example/nested-otel' }] } },
+          },
+        },
+      ],
+      server: { otel: { destinations: [{ url: '****' }] } },
+    });
+  });
+
   test('masks an otel destination url and its headers', () => {
     expect(
       redactSecrets({

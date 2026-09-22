@@ -36,6 +36,7 @@ export const redactSecrets = (
   insideSecretBoundary = false,
   inOtel = false,
   inOtelDestinations = false,
+  inRootServer = false,
 ): unknown => {
   if (typeof value === 'string') {
     if (inOtelDestinations && key === 'url') {
@@ -60,7 +61,7 @@ export const redactSecrets = (
   if (isPlainObject(value)) {
     return mapValues(value, (entryValue, entryKey) => {
       const keyStr = typeof entryKey === 'string' ? entryKey : '';
-      const nextOtel = inOtel || (key === 'server' && keyStr === 'otel');
+      const nextOtel = inOtel || (inRootServer && keyStr === 'otel');
       const nextDestinations = inOtelDestinations || (nextOtel && keyStr === 'destinations');
       return redactSecrets(
         entryValue,
@@ -70,6 +71,7 @@ export const redactSecrets = (
           ['proxy', 'proxybackup'].includes(keyStr.toLowerCase()),
         nextOtel,
         nextDestinations,
+        key === '' && keyStr === 'server',
       );
     });
   }
