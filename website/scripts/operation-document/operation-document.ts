@@ -23,11 +23,34 @@ export class OperationProjectionError extends Error {
 const isDataObject = (value: unknown): value is DataObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-function hasReferenceMarker(value: unknown, visited = new WeakSet<object>()): boolean {
+type ReferenceScanContext = 'openapi' | 'schema' | 'schema-map';
+
+const SCHEMA_DATA_FIELDS = new Set(['default', 'example', 'examples', 'const', 'enum']);
+const SCHEMA_MAP_FIELDS = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas']);
+
+// Reference Objects and literal payload data both allow a `$ref` key, so keep schema maps and data fields distinct.
+function hasReferenceMarker(
+  value: unknown,
+  visited = new WeakSet<object>(),
+  context: ReferenceScanContext = 'openapi',
+): boolean {
   if (typeof value !== 'object' || value === null || visited.has(value)) return false;
   visited.add(value);
-  if (!Array.isArray(value) && Object.hasOwn(value, '$ref')) return true;
-  return Object.values(value).some((item) => hasReferenceMarker(item, visited));
+  if (isDataObject(value) && typeof value.$ref === 'string') return true;
+  return Object.entries(value).some(([key, item]) => {
+    if (context !== 'schema-map' && (key === 'example' || key === 'value')) return false;
+    if (context === 'schema' && SCHEMA_DATA_FIELDS.has(key)) return false;
+
+    const childContext =
+      context === 'schema-map'
+        ? 'schema'
+        : key === 'schema'
+          ? 'schema'
+          : key === 'schemas' || key === 'definitions' || (context === 'schema' && SCHEMA_MAP_FIELDS.has(key))
+            ? 'schema-map'
+            : context;
+    return hasReferenceMarker(item, visited, childContext);
+  });
 }
 
 function findOperation(document: OpenApiDocument, operationId: string): SelectedOperation {
@@ -83,11 +106,17 @@ function mergeParameters(pathItem: DataObject, operation: DataObject): unknown[]
 
 function projectSelectedOperation(selected: SelectedOperation): DataObject {
   const projected = { ...selected.operation };
+  for (const field of ['summary', 'description'] as const) {
+    if (!Object.hasOwn(projected, field) && Object.hasOwn(selected.pathItem, field)) {
+      projected[field] = selected.pathItem[field];
+    }
+  }
   const parameters = mergeParameters(selected.pathItem, selected.operation);
   if (parameters !== undefined) projected.parameters = parameters;
   if (!Object.hasOwn(projected, 'servers') && Object.hasOwn(selected.pathItem, 'servers')) {
     projected.servers = selected.pathItem.servers;
   }
+  if (Array.isArray(projected.tags) && projected.tags.length > 1) projected.tags = projected.tags.slice(0, 1);
   return projected;
 }
 
@@ -95,7 +124,7 @@ export function projectOperation(document: OpenApiDocument, operationId: string)
   if (hasReferenceMarker(document)) throw new OperationProjectionError('Unresolved reference marker');
 
   const selected = findOperation(document, operationId);
-  const { paths: _paths, ...root } = document;
+  const { paths: _paths, webhooks: _webhooks, ...root } = document as OpenApiDocument & { webhooks?: unknown };
   return {
     ...root,
     paths: { [selected.path]: { [selected.method]: projectSelectedOperation(selected) } },
