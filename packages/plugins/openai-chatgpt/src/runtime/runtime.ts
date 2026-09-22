@@ -42,6 +42,7 @@ export async function createOpenAIChatGPTRuntime(
     realtime: createOpenAIChatGPTRealtime(context.credentials, {
       fetch: context.fetch,
       proxy: context.proxy ?? null,
+      accountOptions: context.options,
     }),
     // Defensive: image dispatch resolves with `capability` absent, so this guard
     // exists to keep an embedding or audio request off the responses/image
