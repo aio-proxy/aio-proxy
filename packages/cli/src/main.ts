@@ -24,6 +24,7 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
+import { PromptCancelledError } from './ui';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
@@ -324,6 +325,7 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
 };
 
 export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
+  if (err instanceof PromptCancelledError) return { message: '' };
   if (err instanceof GrokAuthError) {
     switch (err.code) {
       case 'login_required':
