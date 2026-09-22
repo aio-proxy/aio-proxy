@@ -1,9 +1,20 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as ReactTable from '@tanstack/react-table';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render as renderRtl, screen, within } from '@testing-library/react';
+
+import { queryKeys } from '@/lib/query-keys';
+import { providerStub } from '@/modules/providers/lib/provider-fixtures';
 
 import { TracesTable } from './traces-table';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 
 const trace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
@@ -169,5 +180,32 @@ describe('traces table', () => {
 
     expect(useTable.mock.calls.at(-1)?.[0].data).toBe(firstTableData);
     useTable.mockRestore();
+  });
+
+  test('renders a known Provider by its display name and keeps the ID on the hover title', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(queryKeys.providers, {
+      providers: [providerStub({ id: 'provider-a', name: 'Carpool' })],
+      routingRevision: '1',
+    });
+    client.setQueryData(queryKeys.plugins, { plugins: [] });
+    renderRtl(
+      <QueryClientProvider client={client}>
+        <TracesTable
+          data={{ items: [trace] }}
+          isFetching={false}
+          pageSize={20}
+          newItemsCount={0}
+          onAcceptNewItems={rs.fn()}
+          onShowSizeChange={rs.fn()}
+          onPrevious={rs.fn()}
+          onNext={rs.fn()}
+          onSelect={rs.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTitle('provider-a')).toHaveTextContent('Carpool');
+    expect(screen.queryByText('provider-a')).toBeNull();
   });
 });

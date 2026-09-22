@@ -1,8 +1,16 @@
 import type { DashboardTraceDetail, DashboardTraceSpan, DashboardTraceWireResponse } from '@aio-proxy/types';
 import { beforeEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as renderRtl, screen } from '@testing-library/react';
 
 import { TraceDetailTabs } from './trace-detail-tabs';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 
 const mocks = rs.hoisted(() => ({
   wire: undefined as DashboardTraceWireResponse | undefined,

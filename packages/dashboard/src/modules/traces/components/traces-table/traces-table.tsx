@@ -6,6 +6,7 @@ import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
 import { Pagination } from '@/components/data-table/pagination';
+import { ProviderIdLabel } from '@/components/provider-id-label';
 
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
@@ -70,9 +71,12 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
   {
     accessorKey: 'finalProviderId',
     header: () => m['dashboard.traces.provider_id'](),
-    cell: ({ row }) => (
-      <span className="block max-w-16 truncate">{row.original.finalProviderId ?? TRACE_PLACEHOLDER}</span>
-    ),
+    cell: ({ row }) =>
+      row.original.finalProviderId === undefined ? (
+        TRACE_PLACEHOLDER
+      ) : (
+        <ProviderIdLabel providerId={row.original.finalProviderId} className="max-w-48" />
+      ),
   },
   {
     accessorKey: 'finalHttpStatus',

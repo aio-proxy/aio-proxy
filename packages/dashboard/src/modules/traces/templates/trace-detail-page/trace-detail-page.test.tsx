@@ -2,13 +2,21 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceDetail, DashboardTracePercentile } from '@aio-proxy/types';
 import { afterEach, beforeEach, describe, expect, rs, test } from '@rstest/core';
 import * as reactQuery from '@tanstack/react-query' with { rstest: 'importActual' };
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as renderRtl, screen, waitFor, within } from '@testing-library/react';
 
 import { queryKeys } from '@/lib/query-keys';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TraceDetailPage } from './trace-detail-page';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 
 const mocks = rs.hoisted(() => ({
   mode: 'terminal',

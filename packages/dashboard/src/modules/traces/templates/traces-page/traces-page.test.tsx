@@ -1,13 +1,21 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import * as reactQuery from '@tanstack/react-query' with { rstest: 'importActual' };
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as renderRtl, screen, within } from '@testing-library/react';
 
 import { queryKeys } from '@/lib/query-keys';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TracesPage } from './traces-page';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 
 const mocks = rs.hoisted(() => ({
   refetch: rs.fn(),
@@ -179,7 +187,7 @@ describe('traces page', () => {
     const terminalCells = within(
       screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
     ).getAllByRole('cell');
-    expect(within(terminalCells[4]).getByText(longProviderId)).toHaveClass('max-w-16', 'truncate');
+    expect(within(terminalCells[4]).getByTitle(longProviderId)).toHaveClass('max-w-48', 'truncate');
     expect(terminalCells[8]).toHaveTextContent('26.6K');
     expect(terminalCells[8]).toHaveTextContent('318');
     expect(terminalCells[8]).toHaveTextContent('1K');
