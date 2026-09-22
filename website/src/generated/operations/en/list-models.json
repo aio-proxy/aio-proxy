@@ -15,7 +15,7 @@
   "paths": {
     "/v1/models": {
       "get": {
-        "description": "Lists the models currently available through aio-proxy. Try It runs in your browser, so the selected server must allow cross-origin requests, and an HTTPS documentation page cannot call an HTTP server because browsers block mixed content.\n\nAgent negotiation and client_version catalogs are excluded from this page.",
+        "description": "Lists the models currently available through aio-proxy. Try It runs in your browser, so the selected server must allow cross-origin requests; browser local-network access controls may also apply. From an HTTPS documentation page, insecure remote HTTP servers are blocked as mixed content, while loopback addresses such as `http://127.0.0.1` and `http://localhost` are treated as secure local resources.\n\nAgent negotiation and client_version catalogs are excluded from this page.",
         "operationId": "listModels",
         "responses": {
           "200": {

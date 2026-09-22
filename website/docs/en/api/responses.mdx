@@ -1,6 +1,6 @@
 ---
 title: 'Create a response'
-description: "Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests, and an HTTPS documentation page cannot call an HTTP server because browsers block mixed content. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events."
+description: 'Creates an OpenAI Responses-compatible result.'
 pageType: doc-wide
 outline: false
 ---
@@ -11,7 +11,7 @@ import { ApiOperation } from '../../../src/components/api-operation';
 
 `POST /v1/responses`
 
-Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests, and an HTTPS documentation page cannot call an HTTP server because browsers block mixed content. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events.
+Creates an OpenAI Responses-compatible result.
 
 **Parameters:** `background`, `client_metadata`, `conversation`, `conversation_id`, `include`, `input`, `instructions`, `max_output_tokens`, `metadata`, `model`, `parallel_tool_calls`, `previous_response_id`, `prompt_cache_key`, `reasoning`, `service_tier`, `session_id`, `store`, `stream`, `temperature`, `text`, `tool_choice`, `tools`, `top_p`
 

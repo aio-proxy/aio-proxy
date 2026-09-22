@@ -27,7 +27,9 @@ type LocaleCatalog = {
     readonly none: string;
   };
   readonly tags: Readonly<Record<string, string>>;
-  readonly operations: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly operations: Readonly<
+    Record<string, Readonly<{ readonly summary: string } & Readonly<Record<string, string>>>>
+  >;
 };
 
 type GenerationInput = {
@@ -180,7 +182,10 @@ function page(
   catalog: LocaleCatalog,
 ): string {
   const title = localizedMessage(catalog, operation.messages.title);
-  const summary = localizedMessage(catalog, operation.messages.description);
+  const summary = catalog.operations[operation.operationId]?.summary;
+  if (summary === undefined || summary.length === 0) {
+    throw new Error(`Missing static summary for operation "${operation.operationId}"`);
+  }
   const index = compactIndex(document, operation, catalog);
 
   return `---

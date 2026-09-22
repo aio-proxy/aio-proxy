@@ -23,8 +23,13 @@ const catalogs = {
     },
     tags: { Models: 'Models', OpenAI: 'OpenAI-compatible', Anthropic: 'Anthropic-compatible' },
     operations: {
-      listModels: { title: 'List models', description: 'Lists available models.', note: 'Public models only.' },
-      createWidget: { title: 'Create a widget', description: 'Creates a widget.' },
+      listModels: {
+        title: 'List models',
+        summary: 'Short models summary.',
+        description: 'Lists available models.',
+        note: 'Public models only.',
+      },
+      createWidget: { title: 'Create a widget', summary: 'Short widget summary.', description: 'Creates a widget.' },
     },
   },
   zh: {
@@ -37,8 +42,13 @@ const catalogs = {
     },
     tags: { Models: '模型', OpenAI: 'OpenAI 兼容接口', Anthropic: 'Anthropic 兼容接口' },
     operations: {
-      listModels: { title: '列出模型', description: '列出可用模型。', note: '仅包含公开模型。' },
-      createWidget: { title: '创建小部件', description: '创建一个小部件。' },
+      listModels: {
+        title: '列出模型',
+        summary: '简短模型摘要。',
+        description: '列出可用模型。',
+        note: '仅包含公开模型。',
+      },
+      createWidget: { title: '创建小部件', summary: '简短小部件摘要。', description: '创建一个小部件。' },
     },
   },
 } as const;
@@ -156,12 +166,17 @@ describe('generateApiReferenceFiles', () => {
     expect(enPage).toContain('pageType: doc-wide\noutline: false\n---\n\nimport { ApiOperation }');
     expect(enPage).toContain('# List models');
     expect(enPage).toContain('`GET /v1/models`');
-    expect(enPage).toContain('Lists available models.');
+    expect(enPage).toContain("description: 'Short models summary.'");
+    expect(enPage).toContain('Short models summary.');
+    expect(enPage).not.toContain('Lists available models.');
     expect(enPage).toContain('**Parameters:** `limit`');
     expect(enPage).toContain('**Responses:** `200 application/json`');
     expect(enPage).not.toContain('[POST /v1/widgets](/api/create-widget)');
     expect(enPage).toContain('<ApiOperation slug="list-models" locale="en" />');
     expect(zhPage).toContain('# 列出模型');
+    expect(zhPage).toContain("description: '简短模型摘要。'");
+    expect(zhPage).toContain('简短模型摘要。');
+    expect(zhPage).not.toContain('列出可用模型。');
     expect(zhPage).toContain('**参数:** `limit`');
     expect(zhPage).toContain('**响应:** `200 application/json`');
     expect(zhPage).toContain('<ApiOperation slug="list-models" locale="zh" />');
@@ -271,6 +286,57 @@ describe('generateApiReferenceFiles', () => {
       expect(zhDescription).toMatch(/原始请求/u);
       expect(zhDescription).toMatch(/转换/u);
     }
+  });
+
+  test('qualifies mixed-content guidance while preserving loopback use in both locales', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'aio-proxy-api-reference-'));
+    const operation = {
+      classification: 'documented',
+      method: 'post',
+      path: '/v1/chat/completions',
+      operationId: 'createChatCompletion',
+      slug: 'chat-completions',
+      tag: 'OpenAI',
+      navOrder: 0,
+      messages: {
+        title: 'operations.createChatCompletion.title',
+        description: 'operations.createChatCompletion.description',
+      },
+      responses: {},
+    } as const satisfies DocumentedPublicOperation;
+
+    await generateApiReferenceFiles({
+      root,
+      check: false,
+      operations: [operation],
+      catalogs: { en, zh },
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'Fixture API', version: 'latest' },
+        paths: {
+          '/v1/chat/completions': {
+            post: { operationId: 'createChatCompletion', responses: { '200': { description: 'OK' } } },
+          },
+        },
+      } as OpenApiDocument,
+    });
+
+    const enDocument = JSON.parse(await read(root, 'src/generated/operations/en/chat-completions.json'));
+    const zhDocument = JSON.parse(await read(root, 'src/generated/operations/zh/chat-completions.json'));
+    const enDescription = enDocument.paths['/v1/chat/completions'].post.description as string;
+    const zhDescription = zhDocument.paths['/v1/chat/completions'].post.description as string;
+
+    expect(enDescription).toContain('must allow cross-origin requests');
+    expect(enDescription).toContain('browser local-network access controls may also apply');
+    expect(enDescription).toContain('insecure remote HTTP servers are blocked as mixed content');
+    expect(enDescription).toContain('`http://127.0.0.1` and `http://localhost` are treated as secure local resources');
+    expect(enDescription).not.toContain('cannot call an HTTP server');
+
+    expect(zhDescription).toContain('必须允许跨源请求');
+    expect(zhDescription).toContain('浏览器的本地网络访问控制也可能适用');
+    expect(zhDescription).toContain('不安全的远程 HTTP 服务会作为混合内容被阻止');
+    expect(zhDescription).toContain('`http://127.0.0.1` 和 `http://localhost` 等回环地址会按安全的本地资源处理');
+    expect(zhDescription).not.toContain('无法调用 HTTP 服务');
   });
 
   test('removes only stale manifest-owned outputs', async () => {
