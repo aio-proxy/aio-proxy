@@ -2,6 +2,7 @@ import { DashboardSettingsMutationSchema } from '@aio-proxy/types';
 import { useEffect, useState } from 'react';
 
 import { useSettingsMutation } from '../../hooks/use-settings-mutation';
+import { SettingsOtelGroup } from '../settings-otel-group';
 import { SettingsAccessConfirmationDialog } from './settings-access-confirmation-dialog';
 import { SettingsApiKeysGroup } from './settings-api-keys-group';
 import type { PendingAccessChange, SettingsFormProps, SettingsSave } from './settings-form-contract';
@@ -59,6 +60,7 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings }) => {
       />
       <SettingsApiKeysGroup disabled={mutation.isPending} form={form} settings={settings} onSave={save} />
       <SettingsLogsGroup disabled={mutation.isPending} form={form} settings={settings} onSave={save} />
+      <SettingsOtelGroup disabled={mutation.isPending} settings={settings} onSave={save} />
       <SettingsMutationStatus data={mutation.data} isError={mutation.isError} />
       <SettingsAccessConfirmationDialog
         open={pendingAccess !== undefined}
