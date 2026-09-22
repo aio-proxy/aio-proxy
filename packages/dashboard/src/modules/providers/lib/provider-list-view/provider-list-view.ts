@@ -1,5 +1,7 @@
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 
+import { providerDisplayName } from '@/lib/provider-display-name';
+
 export type ProviderAvailabilityFilter = 'all' | 'available' | 'unavailable';
 export type ProviderEnablementFilter = 'all' | 'enabled' | 'disabled';
 export type ProviderKindFilter = 'all' | 'oauth' | 'api' | 'ai-sdk';
@@ -29,13 +31,6 @@ export const isDegradedProvider = (provider: DashboardProviderSummary): boolean 
   (provider.state.diagnostic !== undefined && invalidConfigDiagnosticCodes.has(provider.state.diagnostic.code));
 
 export const canEditProvider = (provider: DashboardProviderSummary): boolean => !isDegradedProvider(provider);
-
-/**
- * The configured name wins; an OAuth account that was never named falls back to its account label
- * (an email in practice). The Provider ID is the last resort and is otherwise only a hover title.
- */
-export const providerDisplayName = (provider: DashboardProviderSummary): string =>
-  provider.name ?? provider.accountLabel ?? provider.id;
 
 // Absent values coalesce to the schema defaults so a card without explicit routing sorts predictably.
 const effectivePriority = (provider: DashboardProviderSummary): number => provider.priority ?? 0;

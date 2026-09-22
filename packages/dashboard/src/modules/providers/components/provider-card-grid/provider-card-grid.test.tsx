@@ -3,9 +3,9 @@ import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+import { providerStub } from '@/lib/provider-fixtures';
 import { queryKeys } from '@/lib/query-keys';
 
-import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCardGrid } from './provider-card-grid';
 
 const routingMocks = rs.hoisted(() => ({ mutate: rs.fn() }));

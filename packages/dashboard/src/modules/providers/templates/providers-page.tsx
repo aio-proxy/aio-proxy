@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { PageContainer } from '@/components/page-container';
 
 import { ProviderCardGrid } from '../components/provider-card-grid';
-import { providersQueryOptions } from '../services/providers-service';
+import { providersQueryOptions } from '../services/providers-query';
 
 interface ProvidersPageProps {
   readonly focusProviderId?: string;

@@ -1,13 +1,22 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceDetail, DashboardTracePercentile } from '@aio-proxy/types';
 import { afterEach, beforeEach, describe, expect, rs, test } from '@rstest/core';
 import * as reactQuery from '@tanstack/react-query' with { rstest: 'importActual' };
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as renderRtl, screen, waitFor, within } from '@testing-library/react';
 
 import { queryKeys } from '@/lib/query-keys';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TraceDetailPage } from './trace-detail-page';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 
 const mocks = rs.hoisted(() => ({
   mode: 'terminal',
@@ -277,6 +286,7 @@ describe('trace detail page', () => {
     expect(currentBreadcrumb).toHaveAttribute('aria-current', 'page');
     expect(currentBreadcrumb).toHaveTextContent(traceId);
     expect(currentBreadcrumb).toHaveTextContent(/Failure|失败/u);
+    expect(within(header).getByRole('heading', { level: 1, name: 'aio_proxy.request' })).toBeInTheDocument();
 
     fireEvent.click(within(header).getByRole('button', { name: /Copy Trace ID|复制追踪 ID/u }));
     await waitFor(() => expect(mocks.writeText).toHaveBeenCalledWith(traceId));
@@ -383,5 +393,6 @@ describe('trace detail page', () => {
     mocks.mode = mode;
     render(<TraceDetailPage traceId={traceId} />);
     expect(screen.getByText(expected)).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: m['dashboard.traces.detail_title']() })).toBeInTheDocument();
   });
 });

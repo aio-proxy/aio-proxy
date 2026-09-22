@@ -2,16 +2,14 @@ import { m } from '@aio-proxy/i18n';
 import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 import { CardDescription } from '@aio-proxy/ui/components/card';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
-import { cn } from '@aio-proxy/ui/lib/utils';
 import { Link } from '@tanstack/react-router';
-import { AlertTriangle } from 'lucide-react';
 import type React from 'react';
 
-import { PROVIDER_FRAME_SIZE, PROVIDER_KIND_LABEL } from '../../lib/constants';
-import { providerDisplayName } from '../../lib/provider-list-view';
-import { ProviderAvatar } from '../provider-avatar';
+import { ProviderMark } from '@/components/provider-mark';
+import { providerDisplayName } from '@/lib/provider-display-name';
+
+import { PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { ProviderProtocolLabels } from '../provider-protocol-labels';
-import { ProviderProtocolStack } from '../provider-protocol-stack';
 
 interface ProviderCardIdentityProps {
   readonly provider: DashboardProviderSummary;
@@ -42,25 +40,7 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
     // card's own left edge instead of being indented under the name by the icon's column.
     <>
       <div className="flex min-w-0 items-center gap-2">
-        {provider.kind === 'invalid' ? (
-          <AlertTriangle
-            style={{ width: PROVIDER_FRAME_SIZE, height: PROVIDER_FRAME_SIZE }}
-            className="shrink-0 text-destructive"
-            aria-hidden="true"
-          />
-        ) : provider.kind === ProviderKind.Api && provider.protocols.length > 0 ? (
-          <ProviderProtocolStack
-            protocols={provider.protocols}
-            className={cn('shrink-0', provider.enabled === false && 'grayscale')}
-          />
-        ) : (
-          <ProviderAvatar
-            name={name}
-            icon={pluginIcon}
-            size={PROVIDER_FRAME_SIZE}
-            className={cn(provider.enabled === false && 'grayscale')}
-          />
-        )}
+        <ProviderMark provider={provider} pluginIcon={pluginIcon} />
 
         {/* `::after` stretches this link over the whole card, so the card is clickable without being
             a nested-interactive button. The controls sit at `z-10` and stay above it. */}

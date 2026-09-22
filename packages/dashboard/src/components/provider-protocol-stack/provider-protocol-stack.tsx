@@ -3,8 +3,7 @@ import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
 
 import { ProtocolLabel } from '@/components/protocol-label';
-
-import { PROVIDER_FRAME_SIZE, PROVIDER_ICON_INSET } from '../../lib/constants';
+import { PROVIDER_FRAME_SIZE, PROVIDER_ICON_INSET } from '@/lib/provider-frame';
 
 const MAX_VISIBLE = 3;
 const ICON_SIZE = Math.round(PROVIDER_FRAME_SIZE * PROVIDER_ICON_INSET);

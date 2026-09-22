@@ -2,7 +2,8 @@ import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type React from 'react';
 
-import { providerStub } from '../../lib/provider-fixtures';
+import { providerStub } from '@/lib/provider-fixtures';
+
 import { ProviderQuotaDialog } from './provider-quota-dialog';
 import { ProviderQuotaResetButton } from './provider-quota-reset-button';
 import { ProviderQuotaRing } from './provider-quota-ring';

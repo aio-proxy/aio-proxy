@@ -1,7 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { cn } from '@aio-proxy/ui/lib/utils';
-import { CircleAlert } from 'lucide-react';
 
 import { formatDuration } from '@/lib/format-duration';
 
@@ -38,9 +37,8 @@ export const TraceWaterfallRow: React.FC<TraceWaterfallRowProps> = ({ row, selec
       onClick={() => onSelect(row.spanId)}
     >
       <span className="flex min-w-0 items-center gap-1" style={{ paddingInlineStart: `${row.depth * 14}px` }}>
-        {/* 失败不能只靠柱子的颜色：色觉障碍和打印都丢信息，所以图标 + 读屏文案各补一份。 */}
-        {failed && <CircleAlert className="size-3.5 shrink-0 text-chart-error" aria-hidden="true" />}
         <span className="truncate">{row.name}</span>
+        {/* 柱子只靠颜色区分失败，读屏还需要一份文案。 */}
         {failed && <span className="sr-only">{m['dashboard.traces.failure']()}</span>}
       </span>
       <span className="relative h-2.5">

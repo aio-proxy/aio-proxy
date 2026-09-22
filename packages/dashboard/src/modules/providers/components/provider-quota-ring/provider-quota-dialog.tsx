@@ -12,13 +12,13 @@ import {
 import { RotateCw } from 'lucide-react';
 import type React from 'react';
 
+import { ProviderAvatar } from '@/components/provider-avatar';
 import { resolveDashboardText } from '@/lib/localized-text';
+import { providerDisplayName } from '@/lib/provider-display-name';
+import { PROVIDER_DIALOG_FRAME_SIZE } from '@/lib/provider-frame';
 
-import { PROVIDER_DIALOG_FRAME_SIZE } from '../../lib/constants';
-import { providerDisplayName } from '../../lib/provider-list-view';
 import { applicableQuotaItems } from '../../lib/quota-view';
 import type { ProviderQuotaResult } from '../../services/provider-quota-service';
-import { ProviderAvatar } from '../provider-avatar';
 import { ProviderQuotaItem } from './provider-quota-item';
 import { ProviderQuotaResetButton } from './provider-quota-reset-button';
 

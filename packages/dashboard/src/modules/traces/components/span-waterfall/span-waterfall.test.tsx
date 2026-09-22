@@ -150,6 +150,7 @@ test('marks a 4xx root Span failed even though its OTel status is UNSET', () => 
   );
 
   expect(screen.getByTestId('trace-span').textContent).toContain(m['dashboard.traces.failure']());
+  expect(screen.getByTestId('trace-span').querySelector('svg')).toBeNull();
 });
 
 test('scales ruler ticks to the whole trace, not to the root Span duration', () => {

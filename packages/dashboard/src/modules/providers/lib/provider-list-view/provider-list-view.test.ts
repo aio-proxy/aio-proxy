@@ -1,14 +1,9 @@
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
-import { providerStub } from '../provider-fixtures';
-import { canEditProvider, emptyProviderListFilters, providerDisplayName, visibleProviders } from './provider-list-view';
+import { providerStub } from '@/lib/provider-fixtures';
 
-test('prefers the configured name, then the account label, then the Provider ID', () => {
-  expect(providerDisplayName(providerStub({ id: 'kimi', name: 'Kimi', accountLabel: 'a@b.com' }))).toBe('Kimi');
-  expect(providerDisplayName(providerStub({ id: 'kimi', accountLabel: 'a@b.com' }))).toBe('a@b.com');
-  expect(providerDisplayName(providerStub({ id: 'kimi' }))).toBe('kimi');
-});
+import { canEditProvider, emptyProviderListFilters, visibleProviders } from './provider-list-view';
 
 test('a configuration-invalid Provider is not editable', () => {
   expect(canEditProvider(providerStub({ kind: 'invalid' }))).toBe(false);

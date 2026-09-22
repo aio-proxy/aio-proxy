@@ -1,9 +1,20 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as renderRtl, screen, within } from '@testing-library/react';
+
+import { providerStub } from '@/lib/provider-fixtures';
+import { queryKeys } from '@/lib/query-keys';
 
 import { SpanDetailPanel } from './span-detail-panel';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 
 const trace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
@@ -191,7 +202,27 @@ test('heads the panel with the failing HTTP status and the provider · model ide
 
   const row = within(screen.getByTestId('span-detail-panel')).getByTestId('span-status-row');
   expect(within(row).getByText('503')).toHaveClass('text-destructive');
-  expect(within(row).getByText('provider-a · claude-sonnet-4-6-20260101')).toBeTruthy();
+  expect(within(row).getByTitle('provider-a')).toHaveTextContent('provider-a');
+  expect(within(row).getByText('claude-sonnet-4-6-20260101')).toBeTruthy();
+});
+
+test('renders a known Provider by its display name in the detail header', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(queryKeys.providers, {
+    providers: [providerStub({ id: 'provider-a', name: 'Carpool' })],
+    routingRevision: '1',
+  });
+  client.setQueryData(queryKeys.plugins, { plugins: [] });
+  renderRtl(
+    <QueryClientProvider client={client}>
+      <SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />
+    </QueryClientProvider>,
+  );
+
+  const row = within(screen.getByTestId('span-status-row'));
+  expect(row.getByTitle('provider-a')).toHaveTextContent('Carpool');
+  expect(row.queryByText('provider-a')).toBeNull();
+  expect(row.getByText('claude-sonnet-4-6-20260101')).toBeTruthy();
 });
 
 test('keeps all six metric cells, filling missing values with the placeholder', () => {
