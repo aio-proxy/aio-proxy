@@ -10,7 +10,7 @@ import {
 } from '@opentelemetry/sdk-trace-node';
 
 import { logServerEvent, type ServerLogSink } from '../../server-log';
-import { httpStatusCode } from './delegator';
+import { httpStatusCode } from './http-status';
 
 // @opentelemetry/core ExportResultCode.FAILED. core is not a direct dependency.
 const ExportResultCode = { FAILED: 1 } as const;
