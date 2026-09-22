@@ -1,9 +1,9 @@
 import type { AtomicConfigFile, OAuthCapabilityReference, PluginRegistry } from '@aio-proxy/core';
 import { getLocale, m } from '@aio-proxy/i18n';
 import { type LocalizedText, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
-import { confirm, select } from '@inquirer/prompts';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { createClackPrompts, type PromptContext, type SelectAsk } from '../../ui';
 import {
   ProviderCapabilityAmbiguousError,
   ProviderCapabilityNotFoundError,
@@ -12,10 +12,7 @@ import {
 } from './errors';
 
 export type CapabilityChoice = { readonly reference: string; readonly displayName: LocalizedText };
-type CapabilitySelectPrompt = (config: {
-  readonly message: string;
-  readonly choices: readonly { readonly name: string; readonly value: string }[];
-}) => Promise<string>;
+type CapabilitySelectPrompt = (ask: SelectAsk<string>, context?: PromptContext) => Promise<string>;
 
 export function canonical(reference: OAuthCapabilityReference): string {
   return `${reference.plugin}#${reference.capability}`;
@@ -37,13 +34,13 @@ function allCapabilities(
 }
 
 export function createCapabilitySelector(
-  prompt: CapabilitySelectPrompt = select as CapabilitySelectPrompt,
+  prompt: CapabilitySelectPrompt = createClackPrompts({ input: process.stdin, output: process.stderr }).select,
 ): (choices: readonly CapabilityChoice[]) => Promise<string> {
   return (choices) =>
     prompt({
       message: m['cli.provider.login.capability_prompt'](),
       choices: choices.map(({ reference, displayName }) => ({
-        name: resolveLocalizedText(displayName, getLocale()),
+        label: resolveLocalizedText(displayName, getLocale()),
         value: reference,
       })),
     });
@@ -51,9 +48,12 @@ export function createCapabilitySelector(
 
 export function createManualOnlyConfirmation(
   signal: AbortSignal,
-  prompt: typeof confirm = confirm,
+  prompt: (
+    ask: { readonly message: string; readonly initialValue?: boolean },
+    context?: PromptContext,
+  ) => Promise<boolean> = createClackPrompts({ input: process.stdin, output: process.stderr }).confirm,
 ): (redirectUri: string) => Promise<boolean> {
-  return (redirectUri) => prompt({ message: redirectUri, default: false }, { signal });
+  return (redirectUri) => prompt({ message: redirectUri, initialValue: false }, { signal });
 }
 
 export async function chooseCapability(
