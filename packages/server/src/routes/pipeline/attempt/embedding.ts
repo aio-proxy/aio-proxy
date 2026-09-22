@@ -73,18 +73,14 @@ async function convertEmbeddingCandidate<TRequest, TContext>(
     slot.index,
   );
   slot.spanRef.current = attemptSpan;
-  const result = await inAttempt(
-    undefined,
-    () => {
-      observation.markTransportUnavailable();
-      return embedding.embed(invocation, {
-        modelId: candidate.modelId,
-        signal: rawRequest.signal,
-        logicalRequest,
-      });
-    },
-    '/v1/embeddings',
-  );
+  const result = await inAttempt(undefined, () => {
+    observation.markTransportUnavailable();
+    return embedding.embed(invocation, {
+      modelId: candidate.modelId,
+      signal: rawRequest.signal,
+      logicalRequest,
+    });
+  });
 
   // Serialize before settling so an egress refusal — OpenAI will not emit a body
   // without usage — falls back like any other provider failure instead of

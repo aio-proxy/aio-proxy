@@ -75,15 +75,12 @@ export async function attemptImageCandidate<TRequest, TContext>(
     provider.upstreamMetadata?.[candidate.modelId]?.cost,
   );
   observation.markTransportUnavailable();
-  const result = await inAttempt(
-    undefined,
-    () =>
-      image.invoke({
-        modelId: candidate.modelId,
-        invocation,
-        ...(rawRequest.signal === undefined ? {} : { signal: rawRequest.signal }),
-      }),
-    invocation.operation === 'edit' ? '/v1/images/edits' : '/v1/images/generations',
+  const result = await inAttempt(undefined, () =>
+    image.invoke({
+      modelId: candidate.modelId,
+      invocation,
+      ...(rawRequest.signal === undefined ? {} : { signal: rawRequest.signal }),
+    }),
   );
   const value = await adapter.imageJson(result, { modelId: candidate.modelId });
   const response = Response.json(value);

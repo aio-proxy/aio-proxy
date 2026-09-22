@@ -100,18 +100,14 @@ async function convertAudioCandidate<TRequest, TContext>(
   // `adapter.capability`, so they always agree by construction.
   const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
-  const result = await inAttempt(
-    undefined,
-    () => {
-      observation.markTransportUnavailable();
-      return invokeAudioTransport(invocation, transport, {
-        modelId: candidate.modelId,
-        ...(rawRequest.signal === undefined ? {} : { signal: rawRequest.signal }),
-        logicalRequest,
-      });
-    },
-    invocation.kind === 'speech' ? '/v1/audio/speech' : '/v1/audio/transcriptions',
-  );
+  const result = await inAttempt(undefined, () => {
+    observation.markTransportUnavailable();
+    return invokeAudioTransport(invocation, transport, {
+      modelId: candidate.modelId,
+      ...(rawRequest.signal === undefined ? {} : { signal: rawRequest.signal }),
+      logicalRequest,
+    });
+  });
 
   // Egress owns the media type and the transcription body shape; the pipeline
   // never inspects or infers either. It can still refuse: a format that needs
