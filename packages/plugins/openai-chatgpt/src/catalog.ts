@@ -2,7 +2,8 @@ import { type CredentialPort, type ModelDescriptor, type RuntimeFetch, zod } fro
 import { CodexLeanModelSchema } from '@aio-proxy/types';
 import { map, pipe, sortBy } from 'es-toolkit/fp';
 
-import { CHATGPT_USER_AGENT, CODEX_CLIENT_VERSION } from './codex-client';
+import { resolveChatGPTUserAgent, type ChatGPTAccountOptions } from './account-options';
+import { CODEX_CLIENT_VERSION } from './codex-client';
 import { currentCredential } from './runtime/index';
 import type { ChatGPTCredential } from './schema';
 
@@ -32,6 +33,7 @@ export async function discoverOpenAIChatGPTModels(
   credentials: CredentialPort<ChatGPTCredential>,
   signal: AbortSignal,
   fetch: RuntimeFetch = globalThis.fetch,
+  accountOptions?: Partial<ChatGPTAccountOptions>,
 ): Promise<readonly ModelDescriptor[]> {
   const credential = await currentCredential(credentials, fetch);
   const url = new URL(CODEX_MODELS_ENDPOINT);
@@ -44,7 +46,7 @@ export async function discoverOpenAIChatGPTModels(
       authorization: `Bearer ${credential.accessToken}`,
       'ChatGPT-Account-Id': credential.accountId,
       Originator: 'codex-tui',
-      'User-Agent': CHATGPT_USER_AGENT,
+      'User-Agent': resolveChatGPTUserAgent(accountOptions, null),
       'session-id': crypto.randomUUID(),
     },
     aioProxy: { traffic: 'control' },

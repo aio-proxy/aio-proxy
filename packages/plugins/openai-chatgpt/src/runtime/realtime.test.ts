@@ -87,6 +87,35 @@ test('the realtime transport injects Codex credentials and never forwards a call
   expect(sent?.get('content-type')).toBe('application/sdp');
 });
 
+test('realtime fetch and dial use the configured fixed user agent', async () => {
+  const headers: Headers[] = [];
+  const dialHeaders: Record<string, string>[] = [];
+  const options = {
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      headers.push(new Headers(new Request(input, init).headers));
+      return new Response('v=0', { status: 200 });
+    }) as typeof fetch,
+    proxy: null,
+    accountOptions: { userAgent: 'custom-agent' },
+    createWebSocket: (_url: string, init: { readonly headers: Record<string, string> }) => {
+      dialHeaders.push(init.headers);
+      return openSocketStub();
+    },
+  };
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), options);
+
+  await realtime.fetch(new Request('http://127.0.0.1:8787/v1/live', { method: 'POST', body: 'v=0' }));
+  await realtime.dial({
+    style: 'realtime-calls',
+    callId: 'call_abc',
+    headers: new Headers({ 'user-agent': 'Codex Desktop/0.155.0' }),
+    signal: new AbortController().signal,
+  });
+
+  expect(headers[0]?.get('User-Agent')).toBe('custom-agent');
+  expect(dialHeaders[0]?.['User-Agent']).toBe('custom-agent');
+});
+
 // The literal is the cross-package contract: `@aio-proxy/server`'s realtime
 // selection normalizes to the same literal (`CODEX_REALTIME_MODEL` in
 // packages/server/src/routes/realtime/model.ts) and matches with

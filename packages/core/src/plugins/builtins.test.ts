@@ -159,4 +159,9 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(cursor?.displayName ?? '', 'zh-Hans')).toBe('使用 Cursor 登录');
   expect(cursor?.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
   expect(typeof cursor?.createRuntime).toBe('function');
+
+  const chatgpt = snapshot.registry.resolveOAuth('@aio-proxy/plugin-openai-chatgpt', 'default');
+  expect(resolveLocalizedText(chatgpt?.account.options.form[0]?.label ?? '', 'zh-Hans')).toBe('User agent');
+  expect(resolveLocalizedText(chatgpt?.account.options.form[1]?.label ?? '', 'en')).toBe('User agent policy');
+  expect(resolveLocalizedText(chatgpt?.account.options.form[1]?.label ?? '', 'zh-Hans')).toBe('User agent 策略');
 });

@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import type { OAuthAdapter, PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
 import { openAIChatGPTClientId } from './rslib.config';
+import type { ChatGPTAccountOptions } from './src/account-options';
 import type { ChatGPTCredential } from './src/schema';
 
 test('build embeds the ChatGPT OAuth client ID without leaving source plaintext', async () => {
@@ -64,13 +65,13 @@ test('clean build resolves the current runtime entry and exposes Responses raw c
 
 async function registeredAdapter(
   descriptor: PluginDescriptor,
-): Promise<OAuthAdapter<Record<string, never>, ChatGPTCredential>> {
-  let adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> | undefined;
+): Promise<OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential>> {
+  let adapter: OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential> | undefined;
   await descriptor.setup(
     {
       oauth: {
         register(value) {
-          adapter = value as OAuthAdapter<Record<string, never>, ChatGPTCredential>;
+          adapter = value as OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential>;
         },
       },
       logger: {

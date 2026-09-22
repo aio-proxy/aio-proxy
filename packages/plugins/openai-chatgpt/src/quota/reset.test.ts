@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { AccountContext } from '@aio-proxy/plugin-sdk';
 
+import type { ChatGPTAccountOptions } from '../account-options';
 import type { ChatGPTCredential } from '../schema';
 import { resetOpenAIChatGPTQuota } from './reset';
 
@@ -12,7 +13,9 @@ const credential: ChatGPTCredential = {
   refreshToken: 'reset-refresh-token',
 };
 
-function context(signal = new AbortController().signal): AccountContext<ChatGPTCredential, Record<string, never>> {
+function context(
+  signal = new AbortController().signal,
+): AccountContext<ChatGPTCredential, Partial<ChatGPTAccountOptions>> {
   return {
     credentials: {
       read: async () => ({ value: credential, revision: 1 }),

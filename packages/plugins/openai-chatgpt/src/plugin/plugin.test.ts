@@ -3,17 +3,18 @@ import { expect, test } from 'bun:test';
 import type { CredentialPort, OAuthAdapter, PluginDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import openAIChatGPTPlugin from '..';
+import type { ChatGPTAccountOptions } from '../account-options';
 import type { ChatGPTCredential } from '../schema';
 
 async function adapterFrom(
   descriptor: PluginDescriptor<undefined>,
-): Promise<OAuthAdapter<Record<string, never>, ChatGPTCredential>> {
-  let registered: OAuthAdapter<Record<string, never>, ChatGPTCredential> | undefined;
+): Promise<OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential>> {
+  let registered: OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential> | undefined;
   await descriptor.setup(
     {
       oauth: {
         register(adapter) {
-          registered = adapter as unknown as OAuthAdapter<Record<string, never>, ChatGPTCredential>;
+          registered = adapter as unknown as OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential>;
         },
       },
     },

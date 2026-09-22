@@ -1,12 +1,11 @@
-import {
-  type ConfigSpec,
-  definePlugin,
-  type LocalizedText,
-  type OAuthAdapter,
-  type PluginDescriptor,
-  zod,
-} from '@aio-proxy/plugin-sdk';
+import { definePlugin, type LocalizedText, type OAuthAdapter, type PluginDescriptor, zod } from '@aio-proxy/plugin-sdk';
 
+import {
+  type ChatGPTAccountOptions,
+  type ChatGPTAccountOptionsText,
+  chatGPTAccountOptions,
+  englishAccountOptionsText,
+} from '../account-options';
 import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
 import {
@@ -41,7 +40,7 @@ function cpaExpiresAt(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export type OpenAIChatGPTPresentationText = {
+export type OpenAIChatGPTPresentationText = Partial<ChatGPTAccountOptionsText> & {
   readonly pluginLabel?: LocalizedText;
   readonly pluginDescription?: LocalizedText;
   readonly adapterLabel: LocalizedText;
@@ -51,17 +50,15 @@ export const englishPresentationText: OpenAIChatGPTPresentationText = {
   pluginLabel: 'OpenAI ChatGPT',
   pluginDescription: 'Use a ChatGPT Plus or Pro account to access models',
   adapterLabel: 'Login with ChatGPT (Plus/Pro)',
+  ...englishAccountOptionsText,
 };
 
 export function createOpenAIChatGPTPlugin(
   presentationText: OpenAIChatGPTPresentationText,
 ): PluginDescriptor<undefined> {
-  const accountOptions = {
-    schema: zod.object({}),
-    form: [],
-  } as const satisfies ConfigSpec<Record<string, never>>;
+  const accountOptions = chatGPTAccountOptions({ ...englishAccountOptionsText, ...presentationText });
 
-  const adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> = {
+  const adapter: OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential> = {
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
@@ -131,8 +128,8 @@ export function createOpenAIChatGPTPlugin(
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
-      discover: async ({ credentials, fetch, signal }) => ({
-        language: await discoverOpenAIChatGPTModels(credentials, signal, fetch),
+      discover: async ({ credentials, fetch, options, signal }) => ({
+        language: await discoverOpenAIChatGPTModels(credentials, signal, fetch, options),
         image: CHATGPT_IMAGE_MODELS,
         embedding: [],
         speech: [],

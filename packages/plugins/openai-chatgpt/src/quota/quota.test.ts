@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { AccountContext } from '@aio-proxy/plugin-sdk';
 
+import type { ChatGPTAccountOptions } from '../account-options';
 import type { ChatGPTCredential } from '../schema';
 import { readOpenAIChatGPTQuota } from './quota';
 
@@ -12,7 +13,9 @@ const credential: ChatGPTCredential = {
   refreshToken: 'quota-refresh-token',
 };
 
-function context(value: ChatGPTCredential = credential): AccountContext<ChatGPTCredential, Record<string, never>> {
+function context(
+  value: ChatGPTCredential = credential,
+): AccountContext<ChatGPTCredential, Partial<ChatGPTAccountOptions>> {
   return {
     credentials: {
       read: async () => ({ value, revision: 1 }),
