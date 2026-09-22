@@ -541,7 +541,11 @@ test('a missing otel env var is config_rejected and leaves the file unchanged', 
       body: JSON.stringify({
         otel: {
           destinations: [
-            { url: 'https://collector.example/v1/traces', headers: { Authorization: 'Bearer {{env.MISSING_OTLP}}' } },
+            {
+              url: 'https://collector.example/v1/traces',
+              contentType: 'json',
+              headers: { Authorization: 'Bearer {{env.MISSING_OTLP}}' },
+            },
           ],
         },
       }),
