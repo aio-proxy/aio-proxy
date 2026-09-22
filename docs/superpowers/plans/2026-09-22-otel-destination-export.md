@@ -538,7 +538,7 @@ Assert:
 - A server that returns 503 with `Retry-After: 0` once and then 200 receives at least two POSTs.
 - A server that returns 200 and `{"partialSuccess":{"rejectedSpans":1,"errorMessage":"secret-body"}}` does not receive a second POST for that batch. The log category is `partial_success` and the line does not contain `secret-body`.
 
-Install the partial-success diag bridge in `exporters.ts` before creating exporters. Match only the exact first diag argument `Received Partial Success response:` from `@opentelemetry/otlp-exporter-base` 0.221.0. Ignore the second argument. Emit one `partial_success` log per currently active destination, using that destination's index and origin. Forward every other diag call to the logger that was installed before this bridge. Call `diag.setLogger` once.
+Install the partial-success diag bridge in `exporters.ts` before creating exporters. Match only the exact first diag argument `Received Partial Success response:` from `@opentelemetry/otlp-exporter-base` 0.221.0. Ignore the second argument. Emit one `partial_success` log per currently active destination, using that destination's index and origin. Replace exporter response-deserialization warnings with a fixed safe message before forwarding them; forward unrelated diag calls unchanged to the logger that was installed before this bridge. Replace failed exporter callback errors with a fixed safe error before BatchSpanProcessor can re-log them, retaining status metadata only in the controlled export event. Call `diag.setLogger` once.
 
 - [ ] **Step 3: Run the test to verify it fails**
 

@@ -60,6 +60,18 @@ export function bindOtelDiag(getActive: () => readonly ActiveDestination[], logg
           }
           return;
         }
+        if (
+          message === 'OTLPExportDelegate' &&
+          args[0] === 'Export succeeded but could not deserialize response - is the response specification compliant?'
+        ) {
+          forward(previous, 'warn', ['Failed to parse trace export response']);
+          return;
+        }
+        // The JSON serializer includes the collector response in its parse error message.
+        if (typeof message === 'string' && message.startsWith('Failed to parse trace export response:')) {
+          forward(previous, 'warn', ['Failed to parse trace export response']);
+          return;
+        }
         forward(previous, 'warn', [message, ...args]);
       },
       info: (...args) => {
@@ -90,7 +102,13 @@ function reportingExporter(inner: SpanExporter, identity: DestinationIdentity, l
             ...(statusCode === undefined ? {} : { statusCode }),
           });
         }
-        resultCallback(result);
+        // BatchSpanProcessor re-logs failed results through the process-wide diag logger.
+        // Never let the OTLP error (message, response data, or request details) cross that boundary.
+        resultCallback(
+          result.code === ExportResultCode.FAILED
+            ? { code: result.code, error: new Error('OTLP trace export failed') }
+            : result,
+        );
       });
     },
     shutdown() {

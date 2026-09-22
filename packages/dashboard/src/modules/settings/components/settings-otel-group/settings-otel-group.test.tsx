@@ -259,3 +259,46 @@ test('keeps the typed endpoint when the parent leaves the dialog open', async ()
   expect(screen.getByRole('dialog')).toBeInTheDocument();
   expect(screen.getByLabelText('OTLP Traces Endpoint')).toHaveValue('https://collector.example/v1/traces');
 });
+
+for (const duplicate of [false, true]) {
+  test(`closes a stale edit after a failed-save refresh (duplicate destinations: ${duplicate})`, async () => {
+    const first = { ...destination, url: 'https://a.example/v1/traces' };
+    const last = duplicate ? destination : { ...destination, url: 'https://c.example/v1/traces' };
+    const { onSave, rerender } = renderGroup([first, destination, last]);
+    fireEvent.click(screen.getAllByRole('button', { name: m['dashboard.settings.otel_edit']() })[1]!);
+    fireEvent.change(screen.getByLabelText('OTLP Traces Endpoint'), { target: { value: 'ftp://invalid.example' } });
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.settings.otel_save']() }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+
+    // Failed writes refetch settings without invoking onSuccess.
+    rerender(<SettingsOtelGroup disabled={false} settings={view([destination, last])} onSave={onSave} />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getAllByRole('button', { name: m['dashboard.settings.otel_edit']() })[0]!);
+    fireEvent.change(screen.getByLabelText('OTLP Traces Endpoint'), { target: { value: 'https://edited.example' } });
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.settings.otel_save']() }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+    expect(onSave.mock.calls[1]?.[0]).toEqual({
+      otel: { destinations: [{ ...destination, url: 'https://edited.example' }, last] },
+    });
+  });
+}
+
+test('retains the edit draft on an unchanged failed-save refresh and allows retry', async () => {
+  const { onSave, rerender } = renderGroup([destination, destination]);
+  fireEvent.click(screen.getAllByRole('button', { name: m['dashboard.settings.otel_edit']() })[1]!);
+  fireEvent.change(screen.getByLabelText('OTLP Traces Endpoint'), { target: { value: 'ftp://invalid.example' } });
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.settings.otel_save']() }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  rerender(
+    <SettingsOtelGroup disabled={false} settings={view(structuredClone([destination, destination]))} onSave={onSave} />,
+  );
+  expect(screen.getByLabelText('OTLP Traces Endpoint')).toHaveValue('ftp://invalid.example');
+  fireEvent.change(screen.getByLabelText('OTLP Traces Endpoint'), { target: { value: 'https://edited.example' } });
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.settings.otel_save']() }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+  expect(onSave.mock.calls[1]?.[0]).toEqual({
+    otel: { destinations: [destination, { ...destination, url: 'https://edited.example' }] },
+  });
+});

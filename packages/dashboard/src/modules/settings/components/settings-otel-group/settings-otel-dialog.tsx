@@ -6,7 +6,7 @@ import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { SettingsSave } from '../settings-form/settings-form-contract';
 
@@ -96,11 +96,18 @@ export const SettingsOtelDialog: React.FC<SettingsOtelDialogProps> = ({
   onOpenChange,
   onSave,
 }) => {
+  const [originalDestinations] = useState(() => JSON.stringify(destinations));
+  // Indices cannot identify a draft after a list refresh, especially with duplicate entries.
+  const stale = editingIndex !== undefined && originalDestinations !== JSON.stringify(destinations);
+  useEffect(() => {
+    if (open && stale) onOpenChange(false);
+  }, [open, stale, onOpenChange]);
   const [defaultValues] = useState(() => initialDraft(destinations, editingIndex));
   const form = useForm({
     defaultValues,
     canSubmitWhenInvalid: true,
     onSubmit: ({ value }) => {
+      if (stale) return;
       if (value.url.trim() === '' || value.headers.some(isPartialHeader)) return;
       if (value.headers.some((_, index) => isDuplicateHeaderName(value.headers, index))) return;
       const next = toDestination(value);
@@ -117,7 +124,7 @@ export const SettingsOtelDialog: React.FC<SettingsOtelDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent closeLabel={m['common.close']()}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto" closeLabel={m['common.close']()}>
         <DialogHeader>
           <DialogTitle>
             {editing ? m['dashboard.settings.otel_edit_title']() : m['dashboard.settings.otel_add_title']()}
