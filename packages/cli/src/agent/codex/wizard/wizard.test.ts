@@ -230,6 +230,57 @@ test('defaults a first multi-source migration selector to openai', async () => {
   expect(result.migration).toEqual({ status: 'declined' });
 });
 
+test('asks which single session source to migrate', async () => {
+  let asked = false;
+  const result = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => 'aio-proxy',
+      authMode: async () => 'keep-chatgpt',
+      key: async () => ({ kind: 'none' }),
+      sources: async (groups) => {
+        asked = true;
+        expect(groups.map((group) => group.providerId)).toEqual(['custom']);
+        return [];
+      },
+      migrate: async () => {
+        throw new Error('unexpected migration question');
+      },
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'custom', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => ({ token: 'placeholder', kind: 'placeholder', verified: true }),
+    }),
+    inspectSessions: async () => ({
+      groups: [{ providerId: 'custom', active: 1, archived: 0 }],
+      blocked: [],
+      targets: [{ id: 'custom-id', sourceProviderId: 'custom', archived: false, storage: 'legacy', revision: 'r1' }],
+    }),
+    resolveCommand: async () => '/tmp/aiop',
+    commitSetup: async ({ providerId }) => ({
+      status: 'configured',
+      providerId,
+      authMode: 'keep-chatgpt',
+      credential: 'placeholder',
+      connection: 'not_checked',
+    }),
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  });
+  expect(asked).toBe(true);
+  expect(result.migration).toEqual({ status: 'empty' });
+});
+
 test('migrates readable history when inspect also reports blocked sessions', async () => {
   let migratedIds: string[] | undefined;
   const result = await runCodexWizard({

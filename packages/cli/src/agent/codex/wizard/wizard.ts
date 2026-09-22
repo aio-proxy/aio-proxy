@@ -115,10 +115,7 @@ const migrationSelection = async (
     };
   const groups = preview.groups.filter((group) => group.providerId !== providerId);
   if (groups.length === 0) return { accepted: false, result: { status: 'empty' } };
-  const selected =
-    groups.length === 1
-      ? [groups[0]!.providerId]
-      : await prompts.sources(groups, previousProviderId || groups[0]!.providerId);
+  const selected = await prompts.sources(groups, previousProviderId || groups[0]!.providerId);
   const sourceSet = new Set(selected);
   const targets = preview.targets.filter((target) => sourceSet.has(target.sourceProviderId));
   if (targets.length === 0) return { accepted: false, result: { status: 'empty' } };
