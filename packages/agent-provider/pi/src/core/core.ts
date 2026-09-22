@@ -2,6 +2,7 @@ import {
   AgentRuntimeError,
   pollDeviceAuthorization,
   readLastKnownCatalog,
+  resolveAgentModelProtocol,
   refreshAgentCatalog,
   refreshAgentCredential,
   requestDeviceAuthorization,
@@ -38,17 +39,10 @@ export function piFamilyUnavailableMessage(error: RefreshCatalogResult['error'])
   return 'aio-proxy server required';
 }
 
-const apiForModel = (id: string): PiFamilyModel['api'] => {
-  if (id.startsWith('gpt-')) return 'openai-responses';
-  if (id.startsWith('claude-')) return 'anthropic-messages';
-  if (id.startsWith('gemini-')) return 'google-generative-ai';
-  return 'openai-completions';
-};
-
 export const toPiFamilyModels = (catalog: AgentCatalogV1, endpoint: string): PiFamilyModel[] =>
   catalog.models.map((model) => {
     const contextWindow = model.context_window ?? DEFAULT_CONTEXT;
-    const api = apiForModel(model.id);
+    const api = resolveAgentModelProtocol(model.id);
     return {
       id: model.id,
       name: model.name,

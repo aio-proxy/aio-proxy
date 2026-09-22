@@ -2,6 +2,7 @@ export type { RefreshCatalogInput, RefreshCatalogResult } from './catalog-client
 export { CATALOG_REFRESH_INTERVAL_MS, refreshAgentCatalog } from './catalog-client';
 export type { ManagedInstallation } from './managed-state/managed-state';
 export { readLastKnownCatalog, readManagedInstallation } from './managed-state';
+export { resolveAgentModelProtocol, type AgentModelProtocol } from './model-protocol';
 export type { AgentRuntimeRequestOptions } from './oauth-client';
 export {
   AgentRuntimeError,
