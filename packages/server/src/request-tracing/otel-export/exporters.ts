@@ -1,5 +1,5 @@
 import type { OtelDestination } from '@aio-proxy/types';
-import { diag, type DiagLogger } from '@opentelemetry/api';
+import { diag, DiagLogLevel, type DiagLogger } from '@opentelemetry/api';
 import { OTLPTraceExporter as JsonTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPTraceExporter as ProtoTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 import {
@@ -71,7 +71,7 @@ export function bindOtelDiag(getActive: () => readonly ActiveDestination[], logg
         forward(previous, 'verbose', args);
       },
     },
-    { suppressOverrideMessage: true },
+    { logLevel: DiagLogLevel.ALL, suppressOverrideMessage: true },
   );
 }
 
