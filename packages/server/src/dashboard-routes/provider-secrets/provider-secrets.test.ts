@@ -24,6 +24,30 @@ describe('redactSecrets', () => {
       ],
     });
   });
+
+  test('masks an otel destination url and its headers', () => {
+    expect(
+      redactSecrets({
+        server: {
+          otel: {
+            destinations: [
+              {
+                url: 'https://collector.example/v1/traces?token=secret',
+                contentType: 'json',
+                headers: { Authorization: 'Bearer secret' },
+              },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      server: {
+        otel: {
+          destinations: [{ url: '****', contentType: 'json', headers: { Authorization: '****' } }],
+        },
+      },
+    });
+  });
 });
 
 describe('retainAuthoredTemplateStrings', () => {

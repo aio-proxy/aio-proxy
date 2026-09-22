@@ -32,6 +32,9 @@ const maskSecret = (key: string, value: string): string => {
 
 export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = false): unknown => {
   if (typeof value === 'string') {
+    if (key === 'url') {
+      return '****';
+    }
     return insideSecretBoundary ? '****' : maskSecret(key, value);
   }
 
