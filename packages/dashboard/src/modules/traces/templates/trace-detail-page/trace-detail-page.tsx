@@ -28,6 +28,9 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   const query = useTraceQuery(traceId);
   const percentileQuery = useTracePercentileQuery(traceId, query.data?.trace.endedAt != null);
   const [selectedSpanId, setSelectedSpanId] = useState<string>();
+  // 面包屑已经是追踪 ID。标题用根操作（POST /v1/responses），加载或失败时还没有这条名字。
+  const rootSpanName = query.data?.spans.find((span) => span.spanId === query.data?.trace.rootSpanId)?.name;
+  const title = rootSpanName ?? m['dashboard.traces.detail_title']();
   const selectedSpan =
     query.data?.spans.find((span) => span.spanId === selectedSpanId) ??
     query.data?.spans.find((span) => span.spanId === query.data?.trace.rootSpanId) ??
@@ -56,7 +59,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
 
   if (query.isLoading) {
     return (
-      <PageContainer extra={refresh} breadcrumbs={breadcrumbs}>
+      <PageContainer title={title} extra={refresh} breadcrumbs={breadcrumbs}>
         <div className="space-y-3" role="status" aria-label={m['dashboard.traces.detail_loading']()}>
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -68,7 +71,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   if (query.isError || query.data === undefined) {
     const notFound = query.error instanceof DashboardTracesRequestError && query.error.status === 404;
     return (
-      <PageContainer extra={refresh} breadcrumbs={breadcrumbs}>
+      <PageContainer title={title} extra={refresh} breadcrumbs={breadcrumbs}>
         <Empty>
           <EmptyTitle>
             {notFound ? m['dashboard.traces.not_found_title']() : m['dashboard.traces.detail_error_title']()}
@@ -96,6 +99,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
 
   return (
     <PageContainer
+      title={title}
       breadcrumbs={breadcrumbs}
       extra={
         <div className="flex flex-wrap gap-2">
