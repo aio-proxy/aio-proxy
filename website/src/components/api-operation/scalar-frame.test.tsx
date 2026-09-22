@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 
-import { expect, test } from 'bun:test';
+import { beforeEach, expect, test } from 'bun:test';
 
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -20,6 +20,10 @@ type ScalarConfiguration = {
 };
 
 let renderedConfiguration: ScalarConfiguration | undefined;
+
+beforeEach(() => {
+  renderedConfiguration = undefined;
+});
 
 function FakeApiReference({ configuration }: { readonly configuration: ScalarConfiguration }) {
   renderedConfiguration = configuration;
@@ -46,8 +50,6 @@ test('renders the operation document supplied for the current locale and slug', 
 });
 
 test('uses an explicit safe server and guards the exact outgoing request', () => {
-  renderedConfiguration = undefined;
-
   const html = renderToStaticMarkup(
     <ScalarFrame ApiReference={FakeApiReference as never} dark={false} document={{}} operationKey="en:list-models" />,
   );
