@@ -19,7 +19,7 @@
 - Leave `withGuide` at the library default. No second border, ASCII logo, gradient, or decorative emoji.
 - Interactive titles use the brand string `aio-proxy`, including when argv0 is `aiop`.
 - One `intro` per command. `renderConfigSpec`, capability selection, and the manual callback do not print their own title. Print `intro` on the first real prompt or the Codex note. No prompt and no note means no `intro` and no `outro`.
-- A success path that printed `intro` uses one `outro` as the completion sentence. Do not add a second "完成" line. Cancel calls `cancel` once and does not call `outro`. Codex cancellation that becomes Codex's own result prints neither `cancel` nor `outro`.
+- A success path that printed `intro` uses one `outro` as the completion sentence. Do not add a second "完成" line. A prompt cancel calls `cancel` once and does not call `outro`. A spinner cancel keeps the library's cancel line and does not call `cancel` again. Codex cancellation that becomes Codex's own result prints neither `cancel` nor `outro`.
 - Plugin sentences move from stdout to that `outro` only when a prompt ran: `cli.plugin.added`, `cli.provider.package_installed`, `cli.plugin.configured`, `cli.plugin.removed_secrets_purged`, `cli.plugin.removed_secrets_retained`, `cli.plugin.pruned`. With no prompt they stay on stdout.
 - Provider login stdout stays the provider id only. Its `outro` is the new short sentence, and only if a prompt ran.
 - Codex's existing multi-line result stays on stdout. Its `outro` is a new short sentence and does not repeat the result lines.
