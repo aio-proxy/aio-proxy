@@ -120,11 +120,17 @@ export function createOtelExportDelegator(options: {
           processor: options.createProcessor(destination, index),
         });
       } catch {
+        let origin = 'unknown';
+        try {
+          origin = originOf(destination);
+        } catch {
+          // A bad URL must not hide this destination's log.
+        }
         logServerEvent(options.logger, {
           event: 'otel.export',
           category: 'destination_unavailable',
           index,
-          origin: originOf(destination),
+          origin,
         });
       }
     }

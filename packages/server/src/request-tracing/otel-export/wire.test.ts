@@ -26,7 +26,7 @@ test('buffers an ended span with no destination and logs a destination the expor
     {
       event: 'otel.export',
       category: 'destination_unavailable',
-      index: -1,
+      index: 0,
       origin: 'unknown',
     },
   ]);
