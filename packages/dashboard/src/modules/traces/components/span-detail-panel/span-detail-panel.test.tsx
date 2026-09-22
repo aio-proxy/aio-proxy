@@ -209,10 +209,21 @@ test('heads the panel with the failing HTTP status and the provider · model ide
 test('renders a known Provider by its display name in the detail header', () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(queryKeys.providers, {
-    providers: [providerStub({ id: 'provider-a', name: 'Carpool' })],
+    providers: [providerStub({ id: 'provider-a', name: 'Carpool', plugin: '@aio-proxy/plugin-example' })],
     routingRevision: '1',
   });
-  client.setQueryData(queryKeys.plugins, { plugins: [] });
+  client.setQueryData(queryKeys.plugins, {
+    plugins: [
+      {
+        packageName: '@aio-proxy/plugin-example',
+        icon: 'apple',
+        builtin: true,
+        enabled: true,
+        hasOptions: false,
+        state: { status: 'ready' },
+      },
+    ],
+  });
   renderRtl(
     <QueryClientProvider client={client}>
       <SpanDetailPanel span={span} trace={trace} spans={[span]} onFilter={rs.fn()} />
@@ -220,8 +231,12 @@ test('renders a known Provider by its display name in the detail header', () => 
   );
 
   const row = within(screen.getByTestId('span-status-row'));
-  expect(row.getByTitle('provider-a')).toHaveTextContent('Carpool');
+  const label = row.getByTitle('provider-a');
+  expect(label).toHaveTextContent('Carpool');
+  expect(label.textContent).toBe('Carpool');
   expect(row.queryByText('provider-a')).toBeNull();
+  expect(row.queryByRole('img', { hidden: true })).toBeNull();
+  expect(row.queryByTestId('provider-protocol-stack')).toBeNull();
   expect(row.getByText('claude-sonnet-4-6-20260101')).toBeTruthy();
 });
 

@@ -205,7 +205,9 @@ describe('traces table', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByTitle('provider-a')).toHaveTextContent('Carpool');
+    const label = screen.getByTitle('provider-a');
+    expect(label).toHaveTextContent('Carpool');
+    expect(within(label).getByText('C')).toBeTruthy();
     expect(screen.queryByText('provider-a')).toBeNull();
   });
 });

@@ -16,7 +16,7 @@ interface SpanStatusRowProps {
 
 export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) => {
   const failed = isFailedSpan(span);
-  const { providers, plugins } = useProviderCatalog();
+  const { providers } = useProviderCatalog();
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="span-status-row">
@@ -35,7 +35,7 @@ export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) =
       <span className="min-w-0 truncate font-medium">{span.name}</span>
       <span className="ms-auto flex min-w-0 items-center justify-end gap-1 text-xs text-muted-foreground">
         {metrics.providerId === undefined ? null : (
-          <ProviderIdLabel providerId={metrics.providerId} providers={providers} plugins={plugins} />
+          <ProviderIdLabel providerId={metrics.providerId} providers={providers} mark={false} />
         )}
         {metrics.providerId !== undefined && metrics.modelId !== undefined ? <span aria-hidden="true">·</span> : null}
         {metrics.modelId === undefined ? null : <span className="min-w-0 truncate">{metrics.modelId}</span>}
