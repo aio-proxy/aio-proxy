@@ -1,15 +1,15 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { styleText } from 'node:util';
 
 import { AtomicConfigFile, configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
-import { checkbox, confirm, input, select } from '@inquirer/prompts';
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { readServiceEnvironment } from '../../service-env';
+import { canPrompt, openProductionSession, type CommandSession } from '../../ui';
 import { formatAgentToken } from '../command-auth/token-output';
 import { resolveAgentEndpoint } from '../control-plane';
+import { isCodexCancellation } from './cancellation';
 import { writeCodexAuthToken } from './command-auth';
 import { resolveCodexAuthCommand } from './command-location';
 import { readCodexDocument, validateCodexProviderId } from './config-document';
@@ -42,13 +42,6 @@ const checkCodexInstalled = async (): Promise<string> => {
     throw new Error('Codex installation is missing');
   }
   return version;
-};
-
-const isPromptCancellation = (error: unknown): boolean => {
-  if (error === null || typeof error !== 'object') return false;
-  const name = 'name' in error && typeof error.name === 'string' ? error.name : '';
-  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
-  return /abort|(?:cancel|exit)prompt|(?:cancelled|canceled)/iu.test(`${name} ${message}`);
 };
 
 const cancelledCodexResult = (location: CodexLocation, reason?: 'non_interactive'): CodexConfigureResult => ({
@@ -86,86 +79,73 @@ const createCredentialDeps = (endpoint: string) => {
   };
 };
 
-const createPrompts = (): CodexPrompts => ({
-  providerId: async (defaultId, occupied) =>
-    input({
-      message: m['cli.agent.codex.provider_id'](),
-      default: defaultId,
-      validate: (value) => {
-        try {
-          const id = validateCodexProviderId(value);
-          if (occupied.includes(id)) return m['cli.agent.codex.provider_conflict']({ providerId: id });
-          return true;
-        } catch {
-          return m['cli.agent.codex.provider_id_invalid']();
+const createPrompts = (session: CommandSession): CodexPrompts => ({
+  providerId: async (defaultId, occupied) => {
+    let message = m['cli.agent.codex.provider_id']();
+    for (;;) {
+      const value = await session.prompts.input({ message, defaultValue: defaultId });
+      try {
+        const id = validateCodexProviderId(value);
+        if (occupied.includes(id)) {
+          message = `${m['cli.agent.codex.provider_id']()}\n${m['cli.agent.codex.provider_conflict']({ providerId: id })}`;
+          continue;
         }
-      },
-    }),
-  authMode: async (defaultMode) => {
-    const value = await select({
+        return id;
+      } catch {
+        message = `${m['cli.agent.codex.provider_id']()}\n${m['cli.agent.codex.provider_id_invalid']()}`;
+      }
+    }
+  },
+  authMode: (defaultMode) =>
+    session.select({
       message: m['cli.agent.codex.auth_mode'](),
-      default: defaultMode,
+      initialValue: defaultMode,
       choices: [
         {
           value: 'keep-chatgpt' as const,
-          name: m['cli.agent.codex.auth_keep'](),
-          description: m['cli.agent.codex.auth_keep_explanation'](),
+          label: m['cli.agent.codex.auth_keep'](),
+          hint: m['cli.agent.codex.auth_keep_explanation'](),
         },
         {
           value: 'command' as const,
-          name: m['cli.agent.codex.auth_command'](),
-          description: m['cli.agent.codex.auth_command_explanation'](),
+          label: m['cli.agent.codex.auth_command'](),
+          hint: m['cli.agent.codex.auth_command_explanation'](),
         },
       ],
-    });
-    return value;
-  },
+    }),
   key: async (choices) => {
-    const value = await select({
+    const value = await session.select({
       message: m['cli.agent.codex.key_select'](),
-      choices: choices.map((choice) => ({ value: choice.id, name: choice.label })),
+      choices: choices.map((choice) => ({ label: choice.label, value: choice.id })),
     });
     return { kind: 'existing', id: value };
   },
-  sources: async (groups, previous) =>
-    checkbox({
-      message: m['cli.agent.codex.sources'](),
-      choices: groups.map((group) => ({
-        value: group.providerId,
-        name: `${group.providerId} (${group.active} active, ${group.archived} archived)`,
-        checked: group.providerId === previous,
-      })),
-      validate: (values) => (values.length > 0 ? true : m['cli.agent.codex.sources_required']()),
-    }),
-  migrate: async ({ sources, target, active, archived }) =>
-    confirm({
+  sources: async (groups, previous) => {
+    let message = m['cli.agent.codex.sources']();
+    for (;;) {
+      const values = await session.multiselect({
+        message,
+        choices: groups.map((group) => ({
+          value: group.providerId,
+          label: `${group.providerId} (${group.active} active, ${group.archived} archived)`,
+        })),
+        ...(previous === '' ? {} : { initialValues: [previous] }),
+      });
+      if (values.length > 0) return values;
+      message = `${m['cli.agent.codex.sources']()}\n${m['cli.agent.codex.sources_required']()}`;
+    }
+  },
+  migrate: ({ sources, target, active, archived }) =>
+    session.confirm({
       message: `${m['cli.agent.codex.migrate_explanation']()}\n${m['cli.agent.codex.migrate']({
         sources: sources.join(', '),
         target,
         active: String(active),
         archived: String(archived),
       })}`,
-      default: false,
+      initialValue: false,
     }),
 });
-
-const withSpinner = async <T>(message: string, task: () => Promise<T>): Promise<T> => {
-  if (process.stderr.isTTY !== true) return task();
-  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  let index = 0;
-  const paint = (): void => {
-    process.stderr.write(`\r${styleText('cyan', frames[index] ?? '⠋')} ${message}`);
-    index = (index + 1) % frames.length;
-  };
-  paint();
-  const timer = setInterval(paint, 80);
-  try {
-    return await task();
-  } finally {
-    clearInterval(timer);
-    process.stderr.write(`\r\x1b[2K`);
-  }
-};
 
 const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
 
@@ -194,9 +174,6 @@ const authContext = (location: CodexLocation, endpoint: string) => ({
       revokeAgentInstallation(boundEndpoint, installationId),
     ),
 });
-
-const pendingRecovery = async (message: () => string): Promise<boolean> =>
-  confirm({ message: message(), default: false });
 
 export async function recoverPendingCodexOperations(
   recoverConfig: (
@@ -231,8 +208,12 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
       migrationAction: 'restore',
     };
   }
-  const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
-  if (!isTTY) return cancelledCodexResult(location, 'non_interactive');
+  const interactive = canPrompt({
+    stdinIsTTY: process.stdin.isTTY === true,
+    stderrIsTTY: process.stderr.isTTY === true,
+    env: process.env,
+  });
+  if (!interactive) return cancelledCodexResult(location, 'non_interactive');
   const version = await checkCodexInstalled();
   const endpoint = await resolveAgentEndpoint();
   const currentEndpoint = async (): Promise<string> => {
@@ -241,10 +222,11 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     return current;
   };
   const authOperation = await import('./setup/journal').then(({ readAuthOperation }) => readAuthOperation(location));
-  const confirmRecovery = async (): Promise<boolean> => {
-    return pendingRecovery(() => m['cli.agent.codex.pending_recovery']());
-  };
+  const session = openProductionSession(m['cli.ui.title_codex_configure']());
+  let failure: unknown;
   try {
+    const confirmRecovery = (): Promise<boolean> =>
+      session.confirm({ message: m['cli.agent.codex.pending_recovery'](), initialValue: false });
     const recovery = await recoverPendingCodexOperations(
       (confirm) => recoverCodexConfigOperation(location, confirm),
       authOperation !== undefined,
@@ -252,30 +234,38 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
       async () => recoverCodexAuthOperation(authContext(location, await currentEndpoint()), 'complete'),
     );
     if (recovery === 'cancelled') return cancelledCodexResult(location);
+    const result = await runCodexWizard({
+      location,
+      endpoint,
+      isTTY: true,
+      prompts: createPrompts(session),
+      inspectConfig: () => inspectCodexConfig(location),
+      occupiedIds: () => occupiedIds(location),
+      inspectKeys: async () => {
+        const keys = await inspectProxyKeys(createCredentialDeps(endpoint));
+        if (keys.choices.length === 0) session.note(m['cli.agent.codex.key_none']());
+        return keys;
+      },
+      inspectSessions: (providerId) =>
+        session.spin(m['cli.agent.codex.sessions_loading'](), (signal) =>
+          inspectCodexSessions(location, providerId, signal),
+        ),
+      resolveCommand: resolveCodexAuthCommand,
+      resolveEndpoint: resolveAgentEndpoint,
+      commitSetup: async (selection) => commitCodexSetup(selection, authContext(location, await currentEndpoint())),
+      migrateSessions: (targets, providerId) =>
+        migrateCodexSessions({ location, targets, targetProviderId: providerId }),
+    });
+    if (result.status === 'cancelled') return result;
+    session.finish(m['cli.ui.outro_codex_configure']());
+    return { ...result, version, versionCompatibility: 'unverified' as const };
   } catch (error) {
-    if (isPromptCancellation(error)) return cancelledCodexResult(location);
+    if (isCodexCancellation(error)) return cancelledCodexResult(location);
+    failure = error;
     throw error;
+  } finally {
+    session.close(failure);
   }
-  const result = await runCodexWizard({
-    location,
-    endpoint,
-    isTTY: process.stdin.isTTY === true && process.stdout.isTTY === true,
-    prompts: createPrompts(),
-    inspectConfig: () => inspectCodexConfig(location),
-    occupiedIds: () => occupiedIds(location),
-    inspectKeys: async () => {
-      const keys = await inspectProxyKeys(createCredentialDeps(endpoint));
-      if (keys.choices.length === 0) console.log(styleText('dim', m['cli.agent.codex.key_none']()));
-      return keys;
-    },
-    inspectSessions: (providerId) =>
-      withSpinner(m['cli.agent.codex.sessions_loading'](), () => inspectCodexSessions(location, providerId)),
-    resolveCommand: resolveCodexAuthCommand,
-    resolveEndpoint: resolveAgentEndpoint,
-    commitSetup: async (selection) => commitCodexSetup(selection, authContext(location, await currentEndpoint())),
-    migrateSessions: (targets, providerId) => migrateCodexSessions({ location, targets, targetProviderId: providerId }),
-  });
-  return result.status === 'cancelled' ? result : { ...result, version, versionCompatibility: 'unverified' as const };
 }
 
 export async function listCodexAgent(check = false): Promise<CodexListResult> {
