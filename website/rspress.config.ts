@@ -24,6 +24,17 @@ export default defineConfig({
   plugins: [pluginMermaid()],
   builderConfig: {
     plugins: [pluginTailwindcss()],
+    tools: {
+      bundlerChain(chain, { CHAIN_ID }) {
+        if (!chain.plugins.has(CHAIN_ID.PLUGIN.REACT_FAST_REFRESH)) return;
+        chain.plugin(CHAIN_ID.PLUGIN.REACT_FAST_REFRESH).tap((options) => {
+          options[0] ??= {};
+          // Rspress widens refresh to dependencies, where Scalar's `Promise` export shadows the injected runtime call.
+          options[0].exclude = /[\\/]node_modules[\\/]/;
+          return options;
+        });
+      },
+    },
   },
   themeConfig: {
     socialLinks: [

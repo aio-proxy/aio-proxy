@@ -10,16 +10,19 @@
     "@aio-proxy/brand": "workspace:*",
     "@aio-proxy/ui": "workspace:*",
     "@rspress/core": "2.0.19",
+    "@scalar/api-reference-react": "0.9.72",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
     "@rsbuild/plugin-tailwindcss": "catalog:",
+    "@scalar/openapi-parser": "0.29.5",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "rspress-plugin-mermaid": "1.0.1",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "zod": "catalog:"
   }
 }

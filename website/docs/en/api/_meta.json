@@ -1,0 +1,12 @@
+[
+  {
+    "type": "file",
+    "name": "list-models",
+    "label": "List models"
+  },
+  {
+    "type": "file",
+    "name": "chat-completions",
+    "label": "Create chat completion"
+  }
+]
