@@ -1,8 +1,16 @@
 [
   {
+    "label": "模型",
+    "type": "section-header"
+  },
+  {
     "label": "列出模型",
     "name": "list-models",
     "type": "file"
+  },
+  {
+    "label": "OpenAI 兼容接口",
+    "type": "section-header"
   },
   {
     "label": "创建聊天补全",
@@ -13,6 +21,10 @@
     "label": "创建响应",
     "name": "responses",
     "type": "file"
+  },
+  {
+    "label": "Anthropic 兼容接口",
+    "type": "section-header"
   },
   {
     "label": "创建消息",

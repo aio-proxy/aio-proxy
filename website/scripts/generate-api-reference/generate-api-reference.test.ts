@@ -163,9 +163,10 @@ describe('generateApiReferenceFiles', () => {
     const enPage = await read(root, 'docs/en/api/list-models.mdx');
     const zhPage = await read(root, 'docs/zh/api/list-models.mdx');
     expect(enPage).toStartWith('---\n');
+    expect(enPage).toContain("title: 'List models GET /v1/models'");
     expect(enPage).toContain('pageType: doc-wide\noutline: false\n---\n\nimport { ApiOperation }');
-    expect(enPage).toContain('# List models');
-    expect(enPage).toContain('`GET /v1/models`');
+    expect(enPage).toContain('# List models `GET /v1/models`');
+    expect(enPage).not.toContain('# List models\n\n`GET /v1/models`');
     expect(enPage).toContain("description: 'Short models summary.'");
     expect(enPage).toContain('Short models summary.');
     expect(enPage).not.toContain('Lists available models.');
@@ -173,7 +174,8 @@ describe('generateApiReferenceFiles', () => {
     expect(enPage).toContain('**Responses:** `200 application/json`');
     expect(enPage).not.toContain('[POST /v1/widgets](/api/create-widget)');
     expect(enPage).toContain('<ApiOperation slug="list-models" locale="en" />');
-    expect(zhPage).toContain('# 列出模型');
+    expect(zhPage).toContain('# 列出模型 `GET /v1/models`');
+    expect(zhPage).toContain("title: '列出模型 GET /v1/models'");
     expect(zhPage).toContain("description: '简短模型摘要。'");
     expect(zhPage).toContain('简短模型摘要。');
     expect(zhPage).not.toContain('列出可用模型。');
@@ -186,11 +188,15 @@ describe('generateApiReferenceFiles', () => {
     expect(widgetPage).toContain('**Responses:** `201 application/json`, `201 text/event-stream`');
 
     expect(JSON.parse(await read(root, 'docs/en/api/_meta.json'))).toEqual([
+      { type: 'section-header', label: 'Models' },
       { type: 'file', name: 'list-models', label: 'List models' },
+      { type: 'section-header', label: 'OpenAI-compatible' },
       { type: 'file', name: 'create-widget', label: 'Create a widget' },
     ]);
     expect(JSON.parse(await read(root, 'docs/zh/api/_meta.json'))).toEqual([
+      { type: 'section-header', label: '模型' },
       { type: 'file', name: 'list-models', label: '列出模型' },
+      { type: 'section-header', label: 'OpenAI 兼容接口' },
       { type: 'file', name: 'create-widget', label: '创建小部件' },
     ]);
 
@@ -229,6 +235,70 @@ describe('generateApiReferenceFiles', () => {
     await run(root);
     const after = await stat(join(root, 'src/generated/manifest.json'));
     expect(after.mtimeMs).toBe(before.mtimeMs);
+  });
+
+  test('groups interleaved operations under localized section headers ordered by the first group entry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'aio-proxy-api-reference-'));
+    const operations = [
+      ['createResponse', '/v1/responses', 'responses', 'OpenAI', 0],
+      ['createMessage', '/v1/messages', 'messages', 'Anthropic', 1],
+      ['createChatCompletion', '/v1/chat/completions', 'chat-completions', 'OpenAI', 2],
+      ['listModels', '/v1/models', 'list-models', 'Models', 3],
+    ].map(
+      ([operationId, path, slug, tag, navOrder]) =>
+        ({
+          classification: 'documented',
+          method: operationId === 'listModels' ? 'get' : 'post',
+          path,
+          operationId,
+          slug,
+          tag,
+          navOrder,
+          messages: {
+            title: `operations.${operationId}.title`,
+            description: `operations.${operationId}.description`,
+          },
+          responses: {},
+        }) as unknown as DocumentedPublicOperation,
+    );
+    const paths = Object.fromEntries(
+      operations.map((operation) => [
+        operation.path,
+        {
+          [operation.method]: {
+            operationId: operation.operationId,
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      ]),
+    );
+
+    await generateApiReferenceFiles({
+      root,
+      check: false,
+      operations,
+      catalogs: { en, zh },
+      document: { openapi: '3.1.0', info: { title: 'Fixture API', version: 'latest' }, paths } as OpenApiDocument,
+    });
+
+    expect(JSON.parse(await read(root, 'docs/en/api/_meta.json'))).toEqual([
+      { type: 'section-header', label: 'OpenAI-compatible' },
+      { type: 'file', name: 'responses', label: 'Create a response' },
+      { type: 'file', name: 'chat-completions', label: 'Create a chat completion' },
+      { type: 'section-header', label: 'Anthropic-compatible' },
+      { type: 'file', name: 'messages', label: 'Create a message' },
+      { type: 'section-header', label: 'Models' },
+      { type: 'file', name: 'list-models', label: 'List models' },
+    ]);
+    expect(JSON.parse(await read(root, 'docs/zh/api/_meta.json'))).toEqual([
+      { type: 'section-header', label: 'OpenAI 兼容接口' },
+      { type: 'file', name: 'responses', label: '创建响应' },
+      { type: 'file', name: 'chat-completions', label: '创建聊天补全' },
+      { type: 'section-header', label: 'Anthropic 兼容接口' },
+      { type: 'file', name: 'messages', label: '创建消息' },
+      { type: 'section-header', label: '模型' },
+      { type: 'file', name: 'list-models', label: '列出模型' },
+    ]);
   });
 
   test('publishes parsed, raw-forwarded, and converted request semantics in both locales', async () => {

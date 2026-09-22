@@ -591,6 +591,7 @@
         "@scalar/openapi-parser": "0.29.5",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
+        "es-toolkit": "catalog:",
         "rspress-plugin-mermaid": "1.0.1",
         "tailwindcss": "catalog:",
         "typescript": "catalog:",

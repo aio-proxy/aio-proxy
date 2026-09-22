@@ -165,6 +165,17 @@ describe('loadPublicOpenApi', () => {
     );
   });
 
+  test("preserves each streaming request descriptor's exact examples in the projected document", async () => {
+    for (const operationId of ['createChatCompletion', 'createResponse', 'createMessage'] as const) {
+      const operation = documentedOperation(operationId);
+      const examples = operation.request?.schema.meta()?.examples;
+      const schema = await operationSchema(operationId);
+
+      expect(schema.examples).toEqual(examples);
+      expect(schema.examples).toContainEqual(expect.objectContaining({ stream: true }));
+    }
+  });
+
   test('rejects an invalid descriptor example before schema conversion', async () => {
     const responseSchema = documentedOperation('createResponse').responses.json.schema;
 

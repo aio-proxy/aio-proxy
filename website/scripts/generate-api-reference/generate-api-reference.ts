@@ -3,6 +3,7 @@
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
+import { isPlainObject } from 'es-toolkit/predicate';
 import { format } from 'oxfmt';
 
 import formatOptions from '../../../oxfmt.config';
@@ -55,13 +56,10 @@ const isOwnedPath = (path: string): boolean =>
   /^docs\/(?:en|zh)\/api\/(?:_meta\.json|[a-z0-9]+(?:-[a-z0-9]+)*\.mdx)$/u.test(path) ||
   /^src\/generated\/operations\/(?:en|zh)\/[a-z0-9]+(?:-[a-z0-9]+)*\.json$/u.test(path);
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 function localizedMessage(catalog: LocaleCatalog, id: string): string {
   let value: unknown = catalog;
   for (const segment of id.split('.')) {
-    if (!isObject(value) || !(segment in value)) throw new Error(`Missing locale message "${id}"`);
+    if (!isPlainObject(value) || !(segment in value)) throw new Error(`Missing locale message "${id}"`);
     value = value[segment];
   }
   if (typeof value !== 'string' || value.length === 0) throw new Error(`Invalid locale message "${id}"`);
@@ -70,7 +68,7 @@ function localizedMessage(catalog: LocaleCatalog, id: string): string {
 
 function sortedJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortedJson);
-  if (!isObject(value)) return value;
+  if (!isPlainObject(value)) return value;
   return Object.fromEntries(
     Object.entries(value)
       .sort(([left], [right]) => compare(left, right))
@@ -102,7 +100,7 @@ function localizedDescription(catalog: LocaleCatalog, operation: DocumentedPubli
 function selectedOperation(document: OpenApiDocument, operation: DocumentedPublicOperation): Record<string, unknown> {
   const pathItem = document.paths?.[operation.path];
   const selected = pathItem?.[operation.method];
-  if (!isObject(selected)) throw new Error(`Missing projected operation "${operation.operationId}"`);
+  if (!isPlainObject(selected)) throw new Error(`Missing projected operation "${operation.operationId}"`);
   return selected;
 }
 
@@ -116,7 +114,7 @@ function localizedDocument(
 
   const tags = Array.isArray(projected.tags)
     ? projected.tags.map((tag) => {
-        if (!isObject(tag) || typeof tag['x-tag-id'] !== 'string') return tag;
+        if (!isPlainObject(tag) || typeof tag['x-tag-id'] !== 'string') return tag;
         const name = catalog.tags[tag['x-tag-id']];
         return name === undefined ? tag : { ...tag, name };
       })
@@ -144,22 +142,29 @@ function compactIndex(document: OpenApiDocument, operation: DocumentedPublicOper
   const parameters = new Set<string>();
   if (Array.isArray(selected.parameters)) {
     for (const parameter of selected.parameters) {
-      if (isObject(parameter) && typeof parameter.name === 'string') parameters.add(parameter.name);
+      if (isPlainObject(parameter) && typeof parameter.name === 'string') parameters.add(parameter.name);
     }
   }
 
   const requestBody = selected.requestBody;
-  if (isObject(requestBody) && isObject(requestBody.content)) {
+  if (isPlainObject(requestBody) && isPlainObject(requestBody.content)) {
     for (const mediaType of Object.values(requestBody.content)) {
-      if (!isObject(mediaType) || !isObject(mediaType.schema) || !isObject(mediaType.schema.properties)) continue;
+      if (
+        !isPlainObject(mediaType) ||
+        !isPlainObject(mediaType.schema) ||
+        !isPlainObject(mediaType.schema.properties)
+      ) {
+        continue;
+      }
       for (const name of Object.keys(mediaType.schema.properties)) parameters.add(name);
     }
   }
 
   const responses = new Set<string>();
-  if (isObject(selected.responses)) {
+  if (isPlainObject(selected.responses)) {
     for (const [status, response] of Object.entries(selected.responses)) {
-      const contentTypes = isObject(response) && isObject(response.content) ? Object.keys(response.content) : [];
+      const contentTypes =
+        isPlainObject(response) && isPlainObject(response.content) ? Object.keys(response.content) : [];
       if (contentTypes.length === 0) responses.add(status);
       else for (const contentType of contentTypes) responses.add(`${status} ${contentType}`);
     }
@@ -186,10 +191,11 @@ function page(
   if (summary === undefined || summary.length === 0) {
     throw new Error(`Missing static summary for operation "${operation.operationId}"`);
   }
+  const methodPath = `${operation.method.toUpperCase()} ${operation.path}`;
   const index = compactIndex(document, operation, catalog);
 
   return `---
-title: ${JSON.stringify(title)}
+title: ${JSON.stringify(`${title} ${methodPath}`)}
 description: ${JSON.stringify(summary)}
 pageType: doc-wide
 outline: false
@@ -197,9 +203,7 @@ outline: false
 
 import { ApiOperation } from '../../../src/components/api-operation';
 
-# ${title}
-
-\`${operation.method.toUpperCase()} ${operation.path}\`
+# ${title} \`${methodPath}\`
 
 ${summary}
 
@@ -219,7 +223,7 @@ async function previousManifest(root: string): Promise<Manifest> {
   } catch {
     throw new Error('Invalid generated manifest');
   }
-  if (!isObject(value) || !Array.isArray(value.files) || !value.files.every((path) => typeof path === 'string')) {
+  if (!isPlainObject(value) || !Array.isArray(value.files) || !value.files.every((path) => typeof path === 'string')) {
     throw new Error('Invalid generated manifest');
   }
   for (const path of value.files) {
@@ -262,15 +266,24 @@ export async function generateApiReferenceFiles({
 
   for (const locale of locales) {
     const catalog = catalogs[locale];
-    const meta = [];
+    const filesByTag = new Map<
+      DocumentedPublicOperation['tag'],
+      Array<{ readonly type: 'file'; readonly name: string; readonly label: string }>
+    >();
     for (const operation of operations) {
       const pagePath = `docs/${locale}/api/${operation.slug}.mdx`;
       const operationPath = `src/generated/operations/${locale}/${operation.slug}.json`;
       const operationDocument = localizedDocument(document, operation, catalog);
       desired.set(pagePath, await mdx(pagePath, page(locale, operation, operationDocument, catalog)));
       desired.set(operationPath, await json(operationPath, operationDocument));
-      meta.push({ type: 'file', name: operation.slug, label: localizedMessage(catalog, operation.messages.title) });
+      const files = filesByTag.get(operation.tag) ?? [];
+      files.push({ type: 'file', name: operation.slug, label: localizedMessage(catalog, operation.messages.title) });
+      filesByTag.set(operation.tag, files);
     }
+    const meta = [...filesByTag].flatMap(([tag, files]) => [
+      { type: 'section-header', label: catalog.tags[tag] },
+      ...files,
+    ]);
     const metaPath = `docs/${locale}/api/_meta.json`;
     desired.set(metaPath, await json(metaPath, meta));
   }

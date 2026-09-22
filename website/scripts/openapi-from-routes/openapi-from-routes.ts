@@ -176,7 +176,10 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
       },
     }) as JsonObject;
 
-  return convert(schema);
+  const converted = convert(schema);
+  const examples = schema.meta()?.examples;
+  if (Array.isArray(examples)) converted.examples = examples;
+  return converted;
 }
 
 function message(catalog: Catalog, id: string): string {

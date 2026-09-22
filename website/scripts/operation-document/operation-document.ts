@@ -1,4 +1,5 @@
 import type { validate } from '@scalar/openapi-parser';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 type ValidationResult = Awaited<ReturnType<typeof validate>>;
 export type OpenApiDocument = Extract<ValidationResult, { valid: true }>['specification'];
@@ -20,9 +21,6 @@ export class OperationProjectionError extends Error {
   }
 }
 
-const isDataObject = (value: unknown): value is DataObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 type ReferenceScanContext = 'openapi' | 'schema' | 'schema-map';
 
 const SCHEMA_DATA_FIELDS = new Set(['default', 'example', 'examples', 'const', 'enum']);
@@ -39,7 +37,7 @@ function hasReferenceMarker(
   if (contexts?.has(context)) return false;
   if (contexts === undefined) visited.set(value, new Set([context]));
   else contexts.add(context);
-  if (isDataObject(value) && typeof value.$ref === 'string') return true;
+  if (isPlainObject(value) && typeof value.$ref === 'string') return true;
   return Object.entries(value).some(([key, item]) => {
     if (context !== 'schema-map' && (key === 'example' || key === 'value')) return false;
     if (context === 'schema' && SCHEMA_DATA_FIELDS.has(key)) return false;
@@ -57,16 +55,16 @@ function hasReferenceMarker(
 }
 
 function findOperation(document: OpenApiDocument, operationId: string): SelectedOperation {
-  const paths = isDataObject(document.paths) ? document.paths : {};
+  const paths = isPlainObject(document.paths) ? document.paths : {};
   const seen = new Set<string>();
   let selected: SelectedOperation | undefined;
 
   for (const [path, value] of Object.entries(paths)) {
-    if (!isDataObject(value)) continue;
+    if (!isPlainObject(value)) continue;
     for (const method of HTTP_METHODS) {
       const operation = value[method];
       if (operation === undefined) continue;
-      if (!isDataObject(operation) || typeof operation.operationId !== 'string' || operation.operationId === '') {
+      if (!isPlainObject(operation) || typeof operation.operationId !== 'string' || operation.operationId === '') {
         throw new OperationProjectionError(`Missing operationId for ${method.toUpperCase()} ${path}`);
       }
       if (seen.has(operation.operationId)) {
@@ -82,7 +80,7 @@ function findOperation(document: OpenApiDocument, operationId: string): Selected
 }
 
 const parameterKey = (parameter: unknown): string | undefined => {
-  if (!isDataObject(parameter) || typeof parameter.name !== 'string' || typeof parameter.in !== 'string') {
+  if (!isPlainObject(parameter) || typeof parameter.name !== 'string' || typeof parameter.in !== 'string') {
     return undefined;
   }
   return `${parameter.in}\0${parameter.name}`;
@@ -132,7 +130,7 @@ export function projectOperation(document: OpenApiDocument, operationId: string)
   const selectedTag = Array.isArray(operation.tags) ? operation.tags[0] : undefined;
   const tags =
     typeof selectedTag === 'string' && Array.isArray(root.tags)
-      ? root.tags.filter((tag) => isDataObject(tag) && tag.name === selectedTag)
+      ? root.tags.filter((tag) => isPlainObject(tag) && tag.name === selectedTag)
       : root.tags;
   return {
     ...root,

@@ -1,8 +1,16 @@
 [
   {
+    "label": "Models",
+    "type": "section-header"
+  },
+  {
     "label": "List models",
     "name": "list-models",
     "type": "file"
+  },
+  {
+    "label": "OpenAI-compatible",
+    "type": "section-header"
   },
   {
     "label": "Create a chat completion",
@@ -13,6 +21,10 @@
     "label": "Create a response",
     "name": "responses",
     "type": "file"
+  },
+  {
+    "label": "Anthropic-compatible",
+    "type": "section-header"
   },
   {
     "label": "Create a message",

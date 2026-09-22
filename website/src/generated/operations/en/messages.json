@@ -22,6 +22,27 @@
             "application/json": {
               "schema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "messages": [
+                      {
+                        "content": "Hello.",
+                        "role": "user"
+                      }
+                    ],
+                    "model": "claude-sonnet-4-6"
+                  },
+                  {
+                    "messages": [
+                      {
+                        "content": "Hello.",
+                        "role": "user"
+                      }
+                    ],
+                    "model": "claude-sonnet-4-6",
+                    "stream": true
+                  }
+                ],
                 "properties": {
                   "conversation_id": {
                     "type": "string"

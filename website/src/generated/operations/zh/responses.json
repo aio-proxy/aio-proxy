@@ -23,6 +23,17 @@
               "schema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "additionalProperties": {},
+                "examples": [
+                  {
+                    "input": "Hello.",
+                    "model": "gpt-5"
+                  },
+                  {
+                    "input": "Hello.",
+                    "model": "gpt-5",
+                    "stream": true
+                  }
+                ],
                 "properties": {
                   "background": {
                     "type": "boolean"
