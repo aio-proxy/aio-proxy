@@ -17,3 +17,12 @@ export {
   type SessionCopy,
   type SessionIo,
 } from './session';
+export {
+  formatDeepProviderLines,
+  formatDoctorLines,
+  formatInstalledLines,
+  formatPluginLines,
+  formatProviderLines,
+  formatRunSummary,
+  formatStatusLine,
+} from './summary';
