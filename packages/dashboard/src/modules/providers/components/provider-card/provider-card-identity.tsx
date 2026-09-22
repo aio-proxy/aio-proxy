@@ -5,9 +5,10 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { Link } from '@tanstack/react-router';
 import type React from 'react';
 
+import { ProviderMark } from '@/components/provider-mark';
+import { providerDisplayName } from '@/lib/provider-display-name';
+
 import { PROVIDER_KIND_LABEL } from '../../lib/constants';
-import { providerDisplayName } from '../../lib/provider-list-view';
-import { ProviderMark } from '../provider-mark';
 import { ProviderProtocolLabels } from '../provider-protocol-labels';
 
 interface ProviderCardIdentityProps {

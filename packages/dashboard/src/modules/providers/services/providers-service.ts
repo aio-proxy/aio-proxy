@@ -11,15 +11,6 @@ import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
 
-export const providersQueryOptions = () =>
-  queryOptions({
-    queryKey: queryKeys.providers,
-    queryFn: async () => {
-      const response = await dashboardClient.dashboard.api.providers.$get();
-      return response.json();
-    },
-  });
-
 /**
  * Reads the editor's view of one Provider. `refreshCatalog` opts an OAuth Provider into an upstream
  * catalog rediscovery before the read, which is what the editor's reload button needs: without it the

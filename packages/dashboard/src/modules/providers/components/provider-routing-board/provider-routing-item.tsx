@@ -3,7 +3,7 @@ import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import type React from 'react';
 
-import { providerDisplayName } from '../../lib/provider-list-view';
+import { providerDisplayName } from '@/lib/provider-display-name';
 
 interface ProviderRoutingItemProps {
   readonly provider: DashboardProviderSummary;

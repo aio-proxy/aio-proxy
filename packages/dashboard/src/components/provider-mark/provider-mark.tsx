@@ -2,10 +2,10 @@ import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { AlertTriangle } from 'lucide-react';
 
-import { PROVIDER_FRAME_SIZE } from '../../lib/constants';
-import { providerDisplayName } from '../../lib/provider-list-view';
-import { ProviderAvatar } from '../provider-avatar';
-import { ProviderProtocolStack } from '../provider-protocol-stack';
+import { ProviderAvatar } from '@/components/provider-avatar';
+import { ProviderProtocolStack } from '@/components/provider-protocol-stack';
+import { providerDisplayName } from '@/lib/provider-display-name';
+import { PROVIDER_FRAME_SIZE } from '@/lib/provider-frame';
 
 interface ProviderMarkProps {
   readonly provider: DashboardProviderSummary;

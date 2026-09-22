@@ -2,10 +2,10 @@ import type { DashboardPluginSummary, DashboardProviderSummary } from '@aio-prox
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 
-import { ProviderMark } from '@/modules/providers/components/provider-mark';
-import { providerDisplayName } from '@/modules/providers/lib/provider-list-view';
-import { providerPluginPresentationsQueryOptions } from '@/modules/providers/services/provider-plugin-labels';
-import { providersQueryOptions } from '@/modules/providers/services/providers-service';
+import { ProviderMark } from '@/components/provider-mark';
+import { providerDisplayName } from '@/lib/provider-display-name';
+import { providerPluginPresentationsQueryOptions } from '@/lib/provider-plugin-presentations';
+import { providersQueryOptions } from '@/lib/providers-query';
 
 interface ProviderIdLabelProps {
   readonly providerId: string;

@@ -8,9 +8,9 @@ import type React from 'react';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { providersQueryOptions } from '@/lib/providers-query';
 
 import { ProviderCardGrid } from '../components/provider-card-grid';
-import { providersQueryOptions } from '../services/providers-service';
 
 interface ProvidersPageProps {
   readonly focusProviderId?: string;

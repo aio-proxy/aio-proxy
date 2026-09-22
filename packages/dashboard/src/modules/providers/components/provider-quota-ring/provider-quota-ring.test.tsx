@@ -2,7 +2,8 @@ import { TooltipProvider } from '@aio-proxy/ui/components/tooltip';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { providerStub } from '../../lib/provider-fixtures';
+import { providerStub } from '@/lib/provider-fixtures';
+
 import { ProviderQuotaRing } from './provider-quota-ring';
 
 const queryMocks = { data: undefined as unknown, isPending: false, isError: false };

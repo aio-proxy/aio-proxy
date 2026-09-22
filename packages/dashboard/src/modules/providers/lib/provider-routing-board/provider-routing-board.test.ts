@@ -1,9 +1,9 @@
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
+import { providerStub } from '@/lib/provider-fixtures';
 import type { WeightedTierLayout } from '@/lib/weighted-tier-layout';
 
-import { providerStub } from '../provider-fixtures';
 import {
   applyProviderRoutingLayout,
   applyProviderShare,

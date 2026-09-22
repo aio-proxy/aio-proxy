@@ -4,8 +4,8 @@ import { expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render as renderRtl, screen, within } from '@testing-library/react';
 
+import { providerStub } from '@/lib/provider-fixtures';
 import { queryKeys } from '@/lib/query-keys';
-import { providerStub } from '@/modules/providers/lib/provider-fixtures';
 
 import { SpanDetailPanel } from './span-detail-panel';
 

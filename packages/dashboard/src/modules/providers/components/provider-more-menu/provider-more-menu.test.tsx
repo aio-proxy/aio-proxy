@@ -1,7 +1,8 @@
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { providerStub } from '../../lib/provider-fixtures';
+import { providerStub } from '@/lib/provider-fixtures';
+
 import { ProviderMoreMenu } from './provider-more-menu';
 
 const mocks = rs.hoisted(() => ({ mutate: rs.fn() }));

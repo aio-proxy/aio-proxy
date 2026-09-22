@@ -2,8 +2,7 @@ import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
 
 import { PluginIcon } from '@/components/plugin-icon';
-
-import { PROVIDER_ICON_INSET } from '../../lib/constants';
+import { PROVIDER_ICON_INSET } from '@/lib/provider-frame';
 
 interface ProviderAvatarProps {
   readonly name: string;

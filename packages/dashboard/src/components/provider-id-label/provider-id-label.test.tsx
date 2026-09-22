@@ -3,8 +3,8 @@ import { expect, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 
+import { providerStub } from '@/lib/provider-fixtures';
 import { queryKeys } from '@/lib/query-keys';
-import { providerStub } from '@/modules/providers/lib/provider-fixtures';
 
 import { ProviderIdLabel } from './provider-id-label';
 

@@ -4,9 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import type React from 'react';
 
+import { providerStub } from '@/lib/provider-fixtures';
 import { queryKeys } from '@/lib/query-keys';
 
-import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCard } from './provider-card';
 
 rs.mock('@tanstack/react-router', () => ({ Link: 'a' }));

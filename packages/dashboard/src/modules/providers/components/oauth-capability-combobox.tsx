@@ -14,8 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { PluginIcon } from '@/components/plugin-icon';
 import { resolveDashboardText } from '@/lib/localized-text';
-
-import { providerPluginPresentationsQueryOptions } from '../services/provider-plugin-labels';
+import { providerPluginPresentationsQueryOptions } from '@/lib/provider-plugin-presentations';
 
 interface OAuthCapabilityComboboxProps {
   readonly capabilities: readonly DashboardOAuthCapability[];

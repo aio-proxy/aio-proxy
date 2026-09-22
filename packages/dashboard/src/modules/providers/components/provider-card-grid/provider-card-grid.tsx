@@ -8,6 +8,7 @@ import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
+import { providerPluginPresentationsQueryOptions } from '@/lib/provider-plugin-presentations';
 
 import { useProviderRoutingMutation } from '../../hooks/use-provider-routing-mutation';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
@@ -17,7 +18,6 @@ import {
   providerTierPercentages,
 } from '../../lib/provider-routing-board';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
-import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { ProviderCard } from '../provider-card';
