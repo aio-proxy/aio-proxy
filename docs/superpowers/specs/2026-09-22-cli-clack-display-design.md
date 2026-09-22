@@ -62,12 +62,12 @@
 | 引导线 | 保持库默认的 `withGuide`。不关引导线，不套第二层边框，不用 ASCII logo、渐变或装饰性 emoji |
 | 品牌 | 交互标题写 `aio-proxy`。通过 `aiop` 启动时标题同样是 `aio-proxy` |
 | 一次会话 | 一个命令最多一个 `intro`。`renderConfigSpec`、capability 选择和手动回调都不单独再打印标题。第一次真正提问时才打印 `intro`；全程没有提问则没有 `intro` / `outro` |
-| 结束行 | 打印过 `intro` 的成功路径用一句完成语做 `outro`，不再另加「完成」。取消时调用一次 `cancel`，不调用 `outro`；Codex 把取消收成自己的结果时不打印这句，见「取消、错误和终端」。插件的添加、配置、删除、清理在发生过提问时，把今天的完成句从 stdout 移到这句 `outro`：`cli.plugin.added`、`cli.provider.package_installed`、`cli.plugin.configured`、`cli.plugin.removed_secrets_purged`、`cli.plugin.removed_secrets_retained`、`cli.plugin.pruned`。没有提问时这些句子仍走 stdout。provider 登录的 stdout 仍只打印 provider id，`outro` 另用一条新的短句。Codex 配置的现有多行结果仍走 stdout，`outro` 另用一条新的短句，不复制结果行 |
+| 结束行 | 打印过 `intro` 的成功路径用一句完成语做 `outro`，不再另加「完成」。提问取消时调用一次 `cancel`，不调用 `outro`；spinner 的取消行由库写出，不再调用第二次 `cancel`。Codex 把取消收成自己的结果时不打印这句，见「取消、错误和终端」。插件的添加、配置、删除、清理在发生过提问时，把今天的完成句从 stdout 移到这句 `outro`：`cli.plugin.added`、`cli.provider.package_installed`、`cli.plugin.configured`、`cli.plugin.removed_secrets_purged`、`cli.plugin.removed_secrets_retained`、`cli.plugin.pruned`。没有提问时这些句子仍走 stdout。provider 登录的 stdout 仍只打印 provider id，`outro` 另用一条新的短句。Codex 配置的现有多行结果仍走 stdout，`outro` 另用一条新的短句，不复制结果行 |
 | 提问流 | 交互提示、spinner、`intro`、`outro`、`cancel` 写入 stderr |
 | 结果流 | 今天写到 stdout 的数据行留在 stdout：provider id、授权 URL、列表、诊断、`status` 的人类结果。`run` 启动摘要留在 stderr |
 | 查询命令 | `status`、`doctor`、provider / plugin 列表不进入会话，不打印 `intro` |
 | 三个开关 | 能否提问、能否上色、是否机器输出，各自判断 |
-| 取消 | 适配层把 Clack 取消值变成抛出的 `PromptCancelledError`。UI 模块不调用 `process.exit` |
+| 取消 | 适配层把 Clack 取消值变成抛出的 `PromptCancelledError`。提问取消调用一次 `cancel`，不调用 `outro`。spinner 的取消行由库写出，不再调用第二次 `cancel`。UI 模块不调用 `process.exit` |
 | Inquirer | 所有调用点迁完后再从依赖和 lockfile 删除 `@inquirer/prompts` |
 
 ## 视觉
@@ -206,7 +206,7 @@ type CommandSession = {
   confirm(ask: ConfirmAsk): Promise<boolean>;
   select<T>(ask: SelectAsk<T>): Promise<T>;
   multiselect<T>(ask: SelectAsk<T> & { readonly initialValues?: readonly T[] }): Promise<readonly T[]>;
-  spin<T>(message: string, task: () => Promise<T>): Promise<T>;
+  spin<T>(message: string, task: (signal: AbortSignal) => Promise<T>, context?: { readonly signal?: AbortSignal }): Promise<T>;
   note(message: string): void;
   finish(success: string): void;
   close(error?: unknown): void;
@@ -219,23 +219,23 @@ function useColor(streamIsTTY: boolean, env: NodeJS.ProcessEnv): boolean;
 
 `canPrompt` 使用「能否提问」的规则，不含机器输出判断；机器输出由命令在调用前排除。`createCommandSession` 在 `canPrompt` 为假时抛出错误且不读 stdin。生产路径在调用前已经走既有的非交互失败，这条抛出只用来挡住误调用。
 
-命令在 `try/finally` 中持有 session。成功时调用 `finish(message)`：只有已经打印过 `intro` 才写 `outro`。`finally` 调用 `close(error)`。`finish` 之后的 `close` 只负责停掉残留 spinner，不再打印。未 `finish` 且已经打印过 `intro` 时：`PromptCancelledError` 打印一次 `cancel`；其他已经带有用户可见消息的错误，用 `outro` 写出那一句，然后让传到 `main` 的消息为空，避免 `formatCliError` 再打一遍。确认选否是业务拒绝，不是 Clack 取消，不画成 `cancel`。没有用户可见消息的错误不写结束语。
+命令在 `try/finally` 中持有 session。成功时调用 `finish(message)`：只有已经打印过 `intro` 才写 `outro`。`finally` 调用 `close(error)`。`close` 只停掉残留 spinner 并恢复终端：不打印 `Error.message`，不调用失败 `outro`，也不修改错误对象。失败之后没有 `outro`。未 `finish` 且已经打印过 `intro` 时，只有提问产生的 `PromptCancelledError` 打印一次 `cancel`。spinner 已经写出取消行时，这次 `close` 不再打印第二句。确认选否是业务拒绝，不是 Clack 取消，不画成 `cancel`。其余错误一律交给现有的 `formatCliError`。
 
 `summary.ts` 返回字符串，由现有 `print` 写出。它不调用 Clack 会话。颜色只在 `useColor(stdoutIsTTY, env)` 为真时写入；测试覆盖的是无颜色文本。
 
-`session.spin` 在任务开始前画 spinner，在返回、抛错、取消和外部 abort 时停掉并清行，然后才允许下一次提问。stderr 不是 TTY 或处于 CI 时不动画，直接跑任务。调用方如果会在任务期间写 stderr，改用一次静态进度行，不动画。本轮不改 LogTape。`run` 的进程生命周期不放进 spinner。
+`session.spin` 把 `AbortSignal` 传给任务，并 await 到任务自己结束。用户 Ctrl+C 时 abort 该信号，任务协作退出后才拒绝 `PromptCancelledError`。外部 abort 时任务收到这个中止，结束后拒绝 `signal.reason`。不要用 `Promise.race` 把仍在运行的扫描当成已经停止。`@clack/prompts` 1.8.1 的 spinner 先写出取消行，再调用 `onCancel`；之后 `clear()` 不会清掉那一行。stderr 不是 TTY 或处于 CI 时不动画，但仍把外部信号（没有外部信号时用一个未中止的新信号）传给任务。调用方如果会在任务期间写 stderr，改用一次静态进度行，不动画。本轮不改 LogTape。`run` 的进程生命周期不放进 spinner。
 
 Codex 的手写 `withSpinner` 和 `styleText` 状态行删掉，改走 `session`。
 
 ## 取消、错误和终端
 
-用户取消（Clack `isCancel`，或提问期间的 Ctrl+C）抛出 `PromptCancelledError`。`message` 为空，这样 `main` 里「空消息不再打印一行」的分支不会再打第二句。该错误不加入 `isKnownCliUserError`，未捕获时 `toExitCode` 仍是 `2`，和今天未分类的 Inquirer 退出一致。
+用户取消（Clack `isCancel`，或提问期间的 Ctrl+C）抛出 `PromptCancelledError`，`message` 为空。空的 `error.message` 不能阻止顶层再打印：`main` 看的是 `formatCliError` 的结果，未识别异常会变成非空的通用内部错误。`formatCliError` 遇到 `PromptCancelledError` 时先返回 `{ message: '' }`，现有的「空消息不再打印一行」分支才不会打出第二句。不要把该错误加入 `isKnownCliUserError`，否则退出码会从 `2` 变成 `1`。未捕获时 `toExitCode` 仍是 `2`，和今天未分类的 Inquirer 退出一致。
 
-调用方传入的 `AbortSignal` 已经 abort，或在提问期间 abort：拒绝原因用 `signal.reason`，不换成 `PromptCancelledError`，也不把取消标记写进表单值。
+调用方传入的 `AbortSignal` 已经 abort，或在提问、扫描期间 abort：拒绝原因用 `signal.reason`，不换成 `PromptCancelledError`，也不把取消标记写进表单值。
 
-其他错误不另画 Clack 错误行，交给现有的 `formatCliError`。`cancel` 的可见文案用新增的本地化取消语，不用 `PromptCancelledError` 的空消息。Codex 若把取消收成自己的取消结果，就在向导内部捕获 `PromptCancelledError`，再调用不带错误的 `close()`。这种 `close` 只停 spinner 并恢复终端，不打印 `cancel` 或 `outro`；下面只保留 Codex 现有的取消结果行。
+其他错误不另画 Clack 错误行，也不在 `close` 里写出 `Error.message`。`AppError` 的用户文案由类型和 `messageKey` 重新生成，清空 `message` 不能代替 `formatCliError`。`cancel` 的可见文案用新增的本地化取消语，不用 `PromptCancelledError` 的空消息。Codex 若把取消收成自己的取消结果，就在向导内部捕获 `PromptCancelledError`，再调用不带错误的 `close()`。这种 `close` 只停 spinner 并恢复终端，不打印 `cancel` 或 `outro`；下面只保留 Codex 现有的取消结果行。提问取消时 Clack 只画删除线框，那一句取消语来自这次 `cancel`。spinner 取消已经由库写出那一行，不再调用第二次 `cancel`。
 
-展示模块不调用 `process.exit`，不安装会退出进程的 SIGINT 处理。若所用 Clack 版本的 spinner 默认会退出，传入只记录取消的 `onCancel`。提问和 spinner 都要 await 到结束，以便恢复 stdin 的 raw mode 和光标。
+展示模块不调用 `process.exit`，不安装会退出进程的 SIGINT 处理。提问和 spinner 都要 await 到结束，以便恢复 stdin 的 raw mode 和光标。
 
 已完成的外部操作不回滚。
 
@@ -259,4 +259,7 @@ Codex 的手写 `withSpinner` 和 `styleText` 状态行删掉，改走 `session`
 - 适配测试覆盖：placeholder 不会成为提交值；文本默认值在空提交时返回；secret 空提交是 `""`；`select` 能返回 `0` 和 `false`；`confirm` 在未指定默认值时初始为否；`isCancel` 变成 `PromptCancelledError` 而不是字段值；外部 abort 拒绝 `signal.reason`。
 - `status --json`、`agent list --json`、`config show`、`completion`、`--version`、`config path` 的 stdout 不含引导线、颜色码或完成语。
 - 人类输出在 TTY、非 TTY、`CI`、`NO_COLOR`、中文窄终端下含义还在。`NO_COLOR` 下仍可提问。`CI` 和非 TTY 不等待输入。
-- 用 `bun` 直接跑 `packages/cli/src/main.ts`，并用现有二进制脚本打出一个本机目标。两条路径都做冒烟：`--version` 只有版本；一次提问后正常结束和 Ctrl+C 结束，终端回显与光标恢复。冒烟不替代上面的单元测试。
+- 发生过提问之后抛出 `new Error('unknown plugin secret')`：`close` 不把原文写到 stderr，也不修改 `error.message`。随后的 `formatCliError` 仍是通用内部错误，原文不出现，错误提示不重复。
+- `PromptCancelledError` 经 `formatCliError` 得到空消息，不出现通用内部错误。`isKnownCliUserError` 为假，`toExitCode` 仍是 `2`，取消文案只出现一次。Codex 自己收成取消结果的路径不额外打印 `cancel` 或 `outro`。
+- spinner 在任务尚未结束时取消：任务先观察到 `AbortSignal` 并协作退出，然后才拒绝 `PromptCancelledError`。外部 abort 拒绝 `signal.reason`。对真实 `@clack/prompts` spinner 发出 `SIGINT` 时，取消行先出现，随后的 `clear()` 清不掉它，进程不退出。
+- 用 `bun` 直接跑 `packages/cli/src/main.ts`，并用现有二进制脚本打出一个本机目标。两条路径都做冒烟：`--version` 只有版本。终端冒烟把 CLI 当作直接子进程；读取 PTY 时把 `EIO` 当作结束并读完尾部输出；断言 CLI 自己的退出码。比较运行前后的 `ECHO`、`ICANON`、`ISIG`。光标隐藏码 `\x1b[?25l` 之后必须还有恢复码 `\x1b[?25h`。除拒绝和 Ctrl+C 外，还要有一次不访问注册表的成功交互（`plugin prune` 回答是）。冒烟不替代上面的单元测试。

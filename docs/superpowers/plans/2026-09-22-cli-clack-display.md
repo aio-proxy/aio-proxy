@@ -27,6 +27,9 @@
 - `status`, `doctor`, provider list, and plugin list are not sessions and do not print `intro`.
 - Prompting, color, and machine output are three separate switches. `canPrompt` does not know about `--json`.
 - The adapter throws `PromptCancelledError` for a Clack cancel value. UI code does not call `process.exit` and does not install an exiting SIGINT handler.
+- `close` only stops a leftover spinner and restores the terminal. It does not print `Error.message`, does not call `outro` for a failure, and does not mutate the error. A prompt-originated `PromptCancelledError` calls `cancel` once. If the spinner already printed its cancel line, `close` does not print a second one. Failure after an intro does not get an outro.
+- `formatCliError` returns `{ message: '' }` for `PromptCancelledError` before any other branch. Do not add that error to `isKnownCliUserError`. `toExitCode` stays `2`. `main` already skips an empty formatted message.
+- `spin` passes an `AbortSignal` into the task and awaits the task until that task settles. Do not use `Promise.race`. User Ctrl+C aborts that signal and, after the task settles, rejects `PromptCancelledError`. An external abort rejects `signal.reason`. `@clack/prompts` 1.8.1 writes the spinner cancel line and then calls `onCancel`; a later `clear()` does not erase that line.
 - Delete `@inquirer/prompts` only after every call site has moved.
 - New copy goes into all five locales: `en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`. Compile with `bun run i18n:compile`.
 - Clack `confirm` gets localized `active` / `inactive`. When the caller omits `initialValue`, the adapter passes `false` (the library default is `true`).
@@ -749,7 +752,9 @@ git commit -m "feat(cli): adapt Clack prompts"
 **Files:**
 - Create: `packages/cli/src/ui/session.ts`
 - Create: `packages/cli/src/ui/index.ts`
+- Modify: `packages/cli/src/main.ts`
 - Test: `packages/cli/src/ui/session.test.ts`
+- Test: `packages/cli/src/main.rendering.test.ts`
 
 **Interfaces:**
 - Consumes: `PromptIo`, `canPrompt` from `./mode`; `ClackPromptFns`, `ClackStreams`, `ConfirmAsk`, `createClackPrompts`, `PasswordAsk`, `PluginFormPrompts`, `PromptCancelledError`, `PromptContext`, `SelectAsk`, `TextAsk` from `./prompts`.
@@ -766,7 +771,12 @@ export type SessionChrome = {
   cancel: (message?: string, options?: { output?: NodeJS.WritableStream }) => void;
   note: (message?: string, title?: string, options?: { output?: NodeJS.WritableStream }) => void;
   updateSettings: (settings: { messages?: { cancel?: string; error?: string } }) => void;
-  spinner: (options?: { output?: NodeJS.WritableStream; onCancel?: () => void }) => {
+  spinner: (options?: {
+    output?: NodeJS.WritableStream;
+    onCancel?: () => void;
+    signal?: AbortSignal;
+    cancelMessage?: string;
+  }) => {
     start: (message?: string) => void;
     clear: () => void;
     readonly isCancelled: boolean;
@@ -779,7 +789,7 @@ export type CommandSession = {
   confirm(ask: ConfirmAsk, context?: PromptContext): Promise<boolean>;
   select<T>(ask: SelectAsk<T>, context?: PromptContext): Promise<T>;
   multiselect<T>(ask: SelectAsk<T> & { readonly initialValues?: readonly T[] }, context?: PromptContext): Promise<readonly T[]>;
-  spin<T>(message: string, task: () => Promise<T>): Promise<T>;
+  spin<T>(message: string, task: (signal: AbortSignal) => Promise<T>, context?: PromptContext): Promise<T>;
   note(message: string): void;
   progress(message: string): void;
   finish(success: string): boolean;
@@ -802,6 +812,7 @@ Create `packages/cli/src/ui/session.test.ts`:
 ```ts
 import { Readable, Writable } from 'node:stream';
 
+import { spinner } from '@clack/prompts';
 import { describe, expect, test } from 'bun:test';
 
 import { PromptCancelledError } from './prompts';
@@ -824,10 +835,12 @@ function memoryOutput(): { output: Writable; text: () => string } {
 function recording(): { chrome: SessionChrome; events: string[]; cancelSpinner: () => void } {
   const events: string[] = [];
   let cancelled = false;
+  let onCancel: (() => void) | undefined;
   return {
     events,
     cancelSpinner() {
       cancelled = true;
+      onCancel?.();
     },
     chrome: {
       intro(value) {
@@ -845,7 +858,8 @@ function recording(): { chrome: SessionChrome; events: string[]; cancelSpinner: 
       updateSettings(settings) {
         events.push(`settings:${settings.messages?.cancel ?? ''}:${settings.messages?.error ?? ''}`);
       },
-      spinner() {
+      spinner(options) {
+        onCancel = options?.onCancel;
         return {
           start(message) {
             events.push(`start:${message ?? ''}`);
@@ -909,7 +923,9 @@ describe('createCommandSession', () => {
     expect(rec.events.filter((event) => event.startsWith('intro:'))).toEqual([`intro:${title}`]);
     expect(session.finish('Saved')).toBe(true);
     expect(session.finish('Saved')).toBe(false);
-    session.close(new Error('later'));
+    const later = new Error('later');
+    session.close(later);
+    expect(later.message).toBe('later');
     expect(rec.events.filter((event) => event.startsWith('outro:'))).toEqual(['outro:Saved']);
     expect(rec.events.some((event) => event.startsWith('cancel:'))).toBe(false);
   });
@@ -923,15 +939,15 @@ describe('createCommandSession', () => {
     expect(rec.events.some((event) => event.startsWith('outro:'))).toBe(false);
   });
 
-  test('a business error is one outro and the message is cleared for main', async () => {
+  test('a business error after a prompt is not printed and is not mutated', async () => {
     const rec = recording();
     const session = open(rec.chrome);
     await session.prompts.input({ message: 'Name' });
-    const error = new Error('Plugin operation cancelled');
+    const error = new Error('unknown plugin secret');
     session.close(error);
-    expect(error.message).toBe('');
-    expect(rec.events).toContain('outro:Plugin operation cancelled');
-    expect(rec.events.some((event) => event.startsWith('cancel:'))).toBe(false);
+    expect(error.message).toBe('unknown plugin secret');
+    expect(rec.events.some((event) => event.startsWith('outro:') || event.startsWith('cancel:'))).toBe(false);
+    expect(rec.events.join('\n')).not.toContain('unknown plugin secret');
   });
 
   test('close with no error or an empty message prints nothing', async () => {
@@ -960,17 +976,105 @@ describe('createCommandSession', () => {
     expect(rec.events.filter((event) => event.startsWith('intro:'))).toHaveLength(1);
   });
 
-  test('a cancelled spinner clears and rejects PromptCancelledError', async () => {
+  test('cancelling a spinner aborts the still-running task before spin settles', async () => {
     const rec = recording();
     const session = open(rec.chrome);
-    await expect(
-      session.spin('load', async () => {
-        rec.cancelSpinner();
-        return 1;
-      }),
-    ).rejects.toBeInstanceOf(PromptCancelledError);
-    expect(rec.events).toContain('clear');
+    let sawAbort = false;
+    let started: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const pending = session.spin('load', (signal) => {
+      started();
+      return new Promise<number>((resolve) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            sawAbort = true;
+            resolve(1);
+          },
+          { once: true },
+        );
+      });
+    });
+    await ready;
+    rec.cancelSpinner();
+    await expect(pending).rejects.toBeInstanceOf(PromptCancelledError);
+    expect(sawAbort).toBe(true);
+    session.close(new PromptCancelledError());
+    expect(rec.events.filter((event) => event.startsWith('cancel:'))).toEqual([]);
     expect(rec.events.some((event) => event.startsWith('intro:'))).toBe(false);
+  });
+
+  test('an external abort rejects signal.reason while the task is still running', async () => {
+    const rec = recording();
+    const session = open(rec.chrome);
+    const controller = new AbortController();
+    const reason = new Error('stop-scan');
+    let sawAbort = false;
+    let started: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const pending = session.spin(
+      'load',
+      (signal) => {
+        started();
+        return new Promise<number>((resolve) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              sawAbort = true;
+              resolve(1);
+            },
+            { once: true },
+          );
+        });
+      },
+      { signal: controller.signal },
+    );
+    await ready;
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    expect(sawAbort).toBe(true);
+    expect(rec.events.some((event) => event.startsWith('cancel:'))).toBe(false);
+  });
+
+  test('a real Clack spinner prints its cancel line before onCancel and clear cannot remove it', () => {
+    let body = '';
+    const output = new Writable({
+      write(chunk, _encoding, callback) {
+        body += String(chunk);
+        callback();
+      },
+    });
+    let onCancelRan = false;
+    const ui = spinner({
+      output,
+      cancelMessage: 'spinner-cancelled',
+      onCancel: () => {
+        onCancelRan = true;
+      },
+    });
+    const exit = process.exit;
+    let exited = false;
+    process.exit = (() => {
+      exited = true;
+      return undefined as never;
+    }) as typeof process.exit;
+    try {
+      ui.start('scan');
+      process.emit('SIGINT');
+      const afterCancel = body;
+      ui.clear();
+      expect(onCancelRan).toBe(true);
+      expect(afterCancel).toContain('spinner-cancelled');
+      expect(body).toBe(afterCancel);
+      expect(exited).toBe(false);
+    } finally {
+      ui.clear();
+      process.exit = exit;
+    }
   });
 
   test('progress is one static line and settings are applied once', () => {
@@ -995,11 +1099,71 @@ describe('shouldAnimateSpinner', () => {
 });
 ```
 
+Append these tests to `packages/cli/src/main.rendering.test.ts`. They drive a real session and then the top-level formatter. Import `createCommandSession` and `PromptCancelledError` from `./ui`, and `isKnownCliUserError` plus `toExitCode` from `./exit/exit`. Use a fake `SessionChrome` that records outro/cancel and does not print the error. `memoryOutput` can be a local `Writable` in that file.
+
+```ts
+test('an unknown error after a prompt stays secret through close and formatCliError', async () => {
+  const events: string[] = [];
+  let body = '';
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      body += String(chunk);
+      callback();
+    },
+  });
+  const session = createCommandSession(
+    'aio-proxy · Add plugin',
+    { stdinIsTTY: true, stderrIsTTY: true, env: {}, input: process.stdin, output },
+    { cancelled: 'Cancelled', error: 'Something went wrong' },
+    {
+      intro() {},
+      outro(value) {
+        events.push(`outro:${value ?? ''}`);
+      },
+      cancel(value) {
+        events.push(`cancel:${value ?? ''}`);
+      },
+      note() {},
+      updateSettings() {},
+      spinner: () => ({ start() {}, clear() {}, get isCancelled() { return false; } }),
+      prompts: {
+        text: async () => 'ok',
+        password: async () => '',
+        confirm: async () => false,
+        select: async () => 'us',
+        multiselect: async () => [],
+        isCancel: () => false,
+      },
+    },
+  );
+  await session.prompts.input({ message: 'Name' });
+  const error = new Error('unknown plugin secret');
+  session.close(error);
+  const formatted = formatCliError(error, 'en');
+  expect(error.message).toBe('unknown plugin secret');
+  expect(body).not.toContain('unknown plugin secret');
+  expect(events.join('\n')).not.toContain('unknown plugin secret');
+  expect(events.some((event) => event.startsWith('outro:') || event.startsWith('cancel:'))).toBe(false);
+  expect(formatted.message).toBe('Unexpected internal error');
+  expect(formatted.message).not.toContain('unknown plugin secret');
+});
+
+test('PromptCancelledError formats to an empty message and stays exit 2', () => {
+  const error = new PromptCancelledError();
+  expect(formatCliError(error, 'en').message).toBe('');
+  expect(formatCliError(error, 'en').message).not.toBe('Unexpected internal error');
+  expect(isKnownCliUserError(error)).toBe(false);
+  expect(toExitCode(error)).toBe(2);
+});
+```
+
+Import `Writable` from `node:stream` in `main.rendering.test.ts`. `main` prints only when `formatted.message !== ''`, so the empty cancel message is one cancel sentence from the session and no second internal-error line. Do not add a test that puts `PromptCancelledError` in `isKnownCliUserError`.
+
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /agent/repos/aio-proxy/packages/cli && bun test --preload=./__tests__/setup.ts src/ui/session.test.ts`
+Run: `cd /agent/repos/aio-proxy/packages/cli && bun test --preload=./__tests__/setup.ts src/ui/session.test.ts src/main.rendering.test.ts`
 
-Expected: FAIL because `./session` cannot be resolved.
+Expected: FAIL. `./session` cannot be resolved, and `formatCliError(new PromptCancelledError())` still becomes `Unexpected internal error`.
 
 - [ ] **Step 3: Write the session**
 
@@ -1036,7 +1200,12 @@ export type SessionChrome = {
   cancel: (message?: string, options?: { output?: NodeJS.WritableStream }) => void;
   note: (message?: string, title?: string, options?: { output?: NodeJS.WritableStream }) => void;
   updateSettings: (settings: { messages?: { cancel?: string; error?: string } }) => void;
-  spinner: (options?: { output?: NodeJS.WritableStream; onCancel?: () => void }) => SpinnerUi;
+  spinner: (options?: {
+    output?: NodeJS.WritableStream;
+    onCancel?: () => void;
+    signal?: AbortSignal;
+    cancelMessage?: string;
+  }) => SpinnerUi;
   prompts: ClackPromptFns;
 };
 
@@ -1045,7 +1214,7 @@ export type CommandSession = {
   confirm(ask: ConfirmAsk, context?: PromptContext): Promise<boolean>;
   select<T>(ask: SelectAsk<T>, context?: PromptContext): Promise<T>;
   multiselect<T>(ask: SelectAsk<T> & { readonly initialValues?: readonly T[] }, context?: PromptContext): Promise<readonly T[]>;
-  spin<T>(message: string, task: () => Promise<T>): Promise<T>;
+  spin<T>(message: string, task: (signal: AbortSignal) => Promise<T>, context?: PromptContext): Promise<T>;
   note(message: string): void;
   progress(message: string): void;
   finish(success: string): boolean;
@@ -1100,6 +1269,7 @@ export function createCommandSession(
   const raw = createClackPrompts(io, chrome.prompts);
   let introduced = false;
   let settled = false;
+  let spinnerCancelLine = false;
   let activeSpinner: SpinnerUi | undefined;
   const ensureIntro = (): void => {
     if (introduced) return;
@@ -1139,27 +1309,52 @@ export function createCommandSession(
     progress(message) {
       io.output.write(`${message}\n`);
     },
-    async spin<T>(message: string, task: () => Promise<T>): Promise<T> {
-      if (!shouldAnimateSpinner(io)) return task();
-      let marked = false;
+    async spin<T>(message: string, task: (signal: AbortSignal) => Promise<T>, context?: PromptContext): Promise<T> {
+      const external = context?.signal;
+      if (external?.aborted) throw external.reason;
+      if (!shouldAnimateSpinner(io)) {
+        try {
+          const result = await task(external ?? new AbortController().signal);
+          if (external?.aborted) throw external.reason;
+          return result;
+        } catch (error) {
+          if (external?.aborted) throw external.reason;
+          throw error;
+        }
+      }
+      const controller = new AbortController();
+      const onExternal = (): void => {
+        if (!controller.signal.aborted) controller.abort(external?.reason);
+      };
+      external?.addEventListener('abort', onExternal, { once: true });
+      let userCancelled = false;
       const ui = chrome.spinner({
         output: io.output,
+        signal: external,
+        cancelMessage: copy.cancelled,
         onCancel: () => {
-          marked = true;
+          spinnerCancelLine = true;
+          userCancelled = true;
+          if (controller.signal.aborted) return;
+          controller.abort(external?.aborted ? external.reason : new PromptCancelledError());
         },
       });
       activeSpinner = ui;
       ui.start(message);
-      const result = await (async () => {
-        try {
-          return await task();
-        } finally {
-          ui.clear();
-          if (activeSpinner === ui) activeSpinner = undefined;
-        }
-      })();
-      if (marked || ui.isCancelled) throw new PromptCancelledError();
-      return result;
+      try {
+        const result = await task(controller.signal);
+        if (external?.aborted) throw external.reason;
+        if (userCancelled || ui.isCancelled) throw new PromptCancelledError();
+        return result;
+      } catch (error) {
+        if (external?.aborted) throw external.reason;
+        if (userCancelled || ui.isCancelled) throw new PromptCancelledError();
+        throw error;
+      } finally {
+        external?.removeEventListener('abort', onExternal);
+        ui.clear();
+        if (activeSpinner === ui) activeSpinner = undefined;
+      }
     },
     finish(success) {
       if (!introduced || settled) return false;
@@ -1172,13 +1367,8 @@ export function createCommandSession(
       activeSpinner = undefined;
       if (settled || !introduced) return;
       settled = true;
-      if (error instanceof PromptCancelledError) {
+      if (error instanceof PromptCancelledError && !spinnerCancelLine) {
         chrome.cancel(copy.cancelled, { output: io.output });
-        return;
-      }
-      if (error instanceof Error && error.message !== '') {
-        chrome.outro(error.message, { output: io.output });
-        error.message = '';
       }
     },
   };
@@ -1199,7 +1389,18 @@ export function openProductionSession(title: string): CommandSession {
 }
 ```
 
-Do not import `@clack/core`. Do not call `process.exit`. The spinner `onCancel` only records cancellation.
+Do not import `@clack/core`. Do not call `process.exit`. Do not `Promise.race` the task. `onCancel` aborts the task signal and records that the library already printed the cancel line. `ui.clear()` in `finally` does not erase that line: `@clack/prompts` 1.8.1 writes it before `onCancel`, then `clear()` returns because the spinner is already stopped. A non-animated spin still passes `context.signal`, or a fresh non-aborted signal when the caller omitted one.
+
+In `packages/cli/src/main.ts`, import `PromptCancelledError` from `./ui` and make it the first branch of `formatCliError`:
+
+```ts
+export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
+  if (err instanceof PromptCancelledError) return { message: '' };
+  // every existing branch stays after this return
+}
+```
+
+Do not add `PromptCancelledError` to `isKnownCliUserError`. Do not change `toExitCode`.
 
 Create `packages/cli/src/ui/index.ts`:
 
@@ -1223,15 +1424,15 @@ Do not export `shouldAnimateSpinner` or `SessionChrome` from the barrel. Tests i
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /agent/repos/aio-proxy/packages/cli && bun test --preload=./__tests__/setup.ts src/ui/session.test.ts src/ui/mode.test.ts src/ui/prompts.test.ts`
+Run: `cd /agent/repos/aio-proxy/packages/cli && bun test --preload=./__tests__/setup.ts src/ui/session.test.ts src/ui/mode.test.ts src/ui/prompts.test.ts src/main.rendering.test.ts`
 
-Expected: PASS.
+Expected: PASS. The secret string is absent from session output. `PromptCancelledError` formats to `''` and `toExitCode` is `2`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 export PATH="$HOME/.bun/bin:$PATH"
-git add packages/cli/src/ui/session.ts packages/cli/src/ui/session.test.ts packages/cli/src/ui/index.ts
+git add packages/cli/src/ui/session.ts packages/cli/src/ui/session.test.ts packages/cli/src/ui/index.ts packages/cli/src/main.ts packages/cli/src/main.rendering.test.ts
 git commit -m "feat(cli): add command display sessions"
 ```
 
@@ -1644,7 +1845,7 @@ test('a prompt session moves the retained sentence onto finish', async () => {
     multiselect: async () => {
       throw new Error('no multiselect');
     },
-    spin: async <T>(_message: string, task: () => Promise<T>) => task(),
+    spin: async <T>(_message: string, task: (signal: AbortSignal) => Promise<T>) => task(new AbortController().signal),
     note() {},
     progress() {},
     finish(message: string) {
@@ -1832,7 +2033,8 @@ git commit -m "feat(cli): session chrome for provider login"
 **Files:**
 - Modify: `packages/cli/src/agent/codex/codex.ts`
 - Modify: `packages/cli/src/agent/codex/wizard/wizard.ts`
-- Test: existing `packages/cli/src/agent/codex/codex.test.ts` and `wizard/wizard.test.ts`
+- Modify: `packages/cli/src/agent/codex/sessions/sessions.ts`
+- Test: existing `packages/cli/src/agent/codex/codex.test.ts`, `wizard/wizard.test.ts`, and `sessions/sessions.test.ts`
 
 **Interfaces:**
 - Consumes: `canPrompt`, `openProductionSession`, `PromptCancelledError`, `type CommandSession` from `../../ui` (`codex.ts` is `packages/cli/src/agent/codex/codex.ts`, so the import path is `../../ui`). `wizard.ts` imports `PromptCancelledError` from `../../../ui`.
@@ -1849,6 +2051,21 @@ export function isCodexCancellation(error: unknown): boolean {
 Put it in `codex.ts` and use it from `wizard.ts` only if that import does not cycle. `codex.ts` already imports `wizard.ts`, so `wizard.ts` must not import `codex.ts`. Duplicate the two-line helper in `wizard.ts` as a private `cancelledError`, or move the helper to `packages/cli/src/agent/codex/cancellation.ts` and import it from both. Prefer the new three-line file so the predicate stays one function. Export it from that file only. Do not add it to a barrel that `wizard.ts` and `codex.ts` would cycle through.
 
 `AbortError` stays a Codex cancellation because `wizard.test.ts` rejects `commitSetup` with `new DOMException('The operation was aborted', 'AbortError')` and expects `authorization_incomplete`. Do not keep the old substring regex. `Error('cancelled')` is not a cancellation.
+
+`inspectCodexSessions` gains an optional third argument `signal?: AbortSignal`. Throw `signal.reason` before reading the state index, after that read returns, and at the top of the session loop. In the existing `catch`, rethrow when `signal?.aborted` or the error is a `PromptCancelledError`. Every other error still becomes the blocked preview. Do not wrap the read in `Promise.race`.
+
+Add a test in `sessions.test.ts` that aborts before the call and expects the same reason object, not a blocked preview:
+
+```ts
+const controller = new AbortController();
+const reason = new Error('stop-scan');
+controller.abort(reason);
+await expect(inspectCodexSessions(location, undefined, controller.signal)).rejects.toBe(reason);
+```
+
+Use the location fixture already built by the nearest existing `inspectCodexSessions` test. A scan that is not aborted still returns a blocked preview for an unreadable index.
+
+Add a wizard test whose `providerId` prompt throws `new PromptCancelledError()`. `runCodexWizard` resolves a `{ status: 'cancelled' }` result and does not reject. Keep the existing `commitSetup` `AbortError` test as the separate `authorization_incomplete` path. `Error('cancelled')` still rejects or is otherwise not treated as cancellation.
 
 - [ ] **Step 1: Run the existing Codex tests so the baseline is green**
 
@@ -1890,7 +2107,9 @@ try {
       return keys;
     },
     inspectSessions: (providerId) =>
-      session.spin(m['cli.agent.codex.sessions_loading'](), () => inspectCodexSessions(location, providerId)),
+      session.spin(m['cli.agent.codex.sessions_loading'](), (signal) =>
+        inspectCodexSessions(location, providerId, signal),
+      ),
   });
   if (result.status === 'cancelled') return result;
   session.finish(m['cli.ui.outro_codex_configure']());
@@ -1904,7 +2123,7 @@ try {
 }
 ```
 
-Returning a cancelled result leaves `failure` unset, so `close()` prints neither `cancel` nor `outro`. `renderAgentConfigure` in `packages/cli/src/agent/output.ts` still prints the result lines on stdout. Do not call it from `configureCodexAgent`.
+Returning a cancelled result leaves `failure` unset, so `close()` prints neither `cancel` nor `outro`. A spinner cancel is different: `@clack/prompts` already wrote that line before `onCancel`, and `clear()` cannot remove it, so Codex's stdout result lines remain underneath that one library line. Do not call `cancel()` again to replace it. `renderAgentConfigure` in `packages/cli/src/agent/output.ts` still prints the result lines on stdout. Do not call it from `configureCodexAgent`.
 
 `createPrompts(session)`:
 
@@ -1920,9 +2139,9 @@ In `wizard.ts`, replace the regex `cancelledError` with `isCodexCancellation`.
 
 - [ ] **Step 3: Run the Codex tests to verify they pass**
 
-Run: `cd /agent/repos/aio-proxy/packages/cli && bun test --preload=./__tests__/setup.ts src/agent/codex/codex.test.ts src/agent/codex/wizard/wizard.test.ts src/agent/output.test.ts`
+Run: `cd /agent/repos/aio-proxy/packages/cli && bun test --preload=./__tests__/setup.ts src/agent/codex/codex.test.ts src/agent/codex/wizard/wizard.test.ts src/agent/codex/sessions/sessions.test.ts src/agent/output.test.ts`
 
-Expected: PASS. `rg -n "styleText|withSpinner|@inquirer/prompts" packages/cli/src/agent/codex` prints no matches.
+Expected: PASS. The provider-id `PromptCancelledError` resolves to a cancelled result. The pre-aborted scan rejects `stop-scan` instead of a blocked preview. `rg -n "styleText|withSpinner|@inquirer/prompts" packages/cli/src/agent/codex` prints no matches.
 
 - [ ] **Step 4: Commit**
 
@@ -2109,52 +2328,98 @@ AIO_PROXY_HOME="$(mktemp -d)" /tmp/aio-proxy-clack-smoke --version
 
 Expected: stdout is only the version line.
 
-Prompt smoke, source and binary. Save this as `/tmp/clack-pty-smoke.py` and run it four times: decline and ctrl-c, each for `bun packages/cli/src/main.ts` and for `/tmp/aio-proxy-clack-smoke`. Decline is the clean end. Trust rejection may exit 1. Ctrl+C must also exit. Both must leave the pty with the `echo` flag. A hang past 15 seconds is a failure. This smoke does not replace the unit tests.
+Prompt smoke, source and binary. The CLI is the direct child. Do not wrap it in a shell: a following `printf` or `stty` would make `proc.returncode` the shell's status. `@clack/core` 1.5.1 `ConfirmPrompt` submits immediately on `y`/`Y` (yes) and `n`/`N` (no). Arrow keys and `h`/`l` only toggle the active choice. Enter submits whichever choice is active. The adapter's omitted `initialValue` is `false`, so Enter would decline; the script sends `y` or `n` so the result does not depend on the active choice.
+
+`plugin prune` is the success flow. It asks `Remove unused plugin package cache entries?` and then reads the local package cache. It does not contact a registry. Yes exits 0 and the transcript contains `Pruned`. `plugin add example-plugin` is the decline and Ctrl+C flow. Decline is `PluginTrustRejectedError`: `cli_exit=1` and `Plugin operation cancelled` appears once. Ctrl+C is `PromptCancelledError`: `cli_exit=2`, `Cancelled` appears once, and `Unexpected internal error` does not appear. Remove `CI` from the child environment so `canPrompt` stays true.
+
+Save this as `/tmp/clack-pty-smoke.py`. A hang past 20 seconds is a failure. This smoke does not replace the unit tests.
 
 ```python
-import os, pty, select, shlex, subprocess, sys, time
+import errno, os, pty, select, subprocess, sys, termios, time
 
-key = sys.argv[1]
+mode = sys.argv[1]
 command = sys.argv[2:]
-if key not in ('decline', 'ctrl-c'):
-    raise SystemExit('usage: clack-pty-smoke.py decline|ctrl-c <command...>')
+if mode not in ('decline', 'ctrl-c', 'accept'):
+    raise SystemExit('usage: clack-pty-smoke.py decline|ctrl-c|accept <command...>')
 home = os.environ.get('AIO_PROXY_HOME', '/tmp/aio-proxy-clack-pty')
 os.makedirs(home, exist_ok=True)
-shell = 'trap "true" INT; ' + ' '.join(shlex.quote(part) for part in command) + '; printf __STTY__; stty -a; printf __END__'
 master, slave = pty.openpty()
+kept = os.dup(slave)
+before = termios.tcgetattr(kept)
 env = os.environ.copy()
 env['AIO_PROXY_HOME'] = home
-proc = subprocess.Popen(['bash', '-lc', shell], stdin=slave, stdout=slave, stderr=slave, env=env, close_fds=True)
+env.pop('CI', None)
+proc = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave, env=env, cwd='/agent/repos/aio-proxy', close_fds=True)
 os.close(slave)
+
+def read_chunk():
+    try:
+        return os.read(master, 4096)
+    except OSError as exc:
+        if exc.errno == errno.EIO:
+            return b''
+        raise
+
+def drain():
+    data = b''
+    while True:
+        ready, _, _ = select.select([master], [], [], 0.2)
+        if not ready:
+            return data
+        chunk = read_chunk()
+        if chunk == b'':
+            return data
+        data += chunk
+
+needle = b'Remove unused' if mode == 'accept' else b'Trust'
+key = b'y' if mode == 'accept' else b'n' if mode == 'decline' else b'\x03'
 sent = False
-deadline = time.time() + 15
+deadline = time.time() + 20
 buffer = b''
 while time.time() < deadline and proc.poll() is None:
     ready, _, _ = select.select([master], [], [], 0.2)
     if not ready:
         continue
-    buffer += os.read(master, 4096)
-    if not sent and (b'Trust' in buffer or '┌'.encode() in buffer):
-        os.write(master, b'n\r' if key == 'decline' else b'\x03')
+    chunk = read_chunk()
+    if chunk == b'':
+        break
+    buffer += chunk
+    if not sent and needle in buffer:
+        os.write(master, key)
         sent = True
 try:
-    code = proc.wait(timeout=5)
+    proc.wait(timeout=5)
 except subprocess.TimeoutExpired:
     proc.kill()
+    proc.wait(timeout=2)
     raise SystemExit('process hung')
+buffer += drain()
+after = termios.tcgetattr(kept)
+os.close(kept)
 os.close(master)
+mask = termios.ECHO | termios.ICANON | termios.ISIG
+if (before[3] & mask) != mask or (after[3] & mask) != (before[3] & mask):
+    raise SystemExit(f'terminal flags changed before={before[3] & mask:#x} after={after[3] & mask:#x}')
 text = buffer.decode('utf-8', 'replace')
 if not sent:
     sys.stderr.write(text)
     raise SystemExit('prompt never appeared')
-marker = text.find('__STTY__')
-if marker < 0:
+hide = '\x1b[?25l'
+show = '\x1b[?25h'
+if hide not in text or show not in text or text.rfind(hide) > text.rfind(show):
+    raise SystemExit('cursor was not restored')
+if mode == 'accept':
+    if proc.returncode != 0 or 'Pruned' not in text:
+        sys.stderr.write(text)
+        raise SystemExit(f'accept failed cli_exit={proc.returncode}')
+elif mode == 'decline':
+    if proc.returncode != 1 or text.count('Plugin operation cancelled') != 1 or 'Unexpected internal error' in text:
+        sys.stderr.write(text)
+        raise SystemExit(f'decline failed cli_exit={proc.returncode}')
+elif proc.returncode != 2 or text.count('Cancelled') != 1 or 'Unexpected internal error' in text:
     sys.stderr.write(text)
-    raise SystemExit('stty did not run after the prompt')
-flags = text[marker:].replace(';', ' ').split()
-if 'echo' not in flags:
-    raise SystemExit(f'echo not restored:\n{text[marker:]}')
-print(f'exit={code} sent={key} bytes={len(buffer)}')
+    raise SystemExit(f'ctrl-c failed cli_exit={proc.returncode}')
+print(f'cli_exit={proc.returncode} sent={mode} bytes={len(buffer)}')
 ```
 
 ```bash
@@ -2162,11 +2427,13 @@ export PATH="$HOME/.bun/bin:$PATH"
 export AIO_PROXY_HOME="$(mktemp -d)"
 python3 /tmp/clack-pty-smoke.py decline bun /agent/repos/aio-proxy/packages/cli/src/main.ts plugin add example-plugin
 python3 /tmp/clack-pty-smoke.py ctrl-c bun /agent/repos/aio-proxy/packages/cli/src/main.ts plugin add example-plugin
+python3 /tmp/clack-pty-smoke.py accept bun /agent/repos/aio-proxy/packages/cli/src/main.ts plugin prune
 python3 /tmp/clack-pty-smoke.py decline /tmp/aio-proxy-clack-smoke plugin add example-plugin
 python3 /tmp/clack-pty-smoke.py ctrl-c /tmp/aio-proxy-clack-smoke plugin add example-plugin
+python3 /tmp/clack-pty-smoke.py accept /tmp/aio-proxy-clack-smoke plugin prune
 ```
 
-Expected: each command prints `exit=` within 15 seconds and does not print `prompt never appeared`, `process hung`, or `echo not restored`.
+Expected: each command prints `cli_exit=` within 20 seconds. Accept prints `cli_exit=0`. Decline prints `cli_exit=1`. Ctrl+C prints `cli_exit=2`. None print `prompt never appeared`, `process hung`, `terminal flags changed`, `cursor was not restored`, or `Unexpected internal error`.
 
 - [ ] **Step 4: Commit**
 
@@ -2189,8 +2456,10 @@ Spec coverage:
 - `canPrompt` / `useColor` / machine output left untouched: Tasks 1 and 10. `--json` is not routed through summary.
 - Ask semantics, placeholder, `0`, `false`, secret `""`, confirm default no: Tasks 3 and 6.
 - Codex `multiselect` and localized empty rejection: Tasks 3 and 9.
-- Cancel, `AbortSignal`, no `process.exit`, empty message so `main` does not print twice: Tasks 3 and 4.
-- Codex's own cancelled result suppresses `cancel` / `outro`, while `AbortError` during commit stays a cancelled result: Task 9.
+- Cancel, `formatCliError` empty message for `PromptCancelledError`, exit code stays `2`, no mutation of unknown errors: Tasks 3 and 4.
+- Spinner `AbortSignal`, mid-task cancel, external `signal.reason`, and the real Clack cancel line: Task 4. Codex passes that signal into `inspectCodexSessions` and does not turn abort into a blocked preview: Task 9.
+- Codex's own cancelled result suppresses a second `cancel` / `outro`, while `AbortError` during commit stays `authorization_incomplete`: Task 9.
+- PTY smoke treats `EIO` as EOF, asserts the CLI exit code, compares `ECHO` / `ICANON` / `ISIG`, checks cursor restore, and accepts `plugin prune`: Task 11.
 - Five locales: Task 2.
 - Inquirer removed last: Task 11.
 - Non-goals stay out of every task: no Help rewrite, no LogTape change, no plugin-sdk import, no new `--json`, no exit-code edit, no rollback.
