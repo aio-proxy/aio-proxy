@@ -175,9 +175,7 @@ describe('traces page', () => {
     expect(screen.queryByText('cache-a')).toBeNull();
     expect(screen.getByRole('columnheader', { name: /^(Status|状态|ステータス|상태)$/u })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /^(Model|模型|モデル|모델)$/u })).toBeTruthy();
-    expect(
-      screen.getByRole('columnheader', { name: /Provider ID|提供商 ID|プロバイダー ID|프로바이더 ID/u }),
-    ).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /^(Provider|提供商|プロバイダー|프로바이더)$/u })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /HTTP/u })).toBeTruthy();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
       'cell',

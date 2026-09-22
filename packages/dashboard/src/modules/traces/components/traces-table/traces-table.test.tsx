@@ -56,7 +56,7 @@ describe('traces table', () => {
       'Trace ID',
       expect.stringMatching(/Protocol|协议/u),
       expect.stringMatching(/Model|模型/u),
-      expect.stringMatching(/Provider ID/u),
+      expect.stringMatching(/^(Provider|提供商|プロバイダー|프로바이더)$/u),
       expect.stringMatching(/HTTP status|HTTP 状态/u),
       expect.stringMatching(/Status|状态/u),
       expect.stringMatching(/Latency|延迟/u),

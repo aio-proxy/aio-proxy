@@ -70,7 +70,7 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
   },
   {
     accessorKey: 'finalProviderId',
-    header: () => m['dashboard.traces.provider_id'](),
+    header: () => m['dashboard.traces.provider'](),
     cell: ({ row }) =>
       row.original.finalProviderId === undefined ? (
         TRACE_PLACEHOLDER
