@@ -1,5 +1,17 @@
 # @aio-proxy/plugin-xai-grok
 
+## 0.29.0
+
+### Minor Changes
+
+- [#399](https://github.com/aio-proxy/aio-proxy/pull/399) [`571c394`](https://github.com/aio-proxy/aio-proxy/commit/571c3944b9345196468a241212618def08955d9d) Thanks [@baranwang](https://github.com/baranwang)! - Trace timelines now use stable start ordering, standard HTTP and GenAI semantics, redacted upstream URLs, and accurate provider, failover, TTFT, and usage attribution. OAuth runtimes can explicitly declare their GenAI provider identity; raw transports can declare upstream URL templates, while converted calls omit templates unless authoritative transport metadata is available.
+
+### Patch Changes
+
+- [#401](https://github.com/aio-proxy/aio-proxy/pull/401) [`6337347`](https://github.com/aio-proxy/aio-proxy/commit/6337347634da1a8eb0763e14406b050c32e8f5bc) Thanks [@baranwang](https://github.com/baranwang)! - Grok quota treats an omitted usage figure as 0% used, so an unused window stays fully available instead of disappearing. Banked usage-limit resets can be redeemed from the quota dialog.
+- Updated dependencies [[`571c394`](https://github.com/aio-proxy/aio-proxy/commit/571c3944b9345196468a241212618def08955d9d)]:
+  - @aio-proxy/plugin-sdk@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes
