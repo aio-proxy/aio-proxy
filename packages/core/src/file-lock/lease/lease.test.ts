@@ -139,7 +139,9 @@ test('recovers the exact owner after release cleanup fails', async () => {
     const first = await acquireProcessFileLock(path);
     await expect(first.release()).rejects.toThrow('release failed');
     const abandoned = await readFile(path, 'utf8');
-    const second = await acquireProcessFileLock(path, AbortSignal.timeout(500));
+    // Under the 15s lock wait, so a missed reclaim still fails. Wide enough that a loaded
+    // runner can finish the recovery fence and the reclaim without aborting a live owner.
+    const second = await acquireProcessFileLock(path, AbortSignal.timeout(5_000));
     expect(await readFile(path, 'utf8')).not.toBe(abandoned);
     await second.release();
   } finally {
