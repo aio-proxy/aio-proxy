@@ -29,9 +29,11 @@ describe('redactSecrets', () => {
     expect(
       redactSecrets({
         plugins: [{ options: { url: 'https://plugin.example/callback' } }],
+        otel: { destinations: [{ url: 'https://plugin.example/otel', headers: {} }] },
       }),
     ).toEqual({
       plugins: [{ options: { url: 'https://plugin.example/callback' } }],
+      otel: { destinations: [{ url: 'https://plugin.example/otel', headers: {} }] },
     });
   });
 

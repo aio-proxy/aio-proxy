@@ -60,7 +60,7 @@ export const redactSecrets = (
   if (isPlainObject(value)) {
     return mapValues(value, (entryValue, entryKey) => {
       const keyStr = typeof entryKey === 'string' ? entryKey : '';
-      const nextOtel = inOtel || keyStr === 'otel';
+      const nextOtel = inOtel || (key === 'server' && keyStr === 'otel');
       const nextDestinations = inOtelDestinations || (nextOtel && keyStr === 'destinations');
       return redactSecrets(
         entryValue,
