@@ -9,7 +9,7 @@ import {
 
 import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAI_GROK_CATALOG_TTL_MS } from './catalog';
 import { loginXAIGrok, refreshXAIGrokCredential, type XAIGrokOAuthOptions, xaiLoginResult } from './oauth';
-import { readXAIGrokQuota } from './quota';
+import { readXAIGrokQuota, resetXAIGrokQuota } from './quota';
 import { createXAIGrokRuntime } from './runtime/index';
 import { credentialSchema, type XAIGrokCredential } from './schema';
 
@@ -95,6 +95,11 @@ export function createXAIGrokPlugin(
     quota: {
       read: (context) =>
         readXAIGrokQuota(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
+      reset: (context) =>
+        resetXAIGrokQuota(context, {
           ...dependencies,
           ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
         }),

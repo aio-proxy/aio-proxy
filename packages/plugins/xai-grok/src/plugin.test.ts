@@ -15,7 +15,7 @@ test('exports a versioned xAI Grok OAuth descriptor', async () => {
   expect(adapter.account.options.form).toEqual([]);
   expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: 6 * 60 * 60_000 });
   expect(adapter.quota?.read).toBeFunction();
-  expect(adapter.quota?.reset).toBeUndefined();
+  expect(adapter.quota?.reset).toBeFunction();
   expect(XAI_GROK_PLUGIN_VERSION).toBe(packageJson.version);
 });
 
