@@ -2,6 +2,9 @@ import {
   AnthropicMessageResponseSchema,
   AnthropicMessagesRequestSchema,
   AnthropicMessagesStreamEventSchema,
+  formatAnthropicMessagesSSE,
+  formatOpenAICompletionsSSE,
+  formatOpenAIResponsesSSE,
   OpenAICompletionsRequestSchema,
   OpenAICompletionsResponseSchema,
   OpenAICompletionsStreamEventSchema,
@@ -22,9 +25,15 @@ type ClassifiedPublicOperation = {
   readonly path: string;
 };
 
-type SchemaContent = {
-  readonly contentType: 'application/json' | 'text/event-stream';
+type JsonSchemaContent = {
+  readonly contentType: 'application/json';
   readonly schema: ZodType;
+};
+
+type StreamSchemaContent = {
+  readonly contentType: 'text/event-stream';
+  readonly schema: ZodType;
+  readonly formatExample: (events: readonly unknown[]) => string;
 };
 
 export type DocumentedPublicOperation = {
@@ -40,14 +49,35 @@ export type DocumentedPublicOperation = {
     readonly description: string;
     readonly note?: string;
   };
-  readonly request?: SchemaContent;
+  readonly request?: JsonSchemaContent;
   readonly responses: {
-    readonly json: SchemaContent;
-    readonly stream?: SchemaContent;
+    readonly json: JsonSchemaContent;
+    readonly stream?: StreamSchemaContent;
   };
 };
 
 export type PublicOperation = DocumentedPublicOperation | ClassifiedPublicOperation;
+
+const openAICompletionsRequestDocumentationSchema = OpenAICompletionsRequestSchema.meta({
+  examples: [
+    { model: 'gpt-5', messages: [{ role: 'user', content: 'Hello.' }] },
+    { model: 'gpt-5', messages: [{ role: 'user', content: 'Hello.' }], stream: true },
+  ],
+});
+
+const openAIResponsesRequestDocumentationSchema = OpenAIResponsesRequestSchema.meta({
+  examples: [
+    { model: 'gpt-5', input: 'Hello.' },
+    { model: 'gpt-5', input: 'Hello.', stream: true },
+  ],
+});
+
+const anthropicMessagesRequestDocumentationSchema = AnthropicMessagesRequestSchema.meta({
+  examples: [
+    { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'Hello.' }] },
+    { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'Hello.' }], stream: true },
+  ],
+});
 
 export const publicOperations: readonly PublicOperation[] = [
   {
@@ -77,10 +107,14 @@ export const publicOperations: readonly PublicOperation[] = [
       title: 'operations.createChatCompletion.title',
       description: 'operations.createChatCompletion.description',
     },
-    request: { contentType: 'application/json', schema: OpenAICompletionsRequestSchema },
+    request: { contentType: 'application/json', schema: openAICompletionsRequestDocumentationSchema },
     responses: {
       json: { contentType: 'application/json', schema: OpenAICompletionsResponseSchema },
-      stream: { contentType: 'text/event-stream', schema: OpenAICompletionsStreamEventSchema },
+      stream: {
+        contentType: 'text/event-stream',
+        schema: OpenAICompletionsStreamEventSchema,
+        formatExample: formatOpenAICompletionsSSE,
+      },
     },
   },
   {
@@ -95,10 +129,14 @@ export const publicOperations: readonly PublicOperation[] = [
       title: 'operations.createResponse.title',
       description: 'operations.createResponse.description',
     },
-    request: { contentType: 'application/json', schema: OpenAIResponsesRequestSchema },
+    request: { contentType: 'application/json', schema: openAIResponsesRequestDocumentationSchema },
     responses: {
       json: { contentType: 'application/json', schema: OpenAIResponsesResponseSchema },
-      stream: { contentType: 'text/event-stream', schema: OpenAIResponsesStreamEventSchema },
+      stream: {
+        contentType: 'text/event-stream',
+        schema: OpenAIResponsesStreamEventSchema,
+        formatExample: formatOpenAIResponsesSSE,
+      },
     },
   },
   {
@@ -113,10 +151,14 @@ export const publicOperations: readonly PublicOperation[] = [
       title: 'operations.createMessage.title',
       description: 'operations.createMessage.description',
     },
-    request: { contentType: 'application/json', schema: AnthropicMessagesRequestSchema },
+    request: { contentType: 'application/json', schema: anthropicMessagesRequestDocumentationSchema },
     responses: {
       json: { contentType: 'application/json', schema: AnthropicMessageResponseSchema },
-      stream: { contentType: 'text/event-stream', schema: AnthropicMessagesStreamEventSchema },
+      stream: {
+        contentType: 'text/event-stream',
+        schema: AnthropicMessagesStreamEventSchema,
+        formatExample: formatAnthropicMessagesSSE,
+      },
     },
   },
   { classification: 'deferred', method: 'post', path: '/v1/messages/count_tokens' },

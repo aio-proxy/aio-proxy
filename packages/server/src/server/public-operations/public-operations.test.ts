@@ -3,18 +3,23 @@ import { describe, expect, test } from 'bun:test';
 import {
   AnthropicMessageResponseSchema,
   AnthropicMessagesStreamEventSchema,
+  formatAnthropicMessagesSSE,
   formatOpenAICompletionsSSE,
+  formatOpenAIResponsesSSE,
   OpenAICompletionsResponseSchema,
   OpenAICompletionsStreamEventSchema,
   OpenAIResponsesResponseSchema,
   OpenAIResponsesStreamEventSchema,
   writeAnthropicMessagesResponse,
+  writeAnthropicMessagesSSE,
   writeOpenAICompletionsResponse,
   writeOpenAICompletionsSSE,
   writeOpenAIResponsesResponse,
+  writeOpenAIResponsesSSE,
 } from '@aio-proxy/core';
 
 import { rewriteOpenAICompletionsRaw } from '../../../../core/src/protocol/openai-completions/completions-raw';
+import { createRoutes } from '../create-routes';
 import { PublicModelListSchema } from '../list-models/public-model-list';
 import { publicOperations } from './index';
 
@@ -108,12 +113,51 @@ describe('documentation response schemas', () => {
     expect(formatOpenAICompletionsSSE([event])).toBe(`data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`);
   });
 
-  test('attach examples to the exact schema instances used by descriptors', () => {
+  test('formats documentation examples with each writer protocol terminal', async () => {
+    const chatActual = await collect(writeOpenAICompletionsSSE(partStream([]) as never, { modelId: 'gpt-test' }));
+    const responsesActual = await collect(writeOpenAIResponsesSSE(partStream([]) as never, { modelId: 'gpt-test' }));
+    const messagesActual = await collect(
+      writeAnthropicMessagesSSE(partStream([]) as never, { modelId: 'claude-test' }),
+    );
+    const lastFrame = (body: string) => body.trim().split('\n\n').at(-1)!;
+    const eventName = (frame: string) => frame.split('\n')[0];
+
+    expect(lastFrame(formatOpenAICompletionsSSE([]))).toBe(lastFrame(chatActual));
+    expect(
+      eventName(lastFrame(formatOpenAIResponsesSSE(OpenAIResponsesStreamEventSchema.meta()?.examples ?? []))),
+    ).toBe(eventName(lastFrame(responsesActual)));
+    expect(lastFrame(formatAnthropicMessagesSSE(AnthropicMessagesStreamEventSchema.meta()?.examples ?? []))).toBe(
+      lastFrame(messagesActual),
+    );
+  });
+
+  test('attaches valid non-empty examples to every descriptor schema instance', () => {
     const documented = publicOperations.filter((operation) => operation.classification === 'documented');
     for (const operation of documented) {
-      expect(operation.responses.json.schema.meta()?.examples).toBeArray();
+      const responseExamples = operation.responses.json.schema.meta()?.examples;
+      expect(responseExamples).toBeArray();
+      expect(responseExamples).not.toBeEmpty();
+      for (const example of responseExamples ?? []) {
+        expect(operation.responses.json.schema.safeParse(example).success).toBe(true);
+      }
+      if (operation.request !== undefined) {
+        const requestExamples = operation.request.schema.meta()?.examples;
+        expect(requestExamples).toBeArray();
+        expect(requestExamples).not.toBeEmpty();
+        for (const example of requestExamples ?? []) {
+          expect(operation.request.schema.safeParse(example).success).toBe(true);
+        }
+        if (operation.responses.stream !== undefined) {
+          expect(requestExamples).toContainEqual(expect.objectContaining({ stream: true }));
+        }
+      }
       if (operation.responses.stream !== undefined) {
-        expect(operation.responses.stream.schema.meta()?.examples).toBeArray();
+        const streamExamples = operation.responses.stream.schema.meta()?.examples;
+        expect(streamExamples).toBeArray();
+        expect(streamExamples).not.toBeEmpty();
+        for (const example of streamExamples ?? []) {
+          expect(operation.responses.stream.schema.safeParse(example).success).toBe(true);
+        }
       }
     }
 
@@ -138,11 +182,31 @@ describe('documentation response schemas', () => {
   });
 });
 
-test('classifies unique public routes with exactly four documented operations', () => {
-  const keys = publicOperations.map(({ method, path }) => `${method.toUpperCase()} ${path}`);
+test('classifies every route registered by the public server assembly', () => {
+  const noop = () => undefined;
+  const state = new Proxy(
+    {},
+    {
+      get: (_target, property) =>
+        property === 'currentConfig'
+          ? () => ({ server: { apiKeys: [], requireApiKey: false, password: undefined, logging: {} }, router: {} })
+          : noop,
+    },
+  );
+  const registeredKeys = [
+    ...new Set(
+      createRoutes(state as never)
+        .routes.filter(
+          ({ method, path }) =>
+            ['DELETE', 'GET', 'POST'].includes(method) && (path.startsWith('/v1/') || path.startsWith('/v1beta/')),
+        )
+        .map(({ method, path }) => `${method} ${path}`),
+    ),
+  ].sort();
+  const descriptorKeys = publicOperations.map(({ method, path }) => `${method.toUpperCase()} ${path}`).sort();
   const documented = publicOperations.filter((operation) => operation.classification === 'documented');
 
-  expect(new Set(keys).size).toBe(keys.length);
+  expect(descriptorKeys).toEqual(registeredKeys);
   expect(documented.map(({ method, path, operationId, slug }) => ({ method, path, operationId, slug }))).toEqual([
     { method: 'get', path: '/v1/models', operationId: 'listModels', slug: 'list-models' },
     {

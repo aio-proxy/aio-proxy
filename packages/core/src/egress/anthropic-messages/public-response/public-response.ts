@@ -42,5 +42,17 @@ export const AnthropicMessagesStreamEventSchema = z
   .object({ type: z.string().min(1) })
   .loose()
   .meta({
-    examples: [{ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } }],
+    examples: [
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } },
+      { type: 'message_stop' },
+    ],
   });
+
+export function formatAnthropicMessagesSSE(events: readonly unknown[]): string {
+  return events
+    .map((event) => {
+      const payload = AnthropicMessagesStreamEventSchema.parse(event);
+      return `event: ${payload.type}\ndata: ${JSON.stringify(payload)}\n\n`;
+    })
+    .join('');
+}

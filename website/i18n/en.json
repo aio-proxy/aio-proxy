@@ -16,15 +16,15 @@
     },
     "createChatCompletion": {
       "title": "Create a chat completion",
-      "description": "Creates an OpenAI-compatible chat completion, with JSON and streaming responses."
+      "description": "Creates an OpenAI-compatible chat completion. Set `stream: true` to receive a streaming response."
     },
     "createResponse": {
       "title": "Create a response",
-      "description": "Creates an OpenAI Responses-compatible result, with JSON and streaming responses."
+      "description": "Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response."
     },
     "createMessage": {
       "title": "Create a message",
-      "description": "Creates an Anthropic-compatible message, with JSON and streaming responses."
+      "description": "Creates an Anthropic-compatible message. Set `stream: true` to receive a streaming response."
     }
   }
 }

@@ -1,1 +1,5 @@
-export { AnthropicMessageResponseSchema, AnthropicMessagesStreamEventSchema } from './public-response';
+export {
+  AnthropicMessageResponseSchema,
+  AnthropicMessagesStreamEventSchema,
+  formatAnthropicMessagesSSE,
+} from './public-response';

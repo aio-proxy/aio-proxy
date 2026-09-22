@@ -27,6 +27,80 @@ const documentedOperations = publicOperations
   .filter((operation): operation is DocumentedPublicOperation => operation.classification === 'documented')
   .sort((left, right) => left.navOrder - right.navOrder);
 
+const nonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+function validatePublicOperations(): void {
+  const routeKeys = new Set<string>();
+  const operationIds = new Set<string>();
+  const slugs = new Set<string>();
+  const navOrders = new Set<number>();
+
+  for (const operation of publicOperations) {
+    if (!['documented', 'deferred', 'unsupported'].includes(operation.classification)) {
+      throw new Error('Invalid public operation classification');
+    }
+    if (
+      !['delete', 'get', 'post'].includes(operation.method) ||
+      !nonEmptyString(operation.path) ||
+      !operation.path.startsWith('/')
+    ) {
+      throw new Error('Invalid public route identity');
+    }
+    const routeKey = `${operation.method.toUpperCase()} ${operation.path}`;
+    if (routeKeys.has(routeKey)) throw new Error(`Duplicate public route "${routeKey}"`);
+    routeKeys.add(routeKey);
+
+    if (operation.classification !== 'documented') continue;
+    if (!nonEmptyString(operation.operationId)) throw new Error(`Missing operationId for ${routeKey}`);
+    if (operationIds.has(operation.operationId)) throw new Error(`Duplicate operationId "${operation.operationId}"`);
+    operationIds.add(operation.operationId);
+
+    if (!nonEmptyString(operation.slug)) throw new Error(`Missing slug for ${operation.operationId}`);
+    if (slugs.has(operation.slug)) throw new Error(`Duplicate operation slug "${operation.slug}"`);
+    slugs.add(operation.slug);
+
+    if (!Number.isSafeInteger(operation.navOrder) || operation.navOrder < 0) {
+      throw new Error(`Invalid navOrder for ${operation.operationId}`);
+    }
+    if (navOrders.has(operation.navOrder)) throw new Error(`Duplicate navOrder ${operation.navOrder}`);
+    navOrders.add(operation.navOrder);
+
+    if (!(operation.tag in en.tags)) throw new Error(`Invalid tag for ${operation.operationId}`);
+    if (
+      typeof operation.messages !== 'object' ||
+      operation.messages === null ||
+      !nonEmptyString(operation.messages.title) ||
+      !nonEmptyString(operation.messages.description)
+    ) {
+      throw new Error(`Missing messages for ${operation.operationId}`);
+    }
+    if (operation.messages.note !== undefined && !nonEmptyString(operation.messages.note)) {
+      throw new Error(`Invalid note for ${operation.operationId}`);
+    }
+    if (
+      operation.request !== undefined &&
+      (operation.request.contentType !== 'application/json' ||
+        typeof operation.request.schema?.safeParse !== 'function')
+    ) {
+      throw new Error(`Invalid request metadata for ${operation.operationId}`);
+    }
+    if (
+      operation.responses?.json?.contentType !== 'application/json' ||
+      typeof operation.responses.json.schema?.safeParse !== 'function'
+    ) {
+      throw new Error(`Invalid JSON response metadata for ${operation.operationId}`);
+    }
+    if (
+      operation.responses.stream !== undefined &&
+      (operation.responses.stream.contentType !== 'text/event-stream' ||
+        typeof operation.responses.stream.schema?.safeParse !== 'function' ||
+        typeof operation.responses.stream.formatExample !== 'function')
+    ) {
+      throw new Error(`Invalid stream response metadata for ${operation.operationId}`);
+    }
+  }
+}
+
 const replaceObject = (target: JsonObject, source: JsonObject): void => {
   for (const key of Object.keys(target)) delete target[key];
   Object.assign(target, source);
@@ -58,11 +132,23 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
           const properties = target.properties as JsonObject | undefined;
           Object.assign(properties?.media_type as JsonObject, { pattern: '^image/[A-Za-z0-9!#$&^_.+-]+$' });
           Object.assign(properties?.data as JsonObject, {
+            minLength: 4,
             pattern: '^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$',
           });
         } else if (zodSchema === AnthropicUrlImageSourceSchema) {
           const properties = target.properties as JsonObject | undefined;
-          Object.assign(properties?.url as JsonObject, { pattern: '^https?://[^/\\s?#]+' });
+          if (properties !== undefined) {
+            properties.url = {
+              anyOf: [
+                { type: 'string', format: 'uri', pattern: '^[hH][tT][tT][pP][sS]?://' },
+                {
+                  type: 'string',
+                  pattern:
+                    '^data:image/[A-Za-z0-9!#$&^_.+-]+;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$',
+                },
+              ],
+            };
+          }
         } else if (zodSchema === AnthropicWebSearchToolSchema) {
           target.oneOf = [
             {
@@ -105,6 +191,16 @@ function message(catalog: Catalog, id: string): string {
   return value;
 }
 
+function schemaExamples(schema: ZodType, label: string): readonly unknown[] {
+  const examples = schema.meta()?.examples;
+  if (!Array.isArray(examples) || examples.length === 0) throw new Error(`Missing examples for ${label}`);
+  for (const [index, example] of examples.entries()) {
+    const parsed = schema.safeParse(example);
+    if (!parsed.success) throw new Error(`Invalid example for ${label} at index ${index}`);
+  }
+  return examples;
+}
+
 function operationObject(operation: DocumentedPublicOperation): JsonObject {
   const description = [
     message(en, operation.messages.description),
@@ -112,11 +208,27 @@ function operationObject(operation: DocumentedPublicOperation): JsonObject {
   ]
     .filter((value) => value !== undefined)
     .join('\n\n');
-  const content = Object.fromEntries(
-    [operation.responses.json, operation.responses.stream]
-      .filter((response) => response !== undefined)
-      .map((response) => [response.contentType, { schema: jsonSchema(response.schema, 'output') }]),
-  );
+  const content: Record<string, JsonObject> = {};
+  for (const response of [operation.responses.json, operation.responses.stream]) {
+    if (response === undefined) continue;
+    const examples = schemaExamples(response.schema, `${operation.operationId} ${response.contentType} response`);
+    content[response.contentType] = {
+      schema: jsonSchema(response.schema, 'output'),
+      ...(response.contentType === 'text/event-stream' ? { example: response.formatExample(examples) } : {}),
+    };
+  }
+
+  if (operation.request !== undefined) {
+    const examples = schemaExamples(operation.request.schema, `${operation.operationId} request`);
+    if (
+      operation.responses.stream !== undefined &&
+      !examples.some(
+        (example) => typeof example === 'object' && example !== null && Reflect.get(example, 'stream') === true,
+      )
+    ) {
+      throw new Error(`Missing stream: true request example for ${operation.operationId}`);
+    }
+  }
 
   return {
     operationId: operation.operationId,
@@ -143,9 +255,12 @@ function operationObject(operation: DocumentedPublicOperation): JsonObject {
 }
 
 function sourceDocument(): JsonObject {
+  validatePublicOperations();
   const paths: Record<string, JsonObject> = {};
   for (const operation of documentedOperations) {
-    paths[operation.path] = { [operation.method]: operationObject(operation) };
+    const pathItem = paths[operation.path] ?? {};
+    pathItem[operation.method] = operationObject(operation);
+    paths[operation.path] = pathItem;
   }
   return {
     openapi: '3.1.0',

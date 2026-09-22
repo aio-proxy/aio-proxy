@@ -67,5 +67,27 @@ export const OpenAIResponsesStreamEventSchema = z
         delta: 'Hello',
         logprobs: [],
       },
+      {
+        type: 'response.completed',
+        sequence_number: 2,
+        response: {
+          id: 'resp_example',
+          object: 'response',
+          created_at: 0,
+          model: 'gpt-5',
+          output: [],
+          output_text: 'Hello',
+          status: 'completed',
+        },
+      },
     ],
   });
+
+export function formatOpenAIResponsesSSE(events: readonly unknown[]): string {
+  return events
+    .map((event) => {
+      const payload = OpenAIResponsesStreamEventSchema.parse(event);
+      return `event: ${payload.type}\ndata: ${JSON.stringify(payload)}\n\n`;
+    })
+    .join('');
+}

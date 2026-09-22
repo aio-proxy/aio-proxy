@@ -1,1 +1,5 @@
-export { OpenAIResponsesResponseSchema, OpenAIResponsesStreamEventSchema } from './public-response';
+export {
+  formatOpenAIResponsesSSE,
+  OpenAIResponsesResponseSchema,
+  OpenAIResponsesStreamEventSchema,
+} from './public-response';

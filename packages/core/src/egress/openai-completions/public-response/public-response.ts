@@ -81,8 +81,8 @@ export const OpenAICompletionsStreamEventSchema = z
     ],
   });
 
-export function formatOpenAICompletionsSSE(
-  events: readonly z.input<typeof OpenAICompletionsStreamEventSchema>[],
-): string {
-  return `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')}data: [DONE]\n\n`;
+export function formatOpenAICompletionsSSE(events: readonly unknown[]): string {
+  return `${events
+    .map((event) => `data: ${JSON.stringify(OpenAICompletionsStreamEventSchema.parse(event))}\n\n`)
+    .join('')}data: [DONE]\n\n`;
 }

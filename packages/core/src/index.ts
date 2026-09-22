@@ -40,6 +40,7 @@ export { parseRuntimeConfig, resolveConfigTemplates } from './config/index';
 export {
   AnthropicMessageResponseSchema,
   AnthropicMessagesStreamEventSchema,
+  formatAnthropicMessagesSSE,
   type AnthropicMessageResponse,
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
@@ -56,6 +57,7 @@ export {
 } from './egress/openai-completions/index';
 export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
+  formatOpenAIResponsesSSE,
   OpenAIResponsesResponseSchema,
   OpenAIResponsesStreamEventSchema,
   type OpenAIResponsesResponse,

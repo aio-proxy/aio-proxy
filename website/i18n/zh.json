@@ -16,15 +16,15 @@
     },
     "createChatCompletion": {
       "title": "创建聊天补全",
-      "description": "创建 OpenAI 兼容的聊天补全，支持 JSON 和流式响应。"
+      "description": "创建 OpenAI 兼容的聊天补全。设置 `stream: true` 以接收流式响应。"
     },
     "createResponse": {
       "title": "创建响应",
-      "description": "创建 OpenAI Responses 兼容结果，支持 JSON 和流式响应。"
+      "description": "创建 OpenAI Responses 兼容结果。设置 `stream: true` 以接收流式响应。"
     },
     "createMessage": {
       "title": "创建消息",
-      "description": "创建 Anthropic 兼容消息，支持 JSON 和流式响应。"
+      "description": "创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。"
     }
   }
 }
