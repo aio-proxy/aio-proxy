@@ -5,9 +5,11 @@ import { uniq } from 'es-toolkit/array';
 
 import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from './config-entry';
 import {
+  beginPluginSession,
   createCliPluginDiagnosticFactory,
   createDefaultPluginLifecycleDeps,
   type PluginLifecycleDeps,
+  reportLine,
   requireConfirmation,
 } from './deps';
 import { BuiltInPluginRemovalError, PluginSecretPurgeConflictError, PluginTrustRejectedError } from './errors';
@@ -59,10 +61,18 @@ export async function pluginRemove(
   injected?: PluginLifecycleDeps,
 ): Promise<void> {
   const deps = injected ?? createDefaultPluginLifecycleDeps();
+  const session = beginPluginSession(deps, m['cli.ui.title_plugin_remove']());
+  let failure: unknown;
   try {
     packageName = requirePluginPackageName(packageName);
     if (deps.builtInNames.has(packageName)) throw new BuiltInPluginRemovalError(packageName);
-    await requireConfirmation(m['cli.plugin.remove_prompt']({ plugin: packageName }), options, deps, packageName);
+    await requireConfirmation(
+      m['cli.plugin.remove_prompt']({ plugin: packageName }),
+      options,
+      deps,
+      packageName,
+      session,
+    );
     const lifecycle = deps.withNpmPackageLifecycle ?? (async (_packageName, use) => use(async () => {}));
     await lifecycle(packageName, async (assertOwnership) => {
       await assertOwnership();
@@ -70,10 +80,16 @@ export async function pluginRemove(
     });
     if (options.purgeSecrets === true) {
       try {
-        await requireConfirmation(m['cli.plugin.purge_prompt']({ plugin: packageName }), options, deps, packageName);
+        await requireConfirmation(
+          m['cli.plugin.purge_prompt']({ plugin: packageName }),
+          options,
+          deps,
+          packageName,
+          session,
+        );
       } catch (error) {
         if (!(error instanceof PluginTrustRejectedError)) throw error;
-        deps.print(m['cli.plugin.removed_secrets_retained']({ plugin: packageName }));
+        reportLine(deps, session, m['cli.plugin.removed_secrets_retained']({ plugin: packageName }));
         return;
       }
       await lifecycle(packageName, async (assertOwnership) => {
@@ -91,20 +107,28 @@ export async function pluginRemove(
         });
       });
     }
-    deps.print(
+    reportLine(
+      deps,
+      session,
       options.purgeSecrets === true
         ? m['cli.plugin.removed_secrets_purged']({ plugin: packageName })
         : m['cli.plugin.removed_secrets_retained']({ plugin: packageName }),
     );
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    session?.close(failure);
     if (injected === undefined) deps.close?.();
   }
 }
 
 export async function pluginPrune(options: PluginPruneOptions, injected?: PluginLifecycleDeps): Promise<void> {
   const deps = injected ?? createDefaultPluginLifecycleDeps();
+  const session = beginPluginSession(deps, m['cli.ui.title_plugin_prune']());
+  let failure: unknown;
   try {
-    await requireConfirmation(m['cli.plugin.prune_prompt'](), options, deps);
+    await requireConfirmation(m['cli.plugin.prune_prompt'](), options, deps, undefined, session);
     const used = usedPackageNames(await deps.config.read());
     const unused = (await deps.listInstalledNpmPackages())
       .map((pkg) => pkg.packageName)
@@ -120,8 +144,12 @@ export async function pluginPrune(options: PluginPruneOptions, injected?: Plugin
         removed += 1;
       }
     }
-    deps.print(m['cli.plugin.pruned']({ count: removed }));
+    reportLine(deps, session, m['cli.plugin.pruned']({ count: removed }));
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    session?.close(failure);
     if (injected === undefined) deps.close?.();
   }
 }
