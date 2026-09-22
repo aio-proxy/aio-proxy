@@ -3,7 +3,14 @@ import { expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 mock.module('@rspress/core/theme', () => ({
-  getCustomMDXComponent: () => ({ code: 'code', pre: 'pre' }),
+  CodeBlockRuntime: ({ code }: { readonly code: string }) => <code>{code}</code>,
+  Tab: ({ children, label }: React.PropsWithChildren<{ readonly label: React.ReactNode }>) => (
+    <section>
+      {label}
+      {children}
+    </section>
+  ),
+  Tabs: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
 }));
 
 const { CommandTabs } = await import('./index');

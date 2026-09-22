@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "api:check": "bun scripts/generate-api-reference/generate-api-reference.ts --check",
+    "api:generate": "bun scripts/generate-api-reference/generate-api-reference.ts",
     "dev": "rspress dev",
-    "build": "rspress build"
+    "build": "rspress build",
+    "test": "bun test"
   },
   "dependencies": {
     "@aio-proxy/brand": "workspace:*",

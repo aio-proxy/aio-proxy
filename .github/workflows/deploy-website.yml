@@ -53,6 +53,9 @@ jobs:
             ${{ runner.os }}-bun-
 
       - run: bun install --frozen-lockfile --prefer-offline
+      - run: bun run build
+      - run: bun run --filter @aio-proxy/website api:check
+      - run: bun run --filter @aio-proxy/website test
       - run: bun run --filter @aio-proxy/website build
 
       - uses: actions/configure-pages@v6

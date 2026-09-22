@@ -1,24 +1,17 @@
-import type { ApiOperationSlug } from './fixtures';
-import { chatCompletionsDocument, listModelsDocument } from './fixtures';
-
 type ScalarFrameProps = {
   readonly ApiReference: typeof import('@scalar/api-reference-react').ApiReferenceReact;
   readonly dark: boolean;
-  readonly slug: ApiOperationSlug;
+  readonly document: Readonly<Record<string, unknown>>;
+  readonly operationKey: string;
 };
 
-const documents = {
-  'list-models': listModelsDocument,
-  'chat-completions': chatCompletionsDocument,
-} as const;
-
-export function ScalarFrame({ ApiReference, dark, slug }: ScalarFrameProps) {
+export function ScalarFrame({ ApiReference, dark, document, operationKey }: ScalarFrameProps) {
   return (
     <div className="api-operation" data-not-typeset>
       <ApiReference
-        key={slug}
+        key={operationKey}
         configuration={{
-          content: documents[slug],
+          content: document,
           servers: [{ url: 'http://127.0.0.1:9317' }],
           layout: 'modern',
           showSidebar: false,

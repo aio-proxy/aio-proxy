@@ -1,21 +1,21 @@
 [
   {
-    "label": "List models",
+    "label": "列出模型",
     "name": "list-models",
     "type": "file"
   },
   {
-    "label": "Create a chat completion",
+    "label": "创建聊天补全",
     "name": "chat-completions",
     "type": "file"
   },
   {
-    "label": "Create a response",
+    "label": "创建响应",
     "name": "responses",
     "type": "file"
   },
   {
-    "label": "Create a message",
+    "label": "创建消息",
     "name": "messages",
     "type": "file"
   }

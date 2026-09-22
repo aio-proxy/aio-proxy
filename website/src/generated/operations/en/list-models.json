@@ -1,0 +1,181 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/models": {
+      "get": {
+        "description": "Lists the models currently available through aio-proxy.\n\nAgent negotiation and client_version catalogs are excluded from this page.",
+        "operationId": "listModels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "examples": [
+                    {
+                      "data": [
+                        {
+                          "capabilities": null,
+                          "created": 0,
+                          "created_at": "1970-01-01T00:00:00Z",
+                          "display_name": "gpt-5",
+                          "id": "gpt-5",
+                          "max_input_tokens": null,
+                          "max_tokens": null,
+                          "object": "model",
+                          "owned_by": "openai",
+                          "type": "model"
+                        }
+                      ],
+                      "first_id": "gpt-5",
+                      "has_more": false,
+                      "last_id": "gpt-5",
+                      "object": "list"
+                    }
+                  ],
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "capabilities": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": {},
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "max_input_tokens": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "max_tokens": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "object": {
+                            "const": "model",
+                            "type": "string"
+                          },
+                          "owned_by": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "model",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "capabilities",
+                          "created",
+                          "created_at",
+                          "display_name",
+                          "id",
+                          "max_input_tokens",
+                          "max_tokens",
+                          "object",
+                          "owned_by",
+                          "type"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "first_id": {
+                      "type": ["string", "null"]
+                    },
+                    "has_more": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "last_id": {
+                      "type": ["string", "null"]
+                    },
+                    "object": {
+                      "const": "list",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["data", "first_id", "has_more", "last_id", "object"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "List models",
+        "tags": ["Models"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Models",
+      "x-tag-id": "Models"
+    },
+    {
+      "name": "OpenAI-compatible",
+      "x-tag-id": "OpenAI"
+    },
+    {
+      "name": "Anthropic-compatible",
+      "x-tag-id": "Anthropic"
+    }
+  ]
+}

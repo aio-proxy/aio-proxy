@@ -1,0 +1,22 @@
+{
+  "files": [
+    "docs/en/api/_meta.json",
+    "docs/en/api/chat-completions.mdx",
+    "docs/en/api/list-models.mdx",
+    "docs/en/api/messages.mdx",
+    "docs/en/api/responses.mdx",
+    "docs/zh/api/_meta.json",
+    "docs/zh/api/chat-completions.mdx",
+    "docs/zh/api/list-models.mdx",
+    "docs/zh/api/messages.mdx",
+    "docs/zh/api/responses.mdx",
+    "src/generated/operations/en/chat-completions.json",
+    "src/generated/operations/en/list-models.json",
+    "src/generated/operations/en/messages.json",
+    "src/generated/operations/en/responses.json",
+    "src/generated/operations/zh/chat-completions.json",
+    "src/generated/operations/zh/list-models.json",
+    "src/generated/operations/zh/messages.json",
+    "src/generated/operations/zh/responses.json"
+  ]
+}
