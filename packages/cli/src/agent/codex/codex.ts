@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { styleText } from 'node:util';
 
 import { AtomicConfigFile, configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
@@ -148,6 +149,24 @@ const createPrompts = (): CodexPrompts => ({
     }),
 });
 
+const withSpinner = async <T>(message: string, task: () => Promise<T>): Promise<T> => {
+  if (process.stderr.isTTY !== true) return task();
+  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let index = 0;
+  const paint = (): void => {
+    process.stderr.write(`\r${styleText('cyan', frames[index] ?? '⠋')} ${message}`);
+    index = (index + 1) % frames.length;
+  };
+  paint();
+  const timer = setInterval(paint, 80);
+  try {
+    return await task();
+  } finally {
+    clearInterval(timer);
+    process.stderr.write(`\r\x1b[2K`);
+  }
+};
+
 const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
 
 const connectionStatus = async (baseUrl?: string, token?: string): Promise<CodexListResult['connection']> => {
@@ -246,10 +265,11 @@ export async function configureCodexAgent(options: CodexConfigureOptions = {}): 
     occupiedIds: () => occupiedIds(location),
     inspectKeys: async () => {
       const keys = await inspectProxyKeys(createCredentialDeps(endpoint));
-      if (keys.choices.length === 0) console.error(m['cli.agent.codex.key_none']());
+      if (keys.choices.length === 0) console.log(styleText('dim', m['cli.agent.codex.key_none']()));
       return keys;
     },
-    inspectSessions: (providerId) => inspectCodexSessions(location, providerId),
+    inspectSessions: (providerId) =>
+      withSpinner(m['cli.agent.codex.sessions_loading'](), () => inspectCodexSessions(location, providerId)),
     resolveCommand: resolveCodexAuthCommand,
     resolveEndpoint: resolveAgentEndpoint,
     commitSetup: async (selection) => commitCodexSetup(selection, authContext(location, await currentEndpoint())),
