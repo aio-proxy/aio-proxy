@@ -18,6 +18,14 @@ export type ChatGPTAccountOptionsText = {
 
 const CODEX_CLIENT_MARKERS = ['codex-tui', 'codex_cli_rs', 'codex desktop'] as const;
 
+function isHttpHeaderValue(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) return false;
+  }
+  return true;
+}
+
 export const englishAccountOptionsText: ChatGPTAccountOptionsText = {
   userAgentLabel: 'User agent',
   userAgentPolicyLabel: 'User agent policy',
@@ -32,6 +40,7 @@ export function chatGPTAccountOptions(text: ChatGPTAccountOptionsText): ConfigSp
         userAgent: zod
           .string()
           .trim()
+          .refine((value) => value === '' || isHttpHeaderValue(value), 'User agent is not a valid HTTP header value')
           .optional()
           .transform((value) => (value === undefined || value === '' ? CHATGPT_USER_AGENT : value)),
         userAgentPolicy: zod.enum(['fixed', 'preserveCodexClient']).default('fixed'),
