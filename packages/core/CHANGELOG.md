@@ -1,5 +1,30 @@
 # @aio-proxy/core
 
+## 0.30.0
+
+### Minor Changes
+
+- [#404](https://github.com/aio-proxy/aio-proxy/pull/404) [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493) Thanks [@baranwang](https://github.com/baranwang)! - Settings can send the traces aio-proxy already records to OTLP endpoints. Add a destination URL, choose JSON or protobuf, and set headers. Export stays on when a destination fails, and the local traces page is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`fc9ee8c`](https://github.com/aio-proxy/aio-proxy/commit/fc9ee8c2d31bcdc58bc5709b3d0e2a451b2004f2), [`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46), [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493)]:
+  - @aio-proxy/plugin-openai-chatgpt@0.30.0
+  - @aio-proxy/i18n@0.30.0
+  - @aio-proxy/types@0.30.0
+  - @aio-proxy/plugin-sdk@0.30.0
+  - @aio-proxy/plugin-cursor@0.30.0
+  - @aio-proxy/logger@0.30.0
+  - @aio-proxy/plugin-claude-code@0.30.0
+  - @aio-proxy/plugin-github-copilot@0.30.0
+  - @aio-proxy/plugin-google-antigravity@0.30.0
+  - @aio-proxy/plugin-kimi-code@0.30.0
+  - @aio-proxy/plugin-muse-code@0.30.0
+  - @aio-proxy/plugin-opencode-go@0.30.0
+  - @aio-proxy/plugin-openrouter@0.30.0
+  - @aio-proxy/plugin-xai-grok@0.30.0
+  - @aio-proxy/shared@0.30.0
+
 ## 0.29.0
 
 ### Minor Changes
