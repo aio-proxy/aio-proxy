@@ -118,7 +118,7 @@ export async function commitConfig(
   if (previous.config.server.requireApiKey && !config.server.requireApiKey) {
     warnUnenforcedApiKeys(runtime.options.host, config, runtime.logger);
   }
-  syncOtelDestinations(config.server.otel.destinations, runtime.logger);
+  if (!runtime.closed) syncOtelDestinations(config.server.otel.destinations, runtime.logger);
   return retired;
 }
 
