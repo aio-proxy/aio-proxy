@@ -6,9 +6,9 @@ import { CircleCheckIcon } from 'lucide-react';
 
 import { PluginIcon } from '@/components/plugin-icon';
 import { resolveDashboardText } from '@/lib/localized-text';
-import { providerPluginPresentationsQueryOptions } from '@/lib/provider-plugin-presentations';
 
 import type { OAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import { providerPluginPresentationsQueryOptions } from '../services/provider-plugin-labels';
 import { OAuthAccountFields } from './oauth-account-fields';
 
 interface OAuthProviderEditFieldsProps {

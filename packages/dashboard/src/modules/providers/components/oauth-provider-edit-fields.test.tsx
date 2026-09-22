@@ -5,9 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import { providerPluginPresentationsQueryOptions } from '@/lib/provider-plugin-presentations';
-
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import { providerPluginPresentationsQueryOptions } from '../services/provider-plugin-labels';
 import { OAuthProviderEditFields } from './oauth-provider-edit-fields';
 
 const PROVIDER = {

@@ -10,6 +10,5 @@ const getProviderPlugins = async (): Promise<{ plugins: readonly DashboardPlugin
   return response.json();
 };
 
-// Plugin icons for Provider marks. Shared by the providers module and ProviderIdLabel.
 export const providerPluginPresentationsQueryOptions = () =>
   queryOptions({ queryKey: queryKeys.plugins, queryFn: getProviderPlugins });

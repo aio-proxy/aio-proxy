@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { ProviderMark } from '@/components/provider-mark';
 import { providerDisplayName } from '@/lib/provider-display-name';
-import { providerPluginPresentationsQueryOptions } from '@/lib/provider-plugin-presentations';
-import { providersQueryOptions } from '@/lib/providers-query';
+import { providerPluginPresentationsQueryOptions } from '@/modules/providers/services/provider-plugin-labels';
+import { providersQueryOptions } from '@/modules/providers/services/providers-query';
 
 interface ProviderIdLabelProps {
   readonly providerId: string;
