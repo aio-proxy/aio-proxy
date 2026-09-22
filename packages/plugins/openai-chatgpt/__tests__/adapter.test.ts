@@ -9,6 +9,8 @@ import {
 
 import packageJson from '../package.json' with { type: 'json' };
 import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '../src';
+import type { ChatGPTAccountOptions } from '../src/account-options';
+import { CHATGPT_USER_AGENT } from '../src/codex-client';
 import { base64url } from '../src/pkce';
 
 const originalFetch = globalThis.fetch;
@@ -29,11 +31,23 @@ describe('OpenAI ChatGPT plugin', () => {
     expect(OPENAI_CHATGPT_PLUGIN_VERSION).toBe(packageJson.version);
   });
 
-  test('accepts an empty account options object and exposes no fields', async () => {
+  test('defaults a missing user agent and policy, and trims a blank user agent', async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
 
-    await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({});
-    expect(adapter.account.options.form).toEqual([]);
+    await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({
+      userAgent: CHATGPT_USER_AGENT,
+      userAgentPolicy: 'fixed',
+    });
+    await expect(
+      adapter.account.options.schema.parseAsync({
+        userAgent: '  custom-agent  ',
+        userAgentPolicy: 'preserveCodexClient',
+      }),
+    ).resolves.toEqual({ userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' });
+    await expect(adapter.account.options.schema.parseAsync({ userAgent: '   ' })).resolves.toMatchObject({
+      userAgent: CHATGPT_USER_AGENT,
+      userAgentPolicy: 'fixed',
+    });
   });
 
   test('supports injectable localized copy', async () => {
@@ -248,13 +262,15 @@ describe('OpenAI ChatGPT plugin', () => {
   });
 });
 
-async function adapterFrom(descriptor: PluginDescriptor): Promise<OAuthAdapter<Record<string, never>, unknown>> {
-  let adapter: OAuthAdapter<Record<string, never>, unknown> | undefined;
+async function adapterFrom(
+  descriptor: PluginDescriptor,
+): Promise<OAuthAdapter<Partial<ChatGPTAccountOptions>, unknown>> {
+  let adapter: OAuthAdapter<Partial<ChatGPTAccountOptions>, unknown> | undefined;
   await descriptor.setup(
     {
       oauth: {
         register: (registered) => {
-          adapter = registered as OAuthAdapter<Record<string, never>, unknown>;
+          adapter = registered as OAuthAdapter<Partial<ChatGPTAccountOptions>, unknown>;
         },
       },
     },

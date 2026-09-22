@@ -146,6 +146,51 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(requiredCall(calls, 0).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact');
     expect(requiredCall(calls, 1).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact?trace=1');
   });
+
+  test('keeps the configured user agent unless a Codex client is preserved', async () => {
+    const cases = [
+      { options: {}, inbound: 'Codex Desktop/0.155.0', expected: CHATGPT_USER_AGENT },
+      {
+        options: { userAgent: 'custom-agent', userAgentPolicy: 'fixed' as const },
+        inbound: 'codex-tui/1',
+        expected: 'custom-agent',
+      },
+      {
+        options: { userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' as const },
+        inbound: 'codex-tui/1.0',
+        expected: 'codex-tui/1.0',
+      },
+      {
+        options: { userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' as const },
+        inbound: 'cli (codex_cli_rs)',
+        expected: 'cli (codex_cli_rs)',
+      },
+      {
+        options: { userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' as const },
+        inbound: 'Codex Desktop/0.155.0-alpha.9.2',
+        expected: 'Codex Desktop/0.155.0-alpha.9.2',
+      },
+      {
+        options: { userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' as const },
+        inbound: 'curl/8.0',
+        expected: 'custom-agent',
+      },
+    ];
+
+    for (const item of cases) {
+      const calls: FetchCall[] = [];
+      const dynamicFetch = createOpenAIChatGPTDynamicFetch(
+        staticCredentialPort(credential()),
+        captureFetch(calls),
+        item.options,
+      );
+      await dynamicFetch('https://api.openai.com/v1/models', {
+        headers: { 'user-agent': item.inbound },
+        method: 'GET',
+      });
+      expect(requiredCall(calls, 0).headers.get('User-Agent')).toBe(item.expected);
+    }
+  });
 });
 
 test('refresh metadata uses stored email when rotated tokens omit one', async () => {

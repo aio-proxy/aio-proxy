@@ -1,6 +1,7 @@
 import type { AccountContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import { CHATGPT_USER_AGENT, currentCredential } from '../runtime/index';
+import { type ChatGPTAccountOptions, resolveChatGPTUserAgent } from '../account-options';
+import { currentCredential } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
 import { RESET_CREDITS_CONSUME_URL } from './endpoints';
 
@@ -13,7 +14,7 @@ import { RESET_CREDITS_CONSUME_URL } from './endpoints';
  * second call is a second intentional redemption, not a retry of the first.
  */
 export async function resetOpenAIChatGPTQuota(
-  context: AccountContext<ChatGPTCredential, Record<string, never>>,
+  context: AccountContext<ChatGPTCredential, Partial<ChatGPTAccountOptions>>,
   fetcher: RuntimeFetch = context.fetch ?? globalThis.fetch,
 ): Promise<void> {
   const credential = await currentCredential(context.credentials, fetcher);
@@ -24,7 +25,7 @@ export async function resetOpenAIChatGPTQuota(
       Authorization: `Bearer ${credential.accessToken}`,
       'ChatGPT-Account-Id': credential.accountId,
       'Content-Type': 'application/json',
-      'User-Agent': CHATGPT_USER_AGENT,
+      'User-Agent': resolveChatGPTUserAgent(context.options, null),
     },
     body: JSON.stringify({ redeem_request_id: crypto.randomUUID() }),
     signal: context.signal,
