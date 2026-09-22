@@ -49,6 +49,7 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly context: TContext;
   readonly config: Config | undefined;
   readonly rawRequest: Request;
+  readonly httpRoute?: string;
   readonly request: TRequest;
   readonly requestedModelId: string;
   readonly session: RequestTraceSession;
@@ -76,6 +77,7 @@ function createAttemptLoopContext<TRequest, TContext>(
     context,
     deferRelease,
     rawRequest,
+    httpRoute,
     release,
     request,
     requestedModelId,
@@ -95,6 +97,7 @@ function createAttemptLoopContext<TRequest, TContext>(
     adapter,
     context,
     rawRequest,
+    ...(httpRoute === undefined ? {} : { httpRoute }),
     request,
     requestedModelId,
     routerModels: options.config?.router.models,
@@ -112,7 +115,6 @@ function createAttemptLoopContext<TRequest, TContext>(
     streamRequested,
     emitter: createAttemptEmitter({
       session,
-      streamRequested,
       capability: adapter.capability,
       ...(options.onAttemptEnd === undefined ? {} : { onAttemptEnd: options.onAttemptEnd }),
     }),
@@ -185,7 +187,7 @@ async function attemptVideoCandidate<TRequest, TContext>(
   const raw = slot.candidate.provider.raw?.resolve({
     protocol: ctx.adapter.protocol,
     modelId: slot.candidate.modelId,
-    ...requestPathProperty(ctx.rawRequest),
+    ...requestPathProperty(ctx.rawRequest, ctx.httpRoute),
   });
   if (raw !== undefined) {
     slot.trace.transport = 'raw';
@@ -212,7 +214,7 @@ async function attemptLanguageCandidate<TRequest, TContext>(
   const raw = provider.raw?.resolve({
     protocol: ctx.adapter.protocol,
     modelId: slot.candidate.modelId,
-    ...requestPathProperty(ctx.rawRequest),
+    ...requestPathProperty(ctx.rawRequest, ctx.httpRoute),
   });
   if (raw !== undefined) return await attemptRawCandidate(ctx, slot, raw);
   if (provider.model !== undefined) {
@@ -280,7 +282,11 @@ export async function attemptCandidates<TRequest, TContext>(
       // spanRef before their first inAttempt call, so the undefined branch is
       // unreachable today; it stays as the safe default for a future path that
       // calls inAttempt first.
-      inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T => {
+      inAttempt: <T>(
+        targetProtocol: CandidateSlot['trace']['targetProtocol'],
+        operation: () => T,
+        urlTemplate?: string,
+      ): T => {
         const open = spanRef.current;
         return withAttemptResponseObservation(observation, () =>
           withAttemptLogContext(
@@ -291,6 +297,7 @@ export async function attemptCandidates<TRequest, TContext>(
               requestedModelId: options.requestedModelId,
               sourceProtocol: adapter.protocol,
               ...(targetProtocol === undefined ? {} : { targetProtocol }),
+              ...(urlTemplate === undefined ? {} : { urlTemplate }),
             },
             open === undefined ? operation : () => open.run(operation),
           ),

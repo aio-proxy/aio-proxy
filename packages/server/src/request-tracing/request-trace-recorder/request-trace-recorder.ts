@@ -7,6 +7,7 @@ import {
   isSpanContextValid,
   propagation,
   trace,
+  type Attributes,
   type Context,
   type Link,
 } from '@opentelemetry/api';
@@ -14,7 +15,7 @@ import {
 import type { LogicalSessionResolution } from '../../logical-session-store';
 import { logServerEvent, type ServerLogSink, serverErrorType } from '../../server-log';
 import { getTraceRuntime } from '../runtime';
-import { attributeName, captureTraceDiagnostics, spanName, traceDiagnosticsToAttributes } from '../semantic';
+import { attributeName, captureTraceDiagnostics } from '../semantic';
 import { applyTerminalAttributes, buildCompletion } from './completion';
 import type { RequestTraceFinishInput, RequestTraceIdentityInput } from './types';
 
@@ -40,6 +41,7 @@ export type RequestTraceRecorder = {
     /** Metadata source for request diagnostics and incoming trace links. */
     readonly inboundRequest: Request;
     readonly inboundProtocol: string;
+    readonly httpRoute?: string;
     readonly operation?: 'model' | 'token_count';
   }) => RequestTraceSession;
 };
@@ -74,19 +76,19 @@ export function createRequestTraceRecorder(options: {
       const requestId = currentRequestId() ?? crypto.randomUUID();
       const { tracer, processor } = getTraceRuntime();
       const links = extractIncomingLinks(input.inboundRequest.headers);
+      const rootName =
+        input.httpRoute === undefined
+          ? input.inboundRequest.method
+          : `${input.inboundRequest.method} ${input.httpRoute}`;
       const rootAttributes = {
         [attributeName.requestId]: requestId,
         [attributeName.inboundProtocol]: input.inboundProtocol,
-        [attributeName.operation]: input.operation ?? 'model',
-        ...traceDiagnosticsToAttributes(
-          captureTraceDiagnostics({
-            inboundRequest: { protocol: input.inboundProtocol, value: input.inboundRequest },
-          }),
-        ),
+        ...requestHttpAttributes(input.inboundRequest, input.inboundProtocol, input.httpRoute),
+        ...(input.operation === 'token_count' ? { [attributeName.operation]: input.operation } : {}),
       };
 
       const root = tracer.startSpan(
-        spanName.request,
+        rootName,
         {
           kind: SpanKind.SERVER,
           links,
@@ -113,8 +115,9 @@ export function createRequestTraceRecorder(options: {
             spanId: rootSpanId,
             requestId,
             inboundProtocol: input.inboundProtocol,
-            name: spanName.request,
+            name: rootName,
             kind: SpanKind.SERVER,
+            startSequence: 0,
             startedAt: current,
             statusCode: SpanStatusCode.UNSET,
             attributes: rootAttributes,
@@ -134,9 +137,7 @@ export function createRequestTraceRecorder(options: {
         state = 'finished';
         try {
           if (finish.clientResponse !== undefined) {
-            root.setAttributes(
-              traceDiagnosticsToAttributes(captureTraceDiagnostics({ clientResponse: finish.clientResponse })),
-            );
+            root.setAttributes(responseHttpAttributes(finish.clientResponse));
           }
           applyTerminalAttributes(root, finish, identity);
           root.end();
@@ -212,6 +213,33 @@ export function createRequestTraceRecorder(options: {
         },
       };
     },
+  };
+}
+
+function requestHttpAttributes(request: Request, protocol: string, httpRoute: string | undefined): Attributes {
+  const diagnostics = captureTraceDiagnostics({ inboundRequest: { protocol, value: request } }).request!;
+  return {
+    [attributeName.httpRequestMethod]: request.method,
+    [attributeName.urlPath]: new URL(request.url).pathname,
+    ...(httpRoute === undefined ? {} : { [attributeName.httpRoute]: httpRoute }),
+    ...(diagnostics.contentType === undefined
+      ? {}
+      : { [attributeName.httpRequestContentType]: [diagnostics.contentType] }),
+    ...(diagnostics.contentLengthBytes === undefined
+      ? {}
+      : { [attributeName.httpRequestContentLength]: [String(diagnostics.contentLengthBytes)] }),
+    ...(diagnostics.userAgent === undefined ? {} : { [attributeName.userAgentOriginal]: diagnostics.userAgent }),
+  };
+}
+
+function responseHttpAttributes(clientResponse: Response): Attributes {
+  const response = captureTraceDiagnostics({ clientResponse }).response!;
+  return {
+    [attributeName.httpStatusCode]: response.statusCode,
+    ...(response.contentType === undefined ? {} : { [attributeName.httpResponseContentType]: [response.contentType] }),
+    ...(response.contentLengthBytes === undefined
+      ? {}
+      : { [attributeName.httpResponseContentLength]: [String(response.contentLengthBytes)] }),
   };
 }
 

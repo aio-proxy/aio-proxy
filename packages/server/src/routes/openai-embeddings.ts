@@ -9,6 +9,7 @@ export function createOpenAIEmbeddingsRoutes(source: ProviderRouteSource) {
     handleProtocolRequest({
       adapter: openAIEmbeddingsAdapter,
       context: {},
+      httpRoute: '/v1/embeddings',
       rawRequest: context.req.raw,
       source,
     }),

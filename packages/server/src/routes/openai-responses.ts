@@ -10,6 +10,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAIResponsesAdapter,
         context: {},
+        httpRoute: '/v1/responses',
         rawRequest: context.req.raw,
         source,
       }),
@@ -18,6 +19,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAIResponsesAdapter,
         context: { operation: 'compact' },
+        httpRoute: '/v1/responses/compact',
         rawRequest: context.req.raw,
         source,
       }),

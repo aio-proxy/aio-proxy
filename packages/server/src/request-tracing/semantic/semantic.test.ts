@@ -27,9 +27,11 @@ function opensSpanNamed(key: string): RegExp {
 test('every declared span has a creation site that goes through the registry', async () => {
   for (const [key, declaration] of Object.entries(spanRegistry)) {
     // 名字只能引用 spanName，不能手写：第三条 test 只比 key 的集合，比不出值被写错。
-    expect(declaration.name, `${key}: registry 里的名字和 spanName 对不上`).toBe(
-      (spanName as Record<string, string | undefined>)[key],
-    );
+    if (declaration.name !== undefined) {
+      expect(declaration.name, `${key}: registry 里的名字和 spanName 对不上`).toBe(
+        (spanName as Record<string, string | undefined>)[key],
+      );
+    }
     const file = Bun.file(`${SRC}${declaration.createdBy}`);
     expect(await file.exists(), `${key}: createdBy 指向的文件不存在`).toBe(true);
     const source = await file.text();

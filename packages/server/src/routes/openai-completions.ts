@@ -10,6 +10,7 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAICompletionsAdapter,
         context: {},
+        httpRoute: '/v1/chat/completions',
         rawRequest: context.req.raw,
         source,
       }),
@@ -18,6 +19,7 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAILegacyCompletionsAdapter,
         context: {},
+        httpRoute: '/v1/completions',
         rawRequest: context.req.raw,
         source,
       }),

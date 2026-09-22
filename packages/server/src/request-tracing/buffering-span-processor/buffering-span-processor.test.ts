@@ -31,6 +31,26 @@ describe('BufferingSpanProcessor', () => {
     expect(processor.take(traceId)).toEqual([]);
   });
 
+  test('assigns start sequence independently of end order', () => {
+    const { processor, tracer } = createHarness();
+    const root = tracer.startSpan('root', { kind: SpanKind.SERVER }, ROOT_CONTEXT);
+    const traceId = root.spanContext().traceId;
+    processor.register(traceId);
+    const rootContext = trace.setSpan(ROOT_CONTEXT, root);
+    const first = tracer.startSpan('first', {}, rootContext);
+    const second = tracer.startSpan('second', {}, rootContext);
+
+    second.end();
+    first.end();
+    root.end();
+
+    expect(processor.take(traceId).map(({ name, startSequence }) => [name, startSequence])).toEqual([
+      ['second', 2],
+      ['first', 1],
+      ['root', 0],
+    ]);
+  });
+
   test('ignores spans from unregistered traces', () => {
     const { processor, tracer } = createHarness();
     const span = tracer.startSpan('orphan');

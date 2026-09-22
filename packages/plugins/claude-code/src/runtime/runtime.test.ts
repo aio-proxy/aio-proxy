@@ -31,6 +31,7 @@ describe('Claude runtime', () => {
       },
     });
     expect(runtime.provider.specificationVersion).toBe('v4');
+    expect(runtime.genAiProviderName).toBe('anthropic');
     expect(runtime.raw).toBeUndefined();
     expect(runtime.tokenCount).toBeUndefined();
     expect(() => runtime.provider.embeddingModel('claude-sonnet-5')).toThrow('embedding');

@@ -297,7 +297,7 @@ test('rejects an item reference before invoking a model', async () => {
       statusCode,
     })),
   ).toEqual([
-    { errorCode: 'unsupported_feature', outcome: 'failure', providerId: 'first', statusCode: 501 },
+    { errorCode: 'unsupported_feature', outcome: 'failure', providerId: 'first', statusCode: undefined },
     { errorCode: 'unsupported_feature', outcome: 'failure', providerId: 'second', statusCode: 501 },
   ]);
   expect(route.recording.finals[0]).toEqual(

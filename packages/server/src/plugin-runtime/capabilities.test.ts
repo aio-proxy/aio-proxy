@@ -73,6 +73,18 @@ test('rejects an array runtime carrying a provider property', async () => {
   expect(result.state).toMatchObject({ status: 'unavailable', diagnostic: { code: 'RUNTIME_CREATE_FAILED' } });
 });
 
+test('rejects an empty gen_ai provider identity at the plugin boundary', async () => {
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    { createRuntime: async () => ({ genAiProviderName: ' ', provider: providerV4() }) },
+  );
+
+  const result = await materializeFixture(fixture);
+
+  expect(result.provider).toBeUndefined();
+  expect(result.state).toMatchObject({ status: 'unavailable', diagnostic: { code: 'RUNTIME_CREATE_FAILED' } });
+});
+
 test('rejects an array raw transport carrying an invoke property', async () => {
   const transport = Object.assign([], { invoke: async () => new Response('ok') });
   const fixture = runtimeFixture(
@@ -105,6 +117,8 @@ test('plugin raw capability receives catalog extra and rejects malformed transpo
           raw(input: Parameters<RawResolver>[0]) {
             observed.push(input);
             if (input.modelId === 'bad-resolver') return { invoke: 'invalid' } as never;
+            if (input.modelId === 'bad-template')
+              return { urlTemplate: '/upstream?key=secret', invoke: async () => new Response() };
             if (input.modelId === 'bad-response') return { invoke: async () => ({}) } as never;
             return { invoke: async () => new Response('ok') };
           },
@@ -118,6 +132,7 @@ test('plugin raw capability receives catalog extra and rejects malformed transpo
       language: [
         { id: 'model', displayName: 'Catalog Name', extra: { region: 'us', protocol: 'anthropic' } },
         { id: 'bad-resolver' },
+        { id: 'bad-template' },
         { id: 'bad-response' },
       ],
     },
@@ -150,21 +165,26 @@ test('plugin raw capability receives catalog extra and rejects malformed transpo
     protocol: ProviderProtocol.OpenAICompatible,
     modelId: 'model',
     requestPath: '/v1/completions',
+    urlTemplate: '/v1/completions',
   });
   expect(observed[1]).toEqual({
     protocol: 'openai-compatible',
     modelId: 'model',
     extra: { region: 'us', protocol: 'anthropic' },
     requestPath: '/v1/completions',
+    urlTemplate: '/v1/completions',
   });
   expect(result.provider?.upstreamMetadata?.[modelId]).toEqual({
     name: 'Catalog Name',
     protocol: ProviderProtocol.Anthropic,
   });
   expect(result.provider?.model?.targetProtocol?.(modelId)).toBe(ProviderProtocol.Anthropic);
-  expect(result.summary.clientModels).toEqual(['bad-resolver', 'bad-response', 'client']);
+  expect(result.summary.clientModels).toEqual(['bad-resolver', 'bad-template', 'bad-response', 'client']);
   expect(() =>
     result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'bad-resolver' }),
+  ).toThrow(PluginRawResolverError);
+  expect(() =>
+    result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'bad-template' }),
   ).toThrow(PluginRawResolverError);
   const badResponse = result.provider?.raw?.resolve({
     protocol: ProviderProtocol.OpenAICompatible,
@@ -183,6 +203,7 @@ test('forwards raw transport options through the plugin runtime boundary', async
       createRuntime: async () => ({
         provider: providerV4(),
         raw: () => ({
+          urlTemplate: '/upstream/responses',
           invoke: async (
             _request: Request,
             _context: LogicalRequestContext | undefined,
@@ -205,6 +226,7 @@ test('forwards raw transport options through the plugin runtime boundary', async
   expect(
     await transport?.invoke(new Request('https://example.test'), undefined, { upstreamStream: true }),
   ).toBeInstanceOf(Response);
+  expect(transport?.urlTemplate).toBe('/upstream/responses');
   expect(upstreamStream).toBe(true);
 });
 

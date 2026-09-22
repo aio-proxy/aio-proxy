@@ -33,7 +33,7 @@ export async function attemptAudioCandidate<TRequest, TContext>(
         // `openai-audio` carries both directions on one protocol, so the
         // capability is the only signal that picks the right model descriptor.
         capability: adapter.capability,
-        ...requestPathProperty(rawRequest),
+        ...requestPathProperty(rawRequest, ctx.httpRoute),
       })
     : undefined;
   if (raw !== undefined) {

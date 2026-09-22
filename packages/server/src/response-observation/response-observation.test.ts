@@ -94,6 +94,16 @@ test('counts every upstream send inside one attempt', () => {
   expect(observation.snapshot().httpSends).toBe(3);
 });
 
+test('keeps one observed upstream endpoint and omits conflicting retry targets', () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
+  observation.observeFetchStart({ serverAddress: 'provider.test', serverPort: 8443 });
+  expect(observation.snapshot()).toMatchObject({ serverAddress: 'provider.test', serverPort: 8443 });
+
+  observation.observeFetchStart({ serverAddress: 'backup.test' });
+  expect(observation.snapshot()).not.toHaveProperty('serverAddress');
+  expect(observation.snapshot()).not.toHaveProperty('serverPort');
+});
+
 test('counts a send that never produced a Response', () => {
   const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 0 });
   observation.observeFetchStart();

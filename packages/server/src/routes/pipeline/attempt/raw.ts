@@ -1,6 +1,5 @@
 import { isRecord } from '@aio-proxy/shared';
 
-import { attributeName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
 import { withoutCallerCredentialsOnRequest } from '../../../server/api-key-auth';
@@ -51,6 +50,7 @@ export function startRawAttempt<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(
     attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace),
     index,
+    ctx.streamRequested,
   );
   slot.spanRef.current = attemptSpan;
   return attemptSpan;
@@ -72,8 +72,10 @@ export async function completeRawAttempt<TRequest, TContext>(
   const provider = candidate.provider;
   observation.markTransportUnavailable();
   const invokeRaw = async (request: Request): Promise<Response> => {
-    const result = await inAttempt(adapter.protocol, () =>
-      raw.invoke(request, logicalRequest, { upstreamStream: ctx.streamRequested }),
+    const result = await inAttempt(
+      adapter.protocol,
+      () => raw.invoke(request, logicalRequest, { upstreamStream: ctx.streamRequested }),
+      raw.urlTemplate,
     );
     if (!(result instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     return result;
@@ -130,7 +132,6 @@ export async function completeRawAttempt<TRequest, TContext>(
     return { kind: 'return', response: retained };
   }
 
-  attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);
   slot.spanRef.current = undefined;
   let capturedResponseId: string | undefined;
   const normalizedResponse = withEventStreamContentType(response, ctx.streamRequested);

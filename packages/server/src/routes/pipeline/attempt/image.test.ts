@@ -12,6 +12,7 @@ import {
   textStream,
   type FakeProvider,
 } from '../../../../__tests__/pipeline-helpers';
+import { currentUpstreamUrlTemplate } from '../../../request-logging/context';
 import type {
   ImageTransport,
   ImageTransportInvokeRequest,
@@ -302,6 +303,23 @@ test('image inbound convert calls image transport not language model', async () 
   ]);
   expect(route.recording.finals.at(-1)?.usage?.imageCount).toBe(1);
   expect(route.recording.finals.at(-1)?.usage?.inputTokens).toBe(11);
+});
+
+test('converted image attempts do not infer an upstream URL template', async () => {
+  let urlTemplate: string | undefined;
+  const convert = convertProvider({
+    id: 'convert',
+    invoke: () => {
+      urlTemplate = currentUpstreamUrlTemplate();
+      return Promise.resolve({ images: [new Uint8Array([1])] });
+    },
+  });
+  const route = pipeline([convert], { adapter: imageAdapter() });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat' }));
+
+  expect(response.status).toBe(200);
+  expect(urlTemplate).toBeUndefined();
 });
 
 test('image inbound convert skip for url response_format does not invoke or trace', async () => {

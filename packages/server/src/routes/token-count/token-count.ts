@@ -35,6 +35,7 @@ export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly format: (inputTokens: number) => unknown;
+  readonly httpRoute?: string;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
 };
@@ -46,6 +47,7 @@ export async function handleTokenCount<TRequest, TContext>(
   const session = source.requestRecorder.begin({
     inboundRequest: rawRequest,
     inboundProtocol: adapter.protocol,
+    ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
     operation: 'token_count',
   });
   return await context.with(session.rootContext, () =>
@@ -54,6 +56,7 @@ export async function handleTokenCount<TRequest, TContext>(
         requestId: session.requestId,
         debug: source.debugLogging === true,
         logger: source.logger,
+        rootContext: session.rootContext,
       },
       async () => {
         try {

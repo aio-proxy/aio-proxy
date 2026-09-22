@@ -28,6 +28,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
         adapter: geminiGenerateContentAdapter,
         context: { model: target.model, stream: false },
         format: (inputTokens) => ({ totalTokens: inputTokens }),
+        httpRoute: '/v1beta/models/*',
         rawRequest: context.req.raw,
         source,
       });
@@ -36,6 +37,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
       return handleProtocolRequest({
         adapter: geminiEmbeddingsAdapter,
         context: { model: target.model, action: target.action },
+        httpRoute: '/v1beta/models/*',
         rawRequest: context.req.raw,
         source,
       });
@@ -43,6 +45,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
     return handleProtocolRequest({
       adapter: geminiGenerateContentAdapter,
       context: { model: target.model, stream: target.stream },
+      httpRoute: '/v1beta/models/*',
       rawRequest: context.req.raw,
       source,
     });

@@ -105,7 +105,7 @@ describe('OAuth plugin raw pipeline Antigravity fallback', () => {
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({ account: 'final' });
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 503 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'failure', providerId: 'final', statusCode: 429 },
     ]);
   });

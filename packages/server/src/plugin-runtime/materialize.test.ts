@@ -547,6 +547,7 @@ test('stamps the account pin and hands the effective proxy to the plugin runtime
       createRuntime(context: { readonly proxy?: string | null }) {
         seen.proxy = context.proxy;
         return {
+          genAiProviderName: 'openrouter',
           provider: {
             specificationVersion: 'v4' as const,
             languageModel() {
@@ -578,4 +579,5 @@ test('stamps the account pin and hands the effective proxy to the plugin runtime
   expect(seen.proxy).toBe('http://127.0.0.1:8123');
   expect(result.provider?.accountId).toBe('person@example.com');
   expect(result.provider?.runtimeRevision).toBe(account?.runtimeRevision);
+  expect(Reflect.get(result.provider ?? {}, 'genAiProviderName')).toBe('openrouter');
 });

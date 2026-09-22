@@ -11,6 +11,7 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: anthropicMessagesAdapter,
         context: {},
+        httpRoute: '/v1/messages',
         rawRequest: context.req.raw,
         source,
       }),
@@ -20,6 +21,7 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
         adapter: anthropicMessagesAdapter,
         context: {},
         format: (inputTokens) => ({ input_tokens: inputTokens }),
+        httpRoute: '/v1/messages/count_tokens',
         rawRequest: context.req.raw,
         source,
       }),

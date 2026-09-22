@@ -26,11 +26,14 @@ export const traceAttribute = {
   outputTokens: 'gen_ai.usage.output_tokens',
   attemptModelId: 'aio_proxy.attempt.model_id',
   attemptTtftMs: 'aio_proxy.attempt.ttft_ms',
-  // 请求级 TTFT，root span 今天仍然用这个 key —— 不只是 attempt 的兜底。
+  inferenceTtftMs: 'aio_proxy.inference.ttft_ms',
+  // 历史请求级 TTFT；新 trace 写在逻辑 inference span。
   ttftMs: 'aio_proxy.response.ttft_ms',
   genAiTimeToFirstChunk: 'gen_ai.response.time_to_first_chunk',
-  transportObservation: 'aio_proxy.response.transport_observation',
-  upstreamHeadersMs: 'aio_proxy.response.upstream_headers_ms',
+  transportObservation: 'aio_proxy.upstream.transport_observation',
+  legacyTransportObservation: 'aio_proxy.response.transport_observation',
+  upstreamHeadersMs: 'aio_proxy.upstream.headers_ms',
+  legacyUpstreamHeadersMs: 'aio_proxy.response.upstream_headers_ms',
   httpStatusCode: 'http.response.status_code',
   // `http.status_code` 2023 年就废弃了，但库里现存的 span 全是它写的，不迁移数据。
   // 每个读状态码的地方都必须带上这条兜底，否则历史 trace 的 4xx/5xx 静默消失。

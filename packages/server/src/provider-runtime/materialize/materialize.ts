@@ -91,11 +91,16 @@ export function materializeRuntimeProvider(
       hasApiKey: provider.apiKey !== undefined,
       ...evaluationCapability(evaluation),
       raw: {
-        resolve: ({ protocol }) => {
+        resolve: ({ protocol, urlTemplate }) => {
           const transport = provider.endpointTransports.find((endpoint) => endpoint.protocol === protocol);
           return transport === undefined
             ? undefined
-            : { invoke: (request, _context, options) => transport.passthrough(request, options) };
+            : {
+                ...(urlTemplate === undefined || transport.urlTemplate === undefined
+                  ? {}
+                  : { urlTemplate: transport.urlTemplate(urlTemplate) }),
+                invoke: (request, _context, options) => transport.passthrough(request, options),
+              };
         },
       },
       ...(apiBridge === undefined

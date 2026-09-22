@@ -17,6 +17,7 @@ export function rootStart(overrides: Partial<TraceRootStart> = {}): TraceRootSta
     inboundProtocol: overrides.inboundProtocol ?? 'openai-compatible',
     name: overrides.name ?? 'aio_proxy.request',
     kind: overrides.kind ?? 1,
+    startSequence: overrides.startSequence ?? 0,
     startedAt: overrides.startedAt ?? STARTED_AT,
     statusCode: overrides.statusCode ?? 0,
     attributes: {
@@ -35,6 +36,7 @@ export function rootSpan(overrides: Partial<StoredSpan> = {}): StoredSpan {
     spanId: ROOT_SPAN_ID,
     name: 'aio_proxy.request',
     kind: 1,
+    startSequence: 0,
     startedAt: STARTED_AT,
     endedAt: ENDED_AT,
     statusCode: 0,
@@ -57,6 +59,7 @@ export function attemptSpan(overrides: Partial<StoredSpan> = {}): StoredSpan {
     parentSpanId: ROOT_SPAN_ID,
     name: 'aio_proxy.provider.attempt',
     kind: 2,
+    startSequence: 1,
     startedAt: STARTED_AT,
     endedAt: ENDED_AT,
     statusCode: 0,

@@ -59,6 +59,7 @@ async function handleVideoCreate(context: Context<CallerPrincipalEnv>, source: V
     handleProtocolRequest({
       adapter: openAIVideosAdapter,
       context: { operation: 'create' },
+      httpRoute: '/v1/videos',
       rawRequest: raw,
       source,
       onSuccessfulAttempt: (info) => pinSuccessfulVideoJob(source, callerPrincipal(context), info),
@@ -107,6 +108,7 @@ async function handleFollowUpCreate(
     handleProtocolRequest({
       adapter: openAIVideosAdapter,
       context: { operation },
+      httpRoute: `/v1/videos/${operation}`,
       rawRequest: raw,
       source,
       onSuccessfulAttempt: (info) => pinSuccessfulVideoJob(source, owner, info),

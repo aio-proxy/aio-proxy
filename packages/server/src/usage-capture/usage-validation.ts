@@ -1,8 +1,11 @@
 import { type OpenRouterModelPrice, type UsageAccounting, usdToNanoUsd } from '@aio-proxy/core';
 import { type UsageRow, UsageRowSchema } from '@aio-proxy/types';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 import type { UsageIssue } from '../passthrough-usage/shared';
-import { logServerEvent, type ServerLogSink } from '../server-log';
+import { currentRequestTraceRootContext } from '../request-logging/context';
+import { attributeName, getTraceRuntime, spanName } from '../request-tracing';
+import { logServerEvent, type ServerLogSink, serverErrorType } from '../server-log';
 import { priceUsage } from './pricing';
 
 export async function finalizeUsage(input: {
@@ -16,10 +19,26 @@ export async function finalizeUsage(input: {
   readonly modelId?: string;
 }): Promise<UsageRow | undefined> {
   const seed = seedForRequestFee(input);
-  const normalized = validUsage(input.usage ?? seed, input.accounting, input.logger, input.issues);
-  if (normalized === undefined) return undefined;
-  const priced = await priceUsage(normalized, input.accounting, input.requestedModelId, input.configPrice);
-  return validUsage(priced, input.accounting, input.logger, undefined, true);
+  const candidate = input.usage ?? seed;
+  if (candidate === undefined) return undefined;
+  const resolve = async (): Promise<UsageRow | undefined> => {
+    const normalized = validUsage(candidate, input.accounting, input.logger, input.issues);
+    if (normalized === undefined) return undefined;
+    const priced = await priceUsage(normalized, input.accounting, input.requestedModelId, input.configPrice);
+    return validUsage(priced, input.accounting, input.logger, undefined, true);
+  };
+  const parent = currentRequestTraceRootContext();
+  if (parent === undefined) return resolve();
+  const span = getTraceRuntime().tracer.startSpan(spanName.usageResolve, { kind: SpanKind.INTERNAL }, parent);
+  try {
+    return await resolve();
+  } catch (error) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.setAttribute(attributeName.errorType, serverErrorType(error));
+    throw error;
+  } finally {
+    span.end();
+  }
 }
 
 // A successful response can carry a flat per-request fee (cost.request) with no

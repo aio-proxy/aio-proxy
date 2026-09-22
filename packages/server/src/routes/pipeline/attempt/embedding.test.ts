@@ -67,7 +67,7 @@ function harness<TRequest, TContext>(
       routingContinuity: { updatesAffinity: false },
       sessionIdentity: resolution.identity,
       streamRequested: false,
-      emitter: createAttemptEmitter({ session, streamRequested: false, capability: 'embedding' }),
+      emitter: createAttemptEmitter({ session, capability: 'embedding' }),
       release: () => {},
       deferRelease: () => {},
       logFailure: () => {},
@@ -91,7 +91,10 @@ function geminiHarness(
   return harness(geminiEmbeddingsAdapter, request, { model: MODEL_ID, action });
 }
 
-function slot(provider: RuntimeProviderInstance, options: { readonly hasNext?: boolean } = {}): CandidateSlot {
+function slot(
+  provider: RuntimeProviderInstance,
+  options: { readonly hasNext?: boolean; readonly urlTemplates?: Array<string | undefined> } = {},
+): CandidateSlot {
   const startedAt = performance.now();
   return {
     index: 0,
@@ -121,7 +124,10 @@ function slot(provider: RuntimeProviderInstance, options: { readonly hasNext?: b
       sourceProtocol: ProviderProtocol.OpenAICompatible,
       selectionReason: 'weight',
     },
-    inAttempt: (_targetProtocol, operation) => operation(),
+    inAttempt: (_targetProtocol, operation, urlTemplate) => {
+      options.urlTemplates?.push(urlTemplate);
+      return operation();
+    },
     spanRef: { current: undefined },
   };
 }
@@ -147,6 +153,21 @@ test('language-only raw that returns undefined falls through to embedding conver
 
   expect(response.kind).toBe('return');
   expect(embed).toHaveBeenCalled();
+});
+
+test('converted embedding attempts do not infer an upstream URL template', async () => {
+  const urlTemplates: Array<string | undefined> = [];
+  const provider = {
+    id: 'google',
+    kind: ProviderKind.Api,
+    enabled: true,
+    embedding: { embed: async () => ({ embeddings: [[0.1]], usage: { tokens: 2 } }) },
+  } satisfies RuntimeProviderInstance;
+
+  const step = await attemptEmbeddingCandidate(ctx(openAIEmbeddingsAdapter), slot(provider, { urlTemplates }));
+
+  expect(step.kind).toBe('return');
+  expect(urlTemplates).toEqual([undefined]);
 });
 
 test('OpenAI convert with unknown usage after recovery is 502 and can fallback', async () => {

@@ -23,7 +23,7 @@
 | Langfuse 会重复计费且「无法 opt out」，本树被它强制 | 全仓无 exporter 无 Langfuse；Priority 1 读 `langfuse.observation.type` 就是逃生口；计费未复现 | 该节改为前瞻性理由，不再当硬约束 |
 | root 删掉 setter 就是纯 HTTP | `span-projection.ts:225-231` 读回时从 summary 列重建 `gen_ai.*` | 新增事实 4；任务 5 一并改投影；断言移到读回之后 |
 | `aio_proxy.response.egress` 测「向客户端写出的那段」 | 要挂的标量全产生于上游读取，下游写出无结算契约无观测点 | 删掉该 span，标量留在 attempt |
-| `POST` span 到响应头结束，却挂 `first_byte_ms` 等 | 这些值在响应头之后产生，写已结束的 span 会被拒 | `POST` 只留 `headers_ms`，其余落 attempt |
+| HTTP client span 到响应头结束，却挂 `first_byte_ms` 等 | 这些值在响应头之后产生，写已结束的 span 会被拒 | HTTP client span 只留 `headers_ms`，其余落 attempt |
 | GenAI span 包在 `attemptResolvedRequest` 外层；候选耗尽才 ERROR | 路由在该函数内部；`raw.ts:115-130` 会在仍有候选时终止 | 起点移到路由之后，ERROR 判据改为逻辑失败 |
 | 任务顺序 1→6 | 属性下沉排在目标 span 创建之前，注册表校验排在创建点之前 | 按依赖重排为 7 个任务 |
 | 一次失败转移 10 行 / 干净 8 行 | 数错了 | 12 行 / 9 行，新增 7 种 span 类型 |
@@ -48,15 +48,46 @@
 
 | 第二轮写法 | 事实 | 处置 |
 |---|---|---|
-| 一条 GenAI span 横跨全部 attempt，`provider.name` 填入站口味 | issue #299 的评论原话反对这种做法："without **overloading** `gen_ai.provider.name` or pretending the gateway and upstream provider are the same thing" | 改三层：每个 provider 一条 inference span，带真实 `provider.name` |
+| 一条 GenAI span 横跨全部 attempt，`provider.name` 填入站口味 | issue #299 的评论原话反对这种做法："without **overloading** `gen_ai.provider.name` or pretending the gateway and upstream provider are the same thing" | 改三层：每个 provider 一条 inference span；runtime 明确知道身份时才带真实 `provider.name` |
 | attempt 是 INTERNAL，命名禁区禁它带 `gen_ai.*` | 每次 attempt 就是一次真实上游推理调用，判 GENERATION 是准确分类；且标准 metric `gen_ai.client.operation.duration` 带 `provider.name` + `error.type`，按 attempt 发射才有 provider SLO | attempt 改造成 CLIENT inference span，命名禁区整节作废 |
 | 「唯一一个带 `gen_ai.*` 的 span」 | `gen_ai.*` 现在分布在两层 | 断言改成「root 上没有任何 `gen_ai.*`」 |
-| 同 provider 重试只有 `raw-retry` 一种，至多 +1 | **AI SDK `maxRetries` 默认 2**，我们从不赋值，一次 attempt 最多 3 次 HTTP；`onLanguageModelCallStart` 在 `retry()` 外面看不到 | 多条 POST span + `aio_proxy.attempt.http_sends`；本 PR 只观测不改行为 |
+| 同 provider 重试只有 `raw-retry` 一种，至多 +1 | **AI SDK `maxRetries` 默认 2**，我们从不赋值，一次 attempt 最多 3 次 HTTP；`onLanguageModelCallStart` 在 `retry()` 外面看不到 | 多条 `{method} {url.template}` HTTP client span（无模板时退化为 `{method}`）+ `aio_proxy.attempt.http_sends`；本 PR 只观测不改行为 |
 | image/speech/transcription/video 不写 `gen_ai.operation.name` | 它是 `Required`，而枚举是开集 | 四种能力各写一个自定义值 |
 | 一次失败转移 12 行 | 没算退避重试 | 带重试 14 行，干净 9 行，路由失败 5 行，新增 8 种 span 类型 |
 
 `model-prepare.ts:98-99` 自行发射+结算导致的重复 attempt，以及 `processor.take()` 抽干 buffer
 导致的子 span 丢弃，是本轮新发现的实现陷阱，见「结算所有权」与任务 3。
+
+### 第四轮：实测瀑布顺序与 root 属性后的更正
+
+| 现象 | 根因 | 处置 |
+|---|---|---|
+| `session.resolve` 排到 `inference` 后，`route.resolve` 排到 attempt 后 | 持久化的 `started_at` 只有毫秒精度；同毫秒 sibling 在 DB 与 dashboard 都用随机 `spanId` 打破平局 | 持久化每条 trace 内单调递增的 `startSequence`；树仍按父子关系 DFS，sibling 按 `startSequence` 排。禁止按 span 名、结束时间或 `spanId` 猜真实顺序 |
+| root 出现整套 `aio_proxy.diagnostics.*` | 这些字段大多重复 OTel 已定义的 HTTP / URL / User-Agent 语义 | 新 trace 改写标准属性；只保留真正属于 aio-proxy 领域的 key。读取端对旧 `diagnostics.*` 做保留期内 fallback，不迁移历史数据 |
+
+### 第五轮：provider inference 属性按语义去重
+
+实测的 provider inference span 暴露了两类问题：已经有标准 `gen_ai.*` 的事实仍重复写成
+`aio_proxy.*`，以及把 wire protocol 错当成 provider identity。
+
+| 当前写法 | 事实 | 处置 |
+|---|---|---|
+| `aio_proxy.attempt.model_id` + `gen_ai.request.model` 同值双写 | 这条 span 就是 GenAI inference CLIENT span | 删除前者，只写 `gen_ai.request.model` |
+| `aio_proxy.request.stream` 写在 provider span | 标准已有 `gen_ai.request.stream`，且它描述实际发给上游的请求 | provider span 改写标准 key；root 上的自定义 key 只描述入站请求意图 |
+| provider TTFT 写 `aio_proxy.attempt.ttft_ms`，标准 TTFT 写在非 GenAI 的逻辑父层 | `gen_ai.response.time_to_first_chunk` 属于 `gen_ai.inference.client` 属性组 | 标准 TTFT 移到每条 provider inference span；逻辑层如需端到端首字延迟，改用 `aio_proxy.inference.ttft_ms` |
+| `gen_ai.provider.name` 从 `ProviderProtocol` 映射，`openai-response` / `openai-compatible` 都写 `openai` | 协议兼容性不等于服务提供方；自定义 endpoint、OpenRouter、Azure、各类 gateway 都能说 OpenAI 协议 | 禁止从 source/target protocol 推导；只接受 provider/runtime 显式声明的语义身份，未知则不写 |
+| `gen_ai.usage.cache_write.input_tokens` / `gen_ai.usage.total_tokens` | 当前 GenAI 约定使用 `cache_creation.input_tokens`，且没有 `total_tokens` span 属性 | 前者改标准名；后者不写 span，dashboard/summary 需要总数时由已有 usage 数据计算 |
+
+### 第六轮：本地正式环境实测后的条件式树形
+
+前几轮写的“干净请求 9 行”不是契约。它把 model conversion 路径的 `request.prepare` 和实际执行
+usage validation/pricing 时才存在的 `usage.resolve` 当成了无条件节点。最终契约按执行边界记录：
+
+- raw passthrough 不做 model conversion/materialization，因此没有 `aio_proxy.request.prepare`；
+- 只有 model conversion/materialization 路径才有 `aio_proxy.request.prepare`；
+- 只有 usage validation/pricing 实际运行才有 `aio_proxy.usage.resolve`；成功返回 `undefined` 仍为
+  UNSET，异常为 ERROR；
+- 验收断言时间边界、父子关系和属性归属，不断言每条 trace 固定有多少行。
 
 ## 背景
 
@@ -150,7 +181,7 @@ calls"，例子全是 agent 框架，且有一句 SHOULD NOT 排除内部实现�
 |---|---|---|---|---|
 | 逻辑操作 | `aio_proxy.inference` | INTERNAL | 这次请求总耗时、转移几次 | 全部候选失败 |
 | 单个 provider | `{operation} {model}` | CLIENT | 这个 provider 行不行 | 该 provider 最终失败 |
-| 单次发送 | `POST` | CLIENT | 这一次 HTTP 的结果 | 单次非 2xx |
+| 单次发送 | `{method} {url.template}`；无低基数模板时 `{method}` | CLIENT | 这一次 HTTP 的结果 | 单次非 2xx |
 
 ### 同 provider 重试有两套机制
 
@@ -163,12 +194,12 @@ calls"，例子全是 agent 框架，且有一句 SHOULD NOT 排除内部实现�
 
 这两套都不可从 AI SDK 的回调看到：`onLanguageModelCallStart` 在 `retry()` **外面**
 （`dist/index.js:5334` notify、`:5342` `await retry(...)`），只 notify 一次。**唯一可观测层是
-我们自己包的 `createObservedFetch`，也就是 `POST` span。**
+我们自己包的 `createObservedFetch`，也就是 HTTP client span。**
 
-上一版要求 POST span 能表达同 attempt 多次发送，但把原因只归给 `raw-retry`，漏了 AI SDK 的
+上一版要求 HTTP client span 能表达同 attempt 多次发送，但把原因只归给 `raw-retry`，漏了 AI SDK 的
 默认值 —— 后者覆盖所有 ai-sdk provider，量级大得多。
 
-本 PR **只观测不改行为**：落 `aio_proxy.attempt.http_sends` 计数 + 多条 POST span。
+本 PR **只观测不改行为**：落 `aio_proxy.attempt.http_sends` 计数 + 多条 HTTP client span。
 `maxRetries` 可配留到单独 PR（它是产品行为：转移前会先静默重试 2 次，配置层没有旋钮）。
 
 `gen_ai.operation.name` 是**开集，不是白名单**。registry 原文："If one of them applies, then
@@ -194,7 +225,7 @@ span 状态按 `semantic-conventions/docs/general/recording-errors.md`：
 
 第二条给出的是**每一层**的 ERROR 判据：某次失败若被更下游的机制吸收（退避重试成功、或转移到
 下一个 provider 成功），就不该记在描述「那个更大操作」的 span 上。所以：单次 HTTP 非 2xx →
-只有那条 `POST` 红；某 provider 重试耗尽 → 那条 inference span 红；全部候选失败 → 逻辑操作层红。
+只有那条 HTTP client span 红；某 provider 重试耗尽 → 那条 inference span 红；全部候选失败 → 逻辑操作层红。
 成功一律 `UNSET`（`OK` 保留给应用显式使用）。
 
 4xx 按 `http-spans.md` 原文："For HTTP status codes in the 4xx range span status **MUST** be left
@@ -324,7 +355,7 @@ TTFT 走另一条路：`settleSuccess`（`emit.ts:93-104`）从 completion 里�
 
 ### 4. 读路径会把 `gen_ai.*` 重新塞回 root，不管 recorder 写不写
 
-**这条推翻了「root 纯 HTTP」能靠删 setter 达成的想法。**
+**这条推翻了「root 不承载 GenAI 语义」能靠删 setter 达成的想法。**
 
 `trace-lifecycle.ts:111-132` 把终态的 `finalModelId` 与整套 usage 落进 **root 的 summary 列**，
 这些列取自 `input.summary`，与 root span 的属性无关。读回来时
@@ -342,7 +373,7 @@ set(ATTR.genAiUsageInputTokens, columns.inputTokens);
 
 两个后果：
 
-- root 是「纯 HTTP」只在**发射时**成立，在**读回时**不成立。spec 下文的属性表要按这个事实写。
+- root 在**发射时**不带 `gen_ai.*`，但读回时又被补上。spec 下文的属性表要按这个事实写。
 - 断言必须放在**落库并读回之后**，只断言发射出的 span 会漏掉这整条重建路径。
 
 summary 列本身要留 —— 那是记账与列表页排序用的投影，不是 span 属性的副本。要改的是
@@ -375,6 +406,25 @@ if (this._startTimeProvided) return millisToHrTime(Date.now());  // 分支 3
 
 prepare 产出的属性（provider / model）改为 span 创建后 `setAttribute`，不阻塞建 span。
 
+### 同毫秒 sibling：保存开始顺序，不从展示层猜
+
+当前 `trace_span.started_at` 是 SQLite `timestamp_ms`，详情查询按 `(startedAt, spanId)` 排；
+dashboard 建树后也用同一组字段排 sibling。真实开始时间落到同一毫秒时，随机 `spanId` 因而被误当成
+时序。截图里的 `session.resolve` 与 `route.resolve` 倒置只是展示错误，不表示执行顺序真的反了。
+
+修复契约：
+
+- `startSequence` 是 trace 内从 0 开始、按 span **开始**动作单调递增的持久化元数据，不是 OTel
+  attribute。root 固定为 0；`BufferingSpanProcessor.onStart()` 给后续 span 分配序号，`onEnd()`
+  只负责带着该序号落记录。
+- `startedAt` 继续负责横轴位置与 duration；`startSequence` 只负责同一棵树里的确定顺序。
+- dashboard 先按 parent/child 做 DFS，siblings 按 `startSequence` 排。`spanId` 只能作为损坏数据或
+  历史数据缺少 sequence 时的稳定 fallback，**不得承载时间含义**。
+- 不按 span 名写 `parse < session < inference < route` 之类的优先级，也不看 `endedAt`；前者把实现细节
+  写死在 UI，后者会把长短不同误当成先后。
+- 旧记录不迁移：真实的同毫秒顺序已经丢失，无法可靠补算。它们继续用 `(startedAt, spanId)` 稳定
+  展示，但不声称这是原始开始顺序。
+
 ## span 树
 
 六种能力形状完全一致。以 language + provider A 退避重试耗尽后转移到 B 为例：
@@ -387,19 +437,19 @@ POST /v1/messages                              SERVER    0–4890  UNSET
 │  ├─ aio_proxy.route.resolve                  INTERNAL    9–15
 │  ├─ chat claude-sonnet-4-5                   CLIENT   18–2680  ERROR   ← provider A
 │  │  ├─ aio_proxy.request.prepare             INTERNAL   19–23
-│  │  ├─ POST                                  CLIENT     24–812  ERROR  503
-│  │  ├─ POST                                  CLIENT   1020–1704 ERROR  503  ← AI SDK 退避
-│  │  └─ POST                                  CLIENT   2100–2680 ERROR  503  ← maxRetries 耗尽
+│  │  ├─ POST /v1/messages                     CLIENT     24–812  ERROR  503
+│  │  ├─ POST /v1/messages                     CLIENT   1020–1704 ERROR  503  ← AI SDK 退避
+│  │  └─ POST /v1/messages                     CLIENT   2100–2680 ERROR  503  ← maxRetries 耗尽
 │  └─ chat claude-sonnet-4-5                   CLIENT  2686–4876          ← provider B
 │     ├─ aio_proxy.request.prepare             INTERNAL 2687–2688
-│     └─ POST                                  CLIENT   2692–3282
+│     └─ POST /v1/messages                     CLIENT   2692–3282
 └─ aio_proxy.usage.resolve                     INTERNAL 4876–4888
 ```
 
 父层 4867ms − provider B 那条 2190ms = **2677ms 转移开销**，其中绝大部分是 A 的三次退避。
 今天这条 trace 渲染成 **2 行**（root + 一个 attempt）。
 
-干净请求 9 行：
+model conversion 成功示例（执行了 usage validation/pricing）：
 
 ```
 POST /v1/messages                              SERVER    0–2210  UNSET
@@ -409,8 +459,20 @@ POST /v1/messages                              SERVER    0–2210  UNSET
 │  ├─ aio_proxy.route.resolve                  INTERNAL    9–15
 │  └─ chat claude-sonnet-4-5                   CLIENT   18–2198
 │     ├─ aio_proxy.request.prepare             INTERNAL   19–23
-│     └─ POST                                  CLIENT     24–614
+│     └─ POST /v1/messages                     CLIENT     24–614
 └─ aio_proxy.usage.resolve                     INTERNAL 2198–2210
+```
+
+raw passthrough 成功示例（没有 model conversion，且本次没有 usage validation/pricing）：
+
+```
+POST /v1/responses                             SERVER    0–2210  UNSET
+├─ aio_proxy.request.parse                     INTERNAL     2–5
+├─ aio_proxy.session.resolve                   INTERNAL     5–9
+└─ aio_proxy.inference                         INTERNAL  9–2198  UNSET
+   ├─ aio_proxy.route.resolve                  INTERNAL    9–15
+   └─ chat upstream-model                      CLIENT   18–2198
+      └─ POST /v1/responses                    CLIENT     24–614
 ```
 
 路由解析失败（模型未配置 / 候选被能力过滤到空）5 行 —— **逻辑操作层存在**，这是「起点早于
@@ -428,9 +490,9 @@ POST /v1/messages                              SERVER     0–14  UNSET  ← 404
 这条 trace —— 评审提的「路由失败不可达」在三层模型里同样解决，而且不需要 overload
 `gen_ai.provider.name`。
 
-**新增 span 类型 8 种**（root 与 attempt 已存在，attempt 改造成 inference span）。
-一次带重试的失败转移 14 行，干净请求 9 行，路由失败 5 行。
-每种都要在下表指到一个确切的代码边界 —— 指不出来的不做。
+**新增 span 类型 8 种**（root 与 attempt 已存在，attempt 改造成 inference span）。具体行数由实际
+执行的 parse/session/route、conversion、HTTP retry 与 usage resolution 边界决定；不得把某个示例的
+行数提升为契约。每种 span 都要在下表指到一个确切的代码边界 —— 指不出来的不做。
 
 ## 逐个 span
 
@@ -443,7 +505,7 @@ POST /v1/messages                              SERVER     0–14  UNSET  ← 404
 | `aio_proxy.inference` | INTERNAL | `attemptResolvedRequest` 内、**路由解析之前**（`index.ts:273` 附近，`requestedModel` 是入参已在手）。今天 `startInferenceSpan` 在 `index.ts:316`、`routeSpan.end()` 之后 —— 要上移 | 全部候选失败才 ERROR（**不是**单次失败，也不是候选耗尽——见 (b)） |
 | `{operation} {request.model}` | **CLIENT** | `attempt/emit.ts:47`，由今天的 `aio_proxy.provider.attempt` **改造而来**：改名、kind 从 INTERNAL 改 CLIENT、挂到 `aio_proxy.inference` 下 | 该 provider 最终失败即 ERROR |
 | `aio_proxy.request.prepare` | INTERNAL | `attempt/model.ts:24` `prepareModelInvocation()` | 这行宽度就是 δ |
-| `POST` | CLIENT | `createObservedFetch` 包一层。**一条 inference span 下可能有多条**：raw 的 `resolveRawRetry` 至多 +1，AI SDK 的 `maxRetries` 默认再 +2 | 单次非 2xx 即 ERROR；只到响应头，见下 |
+| `{method} {url.template}`；无低基数模板时 `{method}` | CLIENT | `createObservedFetch` 包一层。**一条 inference span 下可能有多条**：raw 的 `resolveRawRetry` 至多 +1，AI SDK 的 `maxRetries` 默认再 +2 | 单次非 2xx 即 ERROR；只到响应头，见下 |
 | `aio_proxy.usage.resolve` | INTERNAL | `usage-capture/usage-validation.ts:8-23` `finalizeUsage()` | |
 
 ### 三条被 pipeline 现状否决的画法，及更正
@@ -477,8 +539,8 @@ root 结算前把它关掉并置 ERROR：`index.ts:298` 的 `throw`（`RouterMod
 所以 `aio_proxy.inference` 的 ERROR 判据是「该逻辑操作以失败结算」，与候选是否用尽无关。
 
 三层各自的判据不同，不要混：**父层**看逻辑操作是否以失败结算；**inference span** 看这个
-provider 最终是否失败；**POST** 看单次 HTTP 是否非 2xx。所以「A 重试三次失败、B 成功」这条
-trace 里，三条 POST 红、A 的 inference span 红、父层绿 —— 依据是 `recording-errors.md` 的
+provider 最终是否失败；**HTTP client span** 看单次 HTTP 是否非 2xx。所以「A 重试三次失败、B 成功」这条
+trace 里，三条 HTTP client span 红、A 的 inference span 红、父层绿 —— 依据是 `recording-errors.md` 的
 "Errors that were retried or handled … SHOULD NOT be recorded on spans that describe this
 operation"。
 
@@ -495,9 +557,20 @@ operation"。
 那是因为当时找错了位置。正确边界在 `attemptResolvedRequest` 内的 `lease.snapshot.router.resolve()`
 加 `filterCandidatesByCapability()`，这两步就是路由解析本身。
 
-### POST span 的终点只到响应头
+### HTTP client span 的名字与终点
 
-`POST` span 从发起 fetch 起，**到拿到响应头结束**，不覆盖 body 流。
+名字按 HTTP 语义约定取 `{method} {target}`：`method` 来自 `http.request.method`，client 侧
+`target` 只能取显式提供的低基数 `url.template`。例如 `POST /v1/responses`、
+`POST /v1/messages`、`POST /v1beta/models/{model}:streamGenerateContent`。不得从实际 `url.path`
+自动生成名字；动态模型 ID、资源 ID 或自定义路径会把 span 名变成高基数。没有可靠模板时退化为
+`{method}`，例如 `POST`。
+
+模板必须来自实际发起请求的 transport 权威元数据；`createObservedFetch` 只消费，不猜模板。
+入站 Hono route 只能作为 transport 计算改写后模板的输入，不能直接当作上游模板；wire protocol
+也不能单独决定实际 path。raw transport 改写路径时必须声明改写后的模板，converted model transport
+没有权威模板时退化为 `{method}`。
+
+HTTP client span 从发起 fetch 起，**到拿到响应头结束**，不覆盖 body 流。
 
 理由：body 终点在两条通道上可观测性不同（raw 有受控流能看到 EOF，AI SDK 没有），
 让同一个 span 名在两条通道上表达不同几何比少一段信息更糟。而且当前 trace 的结算**可能早于
@@ -506,7 +579,7 @@ body EOF** —— AI SDK capture 在 `finish` 分片就结算而传输仍活着�
 
 body 阶段**不做 span**，body 期观测到的标量留在 attempt span 上 —— 那本来就是
 `emit.ts:62` `endAttempt` 取 `observation.snapshot()` 的通路，attempt 那时还没结束，零新机制。
-首 token 位置由 TTFT 属性在 UI 上画成刻度。时间轴读起来是：prepare → POST（到响应头）→
+首 token 位置由 TTFT 属性在 UI 上画成刻度。时间轴读起来是：prepare → HTTP client（到响应头）→
 attempt 条剩下的宽度就是 body 期，刻度标出首 token。
 
 **上一版的 `aio_proxy.response.egress` span 删掉。** 它被定义成「我们向客户端写出的那段」，
@@ -538,22 +611,44 @@ span，不如不要。
 
 ## 属性
 
-### root（SERVER）—— 发射时纯 HTTP
+### root（SERVER）—— HTTP 语义 + 最小领域关联
 
 ```
 http.request.method   http.route   url.path
-http.response.status_code          ← 改名，原 http.status_code
+http.response.status_code          user_agent.original
+http.request.header.content-type   http.response.header.content-type   ← 可选 header capture
+http.request.body.size             http.response.body.size             ← 仅实际测得 body bytes 时写
 error.type
-aio_proxy.request_id  aio_proxy.inbound_protocol
+aio_proxy.request.id               aio_proxy.protocol.inbound
+aio_proxy.operation                ← 仅 token_count 写；缺失即默认 model
 ```
+
+root 不再新写 `aio_proxy.diagnostics.*`。对应关系如下：
+
+| 旧 key | 新写法 |
+|---|---|
+| `aio_proxy.diagnostics.request.protocol` | 删除；与 `aio_proxy.protocol.inbound` 重复 |
+| `aio_proxy.diagnostics.request.method` | `http.request.method` |
+| `aio_proxy.diagnostics.response.status_code` | `http.response.status_code` |
+| `aio_proxy.diagnostics.request.user_agent` | `user_agent.original` |
+| request / response `content_type` | 需要展示时用 `http.request.header.content-type` / `http.response.header.content-type` |
+| request / response `content_length_bytes` | 只有实际观测到 body bytes 才写 `http.request.body.size` / `http.response.body.size`；只读到 `Content-Length` 头时不得冒充 body size，可按标准 header capture 记录或省略 |
+
+Header capture 按 OTel 约定使用字符串数组。`aio_proxy.request.id` 保留用于关联 wire log；
+`aio_proxy.protocol.inbound` 是 aio-proxy 的入站协议领域值，也保留。`aio_proxy.operation=model`
+是默认值且 percentile 查询已对缺失值 `coalesce` 为 `model`，所以只在 `token_count` 路径显式写，
+避免每条生成 trace 都重复一个无信息量属性。
+
+dashboard diagnostics 读取端先读上述标准属性，再回退旧 `aio_proxy.diagnostics.*`，覆盖现有 retention
+窗口；只做读兼容，不双写新旧字段，也不做数据库迁移。
 
 **注意：只删 recorder 里的 setter 不够。** `span-projection.ts:225-231` 会在读回时从 summary
 列把 `gen_ai.request.model` / `gen_ai.response.model` / 整套 `gen_ai.usage.*` 重新挂到 root 上
 （见事实 4）。要一起改这个投影，否则 dashboard 上 root 行照旧带着这些属性。summary 列本身保留。
 
 断言从「唯一一个带 `gen_ai.*` 的 span」改成 **「root 上没有任何 `gen_ai.*`」**。三层模型下
-`gen_ai.*` 分布在两层（逻辑操作层只有 `gen_ai.request.model` + TTFT，inference span 有全套），
-原来那条唯一性断言不再成立，但 root 必须干净这一条不变 —— 它是纯 HTTP span。
+`gen_ai.*` 分布在两层（逻辑操作层只有调用方模型，provider inference span 有标准全套），
+原来那条唯一性断言不再成立，但 root 必须不承载 GenAI / provider 尝试明细这一条不变。
 
 ### `aio_proxy.inference`（INTERNAL）—— 逻辑操作层，不是 GenAI span
 
@@ -563,7 +658,7 @@ error.type                                 逻辑操作以失败结算时写,低
 aio_proxy.capability                       六值,始终写
 aio_proxy.inference.attempt_count          int;这次逻辑操作试了几个 provider
 aio_proxy.inference.failover_ms            转移开销 = 本层耗时 − 成功那条 inference span 耗时
-gen_ai.response.time_to_first_chunk        double,秒;起点是本 span 起点,含转移
+aio_proxy.inference.ttft_ms                 毫秒;逻辑起点到首个客户端 chunk,含失败转移
 ```
 
 **不写 `gen_ai.operation.name`，不写 `gen_ai.provider.name`。** 这一层不是 inference span：
@@ -577,21 +672,26 @@ PR #475 明写 "Non-inference spans … MUST NOT be stored under the inference s
 
 ```
 gen_ai.operation.name                      Required;chat/embeddings/自定义值,见「规范依据」
-gen_ai.provider.name                       Required;这次尝试的真实上游
+gen_ai.provider.name                       runtime 已知时写;不得从 wire protocol 推导
 gen_ai.request.model                       送给这个 provider 的模型
+gen_ai.request.stream                      实际上游请求为 streaming 时写 true
 gen_ai.response.model                      实际应答的模型
 error.type                                 该 provider 最终失败时写
 server.address  server.port                这次尝试打的上游地址
 gen_ai.response.id
+gen_ai.response.time_to_first_chunk        double,秒;本次 provider 调用到首个 chunk
 gen_ai.usage.input_tokens
 gen_ai.usage.output_tokens
 gen_ai.usage.cache_read.input_tokens
-gen_ai.usage.cache_write.input_tokens
+gen_ai.usage.cache_creation.input_tokens
 gen_ai.usage.reasoning.output_tokens
 aio_proxy.attempt.index
-aio_proxy.attempt.provider_id              我们的 provider id(用户自定义 key)
-aio_proxy.attempt.ttft_ms                  毫秒;起点是本 span 起点,不含转移
+aio_proxy.provider.id                      我们的 Provider ID(用户配置 key)
 aio_proxy.attempt.http_sends               int;本次尝试实际发了几次 HTTP(含退避重试)
+aio_proxy.provider.kind                    api / ai-sdk 等实现种类
+aio_proxy.provider.weight                  本次路由使用的有效权重
+aio_proxy.protocol.source                  入站协议
+aio_proxy.protocol.target                  实际上游协议
 
 body 期观测（由 endAttempt 从 observation.snapshot() 落下，本 span 此时仍未结束）：
 aio_proxy.upstream.first_byte_ms           first_sse_event_ms
@@ -599,81 +699,49 @@ aio_proxy.upstream.content_gap_p95_ms      max_sse_frames_per_read
 aio_proxy.upstream.transport               content_encoding
 ```
 
-`gen_ai.provider.name` 在这一层**答案是唯一的** —— 这次尝试就打了这一个上游。上一版把它挂在
-逻辑操作层并填入站协议口味，是在 overload 它（issue #299 的评论原话："without overloading
-`gen_ai.provider.name` or pretending the gateway and upstream provider are the same thing"）。
+`gen_ai.provider.name` 的源头必须与 wire protocol、Provider ID 分开。内置 runtime 明确知道实际
+服务时声明规范值（例如真正的 OpenAI 才写 `openai`）；通用 API / AI SDK 自定义 endpoint 没有
+声明时省略。不能因为 `targetProtocol=openai-response` 或 `openai-compatible` 就写 `openai`，也不能
+把用户配置的 Provider ID（如 `carpool`、`openai-main`）自动复制过去。错误值比缺失值更会污染聚合。
 
-`aio_proxy.attempt.provider_id` 与 `gen_ai.provider.name` **并存不重复**：前者是我们配置里的
-provider id（用户自定义 key，如 `openai-main`），后者是语义约定的厂商判别值（如 `openai`）。
-一个用于回查配置，一个用于跨系统聚合。
+实现上给 materialized provider/runtime 增加一个可选、非用户显示名的语义字段
+`genAiProviderName`；已知的内置 provider 填，通用 endpoint 默认空。`server.address` 与
+`aio_proxy.provider.id` 仍分别回答「打到哪个地址」和「用了哪份 aio-proxy 配置」。
 
-本 PR 不做：`gen_ai.request.stream`（属性是标准的，但 root 上的 `aio_proxy.request.stream`
-已覆盖，纯去重）、`gen_ai.response.finish_reasons`（全链路无采集点，属新采集）。
+`gen_ai.request.stream` 说的是**实际发给上游的请求**，不是入站请求有没有 `stream=true`；跨协议转换
+后两者可能不同。拿不到实际上游模式时省略，不能直接复制 root 的 `aio_proxy.request.stream`。
+
+本 PR 不做 `gen_ai.response.finish_reasons`：全链路无采集点，属新采集。
 
 ### ~~attempt（INTERNAL）~~ —— 已并入上一节
 
 这一层不再是独立 span 类型：`aio_proxy.provider.attempt` 改造成了 `{operation} {model}`
-（CLIENT，inference span），属性表见上。`aio_proxy.attempt.*` 那几个 key **保留原名**，
-它们表达的是「我们这侧的尝试元数据」，与标准 `gen_ai.*` 并存不冲突。
+（CLIENT，inference span），属性表见上。只有 OTel 没有等价语义的 attempt / routing 数据保留
+`aio_proxy.*`；`attempt.model_id`、`attempt.ttft_ms` 这类重复字段删除。
 
-body 期六项（`aio_proxy.upstream.*`）留在 inference span 而不是 POST 上，因为它们全部在响应头
-之后才产生，而 POST span 那时已经结束（写属性会被拒，且 buffering processor 在 `onEnd` 已经
+body 期六项（`aio_proxy.upstream.*`）留在 inference span 而不是 HTTP client span 上，因为它们全部在响应头
+之后才产生，而 HTTP client span 那时已经结束（写属性会被拒，且 buffering processor 在 `onEnd` 已经
 拷走记录）。命名空间用 `upstream` 是准确的 —— 它们测的确实是上游响应的读取过程。
 
 ⚠ 有退避重试时，这六项描述的是**最后一次发送**的读取过程（`observation` 只保留一份快照）。
 本 PR 不为每次发送各留一份，`aio_proxy.attempt.http_sends` 让这件事至少可见。
 
-两个 TTFT **不是同一个量**，不是同一个数存两份。
+两个 TTFT 都保留，但标准 key 只放在它所属的 inference CLIENT span 上：
 
-| | `gen_ai.response.time_to_first_chunk` | `aio_proxy.attempt.ttft_ms` |
+| | `aio_proxy.inference.ttft_ms` | `gen_ai.response.time_to_first_chunk` |
 |---|---|---|
-| 挂在 | `aio_proxy.inference`（逻辑操作层） | 每条 inference span |
-| 起点 | 逻辑操作层起点 | 该 inference span 起点 |
-| 终点 | 吐给客户端的第一个 chunk | 从该 provider 观测到的首个内容 |
-| 含失败转移耗时 | **含** | 不含 |
-| 失败时 | 不写 | **写**，这正是它存在的理由 |
-| 单位 | 秒（`double`） | 毫秒 |
+| 挂在 | `aio_proxy.inference` 逻辑操作层 | 每条 provider inference span |
+| 起点 | 逻辑操作层起点 | 该 provider inference 调用起点 |
+| 终点 | 吐给客户端的第一个 chunk | 从该 provider 收到的第一个 chunk |
+| 含 provider failover | **含** | 不含其他 provider；含本 provider 内自动重试 |
+| 单位 | 毫秒 | 秒（规范硬约束） |
 
-一次转移后前者可能 3.2s、后者 0.4s。规范原文是 "measured from request issuance"，
-而逻辑操作层按约定要覆盖含全部重试与全部转移的操作，所以它的 issuance 就是逻辑起点。
-引入该属性的 issue（semantic-conventions#3598）写明意图是
-"Client TTFT includes network latency and is the metric users actually experience" ——
-调用方等的就是 3.2s，per-attempt 的 0.4s 没有任何客户体验过。作者的示例是单次
-LangChain 调用，PR #3607 全程没提过 retry / failover，`gen-ai-spans.md` 的
-「Streaming chunks」章节正文至今是 `TODO`。两者重合时他们没区分，分叉时按其写明的意图取逻辑值。
+标准属性所在的 `gen_ai.inference.client` 组已经决定了它的作用域；非 GenAI 的逻辑父层不能为了
+表达端到端体验而借用同一个 key。一次 failover 后两者可能分别是 3200ms 与 0.4s，这是两个不同量。
+dashboard 分别展示，不互相回填。
 
-**因此同名不同起点是禁止的**，naming.md 原文：
-"Avoid introducing names and namespaces that would mean different things when used by
-different conventions or instrumentations."
-`gen_ai.response.time_to_first_chunk` 在 `model/gen-ai/spans.yaml:238` 只被
-`gen_ai.inference.client` 一个 group 引用，不在任何共享 `attribute_group` 里——
-它的语义只相对那个 group 定义。attempt 上写这个 key 会让一个 trace 里出现两个起点，
-且没有任何属性能区分，聚合时必然重复计入胜出路径。
-
-attempt 侧也不能借 `gen_ai.` 前缀（`gen_ai.aio_proxy.attempt.*` 之类），同一份 naming.md：
-"It is not recommended to use existing OpenTelemetry semantic convention namespace as a
-prefix for a new company- or application-specific attribute name."
-
-单位不对称是刻意的。秒是硬约束：registry 写明 `in seconds`，姊妹 metric
-`gen_ai.client.operation.time_to_first_chunk` 的 bucket 也是秒，写毫秒等于给每个合规
-消费者一个 1000× 错误。毫秒则是为了跟它加入的那一族对齐——`semantic.ts` 里
-`aio_proxy.response.upstream_headers_ms` / `first_upstream_byte_ms` /
-`first_sse_event_ms` / `content_gap_p95_ms` 全是 `_ms`。命名空间内部一致优先于跨命名空间一致，
-`_ms` 后缀在每个读取点都自带单位。
-
-**第三个起点：两层都不满足字面的「request issuance」。** `raw-retry.ts` 在单次 attempt
-内部做隐藏重试，全程在 usage capture 之前、完全不进 trace。所以
-`aio_proxy.attempt.ttft_ms` 的起点是 attempt span 起点，**不是** 实际发包时刻。这条独立地
-否决了「两层共用标准 key」——树里没有任何一层能诚实地声称自己是 issuance。
-
-代价记一笔：姊妹 metric `gen_ai.client.operation.time_to_first_chunk` 在这个定义下会把
-模型延迟和转移延迟混进同一个分布，呈双峰。这是正确的代价——另一个选择是让网关看起来比
-实际更快——但如果发这个 metric，必须用同一个逻辑值，并接受双峰。
-
-OTel 自己的 reference report 在 13 个库上对这个属性全是 `(none)`。野外确有零星实现
-（VS Code Copilot、Sentry、Microsoft.Extensions.AI、litellm 等），但**每一个多层 tracer 都只
-把它挂在最内层那个 per-LLM-call span 上**——哪怕其中有些会把 token 数向上层重复累加。
-两层都发这个 key 的实现一个也没有。
+attempt 侧也不能借 `gen_ai.` 前缀创造不存在的路由属性（例如
+`gen_ai.aio_proxy.attempt.index`）。没有标准等价物的字段继续放 `aio_proxy.*`。
 
 **实现注意：拿不到非废弃的类型常量。** `semantic-conventions-genai` 仓库只有
 `model/` `docs/` `reference/` `templates/`，不发生成代码包；旧家
@@ -683,13 +751,17 @@ OTel 自己的 reference report 在 13 个库上对这个属性全是 `(none)`�
 不要 import 那个废弃常量——它的 deprecation 说的是「搬家了」，不是「要删了」，
 但 lint 不认识这个区别。
 
-### POST（CLIENT）—— 只放响应头之前就已确定的事实
+### HTTP client（CLIENT）—— 只放响应头之前就已确定的事实
 
 ```
-http.request.method   server.address   url.full
+http.request.method   server.address   url.full   url.template
 http.response.status_code
 aio_proxy.upstream.headers_ms
 ```
+
+`url.template` 只有在实际 transport 能提供权威的低基数模板时才写，同时参与 span 命名；
+`url.full` 记录实际请求地址但不参与命名。不得拿入站 route、wire protocol 或实际 `url.path`
+直接代替 `url.template`。
 
 `headers_ms` 可以留在这里：`response-observation.ts:77` 的 `upstreamHeadersMs` 写在
 `observeResponse` 里、早于 `controlledStream` 判断，正是本 span 的终点时刻。
@@ -802,7 +874,9 @@ status 区分取消，所以状态改 UNSET 不会让取消又变绿 —— 但*
   改在它的 context 里创建。终点取终态结算（不是函数返回，流式路径会先 `return Response`），
   ERROR 取逻辑失败（不是候选耗尽）。两条路由失败出口 —— `:298` 的 `throw` 与 `:301-313` 的
   `eligible.length === 0` —— 都要在 root 结算前把它置 ERROR 并关闭。
-- **`POST` span 按实际发送插桩，且必须能表达一条 inference span 下的多条。** 两个来源：
+- **HTTP client span 按实际发送插桩，且必须能表达一条 inference span 下的多条。** 名字优先
+  `{method} {url.template}`，无模板时退化为 `{method}`；模板由实际 transport 显式声明，
+  不能拿入站 route 或 target protocol 冒充，`createObservedFetch` 也不从实际 path 推断。多次发送有两个来源：
   `raw-retry.ts` 的隐藏重放（至多 +1），以及 **AI SDK `maxRetries` 默认 2**（再 +2，覆盖所有
   ai-sdk provider，量级远大于前者）。同时落 `aio_proxy.attempt.http_sends` 计数。
   现有的 `inAttempt()` 装的是观测与日志上下文，**不是** `OpenSpan.run()` 的 span 上下文，要补。
@@ -810,29 +884,35 @@ status 区分取消，所以状态改 UNSET 不会让取消又变绿 —— 但*
 
 ### 任务 5（server）属性改名与下沉，含读路径投影
 
-现在两层都存在了，属性才有地方可去。**注意是下沉到两层，不是一层**：
-`gen_ai.request.model` 与 TTFT 落 `aio_proxy.inference`，其余 `gen_ai.*`（含 `operation.name`、
-`provider.name`、`response.model`、整套 usage）落每条 inference span。分配表见「属性」。
+现在两层都存在了，属性才有地方可去。调用方请求的模型可留在 `aio_proxy.inference` 供路由失败
+检索；实际上游调用的完整 `gen_ai.*`（`operation.name`、`request.model`、实际 stream、TTFT、
+provider、response、usage）只落每条 provider inference span。分配表见「属性」。
 
 `http.status_code` → `http.response.status_code`；四个自造 `gen_ai.usage.*` 换成标准名并
 从 root 下沉到 inference span。
 
-TTFT 这项是**拆分不是改名**：现有 `aio_proxy.response.ttft_ms`（`semantic.ts:31`，挂 root）
-删掉，换成 `gen_ai.response.time_to_first_chunk`（`aio_proxy.inference`，秒）与
-`aio_proxy.attempt.ttft_ms`（每条 inference span，毫秒）两个新 key，语义见上文对照表。
+TTFT 这项是**拆分不是改名**：现有 `aio_proxy.response.ttft_ms`（挂 root）删除，逻辑层写
+`aio_proxy.inference.ttft_ms`（毫秒），每条 provider inference span 写
+`gen_ai.response.time_to_first_chunk`（秒）。删除 `aio_proxy.attempt.ttft_ms`。
 `ALLOWED_ATTRIBUTES`（`span-record.ts:15`）同步，并补 `aio_proxy.inference.attempt_count`、
 `aio_proxy.inference.failover_ms`、`aio_proxy.attempt.http_sends`、`gen_ai.provider.name`、
 `server.address`、`server.port`。
+
+同一任务删除 `aio_proxy.attempt.model_id`，provider span 的实际 stream 改
+`gen_ai.request.stream`；`gen_ai.usage.cache_write.input_tokens` 改
+`gen_ai.usage.cache_creation.input_tokens`，停止发射非标准 `gen_ai.usage.total_tokens`。
+`gen_ai.provider.name` 改从 runtime 的可选 `genAiProviderName` 读取，删除按 `ProviderProtocol`
+映射的 `PROVIDER_NAME` / `genAiProviderNameFor()`。
 
 **`span-projection.ts:225-231` 一并改**：今天它在读回时从 summary 列把 `gen_ai.request.model`
 / `gen_ai.response.model` / 整套 `gen_ai.usage.*` 重建到 root 上（事实 4）。不改这里，
 下沉在读回后等于没发生。summary 列保留 —— 那是列表页与记账的投影。
 
-dashboard 侧 `trace-attribute-names.ts:21` 与 `span-metrics.ts:62` 一并改：
-`span-metrics` 现在只认 root 上那一个 key，拆分后 attempt 行读 `aio_proxy.attempt.ttft_ms`、
-GenAI 行读标准 key 并 ×1000 换算成毫秒展示。
+dashboard 侧 `trace-attribute-names.ts:21` 与 `span-metrics.ts:62` 一并改：逻辑操作行读
+`aio_proxy.inference.ttft_ms`，provider inference 行读标准 key 并 ×1000 换算成毫秒展示。
 
-历史数据不迁移、不做兼容。
+历史 GenAI 属性不迁移。root diagnostics 例外：按本节属性表做只读 fallback，避免 retention 窗口内
+的旧 trace 详情突然消失；新 trace 不再双写 `aio_proxy.diagnostics.*`。
 
 ### 任务 6（server）span 注册表
 
@@ -847,10 +927,15 @@ GenAI 行读标准 key 并 ×1000 换算成毫秒展示。
 那是开集（见「规范依据」），把 1.43.0 的 9 个常量写成白名单会在上游发布时自己判错。
 需要校验的话，只校验「非空 + 低基数」。
 
-### 任务 7（dashboard）瀑布树渲染
+### 任务 7（core / server / dashboard）瀑布树渲染与稳定顺序
 
 `trace-layout.ts` 现在只管深度与柱宽，要支持真实多级嵌套。TTFT 在 attempt 条上画刻度，
 不画成子行。
+
+给 span 记录、`trace_span` 与 dashboard DTO 增加 nullable `startSequence`：root 在 `startRoot()`
+写 0，`BufferingSpanProcessor.onStart()` 给同 trace 后续 span 分配 1、2、3……，`onEnd()` 带出；
+详情查询优先按 sequence 返回，布局按 parent/child DFS 后用 sequence 排 sibling。nullable 只用于兼容
+旧记录，缺失时才回退 `(startedAt, spanId)`。该字段是存储元数据，不加入 span attributes 表。
 
 `transportObservation === 'ambiguous'` 时不画刻度，并在 UI 上说明「同一 attempt 内观测到
 多次响应」，而不是显示成普通的缺数据。
@@ -866,7 +951,7 @@ GenAI 行读标准 key 并 ×1000 换算成毫秒展示。
   `stream.body = 首 token → attempt 终点` 是不诚实的。
 - **不做 `aio_proxy.response.egress` span。** 上一版有，这一版删了：它声称测「我们向客户端
   写出的那段」，但要挂的两个标量都产生于上游读取，而真正的下游写出今天既无结算契约也无观测点。
-  详见「POST span 的终点只到响应头」。
+  详见「HTTP client span 的名字与终点」。
 - **不做故障位置推断。** 「有 `first_token` 且失败 = 首 token 之后断的」不成立：失败可能出在
   出口流、序列化、取消或后续终态处理。「只有 `upstream_headers` = 没等到内容」更是把「没有
   记录」当成「没有发生」—— 观测可能不可用、被歧义抑制、被终态整形丢掉，或者根本不覆盖那类
@@ -890,7 +975,7 @@ GenAI 行读标准 key 并 ×1000 换算成毫秒展示。
 并分类第一个响应、改写请求、再次发起，全程在 usage capture 之前。「到底发了几次请求？哪次
 失败？最终内容来自哪次？」今天无法回答 —— 这是真正缺信息的地方。
 
-**但挂载不能推后。** 任务 4 的 `POST` span 包在 `createObservedFetch` 上，隐藏重试的第二次
+**但挂载不能推后。** 任务 4 的 HTTP client span 包在 `createObservedFetch` 上，隐藏重试的第二次
 fetch 现在就会被观测到，所以「正确挂到 attempt 下、能表达多次发送」属于本 PR。推后的是
 **归因**：区分候选下标与候选内重发下标、标注每次发送的分类结果与请求改写、回答最终内容来自
 哪一次。那需要读 `resolveRawRetry()` 的内部状态，是独立 server PR。
@@ -906,10 +991,18 @@ fetch 现在就会被观测到，所以「正确挂到 attempt 下、能表达�
 | 场景 | 断言 |
 |---|---|
 | 注册表校验 | 每个声明的 span 都有创建点；kind 与 parent 与声明一致 |
-| 一次失败转移（**断言落在读回之后**） | 恰好一个 span 带 `gen_ai.request.model`；attempt 上零 `gen_ai.*`；**root 上零 `gen_ai.*`** —— 只断言发射出的 span 会漏掉 `span-projection` 的重建路径 |
-| 一次失败转移的层级 | 两个 attempt 都挂在 GenAI span 下，不在 root 下 |
-| 六种能力各一 | 树形状一致；非法 operation 不写 `gen_ai.operation.name` |
+| 一次失败转移（**断言落在读回之后**） | root 上零 `gen_ai.*`；逻辑操作层带调用方的 `gen_ai.request.model`；每条 provider inference span 带各自的 `gen_ai.operation.name` / `request.model`，runtime 已声明时才带 `provider.name` |
+| 一次失败转移的层级 | 两个 provider inference span 都挂在 `aio_proxy.inference` 逻辑操作层下，不在 root 下 |
+| 六种能力各一 | 树形状一致；每条 provider inference span 都写非空、低基数的 `gen_ai.operation.name`，其中四种非标准能力使用本文定义的自定义值 |
 | 4xx 拒绝 | root 状态 UNSET；`http.response.status_code` 正确 |
+| root 属性（新 trace） | 使用标准 HTTP / URL / User-Agent 属性；零 `aio_proxy.diagnostics.*`；截图所列字段里只保留 `aio_proxy.request.id`、`aio_proxy.protocol.inbound`，并仅在 token-count 路径写 `aio_proxy.operation` |
+| root 属性（历史 trace） | diagnostics API 优先读标准属性，缺失时能从旧 `aio_proxy.diagnostics.*` 还原；新 trace 不双写 |
+| 已知内置 provider | `gen_ai.provider.name` 取 runtime 显式声明的规范值，与 provider 使用什么 wire protocol 无关 |
+| 自定义 OpenAI-compatible endpoint | 不因 source/target protocol 写 `gen_ai.provider.name=openai`；未声明真实身份时省略，仍保留 `server.address`、`aio_proxy.provider.id` 与 `aio_proxy.protocol.target` |
+| provider inference 属性去重 | 有 `gen_ai.request.model`，无 `aio_proxy.attempt.model_id`；有标准 TTFT 时无 `aio_proxy.attempt.ttft_ms` |
+| provider streaming | `gen_ai.request.stream` 反映实际向上游发送的模式，不直接复制入站 `aio_proxy.request.stream` |
+| provider usage | 使用 `cache_creation.input_tokens`；不出现 `cache_write.input_tokens` 或非标准 `gen_ai.usage.total_tokens` |
+| 两层 TTFT | 逻辑操作层用 `aio_proxy.inference.ttft_ms`；provider inference 用秒单位的 `gen_ai.response.time_to_first_chunk` |
 | prepare 抛错（`modelInvocation` 失败） | 恰好一个 attempt 行，没有未关闭的 span 被丢弃；终态与重构前逐字段一致 |
 | 不可重试状态但仍有候选 | GenAI span 置 ERROR —— ERROR 判据是逻辑失败，不是候选耗尽 |
 | 流式成功 | GenAI span 终点取终态结算，不是 `Response` 返回时刻 |
@@ -917,7 +1010,9 @@ fetch 现在就会被观测到，所以「正确挂到 attempt 下、能表达�
 | 请求前后墙钟前跳 / 后跳 | duration 不被污染、不被夹成 0 |
 | AI SDK 有内容无首字节、纯 tool-call 输出 | 仍有可用属性；没有 TTFT 不等于没有输出 |
 | 首内容之后出口流报错 | 观测活过终态替换；不把它标成上游 body 失败 |
-| 同 attempt 内隐藏重试后成功 | 两个 `POST` span 都挂在同一 attempt 下；不跨响应造刻度；歧义可见 |
+| 上游 HTTP 命名 | 有低基数模板时为 `{method} {url.template}`；无模板时为 `{method}`；实际 `url.path` 永不进入 span 名 |
+| 同毫秒 sibling | 构造相反字典序的 `spanId`，仍按 `startSequence` 显示真实开始顺序；无 sequence 的旧数据只保证稳定 fallback，不声称可恢复真实顺序 |
+| 同 attempt 内隐藏重试后成功 | 两个 HTTP client span 都挂在同一 attempt 下；不跨响应造刻度；歧义可见 |
 | 终止帧之后延迟 EOF 或取消 | 不把 trace 结算当成 body 完成或客户端送达成功 |
 
 断言的是**时间边界、层级归属与错误归属正确**，不是「每条 trace 恰好有 N 行」。

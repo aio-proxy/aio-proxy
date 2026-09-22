@@ -58,7 +58,7 @@ describe('shared protocol routing pipeline', () => {
     expect(unsupported.calls.raw).toHaveLength(0);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'unsupported', statusCode: 501 },
+      { outcome: 'failure', providerId: 'unsupported', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: 200 },
     ]);
   });
@@ -79,7 +79,7 @@ describe('shared protocol routing pipeline', () => {
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({ provider: 'final' });
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 503 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'failure', providerId: 'final', statusCode: 429 },
     ]);
     expect(harness.recording.finals[0]).toEqual(

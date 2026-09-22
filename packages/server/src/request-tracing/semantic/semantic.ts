@@ -2,7 +2,6 @@ import type { DashboardTraceDiagnostics } from '@aio-proxy/types';
 import { SpanKind } from '@opentelemetry/api';
 
 export const spanName = {
-  request: 'aio_proxy.request',
   parse: 'aio_proxy.request.parse',
   session: 'aio_proxy.session.resolve',
   route: 'aio_proxy.route.resolve',
@@ -11,6 +10,7 @@ export const spanName = {
   prepare: 'aio_proxy.request.prepare',
   tokenCount: 'aio_proxy.token_count',
   candidateSkipped: 'aio_proxy.token_count.candidate_skipped',
+  usageResolve: 'aio_proxy.usage.resolve',
 } as const;
 
 type SpanDeclaration = {
@@ -28,7 +28,7 @@ type SpanDeclaration = {
 // 删创建点不删声明，测试同样会红 —— 本次重构起因的七个死常量再也长不出来。
 export const spanRegistry = {
   request: {
-    name: spanName.request,
+    nameShape: '{http.request.method} {http.route}',
     kind: SpanKind.SERVER,
     parent: [],
     createdBy: 'request-tracing/request-trace-recorder/request-trace-recorder.ts',
@@ -94,6 +94,12 @@ export const spanRegistry = {
     parent: ['request'],
     createdBy: 'routes/token-count/shared.ts',
   },
+  usageResolve: {
+    name: spanName.usageResolve,
+    kind: SpanKind.INTERNAL,
+    parent: ['request'],
+    createdBy: 'usage-capture/usage-validation.ts',
+  },
 } as const satisfies Record<string, SpanDeclaration>;
 
 export const eventName = {
@@ -113,13 +119,13 @@ export const attributeName = {
   stream: 'aio_proxy.request.stream',
   fast: 'aio_proxy.request.fast',
   ttftMs: 'aio_proxy.response.ttft_ms',
-  transportObservation: 'aio_proxy.response.transport_observation',
-  upstreamHeadersMs: 'aio_proxy.response.upstream_headers_ms',
-  firstUpstreamByteMs: 'aio_proxy.response.first_upstream_byte_ms',
-  firstSseEventMs: 'aio_proxy.response.first_sse_event_ms',
-  contentGapP95Ms: 'aio_proxy.response.content_gap_p95_ms',
-  maxSseFramesPerRead: 'aio_proxy.response.max_sse_frames_per_read',
-  contentEncoding: 'aio_proxy.response.content_encoding',
+  transportObservation: 'aio_proxy.upstream.transport_observation',
+  upstreamHeadersMs: 'aio_proxy.upstream.headers_ms',
+  firstUpstreamByteMs: 'aio_proxy.upstream.first_byte_ms',
+  firstSseEventMs: 'aio_proxy.upstream.first_sse_event_ms',
+  contentGapP95Ms: 'aio_proxy.upstream.content_gap_p95_ms',
+  maxSseFramesPerRead: 'aio_proxy.upstream.max_sse_frames_per_read',
+  contentEncoding: 'aio_proxy.upstream.content_encoding',
   inboundProtocol: 'aio_proxy.protocol.inbound',
   sessionSource: 'aio_proxy.session.source',
   sessionId: 'aio_proxy.session.id',
@@ -137,6 +143,7 @@ export const attributeName = {
   // gen_ai.gateway.* 落地后这两个自造 key 应换成标准名（见 spec「后续」）。
   inferenceAttemptCount: 'aio_proxy.inference.attempt_count',
   inferenceFailoverMs: 'aio_proxy.inference.failover_ms',
+  inferenceTtftMs: 'aio_proxy.inference.ttft_ms',
   providerId: 'aio_proxy.provider.id',
   providerKind: 'aio_proxy.provider.kind',
   providerWeight: 'aio_proxy.provider.weight',
@@ -157,25 +164,32 @@ export const attributeName = {
   errorCode: 'aio_proxy.error.code',
   terminationReason: 'aio_proxy.termination.reason',
   genAiRequestModel: 'gen_ai.request.model',
-  // Required 在 inference span 上。取该次尝试的上游协议口味，不是我们的 provider id ——
-  // 语义约定把它定义成 telemetry format 的判别器，明说 "may differ from the actual upstream
-  // provider … configured against a proxy"。映射见 emit.ts 的 PROVIDER_NAME。
+  genAiRequestStream: 'gen_ai.request.stream',
+  // Only explicit runtime metadata may set this. Wire protocol, Provider ID,
+  // package name, and URL do not establish an upstream service identity.
   genAiProviderName: 'gen_ai.provider.name',
   genAiResponseModel: 'gen_ai.response.model',
   genAiUsageInputTokens: 'gen_ai.usage.input_tokens',
   genAiUsageOutputTokens: 'gen_ai.usage.output_tokens',
-  genAiUsageTotalTokens: 'gen_ai.usage.total_tokens',
   genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read.input_tokens',
-  genAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write.input_tokens',
+  genAiUsageCacheCreationTokens: 'gen_ai.usage.cache_creation.input_tokens',
   genAiUsageReasoningTokens: 'gen_ai.usage.reasoning.output_tokens',
   genAiResponseId: 'gen_ai.response.id',
   // double, in seconds. Only the gen_ai.inference.client group references it, so
   // there is no shared constant to import and it is hardcoded like the rest.
   genAiTimeToFirstChunk: 'gen_ai.response.time_to_first_chunk',
   httpRequestMethod: 'http.request.method',
+  httpRoute: 'http.route',
+  httpRequestContentType: 'http.request.header.content-type',
+  httpRequestContentLength: 'http.request.header.content-length',
+  httpResponseContentType: 'http.response.header.content-type',
+  httpResponseContentLength: 'http.response.header.content-length',
+  userAgentOriginal: 'user_agent.original',
   serverAddress: 'server.address',
   serverPort: 'server.port',
   urlPath: 'url.path',
+  urlFull: 'url.full',
+  urlTemplate: 'url.template',
   errorType: 'error.type',
   // `http.status_code` 2023 年就废弃了。旧数据落库时用的是老 key，dashboard 侧留兜底，
   // 不做数据迁移。
@@ -281,9 +295,30 @@ export function traceDiagnosticsToAttributes(diagnostics: DashboardTraceDiagnost
 export function traceDiagnosticsFromAttributes(
   attributes: Readonly<Record<string, unknown>>,
 ): DashboardTraceDiagnostics | undefined {
-  const requestProtocol = stringAttribute(attributes, attributeName.diagnosticRequestProtocol);
-  const requestMethod = stringAttribute(attributes, attributeName.diagnosticRequestMethod);
-  const responseStatus = numberAttribute(attributes, attributeName.diagnosticResponseStatusCode);
+  const requestProtocol =
+    stringAttribute(attributes, attributeName.inboundProtocol) ??
+    stringAttribute(attributes, attributeName.diagnosticRequestProtocol);
+  const requestMethod =
+    stringAttribute(attributes, attributeName.httpRequestMethod) ??
+    stringAttribute(attributes, attributeName.diagnosticRequestMethod);
+  const requestContentType =
+    headerStringAttribute(attributes, attributeName.httpRequestContentType) ??
+    stringAttribute(attributes, attributeName.diagnosticRequestContentType);
+  const requestContentLength =
+    headerLengthAttribute(attributes, attributeName.httpRequestContentLength) ??
+    numberAttribute(attributes, attributeName.diagnosticRequestContentLengthBytes);
+  const requestUserAgent =
+    stringAttribute(attributes, attributeName.userAgentOriginal) ??
+    stringAttribute(attributes, attributeName.diagnosticRequestUserAgent);
+  const responseStatus =
+    numberAttribute(attributes, attributeName.httpStatusCode) ??
+    numberAttribute(attributes, attributeName.diagnosticResponseStatusCode);
+  const responseContentType =
+    headerStringAttribute(attributes, attributeName.httpResponseContentType) ??
+    stringAttribute(attributes, attributeName.diagnosticResponseContentType);
+  const responseContentLength =
+    headerLengthAttribute(attributes, attributeName.httpResponseContentLength) ??
+    numberAttribute(attributes, attributeName.diagnosticResponseContentLengthBytes);
   const diagnostics: DashboardTraceDiagnostics = {
     ...(requestProtocol === undefined || requestMethod === undefined
       ? {}
@@ -291,13 +326,9 @@ export function traceDiagnosticsFromAttributes(
           request: {
             protocol: requestProtocol,
             method: requestMethod,
-            ...optionalStringAttribute(attributes, attributeName.diagnosticRequestContentType, 'contentType'),
-            ...optionalNumberAttribute(
-              attributes,
-              attributeName.diagnosticRequestContentLengthBytes,
-              'contentLengthBytes',
-            ),
-            ...optionalStringAttribute(attributes, attributeName.diagnosticRequestUserAgent, 'userAgent'),
+            ...(requestContentType === undefined ? {} : { contentType: requestContentType }),
+            ...(requestContentLength === undefined ? {} : { contentLengthBytes: requestContentLength }),
+            ...(requestUserAgent === undefined ? {} : { userAgent: requestUserAgent }),
           },
         }),
     ...(responseStatus === undefined
@@ -305,12 +336,8 @@ export function traceDiagnosticsFromAttributes(
       : {
           response: {
             statusCode: responseStatus,
-            ...optionalStringAttribute(attributes, attributeName.diagnosticResponseContentType, 'contentType'),
-            ...optionalNumberAttribute(
-              attributes,
-              attributeName.diagnosticResponseContentLengthBytes,
-              'contentLengthBytes',
-            ),
+            ...(responseContentType === undefined ? {} : { contentType: responseContentType }),
+            ...(responseContentLength === undefined ? {} : { contentLengthBytes: responseContentLength }),
           },
         }),
   };
@@ -327,20 +354,16 @@ function numberAttribute(attributes: Readonly<Record<string, unknown>>, name: st
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function optionalStringAttribute(
-  attributes: Readonly<Record<string, unknown>>,
-  name: string,
-  field: 'contentType' | 'userAgent',
-): Partial<Record<'contentType' | 'userAgent', string>> {
-  const value = stringAttribute(attributes, name);
-  return value === undefined ? {} : { [field]: value };
+function headerStringAttribute(attributes: Readonly<Record<string, unknown>>, name: string): string | undefined {
+  const value = attributes[name];
+  if (!Array.isArray(value) || typeof value[0] !== 'string') return undefined;
+  const first = value[0].trim();
+  return first.length > 0 && first.length <= MAX_DIAGNOSTIC_TEXT_LENGTH ? first : undefined;
 }
 
-function optionalNumberAttribute(
-  attributes: Readonly<Record<string, unknown>>,
-  name: string,
-  field: 'contentLengthBytes',
-): Partial<Record<'contentLengthBytes', number>> {
-  const value = numberAttribute(attributes, name);
-  return value === undefined ? {} : { [field]: value };
+function headerLengthAttribute(attributes: Readonly<Record<string, unknown>>, name: string): number | undefined {
+  const value = headerStringAttribute(attributes, name);
+  if (value === undefined || !/^(0|[1-9]\d*)$/u.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

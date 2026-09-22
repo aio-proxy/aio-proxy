@@ -9,7 +9,6 @@ function inferenceTerminal(input: RequestTraceFinishInput): SpanTerminal {
     outcome: input.outcome,
     ...(input.outcome === 'failure' && input.errorType !== undefined ? { errorType: input.errorType } : {}),
     ...(input.outcome === 'failure' && input.errorCode !== undefined ? { errorCode: input.errorCode } : {}),
-    ...(input.finalHttpStatus === undefined ? {} : { httpStatus: input.finalHttpStatus }),
   };
 }
 
@@ -59,15 +58,14 @@ export function startInferenceSpan(
   // span's aio_proxy.attempt.ttft_ms, which starts at that attempt's dispatch.
   const layerAttributes = (input: RequestTraceFinishInput): Attributes => ({
     [attributeName.inferenceAttemptCount]: attemptCount,
-    ...(lastAttemptMs === undefined
+    ...(input.outcome !== 'success' || attemptCount <= 1 || lastAttemptMs === undefined
       ? {}
       : {
           [attributeName.inferenceFailoverMs]: Math.max(0, Math.round(performance.now() - startedAt - lastAttemptMs)),
         }),
     ...(input.firstChunkAt === undefined
       ? {}
-      : { [attributeName.genAiTimeToFirstChunk]: Math.max(0, input.firstChunkAt - startedAt) / 1000 }),
-    ...(input.finalModelId === undefined ? {} : { [attributeName.genAiResponseModel]: input.finalModelId }),
+      : { [attributeName.inferenceTtftMs]: Math.max(0, input.firstChunkAt - startedAt) }),
   });
 
   // Attributes have to land before end(): setAttributes is discarded once a span
@@ -82,7 +80,7 @@ export function startInferenceSpan(
     open.end(inferenceTerminal(input));
   };
   const end = (terminal?: SpanTerminal): void => {
-    stampLayer();
+    stampLayer({ outcome: terminal?.outcome ?? 'failure' });
     open.end(terminal);
   };
   return {

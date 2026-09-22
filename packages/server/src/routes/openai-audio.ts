@@ -12,6 +12,7 @@ export function createOpenAIAudioRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAISpeechAdapter,
         context: { operation: 'speech' },
+        httpRoute: '/v1/audio/speech',
         rawRequest: context.req.raw,
         source,
       }),
@@ -20,6 +21,7 @@ export function createOpenAIAudioRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAITranscriptionAdapter,
         context: { operation: 'transcriptions' },
+        httpRoute: '/v1/audio/transcriptions',
         rawRequest: context.req.raw,
         source,
       }),
@@ -28,6 +30,7 @@ export function createOpenAIAudioRoutes(source: ProviderRouteSource) {
       handleProtocolRequest({
         adapter: openAITranscriptionAdapter,
         context: { operation: 'translations' },
+        httpRoute: '/v1/audio/translations',
         rawRequest: context.req.raw,
         source,
       }),

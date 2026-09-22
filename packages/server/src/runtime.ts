@@ -43,6 +43,7 @@ export type RuntimeModelMetadata = ModelMetadata & {
 export type RawTransportOptions = { readonly upstreamStream: boolean };
 
 export type RawTransport = {
+  readonly urlTemplate?: string;
   readonly invoke: (
     request: Request,
     context?: LogicalRequestContext,
@@ -55,6 +56,7 @@ export type RawResolveInput = {
   readonly modelId: string;
   readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription' | 'evaluation';
   readonly requestPath?: string;
+  readonly urlTemplate?: string;
 };
 
 export type RuntimeRawCapability = {
@@ -156,6 +158,7 @@ export type TranscriptionTransport = {
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;
 type RuntimeProviderBase = {
   readonly id: string;
+  readonly genAiProviderName?: string;
   readonly kind: ProviderKind;
   readonly enabled: boolean;
   readonly priority?: number;

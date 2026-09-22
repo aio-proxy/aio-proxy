@@ -49,6 +49,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
         modelId: SPEECH_MODEL,
         capability: 'speech',
         requestPath: SPEECH,
+        urlTemplate: SPEECH,
       },
     ]);
   });
@@ -86,6 +87,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
         modelId: TRANSCRIPTION_MODEL,
         capability: 'transcription',
         requestPath: TRANSLATIONS,
+        urlTemplate: TRANSLATIONS,
       },
     ]);
 
@@ -111,7 +113,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
     expect(broken.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(healthy.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(await recordedAttempts(home)).toEqual([
-      expect.objectContaining({ outcome: 'failure', providerId: 'broken', statusCode: 500 }),
+      expect.objectContaining({ outcome: 'failure', providerId: 'broken' }),
       expect.objectContaining({ outcome: 'success', providerId: 'azure' }),
     ]);
   });

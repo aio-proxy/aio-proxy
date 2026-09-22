@@ -80,7 +80,7 @@ describe('OAuth plugin raw pipeline sessions and capabilities', () => {
     await settleRecording(harness.recording);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: 200 },
     ]);
   });

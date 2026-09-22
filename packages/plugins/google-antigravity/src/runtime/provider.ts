@@ -59,6 +59,7 @@ export function createGoogleAntigravityRuntime(
   };
   const extraByModel = new Map(context.catalog.language.map((descriptor) => [descriptor.id, descriptor.extra]));
   return {
+    genAiProviderName: 'gcp.gemini',
     provider: createAntigravityProviderV4(modelRuntime, {
       modelMetadata: (modelId) => extraByModel.get(modelId),
     }),

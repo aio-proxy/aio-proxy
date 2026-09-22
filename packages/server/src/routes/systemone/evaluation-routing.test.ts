@@ -666,7 +666,7 @@ describe('evaluation traces', () => {
         providerId: 'typesafe-direct',
         transport: 'raw',
         targetProtocol: 'typesafe-systemone',
-        statusCode: 200,
+        statusCode: undefined,
         errorCode: undefined,
         outcome: 'success',
       },
@@ -713,7 +713,7 @@ describe('evaluation traces', () => {
         providerId: 'plain-sdk',
         transport: undefined,
         targetProtocol: undefined,
-        statusCode: 501,
+        statusCode: undefined,
         errorCode: 'unsupported_feature',
         outcome: 'failure',
       },
@@ -747,7 +747,7 @@ describe('evaluation traces', () => {
     const spans = await attemptSpans(home);
     expect(spans).toHaveLength(2);
     expect(spans.map(attemptFacts)).toEqual([
-      expect.objectContaining({ providerId: 'typesafe-direct', transport: 'raw', statusCode: 529 }),
+      expect.objectContaining({ providerId: 'typesafe-direct', transport: 'raw', statusCode: undefined }),
       expect.objectContaining({ providerId: 'vercel-gateway', transport: 'ai_sdk', outcome: 'success' }),
     ]);
   });

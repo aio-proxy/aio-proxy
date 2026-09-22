@@ -30,7 +30,7 @@ export async function attemptEmbeddingCandidate<TRequest, TContext>(
     protocol: adapter.protocol,
     modelId: candidate.modelId,
     capability: 'embedding',
-    ...requestPathProperty(rawRequest),
+    ...requestPathProperty(rawRequest, ctx.httpRoute),
   });
   if (raw !== undefined) {
     slot.trace.transport = 'raw';

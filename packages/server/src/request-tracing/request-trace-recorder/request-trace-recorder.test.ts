@@ -242,7 +242,7 @@ describe('createRequestTraceRecorder', () => {
     expect(stored?.attributes).toEqual({ [attributeName.providerId]: 'provider-a' });
   });
 
-  test('persists only allowlisted scalar diagnostics from the inbound request and client response', () => {
+  test('records standard HTTP root attributes without diagnostics or inferred body sizes', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
     const inboundRequest = new Request('http://localhost/v1/responses', {
@@ -262,6 +262,7 @@ describe('createRequestTraceRecorder', () => {
     const session = recorder.begin({
       inboundRequest,
       inboundProtocol: 'openai-response',
+      httpRoute: '/v1/responses',
     });
     const clientResponse = new Response('generated-secret-content', {
       status: 201,
@@ -276,16 +277,22 @@ describe('createRequestTraceRecorder', () => {
     session.finish({ outcome: 'success', clientResponse });
 
     const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.name).toBe('POST /v1/responses');
     expect(root?.attributes).toMatchObject({
-      'aio_proxy.diagnostics.request.protocol': 'openai-response',
-      'aio_proxy.diagnostics.request.method': 'POST',
-      'aio_proxy.diagnostics.request.content_type': 'application/json',
-      'aio_proxy.diagnostics.request.content_length_bytes': 35,
-      'aio_proxy.diagnostics.request.user_agent': 'diagnostics-test/1.0',
-      'aio_proxy.diagnostics.response.status_code': 201,
-      'aio_proxy.diagnostics.response.content_type': 'application/json',
-      'aio_proxy.diagnostics.response.content_length_bytes': 24,
+      'http.request.method': 'POST',
+      'http.route': '/v1/responses',
+      'url.path': '/v1/responses',
+      'user_agent.original': 'diagnostics-test/1.0',
+      'http.request.header.content-type': ['application/json'],
+      'http.request.header.content-length': ['35'],
+      'http.response.status_code': 201,
+      'http.response.header.content-type': ['application/json'],
+      'http.response.header.content-length': ['24'],
     });
+    expect(root?.attributes['aio_proxy.operation']).toBeUndefined();
+    expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('aio_proxy.diagnostics.'))).toEqual([]);
+    expect(Object.keys(root?.attributes ?? {}).filter((key) => key.includes('body.size'))).toEqual([]);
+    expect(Object.keys(root?.attributes ?? {}).filter((key) => key.startsWith('gen_ai.'))).toEqual([]);
     const persisted = JSON.stringify(completions[0]);
     for (const rejected of [
       'authorization-secret',
@@ -317,7 +324,7 @@ describe('createRequestTraceRecorder', () => {
     });
   });
 
-  test('projects stream intent and final TTFT onto the root span', () => {
+  test('projects stream intent but not logical TTFT onto the root span', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
     const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
@@ -326,10 +333,8 @@ describe('createRequestTraceRecorder', () => {
     session.finish({ outcome: 'success', ttftMs: 42 } as RequestTraceFinishInput);
 
     const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
-    expect(root?.attributes).toMatchObject({
-      [attributeName.stream]: true,
-      [attributeName.ttftMs]: 42,
-    });
+    expect(root?.attributes[attributeName.stream]).toBe(true);
+    expect(root?.attributes[attributeName.ttftMs]).toBeUndefined();
   });
 
   test('projects fast-mode intent onto the root span', () => {

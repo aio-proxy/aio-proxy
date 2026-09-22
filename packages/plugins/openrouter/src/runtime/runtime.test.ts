@@ -8,6 +8,7 @@ import { createOpenRouterDynamicFetch, createOpenRouterRuntime } from './runtime
 test('exposes a ProviderV4 language surface and no raw resolver', async () => {
   const runtime = await createOpenRouterRuntime(runtimeContext());
   expect(runtime.provider.specificationVersion).toBe('v4');
+  expect(runtime.genAiProviderName).toBe('openrouter');
   expect(runtime.provider.languageModel('openai/gpt-5.6-luna')).toBeDefined();
   expect(runtime.raw).toBeUndefined();
 });

@@ -48,8 +48,10 @@ function seedEmptyPriceCatalog(): void {
 }
 
 export function rawProvider(options: {
+  readonly genAiProviderName?: string;
   readonly id: string;
   readonly invoke?: RawTransport['invoke'];
+  readonly urlTemplate?: string;
   readonly model?: {
     readonly ensureAvailable?: () => Promise<void>;
     readonly invoke: ModelTransport['invoke'];
@@ -72,11 +74,20 @@ export function rawProvider(options: {
     baseURL: `https://${options.id}.example.test/v1`,
     capabilityIndex: languageCapabilityIndex(modelId),
     enabled: true,
+    ...(options.genAiProviderName === undefined ? {} : { genAiProviderName: options.genAiProviderName }),
     id: options.id,
     kind: ProviderKind.Api,
     passthrough: rawInvoke,
     protocol,
-    raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: rawInvoke } : undefined) },
+    raw: {
+      resolve: ({ protocol: inbound }) =>
+        inbound === protocol
+          ? {
+              invoke: rawInvoke,
+              ...(options.urlTemplate === undefined ? {} : { urlTemplate: options.urlTemplate }),
+            }
+          : undefined,
+    },
     ...(model === undefined ? {} : { model }),
     ...routingFields(options),
   } satisfies RuntimeProviderInstance;
@@ -85,6 +96,7 @@ export function rawProvider(options: {
 
 export function modelProvider(options: {
   readonly ensureAvailable?: () => Promise<void>;
+  readonly genAiProviderName?: string;
   readonly id: string;
   readonly invoke: ModelTransport['invoke'];
   readonly modelId?: string;
@@ -99,6 +111,7 @@ export function modelProvider(options: {
     alias: routeAlias(modelId),
     capabilityIndex: languageCapabilityIndex(modelId),
     enabled: true,
+    ...(options.genAiProviderName === undefined ? {} : { genAiProviderName: options.genAiProviderName }),
     id: options.id,
     invoke: model.invoke,
     kind: ProviderKind.AiSdk,

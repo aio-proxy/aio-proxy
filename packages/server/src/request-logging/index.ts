@@ -2,6 +2,8 @@ export {
   currentDebugRequestLogScope,
   currentProviderAttemptContext,
   currentRequestLogContext,
+  currentRequestTraceRootContext,
+  currentUpstreamUrlTemplate,
   type AttemptLogContext,
   type ProviderAttemptContext,
   type RequestLogContext,

@@ -32,7 +32,8 @@ const ATTR = {
   genAiUsageOutputTokens: 'gen_ai.usage.output_tokens',
   genAiUsageTotalTokens: 'gen_ai.usage.total_tokens',
   genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read.input_tokens',
-  genAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write.input_tokens',
+  genAiUsageCacheCreationTokens: 'gen_ai.usage.cache_creation.input_tokens',
+  legacyGenAiUsageCacheWriteTokens: 'gen_ai.usage.cache_write.input_tokens',
   genAiUsageReasoningTokens: 'gen_ai.usage.reasoning.output_tokens',
   errorType: 'error.type',
 } as const;
@@ -179,7 +180,8 @@ export function projectAttributes(
       case ATTR.genAiUsageCacheReadTokens:
         setNum('cacheReadTokens', value);
         break;
-      case ATTR.genAiUsageCacheWriteTokens:
+      case ATTR.genAiUsageCacheCreationTokens:
+      case ATTR.legacyGenAiUsageCacheWriteTokens:
         setNum('cacheWriteTokens', value);
         break;
       case ATTR.genAiUsageReasoningTokens:
@@ -252,7 +254,7 @@ export function mergeAttributes(
     set(ATTR.genAiUsageOutputTokens, columns.outputTokens);
     set(ATTR.genAiUsageTotalTokens, columns.totalTokens);
     set(ATTR.genAiUsageCacheReadTokens, columns.cacheReadTokens);
-    set(ATTR.genAiUsageCacheWriteTokens, columns.cacheWriteTokens);
+    set(ATTR.genAiUsageCacheCreationTokens, columns.cacheWriteTokens);
     set(ATTR.genAiUsageReasoningTokens, columns.reasoningTokens);
   }
   set(ATTR.errorType, columns.errorType);

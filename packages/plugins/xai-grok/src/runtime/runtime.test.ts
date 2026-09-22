@@ -62,9 +62,13 @@ describe('xAI Grok runtime', () => {
       fetch: globalThis.fetch,
     });
     expect(runtime.provider.specificationVersion).toBe('v4');
+    expect(runtime.genAiProviderName).toBe('x_ai');
     expect(runtime.provider.languageModel('grok-4.5').modelId).toBe('grok-4.5');
     expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'grok-4.5' })).toBeUndefined();
-    expect(runtime.raw?.({ protocol: 'openai-video', modelId: 'grok-imagine-video' })).toBeDefined();
+    expect(
+      runtime.raw?.({ protocol: 'openai-video', modelId: 'grok-imagine-video', requestPath: '/v1/videos' })
+        ?.urlTemplate,
+    ).toBe('/v1/videos/generations');
   });
 
   test('injects CLI identity, sanitizes Responses fields, and compiles custom tools before dispatch', async () => {

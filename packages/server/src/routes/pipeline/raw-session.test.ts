@@ -11,7 +11,7 @@ import {
   rawProvider,
   settleRecording,
 } from '../../../__tests__/pipeline-helpers';
-import { attributeName, spanName } from '../../request-tracing';
+import { attributeName } from '../../request-tracing';
 import type { ProviderRouteSource } from '../../runtime';
 import { createUsageCapture } from '../../usage-capture';
 import { handleProtocolRequest } from './index';
@@ -212,8 +212,10 @@ test.each([
   expect(response.headers.get('content-type')).toBe(expected);
   await response.text();
   await settleRecording(route.recording);
-  const root = route.recording.spans.find((span) => span.name === spanName.request);
-  expect(root?.attributes[attributeName.diagnosticResponseContentType] ?? null).toBe(expected);
+  const root = route.recording.spans.find((span) => span.parentSpanId === undefined);
+  expect(root?.attributes[attributeName.httpResponseContentType] ?? null).toEqual(
+    expected === null ? null : [expected],
+  );
   if (stream && contentType === undefined && status === 200) {
     expect(typeof route.recording.attempts[0]?.ttftMs).toBe('number');
   }

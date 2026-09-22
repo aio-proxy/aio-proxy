@@ -7,8 +7,10 @@ const API = 'https://api.x.ai/v1/videos';
 const JOB_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 
 /** Adapt asynchronous xAI jobs to the host's create/poll video contract. */
-export function createXAIGrokVideoTransport(fetch: XAIGrokFetch, modelId: string): RawTransport {
+export function createXAIGrokVideoTransport(fetch: XAIGrokFetch, modelId: string, requestPath?: string): RawTransport {
+  const urlTemplate = upstreamUrlTemplate(requestPath);
   return {
+    ...(urlTemplate === undefined ? {} : { urlTemplate }),
     async invoke(request) {
       const path = new URL(request.url).pathname;
       if (request.method === 'POST' && path === '/v1/videos') {
@@ -57,6 +59,13 @@ export function createXAIGrokVideoTransport(fetch: XAIGrokFetch, modelId: string
       return Response.json({ ...body, id: match[1], object: 'video', model: modelId, status });
     },
   };
+}
+
+function upstreamUrlTemplate(requestPath: string | undefined): string | undefined {
+  if (requestPath === '/v1/videos') return '/v1/videos/generations';
+  return requestPath !== undefined && /^\/v1\/videos\/[^/]+(?:\/content)?$/u.test(requestPath)
+    ? '/v1/videos/{id}'
+    : undefined;
 }
 
 async function createBody(request: Request, modelId: string): Promise<Record<string, unknown> | Response> {

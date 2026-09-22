@@ -66,7 +66,7 @@ function harness<TRequest, TContext>(
       routingContinuity: { updatesAffinity: false },
       sessionIdentity: resolution.identity,
       streamRequested: false,
-      emitter: createAttemptEmitter({ session, streamRequested: false, capability: 'speech' }),
+      emitter: createAttemptEmitter({ session, capability: 'speech' }),
       release: () => {},
       deferRelease: () => {},
       logFailure: () => {},
@@ -94,7 +94,11 @@ function transcriptionRequest(overrides: Partial<OpenAITranscriptionRequest> = {
 
 function slot(
   provider: RuntimeProviderInstance,
-  options: { readonly hasNext?: boolean; readonly modelId?: string } = {},
+  options: {
+    readonly hasNext?: boolean;
+    readonly modelId?: string;
+    readonly urlTemplates?: Array<string | undefined>;
+  } = {},
 ): CandidateSlot {
   const startedAt = performance.now();
   return {
@@ -125,7 +129,10 @@ function slot(
       sourceProtocol: ProviderProtocol.OpenAIAudio,
       selectionReason: 'weight',
     },
-    inAttempt: (_targetProtocol, operation) => operation(),
+    inAttempt: (_targetProtocol, operation, urlTemplate) => {
+      options.urlTemplates?.push(urlTemplate);
+      return operation();
+    },
     spanRef: { current: undefined },
   };
 }
@@ -205,6 +212,23 @@ test('converts a speech request through the speech transport and answers with th
   // The convert path never spoke the upstream's protocol, so the attempt records
   // no target protocol — unlike the raw arm, which records `openai-audio`.
   expect(route.recording.attempts[0]?.targetProtocol).toBeUndefined();
+});
+
+test('converted audio attempts do not infer an upstream URL template', async () => {
+  const urlTemplates: Array<string | undefined> = [];
+  const provider = {
+    id: 'openai',
+    kind: ProviderKind.Api,
+    enabled: true,
+    capabilityIndex: { [SPEECH_MODEL]: new Set(['speech'] as const) },
+    speech: { invoke: async () => ({ audio: new Uint8Array([1]), mediaType: 'audio/mpeg' }) },
+  } satisfies RuntimeProviderInstance;
+  const { ctx } = harness(openAISpeechAdapter, speechRequest(), { operation: 'speech' });
+
+  const step = await attemptAudioCandidate(ctx, slot(provider, { urlTemplates }));
+
+  expect(step.kind).toBe('return');
+  expect(urlTemplates).toEqual([undefined]);
 });
 
 test('converts a transcription request through the transcription transport, not the speech one', async () => {

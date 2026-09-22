@@ -57,6 +57,15 @@ describe('span projection', () => {
     });
   });
 
+  test('reads legacy cache-write usage through the current cache-creation key', () => {
+    const projected = projectAttributes({ 'gen_ai.usage.cache_write.input_tokens': 3 }, false);
+
+    expect(projected.columns).toEqual({ cacheWriteTokens: 3 });
+    expect(mergeAttributes(projected.columns, projected.remaining, false)).toEqual({
+      'gen_ai.usage.cache_creation.input_tokens': 3,
+    });
+  });
+
   test('stores only long-tail attributes in attributes_json and reconstructs controlled attributes on read', () => {
     const handle = openTestDb();
     try {
@@ -203,20 +212,19 @@ describe('span projection', () => {
     }
   });
 
-  // mergeAttributes 的 !isRoot 分支里那六行 gen_ai.usage.* 是 GENERATION span
+  // mergeAttributes 的 !isRoot 分支里这些 gen_ai.usage.* 是 GENERATION span
   // （inference-span.ts 发的那个非 root CLIENT span）token usage 的唯一还原路径：
   // projectAttributes 抽这六个 key 时没有 isRoot 判断，属性全进列、attributes_json
-  // 里一个都不留。删掉那六行，仪表盘上每个 generation span 的 token 就静默消失，而
+  // 里一个都不留。删掉任一行，仪表盘上对应 token 就静默消失，而
   // 在这条测试之前整个 core 套件都不会红。
-  test('a non-root GENERATION span still reports all six token counts after a write/read cycle', () => {
+  test('a non-root GENERATION span reports current token keys after a write/read cycle', () => {
     const handle = openTestDb();
     const generationSpanId = 'e'.repeat(16);
     const usage = {
       'gen_ai.usage.input_tokens': 21,
       'gen_ai.usage.output_tokens': 14,
-      'gen_ai.usage.total_tokens': 35,
       'gen_ai.usage.cache_read.input_tokens': 7,
-      'gen_ai.usage.cache_write.input_tokens': 3,
+      'gen_ai.usage.cache_creation.input_tokens': 3,
       'gen_ai.usage.reasoning.output_tokens': 5,
     };
     try {
@@ -269,8 +277,8 @@ describe('span projection', () => {
         summary: { finalProviderId: 'provider-x', finalModelId: 'final-model' },
       });
 
-      // 先确认这六个 key 真的被抽走了：JSON 里只剩长尾那个。少了这一条，即使
-      // projectAttributes 根本没投过列、六个 key 原样躺在 JSON 里，下面那条断言
+      // 先确认这些 key 真的被抽走了：JSON 里只剩长尾那个。少了这一条，即使
+      // projectAttributes 根本没投过列、usage key 原样躺在 JSON 里，下面那条断言
       // 也照样过 —— 那就测不到还原路径了。
       const storedRow = handle.db
         .select()
@@ -279,7 +287,7 @@ describe('span projection', () => {
         .find((row) => row.spanId === generationSpanId)!;
       expect(storedRow.attributes).toEqual({ 'long.tail.generation': 'keep-me' });
 
-      // 仪表盘读到的就是这个：六个 token 数带着值回来。
+      // 仪表盘读到的就是这个：标准 token 数带着值回来。
       const generationAttrs = store.find(TRACE_ID)?.spans.find((span) => span.spanId === generationSpanId)?.attributes;
       expect(generationAttrs).toEqual({ ...usage, 'long.tail.generation': 'keep-me' });
     } finally {

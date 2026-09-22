@@ -3,12 +3,12 @@ import { type Attributes, context, SpanKind, SpanStatusCode, trace } from '@open
 import { createParser } from 'eventsource-parser';
 
 import { attributeName, getTraceRuntime } from '../../request-tracing';
-import type { ResponseBodyObservation } from '../../response-observation';
+import type { AttemptResponseEndpoint, ResponseBodyObservation } from '../../response-observation';
 import { currentAttemptResponseObservation } from '../../response-observation';
 import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
 import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
 import { tapTextBody } from '../body-tap';
-import { currentDebugRequestLogScope } from '../context';
+import { currentDebugRequestLogScope, currentUpstreamUrlTemplate } from '../context';
 import { requestMetadata, responseMetadata } from '../request-metadata';
 
 type BunFetchInit = RequestInit & { readonly decompress?: boolean };
@@ -71,7 +71,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
     if (debug === undefined && observation === undefined) {
       return fetchWithSpan(fetcher, input, init);
     }
-    safely(() => observation?.observeFetchStart());
+    safely(() => observation?.observeFetchStart(fetchTarget(input)?.endpoint));
     if (debug === undefined) {
       const response = await fetchWithSpan(fetcher, input, init);
       const bodyObservation = safely(() =>
@@ -386,12 +386,15 @@ async function fetchWithSpan(
   if (trace.getSpan(parent) === undefined) return fetcher(input, init);
   const request = typeof input === 'object' && 'url' in input ? input : undefined;
   const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+  const urlTemplate = currentUpstreamUrlTemplate();
+  const startedAt = performance.now();
   const span = getTraceRuntime().tracer.startSpan(
-    method,
+    urlTemplate === undefined ? method : `${method} ${urlTemplate}`,
     {
       kind: SpanKind.CLIENT,
       attributes: {
         [attributeName.httpRequestMethod]: method,
+        ...(urlTemplate === undefined ? {} : { [attributeName.urlTemplate]: urlTemplate }),
         ...targetAttributes(request?.url ?? String(input)),
       },
     },
@@ -399,6 +402,7 @@ async function fetchWithSpan(
   );
   try {
     const response = await fetcher(input, init);
+    span.setAttribute(attributeName.upstreamHeadersMs, Math.max(0, performance.now() - startedAt));
     span.setAttribute(attributeName.httpStatusCode, response.status);
     // CLIENT span 的 4xx 也算错误，和 SERVER span 相反：语义约定只对 SERVER 网开一面
     // （客户端发错请求不是服务端的故障），而对发起方来说，拿回 4xx 的这次上游调用就是
@@ -416,23 +420,35 @@ async function fetchWithSpan(
   }
 }
 
-// The spec says url.full; only host + path are recorded. Several providers put
-// the key in the query string (`?key=`), and span attributes are persisted by
-// default and rendered straight into the dashboard.
 function targetAttributes(href: string): Attributes {
+  const target = fetchTarget(href);
+  if (target === undefined) return {};
+  const { endpoint, url } = target;
+  url.username = '';
+  url.password = '';
+  for (const key of new Set(url.searchParams.keys())) url.searchParams.set(key, 'REDACTED');
+  return {
+    [attributeName.serverAddress]: endpoint.serverAddress,
+    ...(endpoint.serverPort === undefined ? {} : { [attributeName.serverPort]: endpoint.serverPort }),
+    [attributeName.urlFull]: url.toString(),
+    [attributeName.urlPath]: url.pathname,
+  };
+}
+
+function fetchTarget(
+  input: Parameters<typeof globalThis.fetch>[0] | string,
+): { readonly endpoint: AttemptResponseEndpoint; readonly url: URL } | undefined {
   try {
+    const href = typeof input === 'object' && 'url' in input ? input.url : String(input);
     const url = new URL(href);
     return {
-      // hostname 而不是 host：语义约定里 server.address 只放主机名或 IP，端口是单独的
-      // server.port。用 host 的话自建或非标端口的上游会得到 `provider.example:8443`，
-      // 按标准做筛选和聚合的后端认不出来。IPv6 的方括号是 URL 语法，同样不属于地址本身。
-      [attributeName.serverAddress]: url.hostname.replace(/^\[|\]$/gu, ''),
-      // 走默认端口时 URL.port 是空串，那种情况不发这个属性 —— 补一个猜出来的默认值
-      // 等于把「没说」写成「说了」。
-      ...(url.port === '' ? {} : { [attributeName.serverPort]: Number(url.port) }),
-      [attributeName.urlPath]: url.pathname,
+      endpoint: {
+        serverAddress: url.hostname.replace(/^\[|\]$/gu, ''),
+        ...(url.port === '' ? {} : { serverPort: Number(url.port) }),
+      },
+      url,
     };
   } catch {
-    return {};
+    return undefined;
   }
 }

@@ -55,7 +55,18 @@ afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
 });
 
-async function seededApp() {
+async function seededApp(
+  diagnosticAttributes: Readonly<Record<string, string | number | readonly string[]>> = {
+    'aio_proxy.diagnostics.request.protocol': 'openai-response',
+    'aio_proxy.diagnostics.request.method': 'POST',
+    'aio_proxy.diagnostics.request.content_type': 'application/json',
+    'aio_proxy.diagnostics.request.content_length_bytes': 35,
+    'aio_proxy.diagnostics.request.user_agent': 'diagnostics-test/1.0',
+    'aio_proxy.diagnostics.response.status_code': 201,
+    'aio_proxy.diagnostics.response.content_type': 'application/json',
+    'aio_proxy.diagnostics.response.content_length_bytes': 24,
+  },
+) {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-traces-'));
   homes.push(home);
   const app = await createServer({ config: { providers: {} }, dbHome: home });
@@ -70,14 +81,7 @@ async function seededApp() {
     'aio_proxy.session.resolved_by': 'header-session',
     'aio_proxy.session.source': 'header-session',
     'gen_ai.request.model': 'gpt-5',
-    'aio_proxy.diagnostics.request.protocol': 'openai-response',
-    'aio_proxy.diagnostics.request.method': 'POST',
-    'aio_proxy.diagnostics.request.content_type': 'application/json',
-    'aio_proxy.diagnostics.request.content_length_bytes': 35,
-    'aio_proxy.diagnostics.request.user_agent': 'diagnostics-test/1.0',
-    'aio_proxy.diagnostics.response.status_code': 201,
-    'aio_proxy.diagnostics.response.content_type': 'application/json',
-    'aio_proxy.diagnostics.response.content_length_bytes': 24,
+    ...diagnosticAttributes,
   };
   store.startRoot({
     traceId: TRACE_ID,
@@ -291,6 +295,32 @@ describe('Dashboard trace routes', () => {
         contentType: 'application/json',
         contentLengthBytes: 24,
       },
+    });
+  });
+
+  test('reads new trace diagnostics from standard HTTP attributes', async () => {
+    const app = await seededApp({
+      'aio_proxy.protocol.inbound': 'openai-response',
+      'http.request.method': 'POST',
+      'http.request.header.content-type': ['application/json'],
+      'http.request.header.content-length': ['35'],
+      'user_agent.original': 'standard-diagnostics/1.0',
+      'http.response.status_code': 201,
+      'http.response.header.content-type': ['application/json'],
+      'http.response.header.content-length': ['24'],
+    });
+    const response = await app.request(`/dashboard/api/traces/${TRACE_ID}`, undefined, loopbackServer);
+    const detail = DashboardTraceDetailSchema.parse(await response.json());
+
+    expect(detail.diagnostics).toEqual({
+      request: {
+        protocol: 'openai-response',
+        method: 'POST',
+        contentType: 'application/json',
+        contentLengthBytes: 35,
+        userAgent: 'standard-diagnostics/1.0',
+      },
+      response: { statusCode: 201, contentType: 'application/json', contentLengthBytes: 24 },
     });
   });
 

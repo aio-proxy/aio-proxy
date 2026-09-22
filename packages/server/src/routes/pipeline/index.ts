@@ -23,6 +23,7 @@ import { startPipelineSpan } from './tracing';
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly adapter: PipelineAdapter<TRequest, TContext>;
   readonly context: TContext;
+  readonly httpRoute?: string;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
   readonly onSuccessfulAttempt?: (info: {
@@ -39,6 +40,7 @@ export async function handleProtocolRequest<TRequest, TContext>(
   const session = options.source.requestRecorder.begin({
     inboundRequest: options.rawRequest,
     inboundProtocol,
+    ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
   });
   return await context.with(session.rootContext, () =>
     withRequestLogContext(
@@ -46,6 +48,7 @@ export async function handleProtocolRequest<TRequest, TContext>(
         requestId: session.requestId,
         debug: options.source.debugLogging === true,
         logger: options.source.logger,
+        rootContext: session.rootContext,
       },
       () => handleProtocolRequestInContext(options, session, inboundProtocol),
     ),
@@ -147,6 +150,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     return await attemptResolvedRequest({
       adapter,
       context,
+      ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
       inboundProtocol,
       rawRequest,
       request,
@@ -250,6 +254,7 @@ function rejectParsedRequest<TRequest, TContext>(
 async function attemptResolvedRequest<TRequest, TContext>(options: {
   readonly adapter: PipelineAdapter<TRequest, TContext>;
   readonly context: TContext;
+  readonly httpRoute?: string;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
   readonly request: TRequest;
@@ -333,6 +338,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         config: lease.snapshot.config,
         context,
         deferRelease,
+        ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
         rawRequest,
         release: lease.release,
         request,

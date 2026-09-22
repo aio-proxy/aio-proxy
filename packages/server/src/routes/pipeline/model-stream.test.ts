@@ -48,7 +48,7 @@ describe('shared protocol routing pipeline model commit fallback', () => {
       expect(backup.calls.model).toHaveLength(1);
       expect(harness.context.modelInvocationCalls).toBe(1);
       expect(attemptsOf(harness.recording)).toEqual([
-        { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+        { outcome: 'failure', providerId: 'primary', statusCode: undefined },
         { outcome: 'success', providerId: 'backup', statusCode: undefined },
       ]);
       if (stage === 'ensure') {
@@ -85,7 +85,7 @@ describe('shared protocol routing pipeline model commit fallback', () => {
 
     expect(writerCalls).toBe(2);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.recording.finals[0]).toEqual(
@@ -118,7 +118,7 @@ describe('shared protocol routing pipeline model commit fallback', () => {
 
     expect(jsonCalls).toBe(2);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
       { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.recording.finals[0]).toEqual(

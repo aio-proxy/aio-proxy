@@ -30,6 +30,7 @@ export async function createClaudeRuntime(
     fetch: createClaudeDynamicFetch(context.credentials, { ...options, fetch }),
   });
   return {
+    genAiProviderName: 'anthropic',
     provider: {
       specificationVersion: 'v4',
       languageModel: (modelId) => anthropic.languageModel(modelId),

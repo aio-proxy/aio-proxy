@@ -82,6 +82,14 @@ test('reads provider, model, and latency straight off an attempt span', () => {
   });
 });
 
+test('reads new logical and upstream metrics while retaining legacy fallbacks', () => {
+  const logical = createSpan({ attributes: { 'aio_proxy.inference.ttft_ms': 480 } });
+  const upstream = createSpan({ attributes: { 'aio_proxy.upstream.headers_ms': 220 } });
+
+  expect(readSpanMetrics({ span: logical, spans: [logical], trace }).ttftMs).toBe(480);
+  expect(readSpanMetrics({ span: upstream, spans: [upstream], trace }).upstreamMs).toBe(220);
+});
+
 test('falls back to the trace row when the root span carries no attributes', () => {
   const root = createSpan({ spanId: trace.rootSpanId, name: 'aio_proxy.request', kind: 'SERVER', durationMs: 3_420 });
 

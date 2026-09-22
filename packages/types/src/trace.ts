@@ -86,6 +86,7 @@ export const DashboardTraceSpanSchema = z.object({
   name: z.string().min(1),
   kind: TraceSpanKindSchema,
   startedAt: z.iso.datetime(),
+  startSequence: z.number().int().min(0).optional(),
   endedAt: z.iso.datetime().nullable(),
   durationMs: z.number().min(0),
   otelStatusCode: OtelSpanStatusCodeSchema,

@@ -28,6 +28,7 @@ export const traceSpan = sqliteTable(
     name: text('name').notNull(),
     kind: integer('kind').notNull(),
     startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+    startSequence: integer('start_sequence'),
     endedAt: integer('ended_at', { mode: 'timestamp_ms' }),
     statusCode: integer('status_code').notNull(),
     terminationReason: text('termination_reason'),

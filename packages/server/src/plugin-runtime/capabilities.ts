@@ -72,7 +72,7 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
     video: descriptorsById(catalog.video ?? []),
   };
   return {
-    resolve({ protocol, modelId, capability, requestPath }: RawResolveInput) {
+    resolve({ protocol, modelId, capability, requestPath, urlTemplate }: RawResolveInput) {
       const descriptor = requestDescriptor(catalogsByModality, { modelId, capability, protocol });
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
@@ -80,17 +80,27 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
         ...(descriptor?.extra === undefined ? {} : { extra: descriptor.extra }),
         ...(capability === undefined ? {} : { capability }),
         ...(requestPath === undefined ? {} : { requestPath }),
+        ...(urlTemplate === undefined ? {} : { urlTemplate }),
       });
       if (transport === undefined) return undefined;
       if (
         typeof transport !== 'object' ||
         transport === null ||
         Array.isArray(transport) ||
-        typeof transport.invoke !== 'function'
+        typeof transport.invoke !== 'function' ||
+        (transport.urlTemplate !== undefined &&
+          (typeof transport.urlTemplate !== 'string' ||
+            transport.urlTemplate.length === 0 ||
+            transport.urlTemplate.length > 2_048 ||
+            transport.urlTemplate.trim() !== transport.urlTemplate ||
+            !transport.urlTemplate.startsWith('/') ||
+            transport.urlTemplate.includes('?') ||
+            transport.urlTemplate.includes('#')))
       ) {
         throw new PluginRawResolverError();
       }
       return {
+        ...(transport.urlTemplate === undefined ? {} : { urlTemplate: transport.urlTemplate }),
         async invoke(
           request: Request,
           context?: LogicalRequestContext,
@@ -227,6 +237,7 @@ export function createRuntimeProvider(
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
   const realtime = realtimeCapability(Reflect.get(result, 'realtime'));
+  const genAiProviderName = explicitGenAiProviderName(Reflect.get(result, 'genAiProviderName'));
   const { models, alias } = oauthRouting(config, catalog, defaults);
   const { capabilityIndex, upstreamMetadata } = routingCapabilities(alias, catalog, models);
   const image =
@@ -241,6 +252,7 @@ export function createRuntimeProvider(
       : undefined;
   const base = {
     id: config.id,
+    ...(genAiProviderName === undefined ? {} : { genAiProviderName }),
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
     ...routingDefaults(config),
@@ -306,6 +318,14 @@ export function createRuntimeProvider(
     return { ...base, raw };
   }
   throw new Error('Invalid ProviderV4 runtime');
+}
+
+function explicitGenAiProviderName(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length === 0 || value.trim() !== value || value.length > 64) {
+    throw new Error('Invalid genAiProviderName');
+  }
+  return value;
 }
 
 function oauthRouting(

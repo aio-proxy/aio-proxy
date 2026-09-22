@@ -22,9 +22,15 @@ const ttftRatioOf = (
   traceStart: number,
   scaleDurationMs: number,
 ): number | undefined => {
-  const ttftMs = span.attributes[traceAttribute.attemptTtftMs];
+  const rawTtftMs = span.attributes[traceAttribute.inferenceTtftMs] ?? span.attributes[traceAttribute.attemptTtftMs];
+  const genAiSeconds = span.attributes[traceAttribute.genAiTimeToFirstChunk];
+  const ttftMs = rawTtftMs ?? (typeof genAiSeconds === 'number' ? genAiSeconds * 1000 : undefined);
   // 同一个 attempt 内观测到多次响应时首字无法归因到哪一次，宁可不画。
-  if (span.attributes[traceAttribute.transportObservation] === 'ambiguous') return undefined;
+  if (
+    span.attributes[traceAttribute.transportObservation] === 'ambiguous' ||
+    span.attributes[traceAttribute.legacyTransportObservation] === 'ambiguous'
+  )
+    return undefined;
   if (typeof ttftMs !== 'number' || !Number.isFinite(ttftMs) || ttftMs < 0) return undefined;
   const ratio = (startedAt - traceStart + ttftMs) / scaleDurationMs;
   return ratio < 0 || ratio > 1 ? undefined : ratio;
@@ -84,8 +90,10 @@ const orderDepthFirst = (
 ): readonly DashboardTraceSpan[] => {
   // Same-millisecond siblings fall back to the span id purely so the order is stable across
   // renders; which of the two wins carries no meaning.
-  const bySiblingOrder = (a: DashboardTraceSpan, b: DashboardTraceSpan) =>
-    Date.parse(a.startedAt) - Date.parse(b.startedAt) || (a.spanId < b.spanId ? -1 : 1);
+  const bySiblingOrder = (a: DashboardTraceSpan, b: DashboardTraceSpan) => {
+    if (a.startSequence !== undefined && b.startSequence !== undefined) return a.startSequence - b.startSequence;
+    return Date.parse(a.startedAt) - Date.parse(b.startedAt) || (a.spanId < b.spanId ? -1 : 1);
+  };
 
   const childrenByParent = new Map<string, DashboardTraceSpan[]>();
   const roots: DashboardTraceSpan[] = [];

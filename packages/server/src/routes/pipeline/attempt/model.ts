@@ -9,7 +9,6 @@ import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
 import { startPipelineSpan } from '../tracing';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
-import { genAiProviderNameFor } from './emit';
 import { emitReject, rejectRequestShape } from './error';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
@@ -29,7 +28,11 @@ export async function attemptModelCandidate<TRequest, TContext>(
 
   // The attempt span opens FIRST: prepare is a measured child of it, not an
   // untracked offset between the candidate's startedAt and the span.
-  const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
+  const attemptSpan = ctx.emitter.startAttempt(
+    attemptBase(provider, candidate.modelId, startedAt, slot.trace),
+    index,
+    true,
+  );
   slot.spanRef.current = attemptSpan;
   // prepare 先写下 targetProtocol，后面的 materialize / ForTarget 才可能抛。
   // 抛出去的那条走 handleAttemptError，必须在这里先把协议口味挂上。
@@ -37,8 +40,6 @@ export async function attemptModelCandidate<TRequest, TContext>(
     const target = slot.trace.targetProtocol;
     if (target === undefined) return;
     attemptSpan.span.setAttribute(attributeName.targetProtocol, target);
-    const providerName = genAiProviderNameFor(target);
-    if (providerName !== undefined) attemptSpan.span.setAttribute(attributeName.genAiProviderName, providerName);
   };
 
   // Mirrors resolveInvocation's memoization guard: the invocation is

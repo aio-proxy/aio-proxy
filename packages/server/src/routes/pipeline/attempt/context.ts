@@ -61,6 +61,7 @@ export type AttemptLoopContext<
   readonly adapter: TAdapter;
   readonly context: TContext;
   readonly rawRequest: Request;
+  readonly httpRoute?: string;
   readonly request: TRequest;
   readonly requestedModelId: string;
   // Router policy from the SAME leased snapshot that selected the candidates.
@@ -157,7 +158,7 @@ export type CandidateSlot = {
     targetProtocol?: AttemptTraceMetadata['targetProtocol'];
     selectionReason: AttemptTraceMetadata['selectionReason'];
   };
-  readonly inAttempt: <T>(targetProtocol: ProviderProtocol | undefined, operation: () => T) => T;
+  readonly inAttempt: <T>(targetProtocol: ProviderProtocol | undefined, operation: () => T, urlTemplate?: string) => T;
   // Holds the attempt span once the provider call begins, so a throw during the
   // provider/egress phase reuses it instead of opening a duplicate failure span.
   readonly spanRef: { current: OpenSpan | undefined };

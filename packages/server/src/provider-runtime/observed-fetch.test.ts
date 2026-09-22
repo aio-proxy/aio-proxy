@@ -226,6 +226,11 @@ test('materialized provider fetches record transport headers without debug loggi
   );
 
   expect(response.status).toBe(204);
-  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10, httpSends: 1 });
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'body',
+    upstreamHeadersMs: 10,
+    httpSends: 1,
+    serverAddress: 'final-api.test',
+  });
   expect(fixture.logs).toEqual([]);
 });

@@ -102,13 +102,18 @@ export const readSpanMetrics = (input: {
     durationMs: span.durationMs,
     ttftMs:
       numberAttribute(attributes, traceAttribute.attemptTtftMs) ??
+      numberAttribute(attributes, traceAttribute.inferenceTtftMs) ??
       numberAttribute(attributes, traceAttribute.ttftMs) ??
       // 推理 span 的 TTFT 走语义约定的 key，单位是**秒**（`inferenceAttributes` 除了 1000）。
       // 少了这一条，选中那条 span 时 TTFT 格子是「—」，而它明明记了这个数。
       genAiTtftMs(attributes) ??
       (isRoot ? trace.ttftMs : undefined),
-    transportObservation: stringAttribute(attributes, traceAttribute.transportObservation),
-    upstreamMs: numberAttribute(attributes, traceAttribute.upstreamHeadersMs),
+    transportObservation:
+      stringAttribute(attributes, traceAttribute.transportObservation) ??
+      stringAttribute(attributes, traceAttribute.legacyTransportObservation),
+    upstreamMs:
+      numberAttribute(attributes, traceAttribute.upstreamHeadersMs) ??
+      numberAttribute(attributes, traceAttribute.legacyUpstreamHeadersMs),
     inputTokens:
       numberAttribute(attributes, traceAttribute.inputTokens) ?? (isRoot ? trace.usage?.inputTokens : undefined),
     outputTokens:

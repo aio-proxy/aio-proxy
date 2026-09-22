@@ -161,6 +161,20 @@ test('materializes a configured API provider with raw and bridged model capabili
   let bridgeCalls = 0;
 
   const runtime = materializeProviders(config, {
+    createApiProvider(provider) {
+      const passthrough = async () => new Response();
+      return {
+        ...provider,
+        endpointTransports: [
+          {
+            protocol: provider.protocol,
+            urlTemplate: (template) => template,
+            passthrough,
+          },
+        ],
+        passthrough,
+      };
+    },
     bridgeApiProvider(provider) {
       bridgeCalls += 1;
       expect(provider.id).toBe('api');
@@ -173,8 +187,9 @@ test('materializes a configured API provider with raw and bridged model capabili
     runtime.providers[0]?.raw?.resolve({
       protocol: ProviderProtocol.OpenAICompatible,
       modelId: 'test',
-    }),
-  ).toBeDefined();
+      urlTemplate: '/v1/chat/completions',
+    })?.urlTemplate,
+  ).toBe('/v1/chat/completions');
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
 });
 

@@ -4,7 +4,7 @@ import type {
   DashboardTraceSummary,
   TraceTerminationReason,
 } from '@aio-proxy/types';
-import { and, asc, desc, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { z } from 'zod';
 
@@ -77,10 +77,14 @@ function durationMs(startedAt: Date, endedAt: Date | null, now: Date): number {
   return Math.max(0, (endedAt ?? now).getTime() - startedAt.getTime());
 }
 
-function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date): DashboardTraceSummary {
+function validTtft(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date, inferenceTtftMs?: number): DashboardTraceSummary {
   const stream = row.attributes['aio_proxy.request.stream'];
   const fast = row.attributes['aio_proxy.request.fast'];
-  const ttftMs = row.attributes['aio_proxy.response.ttft_ms'];
+  const ttftMs = inferenceTtftMs ?? validTtft(row.attributes['aio_proxy.response.ttft_ms']);
   const usage = !hasAnyUsage(row)
     ? undefined
     : ({
@@ -105,7 +109,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date): DashboardT
     durationMs: durationMs(row.startedAt, row.endedAt, now),
     ...(typeof stream === 'boolean' ? { stream } : {}),
     ...(fast === true ? { fast: true } : {}),
-    ...(typeof ttftMs === 'number' && Number.isFinite(ttftMs) && ttftMs >= 0 ? { ttftMs } : {}),
+    ...(ttftMs === undefined ? {} : { ttftMs }),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
     ...(row.terminationReason !== null ? { terminationReason: row.terminationReason as TraceTerminationReason } : {}),
     ...(row.errorType !== null ? { errorType: row.errorType } : {}),
@@ -175,6 +179,7 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Dat
     name: row.name,
     kind: KIND_TO_ENUM[row.kind] ?? 'INTERNAL',
     startedAt: row.startedAt.toISOString(),
+    ...(row.startSequence === null ? {} : { startSequence: row.startSequence }),
     endedAt: toIso(row.endedAt),
     durationMs: durationMs(row.startedAt, row.endedAt, now),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
@@ -231,9 +236,28 @@ export function list(db: BunSQLiteDatabase, query: TracesQuery): TracesPage {
 
   const hasNewer = query.cursor?.direction === 'older' || (queryingNewer && hasMore);
   const hasOlder = query.cursor?.direction === 'newer' || (!queryingNewer && hasMore);
+  const inferenceTtftByTrace = new Map(
+    db
+      .select({ traceId: traceSpan.traceId, attributes: traceSpan.attributes })
+      .from(traceSpan)
+      .where(
+        and(
+          inArray(
+            traceSpan.traceId,
+            pageRows.map((row) => row.traceId),
+          ),
+          eq(traceSpan.name, 'aio_proxy.inference'),
+        ),
+      )
+      .all()
+      .flatMap((row) => {
+        const ttftMs = validTtft(row.attributes['aio_proxy.inference.ttft_ms']);
+        return ttftMs === undefined ? [] : [[row.traceId, ttftMs] as const];
+      }),
+  );
 
   return {
-    items: pageRows.map((row) => rowToSummary(row, now)),
+    items: pageRows.map((row) => rowToSummary(row, now, inferenceTtftByTrace.get(row.traceId))),
     ...(hasOlder ? { nextCursor: rowToCursor(lastRow, 'older') } : {}),
     ...(hasNewer ? { previousCursor: rowToCursor(firstRow, 'newer') } : {}),
   };
@@ -244,21 +268,24 @@ function rowToCursor(row: typeof traceSpan.$inferSelect, direction: TraceCursor[
 }
 
 export function find(db: BunSQLiteDatabase, traceId: string, now = new Date()): DashboardTraceDetail | undefined {
-  const rows = db
-    .select()
-    .from(traceSpan)
-    .where(eq(traceSpan.traceId, traceId))
-    .orderBy(asc(traceSpan.startedAt), asc(traceSpan.spanId))
-    .all();
+  const rows = db.select().from(traceSpan).where(eq(traceSpan.traceId, traceId)).all();
   if (rows.length === 0) {
     return undefined;
   }
+  const useSequence = rows.every((row) => row.startSequence !== null);
+  rows.sort((left, right) => {
+    const sequence = useSequence ? left.startSequence! - right.startSequence! : 0;
+    return sequence || left.startedAt.getTime() - right.startedAt.getTime() || left.spanId.localeCompare(right.spanId);
+  });
   const root = rows.find((row) => row.parentSpanId === null);
   if (root === undefined) {
     return undefined;
   }
+  const inferenceTtftMs = validTtft(
+    rows.find((row) => row.name === 'aio_proxy.inference')?.attributes['aio_proxy.inference.ttft_ms'],
+  );
   return {
-    trace: rowToSummary(root, now),
+    trace: rowToSummary(root, now, inferenceTtftMs),
     spans: rows.map((row) => rowToSpan(row, row.parentSpanId === null, now)),
   };
 }
