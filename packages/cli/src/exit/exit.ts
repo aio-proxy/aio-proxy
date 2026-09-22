@@ -9,6 +9,7 @@ import {
 } from '../plugin-commands';
 import { isProviderLoginUserError } from '../plugin-commands/provider-login';
 import { providerErrors } from '../provider-commands';
+import { PromptRequiresTtyError } from '../ui';
 
 // Exit-code contract with the OS service manager (see the CLI redesign spec):
 //   0 = normal, 1 = unrecoverable (retrying is futile), >=2 = transient (restart).
@@ -39,6 +40,7 @@ export function isKnownCliUserError(err: unknown): err is Error {
     err instanceof FormNumberInvalidError ||
     err instanceof FormJsonInvalidError ||
     err instanceof FormSchemaValidationError ||
+    err instanceof PromptRequiresTtyError ||
     (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) ||
     (err instanceof Error && pluginErrors.some((errorType) => err instanceof errorType))
   );

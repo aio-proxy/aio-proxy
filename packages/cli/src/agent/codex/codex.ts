@@ -81,7 +81,7 @@ const createCredentialDeps = (endpoint: string) => {
 
 const createPrompts = (session: CommandSession): CodexPrompts => ({
   providerId: async (defaultId, occupied) => {
-    let message = m['cli.agent.codex.provider_id']();
+    let message: string = m['cli.agent.codex.provider_id']();
     for (;;) {
       const value = await session.prompts.input({ message, defaultValue: defaultId });
       try {
@@ -121,7 +121,7 @@ const createPrompts = (session: CommandSession): CodexPrompts => ({
     return { kind: 'existing', id: value };
   },
   sources: async (groups, previous) => {
-    let message = m['cli.agent.codex.sources']();
+    let message: string = m['cli.agent.codex.sources']();
     for (;;) {
       const values = await session.multiselect({
         message,

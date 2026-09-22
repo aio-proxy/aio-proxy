@@ -20,6 +20,7 @@ import {
   canPrompt,
   createClackPrompts,
   openProductionSession,
+  PromptRequiresTtyError,
   type CommandSession,
   type PluginFormPrompts,
 } from '../../ui';
@@ -121,7 +122,7 @@ export async function createProviderLoginDefaultDeps(
       env: process.env,
     });
     const refuseToPrompt = (): never => {
-      throw new Error('Refusing to prompt without a TTY');
+      throw new PromptRequiresTtyError();
     };
     const prompts: PluginFormPrompts = interactive
       ? createClackPrompts({ input: process.stdin, output: process.stderr })

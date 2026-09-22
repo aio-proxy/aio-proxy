@@ -2,6 +2,7 @@ export { canPrompt, useColor, type PromptIo } from './mode';
 export {
   createClackPrompts,
   PromptCancelledError,
+  PromptRequiresTtyError,
   type ConfirmAsk,
   type PasswordAsk,
   type PluginFormPrompts,

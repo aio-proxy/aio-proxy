@@ -62,6 +62,13 @@ export class PromptCancelledError extends Error {
   }
 }
 
+export class PromptRequiresTtyError extends Error {
+  override readonly name = 'PromptRequiresTtyError';
+  constructor() {
+    super('Refusing to prompt without a TTY');
+  }
+}
+
 function rejectIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) throw signal.reason;
 }
