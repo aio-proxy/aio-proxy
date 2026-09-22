@@ -4,6 +4,7 @@ import type { Context } from '@opentelemetry/api';
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-node';
 
 import { logServerEvent, type ServerLogSink } from '../../server-log';
+import { bindOtelDiag } from './exporters';
 import { toExportableSpan } from './safe-span';
 
 export type { OtelDestination } from '@aio-proxy/types';
@@ -40,7 +41,7 @@ function isHttpStatus(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599;
 }
 
-function httpStatusCode(error: unknown): number | undefined {
+export function httpStatusCode(error: unknown): number | undefined {
   if (!isRecord(error)) return undefined;
   const code = error['code'];
   if (isHttpStatus(code)) return code;
@@ -59,6 +60,7 @@ export function createOtelExportDelegator(options: {
   let active: Slot[] = [];
   const draining: Promise<void>[] = [];
   let stopped = false;
+  let diagBound = false;
 
   const retire = (slot: Slot): void => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -117,6 +119,13 @@ export function createOtelExportDelegator(options: {
     for (const index of fresh) {
       const destination = destinations[index];
       if (destination === undefined) continue;
+      if (!diagBound) {
+        diagBound = true;
+        bindOtelDiag(
+          () => active.map((slot) => ({ index: slot.index, origin: originOf(slot.destination) })),
+          options.logger,
+        );
+      }
       try {
         active.push({
           key: destinationKey(destination),
