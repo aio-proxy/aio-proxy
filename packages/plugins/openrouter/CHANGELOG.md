@@ -1,5 +1,16 @@
 # @aio-proxy/plugin-openrouter
 
+## 0.29.0
+
+### Minor Changes
+
+- [#399](https://github.com/aio-proxy/aio-proxy/pull/399) [`571c394`](https://github.com/aio-proxy/aio-proxy/commit/571c3944b9345196468a241212618def08955d9d) Thanks [@baranwang](https://github.com/baranwang)! - Trace timelines now use stable start ordering, standard HTTP and GenAI semantics, redacted upstream URLs, and accurate provider, failover, TTFT, and usage attribution. OAuth runtimes can explicitly declare their GenAI provider identity; raw transports can declare upstream URL templates, while converted calls omit templates unless authoritative transport metadata is available.
+
+### Patch Changes
+
+- Updated dependencies [[`571c394`](https://github.com/aio-proxy/aio-proxy/commit/571c3944b9345196468a241212618def08955d9d)]:
+  - @aio-proxy/plugin-sdk@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes
