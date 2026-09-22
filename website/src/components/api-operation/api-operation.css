@@ -21,3 +21,7 @@
   min-width: 0;
   max-width: 100%;
 }
+
+.api-operation .scalar-app .introduction-section {
+  display: none;
+}
