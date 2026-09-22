@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardTraceSummary } from '@aio-proxy/types';
+import type { DashboardPluginSummary, DashboardProviderSummary, DashboardTraceSummary } from '@aio-proxy/types';
 import { ScrollArea, ScrollBar } from '@aio-proxy/ui/components/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { Pagination } from '@/components/data-table/pagination';
 import { ProviderIdLabel } from '@/components/provider-id-label';
 
+import { useProviderCatalog } from '../../hooks/use-provider-catalog';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
 import { TraceLatencyCell } from '../trace-latency-cell';
@@ -33,7 +34,12 @@ interface TracesTableProps {
 
 const tracesTableFeatures = tableFeatures({});
 
-const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = [
+type TraceColumn = ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>;
+
+const traceColumns = (
+  providers: readonly DashboardProviderSummary[] | undefined,
+  plugins: readonly DashboardPluginSummary[] | undefined,
+): TraceColumn[] => [
   {
     accessorKey: 'startedAt',
     header: () => m['dashboard.traces.started_at'](),
@@ -75,7 +81,12 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
       row.original.finalProviderId === undefined ? (
         TRACE_PLACEHOLDER
       ) : (
-        <ProviderIdLabel providerId={row.original.finalProviderId} className="max-w-48" />
+        <ProviderIdLabel
+          providerId={row.original.finalProviderId}
+          providers={providers}
+          plugins={plugins}
+          className="max-w-48"
+        />
       ),
   },
   {
@@ -124,6 +135,8 @@ export const TracesTable: React.FC<TracesTableProps> = ({
   onNext,
   onSelect,
 }) => {
+  const catalog = useProviderCatalog();
+  const columns = useMemo(() => traceColumns(catalog.providers, catalog.plugins), [catalog.providers, catalog.plugins]);
   const tableData = useMemo(() => [...data.items], [data.items]);
   const table = useTable({
     features: tracesTableFeatures,

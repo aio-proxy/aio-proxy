@@ -1,23 +1,13 @@
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 
 import { providerStub } from '@/lib/provider-fixtures';
-import { queryKeys } from '@/lib/query-keys';
 
 import { ProviderIdLabel } from './provider-id-label';
 
-const renderLabel = (providerId: string, providers = [providerStub({ id: providerId })]) => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  client.setQueryData(queryKeys.providers, { providers, routingRevision: '1' });
-  client.setQueryData(queryKeys.plugins, { plugins: [] });
-  return render(
-    <QueryClientProvider client={client}>
-      <ProviderIdLabel providerId={providerId} />
-    </QueryClientProvider>,
-  );
-};
+const renderLabel = (providerId: string, providers = [providerStub({ id: providerId })]) =>
+  render(<ProviderIdLabel providerId={providerId} providers={providers} />);
 
 test('shows the configured name and keeps the Provider ID on the hover title', () => {
   renderLabel('grok-f3495225242e', [providerStub({ id: 'grok-f3495225242e', name: 'Grok' })]);

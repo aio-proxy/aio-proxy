@@ -3,6 +3,7 @@ import { Badge } from '@aio-proxy/ui/components/badge';
 
 import { ProviderIdLabel } from '@/components/provider-id-label';
 
+import { useProviderCatalog } from '../../hooks/use-provider-catalog';
 import type { SpanMetrics } from '../../lib/span-metrics';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { isFailedSpan } from '../../lib/trace-failure';
@@ -15,6 +16,7 @@ interface SpanStatusRowProps {
 
 export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) => {
   const failed = isFailedSpan(span);
+  const { providers, plugins } = useProviderCatalog();
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="span-status-row">
@@ -32,7 +34,9 @@ export const SpanStatusRow: React.FC<SpanStatusRowProps> = ({ span, metrics }) =
       {/* 面板不再有标题，选中的是哪一跳只能靠这里说清楚。 */}
       <span className="min-w-0 truncate font-medium">{span.name}</span>
       <span className="ms-auto flex min-w-0 items-center justify-end gap-1 text-xs text-muted-foreground">
-        {metrics.providerId === undefined ? null : <ProviderIdLabel providerId={metrics.providerId} />}
+        {metrics.providerId === undefined ? null : (
+          <ProviderIdLabel providerId={metrics.providerId} providers={providers} plugins={plugins} />
+        )}
         {metrics.providerId !== undefined && metrics.modelId !== undefined ? <span aria-hidden="true">·</span> : null}
         {metrics.modelId === undefined ? null : <span className="min-w-0 truncate">{metrics.modelId}</span>}
         {metrics.providerId === undefined && metrics.modelId === undefined ? TRACE_PLACEHOLDER : null}
