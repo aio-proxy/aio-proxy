@@ -1,7 +1,6 @@
 .api-operation {
   min-width: 0;
   max-width: 100%;
-  overflow-x: clip;
   --scalar-font: var(--rp-font-family-base);
   --scalar-font-code: var(--rp-font-family-mono);
   --scalar-background-1: var(--rp-c-bg);
@@ -17,12 +16,92 @@
   --scalar-link-color-hover: var(--rp-c-brand-dark);
 }
 
+.api-operation-server {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--rp-c-divider);
+  border-radius: 0.75rem;
+  background: var(--rp-c-bg-soft);
+  color: var(--rp-c-text-1);
+}
+
+.api-operation-server label {
+  font-weight: 600;
+}
+
+.api-operation-server__controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.api-operation-server input {
+  min-width: 0;
+  min-height: 2.75rem;
+  flex: 1;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--rp-c-divider);
+  border-radius: 0.5rem;
+  background: var(--rp-c-bg);
+  color: var(--rp-c-text-1);
+  font: inherit;
+}
+
+.api-operation-server button {
+  min-height: 2.75rem;
+  padding: 0.625rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--rp-c-brand);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.api-operation-server input:focus-visible,
+.api-operation-server button:focus-visible {
+  outline: 2px solid var(--rp-c-brand);
+  outline-offset: 2px;
+}
+
+.api-operation-server button:hover {
+  background: var(--rp-c-brand-dark);
+}
+
+.api-operation-server__help,
+.api-operation-server__error {
+  margin: 0;
+  color: var(--rp-c-text-2);
+  font-size: 0.875rem;
+}
+
+.api-operation-server__help code {
+  overflow-wrap: anywhere;
+}
+
+.api-operation-server__error {
+  color: var(--rp-c-text-1);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .api-operation-server__controls {
+    display: grid;
+  }
+}
+
 .api-operation :where(.scalar-api-reference, .references-layout, .references-rendered) {
   min-width: 0;
   max-width: 100%;
 }
 
 .api-operation .scalar-app .introduction-section {
+  display: none;
+}
+
+.api-operation .scalar-app .tag-section-container > .section:first-child {
   display: none;
 }
 

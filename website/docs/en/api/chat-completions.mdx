@@ -1,6 +1,6 @@
 ---
 title: 'Create a chat completion'
-description: "Creates an OpenAI-compatible chat completion. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded."
+description: "Creates a chat completion with the OpenAI-compatible Chat Completions API. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests, and an HTTPS documentation page cannot call an HTTP server because browsers block mixed content. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events."
 pageType: doc-wide
 outline: false
 ---
@@ -11,7 +11,7 @@ import { ApiOperation } from '../../../src/components/api-operation';
 
 `POST /v1/chat/completions`
 
-Creates an OpenAI-compatible chat completion. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded.
+Creates a chat completion with the OpenAI-compatible Chat Completions API. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests, and an HTTPS documentation page cannot call an HTTP server because browsers block mixed content. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events.
 
 **Parameters:** `conversation_id`, `max_completion_tokens`, `max_tokens`, `messages`, `metadata`, `model`, `prompt_cache_key`, `reasoning_effort`, `response_format`, `service_tier`, `session_id`, `stream`, `temperature`, `tool_choice`, `tools`
 

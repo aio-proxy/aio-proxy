@@ -15,7 +15,7 @@
   "paths": {
     "/v1/models": {
       "get": {
-        "description": "Lists the models currently available through aio-proxy.\n\nAgent negotiation and client_version catalogs are excluded from this page.",
+        "description": "Lists the models currently available through aio-proxy. Try It runs in your browser, so the selected server must allow cross-origin requests, and an HTTPS documentation page cannot call an HTTP server because browsers block mixed content.\n\nAgent negotiation and client_version catalogs are excluded from this page.",
         "operationId": "listModels",
         "responses": {
           "200": {
@@ -168,14 +168,6 @@
     {
       "name": "Models",
       "x-tag-id": "Models"
-    },
-    {
-      "name": "OpenAI-compatible",
-      "x-tag-id": "OpenAI"
-    },
-    {
-      "name": "Anthropic-compatible",
-      "x-tag-id": "Anthropic"
     }
   ]
 }

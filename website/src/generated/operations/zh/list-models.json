@@ -15,7 +15,7 @@
   "paths": {
     "/v1/models": {
       "get": {
-        "description": "列出当前可通过 aio-proxy 使用的模型。\n\n本页面不包含 Agent 协商和 client_version 模型目录。",
+        "description": "列出当前可通过 aio-proxy 使用的模型。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器会阻止混合内容，所以 HTTPS 文档页面无法调用 HTTP 服务。\n\n本页面不包含 Agent 协商和 client_version 模型目录。",
         "operationId": "listModels",
         "responses": {
           "200": {
@@ -168,14 +168,6 @@
     {
       "name": "模型",
       "x-tag-id": "Models"
-    },
-    {
-      "name": "OpenAI 兼容接口",
-      "x-tag-id": "OpenAI"
-    },
-    {
-      "name": "Anthropic 兼容接口",
-      "x-tag-id": "Anthropic"
     }
   ]
 }

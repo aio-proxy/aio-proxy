@@ -116,7 +116,7 @@ test('rejects duplicate operation IDs', () => {
   expect(() => projectOperation(duplicateFixture(), 'dup')).toThrow('Duplicate operationId');
 });
 
-test('preserves root metadata, components, and content while isolating a multi-tag operation', () => {
+test('preserves selected root tag metadata, components, and content while isolating a multi-tag operation', () => {
   const source = fixture();
   const projected = projectOperation(source, 'createPet');
   const operation = projected.paths['/pets']?.post;
@@ -129,7 +129,8 @@ test('preserves root metadata, components, and content while isolating a multi-t
   expect(operation.servers).toEqual([{ url: 'https://path.example.test' }]);
   expect(operation.tags).toEqual(['pets']);
   expect(source.paths['/pets'].post.tags).toEqual(['pets', 'write']);
-  expect(projected.tags).toBe(source.tags);
+  expect(projected.tags).toEqual([{ name: 'pets' }]);
+  expect(source.tags).toEqual([{ name: 'pets' }, { name: 'write' }]);
   expect(operation.requestBody.content).toEqual(source.paths['/pets'].post.requestBody.content);
   expect(operation.responses['201'].content['application/json'].schema.oneOf).toHaveLength(2);
   expect(Object.values(projected.paths).flatMap((path) => Object.keys(path))).toEqual(['post']);

@@ -128,8 +128,15 @@ export function projectOperation(document: OpenApiDocument, operationId: string)
 
   const selected = findOperation(document, operationId);
   const { paths: _paths, webhooks: _webhooks, ...root } = document as OpenApiDocument & { webhooks?: unknown };
+  const operation = projectSelectedOperation(selected);
+  const selectedTag = Array.isArray(operation.tags) ? operation.tags[0] : undefined;
+  const tags =
+    typeof selectedTag === 'string' && Array.isArray(root.tags)
+      ? root.tags.filter((tag) => isDataObject(tag) && tag.name === selectedTag)
+      : root.tags;
   return {
     ...root,
-    paths: { [selected.path]: { [selected.method]: projectSelectedOperation(selected) } },
+    tags,
+    paths: { [selected.path]: { [selected.method]: operation } },
   } as OpenApiDocument;
 }

@@ -1,6 +1,6 @@
 ---
 title: '创建消息'
-description: '创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。'
+description: '创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器会阻止混合内容，所以 HTTPS 文档页面无法调用 HTTP 服务。“Try It” 会发送请求，但 Scalar 不提供独立的流式调试器；如果面板未呈现事件，请使用 SSE 示例。'
 pageType: doc-wide
 outline: false
 ---
@@ -11,7 +11,7 @@ import { ApiOperation } from '../../../src/components/api-operation';
 
 `POST /v1/messages`
 
-创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。
+创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器会阻止混合内容，所以 HTTPS 文档页面无法调用 HTTP 服务。“Try It” 会发送请求，但 Scalar 不提供独立的流式调试器；如果面板未呈现事件，请使用 SSE 示例。
 
 **参数:** `conversation_id`, `max_tokens`, `messages`, `metadata`, `model`, `output_config`, `service_tier`, `session_id`, `speed`, `stream`, `system`, `temperature`, `thinking`, `tools`
 
