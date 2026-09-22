@@ -38,6 +38,17 @@ const collect = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
   return body + decoder.decode();
 };
 
+type RegisteredRouteIdentity = { readonly method: string; readonly path: string };
+
+const publicRouteKeys = (routes: readonly RegisteredRouteIdentity[]): readonly string[] =>
+  [
+    ...new Set(
+      routes
+        .filter(({ method, path }) => method !== 'ALL' && (path.startsWith('/v1/') || path.startsWith('/v1beta/')))
+        .map(({ method, path }) => `${method} ${path}`),
+    ),
+  ].sort();
+
 describe('documentation response schemas', () => {
   test('parse the list-models output shape', () => {
     expect(
@@ -182,6 +193,18 @@ describe('documentation response schemas', () => {
   });
 });
 
+test('route census keeps PATCH and PUT operations while excluding middleware', () => {
+  expect(
+    publicRouteKeys([
+      { method: 'ALL', path: '/v1/*' },
+      { method: 'ALL', path: '/v1beta/*' },
+      { method: 'GET', path: '/health' },
+      { method: 'PATCH', path: '/v1/items/:id' },
+      { method: 'PUT', path: '/v1beta/items/:id' },
+    ]),
+  ).toEqual(['PATCH /v1/items/:id', 'PUT /v1beta/items/:id']);
+});
+
 test('classifies every route registered by the public server assembly', () => {
   const noop = () => undefined;
   const state = new Proxy(
@@ -193,16 +216,7 @@ test('classifies every route registered by the public server assembly', () => {
           : noop,
     },
   );
-  const registeredKeys = [
-    ...new Set(
-      createRoutes(state as never)
-        .routes.filter(
-          ({ method, path }) =>
-            ['DELETE', 'GET', 'POST'].includes(method) && (path.startsWith('/v1/') || path.startsWith('/v1beta/')),
-        )
-        .map(({ method, path }) => `${method} ${path}`),
-    ),
-  ].sort();
+  const registeredKeys = publicRouteKeys(createRoutes(state as never).routes);
   const descriptorKeys = publicOperations.map(({ method, path }) => `${method.toUpperCase()} ${path}`).sort();
   const documented = publicOperations.filter((operation) => operation.classification === 'documented');
 
