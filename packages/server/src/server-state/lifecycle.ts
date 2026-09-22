@@ -24,6 +24,7 @@ import type { OAuthQuotaCache } from '../plugin-quota';
 import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
+import { stopOtelExport, syncOtelDestinations } from '../request-tracing';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
@@ -117,6 +118,7 @@ export async function commitConfig(
   if (previous.config.server.requireApiKey && !config.server.requireApiKey) {
     warnUnenforcedApiKeys(runtime.options.host, config, runtime.logger);
   }
+  syncOtelDestinations(config.server.otel.destinations, runtime.logger);
   return retired;
 }
 
@@ -188,6 +190,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
         () => events.close(),
         () => dbHandle.close(),
         parts.databaseOwnership.release,
+        () => stopOtelExport(),
       ]) {
         try {
           close();

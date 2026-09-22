@@ -37,7 +37,7 @@ import { createPluginControlPlane } from '../plugin-control-plane';
 import { createOAuthQuotaCache, createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
-import { createRequestTraceRecorder } from '../request-tracing';
+import { createRequestTraceRecorder, syncOtelDestinations } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import { createRealtimeCallStore } from '../routes/realtime';
 import { createVideoJobStore } from '../routes/videos';
@@ -183,8 +183,7 @@ async function initializeServerState(
           createRouter,
         )
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
-  runtime.manager = createSnapshotManager(initial);
-  const manager = runtime.manager;
+  const manager = (runtime.manager = createSnapshotManager(initial));
   runtime.managerReady = true;
   const { oauthQuota, oauthCredentialRefresh, quotaCache } = createQuotaServices(runtime, manager);
   runtime.accountRemovals = createAccountRemovalCoordinator({
@@ -258,6 +257,7 @@ async function initializeServerState(
       : undefined;
   if (watcher !== undefined) registerStartupCleanup(() => watcher.close());
   failAfter('watcher');
+  syncOtelDestinations(options.config.server.otel.destinations, logger);
   return assembleServerState(runtime, {
     agentIdentity,
     manager,
