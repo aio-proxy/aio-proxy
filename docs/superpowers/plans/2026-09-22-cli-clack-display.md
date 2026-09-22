@@ -2335,7 +2335,7 @@ Prompt smoke, source and binary. The CLI is the direct child. Do not wrap it in 
 Save this as `/tmp/clack-pty-smoke.py`. A hang past 20 seconds is a failure. This smoke does not replace the unit tests.
 
 ```python
-import errno, os, pty, select, subprocess, sys, termios, time
+import errno, fcntl, os, pty, select, struct, subprocess, sys, termios, time
 
 mode = sys.argv[1]
 command = sys.argv[2:]
@@ -2344,6 +2344,9 @@ if mode not in ('decline', 'ctrl-c', 'accept'):
 home = os.environ.get('AIO_PROXY_HOME', '/tmp/aio-proxy-clack-pty')
 os.makedirs(home, exist_ok=True)
 master, slave = pty.openpty()
+winsize = struct.pack('HHHH', 24, 80, 0, 0)
+fcntl.ioctl(master, termios.TIOCSWINSZ, winsize)
+fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
 kept = os.dup(slave)
 before = termios.tcgetattr(kept)
 env = os.environ.copy()
