@@ -13,6 +13,8 @@ const SERVER_SCOPE = '@aio-proxy/server';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_DRAINING = 8;
 
+export type DestinationIdentity = { index: number; origin: string };
+
 export type OtelExportDelegator = SpanProcessor & {
   sync(destinations: readonly OtelDestination[]): void;
   stop(): void;
@@ -22,7 +24,7 @@ export type OtelExportDelegator = SpanProcessor & {
 type Slot = {
   readonly key: string;
   readonly destination: OtelDestination;
-  readonly index: number;
+  readonly identity: DestinationIdentity;
   readonly processor: SpanProcessor;
 };
 
@@ -39,7 +41,7 @@ function originOf(destination: OtelDestination): string {
 
 export function createOtelExportDelegator(options: {
   readonly logger: ServerLogSink;
-  readonly createProcessor: (destination: OtelDestination, index: number) => SpanProcessor;
+  readonly createProcessor: (destination: OtelDestination, identity: DestinationIdentity) => SpanProcessor;
   readonly timeoutMs?: number;
 }): OtelExportDelegator {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -62,8 +64,8 @@ export function createOtelExportDelegator(options: {
       logServerEvent(options.logger, {
         event: 'otel.export',
         category: 'export_failed',
-        index: slot.index,
-        origin: originOf(slot.destination),
+        index: slot.identity.index,
+        origin: slot.identity.origin,
         statusCode,
       });
     });
@@ -79,6 +81,7 @@ export function createOtelExportDelegator(options: {
   };
 
   const sync = (destinations: readonly OtelDestination[]): void => {
+    stopped = false;
     const pending = new Map<string, number[]>();
     destinations.forEach((destination, index) => {
       const key = destinationKey(destination);
@@ -95,7 +98,9 @@ export function createOtelExportDelegator(options: {
         retire(slot);
         continue;
       }
-      kept.push({ ...slot, index, destination });
+      slot.identity.index = index;
+      slot.identity.origin = originOf(destination);
+      kept.push({ ...slot, destination });
     }
     active = kept;
 
@@ -108,16 +113,17 @@ export function createOtelExportDelegator(options: {
       if (!diagBound) {
         diagBound = true;
         bindOtelDiag(
-          () => active.map((slot) => ({ index: slot.index, origin: originOf(slot.destination) })),
+          () => active.map((slot) => ({ index: slot.identity.index, origin: slot.identity.origin })),
           options.logger,
         );
       }
       try {
+        const identity: DestinationIdentity = { index, origin: originOf(destination) };
         active.push({
           key: destinationKey(destination),
           destination,
-          index,
-          processor: options.createProcessor(destination, index),
+          identity,
+          processor: options.createProcessor(destination, identity),
         });
       } catch {
         let origin = 'unknown';

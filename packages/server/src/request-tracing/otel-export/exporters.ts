@@ -10,6 +10,7 @@ import {
 } from '@opentelemetry/sdk-trace-node';
 
 import { logServerEvent, type ServerLogSink } from '../../server-log';
+import type { DestinationIdentity } from './delegator';
 import { httpStatusCode } from './http-status';
 
 // @opentelemetry/core ExportResultCode.FAILED. core is not a direct dependency.
@@ -75,7 +76,7 @@ export function bindOtelDiag(getActive: () => readonly ActiveDestination[], logg
   );
 }
 
-function reportingExporter(inner: SpanExporter, index: number, origin: string, logger: ServerLogSink): SpanExporter {
+function reportingExporter(inner: SpanExporter, identity: DestinationIdentity, logger: ServerLogSink): SpanExporter {
   return {
     export(spans: ReadableSpan[], resultCallback) {
       inner.export(spans, (result) => {
@@ -84,8 +85,8 @@ function reportingExporter(inner: SpanExporter, index: number, origin: string, l
           logServerEvent(logger, {
             event: 'otel.export',
             category: 'export_failed',
-            index,
-            origin,
+            index: identity.index,
+            origin: identity.origin,
             ...(statusCode === undefined ? {} : { statusCode }),
           });
         }
@@ -101,9 +102,8 @@ function reportingExporter(inner: SpanExporter, index: number, origin: string, l
   };
 }
 
-export function createDestinationProcessor(destination: OtelDestination, index: number): SpanProcessor {
+export function createDestinationProcessor(destination: OtelDestination, identity: DestinationIdentity): SpanProcessor {
   const logger = exportLogger;
-  const origin = new URL(destination.url).origin;
   // The SDK types compression as a string enum. CompressionAlgorithm.NONE is 'none'.
   type ExporterConfig = NonNullable<ConstructorParameters<typeof JsonTraceExporter>[0]>;
   const config: ExporterConfig = {
@@ -114,5 +114,5 @@ export function createDestinationProcessor(destination: OtelDestination, index: 
   };
   const exporter =
     destination.contentType === 'protobuf' ? new ProtoTraceExporter(config) : new JsonTraceExporter(config);
-  return new BatchSpanProcessor(reportingExporter(exporter, index, origin, logger));
+  return new BatchSpanProcessor(reportingExporter(exporter, identity, logger));
 }

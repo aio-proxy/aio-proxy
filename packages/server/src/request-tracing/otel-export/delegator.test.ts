@@ -9,7 +9,12 @@ import {
 } from '@opentelemetry/sdk-trace-node';
 
 import type { ServerLog } from '../../server-log';
-import { createOtelExportDelegator, type OtelDestination, type OtelExportDelegator } from './delegator';
+import {
+  createOtelExportDelegator,
+  type DestinationIdentity,
+  type OtelDestination,
+  type OtelExportDelegator,
+} from './delegator';
 
 type RecordedProcessor = {
   readonly processor: SpanProcessor;
@@ -50,7 +55,7 @@ function recordedProcessor(shutdown: () => Promise<void> = () => Promise.resolve
 }
 
 function harness(
-  createProcessor: (destination: OtelDestination, index: number) => SpanProcessor,
+  createProcessor: (destination: OtelDestination, identity: DestinationIdentity) => SpanProcessor,
   timeoutMs?: number,
 ): {
   readonly logs: ServerLog[];
@@ -150,8 +155,8 @@ describe('createOtelExportDelegator', () => {
   test('logs destination_unavailable and leaves the retired processor unrestored', () => {
     const created: RecordedProcessor[] = [];
     let failIndex1 = false;
-    const { delegator, tracer, logs } = harness((_destination, index) => {
-      if (failIndex1 && index === 1) throw new Error('secret-body');
+    const { delegator, tracer, logs } = harness((_destination, identity) => {
+      if (failIndex1 && identity.index === 1) throw new Error('secret-body');
       const recorded = recordedProcessor();
       created.push(recorded);
       return recorded.processor;
@@ -260,6 +265,42 @@ describe('createOtelExportDelegator', () => {
     );
     expect(JSON.stringify(logs)).not.toContain('secret-body');
     expect(JSON.stringify(logs)).not.toContain('500');
+  });
+
+  test('resumes export after stop then sync with a destination again', () => {
+    const created: RecordedProcessor[] = [];
+    const { delegator, tracer } = harness(() => {
+      const recorded = recordedProcessor();
+      created.push(recorded);
+      return recorded.processor;
+    });
+    const dest = destination('https://a.example/v1/traces');
+
+    delegator.sync([dest]);
+    delegator.stop();
+    tracer.startSpan('after-stop').end();
+    expect(names(created[0])).toEqual([]);
+
+    delegator.sync([dest]);
+    tracer.startSpan('after-resync').end();
+    expect(names(created[1])).toEqual(['after-resync']);
+  });
+
+  test('updates identity index when a destination moves slot', () => {
+    const identities: DestinationIdentity[] = [];
+    const destA = destination('https://a.example/v1/traces');
+    const destB = destination('https://b.example/v1/traces');
+    const { delegator } = harness((_destination, identity) => {
+      identities.push(identity);
+      return recordedProcessor().processor;
+    });
+
+    delegator.sync([destA, destB]);
+    expect(identities[0]?.index).toBe(0);
+    expect(identities[1]?.index).toBe(1);
+
+    delegator.sync([destB]);
+    expect(identities[1]?.index).toBe(0);
   });
 
   test('stop returns on the same turn while shutdown is still pending', () => {
