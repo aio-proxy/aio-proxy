@@ -29,23 +29,25 @@ const namedToolChoiceSchema = z.union([
   z.object({ type: z.literal('custom'), name: idSchema }),
 ]);
 
-const inputItemSchema = z.unknown().transform((item, context): OpenAIResponsesInputItem | undefined => {
-  const parsed = openAIResponsesInputItemSchema.safeParse(item);
-  if (parsed.success) return parsed.data;
+export const openAIResponsesInputItemTransformSchema = z
+  .unknown()
+  .transform((item, context): OpenAIResponsesInputItem | undefined => {
+    const parsed = openAIResponsesInputItemSchema.safeParse(item);
+    if (parsed.success) return parsed.data;
 
-  const wireType = safeWireType(item);
-  if (wireType !== undefined && !knownOpenAIResponsesInputItemTypes.has(wireType)) {
-    return { type: '__aio_proxy_unsupported__', wireType };
-  }
+    const wireType = safeWireType(item);
+    if (wireType !== undefined && !knownOpenAIResponsesInputItemTypes.has(wireType)) {
+      return { type: '__aio_proxy_unsupported__', wireType };
+    }
 
-  if (wireType !== undefined || hasMessageDiscriminator(item)) {
-    context.addIssue({ code: 'custom', message: 'Invalid OpenAI Responses input item' });
-    return z.NEVER;
-  }
+    if (wireType !== undefined || hasMessageDiscriminator(item)) {
+      context.addIssue({ code: 'custom', message: 'Invalid OpenAI Responses input item' });
+      return z.NEVER;
+    }
 
-  console.warn('[aio-proxy] OpenAI Responses input item degraded', 'unknown', 'input', 'dropped');
-  return undefined;
-});
+    console.warn('[aio-proxy] OpenAI Responses input item degraded', 'unknown', 'input', 'dropped');
+    return undefined;
+  });
 
 export const OpenAIResponsesRequestSchema = z
   .object({
@@ -53,7 +55,7 @@ export const OpenAIResponsesRequestSchema = z
     input: z.union([
       z.string(),
       z
-        .array(inputItemSchema)
+        .array(openAIResponsesInputItemTransformSchema)
         .min(1)
         .transform((items) => compact(items))
         .refine((items) => items.length > 0, 'OpenAI Responses input must contain a semantic item'),
@@ -131,6 +133,7 @@ export type {
   OpenAIResponsesToolOutputPart,
   OpenAIResponsesUnsupportedInputItem,
 } from './input-items';
+export { openAIResponsesInputImagePartSchema, openAIResponsesInputItemSchema } from './input-items';
 export type {
   OpenAIResponsesCustomTool,
   OpenAIResponsesExecutableTool,
@@ -139,4 +142,8 @@ export type {
   OpenAIResponsesTool,
   OpenAIResponsesUnsupportedTool,
   OpenAIResponsesWebSearchTool,
+} from './tools';
+export {
+  openAIResponsesToolSchema as openAIResponsesToolTransformSchema,
+  openAIResponsesToolWireSchema,
 } from './tools';

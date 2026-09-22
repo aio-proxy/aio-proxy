@@ -1,0 +1,30 @@
+{
+  "shared": {
+    "apiTitle": "API Reference",
+    "authentication": "Use your aio-proxy API key as a Bearer token when authentication is enabled."
+  },
+  "tags": {
+    "Models": "Models",
+    "OpenAI": "OpenAI-compatible",
+    "Anthropic": "Anthropic-compatible"
+  },
+  "operations": {
+    "listModels": {
+      "title": "List models",
+      "description": "Lists the models currently available through aio-proxy.",
+      "note": "Agent negotiation and client_version catalogs are excluded from this page."
+    },
+    "createChatCompletion": {
+      "title": "Create a chat completion",
+      "description": "Creates an OpenAI-compatible chat completion, with JSON and streaming responses."
+    },
+    "createResponse": {
+      "title": "Create a response",
+      "description": "Creates an OpenAI Responses-compatible result, with JSON and streaming responses."
+    },
+    "createMessage": {
+      "title": "Create a message",
+      "description": "Creates an Anthropic-compatible message, with JSON and streaming responses."
+    }
+  }
+}

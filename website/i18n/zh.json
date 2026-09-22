@@ -1,0 +1,30 @@
+{
+  "shared": {
+    "apiTitle": "API 参考",
+    "authentication": "启用身份验证时，请将 aio-proxy API 密钥作为 Bearer 令牌使用。"
+  },
+  "tags": {
+    "Models": "模型",
+    "OpenAI": "OpenAI 兼容接口",
+    "Anthropic": "Anthropic 兼容接口"
+  },
+  "operations": {
+    "listModels": {
+      "title": "列出模型",
+      "description": "列出当前可通过 aio-proxy 使用的模型。",
+      "note": "本页面不包含 Agent 协商和 client_version 模型目录。"
+    },
+    "createChatCompletion": {
+      "title": "创建聊天补全",
+      "description": "创建 OpenAI 兼容的聊天补全，支持 JSON 和流式响应。"
+    },
+    "createResponse": {
+      "title": "创建响应",
+      "description": "创建 OpenAI Responses 兼容结果，支持 JSON 和流式响应。"
+    },
+    "createMessage": {
+      "title": "创建消息",
+      "description": "创建 Anthropic 兼容消息，支持 JSON 和流式响应。"
+    }
+  }
+}

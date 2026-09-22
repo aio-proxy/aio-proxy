@@ -27,7 +27,7 @@ export const namespaceToolSchema = z.object({
 
 const executableToolSchema = z.union([functionToolSchema, customToolSchema, namespaceToolSchema]);
 const webSearchToolSchema = z.object({ type: z.literal('web_search') }).loose();
-const knownToolSchema = z.union([executableToolSchema, webSearchToolSchema]);
+export const openAIResponsesToolWireSchema = z.union([executableToolSchema, webSearchToolSchema]);
 const knownToolTypes = new Set(['function', 'custom', 'namespace', 'web_search']);
 
 const unsupportedToolSchema = z.object({
@@ -36,7 +36,7 @@ const unsupportedToolSchema = z.object({
 });
 
 export const openAIResponsesToolSchema = z.unknown().transform((tool, context) => {
-  const parsed = knownToolSchema.safeParse(tool);
+  const parsed = openAIResponsesToolWireSchema.safeParse(tool);
   if (parsed.success) return parsed.data;
 
   const wireType = safeToolType(tool);

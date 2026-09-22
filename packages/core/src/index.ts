@@ -38,6 +38,8 @@ export { processIsAlive, processOwnerIsCurrent, processStarttime } from './file-
 export type { ProcessOwnerIdentity } from './file-lock/process-identity';
 export { parseRuntimeConfig, resolveConfigTemplates } from './config/index';
 export {
+  AnthropicMessageResponseSchema,
+  AnthropicMessagesStreamEventSchema,
   type AnthropicMessageResponse,
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
@@ -45,9 +47,17 @@ export {
 export { writeGeminiEmbeddingsResponse } from './egress/gemini-embeddings';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
 export { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from './egress/gemini-interactions';
-export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions/index';
+export {
+  formatOpenAICompletionsSSE,
+  OpenAICompletionsResponseSchema,
+  OpenAICompletionsStreamEventSchema,
+  writeOpenAICompletionsResponse,
+  writeOpenAICompletionsSSE,
+} from './egress/openai-completions/index';
 export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
+  OpenAIResponsesResponseSchema,
+  OpenAIResponsesStreamEventSchema,
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
@@ -97,6 +107,7 @@ export {
   isValidBase64,
 } from './image-input';
 export {
+  Base64ImageSourceSchema as AnthropicBase64ImageSourceSchema,
   type AnthropicCacheControl,
   type AnthropicImageBlock,
   type AnthropicMessagesRequest,
@@ -104,6 +115,10 @@ export {
   type AnthropicTextBlock,
   type AnthropicToolResultBlock,
   type AnthropicToolUseBlock,
+  ThinkingBlockSchema as AnthropicThinkingBlockSchema,
+  ToolResultBlockSchema as AnthropicToolResultBlockSchema,
+  UrlImageSourceSchema as AnthropicUrlImageSourceSchema,
+  WebSearchToolSchema as AnthropicWebSearchToolSchema,
   parseAnthropicMessages,
 } from './ingress/anthropic-messages/index';
 export {
@@ -155,6 +170,11 @@ export {
   type OpenAIImageUpload,
 } from './ingress/openai-image';
 export {
+  openAIResponsesInputImagePartSchema,
+  openAIResponsesInputItemSchema,
+  openAIResponsesInputItemTransformSchema,
+  openAIResponsesToolTransformSchema,
+  openAIResponsesToolWireSchema,
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,
   type OpenAIResponsesFunctionTool,
