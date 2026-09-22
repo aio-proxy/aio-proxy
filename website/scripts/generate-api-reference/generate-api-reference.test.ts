@@ -7,12 +7,20 @@ import { format } from 'oxfmt';
 
 import formatOptions from '../../../oxfmt.config';
 import type { DocumentedPublicOperation, PublicOperation } from '../../../packages/server/src/server/public-operations';
+import en from '../../i18n/en.json';
+import zh from '../../i18n/zh.json';
 import type { OpenApiDocument } from '../operation-document';
 import { generateApiReferenceFiles } from './generate-api-reference';
 
 const catalogs = {
   en: {
-    shared: { apiTitle: 'API Reference', authentication: 'Use a token.' },
+    shared: {
+      apiTitle: 'API Reference',
+      authentication: 'Use a token.',
+      parameters: 'Parameters',
+      responses: 'Responses',
+      none: 'None',
+    },
     tags: { Models: 'Models', OpenAI: 'OpenAI-compatible', Anthropic: 'Anthropic-compatible' },
     operations: {
       listModels: { title: 'List models', description: 'Lists available models.', note: 'Public models only.' },
@@ -20,7 +28,13 @@ const catalogs = {
     },
   },
   zh: {
-    shared: { apiTitle: 'API 参考', authentication: '使用令牌。' },
+    shared: {
+      apiTitle: 'API 参考',
+      authentication: '使用令牌。',
+      parameters: '参数',
+      responses: '响应',
+      none: '无',
+    },
     tags: { Models: '模型', OpenAI: 'OpenAI 兼容接口', Anthropic: 'Anthropic 兼容接口' },
     operations: {
       listModels: { title: '列出模型', description: '列出可用模型。', note: '仅包含公开模型。' },
@@ -76,6 +90,7 @@ const document = {
         summary: 'List models',
         description: 'English source text.',
         tags: ['Models'],
+        parameters: [{ name: 'limit', in: 'query', schema: { type: 'integer' } }],
         responses: {
           '200': {
             description: 'OK',
@@ -98,11 +113,20 @@ const document = {
         requestBody: {
           content: {
             'application/json': {
-              schema: { type: 'object', examples: [{ name: 'demo' }] },
+              schema: {
+                type: 'object',
+                properties: { name: { type: 'string' }, stream: { type: 'boolean' } },
+                examples: [{ name: 'demo' }],
+              },
             },
           },
         },
-        responses: { '200': { description: 'OK' } },
+        responses: {
+          '201': {
+            description: 'Created',
+            content: { 'application/json': {}, 'text/event-stream': {} },
+          },
+        },
       },
     },
   },
@@ -133,12 +157,18 @@ describe('generateApiReferenceFiles', () => {
     expect(enPage).toContain('# List models');
     expect(enPage).toContain('`GET /v1/models`');
     expect(enPage).toContain('Lists available models.');
-    expect(enPage).toContain('[GET /v1/models](/api/list-models)');
-    expect(enPage).toContain('[POST /v1/widgets](/api/create-widget)');
+    expect(enPage).toContain('**Parameters:** `limit`');
+    expect(enPage).toContain('**Responses:** `200 application/json`');
+    expect(enPage).not.toContain('[POST /v1/widgets](/api/create-widget)');
     expect(enPage).toContain('<ApiOperation slug="list-models" locale="en" />');
     expect(zhPage).toContain('# 列出模型');
-    expect(zhPage).toContain('[GET /v1/models](/zh/api/list-models)');
+    expect(zhPage).toContain('**参数:** `limit`');
+    expect(zhPage).toContain('**响应:** `200 application/json`');
     expect(zhPage).toContain('<ApiOperation slug="list-models" locale="zh" />');
+
+    const widgetPage = await read(root, 'docs/en/api/create-widget.mdx');
+    expect(widgetPage).toContain('**Parameters:** `name`, `stream`');
+    expect(widgetPage).toContain('**Responses:** `201 application/json`, `201 text/event-stream`');
 
     expect(JSON.parse(await read(root, 'docs/en/api/_meta.json'))).toEqual([
       { type: 'file', name: 'list-models', label: 'List models' },
@@ -184,6 +214,63 @@ describe('generateApiReferenceFiles', () => {
     await run(root);
     const after = await stat(join(root, 'src/generated/manifest.json'));
     expect(after.mtimeMs).toBe(before.mtimeMs);
+  });
+
+  test('publishes parsed, raw-forwarded, and converted request semantics in both locales', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'aio-proxy-api-reference-'));
+    const operations = [
+      ['createChatCompletion', '/v1/chat/completions', 'chat-completions', 'OpenAI'],
+      ['createResponse', '/v1/responses', 'responses', 'OpenAI'],
+      ['createMessage', '/v1/messages', 'messages', 'Anthropic'],
+    ].map(
+      ([operationId, path, slug, tag], navOrder) =>
+        ({
+          classification: 'documented',
+          method: 'post',
+          path,
+          operationId,
+          slug,
+          tag,
+          navOrder,
+          messages: {
+            title: `operations.${operationId}.title`,
+            description: `operations.${operationId}.description`,
+          },
+          responses: {},
+        }) as unknown as DocumentedPublicOperation,
+    );
+    const paths = Object.fromEntries(
+      operations.map((operation) => [
+        operation.path,
+        {
+          post: {
+            operationId: operation.operationId,
+            responses: { '200': { description: 'OK', content: { 'application/json': {} } } },
+          },
+        },
+      ]),
+    );
+
+    await generateApiReferenceFiles({
+      root,
+      check: false,
+      operations,
+      catalogs: { en, zh },
+      document: { openapi: '3.1.0', info: { title: 'Fixture API', version: 'latest' }, paths } as OpenApiDocument,
+    });
+
+    for (const operation of operations) {
+      const enDocument = JSON.parse(await read(root, `src/generated/operations/en/${operation.slug}.json`));
+      const zhDocument = JSON.parse(await read(root, `src/generated/operations/zh/${operation.slug}.json`));
+      const enDescription = enDocument.paths[operation.path].post.description as string;
+      const zhDescription = zhDocument.paths[operation.path].post.description as string;
+      expect(enDescription).toMatch(/parsed/u);
+      expect(enDescription).toMatch(/raw-forwarded/u);
+      expect(enDescription).toMatch(/converted/u);
+      expect(zhDescription).toMatch(/解析/u);
+      expect(zhDescription).toMatch(/原始请求/u);
+      expect(zhDescription).toMatch(/转换/u);
+    }
   });
 
   test('removes only stale manifest-owned outputs', async () => {

@@ -15,7 +15,7 @@
   "paths": {
     "/v1/messages": {
       "post": {
-        "description": "创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。",
+        "description": "创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。",
         "operationId": "createMessage",
         "requestBody": {
           "content": {

@@ -1,7 +1,10 @@
 {
   "shared": {
     "apiTitle": "API Reference",
-    "authentication": "Use your aio-proxy API key as a Bearer token when authentication is enabled."
+    "authentication": "Use your aio-proxy API key as a Bearer token when authentication is enabled.",
+    "parameters": "Parameters",
+    "responses": "Responses",
+    "none": "None"
   },
   "tags": {
     "Models": "Models",
@@ -16,15 +19,15 @@
     },
     "createChatCompletion": {
       "title": "Create a chat completion",
-      "description": "Creates an OpenAI-compatible chat completion. Set `stream: true` to receive a streaming response."
+      "description": "Creates an OpenAI-compatible chat completion. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded."
     },
     "createResponse": {
       "title": "Create a response",
-      "description": "Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response."
+      "description": "Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded."
     },
     "createMessage": {
       "title": "Create a message",
-      "description": "Creates an Anthropic-compatible message. Set `stream: true` to receive a streaming response."
+      "description": "Creates an Anthropic-compatible message. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded."
     }
   }
 }

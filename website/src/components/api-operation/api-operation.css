@@ -25,3 +25,7 @@
 .api-operation .scalar-app .introduction-section {
   display: none;
 }
+
+.api-operation .scalar-app .operation-title {
+  display: none;
+}

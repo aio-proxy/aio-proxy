@@ -20,7 +20,12 @@ const locales = ['en', 'zh'] as const;
 type Locale = (typeof locales)[number];
 
 type LocaleCatalog = {
-  readonly shared: { readonly apiTitle: string };
+  readonly shared: {
+    readonly apiTitle: string;
+    readonly parameters: string;
+    readonly responses: string;
+    readonly none: string;
+  };
   readonly tags: Readonly<Record<string, string>>;
   readonly operations: Readonly<Record<string, Readonly<Record<string, string>>>>;
 };
@@ -92,15 +97,20 @@ function localizedDescription(catalog: LocaleCatalog, operation: DocumentedPubli
     .join('\n\n');
 }
 
+function selectedOperation(document: OpenApiDocument, operation: DocumentedPublicOperation): Record<string, unknown> {
+  const pathItem = document.paths?.[operation.path];
+  const selected = pathItem?.[operation.method];
+  if (!isObject(selected)) throw new Error(`Missing projected operation "${operation.operationId}"`);
+  return selected;
+}
+
 function localizedDocument(
   source: OpenApiDocument,
   operation: DocumentedPublicOperation,
   catalog: LocaleCatalog,
 ): OpenApiDocument {
   const projected = projectOperation(source, operation.operationId);
-  const pathItem = projected.paths?.[operation.path];
-  const selected = pathItem?.[operation.method];
-  if (!isObject(selected)) throw new Error(`Missing projected operation "${operation.operationId}"`);
+  const selected = selectedOperation(projected, operation);
 
   const tags = Array.isArray(projected.tags)
     ? projected.tags.map((tag) => {
@@ -127,18 +137,51 @@ function localizedDocument(
   } as OpenApiDocument;
 }
 
+function compactIndex(document: OpenApiDocument, operation: DocumentedPublicOperation, catalog: LocaleCatalog): string {
+  const selected = selectedOperation(document, operation);
+  const parameters = new Set<string>();
+  if (Array.isArray(selected.parameters)) {
+    for (const parameter of selected.parameters) {
+      if (isObject(parameter) && typeof parameter.name === 'string') parameters.add(parameter.name);
+    }
+  }
+
+  const requestBody = selected.requestBody;
+  if (isObject(requestBody) && isObject(requestBody.content)) {
+    for (const mediaType of Object.values(requestBody.content)) {
+      if (!isObject(mediaType) || !isObject(mediaType.schema) || !isObject(mediaType.schema.properties)) continue;
+      for (const name of Object.keys(mediaType.schema.properties)) parameters.add(name);
+    }
+  }
+
+  const responses = new Set<string>();
+  if (isObject(selected.responses)) {
+    for (const [status, response] of Object.entries(selected.responses)) {
+      const contentTypes = isObject(response) && isObject(response.content) ? Object.keys(response.content) : [];
+      if (contentTypes.length === 0) responses.add(status);
+      else for (const contentType of contentTypes) responses.add(`${status} ${contentType}`);
+    }
+  }
+
+  const list = (values: ReadonlySet<string>): string => {
+    if (values.size === 0) return catalog.shared.none;
+    return [...values]
+      .sort(compare)
+      .map((value) => `\`${value}\``)
+      .join(', ');
+  };
+  return `**${catalog.shared.parameters}:** ${list(parameters)}\n\n**${catalog.shared.responses}:** ${list(responses)}`;
+}
+
 function page(
   locale: Locale,
   operation: DocumentedPublicOperation,
-  operations: readonly DocumentedPublicOperation[],
+  document: OpenApiDocument,
   catalog: LocaleCatalog,
 ): string {
   const title = localizedMessage(catalog, operation.messages.title);
   const summary = localizedMessage(catalog, operation.messages.description);
-  const prefix = locale === 'en' ? '' : '/zh';
-  const index = operations
-    .map(({ method, path, slug }) => `[${method.toUpperCase()} ${path}](${prefix}/api/${slug})`)
-    .join(' · ');
+  const index = compactIndex(document, operation, catalog);
 
   return `---
 title: ${JSON.stringify(title)}
@@ -155,7 +198,7 @@ import { ApiOperation } from '../../../src/components/api-operation';
 
 ${summary}
 
-**${catalog.shared.apiTitle}:** ${index}
+${index}
 
 <ApiOperation slug="${operation.slug}" locale="${locale}" />
 `;
@@ -218,8 +261,9 @@ export async function generateApiReferenceFiles({
     for (const operation of operations) {
       const pagePath = `docs/${locale}/api/${operation.slug}.mdx`;
       const operationPath = `src/generated/operations/${locale}/${operation.slug}.json`;
-      desired.set(pagePath, await mdx(pagePath, page(locale, operation, operations, catalog)));
-      desired.set(operationPath, await json(operationPath, localizedDocument(document, operation, catalog)));
+      const operationDocument = localizedDocument(document, operation, catalog);
+      desired.set(pagePath, await mdx(pagePath, page(locale, operation, operationDocument, catalog)));
+      desired.set(operationPath, await json(operationPath, operationDocument));
       meta.push({ type: 'file', name: operation.slug, label: localizedMessage(catalog, operation.messages.title) });
     }
     const metaPath = `docs/${locale}/api/_meta.json`;
