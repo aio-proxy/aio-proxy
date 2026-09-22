@@ -1,0 +1,35 @@
+// Reversed from the grok.com client on 2026-09-22
+// (cdn.grok.com/_next/static/chunks/3qat1p3pisfyj.js, fileDesc for
+// prod/mc/billing-proto/proto/consumer_ui.proto).
+// Settings calls ConsumerUiSvc unless ENABLE_BILLING_FACADE is set.
+// That flag uses grok_api_v2.GrokBuildBilling instead, which is not this schema.
+syntax = "proto3";
+
+package prod_mc_billing;
+
+import "google/protobuf/timestamp.proto";
+
+message ConsumerResetToken {
+  string token_id = 10;
+  google.protobuf.Timestamp validity_start = 20;
+  google.protobuf.Timestamp validity_end = 30;
+}
+
+message ConsumerGetRemainingResetsReq {}
+
+message ConsumerGetRemainingResetsResp {
+  repeated ConsumerResetToken tokens = 10;
+}
+
+message ConsumerRedeemResetReq {
+  string token_id = 10;
+}
+
+message ConsumerRedeemResetResp {
+  repeated ConsumerResetToken still_redeemable = 10;
+}
+
+service ConsumerUiSvc {
+  rpc GetRemainingResets(ConsumerGetRemainingResetsReq) returns (ConsumerGetRemainingResetsResp);
+  rpc RedeemReset(ConsumerRedeemResetReq) returns (ConsumerRedeemResetResp);
+}

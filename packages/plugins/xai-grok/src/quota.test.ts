@@ -34,9 +34,10 @@ test('reads weekly and monthly Grok billing through the CLI proxy', async () => 
     'https://cli-chat-proxy.grok.com/v1/billing',
     'https://cli-chat-proxy.grok.com/v1/billing?format=credits',
     'https://cli-chat-proxy.grok.com/v1/settings',
+    'https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets',
   ]);
   for (const request of requests) {
-    expect(request.method).toBe('GET');
+    expect(request.method).toBe(request.url.includes('ConsumerUiSvc') ? 'POST' : 'GET');
     expect(request.headers.get('authorization')).toBe('Bearer access-token');
     expect(request.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
     expect(request.headers.get('x-grok-client-version')).toBe('0.2.120');
@@ -116,14 +117,79 @@ test('drops the plan when settings fail without failing the read', async () => {
   expect(snapshot.items.length).toBeGreaterThan(0);
 });
 
-test('keeps the weekly window when a unified-billing account reports no usage percent', async () => {
+test('an omitted credit percent on a real window is 0% used', async () => {
   const snapshot = await readWithResponses({
     weekly: { config: { currentPeriod: { end: '2026-09-08T00:00:00.000Z' } } },
   });
   const weekly = snapshot.items.find((item) => item.id === 'weekly');
-  expect(weekly).toBeDefined();
-  expect(weekly).not.toHaveProperty('remainingRatio');
+  expect(weekly?.remainingRatio).toBe(1);
   expect(weekly?.resetsAt).toBe(Date.parse('2026-09-08T00:00:00.000Z'));
+});
+
+test('a published zero credit percent is fully remaining, and it wins over on-demand', async () => {
+  const snapshot = await readWithResponses({
+    weekly: {
+      config: {
+        creditUsagePercent: 0,
+        currentPeriod: { end: '2026-09-08T00:00:00.000Z' },
+        onDemandCap: { val: 1000 },
+        onDemandUsed: { val: 0 },
+      },
+    },
+  });
+  expect(snapshot.items.find((item) => item.id === 'weekly')?.remainingRatio).toBe(1);
+});
+
+test('uses on-demand spend when the credits percent is absent and the cap is positive', async () => {
+  const snapshot = await readWithResponses({
+    weekly: {
+      config: {
+        currentPeriod: { end: '2026-09-08T00:00:00.000Z' },
+        onDemandCap: { val: '1000' },
+        onDemandUsed: { val: 250 },
+      },
+    },
+  });
+  expect(snapshot.items.find((item) => item.id === 'weekly')?.remainingRatio).toBe(0.75);
+});
+
+test('a zero on-demand cap leaves an omitted credit percent at 0% used', async () => {
+  const snapshot = await readWithResponses({
+    weekly: {
+      config: {
+        current_period: { end: '2026-09-08T00:00:00.000Z' },
+        on_demand_cap: { val: 0 },
+        on_demand_used: { val: 0 },
+      },
+    },
+  });
+  const weekly = snapshot.items.find((item) => item.id === 'weekly');
+  expect(weekly?.remainingRatio).toBe(1);
+  expect(weekly?.resetsAt).toBe(Date.parse('2026-09-08T00:00:00.000Z'));
+});
+
+test('falls back to the billing period when the current period has no end', async () => {
+  const snapshot = await readWithResponses({
+    weekly: {
+      config: {
+        billingPeriodStart: '2026-09-01T00:00:00.000Z',
+        billingPeriodEnd: '2026-09-08T00:00:00.000Z',
+      },
+    },
+  });
+  const weekly = snapshot.items.find((item) => item.id === 'weekly');
+  expect(weekly?.remainingRatio).toBe(1);
+  expect(weekly?.resetsAt).toBe(Date.parse('2026-09-08T00:00:00.000Z'));
+  expect(weekly?.windowMinutes).toBe(7 * 24 * 60);
+});
+
+test('an omitted monthly used amount is 0% used when the limit is known', async () => {
+  const snapshot = await readWithResponses({
+    monthly: { config: { monthlyLimit: { val: '10000' }, billingPeriodEnd: '2027-02-01T00:00:00Z' } },
+  });
+  const monthly = snapshot.items.find((item) => item.id === 'monthly-credits');
+  expect(monthly?.remainingRatio).toBe(1);
+  expect(monthly?.resetsAt).toBe(Date.parse('2027-02-01T00:00:00Z'));
 });
 
 test('maps per-product usage into its own items with normalized ids', async () => {
@@ -147,6 +213,19 @@ test('maps per-product usage into its own items with normalized ids', async () =
   const build = snapshot.items.find((item) => item.id === 'product_grok_build');
   expect(build?.remainingRatio).toBeCloseTo(0.75, 5);
   expect(build?.displayName).toBe('Grok Build');
+});
+
+test('a product row that omits its used percent is 0% used', async () => {
+  const snapshot = await readWithResponses({
+    weekly: {
+      config: {
+        creditUsagePercent: 10,
+        currentPeriod: { end: '2026-09-08T00:00:00.000Z' },
+        productUsage: [{ product: 'Grok Code' }],
+      },
+    },
+  });
+  expect(snapshot.items.find((item) => item.id === 'product_grok_code')?.remainingRatio).toBe(1);
 });
 
 test('a product spelling that collides with a generated suffix still yields unique ids', async () => {

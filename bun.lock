@@ -476,6 +476,7 @@
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/xai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@bufbuild/protobuf": "catalog:",
         "es-toolkit": "catalog:",
       },
       "devDependencies": {

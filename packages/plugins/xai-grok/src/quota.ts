@@ -8,7 +8,10 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from './cli-headers/index';
 import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from './oauth';
+import { readXAIGrokResetCredits, resetXAIGrokQuota } from './quota-resets';
 import type { XAIGrokCredential } from './schema';
+
+export { resetXAIGrokQuota };
 
 const WEEKLY_BILLING_URL = `${XAI_GROK_CLI_BASE_URL}/billing?format=credits`;
 const MONTHLY_BILLING_URL = `${XAI_GROK_CLI_BASE_URL}/billing`;
@@ -27,6 +30,10 @@ type BillingObject = {
   readonly end?: unknown;
   readonly monthly_limit?: unknown;
   readonly monthlyLimit?: unknown;
+  readonly on_demand_cap?: unknown;
+  readonly on_demand_used?: unknown;
+  readonly onDemandCap?: unknown;
+  readonly onDemandUsed?: unknown;
   readonly product_usage?: unknown;
   readonly productUsage?: unknown;
   readonly start?: unknown;
@@ -42,10 +49,11 @@ export async function readXAIGrokQuota(
   const fetcher = options.fetch ?? globalThis.fetch;
   const headers = createXAIGrokCLIHeaders(credential, { accept: '*/*' });
   if (credential.subject !== undefined) headers.set('x-userid', credential.subject);
-  const [weekly, monthly, planResult] = await Promise.allSettled([
+  const [weekly, monthly, planResult, resetCredits] = await Promise.allSettled([
     requestBilling(fetcher, WEEKLY_BILLING_URL, headers, context.signal, weeklyItems),
     requestBilling(fetcher, MONTHLY_BILLING_URL, headers, context.signal, monthlyItems),
     readPlan(fetcher, headers, context.signal),
+    readXAIGrokResetCredits(fetcher, headers, context.signal),
   ]);
   context.signal.throwIfAborted();
   const items = dedupeQuotaItemIds(
@@ -54,7 +62,12 @@ export async function readXAIGrokQuota(
   );
   if (items.length === 0) throw new Error('xAI Grok billing request failed');
   const plan = planResult.status === 'fulfilled' ? planResult.value : undefined;
-  return { items, ...(plan === undefined ? {} : { plan }) };
+  const credits = resetCredits.status === 'fulfilled' ? resetCredits.value : undefined;
+  return {
+    items,
+    ...(plan === undefined ? {} : { plan }),
+    ...(credits === undefined ? {} : { resetCredits: credits }),
+  };
 }
 
 async function readPlan(
@@ -93,13 +106,18 @@ async function requestBilling(
 
 function weeklyItems(config: BillingObject): readonly OAuthQuotaItem[] {
   const period = record(config.currentPeriod ?? config.current_period);
-  const remainingRatio = remainingFromPercent(config.creditUsagePercent ?? config.credit_usage_percent);
-  const resetsAt = timestamp(period?.end);
-  const windowMinutes = spanMinutes(timestamp(period?.start), resetsAt);
-  // A unified-billing account reports a period but no credit percentage, and that window can be the
-  // only item the account produces. Dropping it here would trip the no-items throw and turn a
-  // successful billing read into a failure; whether an unrated window is worth rendering is the
-  // dashboard's call, not this reader's.
+  const periodStart = timestamp(period?.start);
+  const periodEnd = timestamp(period?.end);
+  const billingStart = timestamp(config.billingPeriodStart ?? config.billing_period_start);
+  const billingEnd = timestamp(config.billingPeriodEnd ?? config.billing_period_end);
+  // The credits payload's current period is the live window. The billing period is only a fallback
+  // when that end is missing, and its start must not be paired with a different end.
+  const resetsAt = periodEnd ?? billingEnd;
+  const windowMinutes =
+    periodEnd === undefined ? spanMinutes(billingStart, billingEnd) : spanMinutes(periodStart, periodEnd);
+  // creditUsagePercent is used-percent. An omitted figure on a real window is 0% used (proto3 drops
+  // the zero), which is a full remaining amount — not an unknown window and not a dropped one.
+  const remainingRatio = weeklyRemaining(config) ?? (resetsAt === undefined ? undefined : 1);
   const weekly: readonly OAuthQuotaItem[] =
     remainingRatio === undefined && resetsAt === undefined
       ? []
@@ -124,7 +142,10 @@ function spanMinutes(start: number | undefined, end: number | undefined): number
 
 function monthlyItems(config: BillingObject): readonly OAuthQuotaItem[] {
   const limit = cents(config.monthlyLimit ?? config.monthly_limit);
-  const used = cents(config.used);
+  const reportedUsed = cents(config.used);
+  // `used` is consumed credits. Omitted next to a positive limit is 0 spent, the same as a used percent
+  // the credits payload left out.
+  const used = reportedUsed ?? (limit !== undefined && limit > 0 ? 0 : undefined);
   const remainingRatio =
     limit === undefined || limit <= 0 || used === undefined
       ? undefined
@@ -174,11 +195,13 @@ function productItems(config: BillingObject): readonly OAuthQuotaItem[] {
     const slug = productSlug(product);
     if (slug === '') return [];
     const percent = number(Reflect.get(usage, 'usagePercent') ?? Reflect.get(usage, 'usage_percent'));
+    // usagePercent is used-percent. A product row that omits it has used nothing.
+    const remainingRatio = percent === undefined ? 1 : 1 - Math.min(Math.max(percent, 0), 100) / 100;
     return [
       {
         id: `product_${slug}`,
         displayName: productTitle(slug),
-        ...(percent === undefined ? {} : { remainingRatio: 1 - Math.min(Math.max(percent, 0), 100) / 100 }),
+        remainingRatio,
       },
     ];
   });
@@ -197,6 +220,24 @@ function number(value: unknown): number | undefined {
 
 function cents(value: unknown): number | undefined {
   return number(record(value)?.val ?? value);
+}
+
+function weeklyRemaining(config: BillingObject): number | undefined {
+  return (
+    remainingFromPercent(config.creditUsagePercent ?? config.credit_usage_percent) ??
+    remainingFromPercent(onDemandUsedPercent(config))
+  );
+}
+
+/**
+ * On-demand spend as a used percent, only when the cap is a positive meter. A zero cap is "no
+ * on-demand limit", which is not the same as having used none of it.
+ */
+function onDemandUsedPercent(config: BillingObject): number | undefined {
+  const cap = cents(config.onDemandCap ?? config.on_demand_cap);
+  const used = cents(config.onDemandUsed ?? config.on_demand_used);
+  if (cap === undefined || cap <= 0 || used === undefined) return undefined;
+  return (Math.min(Math.max(used, 0), cap) / cap) * 100;
 }
 
 function remainingFromPercent(value: unknown): number | undefined {
