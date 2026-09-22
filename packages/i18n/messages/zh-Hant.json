@@ -590,6 +590,7 @@
       "otel_headers": "Custom Headers (Optional)",
       "otel_header_name": "Header name",
       "otel_header_value": "Header value",
+      "otel_header_duplicate": "標頭名稱重複。",
       "otel_add_header": "+ Add Header",
       "otel_create": "建立",
       "otel_save": "儲存",

@@ -590,6 +590,7 @@
       "otel_headers": "Custom Headers (Optional)",
       "otel_header_name": "Header name",
       "otel_header_value": "Header value",
+      "otel_header_duplicate": "Duplicate header name",
       "otel_add_header": "+ Add Header",
       "otel_create": "Create",
       "otel_save": "Save",

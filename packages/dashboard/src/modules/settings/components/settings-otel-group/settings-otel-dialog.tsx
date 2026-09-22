@@ -65,6 +65,13 @@ const draftFrom = (destination: SettingsOtelDestination): OtelDraft => {
 
 const isPartialHeader = (row: HeaderDraft) => (row.name === '') !== (row.value === '');
 
+const isDuplicateHeaderName = (headers: readonly HeaderDraft[], index: number) => {
+  const name = headers[index]?.name;
+  if (name === undefined || name === '') return false;
+  const key = name.toLowerCase();
+  return headers.some((row, rowIndex) => rowIndex < index && row.name !== '' && row.name.toLowerCase() === key);
+};
+
 const toDestination = (draft: OtelDraft): SettingsOtelDestination => ({
   url: draft.url.trim(),
   contentType: draft.contentType,
@@ -95,6 +102,7 @@ export const SettingsOtelDialog: React.FC<SettingsOtelDialogProps> = ({
     canSubmitWhenInvalid: true,
     onSubmit: ({ value }) => {
       if (value.url.trim() === '' || value.headers.some(isPartialHeader)) return;
+      if (value.headers.some((_, index) => isDuplicateHeaderName(value.headers, index))) return;
       const next = toDestination(value);
       const updated =
         editingIndex === undefined
@@ -184,20 +192,35 @@ export const SettingsOtelDialog: React.FC<SettingsOtelDialogProps> = ({
                 <FieldLabel>{m['dashboard.settings.otel_headers']()}</FieldLabel>
                 {field.state.value.map((row, index) => (
                   <div key={row.id} className="grid grid-cols-2 gap-2">
-                    <form.Field name={`headers[${index}].name` as `headers[${number}].name`}>
-                      {(nameField) => (
-                        <Field>
-                          <FieldLabel htmlFor={`otel-header-name-${row.id}`}>
-                            {m['dashboard.settings.otel_header_name']()}
-                          </FieldLabel>
-                          <Input
-                            id={`otel-header-name-${row.id}`}
-                            value={nameField.state.value}
-                            disabled={disabled}
-                            onChange={(event) => nameField.handleChange(event.target.value)}
-                          />
-                        </Field>
-                      )}
+                    <form.Field
+                      name={`headers[${index}].name` as `headers[${number}].name`}
+                      validators={{
+                        onSubmit: ({ fieldApi }) =>
+                          isDuplicateHeaderName(fieldApi.form.getFieldValue('headers'), index)
+                            ? m['dashboard.settings.otel_header_duplicate']()
+                            : undefined,
+                      }}
+                    >
+                      {(nameField) => {
+                        const invalid = nameField.state.meta.errors.length > 0;
+                        return (
+                          <Field data-invalid={invalid || undefined}>
+                            <FieldLabel htmlFor={`otel-header-name-${row.id}`}>
+                              {m['dashboard.settings.otel_header_name']()}
+                            </FieldLabel>
+                            <Input
+                              id={`otel-header-name-${row.id}`}
+                              value={nameField.state.value}
+                              disabled={disabled}
+                              aria-invalid={invalid || undefined}
+                              onChange={(event) => nameField.handleChange(event.target.value)}
+                            />
+                            <FieldError
+                              errors={nameField.state.meta.errors.map((message) => ({ message: String(message) }))}
+                            />
+                          </Field>
+                        );
+                      }}
                     </form.Field>
                     <form.Field name={`headers[${index}].value` as `headers[${number}].value`}>
                       {(valueField) => (

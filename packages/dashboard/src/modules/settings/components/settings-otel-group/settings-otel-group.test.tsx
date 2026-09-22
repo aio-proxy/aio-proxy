@@ -181,6 +181,50 @@ test('blocks submit when a header has only a name', async () => {
   expect(onSave).not.toHaveBeenCalled();
 });
 
+test('rejects duplicate header names without saving', async () => {
+  const { onSave } = renderGroup([]);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add Destination' }));
+  fireEvent.change(screen.getByLabelText('OTLP Traces Endpoint'), {
+    target: { value: 'https://collector.example/v1/traces' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '+ Add Header' }));
+  const names = screen.getAllByLabelText('Header name');
+  const values = screen.getAllByLabelText('Header value');
+  fireEvent.change(names[0]!, { target: { value: 'Authorization' } });
+  fireEvent.change(values[0]!, { target: { value: 'Bearer one' } });
+  fireEvent.change(names[1]!, { target: { value: 'Authorization' } });
+  fireEvent.change(values[1]!, { target: { value: 'Bearer two' } });
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.settings.otel_create']() }));
+
+  await waitFor(() => {
+    expect(screen.getByText(m['dashboard.settings.otel_header_duplicate']())).toBeInTheDocument();
+  });
+  expect(onSave).not.toHaveBeenCalled();
+});
+
+test('rejects header names that differ only by case without saving', async () => {
+  const { onSave } = renderGroup([]);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add Destination' }));
+  fireEvent.change(screen.getByLabelText('OTLP Traces Endpoint'), {
+    target: { value: 'https://collector.example/v1/traces' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '+ Add Header' }));
+  const names = screen.getAllByLabelText('Header name');
+  const values = screen.getAllByLabelText('Header value');
+  fireEvent.change(names[0]!, { target: { value: 'Authorization' } });
+  fireEvent.change(values[0]!, { target: { value: 'Bearer one' } });
+  fireEvent.change(names[1]!, { target: { value: 'authorization' } });
+  fireEvent.change(values[1]!, { target: { value: 'Bearer two' } });
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.settings.otel_create']() }));
+
+  await waitFor(() => {
+    expect(screen.getByText(m['dashboard.settings.otel_header_duplicate']())).toBeInTheDocument();
+  });
+  expect(onSave).not.toHaveBeenCalled();
+});
+
 test('blocks submit when a header has only a value', async () => {
   const { onSave } = renderGroup([]);
 
