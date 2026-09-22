@@ -31,11 +31,14 @@ const SCHEMA_MAP_FIELDS = new Set(['properties', 'patternProperties', '$defs', '
 // Reference Objects and literal payload data both allow a `$ref` key, so keep schema maps and data fields distinct.
 function hasReferenceMarker(
   value: unknown,
-  visited = new WeakSet<object>(),
+  visited = new WeakMap<object, Set<ReferenceScanContext>>(),
   context: ReferenceScanContext = 'openapi',
 ): boolean {
-  if (typeof value !== 'object' || value === null || visited.has(value)) return false;
-  visited.add(value);
+  if (typeof value !== 'object' || value === null) return false;
+  const contexts = visited.get(value);
+  if (contexts?.has(context)) return false;
+  if (contexts === undefined) visited.set(value, new Set([context]));
+  else contexts.add(context);
   if (isDataObject(value) && typeof value.$ref === 'string') return true;
   return Object.entries(value).some(([key, item]) => {
     if (context !== 'schema-map' && (key === 'example' || key === 'value')) return false;

@@ -192,6 +192,17 @@ test('rejects an unresolved default response reference', () => {
   expect(() => projectOperation(document, 'createPet')).toThrow('Unresolved reference marker');
 });
 
+test('rescans aliased objects when their OpenAPI context changes', () => {
+  const document = fixture();
+  const aliased = { default: { $ref: '#/components/schemas/Pet' } };
+  Object.assign(document.components.schemas, { Aliased: aliased });
+  Object.assign(document.paths['/pets'].post, { responses: aliased });
+  const paths = document.paths;
+  delete document.paths;
+  Object.assign(document, { paths });
+  expect(() => projectOperation(document, 'createPet')).toThrow('Unresolved reference marker');
+});
+
 test('rejects an unresolved named example reference', () => {
   const document = fixture();
   Object.assign(document.components, {
