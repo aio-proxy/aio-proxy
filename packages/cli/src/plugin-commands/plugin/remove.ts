@@ -3,6 +3,7 @@ import { getLocale, m } from '@aio-proxy/i18n';
 import { resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 import { uniq } from 'es-toolkit/array';
 
+import { formatPluginLines } from '../../ui';
 import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from './config-entry';
 import {
   beginPluginSession,
@@ -47,8 +48,17 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
         loaded?.displayName === undefined ? undefined : resolveLocalizedText(loaded.displayName, getLocale());
       const description =
         loaded?.description === undefined ? undefined : resolveLocalizedText(loaded.description, getLocale());
-      const identity = label === undefined ? packageName : `${label} (${packageName})`;
-      deps.print(`${identity} ${state}${description === undefined ? '' : ` — ${description}`}`);
+      for (const line of formatPluginLines(
+        {
+          ...(label === undefined ? {} : { label }),
+          packageName,
+          state,
+          ...(description === undefined ? {} : { description }),
+        },
+        process.stdout.columns,
+      )) {
+        deps.print(line);
+      }
     }
   } finally {
     if (injected === undefined) deps.close?.();

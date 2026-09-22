@@ -116,6 +116,60 @@ test('--deep --json distinguishes an auth failure from a generic probe failure',
   }
 });
 
+test('--deep human output prints provider rows and does not dump JSON', async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      const path = new URL(req.url).pathname;
+      if (path === '/health') return Response.json({ status: 'ok', uptime: 1, version: '1.2.3' });
+      return Response.json({
+        providers: [
+          {
+            id: 'openai',
+            kind: 'api',
+            enabled: true,
+            passthrough: false,
+            last_status: 'ok',
+            last_latency: 0,
+            protocols: [],
+            hasQuota: false,
+            canRefreshCredential: false,
+            clientModels: [],
+            state: { status: 'ready', catalog: 'fresh' },
+          },
+        ],
+      });
+    },
+  });
+  try {
+    const lines: string[] = [];
+    await statusCommand({ port: String(server.port), deep: true }, (line) => lines.push(line));
+    const out = lines.join('\n');
+    expect(out).toContain('id: openai');
+    expect(out).not.toContain('"protocols"');
+  } finally {
+    server.stop(true);
+  }
+});
+
+test('--deep human output explains an unexpected payload without throwing', async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      const path = new URL(req.url).pathname;
+      if (path === '/health') return Response.json({ status: 'ok', uptime: 1, version: '1.2.3' });
+      return Response.json({ providers: 'nope' });
+    },
+  });
+  try {
+    const lines: string[] = [];
+    await statusCommand({ port: String(server.port), deep: true }, (line) => lines.push(line));
+    expect(lines.join('\n')).toContain('could not be displayed');
+  } finally {
+    server.stop(true);
+  }
+});
+
 test('status honors a config-only port when no --port flag is given', async () => {
   const server = Bun.serve({
     port: 0,
