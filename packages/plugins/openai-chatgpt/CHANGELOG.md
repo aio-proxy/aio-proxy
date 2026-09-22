@@ -1,5 +1,17 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.30.0
+
+### Minor Changes
+
+- [#407](https://github.com/aio-proxy/aio-proxy/pull/407) [`fc9ee8c`](https://github.com/aio-proxy/aio-proxy/commit/fc9ee8c2d31bcdc58bc5709b3d0e2a451b2004f2) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT accounts can set a fixed user agent and optionally keep the inbound user agent when a model or image request comes from a Codex client. The fixed value is also used for realtime requests. Accounts that leave both unset keep the previous fixed user agent.
+
+### Patch Changes
+
+- Updated dependencies [[`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493)]:
+  - @aio-proxy/types@0.30.0
+  - @aio-proxy/plugin-sdk@0.30.0
+
 ## 0.29.0
 
 ### Minor Changes

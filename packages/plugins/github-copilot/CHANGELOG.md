@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-github-copilot
 
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.30.0
+
 ## 0.29.0
 
 ### Patch Changes

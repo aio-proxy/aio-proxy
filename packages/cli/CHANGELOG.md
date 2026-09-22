@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.30.0
+
+### Patch Changes
+
+- [#406](https://github.com/aio-proxy/aio-proxy/pull/406) [`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46) Thanks [@baranwang](https://github.com/baranwang)! - Codex configuration always lets you choose which session history sources to migrate, including when only one source is available. While history is scanned, the prompt shows a loading indicator. When API key authentication is off, the note that no key is needed is shown as a status line instead of an error.
+- Updated dependencies [[`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46), [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493), [`739e846`](https://github.com/aio-proxy/aio-proxy/commit/739e8465e605c866bcfaaedb1ba05ef1a81db8d4), [`e9e80c0`](https://github.com/aio-proxy/aio-proxy/commit/e9e80c0cd7224886d1e04a0c98f0547803cd0ccf)]:
+  - @aio-proxy/i18n@0.30.0
+  - @aio-proxy/types@0.30.0
+  - @aio-proxy/core@0.30.0
+  - @aio-proxy/server@0.30.0
+  - @aio-proxy/dashboard@0.30.0
+  - @aio-proxy/opencode-provider@0.30.0
+  - @aio-proxy/pi-provider@0.30.0
+  - @aio-proxy/agent-provider-runtime@0.30.0
+  - @aio-proxy/plugin-sdk@0.30.0
+  - @aio-proxy/logger@0.30.0
+  - @aio-proxy/shared@0.30.0
+
 ## 0.29.0
 
 ### Patch Changes
