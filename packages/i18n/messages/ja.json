@@ -27,6 +27,22 @@
     "done": "セットアップが完了しました"
   },
   "cli": {
+    "ui": {
+      "yes": "はい",
+      "no": "いいえ",
+      "cancelled": "キャンセルしました",
+      "error": "問題が発生しました",
+      "title_plugin_add": "aio-proxy · プラグインを追加",
+      "title_plugin_config": "aio-proxy · プラグインを設定",
+      "title_plugin_remove": "aio-proxy · プラグインを削除",
+      "title_plugin_prune": "aio-proxy · プラグインを整理",
+      "title_provider_login": "aio-proxy · Provider にログイン",
+      "title_codex_configure": "aio-proxy · Codex を設定",
+      "outro_provider_login": "ログインしました",
+      "outro_codex_configure": "Codex の設定が完了しました",
+      "provider_list_empty": "Provider はありません",
+      "status_deep_unexpected": "Provider の健全性データを表示できません"
+    },
     "root": {
       "description": "AIO Proxy コマンドラインインターフェース"
     },

@@ -27,6 +27,22 @@
     "done": "TODO: Setup complete"
   },
   "cli": {
+    "ui": {
+      "yes": "是",
+      "no": "否",
+      "cancelled": "已取消",
+      "error": "出错了",
+      "title_plugin_add": "aio-proxy · 添加插件",
+      "title_plugin_config": "aio-proxy · 配置插件",
+      "title_plugin_remove": "aio-proxy · 移除插件",
+      "title_plugin_prune": "aio-proxy · 清理插件",
+      "title_provider_login": "aio-proxy · 登录 Provider",
+      "title_codex_configure": "aio-proxy · 配置 Codex",
+      "outro_provider_login": "登录完成",
+      "outro_codex_configure": "Codex 配置完成",
+      "provider_list_empty": "没有 Provider",
+      "status_deep_unexpected": "无法显示 Provider 健康数据"
+    },
     "root": {
       "description": "AIO Proxy 命令行界面"
     },
