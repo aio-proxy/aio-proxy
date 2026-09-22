@@ -50,6 +50,7 @@ describe('OpenAI ChatGPT plugin', () => {
     });
     await expect(adapter.account.options.schema.parseAsync({ userAgent: 'bad\nagent' })).rejects.toThrow();
     await expect(adapter.account.options.schema.parseAsync({ userAgent: 'bad\u0000agent' })).rejects.toThrow();
+    await expect(adapter.account.options.schema.parseAsync({ userAgent: '测试' })).rejects.toThrow();
   });
 
   test('supports injectable localized copy', async () => {
