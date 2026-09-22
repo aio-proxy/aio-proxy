@@ -37,17 +37,25 @@ const settingsValidator = validator('json', (raw, context) => {
 // situation: the watcher rejected it, so the runtime still enforces its last valid snapshot, and
 // failing the whole endpoint would hide every control until the file is repaired. In both cases the
 // runtime keys stand in, and a write is refused before any bytes move.
-async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> {
+async function authoredServer(state: ServerState): Promise<Record<string, unknown> | undefined> {
   const file = state.configStore.file;
-  if (file === undefined) return state.currentConfig().server.apiKeys;
-  let server: unknown;
+  if (file === undefined) return undefined;
   try {
-    server = (await file.read())['server'];
+    const server = (await file.read())['server'];
+    return isPlainObject(server) ? server : {};
   } catch {
-    return state.currentConfig().server.apiKeys;
+    return undefined;
   }
-  const keys = isPlainObject(server) ? server['apiKeys'] : undefined;
-  return Array.isArray(keys) ? keys : [];
+}
+
+async function currentSettingsView(state: ServerState): Promise<DashboardSettingsView> {
+  const config = state.currentConfig();
+  const server = await authoredServer(state);
+  if (server === undefined) return settingsView(config, config.server.apiKeys, config.server.otel.destinations);
+  const otel = server['otel'];
+  const destinations = isPlainObject(otel) ? otel['destinations'] : undefined;
+  const keys = server['apiKeys'];
+  return settingsView(config, Array.isArray(keys) ? keys : [], Array.isArray(destinations) ? destinations : []);
 }
 
 // Same policy as provider credentials: this endpoint sits behind the dashboard password (or
@@ -64,7 +72,35 @@ function apiKeysView(authored: readonly unknown[]): DashboardSettingsView['apiKe
   });
 }
 
-function settingsView(config: Config, authored: readonly unknown[]): DashboardSettingsView {
+function destinationHeaders(value: unknown): Record<string, string> {
+  if (!isPlainObject(value)) return {};
+  const headers: Record<string, string> = {};
+  for (const [name, header] of Object.entries(value)) {
+    if (typeof header === 'string') headers[name] = header;
+  }
+  return headers;
+}
+
+function authoredOtel(authored: readonly unknown[]): DashboardSettingsView['otel']['destinations'] {
+  return authored.flatMap((entry) => {
+    if (!isPlainObject(entry)) return [];
+    const url = entry['url'];
+    if (typeof url !== 'string' || url === '') return [];
+    return [
+      {
+        url,
+        contentType: entry['contentType'] === 'protobuf' ? 'protobuf' : 'json',
+        headers: destinationHeaders(entry['headers']),
+      },
+    ];
+  });
+}
+
+function settingsView(
+  config: Config,
+  authored: readonly unknown[],
+  destinations: readonly unknown[],
+): DashboardSettingsView {
   const logging = config.server.logging ?? defaultLogging;
   return {
     apiKeys: apiKeysView(authored),
@@ -81,6 +117,7 @@ function settingsView(config: Config, authored: readonly unknown[]): DashboardSe
     proxyFallback: config.proxyFallback ?? false,
     requireApiKey: config.server.requireApiKey,
     retryAfterCapMs: config.server.retry.retryAfterCapMs,
+    otel: { destinations: authoredOtel(destinations) },
   };
 }
 
@@ -166,12 +203,17 @@ async function applySettingsMutation(
     // reference) and nothing has to be reconciled against the previous positions.
     next = { ...next, server: { ...server, apiKeys: mutation.apiKeys } };
   }
+  if (mutation.otel !== undefined) {
+    const server = section(next['server'], 'server');
+    const otel = section(server['otel'], 'server.otel');
+    next = { ...next, server: { ...server, otel: { ...otel, destinations: mutation.otel.destinations } } };
+  }
   return { next, restartRequired };
 }
 
 export const createDashboardSettingsRoute = (state: ServerState) =>
   new Hono()
-    .get('/', async (context) => context.json(settingsView(state.currentConfig(), await authoredApiKeys(state))))
+    .get('/', async (context) => context.json(await currentSettingsView(state)))
     .put('/', settingsValidator, async (context) => {
       const mutation = context.req.valid('json');
       let restartRequired = false;
@@ -199,6 +241,6 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
       return context.json({
         ok: true,
         restartRequired,
-        settings: settingsView(state.currentConfig(), await authoredApiKeys(state)),
+        settings: await currentSettingsView(state),
       } as const);
     });
