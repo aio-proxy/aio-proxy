@@ -58,10 +58,12 @@ async function withSettingsFixture(
     SETTINGS_API_KEY: process.env['SETTINGS_API_KEY'],
     SETTINGS_HOST: process.env['SETTINGS_HOST'],
     SETTINGS_LOG_DIR: process.env['SETTINGS_LOG_DIR'],
+    SETTINGS_OTLP_TOKEN: process.env['SETTINGS_OTLP_TOKEN'],
     SETTINGS_PROXY_HOST: process.env['SETTINGS_PROXY_HOST'],
     SETTINGS_ROOT_PROXY: process.env['SETTINGS_ROOT_PROXY'],
   };
   process.env['SETTINGS_API_KEY'] = 'sk-from-env';
+  process.env['SETTINGS_OTLP_TOKEN'] = 'otlp-from-env';
   process.env['SETTINGS_HOST'] = '127.0.0.1';
   process.env['SETTINGS_LOG_DIR'] = '/tmp/settings-logs';
   process.env['SETTINGS_PROXY_HOST'] = 'replacement.proxy.example';
@@ -145,6 +147,7 @@ test('GET /settings serves the authored caller keys and redacts only the root pr
       proxyFallback: false,
       requireApiKey: true,
       retryAfterCapMs: 30_000,
+      otel: { destinations: [] },
     });
     // The proxy carries `user:password@`, which has no editor round-trip, and the dashboard
     // password hash is never a form value — both stay out of the response.
@@ -477,5 +480,78 @@ test('backup credentials are masked and toggling fallback preserves both proxy a
       expect(onDisk(configPath).proxyBackup).toBe(backup);
       expect(onDisk(configPath).proxy).toBe(authoredConfig.proxy);
     }
+  });
+});
+
+test('round-trips an authored otel destination without requiring a restart', async () => {
+  await withSettingsFixture(async ({ routes, configPath }) => {
+    const response = await routes.request('/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        otel: {
+          destinations: [
+            {
+              url: 'https://collector.example/v1/traces',
+              contentType: 'json',
+              headers: { Authorization: 'Bearer {{env.SETTINGS_OTLP_TOKEN}}' },
+            },
+          ],
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.restartRequired).toBe(false);
+    expect(body.settings.otel.destinations).toEqual([
+      {
+        url: 'https://collector.example/v1/traces',
+        contentType: 'json',
+        headers: { Authorization: 'Bearer {{env.SETTINGS_OTLP_TOKEN}}' },
+      },
+    ]);
+    const stored = JSON.parse(readFileSync(configPath, 'utf8'));
+    expect(stored.server.otel.destinations[0].headers.Authorization).toBe('Bearer {{env.SETTINGS_OTLP_TOKEN}}');
+    expect(stored.server.futureServer).toBe('server-preserved');
+  });
+});
+
+test('a port change still requires a restart when otel is in the same request', async () => {
+  await withSettingsFixture(async ({ routes }) => {
+    const response = await routes.request('/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        port: 9_318,
+        otel: { destinations: [] },
+      }),
+    });
+    const body = await response.json();
+    expect(body.restartRequired).toBe(true);
+  });
+});
+
+test('a missing otel env var is config_rejected and leaves the file unchanged', async () => {
+  await withSettingsFixture(async ({ routes, configPath }) => {
+    const before = readFileSync(configPath, 'utf8');
+    const response = await routes.request('/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        otel: {
+          destinations: [
+            {
+              url: 'https://collector.example/v1/traces',
+              contentType: 'json',
+              headers: { Authorization: 'Bearer {{env.MISSING_OTLP}}' },
+            },
+          ],
+        },
+      }),
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
   });
 });

@@ -1,4 +1,5 @@
-export { getTraceRuntime, type TraceRuntime } from './runtime';
+export { getTraceRuntime, stopOtelExport, type TraceRuntime } from './runtime';
+export { syncOtelDestinations } from './otel-export';
 export { BufferingSpanProcessor } from './buffering-span-processor';
 export { spanToRecord } from './span-record';
 export { attributeName, eventName, spanName, ALLOWED_ATTRIBUTES } from './semantic';

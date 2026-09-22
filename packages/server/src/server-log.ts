@@ -260,11 +260,20 @@ export type RealtimeSidebandClosedLog = {
   readonly origin: 'downstream' | 'upstream' | 'proxy';
 };
 
+export type OtelExportLog = {
+  readonly event: 'otel.export';
+  readonly category: 'export_failed' | 'partial_success' | 'destination_unavailable';
+  readonly index: number;
+  readonly origin: string;
+  readonly statusCode?: number;
+};
+
 export type ServerLog =
   | AutoUpdateFailedLog
   | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog
   | DashboardAuthUnavailableLog
+  | OtelExportLog
   | RealtimeCallCreatedLog
   | RealtimeCallFailedLog
   | RealtimeSidebandClosedLog

@@ -113,6 +113,16 @@ export const DashboardApiKeyMutationSchema = z.strictObject({
   label: DashboardApiKeyLabelSchema.optional(),
 });
 
+const DashboardOtelDestinationSchema = z.strictObject({
+  url: z.string().min(1),
+  contentType: z.enum(['json', 'protobuf']),
+  headers: z.record(z.string(), z.string()),
+});
+
+const DashboardOtelSettingsSchema = z.strictObject({
+  destinations: z.array(DashboardOtelDestinationSchema),
+});
+
 export const DashboardSettingsViewSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host),
   port: required(ServerConfigSchema.shape.port),
@@ -124,6 +134,7 @@ export const DashboardSettingsViewSchema = z.strictObject({
   hasPassword: z.boolean(),
   apiKeys: z.array(DashboardApiKeyViewSchema),
   requireApiKey: z.boolean(),
+  otel: DashboardOtelSettingsSchema,
 });
 
 export const DashboardSettingsMutationSchema = z.strictObject({
@@ -143,6 +154,7 @@ export const DashboardSettingsMutationSchema = z.strictObject({
     })
     .optional(),
   retryAfterCapMs: required(ServerRetrySchema.shape.retryAfterCapMs).optional(),
+  otel: DashboardOtelSettingsSchema.optional(),
 });
 
 export const DashboardSettingsMutationErrorSchema = z.strictObject({

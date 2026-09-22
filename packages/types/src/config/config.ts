@@ -23,6 +23,9 @@ import {
   validateAliasTargets,
   validateApiEndpoints,
 } from '../provider';
+import { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination } from './otel';
+
+export { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination };
 
 const ServerHostSchema = z.string().min(1);
 
@@ -76,6 +79,7 @@ export const ServerConfigSchema = z.object({
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
   retry: ServerRetrySchema.prefault({}),
+  otel: ServerOtelSchema.prefault({}),
 });
 
 const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, logging: true, apiKeys: true }).extend({
@@ -85,6 +89,7 @@ const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, loggin
     .describe('Host for the proxy API server.'),
   apiKeys: z.array(ApiKeyAuthoringSchema).default([]).describe('Caller API keys for the proxy API server.'),
   logging: ServerLoggingAuthoringSchema.prefault({}).optional(),
+  otel: ServerOtelAuthoringSchema.prefault({}),
 });
 
 const ProviderInputValueSchema = z

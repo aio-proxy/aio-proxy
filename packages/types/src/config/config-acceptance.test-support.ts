@@ -6,6 +6,7 @@ export const defaultServer = {
   apiKeys: [],
   requireApiKey: false,
   logging: { enabled: false, retentionDays: 3, level: 'info' },
+  otel: { destinations: [] },
   retry: { retryAfterCapMs: 30_000 },
 } as const;
 

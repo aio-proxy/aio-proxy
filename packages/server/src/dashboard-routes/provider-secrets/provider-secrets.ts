@@ -30,8 +30,18 @@ const maskSecret = (key: string, value: string): string => {
   return value.replace(API_KEY_TEXT_PATTERN, '$1****$2');
 };
 
-export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = false): unknown => {
+export const redactSecrets = (
+  value: unknown,
+  key = '',
+  insideSecretBoundary = false,
+  inOtel = false,
+  inOtelDestinations = false,
+  inRootServer = false,
+): unknown => {
   if (typeof value === 'string') {
+    if (inOtelDestinations && key === 'url') {
+      return '****';
+    }
     return insideSecretBoundary ? '****' : maskSecret(key, value);
   }
 
@@ -44,18 +54,24 @@ export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = f
         );
       });
     }
-    return value.map((item) => redactSecrets(item, key, insideSecretBoundary));
+    const nextDestinations = inOtelDestinations || (inOtel && key === 'destinations');
+    return value.map((item) => redactSecrets(item, key, insideSecretBoundary, inOtel, nextDestinations));
   }
 
   if (isPlainObject(value)) {
     return mapValues(value, (entryValue, entryKey) => {
       const keyStr = typeof entryKey === 'string' ? entryKey : '';
+      const nextOtel = inOtel || (inRootServer && keyStr === 'otel');
+      const nextDestinations = inOtelDestinations || (nextOtel && keyStr === 'destinations');
       return redactSecrets(
         entryValue,
         keyStr,
         insideSecretBoundary ||
           keyStr.toLowerCase() === 'headers' ||
           ['proxy', 'proxybackup'].includes(keyStr.toLowerCase()),
+        nextOtel,
+        nextDestinations,
+        key === '' && keyStr === 'server',
       );
     });
   }
