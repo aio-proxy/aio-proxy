@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { providerPluginPresentationsQueryOptions } from '@/modules/providers/services/provider-plugin-labels';
-import { providersQueryOptions } from '@/modules/providers/services/providers-query';
+import { providerCatalogPluginsQueryOptions, providerCatalogQueryOptions } from '../services/provider-catalog';
 
-// The shared label is presentation-only. Traces is the module that reads the catalog.
+// Traces owns this read. The cache keys match the providers page, so a loaded catalog is reused.
 export const useProviderCatalog = () => {
-  const providers = useQuery(providersQueryOptions());
-  const plugins = useQuery(providerPluginPresentationsQueryOptions());
+  const providers = useQuery(providerCatalogQueryOptions());
+  const plugins = useQuery(providerCatalogPluginsQueryOptions());
   return { providers: providers.data?.providers, plugins: plugins.data?.plugins };
 };
