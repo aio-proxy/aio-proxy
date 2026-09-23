@@ -21,9 +21,9 @@ const pluginIconFor = (
 /**
  * A stored Provider ID rendered the way the providers page names that Provider:
  * configured name, otherwise the account label, otherwise the ID. The ID itself
- * stays on the hover title. `mark` draws the providers-page icon; trace detail
- * turns it off. Callers pass the catalog; a missing list or an ID that is no
- * longer in it stays as text.
+ * stays on the hover title. `mark` draws the providers-page icon; the trace
+ * list and trace detail leave it off. Callers pass the catalog; a missing list
+ * or an ID that is no longer in it stays as text.
  */
 export const ProviderIdLabel: React.FC<ProviderIdLabelProps> = ({
   providerId,

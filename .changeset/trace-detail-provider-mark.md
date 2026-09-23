@@ -3,4 +3,4 @@
 '@aio-proxy/dashboard': patch
 ---
 
-The trace detail header shows a Provider by its configured name, or account label, with the Provider ID on hover. It no longer draws the provider mark next to that name.
+The trace list and the trace detail header show a Provider by its configured name, or account label, with the Provider ID on hover. They no longer draw the provider mark next to that name.
