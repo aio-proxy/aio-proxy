@@ -471,6 +471,7 @@ test('documents sparse raw Responses JSON and SSE envelopes', async () => {
   expect(
     event.safeParse({ type: 'response.completed', response: { id: 'resp_raw', status: 'completed' } }).success,
   ).toBe(true);
+  expect(event.safeParse({ delta: 'a' }).success).toBe(true);
 });
 
 test('documents server-tool blocks in raw Anthropic responses', async () => {
@@ -536,6 +537,7 @@ test('documents raw chat completions without created or model fields', async () 
       choices: [{ index: 0, delta: { content: 'Hi' } }],
     }).success,
   ).toBe(true);
+  expect(fromJSONSchema(streamSchema!).safeParse({ choices: [{ delta: { content: 'hi' } }] }).success).toBe(true);
 });
 
 test('rejects invalid realtime call IDs in documented path and query parameters', async () => {

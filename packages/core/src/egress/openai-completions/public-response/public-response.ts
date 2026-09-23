@@ -67,7 +67,8 @@ export const OpenAICompletionsResponseSchema = z
 
 export const OpenAICompletionsStreamEventSchema = z
   .object({
-    id: z.string(),
+    // Raw chunks can omit the usual envelope, including id.
+    id: z.string().optional(),
     object: z.literal('chat.completion.chunk').optional(),
     created: z.number().int().optional(),
     model: z.string().optional(),
@@ -75,8 +76,8 @@ export const OpenAICompletionsStreamEventSchema = z
       z
         .object({
           delta: z.object({}).loose(),
-          index: z.number().int(),
-          // Intermediate raw chunks include delta and index and omit finish_reason until the terminal choice.
+          index: z.number().int().optional(),
+          // Intermediate raw chunks can omit finish_reason until the terminal choice.
           finish_reason: z.string().nullable().optional(),
         })
         .loose(),

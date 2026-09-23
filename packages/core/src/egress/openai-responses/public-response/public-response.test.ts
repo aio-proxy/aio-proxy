@@ -45,4 +45,5 @@ test('accepts sparse JSON and SSE responses forwarded by a raw provider', () => 
       response: { id: 'resp_raw', status: 'completed' },
     }),
   ).toEqual({ type: 'response.completed', response: { id: 'resp_raw', status: 'completed' } });
+  expect(OpenAIResponsesStreamEventSchema.parse({ delta: 'a' })).toEqual({ delta: 'a' });
 });

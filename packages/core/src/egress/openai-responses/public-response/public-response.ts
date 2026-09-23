@@ -53,7 +53,8 @@ export const OpenAIResponsesResponseSchema = z
 
 export const OpenAIResponsesStreamEventSchema = z
   .object({
-    type: z.string().min(1),
+    // The SSE event: line can carry the name, so the JSON payload may omit type.
+    type: z.string().min(1).optional(),
     sequence_number: z.number().int().nonnegative().optional(),
   })
   .loose()

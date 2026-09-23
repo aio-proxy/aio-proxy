@@ -68,10 +68,12 @@ test('accepts sparse raw chat choices and stream envelopes', () => {
     choices: [{ delta: { content: 'fallback' }, index: 0, finish_reason: null }],
   };
   const omittedFinish = { id: 'chatcmpl-2', choices: [{ delta: { content: 'Hi' }, index: 0 }] };
+  const idlessChunk = { choices: [{ delta: { content: 'hi' } }] };
 
   expect(OpenAICompletionsResponseSchema.parse(response)).toEqual(response);
   expect(OpenAICompletionsResponseSchema.parse(choicesOnly)).toEqual(choicesOnly);
   expect(OpenAICompletionsResponseSchema.parse(choiceLess)).toEqual(choiceLess);
   expect(OpenAICompletionsStreamEventSchema.parse(event)).toEqual(event);
   expect(OpenAICompletionsStreamEventSchema.parse(omittedFinish)).toEqual(omittedFinish);
+  expect(OpenAICompletionsStreamEventSchema.parse(idlessChunk)).toEqual(idlessChunk);
 });
