@@ -9,7 +9,8 @@ const usageSchema = z
 
 const contentBlockSchema = z
   .object({
-    type: z.enum(['text', 'thinking', 'tool_use']),
+    // Raw Anthropic responses can include server-tool and future provider block variants.
+    type: z.string().min(1),
   })
   .loose();
 

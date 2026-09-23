@@ -48,3 +48,9 @@ test('preserves provider extensions in chat completion stream events', () => {
 
   expect(OpenAICompletionsStreamEventSchema.parse(event)).toEqual(event);
 });
+
+test('accepts a raw chat completion without optional provider envelope fields', () => {
+  const response = { id: 'chatcmpl-upstream', object: 'chat.completion', choices: [] };
+
+  expect(OpenAICompletionsResponseSchema.parse(response)).toEqual(response);
+});

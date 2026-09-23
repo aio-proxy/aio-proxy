@@ -81,6 +81,15 @@ describe('loadPublicOpenApi', () => {
     ).toContainKey('text/event-stream');
   });
 
+  test('documents both anonymous and bearer-authenticated deployments', async () => {
+    const document = await loadPublicOpenApi();
+    const security = projectOperation(document, 'createChatCompletion').security;
+
+    expect(security).toContainEqual({});
+    expect(security).toContainEqual({ bearerAuth: [] });
+    expect(document.components?.securitySchemes?.bearerAuth).toMatchObject({ type: 'http', scheme: 'bearer' });
+  });
+
   test('emits request schemas that reject the same hidden wire constraints as runtime parsing', async () => {
     const invalidResponses = {
       model: 'gpt-test',
@@ -374,6 +383,61 @@ test('allows provider extensions throughout chat completion response schemas', a
   });
 });
 
+test('documents raw Responses tool items and incomplete lifecycle statuses', async () => {
+  const schema = (await loadPublicOpenApi()).paths['/v1/responses']?.post?.responses['200']?.content?.[
+    'application/json'
+  ]?.schema;
+  expect(schema).toBeDefined();
+  const response = fromJSONSchema(schema!);
+  const base = {
+    id: 'resp_1',
+    object: 'response',
+    created_at: 0,
+    model: 'gpt-test',
+    output_text: '',
+    output: [{ id: 'ws_1', type: 'web_search_call', status: 'completed' }],
+  };
+
+  for (const status of ['incomplete', 'queued', 'cancelled']) {
+    expect(response.safeParse({ ...base, status }).success).toBe(true);
+  }
+  expect(
+    response.safeParse({ ...base, status: 'completed', output: [{ id: 'p_1', type: 'provider_tool_result' }] }).success,
+  ).toBe(true);
+});
+
+test('documents server-tool blocks in raw Anthropic responses', async () => {
+  const schema = (await loadPublicOpenApi()).paths['/v1/messages']?.post?.responses['200']?.content?.[
+    'application/json'
+  ]?.schema;
+  expect(schema).toBeDefined();
+  const response = fromJSONSchema(schema!);
+  const raw = {
+    id: 'msg_1',
+    type: 'message',
+    role: 'assistant',
+    content: [
+      { type: 'server_tool_use', id: 'srvtool_1', name: 'web_search', input: { query: 'weather' } },
+      { type: 'web_search_tool_result', tool_use_id: 'srvtool_1', content: [] },
+    ],
+    model: 'claude-test',
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 1, output_tokens: 1 },
+  };
+
+  expect(response.safeParse(raw).success).toBe(true);
+});
+
+test('documents raw chat completions without created or model fields', async () => {
+  const schema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['200']?.content?.[
+    'application/json'
+  ]?.schema;
+  expect(schema).toBeDefined();
+  const response = fromJSONSchema(schema!);
+
+  expect(response.safeParse({ id: 'chatcmpl-upstream', object: 'chat.completion', choices: [] }).success).toBe(true);
+});
+
 test('rejects invalid realtime call IDs in documented path and query parameters', async () => {
   const paths = (await loadPublicOpenApi()).paths;
   const parameters = [
@@ -388,6 +452,16 @@ test('rejects invalid realtime call IDs in documented path and query parameters'
     expect(callId.test('call_1-A')).toBe(true);
     for (const invalid of ['', 'bad/id', 'a'.repeat(129)]) expect(callId.test(invalid)).toBe(false);
   }
+});
+
+test('caps the documented direct realtime model query at the runtime limit', async () => {
+  const parameters = (await loadPublicOpenApi()).paths['/v1/realtime']?.get?.parameters;
+  const model = parameters?.find((parameter) => parameter.name === 'model');
+  expect(model?.schema).toBeDefined();
+  const schema = fromJSONSchema(model!.schema);
+
+  expect(schema.safeParse('m'.repeat(128)).success).toBe(true);
+  expect(schema.safeParse('m'.repeat(129)).success).toBe(false);
 });
 
 test('keeps Gemini URL models out of required bodies and rejects unsupported embedding configuration', async () => {

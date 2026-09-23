@@ -3,7 +3,8 @@ import { z } from 'zod';
 const outputItemSchema = z
   .object({
     id: z.string(),
-    type: z.enum(['message', 'reasoning', 'function_call', 'custom_tool_call']),
+    // Matching-protocol providers can forward hosted-tool and provider-defined output items unchanged.
+    type: z.string().min(1),
     status: z.string().optional(),
   })
   .loose();
@@ -24,7 +25,7 @@ export const OpenAIResponsesResponseSchema = z
     model: z.string(),
     output: z.array(outputItemSchema),
     output_text: z.string(),
-    status: z.enum(['completed', 'failed', 'in_progress']),
+    status: z.enum(['completed', 'failed', 'in_progress', 'incomplete', 'queued', 'cancelled']),
     usage: usageSchema.optional(),
   })
   .loose()

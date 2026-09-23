@@ -318,7 +318,7 @@ function sourceDocument(): JsonObject {
     openapi: '3.1.0',
     info: { title: en.shared.apiTitle, version: 'latest' },
     tags: Object.entries(en.tags).map(([name, description]) => ({ name: description, 'x-tag-id': name })),
-    security: [{ bearerAuth: [] }],
+    security: [{}, { bearerAuth: [] }],
     paths,
     components: {
       securitySchemes: {

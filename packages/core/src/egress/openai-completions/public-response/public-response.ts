@@ -20,8 +20,9 @@ export const OpenAICompletionsResponseSchema = z
   .object({
     id: z.string(),
     object: z.literal('chat.completion'),
-    created: z.number().int(),
-    model: z.string(),
+    // Raw matching-protocol responses are forwarded even when these usual envelope fields are absent.
+    created: z.number().int().optional(),
+    model: z.string().optional(),
     choices: z.array(
       z
         .object({

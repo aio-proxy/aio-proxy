@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { REALTIME_CALL_ID_PATTERN } from '../../routes/realtime/errors';
+import { MAX_REALTIME_MODEL_LENGTH } from '../../routes/realtime/model';
 import {
   content,
   exampleSchema,
@@ -98,7 +99,10 @@ export const realtimeOperations = [
     responseVariants: websocketResponse,
   }),
   operation('get', '/v1/realtime', 'connectRealtime', 'connect-realtime', 'Realtime', 33, {
-    parameters: [parameter('call_id', 'query', callIdSchema), parameter('model', 'query')],
+    parameters: [
+      parameter('call_id', 'query', callIdSchema),
+      parameter('model', 'query', z.string().max(MAX_REALTIME_MODEL_LENGTH)),
+    ],
     responseVariants: websocketResponse,
   }),
 ];
