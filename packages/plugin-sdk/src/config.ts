@@ -17,11 +17,12 @@ type FormFieldBase<TType extends string> = {
 };
 
 export type FormField =
-  | (FormFieldBase<'text'> & { readonly placeholder?: LocalizedText })
+  | (FormFieldBase<'text'> & { readonly placeholder?: LocalizedText; readonly defaultValue?: string })
   | FormFieldBase<'secret'>
   | (FormFieldBase<'number'> & { readonly placeholder?: LocalizedText })
   | (FormFieldBase<'boolean'> & { readonly defaultValue?: boolean })
   | (FormFieldBase<'select'> & {
+      readonly defaultValue?: string | number | boolean;
       readonly options: readonly {
         readonly value: string | number | boolean;
         readonly label: LocalizedText;

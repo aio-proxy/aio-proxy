@@ -91,4 +91,33 @@ describe('renderConfigSpec', () => {
     expect((calls[3]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBeUndefined();
     expect((calls[4]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBe('{"safe":true}');
   });
+
+  test('prompts with a field default when the stored value is missing or incompatible', async () => {
+    const defaultsSpec = {
+      schema: zod.object({
+        text: zod.string(),
+        region: zod.enum(['us', 'eu']),
+      }),
+      form: [
+        { type: 'text', key: 'text', label: 'Text', defaultValue: 'codex-tui' },
+        {
+          type: 'select',
+          key: 'region',
+          label: 'Region',
+          defaultValue: 'eu',
+          options: [
+            { label: 'US', value: 'us' },
+            { label: 'EU', value: 'eu' },
+          ],
+        },
+      ],
+    } as const;
+    const calls: PromptCall[] = [];
+    await renderConfigSpec(defaultsSpec, {
+      prompts: prompts(['codex-tui', 'eu'], calls),
+      currentPublicValues: { text: 1, region: 'missing' },
+    });
+    expect((calls[0]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBe('codex-tui');
+    expect((calls[1]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBe('eu');
+  });
 });

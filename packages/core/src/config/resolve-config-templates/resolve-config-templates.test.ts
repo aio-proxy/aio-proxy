@@ -6,6 +6,18 @@ test('returns a plain string without templates unchanged', () => {
   expect(resolveConfigTemplates('plain string', {})).toBe('plain string');
 });
 
+test('resolves plugin environment values while preserving plugin-owned variables only in options', () => {
+  const config = { plugins: [['{{env.PLUGIN}}', { userAgent: '{{env.PREFIX}}/{{ latest_codex_rs_version }}' }]] };
+  expect(resolveConfigTemplates(config, { PLUGIN: '@example/plugin', PREFIX: 'codex-tui' })).toEqual({
+    plugins: [['@example/plugin', { userAgent: 'codex-tui/{{latest_codex_rs_version}}' }]],
+  });
+  expect(() => resolveConfigTemplates({ server: { host: '{{latest_codex_rs_version}}' } }, {})).toThrow();
+  expect(() => resolveConfigTemplates({ plugins: ['{{latest_codex_rs_version}}'] }, {})).toThrow();
+  expect(() =>
+    resolveConfigTemplates({ plugins: [['@example/plugin', { userAgent: '{{#if version}}yes{{/if}}' }]] }, {}),
+  ).toThrow();
+});
+
 test('interpolates a single {{env.NAME}} variable', () => {
   expect(resolveConfigTemplates('Bearer {{env.TOKEN}}', { TOKEN: 'secret' })).toBe('Bearer secret');
 });

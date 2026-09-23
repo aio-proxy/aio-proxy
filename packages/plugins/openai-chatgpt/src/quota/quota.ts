@@ -10,7 +10,7 @@ import {
 } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { type ChatGPTAccountOptions, resolveChatGPTUserAgent } from '../account-options';
+import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from '../plugin-options';
 import { currentCredential } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
 import { RESET_CREDITS_URL, USAGE_URL } from './endpoints';
@@ -21,15 +21,16 @@ const RESET_CREDITS_TIMEOUT_MS = 4_000;
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
 export async function readOpenAIChatGPTQuota(
-  context: AccountContext<ChatGPTCredential, Partial<ChatGPTAccountOptions>>,
+  context: AccountContext<ChatGPTCredential, Record<string, unknown>>,
   fetcher: RuntimeFetch = context.fetch ?? globalThis.fetch,
+  pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<OAuthQuotaSnapshot> {
   const credential = await currentCredential(context.credentials, fetcher);
   const headers = {
     Accept: 'application/json',
     Authorization: `Bearer ${credential.accessToken}`,
     'ChatGPT-Account-Id': credential.accountId,
-    'User-Agent': resolveChatGPTUserAgent(context.options, null),
+    'User-Agent': (await resolveChatGPTRequestIdentity(pluginOptions, null, fetcher)).userAgent,
   };
 
   const [usage, resetCredits] = await Promise.all([

@@ -6,11 +6,19 @@ interface OAuthAccountDraft {
   readonly clearSecrets: readonly string[];
 }
 
+/** Stored values win. Absent keys still count as the field default for `when`. */
+export const oauthFieldDefaults = (fields: readonly DashboardOAuthFormField[]): Readonly<Record<string, unknown>> =>
+  Object.fromEntries(
+    fields.flatMap((field) =>
+      'defaultValue' in field && field.defaultValue !== undefined ? [[field.key, field.defaultValue] as const] : [],
+    ),
+  );
+
 export const oauthAccountSubmission = (
   fields: readonly DashboardOAuthFormField[],
   draft: OAuthAccountDraft,
 ): OAuthAccountDraft => {
-  const combined = { ...draft.publicValues, ...draft.secrets };
+  const combined = { ...oauthFieldDefaults(fields), ...draft.publicValues, ...draft.secrets };
   const visible = fields.filter((field) => field.when === undefined || combined[field.when.key] === field.when.equals);
   const publicKeys = new Set(visible.filter((field) => field.type !== 'secret').map((field) => field.key));
   const secretKeys = new Set(visible.filter((field) => field.type === 'secret').map((field) => field.key));

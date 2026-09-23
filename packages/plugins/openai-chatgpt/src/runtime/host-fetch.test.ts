@@ -2,9 +2,11 @@ import { expect, test } from 'bun:test';
 
 import type { CredentialPort, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
+import { resetLatestCodexRsVersionCache } from '../plugin-options/codex-version';
 import type { ChatGPTCredential } from '../schema';
 
 test('routes the final ChatGPT request through the host fetch', async () => {
+  resetLatestCodexRsVersionCache();
   const originalFetch = globalThis.fetch;
   const clientId = Reflect.get(globalThis, '__AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__');
   const controlRequests: Request[] = [];
@@ -25,7 +27,7 @@ test('routes the final ChatGPT request through the host fetch', async () => {
         const request = new Request(input, init);
         if (traffic === 'control') {
           controlRequests.push(request);
-          throw new Error('unexpected control fetch');
+          return Response.json({ tag_name: 'rust-v9.9.9', name: '@openai/codex', version: '9.9.9' });
         }
         modelRequests.push(request);
         return Response.json({ ok: true });
@@ -46,14 +48,18 @@ test('routes the final ChatGPT request through the host fetch', async () => {
     restoreGlobal('__AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__', clientId);
   }
 
-  expect(controlRequests).toEqual([]);
+  expect(controlRequests.map((request) => new URL(request.url).hostname).sort()).toEqual([
+    'api.github.com',
+    'registry.npmjs.org',
+  ]);
+  expect(controlRequests.every((request) => !request.headers.has('authorization'))).toBe(true);
   expect(modelRequests).toHaveLength(1);
   const request = modelRequests[0];
   expect(request?.url).toBe('https://chatgpt.com/backend-api/codex/responses');
   expect(request?.headers.get('authorization')).toBe('Bearer access-token');
   expect(request?.headers.get('chatgpt-account-id')).toBe('acct-123');
   expect(request?.headers.get('originator')).toBe('codex-tui');
-  expect(request?.headers.get('user-agent')).toContain('codex-tui/');
+  expect(request?.headers.get('user-agent')).toContain('codex-tui/9.9.9');
   expect(request?.headers.get('host')).toBeNull();
 });
 

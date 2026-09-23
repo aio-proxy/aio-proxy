@@ -135,7 +135,7 @@ export function cloneInertJson<T>(value: T): T {
 export function compatibleDefault(field: FormField, current: unknown): unknown {
   switch (field.type) {
     case 'text':
-      return typeof current === 'string' ? current : undefined;
+      return typeof current === 'string' ? current : field.defaultValue;
     case 'secret':
       return current;
     case 'number':
@@ -143,7 +143,10 @@ export function compatibleDefault(field: FormField, current: unknown): unknown {
     case 'boolean':
       return typeof current === 'boolean' ? current : field.defaultValue;
     case 'select':
-      return field.options.some((option) => option.value === current) ? current : undefined;
+      if (field.options.some((option) => option.value === current)) return current;
+      return field.defaultValue !== undefined && field.options.some((option) => option.value === field.defaultValue)
+        ? field.defaultValue
+        : undefined;
     case 'json':
       return jsonSafe(current) ? current : field.defaultValue;
   }

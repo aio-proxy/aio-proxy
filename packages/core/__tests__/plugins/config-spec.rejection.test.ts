@@ -51,6 +51,19 @@ describe('validateConfigSpec', () => {
       ],
     ],
     ['non-JSON default', [{ type: 'json', key: 'value', label: 'Value', defaultValue: BigInt(1) }]],
+    ['non-string text default', [{ type: 'text', key: 'name', label: 'Name', defaultValue: 1 }]],
+    [
+      'select default outside its options',
+      [
+        {
+          type: 'select',
+          key: 'mode',
+          label: 'Mode',
+          defaultValue: 'missing',
+          options: [{ value: 'fast', label: 'Fast' }],
+        },
+      ],
+    ],
     ['unknown field type', [{ type: 'file', key: 'path', label: 'Path' }]],
   ])('rejects %s', (_name, form) => {
     expect(() => validateConfigSpec({ schema, form })).toThrow();

@@ -3,22 +3,24 @@ import { expect, test } from 'bun:test';
 import type { CredentialPort, OAuthAdapter, PluginDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import openAIChatGPTPlugin from '..';
-import type { ChatGPTAccountOptions } from '../account-options';
+import type { ChatGPTPluginOptions } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
 
 async function adapterFrom(
-  descriptor: PluginDescriptor<undefined>,
-): Promise<OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential>> {
-  let registered: OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential> | undefined;
+  descriptor: PluginDescriptor<ChatGPTPluginOptions>,
+): Promise<OAuthAdapter<Record<string, unknown>, ChatGPTCredential>> {
+  let registered: OAuthAdapter<Record<string, unknown>, ChatGPTCredential> | undefined;
+  const options = descriptor.metadata.options?.schema.parse({});
+  if (options === undefined) throw new Error('ChatGPT plugin options are missing');
   await descriptor.setup(
     {
       oauth: {
         register(adapter) {
-          registered = adapter as unknown as OAuthAdapter<Partial<ChatGPTAccountOptions>, ChatGPTCredential>;
+          registered = adapter as unknown as OAuthAdapter<Record<string, unknown>, ChatGPTCredential>;
         },
       },
     },
-    undefined,
+    options,
   );
   if (registered === undefined) throw new Error('OpenAI ChatGPT OAuth adapter was not registered');
   return registered;

@@ -28,11 +28,11 @@ export function findPluginEntry(
   packageName: string,
 ): { readonly entry: unknown; readonly index: number } | undefined {
   const entries = pluginEntries(config);
-  const resolved = resolveConfigTemplates(entries);
-  if (!Array.isArray(resolved)) return undefined;
   const target = normalizedPackageName(packageName);
   if (target === undefined) return undefined;
-  const index = resolved.findIndex((entry) => normalizedPackageName(packageNameOf(entry)) === target);
+  const index = entries.findIndex(
+    (entry) => normalizedPackageName(resolveConfigTemplates(packageNameOf(entry))) === target,
+  );
   return index < 0 ? undefined : { entry: entries[index], index };
 }
 
