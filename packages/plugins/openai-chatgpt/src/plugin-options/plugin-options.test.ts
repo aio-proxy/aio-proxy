@@ -23,12 +23,58 @@ test('defaults a blank user agent to the Codex template and rejects a header-inv
   await expect(options.schema.parseAsync({})).resolves.toEqual({
     userAgent: DEFAULT_CHATGPT_USER_AGENT,
     userAgentPolicy: 'fixed',
+    guardianStrategy: 'default',
   });
   await expect(options.schema.parseAsync({ userAgent: '   ' })).resolves.toMatchObject({
     userAgent: DEFAULT_CHATGPT_USER_AGENT,
   });
   await expect(options.schema.parseAsync({ userAgent: 'bad\nagent' })).rejects.toThrow();
-  expect(options.form.map((field) => field.key)).toEqual(['userAgent', 'userAgentPolicy']);
+  expect(options.form.map((field) => field.key)).toEqual([
+    'userAgent',
+    'userAgentPolicy',
+    'guardianStrategy',
+    'guardianProviderId',
+    'guardianModelId',
+  ]);
+});
+
+test.each(['systemOne', 'systemOneReviewDenied'] as const)(
+  '%s requires an evaluation Provider and model',
+  async (guardianStrategy) => {
+    const spec = chatGPTPluginOptions(englishPluginOptionsText);
+    await expect(
+      spec.schema.parseAsync({ guardianStrategy, guardianProviderId: ' p ', guardianModelId: ' m ' }),
+    ).resolves.toMatchObject({ guardianStrategy, guardianProviderId: 'p', guardianModelId: 'm' });
+    for (const missing of [
+      {},
+      { guardianProviderId: 'p' },
+      { guardianModelId: 'm' },
+      { guardianProviderId: '  ', guardianModelId: 'm' },
+      { guardianProviderId: 'p', guardianModelId: '  ' },
+    ]) {
+      await expect(spec.schema.parseAsync({ guardianStrategy, ...missing })).rejects.toThrow();
+    }
+  },
+);
+
+test('default strategy retains a saved target but does not require one', async () => {
+  const spec = chatGPTPluginOptions(englishPluginOptionsText);
+  await expect(
+    spec.schema.parseAsync({ guardianStrategy: 'default', guardianProviderId: 'p', guardianModelId: 'm' }),
+  ).resolves.toMatchObject({ guardianStrategy: 'default', guardianProviderId: 'p', guardianModelId: 'm' });
+  const [strategy, provider, model] = spec.form.slice(2);
+  expect(strategy).toMatchObject({ type: 'select', key: 'guardianStrategy', defaultValue: 'default' });
+  expect(provider).toMatchObject({
+    type: 'provider',
+    key: 'guardianProviderId',
+    when: { key: 'guardianStrategy', notEquals: 'default' },
+  });
+  expect(model).toMatchObject({
+    type: 'provider-model',
+    key: 'guardianModelId',
+    providerKey: 'guardianProviderId',
+    when: { key: 'guardianStrategy', notEquals: 'default' },
+  });
 });
 
 test('fills the latest Codex release into the user agent and catalog client version', async () => {

@@ -5,6 +5,7 @@ import type { CredentialPort, OAuthAdapter, PluginDescriptor, RuntimeFetch } fro
 import openAIChatGPTPlugin from '..';
 import type { ChatGPTPluginOptions } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
+import { createOpenAIChatGPTPlugin, englishPresentationText } from './plugin';
 
 async function adapterFrom(
   descriptor: PluginDescriptor<ChatGPTPluginOptions>,
@@ -71,4 +72,21 @@ test('discovery exposes ChatGPT image models alongside the language catalog', as
       output: ['image'],
     });
   }
+});
+
+test('Guardian strategy is a plugin setting, outside account options', async () => {
+  const descriptor = createOpenAIChatGPTPlugin(englishPresentationText);
+  const saved = await descriptor.metadata.options?.schema.parseAsync({
+    guardianStrategy: 'systemOne',
+    guardianProviderId: 'evaluation',
+    guardianModelId: 'system-one',
+  });
+  expect(saved).toMatchObject({
+    guardianStrategy: 'systemOne',
+    guardianProviderId: 'evaluation',
+    guardianModelId: 'system-one',
+  });
+  const adapter = await adapterFrom(descriptor);
+  expect(adapter.account.options.form).toEqual([]);
+  expect(adapter.account.options.schema.parse({ guardianStrategy: 'systemOne' })).toEqual({});
 });
