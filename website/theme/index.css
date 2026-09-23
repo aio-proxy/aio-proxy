@@ -2,16 +2,6 @@
 
 @source "../docs";
 
-.api-method-get {
-  color: #15803d;
-  background-color: #dcfce7;
-}
-
-html.dark .api-method-get {
-  color: #4ade80;
-  background-color: #143524;
-}
-
 /* Example brand color overrides for the custom theme scaffold. */
 /* For more CSS variables, see https://rspress.rs/ui/vars. */
 :root {
