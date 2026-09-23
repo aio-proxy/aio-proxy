@@ -127,6 +127,31 @@ describe('loadPublicOpenApi', () => {
     expect(messagesSchema.safeParse(invalidThinking).success).toBe(false);
   });
 
+  test('preserves accepted Responses image detail hints', async () => {
+    const request = {
+      model: 'gpt-test',
+      input: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_image',
+              image_url: 'https://example.com/image.png',
+              detail: 'original',
+            },
+          ],
+        },
+      ],
+    };
+    const responsesSchema = await operationSchema('createResponse');
+    const detail = responsesSchema.properties?.input?.anyOf?.[1]?.items?.anyOf?.[0]?.properties?.content?.anyOf?.[1]
+      ?.items?.anyOf?.[1]?.properties?.detail as Record<string, unknown> | undefined;
+
+    expect(OpenAIResponsesRequestSchema.safeParse(request).success).toBe(true);
+    expect(detail?.type).toBe('string');
+    expect(detail?.enum).toBeUndefined();
+  });
+
   test('matches runtime validation at Anthropic image base64 and URL boundaries', async () => {
     const messagesSchema = fromJSONSchema(await operationSchema('createMessage'));
     const request = (source: Record<string, unknown>) => ({

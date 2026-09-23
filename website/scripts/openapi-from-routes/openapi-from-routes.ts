@@ -203,6 +203,10 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
           ]);
         } else if (zodSchema === openAIResponsesInputImagePartSchema) {
           target.oneOf = [{ required: ['image_url'] }, { required: ['file_id'] }];
+          const properties = target.properties as JsonObject | undefined;
+          if (properties?.detail !== undefined) {
+            delete (properties.detail as JsonObject).enum;
+          }
         } else if (zodSchema === AnthropicToolResultBlockSchema) {
           const required = Array.isArray(target.required) ? target.required : [];
           target.required = [...new Set([...required, 'tool_use_id'])];
