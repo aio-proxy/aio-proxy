@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.32.0
+
+### Patch Changes
+
+- [#417](https://github.com/aio-proxy/aio-proxy/pull/417) [`2a7f9c0`](https://github.com/aio-proxy/aio-proxy/commit/2a7f9c0bdd5f2a8528659fd2b5d41914ea9d5d8c) Thanks [@baranwang](https://github.com/baranwang)! - Show OAuth service names alongside account labels in the trace list, so requests using the same email can be distinguished by their upstream provider.
+- Updated dependencies [[`af0b53f`](https://github.com/aio-proxy/aio-proxy/commit/af0b53fe8acabc74a15818dbce1847ed3510554a), [`80983cd`](https://github.com/aio-proxy/aio-proxy/commit/80983cdb7dcf9368388c5d9cc9b86ceea3b6322f)]:
+  - @aio-proxy/server@0.32.0
+  - @aio-proxy/brand@0.32.0
+  - @aio-proxy/i18n@0.32.0
+  - @aio-proxy/plugin-sdk@0.32.0
+  - @aio-proxy/types@0.32.0
+  - @aio-proxy/ui@0.32.0
+
 ## 0.31.0
 
 ### Patch Changes
