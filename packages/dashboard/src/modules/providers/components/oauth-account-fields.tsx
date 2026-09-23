@@ -2,6 +2,7 @@ import type { DashboardOAuthFormField } from '@aio-proxy/types';
 import type { AnyFieldApi } from '@tanstack/react-form';
 
 import type { OAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import { oauthFieldDefaults } from '../lib/oauth-account-submission';
 import { OAuthAccountField } from './oauth-account-field';
 
 interface OAuthAccountFieldsProps {
@@ -17,7 +18,11 @@ export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, 
         {(secretField: AnyFieldApi) => (
           <form.Field name="jsonValues">
             {(jsonField: AnyFieldApi) => {
-              const combined = { ...publicField.state.value, ...secretField.state.value };
+              const combined = {
+                ...oauthFieldDefaults(fields),
+                ...publicField.state.value,
+                ...secretField.state.value,
+              };
               return (
                 <div className="space-y-4">
                   {fields.map((field) => (

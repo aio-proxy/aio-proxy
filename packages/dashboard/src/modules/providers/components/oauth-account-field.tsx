@@ -79,15 +79,16 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
     );
   }
   if (field.type === 'select') {
+    const selected = current === undefined ? field.defaultValue : current;
     const optionLabel = (value: string | null) => {
-      const selected = field.options.find((option) => optionValue(option.value) === value);
-      return selected === undefined ? selectPlaceholder() : resolveDashboardText(selected.label);
+      const match = field.options.find((option) => optionValue(option.value) === value);
+      return match === undefined ? selectPlaceholder() : resolveDashboardText(match.label);
     };
     return (
       <Field>
         <Label htmlFor={controlId}>{label}</Label>
         <Select
-          value={current === undefined ? '' : optionValue(current as string | number | boolean)}
+          value={selected === undefined ? '' : optionValue(selected as string | number | boolean)}
           disabled={locked}
           onValueChange={(value) => setPublic(value === null ? undefined : JSON.parse(value))}
         >
@@ -139,6 +140,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
       </Field>
     );
   }
+  const displayed = current === undefined && field.type === 'text' ? field.defaultValue : current;
   return (
     <Field>
       <Label htmlFor={controlId}>{label}</Label>
@@ -146,7 +148,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
         id={controlId}
         aria-describedby={descriptionId}
         type={field.type === 'number' ? 'number' : 'text'}
-        value={typeof current === 'string' || typeof current === 'number' ? current : ''}
+        value={typeof displayed === 'string' || typeof displayed === 'number' ? displayed : ''}
         disabled={locked}
         placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
         onChange={(event) => {

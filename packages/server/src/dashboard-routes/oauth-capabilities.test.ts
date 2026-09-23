@@ -22,7 +22,17 @@ test('GET /oauth/capabilities returns loaded OAuth adapters without schemas or s
         options: {
           schema: zod.object({ deployment: zod.string().default('public'), token: zod.string().optional() }),
           form: [
-            { type: 'text', key: 'deployment', label: 'Deployment' },
+            { type: 'text', key: 'deployment', label: 'Deployment', defaultValue: 'public' },
+            {
+              type: 'select',
+              key: 'region',
+              label: 'Region',
+              defaultValue: 'eu',
+              options: [
+                { value: 'us', label: 'US' },
+                { value: 'eu', label: 'EU' },
+              ],
+            },
             { type: 'secret', key: 'token', label: 'Token' },
           ],
         },
@@ -59,9 +69,19 @@ test('GET /oauth/capabilities returns loaded OAuth adapters without schemas or s
           capability: 'default',
           displayName: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
           description: 'Example account',
-          defaults: {},
+          defaults: { deployment: 'public', region: 'eu' },
           form: [
-            { type: 'text', key: 'deployment', label: 'Deployment' },
+            { type: 'text', key: 'deployment', label: 'Deployment', defaultValue: 'public' },
+            {
+              type: 'select',
+              key: 'region',
+              label: 'Region',
+              defaultValue: 'eu',
+              options: [
+                { value: 'us', label: 'US' },
+                { value: 'eu', label: 'EU' },
+              ],
+            },
             { type: 'secret', key: 'token', label: 'Token', configured: false },
           ],
         },

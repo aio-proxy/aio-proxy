@@ -87,6 +87,55 @@ describe('OAuthAccountField', () => {
     expect(trigger.textContent).not.toContain('"');
   });
 
+  test('shows text and select defaults, and a condition that depends on the select default', () => {
+    render(
+      <Harness
+        fields={[
+          { type: 'text', key: 'tenant', label: 'Tenant', defaultValue: 'acme' },
+          {
+            type: 'select',
+            key: 'host',
+            label: 'Host',
+            defaultValue: 'github.com',
+            options: [
+              { value: 'github.com', label: 'GitHub' },
+              { value: 'ghe.internal', label: 'Enterprise' },
+            ],
+          },
+          { type: 'text', key: 'org', label: 'Org', when: { key: 'host', equals: 'github.com' } },
+        ]}
+      />,
+    );
+
+    expect(screen.getByLabelText('Tenant')).toHaveValue('acme');
+    expect(screen.getByLabelText('Host').textContent).toContain('GitHub');
+    expect(screen.getByLabelText('Org')).toBeInTheDocument();
+  });
+
+  test('a stored select value overrides its default for conditions', () => {
+    render(
+      <Harness
+        fields={[
+          {
+            type: 'select',
+            key: 'host',
+            label: 'Host',
+            defaultValue: 'github.com',
+            options: [
+              { value: 'github.com', label: 'GitHub' },
+              { value: 'ghe.internal', label: 'Enterprise' },
+            ],
+          },
+          { type: 'text', key: 'org', label: 'Org', when: { key: 'host', equals: 'github.com' } },
+        ]}
+        initialPublic={{ host: 'ghe.internal' }}
+      />,
+    );
+
+    expect(screen.getByLabelText('Host').textContent).toContain('Enterprise');
+    expect(screen.queryByLabelText('Org')).not.toBeInTheDocument();
+  });
+
   test('shows the localized placeholder when nothing is selected', () => {
     const [selectVariant] = variants.filter((variant) => variant.name === 'select');
     render(<Harness fields={[selectVariant!.field]} />);
