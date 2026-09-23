@@ -39,6 +39,7 @@
                   "file": {
                     "description": "Binary bytes, not a JSON string.",
                     "format": "binary",
+                    "minLength": 1,
                     "type": "string"
                   },
                   "language": {

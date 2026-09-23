@@ -31,7 +31,17 @@
         ],
         "responses": {
           "2XX": {
-            "description": "Upstream deletion response is forwarded; its body and status depend on the provider."
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream deletion response is forwarded; its status and optional body depend on the provider."
           }
         },
         "summary": "Delete a video",

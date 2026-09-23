@@ -47,7 +47,11 @@ const videoResponses = [
   },
 ];
 const videoParams = [parameter('video_id', 'path', z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u))];
-const transcriptionRequest = OpenAITranscriptionFieldsSchema.extend({ file: binary });
+const nonBlankVideoPrompt = z.string().regex(/\S/u);
+const videoCreateRequest = OpenAIVideoCreateInputSchema.safeExtend({ prompt: nonBlankVideoPrompt });
+const videoEditRequest = OpenAIVideoEditInputSchema.safeExtend({ prompt: nonBlankVideoPrompt });
+const videoRemixRequest = OpenAIVideoRemixInputSchema.safeExtend({ prompt: nonBlankVideoPrompt });
+const transcriptionRequest = OpenAITranscriptionFieldsSchema.extend({ file: binary.min(1) });
 const transcript = jsonContent(exampleSchema(z.object({ text: z.string() }).loose(), { text: 'Hello.' }));
 const inputValue = z.union([z.string(), z.array(z.unknown()), z.record(z.string(), z.unknown())]);
 
@@ -141,6 +145,11 @@ export const mediaOperations = [
     responseVariants: ok(
       content('audio/mpeg', binary),
       content('audio/wav', binary),
+      content('audio/opus', binary),
+      content('audio/flac', binary),
+      content('audio/aac', binary),
+      content('audio/pcm', binary),
+      content('audio/*', binary),
       content('application/octet-stream', binary),
       upstreamStream,
     ),
@@ -181,11 +190,11 @@ export const mediaOperations = [
   operation('post', '/v1/videos', 'createVideo', 'create-video', 'OpenAI', 20, {
     requestVariants: [
       jsonContent(
-        exampleSchema(OpenAIVideoCreateInputSchema, { model: 'sora-2', prompt: 'A red apple rotating.', seconds: '4' }),
+        exampleSchema(videoCreateRequest, { model: 'sora-2', prompt: 'A red apple rotating.', seconds: '4' }),
       ),
       content(
         'multipart/form-data',
-        exampleSchema(OpenAIVideoCreateInputSchema.extend({ input_reference: binary.optional() }), {
+        exampleSchema(videoCreateRequest.extend({ input_reference: binary.optional() }), {
           model: 'sora-2',
           prompt: 'A red apple rotating.',
         }),
@@ -204,7 +213,7 @@ export const mediaOperations = [
       {
         requestVariants: [
           jsonContent(
-            exampleSchema(OpenAIVideoEditInputSchema, {
+            exampleSchema(videoEditRequest, {
               prompt: 'Continue the scene.',
               video: { id: 'video_example' },
             }),
@@ -217,7 +226,7 @@ export const mediaOperations = [
   operation('post', '/v1/videos/{video_id}/remix', 'remixVideo', 'remix-video', 'OpenAI', 23, {
     routePath: '/v1/videos/:video_id/remix',
     parameters: videoParams,
-    requestVariants: [jsonContent(exampleSchema(OpenAIVideoRemixInputSchema, { prompt: 'Make it brighter.' }))],
+    requestVariants: [jsonContent(exampleSchema(videoRemixRequest, { prompt: 'Make it brighter.' }))],
     responseVariants: videoResponses,
   }),
   operation('get', '/v1/videos/{video_id}', 'retrieveVideo', 'retrieve-video', 'OpenAI', 24, {
@@ -236,7 +245,8 @@ export const mediaOperations = [
     responseVariants: [
       {
         status: '2XX',
-        description: 'Upstream deletion response is forwarded; its body and status depend on the provider.',
+        description: 'Upstream deletion response is forwarded; its status and optional body depend on the provider.',
+        content: [content('*/*', binary)],
       },
     ],
   }),

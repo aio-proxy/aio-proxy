@@ -68,6 +68,7 @@
                     "type": ["string", "null"]
                   },
                   "prompt": {
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "seconds": {
@@ -104,6 +105,7 @@
                     "type": ["string", "null"]
                   },
                   "prompt": {
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "seconds": {

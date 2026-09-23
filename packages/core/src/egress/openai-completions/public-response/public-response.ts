@@ -8,11 +8,13 @@ const usageSchema = z
   })
   .loose();
 
-const toolCallSchema = z.object({
-  id: z.string(),
-  type: z.literal('function'),
-  function: z.object({ name: z.string(), arguments: z.string() }),
-});
+const toolCallSchema = z
+  .object({
+    id: z.string(),
+    type: z.literal('function'),
+    function: z.object({ name: z.string(), arguments: z.string() }).loose(),
+  })
+  .loose();
 
 export const OpenAICompletionsResponseSchema = z
   .object({
@@ -21,20 +23,25 @@ export const OpenAICompletionsResponseSchema = z
     created: z.number().int(),
     model: z.string(),
     choices: z.array(
-      z.object({
-        finish_reason: z.string(),
-        index: z.number().int(),
-        logprobs: z.unknown().nullable(),
-        message: z.object({
-          role: z.literal('assistant'),
-          content: z.string().nullable(),
-          refusal: z.string().nullable(),
-          tool_calls: z.array(toolCallSchema).optional(),
-        }),
-      }),
+      z
+        .object({
+          finish_reason: z.string(),
+          index: z.number().int(),
+          logprobs: z.unknown().nullable(),
+          message: z
+            .object({
+              role: z.literal('assistant'),
+              content: z.string().nullable(),
+              refusal: z.string().nullable(),
+              tool_calls: z.array(toolCallSchema).optional(),
+            })
+            .loose(),
+        })
+        .loose(),
     ),
     usage: usageSchema.optional(),
   })
+  .loose()
   .meta({
     examples: [
       {
@@ -61,14 +68,17 @@ export const OpenAICompletionsStreamEventSchema = z
     created: z.number().int(),
     model: z.string(),
     choices: z.array(
-      z.object({
-        delta: z.object({}).loose(),
-        index: z.number().int(),
-        finish_reason: z.string().nullable(),
-      }),
+      z
+        .object({
+          delta: z.object({}).loose(),
+          index: z.number().int(),
+          finish_reason: z.string().nullable(),
+        })
+        .loose(),
     ),
     usage: usageSchema.optional(),
   })
+  .loose()
   .meta({
     examples: [
       {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { REALTIME_CALL_ID_PATTERN } from '../../routes/realtime/errors';
 import {
   content,
   exampleSchema,
@@ -11,7 +12,8 @@ import {
 } from './documentation-content';
 
 const offer = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
-const callParameter = parameter('call_id', 'path');
+const callIdSchema = z.string().regex(REALTIME_CALL_ID_PATTERN);
+const callParameter = parameter('call_id', 'path', callIdSchema);
 const websocketResponse = [
   {
     status: '101',
@@ -96,7 +98,7 @@ export const realtimeOperations = [
     responseVariants: websocketResponse,
   }),
   operation('get', '/v1/realtime', 'connectRealtime', 'connect-realtime', 'Realtime', 33, {
-    parameters: [parameter('call_id', 'query'), parameter('model', 'query')],
+    parameters: [parameter('call_id', 'query', callIdSchema), parameter('model', 'query')],
     responseVariants: websocketResponse,
   }),
 ];

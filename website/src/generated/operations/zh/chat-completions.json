@@ -371,7 +371,7 @@
               "application/json": {
                 "schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "additionalProperties": false,
+                  "additionalProperties": {},
                   "examples": [
                     {
                       "choices": [
@@ -395,7 +395,7 @@
                   "properties": {
                     "choices": {
                       "items": {
-                        "additionalProperties": false,
+                        "additionalProperties": {},
                         "properties": {
                           "finish_reason": {
                             "type": "string"
@@ -414,7 +414,7 @@
                             ]
                           },
                           "message": {
-                            "additionalProperties": false,
+                            "additionalProperties": {},
                             "properties": {
                               "content": {
                                 "type": ["string", "null"]
@@ -428,10 +428,10 @@
                               },
                               "tool_calls": {
                                 "items": {
-                                  "additionalProperties": false,
+                                  "additionalProperties": {},
                                   "properties": {
                                     "function": {
-                                      "additionalProperties": false,
+                                      "additionalProperties": {},
                                       "properties": {
                                         "arguments": {
                                           "type": "string"
@@ -512,7 +512,7 @@
                 "example": "data: {\"id\":\"chatcmpl-example\",\"object\":\"chat.completion.chunk\",\"created\":0,\"model\":\"gpt-5\",\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"index\":0,\"finish_reason\":null}]}\n\ndata: [DONE]\n\n",
                 "schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "additionalProperties": false,
+                  "additionalProperties": {},
                   "examples": [
                     {
                       "choices": [
@@ -533,7 +533,7 @@
                   "properties": {
                     "choices": {
                       "items": {
-                        "additionalProperties": false,
+                        "additionalProperties": {},
                         "properties": {
                           "delta": {
                             "additionalProperties": {},

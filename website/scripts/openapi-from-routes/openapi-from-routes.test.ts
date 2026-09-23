@@ -296,6 +296,100 @@ test('publishes binary, multipart, parameterized and WebSocket operations withou
   }
 });
 
+test('documents speech binary media types returned by conversion and raw passthrough', async () => {
+  const content = (await loadPublicOpenApi()).paths['/v1/audio/speech']?.post?.responses['200']?.content;
+  expect(content).toContainKeys([
+    'audio/mpeg',
+    'audio/wav',
+    'audio/opus',
+    'audio/flac',
+    'audio/aac',
+    'audio/pcm',
+    'audio/*',
+    'application/octet-stream',
+  ]);
+});
+
+test('rejects blank video prompts in every documented request representation', async () => {
+  const paths = (await loadPublicOpenApi()).paths;
+  const requests = [
+    ['/v1/videos', 'application/json', { model: 'sora-2' }],
+    ['/v1/videos', 'multipart/form-data', { model: 'sora-2' }],
+    ['/v1/videos/edits', 'application/json', { video: { id: 'video_1' } }],
+    ['/v1/videos/extensions', 'application/json', { video: { id: 'video_1' } }],
+    ['/v1/videos/{video_id}/remix', 'application/json', {}],
+  ] as const;
+  for (const [path, contentType, fields] of requests) {
+    const schema = paths[path]?.post?.requestBody?.content[contentType]?.schema;
+    expect(schema).toBeDefined();
+    const request = fromJSONSchema(schema!);
+    expect(request.safeParse({ ...fields, prompt: 'A moving landscape.' }).success).toBe(true);
+    for (const prompt of ['', ' \t\n']) {
+      expect(request.safeParse({ ...fields, prompt }).success).toBe(false);
+    }
+  }
+});
+
+test('requires a nonempty binary file in both audio multipart operations', async () => {
+  const paths = (await loadPublicOpenApi()).paths;
+  for (const action of ['transcriptions', 'translations']) {
+    const file =
+      paths[`/v1/audio/${action}`]?.post?.requestBody?.content['multipart/form-data']?.schema.properties?.file;
+    expect(file?.format).toBe('binary');
+    expect(file?.minLength).toBe(1);
+  }
+});
+
+test('documents the optional provider-defined body of a successful video deletion', async () => {
+  const response = (await loadPublicOpenApi()).paths['/v1/videos/{video_id}']?.delete?.responses['2XX'];
+  expect(response?.description).toContain('body');
+  expect(response?.content?.['*/*']?.schema.format).toBe('binary');
+});
+
+test('allows provider extensions throughout chat completion response schemas', async () => {
+  const responses = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['200']?.content;
+  expect(responses?.['application/json']?.schema).toMatchObject({
+    additionalProperties: {},
+    properties: {
+      choices: {
+        items: {
+          additionalProperties: {},
+          properties: {
+            message: {
+              additionalProperties: {},
+              properties: {
+                tool_calls: {
+                  items: { additionalProperties: {}, properties: { function: { additionalProperties: {} } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  expect(responses?.['text/event-stream']?.schema).toMatchObject({
+    additionalProperties: {},
+    properties: { choices: { items: { additionalProperties: {} } } },
+  });
+});
+
+test('rejects invalid realtime call IDs in documented path and query parameters', async () => {
+  const paths = (await loadPublicOpenApi()).paths;
+  const parameters = [
+    paths['/v1/realtime/calls/{call_id}/hangup']?.post?.parameters?.[0],
+    paths['/v1/live/{call_id}']?.get?.parameters?.[0],
+    paths['/v1/realtime']?.get?.parameters?.find((parameter) => parameter.name === 'call_id'),
+  ];
+  for (const parameter of parameters) {
+    const pattern = parameter?.schema?.pattern;
+    expect(pattern).toBeString();
+    const callId = new RegExp(pattern!);
+    expect(callId.test('call_1-A')).toBe(true);
+    for (const invalid of ['', 'bad/id', 'a'.repeat(129)]) expect(callId.test(invalid)).toBe(false);
+  }
+});
+
 test('keeps Gemini URL models out of required bodies and rejects unsupported embedding configuration', async () => {
   const generation = fromJSONSchema(await operationSchema('generateContent'));
   expect(generation.safeParse({ contents: [{ parts: [{ text: 'Hello.' }] }] }).success).toBe(true);

@@ -77,7 +77,47 @@
                   "type": "string"
                 }
               },
+              "audio/*": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/aac": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/flac": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
               "audio/mpeg": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/opus": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/pcm": {
                 "schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
                   "description": "Binary bytes, not a JSON string.",
