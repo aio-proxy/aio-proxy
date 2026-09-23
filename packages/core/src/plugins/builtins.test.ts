@@ -167,7 +167,7 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   const chatgptForm = chatgptPlugin?.descriptor.metadata.options?.form ?? [];
   expect(chatgpt?.account.options.form).toEqual([]);
   expect(snapshot.plugins.get('@aio-proxy/plugin-openai-chatgpt')?.hasOptions).toBe(true);
-  expect(resolveLocalizedText(chatgptForm[0]?.label ?? '', 'zh-Hans')).toBe('User agent');
-  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'en')).toBe('User agent policy');
-  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'zh-Hans')).toBe('User agent 策略');
+  expect(resolveLocalizedText(chatgptForm[0]?.label ?? '', 'zh-Hans')).toBe('User-Agent');
+  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'en')).toBe('User-Agent policy');
+  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'zh-Hans')).toBe('User-Agent 策略');
 });

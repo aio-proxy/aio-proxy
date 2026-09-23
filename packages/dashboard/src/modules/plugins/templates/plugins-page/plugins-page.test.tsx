@@ -267,11 +267,11 @@ test.each([
     revision: 'sha256:current',
     publicValues,
     form: [
-      { defaultValue: 'codex-tui/{{latest_codex_rs_version}}', key: 'userAgent', label: 'User agent', type: 'text' },
+      { defaultValue: 'codex-tui/{{latest_codex_rs_version}}', key: 'userAgent', label: 'User-Agent', type: 'text' },
       {
         defaultValue: 'fixed',
         key: 'userAgentPolicy',
-        label: 'User agent policy',
+        label: 'User-Agent policy',
         options: [
           { label: 'Fixed', value: 'fixed' },
           { label: 'Preserve', value: 'preserve' },
@@ -284,8 +284,8 @@ test.each([
   render(<PluginsPage />);
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
-  expect(await screen.findByLabelText('User agent')).toHaveValue('codex-tui/{{latest_codex_rs_version}}');
-  expect(screen.getByRole('combobox', { name: 'User agent policy' })).toHaveTextContent(selectedLabel);
+  expect(await screen.findByLabelText('User-Agent')).toHaveValue('codex-tui/{{latest_codex_rs_version}}');
+  expect(screen.getByRole('combobox', { name: 'User-Agent policy' })).toHaveTextContent(selectedLabel);
   fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
 
   await waitFor(() => {

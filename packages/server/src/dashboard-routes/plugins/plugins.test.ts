@@ -249,7 +249,7 @@ describe.serial('Dashboard plugin control plane', () => {
       {
         options: {
           schema: z.object({ userAgent: z.string().startsWith('codex-tui/') }),
-          form: [{ type: 'text', key: 'userAgent', label: 'User agent' }],
+          form: [{ type: 'text', key: 'userAgent', label: 'User-Agent' }],
         },
       },
     );

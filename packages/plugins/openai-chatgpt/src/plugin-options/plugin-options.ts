@@ -21,11 +21,11 @@ export type ChatGPTPluginOptionsText = {
 const CODEX_CLIENT_MARKERS = ['codex-tui', 'codex_cli_rs', 'codex desktop'] as const;
 
 export const englishPluginOptionsText: ChatGPTPluginOptionsText = {
-  userAgentLabel: 'User agent',
+  userAgentLabel: 'User-Agent',
   userAgentDescription: `Leave blank to use the default. ${LATEST_CODEX_RS_VERSION_TOKEN} is replaced with the latest Codex release, which is also sent as the catalog client version.`,
-  userAgentPolicyLabel: 'User agent policy',
-  fixedPolicyLabel: 'Always use the configured user agent',
-  preserveCodexClientLabel: 'Keep the user agent from Codex clients',
+  userAgentPolicyLabel: 'User-Agent policy',
+  fixedPolicyLabel: 'Always use the configured User-Agent',
+  preserveCodexClientLabel: 'Keep the User-Agent from Codex clients',
 };
 
 function isHttpHeaderValue(value: string): boolean {
@@ -43,7 +43,7 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
         userAgent: zod
           .string()
           .trim()
-          .refine((value) => value === '' || isHttpHeaderValue(value), 'User agent is not a valid HTTP header value')
+          .refine((value) => value === '' || isHttpHeaderValue(value), 'User-Agent is not a valid HTTP header value')
           .refine((value) => {
             try {
               codexVersionTemplate(value);
@@ -51,7 +51,7 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
             } catch {
               return false;
             }
-          }, 'User agent contains an unsupported template')
+          }, 'User-Agent contains an unsupported template')
           .optional()
           .transform((value) => (value === undefined || value === '' ? DEFAULT_CHATGPT_USER_AGENT : value)),
         userAgentPolicy: zod.enum(['fixed', 'preserveCodexClient']).default('fixed'),
@@ -82,7 +82,7 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
 
 function codexVersionTemplate(template: string): string {
   return renderTemplate(template, (name) => {
-    if (name !== 'latest_codex_rs_version') throw new TypeError('Unsupported user agent template');
+    if (name !== 'latest_codex_rs_version') throw new TypeError('Unsupported User-Agent template');
     return LATEST_CODEX_RS_VERSION_TOKEN;
   });
 }
