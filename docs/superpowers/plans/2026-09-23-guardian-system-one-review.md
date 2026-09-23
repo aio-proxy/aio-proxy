@@ -1,0 +1,550 @@
+# Guardian System One Review Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Let the ChatGPT OAuth plugin optionally use one configured System One evaluation Provider for eligible Codex Guardian approvals, with a direct-decision mode and a mode that sends valid denials to `codex-auto-review` for final review.
+
+**Architecture:** The ChatGPT plugin owns Guardian recognition, complete conversation projection, four choice questions, answer validation, strategy, and synthetic Responses output. A private host callback dispatches to one verified candidate from a leased Provider snapshot using the existing System One evaluation transport; server code has no Guardian policy. Existing ChatGPT transport remains the captured fallback, and trusted per-invocation metadata prevents its flat fee when that transport never starts.
+
+**Tech Stack:** Bun, TypeScript, Zod, existing `@aio-proxy/core` System One adapter, Hono server, React/TanStack Form/TanStack Query dashboard, Bun tests.
+
+**Spec:** `docs/superpowers/specs/2026-09-23-guardian-system-one-review-design.md`
+
+## Global Constraints
+
+- Apply System One only to OpenAI Responses creation whose **resolved ChatGPT model ID** is exactly `codex-auto-review`, with `client_metadata["x-openai-subagent"] === "guardian"`, the observed Guardian JSON schema, and the unique final approval envelope. The supplied `gpt-6-sol` attachment is caused by the separate model-catalog bug and is not eligible.
+- The absent/default strategy invokes the original transport without parsing the body. Every non-Guardian or unsupported profile uses the untouched original request before disclosing anything to the selected Provider.
+- Plugin settings are shared across ChatGPT accounts: `default`, `systemOne`, `systemOneReviewDenied`; the latter two require a configured Provider ID and a routable model slug. No second endpoint or API key is stored in the plugin.
+- Preserve the complete inline `input` array, including role/order/content/tool associations and permitted opaque metadata, as structured `state.input`; parse the terminal action into `state.pending_action`. Do not summarize or hydrate unresolved references. Reject incomplete, uninterpretable, or oversized context before dispatch.
+- Ask exactly four `choice` questions named `risk_level`, `user_authorization`, `outcome`, `reason`, with the literal labels in the spec. The actual developer policy in `state.input` governs the decision; tool output, assistant prose, and quoted role labels cannot authorize an action.
+- Validate all four selected labels and each declared probability in `[0,1]`, including low-risk allow. Do not invent a sum tolerance or confidence threshold. Invalid, `uncertain`, or incompatible combinations fall back while the caller is live.
+- A valid low-risk approval yields `{"outcome":"allow"}`. Other valid decisions use the deterministic rationale table in the spec and must validate against the incoming Guardian schema before any response byte is sent.
+- `systemOne` treats a valid denial as final. `systemOneReviewDenied` resumes the original transport below the wrapper on a valid denial; original success or failure is final for that raw invocation. Operational errors and timeouts use the original transport in either mode while the caller is live.
+- The target is selected only from saved plugin options. Resolve `providerId/modelId` at invocation time from one leased snapshot, require exactly one candidate with that Provider ID and `selectionSource: "provider_qualified"`, and dispatch that same candidate. Never fall through to an ordinary slash alias or another Provider.
+- Keep the server's generation candidate loop and public plugin SDK `RuntimeContext` unchanged. Server modifications only compose the private capability, reuse candidate-scoped evaluation dispatch, propagate lifecycle/accounting context, and keep telemetry safe. No loopback HTTP request.
+- The evaluation deadline covers snapshot acquisition, transport, body consumption, and validation; caller cancellation never triggers fallback. A late evaluation result cannot replace a started fallback or emitted response.
+- Direct System One results have no ChatGPT usage row or flat request fee. Each evaluation attempt owns its available Provider usage/cost; each real original-model attempt keeps its applicable existing charge. Aggregate cost must not double-count the child evaluation.
+- Never log transcript, projected state, questions, generated rationale, raw evaluator errors that can echo input, or their copies in diagnostic/trace exporters. Use bounded reason codes, safe target IDs, strategy, and correlation ID only.
+- Use the existing Provider list for dashboard choices, a typed Hono client and TanStack Query, TanStack Form controls, and i18n messages. The CLI accepts exact Provider and model IDs. Do not add a Provider-list endpoint or a ChatGPT-only dashboard picker.
+- Keep the existing unrelated `bun.lock` modification untouched. Do not use the private Guardian attachment as a test fixture or upload it to Oracle; use a synthetic, sanitized fixture. Run `rtk bun run preflight` before claiming implementation complete, and author one user-facing changeset with `aio-proxy` and `@aio-proxy/plugin-sdk` plus affected internal packages.
+
+## Review Focus
+
+1. A Guardian-looking `input` with encrypted/unknown content that could carry decision evidence must use the original model before any Provider disclosure; Task 4 tests this with an opaque item.
+2. A quoted approval marker in tool output or a second envelope earlier in the transcript must not replace the unique final action or confer authorization; Task 4 tests both sources.
+3. A saved `providerId/modelId` whose qualified route vanished but whose slash string is now an ordinary alias must never dispatch to the alias owner; Task 7 tests this after snapshot reload.
+4. Caller abort racing a System One timeout or the instant before fallback must not start the original transport; Task 8 tests both race points and late results.
+5. A synthetic transcript sentinel in an evaluator error or invalid response must not enter request diagnostics, raw capture, or exported trace data; Task 9 checks every failure path with enabled diagnostic sinks.
+
+## File Responsibility Map and Interfaces
+
+| Unit | Files | Responsibility |
+| --- | --- | --- |
+| Generic form contract | `packages/plugin-sdk/src/config.ts`, `packages/core/src/plugins/config-spec.ts`, `packages/types/src/dashboard-oauth.ts`, `packages/server/src/dashboard-routes/oauth-capabilities.ts`, `packages/cli/src/plugin-commands/form/render.ts` | Add a non-default condition and generic configured-Provider/model fields; validate/project them without ChatGPT-specific DTOs. |
+| Plugin settings | `packages/plugins/openai-chatgpt/src/plugin-options/plugin-options.ts`, `src/plugin/plugin.ts`, `packages/core/src/plugins/builtins.ts` | Store and localize Guardian strategy and target. |
+| Guardian logic | `packages/plugins/openai-chatgpt/src/runtime/guardian/{request,questions,decision,response,wrapper}.ts` with local tests | Recognize the observed profile, preserve full input, ask/validate choices, create Guardian-shaped output, and control fallback. |
+| Private host | `packages/server/src/plugin-runtime/{types,materialize}.ts`, `packages/server/src/server-state/{index,snapshot}.ts`, `packages/server/src/routes/pipeline/attempt/evaluation.ts` and a focused private evaluator module | Inject one callback into only the built-in ChatGPT runtime and dispatch the exact leased evaluation candidate with normal usage attribution. |
+| Raw accounting | `packages/server/src/routes/pipeline/attempt/{raw,raw-retry}.ts`, `packages/server/src/usage-capture/` as needed | Carry trusted per-invocation original-transport-started state through preflight/retry and suppress synthetic ChatGPT fee without affecting response/session observation. |
+| Dashboard | `packages/dashboard/src/modules/plugins/{components,services,hooks}/`, `packages/dashboard/src/lib/provider-summaries-query.ts`, `packages/i18n/messages/*.json` | Show conditional target controls, use configured Provider data, keep invalid saved IDs visible, and validate before save. |
+| Integration/release | focused server/plugin tests, one `.changeset/*.md` | Check actual routing, usage, cancellation, privacy, Codex-compatible output, and release note. |
+
+The private callback is a structural extra property on the runtime context object supplied only for the built-in ChatGPT adapter. It is **not** added to public `RuntimeContext` or `PluginDescriptor` types. Both internal sides agree on:
+
+```ts
+type GuardianChoiceQuestion = {
+  readonly type: 'choice';
+  readonly instructions: string;
+  readonly criteria: Readonly<Record<string, string | null>>;
+};
+type GuardianSystemOneBody = {
+  readonly model: string;
+  readonly state: { readonly input: readonly unknown[]; readonly pending_action: Record<string, unknown> };
+  readonly questions: Readonly<Record<string, GuardianChoiceQuestion>>;
+};
+type GuardianEvaluate = (input: {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly body: GuardianSystemOneBody;
+  readonly signal: AbortSignal;
+  readonly requestId: string;
+}) => Promise<unknown>;
+```
+
+The runtime context extra property is named `__aioGuardianEvaluate`; both packages use the structural signature above without adding it to public SDK types. The host binds the source ChatGPT Provider ID when it injects this function; it is never read from inbound metadata. The evaluator response is `unknown` until the plugin validates all four answers. An invocation-local `originalTransportStarted` flag is written by the built-in wrapper immediately before calling the captured original fetch, then read by the host for the final raw response. Keep this flag out of HTTP headers and Provider-controlled data.
+
+### Task 1: Extend the generic plugin form contract
+
+**Files:**
+- Modify: `packages/plugin-sdk/src/config.ts`
+- Move: `packages/core/src/plugins/config-spec.ts` to `packages/core/src/plugins/config-spec/config-spec.ts`
+- Create: `packages/core/src/plugins/config-spec/index.ts` (export-only entry, preserving existing imports)
+- Modify: `packages/types/src/dashboard-oauth.ts`
+- Modify: `packages/server/src/dashboard-routes/oauth-capabilities.ts`
+- Test: `packages/core/src/plugins/config-spec/config-spec.test.ts`, `packages/types/src/dashboard/dashboard.test.ts`
+
+**Interfaces:**
+- Consumes: existing `FormField`, `FormCondition`, `DashboardOAuthFormFieldSchema`, and `dashboardOAuthForm`.
+- Produces: `FormCondition = {key,equals} | {key,notEquals}` and generic field types `provider` and `provider-model` where `provider-model.providerKey` names an earlier `provider` field. The dashboard DTO projects the same shape, with no Provider data embedded in the form descriptor.
+
+- [ ] **Step 1: Write failing behavior tests.** A valid form contains a strategy `select`, then a `provider` field with `when: {key:'strategy',notEquals:'default'}`, then a `provider-model` field with `providerKey:'providerId'` and the same condition. Assert `validateConfigSpec` and `DashboardOAuthFormFieldSchema` retain both fields; reject `provider-model` referencing a missing or later Provider field and a condition carrying both `equals` and `notEquals`.
+
+```ts
+const fields = [
+  { type: 'select', key: 'strategy', label: 'Strategy', options: [{ value: 'default', label: 'Default' }] },
+  { type: 'provider', key: 'providerId', label: 'Provider', when: { key: 'strategy', notEquals: 'default' } },
+  { type: 'provider-model', key: 'modelId', label: 'Model', providerKey: 'providerId', when: { key: 'strategy', notEquals: 'default' } },
+] as const;
+expect(validateConfigSpec({ schema: zod.object({}), form: fields }).spec.form).toEqual(fields);
+expect(DashboardOAuthFormFieldSchema.safeParse(fields[2]).success).toBe(true);
+```
+
+- [ ] **Step 2: Run the focused tests to see the missing field/condition failures.** Run `rtk bun test packages/core/src/plugins/config-spec/config-spec.test.ts packages/types/src/dashboard/dashboard.test.ts`. Expected: FAIL on the new cases, with unrelated tests unchanged.
+- [ ] **Step 3: Add the two field variants and discriminated condition, then validate them at the descriptor boundary.** Reject blank `providerKey`, an unknown or later key, and a key whose earlier field is not `provider`; preserve current `equals` behavior. Move `config-spec.ts` into its same-name directory, change its `./schema` import to `../schema`, and export its existing public symbols from the new `index.ts` so current barrel imports keep working. Project the two variants unchanged through `dashboardOAuthForm` and the strict dashboard DTO.
+
+```ts
+export type FormCondition =
+  | { readonly key: string; readonly equals: string | number | boolean | null }
+  | { readonly key: string; readonly notEquals: string | number | boolean | null };
+export type ProviderField = FormFieldBase<'provider'>;
+export type ProviderModelField = FormFieldBase<'provider-model'> & { readonly providerKey: string };
+```
+
+- [ ] **Step 4: Run `rtk bun test packages/core/src/plugins/config-spec/config-spec.test.ts packages/types/src/dashboard/dashboard.test.ts` and `rtk bun run check`; require all focused cases and lint/format to pass.** Commit only these contract/DTO files with `feat(plugin-sdk): add provider target form fields` and the required `Co-authored-by: Codex <noreply@openai.com>` footer.
+
+### Task 2: Render the new fields in the CLI
+
+**Files:**
+- Modify: `packages/cli/src/plugin-commands/form/render.ts`
+- Test: the colocated `packages/cli/src/plugin-commands/form/render.test.ts`
+
+**Interfaces:**
+- Consumes: Task 1's `provider`, `provider-model`, and `notEquals` form variants.
+- Produces: exact Provider ID and model slug input as strings in `renderConfigSpec`'s existing `publicValues`; no Provider listing or network lookup in CLI.
+
+- [ ] **Step 1: Add a failing CLI form test.** Prompt the strategy as `systemOne`, enter `system-one-local` and `jev-latest`, and assert both exact strings are returned; when strategy is `default`, assert neither Provider/model prompt is called. Retaining previously saved IDs in default mode is optional; the runtime never uses them.
+
+```ts
+expect(result.publicValues).toMatchObject({
+  strategy: 'systemOne', providerId: 'system-one-local', modelId: 'jev-latest',
+});
+expect(prompted).toEqual(['strategy', 'providerId', 'modelId']);
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/cli/src/plugin-commands/form/render.test.ts`; expect the new case to fail on unsupported field type/visibility.**
+- [ ] **Step 3: In `visible`, check the chosen discriminant (`'equals' in field.when`); in `promptFieldValue`, send both new types to the existing text `prompts.input` path and trim their result.** Keep the schema as the authority for nonempty IDs and invalid values; the renderer does not guess routability.
+
+```ts
+if (field.when !== undefined) {
+  const actual = values[field.when.key];
+  if ('equals' in field.when ? actual !== field.when.equals : actual === field.when.notEquals) return false;
+}
+case 'provider':
+case 'provider-model':
+  return (await prompts.input({ message, defaultValue: typeof promptDefault === 'string' ? promptDefault : undefined }, context)).trim();
+```
+
+- [ ] **Step 4: Run `rtk bun test packages/cli/src/plugin-commands/form/render.test.ts` and `rtk bun run check`.** Commit the CLI change with `feat(cli): accept guardian provider target fields` and the required coauthor footer.
+
+### Task 3: Add ChatGPT Guardian settings and localized copy
+
+**Files:**
+- Modify: `packages/plugins/openai-chatgpt/src/plugin-options/plugin-options.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/plugin/plugin.ts`
+- Modify: `packages/core/src/plugins/builtins.ts`
+- Test: `packages/plugins/openai-chatgpt/src/plugin-options/plugin-options.test.ts`, `packages/plugins/openai-chatgpt/src/plugin/plugin.test.ts`
+
+**Interfaces:**
+- Consumes: Task 1's generic `provider` and `provider-model` fields and `notEquals` condition.
+- Produces: `ChatGPTPluginOptions` with `guardianStrategy: 'default' | 'systemOne' | 'systemOneReviewDenied'`, optional `guardianProviderId`, optional `guardianModelId`; the existing user-agent settings remain unchanged. Runtime code in Task 8 consumes these exact names.
+
+- [ ] **Step 1: Add failing option tests for empty/default, both active modes, and missing target.** Assert default parsing yields `guardianStrategy:'default'`; active strategies reject a blank Provider ID or model ID; default accepts retained IDs but never calls an evaluator. Assert form field order is strategy, Provider, model after the existing user-agent fields.
+
+```ts
+await expect(spec.schema.parseAsync({ guardianStrategy: 'systemOne', guardianProviderId: 'p', guardianModelId: 'm' }))
+  .resolves.toMatchObject({ guardianStrategy: 'systemOne', guardianProviderId: 'p', guardianModelId: 'm' });
+await expect(spec.schema.parseAsync({ guardianStrategy: 'systemOne', guardianProviderId: 'p' })).rejects.toThrow();
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/plugins/openai-chatgpt/src/plugin-options/plugin-options.test.ts packages/plugins/openai-chatgpt/src/plugin/plugin.test.ts`; expect the new assertions to fail.**
+- [ ] **Step 3: Extend the existing Zod options object with the three fields below, then chain the shown `superRefine` before its current output transform; keep the current user-agent fields in that object.** Add a strategy select with all three spec labels, then generic conditional Provider/model fields. Extend `ChatGPTPluginOptionsText`, its English defaults, and `createEmbeddedBuiltIns` with the Chinese/English labels, explanations, and disclosure that approval context goes to the selected Provider. Keep them plugin-level, outside account options.
+
+```ts
+const guardianOptions = zod.object({
+  guardianStrategy: zod.enum(['default', 'systemOne', 'systemOneReviewDenied']).default('default'),
+  guardianProviderId: zod.string().trim().min(1).optional(),
+  guardianModelId: zod.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.guardianStrategy === 'default') return;
+  for (const key of ['guardianProviderId', 'guardianModelId'] as const) {
+    if (value[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required` });
+  }
+});
+```
+
+- [ ] **Step 4: Run the two focused plugin tests and `rtk bun run check`.** Commit with `feat(openai-chatgpt): configure guardian review strategy` and the required coauthor footer.
+
+### Task 4: Recognize the Guardian profile and project the complete decision state
+
+**Files:**
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/request.ts`
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/fixture.ts` (synthetic, sanitized inline history)
+
+**Interfaces:**
+- Consumes: an OpenAI Responses `Request` after the server has resolved the ChatGPT model ID; it parses a **clone** only in active modes.
+- Produces: `projectGuardianRequest(request: Request, resolvedModelId: string): Promise<GuardianProjection | undefined>` where `GuardianProjection` contains `state: {input: readonly unknown[]; pending_action: Record<string, unknown>}`, `schema: Record<string, unknown>`, and `stream: boolean`. Private collaborators are `readGuardianJsonWithinBytes(request: Request, limit: number): Promise<unknown | undefined>`, `matchesGuardianProfile(value: unknown): value is MatchedGuardianBody`, and `parseTerminalAction(input: readonly unknown[]): Record<string, unknown> | undefined`. `MatchedGuardianBody` is the narrowed JSON object with `model:string`, `input:readonly unknown[]`, `stream?:boolean`, and `text.format.schema:Record<string,unknown>` after all scope/schema checks. `fixture.ts` exports `syntheticGuardianInput` and `guardianRequest(input: readonly unknown[]): Request` for tests. Projection does not mutate or consume the original request. `undefined` means original path, with no disclosure.
+
+- [ ] **Step 1: Add the synthetic fixture and failing matcher tests.** Use ordinary `message` items with `input_text` content, an explicit developer Guardian policy, a human user authorization, a tool call/reply pair, a quoted fake envelope in tool output, and one final user item whose last four separate parts are the actual `>>> APPROVAL REQUEST START`, `Planned action JSON:`, JSON object, `>>> APPROVAL REQUEST END`. Give the action the observed field shape (`tool`, array `command`, `cwd`, `justification`, `sandbox_permissions`, `tty`) with synthetic values. Assert deep equality of `state.input` with the original fixture (including IDs/metadata), exact parsed `pending_action`, and that the original `Request` body remains readable. A `reasoning.encrypted_content` item is permitted opaque metadata when all decision evidence is visible elsewhere; assert that it remains in `state.input` without being treated as authorization. Add table cases for a wrong resolved model, missing marker, nested enum that only looks like Guardian, an extra required schema property, a duplicate final envelope, `/responses/compact`, `previous_response_id`, unresolved nested file reference, and an opaque encoded item needed for context; each returns `undefined` before the evaluator is called.
+
+```ts
+const projection = await projectGuardianRequest(guardianRequest(syntheticGuardianInput), 'codex-auto-review');
+expect(projection?.state.input).toEqual(syntheticGuardianInput);
+expect(projection?.state.pending_action).toEqual({
+  tool: 'exec_command', command: ['bun', 'test'], cwd: '/workspace',
+  justification: 'Run the requested tests', sandbox_permissions: 'use_default', tty: false,
+});
+expect(await originalRequest.clone().json()).toEqual(originalBody);
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`; expect the projection test to fail because the function does not exist.**
+- [ ] **Step 3: Implement a bounded reader over `request.clone().body` and the strict profile matcher.** Cap the decoded candidate body at 1 MiB (the supplied 453,475-byte sample fits); cancel the clone reader on overflow. Require a POST path ending exactly `/responses`, `store:false`, no background/previous-response/conversation/top-level instructions, `input` array, exact marker, and the precise top-level schema described in the spec: object, `additionalProperties:false`, only `outcome` required, the four named properties and their types/enums. Accept property order and descriptions as irrelevant. Require the policy-bearing developer item and recognized source-trust/risk clauses; if the required rule structure is absent, fail closed. Restrict content to inline interpretable JSON/text and permitted opaque metadata; reject unresolved references and encoded content whose meaning is needed to judge. Find the unique envelope only in the final user item's trailing separate `input_text` parts, parse only its JSON part, and preserve the entire original input array without rewriting role/content/IDs. Reject trailing text or a second candidate envelope.
+
+```ts
+export type GuardianProjection = {
+  readonly state: { readonly input: readonly unknown[]; readonly pending_action: Record<string, unknown> };
+  readonly schema: Record<string, unknown>;
+  readonly stream: boolean;
+};
+export async function projectGuardianRequest(request: Request, resolvedModelId: string): Promise<GuardianProjection | undefined> {
+  if (resolvedModelId !== 'codex-auto-review' || new URL(request.url).pathname.endsWith('/responses/compact')) return;
+  const body = await readGuardianJsonWithinBytes(request.clone(), 1_048_576);
+  if (!matchesGuardianProfile(body)) return;
+  const pending_action = parseTerminalAction(body.input);
+  if (pending_action === undefined) return;
+  return { state: { input: body.input, pending_action }, schema: body.text.format.schema, stream: body.stream === true };
+}
+```
+
+- [ ] **Step 4: Run the focused test, then `rtk bun run check`.** Commit the fixture and request projector with `feat(openai-chatgpt): recognize guardian approval requests` and the required coauthor footer.
+
+### Task 5: Ask four choices and validate a compatible Guardian decision
+
+**Files:**
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/questions.ts`
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/decision.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`
+
+**Interfaces:**
+- Consumes: `GuardianProjection.state` and the actual policy preserved in its developer item; the raw evaluator result remains `unknown`.
+- Produces: `guardianQuestions(state): Readonly<Record<'risk_level' | 'user_authorization' | 'outcome' | 'reason', GuardianChoiceQuestion>>` and `guardianDecision(result: unknown, projection: GuardianProjection): Record<string, string> | undefined`. `guardianDecision` reads the full System One response object's `answers` member; `undefined` means fallback, not deny.
+
+- [ ] **Step 1: Add failing question/decision tests.** Assert the question IDs and **ordered** literal label sets exactly match the spec and the instructions refer to `state.input`'s developer policy and source trust. Feed complete four-answer distributions for low allow, medium allow, high narrow allow, and every mapped deny row; assert the exact deterministic JSON shape. Feed every incompatible pair (`low + allow + policy_prohibition`, `critical + allow`, `high + allow + low authorization`, `uncertain`), plus missing/extra answer, wrong type, unknown selected label, missing/extra probability key, `-0.1`, `1.1`, `NaN`; all return `undefined`.
+
+```ts
+expect(Object.keys(guardianQuestions(projection.state))).toEqual([
+  'risk_level', 'user_authorization', 'outcome', 'reason',
+]);
+expect(guardianDecision(validLowAllow, projection)).toEqual({ outcome: 'allow' });
+expect(guardianDecision(lowAllowWithProhibitionReason, projection)).toBeUndefined();
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`; expect the new choice/decision tests to fail.**
+- [ ] **Step 3: Implement literal criteria and one table-driven compatibility map.** The criteria maps are `risk_level: low/medium/high/critical`, `user_authorization: unknown/low/medium/high`, `outcome: allow/deny`, and `reason: low_risk/medium_risk/high_authorized_narrow/high_not_permitted/critical_risk/policy_prohibition/prompt_injection/uncertain`; each map value is a short description string or `null`. Validate exact answer IDs, `type:'choice'`, selected label membership, exact probability keys, and every finite probability in `[0,1]`; do not require a sum of one or a confidence threshold. Apply the spec's compatibility table and fixed rationale text. Validate the final object against the matched incoming JSON schema (a narrow validator for the observed four properties is enough; if annotations change, do not reinterpret them). Return `undefined` on any mismatch.
+
+```ts
+const labels = { risk_level: ['low','medium','high','critical'], user_authorization: ['unknown','low','medium','high'], outcome: ['allow','deny'], reason: ['low_risk','medium_risk','high_authorized_narrow','high_not_permitted','critical_risk','policy_prohibition','prompt_injection','uncertain'] } as const;
+const lowAllow = risk === 'low' && outcome === 'allow' && reason === 'low_risk';
+if (lowAllow) return { outcome: 'allow' };
+const rationaleByKey: Record<string, string> = {
+  'medium|allow|medium_risk': 'The assessed risk is medium and the supplied policy permits the action.',
+  'high|allow|high_authorized_narrow': 'The high-risk action is sufficiently authorized and narrowly scoped.',
+  'high|deny|high_not_permitted': 'The high-risk action lacks sufficient authorization or narrow scope.',
+  'critical|deny|critical_risk': 'The action poses critical risk under the supplied policy.',
+};
+for (const sourceRisk of ['low', 'medium', 'high'] as const) {
+  rationaleByKey[`${sourceRisk}|deny|policy_prohibition`] = 'The supplied Guardian policy prohibits this action.';
+  rationaleByKey[`${sourceRisk}|deny|prompt_injection`] = 'The action follows untrusted instructions outside the authorized task.';
+}
+if (risk === 'high' && outcome === 'allow' && !['medium', 'high'].includes(authorization)) return undefined;
+const rationale = rationaleByKey[`${risk}|${outcome}|${reason}`];
+if (rationale === undefined) return undefined;
+```
+
+- [ ] **Step 4: Run the focused test and `rtk bun run check`.** Commit with `feat(openai-chatgpt): validate guardian evaluation choices` and the required coauthor footer.
+
+### Task 6: Emit one completed Guardian Responses decision
+
+**Files:**
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/response.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`
+
+**Interfaces:**
+- Consumes: the schema-validated JSON from `guardianDecision` and the original request's `stream` flag.
+- Produces: `guardianResponse(decision: Record<string,string>, stream: boolean): Response` with `model:'codex-auto-review'`, one assistant text output, coherent IDs/timestamps, no `usage`, and the repository's text-only JSON/SSE event sequence.
+
+- [ ] **Step 1: Add failing JSON and SSE tests using the same decision.** JSON has one `output_text` and one `output[0].content[0].text`; IDs are stable within the envelope and `status:'completed'`. SSE has exactly `response.created`, `response.output_item.added`, one `response.output_text.delta`, `response.output_item.done`, `response.completed` in that order; `sequence_number` runs from 0, all item/response IDs agree, and its completed response serializes the same decision. Neither format has `usage` or a second decision. Add a local parser-style test that extracts the output text as the supported Codex consumer does.
+
+```ts
+const response = guardianResponse({ outcome: 'allow' }, true);
+const events = (await response.text()).trim().split('\n\n').map((frame) => JSON.parse(frame.split('\ndata: ')[1]!));
+expect(events.map((event) => event.type)).toEqual([
+  'response.created', 'response.output_item.added', 'response.output_text.delta',
+  'response.output_item.done', 'response.completed',
+]);
+expect(events.at(-1)?.response.output_text).toBe('{"outcome":"allow"}');
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`; expect the new writer tests to fail.**
+- [ ] **Step 3: Build the full response object once before emitting bytes; derive both JSON and SSE from that object.** Use `crypto.randomUUID()` for `resp_` and `msg_` IDs and `Math.floor(Date.now()/1000)` for timestamps. Follow `packages/core/src/egress/openai-responses/{state,sse}.ts` for the text-only item fields and event shapes; do not import core into the plugin (core imports this built-in plugin). Set `Content-Type` to JSON or `text/event-stream` and emit no usage field. The SSE frame builder serializes each complete event as `event: <type>\ndata: <json>\n\n`.
+
+```ts
+const decisionText = JSON.stringify(decision);
+const createdAt = Math.floor(Date.now() / 1000);
+const responseId = `resp_${crypto.randomUUID()}`;
+const messageId = `msg_${crypto.randomUUID()}`;
+const completed = {
+  id: responseId, created_at: createdAt, completed_at: createdAt,
+  object: 'response', model: 'codex-auto-review', status: 'completed',
+  output_text: decisionText,
+  output: [{ id: messageId, type: 'message', status: 'completed', role: 'assistant',
+    content: [{ type: 'output_text', text: decisionText, annotations: [] }] }],
+  error: null, incomplete_details: null, instructions: null, metadata: null,
+  parallel_tool_calls: false, temperature: null, tool_choice: 'auto', tools: [], top_p: null,
+};
+```
+
+- [ ] **Step 4: Run the focused test and `rtk bun run check`.** Commit with `feat(openai-chatgpt): emit guardian responses decisions` and the required coauthor footer.
+
+### Task 7: Compose a private exact-candidate System One evaluator
+
+**Files:**
+- Create: `packages/server/src/plugin-runtime/guardian-evaluation/index.ts` (exports only)
+- Create: `packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.ts`
+- Create: `packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.test.ts`
+- Modify: `packages/server/src/plugin-runtime/types.ts`
+- Modify: `packages/server/src/plugin-runtime/materialize.ts`
+- Modify: `packages/server/src/server-state/index.ts`
+- Modify: `packages/server/src/server-state/snapshot.ts`
+- Modify: `packages/server/src/server-state/types.ts` (internal option only)
+- Modify: `packages/server/src/routes/pipeline/attempt/evaluation.ts` (extract candidate transport operation without copying the loop)
+
+**Interfaces:**
+- Consumes: Task 5's System One body shape, `typeSafeSystemOneAdapter`, `ProviderRouteSource.acquireProviderSnapshot`, and the existing candidate's `raw.resolve` or `evaluation.discover` transport.
+- Produces: a private callback `evaluateGuardian(input: {providerId:string; modelId:string; body:GuardianSystemOneBody; signal:AbortSignal; requestId:string}): Promise<unknown>` bound to the source ChatGPT Provider ID when materializing that built-in. It is passed as `__aioGuardianEvaluate` on the `adapter.createRuntime` context only for `@aio-proxy/plugin-openai-chatgpt`; public SDK types are unchanged. `GuardianEvaluationUnavailable` carries only a bounded reason code and safe IDs.
+
+- [ ] **Step 1: Add failing host tests with two Providers advertising the same model, a disabled target, a slash alias, a selected Provider that throws, and snapshot replacement during an in-flight evaluation.** Assert only the configured `providerId/modelId` qualified route is dispatched, with `selectionSource:'provider_qualified'` and the exact candidate object from the leased snapshot. A removed qualified route must not resolve an ordinary alias with the same slash string. Test that a target equal to the source ChatGPT Provider is rejected before dispatch, that neither caller API key nor ChatGPT OAuth token reaches System One, and that an `ai-sdk` Provider with no evaluation model becomes unavailable without trying another Provider. Hold a response body open across a snapshot swap and assert the lease releases only after consumption/cancel.
+
+```ts
+const result = await host({ providerId: 'system-one-local', modelId: 'jev-latest', body, signal, requestId: 'req_test' });
+expect(systemOneCalls).toEqual([{ providerId: 'system-one-local', modelId: 'jev-latest' }]);
+expect(otherProviderCalls).toHaveLength(0);
+expect(leaseReleased).toBe(true);
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.test.ts`; expect the new host tests to fail because the capability is absent.**
+- [ ] **Step 3: Factor the existing evaluation candidate's transport choice into a candidate-scoped helper, then call that helper from both the route's `attemptEvaluationCandidate` and the private host.** Keep the existing route's attempt emitter, fallback loop, usage observation, and protocol errors in place. The helper receives one already-verified candidate and one parsed `SystemOneRequest`; raw resolution uses `protocol:'typesafe-systemone'` and `capability:'evaluation'`, rewrites only the model via the adapter, strips caller credentials, invokes the selected Provider, and consumes bounded JSON under the passed abort signal. The convert path calls `discover()`, `evaluate(typeSafeSystemOneAdapter.evaluationInvocation(...))`, and `typeSafeSystemOneAdapter.evaluationJson(...)`. Unsupported discovery or non-2xx/invalid result reports unavailable; it never asks the router for a new candidate. Capture each raw/convert evaluation's available usage and configured cost under the selected Provider, including a denial or invalid Guardian answer. Keep its body and snapshot lease alive until consumption or cancellation.
+
+```ts
+export async function evaluateSelectedSystemOneCandidate(input: {
+  readonly candidate: RouterCandidate<RuntimeProviderInstance>;
+  readonly request: SystemOneRequest;
+  readonly rawRequest: Request;
+  readonly signal: AbortSignal;
+  readonly source: ProviderRouteSource;
+  readonly routerModels: Readonly<Record<string, RouterModelPolicy>> | undefined;
+}): Promise<unknown>;
+```
+
+- [ ] **Step 4: In `initializeServerState`, create a closure that resolves the active state only after initialization, pass it through internal snapshot/materialization options on initial build and every reload, and bind `sourceProviderId = config.id` when injecting into the ChatGPT `createRuntime` context.** The callback acquires one snapshot, resolves `${providerId}/${modelId}`, requires one `provider_qualified` candidate from the configured Provider, rejects self-recursion, and passes that exact candidate to the helper. The callback does not use the inbound URL, external routing weights, caller credentials, or a loopback request.
+
+```ts
+const matches = lease.snapshot.router.resolve(`${providerId}/${modelId}`);
+if (matches.length !== 1 || matches[0]?.provider.id !== providerId || matches[0].selectionSource !== 'provider_qualified') {
+  throw new GuardianEvaluationUnavailable('target_unavailable');
+}
+if (matches[0].provider.id === sourceProviderId) throw new GuardianEvaluationUnavailable('recursive_target');
+return await evaluateSelectedSystemOneCandidate({ candidate: matches[0], request, rawRequest, signal, source, routerModels: lease.snapshot.config?.router.models });
+```
+
+- [ ] **Step 5: Run `rtk bun test packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.test.ts packages/server/src/routes/pipeline/attempt/evaluation.test.ts packages/server/src/plugin-runtime/materialize.test.ts` and `rtk bun run check`.** Commit the host seam and candidate operation with `feat(server): dispatch private guardian evaluation target` and the required coauthor footer.
+
+### Task 8: Wrap ChatGPT raw transport and coordinate fallback, timeout, and billing
+
+**Files:**
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/index.ts` (exports only)
+- Create: `packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/runtime/runtime.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/runtime/runtime.test.ts`
+- Modify: `packages/server/src/routes/pipeline/attempt/raw.ts`
+- Modify: `packages/server/src/routes/pipeline/attempt/raw-retry/raw-retry.ts` (preserve invocation metadata across response rewrap)
+- Test: `packages/server/src/routes/pipeline/raw-session.test.ts`, `packages/server/src/routes/pipeline/attempt/raw-retry/raw-retry.test.ts`
+
+**Interfaces:**
+- Consumes: Tasks 3–7's options, `projectGuardianRequest`, `guardianQuestions`, `guardianDecision`, `guardianResponse`, and private evaluator callback. The raw resolver closes over the **resolved** `modelId` and the host-bound source Provider ID.
+- Produces: `createGuardianRawInvoke(input: { resolvedModelId: string; pluginOptions: ChatGPTPluginOptions; original: RawTransport['invoke']; evaluate?: GuardianEvaluate }): RawTransport['invoke']`, used only by ChatGPT's OpenAI Responses raw transport. Its captured `original(request, context, options)` is invoked at most once per wrapper call. An invocation-local trusted flag `originalTransportStarted` is set immediately before calling it and is consumed by `completeRawAttempt` for the final response's ChatGPT usage/fee decision. If `context?.requestId` is absent, call the original without evaluation; it cannot get a traceable private host call.
+
+- [ ] **Step 1: Add failing wrapper and raw-accounting tests.** Verify default and non-Guardian requests call the captured transport with an untouched body and no evaluator call; a valid allow returns synthetic output without credential refresh or ChatGPT fetch; direct deny is final in `systemOne`; valid deny invokes the original once in `systemOneReviewDenied`, whose allow/deny/error is final; an evaluator throw, invalid answers, or deadline uses the original once while live. Simulate an outer raw retry and Provider failover: they may create another wrapper invocation, but no invocation recurses. Assert a synthetic 2xx never writes a ChatGPT usage row or flat request fee, while a real original-model response keeps its existing usage/fee, and evaluation usage remains on its own Provider. Test `denial → original failure → outer retry → evaluation allow` with each actual original invocation separately observable and its applicable charge retained.
+
+```ts
+expect(originalCalls).toBe(0);
+expect(evaluationCalls).toBe(1);
+expect(chatgptFeeRows).toHaveLength(0);
+expect(systemOneFeeRows).toHaveLength(1);
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts packages/server/src/routes/pipeline/raw-session.test.ts packages/server/src/routes/pipeline/attempt/raw-retry/raw-retry.test.ts`; expect new cases to fail.**
+- [ ] **Step 3: Wrap only `protocol === 'openai-response' && modelId === 'codex-auto-review'` in ChatGPT's raw resolver; leave AI SDK fetch, image endpoints, and the captured dynamic fetch unchanged.** For active modes, project a clone; if ineligible, call original. Combine the caller signal with an 8-second evaluation timeout using `AbortSignal.any`, and abort evaluation on either. After a valid decision, serialize and schema-check the entire synthetic response before returning it. After failure/timeout, check the caller signal once more immediately before the original call; caller cancellation throws without fallback. Set `originalTransportStarted = true` immediately before the captured original call. If evaluation finishes late after timeout, ignore it and cancel its body; do not switch after response construction has started.
+
+```ts
+const original = () => {
+  if (request.signal.aborted) throw request.signal.reason;
+  invocation.originalTransportStarted = true;
+  return dynamicFetch(request, undefined, options);
+};
+const projected = await projectGuardianRequest(request, resolvedModelId);
+if (projected === undefined) return original();
+const evaluationSignal = AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]);
+```
+
+- [ ] **Step 4: In `completeRawAttempt`, create one host-owned invocation marker for each `raw.invoke`, pass it as a private extra property on its options object, and remember the marker alongside the response through raw retry preflight/rewrap.** The built-in wrapper writes the marker; no response header or Provider payload can set it. For a synthetic final response, pass no ChatGPT `configPrice` into `usageCapture.passthrough` and assert that its absent usage produces no ChatGPT row, while normal response/session-ID observation still runs. For a real original call, leave usage capture and fee exactly as today. Attribute earlier real original calls that raw retry hides according to the existing raw attempt accounting rules, without charging a later synthetic invocation as ChatGPT.
+
+```ts
+const invocation = { originalTransportStarted: false };
+const response = await raw.invoke(request, logicalRequest, {
+  upstreamStream: ctx.streamRequested,
+  __aioGuardianInvocation: invocation,
+} as RawTransportOptions);
+const chargeChatGPT = provider.kind !== 'oauth' || provider.plugin !== '@aio-proxy/plugin-openai-chatgpt' || invocation.originalTransportStarted;
+```
+
+- [ ] **Step 5: Run the focused plugin and server tests plus `rtk bun run check`.** Commit with `feat(openai-chatgpt): orchestrate guardian review fallback` and the required coauthor footer.
+
+### Task 9: Prove cancellation, observation, and no-payload diagnostics end to end
+
+**Files:**
+- Create: `packages/server/src/routes/pipeline/guardian-integration.test.ts`
+- Modify: `packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts`
+- Modify: `packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.ts` and `packages/server/src/routes/pipeline/attempt/raw.ts` only for failures exposed by the integration tests
+
+**Interfaces:**
+- Consumes: Tasks 4–8's complete plugin wrapper and private host callback through the normal `/v1/responses` route.
+- Produces: a real-route regression harness that checks decisions, usage/trace attribution, response body release, and privacy with synthetic data. No production API or second route is added.
+
+- [ ] **Step 1: Build a test server with one ChatGPT OAuth Provider and one local System One Provider, using an in-memory credential and a fake upstream.** Send the synthetic Guardian request through `/v1/responses` with the ChatGPT Provider's resolved model ID `codex-auto-review`. Assert `allow` and direct `deny` parse as one decision in JSON and SSE, the System One upstream sees the complete input and parsed pending action, and the ChatGPT upstream sees no request on direct decisions. In review-denied mode, assert a denial reaches ChatGPT once and its response is returned verbatim. Assert the selected Provider's usage row and the parent request trace have a single cost path, while ChatGPT has no synthetic fee.
+
+```ts
+const response = await app.request('/v1/responses', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(syntheticGuardianBody),
+});
+expect(response.status).toBe(200);
+expect(systemOneRequests).toHaveLength(1);
+expect(chatgptRequests).toHaveLength(0);
+```
+
+- [ ] **Step 2: Add controlled gates for abort before dispatch, while reading evaluation body, immediately before fallback, and after fallback starts.** Abort the caller at each gate and assert no new original request begins after pre-fallback cancellation; after fallback starts, the original receives the caller abort. Trigger a timeout and resolve the evaluator after fallback begins; assert the late result is ignored, its reader is cancelled, and the snapshot lease drains. Keep the deadline test below one second by injecting a timer/timeout factory into the private wrapper test seam; production remains 8 seconds.
+
+```ts
+caller.abort('disconnected');
+await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+expect(chatgptRequests).toHaveLength(0);
+expect(activeLeases()).toBe(0);
+```
+
+- [ ] **Step 3: Enable debug request logging, raw capture, and trace export in the test harness; place a unique sentinel in transcript and evaluator error text.** Run success, malformed answer, upstream non-2xx, timeout, and cancel. Inspect all diagnostic sinks and exported spans/attributes for the sentinel, transcript JSON, question state, and generated rationale; none may contain them. The only emitted event details are bounded reason codes, strategy, correlation ID, target IDs/status. Test a missing or disabled saved Provider gives an actionable code with safe IDs but still falls back while live.
+
+```ts
+const leaked = JSON.stringify({ logs, traces, captures });
+expect(leaked).not.toContain('GUARDIAN_SENTINEL_7fbc4e');
+expect(leaked).not.toContain('pending_action');
+```
+
+- [ ] **Step 4: Run `rtk bun test packages/server/src/routes/pipeline/guardian-integration.test.ts packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts` and `rtk bun run check`; fix only failures these tests reveal.** Commit with `test(server): cover guardian review lifecycle and privacy` and the required coauthor footer.
+
+### Task 10: Render conditional Provider and model controls in the dashboard
+
+**Files:**
+- Create: `packages/dashboard/src/lib/provider-summaries-query.ts`
+- Modify: `packages/dashboard/src/modules/providers/services/providers-query/providers-query.ts` (re-export the shared query)
+- Create: `packages/dashboard/src/modules/plugins/components/plugin-provider-options-field.tsx`
+- Create: `packages/dashboard/src/modules/plugins/components/plugin-provider-model-options-field.tsx`
+- Modify: `packages/dashboard/src/modules/plugins/components/plugin-options-field.tsx`
+- Modify: `packages/dashboard/src/modules/plugins/components/plugin-options-drawer.tsx`
+- Modify: `packages/dashboard/src/modules/plugins/hooks/use-plugin-options-form.ts`
+- Modify: `packages/i18n/messages/en.json`, `ja.json`, `ko.json`, `zh-Hans.json`, `zh-Hant.json`
+- Test: `packages/dashboard/src/modules/plugins/templates/plugins-page/plugins-page.test.tsx`
+
+**Interfaces:**
+- Consumes: Task 1's generic form descriptor, Task 3's plugin setting keys, the existing typed `/dashboard/api/providers` response (`id`, `name`, `enabled`, `kind`, `protocols`, `clientModels`, `state`), and existing `queryKeys.providers`.
+- Produces: generic Provider selector and model-ID suggestion input usable by any plugin form; only the ChatGPT descriptor decides when they appear. No new dashboard endpoint or cross-module import.
+
+- [ ] **Step 1: Add failing page-level tests for the form.** In `default`, Provider/model controls are hidden. In either System One strategy, both appear and show the context-disclosure description. List a compatible enabled `api` Provider with a `typesafe-systemone` protocol, an enabled `ai-sdk` Provider whose runtime support is unknown, and an incompatible Provider; only the first two are selectable. Labels show display name **and stable Provider ID**. Selecting a Provider offers its `clientModels`; manual model text is accepted. A saved disabled/deleted Provider remains visible as invalid and blocks an active-mode save until corrected or switched to `default`. Switching Provider clears an incompatible model draft. Assert saved IDs are stored, never the display name.
+
+```tsx
+await userEvent.click(screen.getByRole('button', { name: /Guardian review strategy/i }));
+await userEvent.click(screen.getByText('System One'));
+expect(screen.getByLabelText(/Evaluation Provider/i)).toBeVisible();
+expect(screen.getByLabelText(/Model ID/i)).toBeVisible();
+expect(screen.getByText(/system-one-local/)).toBeVisible();
+```
+
+- [ ] **Step 2: Run `rtk bun test packages/dashboard/src/modules/plugins/templates/plugins-page/plugins-page.test.tsx`; expect the new control tests to fail.**
+- [ ] **Step 3: Move the existing Provider query implementation to `src/lib/provider-summaries-query.ts` so both modules use the same TanStack Query key and typed Hono client.** Re-export from the Providers module's old service path to preserve its callers. In `PluginOptionsDrawer`, call `useQuery(providerSummariesQueryOptions())` only while the drawer contains a `provider` field; pass summaries to the generic field renderer. In `PluginOptionsField`, evaluate `equals` or `notEquals` and delegate the two new field variants to one component each. Use shadcn `Select` for Provider IDs and shadcn `Input` with a native `<datalist>` for suggested model IDs plus manual entry. Both controls write through the existing TanStack Form field API. Do not import a Providers module file from Plugins.
+
+```ts
+const selectable = providers.filter((provider) =>
+  provider.enabled && provider.state.status === 'ready' &&
+  (provider.protocols.includes('typesafe-systemone') || provider.kind === 'ai-sdk')
+);
+const label = (provider: DashboardProviderSummary) => `${provider.name ?? provider.id} (${provider.id})`;
+```
+
+- [ ] **Step 4: Make active-mode form submission refuse a missing, disabled, deleted, or known-incompatible selected Provider, and a blank model ID; keep the saved invalid ID displayed with a localized error.** The server's option schema still validates exact nonempty IDs, while runtime exact-route validation handles later changes and unknown `ai-sdk` support. Add every new dashboard message to all five locales and run `rtk bun run i18n:compile`.
+
+```ts
+const targetValid = strategy === 'default' ||
+  (selectable.some((provider) => provider.id === providerId) && modelId.trim().length > 0);
+if (!targetValid) return;
+```
+
+- [ ] **Step 5: Run `rtk bun test packages/dashboard/src/modules/plugins/templates/plugins-page/plugins-page.test.tsx packages/dashboard/src/modules/providers/services/providers-query/providers-query.test.ts`, `rtk bun run i18n:compile`, and `rtk bun run check`.** Commit with `feat(dashboard): choose guardian evaluation provider` and the required coauthor footer.
+
+### Task 11: Verify the supported consumer and ship one coherent changeset
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-09-23-guardian-system-one-review-design.md` when the verified Codex consumer requires a response-shape correction; otherwise leave it unchanged
+- Create: one `.changeset/*.md` covering the shipped user-facing feature
+- Test: `packages/server/src/routes/pipeline/guardian-integration.test.ts` and the focused plugin/dashboard tests from earlier tasks
+
+**Interfaces:**
+- Consumes: all tasks above. The public `/v1/systemone` wire protocol and `/v1/responses` route signatures are unchanged.
+- Produces: a tested optional Guardian strategy and a release note. This task does not implement the user's separate catalog fix for `codex-auto-review`.
+
+- [ ] **Step 1: Run the synthetic local smoke test against `http://127.0.0.1:9317/v1/` if the configured local server is running.** Use a sanitized Guardian request and the selected local System One Provider; no API key is added when the local instance accepts anonymous callers. Verify the selected model is reached, the response has exactly one `allow`/`deny`, and the supported Codex consumer parses both JSON and SSE. If port 9317 is down, run the same fixture against an ephemeral local `createServer` test instance and record that the external daemon was unavailable; do not claim a live-daemon result. Never replay or upload the large private attachment.
+
+```bash
+rtk curl --silent --show-error --max-time 4 http://127.0.0.1:9317/v1/models
+rtk bun test packages/server/src/routes/pipeline/guardian-integration.test.ts
+```
+
+- [ ] **Step 2: Run the full gate from a built tree.** Execute `rtk bun run build`, then `rtk bun run preflight`; require type-aware lint, format, unit tests, and artifact tests to pass. If the consumer rejects the synthetic profile, update the Responses writer to match a verified fixture and repeat the focused tests and gate. Check a Provider reload, disabled target, both strategies, direct allow/deny, timeout, and cancellation once more in the integration test.
+- [ ] **Step 3: Author one short changeset via `rtk bun changeset`.** Mark `aio-proxy` and `@aio-proxy/plugin-sdk` as `minor`, and list each changed internal package at the same level (`@aio-proxy/core`, `@aio-proxy/types`, `@aio-proxy/server`, `@aio-proxy/plugin-openai-chatgpt`, `@aio-proxy/cli`, `@aio-proxy/dashboard`, `@aio-proxy/i18n`). Use one paragraph, at most five lines, describing the optional Guardian strategies, selected Provider/model, and safe fallback; no implementation file names or interim defects. Inspect existing pending changesets for a stale note about this exact behavior and rewrite it instead of appending a second note.
+
+```md
+---
+"aio-proxy": minor
+"@aio-proxy/plugin-sdk": minor
+"@aio-proxy/core": minor
+"@aio-proxy/types": minor
+"@aio-proxy/server": minor
+"@aio-proxy/plugin-openai-chatgpt": minor
+"@aio-proxy/cli": minor
+"@aio-proxy/dashboard": minor
+"@aio-proxy/i18n": minor
+---
+
+ChatGPT OAuth now offers optional Guardian approval strategies that evaluate with a selected System One Provider and model. The default keeps Codex behavior, and supported System One decisions can be final or send denials to the original model for review; unavailable evaluations fall back safely.
+```
+
+- [ ] **Step 4: Review `rtk git status --short`, `rtk git diff --check`, and the staged diff; exclude the user's pre-existing `bun.lock` edit.** Commit the changeset and any verified final fixes with a Conventional Commit message and the required coauthor footer. Do not create a PR unless the user asks.
