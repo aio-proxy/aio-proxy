@@ -126,7 +126,9 @@ export async function codexClientModels(
   // The reviewer is hidden, so the text filter above drops it, but it still has to be
   // routed. Take it from the enabled set, not the downloaded catalog: excludedModels
   // and a provider that never exposes it must not advertise a model Router.resolve rejects.
-  const autoReviewModel = enabled.find((model) => model.slug === 'codex-auto-review');
+  const autoReviewModel = resolved.some((model) => model.slug === 'codex-auto-review')
+    ? undefined
+    : enabled.find((model) => model.slug === 'codex-auto-review');
   const bySlug = new Map(upstream.map((item) => [item.slug, item]));
   // Prefer gpt-5.5 as the synthesis template (matches CPA's default) so every
   // required Codex ModelInfo field is inherited; else any cached row; else
@@ -165,6 +167,8 @@ export async function codexClientModels(
           '',
         context_window: windows.contextWindow,
         max_context_window: windows.maxContextWindow,
+        // A public slug can alias a listed official model. The reviewer stays hidden either way.
+        ...(model.slug === 'codex-auto-review' ? { visibility: 'hide' } : {}),
       };
       const levels = entry['supported_reasoning_levels'];
       if (Array.isArray(levels) && levels.length === 0) delete entry['default_reasoning_level'];

@@ -569,6 +569,16 @@ test('returns hidden codex-auto-review only when an enabled route exposes it', a
     base_instructions: 'REVIEW VERBATIM',
   });
 
+  const aliased = {
+    ...provider,
+    alias: { ...provider.alias, 'codex-auto-review': { model: 'gpt-5.6-sol', preserve: false } },
+  } as RuntimeProviderInstance;
+  const aliasedModels = await codexClientModels(fakeState([aliased]), { fetchImpl });
+  expect(aliasedModels.models.filter((entry) => entry.slug === 'codex-auto-review')).toEqual([
+    expect.objectContaining({ visibility: 'hide' }),
+  ]);
+
+  await fileCacheStorage.removeItem('codex-models');
   const offline = await codexClientModels(fakeState([routed]), {
     fetchImpl: (async () => {
       throw new Error('offline');
