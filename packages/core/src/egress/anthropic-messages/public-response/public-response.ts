@@ -16,13 +16,13 @@ const contentBlockSchema = z
 
 export const AnthropicMessageResponseSchema = z
   .object({
-    id: z.string(),
-    type: z.literal('message'),
-    role: z.literal('assistant'),
-    content: z.array(contentBlockSchema),
-    model: z.string(),
-    stop_reason: z.string().nullable(),
-    usage: usageSchema,
+    id: z.string().optional(),
+    type: z.literal('message').optional(),
+    role: z.literal('assistant').optional(),
+    content: z.array(contentBlockSchema).optional(),
+    model: z.string().optional(),
+    stop_reason: z.string().nullable().optional(),
+    usage: usageSchema.optional(),
   })
   .loose()
   .meta({

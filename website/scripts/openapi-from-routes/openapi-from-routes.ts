@@ -24,6 +24,7 @@ import {
 } from '../../../packages/server/src/server/public-operations';
 import en from '../../i18n/en.json';
 import { type OpenApiDocument, projectOperation } from '../operation-document/index';
+import { appendRawVariant, projectGeminiMedia, projectTrimmedModelSchemas } from './schema-projections';
 
 type JsonObject = Record<string, unknown>;
 type Catalog = typeof en;
@@ -34,8 +35,6 @@ const documentedOperations = publicOperations
 
 const nonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
-const base64Pattern = '^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$';
-const geminiInlineDataMaxLength = 4 * Math.ceil((20 * 1024 * 1024) / 3);
 const dallE3ModelPattern = '^\\s*(?:[^/\\s]+/)?dall-e-3\\s*$';
 
 function projectGeminiInteractions(target: JsonObject): void {
@@ -67,39 +66,6 @@ function projectImageCount(target: JsonObject): void {
       else: { properties: { n: general } },
     },
   ];
-}
-
-function projectGeminiMedia(target: JsonObject): void {
-  const partItems = (target.properties as JsonObject | undefined) ?? {};
-  const inlineData = partItems.inlineData as JsonObject | undefined;
-  const inlineProperties = inlineData?.properties as JsonObject | undefined;
-  if (inlineProperties?.data !== undefined) {
-    inlineProperties.data = {
-      ...(inlineProperties.data as JsonObject),
-      maxLength: geminiInlineDataMaxLength,
-      pattern: base64Pattern,
-    };
-  }
-  const fileData = partItems.fileData as JsonObject | undefined;
-  const fileProperties = fileData?.properties as JsonObject | undefined;
-  if (fileProperties?.fileUri !== undefined) {
-    fileProperties.fileUri = {
-      ...(fileProperties.fileUri as JsonObject),
-      format: 'uri',
-      pattern: '^[hH][tT][tT][pP][sS]?://',
-    };
-  }
-  const responseParts = ((partItems.functionResponse as JsonObject | undefined)?.properties as JsonObject | undefined)
-    ?.parts as JsonObject | undefined;
-  const responseInline = ((responseParts?.items as JsonObject | undefined)?.properties as JsonObject | undefined)
-    ?.inlineData as JsonObject | undefined;
-  const responseData = (responseInline?.properties as JsonObject | undefined)?.data;
-  if (responseData !== undefined) {
-    responseInline!.properties = {
-      ...(responseInline!.properties as JsonObject),
-      data: { ...(responseData as JsonObject), maxLength: geminiInlineDataMaxLength, pattern: base64Pattern },
-    };
-  }
 }
 
 function validatePublicOperations(): void {
@@ -175,11 +141,6 @@ function validatePublicOperations(): void {
   }
 }
 
-const replaceObject = (target: JsonObject, source: JsonObject): void => {
-  for (const key of Object.keys(target)) delete target[key];
-  Object.assign(target, source);
-};
-
 function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
   const convert = (value: ZodType): JsonObject =>
     z.toJSONSchema(value, {
@@ -221,9 +182,25 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
             required: ['text'],
           };
         } else if (zodSchema === openAIResponsesInputItemTransformSchema) {
-          replaceObject(target, convert(openAIResponsesInputItemSchema));
+          appendRawVariant(target, convert(openAIResponsesInputItemSchema), [
+            'message',
+            'function_call',
+            'function_call_output',
+            'web_search_call',
+            'custom_tool_call',
+            'custom_tool_call_output',
+            'reasoning',
+            'item_reference',
+            'additional_tools',
+            'agent_message',
+          ]);
         } else if (zodSchema === openAIResponsesToolTransformSchema) {
-          replaceObject(target, convert(openAIResponsesToolWireSchema));
+          appendRawVariant(target, convert(openAIResponsesToolWireSchema), [
+            'function',
+            'custom',
+            'namespace',
+            'web_search',
+          ]);
         } else if (zodSchema === openAIResponsesInputImagePartSchema) {
           target.oneOf = [{ required: ['image_url'] }, { required: ['file_id'] }];
         } else if (zodSchema === AnthropicToolResultBlockSchema) {
@@ -281,6 +258,7 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
     }) as JsonObject;
 
   const converted = convert(schema);
+  projectTrimmedModelSchemas(converted);
   const examples = schema.meta()?.examples;
   if (Array.isArray(examples)) converted.examples = examples;
   return converted;
@@ -357,7 +335,7 @@ function operationObject(operation: DocumentedPublicOperation): JsonObject {
     ...(operation.requestVariants ?? []),
   ];
   const responses: Record<string, JsonObject> =
-    Object.keys(content).length === 0 ? {} : { '200': { description: 'Successful response', content } };
+    Object.keys(content).length === 0 ? {} : { '2XX': { description: 'Successful response', content } };
   for (const response of operation.responseVariants ?? []) {
     if (response.status in responses) throw new Error(`Duplicate response for ${operation.operationId}`);
     responses[response.status] = {

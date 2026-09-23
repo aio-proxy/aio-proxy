@@ -15,10 +15,10 @@ import {
 const offer = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
 const callIdSchema = z.string().regex(REALTIME_CALL_ID_PATTERN);
 const callParameter = parameter('call_id', 'path', callIdSchema);
-const modelSchema = z
-  .string()
-  .max(MAX_REALTIME_MODEL_LENGTH)
-  .describe('Model ID; the runtime checks its trimmed length.');
+const modelSchema = z.string().trim().max(MAX_REALTIME_MODEL_LENGTH).meta({
+  description: 'Model ID; the runtime checks its trimmed length.',
+  'x-aio-proxy-trimmed-max-length': MAX_REALTIME_MODEL_LENGTH,
+});
 const sessionSchema = z.object({ model: modelSchema.optional() }).loose();
 const encodedSessionSchema = z
   .string()
@@ -112,10 +112,7 @@ export const realtimeOperations = [
     responseVariants: websocketResponse,
   }),
   operation('get', '/v1/realtime', 'connectRealtime', 'connect-realtime', 'Realtime', 33, {
-    parameters: [
-      parameter('call_id', 'query', callIdSchema),
-      parameter('model', 'query', z.string().max(MAX_REALTIME_MODEL_LENGTH)),
-    ],
+    parameters: [parameter('call_id', 'query', callIdSchema), parameter('model', 'query', modelSchema)],
     responseVariants: websocketResponse,
   }),
 ];

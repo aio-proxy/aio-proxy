@@ -34,7 +34,10 @@ const legacyReply = {
   model: 'gpt-5',
   choices: [{ index: 0, text: 'Hello.', finish_reason: 'stop', logprobs: null }],
 };
-const geminiFields = { routePath: '/v1beta/models/*', parameters: [parameter('model', 'path')] };
+const geminiFields = {
+  routePath: '/v1beta/models/*',
+  parameters: [parameter('model', 'path', z.string().min(1))],
+};
 const interactionReply = {
   id: 'intr_example',
   object: 'interaction',

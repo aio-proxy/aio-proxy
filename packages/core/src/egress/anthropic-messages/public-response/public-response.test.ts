@@ -19,3 +19,7 @@ test('accepts server-tool and provider-defined blocks forwarded by a raw Anthrop
 
   expect(AnthropicMessageResponseSchema.parse(raw)).toEqual(raw);
 });
+
+test('accepts sparse provider-defined objects forwarded by a raw Anthropic provider', () => {
+  expect(AnthropicMessageResponseSchema.parse({ fallback: true })).toEqual({ fallback: true });
+});

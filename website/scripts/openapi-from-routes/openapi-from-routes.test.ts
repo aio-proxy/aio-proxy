@@ -65,10 +65,11 @@ describe('loadPublicOpenApi', () => {
         .map((operation) => operation.slug),
     );
     const chat = projectOperation(document, 'createChatCompletion');
-    expect(chat.paths['/v1/chat/completions']?.post?.responses?.['200']?.content).toContainKeys([
+    expect(chat.paths['/v1/chat/completions']?.post?.responses?.['2XX']?.content).toContainKeys([
       'application/json',
       'text/event-stream',
     ]);
+    expect(chat.paths['/v1/chat/completions']?.post?.responses?.['200']).toBeUndefined();
     expect(
       chat.paths['/v1/chat/completions']?.post?.requestBody?.content['application/json']?.schema.additionalProperties,
     ).not.toBe(false);
@@ -77,7 +78,7 @@ describe('loadPublicOpenApi', () => {
         ?.additionalProperties,
     ).toEqual({});
     expect(
-      projectOperation(document, 'createMessage').paths['/v1/messages']?.post?.responses?.['200']?.content,
+      projectOperation(document, 'createMessage').paths['/v1/messages']?.post?.responses?.['2XX']?.content,
     ).toContainKey('text/event-stream');
   });
 
@@ -204,7 +205,7 @@ describe('loadPublicOpenApi', () => {
     const responses = projectOperation(document, 'createResponse').paths['/v1/responses']?.post;
     const messages = projectOperation(document, 'createMessage').paths['/v1/messages']?.post;
     const streamExample = (operation: typeof chat): string => {
-      const media = operation?.responses?.['200']?.content?.['text/event-stream'] as { example?: unknown } | undefined;
+      const media = operation?.responses?.['2XX']?.content?.['text/event-stream'] as { example?: unknown } | undefined;
       if (typeof media?.example !== 'string') throw new Error('Missing HTTP stream example');
       return media.example;
     };
@@ -286,7 +287,7 @@ test('publishes binary, multipart, parameterized and WebSocket operations withou
     paths['/v1/audio/transcriptions']?.post?.requestBody?.content['multipart/form-data']?.schema.properties?.file
       ?.format,
   ).toBe('binary');
-  expect(paths['/v1/audio/speech']?.post?.responses['200']?.content).toHaveProperty('audio/mpeg');
+  expect(paths['/v1/audio/speech']?.post?.responses['2XX']?.content).toHaveProperty('audio/mpeg');
   expect(paths['/v1/videos/{video_id}']?.get?.parameters).toContainEqual(
     expect.objectContaining({ name: 'video_id', in: 'path', required: true }),
   );
@@ -306,7 +307,7 @@ test('publishes binary, multipart, parameterized and WebSocket operations withou
 });
 
 test('documents speech binary media types returned by conversion and raw passthrough', async () => {
-  const content = (await loadPublicOpenApi()).paths['/v1/audio/speech']?.post?.responses['200']?.content;
+  const content = (await loadPublicOpenApi()).paths['/v1/audio/speech']?.post?.responses['2XX']?.content;
   expect(content).toContainKeys([
     'audio/mpeg',
     'audio/wav',
@@ -322,7 +323,7 @@ test('documents speech binary media types returned by conversion and raw passthr
 test('documents subtitle and provider-defined raw transcription responses', async () => {
   const paths = (await loadPublicOpenApi()).paths;
   for (const action of ['transcriptions', 'translations']) {
-    const content = paths[`/v1/audio/${action}`]?.post?.responses['200']?.content;
+    const content = paths[`/v1/audio/${action}`]?.post?.responses['2XX']?.content;
     expect(content).toContainKeys(['application/json', 'text/plain', 'text/vtt', 'application/x-subrip', '*/*']);
     expect(content?.['*/*']?.schema.format).toBe('binary');
   }
@@ -365,7 +366,7 @@ test('documents the optional provider-defined body of a successful video deletio
 });
 
 test('allows provider extensions throughout chat completion response schemas', async () => {
-  const responses = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['200']?.content;
+  const responses = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['2XX']?.content;
   expect(responses?.['application/json']?.schema).toMatchObject({
     additionalProperties: {},
     properties: {
@@ -393,7 +394,7 @@ test('allows provider extensions throughout chat completion response schemas', a
 });
 
 test('documents raw Responses tool items and incomplete lifecycle statuses', async () => {
-  const schema = (await loadPublicOpenApi()).paths['/v1/responses']?.post?.responses['200']?.content?.[
+  const schema = (await loadPublicOpenApi()).paths['/v1/responses']?.post?.responses['2XX']?.content?.[
     'application/json'
   ]?.schema;
   expect(schema).toBeDefined();
@@ -416,7 +417,7 @@ test('documents raw Responses tool items and incomplete lifecycle statuses', asy
 });
 
 test('documents sparse raw Responses JSON and SSE envelopes', async () => {
-  const content = (await loadPublicOpenApi()).paths['/v1/responses']?.post?.responses['200']?.content;
+  const content = (await loadPublicOpenApi()).paths['/v1/responses']?.post?.responses['2XX']?.content;
   expect(content).toBeDefined();
   const response = fromJSONSchema(content!['application/json']!.schema);
   const event = fromJSONSchema(content!['text/event-stream']!.schema);
@@ -428,7 +429,7 @@ test('documents sparse raw Responses JSON and SSE envelopes', async () => {
 });
 
 test('documents server-tool blocks in raw Anthropic responses', async () => {
-  const schema = (await loadPublicOpenApi()).paths['/v1/messages']?.post?.responses['200']?.content?.[
+  const schema = (await loadPublicOpenApi()).paths['/v1/messages']?.post?.responses['2XX']?.content?.[
     'application/json'
   ]?.schema;
   expect(schema).toBeDefined();
@@ -447,10 +448,11 @@ test('documents server-tool blocks in raw Anthropic responses', async () => {
   };
 
   expect(response.safeParse(raw).success).toBe(true);
+  expect(response.safeParse({ fallback: true }).success).toBe(true);
 });
 
 test('documents raw chat completions without created or model fields', async () => {
-  const schema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['200']?.content?.[
+  const schema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['2XX']?.content?.[
     'application/json'
   ]?.schema;
   expect(schema).toBeDefined();
@@ -475,6 +477,25 @@ test('rejects invalid realtime call IDs in documented path and query parameters'
   }
 });
 
+test('accepts padded realtime model IDs whose trimmed value is within the runtime limit', async () => {
+  const document = await loadPublicOpenApi();
+  const padded = `${' '.repeat(3)}${'m'.repeat(128)}${' '.repeat(3)}`;
+  const tooLong = `${' '.repeat(3)}${'m'.repeat(129)}${' '.repeat(3)}`;
+  const directModel = document.paths['/v1/realtime']?.get?.parameters?.find((parameter) => parameter.name === 'model');
+  expect(fromJSONSchema(directModel!.schema).safeParse(padded).success).toBe(true);
+  expect(fromJSONSchema(directModel!.schema).safeParse(tooLong).success).toBe(false);
+
+  const json = document.paths['/v1/realtime']?.post?.requestBody?.content['application/json']?.schema;
+  expect(fromJSONSchema(json!).safeParse({ model: padded }).success).toBe(true);
+  expect(fromJSONSchema(json!).safeParse({ model: tooLong }).success).toBe(false);
+
+  const contentSchema =
+    document.paths['/v1/realtime']?.post?.requestBody?.content['multipart/form-data']?.schema.properties?.session
+      ?.contentSchema;
+  expect(fromJSONSchema(contentSchema!).safeParse({ model: padded }).success).toBe(true);
+  expect(fromJSONSchema(contentSchema!).safeParse({ model: tooLong }).success).toBe(false);
+});
+
 test('caps the documented direct realtime model query at the runtime limit', async () => {
   const parameters = (await loadPublicOpenApi()).paths['/v1/realtime']?.get?.parameters;
   const model = parameters?.find((parameter) => parameter.name === 'model');
@@ -490,11 +511,11 @@ test('documents bounded realtime create models in JSON and multipart sessions', 
   for (const path of ['/v1/live', '/v1/realtime', '/v1/realtime/calls']) {
     const content = paths[path]?.post?.requestBody?.content;
     const json = content?.['application/json']?.schema;
-    expect(json?.properties?.model?.maxLength).toBe(128);
-    expect(json?.properties?.session?.properties?.model?.maxLength).toBe(128);
+    expect(json?.properties?.model?.pattern).toBe('^\\s*(?:[\\s\\S]{1,128})?\\s*$');
+    expect(json?.properties?.session?.properties?.model?.pattern).toBe('^\\s*(?:[\\s\\S]{1,128})?\\s*$');
     const session = content?.['multipart/form-data']?.schema.properties?.session;
     expect(session?.contentMediaType).toBe('application/json');
-    expect(session?.contentSchema?.properties?.model?.maxLength).toBe(128);
+    expect(session?.contentSchema?.properties?.model?.pattern).toBe('^\\s*(?:[\\s\\S]{1,128})?\\s*$');
   }
 });
 
@@ -506,6 +527,9 @@ test('keeps Gemini URL models out of required bodies and rejects unsupported emb
     generation.safeParse({ contents: [{ parts: [{ text: 'Hello.', functionCall: { name: 'lookup' } }] }] }).success,
   ).toBe(false);
   const document = await loadPublicOpenApi();
+  const modelParameter = document.paths['/v1beta/models/{model}:generateContent']?.post?.parameters?.[0];
+  expect(fromJSONSchema(modelParameter!.schema).safeParse('').success).toBe(false);
+  expect(fromJSONSchema(modelParameter!.schema).safeParse('gemini-2.5-flash').success).toBe(true);
   const schema =
     document.paths['/v1beta/models/{model}:embedContent']?.post?.requestBody?.content['application/json']?.schema;
   expect(schema?.properties?.embedContentConfig?.properties?.audioTrackExtraction).toEqual({ not: {} });
@@ -552,7 +576,6 @@ test('projects image count limits for generation and edit request schemas', asyn
 
 test('projects Gemini inline-data and file-URI validation on every media operation', async () => {
   const operationIds = ['generateContent', 'streamGenerateContent', 'countContentTokens'] as const;
-  const oversized = 'A'.repeat(27_962_029);
   for (const operationId of operationIds) {
     const schema = fromJSONSchema(await operationSchema(operationId));
     const inline = {
@@ -561,14 +584,55 @@ test('projects Gemini inline-data and file-URI validation on every media operati
     const file = {
       contents: [{ parts: [{ fileData: { mimeType: 'image/png', fileUri: 'ftp://example.com/image.png' } }] }],
     };
+    const wrongFileMime = {
+      contents: [{ parts: [{ fileData: { mimeType: 'text/plain', fileUri: 'https://example.com/image.txt' } }] }],
+    };
+    const responseMedia = {
+      contents: [
+        {
+          parts: [
+            {
+              functionResponse: {
+                name: 'lookup',
+                response: {},
+                parts: [{ inlineData: { mimeType: 'text/plain', data: 'AAAA' } }],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const validResponseMedia = structuredClone(responseMedia);
+    validResponseMedia.contents[0]!.parts[0]!.functionResponse!.parts![0]!.inlineData.mimeType = 'image/png';
     const valid = {
       contents: [{ parts: [{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }] }],
     };
     expect(schema.safeParse(valid).success).toBe(true);
     expect(schema.safeParse(inline).success).toBe(false);
     expect(schema.safeParse(file).success).toBe(false);
-    expect(
-      schema.safeParse({ contents: [{ parts: [{ inlineData: { mimeType: 'image/png', data: oversized } }] }] }).success,
-    ).toBe(false);
+    expect(schema.safeParse(wrongFileMime).success).toBe(false);
+    expect(schema.safeParse(responseMedia).success).toBe(false);
+    expect(schema.safeParse(validResponseMedia).success).toBe(true);
   }
+
+  const mediaSchema = (await loadPublicOpenApi()).paths['/v1beta/models/{model}:generateContent']?.post?.requestBody
+    ?.content['application/json']?.schema;
+  const dataSchema = mediaSchema?.properties?.contents?.items?.properties?.parts?.items?.oneOf?.find(
+    (variant) => variant.properties?.inlineData !== undefined,
+  )?.properties?.inlineData?.properties?.data;
+  expect(dataSchema?.anyOf).toEqual([
+    expect.objectContaining({ maxLength: 27_962_024 }),
+    expect.objectContaining({ maxLength: 27_962_028, pattern: expect.stringContaining('==') }),
+    expect.objectContaining({ maxLength: 27_962_028, pattern: expect.stringContaining('=') }),
+  ]);
+});
+
+test('preserves raw-only OpenAI Responses request variants', async () => {
+  const schema = fromJSONSchema(await operationSchema('createResponse'));
+  expect(schema.safeParse({ model: 'gpt-test', input: [{ type: 'computer_call', id: 'computer_1' }] }).success).toBe(
+    true,
+  );
+  expect(schema.safeParse({ model: 'gpt-test', input: 'Hello.', tools: [{ type: 'file_search' }] }).success).toBe(true);
+  expect(schema.safeParse({ model: 'gpt-test', input: [{ type: 'message' }] }).success).toBe(false);
+  expect(schema.safeParse({ model: 'gpt-test', input: 'Hello.', tools: [{ type: 'function' }] }).success).toBe(false);
 });

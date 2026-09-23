@@ -50,7 +50,7 @@ export function operation(
 
 export const ok = (...contents: DocumentationContent[]) => [
   {
-    status: '200',
+    status: '2XX',
     description: 'Successful response. Available representations depend on the request and upstream capability.',
     content: contents,
   },
