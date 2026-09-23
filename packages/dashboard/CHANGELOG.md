@@ -1,5 +1,39 @@
 # @aio-proxy/dashboard
 
+## 0.31.0
+
+### Patch Changes
+
+- [#411](https://github.com/aio-proxy/aio-proxy/pull/411) [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0) Thanks [@baranwang](https://github.com/baranwang)! - The OpenTelemetry destination form is now translated. Header rows can be removed, and only the first header or API key row shows field labels.
+
+- [#409](https://github.com/aio-proxy/aio-proxy/pull/409) [`fd01333`](https://github.com/aio-proxy/aio-proxy/commit/fd01333243b264180db8480a1220909b39af72ae) Thanks [@baranwang](https://github.com/baranwang)! - The trace list and the trace detail header show a Provider by its configured name, or account label, with the Provider ID on hover. They no longer draw the provider mark next to that name.
+- Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0)]:
+  - @aio-proxy/plugin-sdk@0.31.0
+  - @aio-proxy/server@0.31.0
+  - @aio-proxy/i18n@0.31.0
+  - @aio-proxy/brand@0.31.0
+  - @aio-proxy/types@0.31.0
+  - @aio-proxy/ui@0.31.0
+
+## 0.30.0
+
+### Minor Changes
+
+- [#404](https://github.com/aio-proxy/aio-proxy/pull/404) [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493) Thanks [@baranwang](https://github.com/baranwang)! - Settings can send the traces aio-proxy already records to OTLP endpoints. Add a destination URL, choose JSON or protobuf, and set headers. Export stays on when a destination fails, and the local traces page is unchanged.
+
+### Patch Changes
+
+- [#402](https://github.com/aio-proxy/aio-proxy/pull/402) [`739e846`](https://github.com/aio-proxy/aio-proxy/commit/739e8465e605c866bcfaaedb1ba05ef1a81db8d4) Thanks [@baranwang](https://github.com/baranwang)! - Trace detail is titled with the request's root operation, such as `POST /v1/responses`. Failed spans in the timeline no longer show an alert icon next to the name.
+
+- [#402](https://github.com/aio-proxy/aio-proxy/pull/402) [`e9e80c0`](https://github.com/aio-proxy/aio-proxy/commit/e9e80c0cd7224886d1e04a0c98f0547803cd0ccf) Thanks [@baranwang](https://github.com/baranwang)! - Trace list and trace detail show a Provider the same way the providers page does: its configured name, or account label, with the Provider ID on hover. The list column is labeled Provider. An ID missing from the catalog, or a catalog that failed to load, stays as the Provider ID.
+- Updated dependencies [[`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46), [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493)]:
+  - @aio-proxy/i18n@0.30.0
+  - @aio-proxy/types@0.30.0
+  - @aio-proxy/server@0.30.0
+  - @aio-proxy/plugin-sdk@0.30.0
+  - @aio-proxy/brand@0.30.0
+  - @aio-proxy/ui@0.30.0
+
 ## 0.29.0
 
 ### Minor Changes

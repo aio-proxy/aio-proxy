@@ -1,7 +1,7 @@
 import { configPath, listInstalledNpmPackages } from '@aio-proxy/core';
-import { m } from '@aio-proxy/i18n';
 
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
+import { formatDoctorLines } from '../ui';
 
 export type DoctorOptions = {
   readonly host?: string;
@@ -18,15 +18,18 @@ export async function doctorCommand(
   const { host, port } = await resolveControlAddress(options);
   const url = controlBaseUrl(host, port);
 
-  print(m['cli.doctor.config_path']({ path: configPath() }));
-
   const health = await probeHealth(url);
-  print(
-    health === null
-      ? m['cli.doctor.server_unreachable']({ url })
-      : m['cli.doctor.server_reachable']({ url, version: health.version ?? 'unknown' }),
-  );
-
   const installed = await listInstalledNpmPackages();
-  print(m['cli.doctor.plugin_count']({ count: installed.length }));
+  for (const line of formatDoctorLines(
+    {
+      configPath: configPath(),
+      url,
+      ...(health?.version === undefined ? {} : { version: health.version }),
+      reachable: health !== null,
+      pluginCount: installed.length,
+    },
+    process.stdout.columns,
+  )) {
+    print(line);
+  }
 }

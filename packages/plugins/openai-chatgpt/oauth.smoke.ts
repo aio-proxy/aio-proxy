@@ -62,15 +62,18 @@ test('clean build resolves the current runtime entry and exposes Responses raw c
   expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-artifact' })).toBeUndefined();
 });
 
-async function registeredAdapter(
-  descriptor: PluginDescriptor,
-): Promise<OAuthAdapter<Record<string, never>, ChatGPTCredential>> {
-  let adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> | undefined;
+async function registeredAdapter<Options>(
+  descriptor: PluginDescriptor<Options>,
+): Promise<OAuthAdapter<Record<string, unknown>, ChatGPTCredential>> {
+  let adapter: OAuthAdapter<Record<string, unknown>, ChatGPTCredential> | undefined;
+  const options = (
+    descriptor.metadata.options === undefined ? undefined : await descriptor.metadata.options.schema.parseAsync({})
+  ) as Options;
   await descriptor.setup(
     {
       oauth: {
         register(value) {
-          adapter = value as OAuthAdapter<Record<string, never>, ChatGPTCredential>;
+          adapter = value as OAuthAdapter<Record<string, unknown>, ChatGPTCredential>;
         },
       },
       logger: {
@@ -83,7 +86,7 @@ async function registeredAdapter(
         },
       },
     },
-    undefined,
+    options,
   );
   if (adapter === undefined) throw new Error('built plugin did not register its OAuth adapter');
   return adapter;

@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-sdk",
-  "version": "0.29.0",
+  "version": "0.31.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aio-proxy/aio-proxy.git",
@@ -40,7 +40,8 @@
     "date-fns": "catalog:",
     "es-toolkit": "catalog:",
     "eventsource-parser": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@handlebars/parser": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

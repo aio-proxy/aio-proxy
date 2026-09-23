@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
 import { type Diagnostic } from '@aio-proxy/types';
 
+import { resolvePluginOptionsTemplates } from '../config/index';
 import type { NpmPackageInfo } from '../npm';
 import { isAiSdkProviderModule } from '../provider/ai-sdk-loader/index';
 import { validateConfigSpec } from './config-spec';
@@ -73,7 +74,9 @@ export async function stagePluginDescriptor(options: {
     enablements: [
       {
         packageName: options.packageName,
-        ...(Object.keys(options.publicValues).length === 0 ? {} : { options: options.publicValues }),
+        ...(Object.keys(options.publicValues).length === 0
+          ? {}
+          : { options: resolvePluginOptionsTemplates(options.publicValues) as Record<string, unknown> }),
       },
     ],
     builtIns: [{ packageName: options.packageName, version: options.version, descriptor: options.descriptor }],

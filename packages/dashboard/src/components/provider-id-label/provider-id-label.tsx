@@ -9,6 +9,7 @@ interface ProviderIdLabelProps {
   readonly className?: string;
   readonly providers?: readonly DashboardProviderSummary[];
   readonly plugins?: readonly DashboardPluginSummary[];
+  readonly mark?: boolean;
 }
 
 const pluginIconFor = (
@@ -18,12 +19,19 @@ const pluginIconFor = (
   provider.plugin === undefined ? undefined : plugins?.find((plugin) => plugin.packageName === provider.plugin)?.icon;
 
 /**
- * A stored Provider ID rendered the way the providers page renders that Provider:
+ * A stored Provider ID rendered the way the providers page names that Provider:
  * configured name, otherwise the account label, otherwise the ID. The ID itself
- * stays on the hover title. Callers pass the catalog; a missing list or an ID
- * that is no longer in it stays as text.
+ * stays on the hover title. `mark` draws the providers-page icon; the trace
+ * list and trace detail leave it off. Callers pass the catalog; a missing list
+ * or an ID that is no longer in it stays as text.
  */
-export const ProviderIdLabel: React.FC<ProviderIdLabelProps> = ({ providerId, className, providers, plugins }) => {
+export const ProviderIdLabel: React.FC<ProviderIdLabelProps> = ({
+  providerId,
+  className,
+  providers,
+  plugins,
+  mark = true,
+}) => {
   const provider = providers?.find((item) => item.id === providerId);
 
   if (provider === undefined) {
@@ -36,8 +44,8 @@ export const ProviderIdLabel: React.FC<ProviderIdLabelProps> = ({ providerId, cl
 
   const name = providerDisplayName(provider);
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-1.5', className)} title={providerId}>
-      <ProviderMark provider={provider} pluginIcon={pluginIconFor(provider, plugins)} />
+    <span className={cn('inline-flex min-w-0 items-center', mark && 'gap-1.5', className)} title={providerId}>
+      {mark ? <ProviderMark provider={provider} pluginIcon={pluginIconFor(provider, plugins)} /> : null}
       <span className="truncate">{name}</span>
     </span>
   );

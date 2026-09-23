@@ -159,4 +159,15 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(cursor?.displayName ?? '', 'zh-Hans')).toBe('使用 Cursor 登录');
   expect(cursor?.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
   expect(typeof cursor?.createRuntime).toBe('function');
+
+  const chatgpt = snapshot.registry.resolveOAuth('@aio-proxy/plugin-openai-chatgpt', 'default');
+  const chatgptPlugin = createEmbeddedBuiltIns().find(
+    (plugin) => plugin.packageName === '@aio-proxy/plugin-openai-chatgpt',
+  );
+  const chatgptForm = chatgptPlugin?.descriptor.metadata.options?.form ?? [];
+  expect(chatgpt?.account.options.form).toEqual([]);
+  expect(snapshot.plugins.get('@aio-proxy/plugin-openai-chatgpt')?.hasOptions).toBe(true);
+  expect(resolveLocalizedText(chatgptForm[0]?.label ?? '', 'zh-Hans')).toBe('User-Agent');
+  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'en')).toBe('User-Agent policy');
+  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'zh-Hans')).toBe('User-Agent 策略');
 });

@@ -12,7 +12,7 @@ const credential: ChatGPTCredential = {
   refreshToken: 'reset-refresh-token',
 };
 
-function context(signal = new AbortController().signal): AccountContext<ChatGPTCredential, Record<string, never>> {
+function context(signal = new AbortController().signal): AccountContext<ChatGPTCredential, Record<string, unknown>> {
   return {
     credentials: {
       read: async () => ({ value: credential, revision: 1 }),

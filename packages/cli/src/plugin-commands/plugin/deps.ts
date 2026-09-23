@@ -19,9 +19,15 @@ import {
   withNpmPackageLifecycle,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
-import { confirm, input, password, select } from '@inquirer/prompts';
 
-import type { PluginFormPrompts } from '../form';
+import {
+  canPrompt,
+  createClackPrompts,
+  openProductionSession,
+  PromptRequiresTtyError,
+  type CommandSession,
+  type PluginFormPrompts,
+} from '../../ui';
 import { PluginConfirmationRequiredError, PluginTrustRejectedError } from './errors';
 
 export type SecretRepository = Pick<PluginRepository, 'readPluginSecret' | 'writePluginSecret' | 'deletePluginSecret'>;
@@ -34,6 +40,7 @@ export type PluginLifecycleDeps = {
   readonly isTTY: boolean;
   readonly prompts: PluginFormPrompts;
   readonly confirm: (message: string, signal?: AbortSignal) => Promise<boolean>;
+  readonly openSession?: (title: string) => CommandSession;
   readonly npmAdd: (packageName: string, registry?: string) => Promise<NpmPackageInfo>;
   readonly withInstalledNpmPackage?: <T>(
     packageName: string,
@@ -58,9 +65,9 @@ export function createCliPluginDiagnosticFactory(): DiagnosticFactory {
 }
 
 export function createPluginConfirmation(
-  prompt: typeof confirm = confirm,
+  prompt: PluginFormPrompts['confirm'],
 ): (message: string, signal?: AbortSignal) => Promise<boolean> {
-  return (message, signal) => prompt({ message, default: false }, signal === undefined ? undefined : { signal });
+  return (message, signal) => prompt({ message, initialValue: false }, signal === undefined ? undefined : { signal });
 }
 
 export async function requireConfirmation(
@@ -68,10 +75,22 @@ export async function requireConfirmation(
   options: { readonly yes?: boolean },
   deps: PluginLifecycleDeps,
   packageName?: string,
+  session?: CommandSession,
 ): Promise<void> {
   if (options.yes === true) return;
   if (!deps.isTTY) throw new PluginConfirmationRequiredError(packageName);
-  if (!(await deps.confirm(message))) throw new PluginTrustRejectedError();
+  const confirmed = session !== undefined ? await session.confirm({ message }) : await deps.confirm(message);
+  if (!confirmed) throw new PluginTrustRejectedError();
+}
+
+export function beginPluginSession(deps: PluginLifecycleDeps, title: string): CommandSession | undefined {
+  if (!deps.isTTY || deps.openSession === undefined) return undefined;
+  return deps.openSession(title);
+}
+
+export function reportLine(deps: PluginLifecycleDeps, session: CommandSession | undefined, message: string): void {
+  if (session?.finish(message) === true) return;
+  deps.print(message);
 }
 
 export function createDefaultPluginLifecycleDeps(): PluginLifecycleDeps {
@@ -83,6 +102,22 @@ export function createDefaultPluginLifecycleDeps(): PluginLifecycleDeps {
     repository = createPluginRepository(handle.sqlite);
     return repository;
   };
+  const interactive = canPrompt({
+    stdinIsTTY: process.stdin.isTTY === true,
+    stderrIsTTY: process.stderr.isTTY === true,
+    env: process.env,
+  });
+  const refuseToPrompt = (): never => {
+    throw new PromptRequiresTtyError();
+  };
+  const prompts: PluginFormPrompts = interactive
+    ? createClackPrompts({ input: process.stdin, output: process.stderr })
+    : {
+        input: refuseToPrompt,
+        password: refuseToPrompt,
+        confirm: refuseToPrompt,
+        select: refuseToPrompt,
+      };
   return {
     config: new AtomicConfigFile(configPath()),
     repository: {
@@ -93,9 +128,10 @@ export function createDefaultPluginLifecycleDeps(): PluginLifecycleDeps {
     },
     builtInNames: new Set(BUILT_IN_PLUGIN_PACKAGE_NAMES),
     builtIns: createEmbeddedBuiltIns(),
-    isTTY: process.stdin.isTTY === true,
-    prompts: { input, password, confirm, select },
-    confirm: createPluginConfirmation(),
+    isTTY: interactive,
+    prompts,
+    confirm: createPluginConfirmation(prompts.confirm),
+    openSession: interactive ? openProductionSession : undefined,
     npmAdd,
     withInstalledNpmPackage,
     withNpmPackageLifecycle,

@@ -21,9 +21,9 @@ describe('provider login capability prompts', () => {
     expect(message).toBe('Select an OAuth capability');
   });
 
-  test('uses localized capability display names for TTY choice names and canonical references for values', async () => {
+  test('uses localized capability display names for TTY choice labels and canonical references for values', async () => {
     await setLocale('zh-Hans');
-    let choices: readonly { readonly name: string; readonly value: string }[] = [];
+    let choices: readonly { readonly label: string; readonly value: string }[] = [];
     const selectCapability = createCapabilitySelector(async (config) => {
       choices = config.choices;
       return config.choices[0]?.value ?? '';
@@ -36,12 +36,12 @@ describe('provider login capability prompts', () => {
         },
       ] as never),
     ).resolves.toBe('@a/one#default');
-    expect(choices).toEqual([{ name: '本地化功能名称', value: '@a/one#default' }]);
+    expect(choices).toEqual([{ label: '本地化功能名称', value: '@a/one#default' }]);
   });
 
   test('manual-only confirmation uses the login signal', async () => {
     const controller = new AbortController();
-    let observedConfig: { readonly message: string; readonly default?: boolean } | undefined;
+    let observedConfig: { readonly message: string; readonly initialValue?: boolean } | undefined;
     let observedSignal: AbortSignal | undefined;
     const confirmManualOnly = createManualOnlyConfirmation(controller.signal, async (config, context) => {
       observedConfig = config;
@@ -50,7 +50,7 @@ describe('provider login capability prompts', () => {
     });
     await expect(confirmManualOnly('http://127.0.0.1/callback')).resolves.toBe(true);
     expect(observedSignal).toBe(controller.signal);
-    expect(observedConfig).toEqual({ message: 'http://127.0.0.1/callback', default: false });
+    expect(observedConfig).toEqual({ message: 'http://127.0.0.1/callback', initialValue: false });
   });
 
   test('resolves localized progress copy before printing', async () => {

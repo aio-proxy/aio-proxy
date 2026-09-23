@@ -27,6 +27,11 @@ export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
 
 const localized = (english: string, chinese: string) => ({ default: english, 'zh-Hans': chinese }) as const;
 
+const chatgptUserAgentPolicyDescription = localized(
+  'By default, all requests use the User-Agent configured above. Choose to keep Codex clients’ User-Agent to forward it unchanged; other clients still use the configured value.',
+  '默认对所有请求使用上方配置的 User-Agent。选择保留 Codex 客户端的 User-Agent 时，会原样转发它；其他客户端仍使用上方配置的值。',
+);
+
 export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
   return [
     {
@@ -127,6 +132,15 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
           '使用 ChatGPT Plus 或 Pro 账号访问模型',
         ),
         adapterLabel: localized('Login with ChatGPT (Plus/Pro)', '使用 ChatGPT（Plus/Pro）登录'),
+        userAgentLabel: localized('User-Agent', 'User-Agent'),
+        userAgentDescription: localized(
+          'Leave blank to use the default. {{latest_codex_rs_version}} is replaced with the latest Codex release, which is also sent as the catalog client version.',
+          '留空则使用默认值。{{latest_codex_rs_version}} 会替换为最新的 Codex 版本，并同时作为模型目录的 client version。',
+        ),
+        userAgentPolicyLabel: localized('User-Agent policy', 'User-Agent 策略'),
+        userAgentPolicyDescription: chatgptUserAgentPolicyDescription,
+        fixedPolicyLabel: localized('Always use the configured User-Agent', '始终使用配置的 User-Agent'),
+        preserveCodexClientLabel: localized('Keep the User-Agent from Codex clients', '保留 Codex 客户端的 User-Agent'),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

@@ -7,16 +7,12 @@ import {
   NpmPackageJsonError,
   NpmPackageNameError,
 } from '@aio-proxy/core';
-import { m } from '@aio-proxy/i18n';
-import {
-  type DashboardProviderSummary,
-  DashboardProvidersResponseSchema,
-  dashboardProviderSuggestedCommand,
-} from '@aio-proxy/types';
+import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from '@aio-proxy/types';
 
 import { ProviderDashboardError } from './errors';
 import { providerImport as pluginProviderImport } from './plugin-commands/provider-import';
 import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from './plugin-commands/provider-login';
+import { formatInstalledLines, formatProviderLines, useColor } from './ui';
 
 export type ProviderListOptions = {
   readonly filter?: string;
@@ -74,52 +70,20 @@ export async function providerTest(id: string, options: Omit<ProviderListOptions
 
 async function providerInstalledList(): Promise<void> {
   const installed = await listInstalledNpmPackages();
+  if (installed.length === 0) return;
   for (const item of installed) {
-    console.log(`${item.packageName} ${item.version} ${dirname(item.entrypoint)}`);
+    for (const line of formatInstalledLines(
+      { packageName: item.packageName, version: item.version, directory: dirname(item.entrypoint) },
+      process.stdout.columns,
+    )) {
+      console.log(line);
+    }
   }
 }
 
 function printProviderTable(providers: readonly DashboardProviderSummary[], probe: boolean): void {
-  const headers = [
-    m['cli.provider.list.header_id'](),
-    m['cli.provider.list.header_kind'](),
-    m['cli.provider.list.header_enabled'](),
-    m['cli.provider.list.header_passthrough'](),
-    m['cli.provider.list.header_last_status'](),
-    m['cli.provider.list.header_last_latency'](),
-    m['cli.provider.list.header_state'](),
-    m['cli.provider.list.header_catalog'](),
-    m['cli.provider.list.header_plugin'](),
-    m['cli.provider.list.header_capability'](),
-    m['cli.provider.list.header_account'](),
-    m['cli.provider.list.header_expires_at'](),
-    m['cli.provider.list.header_catalog_last_success_at'](),
-    m['cli.provider.list.header_diagnostic'](),
-    m['cli.provider.list.header_suggested_command'](),
-    ...(probe ? [m['cli.provider.list.header_probe']()] : []),
-  ];
-  console.log(headers.join(' | '));
-  for (const provider of providers) {
-    const diagnostic = provider.state.diagnostic;
-    console.log(
-      [
-        provider.id,
-        provider.kind,
-        String(provider.enabled),
-        String(provider.passthrough),
-        provider.last_status,
-        provider.last_latency === null ? '-' : String(provider.last_latency),
-        provider.state.status,
-        provider.state.status === 'ready' ? (provider.state.catalog ?? '-') : '-',
-        provider.plugin ?? '-',
-        provider.capability ?? '-',
-        provider.accountLabel ?? '-',
-        provider.expiresAt === undefined ? '-' : new Date(provider.expiresAt).toISOString(),
-        provider.catalogLastSuccessAt ?? '-',
-        diagnostic?.summary ?? '-',
-        dashboardProviderSuggestedCommand(provider) ?? '-',
-        ...(probe ? [provider.probe ?? 'FAIL'] : []),
-      ].join(' | '),
-    );
+  const color = useColor(process.stdout.isTTY === true, process.env);
+  for (const line of formatProviderLines(providers, probe, color)) {
+    console.log(line);
   }
 }

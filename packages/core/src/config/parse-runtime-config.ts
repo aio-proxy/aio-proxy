@@ -1,6 +1,7 @@
 import { type Config, ConfigSchema } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { assertExpandedOtelHeaders, assertOtelConfig } from './otel-guard';
 import { resolveConfigTemplates } from './resolve-config-templates';
 
 const digitPort = (value: unknown): number | undefined => {
@@ -21,5 +22,8 @@ export function parseRuntimeConfig(
   value: unknown,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Config {
-  return ConfigSchema.parse(withDigitServerPort(resolveConfigTemplates(value, env)));
+  assertOtelConfig(value, env);
+  const expanded = withDigitServerPort(resolveConfigTemplates(value, env));
+  assertExpandedOtelHeaders(expanded);
+  return ConfigSchema.parse(expanded);
 }

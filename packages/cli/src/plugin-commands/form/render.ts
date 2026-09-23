@@ -1,8 +1,8 @@
 import { parsePluginSchema, validateConfigSpec } from '@aio-proxy/core';
 import { getLocale } from '@aio-proxy/i18n';
 import { type ConfigSpec, type FormField, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
-import { confirm, input, password, select } from '@inquirer/prompts';
 
+import { createClackPrompts, type PluginFormPrompts, type PromptContext } from '../../ui';
 import {
   FormJsonInvalidError,
   FormNumberInvalidError,
@@ -11,16 +11,10 @@ import {
 } from './errors';
 import { cloneInertJson, compatibleDefault, jsonSafeEqual, plainRecordEntries } from './json';
 
-type PromptContext = { readonly signal?: AbortSignal };
-
-export type PluginFormPrompts = {
-  readonly input: (config: Parameters<typeof input>[0], context?: PromptContext) => Promise<string>;
-  readonly password: (config: Parameters<typeof password>[0], context?: PromptContext) => Promise<string>;
-  readonly confirm: (config: Parameters<typeof confirm>[0], context?: PromptContext) => Promise<boolean>;
-  readonly select: (config: Parameters<typeof select>[0], context?: PromptContext) => Promise<unknown>;
-};
-
-const defaultPrompts: PluginFormPrompts = { input, password, confirm, select };
+const defaultPrompts: PluginFormPrompts = createClackPrompts({
+  input: process.stdin,
+  output: process.stderr,
+});
 
 export type RenderConfigSpecOptions = {
   readonly prompts?: PluginFormPrompts;
@@ -67,7 +61,7 @@ async function promptFieldValue(field: FormField, args: PromptFieldArgs): Promis
         {
           message,
           ...(field.placeholder === undefined ? {} : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
-          ...(promptDefault === undefined ? {} : { default: promptDefault as string }),
+          ...(promptDefault === undefined ? {} : { defaultValue: promptDefault as string }),
         },
         context,
       );
@@ -85,7 +79,7 @@ async function promptFieldValue(field: FormField, args: PromptFieldArgs): Promis
             ...(field.placeholder === undefined
               ? {}
               : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
-            ...(promptDefault === undefined ? {} : { default: String(promptDefault as number) }),
+            ...(promptDefault === undefined ? {} : { defaultValue: String(promptDefault as number) }),
           },
           context,
         )
@@ -95,19 +89,17 @@ async function promptFieldValue(field: FormField, args: PromptFieldArgs): Promis
       return value;
     }
     case 'boolean':
-      return prompts.confirm({ message, default: (promptDefault as boolean | undefined) ?? false }, context);
+      return prompts.confirm({ message, initialValue: (promptDefault as boolean | undefined) ?? false }, context);
     case 'select':
-      return prompts.select(
+      return prompts.select<unknown>(
         {
           message,
           choices: field.options.map((option) => ({
-            name: resolveLocalizedText(option.label, locale),
+            label: resolveLocalizedText(option.label, locale),
             value: option.value,
-            ...(option.description === undefined
-              ? {}
-              : { description: resolveLocalizedText(option.description, locale) }),
+            ...(option.description === undefined ? {} : { hint: resolveLocalizedText(option.description, locale) }),
           })),
-          ...(promptDefault === undefined ? {} : { default: promptDefault }),
+          ...(promptDefault === undefined ? {} : { initialValue: promptDefault }),
         },
         context,
       );
@@ -119,7 +111,7 @@ async function promptFieldValue(field: FormField, args: PromptFieldArgs): Promis
             ...(field.placeholder === undefined
               ? {}
               : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
-            ...(promptDefault === undefined ? {} : { default: JSON.stringify(promptDefault) }),
+            ...(promptDefault === undefined ? {} : { defaultValue: JSON.stringify(promptDefault) }),
           },
           context,
         )

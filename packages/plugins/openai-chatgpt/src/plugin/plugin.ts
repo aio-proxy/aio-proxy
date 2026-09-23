@@ -1,11 +1,4 @@
-import {
-  type ConfigSpec,
-  definePlugin,
-  type LocalizedText,
-  type OAuthAdapter,
-  type PluginDescriptor,
-  zod,
-} from '@aio-proxy/plugin-sdk';
+import { definePlugin, type LocalizedText, type OAuthAdapter, type PluginDescriptor, zod } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
@@ -16,6 +9,12 @@ import {
   refreshAccessToken,
 } from '../oauth-flow';
 import { generatePKCE, generateState } from '../pkce';
+import {
+  type ChatGPTPluginOptions,
+  type ChatGPTPluginOptionsText,
+  chatGPTPluginOptions,
+  englishPluginOptionsText,
+} from '../plugin-options';
 import { readOpenAIChatGPTQuota, resetOpenAIChatGPTQuota } from '../quota/index';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
@@ -41,7 +40,12 @@ function cpaExpiresAt(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export type OpenAIChatGPTPresentationText = {
+const accountOptions = {
+  schema: zod.object({}),
+  form: [],
+};
+
+export type OpenAIChatGPTPresentationText = Partial<ChatGPTPluginOptionsText> & {
   readonly pluginLabel?: LocalizedText;
   readonly pluginDescription?: LocalizedText;
   readonly adapterLabel: LocalizedText;
@@ -51,17 +55,17 @@ export const englishPresentationText: OpenAIChatGPTPresentationText = {
   pluginLabel: 'OpenAI ChatGPT',
   pluginDescription: 'Use a ChatGPT Plus or Pro account to access models',
   adapterLabel: 'Login with ChatGPT (Plus/Pro)',
+  ...englishPluginOptionsText,
 };
 
 export function createOpenAIChatGPTPlugin(
   presentationText: OpenAIChatGPTPresentationText,
-): PluginDescriptor<undefined> {
-  const accountOptions = {
-    schema: zod.object({}),
-    form: [],
-  } as const satisfies ConfigSpec<Record<string, never>>;
+): PluginDescriptor<ChatGPTPluginOptions> {
+  const pluginOptionsSpec = chatGPTPluginOptions({ ...englishPluginOptionsText, ...presentationText });
 
-  const adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> = {
+  const createAdapter = (
+    pluginOptions: ChatGPTPluginOptions,
+  ): OAuthAdapter<Record<string, unknown>, ChatGPTCredential> => ({
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
@@ -132,7 +136,7 @@ export function createOpenAIChatGPTPlugin(
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
       discover: async ({ credentials, fetch, signal }) => ({
-        language: await discoverOpenAIChatGPTModels(credentials, signal, fetch),
+        language: await discoverOpenAIChatGPTModels(credentials, signal, fetch, pluginOptions),
         image: CHATGPT_IMAGE_MODELS,
         embedding: [],
         speech: [],
@@ -154,21 +158,22 @@ export function createOpenAIChatGPTPlugin(
         },
       };
     },
-    createRuntime: createOpenAIChatGPTRuntime,
+    createRuntime: (context) => createOpenAIChatGPTRuntime(context, pluginOptions),
     quota: {
-      read: (context) => readOpenAIChatGPTQuota(context),
-      reset: (context) => resetOpenAIChatGPTQuota(context),
+      read: (context) => readOpenAIChatGPTQuota(context, context.fetch ?? globalThis.fetch, pluginOptions),
+      reset: (context) => resetOpenAIChatGPTQuota(context, context.fetch ?? globalThis.fetch, pluginOptions),
     },
-  };
+  });
 
   return definePlugin(
-    (api) => {
-      api.oauth.register(adapter);
+    async (api, options) => {
+      api.oauth.register(createAdapter(await pluginOptionsSpec.schema.parseAsync(options)));
     },
     {
       displayName: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
       description: presentationText.pluginDescription ?? 'Use a ChatGPT Plus or Pro account to access models',
       icon: 'openai',
+      options: pluginOptionsSpec,
     },
   );
 }

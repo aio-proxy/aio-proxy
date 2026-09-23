@@ -236,6 +236,63 @@ afterEach(() => {
 });
 
 describe.serial('Dashboard plugin control plane', () => {
+  test('saves plugin templates intact while validating resolved environment values', async () => {
+    const templatePackage = '@scope/template-plugin';
+    const variable = 'AIO_PLUGIN_TEMPLATE_TEST_PREFIX';
+    const previous = process.env[variable];
+    process.env[variable] = 'codex-tui';
+    const seen: string[] = [];
+    const descriptor = definePlugin(
+      (_api, options) => {
+        seen.push(options.userAgent);
+      },
+      {
+        options: {
+          schema: z.object({ userAgent: z.string().startsWith('codex-tui/') }),
+          form: [{ type: 'text', key: 'userAgent', label: 'User-Agent' }],
+        },
+      },
+    );
+    try {
+      await withFixture(
+        async ({ routes, configPath }) => {
+          const edit = (await (
+            await routes.request(`/plugins/edit-view?packageName=${encodeURIComponent(templatePackage)}`)
+          ).json()) as { revision: string };
+          const userAgent = `{{env.${variable}}}/{{latest_codex_rs_version}}`;
+          const response = await updateOptions(routes, {
+            packageName: templatePackage,
+            revision: edit.revision,
+            publicValues: { userAgent },
+            secretValues: {},
+            clearSecretKeys: [],
+          });
+          expect(response.status).toBe(200);
+          expect(seen.at(-1)).toBe('codex-tui/{{latest_codex_rs_version}}');
+          expect((await Bun.file(configPath).json()).plugins).toEqual([[templatePackage, { userAgent }]]);
+          const reopened = await routes.request(
+            `/plugins/edit-view?packageName=${encodeURIComponent(templatePackage)}`,
+          );
+          expect(reopened.status).toBe(200);
+          expect(await reopened.json()).toMatchObject({ publicValues: { userAgent } });
+        },
+        {
+          config: {
+            plugins: [[templatePackage, { userAgent: 'codex-tui/{{latest_codex_rs_version}}' }]],
+            providers: {},
+          },
+          descriptors: new Map([[templatePackage, descriptor]]),
+          prepare: () => {
+            writeCachedPackage(templatePackage);
+          },
+        },
+      );
+    } finally {
+      if (previous === undefined) delete process.env[variable];
+      else process.env[variable] = previous;
+    }
+  });
+
   test('plugin option mutation preserves __proto__ as an own secret field', () => {
     const descriptor = definePlugin(() => {}, {
       options: {

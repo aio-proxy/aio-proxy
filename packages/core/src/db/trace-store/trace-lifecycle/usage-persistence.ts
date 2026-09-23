@@ -92,7 +92,7 @@ export function upsertUsageDelta(
   );
 }
 
-const ATTEMPT_SPAN_NAME = 'aio_proxy.provider.attempt';
+const ATTEMPT_INDEX_ATTR = 'aio_proxy.attempt.index';
 const TRANSPORT_ATTR = 'aio_proxy.transport';
 const TARGET_PROTOCOL_ATTR = 'aio_proxy.protocol.target';
 const TERMINATION_ATTR = 'aio_proxy.termination.reason';
@@ -110,7 +110,8 @@ function normalizedCache(
 ): Pick<UsageDailyDelta, 'normalizedCacheReadTokens' | 'normalizedPromptTokens'> {
   // The pipeline stops at the first success, so at most one attempt lacks a termination reason.
   const attempt = childSpans.find(
-    (span) => span.name === ATTEMPT_SPAN_NAME && span.attributes[TERMINATION_ATTR] === undefined,
+    (span) =>
+      typeof span.attributes[ATTEMPT_INDEX_ATTR] === 'number' && span.attributes[TERMINATION_ATTR] === undefined,
   );
   const transport = attempt?.attributes[TRANSPORT_ATTR];
   if (transport !== 'raw' && transport !== 'ai_sdk') {

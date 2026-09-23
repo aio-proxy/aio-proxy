@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardPluginSummary, DashboardProviderSummary, DashboardTraceSummary } from '@aio-proxy/types';
+import type { DashboardProviderSummary, DashboardTraceSummary } from '@aio-proxy/types';
 import { ScrollArea, ScrollBar } from '@aio-proxy/ui/components/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
@@ -36,10 +36,7 @@ const tracesTableFeatures = tableFeatures({});
 
 type TraceColumn = ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>;
 
-const traceColumns = (
-  providers: readonly DashboardProviderSummary[] | undefined,
-  plugins: readonly DashboardPluginSummary[] | undefined,
-): TraceColumn[] => [
+const traceColumns = (providers: readonly DashboardProviderSummary[] | undefined): TraceColumn[] => [
   {
     accessorKey: 'startedAt',
     header: () => m['dashboard.traces.started_at'](),
@@ -84,7 +81,7 @@ const traceColumns = (
         <ProviderIdLabel
           providerId={row.original.finalProviderId}
           providers={providers}
-          plugins={plugins}
+          mark={false}
           className="max-w-48"
         />
       ),
@@ -136,7 +133,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({
   onSelect,
 }) => {
   const catalog = useProviderCatalog();
-  const columns = useMemo(() => traceColumns(catalog.providers, catalog.plugins), [catalog.providers, catalog.plugins]);
+  const columns = useMemo(() => traceColumns(catalog.providers), [catalog.providers]);
   const tableData = useMemo(() => [...data.items], [data.items]);
   const table = useTable({
     features: tracesTableFeatures,

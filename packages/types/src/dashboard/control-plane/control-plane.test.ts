@@ -18,6 +18,7 @@ const settings = {
   hasPassword: true,
   apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }],
   requireApiKey: true,
+  otel: { destinations: [] },
 } as const;
 
 describe('dashboard settings control-plane contracts', () => {

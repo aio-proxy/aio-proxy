@@ -12,7 +12,7 @@ const credential: ChatGPTCredential = {
   refreshToken: 'quota-refresh-token',
 };
 
-function context(value: ChatGPTCredential = credential): AccountContext<ChatGPTCredential, Record<string, never>> {
+function context(value: ChatGPTCredential = credential): AccountContext<ChatGPTCredential, Record<string, unknown>> {
   return {
     credentials: {
       read: async () => ({ value, revision: 1 }),

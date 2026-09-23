@@ -1,5 +1,41 @@
 # @aio-proxy/cli
 
+## 0.31.0
+
+### Patch Changes
+
+- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks [@baranwang](https://github.com/baranwang)! - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
+- Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0), [`fd01333`](https://github.com/aio-proxy/aio-proxy/commit/fd01333243b264180db8480a1220909b39af72ae)]:
+  - @aio-proxy/plugin-sdk@0.31.0
+  - @aio-proxy/core@0.31.0
+  - @aio-proxy/server@0.31.0
+  - @aio-proxy/i18n@0.31.0
+  - @aio-proxy/dashboard@0.31.0
+  - @aio-proxy/logger@0.31.0
+  - @aio-proxy/opencode-provider@0.31.0
+  - @aio-proxy/pi-provider@0.31.0
+  - @aio-proxy/agent-provider-runtime@0.31.0
+  - @aio-proxy/shared@0.31.0
+  - @aio-proxy/types@0.31.0
+
+## 0.30.0
+
+### Patch Changes
+
+- [#406](https://github.com/aio-proxy/aio-proxy/pull/406) [`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46) Thanks [@baranwang](https://github.com/baranwang)! - Codex configuration always lets you choose which session history sources to migrate, including when only one source is available. While history is scanned, the prompt shows a loading indicator. When API key authentication is off, the note that no key is needed is shown as a status line instead of an error.
+- Updated dependencies [[`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46), [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493), [`739e846`](https://github.com/aio-proxy/aio-proxy/commit/739e8465e605c866bcfaaedb1ba05ef1a81db8d4), [`e9e80c0`](https://github.com/aio-proxy/aio-proxy/commit/e9e80c0cd7224886d1e04a0c98f0547803cd0ccf)]:
+  - @aio-proxy/i18n@0.30.0
+  - @aio-proxy/types@0.30.0
+  - @aio-proxy/core@0.30.0
+  - @aio-proxy/server@0.30.0
+  - @aio-proxy/dashboard@0.30.0
+  - @aio-proxy/opencode-provider@0.30.0
+  - @aio-proxy/pi-provider@0.30.0
+  - @aio-proxy/agent-provider-runtime@0.30.0
+  - @aio-proxy/plugin-sdk@0.30.0
+  - @aio-proxy/logger@0.30.0
+  - @aio-proxy/shared@0.30.0
+
 ## 0.29.0
 
 ### Patch Changes

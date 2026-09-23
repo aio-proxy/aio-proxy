@@ -53,6 +53,7 @@ const settings: DashboardSettingsView = {
   proxy: '****',
   requireApiKey: true,
   retryAfterCapMs: 30_000,
+  otel: { destinations: [] },
 };
 
 const prepareMocks = (restartRequired?: boolean) => {

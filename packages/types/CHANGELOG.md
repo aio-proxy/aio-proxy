@@ -1,5 +1,15 @@
 # @aio-proxy/types
 
+## 0.31.0
+
+No changes in this release.
+
+## 0.30.0
+
+### Minor Changes
+
+- [#404](https://github.com/aio-proxy/aio-proxy/pull/404) [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493) Thanks [@baranwang](https://github.com/baranwang)! - Settings can send the traces aio-proxy already records to OTLP endpoints. Add a destination URL, choose JSON or protobuf, and set headers. Export stays on when a destination fails, and the local traces page is unchanged.
+
 ## 0.29.0
 
 ### Minor Changes

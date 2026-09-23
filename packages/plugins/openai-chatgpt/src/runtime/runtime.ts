@@ -7,8 +7,8 @@ import {
 } from '@aio-proxy/plugin-sdk/openai-stream';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { CHATGPT_USER_AGENT } from '../codex-client';
 import { refreshAccessToken } from '../oauth-flow';
+import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
 import { stripOrphanReasoningIds } from './orphan-reasoning-id/index';
 import { createOpenAIChatGPTRealtime, mergeEndpointQuery } from './realtime';
@@ -21,9 +21,10 @@ const CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/images/edi
 const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
 export async function createOpenAIChatGPTRuntime(
-  context: RuntimeContext<ChatGPTCredential, Record<string, never>>,
+  context: RuntimeContext<ChatGPTCredential, Record<string, unknown>>,
+  pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch);
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch, pluginOptions);
   const openAI = createOpenAI({
     name: 'openai-chatgpt',
     baseURL: CHATGPT_CODEX_BASE_URL,
@@ -42,6 +43,7 @@ export async function createOpenAIChatGPTRuntime(
     realtime: createOpenAIChatGPTRealtime(context.credentials, {
       fetch: context.fetch,
       proxy: context.proxy ?? null,
+      pluginOptions,
     }),
     // Defensive: image dispatch resolves with `capability` absent, so this guard
     // exists to keep an embedding or audio request off the responses/image
@@ -59,6 +61,7 @@ export async function createOpenAIChatGPTRuntime(
 export function createOpenAIChatGPTDynamicFetch(
   credentials: CredentialPort<ChatGPTCredential>,
   fetcher: RuntimeFetch = globalThis.fetch,
+  pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): OpenAIStreamFetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher, {
     acceptEncoding: 'identity',
@@ -78,7 +81,10 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set('authorization', `Bearer ${credential.accessToken}`);
     headers.set('ChatGPT-Account-Id', credential.accountId);
     headers.set('Originator', 'codex-tui');
-    headers.set('User-Agent', CHATGPT_USER_AGENT);
+    headers.set(
+      'User-Agent',
+      (await resolveChatGPTRequestIdentity(pluginOptions, headers.get('user-agent'), fetcher)).userAgent,
+    );
     headers.set('session-id', crypto.randomUUID());
     const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;
     const url = rewriteCodexUrl(request.url);

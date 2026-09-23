@@ -14,6 +14,7 @@ import { ServeListenError } from '../errors';
 import { CliExit, EXIT } from '../exit';
 import { openBrowser } from '../open-browser';
 import { loadServiceEnv } from '../service-env';
+import { formatRunSummary } from '../ui';
 import { createCliAutoUpdateHooks, migratePreMarkerManagedUnit } from './auto-update-hooks';
 
 const VERSION = packageJson.version;
@@ -246,12 +247,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
-  console.error(
-    m['cli.run.started']({
-      apiUrl: controlBaseUrl(server.hostname ?? host, String(server.port)),
-      dashboardUrl,
-    }),
-  );
+  console.error(formatRunSummary(controlBaseUrl(server.hostname ?? host, String(server.port)), dashboardUrl));
   if (options.open === true) {
     openBrowser(dashboardUrl);
   }

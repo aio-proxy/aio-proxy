@@ -1,5 +1,37 @@
 # @aio-proxy/server
 
+## 0.31.0
+
+### Minor Changes
+
+- [#410](https://github.com/aio-proxy/aio-proxy/pull/410) [`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b) Thanks [@baranwang](https://github.com/baranwang)! - Configure ChatGPT's User-Agent once on the Plugins page for all ChatGPT providers, without signing in again. The default follows the latest stable Codex version through cached, proxy-aware npm and GitHub lookups, with a fallback when both fail. Plugin options support simple Handlebars variables such as `{{latest_codex_rs_version}}`, and plugin form fields can declare default values. Previously saved provider-level User-Agent values are ignored.
+
+### Patch Changes
+
+- Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0)]:
+  - @aio-proxy/plugin-sdk@0.31.0
+  - @aio-proxy/core@0.31.0
+  - @aio-proxy/i18n@0.31.0
+  - @aio-proxy/logger@0.31.0
+  - @aio-proxy/shared@0.31.0
+  - @aio-proxy/types@0.31.0
+
+## 0.30.0
+
+### Minor Changes
+
+- [#404](https://github.com/aio-proxy/aio-proxy/pull/404) [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493) Thanks [@baranwang](https://github.com/baranwang)! - Settings can send the traces aio-proxy already records to OTLP endpoints. Add a destination URL, choose JSON or protobuf, and set headers. Export stays on when a destination fails, and the local traces page is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46), [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493)]:
+  - @aio-proxy/i18n@0.30.0
+  - @aio-proxy/types@0.30.0
+  - @aio-proxy/core@0.30.0
+  - @aio-proxy/plugin-sdk@0.30.0
+  - @aio-proxy/logger@0.30.0
+  - @aio-proxy/shared@0.30.0
+
 ## 0.29.0
 
 ### Minor Changes

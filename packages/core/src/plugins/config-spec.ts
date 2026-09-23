@@ -110,7 +110,17 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
   const validatedPlaceholder = optionalLocalizedText(placeholder);
 
   switch (type) {
-    case 'text':
+    case 'text': {
+      if (validatedPlaceholder === null || (defaultValue !== undefined && typeof defaultValue !== 'string')) {
+        return undefined;
+      }
+      return {
+        ...base,
+        type,
+        ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }),
+        ...(defaultValue === undefined ? {} : { defaultValue }),
+      };
+    }
     case 'number':
       return validatedPlaceholder === null
         ? undefined
@@ -123,7 +133,16 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
         : undefined;
     case 'select': {
       const validatedOptions = validateSelectOptions(options);
-      return validatedOptions === undefined ? undefined : { ...base, type, options: validatedOptions };
+      if (validatedOptions === undefined) return undefined;
+      if (defaultValue !== undefined && !validatedOptions.some((option) => option.value === defaultValue)) {
+        return undefined;
+      }
+      return {
+        ...base,
+        type,
+        options: validatedOptions,
+        ...(defaultValue === undefined ? {} : { defaultValue: defaultValue as string | number | boolean }),
+      };
     }
     case 'json':
       return validatedPlaceholder !== null && (defaultValue === undefined || isJsonValue(defaultValue))

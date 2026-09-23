@@ -24,6 +24,66 @@ describe('redactSecrets', () => {
       ],
     });
   });
+
+  test('leaves a non-otel url field visible', () => {
+    expect(
+      redactSecrets({
+        plugins: [{ options: { url: 'https://plugin.example/callback' } }],
+        otel: { destinations: [{ url: 'https://plugin.example/otel', headers: {} }] },
+      }),
+    ).toEqual({
+      plugins: [{ options: { url: 'https://plugin.example/callback' } }],
+      otel: { destinations: [{ url: 'https://plugin.example/otel', headers: {} }] },
+    });
+  });
+
+  test('leaves a plugin-nested server.otel destination url visible', () => {
+    expect(
+      redactSecrets({
+        plugins: [
+          {
+            options: {
+              server: { otel: { destinations: [{ url: 'https://plugin.example/nested-otel' }] } },
+            },
+          },
+        ],
+        server: { otel: { destinations: [{ url: 'https://collector.example/v1/traces' }] } },
+      }),
+    ).toEqual({
+      plugins: [
+        {
+          options: {
+            server: { otel: { destinations: [{ url: 'https://plugin.example/nested-otel' }] } },
+          },
+        },
+      ],
+      server: { otel: { destinations: [{ url: '****' }] } },
+    });
+  });
+
+  test('masks an otel destination url and its headers', () => {
+    expect(
+      redactSecrets({
+        server: {
+          otel: {
+            destinations: [
+              {
+                url: 'https://collector.example/v1/traces?token=secret',
+                contentType: 'json',
+                headers: { Authorization: 'Bearer secret' },
+              },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      server: {
+        otel: {
+          destinations: [{ url: '****', contentType: 'json', headers: { Authorization: '****' } }],
+        },
+      },
+    });
+  });
 });
 
 describe('retainAuthoredTemplateStrings', () => {

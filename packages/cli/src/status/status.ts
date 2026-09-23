@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { StatusNotRunningError } from '../errors';
+import { formatDeepProviderLines, formatStatusLine, useColor } from '../ui';
 
 export type StatusOptions = {
   readonly host?: string;
@@ -53,7 +54,7 @@ export async function statusCommand(
 
   if (health === null) {
     if (options.json === true) print(JSON.stringify({ ...result }, undefined, 2));
-    else print(m['cli.status.not_running']({ url }));
+    else print(formatStatusLine({ running: false, url }));
     // Result already printed; signal "down" with a nonzero exit so health checks and
     // service scripts can tell an unreachable daemon apart from a running one without
     // parsing localized output.
@@ -86,10 +87,16 @@ export async function statusCommand(
     return;
   }
 
-  print(m['cli.status.running']({ url, version: health.version ?? 'unknown' }));
+  print(formatStatusLine({ running: true, url, version: health.version }));
   if (options.deep === true) {
-    if (deepFailure === undefined) print(JSON.stringify(providers, undefined, 2));
-    else if (deepFailure.reason === 'auth') print(m['cli.status.deep_unavailable']());
-    else print(m['cli.status.deep_probe_failed']({ status: String(deepFailure.status ?? 'network error') }));
+    if (deepFailure !== undefined) {
+      if (deepFailure.reason === 'auth') print(m['cli.status.deep_unavailable']());
+      else print(m['cli.status.deep_probe_failed']({ status: String(deepFailure.status ?? 'network error') }));
+    } else {
+      const color = useColor(process.stdout.isTTY === true, process.env);
+      const lines = formatDeepProviderLines(providers, color);
+      if (lines === undefined) print(m['cli.ui.status_deep_unexpected']());
+      else for (const line of lines) print(line);
+    }
   }
 }

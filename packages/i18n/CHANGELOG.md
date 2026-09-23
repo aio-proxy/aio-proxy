@@ -1,5 +1,23 @@
 # @aio-proxy/i18n
 
+## 0.31.0
+
+### Patch Changes
+
+- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks [@baranwang](https://github.com/baranwang)! - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
+
+- [#411](https://github.com/aio-proxy/aio-proxy/pull/411) [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0) Thanks [@baranwang](https://github.com/baranwang)! - The OpenTelemetry destination form is now translated. Header rows can be removed, and only the first header or API key row shows field labels.
+
+## 0.30.0
+
+### Minor Changes
+
+- [#404](https://github.com/aio-proxy/aio-proxy/pull/404) [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493) Thanks [@baranwang](https://github.com/baranwang)! - Settings can send the traces aio-proxy already records to OTLP endpoints. Add a destination URL, choose JSON or protobuf, and set headers. Export stays on when a destination fails, and the local traces page is unchanged.
+
+### Patch Changes
+
+- [#406](https://github.com/aio-proxy/aio-proxy/pull/406) [`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46) Thanks [@baranwang](https://github.com/baranwang)! - Codex configuration always lets you choose which session history sources to migrate, including when only one source is available. While history is scanned, the prompt shows a loading indicator. When API key authentication is off, the note that no key is needed is shown as a status line instead of an error.
+
 ## 0.29.0
 
 No changes in this release.

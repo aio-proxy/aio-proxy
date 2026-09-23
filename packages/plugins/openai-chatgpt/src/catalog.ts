@@ -2,7 +2,7 @@ import { type CredentialPort, type ModelDescriptor, type RuntimeFetch, zod } fro
 import { CodexLeanModelSchema } from '@aio-proxy/types';
 import { map, pipe, sortBy } from 'es-toolkit/fp';
 
-import { CHATGPT_USER_AGENT, CODEX_CLIENT_VERSION } from './codex-client';
+import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from './plugin-options';
 import { currentCredential } from './runtime/index';
 import type { ChatGPTCredential } from './schema';
 
@@ -32,19 +32,21 @@ export async function discoverOpenAIChatGPTModels(
   credentials: CredentialPort<ChatGPTCredential>,
   signal: AbortSignal,
   fetch: RuntimeFetch = globalThis.fetch,
+  pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<readonly ModelDescriptor[]> {
   const credential = await currentCredential(credentials, fetch);
+  const identity = await resolveChatGPTRequestIdentity(pluginOptions, null, fetch);
   const url = new URL(CODEX_MODELS_ENDPOINT);
   // Required: the endpoint 400s without it, and gates each model on its
   // `minimal_client_version`.
-  url.searchParams.set('client_version', CODEX_CLIENT_VERSION);
+  url.searchParams.set('client_version', identity.clientVersion);
   const response = await fetch(url, {
     signal,
     headers: {
       authorization: `Bearer ${credential.accessToken}`,
       'ChatGPT-Account-Id': credential.accountId,
       Originator: 'codex-tui',
-      'User-Agent': CHATGPT_USER_AGENT,
+      'User-Agent': identity.userAgent,
       'session-id': crypto.randomUUID(),
     },
     aioProxy: { traffic: 'control' },

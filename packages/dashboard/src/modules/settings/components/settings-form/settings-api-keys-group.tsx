@@ -103,67 +103,76 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{m['dashboard.settings.api_keys_empty']()}</p>
         ) : null}
-        {rows.map((row) => (
+        {rows.map((row, index) => {
+          const showLabels = index === 0;
           // The labels sit above the inputs, so the remove control aligns to the input line
           // rather than to the row box — `items-end` plus a control-height button centers it.
-          <div key={row.id} className="flex items-end gap-2">
-            <div className="flex-[2] space-y-1">
-              <Label htmlFor={`api-key-value-${row.id}`} className="text-xs">
-                {m['dashboard.settings.api_keys_value']()}
-              </Label>
-              <InputGroup>
-                <InputGroupInput
-                  id={`api-key-value-${row.id}`}
-                  className="font-mono text-xs"
-                  type="text"
-                  autoComplete="off"
-                  value={row.key}
-                  disabled={disabled}
-                  placeholder="sk-"
-                  onChange={(event) => patchRow(row.id, { key: event.target.value })}
-                />
-                <InputGroupAddon align="inline-end">
-                  <InputGroupButton
-                    size="icon-xs"
+          return (
+            <div key={row.id} className="flex items-end gap-2">
+              <div className="flex-[2] space-y-1">
+                {showLabels ? (
+                  <Label htmlFor={`api-key-value-${row.id}`} className="text-xs">
+                    {m['dashboard.settings.api_keys_value']()}
+                  </Label>
+                ) : null}
+                <InputGroup>
+                  <InputGroupInput
+                    id={`api-key-value-${row.id}`}
+                    className="font-mono text-xs"
+                    type="text"
+                    autoComplete="off"
+                    value={row.key}
                     disabled={disabled}
-                    aria-label={m['dashboard.settings.api_keys_generate']()}
-                    onClick={() => patchRow(row.id, { key: generateApiKey() })}
-                  >
-                    <DicesIcon />
-                  </InputGroupButton>
-                </InputGroupAddon>
-              </InputGroup>
-              {isIncomplete(row) ? (
-                <p className="text-xs text-destructive">{m['dashboard.settings.api_keys_value_required']()}</p>
-              ) : null}
-            </div>
-            <div className="flex-1 space-y-1">
-              <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
-                {m['dashboard.settings.api_keys_label']()}
-                <span className="font-normal text-muted-foreground">{m['dashboard.settings.optional']()}</span>
-              </Label>
-              <Input
-                id={`api-key-label-${row.id}`}
-                className="text-xs"
-                value={row.label}
+                    placeholder="sk-"
+                    aria-label={showLabels ? undefined : m['dashboard.settings.api_keys_value']()}
+                    onChange={(event) => patchRow(row.id, { key: event.target.value })}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      disabled={disabled}
+                      aria-label={m['dashboard.settings.api_keys_generate']()}
+                      onClick={() => patchRow(row.id, { key: generateApiKey() })}
+                    >
+                      <DicesIcon />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+                {isIncomplete(row) ? (
+                  <p className="text-xs text-destructive">{m['dashboard.settings.api_keys_value_required']()}</p>
+                ) : null}
+              </div>
+              <div className="flex-1 space-y-1">
+                {showLabels ? (
+                  <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
+                    {m['dashboard.settings.api_keys_label']()}
+                    <span className="font-normal text-muted-foreground">{m['dashboard.settings.optional']()}</span>
+                  </Label>
+                ) : null}
+                <Input
+                  id={`api-key-label-${row.id}`}
+                  className="text-xs"
+                  value={row.label}
+                  disabled={disabled}
+                  aria-label={showLabels ? undefined : m['dashboard.settings.api_keys_label']()}
+                  onChange={(event) => patchRow(row.id, { label: event.target.value })}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 disabled={disabled}
-                onChange={(event) => patchRow(row.id, { label: event.target.value })}
-              />
+                aria-label={m['dashboard.settings.api_keys_remove']({
+                  label: row.label || m['dashboard.settings.api_keys_unnamed'](),
+                })}
+                onClick={() => setRows((current) => current.filter((entry) => entry.id !== row.id))}
+              >
+                <Trash2Icon />
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              disabled={disabled}
-              aria-label={m['dashboard.settings.api_keys_remove']({
-                label: row.label || m['dashboard.settings.api_keys_unnamed'](),
-              })}
-              onClick={() => setRows((current) => current.filter((entry) => entry.id !== row.id))}
-            >
-              <Trash2Icon />
-            </Button>
-          </div>
-        ))}
+          );
+        })}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"

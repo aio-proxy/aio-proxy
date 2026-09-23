@@ -30,7 +30,7 @@ describe('renderConfigSpec localization', () => {
       { prompts: prompts(['fast', 'Ada'], calls), locale: 'zh-Hans' },
     );
     expect(calls.map(({ config }) => config)).toEqual([
-      { message: '模式 (选择)', choices: [{ name: '快速', value: 'fast' }] },
+      { message: '模式 (选择)', choices: [{ label: '快速', value: 'fast' }] },
       { message: '名称', placeholder: '小明' },
     ]);
   });

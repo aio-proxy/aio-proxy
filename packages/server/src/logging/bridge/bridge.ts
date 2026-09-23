@@ -9,6 +9,7 @@ export const SERVER_LOG_LEVEL = {
   'config.oauth_leftover_models': 'warn',
   'config.reload_failed': 'error',
   'dashboard.auth_unavailable': 'error',
+  'otel.export': 'warn',
   'realtime.call_created': 'debug',
   'realtime.call_failed': 'error',
   'realtime.sideband_closed': 'debug',

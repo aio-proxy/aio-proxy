@@ -37,13 +37,13 @@ describe('plugin add', () => {
   });
 
   test('plugin trust and destructive confirmation defaults to no', async () => {
-    let observed: { readonly message: string; readonly default?: boolean } | undefined;
-    const confirm = createPluginConfirmation(async (config) => {
-      observed = config;
+    let observed: { readonly message: string; readonly initialValue?: boolean } | undefined;
+    const confirm = createPluginConfirmation(async (ask) => {
+      observed = ask;
       return false;
     });
     await expect(confirm('Trust this plugin?')).resolves.toBe(false);
-    expect(observed).toEqual({ message: 'Trust this plugin?', default: false });
+    expect(observed).toEqual({ message: 'Trust this plugin?', initialValue: false });
   });
 
   test('non-interactive refusal and built-in add do not create config, database, or package cache', async () => {
