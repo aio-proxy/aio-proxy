@@ -187,14 +187,19 @@ export async function codexClientModels(
     synthesizedInputs.push({
       slug: model.slug,
       displayName,
-      entry: assembleCodexModel({
-        slug: model.slug,
-        displayName,
-        metadata,
-        contextWindow: windows.contextWindow,
-        maxContextWindow: windows.maxContextWindow,
-        template,
-      }),
+      entry: {
+        ...assembleCodexModel({
+          slug: model.slug,
+          displayName,
+          metadata,
+          contextWindow: windows.contextWindow,
+          maxContextWindow: windows.maxContextWindow,
+          template,
+        }),
+        // assembleCodexModel lists ordinary synthesized models. This reviewer stays hidden
+        // even when the official catalog is unavailable and the row has to be synthesized.
+        ...(model.slug === 'codex-auto-review' ? { visibility: 'hide' } : {}),
+      },
     });
   }
 

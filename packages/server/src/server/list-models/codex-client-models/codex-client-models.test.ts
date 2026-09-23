@@ -568,4 +568,11 @@ test('returns hidden codex-auto-review only when an enabled route exposes it', a
     visibility: 'hide',
     base_instructions: 'REVIEW VERBATIM',
   });
+
+  const offline = await codexClientModels(fakeState([routed]), {
+    fetchImpl: (async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch,
+  });
+  expect(offline.models.find((entry) => entry.slug === 'codex-auto-review')).toMatchObject({ visibility: 'hide' });
 });
