@@ -20,13 +20,14 @@ describe('provider commands', () => {
     try {
       const result = await runCliUntilOutput(
         ['provider', 'login', '@aio-proxy/plugin-google-antigravity'],
-        ['Custom Antigravity base URL', 'OAuth capability @aio-proxy/plugin-google-antigravity was not found'],
+        ['Refusing to prompt without a TTY'],
         { AIO_PROXY_HOME: home },
       );
       const text = `${result.stdout}${result.stderr}`;
 
-      expect(result.exitCode).not.toBe(0);
-      expect(text).toContain('Custom Antigravity base URL');
+      expect(result.exitCode).toBe(1);
+      expect(text).toContain('Refusing to prompt without a TTY');
+      expect(text).not.toContain('Unexpected internal error');
       expect(text).not.toContain('OAuth capability @aio-proxy/plugin-google-antigravity was not found');
     } finally {
       rmSync(home, { recursive: true, force: true });
@@ -54,8 +55,10 @@ describe('provider commands', () => {
 
       // Then
       expect(result.exitCode).toBe(0);
-      expect(result.stdout.toString()).toContain('aio-proxy-cli-provider 1.0.0');
-      expect(result.stdout.toString()).toContain(packageDir);
+      const stdout = result.stdout.toString();
+      expect(stdout).toContain('aio-proxy-cli-provider');
+      expect(stdout).toContain('1.0.0');
+      expect(stdout).toContain(packageDir);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

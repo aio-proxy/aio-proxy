@@ -85,10 +85,10 @@ describe('renderConfigSpec', () => {
         data: cyclic,
       },
     });
-    expect((calls[0]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
-    expect((calls[1]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
-    expect((calls[2]?.config as { default?: unknown } | undefined)?.default).toBe(true);
-    expect((calls[3]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
-    expect((calls[4]?.config as { default?: unknown } | undefined)?.default).toBe('{"safe":true}');
+    expect((calls[0]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBeUndefined();
+    expect((calls[1]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBeUndefined();
+    expect((calls[2]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBe(true);
+    expect((calls[3]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBeUndefined();
+    expect((calls[4]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBe('{"safe":true}');
   });
 });

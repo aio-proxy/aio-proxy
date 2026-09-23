@@ -3,7 +3,7 @@ import type { PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
 import { renderConfigSpec } from '../form';
 import { entries, packageNameOf, publicOptionsOf, requirePluginPackageName, secretRecord } from './config-entry';
-import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps } from './deps';
+import { beginPluginSession, createDefaultPluginLifecycleDeps, type PluginLifecycleDeps, reportLine } from './deps';
 import {
   commitPluginConfig,
   descriptorForConfig,
@@ -21,6 +21,8 @@ export async function pluginConfig(
   injected?: PluginLifecycleDeps,
 ): Promise<void> {
   const deps = injected ?? createDefaultPluginLifecycleDeps();
+  const session = beginPluginSession(deps, m['cli.ui.title_plugin_config']());
+  let failure: unknown;
   try {
     packageName = requirePluginPackageName(packageName);
     const current = await deps.config.read();
@@ -36,7 +38,7 @@ export async function pluginConfig(
         descriptor.metadata.options === undefined
           ? { publicValues: {}, secrets: {} }
           : await renderConfigSpec(descriptor.metadata.options, {
-              prompts: deps.prompts,
+              prompts: session?.prompts ?? deps.prompts,
               currentPublicValues: publicOptionsOf(currentEntry),
               currentSecrets: secretRecord(previousSecret),
               ...(options.clearSecret === undefined ? {} : { clearSecrets: options.clearSecret }),
@@ -62,8 +64,12 @@ export async function pluginConfig(
         await configure(descriptor, installed.version, assertOwnership);
       });
     }
-    deps.print(m['cli.plugin.configured']({ plugin: packageName }));
+    reportLine(deps, session, m['cli.plugin.configured']({ plugin: packageName }));
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    session?.close(failure);
     if (injected === undefined) deps.close?.();
   }
 }

@@ -100,8 +100,10 @@ describe('provider commands dashboard', () => {
 
         // Then
         expect(list.exitCode).toBe(0);
-        expect(list.stdout).toContain('id | kind | enabled | passthrough | last_status | last_latency');
-        expect(list.stdout).toContain('openai | api | true | true | unknown | -');
+        expect(list.stdout).toContain('id: openai');
+        expect(list.stdout).toContain('kind: api');
+        expect(list.stdout).toContain('passthrough: true');
+        expect(list.stdout).toContain('last_latency: -');
         expect(testProvider.exitCode).toBe(0);
         expect(testProvider.stdout).toContain('openai');
         expect(testProvider.stdout).toContain('OK');
@@ -110,7 +112,12 @@ describe('provider commands dashboard', () => {
         expect(failedProvider.stdout).toContain('slow-ai');
         expect(failedProvider.stdout).toContain('FAIL');
         expect(failedProvider.stdout).not.toContain('openai');
-        expect(localized.stdout).toContain('标识 | 类型 | 已启用 | 直通 | 最近状态 | 最近延迟');
+        expect(localized.stdout).toContain('标识: openai');
+        expect(localized.stdout).toContain('类型: api');
+        expect(localized.stdout).toContain('已启用: true');
+        expect(localized.stdout).toContain('直通: true');
+        expect(localized.stdout).toContain('最近状态: unknown');
+        expect(localized.stdout).toContain('最近延迟: -');
       },
     );
   });

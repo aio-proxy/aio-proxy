@@ -47,8 +47,10 @@ describe('plugin list', () => {
           builtIns: [{ packageName, version: 'built-in', descriptor }],
         },
       );
-      expect(state.lines.join('\n')).toContain(`本地化插件 (${packageName})`);
-      expect(state.lines.join('\n')).toContain('中文描述');
+      const output = state.lines.join('\n');
+      expect(output).toContain('本地化插件');
+      expect(output).toContain(packageName);
+      expect(output).toContain('中文描述');
     } finally {
       await setLocale(originalLocale);
     }
@@ -76,8 +78,10 @@ describe('plugin list', () => {
         'const brand = Symbol.for("@aio-proxy/plugin-sdk/descriptor/v1");\nexport default { [brand]: true, apiVersion: 1, metadata: {}, setup() {} };\n',
       );
       await pluginList({});
-      expect(lines.join('\n')).toContain(`${packageName} configured`);
-      expect(lines.join('\n')).not.toContain('failed');
+      const output = lines.join('\n');
+      expect(output).toContain(packageName);
+      expect(output).toContain('configured');
+      expect(output).not.toContain('failed');
     } finally {
       if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
       else process.env.AIO_PROXY_HOME = previousHome;

@@ -188,6 +188,19 @@ test('previews, migrates, and explicitly restores a legacy session', async () =>
   }
 });
 
+test('rejects a pre-aborted scan with the abort reason instead of a blocked preview', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-abort-'));
+  try {
+    const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
+    const controller = new AbortController();
+    const reason = new Error('stop-scan');
+    controller.abort(reason);
+    await expect(inspectCodexSessions(location, undefined, controller.signal)).rejects.toBe(reason);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('previews existing history before the first managed marker is created', async () => {
   const root = await mkdtemp(join(tmpdir(), 'aio-codex-session-first-'));
   try {

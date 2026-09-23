@@ -27,6 +27,22 @@
     "done": "설정 완료"
   },
   "cli": {
+    "ui": {
+      "yes": "예",
+      "no": "아니오",
+      "cancelled": "취소했습니다",
+      "error": "문제가 발생했습니다",
+      "title_plugin_add": "aio-proxy · 플러그인 추가",
+      "title_plugin_config": "aio-proxy · 플러그인 구성",
+      "title_plugin_remove": "aio-proxy · 플러그인 제거",
+      "title_plugin_prune": "aio-proxy · 플러그인 정리",
+      "title_provider_login": "aio-proxy · Provider 로그인",
+      "title_codex_configure": "aio-proxy · Codex 구성",
+      "outro_provider_login": "로그인했습니다",
+      "outro_codex_configure": "Codex 구성을 마쳤습니다",
+      "provider_list_empty": "Provider가 없습니다",
+      "status_deep_unexpected": "Provider 상태를 표시할 수 없습니다"
+    },
     "root": {
       "description": "AIO Proxy 명령줄 인터페이스"
     },

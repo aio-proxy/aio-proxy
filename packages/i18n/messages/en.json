@@ -27,6 +27,22 @@
     "done": "Setup complete"
   },
   "cli": {
+    "ui": {
+      "yes": "Yes",
+      "no": "No",
+      "cancelled": "Cancelled",
+      "error": "Something went wrong",
+      "title_plugin_add": "aio-proxy · Add plugin",
+      "title_plugin_config": "aio-proxy · Configure plugin",
+      "title_plugin_remove": "aio-proxy · Remove plugin",
+      "title_plugin_prune": "aio-proxy · Prune plugins",
+      "title_provider_login": "aio-proxy · Provider login",
+      "title_codex_configure": "aio-proxy · Configure Codex",
+      "outro_provider_login": "Signed in",
+      "outro_codex_configure": "Codex configuration finished",
+      "provider_list_empty": "No providers",
+      "status_deep_unexpected": "Provider health data could not be displayed"
+    },
     "root": {
       "description": "AIO Proxy command line interface"
     },
