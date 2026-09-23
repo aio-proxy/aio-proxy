@@ -26,7 +26,7 @@
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/shared": "workspace:*",
     "@aio-proxy/types": "workspace:*",
-    "@inquirer/prompts": "^8.7.1",
+    "@clack/prompts": "1.8.1",
     "commander": "15",
     "es-toolkit": "catalog:",
     "toml-eslint-parser": "1.0.3",

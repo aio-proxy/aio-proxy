@@ -1,14 +1,19 @@
 import { loginOAuthAccount, recoverPendingAccountOperations } from '@aio-proxy/core';
-import { getLocale } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import { LocalizedTextSchema, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 
 import { canonical, chooseCapability, targetCapability } from './capability';
-import { createProviderLoginDefaultDeps, type ProviderLoginDeps } from './deps';
+import { applyProviderLoginSession, createProviderLoginDefaultDeps, type ProviderLoginDeps } from './deps';
 import { ProviderCapabilityMismatchError, ProviderCapabilityNotFoundError } from './errors';
 import { presentProviderLoginUserError } from './presentation';
 
 export { createCapabilitySelector, createManualOnlyConfirmation } from './capability';
-export { createProviderLoginDefaultDeps, type ProviderLoginDefaultDepsOptions, type ProviderLoginDeps } from './deps';
+export {
+  applyProviderLoginSession,
+  createProviderLoginDefaultDeps,
+  type ProviderLoginDefaultDepsOptions,
+  type ProviderLoginDeps,
+} from './deps';
 export * from './errors';
 export { isProviderLoginUserError } from './presentation';
 
@@ -20,6 +25,10 @@ export async function providerLogin(
   injected?: ProviderLoginDeps,
 ): Promise<void> {
   const deps = injected ?? (await createProviderLoginDefaultDeps());
+  const session =
+    deps.isTTY && deps.openSession !== undefined ? deps.openSession(m['cli.ui.title_provider_login']()) : undefined;
+  const live = session === undefined ? deps : applyProviderLoginSession(deps, session);
+  let failure: unknown;
   try {
     await (deps.recover ?? recoverPendingAccountOperations)(deps.config, deps.repository, { mode: 'cli' });
     const target = options.provider === undefined ? undefined : await targetCapability(options.provider, deps.config);
@@ -29,7 +38,7 @@ export async function providerLogin(
     const resolved =
       capabilityInput === undefined && target !== undefined
         ? target
-        : await chooseCapability(capabilityInput, deps.registry, deps);
+        : await chooseCapability(capabilityInput, deps.registry, live);
     if (target !== undefined && (target.plugin !== resolved.plugin || target.capability !== resolved.capability)) {
       throw new ProviderCapabilityMismatchError(canonical(resolved), canonical(target));
     }
@@ -39,8 +48,8 @@ export async function providerLogin(
       registry: deps.registry,
       repository: deps.repository,
       config: deps.config,
-      renderAccountOptions: deps.renderAccountOptions,
-      createAuthorization: deps.createAuthorization,
+      renderAccountOptions: live.renderAccountOptions,
+      createAuthorization: live.createAuthorization,
       diagnostics: deps.diagnostics,
       logger: deps.logger,
       progress: (message) => {
@@ -49,9 +58,12 @@ export async function providerLogin(
       },
     });
     deps.print(result.providerId);
+    session?.finish(m['cli.ui.outro_provider_login']());
   } catch (error) {
-    throw presentProviderLoginUserError(error) ?? error;
+    failure = presentProviderLoginUserError(error) ?? error;
+    throw failure;
   } finally {
+    session?.close(failure);
     if (injected === undefined) deps.close?.();
   }
 }

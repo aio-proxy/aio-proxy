@@ -14,11 +14,18 @@ import {
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 import type { AuthorizationPort } from '@aio-proxy/plugin-sdk';
-import { confirm, input, password, select } from '@inquirer/prompts';
 
 import { openBrowser } from '../../open-browser';
+import {
+  canPrompt,
+  createClackPrompts,
+  openProductionSession,
+  PromptRequiresTtyError,
+  type CommandSession,
+  type PluginFormPrompts,
+} from '../../ui';
 import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from '../authorization';
-import { type PluginFormPrompts, renderConfigSpec } from '../form';
+import { renderConfigSpec } from '../form';
 import { createCliPluginDiagnosticFactory } from '../plugin';
 import { type CapabilityChoice, createCapabilitySelector, createManualOnlyConfirmation } from './capability';
 
@@ -37,6 +44,7 @@ export type ProviderLoginDeps = {
   readonly recover?: typeof recoverPendingAccountOperations;
   readonly login?: (options: LoginOAuthAccountOptions) => Promise<LoginOAuthAccountResult>;
   readonly print: (line: string) => void;
+  readonly openSession?: (title: string) => CommandSession;
   readonly close?: () => void;
 };
 
@@ -58,6 +66,40 @@ function enablements(config: ConfigRecord): readonly { readonly packageName: str
   });
 }
 
+function createDefaultAuthorization(prompts: PluginFormPrompts): (signal: AbortSignal) => AuthorizationPort {
+  return (signal) =>
+    createCliAuthorizationPort({
+      copy: createDefaultCliAuthorizationCopy(),
+      openBrowser,
+      copyToClipboard: () => false,
+      print: console.log,
+      readManualCallbackUrl: (authorizationUrl, promptSignal) =>
+        prompts.input({ message: authorizationUrl }, { signal: promptSignal }),
+      confirmManualOnly: createManualOnlyConfirmation(signal, prompts.confirm),
+      signal,
+    });
+}
+
+export function applyProviderLoginSession(base: ProviderLoginDeps, session: CommandSession): ProviderLoginDeps {
+  return {
+    ...base,
+    selectCapability: createCapabilitySelector(session.prompts.select),
+    renderAccountOptions: ({ spec, currentPublicValues, currentSecrets, signal }) =>
+      renderConfigSpec(spec, { prompts: session.prompts, currentPublicValues, currentSecrets, signal }),
+    createAuthorization: (signal) =>
+      createCliAuthorizationPort({
+        copy: createDefaultCliAuthorizationCopy(),
+        openBrowser,
+        copyToClipboard: () => false,
+        print: console.log,
+        readManualCallbackUrl: (authorizationUrl, promptSignal) =>
+          session.prompts.input({ message: authorizationUrl }, { signal: promptSignal }),
+        confirmManualOnly: (redirectUri) => session.confirm({ message: redirectUri, initialValue: false }, { signal }),
+        signal,
+      }),
+  };
+}
+
 export async function createProviderLoginDefaultDeps(
   options: ProviderLoginDefaultDepsOptions = {},
 ): Promise<ProviderLoginDeps> {
@@ -74,29 +116,35 @@ export async function createProviderLoginDefaultDeps(
       logger: () => {},
       secrets: { readPluginSecret: (plugin) => repository.readPluginSecret(plugin)?.value },
     });
-    const prompts: PluginFormPrompts = { input, password, confirm, select };
+    const interactive = canPrompt({
+      stdinIsTTY: process.stdin.isTTY === true,
+      stderrIsTTY: process.stderr.isTTY === true,
+      env: process.env,
+    });
+    const refuseToPrompt = (): never => {
+      throw new PromptRequiresTtyError();
+    };
+    const prompts: PluginFormPrompts = interactive
+      ? createClackPrompts({ input: process.stdin, output: process.stderr })
+      : {
+          input: refuseToPrompt,
+          password: refuseToPrompt,
+          confirm: refuseToPrompt,
+          select: refuseToPrompt,
+        };
     return {
       config,
       repository,
       registry: snapshot.registry,
-      isTTY: process.stdin.isTTY === true,
-      selectCapability: createCapabilitySelector(),
+      isTTY: interactive,
+      selectCapability: createCapabilitySelector(prompts.select),
       renderAccountOptions: ({ spec, currentPublicValues, currentSecrets, signal }) =>
         renderConfigSpec(spec, { prompts, currentPublicValues, currentSecrets, signal }),
-      createAuthorization: (signal) =>
-        createCliAuthorizationPort({
-          copy: createDefaultCliAuthorizationCopy(),
-          openBrowser,
-          copyToClipboard: () => false,
-          print: console.log,
-          readManualCallbackUrl: (authorizationUrl, promptSignal) =>
-            input({ message: authorizationUrl }, { signal: promptSignal }),
-          confirmManualOnly: createManualOnlyConfirmation(signal),
-          signal,
-        }),
+      createAuthorization: createDefaultAuthorization(prompts),
       diagnostics,
       logger: () => {},
       print: console.log,
+      openSession: interactive ? openProductionSession : undefined,
       close: () => handle.close(),
     };
   } catch (error) {

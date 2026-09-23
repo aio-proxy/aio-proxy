@@ -53,6 +53,46 @@ describe('plugin remove and purge confirmation', () => {
     expect(state.lines.join('\n')).toContain('retained');
   });
 
+  test('a prompt session moves the retained sentence onto finish', async () => {
+    const state = scope.harness({ providers: {}, plugins: ['third-party-plugin'] });
+    state.values.set('third-party-plugin', { revision: 1, value: { token: 'keep' } });
+    const finished: string[] = [];
+    let confirmations = 0;
+    const session = {
+      prompts: state.deps.prompts,
+      confirm: async () => {
+        confirmations += 1;
+        return confirmations !== 2;
+      },
+      select: async () => {
+        throw new Error('no select');
+      },
+      multiselect: async () => {
+        throw new Error('no multiselect');
+      },
+      spin: async <T>(_message: string, task: (signal: AbortSignal) => Promise<T>) =>
+        task(new AbortController().signal),
+      note() {},
+      progress() {},
+      finish(message: string) {
+        finished.push(message);
+        return true;
+      },
+      close() {},
+    };
+    await pluginRemove(
+      'third-party-plugin',
+      { purgeSecrets: true },
+      {
+        ...state.deps,
+        openSession: () => session,
+      },
+    );
+    expect(state.values.get('third-party-plugin')?.value).toEqual({ token: 'keep' });
+    expect(finished.join('\n')).toContain('retained');
+    expect(state.lines.join('\n')).not.toContain('retained');
+  });
+
   test('purge snapshots the secret revision only after the second confirmation', async () => {
     const state = scope.harness({ providers: {}, plugins: ['third-party-plugin'] });
     state.values.set('third-party-plugin', { revision: 1, value: { token: 'old' } });

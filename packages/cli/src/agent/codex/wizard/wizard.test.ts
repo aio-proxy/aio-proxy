@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { PromptCancelledError } from '../../../ui';
 import { runCodexWizard } from './wizard';
 
 test('skips Key prompt and leaves history when migration is declined', async () => {
@@ -413,6 +414,81 @@ test('propagates setup failures without attempting migration', async () => {
 
   expect(error).toEqual(new Error('config write failed'));
   expect(events).toEqual(['commit']);
+});
+
+test('returns a cancelled result when the provider id prompt is cancelled', async () => {
+  const result = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => {
+        throw new PromptCancelledError();
+      },
+      authMode: async () => 'keep-chatgpt',
+      key: async () => ({ kind: 'none' }),
+      sources: async () => [],
+      migrate: async () => false,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'openai', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => {
+      throw new Error('unexpected key inspection');
+    },
+    inspectSessions: async () => {
+      throw new Error('unexpected session inspection');
+    },
+    resolveCommand: async () => '/tmp/aiop',
+    commitSetup: async () => {
+      throw new Error('unexpected save');
+    },
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  });
+  expect(result).toMatchObject({ status: 'cancelled', credential: 'none' });
+});
+
+test('does not treat Error("cancelled") as a wizard cancellation', async () => {
+  const error = await runCodexWizard({
+    location: {
+      home: '/tmp/codex-test',
+      configPath: '/tmp/codex-test/config.toml',
+      managedRoot: '/tmp/codex-test/.aio-proxy',
+      markerPath: '/tmp/codex-test/.aio-proxy/codex-config.json',
+    },
+    endpoint: 'http://127.0.0.1:9317',
+    isTTY: true,
+    prompts: {
+      providerId: async () => {
+        throw new Error('cancelled');
+      },
+      authMode: async () => 'keep-chatgpt',
+      key: async () => ({ kind: 'none' }),
+      sources: async () => [],
+      migrate: async () => false,
+    },
+    inspectConfig: async () => ({ status: 'absent', activeProviderId: 'openai', changedPaths: [] }),
+    occupiedIds: async () => [],
+    inspectKeys: async () => ({
+      choices: [],
+      resolve: async () => ({ token: 'placeholder', kind: 'placeholder', verified: true }),
+    }),
+    inspectSessions: async () => ({ groups: [], blocked: [], targets: [] }),
+    resolveCommand: async () => '/tmp/aiop',
+    commitSetup: async () => {
+      throw new Error('unexpected save');
+    },
+    migrateSessions: async () => {
+      throw new Error('unexpected migration');
+    },
+  }).catch((cause: unknown) => cause);
+  expect(error).toEqual(new Error('cancelled'));
 });
 
 test('does not report zero side effects when command authorization is aborted', async () => {

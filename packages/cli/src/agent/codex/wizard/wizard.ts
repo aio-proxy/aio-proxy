@@ -1,3 +1,4 @@
+import { isCodexCancellation } from '../cancellation';
 import { validateCodexProviderId } from '../config-document';
 import type {
   ConfigInspection,
@@ -57,13 +58,6 @@ export type WizardDeps = {
   readonly resolveEndpoint?: () => Promise<string>;
   readonly commitSetup: (selection: CodexSetupSelection) => Promise<CodexSetupCommit>;
   readonly migrateSessions: (targets: readonly MigrationTarget[], providerId: string) => Promise<MigrationResult>;
-};
-
-const cancelledError = (error: unknown): boolean => {
-  if (error === null || typeof error !== 'object') return false;
-  const name = 'name' in error && typeof error.name === 'string' ? error.name : '';
-  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
-  return /abort|(?:cancel|exit)prompt|(?:cancelled|canceled)/i.test(`${name} ${message}`);
 };
 
 export const assertCodexSetupEndpoint = (expected: string, current: string): void => {
@@ -185,7 +179,7 @@ export async function runCodexWizard(deps: WizardDeps): Promise<CodexConfigureRe
       migration: migrationResult,
     };
   } catch (error) {
-    if (cancelledError(error))
+    if (isCodexCancellation(error))
       return cancelledResult(
         deps.location,
         commitStarted && selectedAuthMode === 'command' ? 'authorization_incomplete' : undefined,

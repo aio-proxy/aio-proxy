@@ -85,11 +85,11 @@ describe('renderConfigSpec', () => {
         data: cyclic,
       },
     });
-    expect((calls[0]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
-    expect((calls[1]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
-    expect((calls[2]?.config as { default?: unknown } | undefined)?.default).toBe(true);
-    expect((calls[3]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
-    expect((calls[4]?.config as { default?: unknown } | undefined)?.default).toBe('{"safe":true}');
+    expect((calls[0]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBeUndefined();
+    expect((calls[1]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBeUndefined();
+    expect((calls[2]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBe(true);
+    expect((calls[3]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBeUndefined();
+    expect((calls[4]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBe('{"safe":true}');
   });
 
   test('prompts with a field default when the stored value is missing or incompatible', async () => {
@@ -117,7 +117,7 @@ describe('renderConfigSpec', () => {
       prompts: prompts(['codex-tui', 'eu'], calls),
       currentPublicValues: { text: 1, region: 'missing' },
     });
-    expect((calls[0]?.config as { default?: unknown } | undefined)?.default).toBe('codex-tui');
-    expect((calls[1]?.config as { default?: unknown } | undefined)?.default).toBe('eu');
+    expect((calls[0]?.config as { defaultValue?: unknown } | undefined)?.defaultValue).toBe('codex-tui');
+    expect((calls[1]?.config as { initialValue?: unknown } | undefined)?.initialValue).toBe('eu');
   });
 });

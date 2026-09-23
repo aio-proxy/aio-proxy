@@ -6,6 +6,7 @@ import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
+import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import type { SettingsSave } from '../settings-form/settings-form-contract';
@@ -196,56 +197,84 @@ export const SettingsOtelDialog: React.FC<SettingsOtelDialogProps> = ({
           >
             {(field) => (
               <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                <FieldLabel>{m['dashboard.settings.otel_headers']()}</FieldLabel>
-                {field.state.value.map((row, index) => (
-                  <div key={row.id} className="grid grid-cols-2 gap-2">
-                    <form.Field
-                      name={`headers[${index}].name` as `headers[${number}].name`}
-                      validators={{
-                        onSubmit: ({ fieldApi }) =>
-                          isDuplicateHeaderName(fieldApi.form.getFieldValue('headers'), index)
-                            ? m['dashboard.settings.otel_header_duplicate']()
-                            : undefined,
-                      }}
-                    >
-                      {(nameField) => {
-                        const invalid = nameField.state.meta.errors.length > 0;
-                        return (
-                          <Field data-invalid={invalid || undefined}>
-                            <FieldLabel htmlFor={`otel-header-name-${row.id}`}>
-                              {m['dashboard.settings.otel_header_name']()}
-                            </FieldLabel>
-                            <Input
-                              id={`otel-header-name-${row.id}`}
-                              value={nameField.state.value}
-                              disabled={disabled}
-                              aria-invalid={invalid || undefined}
-                              onChange={(event) => nameField.handleChange(event.target.value)}
-                            />
-                            <FieldError
-                              errors={nameField.state.meta.errors.map((message) => ({ message: String(message) }))}
-                            />
-                          </Field>
-                        );
-                      }}
-                    </form.Field>
-                    <form.Field name={`headers[${index}].value` as `headers[${number}].value`}>
-                      {(valueField) => (
-                        <Field>
-                          <FieldLabel htmlFor={`otel-header-value-${row.id}`}>
-                            {m['dashboard.settings.otel_header_value']()}
-                          </FieldLabel>
-                          <Input
-                            id={`otel-header-value-${row.id}`}
-                            value={valueField.state.value}
-                            disabled={disabled}
-                            onChange={(event) => valueField.handleChange(event.target.value)}
-                          />
-                        </Field>
-                      )}
-                    </form.Field>
-                  </div>
-                ))}
+                <FieldLabel>
+                  {m['dashboard.settings.otel_headers']()}
+                  <span className="font-normal text-muted-foreground">{m['dashboard.settings.optional']()}</span>
+                </FieldLabel>
+                {field.state.value.map((row, index) => {
+                  const showLabels = index === 0;
+                  return (
+                    <div key={row.id} className="flex items-end gap-2">
+                      <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
+                        <form.Field
+                          name={`headers[${index}].name` as `headers[${number}].name`}
+                          validators={{
+                            onSubmit: ({ fieldApi }) =>
+                              isDuplicateHeaderName(fieldApi.form.getFieldValue('headers'), index)
+                                ? m['dashboard.settings.otel_header_duplicate']()
+                                : undefined,
+                          }}
+                        >
+                          {(nameField) => {
+                            const invalid = nameField.state.meta.errors.length > 0;
+                            return (
+                              <Field data-invalid={invalid || undefined}>
+                                {showLabels ? (
+                                  <FieldLabel htmlFor={`otel-header-name-${row.id}`}>
+                                    {m['dashboard.settings.otel_header_name']()}
+                                  </FieldLabel>
+                                ) : null}
+                                <Input
+                                  id={`otel-header-name-${row.id}`}
+                                  value={nameField.state.value}
+                                  disabled={disabled}
+                                  aria-invalid={invalid || undefined}
+                                  aria-label={showLabels ? undefined : m['dashboard.settings.otel_header_name']()}
+                                  onChange={(event) => nameField.handleChange(event.target.value)}
+                                />
+                                <FieldError
+                                  errors={nameField.state.meta.errors.map((message) => ({
+                                    message: String(message),
+                                  }))}
+                                />
+                              </Field>
+                            );
+                          }}
+                        </form.Field>
+                        <form.Field name={`headers[${index}].value` as `headers[${number}].value`}>
+                          {(valueField) => (
+                            <Field>
+                              {showLabels ? (
+                                <FieldLabel htmlFor={`otel-header-value-${row.id}`}>
+                                  {m['dashboard.settings.otel_header_value']()}
+                                </FieldLabel>
+                              ) : null}
+                              <Input
+                                id={`otel-header-value-${row.id}`}
+                                value={valueField.state.value}
+                                disabled={disabled}
+                                aria-label={showLabels ? undefined : m['dashboard.settings.otel_header_value']()}
+                                onChange={(event) => valueField.handleChange(event.target.value)}
+                              />
+                            </Field>
+                          )}
+                        </form.Field>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={disabled}
+                        aria-label={m['dashboard.settings.otel_remove_header']({
+                          name: row.name || m['dashboard.settings.otel_unnamed_header'](),
+                        })}
+                        onClick={() => field.removeValue(index)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </div>
+                  );
+                })}
                 <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
                 <Button
                   type="button"
@@ -254,6 +283,7 @@ export const SettingsOtelDialog: React.FC<SettingsOtelDialogProps> = ({
                   disabled={disabled || field.state.value.length >= HEADER_CAP}
                   onClick={() => field.pushValue(headerDraft())}
                 >
+                  <PlusIcon data-icon="inline-start" />
                   {m['dashboard.settings.otel_add_header']()}
                 </Button>
               </Field>

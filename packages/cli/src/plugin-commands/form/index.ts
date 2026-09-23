@@ -1,8 +1,4 @@
 export * from './errors';
 export { cloneInertJson } from './json';
-export {
-  type PluginFormPrompts,
-  type RenderConfigSpecOptions,
-  type RenderConfigSpecResult,
-  renderConfigSpec,
-} from './render';
+export type { PluginFormPrompts } from '../../ui';
+export { type RenderConfigSpecOptions, type RenderConfigSpecResult, renderConfigSpec } from './render';

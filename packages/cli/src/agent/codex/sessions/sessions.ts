@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { PromptCancelledError } from '../../../ui';
 import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation, MigrationPreview, MigrationResult, MigrationTarget, SessionGroup } from '../contracts';
 import { readManagedCodexMarker } from '../managed-config';
@@ -143,11 +144,15 @@ function isValidProviderId(value: string): boolean {
 export async function inspectCodexSessions(
   location: CodexLocation,
   targetProviderId?: string,
+  signal?: AbortSignal,
 ): Promise<MigrationPreview> {
   try {
+    if (signal?.aborted) throw signal.reason;
     const snapshot = await readStateIndex(location);
+    if (signal?.aborted) throw signal.reason;
     const grouped = new Map<string, SessionGroup>();
     for (const session of snapshot.sessions) {
+      if (signal?.aborted) throw signal.reason;
       const previous = grouped.get(session.sourceProviderId) ?? {
         providerId: session.sourceProviderId,
         active: 0,
@@ -169,6 +174,8 @@ export async function inspectCodexSessions(
       blocked: snapshot.blocked,
     };
   } catch (error) {
+    if (signal?.aborted) throw signal.reason;
+    if (error instanceof PromptCancelledError) throw error;
     return {
       groups: [],
       targets: [],
