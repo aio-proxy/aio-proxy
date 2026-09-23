@@ -9,6 +9,9 @@ import {
   AnthropicWebSearchToolSchema,
   GeminiEmbedContentRequestSchema,
   GeminiGenerateContentRequestSchema,
+  GeminiInteractionsBodySchema,
+  OpenAIImageEditsInputSchema,
+  OpenAIImageGenerationsInputSchema,
   openAIResponsesInputImagePartSchema,
   openAIResponsesInputItemSchema,
   openAIResponsesInputItemTransformSchema,
@@ -30,6 +33,74 @@ const documentedOperations = publicOperations
   .sort((left, right) => left.navOrder - right.navOrder);
 
 const nonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+const base64Pattern = '^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$';
+const geminiInlineDataMaxLength = 4 * Math.ceil((20 * 1024 * 1024) / 3);
+const dallE3ModelPattern = '^\\s*(?:[^/\\s]+/)?dall-e-3\\s*$';
+
+function projectGeminiInteractions(target: JsonObject): void {
+  const properties = target.properties as JsonObject;
+  const nonBlank = (schema: JsonObject | undefined): JsonObject => ({
+    ...(schema ?? { type: 'string' }),
+    minLength: 1,
+    pattern: '\\S',
+  });
+  properties.model = nonBlank(properties.model as JsonObject | undefined);
+  properties.agent = nonBlank(properties.agent as JsonObject | undefined);
+  target.oneOf = [
+    { type: 'object', properties: { model: properties.model }, required: ['model'] },
+    { type: 'object', properties: { agent: properties.agent }, required: ['agent'] },
+  ];
+}
+
+function projectImageCount(target: JsonObject): void {
+  const properties = target.properties as JsonObject;
+  const n = properties.n as JsonObject | undefined;
+  if (n === undefined) return;
+  const range = { type: 'integer', minimum: 1, maximum: 10 };
+  const dallE3 = { anyOf: [{ type: 'integer', const: 1 }, { type: 'null' }] };
+  const general = { anyOf: [range, { type: 'null' }] };
+  target.allOf = [
+    {
+      if: { properties: { model: { type: 'string', pattern: dallE3ModelPattern } }, required: ['model'] },
+      then: { properties: { n: dallE3 } },
+      else: { properties: { n: general } },
+    },
+  ];
+}
+
+function projectGeminiMedia(target: JsonObject): void {
+  const partItems = (target.properties as JsonObject | undefined) ?? {};
+  const inlineData = partItems.inlineData as JsonObject | undefined;
+  const inlineProperties = inlineData?.properties as JsonObject | undefined;
+  if (inlineProperties?.data !== undefined) {
+    inlineProperties.data = {
+      ...(inlineProperties.data as JsonObject),
+      maxLength: geminiInlineDataMaxLength,
+      pattern: base64Pattern,
+    };
+  }
+  const fileData = partItems.fileData as JsonObject | undefined;
+  const fileProperties = fileData?.properties as JsonObject | undefined;
+  if (fileProperties?.fileUri !== undefined) {
+    fileProperties.fileUri = {
+      ...(fileProperties.fileUri as JsonObject),
+      format: 'uri',
+      pattern: '^[hH][tT][tT][pP][sS]?://',
+    };
+  }
+  const responseParts = ((partItems.functionResponse as JsonObject | undefined)?.properties as JsonObject | undefined)
+    ?.parts as JsonObject | undefined;
+  const responseInline = ((responseParts?.items as JsonObject | undefined)?.properties as JsonObject | undefined)
+    ?.inlineData as JsonObject | undefined;
+  const responseData = (responseInline?.properties as JsonObject | undefined)?.data;
+  if (responseData !== undefined) {
+    responseInline!.properties = {
+      ...(responseInline!.properties as JsonObject),
+      data: { ...(responseData as JsonObject), maxLength: geminiInlineDataMaxLength, pattern: base64Pattern },
+    };
+  }
+}
 
 function validatePublicOperations(): void {
   const routeKeys = new Set<string>();
@@ -125,6 +196,20 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
             properties: { [key]: property },
             required: [key],
           }));
+          projectGeminiMedia(target);
+        } else if (
+          zodSchema === GeminiInteractionsBodySchema ||
+          (zodSchema instanceof z.ZodObject &&
+            ['model', 'agent', 'input', 'previous_interaction_id'].every((key) => key in zodSchema.shape))
+        ) {
+          projectGeminiInteractions(target);
+        } else if (
+          zodSchema === OpenAIImageGenerationsInputSchema ||
+          zodSchema === OpenAIImageEditsInputSchema ||
+          (zodSchema instanceof z.ZodObject &&
+            ['prompt', 'n', 'output_format', 'output_compression'].every((key) => key in zodSchema.shape))
+        ) {
+          projectImageCount(target);
         } else if (zodSchema === GeminiEmbedContentRequestSchema.shape.embedContentConfig.unwrap().in) {
           const properties = target.properties as JsonObject;
           properties.audioTrackExtraction = { not: {} };

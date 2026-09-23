@@ -515,3 +515,60 @@ test('keeps Gemini URL models out of required bodies and rejects unsupported emb
     required: ['text'],
   });
 });
+
+test('projects the Gemini interactions routing XOR and nonblank constraint', async () => {
+  const schema = fromJSONSchema(await operationSchema('createInteraction'));
+  expect(schema.safeParse({ model: 'gemini-2.5-flash', input: 'Hello.' }).success).toBe(true);
+  expect(schema.safeParse({ agent: 'deep-research', input: 'Hello.' }).success).toBe(true);
+  for (const invalid of [
+    { input: 'Hello.' },
+    { model: 'gemini-2.5-flash', agent: 'deep-research', input: 'Hello.' },
+    { model: '   ', input: 'Hello.' },
+    { agent: '\t', input: 'Hello.' },
+  ]) {
+    expect(schema.safeParse(invalid).success).toBe(false);
+  }
+});
+
+test('projects image count limits for generation and edit request schemas', async () => {
+  const document = await loadPublicOpenApi();
+  for (const operationId of ['generateImages', 'editImages']) {
+    const operation = Object.values(document.paths)
+      .flatMap((item) => Object.values(item as Record<string, unknown>))
+      .find((candidate) => (candidate as { operationId?: string }).operationId === operationId) as {
+      requestBody?: { content?: { 'application/json'?: { schema?: Record<string, any> } } };
+    };
+    const schema = operation.requestBody?.content?.['application/json']?.schema;
+    const count = schema?.allOf?.[0];
+    expect(count?.if?.properties?.model?.pattern).toBe('^\\s*(?:[^/\\s]+/)?dall-e-3\\s*$');
+    const general = fromJSONSchema({ type: 'object', properties: { n: count?.else?.properties?.n } });
+    const dallE3 = fromJSONSchema({ type: 'object', properties: { n: count?.then?.properties?.n } });
+    for (const n of [0, 11]) expect(general.safeParse({ n }).success).toBe(false);
+    expect(general.safeParse({ n: 10 }).success).toBe(true);
+    expect(dallE3.safeParse({ n: 2 }).success).toBe(false);
+    expect(dallE3.safeParse({ n: 1 }).success).toBe(true);
+  }
+});
+
+test('projects Gemini inline-data and file-URI validation on every media operation', async () => {
+  const operationIds = ['generateContent', 'streamGenerateContent', 'countContentTokens'] as const;
+  const oversized = 'A'.repeat(27_962_029);
+  for (const operationId of operationIds) {
+    const schema = fromJSONSchema(await operationSchema(operationId));
+    const inline = {
+      contents: [{ parts: [{ inlineData: { mimeType: 'image/png', data: '%%%%' } }] }],
+    };
+    const file = {
+      contents: [{ parts: [{ fileData: { mimeType: 'image/png', fileUri: 'ftp://example.com/image.png' } }] }],
+    };
+    const valid = {
+      contents: [{ parts: [{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }] }],
+    };
+    expect(schema.safeParse(valid).success).toBe(true);
+    expect(schema.safeParse(inline).success).toBe(false);
+    expect(schema.safeParse(file).success).toBe(false);
+    expect(
+      schema.safeParse({ contents: [{ parts: [{ inlineData: { mimeType: 'image/png', data: oversized } }] }] }).success,
+    ).toBe(false);
+  }
+});
