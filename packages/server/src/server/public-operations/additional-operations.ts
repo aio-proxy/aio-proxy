@@ -134,7 +134,7 @@ export const additionalOperations = [
   operation('post', '/v1beta/models/{model}:generateContent', 'generateContent', 'generate-content', 'Gemini', 8, {
     ...geminiFields,
     requestVariants: [jsonContent(exampleSchema(GeminiGenerateContentRequestSchema.omit({ model: true }), hello))],
-    responseVariants: ok(jsonContent(upstreamObject(geminiReply))),
+    responseVariants: ok(jsonContent(upstreamObject(geminiReply)), textContent('text/plain', 'provider-bytes')),
   }),
   operation(
     'post',

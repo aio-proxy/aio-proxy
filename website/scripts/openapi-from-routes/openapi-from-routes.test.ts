@@ -513,6 +513,12 @@ test('documents sparse raw image JSON', async () => {
   }
 });
 
+test('documents raw text Gemini generateContent responses', async () => {
+  const content = (await loadPublicOpenApi()).paths['/v1beta/models/{model}:generateContent']?.post?.responses['2XX']
+    ?.content;
+  expect(content).toContainKeys(['application/json', 'text/plain']);
+});
+
 test('documents raw text embedding responses', async () => {
   const content = (await loadPublicOpenApi()).paths['/v1/embeddings']?.post?.responses['2XX']?.content;
   expect(content).toContainKeys(['application/json', 'text/plain']);
