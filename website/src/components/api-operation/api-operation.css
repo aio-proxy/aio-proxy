@@ -1,0 +1,136 @@
+.api-operation {
+  min-width: 0;
+  max-width: 100%;
+  --scalar-font: var(--rp-font-family-base);
+  --scalar-font-code: var(--rp-font-family-mono);
+  --scalar-background-1: var(--rp-c-bg);
+  --scalar-background-2: var(--rp-c-bg-soft);
+  --scalar-background-3: var(--rp-c-bg-mute);
+  --scalar-background-accent: var(--rp-c-brand-tint);
+  --scalar-color-1: var(--rp-c-text-1);
+  --scalar-color-2: var(--rp-c-text-2);
+  --scalar-color-3: var(--rp-c-text-3);
+  --scalar-color-accent: var(--rp-c-brand);
+  --scalar-border-color: var(--rp-c-divider);
+  --scalar-link-color: var(--rp-c-brand);
+  --scalar-link-color-hover: var(--rp-c-brand-dark);
+}
+
+.api-operation :where(.scalar-api-reference, .references-layout, .references-rendered) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.api-operation .scalar-app,
+.api-operation .scalar-app .references-rendered {
+  background: transparent !important;
+  border: 0;
+}
+
+.api-operation .scalar-app .section:has(> .section-content > .operation-layout) {
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.api-operation .scalar-app .tag-section-container {
+  border: 0;
+}
+
+.api-operation .scalar-app .introduction-section {
+  display: none;
+}
+
+.api-operation .scalar-app .tag-section-container > .section:first-child {
+  display: none;
+}
+
+.api-operation .scalar-app .operation-title {
+  display: none;
+}
+
+.api-operation .scalar-app .section-container {
+  padding-inline: 0;
+}
+
+.api-operation .scalar-app .section {
+  padding: 0;
+}
+
+.api-operation .operation-details {
+  padding-left: calc(var(--spacing, 0.25rem) * 4);
+}
+
+/* Scalar keeps its renderer; Rspress owns the example palette in both themes. */
+.api-operation .scalar-card,
+body:has(.api-operation) .scalar-app:has([role='listbox']) {
+  --scalar-font: var(--rp-font-family-base);
+  --scalar-font-code: var(--rp-font-family-mono);
+  --scalar-background-1: var(--rp-c-bg);
+  --scalar-background-2: var(--rp-code-block-bg);
+  --scalar-background-3: var(--rp-c-bg-mute);
+  --scalar-color-1: var(--rp-c-text-1);
+  --scalar-color-2: var(--rp-c-text-2);
+  --scalar-color-3: var(--rp-c-text-3);
+  --scalar-color-accent: var(--rp-c-brand);
+  --scalar-border-color: var(--rp-c-divider);
+}
+
+.api-operation .scalar-card {
+  background: var(--rp-code-block-bg);
+  border: var(--rp-code-block-border);
+  border-radius: var(--rp-radius);
+}
+
+.api-operation .scalar-code-block .hljs {
+  color: var(--rp-c-text-1);
+  font-family: var(--rp-font-family-mono);
+}
+
+.api-operation .scalar-code-block .hljs :is(.hljs-keyword, .hljs-selector-tag) {
+  color: var(--shiki-token-keyword);
+}
+
+.api-operation .scalar-code-block .hljs :is(.hljs-string, .hljs-regexp) {
+  color: var(--shiki-token-string-expression);
+}
+
+.api-operation .scalar-code-block .hljs :is(.hljs-number, .hljs-literal, .hljs-attr, .hljs-built_in, .hljs-type) {
+  color: var(--shiki-token-constant);
+}
+
+.api-operation .scalar-code-block .hljs .hljs-title {
+  color: var(--shiki-token-function);
+}
+
+.api-operation .scalar-code-block .hljs :is(.hljs-comment, .hljs-quote) {
+  color: var(--rp-c-text-3);
+}
+
+.api-operation .scalar-code-block .hljs :is(.hljs-punctuation, .hljs-operator) {
+  color: var(--shiki-token-punctuation);
+}
+
+.api-operation .request-card button[aria-expanded] {
+  border: 1px solid var(--rp-c-divider);
+  border-radius: var(--rp-radius-small);
+  padding: 4px 8px;
+  color: var(--rp-c-text-2);
+  background: var(--rp-c-bg);
+  font-family: var(--rp-font-family-base);
+}
+
+/* The native language picker is teleported outside the operation wrapper. */
+body:has(.api-operation) .scalar-app [id^='headlessui-popover-panel-']:has([role='listbox']) {
+  min-width: 200px;
+  border: 1px solid var(--rp-c-divider);
+  border-radius: var(--rp-radius);
+  background: var(--rp-c-bg);
+  color: var(--rp-c-text-1);
+  font-family: var(--rp-font-family-base);
+}
+
+body:has(.api-operation) .scalar-app [role='option']:is(:hover, [aria-selected='true']) {
+  background: var(--rp-c-brand-tint);
+  --scalar-color-1: var(--rp-c-brand);
+}

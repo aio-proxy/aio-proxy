@@ -68,14 +68,28 @@ export const runCliUntilOutput = async (args: readonly string[], expected: reado
     readOutput(subprocess.stdout, (chunk) => (stdout += chunk)),
     readOutput(subprocess.stderr, (chunk) => (stderr += chunk)),
   ]);
+  let exited = false;
+  const exitedPromise = subprocess.exited.then((code) => {
+    exited = true;
+    return code;
+  });
   const timeout = setTimeout(() => outputReady.reject(new Error(`CLI output timeout: ${stdout}${stderr}`)), 10_000);
   try {
-    await Promise.race([outputReady.promise, subprocess.exited.then(() => undefined)]);
+    await Promise.race([outputReady.promise, exitedPromise.then(() => undefined)]);
+    if (!exited) {
+      await new Promise<void>((resolve) => {
+        const grace = setTimeout(resolve, 10_000);
+        void exitedPromise.then(() => {
+          clearTimeout(grace);
+          resolve();
+        });
+      });
+    }
   } finally {
     clearTimeout(timeout);
-    subprocess.kill();
+    if (!exited) subprocess.kill();
   }
-  const exitCode = await subprocess.exited;
+  const exitCode = await exitedPromise;
   await readers;
   return { exitCode, stderr, stdout };
 };

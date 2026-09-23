@@ -1,4 +1,7 @@
 export {
+  OpenAIVideoCreateInputSchema,
+  OpenAIVideoEditInputSchema,
+  OpenAIVideoRemixInputSchema,
   isDefaultedVideoModel,
   isJsonRequest,
   isModelField,

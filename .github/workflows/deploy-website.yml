@@ -11,6 +11,9 @@ on:
       # touches only them still changes the deployed site.
       - 'packages/brand/**'
       - 'packages/ui/**'
+      # API pages are generated from public route descriptors and core wire schemas.
+      - 'packages/server/**'
+      - 'packages/core/**'
   workflow_dispatch:
 
 permissions:
@@ -53,7 +56,10 @@ jobs:
             ${{ runner.os }}-bun-
 
       - run: bun install --frozen-lockfile --prefer-offline
+      - run: bun run build
       - run: bun run --filter @aio-proxy/website build
+      - run: bun run --filter @aio-proxy/website api:check
+      - run: bun run --filter @aio-proxy/website test
 
       - uses: actions/configure-pages@v6
 

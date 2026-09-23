@@ -38,6 +38,9 @@ export { processIsAlive, processOwnerIsCurrent, processStarttime } from './file-
 export type { ProcessOwnerIdentity } from './file-lock/process-identity';
 export { parseRuntimeConfig, resolveConfigTemplates } from './config/index';
 export {
+  AnthropicMessageResponseSchema,
+  AnthropicMessagesStreamEventSchema,
+  formatAnthropicMessagesSSE,
   type AnthropicMessageResponse,
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
@@ -45,9 +48,18 @@ export {
 export { writeGeminiEmbeddingsResponse } from './egress/gemini-embeddings';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
 export { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from './egress/gemini-interactions';
-export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions/index';
+export {
+  formatOpenAICompletionsSSE,
+  OpenAICompletionsResponseSchema,
+  OpenAICompletionsStreamEventSchema,
+  writeOpenAICompletionsResponse,
+  writeOpenAICompletionsSSE,
+} from './egress/openai-completions/index';
 export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
+  formatOpenAIResponsesSSE,
+  OpenAIResponsesResponseSchema,
+  OpenAIResponsesStreamEventSchema,
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
@@ -97,6 +109,7 @@ export {
   isValidBase64,
 } from './image-input';
 export {
+  Base64ImageSourceSchema as AnthropicBase64ImageSourceSchema,
   type AnthropicCacheControl,
   type AnthropicImageBlock,
   type AnthropicMessagesRequest,
@@ -104,10 +117,16 @@ export {
   type AnthropicTextBlock,
   type AnthropicToolResultBlock,
   type AnthropicToolUseBlock,
+  ThinkingBlockSchema as AnthropicThinkingBlockSchema,
+  ToolResultBlockSchema as AnthropicToolResultBlockSchema,
+  UrlImageSourceSchema as AnthropicUrlImageSourceSchema,
+  WebSearchToolSchema as AnthropicWebSearchToolSchema,
   parseAnthropicMessages,
 } from './ingress/anthropic-messages/index';
 export {
   type GeminiBatchEmbedContentsRequest,
+  GeminiBatchEmbedContentsRequestSchema,
+  GeminiEmbedContentRequestSchema,
   type GeminiEmbedContentRequest,
   parseGeminiBatchEmbedContents,
   parseGeminiEmbedContent,
@@ -122,6 +141,7 @@ export {
 } from './ingress/gemini-generate-content/index';
 export {
   type GeminiInteractionsBody,
+  GeminiInteractionsBodySchema,
   type GeminiInteractionsParseResult,
   type GeminiInteractionsRequest,
   parseGeminiInteractions,
@@ -129,6 +149,8 @@ export {
 } from './ingress/gemini-interactions/index';
 export {
   AUDIO_MULTIPART_ENCODED_LIMIT,
+  OpenAISpeechInputSchema,
+  OpenAITranscriptionFieldsSchema,
   AUDIO_MULTIPART_PER_FILE_LIMIT,
   CPA_DEFAULT_SPEECH_MODEL,
   CPA_DEFAULT_TRANSCRIPTION_MODEL,
@@ -142,9 +164,23 @@ export {
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
 } from './ingress/openai-completions';
-export { type OpenAIEmbeddingsRequest, parseOpenAIEmbeddings } from './ingress/openai-embeddings';
+export {
+  type OpenAIEmbeddingsRequest,
+  OpenAIEmbeddingsRequestSchema,
+  parseOpenAIEmbeddings,
+} from './ingress/openai-embeddings';
+export { OpenAILegacyCompletionsRequestSchema } from './ingress/openai-legacy-completions';
+export {
+  OpenAIVideoCreateInputSchema,
+  OpenAIVideoEditInputSchema,
+  OpenAIVideoRemixInputSchema,
+} from './ingress/openai-video';
+export { OpenAIResponsesCompactRequestSchema } from './ingress/openai-responses';
 export {
   CPA_DEFAULT_IMAGE_MODEL,
+  OpenAIImageGenerationsInputSchema,
+  OpenAIImageEditsInputSchema,
+  EDITS_MULTIPART_MAX_IMAGES,
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,
@@ -155,6 +191,11 @@ export {
   type OpenAIImageUpload,
 } from './ingress/openai-image';
 export {
+  openAIResponsesInputImagePartSchema,
+  openAIResponsesInputItemSchema,
+  openAIResponsesInputItemTransformSchema,
+  openAIResponsesToolTransformSchema,
+  openAIResponsesToolWireSchema,
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,
   type OpenAIResponsesFunctionTool,

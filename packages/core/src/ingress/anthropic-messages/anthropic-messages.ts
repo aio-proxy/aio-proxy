@@ -23,13 +23,13 @@ const TextBlockSchema = z.object({
   cache_control: CacheControlSchema.optional(),
 });
 
-const Base64ImageSourceSchema = z.object({
+export const Base64ImageSourceSchema = z.object({
   type: z.literal('base64'),
   media_type: z.string().refine((value) => value !== 'image' && isImageMediaType(value)),
   data: z.string().refine(isValidBase64),
 });
 
-const UrlImageSourceSchema = z.object({
+export const UrlImageSourceSchema = z.object({
   type: z.literal('url'),
   url: z.string().refine((url) => imageFilePart({ type: 'url', url }) !== undefined),
 });
@@ -55,7 +55,7 @@ const ToolResultTextBlockSchema = z.object({
 
 const ToolResultContentBlockSchema = z.discriminatedUnion('type', [ToolResultTextBlockSchema, ImageBlockSchema]);
 
-const ToolResultBlockSchema = z
+export const ToolResultBlockSchema = z
   .object({
     type: z.literal('tool_result'),
     tool_use_id: IdSchema.optional(),
@@ -80,7 +80,7 @@ const ToolResultBlockSchema = z
     }),
   );
 
-const ThinkingBlockSchema = z
+export const ThinkingBlockSchema = z
   .object({
     type: z.literal('thinking'),
     thinking: z.string(),
@@ -142,7 +142,7 @@ const FunctionToolSchema = z.object({
   input_schema: Tool['input_schema'];
 }>;
 
-const WebSearchToolSchema = z
+export const WebSearchToolSchema = z
   .object({
     type: z.enum(['web_search_20250305', 'web_search_20260209', 'web_search_20260318']),
     name: z.literal('web_search'),

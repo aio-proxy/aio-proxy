@@ -1,4 +1,5 @@
 export {
+  EDITS_MULTIPART_MAX_IMAGES,
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEditsMultipart,
   releaseMultipartSpool,
@@ -6,6 +7,8 @@ export {
   transferMultipartSpool,
 } from './multipart';
 export {
+  OpenAIImageGenerationsInputSchema,
+  OpenAIImageEditsInputSchema,
   CPA_DEFAULT_IMAGE_MODEL,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,

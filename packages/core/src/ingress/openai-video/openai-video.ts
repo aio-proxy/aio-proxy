@@ -19,7 +19,7 @@ export { releaseMultipartSpool, replaySpooledMultipartRaw };
 
 const videoIdObject = z.object({ id: z.string().regex(VIDEO_ID_PATTERN) });
 
-const OpenAIVideoCreateInputSchema = z.compile(
+export const OpenAIVideoCreateInputSchema = z.compile(
   z.object({
     model: z.union([z.string(), z.null()]).optional(),
     prompt: z.string(),
@@ -32,7 +32,7 @@ const OpenAIVideoCreateInputSchema = z.compile(
   }),
 );
 
-const OpenAIVideoEditInputSchema = z.compile(
+export const OpenAIVideoEditInputSchema = z.compile(
   z.object({
     model: z.union([z.string(), z.null()]).optional(),
     prompt: z.string(),
@@ -41,7 +41,7 @@ const OpenAIVideoEditInputSchema = z.compile(
   }),
 );
 
-const OpenAIVideoRemixInputSchema = z.compile(z.object({ prompt: z.string() }));
+export const OpenAIVideoRemixInputSchema = z.compile(z.object({ prompt: z.string() }));
 
 export type OpenAIVideoOperation = 'create' | 'edits' | 'extensions';
 

@@ -13,7 +13,7 @@ const textPartSchema = z
   })
   .loose();
 
-const inputImagePartSchema = z
+export const openAIResponsesInputImagePartSchema = z
   .object({
     type: z.literal('input_image'),
     image_url: z.string().optional(),
@@ -40,7 +40,7 @@ const inputFilePartSchema = z
   })
   .loose();
 
-const messageContentPartSchema = z.union([textPartSchema, inputImagePartSchema, inputFilePartSchema]);
+const messageContentPartSchema = z.union([textPartSchema, openAIResponsesInputImagePartSchema, inputFilePartSchema]);
 const messageContentSchema = z.union([z.string(), z.array(messageContentPartSchema).min(1)]);
 
 const inputMessageSchema = z.object({
@@ -61,7 +61,7 @@ const encryptedContentPartSchema = z.object({
 // raw passthrough must preserve; the model path drops it with a warning.
 const toolOutputContentPartSchema = z.union([
   textPartSchema,
-  inputImagePartSchema,
+  openAIResponsesInputImagePartSchema,
   inputFilePartSchema,
   encryptedContentPartSchema,
 ]);

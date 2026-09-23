@@ -1,4 +1,6 @@
 export {
+  GeminiBatchEmbedContentsRequestSchema,
+  GeminiEmbedContentRequestSchema,
   parseGeminiBatchEmbedContents,
   parseGeminiEmbedContent,
   type GeminiBatchEmbedContentsRequest,

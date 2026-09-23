@@ -24,9 +24,9 @@ const imageRequestFields = {
   user: nullableString,
 };
 
-const OpenAIImageGenerationsInputSchema = z.compile(z.object(imageRequestFields).superRefine(refineImageN));
+export const OpenAIImageGenerationsInputSchema = z.compile(z.object(imageRequestFields).superRefine(refineImageN));
 
-const OpenAIImageEditsInputSchema = z.compile(
+export const OpenAIImageEditsInputSchema = z.compile(
   z
     .object({
       ...imageRequestFields,
