@@ -42,6 +42,15 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
   const finalProviderId = finalAttempt?.providerId;
   const finalModelId = seed.modelId ?? 'model';
   const requestedModelId = seed.requestedModelId ?? finalModelId;
+  const inference = rootSpan({
+    traceId,
+    spanId: seed.id.toString(16).padStart(16, 'f'),
+    parentSpanId: spanId,
+    name: 'aio_proxy.inference',
+    startedAt,
+    endedAt,
+    attributes: { 'gen_ai.request.model': requestedModelId },
+  });
   const rootAttributes = {
     'aio_proxy.request.id': `request-${seed.id}`,
     'aio_proxy.protocol.inbound': 'openai-response',
@@ -63,7 +72,8 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
     return attemptSpan({
       traceId,
       spanId: `${seed.id.toString(16)}${index.toString(16)}`.padStart(16, 'a'),
-      parentSpanId: spanId,
+      parentSpanId: inference.spanId,
+      name: `chat ${finalModelId}`,
       startedAt: new Date(endedAt.getTime() - attempt.durationMs),
       endedAt,
       statusCode: failed ? 2 : 0,
@@ -86,7 +96,7 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
     completion({
       traceId,
       rootSpanId: spanId,
-      spans: [rootSpan({ traceId, spanId, startedAt, endedAt, attributes: rootAttributes }), ...attempts],
+      spans: [rootSpan({ traceId, spanId, startedAt, endedAt, attributes: rootAttributes }), inference, ...attempts],
       summary: {
         ...summary,
         ...(finalProviderId === undefined ? {} : { finalModelId }),
@@ -461,6 +471,69 @@ test('derives Provider health from failed and successful attempt child spans', (
       { providerId: 'a', successRate: 0, p95LatencyMs: 300, totalTokens: '0' },
       { providerId: 'b', successRate: 1, p95LatencyMs: 900, totalTokens: '0' },
       { providerId: 'c', successRate: 1, p95LatencyMs: 19, totalTokens: '0' },
+    ]);
+  });
+});
+
+test('aggregates Provider health and cache rates through failover', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'primary', durationMs: 100 }],
+      usage: { inputTokens: 100, outputTokens: 25, cacheReadTokens: 40 },
+    });
+    seedTrace(store, {
+      id: 2,
+      attempts: [
+        { providerId: 'primary', durationMs: 300, outcome: 'failure' },
+        { providerId: 'fallback', durationMs: 500 },
+      ],
+      usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 60 },
+    });
+
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
+      { providerId: 'fallback', successRate: 1, p95LatencyMs: 500, totalTokens: '150' },
+      { providerId: 'primary', successRate: 0.5, p95LatencyMs: 300, totalTokens: '125' },
+    ]);
+    for (const range of ['24h', '7d'] as const) {
+      const { current } = store.overviewDashboard({ range, now: NOW }).summary;
+      expect(current.requestCount).toBe('2');
+      expect(current.cacheHitRate).toBe(0.5);
+    }
+  });
+});
+
+test('excludes skipped token-count candidates from Provider health', () => {
+  withStore((store) => {
+    store.startRoot(rootStart({ startedAt: NOW }));
+    store.complete(
+      completion({
+        spans: [
+          rootSpan({ startedAt: NOW, endedAt: NOW }),
+          attemptSpan({
+            name: 'aio_proxy.token_count.candidate_skipped',
+            startedAt: NOW,
+            endedAt: NOW,
+            statusCode: 2,
+            attributes: {
+              'aio_proxy.attempt.index': 0,
+              'aio_proxy.provider.id': 'provider',
+              'aio_proxy.termination.reason': 'failure',
+              'aio_proxy.token_count.skip_reason': 'no_capability',
+            },
+          }),
+        ],
+        summary: {},
+      }),
+    );
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'provider', durationMs: 100 }],
+      usage: { inputTokens: 100, outputTokens: 25 },
+    });
+
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
+      { providerId: 'provider', successRate: 1, p95LatencyMs: 100, totalTokens: '125' },
     ]);
   });
 });

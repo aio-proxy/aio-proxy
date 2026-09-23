@@ -64,8 +64,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
       cast(coalesce(root.cache_write_tokens, 0) as text) as cacheWriteTokens
     from trace_span root
     left join trace_span attempt on attempt.trace_id = root.trace_id
-      and attempt.parent_span_id = root.span_id
-      and attempt.name = 'aio_proxy.provider.attempt' and attempt.termination_reason is null
+      and attempt.attempt_index is not null and attempt.termination_reason is null
     where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ?`;
   const params = [
     ...(range.bucketUnit === 'hour' ? [range.start.getTime(), range.start.getTime()] : [range.start.getTime()]),
