@@ -511,6 +511,9 @@ test('documents raw chat completions without created or model fields', async () 
       choices: [{ message: { role: 'assistant', content: 'fallback ok' } }],
     }).success,
   ).toBe(true);
+  expect(response.safeParse({ choices: [{ message: { role: 'assistant', content: 'fallback ok' } }] }).success).toBe(
+    true,
+  );
 
   const streamSchema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['2XX']?.content?.[
     'text/event-stream'
@@ -519,6 +522,12 @@ test('documents raw chat completions without created or model fields', async () 
     fromJSONSchema(streamSchema!).safeParse({
       id: 'chatcmpl-upstream',
       choices: [{ delta: {}, index: 0, finish_reason: null }],
+    }).success,
+  ).toBe(true);
+  expect(
+    fromJSONSchema(streamSchema!).safeParse({
+      id: 'chatcmpl-2',
+      choices: [{ index: 0, delta: { content: 'Hi' } }],
     }).success,
   ).toBe(true);
 });

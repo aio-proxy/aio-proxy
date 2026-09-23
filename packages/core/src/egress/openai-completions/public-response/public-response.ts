@@ -18,9 +18,9 @@ const toolCallSchema = z
 
 export const OpenAICompletionsResponseSchema = z
   .object({
-    id: z.string(),
-    object: z.literal('chat.completion'),
     // Raw matching-protocol responses are forwarded even when these usual envelope fields are absent.
+    id: z.string().optional(),
+    object: z.literal('chat.completion').optional(),
     created: z.number().int().optional(),
     model: z.string().optional(),
     choices: z.array(
@@ -73,7 +73,8 @@ export const OpenAICompletionsStreamEventSchema = z
         .object({
           delta: z.object({}).loose(),
           index: z.number().int(),
-          finish_reason: z.string().nullable(),
+          // Intermediate raw chunks include delta and index and omit finish_reason until the terminal choice.
+          finish_reason: z.string().nullable().optional(),
         })
         .loose(),
     ),
