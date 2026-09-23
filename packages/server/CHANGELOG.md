@@ -1,5 +1,22 @@
 # @aio-proxy/server
 
+## 0.32.0
+
+### Minor Changes
+
+- [#416](https://github.com/aio-proxy/aio-proxy/pull/416) [`80983cd`](https://github.com/aio-proxy/aio-proxy/commit/80983cdb7dcf9368388c5d9cc9b86ceea3b6322f) Thanks [@baranwang](https://github.com/baranwang)! - The documentation site publishes stable English and Chinese pages for all supported public API operations, with resource navigation and read-only examples. It covers text, embeddings, media, evaluation, and realtime endpoints, including multipart uploads, binary responses, and WebSocket handshakes, with provider compatibility limits made explicit.
+
+### Patch Changes
+
+- [#419](https://github.com/aio-proxy/aio-proxy/pull/419) [`af0b53f`](https://github.com/aio-proxy/aio-proxy/commit/af0b53fe8acabc74a15818dbce1847ed3510554a) Thanks [@baranwang](https://github.com/baranwang)! - Keep routed `codex-auto-review` in the Codex model list while leaving it hidden. Automatic review can resolve it, but it stays out of the model picker and is omitted when no enabled Provider exposes it.
+- Updated dependencies [[`e77a7ac`](https://github.com/aio-proxy/aio-proxy/commit/e77a7ac7ce18c0b57fd1cf40aa606373213557c5), [`80983cd`](https://github.com/aio-proxy/aio-proxy/commit/80983cdb7dcf9368388c5d9cc9b86ceea3b6322f)]:
+  - @aio-proxy/core@0.32.0
+  - @aio-proxy/i18n@0.32.0
+  - @aio-proxy/logger@0.32.0
+  - @aio-proxy/plugin-sdk@0.32.0
+  - @aio-proxy/shared@0.32.0
+  - @aio-proxy/types@0.32.0
+
 ## 0.31.0
 
 ### Minor Changes

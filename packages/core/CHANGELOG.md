@@ -1,5 +1,31 @@
 # @aio-proxy/core
 
+## 0.32.0
+
+### Minor Changes
+
+- [#416](https://github.com/aio-proxy/aio-proxy/pull/416) [`80983cd`](https://github.com/aio-proxy/aio-proxy/commit/80983cdb7dcf9368388c5d9cc9b86ceea3b6322f) Thanks [@baranwang](https://github.com/baranwang)! - The documentation site publishes stable English and Chinese pages for all supported public API operations, with resource navigation and read-only examples. It covers text, embeddings, media, evaluation, and realtime endpoints, including multipart uploads, binary responses, and WebSocket handshakes, with provider compatibility limits made explicit.
+
+### Patch Changes
+
+- [#413](https://github.com/aio-proxy/aio-proxy/pull/413) [`e77a7ac`](https://github.com/aio-proxy/aio-proxy/commit/e77a7ac7ce18c0b57fd1cf40aa606373213557c5) Thanks [@baranwang](https://github.com/baranwang)! - Restore Provider success rate, token throughput, and latency statistics for the updated trace format. Restore overview cache hit rate accounting for requests with nested inference spans.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.32.0
+  - @aio-proxy/logger@0.32.0
+  - @aio-proxy/plugin-sdk@0.32.0
+  - @aio-proxy/plugin-claude-code@0.32.0
+  - @aio-proxy/plugin-cursor@0.32.0
+  - @aio-proxy/plugin-github-copilot@0.32.0
+  - @aio-proxy/plugin-google-antigravity@0.32.0
+  - @aio-proxy/plugin-kimi-code@0.32.0
+  - @aio-proxy/plugin-muse-code@0.32.0
+  - @aio-proxy/plugin-openai-chatgpt@0.32.0
+  - @aio-proxy/plugin-opencode-go@0.32.0
+  - @aio-proxy/plugin-openrouter@0.32.0
+  - @aio-proxy/plugin-xai-grok@0.32.0
+  - @aio-proxy/shared@0.32.0
+  - @aio-proxy/types@0.32.0
+
 ## 0.31.0
 
 ### Minor Changes
