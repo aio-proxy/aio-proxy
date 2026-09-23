@@ -12,7 +12,7 @@ import {
   OpenAIResponsesResponseSchema,
   OpenAIResponsesStreamEventSchema,
 } from '@aio-proxy/core';
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 
 import { PublicModelListSchema } from '../list-models/public-model-list';
 import { additionalOperations } from './additional-operations';
@@ -70,6 +70,10 @@ export type DocumentedPublicOperation = {
   readonly responses: {
     readonly json?: JsonSchemaContent;
     readonly stream?: StreamSchemaContent;
+    readonly text?: {
+      readonly contentType: 'text/plain';
+      readonly schema: ZodType;
+    };
   };
 };
 
@@ -93,6 +97,11 @@ const openAIResponsesRequestDocumentationSchema = OpenAIResponsesRequestSchema.m
     { model: 'gpt-5', input: 'Hello.', stream: true },
   ],
 });
+
+const rawTextResponse = {
+  contentType: 'text/plain' as const,
+  schema: z.string().meta({ examples: ['provider-bytes'] }),
+};
 
 const anthropicMessagesRequestDocumentationSchema = AnthropicMessagesRequestSchema.loose().meta({
   examples: [
@@ -138,6 +147,7 @@ export const publicOperations: readonly PublicOperation[] = [
         schema: OpenAICompletionsStreamEventSchema,
         formatExample: formatOpenAICompletionsSSE,
       },
+      text: rawTextResponse,
     },
   },
   {
@@ -182,6 +192,7 @@ export const publicOperations: readonly PublicOperation[] = [
         schema: AnthropicMessagesStreamEventSchema,
         formatExample: formatAnthropicMessagesSSE,
       },
+      text: rawTextResponse,
     },
   },
   { classification: 'unsupported', method: 'get', path: '/v1/responses/:id' },

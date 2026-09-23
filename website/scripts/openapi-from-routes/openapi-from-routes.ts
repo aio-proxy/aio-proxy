@@ -298,7 +298,7 @@ function operationObject(operation: DocumentedPublicOperation): JsonObject {
     .filter((value) => value !== undefined)
     .join('\n\n');
   const content: Record<string, JsonObject> = {};
-  for (const response of [operation.responses.json, operation.responses.stream]) {
+  for (const response of [operation.responses.json, operation.responses.stream, operation.responses.text]) {
     if (response === undefined) continue;
     const examples = schemaExamples(response.schema, `${operation.operationId} ${response.contentType} response`);
     content[response.contentType] = {

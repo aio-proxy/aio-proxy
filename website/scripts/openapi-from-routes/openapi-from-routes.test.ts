@@ -68,6 +68,7 @@ describe('loadPublicOpenApi', () => {
     expect(chat.paths['/v1/chat/completions']?.post?.responses?.['2XX']?.content).toContainKeys([
       'application/json',
       'text/event-stream',
+      'text/plain',
     ]);
     expect(chat.paths['/v1/chat/completions']?.post?.responses?.['200']).toBeUndefined();
     expect(
@@ -79,7 +80,7 @@ describe('loadPublicOpenApi', () => {
     ).toEqual({});
     expect(
       projectOperation(document, 'createMessage').paths['/v1/messages']?.post?.responses?.['2XX']?.content,
-    ).toContainKey('text/event-stream');
+    ).toContainKeys(['text/event-stream', 'text/plain']);
   });
 
   test('documents both anonymous and bearer-authenticated deployments', async () => {
