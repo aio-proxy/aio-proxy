@@ -495,6 +495,21 @@ test('documents server-tool blocks in raw Anthropic responses', async () => {
 
   expect(response.safeParse(raw).success).toBe(true);
   expect(response.safeParse({ fallback: true }).success).toBe(true);
+  const stream = (await loadPublicOpenApi()).paths['/v1/messages']?.post?.responses['2XX']?.content?.[
+    'text/event-stream'
+  ]?.schema;
+  const event = fromJSONSchema(stream!);
+  expect(event.safeParse({ message: { usage: { input_tokens: 1.5 } } }).success).toBe(true);
+  expect(event.safeParse({ usage: { output_tokens: 13 } }).success).toBe(true);
+});
+
+test('documents sparse raw image JSON', async () => {
+  const document = await loadPublicOpenApi();
+  for (const path of ['/v1/images/generations', '/v1/images/edits']) {
+    const schema = document.paths[path]?.post?.responses['2XX']?.content?.['application/json']?.schema;
+    expect(schema).toBeDefined();
+    expect(fromJSONSchema(schema!).safeParse({ provider: 'raw' }).success).toBe(true);
+  }
 });
 
 test('documents raw text embedding responses', async () => {
@@ -538,6 +553,11 @@ test('documents raw chat completions without created or model fields', async () 
     }).success,
   ).toBe(true);
   expect(fromJSONSchema(streamSchema!).safeParse({ choices: [{ delta: { content: 'hi' } }] }).success).toBe(true);
+  expect(
+    fromJSONSchema(streamSchema!).safeParse({
+      usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+    }).success,
+  ).toBe(true);
 });
 
 test('rejects invalid realtime call IDs in documented path and query parameters', async () => {

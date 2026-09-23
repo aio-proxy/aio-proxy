@@ -26,8 +26,9 @@ import {
 const imageReply = exampleSchema(
   z
     .object({
-      created: z.number(),
-      data: z.array(z.object({ b64_json: z.string().optional(), url: z.string().optional() }).loose()),
+      // Same-protocol image providers can forward JSON outside this envelope.
+      created: z.number().optional(),
+      data: z.array(z.object({ b64_json: z.string().optional(), url: z.string().optional() }).loose()).optional(),
       usage: z.record(z.string(), z.unknown()).optional(),
     })
     .loose(),

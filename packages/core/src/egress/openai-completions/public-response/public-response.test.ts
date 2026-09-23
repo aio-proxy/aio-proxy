@@ -69,6 +69,7 @@ test('accepts sparse raw chat choices and stream envelopes', () => {
   };
   const omittedFinish = { id: 'chatcmpl-2', choices: [{ delta: { content: 'Hi' }, index: 0 }] };
   const idlessChunk = { choices: [{ delta: { content: 'hi' } }] };
+  const usageOnly = { usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } };
 
   expect(OpenAICompletionsResponseSchema.parse(response)).toEqual(response);
   expect(OpenAICompletionsResponseSchema.parse(choicesOnly)).toEqual(choicesOnly);
@@ -76,4 +77,5 @@ test('accepts sparse raw chat choices and stream envelopes', () => {
   expect(OpenAICompletionsStreamEventSchema.parse(event)).toEqual(event);
   expect(OpenAICompletionsStreamEventSchema.parse(omittedFinish)).toEqual(omittedFinish);
   expect(OpenAICompletionsStreamEventSchema.parse(idlessChunk)).toEqual(idlessChunk);
+  expect(OpenAICompletionsStreamEventSchema.parse(usageOnly)).toEqual(usageOnly);
 });

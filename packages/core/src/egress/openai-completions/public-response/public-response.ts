@@ -72,16 +72,18 @@ export const OpenAICompletionsStreamEventSchema = z
     object: z.literal('chat.completion.chunk').optional(),
     created: z.number().int().optional(),
     model: z.string().optional(),
-    choices: z.array(
-      z
-        .object({
-          delta: z.object({}).loose(),
-          index: z.number().int().optional(),
-          // Intermediate raw chunks can omit finish_reason until the terminal choice.
-          finish_reason: z.string().nullable().optional(),
-        })
-        .loose(),
-    ),
+    choices: z
+      .array(
+        z
+          .object({
+            delta: z.object({}).loose(),
+            index: z.number().int().optional(),
+            // Intermediate raw chunks can omit finish_reason until the terminal choice.
+            finish_reason: z.string().nullable().optional(),
+          })
+          .loose(),
+      )
+      .optional(),
     usage: usageSchema.optional(),
   })
   .loose()

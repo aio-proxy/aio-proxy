@@ -40,7 +40,10 @@ export const AnthropicMessageResponseSchema = z
   });
 
 export const AnthropicMessagesStreamEventSchema = z
-  .object({ type: z.string().min(1) })
+  .object({
+    // The SSE event: line can carry the name, so a raw payload may omit type.
+    type: z.string().min(1).optional(),
+  })
   .loose()
   .meta({
     examples: [

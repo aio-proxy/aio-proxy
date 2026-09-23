@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { AnthropicMessageResponseSchema } from './public-response';
+import { AnthropicMessageResponseSchema, AnthropicMessagesStreamEventSchema } from './public-response';
 
 test('accepts server-tool and provider-defined blocks forwarded by a raw Anthropic provider', () => {
   const raw = {
@@ -22,4 +22,10 @@ test('accepts server-tool and provider-defined blocks forwarded by a raw Anthrop
 
 test('accepts sparse provider-defined objects forwarded by a raw Anthropic provider', () => {
   expect(AnthropicMessageResponseSchema.parse({ fallback: true })).toEqual({ fallback: true });
+  expect(AnthropicMessagesStreamEventSchema.parse({ message: { usage: { input_tokens: 1.5 } } })).toEqual({
+    message: { usage: { input_tokens: 1.5 } },
+  });
+  expect(AnthropicMessagesStreamEventSchema.parse({ usage: { output_tokens: 13 } })).toEqual({
+    usage: { output_tokens: 13 },
+  });
 });
