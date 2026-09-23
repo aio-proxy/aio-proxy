@@ -25,7 +25,7 @@ export const OpenAIResponsesResponseSchema = z
     model: z.string().optional(),
     output: z.array(outputItemSchema).optional(),
     output_text: z.string().optional(),
-    status: z.enum(['completed', 'failed', 'in_progress', 'incomplete', 'queued', 'cancelled']),
+    status: z.enum(['completed', 'failed', 'in_progress', 'incomplete', 'queued', 'cancelled']).optional(),
     usage: usageSchema.optional(),
   })
   .loose()

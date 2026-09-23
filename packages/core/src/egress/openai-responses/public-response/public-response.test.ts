@@ -38,6 +38,7 @@ test('accepts sparse JSON and SSE responses forwarded by a raw provider', () => 
     status: 'completed',
   });
   expect(OpenAIResponsesResponseSchema.parse({ status: 'completed' })).toEqual({ status: 'completed' });
+  expect(OpenAIResponsesResponseSchema.parse({ fallback: true })).toEqual({ fallback: true });
   expect(
     OpenAIResponsesStreamEventSchema.parse({
       type: 'response.completed',

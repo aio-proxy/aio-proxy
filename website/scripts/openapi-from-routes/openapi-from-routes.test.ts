@@ -171,6 +171,19 @@ describe('loadPublicOpenApi', () => {
     }
   });
 
+  test('allows top-level Anthropic provider extensions for raw passthrough', async () => {
+    const schema = await operationSchema('createMessage');
+    const messagesSchema = fromJSONSchema(schema);
+    const request = {
+      model: 'claude-test',
+      messages: [{ role: 'user', content: 'hello' }],
+      beta_field: true,
+    };
+
+    expect(schema.additionalProperties).toEqual({});
+    expect(messagesSchema.safeParse(request).success).toBe(true);
+  });
+
   test('represents an absent Anthropic function-tool type as impossible when present', async () => {
     const schema = fromJSONSchema(await operationSchema('createMessage'));
     const base = {
@@ -219,7 +232,7 @@ describe('loadPublicOpenApi', () => {
   test('rejects an invalid descriptor example before schema conversion', async () => {
     const responseSchema = documentedOperation('createResponse').responses.json!.schema;
 
-    await withExamples(responseSchema, [{}], async () => {
+    await withExamples(responseSchema, [{ status: 'not-a-response-status' }], async () => {
       await expect(loadPublicOpenApi()).rejects.toThrow('Invalid example for createResponse application/json response');
     });
   });
@@ -384,6 +397,13 @@ test('requires a nonempty binary file in both audio multipart operations', async
   }
 });
 
+test('caps the documented multipart image array at the runtime file limit', async () => {
+  const image = (await loadPublicOpenApi()).paths['/v1/images/edits']?.post?.requestBody?.content['multipart/form-data']
+    ?.schema.properties?.image as { anyOf?: Array<{ maxItems?: number }> } | undefined;
+
+  expect(image?.anyOf?.[1]?.maxItems).toBe(16);
+});
+
 test('documents the optional provider-defined body of a successful video deletion', async () => {
   const response = (await loadPublicOpenApi()).paths['/v1/videos/{video_id}']?.delete?.responses['2XX'];
   expect(response?.description).toContain('body');
@@ -484,6 +504,23 @@ test('documents raw chat completions without created or model fields', async () 
   const response = fromJSONSchema(schema!);
 
   expect(response.safeParse({ id: 'chatcmpl-upstream', object: 'chat.completion', choices: [] }).success).toBe(true);
+  expect(
+    response.safeParse({
+      id: 'chatcmpl-upstream',
+      object: 'chat.completion',
+      choices: [{ message: { role: 'assistant', content: 'fallback ok' } }],
+    }).success,
+  ).toBe(true);
+
+  const streamSchema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['2XX']?.content?.[
+    'text/event-stream'
+  ]?.schema;
+  expect(
+    fromJSONSchema(streamSchema!).safeParse({
+      id: 'chatcmpl-upstream',
+      choices: [{ delta: {}, index: 0, finish_reason: null }],
+    }).success,
+  ).toBe(true);
 });
 
 test('rejects invalid realtime call IDs in documented path and query parameters', async () => {

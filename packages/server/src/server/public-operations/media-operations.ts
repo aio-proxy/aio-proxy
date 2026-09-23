@@ -1,6 +1,7 @@
 import {
   OpenAIImageEditsInputSchema,
   OpenAIImageGenerationsInputSchema,
+  EDITS_MULTIPART_MAX_IMAGES,
   OpenAISpeechInputSchema,
   OpenAITranscriptionFieldsSchema,
   OpenAIVideoCreateInputSchema,
@@ -124,7 +125,7 @@ export const mediaOperations = [
         exampleSchema(
           OpenAIImageGenerationsInputSchema.safeExtend({
             image: z
-              .union([binary, z.array(binary).min(1)])
+              .union([binary, z.array(binary).min(1).max(EDITS_MULTIPART_MAX_IMAGES)])
               .describe('Upload image files; repeated image parts are supported.'),
             mask: binary.optional(),
           }),

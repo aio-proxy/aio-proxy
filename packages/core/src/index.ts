@@ -180,6 +180,7 @@ export {
   CPA_DEFAULT_IMAGE_MODEL,
   OpenAIImageGenerationsInputSchema,
   OpenAIImageEditsInputSchema,
+  EDITS_MULTIPART_MAX_IMAGES,
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,

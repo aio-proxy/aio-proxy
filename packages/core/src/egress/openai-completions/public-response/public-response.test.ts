@@ -54,3 +54,18 @@ test('accepts a raw chat completion without optional provider envelope fields', 
 
   expect(OpenAICompletionsResponseSchema.parse(response)).toEqual(response);
 });
+
+test('accepts sparse raw chat choices and stream envelopes', () => {
+  const response = {
+    id: 'chatcmpl-upstream',
+    object: 'chat.completion',
+    choices: [{ message: { role: 'assistant', content: 'fallback ok' } }],
+  };
+  const event = {
+    id: 'chatcmpl-upstream',
+    choices: [{ delta: { content: 'fallback' }, index: 0, finish_reason: null }],
+  };
+
+  expect(OpenAICompletionsResponseSchema.parse(response)).toEqual(response);
+  expect(OpenAICompletionsStreamEventSchema.parse(event)).toEqual(event);
+});

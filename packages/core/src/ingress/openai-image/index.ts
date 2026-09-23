@@ -1,4 +1,5 @@
 export {
+  EDITS_MULTIPART_MAX_IMAGES,
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEditsMultipart,
   releaseMultipartSpool,

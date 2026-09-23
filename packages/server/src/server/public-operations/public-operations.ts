@@ -94,7 +94,7 @@ const openAIResponsesRequestDocumentationSchema = OpenAIResponsesRequestSchema.m
   ],
 });
 
-const anthropicMessagesRequestDocumentationSchema = AnthropicMessagesRequestSchema.meta({
+const anthropicMessagesRequestDocumentationSchema = AnthropicMessagesRequestSchema.loose().meta({
   examples: [
     { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'Hello.' }] },
     { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'Hello.' }], stream: true },

@@ -26,14 +26,14 @@ export const OpenAICompletionsResponseSchema = z
     choices: z.array(
       z
         .object({
-          finish_reason: z.string(),
-          index: z.number().int(),
-          logprobs: z.unknown().nullable(),
+          finish_reason: z.string().optional(),
+          index: z.number().int().optional(),
+          logprobs: z.unknown().nullable().optional(),
           message: z
             .object({
               role: z.literal('assistant'),
               content: z.string().nullable(),
-              refusal: z.string().nullable(),
+              refusal: z.string().nullable().optional(),
               tool_calls: z.array(toolCallSchema).optional(),
             })
             .loose(),
@@ -65,9 +65,9 @@ export const OpenAICompletionsResponseSchema = z
 export const OpenAICompletionsStreamEventSchema = z
   .object({
     id: z.string(),
-    object: z.literal('chat.completion.chunk'),
-    created: z.number().int(),
-    model: z.string(),
+    object: z.literal('chat.completion.chunk').optional(),
+    created: z.number().int().optional(),
+    model: z.string().optional(),
     choices: z.array(
       z
         .object({
