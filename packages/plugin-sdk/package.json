@@ -40,7 +40,8 @@
     "date-fns": "catalog:",
     "es-toolkit": "catalog:",
     "eventsource-parser": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@handlebars/parser": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

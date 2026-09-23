@@ -83,7 +83,7 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set('Originator', 'codex-tui');
     headers.set(
       'User-Agent',
-      (await resolveChatGPTRequestIdentity(pluginOptions, headers.get('user-agent'))).userAgent,
+      (await resolveChatGPTRequestIdentity(pluginOptions, headers.get('user-agent'), fetcher)).userAgent,
     );
     headers.set('session-id', crypto.randomUUID());
     const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;

@@ -35,7 +35,7 @@ export async function discoverOpenAIChatGPTModels(
   pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<readonly ModelDescriptor[]> {
   const credential = await currentCredential(credentials, fetch);
-  const identity = await resolveChatGPTRequestIdentity(pluginOptions, null);
+  const identity = await resolveChatGPTRequestIdentity(pluginOptions, null, fetch);
   const url = new URL(CODEX_MODELS_ENDPOINT);
   // Required: the endpoint 400s without it, and gates each model on its
   // `minimal_client_version`.

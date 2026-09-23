@@ -1,4 +1,4 @@
-import { type ConfigSpec, type LocalizedText, type RuntimeFetch, zod } from '@aio-proxy/plugin-sdk';
+import { type ConfigSpec, type LocalizedText, type RuntimeFetch, renderTemplate, zod } from '@aio-proxy/plugin-sdk';
 
 import { CODEX_CLIENT_VERSION, DEFAULT_CHATGPT_USER_AGENT, LATEST_CODEX_RS_VERSION_TOKEN } from '../codex-client';
 import { latestCodexRsVersion } from './codex-version';
@@ -19,7 +19,6 @@ export type ChatGPTPluginOptionsText = {
 };
 
 const CODEX_CLIENT_MARKERS = ['codex-tui', 'codex_cli_rs', 'codex desktop'] as const;
-const EXACT_LATEST_TOKEN = /(?<!\{)\{latest_codex_rs_version\}(?!\})/u;
 
 export const englishPluginOptionsText: ChatGPTPluginOptionsText = {
   userAgentLabel: 'User agent',
@@ -45,6 +44,14 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
           .string()
           .trim()
           .refine((value) => value === '' || isHttpHeaderValue(value), 'User agent is not a valid HTTP header value')
+          .refine((value) => {
+            try {
+              codexVersionTemplate(value);
+              return true;
+            } catch {
+              return false;
+            }
+          }, 'User agent contains an unsupported template')
           .optional()
           .transform((value) => (value === undefined || value === '' ? DEFAULT_CHATGPT_USER_AGENT : value)),
         userAgentPolicy: zod.enum(['fixed', 'preserveCodexClient']).default('fixed'),
@@ -73,22 +80,25 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
   };
 }
 
-function userAgentAsksForLatestCodex(template: string): boolean {
-  return EXACT_LATEST_TOKEN.test(template);
+function codexVersionTemplate(template: string): string {
+  return renderTemplate(template, (name) => {
+    if (name !== 'latest_codex_rs_version') throw new TypeError('Unsupported user agent template');
+    return LATEST_CODEX_RS_VERSION_TOKEN;
+  });
 }
 
 export async function resolveChatGPTRequestIdentity(
   options: Partial<ChatGPTPluginOptions> | undefined,
   inbound: string | null,
-  fetchImpl?: RuntimeFetch,
+  fetchImpl: RuntimeFetch = globalThis.fetch,
 ): Promise<{ readonly userAgent: string; readonly clientVersion: string }> {
   const configured = options?.userAgent?.trim();
-  const template = configured === undefined || configured === '' ? DEFAULT_CHATGPT_USER_AGENT : configured;
-  const asksForLatest = userAgentAsksForLatestCodex(template);
+  const template = codexVersionTemplate(
+    configured === undefined || configured === '' ? DEFAULT_CHATGPT_USER_AGENT : configured,
+  );
+  const asksForLatest = template.includes(LATEST_CODEX_RS_VERSION_TOKEN);
   const clientVersion = asksForLatest ? await latestCodexRsVersion(fetchImpl) : CODEX_CLIENT_VERSION;
-  const userAgent = asksForLatest
-    ? template.replace(new RegExp(EXACT_LATEST_TOKEN.source, 'gu'), clientVersion)
-    : template;
+  const userAgent = asksForLatest ? template.replaceAll(LATEST_CODEX_RS_VERSION_TOKEN, clientVersion) : template;
   if (options?.userAgentPolicy !== 'preserveCodexClient' || inbound === null) return { userAgent, clientVersion };
   const normalized = inbound.toLowerCase();
   return {

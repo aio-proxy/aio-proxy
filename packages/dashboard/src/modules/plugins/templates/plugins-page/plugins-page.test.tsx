@@ -264,7 +264,7 @@ test('shows text and select defaults without saving them until they change', asy
     revision: 'sha256:current',
     publicValues: {},
     form: [
-      { defaultValue: 'codex-tui/{latest_codex_rs_version}', key: 'userAgent', label: 'User agent', type: 'text' },
+      { defaultValue: 'codex-tui/{{latest_codex_rs_version}}', key: 'userAgent', label: 'User agent', type: 'text' },
       {
         defaultValue: 'fixed',
         key: 'userAgentPolicy',
@@ -281,7 +281,7 @@ test('shows text and select defaults without saving them until they change', asy
   render(<PluginsPage />);
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
-  expect(await screen.findByLabelText('User agent')).toHaveValue('codex-tui/{latest_codex_rs_version}');
+  expect(await screen.findByLabelText('User agent')).toHaveValue('codex-tui/{{latest_codex_rs_version}}');
   expect(screen.getByRole('combobox', { name: 'User agent policy' })).toHaveTextContent('fixed');
   fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
 

@@ -30,7 +30,7 @@ export async function readOpenAIChatGPTQuota(
     Accept: 'application/json',
     Authorization: `Bearer ${credential.accessToken}`,
     'ChatGPT-Account-Id': credential.accountId,
-    'User-Agent': (await resolveChatGPTRequestIdentity(pluginOptions, null)).userAgent,
+    'User-Agent': (await resolveChatGPTRequestIdentity(pluginOptions, null, fetcher)).userAgent,
   };
 
   const [usage, resetCredits] = await Promise.all([

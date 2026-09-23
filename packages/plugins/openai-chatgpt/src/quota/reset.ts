@@ -26,7 +26,7 @@ export async function resetOpenAIChatGPTQuota(
       Authorization: `Bearer ${credential.accessToken}`,
       'ChatGPT-Account-Id': credential.accountId,
       'Content-Type': 'application/json',
-      'User-Agent': (await resolveChatGPTRequestIdentity(pluginOptions, null)).userAgent,
+      'User-Agent': (await resolveChatGPTRequestIdentity(pluginOptions, null, fetcher)).userAgent,
     },
     body: JSON.stringify({ redeem_request_id: crypto.randomUUID() }),
     signal: context.signal,

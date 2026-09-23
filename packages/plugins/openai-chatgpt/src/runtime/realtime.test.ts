@@ -8,11 +8,126 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_USER_AGENT } from '../codex-client';
+import { resetLatestCodexRsVersionCache } from '../plugin-options/codex-version';
 import type { ChatGPTCredential } from '../schema';
 import { createOpenAIChatGPTRealtime, realtimeEndpointFor } from './realtime';
 
 afterEach(() => {
   jest.useRealTimers();
+});
+
+test('aborts a dial waiting for the shared version lookup without opening a socket', async () => {
+  resetLatestCodexRsVersionCache();
+  let release!: () => void;
+  let calls = 0;
+  let sockets = 0;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const controller = new AbortController();
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
+    proxy: null,
+    fetch: (async () => {
+      calls++;
+      await gate;
+      return Response.json({ tag_name: 'rust-v9.9.9', name: '@openai/codex', version: '9.9.9' });
+    }) as typeof fetch,
+    createWebSocket: () => {
+      sockets++;
+      return openSocketStub();
+    },
+  });
+  const pending = realtime.dial({
+    style: 'realtime-calls',
+    callId: 'call_test',
+    headers: new Headers(),
+    signal: controller.signal,
+  });
+  // The original implementation may complete without ever consulting the host fetch.
+  for (let i = 0; i < 30 && calls === 0; i++) await Promise.resolve();
+  controller.abort();
+  const result = await Promise.race([pending.catch((error: unknown) => error), settledMarker()]);
+  release();
+  await pending.catch(() => {});
+  expect(result).toBeInstanceOf(RealtimeDialError);
+  expect((result as RealtimeDialError).kind).toBe('aborted');
+  expect(sockets).toBe(0);
+});
+
+test('the dial deadline includes version discovery before opening a socket', async () => {
+  resetLatestCodexRsVersionCache();
+  jest.useFakeTimers();
+  let release!: () => void;
+  let calls = 0;
+  let sockets = 0;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
+    proxy: null,
+    fetch: (async () => {
+      calls++;
+      await gate;
+      return Response.json({ tag_name: 'rust-v9.9.9', name: '@openai/codex', version: '9.9.9' });
+    }) as typeof fetch,
+    createWebSocket: () => {
+      sockets++;
+      return openSocketStub();
+    },
+  });
+  const pending = realtime.dial({
+    style: 'realtime-calls',
+    callId: 'call_test',
+    headers: new Headers(),
+    signal: new AbortController().signal,
+  });
+  let result: unknown;
+  void pending.catch((error: unknown) => {
+    result = error;
+  });
+  await until(() => calls === 2);
+  jest.advanceTimersByTime(10_000);
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  const atDeadline = result;
+  release();
+  await pending.catch(() => {});
+  expect(atDeadline).toBeInstanceOf(RealtimeDialError);
+  expect((atDeadline as RealtimeDialError).kind).toBe('timeout');
+  expect(sockets).toBe(0);
+});
+
+test('aborts realtime HTTP signaling during version discovery before sending the request', async () => {
+  resetLatestCodexRsVersionCache();
+  let release!: () => void;
+  let lookups = 0;
+  const upstream: string[] = [];
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const controller = new AbortController();
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
+    proxy: null,
+    fetch: (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('chatgpt.com')) upstream.push(url);
+      else {
+        lookups++;
+        await gate;
+      }
+      return Response.json({ tag_name: 'rust-v9.9.9', name: '@openai/codex', version: '9.9.9' });
+    }) as typeof fetch,
+  });
+  const pending = realtime.fetch(
+    new Request('http://localhost/v1/live', { method: 'POST', body: 'v=0', signal: controller.signal }),
+  );
+  await until(() => lookups === 2);
+  controller.abort();
+  const result = await Promise.race([pending.catch((error: unknown) => error), settledMarker()]);
+  release();
+  await pending.catch(() => {});
+  expect(result).toBeInstanceOf(Error);
+  expect((result as Error).name).toBe('AbortError');
+  expect(upstream).toEqual([]);
 });
 
 test('every accepted realtime fetch path maps to an exact upstream endpoint', () => {

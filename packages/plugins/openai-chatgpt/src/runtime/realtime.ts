@@ -87,8 +87,8 @@ async function realtimeFetch(
   const endpoint = realtimeEndpointFor(inbound.pathname);
   if (endpoint === undefined) throw new Error(`Unmapped realtime path: ${inbound.pathname}`);
   const url = mergeEndpointQuery(endpoint, inbound);
-  const credential = await credentialForFetch(credentials, options, request.signal);
-  const headers = await realtimeHeaders(request.headers, credential, options.pluginOptions);
+  const { credential, userAgent } = await identityForFetch(credentials, options, request.signal);
+  const headers = realtimeHeaders(request.headers, credential, userAgent);
   const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
   return await options.fetch(url.toString(), {
     method: request.method,
@@ -99,32 +99,31 @@ async function realtimeFetch(
   });
 }
 
-/** Races the credential read against the caller's abort, the same shape `credentialForDial`
- *  uses and for the same reason: `currentCredential` is unbounded from this side —
- *  `createCredentialPort.refresh` waits up to 60 s for another process's refresh lease and its
- *  `exchange` carries a 30 s timeout on the lease's own signal, not the caller's — so an inbound
- *  abort was observed only by `options.fetch`, long after the wait.
- *
- *  That wait is not free to the proxy: `handleRealtimeCreate` releases the call-store capacity
- *  slot and the provider snapshot lease in a `finally` around the whole attempt loop, and this
- *  await is inside it, so an aborted create held one of 1024 slots and blocked provider reload
- *  for the credential port's wait rather than for its own request's lifetime.
- *
- *  Raced here rather than by threading the signal into `currentCredential`: a refresh in flight
- *  is shared work whose result other requests want, so it is left running and only this request
- *  stops waiting. Rejects with an `AbortError`, which is what `isInboundAbort` at both call
- *  sites already reads as a caller hangup — a bare `Error` would be logged as a transport
- *  failure and fall through to the next candidate for a caller that is gone. */
-async function credentialForFetch(
+type RealtimeIdentity = { readonly credential: ChatGPTCredential; readonly userAgent: string };
+
+async function requestIdentity(
+  credentials: CredentialPort<ChatGPTCredential>,
+  options: RealtimeTransportOptions,
+): Promise<RealtimeIdentity> {
+  const [credential, identity] = await Promise.all([
+    currentCredential(credentials, options.fetch),
+    resolveChatGPTRequestIdentity(options.pluginOptions, null, options.fetch),
+  ]);
+  return { credential, userAgent: identity.userAgent };
+}
+
+// Credential refresh and version discovery are shared work. Stop this caller's
+// wait on cancellation without aborting work other requests still need.
+async function identityForFetch(
   credentials: CredentialPort<ChatGPTCredential>,
   options: RealtimeTransportOptions,
   signal: AbortSignal,
-): Promise<ChatGPTCredential> {
+): Promise<RealtimeIdentity> {
   if (signal.aborted) throw abortError();
   let onAbort: (() => void) | undefined;
   try {
     return await Promise.race([
-      currentCredential(credentials, options.fetch),
+      requestIdentity(credentials, options),
       new Promise<never>((_resolve, reject) => {
         onAbort = () => reject(abortError());
         signal.addEventListener('abort', onAbort, { once: true });
@@ -145,11 +144,7 @@ function abortError(): Error {
 
 /** Caller credentials are already stripped by the auth middleware; this deletes
  *  them again so a direct unit call cannot leak one, then adds Codex auth. */
-async function realtimeHeaders(
-  inbound: Headers,
-  credential: ChatGPTCredential,
-  pluginOptions?: Partial<ChatGPTPluginOptions>,
-): Promise<Headers> {
+function realtimeHeaders(inbound: Headers, credential: ChatGPTCredential, userAgent: string): Headers {
   const headers = new Headers();
   const contentType = inbound.get('content-type');
   const accept = inbound.get('accept');
@@ -166,7 +161,7 @@ async function realtimeHeaders(
     throw new Error('Codex credential is not a valid header value');
   }
   headers.set('Originator', 'codex-tui');
-  headers.set('User-Agent', (await resolveChatGPTRequestIdentity(pluginOptions, null)).userAgent);
+  headers.set('User-Agent', userAgent);
   headers.set('session-id', crypto.randomUUID());
   return headers;
 }
@@ -220,24 +215,17 @@ function armDialDeadline(): DialDeadline {
   };
 }
 
-/** The credential read is the only await before the socket exists, and it is unbounded from
- *  this side: `createCredentialPort.refresh` waits up to 60 s for another process's refresh
- *  lease and its `exchange` signal is the lease's, not the caller's. So neither the caller's
- *  abort nor the dial deadline would cover that window if both were armed around the socket
- *  alone; a caller that hung up mid-wait would still have a socket opened and a credential
- *  minted for it. Raced here rather than by threading the signal into `currentCredential`: a
- *  refresh in flight is shared work whose result other requests want, so it is left running
- *  and only this dial stops waiting. */
-async function credentialForDial(
+// The one dial deadline covers both shared lookups before any socket is opened.
+async function identityForDial(
   credentials: CredentialPort<ChatGPTCredential>,
   options: RealtimeTransportOptions,
   signal: AbortSignal,
   deadline: DialDeadline,
-): Promise<ChatGPTCredential> {
+): Promise<RealtimeIdentity> {
   let onAbort: (() => void) | undefined;
   try {
     return await Promise.race([
-      currentCredential(credentials, options.fetch),
+      requestIdentity(credentials, options),
       new Promise<never>((_resolve, reject) => {
         onAbort = () => reject(new RealtimeDialError('dial aborted', { kind: 'aborted' }));
         signal.addEventListener('abort', onAbort, { once: true });
@@ -281,7 +269,7 @@ async function dialWithDeadline(
   options: RealtimeTransportOptions,
   deadline: DialDeadline,
 ): Promise<WebSocket> {
-  const credential = await credentialForDial(credentials, options, input.signal, deadline);
+  const { credential, userAgent } = await identityForDial(credentials, options, input.signal, deadline);
   const create = options.createWebSocket ?? defaultWebSocketFactory;
   const init = {
     ...(options.proxy === null ? {} : { proxy: options.proxy }),
@@ -289,7 +277,7 @@ async function dialWithDeadline(
       authorization: `Bearer ${credential.accessToken}`,
       'ChatGPT-Account-Id': credential.accountId,
       Originator: 'codex-tui',
-      'User-Agent': (await resolveChatGPTRequestIdentity(options.pluginOptions, null)).userAgent,
+      'User-Agent': userAgent,
       'session-id': crypto.randomUUID(),
     },
   };
