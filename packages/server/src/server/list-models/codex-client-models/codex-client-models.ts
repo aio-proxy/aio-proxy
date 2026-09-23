@@ -123,6 +123,12 @@ export async function codexClientModels(
 ): Promise<{ readonly models: readonly Record<string, unknown>[] }> {
   const [enabled, upstream] = await Promise.all([resolveEnabledModels(state), readCodexModelsCache(options)]);
   const resolved = enabled.filter(servesCodexText);
+  // The reviewer is hidden, so the text filter above drops it, but it still has to be
+  // routed. Take it from the enabled set, not the downloaded catalog: excludedModels
+  // and a provider that never exposes it must not advertise a model Router.resolve rejects.
+  const autoReviewModel = resolved.some((model) => model.slug === 'codex-auto-review')
+    ? undefined
+    : enabled.find((model) => model.slug === 'codex-auto-review');
   const bySlug = new Map(upstream.map((item) => [item.slug, item]));
   // Prefer gpt-5.5 as the synthesis template (matches CPA's default) so every
   // required Codex ModelInfo field is inherited; else any cached row; else
@@ -132,7 +138,7 @@ export async function codexClientModels(
   const templated: { entry: Record<string, unknown>; priority: number }[] = [];
   const synthesizedInputs: { slug: string; displayName: string; entry: Record<string, unknown> }[] = [];
 
-  for (const model of resolved) {
+  for (const model of autoReviewModel === undefined ? resolved : [...resolved, autoReviewModel]) {
     const primary = model.candidates[0]!;
     const windows = resolveCodexWindows(model, bySlug);
     const row = bySlug.get(model.modelId);
@@ -161,6 +167,8 @@ export async function codexClientModels(
           '',
         context_window: windows.contextWindow,
         max_context_window: windows.maxContextWindow,
+        // A public slug can alias a listed official model. The reviewer stays hidden either way.
+        ...(model.slug === 'codex-auto-review' ? { visibility: 'hide' } : {}),
       };
       const levels = entry['supported_reasoning_levels'];
       if (Array.isArray(levels) && levels.length === 0) delete entry['default_reasoning_level'];
@@ -183,14 +191,19 @@ export async function codexClientModels(
     synthesizedInputs.push({
       slug: model.slug,
       displayName,
-      entry: assembleCodexModel({
-        slug: model.slug,
-        displayName,
-        metadata,
-        contextWindow: windows.contextWindow,
-        maxContextWindow: windows.maxContextWindow,
-        template,
-      }),
+      entry: {
+        ...assembleCodexModel({
+          slug: model.slug,
+          displayName,
+          metadata,
+          contextWindow: windows.contextWindow,
+          maxContextWindow: windows.maxContextWindow,
+          template,
+        }),
+        // assembleCodexModel lists ordinary synthesized models. This reviewer stays hidden
+        // even when the official catalog is unavailable and the row has to be synthesized.
+        ...(model.slug === 'codex-auto-review' ? { visibility: 'hide' } : {}),
+      },
     });
   }
 

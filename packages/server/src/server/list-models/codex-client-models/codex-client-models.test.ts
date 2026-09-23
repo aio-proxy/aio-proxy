@@ -539,3 +539,50 @@ test('hides a model whose output modality no metadata layer declares', async () 
   );
   expect(restored.models.map((m) => m.slug)).toEqual(['third-party-model']);
 });
+
+test('returns hidden codex-auto-review only when an enabled route exposes it', async () => {
+  const autoReview = {
+    slug: 'codex-auto-review',
+    display_name: 'Codex Auto Review',
+    priority: 50,
+    supported_in_api: true,
+    visibility: 'hide',
+    base_instructions: 'REVIEW VERBATIM',
+  };
+  const otherHidden = { ...upstream, slug: 'secret-model', visibility: 'hide' };
+  const fetchImpl = (async () =>
+    Response.json({ models: [upstream, otherHidden, autoReview] })) as unknown as typeof fetch;
+  const routed = {
+    ...provider,
+    alias: { ...provider.alias, 'codex-auto-review': { model: 'codex-auto-review', preserve: false } },
+  } as RuntimeProviderInstance;
+
+  const absent = await codexClientModels(fakeState(), { fetchImpl });
+  expect(absent.models.map((entry) => entry.slug)).toEqual(['gpt-5', 'my-alias']);
+
+  const { models } = await codexClientModels(fakeState([routed]), { fetchImpl });
+
+  expect(models.map((entry) => entry.slug)).toEqual(['gpt-5', 'codex-auto-review', 'my-alias']);
+  expect(models[1]).toMatchObject({
+    id: 'codex-auto-review',
+    visibility: 'hide',
+    base_instructions: 'REVIEW VERBATIM',
+  });
+
+  const aliased = {
+    ...provider,
+    alias: { ...provider.alias, 'codex-auto-review': { model: 'gpt-5.6-sol', preserve: false } },
+  } as RuntimeProviderInstance;
+  const aliasedModels = await codexClientModels(fakeState([aliased]), { fetchImpl });
+  expect(aliasedModels.models.filter((entry) => entry.slug === 'codex-auto-review')).toEqual([
+    expect.objectContaining({ visibility: 'hide' }),
+  ]);
+
+  await fileCacheStorage.removeItem('codex-models');
+  const offline = await codexClientModels(fakeState([routed]), {
+    fetchImpl: (async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch,
+  });
+  expect(offline.models.find((entry) => entry.slug === 'codex-auto-review')).toMatchObject({ visibility: 'hide' });
+});
