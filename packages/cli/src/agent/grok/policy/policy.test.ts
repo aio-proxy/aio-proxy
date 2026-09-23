@@ -212,7 +212,7 @@ test('missing policy files are skipped', async () => {
   const root = await mkdtemp(join(tmpdir(), 'grok-policy-missing-'));
   try {
     const visible = await readGrokPolicy(root, {});
-    expect(visible.sources).toEqual([]);
+    expect(visible.sources.filter((source) => source.path.startsWith(`${root}/`))).toEqual([]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -223,11 +223,15 @@ test('a group-writable policy file cannot be ignored', async () => {
   try {
     const path = join(root, 'managed_config.toml');
     await writeFile(path, '[ui]\ntheme = "dark"\n', { mode: 0o600 });
-    expect((await readGrokPolicy(root, {})).sources).toHaveLength(1);
+    expect(
+      (await readGrokPolicy(root, {})).sources.filter((source) => source.path.startsWith(`${root}/`)),
+    ).toHaveLength(1);
     await chmod(path, 0o666);
     await expect(readGrokPolicy(root, {})).rejects.toThrow(/unverifiable/i);
     await chmod(path, 0o644);
-    expect((await readGrokPolicy(root, {})).sources[0]?.path).toBe(path);
+    expect(
+      (await readGrokPolicy(root, {})).sources.filter((source) => source.path.startsWith(`${root}/`))[0]?.path,
+    ).toBe(path);
   } finally {
     await chmod(join(root, 'managed_config.toml'), 0o600).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
@@ -465,7 +469,7 @@ test('GROK_CONFIG_PATH overlay is collected when present', async () => {
   try {
     await writeFile(overlay, '{"ui":{"theme":"dark"}}\n', { mode: 0o600 });
     const visible = await readGrokPolicy(root, { GROK_CONFIG_PATH: overlay });
-    expect(visible.sources).toEqual([
+    expect(visible.sources.filter((source) => source.path.startsWith(`${root}/`))).toEqual([
       { path: overlay, text: '{"ui":{"theme":"dark"}}\n', kind: 'json', role: 'overlay' },
     ]);
   } finally {

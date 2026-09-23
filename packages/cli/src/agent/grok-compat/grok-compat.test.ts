@@ -562,8 +562,9 @@ test('journey configures before login, approves via Dashboard, and does not trea
     expect(loopback?.detail.startsWith('not_run:')).toBe(false);
     expect(loopback?.detail).toMatch(/GET \/models and two POST \/chat\/completions/);
     const sandbox = report.cases.find((item) => item.name === 'macos-sandbox-egress');
-    expect(sandbox?.passed).toBe(false);
-    expect(sandbox?.detail.startsWith('not_run:')).toBe(true);
+    const hasSandboxExec = Bun.which('sandbox-exec') !== null;
+    expect(sandbox?.passed).toBe(hasSandboxExec);
+    expect(sandbox?.detail.startsWith('not_run:')).toBe(!hasSandboxExec);
     expect(compatScriptShouldFail(report)).toBe(true);
     const script = await runScript(options);
     expect(script.exitCode).not.toBe(0);

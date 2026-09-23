@@ -836,7 +836,7 @@ test('continues the offline check when lsof is missing', async () => {
   }) as typeof Bun.spawnSync;
   try {
     const location = resolveCodexLocation(root, { HOME: root, CODEX_SQLITE_HOME: root });
-    expect(await checkCodexOffline(location)).toBe('ok');
+    expect(await checkCodexOffline(location)).toBe(process.platform === 'linux' ? 'ok' : 'offline_check_unavailable');
     expect(commands).toContain('fuser');
   } finally {
     Bun.spawnSync = originalSpawnSync;

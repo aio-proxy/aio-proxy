@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -37,7 +37,7 @@ test('resolveAgentExecutable prefers the stable PATH launcher over its versioned
 });
 
 test('Homebrew symlink retarget keeps the stable prefix launcher', async () => {
-  const prefix = mkdtempSync(join(tmpdir(), 'aio-grok-brew-'));
+  const prefix = realpathSync(mkdtempSync(join(tmpdir(), 'aio-grok-brew-')));
   const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
   const bin = join(prefix, 'bin', 'aio-proxy');
   writeExecutable(join(prefix, 'bin', 'brew'));
