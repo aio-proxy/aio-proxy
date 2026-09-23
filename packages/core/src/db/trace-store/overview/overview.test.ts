@@ -503,6 +503,41 @@ test('aggregates Provider health and cache rates through failover', () => {
   });
 });
 
+test('excludes skipped token-count candidates from Provider health', () => {
+  withStore((store) => {
+    store.startRoot(rootStart({ startedAt: NOW }));
+    store.complete(
+      completion({
+        spans: [
+          rootSpan({ startedAt: NOW, endedAt: NOW }),
+          attemptSpan({
+            name: 'aio_proxy.token_count.candidate_skipped',
+            startedAt: NOW,
+            endedAt: NOW,
+            statusCode: 2,
+            attributes: {
+              'aio_proxy.attempt.index': 0,
+              'aio_proxy.provider.id': 'provider',
+              'aio_proxy.termination.reason': 'failure',
+              'aio_proxy.token_count.skip_reason': 'no_capability',
+            },
+          }),
+        ],
+        summary: {},
+      }),
+    );
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'provider', durationMs: 100 }],
+      usage: { inputTokens: 100, outputTokens: 25 },
+    });
+
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
+      { providerId: 'provider', successRate: 1, p95LatencyMs: 100, totalTokens: '125' },
+    ]);
+  });
+});
+
 test('totals Provider input plus output tokens in the selected window with exact integer arithmetic', () => {
   withStore((store) => {
     const samples: readonly Partial<TraceSeed>[] = [

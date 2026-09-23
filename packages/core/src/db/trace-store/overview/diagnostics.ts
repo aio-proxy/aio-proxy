@@ -47,6 +47,7 @@ function providerHealth(
       cast(count(*) as text) as attemptCount,
       json_group_array(max(0, ended_at - started_at)) as durations
     from trace_span where attempt_index is not null and provider_id is not null
+      and name != 'aio_proxy.token_count.candidate_skipped'
       and ended_at >= ? and ended_at <= ?
       group by provider_id order by provider_id`,
     [range.start.getTime(), range.end.getTime()],
