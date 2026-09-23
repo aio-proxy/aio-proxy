@@ -123,6 +123,10 @@ export async function codexClientModels(
 ): Promise<{ readonly models: readonly Record<string, unknown>[] }> {
   const [enabled, upstream] = await Promise.all([resolveEnabledModels(state), readCodexModelsCache(options)]);
   const resolved = enabled.filter(servesCodexText);
+  // The reviewer is hidden, so the text filter above drops it, but it still has to be
+  // routed. Take it from the enabled set, not the downloaded catalog: excludedModels
+  // and a provider that never exposes it must not advertise a model Router.resolve rejects.
+  const autoReviewModel = enabled.find((model) => model.slug === 'codex-auto-review');
   const bySlug = new Map(upstream.map((item) => [item.slug, item]));
   // Prefer gpt-5.5 as the synthesis template (matches CPA's default) so every
   // required Codex ModelInfo field is inherited; else any cached row; else
@@ -132,7 +136,7 @@ export async function codexClientModels(
   const templated: { entry: Record<string, unknown>; priority: number }[] = [];
   const synthesizedInputs: { slug: string; displayName: string; entry: Record<string, unknown> }[] = [];
 
-  for (const model of resolved) {
+  for (const model of autoReviewModel === undefined ? resolved : [...resolved, autoReviewModel]) {
     const primary = model.candidates[0]!;
     const windows = resolveCodexWindows(model, bySlug);
     const row = bySlug.get(model.modelId);
@@ -210,13 +214,5 @@ export async function codexClientModels(
 
   const all = [...templated, ...synthesized];
   all.sort((a, b) => a.priority - b.priority);
-  // Codex uses this hidden model for automatic review. It is not a picker model, so the
-  // text-output filter correctly excludes it, but dropping it makes the client think the
-  // catalog has no reviewer. Return the upstream row unchanged, including visibility: hide.
-  const autoReview = bySlug.get('codex-auto-review');
-  if (autoReview !== undefined && !all.some((item) => item.entry['slug'] === autoReview.slug)) {
-    all.push({ entry: { ...autoReview, id: autoReview.slug }, priority: autoReview.priority });
-    all.sort((a, b) => a.priority - b.priority);
-  }
   return { models: all.map((item) => item.entry) };
 }

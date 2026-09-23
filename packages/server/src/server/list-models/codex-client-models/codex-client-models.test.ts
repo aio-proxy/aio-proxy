@@ -540,7 +540,7 @@ test('hides a model whose output modality no metadata layer declares', async () 
   expect(restored.models.map((m) => m.slug)).toEqual(['third-party-model']);
 });
 
-test('returns the hidden codex-auto-review catalog row without listing other hidden models', async () => {
+test('returns hidden codex-auto-review only when an enabled route exposes it', async () => {
   const autoReview = {
     slug: 'codex-auto-review',
     display_name: 'Codex Auto Review',
@@ -552,8 +552,15 @@ test('returns the hidden codex-auto-review catalog row without listing other hid
   const otherHidden = { ...upstream, slug: 'secret-model', visibility: 'hide' };
   const fetchImpl = (async () =>
     Response.json({ models: [upstream, otherHidden, autoReview] })) as unknown as typeof fetch;
+  const routed = {
+    ...provider,
+    alias: { ...provider.alias, 'codex-auto-review': { model: 'codex-auto-review', preserve: false } },
+  } as RuntimeProviderInstance;
 
-  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+  const absent = await codexClientModels(fakeState(), { fetchImpl });
+  expect(absent.models.map((entry) => entry.slug)).toEqual(['gpt-5', 'my-alias']);
+
+  const { models } = await codexClientModels(fakeState([routed]), { fetchImpl });
 
   expect(models.map((entry) => entry.slug)).toEqual(['gpt-5', 'codex-auto-review', 'my-alias']);
   expect(models[1]).toMatchObject({
