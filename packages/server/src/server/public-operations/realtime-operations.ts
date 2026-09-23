@@ -15,6 +15,19 @@ import {
 const offer = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
 const callIdSchema = z.string().regex(REALTIME_CALL_ID_PATTERN);
 const callParameter = parameter('call_id', 'path', callIdSchema);
+const modelSchema = z
+  .string()
+  .max(MAX_REALTIME_MODEL_LENGTH)
+  .describe('Model ID; the runtime checks its trimmed length.');
+const sessionSchema = z.object({ model: modelSchema.optional() }).loose();
+const encodedSessionSchema = z
+  .string()
+  .optional()
+  .meta({
+    description: 'JSON-encoded session object. Its model is used when the top-level model is blank or absent.',
+    contentMediaType: 'application/json',
+    contentSchema: z.toJSONSchema(sessionSchema, { target: 'draft-2020-12', io: 'input' }),
+  });
 const websocketResponse = [
   {
     status: '101',
@@ -51,8 +64,8 @@ export const realtimeOperations = [
             z
               .object({
                 sdp: z.string().optional(),
-                model: z.string().optional(),
-                session: z.record(z.string(), z.unknown()).optional(),
+                model: modelSchema.optional(),
+                session: sessionSchema.optional(),
               })
               .loose()
               .describe(
@@ -66,7 +79,7 @@ export const realtimeOperations = [
           exampleSchema(
             z.object({
               sdp: z.string().min(1),
-              session: z.string().optional().describe('JSON-encoded session object.'),
+              session: encodedSessionSchema,
             }),
             { sdp: offer },
           ),

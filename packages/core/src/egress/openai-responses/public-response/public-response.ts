@@ -19,12 +19,12 @@ const usageSchema = z
 
 export const OpenAIResponsesResponseSchema = z
   .object({
-    id: z.string(),
-    object: z.literal('response'),
-    created_at: z.number().int(),
-    model: z.string(),
-    output: z.array(outputItemSchema),
-    output_text: z.string(),
+    id: z.string().optional(),
+    object: z.literal('response').optional(),
+    created_at: z.number().int().optional(),
+    model: z.string().optional(),
+    output: z.array(outputItemSchema).optional(),
+    output_text: z.string().optional(),
     status: z.enum(['completed', 'failed', 'in_progress', 'incomplete', 'queued', 'cancelled']),
     usage: usageSchema.optional(),
   })
@@ -54,7 +54,7 @@ export const OpenAIResponsesResponseSchema = z
 export const OpenAIResponsesStreamEventSchema = z
   .object({
     type: z.string().min(1),
-    sequence_number: z.number().int().nonnegative(),
+    sequence_number: z.number().int().nonnegative().optional(),
   })
   .loose()
   .meta({

@@ -319,6 +319,15 @@ test('documents speech binary media types returned by conversion and raw passthr
   ]);
 });
 
+test('documents subtitle and provider-defined raw transcription responses', async () => {
+  const paths = (await loadPublicOpenApi()).paths;
+  for (const action of ['transcriptions', 'translations']) {
+    const content = paths[`/v1/audio/${action}`]?.post?.responses['200']?.content;
+    expect(content).toContainKeys(['application/json', 'text/plain', 'text/vtt', 'application/x-subrip', '*/*']);
+    expect(content?.['*/*']?.schema.format).toBe('binary');
+  }
+});
+
 test('rejects blank video prompts in every documented request representation', async () => {
   const paths = (await loadPublicOpenApi()).paths;
   const requests = [
@@ -406,6 +415,18 @@ test('documents raw Responses tool items and incomplete lifecycle statuses', asy
   ).toBe(true);
 });
 
+test('documents sparse raw Responses JSON and SSE envelopes', async () => {
+  const content = (await loadPublicOpenApi()).paths['/v1/responses']?.post?.responses['200']?.content;
+  expect(content).toBeDefined();
+  const response = fromJSONSchema(content!['application/json']!.schema);
+  const event = fromJSONSchema(content!['text/event-stream']!.schema);
+  expect(response.safeParse({ id: 'resp_raw', status: 'completed' }).success).toBe(true);
+  expect(response.safeParse({ status: 'completed' }).success).toBe(true);
+  expect(
+    event.safeParse({ type: 'response.completed', response: { id: 'resp_raw', status: 'completed' } }).success,
+  ).toBe(true);
+});
+
 test('documents server-tool blocks in raw Anthropic responses', async () => {
   const schema = (await loadPublicOpenApi()).paths['/v1/messages']?.post?.responses['200']?.content?.[
     'application/json'
@@ -462,6 +483,19 @@ test('caps the documented direct realtime model query at the runtime limit', asy
 
   expect(schema.safeParse('m'.repeat(128)).success).toBe(true);
   expect(schema.safeParse('m'.repeat(129)).success).toBe(false);
+});
+
+test('documents bounded realtime create models in JSON and multipart sessions', async () => {
+  const paths = (await loadPublicOpenApi()).paths;
+  for (const path of ['/v1/live', '/v1/realtime', '/v1/realtime/calls']) {
+    const content = paths[path]?.post?.requestBody?.content;
+    const json = content?.['application/json']?.schema;
+    expect(json?.properties?.model?.maxLength).toBe(128);
+    expect(json?.properties?.session?.properties?.model?.maxLength).toBe(128);
+    const session = content?.['multipart/form-data']?.schema.properties?.session;
+    expect(session?.contentMediaType).toBe('application/json');
+    expect(session?.contentSchema?.properties?.model?.maxLength).toBe(128);
+  }
 });
 
 test('keeps Gemini URL models out of required bodies and rejects unsupported embedding configuration', async () => {

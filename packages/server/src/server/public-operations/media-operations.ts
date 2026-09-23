@@ -53,6 +53,9 @@ const videoEditRequest = OpenAIVideoEditInputSchema.safeExtend({ prompt: nonBlan
 const videoRemixRequest = OpenAIVideoRemixInputSchema.safeExtend({ prompt: nonBlankVideoPrompt });
 const transcriptionRequest = OpenAITranscriptionFieldsSchema.extend({ file: binary.min(1) });
 const transcript = jsonContent(exampleSchema(z.object({ text: z.string() }).loose(), { text: 'Hello.' }));
+const rawSubtitle = z
+  .string()
+  .describe('Subtitle text forwarded from a compatible raw provider; conversion cannot render subtitles.');
 const inputValue = z.union([z.string(), z.array(z.unknown()), z.record(z.string(), z.unknown())]);
 
 // SystemOne uses a handwritten parser, not Zod. This wire description is checked against that parser in tests.
@@ -169,7 +172,15 @@ export const mediaOperations = [
             exampleSchema(transcriptionRequest, { model: 'whisper-1', file: 'audio.wav' }),
           ),
         ],
-        responseVariants: ok(transcript, textContent('text/plain', 'Hello.'), upstreamStream),
+        responseVariants: ok(
+          transcript,
+          textContent('text/plain', 'Hello.'),
+          content('text/vtt', exampleSchema(rawSubtitle, 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello.')),
+          content('application/x-subrip', exampleSchema(rawSubtitle, '1\n00:00:00,000 --> 00:00:01,000\nHello.')),
+          content('text/srt', exampleSchema(rawSubtitle, '1\n00:00:00,000 --> 00:00:01,000\nHello.')),
+          content('*/*', binary),
+          upstreamStream,
+        ),
       },
     ),
   ),
