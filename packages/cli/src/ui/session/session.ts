@@ -14,7 +14,7 @@ import {
   updateSettings,
 } from '@clack/prompts';
 
-import { canPrompt, type PromptIo } from './mode';
+import { canPrompt, type PromptIo } from '../mode';
 import {
   createClackPrompts,
   PromptCancelledError,
@@ -24,7 +24,7 @@ import {
   type PluginFormPrompts,
   type PromptContext,
   type SelectAsk,
-} from './prompts';
+} from '../prompts';
 
 export type SessionIo = PromptIo & ClackStreams;
 export type SessionCopy = { readonly cancelled: string; readonly error: string };

@@ -3,7 +3,7 @@ import { Readable, Writable } from 'node:stream';
 
 import { spinner } from '@clack/prompts';
 
-import { PromptCancelledError } from './prompts';
+import { PromptCancelledError } from '../prompts';
 import { createCommandSession, shouldAnimateSpinner, type SessionChrome } from './session';
 
 const copy = { cancelled: 'Cancelled', error: 'Something went wrong' };

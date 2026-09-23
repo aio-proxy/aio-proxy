@@ -47,12 +47,11 @@
 
 ## File Structure
 
-- `packages/cli/src/ui/mode.ts` — `canPrompt`, `useColor`. No Clack import.
-- `packages/cli/src/ui/prompts.ts` — ask types, `PromptCancelledError`, `createClackPrompts`.
-- `packages/cli/src/ui/session.ts` — lazy intro, outro, cancel, spinner, static progress.
-- `packages/cli/src/ui/summary.ts` — pure strings for status, doctor, and lists.
-- `packages/cli/src/ui/index.ts` — re-exports only.
-- `packages/cli/src/ui/*.test.ts` — colocated behavior tests.
+- `packages/cli/src/ui/mode/` — `canPrompt`, `useColor`. No Clack import. Same-name directory: `index.ts` (exports only), `mode.ts`, `mode.test.ts`.
+- `packages/cli/src/ui/prompts/` — ask types, `PromptCancelledError`, `createClackPrompts`. Same-name directory with export-only `index.ts`.
+- `packages/cli/src/ui/session/` — lazy intro, outro, cancel, spinner, static progress. Same-name directory with export-only `index.ts`.
+- `packages/cli/src/ui/summary/` — pure strings for status, doctor, and lists. Same-name directory with export-only `index.ts`.
+- `packages/cli/src/ui/index.ts` — re-exports only from the four directories.
 - `packages/cli/src/plugin-commands/form/render.ts` — map fields onto the new ask types. Visibility, `compatibleDefault`, schema, and secret boundaries stay.
 - `packages/cli/src/plugin-commands/plugin/deps.ts` — `openSession` seam and production `canPrompt`.
 - `packages/cli/src/plugin-commands/plugin/add.ts`, `configure.ts`, `remove.ts` — one session around prompts; success sentence follows intro.
@@ -62,7 +61,7 @@
 - `packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json` — `cli.ui.*`.
 - `.changeset/cli-clack-display.md` — product note, last task only.
 
-`PluginFormPrompts` moves to `ui/prompts.ts`. `packages/cli/src/plugin-commands/form/index.ts` re-exports that type from the ui barrel so existing form imports keep compiling. The ui barrel must not import `form`.
+`PluginFormPrompts` moves to `ui/prompts/`. `packages/cli/src/plugin-commands/form/index.ts` re-exports that type from the ui barrel so existing form imports keep compiling. The ui barrel must not import `form`.
 
 Production commands that can prompt take an optional `openSession` on their deps. Existing harnesses leave it unset, so they keep stub prompts and stdout success lines. `createCommandSession` itself throws when `canPrompt` is false and must not read stdin.
 
@@ -801,7 +800,7 @@ export function openProductionSession(title: string): CommandSession;
 export function shouldAnimateSpinner(io: PromptIo): boolean;
 ```
 
-`shouldAnimateSpinner` is exported from `session.ts` for its test. Do not export it from `index.ts`.
+`shouldAnimateSpinner` is exported from `session/` for its test. Do not export it from `ui/index.ts`.
 
 `createCommandSession` throws `new Error('Refusing to open a prompt session without a TTY')` when `canPrompt(io)` is false, before touching `io.input`.
 

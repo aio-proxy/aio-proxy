@@ -187,15 +187,23 @@ type PluginFormPrompts = {
 
 ```text
 packages/cli/src/ui/
-├── index.ts          # 只做导出
-├── mode.ts           # canPrompt、useColor
-├── prompts.ts        # Clack 适配和 PromptCancelledError
-├── session.ts        # 懒 intro、outro、cancel、spinner
-├── summary.ts        # status、doctor、列表的纯文本行
-├── mode.test.ts
-├── prompts.test.ts
-├── session.test.ts
-└── summary.test.ts
+├── index.ts              # 只做导出
+├── mode/
+│   ├── index.ts          # 只做导出
+│   ├── mode.ts           # canPrompt、useColor
+│   └── mode.test.ts
+├── prompts/
+│   ├── index.ts          # 只做导出
+│   ├── prompts.ts        # Clack 适配和 PromptCancelledError
+│   └── prompts.test.ts
+├── session/
+│   ├── index.ts          # 只做导出
+│   ├── session.ts        # 懒 intro、outro、cancel、spinner
+│   └── session.test.ts
+└── summary/
+    ├── index.ts          # 只做导出
+    ├── summary.ts        # status、doctor、列表的纯文本行
+    └── summary.test.ts
 ```
 
 `index.ts` 以外的文件不从 `ui/` 外面被引用。命令依赖注入的 `prompts`、`confirm`、`selectCapability`、`readManualCallbackUrl` 改为这个模块的默认实现；测试仍可注入替身。手动回调和手动端口确认的提问文案仍是调用方今天传入的 URL，不改成另一句说明。
@@ -221,7 +229,7 @@ function useColor(streamIsTTY: boolean, env: NodeJS.ProcessEnv): boolean;
 
 命令在 `try/finally` 中持有 session。成功时调用 `finish(message)`：只有已经打印过 `intro` 才写 `outro`。`finally` 调用 `close(error)`。`close` 只停掉残留 spinner 并恢复终端：不打印 `Error.message`，不调用失败 `outro`，也不修改错误对象。失败之后没有 `outro`。未 `finish` 且已经打印过 `intro` 时，只有提问产生的 `PromptCancelledError` 打印一次 `cancel`。spinner 已经写出取消行时，这次 `close` 不再打印第二句。确认选否是业务拒绝，不是 Clack 取消，不画成 `cancel`。其余错误一律交给现有的 `formatCliError`。
 
-`summary.ts` 返回字符串，由现有 `print` 写出。它不调用 Clack 会话。颜色只在 `useColor(stdoutIsTTY, env)` 为真时写入；测试覆盖的是无颜色文本。
+`summary` 返回字符串，由现有 `print` 写出。它不调用 Clack 会话。颜色只在 `useColor(stdoutIsTTY, env)` 为真时写入；测试覆盖的是无颜色文本。
 
 `session.spin` 把 `AbortSignal` 传给任务，并 await 到任务自己结束。用户 Ctrl+C 时 abort 该信号，任务协作退出后才拒绝 `PromptCancelledError`。外部 abort 时任务收到这个中止，结束后拒绝 `signal.reason`。不要用 `Promise.race` 把仍在运行的扫描当成已经停止。`@clack/prompts` 1.8.1 的 spinner 先写出取消行，再调用 `onCancel`；之后 `clear()` 不会清掉那一行。stderr 不是 TTY 或处于 CI 时不动画，但仍把外部信号（没有外部信号时用一个未中止的新信号）传给任务。调用方如果会在任务期间写 stderr，改用一次静态进度行，不动画。本轮不改 LogTape。`run` 的进程生命周期不放进 spinner。
 
