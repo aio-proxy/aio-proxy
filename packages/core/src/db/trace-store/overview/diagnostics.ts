@@ -46,7 +46,7 @@ function providerHealth(
       cast(count(case when termination_reason is null then 1 end) as text) as successCount,
       cast(count(*) as text) as attemptCount,
       json_group_array(max(0, ended_at - started_at)) as durations
-    from trace_span where name = 'aio_proxy.provider.attempt' and provider_id is not null
+    from trace_span where attempt_index is not null and provider_id is not null
       and ended_at >= ? and ended_at <= ?
       group by provider_id order by provider_id`,
     [range.start.getTime(), range.end.getTime()],
