@@ -1,5 +1,20 @@
 # @aio-proxy/dashboard
 
+## 0.31.0
+
+### Patch Changes
+
+- [#411](https://github.com/aio-proxy/aio-proxy/pull/411) [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0) Thanks [@baranwang](https://github.com/baranwang)! - The OpenTelemetry destination form is now translated. Header rows can be removed, and only the first header or API key row shows field labels.
+
+- [#409](https://github.com/aio-proxy/aio-proxy/pull/409) [`fd01333`](https://github.com/aio-proxy/aio-proxy/commit/fd01333243b264180db8480a1220909b39af72ae) Thanks [@baranwang](https://github.com/baranwang)! - The trace list and the trace detail header show a Provider by its configured name, or account label, with the Provider ID on hover. They no longer draw the provider mark next to that name.
+- Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0)]:
+  - @aio-proxy/plugin-sdk@0.31.0
+  - @aio-proxy/server@0.31.0
+  - @aio-proxy/i18n@0.31.0
+  - @aio-proxy/brand@0.31.0
+  - @aio-proxy/types@0.31.0
+  - @aio-proxy/ui@0.31.0
+
 ## 0.30.0
 
 ### Minor Changes

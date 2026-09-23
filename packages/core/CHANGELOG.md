@@ -1,5 +1,30 @@
 # @aio-proxy/core
 
+## 0.31.0
+
+### Minor Changes
+
+- [#410](https://github.com/aio-proxy/aio-proxy/pull/410) [`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b) Thanks [@baranwang](https://github.com/baranwang)! - Configure ChatGPT's User-Agent once on the Plugins page for all ChatGPT providers, without signing in again. The default follows the latest stable Codex version through cached, proxy-aware npm and GitHub lookups, with a fallback when both fail. Plugin options support simple Handlebars variables such as `{{latest_codex_rs_version}}`, and plugin form fields can declare default values. Previously saved provider-level User-Agent values are ignored.
+
+### Patch Changes
+
+- Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0)]:
+  - @aio-proxy/plugin-openai-chatgpt@0.31.0
+  - @aio-proxy/plugin-sdk@0.31.0
+  - @aio-proxy/i18n@0.31.0
+  - @aio-proxy/logger@0.31.0
+  - @aio-proxy/plugin-claude-code@0.31.0
+  - @aio-proxy/plugin-cursor@0.31.0
+  - @aio-proxy/plugin-github-copilot@0.31.0
+  - @aio-proxy/plugin-google-antigravity@0.31.0
+  - @aio-proxy/plugin-kimi-code@0.31.0
+  - @aio-proxy/plugin-muse-code@0.31.0
+  - @aio-proxy/plugin-opencode-go@0.31.0
+  - @aio-proxy/plugin-openrouter@0.31.0
+  - @aio-proxy/plugin-xai-grok@0.31.0
+  - @aio-proxy/shared@0.31.0
+  - @aio-proxy/types@0.31.0
+
 ## 0.30.0
 
 ### Minor Changes

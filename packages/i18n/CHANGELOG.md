@@ -1,5 +1,13 @@
 # @aio-proxy/i18n
 
+## 0.31.0
+
+### Patch Changes
+
+- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks [@baranwang](https://github.com/baranwang)! - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
+
+- [#411](https://github.com/aio-proxy/aio-proxy/pull/411) [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0) Thanks [@baranwang](https://github.com/baranwang)! - The OpenTelemetry destination form is now translated. Header rows can be removed, and only the first header or API key row shows field labels.
+
 ## 0.30.0
 
 ### Minor Changes
