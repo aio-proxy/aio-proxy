@@ -6,7 +6,9 @@
 
 **Architecture:** A pure route-descriptor module references existing Zod request schemas and documentation-only response schemas. A Bun generator validates, dereferences, and serializes one operation document per documented route. Pages load Scalar only in the browser. Generation does not change request or response runtime behavior.
 
-**Tech Stack:** Rspress 2.0.19, React 19, Bun, Zod 4 `z.toJSONSchema`, `@scalar/api-reference-react`, `@scalar/openapi-parser`, committed generated MDX/JSON.
+**Tech Stack:** Rspress 2.0.19, React 19, Bun, Zod 4 `z.toJSONSchema`, `@scalar/api-reference-react`, `@scalar/openapi-parser`.
+
+> The generated-file commit/check steps below record the original implementation. The current lifecycle is build-before-Rspress generation with ignored artifacts; see the design spec's Development and CI section.
 
 **Spec:** `docs/superpowers/specs/2026-09-22-api-operation-pages-design.md`
 

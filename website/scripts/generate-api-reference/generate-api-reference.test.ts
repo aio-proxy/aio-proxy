@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -164,7 +164,9 @@ describe('generateApiReferenceFiles', () => {
     const zhPage = await read(root, 'docs/zh/api/list-models.mdx');
     expect(enPage).toStartWith('---\n');
     expect(enPage).toContain("title: 'List models GET /v1/models'");
-    expect(enPage).toContain('pageType: doc-wide\noutline: false\n---\n\nimport { ApiOperation }');
+    expect(enPage).toContain(
+      'pageType: doc-wide\noutline: false\napiOperationGenerated: true\n---\n\nimport { ApiOperation }',
+    );
     expect(enPage).toContain('# List models `GET /v1/models`');
     expect(enPage).not.toContain('# List models\n\n`GET /v1/models`');
     expect(enPage).toContain("description: 'Short models summary.'");
@@ -438,6 +440,23 @@ describe('generateApiReferenceFiles', () => {
     expect(await Bun.file(join(root, 'docs/en/api/create-widget.mdx')).exists()).toBe(false);
     expect(await Bun.file(join(root, 'src/generated/operations/zh/create-widget.json')).exists()).toBe(false);
     expect(await read(root, 'docs/en/api/guide.mdx')).toBe('# Keep me\n');
+  });
+
+  test('recovers generated ownership when an ignored manifest is missing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'aio-proxy-api-reference-'));
+    await run(root);
+    const guide = "import { ApiOperation } from '../../../src/components/api-operation';\n\n# Keep me\n";
+    await Bun.write(join(root, 'docs/en/api/guide.mdx'), guide);
+    await rm(join(root, 'src/generated/manifest.json'));
+
+    await run(root, [listModels]);
+
+    expect(await Bun.file(join(root, 'docs/en/api/create-widget.mdx')).exists()).toBe(false);
+    expect(await Bun.file(join(root, 'src/generated/operations/zh/create-widget.json')).exists()).toBe(false);
+    expect(await read(root, 'docs/en/api/guide.mdx')).toBe(guide);
+    expect(JSON.parse(await read(root, 'src/generated/manifest.json')).files).not.toContain(
+      'docs/en/api/create-widget.mdx',
+    );
   });
 
   test('check mode reports drift without changing or deleting files', async () => {

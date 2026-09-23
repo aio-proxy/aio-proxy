@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "api:check": "bun scripts/generate-api-reference/generate-api-reference.ts --check",
-    "api:generate": "bun scripts/generate-api-reference/generate-api-reference.ts",
-    "dev": "rspress dev",
-    "build": "rspress build",
+    "api:prepare": "bun run --cwd .. dev:prepare",
+    "api:check": "bun run api:prepare && bun scripts/generate-api-reference/generate-api-reference.ts --check",
+    "api:generate": "bun run api:prepare && bun scripts/generate-api-reference/generate-api-reference.ts",
+    "dev": "bun run api:generate && rspress dev",
+    "build": "bun run api:generate && rspress build",
     "test": "bun test"
   },
   "dependencies": {

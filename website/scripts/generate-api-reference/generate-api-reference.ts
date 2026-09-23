@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -199,6 +199,7 @@ title: ${JSON.stringify(`${title} ${methodPath}`)}
 description: ${JSON.stringify(summary)}
 pageType: doc-wide
 outline: false
+apiOperationGenerated: true
 ---
 
 import { ApiOperation } from '../../../src/components/api-operation';
@@ -220,7 +221,7 @@ ${index}
 
 async function previousManifest(root: string): Promise<Manifest> {
   const file = Bun.file(join(root, manifestPath));
-  if (!(await file.exists())) return { files: [] };
+  if (!(await file.exists())) return { files: await discoverGeneratedFiles(root) };
 
   let value: unknown;
   try {
@@ -235,6 +236,40 @@ async function previousManifest(root: string): Promise<Manifest> {
     if (!isOwnedPath(path)) throw new Error(`Unsafe generated manifest path "${path}"`);
   }
   return { files: value.files };
+}
+
+async function discoverGeneratedFiles(root: string): Promise<readonly string[]> {
+  const files: string[] = [];
+  for (const directory of [
+    'docs/en/api',
+    'docs/zh/api',
+    'src/generated/operations/en',
+    'src/generated/operations/zh',
+  ]) {
+    let entries;
+    try {
+      entries = await readdir(join(root, directory), { withFileTypes: true });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const path = `${directory}/${entry.name}`;
+      if (!isOwnedPath(path)) continue;
+      if (path.endsWith('.mdx') && !isGeneratedPage(await Bun.file(join(root, path)).text())) {
+        continue;
+      }
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function isGeneratedPage(source: string): boolean {
+  if (!source.startsWith('---\n')) return false;
+  const end = source.indexOf('\n---\n', 4);
+  return end !== -1 && source.slice(0, end).split('\n').includes('apiOperationGenerated: true');
 }
 
 async function currentText(root: string, path: string): Promise<string | undefined> {

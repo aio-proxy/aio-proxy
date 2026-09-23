@@ -43,6 +43,7 @@ jobs:
       # build has to land first — unbuilt, every workspace import reports as an unresolved type.
       # test:unit already dependsOn build, so this only moves that work earlier and warms its cache.
       - run: bun run build
+      - run: bun run --filter @aio-proxy/website build
       - run: bun run --filter @aio-proxy/website api:check
       - run: bun run --filter @aio-proxy/website test
       - run: bun run lint:types

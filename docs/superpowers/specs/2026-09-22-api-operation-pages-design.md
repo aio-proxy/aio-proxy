@@ -22,7 +22,7 @@ Request bodies come from the Zod schemas the routes already parse. Zod 4 `z.toJS
 
 Public operation metadata lives in `packages/server/src/server/public-operations/`. `index.ts` is export-only, and `public-operations.ts` holds the descriptors and schema references. The module imports neither `createRoutes()` nor `ServerState`, so the website build can load it without starting the server. Existing route factories continue to return their Hono apps, and `createRoutes()` keeps its current return contract.
 
-The website generator imports the pure descriptors, converts their schemas, validates and dereferences the resulting document, and writes one MDX page per documented operation. Generated MDX, `_meta.json`, and per-operation JSON are committed. CI reruns generation in check mode and runs the website tests.
+The website generator imports the pure descriptors, converts their schemas, validates and dereferences the resulting document, and writes one MDX page per documented operation. Generated MDX, `_meta.json`, per-operation JSON, and the manifest are ignored build artifacts. Website dev/build generates them before Rspress starts; CI builds the website, reruns generation in check mode, and runs the website tests.
 
 Dashboard, admin, OAuth, internal, and health routes remain outside the descriptor module. A test classifies every route owned by the public route factories, but missing documentation metadata is a test failure, not a claim of TypeScript exhaustiveness.
 
@@ -156,7 +156,7 @@ It has Rspress frontmatter (`title`, `description`, `outline: false`) and a visi
 
 `_nav.json` gains one API entry in each locale. `_meta.json` emits one ordinary `section-header` per tag, followed by that tag's flat file entries. Section order is the minimum `navOrder` of each tag, and file order is `navOrder`. Do not use `dir-section-header`: the pages remain flat under `api/`, and Rspress resolves a directory section by reading a child directory. Tag IDs and localized labels come from the website-local catalog. No separate navigation config exists.
 
-The generator removes a previously generated page when its slug disappears. It only deletes files listed in the previous manifest or bearing the generator marker, so hand-written API guides are safe.
+The generator removes a previously generated page when its slug disappears. It deletes files listed in the previous manifest; if that ignored manifest is missing, it discovers generated MDX by its frontmatter marker and JSON in its reserved output directory. Hand-written API guides are safe.
 
 ## React and layout
 
@@ -225,9 +225,9 @@ Response schemas are documentation contracts. Tests parse representative JSON, t
 
 ## Development and CI
 
-Do not add `predev` or `prebuild`. On a clean checkout those hooks run before workspace packages are built, while schema imports resolve `@aio-proxy/core` through its built `dist`. Generated files are committed, so normal `dev` and `build` consume them directly. After changing a descriptor, schema, or example, run `bun run build` and then `bun run --filter @aio-proxy/website api:generate`. CI `api:check` detects drift. There is no schema watcher.
+Do not rely on `predev` or `prebuild` hooks. Website `dev` and `build` explicitly run `api:generate` before Rspress starts. `api:generate` and `api:check` first run the root `dev:prepare` task, because schema imports resolve `@aio-proxy/core` through its built `dist` and may need built workspace dependencies. There is no schema watcher: restart website dev after changing a descriptor, schema, or example, or run `api:generate` manually to update its generated inputs.
 
-The descriptor module is pure, but importing its schemas can load `@aio-proxy/core`, whose package exports point at built `dist`. `.github/workflows/ci.yml` therefore runs the new website checks after `bun run build`. `.github/workflows/deploy-website.yml` builds the core dependency graph before `api:check`, website tests, and the website build. Both workflows run `api:check` and `bun run --filter @aio-proxy/website test`. Check mode only compares bytes and fails if it would write or delete a file.
+Generated files are not committed. `.github/workflows/ci.yml` and `.github/workflows/deploy-website.yml` build the core dependency graph, build the website (which generates the files), then run `api:check` and website tests. Check mode verifies idempotence after generation; it no longer compares against tracked output. The deploy workflow also triggers on core and server changes, so a source-only API contract change republishes the site. The handwritten `overview.md` files remain tracked.
 
 `website/package.json` declares `zod` as `"zod": "catalog:"` because the generator imports it directly. Zod is not added to production website dependencies.
 
