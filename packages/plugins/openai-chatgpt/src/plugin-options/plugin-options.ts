@@ -14,6 +14,7 @@ export type ChatGPTPluginOptionsText = {
   readonly userAgentLabel: LocalizedText;
   readonly userAgentDescription: LocalizedText;
   readonly userAgentPolicyLabel: LocalizedText;
+  readonly userAgentPolicyDescription: LocalizedText;
   readonly fixedPolicyLabel: LocalizedText;
   readonly preserveCodexClientLabel: LocalizedText;
 };
@@ -24,6 +25,8 @@ export const englishPluginOptionsText: ChatGPTPluginOptionsText = {
   userAgentLabel: 'User-Agent',
   userAgentDescription: `Leave blank to use the default. ${LATEST_CODEX_RS_VERSION_TOKEN} is replaced with the latest Codex release, which is also sent as the catalog client version.`,
   userAgentPolicyLabel: 'User-Agent policy',
+  userAgentPolicyDescription:
+    'By default, all requests use the User-Agent configured above. Choose to keep Codex clients’ User-Agent to forward it unchanged; other clients still use the configured value.',
   fixedPolicyLabel: 'Always use the configured User-Agent',
   preserveCodexClientLabel: 'Keep the User-Agent from Codex clients',
 };
@@ -70,6 +73,7 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
         type: 'select',
         key: 'userAgentPolicy',
         label: text.userAgentPolicyLabel,
+        description: text.userAgentPolicyDescription,
         defaultValue: 'fixed',
         options: [
           { value: 'fixed', label: text.fixedPolicyLabel },
