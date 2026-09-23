@@ -41,6 +41,28 @@ test('draws an API Provider with the same protocol stack as the providers page',
   expect(screen.getByTitle('gateway')).toHaveTextContent('Gateway');
 });
 
+test('omits the provider mark when the caller asks for the name alone', () => {
+  render(
+    <ProviderIdLabel
+      mark={false}
+      providerId="gateway"
+      providers={[
+        providerStub({
+          id: 'gateway',
+          name: 'Gateway',
+          kind: ProviderKind.Api,
+          protocols: [ProviderProtocol.OpenAICompatible],
+        }),
+      ]}
+    />,
+  );
+
+  const label = screen.getByTitle('gateway');
+  expect(screen.queryByTestId('provider-protocol-stack')).toBeNull();
+  expect(label).toHaveTextContent('Gateway');
+  expect(label.textContent).toBe('Gateway');
+});
+
 test('leaves an ID that is no longer in the catalog as text', () => {
   renderLabel('deleted-provider', []);
 
