@@ -210,5 +210,13 @@ export async function codexClientModels(
 
   const all = [...templated, ...synthesized];
   all.sort((a, b) => a.priority - b.priority);
+  // Codex uses this hidden model for automatic review. It is not a picker model, so the
+  // text-output filter correctly excludes it, but dropping it makes the client think the
+  // catalog has no reviewer. Return the upstream row unchanged, including visibility: hide.
+  const autoReview = bySlug.get('codex-auto-review');
+  if (autoReview !== undefined && !all.some((item) => item.entry['slug'] === autoReview.slug)) {
+    all.push({ entry: { ...autoReview, id: autoReview.slug }, priority: autoReview.priority });
+    all.sort((a, b) => a.priority - b.priority);
+  }
   return { models: all.map((item) => item.entry) };
 }

@@ -539,3 +539,26 @@ test('hides a model whose output modality no metadata layer declares', async () 
   );
   expect(restored.models.map((m) => m.slug)).toEqual(['third-party-model']);
 });
+
+test('returns the hidden codex-auto-review catalog row without listing other hidden models', async () => {
+  const autoReview = {
+    slug: 'codex-auto-review',
+    display_name: 'Codex Auto Review',
+    priority: 50,
+    supported_in_api: true,
+    visibility: 'hide',
+    base_instructions: 'REVIEW VERBATIM',
+  };
+  const otherHidden = { ...upstream, slug: 'secret-model', visibility: 'hide' };
+  const fetchImpl = (async () =>
+    Response.json({ models: [upstream, otherHidden, autoReview] })) as unknown as typeof fetch;
+
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  expect(models.map((entry) => entry.slug)).toEqual(['gpt-5', 'codex-auto-review', 'my-alias']);
+  expect(models[1]).toMatchObject({
+    id: 'codex-auto-review',
+    visibility: 'hide',
+    base_instructions: 'REVIEW VERBATIM',
+  });
+});
