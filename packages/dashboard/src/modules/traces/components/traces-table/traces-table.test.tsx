@@ -224,6 +224,7 @@ describe('traces table', () => {
         }),
         providerStub({
           id: 'grok-provider',
+          name: 'xAI Grok',
           plugin: '@aio-proxy/plugin-xai-grok',
           capability: 'default',
           accountLabel: 'shared@example.com',

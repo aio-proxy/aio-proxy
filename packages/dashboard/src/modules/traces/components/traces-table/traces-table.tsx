@@ -13,7 +13,6 @@ import { useMemo } from 'react';
 import { Pagination } from '@/components/data-table/pagination';
 import { ProviderIdLabel } from '@/components/provider-id-label';
 import { resolveDashboardText } from '@/lib/localized-text';
-import { providerDisplayName } from '@/lib/provider-display-name';
 
 import { useProviderCatalog } from '../../hooks/use-provider-catalog';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
@@ -104,8 +103,16 @@ const traceColumns = (
       if (providerId === undefined) return TRACE_PLACEHOLDER;
       const provider = providers?.find((item) => item.id === providerId);
       const service = oauthServiceLabel(provider, plugins);
-      const label = <ProviderIdLabel providerId={providerId} providers={providers} mark={false} className="max-w-48" />;
-      if (service === undefined || (provider !== undefined && service === providerDisplayName(provider))) return label;
+      const accountLabel = provider?.accountLabel;
+      const label =
+        accountLabel === undefined ? (
+          <ProviderIdLabel providerId={providerId} providers={providers} mark={false} className="max-w-48" />
+        ) : (
+          <span className="max-w-48 truncate" title={providerId}>
+            {accountLabel}
+          </span>
+        );
+      if (service === undefined || accountLabel === undefined || service === accountLabel) return label;
       return (
         <span className="inline-flex max-w-48 min-w-0 flex-col leading-tight">
           <span className="truncate font-medium" title={service}>
