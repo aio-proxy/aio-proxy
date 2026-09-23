@@ -66,11 +66,11 @@ type GuardianEvaluate = (input: {
   readonly modelId: string;
   readonly body: GuardianSystemOneBody;
   readonly signal: AbortSignal;
-  readonly requestId: string;
+  readonly logicalRequest: LogicalRequestContext;
 }) => Promise<unknown>;
 ```
 
-The runtime context extra property is named `__aioGuardianEvaluate`; both packages use the structural signature above without adding it to public SDK types. The host binds the source ChatGPT Provider ID when it injects this function; it is never read from inbound metadata. The evaluator response is `unknown` until the plugin validates all four answers. An invocation-local `originalTransportStarted` flag is written by the built-in wrapper immediately before calling the captured original fetch, then read by the host for the final raw response. Keep this flag out of HTTP headers and Provider-controlled data.
+The runtime context extra property is named `__aioGuardianEvaluate`; both packages use the structural signature above without adding it to public SDK types. Import the existing `LogicalRequestContext` from `@aio-proxy/plugin-sdk`. The host binds the source ChatGPT Provider ID when it injects this function; it is never read from inbound metadata. The evaluator response is `unknown` until the plugin validates all four answers. The built-in wrapper writes invocation-local `originalTransportStarted` and `syntheticGuardianResponse` flags; the host suppresses the ChatGPT fee only for a synthetic final response. Keep both flags out of HTTP headers and Provider-controlled data.
 
 ### Task 1: Extend the generic plugin form contract
 
@@ -330,40 +330,48 @@ const completed = {
 
 **Interfaces:**
 - Consumes: Task 5's System One body shape, `typeSafeSystemOneAdapter`, `ProviderRouteSource.acquireProviderSnapshot`, and the existing candidate's `raw.resolve` or `evaluation.discover` transport.
-- Produces: a private callback `evaluateGuardian(input: {providerId:string; modelId:string; body:GuardianSystemOneBody; signal:AbortSignal; requestId:string}): Promise<unknown>` bound to the source ChatGPT Provider ID when materializing that built-in. It is passed as `__aioGuardianEvaluate` on the `adapter.createRuntime` context only for `@aio-proxy/plugin-openai-chatgpt`; public SDK types are unchanged. `GuardianEvaluationUnavailable` carries only a bounded reason code and safe IDs.
+- Produces: the private `GuardianEvaluate` callback defined above, bound to the source ChatGPT Provider ID when materializing that built-in. It is passed as `__aioGuardianEvaluate` on the `adapter.createRuntime` context only for `@aio-proxy/plugin-openai-chatgpt`; public SDK types are unchanged. `GuardianEvaluationUnavailable` carries only a bounded reason code and safe IDs. The callback receives the existing `LogicalRequestContext`, so the raw transport can retain correlation without inventing a session key.
+- Produces: `dispatchPrivateEvaluation(input: {candidate: RouterCandidate<RuntimeProviderInstance>; body: GuardianSystemOneBody; signal: AbortSignal; logicalRequest: LogicalRequestContext; source: ProviderRouteSource; routerModels: Readonly<Record<string, RouterModelPolicy>> | undefined}): Promise<unknown>` in the private evaluator module. This helper receives the already verified candidate; the callback alone acquires/releases the snapshot lease and checks the qualified route.
 
 - [ ] **Step 1: Add failing host tests with two Providers advertising the same model, a disabled target, a slash alias, a selected Provider that throws, and snapshot replacement during an in-flight evaluation.** Assert only the configured `providerId/modelId` qualified route is dispatched, with `selectionSource:'provider_qualified'` and the exact candidate object from the leased snapshot. A removed qualified route must not resolve an ordinary alias with the same slash string. Test that a target equal to the source ChatGPT Provider is rejected before dispatch, that neither caller API key nor ChatGPT OAuth token reaches System One, and that an `ai-sdk` Provider with no evaluation model becomes unavailable without trying another Provider. Hold a response body open across a snapshot swap and assert the lease releases only after consumption/cancel.
 
 ```ts
-const result = await host({ providerId: 'system-one-local', modelId: 'jev-latest', body, signal, requestId: 'req_test' });
+const result = await host({ providerId: 'system-one-local', modelId: 'jev-latest', body, signal, logicalRequest });
 expect(systemOneCalls).toEqual([{ providerId: 'system-one-local', modelId: 'jev-latest' }]);
 expect(otherProviderCalls).toHaveLength(0);
 expect(leaseReleased).toBe(true);
 ```
 
 - [ ] **Step 2: Run `rtk bun test packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.test.ts`; expect the new host tests to fail because the capability is absent.**
-- [ ] **Step 3: Factor the existing evaluation candidate's transport choice into a candidate-scoped helper, then call that helper from both the route's `attemptEvaluationCandidate` and the private host.** Keep the existing route's attempt emitter, fallback loop, usage observation, and protocol errors in place. The helper receives one already-verified candidate and one parsed `SystemOneRequest`; raw resolution uses `protocol:'typesafe-systemone'` and `capability:'evaluation'`, rewrites only the model via the adapter, strips caller credentials, invokes the selected Provider, and consumes bounded JSON under the passed abort signal. The convert path calls `discover()`, `evaluate(typeSafeSystemOneAdapter.evaluationInvocation(...))`, and `typeSafeSystemOneAdapter.evaluationJson(...)`. Unsupported discovery or non-2xx/invalid result reports unavailable; it never asks the router for a new candidate. Capture each raw/convert evaluation's available usage and configured cost under the selected Provider, including a denial or invalid Guardian answer. Keep its body and snapshot lease alive until consumption or cancellation.
+- [ ] **Step 3: Extract only the transport selection from `attemptEvaluationCandidate` and use it in both callers.** `selectEvaluationTransport({candidate, protocol, requestPath, urlTemplate})` returns `{kind:'raw', transport}`, `{kind:'convert', transport}`, or `{kind:'unsupported'}`. The route passes the same `requestPathProperty(rawRequest, ctx.httpRoute)` fields it uses today and keeps its raw `completeRawAttempt`, converted `evaluationJson`, emitter, fallback loop, and error mapping; no public `/v1/systemone` behavior changes. The private host builds a trusted in-memory `POST http://aio-proxy.invalid/v1/systemone` Request with the configured body and evaluation signal, parses it with `typeSafeSystemOneAdapter.parse`, and passes `/v1/systemone` to the selector. On raw selection it uses the adapter's model-only rewrite, `withoutCallerCredentialsOnRequest`, the selected raw transport, `usageCapture.passthrough`, and a bounded reader of the captured response body; on converted selection it calls `discover()`, then `evaluate(typeSafeSystemOneAdapter.evaluationInvocation(request, {}), {modelId:candidate.modelId, signal})`, then `usageCapture.evaluation` **before** `evaluationJson` so a returned but malformed answer retains available usage. Non-2xx, unsupported discovery, oversized or invalid JSON, and invalid distribution return a bounded unavailable reason. Neither path re-resolves or starts a candidate loop. Race the selected transport against `signal`; abort cancels the reader, rejects the helper promptly even if the transport ignores the signal, and cancels any late response body.
+
+  The existing recorder persists usage only through `session.finish`/`finishFrom`; calling `usageCapture` alone would lose the charge. Give each private evaluation its own internal `RequestTraceSession` with a fresh request ID (`withRequestId`) and a trace link to the parent request, then settle one evaluation attempt through `createAttemptEmitter`. Use one recorder-only Request carrying the trace link and a separate credential-free Request for dispatch; the link header must not reach the Provider. Set a safe `aio_proxy.guardian.parent_request_id` attribute on the internal root span from `logicalRequest.requestId`. Run the dispatch under `withRequestLogContext({requestId: internalId, debug:false, logger:source.logger, rootContext:session.rootContext})` so the existing observed fetch does not capture evaluation payloads and usage-resolution spans attach to the internal trace. Its Provider usage and cost belong to that internal trace, while the outer Guardian trace records only any real ChatGPT response. Aggregate cost counts the internal evaluation once. A direct synthetic response has no ChatGPT cost. Tests assert two distinct trace IDs and request IDs, selected-Provider attribution after invalid Guardian output, and no duplicate cost in the aggregate.
 
 ```ts
-export async function evaluateSelectedSystemOneCandidate(input: {
+export function selectEvaluationTransport(input: {
   readonly candidate: RouterCandidate<RuntimeProviderInstance>;
-  readonly request: SystemOneRequest;
-  readonly rawRequest: Request;
-  readonly signal: AbortSignal;
-  readonly source: ProviderRouteSource;
-  readonly routerModels: Readonly<Record<string, RouterModelPolicy>> | undefined;
-}): Promise<unknown>;
+  readonly protocol: ProviderProtocol;
+  readonly requestPath: string;
+  readonly urlTemplate?: string;
+}):
+  | { readonly kind: 'raw'; readonly transport: RawTransport }
+  | { readonly kind: 'convert'; readonly transport: LazyEvaluationTransport }
+  | { readonly kind: 'unsupported' };
 ```
 
-- [ ] **Step 4: In `initializeServerState`, create a closure that resolves the active state only after initialization, pass it through internal snapshot/materialization options on initial build and every reload, and bind `sourceProviderId = config.id` when injecting into the ChatGPT `createRuntime` context.** The callback acquires one snapshot, resolves `${providerId}/${modelId}`, requires one `provider_qualified` candidate from the configured Provider, rejects self-recursion, and passes that exact candidate to the helper. The callback does not use the inbound URL, external routing weights, caller credentials, or a loopback request.
+- [ ] **Step 4: In `initializeServerState`, create a closure that resolves the active state only after initialization, pass it through internal snapshot/materialization options on initial build and every reload, and bind `sourceProviderId = config.id` when injecting into the ChatGPT `createRuntime` context.** The callback acquires one snapshot, resolves `${providerId}/${modelId}`, requires one `provider_qualified` candidate from the configured Provider, rejects self-recursion, and passes that exact candidate to the helper. Release the snapshot lease in `finally` after the abort-aware helper settles. The callback does not use the inbound URL, external routing weights, caller credentials, or a loopback request.
 
 ```ts
-const matches = lease.snapshot.router.resolve(`${providerId}/${modelId}`);
-if (matches.length !== 1 || matches[0]?.provider.id !== providerId || matches[0].selectionSource !== 'provider_qualified') {
-  throw new GuardianEvaluationUnavailable('target_unavailable');
+try {
+  const matches = lease.snapshot.router.resolve(`${providerId}/${modelId}`);
+  if (matches.length !== 1 || matches[0]?.provider.id !== providerId || matches[0].selectionSource !== 'provider_qualified') {
+    throw new GuardianEvaluationUnavailable('target_unavailable');
+  }
+  if (matches[0].provider.id === sourceProviderId) throw new GuardianEvaluationUnavailable('recursive_target');
+  return await dispatchPrivateEvaluation({ candidate: matches[0], body, signal, logicalRequest, source, routerModels: lease.snapshot.config?.router.models });
+} finally {
+  lease.release();
 }
-if (matches[0].provider.id === sourceProviderId) throw new GuardianEvaluationUnavailable('recursive_target');
-return await evaluateSelectedSystemOneCandidate({ candidate: matches[0], request, rawRequest, signal, source, routerModels: lease.snapshot.config?.router.models });
 ```
 
 - [ ] **Step 5: Run `rtk bun test packages/server/src/plugin-runtime/guardian-evaluation/guardian-evaluation.test.ts packages/server/src/routes/pipeline/attempt/evaluation.test.ts packages/server/src/plugin-runtime/materialize.test.ts` and `rtk bun run check`.** Commit the host seam and candidate operation with `feat(server): dispatch private guardian evaluation target` and the required coauthor footer.
@@ -382,9 +390,10 @@ return await evaluateSelectedSystemOneCandidate({ candidate: matches[0], request
 
 **Interfaces:**
 - Consumes: Tasks 3–7's options, `projectGuardianRequest`, `guardianQuestions`, `guardianDecision`, `guardianResponse`, and private evaluator callback. The raw resolver closes over the **resolved** `modelId` and the host-bound source Provider ID.
-- Produces: `createGuardianRawInvoke(input: { resolvedModelId: string; pluginOptions: ChatGPTPluginOptions; original: RawTransport['invoke']; evaluate?: GuardianEvaluate }): RawTransport['invoke']`, used only by ChatGPT's OpenAI Responses raw transport. Its captured `original(request, context, options)` is invoked at most once per wrapper call. An invocation-local trusted flag `originalTransportStarted` is set immediately before calling it and is consumed by `completeRawAttempt` for the final response's ChatGPT usage/fee decision. If `context?.requestId` is absent, call the original without evaluation; it cannot get a traceable private host call.
+- Produces: `createGuardianRawInvoke(input: { resolvedModelId: string; pluginOptions: ChatGPTPluginOptions; original: RawTransport['invoke']; evaluate?: GuardianEvaluate }): RawTransport['invoke']`, used only by ChatGPT's OpenAI Responses raw transport. Its captured `original(request, context, options)` is invoked at most once per wrapper call. It sets `originalTransportStarted` immediately before calling the original or `syntheticGuardianResponse` immediately before returning a fully built synthetic response. `completeRawAttempt` suppresses cost only when the final invocation has `syntheticGuardianResponse === true` and `originalTransportStarted === false`; an untouched marker on another ChatGPT model leaves normal billing intact. If `context?.requestId` is absent, call the original without evaluation; it cannot get a traceable private host call.
+- Produces: private `raceWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T>` in `guardian.ts`; it removes its abort listener when the operation settles. The host cancels an evaluation response body that arrives after the signal aborted.
 
-- [ ] **Step 1: Add failing wrapper and raw-accounting tests.** Verify default and non-Guardian requests call the captured transport with an untouched body and no evaluator call; a valid allow returns synthetic output without credential refresh or ChatGPT fetch; direct deny is final in `systemOne`; valid deny invokes the original once in `systemOneReviewDenied`, whose allow/deny/error is final; an evaluator throw, invalid answers, or deadline uses the original once while live. Simulate an outer raw retry and Provider failover: they may create another wrapper invocation, but no invocation recurses. Assert a synthetic 2xx never writes a ChatGPT usage row or flat request fee, while a real original-model response keeps its existing usage/fee, and evaluation usage remains on its own Provider. Test `denial → original failure → outer retry → evaluation allow` with each actual original invocation separately observable and its applicable charge retained.
+- [ ] **Step 1: Add failing wrapper and raw-accounting tests.** Verify default and non-Guardian requests call the captured transport with an untouched body and no evaluator call; a valid allow returns synthetic output without credential refresh or ChatGPT fetch; direct deny is final in `systemOne`; valid deny invokes the original once in `systemOneReviewDenied`, whose allow/deny/error is final; an evaluator throw, invalid answers, or deadline uses the original once while live. Simulate an outer raw retry and Provider failover: they may create another wrapper invocation, but no invocation recurses. Assert a synthetic 2xx never writes a ChatGPT usage row or flat request fee, while a real original-model success keeps its existing usage/fee, and evaluation usage remains on its own Provider. Test `denial → original retryable failure → outer retry → evaluation allow`: the failed send remains observable, the final synthetic response gets no ChatGPT fee, and neither evaluation cost is lost or doubled.
 
 ```ts
 expect(originalCalls).toBe(0);
@@ -394,28 +403,64 @@ expect(systemOneFeeRows).toHaveLength(1);
 ```
 
 - [ ] **Step 2: Run `rtk bun test packages/plugins/openai-chatgpt/src/runtime/guardian/guardian.test.ts packages/server/src/routes/pipeline/raw-session.test.ts packages/server/src/routes/pipeline/attempt/raw-retry/raw-retry.test.ts`; expect new cases to fail.**
-- [ ] **Step 3: Wrap only `protocol === 'openai-response' && modelId === 'codex-auto-review'` in ChatGPT's raw resolver; leave AI SDK fetch, image endpoints, and the captured dynamic fetch unchanged.** For active modes, project a clone; if ineligible, call original. Combine the caller signal with an 8-second evaluation timeout using `AbortSignal.any`, and abort evaluation on either. After a valid decision, serialize and schema-check the entire synthetic response before returning it. After failure/timeout, check the caller signal once more immediately before the original call; caller cancellation throws without fallback. Set `originalTransportStarted = true` immediately before the captured original call. If evaluation finishes late after timeout, ignore it and cancel its body; do not switch after response construction has started.
+- [ ] **Step 3: Wrap only `protocol === 'openai-response' && modelId === 'codex-auto-review'` in ChatGPT's raw resolver; leave AI SDK fetch, image endpoints, and the captured dynamic fetch unchanged.** For active modes, project a clone; if ineligible or target/context is missing, call original. Build `GuardianSystemOneBody` from the configured model ID, `projection.state`, and `guardianQuestions(projection.state)`, then pass the configured Provider/model IDs, `context`, and an evaluation signal to the private callback. Combine the caller signal with an 8-second timeout using `AbortSignal.any`, and race the callback against that signal so a transport ignoring abort cannot hang the request. Validate the returned answers with `guardianDecision`. A valid denial in `systemOneReviewDenied` calls the captured original; all other valid decisions fully build `guardianResponse` before setting `syntheticGuardianResponse = true` and returning it. After failure, invalid answer, or timeout, check the caller signal once more immediately before the original call; caller cancellation throws without fallback. Set `originalTransportStarted = true` immediately before the captured original call. If evaluation finishes late after timeout, ignore it and cancel its body; do not switch after response construction has started.
 
 ```ts
 const original = () => {
-  if (request.signal.aborted) throw request.signal.reason;
+  if (request.signal.aborted) throw request.signal.reason ?? new DOMException('Aborted', 'AbortError');
   invocation.originalTransportStarted = true;
   return dynamicFetch(request, undefined, options);
 };
+if (evaluate === undefined || context === undefined ||
+    pluginOptions.guardianProviderId === undefined || pluginOptions.guardianModelId === undefined) return original();
 const projected = await projectGuardianRequest(request, resolvedModelId);
 if (projected === undefined) return original();
 const evaluationSignal = AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]);
+const body = { model: pluginOptions.guardianModelId, state: projected.state,
+  questions: guardianQuestions(projected.state) } satisfies GuardianSystemOneBody;
+let evaluated: unknown;
+try {
+  evaluated = await raceWithAbort(evaluate({ providerId: pluginOptions.guardianProviderId,
+    modelId: pluginOptions.guardianModelId, body, signal: evaluationSignal, logicalRequest: context }), evaluationSignal);
+} catch (error) {
+  if (request.signal.aborted) throw request.signal.reason ?? error;
+  return original();
+}
+const decision = guardianDecision(evaluated, projected);
+if (decision?.outcome === 'deny' && pluginOptions.guardianStrategy === 'systemOneReviewDenied') return original();
+if (decision !== undefined) {
+  const response = guardianResponse(decision, projected.stream);
+  invocation.syntheticGuardianResponse = true;
+  return response;
+}
+return original();
 ```
 
-- [ ] **Step 4: In `completeRawAttempt`, create one host-owned invocation marker for each `raw.invoke`, pass it as a private extra property on its options object, and remember the marker alongside the response through raw retry preflight/rewrap.** The built-in wrapper writes the marker; no response header or Provider payload can set it. For a synthetic final response, pass no ChatGPT `configPrice` into `usageCapture.passthrough` and assert that its absent usage produces no ChatGPT row, while normal response/session-ID observation still runs. For a real original call, leave usage capture and fee exactly as today. Attribute earlier real original calls that raw retry hides according to the existing raw attempt accounting rules, without charging a later synthetic invocation as ChatGPT.
+```ts
+function raceWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  const reason = () => signal.reason ?? new DOMException('Aborted', 'AbortError');
+  if (signal.aborted) return Promise.reject(reason());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(reason());
+    signal.addEventListener('abort', onAbort, { once: true });
+    operation.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (error) => { signal.removeEventListener('abort', onAbort); reject(error); },
+    );
+  });
+}
+```
+
+- [ ] **Step 4: In `completeRawAttempt`, create one host-owned invocation marker for each `raw.invoke` and pass it as a private extra property on that invocation's options object.** Change `resolveRawRetry` to carry `{response, invocation}` as a pair: its SSE preflight may replace only `response`, and a replay produces a new pair. This keeps the final returned response tied to the invocation that produced it, including a first real ChatGPT call followed by a synthetic replay. The built-in wrapper writes only its marker; no response header, Provider payload, or later retry can overwrite an earlier marker. For a final synthetic ChatGPT response, pass no `configPrice` into `usageCapture.passthrough` and assert that its absent usage produces no ChatGPT row, while normal response/session-ID observation still runs. For a normal or real-original response, leave usage capture and fee exactly as today. A discarded failed raw-retry response remains governed by today's failed-response accounting; record its send in the attempt span, but do not invent token usage or a flat success fee. Test the exact `denial → original retryable failure → synthetic replay` sequence and assert the final synthetic call has no ChatGPT fee.
 
 ```ts
-const invocation = { originalTransportStarted: false };
+const invocation = { originalTransportStarted: false, syntheticGuardianResponse: false };
 const response = await raw.invoke(request, logicalRequest, {
   upstreamStream: ctx.streamRequested,
   __aioGuardianInvocation: invocation,
 } as RawTransportOptions);
-const chargeChatGPT = provider.kind !== 'oauth' || provider.plugin !== '@aio-proxy/plugin-openai-chatgpt' || invocation.originalTransportStarted;
+return { response, invocation }; // resolveRawRetry preserves this pair across preflight and replay
+// After retry: suppress ChatGPT price only when final.invocation.syntheticGuardianResponse
 ```
 
 - [ ] **Step 5: Run the focused plugin and server tests plus `rtk bun run check`.** Commit with `feat(openai-chatgpt): orchestrate guardian review fallback` and the required coauthor footer.
