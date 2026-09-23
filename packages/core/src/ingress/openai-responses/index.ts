@@ -126,6 +126,7 @@ function hasMessageDiscriminator(value: unknown): boolean {
   return typeof value === 'object' && value !== null && 'role' in value;
 }
 
+export { OpenAIResponsesCompactRequestSchema } from './compact';
 export type {
   OpenAIResponsesInputItem,
   OpenAIResponsesInputMessage,

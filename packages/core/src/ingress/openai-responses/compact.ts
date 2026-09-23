@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { OpenAIResponsesTransformError } from '../../error';
 
-const OpenAIResponsesCompactRequestSchema = z
+export const OpenAIResponsesCompactRequestSchema = z
   .object({
     model: z.union([z.string(), z.null()]).optional(),
     input: z.union([z.string(), z.array(z.unknown()), z.null()]).optional(),

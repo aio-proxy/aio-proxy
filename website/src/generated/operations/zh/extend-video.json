@@ -1,0 +1,117 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API 参考",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/videos/extensions": {
+      "post": {
+        "description": "通过原始上游使用视频编辑 JSON 请求结构延长视频。prompt 不可为空白；来源与响应字段取决于上游。",
+        "operationId": "extendVideo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "prompt": "Continue the scene.",
+                "video": {
+                  "id": "video_example"
+                }
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "prompt": "Continue the scene.",
+                    "video": {
+                      "id": "video_example"
+                    }
+                  }
+                ],
+                "properties": {
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "video": {
+                    "properties": {
+                      "id": {
+                        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                },
+                "required": ["prompt", "video"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "created_at": 0,
+                  "id": "video_example",
+                  "model": "sora-2",
+                  "object": "video",
+                  "status": "queued"
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "description": "Upstream JSON object; fields depend on the selected provider. See the example and compatibility notes.",
+                  "examples": [
+                    {
+                      "created_at": 0,
+                      "id": "video_example",
+                      "model": "sora-2",
+                      "object": "video",
+                      "status": "queued"
+                    }
+                  ],
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Upstream successful video response; status and fields depend on the provider."
+          }
+        },
+        "summary": "延长视频",
+        "tags": ["OpenAI 兼容接口"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI 兼容接口",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+---
+title: '计算消息 Token POST /v1/messages/count_tokens'
+description: '通过已配置的 Token 计数路由计算 Anthropic Messages 请求的 Token。'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# 计算消息 Token `POST /v1/messages/count_tokens`
+
+通过已配置的 Token 计数路由计算 Anthropic Messages 请求的 Token。
+
+<details>
+<summary>参数 / 响应</summary>
+
+**参数:** `conversation_id`, `max_tokens`, `messages`, `metadata`, `model`, `output_config`, `service_tier`, `session_id`, `speed`, `stream`, `system`, `temperature`, `thinking`, `tools`
+
+**响应:** `200 application/json`
+
+</details>
+
+<ApiOperation slug="count-message-tokens" locale="zh" />

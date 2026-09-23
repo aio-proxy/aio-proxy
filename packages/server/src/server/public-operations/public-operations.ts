@@ -15,6 +15,7 @@ import {
 import type { ZodType } from 'zod';
 
 import { PublicModelListSchema } from '../list-models/public-model-list';
+import { additionalOperations } from './additional-operations';
 
 type HttpMethod = 'delete' | 'get' | 'post';
 export type PublicOperationClassification = 'documented' | 'deferred' | 'unsupported';
@@ -38,11 +39,12 @@ type StreamSchemaContent = {
 
 export type DocumentedPublicOperation = {
   readonly classification: 'documented';
-  readonly method: 'get' | 'post';
+  readonly method: HttpMethod;
   readonly path: string;
-  readonly operationId: 'listModels' | 'createChatCompletion' | 'createResponse' | 'createMessage';
-  readonly slug: 'list-models' | 'chat-completions' | 'responses' | 'messages';
-  readonly tag: 'Models' | 'OpenAI' | 'Anthropic';
+  readonly routePath?: string;
+  readonly operationId: string;
+  readonly slug: string;
+  readonly tag: 'Models' | 'OpenAI' | 'Anthropic' | 'Gemini' | 'SystemOne' | 'Realtime';
   readonly navOrder: number;
   readonly messages: {
     readonly title: string;
@@ -50,10 +52,30 @@ export type DocumentedPublicOperation = {
     readonly note?: string;
   };
   readonly request?: JsonSchemaContent;
+  readonly requestVariants?: readonly DocumentationContent[];
+  readonly parameters?: readonly {
+    readonly name: string;
+    readonly in: 'path' | 'query' | 'header';
+    readonly required?: boolean;
+    readonly schema: ZodType;
+  }[];
+  readonly responseVariants?: readonly {
+    readonly status: string;
+    readonly description: string;
+    readonly content?: readonly DocumentationContent[];
+    readonly headers?: Readonly<
+      Record<string, { readonly description: string; readonly schema: { readonly type: 'string' } }>
+    >;
+  }[];
   readonly responses: {
-    readonly json: JsonSchemaContent;
+    readonly json?: JsonSchemaContent;
     readonly stream?: StreamSchemaContent;
   };
+};
+
+export type DocumentationContent = {
+  readonly contentType: string;
+  readonly schema: ZodType;
 };
 
 export type PublicOperation = DocumentedPublicOperation | ClassifiedPublicOperation;
@@ -80,6 +102,7 @@ const anthropicMessagesRequestDocumentationSchema = AnthropicMessagesRequestSche
 });
 
 export const publicOperations: readonly PublicOperation[] = [
+  ...additionalOperations,
   {
     classification: 'documented',
     method: 'get',
@@ -161,32 +184,6 @@ export const publicOperations: readonly PublicOperation[] = [
       },
     },
   },
-  { classification: 'deferred', method: 'post', path: '/v1/messages/count_tokens' },
-  { classification: 'deferred', method: 'post', path: '/v1beta/models/*' },
-  { classification: 'deferred', method: 'post', path: '/v1beta/interactions' },
-  { classification: 'deferred', method: 'post', path: '/v1/completions' },
-  { classification: 'deferred', method: 'post', path: '/v1/embeddings' },
-  { classification: 'deferred', method: 'post', path: '/v1/responses/compact' },
-  { classification: 'deferred', method: 'post', path: '/v1/images/generations' },
-  { classification: 'deferred', method: 'post', path: '/v1/images/edits' },
-  { classification: 'deferred', method: 'post', path: '/v1/audio/speech' },
-  { classification: 'deferred', method: 'post', path: '/v1/audio/transcriptions' },
-  { classification: 'deferred', method: 'post', path: '/v1/audio/translations' },
-  { classification: 'deferred', method: 'post', path: '/v1/systemone' },
-  { classification: 'deferred', method: 'post', path: '/v1/videos/edits' },
-  { classification: 'deferred', method: 'post', path: '/v1/videos/extensions' },
-  { classification: 'deferred', method: 'post', path: '/v1/videos' },
-  { classification: 'deferred', method: 'post', path: '/v1/videos/:video_id/remix' },
-  { classification: 'deferred', method: 'get', path: '/v1/videos/:video_id/content' },
-  { classification: 'deferred', method: 'get', path: '/v1/videos/:video_id' },
-  { classification: 'deferred', method: 'delete', path: '/v1/videos/:video_id' },
-  { classification: 'deferred', method: 'post', path: '/v1/realtime/calls/:call_id/hangup' },
-  { classification: 'deferred', method: 'post', path: '/v1/live' },
-  { classification: 'deferred', method: 'post', path: '/v1/realtime' },
-  { classification: 'deferred', method: 'post', path: '/v1/realtime/calls' },
-  { classification: 'deferred', method: 'get', path: '/v1/live/:call_id' },
-  { classification: 'deferred', method: 'get', path: '/v1/realtime/calls/:call_id' },
-  { classification: 'deferred', method: 'get', path: '/v1/realtime' },
   { classification: 'unsupported', method: 'get', path: '/v1/responses/:id' },
   { classification: 'unsupported', method: 'delete', path: '/v1/responses/:id' },
   { classification: 'unsupported', method: 'post', path: '/v1/responses/:id/cancel' },

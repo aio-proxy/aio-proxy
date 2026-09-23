@@ -5,6 +5,8 @@ export {
   parseOpenAITranscriptionMultipart,
 } from './multipart';
 export {
+  OpenAISpeechInputSchema,
+  OpenAITranscriptionFieldsSchema,
   CPA_DEFAULT_SPEECH_MODEL,
   CPA_DEFAULT_TRANSCRIPTION_MODEL,
   type OpenAISpeechRequest,

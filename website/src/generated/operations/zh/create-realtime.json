@@ -1,0 +1,157 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API 参考",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/realtime": {
+      "post": {
+        "description": "提交实时 SDP offer。模型来自正文/session 或服务端默认值，需要兼容的实时能力。请求限 16 MiB，仅支持 identity 内容编码。SDP 示例仅说明格式，请由客户端生成真实 offer。",
+        "operationId": "createRealtime",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "sdp": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": {},
+                "description": "The proxy routes this JSON object by model/session; offer fields are validated by the upstream provider.",
+                "examples": [
+                  {
+                    "sdp": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+                  }
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "sdp": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "additionalProperties": {},
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "application/sdp": {
+              "example": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": ["v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"],
+                "type": "string"
+              }
+            },
+            "multipart/form-data": {
+              "example": {
+                "sdp": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "sdp": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+                  }
+                ],
+                "properties": {
+                  "sdp": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "session": {
+                    "description": "JSON-encoded session object.",
+                    "type": "string"
+                  }
+                },
+                "required": ["sdp"],
+                "type": "object"
+              }
+            },
+            "text/plain": {
+              "example": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": ["v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"],
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "sdp": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+                  "type": "answer"
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "description": "Upstream JSON object; fields depend on the selected provider. See the example and compatibility notes.",
+                  "examples": [
+                    {
+                      "sdp": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+                      "type": "answer"
+                    }
+                  ],
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "application/sdp": {
+                "example": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "examples": ["v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"],
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream success status with an SDP answer and a rewritten Location header.",
+            "headers": {
+              "Location": {
+                "description": "Proxy-relative URL for the created call.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "创建实时信令",
+        "tags": ["实时连接"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "实时连接",
+      "x-tag-id": "Realtime"
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/videos/{video_id}/remix": {
+      "post": {
+        "description": "Remixes a caller-owned pinned job with a nonblank prompt. The job must still be registered in this proxy process; arbitrary upstream job IDs are not accepted. Uses the pinned provider.",
+        "operationId": "remixVideo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "video_id",
+            "required": true,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "prompt": "Make it brighter."
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "prompt": "Make it brighter."
+                  }
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string"
+                  }
+                },
+                "required": ["prompt"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "created_at": 0,
+                  "id": "video_example",
+                  "model": "sora-2",
+                  "object": "video",
+                  "status": "queued"
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "description": "Upstream JSON object; fields depend on the selected provider. See the example and compatibility notes.",
+                  "examples": [
+                    {
+                      "created_at": 0,
+                      "id": "video_example",
+                      "model": "sora-2",
+                      "object": "video",
+                      "status": "queued"
+                    }
+                  ],
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Upstream successful video response; status and fields depend on the provider."
+          }
+        },
+        "summary": "Remix a video",
+        "tags": ["OpenAI-compatible"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI-compatible",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

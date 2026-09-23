@@ -125,6 +125,8 @@ export {
 } from './ingress/anthropic-messages/index';
 export {
   type GeminiBatchEmbedContentsRequest,
+  GeminiBatchEmbedContentsRequestSchema,
+  GeminiEmbedContentRequestSchema,
   type GeminiEmbedContentRequest,
   parseGeminiBatchEmbedContents,
   parseGeminiEmbedContent,
@@ -139,6 +141,7 @@ export {
 } from './ingress/gemini-generate-content/index';
 export {
   type GeminiInteractionsBody,
+  GeminiInteractionsBodySchema,
   type GeminiInteractionsParseResult,
   type GeminiInteractionsRequest,
   parseGeminiInteractions,
@@ -146,6 +149,8 @@ export {
 } from './ingress/gemini-interactions/index';
 export {
   AUDIO_MULTIPART_ENCODED_LIMIT,
+  OpenAISpeechInputSchema,
+  OpenAITranscriptionFieldsSchema,
   AUDIO_MULTIPART_PER_FILE_LIMIT,
   CPA_DEFAULT_SPEECH_MODEL,
   CPA_DEFAULT_TRANSCRIPTION_MODEL,
@@ -159,9 +164,22 @@ export {
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
 } from './ingress/openai-completions';
-export { type OpenAIEmbeddingsRequest, parseOpenAIEmbeddings } from './ingress/openai-embeddings';
+export {
+  type OpenAIEmbeddingsRequest,
+  OpenAIEmbeddingsRequestSchema,
+  parseOpenAIEmbeddings,
+} from './ingress/openai-embeddings';
+export { OpenAILegacyCompletionsRequestSchema } from './ingress/openai-legacy-completions';
+export {
+  OpenAIVideoCreateInputSchema,
+  OpenAIVideoEditInputSchema,
+  OpenAIVideoRemixInputSchema,
+} from './ingress/openai-video';
+export { OpenAIResponsesCompactRequestSchema } from './ingress/openai-responses';
 export {
   CPA_DEFAULT_IMAGE_MODEL,
+  OpenAIImageGenerationsInputSchema,
+  OpenAIImageEditsInputSchema,
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,

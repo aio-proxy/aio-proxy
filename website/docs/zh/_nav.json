@@ -6,7 +6,7 @@
   },
   {
     "text": "API 参考",
-    "link": "/zh/api/list-models",
-    "activeMatch": "/zh/api/"
+    "link": "/api/overview",
+    "activeMatch": "/api/"
   }
 ]

@@ -11,6 +11,7 @@ type ScalarConfiguration = {
   readonly content: unknown;
   readonly defaultOpenAllTags?: boolean;
   readonly layout?: string;
+  readonly hideTestRequestButton?: boolean;
   readonly onRequestBuilt?: (input: { readonly request: Request }) => void;
   readonly persistAuth?: boolean;
   readonly proxyUrl?: string;
@@ -49,15 +50,13 @@ test('renders the operation document supplied for the current locale and slug', 
   expect(html).not.toContain('/v1/models');
 });
 
-test('uses an explicit safe server and guards the exact outgoing request', () => {
+test('renders read-only examples without request testing or credential persistence', () => {
   const html = renderToStaticMarkup(
     <ScalarFrame ApiReference={FakeApiReference as never} dark={false} document={{}} operationKey="en:list-models" />,
   );
 
-  expect(html).toContain('<form');
-  expect(html).toContain('type="url"');
-  expect(html).toContain('value=""');
-  expect(html).toContain('placeholder="http://127.0.0.1:9317"');
+  expect(html).not.toContain('<form');
+  expect(renderedConfiguration?.hideTestRequestButton).toBe(true);
   expect(renderedConfiguration?.servers).toEqual([{ url: 'http://127.0.0.1:9317' }]);
   expect(renderedConfiguration?.proxyUrl).toBeUndefined();
   expect(renderedConfiguration?.showDeveloperTools).toBe('never');
@@ -66,10 +65,4 @@ test('uses an explicit safe server and guards the exact outgoing request', () =>
   expect(renderedConfiguration?.telemetry).toBe(false);
   expect(renderedConfiguration?.defaultOpenAllTags).toBe(true);
   expect(renderedConfiguration?.layout).toBe('modern');
-  expect(() =>
-    renderedConfiguration?.onRequestBuilt?.({ request: new Request('http://127.0.0.1:9317/v1/models') }),
-  ).not.toThrow();
-  expect(() =>
-    renderedConfiguration?.onRequestBuilt?.({ request: new Request('https://aioproxy.dev/v1/models') }),
-  ).toThrow('documentation origin');
 });

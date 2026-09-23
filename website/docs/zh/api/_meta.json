@@ -1,34 +1,311 @@
 [
   {
+    "label": "概览",
+    "name": "overview",
+    "type": "file"
+  },
+  {
+    "label": "API 参考",
+    "type": "section-header"
+  },
+  {
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "列出模型",
+        "link": "/api/list-models",
+        "tag": "GET",
+        "type": "custom-link"
+      }
+    ],
     "label": "模型",
-    "type": "section-header"
+    "type": "custom-link"
   },
   {
-    "label": "列出模型",
-    "name": "list-models",
-    "type": "file"
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建聊天补全",
+        "link": "/api/chat-completions",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "聊天补全",
+    "type": "custom-link"
   },
   {
-    "label": "OpenAI 兼容接口",
-    "type": "section-header"
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建响应",
+        "link": "/api/responses",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "压缩响应上下文",
+        "link": "/api/compact-response",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "Responses",
+    "type": "custom-link"
   },
   {
-    "label": "创建聊天补全",
-    "name": "chat-completions",
-    "type": "file"
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建消息",
+        "link": "/api/messages",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "计算消息 Token",
+        "link": "/api/count-message-tokens",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "Anthropic 消息",
+    "type": "custom-link"
   },
   {
-    "label": "创建响应",
-    "name": "responses",
-    "type": "file"
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建文本补全",
+        "link": "/api/completions",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "文本补全",
+    "type": "custom-link"
   },
   {
-    "label": "Anthropic 兼容接口",
-    "type": "section-header"
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建向量",
+        "link": "/api/embeddings",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "向量",
+    "type": "custom-link"
   },
   {
-    "label": "创建消息",
-    "name": "messages",
-    "type": "file"
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "生成内容",
+        "link": "/api/generate-content",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "流式生成内容",
+        "link": "/api/stream-generate-content",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "计算内容 Token",
+        "link": "/api/count-content-tokens",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "生成内容向量",
+        "link": "/api/embed-content",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "批量生成内容向量",
+        "link": "/api/batch-embed-contents",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "创建交互",
+        "link": "/api/interactions",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "Gemini",
+    "type": "custom-link"
+  },
+  {
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "生成图片",
+        "link": "/api/generate-images",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "编辑图片",
+        "link": "/api/edit-images",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "图片",
+    "type": "custom-link"
+  },
+  {
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "生成语音",
+        "link": "/api/speech",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "转录音频",
+        "link": "/api/transcriptions",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "翻译音频",
+        "link": "/api/translations",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "音频",
+    "type": "custom-link"
+  },
+  {
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "评估问题",
+        "link": "/api/systemone",
+        "tag": "POST",
+        "type": "custom-link"
+      }
+    ],
+    "label": "System One",
+    "type": "custom-link"
+  },
+  {
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建视频",
+        "link": "/api/create-video",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "编辑视频",
+        "link": "/api/edit-video",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "延长视频",
+        "link": "/api/extend-video",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "重新创作视频",
+        "link": "/api/remix-video",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "查询视频",
+        "link": "/api/retrieve-video",
+        "tag": "GET",
+        "type": "custom-link"
+      },
+      {
+        "label": "下载视频内容",
+        "link": "/api/download-video",
+        "tag": "GET",
+        "type": "custom-link"
+      },
+      {
+        "label": "删除视频",
+        "link": "/api/delete-video",
+        "tag": "DELETE",
+        "type": "custom-link"
+      }
+    ],
+    "label": "视频",
+    "type": "custom-link"
+  },
+  {
+    "collapsed": false,
+    "collapsible": true,
+    "items": [
+      {
+        "label": "创建 Live 通话",
+        "link": "/api/create-live-call",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "创建实时信令",
+        "link": "/api/create-realtime",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "创建实时通话",
+        "link": "/api/create-realtime-call",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "挂断实时通话",
+        "link": "/api/hangup-realtime-call",
+        "tag": "POST",
+        "type": "custom-link"
+      },
+      {
+        "label": "连接 Live 通话",
+        "link": "/api/attach-live-call",
+        "tag": "GET",
+        "type": "custom-link"
+      },
+      {
+        "label": "连接实时通话",
+        "link": "/api/attach-realtime-call",
+        "tag": "GET",
+        "type": "custom-link"
+      },
+      {
+        "label": "连接实时 WebSocket",
+        "link": "/api/connect-realtime",
+        "tag": "GET",
+        "type": "custom-link"
+      }
+    ],
+    "label": "实时连接",
+    "type": "custom-link"
   }
 ]

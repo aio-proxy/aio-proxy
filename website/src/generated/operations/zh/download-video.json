@@ -1,0 +1,80 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API 参考",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/videos/{video_id}/content": {
+      "get": {
+        "description": "下载调用者拥有的已绑定任务的二进制内容。variant 转发给上游。返回媒体类型取决于所选内容，不是 JSON 响应。",
+        "operationId": "downloadVideo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "video_id",
+            "required": true,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful response. Available representations depend on the request and upstream capability."
+          }
+        },
+        "summary": "下载视频内容",
+        "tags": ["OpenAI 兼容接口"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI 兼容接口",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

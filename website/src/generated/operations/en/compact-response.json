@@ -1,0 +1,143 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/responses/compact": {
+      "post": {
+        "description": "Compacts response context through a compatible raw provider. A nonempty model is required; streaming is not supported.",
+        "operationId": "compactResponse",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "input": "Hello.",
+                "model": "gpt-5"
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": {},
+                "examples": [
+                  {
+                    "input": "Hello.",
+                    "model": "gpt-5"
+                  }
+                ],
+                "properties": {
+                  "input": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {},
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "instructions": {
+                    "type": ["string", "null"]
+                  },
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "previous_response_id": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt_cache_key": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt_cache_options": {
+                    "anyOf": [
+                      {},
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "prompt_cache_retention": {
+                    "type": ["string", "null"]
+                  },
+                  "service_tier": {
+                    "type": ["string", "null"]
+                  },
+                  "stream": {
+                    "anyOf": [
+                      {
+                        "const": false,
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["model"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "resp_example",
+                  "object": "response.compaction",
+                  "output": []
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "description": "Upstream JSON object; fields depend on the selected provider. See the example and compatibility notes.",
+                  "examples": [
+                    {
+                      "id": "resp_example",
+                      "object": "response.compaction",
+                      "output": []
+                    }
+                  ],
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response. Available representations depend on the request and upstream capability."
+          }
+        },
+        "summary": "Compact a response",
+        "tags": ["OpenAI-compatible"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI-compatible",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

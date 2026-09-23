@@ -1,0 +1,201 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API 参考",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1beta/models/{model}:embedContent": {
+      "post": {
+        "description": "使用 URL 中的模型生成文本内容向量。仅描述 aio-proxy 校验的请求结构，不代表完整的上游 Gemini API。",
+        "operationId": "embedContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model",
+            "required": true,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Hello."
+                    }
+                  ]
+                }
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "Hello."
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "properties": {
+                  "content": {
+                    "properties": {
+                      "parts": {
+                        "contains": {
+                          "properties": {
+                            "text": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["text"]
+                        },
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["text"],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": ["parts"],
+                    "type": "object"
+                  },
+                  "embedContentConfig": {
+                    "properties": {
+                      "audioTrackExtraction": {
+                        "not": {}
+                      },
+                      "autoTruncate": {
+                        "type": "boolean"
+                      },
+                      "documentOcr": {
+                        "not": {}
+                      },
+                      "outputDimensionality": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "taskType": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "outputDimensionality": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "taskType": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": ["content"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "embedding": {
+                    "values": [0.1, 0.2]
+                  }
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "examples": [
+                    {
+                      "embedding": {
+                        "values": [0.1, 0.2]
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "embedding": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "values": {
+                          "items": {
+                            "type": "number"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": ["values"],
+                      "type": "object"
+                    },
+                    "usageMetadata": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "promptTokenCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["promptTokenCount"],
+                      "type": "object"
+                    }
+                  },
+                  "required": ["embedding"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response. Available representations depend on the request and upstream capability."
+          }
+        },
+        "summary": "生成内容向量",
+        "tags": ["Gemini 兼容接口"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Gemini 兼容接口",
+      "x-tag-id": "Gemini"
+    }
+  ]
+}

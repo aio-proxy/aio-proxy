@@ -6,6 +6,8 @@ export {
   transferMultipartSpool,
 } from './multipart';
 export {
+  OpenAIImageGenerationsInputSchema,
+  OpenAIImageEditsInputSchema,
   CPA_DEFAULT_IMAGE_MODEL,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,

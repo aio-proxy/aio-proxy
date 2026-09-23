@@ -1,0 +1,23 @@
+---
+title: '转录音频 POST /v1/audio/transcriptions'
+description: '以 multipart 上传音频转录，示例文件名代表上传字节。'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# 转录音频 `POST /v1/audio/transcriptions`
+
+以 multipart 上传音频转录，示例文件名代表上传字节。
+
+<details>
+<summary>参数 / 响应</summary>
+
+**参数:** `chunking_strategy`, `file`, `language`, `model`, `prompt`, `response_format`, `stream`, `stream_format`, `temperature`, `timestamp_granularities`
+
+**响应:** `200 application/json`, `200 text/event-stream`, `200 text/plain`
+
+</details>
+
+<ApiOperation slug="transcriptions" locale="zh" />

@@ -10,7 +10,7 @@ export const CPA_DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
 
-const OpenAISpeechInputSchema = z.compile(
+export const OpenAISpeechInputSchema = z.compile(
   z.object({
     model: z.union([z.string(), z.null()]).optional(),
     input: z.string(),
@@ -22,7 +22,7 @@ const OpenAISpeechInputSchema = z.compile(
   }),
 );
 
-const OpenAITranscriptionFieldsSchema = z.compile(
+export const OpenAITranscriptionFieldsSchema = z.compile(
   z.object({
     model: z.union([z.string(), z.null()]).optional(),
     response_format: nullableString,

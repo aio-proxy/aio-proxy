@@ -1,5 +1,10 @@
 // Learn how to customize the theme: https://rspress.rs/guide/basic/custom-theme
 import './index.css';
+import { Tag as OriginalTag } from '@rspress/core/theme-original';
+
+export function Tag({ tag }: { tag?: string }) {
+  return tag?.trim() === 'GET' ? <span className="rp-badge api-method-get">GET</span> : <OriginalTag tag={tag} />;
+}
 
 export * from '@rspress/core/theme-original';
 export { Layout } from './components/layout';

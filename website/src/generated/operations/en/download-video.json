@@ -1,0 +1,80 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/videos/{video_id}/content": {
+      "get": {
+        "description": "Downloads binary content for a caller-owned pinned job. variant is forwarded to the provider. Returned media type depends on the selected content; this is not a JSON response.",
+        "operationId": "downloadVideo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "video_id",
+            "required": true,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Binary bytes, not a JSON string.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful response. Available representations depend on the request and upstream capability."
+          }
+        },
+        "summary": "Download video content",
+        "tags": ["OpenAI-compatible"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI-compatible",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

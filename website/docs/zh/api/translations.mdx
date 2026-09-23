@@ -1,0 +1,23 @@
+---
+title: '翻译音频 POST /v1/audio/translations'
+description: '仅通过原始上游能力翻译上传的音频，不提供模型转换。'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# 翻译音频 `POST /v1/audio/translations`
+
+仅通过原始上游能力翻译上传的音频，不提供模型转换。
+
+<details>
+<summary>参数 / 响应</summary>
+
+**参数:** `chunking_strategy`, `file`, `language`, `model`, `prompt`, `response_format`, `stream`, `stream_format`, `temperature`, `timestamp_granularities`
+
+**响应:** `200 application/json`, `200 text/event-stream`, `200 text/plain`
+
+</details>
+
+<ApiOperation slug="translations" locale="zh" />

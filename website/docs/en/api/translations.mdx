@@ -1,0 +1,23 @@
+---
+title: 'Translate audio POST /v1/audio/translations'
+description: 'Translates an uploaded audio file through raw-provider capability only; no model conversion is available.'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# Translate audio `POST /v1/audio/translations`
+
+Translates an uploaded audio file through raw-provider capability only; no model conversion is available.
+
+<details>
+<summary>Parameters / Responses</summary>
+
+**Parameters:** `chunking_strategy`, `file`, `language`, `model`, `prompt`, `response_format`, `stream`, `stream_format`, `temperature`, `timestamp_granularities`
+
+**Responses:** `200 application/json`, `200 text/event-stream`, `200 text/plain`
+
+</details>
+
+<ApiOperation slug="translations" locale="en" />

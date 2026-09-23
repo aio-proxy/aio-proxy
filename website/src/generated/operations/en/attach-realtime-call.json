@@ -1,0 +1,52 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/realtime/calls/{call_id}": {
+      "get": {
+        "description": "Upgrades to a WebSocket sideband for a caller-owned registered call, retaining its original provider/account. The call must still exist in this proxy process. A normal HTTP GET is not a WebSocket handshake.",
+        "operationId": "attachRealtimeCall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "WebSocket upgrade. Subsequent messages are WebSocket frames, not an HTTP JSON response. Requires an eligible realtime provider."
+          }
+        },
+        "summary": "Attach to a realtime call",
+        "tags": ["Realtime"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Realtime",
+      "x-tag-id": "Realtime"
+    }
+  ]
+}

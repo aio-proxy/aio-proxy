@@ -1,0 +1,424 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1beta/models/{model}:countTokens": {
+      "post": {
+        "description": "Counts tokens for Gemini contents using the model in the URL. Returns totalTokens rather than generated content.",
+        "operationId": "countContentTokens",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model",
+            "required": true,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "contents": [
+                  {
+                    "parts": [
+                      {
+                        "text": "Hello."
+                      }
+                    ],
+                    "role": "user"
+                  }
+                ]
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "contents": [
+                      {
+                        "parts": [
+                          {
+                            "text": "Hello."
+                          }
+                        ],
+                        "role": "user"
+                      }
+                    ]
+                  }
+                ],
+                "properties": {
+                  "contents": {
+                    "items": {
+                      "properties": {
+                        "parts": {
+                          "items": {
+                            "additionalProperties": false,
+                            "oneOf": [
+                              {
+                                "properties": {
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["text"],
+                                "type": "object"
+                              },
+                              {
+                                "properties": {
+                                  "inlineData": {
+                                    "properties": {
+                                      "data": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "mimeType": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["mimeType", "data"],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": ["inlineData"],
+                                "type": "object"
+                              },
+                              {
+                                "properties": {
+                                  "fileData": {
+                                    "properties": {
+                                      "fileUri": {
+                                        "type": "string"
+                                      },
+                                      "mimeType": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["mimeType", "fileUri"],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": ["fileData"],
+                                "type": "object"
+                              },
+                              {
+                                "properties": {
+                                  "functionCall": {
+                                    "properties": {
+                                      "args": {},
+                                      "id": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["name"],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": ["functionCall"],
+                                "type": "object"
+                              },
+                              {
+                                "properties": {
+                                  "functionResponse": {
+                                    "properties": {
+                                      "id": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "parts": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "inlineData": {
+                                              "properties": {
+                                                "data": {
+                                                  "minLength": 1,
+                                                  "type": "string"
+                                                },
+                                                "mimeType": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": ["mimeType", "data"],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": ["inlineData"],
+                                          "type": "object"
+                                        },
+                                        "minItems": 1,
+                                        "type": "array"
+                                      },
+                                      "response": {}
+                                    },
+                                    "required": ["name", "response"],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": ["functionResponse"],
+                                "type": "object"
+                              }
+                            ],
+                            "properties": {
+                              "fileData": {
+                                "properties": {
+                                  "fileUri": {
+                                    "type": "string"
+                                  },
+                                  "mimeType": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["mimeType", "fileUri"],
+                                "type": "object"
+                              },
+                              "functionCall": {
+                                "properties": {
+                                  "args": {},
+                                  "id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["name"],
+                                "type": "object"
+                              },
+                              "functionResponse": {
+                                "properties": {
+                                  "id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "parts": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "inlineData": {
+                                          "properties": {
+                                            "data": {
+                                              "minLength": 1,
+                                              "type": "string"
+                                            },
+                                            "mimeType": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": ["mimeType", "data"],
+                                          "type": "object"
+                                        }
+                                      },
+                                      "required": ["inlineData"],
+                                      "type": "object"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "response": {}
+                                },
+                                "required": ["name", "response"],
+                                "type": "object"
+                              },
+                              "inlineData": {
+                                "properties": {
+                                  "data": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "mimeType": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["mimeType", "data"],
+                                "type": "object"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "role": {
+                          "enum": ["user", "model"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["parts"],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "conversation_id": {
+                    "type": "string"
+                  },
+                  "generationConfig": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "thinkingConfig": {
+                        "additionalProperties": {},
+                        "properties": {
+                          "thinkingLevel": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "safetySettings": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {
+                        "category": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "threshold": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": ["category", "threshold"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "systemInstruction": {
+                    "properties": {
+                      "parts": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["text"],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": ["parts"],
+                    "type": "object"
+                  },
+                  "tools": {
+                    "items": {
+                      "properties": {
+                        "functionDeclarations": {
+                          "items": {
+                            "properties": {
+                              "description": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "parameters": {}
+                            },
+                            "required": ["name"],
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": ["functionDeclarations"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": ["contents"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "totalTokens": 1
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "examples": [
+                    {
+                      "totalTokens": 1
+                    }
+                  ],
+                  "properties": {
+                    "totalTokens": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["totalTokens"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response. Available representations depend on the request and upstream capability."
+          }
+        },
+        "summary": "Count content tokens",
+        "tags": ["Gemini-compatible"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Gemini-compatible",
+      "x-tag-id": "Gemini"
+    }
+  ]
+}

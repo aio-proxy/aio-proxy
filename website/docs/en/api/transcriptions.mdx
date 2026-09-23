@@ -1,0 +1,23 @@
+---
+title: 'Transcribe audio POST /v1/audio/transcriptions'
+description: 'Uploads a multipart file for transcription; filenames in examples stand for uploaded bytes.'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# Transcribe audio `POST /v1/audio/transcriptions`
+
+Uploads a multipart file for transcription; filenames in examples stand for uploaded bytes.
+
+<details>
+<summary>Parameters / Responses</summary>
+
+**Parameters:** `chunking_strategy`, `file`, `language`, `model`, `prompt`, `response_format`, `stream`, `stream_format`, `temperature`, `timestamp_granularities`
+
+**Responses:** `200 application/json`, `200 text/event-stream`, `200 text/plain`
+
+</details>
+
+<ApiOperation slug="transcriptions" locale="en" />

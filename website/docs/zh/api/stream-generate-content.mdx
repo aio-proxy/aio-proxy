@@ -1,0 +1,23 @@
+---
+title: '流式生成内容 POST /v1beta/models/{model}:streamGenerateContent'
+description: '以 SSE data 帧流式返回 Gemini 内容，使用 alt=sse。'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# 流式生成内容 `POST /v1beta/models/{model}:streamGenerateContent`
+
+以 SSE data 帧流式返回 Gemini 内容，使用 alt=sse。
+
+<details>
+<summary>参数 / 响应</summary>
+
+**参数:** `alt`, `contents`, `conversation_id`, `generationConfig`, `model`, `safetySettings`, `session_id`, `systemInstruction`, `tools`
+
+**响应:** `200 text/event-stream`
+
+</details>
+
+<ApiOperation slug="stream-generate-content" locale="zh" />

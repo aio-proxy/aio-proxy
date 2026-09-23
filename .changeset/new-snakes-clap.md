@@ -4,4 +4,4 @@
 'aio-proxy': minor
 ---
 
-The documentation site publishes one stable page per selected public operation, generated from the implementation schemas.
+The documentation site publishes stable English and Chinese pages for all supported public API operations, with resource navigation and read-only examples. It covers text, embeddings, media, evaluation, and realtime endpoints, including multipart uploads, binary responses, and WebSocket handshakes, with provider compatibility limits made explicit.

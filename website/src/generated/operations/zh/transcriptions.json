@@ -1,0 +1,138 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API 参考",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/audio/transcriptions": {
+      "post": {
+        "description": "以 multipart 上传音频转录，示例文件名代表上传字节。默认 whisper-1。转换支持 json、text、verbose_json（需上游元数据）；srt、vtt、stream_format=sse 需原始上游支持。仅设置 stream 不会开启 SSE。",
+        "operationId": "transcribeAudio",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "example": {
+                "file": "audio.wav",
+                "model": "whisper-1"
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "file": "audio.wav",
+                    "model": "whisper-1"
+                  }
+                ],
+                "properties": {
+                  "chunking_strategy": {
+                    "type": ["string", "null"]
+                  },
+                  "file": {
+                    "description": "Binary bytes, not a JSON string.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": ["string", "null"]
+                  },
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt": {
+                    "type": ["string", "null"]
+                  },
+                  "response_format": {
+                    "type": ["string", "null"]
+                  },
+                  "stream": {
+                    "type": ["boolean", "null"]
+                  },
+                  "stream_format": {
+                    "type": ["string", "null"]
+                  },
+                  "temperature": {
+                    "type": ["number", "null"]
+                  },
+                  "timestamp_granularities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": ["file"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "text": "Hello."
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "examples": [
+                    {
+                      "text": "Hello."
+                    }
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["text"],
+                  "type": "object"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "SSE bytes forwarded from a compatible raw provider. Event names and payloads depend on that provider; no converted streaming implementation is available for this operation.",
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "example": "Hello.",
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "examples": ["Hello."],
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful response. Available representations depend on the request and upstream capability."
+          }
+        },
+        "summary": "转录音频",
+        "tags": ["OpenAI 兼容接口"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI 兼容接口",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

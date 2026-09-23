@@ -9,29 +9,216 @@
   "tags": {
     "Models": "Models",
     "OpenAI": "OpenAI-compatible",
-    "Anthropic": "Anthropic-compatible"
+    "Anthropic": "Anthropic-compatible",
+    "Gemini": "Gemini-compatible",
+    "SystemOne": "System One",
+    "Realtime": "Realtime"
   },
   "operations": {
     "listModels": {
       "title": "List models",
       "summary": "Lists the models currently available through aio-proxy.",
-      "description": "Lists the models currently available through aio-proxy. Try It runs in your browser, so the selected server must allow cross-origin requests; browser local-network access controls may also apply. From an HTTPS documentation page, insecure remote HTTP servers are blocked as mixed content, while loopback addresses such as `http://127.0.0.1` and `http://localhost` are treated as secure local resources.",
-      "note": "Agent negotiation and client_version catalogs are excluded from this page."
+      "description": "Lists the models currently available through aio-proxy.",
+      "note": "Agent negotiation and client_version catalogs are excluded from this page.",
+      "resource": "Models"
     },
     "createChatCompletion": {
       "title": "Create a chat completion",
       "summary": "Creates a chat completion with the OpenAI-compatible Chat Completions API.",
-      "description": "Creates a chat completion with the OpenAI-compatible Chat Completions API. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests; browser local-network access controls may also apply. From an HTTPS documentation page, insecure remote HTTP servers are blocked as mixed content, while loopback addresses such as `http://127.0.0.1` and `http://localhost` are treated as secure local resources. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events."
+      "description": "Creates a chat completion with the OpenAI-compatible Chat Completions API. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded.",
+      "resource": "Chat"
     },
     "createResponse": {
       "title": "Create a response",
       "summary": "Creates an OpenAI Responses-compatible result.",
-      "description": "Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests; browser local-network access controls may also apply. From an HTTPS documentation page, insecure remote HTTP servers are blocked as mixed content, while loopback addresses such as `http://127.0.0.1` and `http://localhost` are treated as secure local resources. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events."
+      "description": "Creates an OpenAI Responses-compatible result. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded.",
+      "resource": "Responses"
     },
     "createMessage": {
       "title": "Create a message",
       "summary": "Creates an Anthropic-compatible message.",
-      "description": "Creates an Anthropic-compatible message. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded. Try It runs in your browser, so the selected server must allow cross-origin requests; browser local-network access controls may also apply. From an HTTPS documentation page, insecure remote HTTP servers are blocked as mixed content, while loopback addresses such as `http://127.0.0.1` and `http://localhost` are treated as secure local resources. Try It sends the request, but Scalar does not provide a separate streaming debugger; use the SSE example when the panel does not render events."
+      "description": "Creates an Anthropic-compatible message. Set `stream: true` to receive a streaming response. Requests are parsed against this endpoint's schema. A same-protocol provider with raw capability receives the raw-forwarded request after routing rewrites; cross-protocol and AI SDK providers receive a converted model request, so fields that cannot be represented by the target protocol are not forwarded.",
+      "resource": "Messages"
+    },
+    "createCompletion": {
+      "title": "Create a completion",
+      "summary": "Generates legacy text completions.",
+      "description": "Generates legacy text completions. Set stream: true for SSE ending with data: [DONE]. Token-array prompts and provider-specific fields depend on the selected provider; conversion does not promise full upstream compatibility.",
+      "resource": "Completions"
+    },
+    "createEmbedding": {
+      "title": "Create embeddings",
+      "summary": "Embeds input text.",
+      "description": "Embeds input text. Numeric token inputs, dimensions and base64 encoding depend on the selected provider and conversion support.",
+      "resource": "Embeddings"
+    },
+    "compactResponse": {
+      "title": "Compact a response",
+      "summary": "Compacts response context through a compatible raw provider.",
+      "description": "Compacts response context through a compatible raw provider. A nonempty model is required; streaming is not supported.",
+      "resource": "Responses"
+    },
+    "countMessageTokens": {
+      "title": "Count message tokens",
+      "summary": "Counts tokens for an Anthropic Messages request using the configured token-counting route.",
+      "description": "Counts tokens for an Anthropic Messages request using the configured token-counting route. The returned input_tokens is not a generated message.",
+      "resource": "Messages"
+    },
+    "generateContent": {
+      "title": "Generate content",
+      "summary": "Generates content using a model from the URL.",
+      "description": "Generates content using a model from the URL. Same-protocol raw forwarding and model conversion support different fields; upstream extensions are not guaranteed on converted requests.",
+      "resource": "Gemini"
+    },
+    "streamGenerateContent": {
+      "title": "Stream content",
+      "summary": "Streams Gemini content as SSE data frames; use alt=sse.",
+      "description": "Streams Gemini content as SSE data frames; use alt=sse. The model is selected from the URL. Event payloads follow Gemini content chunks, not OpenAI [DONE] framing.",
+      "resource": "Gemini"
+    },
+    "countContentTokens": {
+      "title": "Count content tokens",
+      "summary": "Counts tokens for Gemini contents using the model in the URL.",
+      "description": "Counts tokens for Gemini contents using the model in the URL. Returns totalTokens rather than generated content.",
+      "resource": "Gemini"
+    },
+    "embedContent": {
+      "title": "Embed content",
+      "summary": "Embeds text content using the model in the URL.",
+      "description": "Embeds text content using the model in the URL. Only the request shape validated by aio-proxy is described; this is not the complete upstream Gemini API.",
+      "resource": "Gemini"
+    },
+    "batchEmbedContents": {
+      "title": "Batch embed content",
+      "summary": "Embeds a batch of text content requests.",
+      "description": "Embeds a batch of text content requests. The URL model governs routing; supported configuration is limited to the parsed fields and provider capability.",
+      "resource": "Gemini"
+    },
+    "createInteraction": {
+      "title": "Create an interaction",
+      "summary": "Creates a Gemini interaction.",
+      "description": "Creates a Gemini interaction. Set stream: true for SSE. Converted streams use interaction.created, step events, interaction.completed, then event: done with data: [DONE]. Raw upstream streams retain their upstream format.",
+      "resource": "Gemini"
+    },
+    "generateImages": {
+      "title": "Generate images",
+      "summary": "Generates images.",
+      "description": "Generates images. Defaults to gpt-image-2.5-sunburst when model is absent. n is 1–10 (dall-e-3: 1). Streaming and URL output depend on compatible raw-provider support; model conversion does not support streaming.",
+      "resource": "Images"
+    },
+    "editImages": {
+      "title": "Edit images",
+      "summary": "Edits images from JSON image_url/file_id sources or multipart uploads.",
+      "description": "Edits images from JSON image_url/file_id sources or multipart uploads. For multipart, upload file bytes rather than the example filename. JSON image sources and streaming require compatible raw-provider support; conversion supports uploaded images within its capability limits.",
+      "resource": "Images"
+    },
+    "createSpeech": {
+      "title": "Generate speech",
+      "summary": "Returns audio bytes, not JSON.",
+      "description": "Returns audio bytes, not JSON. Defaults to tts-1 when model is absent or blank. response_format selects the representation; listed MIME types are examples, not an exhaustive upstream list. stream_format requires compatible raw-provider support.",
+      "resource": "Audio"
+    },
+    "transcribeAudio": {
+      "title": "Transcribe audio",
+      "summary": "Uploads a multipart file for transcription; filenames in examples stand for uploaded bytes.",
+      "description": "Uploads a multipart file for transcription; filenames in examples stand for uploaded bytes. Defaults to whisper-1. Conversion supports json, text and verbose_json (metadata required); srt, vtt and stream_format=sse require raw-provider support. A stream flag alone does not enable SSE.",
+      "resource": "Audio"
+    },
+    "translateAudio": {
+      "title": "Translate audio",
+      "summary": "Translates an uploaded audio file through raw-provider capability only; no model conversion is available.",
+      "description": "Translates an uploaded audio file through raw-provider capability only; no model conversion is available. Defaults to whisper-1. Output formats and streaming support depend on that provider.",
+      "resource": "Audio"
+    },
+    "evaluateSystemOne": {
+      "title": "Evaluate questions",
+      "summary": "Evaluates a nonempty question map against state.",
+      "description": "Evaluates a nonempty question map against state. noul returns a numeric value, choice requires 1–255 criteria, and score requires 2–10 levels. Inputs must be JSON with finite numbers and at most 512 nesting levels; provider evaluation capability is required.",
+      "resource": "System One"
+    },
+    "createVideo": {
+      "title": "Create a video",
+      "summary": "Creates a video job through raw video capability using JSON or multipart.",
+      "description": "Creates a video job through raw video capability using JSON or multipart. Defaults to sora-2; prompt must not be blank. Returned jobs are pinned to the caller and provider in this running proxy process. Response fields depend on the upstream provider.",
+      "resource": "Videos"
+    },
+    "editVideo": {
+      "title": "Edit a video",
+      "summary": "Edits a video via a raw-capable provider with a JSON request and nonblank prompt.",
+      "description": "Edits a video via a raw-capable provider with a JSON request and nonblank prompt. Source acceptance and response job fields depend on the provider; returned jobs use caller/provider pinning.",
+      "resource": "Videos"
+    },
+    "extendVideo": {
+      "title": "Extend a video",
+      "summary": "Extends a video via a raw-capable provider using the JSON video-edit request shape.",
+      "description": "Extends a video via a raw-capable provider using the JSON video-edit request shape. A nonblank prompt is required. Source acceptance and response fields depend on the provider.",
+      "resource": "Videos"
+    },
+    "remixVideo": {
+      "title": "Remix a video",
+      "summary": "Remixes a caller-owned pinned job with a nonblank prompt.",
+      "description": "Remixes a caller-owned pinned job with a nonblank prompt. The job must still be registered in this proxy process; arbitrary upstream job IDs are not accepted. Uses the pinned provider.",
+      "resource": "Videos"
+    },
+    "retrieveVideo": {
+      "title": "Retrieve a video",
+      "summary": "Retrieves a caller-owned job from its pinned provider.",
+      "description": "Retrieves a caller-owned job from its pinned provider. The in-memory job registration can expire or be lost after proxy restart. Upstream JSON fields are forwarded.",
+      "resource": "Videos"
+    },
+    "downloadVideo": {
+      "title": "Download video content",
+      "summary": "Downloads binary content for a caller-owned pinned job.",
+      "description": "Downloads binary content for a caller-owned pinned job. variant is forwarded to the provider. Returned media type depends on the selected content; this is not a JSON response.",
+      "resource": "Videos"
+    },
+    "deleteVideo": {
+      "title": "Delete a video",
+      "summary": "Deletes a caller-owned pinned job through its original provider.",
+      "description": "Deletes a caller-owned pinned job through its original provider. Successful status and body are forwarded from upstream; no universal JSON deletion envelope is guaranteed.",
+      "resource": "Videos"
+    },
+    "createLiveCall": {
+      "title": "Create a live call",
+      "summary": "Creates a realtime call from an SDP offer; this is a signaling alias.",
+      "description": "Creates a realtime call from an SDP offer; this is a signaling alias. Supports SDP, text, JSON and multipart; the sample SDP is illustrative, not a usable WebRTC offer. An actual offer must come from your client. The answer and Location identify a caller-owned, provider-pinned call.",
+      "resource": "Realtime"
+    },
+    "createRealtime": {
+      "title": "Create realtime signaling",
+      "summary": "Posts a realtime SDP offer.",
+      "description": "Posts a realtime SDP offer. The model is selected from the body/session or the server default. Compatible realtime capability is required. Requests are limited to 16 MiB and identity content encoding. SDP examples are illustrative; obtain a real offer from your client.",
+      "resource": "Realtime"
+    },
+    "createRealtimeCall": {
+      "title": "Create a realtime call",
+      "summary": "Creates a provider-pinned realtime call from a client SDP offer.",
+      "description": "Creates a provider-pinned realtime call from a client SDP offer. Successful responses carry the SDP answer and may include a rewritten Location. JSON and multipart forms are also supported; session in multipart is JSON-encoded text. The example SDP is not a working offer.",
+      "resource": "Realtime"
+    },
+    "hangupRealtimeCall": {
+      "title": "Hang up a realtime call",
+      "summary": "Hangs up a caller-owned registered call.",
+      "description": "Hangs up a caller-owned registered call. After upstream success the proxy removes its call record, closes the attached socket, and returns 204 with no body.",
+      "resource": "Realtime"
+    },
+    "attachLiveCall": {
+      "title": "Attach to a live call",
+      "summary": "Upgrades a WebSocket connection to a caller-owned registered call.",
+      "description": "Upgrades a WebSocket connection to a caller-owned registered call. This is HTTP 101 signaling, not an ordinary JSON GET. The original provider/account is retained. Use a WebSocket client; this reference is read-only.",
+      "resource": "Realtime"
+    },
+    "attachRealtimeCall": {
+      "title": "Attach to a realtime call",
+      "summary": "Upgrades to a WebSocket sideband for a caller-owned registered call, retaining its original provider/account.",
+      "description": "Upgrades to a WebSocket sideband for a caller-owned registered call, retaining its original provider/account. The call must still exist in this proxy process. A normal HTTP GET is not a WebSocket handshake.",
+      "resource": "Realtime"
+    },
+    "connectRealtime": {
+      "title": "Connect realtime WebSocket",
+      "summary": "Upgrades a WebSocket connection.",
+      "description": "Upgrades a WebSocket connection. With call_id it attaches to that caller-owned call; otherwise it establishes a direct realtime connection using model and provider capability. Frames follow the chosen upstream realtime protocol, not SSE or JSON HTTP responses.",
+      "resource": "Realtime"
     }
   }
 }

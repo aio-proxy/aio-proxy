@@ -56,9 +56,14 @@ const operationSchema = async (operationId: string) => {
 };
 
 describe('loadPublicOpenApi', () => {
-  test('builds the four operations from implementation schemas', async () => {
+  test('builds all documented operations from implementation schemas', async () => {
     const document = await loadPublicOpenApi();
-    expect(operationSlugs(document)).toEqual(['list-models', 'chat-completions', 'responses', 'messages']);
+    expect(operationSlugs(document)).toEqual(
+      publicOperations
+        .filter((operation) => operation.classification === 'documented')
+        .sort((left, right) => left.navOrder - right.navOrder)
+        .map((operation) => operation.slug),
+    );
     const chat = projectOperation(document, 'createChatCompletion');
     expect(chat.paths['/v1/chat/completions']?.post?.responses?.['200']?.content).toContainKeys([
       'application/json',
@@ -177,7 +182,7 @@ describe('loadPublicOpenApi', () => {
   });
 
   test('rejects an invalid descriptor example before schema conversion', async () => {
-    const responseSchema = documentedOperation('createResponse').responses.json.schema;
+    const responseSchema = documentedOperation('createResponse').responses.json!.schema;
 
     await withExamples(responseSchema, [{}], async () => {
       await expect(loadPublicOpenApi()).rejects.toThrow('Invalid example for createResponse application/json response');
@@ -263,5 +268,48 @@ describe('loadPublicOpenApi', () => {
       expect((await validate(projectOperation(document, operationId))).valid).toBe(true);
     }
     expect(() => JSON.parse(JSON.stringify(document))).not.toThrow();
+  });
+});
+test('publishes binary, multipart, parameterized and WebSocket operations without inventing JSON responses', async () => {
+  const document = await loadPublicOpenApi();
+  const paths = document.paths;
+  expect(
+    paths['/v1/audio/transcriptions']?.post?.requestBody?.content['multipart/form-data']?.schema.properties?.file
+      ?.format,
+  ).toBe('binary');
+  expect(paths['/v1/audio/speech']?.post?.responses['200']?.content).toHaveProperty('audio/mpeg');
+  expect(paths['/v1/videos/{video_id}']?.get?.parameters).toContainEqual(
+    expect.objectContaining({ name: 'video_id', in: 'path', required: true }),
+  );
+  expect(paths['/v1/videos/{video_id}']?.delete).toBeDefined();
+  expect(paths['/v1/realtime']?.get?.responses['101']).toBeDefined();
+  expect(paths['/v1/realtime']?.get?.responses['200']).toBeUndefined();
+  expect(paths['/v1/realtime/calls/{call_id}/hangup']?.post?.responses['204']?.content).toBeUndefined();
+  for (const action of [
+    'generateContent',
+    'streamGenerateContent',
+    'countTokens',
+    'embedContent',
+    'batchEmbedContents',
+  ]) {
+    expect(paths[`/v1beta/models/{model}:${action}`]?.post).toBeDefined();
+  }
+});
+
+test('keeps Gemini URL models out of required bodies and rejects unsupported embedding configuration', async () => {
+  const generation = fromJSONSchema(await operationSchema('generateContent'));
+  expect(generation.safeParse({ contents: [{ parts: [{ text: 'Hello.' }] }] }).success).toBe(true);
+  expect(generation.safeParse({ contents: [{ parts: [{}] }] }).success).toBe(false);
+  expect(
+    generation.safeParse({ contents: [{ parts: [{ text: 'Hello.', functionCall: { name: 'lookup' } }] }] }).success,
+  ).toBe(false);
+  const document = await loadPublicOpenApi();
+  const schema =
+    document.paths['/v1beta/models/{model}:embedContent']?.post?.requestBody?.content['application/json']?.schema;
+  expect(schema?.properties?.embedContentConfig?.properties?.audioTrackExtraction).toEqual({ not: {} });
+  expect(schema?.properties?.embedContentConfig?.properties?.documentOcr).toEqual({ not: {} });
+  expect(schema?.properties?.content?.properties?.parts?.contains).toEqual({
+    properties: { text: { type: 'string', minLength: 1 } },
+    required: ['text'],
   });
 });

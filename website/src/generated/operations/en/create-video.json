@@ -1,0 +1,173 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API Reference",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/videos": {
+      "post": {
+        "description": "Creates a video job through raw video capability using JSON or multipart. Defaults to sora-2; prompt must not be blank. Returned jobs are pinned to the caller and provider in this running proxy process. Response fields depend on the upstream provider.",
+        "operationId": "createVideo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "model": "sora-2",
+                "prompt": "A red apple rotating.",
+                "seconds": "4"
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "model": "sora-2",
+                    "prompt": "A red apple rotating.",
+                    "seconds": "4"
+                  }
+                ],
+                "properties": {
+                  "input_reference": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "image_url": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["image_url"],
+                            "type": "object"
+                          },
+                          {
+                            "properties": {
+                              "file_id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["file_id"],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "size": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["prompt"],
+                "type": "object"
+              }
+            },
+            "multipart/form-data": {
+              "example": {
+                "model": "sora-2",
+                "prompt": "A red apple rotating."
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "model": "sora-2",
+                    "prompt": "A red apple rotating."
+                  }
+                ],
+                "properties": {
+                  "input_reference": {
+                    "description": "Binary bytes, not a JSON string.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "size": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["prompt"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "created_at": 0,
+                  "id": "video_example",
+                  "model": "sora-2",
+                  "object": "video",
+                  "status": "queued"
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "description": "Upstream JSON object; fields depend on the selected provider. See the example and compatibility notes.",
+                  "examples": [
+                    {
+                      "created_at": 0,
+                      "id": "video_example",
+                      "model": "sora-2",
+                      "object": "video",
+                      "status": "queued"
+                    }
+                  ],
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Upstream successful video response; status and fields depend on the provider."
+          }
+        },
+        "summary": "Create a video",
+        "tags": ["OpenAI-compatible"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI-compatible",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

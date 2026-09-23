@@ -1,0 +1,23 @@
+---
+title: '编辑图片 POST /v1/images/edits'
+description: '使用 JSON image_url/file_id 或 multipart 文件编辑图片。'
+pageType: doc-wide
+outline: false
+---
+
+import { ApiOperation } from '../../../src/components/api-operation';
+
+# 编辑图片 `POST /v1/images/edits`
+
+使用 JSON image_url/file_id 或 multipart 文件编辑图片。
+
+<details>
+<summary>参数 / 响应</summary>
+
+**参数:** `background`, `image`, `images`, `mask`, `model`, `moderation`, `n`, `output_compression`, `output_format`, `partial_images`, `prompt`, `quality`, `response_format`, `size`, `stream`, `style`, `user`
+
+**响应:** `200 application/json`, `200 text/event-stream`
+
+</details>
+
+<ApiOperation slug="edit-images" locale="zh" />

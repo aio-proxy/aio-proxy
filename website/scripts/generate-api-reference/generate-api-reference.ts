@@ -207,7 +207,12 @@ import { ApiOperation } from '../../../src/components/api-operation';
 
 ${summary}
 
+<details>
+<summary>${catalog.shared.parameters} / ${catalog.shared.responses}</summary>
+
 ${index}
+
+</details>
 
 <ApiOperation slug="${operation.slug}" locale="${locale}" />
 `;
@@ -267,8 +272,8 @@ export async function generateApiReferenceFiles({
   for (const locale of locales) {
     const catalog = catalogs[locale];
     const filesByTag = new Map<
-      DocumentedPublicOperation['tag'],
-      Array<{ readonly type: 'file'; readonly name: string; readonly label: string }>
+      string,
+      Array<{ readonly type: 'custom-link'; readonly link: string; readonly label: string; readonly tag: string }>
     >();
     for (const operation of operations) {
       const pagePath = `docs/${locale}/api/${operation.slug}.mdx`;
@@ -276,14 +281,27 @@ export async function generateApiReferenceFiles({
       const operationDocument = localizedDocument(document, operation, catalog);
       desired.set(pagePath, await mdx(pagePath, page(locale, operation, operationDocument, catalog)));
       desired.set(operationPath, await json(operationPath, operationDocument));
-      const files = filesByTag.get(operation.tag) ?? [];
-      files.push({ type: 'file', name: operation.slug, label: localizedMessage(catalog, operation.messages.title) });
-      filesByTag.set(operation.tag, files);
+      const resource = catalog.operations[operation.operationId]?.resource ?? catalog.tags[operation.tag];
+      const files = filesByTag.get(resource) ?? [];
+      files.push({
+        type: 'custom-link',
+        link: `/api/${operation.slug}`,
+        label: localizedMessage(catalog, operation.messages.title),
+        tag: operation.method.toUpperCase(),
+      });
+      filesByTag.set(resource, files);
     }
-    const meta = [...filesByTag].flatMap(([tag, files]) => [
-      { type: 'section-header', label: catalog.tags[tag] },
-      ...files,
-    ]);
+    const meta = [
+      { type: 'file', name: 'overview', label: locale === 'zh' ? '概览' : 'Overview' },
+      { type: 'section-header', label: catalog.shared.apiTitle },
+      ...[...filesByTag].map(([label, items]) => ({
+        type: 'custom-link',
+        label,
+        collapsible: true,
+        collapsed: false,
+        items,
+      })),
+    ];
     const metaPath = `docs/${locale}/api/_meta.json`;
     desired.set(metaPath, await json(metaPath, meta));
   }

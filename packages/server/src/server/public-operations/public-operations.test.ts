@@ -19,6 +19,8 @@ import {
 } from '@aio-proxy/core';
 
 import { rewriteOpenAICompletionsRaw } from '../../../../core/src/protocol/openai-completions/completions-raw';
+import { parseSystemOneBody } from '../../../../core/src/protocol/typesafe-systemone/parse';
+import { geminiModelsRouteTarget } from '../../routes/gemini-generate-content';
 import { createRoutes } from '../create-routes';
 import { PublicModelListSchema } from '../list-models/public-model-list';
 import { publicOperations } from './index';
@@ -145,11 +147,17 @@ describe('documentation response schemas', () => {
   test('attaches valid non-empty examples to every descriptor schema instance', () => {
     const documented = publicOperations.filter((operation) => operation.classification === 'documented');
     for (const operation of documented) {
-      const responseExamples = operation.responses.json.schema.meta()?.examples;
-      expect(responseExamples).toBeArray();
-      expect(responseExamples).not.toBeEmpty();
-      for (const example of responseExamples ?? []) {
-        expect(operation.responses.json.schema.safeParse(example).success).toBe(true);
+      const contents = [
+        ...Object.values(operation.responses),
+        ...(operation.requestVariants ?? []),
+        ...(operation.responseVariants ?? []).flatMap((response) => response.content ?? []),
+      ];
+      for (const { schema, contentType } of contents) {
+        if (contentType !== 'application/json' && schema.meta()?.examples === undefined) continue;
+        const examples = schema.meta()?.examples;
+        expect(examples).toBeArray();
+        expect(examples).not.toBeEmpty();
+        for (const example of examples ?? []) expect(schema.safeParse(example).success).toBe(true);
       }
       if (operation.request !== undefined) {
         const requestExamples = operation.request.schema.meta()?.examples;
@@ -173,18 +181,18 @@ describe('documentation response schemas', () => {
     }
 
     expect(
-      documented.find((operation) => operation.operationId === 'createChatCompletion')?.responses.json.schema,
+      documented.find((operation) => operation.operationId === 'createChatCompletion')?.responses.json?.schema,
     ).toBe(OpenAICompletionsResponseSchema);
     expect(
       documented.find((operation) => operation.operationId === 'createChatCompletion')?.responses.stream?.schema,
     ).toBe(OpenAICompletionsStreamEventSchema);
-    expect(documented.find((operation) => operation.operationId === 'createResponse')?.responses.json.schema).toBe(
+    expect(documented.find((operation) => operation.operationId === 'createResponse')?.responses.json?.schema).toBe(
       OpenAIResponsesResponseSchema,
     );
     expect(documented.find((operation) => operation.operationId === 'createResponse')?.responses.stream?.schema).toBe(
       OpenAIResponsesStreamEventSchema,
     );
-    expect(documented.find((operation) => operation.operationId === 'createMessage')?.responses.json.schema).toBe(
+    expect(documented.find((operation) => operation.operationId === 'createMessage')?.responses.json?.schema).toBe(
       AnthropicMessageResponseSchema,
     );
     expect(documented.find((operation) => operation.operationId === 'createMessage')?.responses.stream?.schema).toBe(
@@ -217,21 +225,20 @@ test('classifies every route registered by the public server assembly', () => {
     },
   );
   const registeredKeys = publicRouteKeys(createRoutes(state as never).routes);
-  const descriptorKeys = publicOperations.map(({ method, path }) => `${method.toUpperCase()} ${path}`).sort();
+  const descriptorKeys = [
+    ...new Set(
+      publicOperations.map(
+        (operation) =>
+          `${operation.method.toUpperCase()} ${operation.classification === 'documented' ? (operation.routePath ?? operation.path) : operation.path}`,
+      ),
+    ),
+  ].sort();
   const documented = publicOperations.filter((operation) => operation.classification === 'documented');
 
   expect(descriptorKeys).toEqual(registeredKeys);
-  expect(documented.map(({ method, path, operationId, slug }) => ({ method, path, operationId, slug }))).toEqual([
-    { method: 'get', path: '/v1/models', operationId: 'listModels', slug: 'list-models' },
-    {
-      method: 'post',
-      path: '/v1/chat/completions',
-      operationId: 'createChatCompletion',
-      slug: 'chat-completions',
-    },
-    { method: 'post', path: '/v1/responses', operationId: 'createResponse', slug: 'responses' },
-    { method: 'post', path: '/v1/messages', operationId: 'createMessage', slug: 'messages' },
-  ]);
+  expect(publicOperations.some((operation) => operation.classification === 'deferred')).toBe(false);
+  expect(new Set(documented.map(({ operationId }) => operationId)).size).toBe(documented.length);
+  expect(new Set(documented.map(({ slug }) => slug)).size).toBe(documented.length);
 });
 
 test('preserves unknown Chat Completions fields in a no-op raw rewrite', async () => {
@@ -247,4 +254,50 @@ test('preserves unknown Chat Completions fields in a no-op raw rewrite', async (
   );
 
   expect(await rewritten.text()).toBe(body);
+});
+
+test('documents concrete Gemini wildcard actions that resolve to the intended runtime target', () => {
+  const operations = publicOperations.filter(
+    (operation) => operation.classification === 'documented' && operation.routePath === '/v1beta/models/*',
+  );
+  const targets = operations.map((operation) =>
+    geminiModelsRouteTarget(operation.path.replace('{model}', 'gemini-test')),
+  );
+  expect(targets).toEqual([
+    { kind: 'generate', model: 'gemini-test', stream: false },
+    { kind: 'generate', model: 'gemini-test', stream: true },
+    { kind: 'count', model: 'gemini-test' },
+    { kind: 'embed', model: 'gemini-test', action: 'embedContent' },
+    { kind: 'embed', model: 'gemini-test', action: 'batchEmbedContents' },
+  ]);
+  expect(geminiModelsRouteTarget('/v1beta/models/gemini-test:unsupported')).toBeUndefined();
+});
+
+test('System One documentation examples and question boundaries agree with its non-Zod runtime parser', async () => {
+  const operation = publicOperations.find(
+    (candidate) => candidate.classification === 'documented' && candidate.operationId === 'evaluateSystemOne',
+  );
+  if (operation?.classification !== 'documented') throw new Error('Missing System One documentation');
+  const schema = operation.requestVariants![0]!.schema;
+  const request = (body: unknown) =>
+    new Request('http://example.test/v1/systemone', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    });
+  for (const example of schema.meta()?.examples ?? [])
+    await expect(parseSystemOneBody(request(example))).resolves.toBeDefined();
+  const cases = [
+    { questions: {}, valid: false },
+    { questions: { q: { type: 'choice', instructions: '', criteria: {} } }, valid: false },
+    { questions: { q: { type: 'choice', instructions: '', criteria: { a: null } } }, valid: true },
+    { questions: { q: { type: 'score', instructions: '', criteria: ['one'] } }, valid: false },
+    { questions: { q: { type: 'score', instructions: '', criteria: ['one', 'two'] } }, valid: true },
+  ];
+  for (const { questions, valid } of cases) {
+    const body = { model: 'judge', state: {}, questions };
+    expect(schema.safeParse(body).success).toBe(valid);
+    if (valid) await expect(parseSystemOneBody(request(body))).resolves.toBeDefined();
+    else await expect(parseSystemOneBody(request(body))).rejects.toThrow();
+  }
 });

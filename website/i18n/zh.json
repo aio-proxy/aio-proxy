@@ -9,29 +9,216 @@
   "tags": {
     "Models": "模型",
     "OpenAI": "OpenAI 兼容接口",
-    "Anthropic": "Anthropic 兼容接口"
+    "Anthropic": "Anthropic 兼容接口",
+    "Gemini": "Gemini 兼容接口",
+    "SystemOne": "System One",
+    "Realtime": "实时连接"
   },
   "operations": {
     "listModels": {
       "title": "列出模型",
       "summary": "列出当前可通过 aio-proxy 使用的模型。",
-      "description": "列出当前可通过 aio-proxy 使用的模型。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器的本地网络访问控制也可能适用。在 HTTPS 文档页面中，不安全的远程 HTTP 服务会作为混合内容被阻止；`http://127.0.0.1` 和 `http://localhost` 等回环地址会按安全的本地资源处理。",
-      "note": "本页面不包含 Agent 协商和 client_version 模型目录。"
+      "description": "列出当前可通过 aio-proxy 使用的模型。",
+      "note": "本页面不包含 Agent 协商和 client_version 模型目录。",
+      "resource": "模型"
     },
     "createChatCompletion": {
       "title": "创建聊天补全",
       "summary": "创建 OpenAI 兼容的聊天补全。",
-      "description": "创建 OpenAI 兼容的聊天补全。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器的本地网络访问控制也可能适用。在 HTTPS 文档页面中，不安全的远程 HTTP 服务会作为混合内容被阻止；`http://127.0.0.1` 和 `http://localhost` 等回环地址会按安全的本地资源处理。“Try It” 会发送请求，但 Scalar 不提供独立的流式调试器；如果面板未呈现事件，请使用 SSE 示例。"
+      "description": "创建 OpenAI 兼容的聊天补全。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。",
+      "resource": "聊天补全"
     },
     "createResponse": {
       "title": "创建响应",
       "summary": "创建 OpenAI Responses 兼容结果。",
-      "description": "创建 OpenAI Responses 兼容结果。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器的本地网络访问控制也可能适用。在 HTTPS 文档页面中，不安全的远程 HTTP 服务会作为混合内容被阻止；`http://127.0.0.1` 和 `http://localhost` 等回环地址会按安全的本地资源处理。“Try It” 会发送请求，但 Scalar 不提供独立的流式调试器；如果面板未呈现事件，请使用 SSE 示例。"
+      "description": "创建 OpenAI Responses 兼容结果。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。",
+      "resource": "Responses"
     },
     "createMessage": {
       "title": "创建消息",
       "summary": "创建 Anthropic 兼容消息。",
-      "description": "创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。“Try It” 在浏览器中运行，因此所选服务必须允许跨源请求；浏览器的本地网络访问控制也可能适用。在 HTTPS 文档页面中，不安全的远程 HTTP 服务会作为混合内容被阻止；`http://127.0.0.1` 和 `http://localhost` 等回环地址会按安全的本地资源处理。“Try It” 会发送请求，但 Scalar 不提供独立的流式调试器；如果面板未呈现事件，请使用 SSE 示例。"
+      "description": "创建 Anthropic 兼容消息。设置 `stream: true` 以接收流式响应。请求会先按此端点的架构解析（parsed）。具有原始请求能力的同协议提供商会在路由重写后收到原样转发（raw-forwarded）的请求；跨协议和 AI SDK 提供商会收到转换后（converted）的模型请求，因此无法由目标协议表达的字段不会被转发。",
+      "resource": "Anthropic 消息"
+    },
+    "createCompletion": {
+      "title": "创建文本补全",
+      "summary": "生成传统文本补全。",
+      "description": "生成传统文本补全。设置 stream: true 返回以 data: [DONE] 结束的 SSE。Token 数组提示词及扩展字段受所选上游能力限制，协议转换不承诺完整上游兼容。",
+      "resource": "文本补全"
+    },
+    "createEmbedding": {
+      "title": "创建向量",
+      "summary": "将输入转换为向量。",
+      "description": "将输入转换为向量。数字 Token 输入、dimensions 和 base64 编码取决于所选上游及转换能力。",
+      "resource": "向量"
+    },
+    "compactResponse": {
+      "title": "压缩响应上下文",
+      "summary": "通过兼容的原始透传上游压缩响应上下文。",
+      "description": "通过兼容的原始透传上游压缩响应上下文。model 必须非空，不支持流式响应。",
+      "resource": "Responses"
+    },
+    "countMessageTokens": {
+      "title": "计算消息 Token",
+      "summary": "通过已配置的 Token 计数路由计算 Anthropic Messages 请求的 Token。",
+      "description": "通过已配置的 Token 计数路由计算 Anthropic Messages 请求的 Token。返回 input_tokens，而非生成消息。",
+      "resource": "Anthropic 消息"
+    },
+    "generateContent": {
+      "title": "生成内容",
+      "summary": "使用 URL 中的模型生成内容。",
+      "description": "使用 URL 中的模型生成内容。同协议透传与模型转换支持的字段不同，转换请求不保证保留上游扩展。",
+      "resource": "Gemini"
+    },
+    "streamGenerateContent": {
+      "title": "流式生成内容",
+      "summary": "以 SSE data 帧流式返回 Gemini 内容，使用 alt=sse。",
+      "description": "以 SSE data 帧流式返回 Gemini 内容，使用 alt=sse。模型来自 URL；事件载荷为 Gemini 内容分块，不是 OpenAI 的 [DONE] 帧协议。",
+      "resource": "Gemini"
+    },
+    "countContentTokens": {
+      "title": "计算内容 Token",
+      "summary": "使用 URL 中的模型计算 Gemini contents 的 Token，返回 totalTokens，而非生成内容。",
+      "description": "使用 URL 中的模型计算 Gemini contents 的 Token，返回 totalTokens，而非生成内容。",
+      "resource": "Gemini"
+    },
+    "embedContent": {
+      "title": "生成内容向量",
+      "summary": "使用 URL 中的模型生成文本内容向量。",
+      "description": "使用 URL 中的模型生成文本内容向量。仅描述 aio-proxy 校验的请求结构，不代表完整的上游 Gemini API。",
+      "resource": "Gemini"
+    },
+    "batchEmbedContents": {
+      "title": "批量生成内容向量",
+      "summary": "批量生成文本内容向量。",
+      "description": "批量生成文本内容向量。URL 模型决定路由，配置能力限于已解析字段与上游能力。",
+      "resource": "Gemini"
+    },
+    "createInteraction": {
+      "title": "创建交互",
+      "summary": "创建 Gemini 交互。",
+      "description": "创建 Gemini 交互。设置 stream: true 使用 SSE。转换流包含 interaction.created、step 事件、interaction.completed，最后为 event: done 与 data: [DONE]。原始透传保留上游流格式。",
+      "resource": "Gemini"
+    },
+    "generateImages": {
+      "title": "生成图片",
+      "summary": "生成图片。",
+      "description": "生成图片。未提供 model 时默认 gpt-image-2.5-sunburst。n 为 1–10（dall-e-3 仅 1）。流式与 URL 输出依赖兼容的原始上游，模型转换不支持流式。",
+      "resource": "图片"
+    },
+    "editImages": {
+      "title": "编辑图片",
+      "summary": "使用 JSON image_url/file_id 或 multipart 文件编辑图片。",
+      "description": "使用 JSON image_url/file_id 或 multipart 文件编辑图片。multipart 应上传文件内容，示例文件名仅作占位。JSON 图片来源与流式需兼容的原始上游，转换路径仅在能力范围内处理上传图片。",
+      "resource": "图片"
+    },
+    "createSpeech": {
+      "title": "生成语音",
+      "summary": "返回音频二进制而非 JSON。",
+      "description": "返回音频二进制而非 JSON。model 缺失或空白时默认 tts-1。response_format 选择输出形式，列出的 MIME 类型并非上游全集。stream_format 需要兼容原始上游支持。",
+      "resource": "音频"
+    },
+    "transcribeAudio": {
+      "title": "转录音频",
+      "summary": "以 multipart 上传音频转录，示例文件名代表上传字节。",
+      "description": "以 multipart 上传音频转录，示例文件名代表上传字节。默认 whisper-1。转换支持 json、text、verbose_json（需上游元数据）；srt、vtt、stream_format=sse 需原始上游支持。仅设置 stream 不会开启 SSE。",
+      "resource": "音频"
+    },
+    "translateAudio": {
+      "title": "翻译音频",
+      "summary": "仅通过原始上游能力翻译上传的音频，不提供模型转换。",
+      "description": "仅通过原始上游能力翻译上传的音频，不提供模型转换。默认 whisper-1。输出格式与流式能力取决于该上游。",
+      "resource": "音频"
+    },
+    "evaluateSystemOne": {
+      "title": "评估问题",
+      "summary": "针对 state 评估非空问题映射。",
+      "description": "针对 state 评估非空问题映射。noul 返回数值，choice 要求 1–255 个选项，score 要求 2–10 个等级。输入必须为有限数值的 JSON，嵌套不超过 512 层，需要上游评估能力。",
+      "resource": "System One"
+    },
+    "createVideo": {
+      "title": "创建视频",
+      "summary": "通过原始视频能力以 JSON 或 multipart 创建任务。",
+      "description": "通过原始视频能力以 JSON 或 multipart 创建任务。默认 sora-2，prompt 不可为空白。返回任务在当前代理进程中绑定调用者和上游；响应字段由上游决定。",
+      "resource": "视频"
+    },
+    "editVideo": {
+      "title": "编辑视频",
+      "summary": "通过原始上游以 JSON 请求编辑视频，prompt 不可为空白。",
+      "description": "通过原始上游以 JSON 请求编辑视频，prompt 不可为空白。来源与任务响应字段取决于上游；返回任务绑定调用者和上游。",
+      "resource": "视频"
+    },
+    "extendVideo": {
+      "title": "延长视频",
+      "summary": "通过原始上游使用视频编辑 JSON 请求结构延长视频。",
+      "description": "通过原始上游使用视频编辑 JSON 请求结构延长视频。prompt 不可为空白；来源与响应字段取决于上游。",
+      "resource": "视频"
+    },
+    "remixVideo": {
+      "title": "重新创作视频",
+      "summary": "使用非空白 prompt 重新创作调用者拥有的已绑定任务。",
+      "description": "使用非空白 prompt 重新创作调用者拥有的已绑定任务。任务须仍登记在当前代理进程，不能使用任意上游任务 ID；请求发送到绑定上游。",
+      "resource": "视频"
+    },
+    "retrieveVideo": {
+      "title": "查询视频",
+      "summary": "从绑定上游查询调用者拥有的任务。",
+      "description": "从绑定上游查询调用者拥有的任务。内存任务登记可能过期，代理重启后会丢失。JSON 字段按上游透传。",
+      "resource": "视频"
+    },
+    "downloadVideo": {
+      "title": "下载视频内容",
+      "summary": "下载调用者拥有的已绑定任务的二进制内容。",
+      "description": "下载调用者拥有的已绑定任务的二进制内容。variant 转发给上游。返回媒体类型取决于所选内容，不是 JSON 响应。",
+      "resource": "视频"
+    },
+    "deleteVideo": {
+      "title": "删除视频",
+      "summary": "通过原上游删除调用者拥有的已绑定任务。",
+      "description": "通过原上游删除调用者拥有的已绑定任务。成功状态与正文按上游透传，不保证统一 JSON 删除响应。",
+      "resource": "视频"
+    },
+    "createLiveCall": {
+      "title": "创建 Live 通话",
+      "summary": "根据 SDP offer 创建实时通话，这是信令别名。",
+      "description": "根据 SDP offer 创建实时通话，这是信令别名。支持 SDP、文本、JSON 和 multipart；示例 SDP 仅说明格式，不可作为有效 WebRTC offer，实际 offer 由客户端产生。应答与 Location 标识调用者拥有、绑定上游的通话。",
+      "resource": "实时连接"
+    },
+    "createRealtime": {
+      "title": "创建实时信令",
+      "summary": "提交实时 SDP offer。",
+      "description": "提交实时 SDP offer。模型来自正文/session 或服务端默认值，需要兼容的实时能力。请求限 16 MiB，仅支持 identity 内容编码。SDP 示例仅说明格式，请由客户端生成真实 offer。",
+      "resource": "实时连接"
+    },
+    "createRealtimeCall": {
+      "title": "创建实时通话",
+      "summary": "根据客户端 SDP offer 创建绑定上游的实时通话。",
+      "description": "根据客户端 SDP offer 创建绑定上游的实时通话。成功响应包含 SDP answer，可含重写后的 Location。支持 JSON 与 multipart，其中 multipart 的 session 是 JSON 编码文本。示例 SDP 不是可用 offer。",
+      "resource": "实时连接"
+    },
+    "hangupRealtimeCall": {
+      "title": "挂断实时通话",
+      "summary": "挂断调用者拥有的已登记通话。",
+      "description": "挂断调用者拥有的已登记通话。上游成功后代理移除通话记录、关闭关联连接，返回无正文的 204。",
+      "resource": "实时连接"
+    },
+    "attachLiveCall": {
+      "title": "连接 Live 通话",
+      "summary": "通过 WebSocket 连接调用者拥有的已登记通话。",
+      "description": "通过 WebSocket 连接调用者拥有的已登记通话。这是 HTTP 101 升级，不是普通 JSON GET，沿用原上游及账号。请使用 WebSocket 客户端，文档仅供阅读。",
+      "resource": "实时连接"
+    },
+    "attachRealtimeCall": {
+      "title": "连接实时通话",
+      "summary": "升级为调用者拥有的已登记通话的 WebSocket 旁路，沿用原上游及账号。",
+      "description": "升级为调用者拥有的已登记通话的 WebSocket 旁路，沿用原上游及账号。通话须仍存在于当前代理进程。普通 HTTP GET 不是 WebSocket 握手。",
+      "resource": "实时连接"
+    },
+    "connectRealtime": {
+      "title": "连接实时 WebSocket",
+      "summary": "升级 WebSocket 连接。",
+      "description": "升级 WebSocket 连接。携带 call_id 时连接该调用者拥有的通话，否则根据 model 与上游能力建立直接实时连接。帧遵循所选上游实时协议，不是 SSE 或 JSON HTTP 响应。",
+      "resource": "实时连接"
     }
   }
 }

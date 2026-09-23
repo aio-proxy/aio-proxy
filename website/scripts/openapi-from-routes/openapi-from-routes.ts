@@ -7,6 +7,8 @@ import {
   AnthropicToolResultBlockSchema,
   AnthropicUrlImageSourceSchema,
   AnthropicWebSearchToolSchema,
+  GeminiEmbedContentRequestSchema,
+  GeminiGenerateContentRequestSchema,
   openAIResponsesInputImagePartSchema,
   openAIResponsesInputItemSchema,
   openAIResponsesInputItemTransformSchema,
@@ -85,8 +87,9 @@ function validatePublicOperations(): void {
       throw new Error(`Invalid request metadata for ${operation.operationId}`);
     }
     if (
-      operation.responses?.json?.contentType !== 'application/json' ||
-      typeof operation.responses.json.schema?.safeParse !== 'function'
+      operation.responses.json !== undefined &&
+      (operation.responses.json.contentType !== 'application/json' ||
+        typeof operation.responses.json.schema?.safeParse !== 'function')
     ) {
       throw new Error(`Invalid JSON response metadata for ${operation.operationId}`);
     }
@@ -116,7 +119,23 @@ function jsonSchema(schema: ZodType, io: 'input' | 'output'): JsonObject {
       unrepresentable: ({ zodSchema }) => (zodSchema instanceof z.ZodUndefined ? { not: {} } : 'throw'),
       override: ({ zodSchema, jsonSchema: generated }) => {
         const target = generated as JsonObject;
-        if (zodSchema === openAIResponsesInputItemTransformSchema) {
+        if (zodSchema === GeminiGenerateContentRequestSchema.shape.contents.element.shape.parts.element) {
+          target.oneOf = Object.entries(target.properties as JsonObject).map(([key, property]) => ({
+            type: 'object',
+            properties: { [key]: property },
+            required: [key],
+          }));
+        } else if (zodSchema === GeminiEmbedContentRequestSchema.shape.embedContentConfig.unwrap().in) {
+          const properties = target.properties as JsonObject;
+          properties.audioTrackExtraction = { not: {} };
+          properties.documentOcr = { not: {} };
+        } else if (zodSchema === GeminiEmbedContentRequestSchema.shape.content) {
+          const properties = target.properties as JsonObject;
+          (properties.parts as JsonObject).contains = {
+            properties: { text: { type: 'string', minLength: 1 } },
+            required: ['text'],
+          };
+        } else if (zodSchema === openAIResponsesInputItemTransformSchema) {
           replaceObject(target, convert(openAIResponsesInputItemSchema));
         } else if (zodSchema === openAIResponsesToolTransformSchema) {
           replaceObject(target, convert(openAIResponsesToolWireSchema));
@@ -233,27 +252,57 @@ function operationObject(operation: DocumentedPublicOperation): JsonObject {
     }
   }
 
+  const media = (entries: readonly { contentType: string; schema: ZodType }[], io: 'input' | 'output') => {
+    const result: Record<string, JsonObject> = {};
+    for (const entry of entries) {
+      if (entry.contentType in result) throw new Error(`Duplicate content type for ${operation.operationId}`);
+      const examples =
+        io === 'output' && entry.contentType !== 'application/json' && entry.schema.meta()?.examples === undefined
+          ? []
+          : schemaExamples(entry.schema, `${operation.operationId} ${entry.contentType}`);
+      result[entry.contentType] = {
+        schema: jsonSchema(entry.schema, io),
+        ...(examples.length > 0 ? { example: examples[0] } : {}),
+      };
+    }
+    return result;
+  };
+  const requests = [
+    ...(operation.request === undefined ? [] : [operation.request]),
+    ...(operation.requestVariants ?? []),
+  ];
+  const responses: Record<string, JsonObject> =
+    Object.keys(content).length === 0 ? {} : { '200': { description: 'Successful response', content } };
+  for (const response of operation.responseVariants ?? []) {
+    if (response.status in responses) throw new Error(`Duplicate response for ${operation.operationId}`);
+    responses[response.status] = {
+      description: response.description,
+      ...(response.content === undefined ? {} : { content: media(response.content, 'output') }),
+      ...(response.headers === undefined ? {} : { headers: response.headers }),
+    };
+  }
   return {
     operationId: operation.operationId,
     summary: message(en, operation.messages.title),
     description,
     tags: [en.tags[operation.tag]],
-    ...(operation.request === undefined
+    ...(operation.parameters === undefined
+      ? {}
+      : {
+          parameters: operation.parameters.map(({ schema, ...parameter }) => ({
+            ...parameter,
+            schema: jsonSchema(schema, 'input'),
+          })),
+        }),
+    ...(requests.length === 0
       ? {}
       : {
           requestBody: {
             required: true,
-            content: {
-              [operation.request.contentType]: { schema: jsonSchema(operation.request.schema, 'input') },
-            },
+            content: media(requests, 'input'),
           },
         }),
-    responses: {
-      '200': {
-        description: 'Successful response',
-        content,
-      },
-    },
+    responses,
   };
 }
 

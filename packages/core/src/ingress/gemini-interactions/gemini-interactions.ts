@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const xorMessage = 'request requires exactly one of model or agent';
 
-const GeminiInteractionsBodySchema = z.compile(
+export const GeminiInteractionsBodySchema = z.compile(
   z
     .object({
       model: z.string().optional(),

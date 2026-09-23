@@ -1,0 +1,173 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "API 参考",
+    "version": "latest"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/videos": {
+      "post": {
+        "description": "通过原始视频能力以 JSON 或 multipart 创建任务。默认 sora-2，prompt 不可为空白。返回任务在当前代理进程中绑定调用者和上游；响应字段由上游决定。",
+        "operationId": "createVideo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "model": "sora-2",
+                "prompt": "A red apple rotating.",
+                "seconds": "4"
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "model": "sora-2",
+                    "prompt": "A red apple rotating.",
+                    "seconds": "4"
+                  }
+                ],
+                "properties": {
+                  "input_reference": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "image_url": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["image_url"],
+                            "type": "object"
+                          },
+                          {
+                            "properties": {
+                              "file_id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["file_id"],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "size": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["prompt"],
+                "type": "object"
+              }
+            },
+            "multipart/form-data": {
+              "example": {
+                "model": "sora-2",
+                "prompt": "A red apple rotating."
+              },
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "examples": [
+                  {
+                    "model": "sora-2",
+                    "prompt": "A red apple rotating."
+                  }
+                ],
+                "properties": {
+                  "input_reference": {
+                    "description": "Binary bytes, not a JSON string.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "size": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["prompt"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "created_at": 0,
+                  "id": "video_example",
+                  "model": "sora-2",
+                  "object": "video",
+                  "status": "queued"
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": {},
+                  "description": "Upstream JSON object; fields depend on the selected provider. See the example and compatibility notes.",
+                  "examples": [
+                    {
+                      "created_at": 0,
+                      "id": "video_example",
+                      "model": "sora-2",
+                      "object": "video",
+                      "status": "queued"
+                    }
+                  ],
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Upstream successful video response; status and fields depend on the provider."
+          }
+        },
+        "summary": "创建视频",
+        "tags": ["OpenAI 兼容接口"]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OpenAI 兼容接口",
+      "x-tag-id": "OpenAI"
+    }
+  ]
+}

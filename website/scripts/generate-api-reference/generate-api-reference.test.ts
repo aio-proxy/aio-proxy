@@ -188,16 +188,40 @@ describe('generateApiReferenceFiles', () => {
     expect(widgetPage).toContain('**Responses:** `201 application/json`, `201 text/event-stream`');
 
     expect(JSON.parse(await read(root, 'docs/en/api/_meta.json'))).toEqual([
-      { type: 'section-header', label: 'Models' },
-      { type: 'file', name: 'list-models', label: 'List models' },
-      { type: 'section-header', label: 'OpenAI-compatible' },
-      { type: 'file', name: 'create-widget', label: 'Create a widget' },
+      { type: 'file', name: 'overview', label: 'Overview' },
+      { type: 'section-header', label: 'API Reference' },
+      {
+        type: 'custom-link',
+        label: 'Models',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/list-models', label: 'List models', tag: 'GET' }],
+      },
+      {
+        type: 'custom-link',
+        label: 'OpenAI-compatible',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/create-widget', label: 'Create a widget', tag: 'POST' }],
+      },
     ]);
     expect(JSON.parse(await read(root, 'docs/zh/api/_meta.json'))).toEqual([
-      { type: 'section-header', label: '模型' },
-      { type: 'file', name: 'list-models', label: '列出模型' },
-      { type: 'section-header', label: 'OpenAI 兼容接口' },
-      { type: 'file', name: 'create-widget', label: '创建小部件' },
+      { type: 'file', name: 'overview', label: '概览' },
+      { type: 'section-header', label: 'API 参考' },
+      {
+        type: 'custom-link',
+        label: '模型',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/list-models', label: '列出模型', tag: 'GET' }],
+      },
+      {
+        type: 'custom-link',
+        label: 'OpenAI 兼容接口',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/create-widget', label: '创建小部件', tag: 'POST' }],
+      },
     ]);
 
     const enDocument = JSON.parse(await read(root, 'src/generated/operations/en/list-models.json'));
@@ -237,7 +261,7 @@ describe('generateApiReferenceFiles', () => {
     expect(after.mtimeMs).toBe(before.mtimeMs);
   });
 
-  test('groups interleaved operations under localized section headers ordered by the first group entry', async () => {
+  test('groups operations by localized resource with method badges and stable links', async () => {
     const root = await mkdtemp(join(tmpdir(), 'aio-proxy-api-reference-'));
     const operations = [
       ['createResponse', '/v1/responses', 'responses', 'OpenAI', 0],
@@ -282,22 +306,68 @@ describe('generateApiReferenceFiles', () => {
     });
 
     expect(JSON.parse(await read(root, 'docs/en/api/_meta.json'))).toEqual([
-      { type: 'section-header', label: 'OpenAI-compatible' },
-      { type: 'file', name: 'responses', label: 'Create a response' },
-      { type: 'file', name: 'chat-completions', label: 'Create a chat completion' },
-      { type: 'section-header', label: 'Anthropic-compatible' },
-      { type: 'file', name: 'messages', label: 'Create a message' },
-      { type: 'section-header', label: 'Models' },
-      { type: 'file', name: 'list-models', label: 'List models' },
+      { type: 'file', name: 'overview', label: 'Overview' },
+      { type: 'section-header', label: 'API Reference' },
+      {
+        type: 'custom-link',
+        label: 'Responses',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/responses', label: 'Create a response', tag: 'POST' }],
+      },
+      {
+        type: 'custom-link',
+        label: 'Messages',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/messages', label: 'Create a message', tag: 'POST' }],
+      },
+      {
+        type: 'custom-link',
+        label: 'Chat',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/chat-completions', label: 'Create a chat completion', tag: 'POST' }],
+      },
+      {
+        type: 'custom-link',
+        label: 'Models',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/list-models', label: 'List models', tag: 'GET' }],
+      },
     ]);
     expect(JSON.parse(await read(root, 'docs/zh/api/_meta.json'))).toEqual([
-      { type: 'section-header', label: 'OpenAI 兼容接口' },
-      { type: 'file', name: 'responses', label: '创建响应' },
-      { type: 'file', name: 'chat-completions', label: '创建聊天补全' },
-      { type: 'section-header', label: 'Anthropic 兼容接口' },
-      { type: 'file', name: 'messages', label: '创建消息' },
-      { type: 'section-header', label: '模型' },
-      { type: 'file', name: 'list-models', label: '列出模型' },
+      { type: 'file', name: 'overview', label: '概览' },
+      { type: 'section-header', label: 'API 参考' },
+      {
+        type: 'custom-link',
+        label: 'Responses',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/responses', label: '创建响应', tag: 'POST' }],
+      },
+      {
+        type: 'custom-link',
+        label: 'Anthropic 消息',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/messages', label: '创建消息', tag: 'POST' }],
+      },
+      {
+        type: 'custom-link',
+        label: '聊天补全',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/chat-completions', label: '创建聊天补全', tag: 'POST' }],
+      },
+      {
+        type: 'custom-link',
+        label: '模型',
+        collapsible: true,
+        collapsed: false,
+        items: [{ type: 'custom-link', link: '/api/list-models', label: '列出模型', tag: 'GET' }],
+      },
     ]);
   });
 
@@ -356,57 +426,6 @@ describe('generateApiReferenceFiles', () => {
       expect(zhDescription).toMatch(/原始请求/u);
       expect(zhDescription).toMatch(/转换/u);
     }
-  });
-
-  test('qualifies mixed-content guidance while preserving loopback use in both locales', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'aio-proxy-api-reference-'));
-    const operation = {
-      classification: 'documented',
-      method: 'post',
-      path: '/v1/chat/completions',
-      operationId: 'createChatCompletion',
-      slug: 'chat-completions',
-      tag: 'OpenAI',
-      navOrder: 0,
-      messages: {
-        title: 'operations.createChatCompletion.title',
-        description: 'operations.createChatCompletion.description',
-      },
-      responses: {},
-    } as const satisfies DocumentedPublicOperation;
-
-    await generateApiReferenceFiles({
-      root,
-      check: false,
-      operations: [operation],
-      catalogs: { en, zh },
-      document: {
-        openapi: '3.1.0',
-        info: { title: 'Fixture API', version: 'latest' },
-        paths: {
-          '/v1/chat/completions': {
-            post: { operationId: 'createChatCompletion', responses: { '200': { description: 'OK' } } },
-          },
-        },
-      } as OpenApiDocument,
-    });
-
-    const enDocument = JSON.parse(await read(root, 'src/generated/operations/en/chat-completions.json'));
-    const zhDocument = JSON.parse(await read(root, 'src/generated/operations/zh/chat-completions.json'));
-    const enDescription = enDocument.paths['/v1/chat/completions'].post.description as string;
-    const zhDescription = zhDocument.paths['/v1/chat/completions'].post.description as string;
-
-    expect(enDescription).toContain('must allow cross-origin requests');
-    expect(enDescription).toContain('browser local-network access controls may also apply');
-    expect(enDescription).toContain('insecure remote HTTP servers are blocked as mixed content');
-    expect(enDescription).toContain('`http://127.0.0.1` and `http://localhost` are treated as secure local resources');
-    expect(enDescription).not.toContain('cannot call an HTTP server');
-
-    expect(zhDescription).toContain('必须允许跨源请求');
-    expect(zhDescription).toContain('浏览器的本地网络访问控制也可能适用');
-    expect(zhDescription).toContain('不安全的远程 HTTP 服务会作为混合内容被阻止');
-    expect(zhDescription).toContain('`http://127.0.0.1` 和 `http://localhost` 等回环地址会按安全的本地资源处理');
-    expect(zhDescription).not.toContain('无法调用 HTTP 服务');
   });
 
   test('removes only stale manifest-owned outputs', async () => {
