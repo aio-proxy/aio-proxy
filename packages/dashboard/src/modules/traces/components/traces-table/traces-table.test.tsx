@@ -1,4 +1,4 @@
-import type { DashboardTraceSummary } from '@aio-proxy/types';
+import type { DashboardPluginSummary, DashboardTraceSummary } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as ReactTable from '@tanstack/react-table';
@@ -210,5 +210,94 @@ describe('traces table', () => {
     expect(label.textContent).toBe('Carpool');
     expect(within(label).queryByText('C')).toBeNull();
     expect(screen.queryByText('provider-a')).toBeNull();
+  });
+
+  test('shows OAuth services with their account labels without repeating identical names', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(queryKeys.providers, {
+      providers: [
+        providerStub({
+          id: 'chatgpt-provider',
+          plugin: '@aio-proxy/plugin-openai-chatgpt',
+          capability: 'default',
+          accountLabel: 'shared@example.com',
+        }),
+        providerStub({
+          id: 'grok-provider',
+          name: 'xAI Grok',
+          plugin: '@aio-proxy/plugin-xai-grok',
+          capability: 'default',
+          accountLabel: 'shared@example.com',
+        }),
+        providerStub({
+          id: 'openrouter-provider',
+          plugin: '@aio-proxy/plugin-openrouter',
+          capability: 'default',
+          accountLabel: 'OpenRouter',
+        }),
+      ],
+      routingRevision: '1',
+    });
+    client.setQueryData(queryKeys.plugins, {
+      plugins: [
+        {
+          packageName: '@aio-proxy/plugin-openai-chatgpt',
+          displayName: 'OpenAI ChatGPT',
+          builtin: true,
+          enabled: true,
+          hasOptions: false,
+          state: { status: 'ready' },
+        },
+        {
+          packageName: '@aio-proxy/plugin-xai-grok',
+          displayName: 'xAI Grok',
+          builtin: true,
+          enabled: true,
+          hasOptions: false,
+          state: { status: 'ready' },
+        },
+        {
+          packageName: '@aio-proxy/plugin-openrouter',
+          displayName: 'OpenRouter',
+          builtin: true,
+          enabled: true,
+          hasOptions: false,
+          state: { status: 'ready' },
+        },
+      ] satisfies DashboardPluginSummary[],
+    });
+    const grokTrace = { ...trace, traceId: 'c'.repeat(32), finalProviderId: 'grok-provider' };
+    const openrouterTrace = { ...trace, traceId: 'd'.repeat(32), finalProviderId: 'openrouter-provider' };
+    renderRtl(
+      <QueryClientProvider client={client}>
+        <TracesTable
+          data={{ items: [{ ...trace, finalProviderId: 'chatgpt-provider' }, grokTrace, openrouterTrace] }}
+          isFetching={false}
+          pageSize={20}
+          newItemsCount={0}
+          onAcceptNewItems={rs.fn()}
+          onShowSizeChange={rs.fn()}
+          onPrevious={rs.fn()}
+          onNext={rs.fn()}
+          onSelect={rs.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    const chatgptCell = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole(
+      'cell',
+    )[4];
+    const grokCell = within(screen.getByRole('button', { name: new RegExp(grokTrace.traceId, 'u') })).getAllByRole(
+      'cell',
+    )[4];
+    const openrouterCell = within(
+      screen.getByRole('button', { name: new RegExp(openrouterTrace.traceId, 'u') }),
+    ).getAllByRole('cell')[4];
+    expect(chatgptCell).toHaveTextContent('OpenAI ChatGPT');
+    expect(chatgptCell).toHaveTextContent('shared@example.com');
+    expect(grokCell).toHaveTextContent('xAI Grok');
+    expect(grokCell).toHaveTextContent('shared@example.com');
+    expect(within(grokCell).getByTitle('grok-provider')).toHaveClass('inline-block', 'min-w-0', 'max-w-48', 'truncate');
+    expect(openrouterCell.textContent).toBe('OpenRouter');
   });
 });

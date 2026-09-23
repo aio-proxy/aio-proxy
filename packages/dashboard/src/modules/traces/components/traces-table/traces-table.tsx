@@ -1,5 +1,10 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardProviderSummary, DashboardTraceSummary } from '@aio-proxy/types';
+import {
+  type DashboardPluginSummary,
+  type DashboardProviderSummary,
+  type DashboardTraceSummary,
+  ProviderKind,
+} from '@aio-proxy/types';
 import { ScrollArea, ScrollBar } from '@aio-proxy/ui/components/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
@@ -7,6 +12,7 @@ import { useMemo } from 'react';
 
 import { Pagination } from '@/components/data-table/pagination';
 import { ProviderIdLabel } from '@/components/provider-id-label';
+import { resolveDashboardText } from '@/lib/localized-text';
 
 import { useProviderCatalog } from '../../hooks/use-provider-catalog';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
@@ -36,7 +42,25 @@ const tracesTableFeatures = tableFeatures({});
 
 type TraceColumn = ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>;
 
-const traceColumns = (providers: readonly DashboardProviderSummary[] | undefined): TraceColumn[] => [
+const oauthServiceLabel = (
+  provider: DashboardProviderSummary | undefined,
+  plugins: readonly DashboardPluginSummary[] | undefined,
+): string | undefined => {
+  if (provider?.kind !== ProviderKind.OAuth || provider.plugin === undefined) return undefined;
+  const plugin = plugins?.find((item) => item.packageName === provider.plugin);
+  const service =
+    plugin?.displayName === undefined
+      ? provider.plugin.slice(provider.plugin.lastIndexOf('/') + 1)
+      : resolveDashboardText(plugin.displayName);
+  return provider.capability === undefined || provider.capability === 'default'
+    ? service
+    : `${service} / ${provider.capability}`;
+};
+
+const traceColumns = (
+  providers: readonly DashboardProviderSummary[] | undefined,
+  plugins: readonly DashboardPluginSummary[] | undefined,
+): TraceColumn[] => [
   {
     accessorKey: 'startedAt',
     header: () => m['dashboard.traces.started_at'](),
@@ -74,17 +98,30 @@ const traceColumns = (providers: readonly DashboardProviderSummary[] | undefined
   {
     accessorKey: 'finalProviderId',
     header: () => m['dashboard.traces.provider'](),
-    cell: ({ row }) =>
-      row.original.finalProviderId === undefined ? (
-        TRACE_PLACEHOLDER
-      ) : (
-        <ProviderIdLabel
-          providerId={row.original.finalProviderId}
-          providers={providers}
-          mark={false}
-          className="max-w-48"
-        />
-      ),
+    cell: ({ row }) => {
+      const providerId = row.original.finalProviderId;
+      if (providerId === undefined) return TRACE_PLACEHOLDER;
+      const provider = providers?.find((item) => item.id === providerId);
+      const service = oauthServiceLabel(provider, plugins);
+      const accountLabel = provider?.accountLabel;
+      const label =
+        accountLabel === undefined ? (
+          <ProviderIdLabel providerId={providerId} providers={providers} mark={false} className="max-w-48" />
+        ) : (
+          <span className="inline-block max-w-48 min-w-0 truncate" title={providerId}>
+            {accountLabel}
+          </span>
+        );
+      if (service === undefined || accountLabel === undefined || service === accountLabel) return label;
+      return (
+        <span className="inline-flex max-w-48 min-w-0 flex-col leading-tight">
+          <span className="truncate font-medium" title={service}>
+            {service}
+          </span>
+          <span className="text-xs text-muted-foreground">{label}</span>
+        </span>
+      );
+    },
   },
   {
     accessorKey: 'finalHttpStatus',
@@ -133,7 +170,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({
   onSelect,
 }) => {
   const catalog = useProviderCatalog();
-  const columns = useMemo(() => traceColumns(catalog.providers), [catalog.providers]);
+  const columns = useMemo(() => traceColumns(catalog.providers, catalog.plugins), [catalog.providers, catalog.plugins]);
   const tableData = useMemo(() => [...data.items], [data.items]);
   const table = useTable({
     features: tracesTableFeatures,
