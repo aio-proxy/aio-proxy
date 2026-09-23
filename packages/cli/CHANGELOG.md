@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.31.0
+
+### Patch Changes
+
+- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks [@baranwang](https://github.com/baranwang)! - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
+- Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0), [`fd01333`](https://github.com/aio-proxy/aio-proxy/commit/fd01333243b264180db8480a1220909b39af72ae)]:
+  - @aio-proxy/plugin-sdk@0.31.0
+  - @aio-proxy/core@0.31.0
+  - @aio-proxy/server@0.31.0
+  - @aio-proxy/i18n@0.31.0
+  - @aio-proxy/dashboard@0.31.0
+  - @aio-proxy/logger@0.31.0
+  - @aio-proxy/opencode-provider@0.31.0
+  - @aio-proxy/pi-provider@0.31.0
+  - @aio-proxy/agent-provider-runtime@0.31.0
+  - @aio-proxy/shared@0.31.0
+  - @aio-proxy/types@0.31.0
+
 ## 0.30.0
 
 ### Patch Changes

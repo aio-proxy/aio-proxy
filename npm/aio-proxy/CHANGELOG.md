@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.31.0
+
+### Minor Changes
+
+- [#410](https://github.com/aio-proxy/aio-proxy/pull/410) [`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b) Thanks [@baranwang](https://github.com/baranwang)! - Configure ChatGPT's User-Agent once on the Plugins page for all ChatGPT providers, without signing in again. The default follows the latest stable Codex version through cached, proxy-aware npm and GitHub lookups, with a fallback when both fail. Plugin options support simple Handlebars variables such as `{{latest_codex_rs_version}}`, and plugin form fields can declare default values. Previously saved provider-level User-Agent values are ignored.
+
+### Patch Changes
+
+- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks [@baranwang](https://github.com/baranwang)! - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
+
+- [#411](https://github.com/aio-proxy/aio-proxy/pull/411) [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0) Thanks [@baranwang](https://github.com/baranwang)! - The OpenTelemetry destination form is now translated. Header rows can be removed, and only the first header or API key row shows field labels.
+
+- [#409](https://github.com/aio-proxy/aio-proxy/pull/409) [`fd01333`](https://github.com/aio-proxy/aio-proxy/commit/fd01333243b264180db8480a1220909b39af72ae) Thanks [@baranwang](https://github.com/baranwang)! - The trace list and the trace detail header show a Provider by its configured name, or account label, with the Provider ID on hover. They no longer draw the provider mark next to that name.
+
 ## 0.30.0
 
 ### Minor Changes
