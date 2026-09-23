@@ -23,23 +23,26 @@ export const OpenAICompletionsResponseSchema = z
     object: z.literal('chat.completion').optional(),
     created: z.number().int().optional(),
     model: z.string().optional(),
-    choices: z.array(
-      z
-        .object({
-          finish_reason: z.string().optional(),
-          index: z.number().int().optional(),
-          logprobs: z.unknown().nullable().optional(),
-          message: z
-            .object({
-              role: z.literal('assistant'),
-              content: z.string().nullable(),
-              refusal: z.string().nullable().optional(),
-              tool_calls: z.array(toolCallSchema).optional(),
-            })
-            .loose(),
-        })
-        .loose(),
-    ),
+    // Same-protocol failover can forward a JSON object that has no choices array.
+    choices: z
+      .array(
+        z
+          .object({
+            finish_reason: z.string().optional(),
+            index: z.number().int().optional(),
+            logprobs: z.unknown().nullable().optional(),
+            message: z
+              .object({
+                role: z.literal('assistant'),
+                content: z.string().nullable(),
+                refusal: z.string().nullable().optional(),
+                tool_calls: z.array(toolCallSchema).optional(),
+              })
+              .loose(),
+          })
+          .loose(),
+      )
+      .optional(),
     usage: usageSchema.optional(),
   })
   .loose()

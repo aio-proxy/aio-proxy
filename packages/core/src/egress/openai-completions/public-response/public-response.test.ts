@@ -62,6 +62,7 @@ test('accepts sparse raw chat choices and stream envelopes', () => {
     choices: [{ message: { role: 'assistant', content: 'fallback ok' } }],
   };
   const choicesOnly = { choices: [{ message: { role: 'assistant', content: 'fallback ok' } }] };
+  const choiceLess = { fallback: true };
   const event = {
     id: 'chatcmpl-upstream',
     choices: [{ delta: { content: 'fallback' }, index: 0, finish_reason: null }],
@@ -70,6 +71,7 @@ test('accepts sparse raw chat choices and stream envelopes', () => {
 
   expect(OpenAICompletionsResponseSchema.parse(response)).toEqual(response);
   expect(OpenAICompletionsResponseSchema.parse(choicesOnly)).toEqual(choicesOnly);
+  expect(OpenAICompletionsResponseSchema.parse(choiceLess)).toEqual(choiceLess);
   expect(OpenAICompletionsStreamEventSchema.parse(event)).toEqual(event);
   expect(OpenAICompletionsStreamEventSchema.parse(omittedFinish)).toEqual(omittedFinish);
 });

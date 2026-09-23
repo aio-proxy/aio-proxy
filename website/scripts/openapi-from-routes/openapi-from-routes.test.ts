@@ -496,6 +496,11 @@ test('documents server-tool blocks in raw Anthropic responses', async () => {
   expect(response.safeParse({ fallback: true }).success).toBe(true);
 });
 
+test('documents raw text embedding responses', async () => {
+  const content = (await loadPublicOpenApi()).paths['/v1/embeddings']?.post?.responses['2XX']?.content;
+  expect(content).toContainKeys(['application/json', 'text/plain']);
+});
+
 test('documents raw chat completions without created or model fields', async () => {
   const schema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['2XX']?.content?.[
     'application/json'
@@ -514,6 +519,7 @@ test('documents raw chat completions without created or model fields', async () 
   expect(response.safeParse({ choices: [{ message: { role: 'assistant', content: 'fallback ok' } }] }).success).toBe(
     true,
   );
+  expect(response.safeParse({ fallback: true }).success).toBe(true);
 
   const streamSchema = (await loadPublicOpenApi()).paths['/v1/chat/completions']?.post?.responses['2XX']?.content?.[
     'text/event-stream'

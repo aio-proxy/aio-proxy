@@ -101,6 +101,7 @@ export const additionalOperations = [
           },
         ),
       ),
+      textContent('text/plain', 'raw text'),
     ),
   }),
   operation('post', '/v1/responses/compact', 'compactResponse', 'compact-response', 'OpenAI', 6, {
