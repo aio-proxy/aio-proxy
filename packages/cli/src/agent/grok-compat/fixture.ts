@@ -275,7 +275,8 @@ export async function createGrokCompatFixture(options: GrokCompatOptions): Promi
       : ([
           sandbox,
           '-p',
-          `(version 1)(allow default)(deny network*)(allow network* (remote ip "localhost:*") (remote ip "127.0.0.1:*") (local ip "localhost:*") (local ip "127.0.0.1:*"))`,
+          // A local-ip allowance also permits outbound Internet traffic under sandbox-exec.
+          `(version 1)(allow default)(deny network*)(allow network-outbound (remote ip "localhost:*"))`,
         ] as const);
   return {
     root,

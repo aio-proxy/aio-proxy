@@ -677,7 +677,13 @@ test('rebinds a renamed command identity before recovering authorization', async
 test('rebinds a command installation when the managed Provider ID changes', async () => {
   const { root, location } = await fixture();
   const endpoint = 'http://127.0.0.1:9317';
+  const previousFetch = globalThis.fetch;
   try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+      if (path === '/v1/models') return Response.json({ object: 'list', data: [] });
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch;
     let installationId = '';
     await withCodexInstallation(location, AbortSignal.timeout(10_000), async (lease) => {
       const installation = await prepareCodexCommandInstallation(
@@ -721,6 +727,7 @@ test('rebinds a command installation when the managed Provider ID changes', asyn
     await expect(readCodexCommandIdentity(location)).resolves.toMatchObject({ providerId: 'new-id' });
     await expect(inspectCodexConfig(location)).resolves.toMatchObject({ providerId: 'new-id', authMode: 'command' });
   } finally {
+    globalThis.fetch = previousFetch;
     await rm(root, { recursive: true, force: true });
   }
 });
