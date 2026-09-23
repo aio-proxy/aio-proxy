@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { DashboardOAuthFormFieldSchema } from '../dashboard-oauth';
 import { ProviderKind, ProviderProtocol } from '../provider';
 import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from '../usage';
 import {
@@ -103,6 +104,34 @@ test('preserves configured API and AI SDK display fields in dashboard summaries'
   expect(DashboardProviderSummarySchema.parse(api)).toEqual(api);
   expect(DashboardProviderSummarySchema.parse(aiSdk)).toEqual(aiSdk);
   expect(DashboardProviderSummarySchema.parse(aiSdk).protocols).toEqual([]);
+});
+
+test('dashboard OAuth form keeps provider targets and strict conditions', () => {
+  const provider = {
+    type: 'provider',
+    key: 'providerId',
+    label: 'Provider',
+    when: { key: 'strategy', notEquals: 'default' },
+  } as const;
+  const model = {
+    type: 'provider-model',
+    key: 'modelId',
+    label: 'Model',
+    providerKey: 'providerId',
+    when: { key: 'strategy', notEquals: 'default' },
+  } as const;
+
+  expect(DashboardOAuthFormFieldSchema.parse(provider)).toEqual(provider);
+  expect(DashboardOAuthFormFieldSchema.parse(model)).toEqual(model);
+  expect(
+    DashboardOAuthFormFieldSchema.safeParse({
+      ...provider,
+      when: { key: 'strategy', equals: 'default', notEquals: 'default' },
+    }).success,
+  ).toBe(false);
+  expect(DashboardOAuthFormFieldSchema.safeParse({ ...model, providerKey: '' }).success).toBe(false);
+  expect(DashboardOAuthFormFieldSchema.safeParse({ ...model, providerKey: ' providerId ' }).success).toBe(false);
+  expect(DashboardOAuthFormFieldSchema.safeParse({ ...provider, providers: [] }).success).toBe(false);
 });
 
 test('requires protocols and hasQuota on every summary', () => {

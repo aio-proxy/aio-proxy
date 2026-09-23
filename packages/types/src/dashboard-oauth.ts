@@ -13,10 +13,11 @@ import { validateAliasTargets } from './provider-alias';
 import { AuthoredOAuthAliasSchema } from './provider-alias/oauth-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
-const DashboardOAuthFormConditionSchema = z.strictObject({
-  key: z.string().min(1),
-  equals: z.union([z.string(), z.number(), z.boolean(), z.null()]),
-});
+const dashboardOAuthConditionValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const DashboardOAuthFormConditionSchema = z.union([
+  z.strictObject({ key: z.string().min(1), equals: dashboardOAuthConditionValue }),
+  z.strictObject({ key: z.string().min(1), notEquals: dashboardOAuthConditionValue }),
+]);
 
 const DashboardOAuthFormFieldBaseSchema = z.object({
   key: z.string().min(1),
@@ -37,6 +38,14 @@ export const DashboardOAuthFormFieldSchema = z.discriminatedUnion('type', [
   dashboardOAuthFormField({ type: z.literal('secret'), configured: z.boolean().default(false) }),
   dashboardOAuthFormField({ type: z.literal('number'), placeholder: DashboardLocalizedTextSchema.optional() }),
   dashboardOAuthFormField({ type: z.literal('boolean'), defaultValue: z.boolean().optional() }),
+  dashboardOAuthFormField({ type: z.literal('provider') }),
+  dashboardOAuthFormField({
+    type: z.literal('provider-model'),
+    providerKey: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim() === value),
+  }),
   dashboardOAuthFormField({
     type: z.literal('select'),
     defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),

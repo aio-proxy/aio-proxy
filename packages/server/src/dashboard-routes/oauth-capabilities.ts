@@ -1,12 +1,24 @@
 import type { PluginRegistry } from '@aio-proxy/core';
 import type { FormField, JsonValue } from '@aio-proxy/plugin-sdk';
-import { type DashboardOAuthCapability, DashboardOAuthCapabilitySchema } from '@aio-proxy/types';
+import {
+  type DashboardOAuthCapability,
+  DashboardOAuthCapabilitySchema,
+  type DashboardOAuthFormField,
+  DashboardOAuthFormFieldSchema,
+} from '@aio-proxy/types';
 
 const fieldDefault = (field: FormField): JsonValue | undefined =>
   'defaultValue' in field && field.defaultValue !== undefined ? field.defaultValue : undefined;
 
-export const dashboardOAuthForm = (form: readonly FormField[], configuredSecrets: ReadonlySet<string> = new Set()) =>
-  form.map((field) => (field.type === 'secret' ? { ...field, configured: configuredSecrets.has(field.key) } : field));
+export const dashboardOAuthForm = (
+  form: readonly FormField[],
+  configuredSecrets: ReadonlySet<string> = new Set(),
+): readonly DashboardOAuthFormField[] =>
+  form.map((field) =>
+    DashboardOAuthFormFieldSchema.parse(
+      field.type === 'secret' ? { ...field, configured: configuredSecrets.has(field.key) } : field,
+    ),
+  );
 
 export const dashboardOAuthCapabilities = (registry: PluginRegistry): readonly DashboardOAuthCapability[] =>
   registry.oauthCapabilities().map(({ plugin, capability, adapter }) =>
