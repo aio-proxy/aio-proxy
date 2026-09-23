@@ -7,7 +7,7 @@ import type {
 } from '@aio-proxy/plugin-sdk';
 import { RealtimeDialError } from '@aio-proxy/plugin-sdk';
 
-import { type ChatGPTAccountOptions, resolveChatGPTUserAgent } from '../account-options';
+import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
 import { currentCredential } from './runtime';
 
@@ -56,7 +56,7 @@ export type RealtimeWebSocketFactory = (
 export type RealtimeTransportOptions = {
   readonly fetch: RuntimeFetch;
   readonly proxy: string | null;
-  readonly accountOptions?: Partial<ChatGPTAccountOptions>;
+  readonly pluginOptions?: Partial<ChatGPTPluginOptions>;
   /** Seam for tests. Production passes Bun's global `WebSocket`, whose `proxy`
    *  option issues a `CONNECT` — a plugin-constructed socket inherits nothing
    *  from `createProxyFetch`, so the proxy must be passed here explicitly. */
@@ -88,7 +88,7 @@ async function realtimeFetch(
   if (endpoint === undefined) throw new Error(`Unmapped realtime path: ${inbound.pathname}`);
   const url = mergeEndpointQuery(endpoint, inbound);
   const credential = await credentialForFetch(credentials, options, request.signal);
-  const headers = realtimeHeaders(request.headers, credential, options.accountOptions);
+  const headers = await realtimeHeaders(request.headers, credential, options.pluginOptions);
   const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
   return await options.fetch(url.toString(), {
     method: request.method,
@@ -145,11 +145,11 @@ function abortError(): Error {
 
 /** Caller credentials are already stripped by the auth middleware; this deletes
  *  them again so a direct unit call cannot leak one, then adds Codex auth. */
-function realtimeHeaders(
+async function realtimeHeaders(
   inbound: Headers,
   credential: ChatGPTCredential,
-  accountOptions?: Partial<ChatGPTAccountOptions>,
-): Headers {
+  pluginOptions?: Partial<ChatGPTPluginOptions>,
+): Promise<Headers> {
   const headers = new Headers();
   const contentType = inbound.get('content-type');
   const accept = inbound.get('accept');
@@ -166,7 +166,7 @@ function realtimeHeaders(
     throw new Error('Codex credential is not a valid header value');
   }
   headers.set('Originator', 'codex-tui');
-  headers.set('User-Agent', resolveChatGPTUserAgent(accountOptions, null));
+  headers.set('User-Agent', (await resolveChatGPTRequestIdentity(pluginOptions, null)).userAgent);
   headers.set('session-id', crypto.randomUUID());
   return headers;
 }
@@ -289,7 +289,7 @@ async function dialWithDeadline(
       authorization: `Bearer ${credential.accessToken}`,
       'ChatGPT-Account-Id': credential.accountId,
       Originator: 'codex-tui',
-      'User-Agent': resolveChatGPTUserAgent(options.accountOptions, null),
+      'User-Agent': (await resolveChatGPTRequestIdentity(options.pluginOptions, null)).userAgent,
       'session-id': crypto.randomUUID(),
     },
   };

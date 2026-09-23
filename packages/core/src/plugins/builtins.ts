@@ -128,6 +128,10 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         ),
         adapterLabel: localized('Login with ChatGPT (Plus/Pro)', '使用 ChatGPT（Plus/Pro）登录'),
         userAgentLabel: localized('User agent', 'User agent'),
+        userAgentDescription: localized(
+          'Leave blank to use the default. {latest_codex_rs_version} is replaced with the latest Codex release, which is also sent as the catalog client version.',
+          '留空则使用默认值。{latest_codex_rs_version} 会替换为最新的 Codex 版本，并同时作为模型目录的 client version。',
+        ),
         userAgentPolicyLabel: localized('User agent policy', 'User agent 策略'),
         fixedPolicyLabel: localized('Always use the configured user agent', '始终使用配置的 user agent'),
         preserveCodexClientLabel: localized('Keep the user agent from Codex clients', '保留 Codex 客户端的 user agent'),

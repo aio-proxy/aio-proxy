@@ -257,6 +257,42 @@ test('clears unsaved replacement secrets and mutation errors before options can 
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
+test('shows text and select defaults without saving them until they change', async () => {
+  mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
+  mocks.editView = {
+    packageName: '@example/plugin',
+    revision: 'sha256:current',
+    publicValues: {},
+    form: [
+      { defaultValue: 'codex-tui/{latest_codex_rs_version}', key: 'userAgent', label: 'User agent', type: 'text' },
+      {
+        defaultValue: 'fixed',
+        key: 'userAgentPolicy',
+        label: 'User agent policy',
+        options: [
+          { label: 'Fixed', value: 'fixed' },
+          { label: 'Preserve', value: 'preserve' },
+        ],
+        type: 'select',
+      },
+    ],
+  };
+
+  render(<PluginsPage />);
+  fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
+
+  expect(await screen.findByLabelText('User agent')).toHaveValue('codex-tui/{latest_codex_rs_version}');
+  expect(screen.getByRole('combobox', { name: 'User agent policy' })).toHaveTextContent('fixed');
+  fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
+
+  await waitFor(() => {
+    expect(mocks.options.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ publicValues: {} }),
+      expect.any(Object),
+    );
+  });
+});
+
 test('uses effective defaults when evaluating conditional option fields', async () => {
   mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
   mocks.editView = {

@@ -96,7 +96,7 @@ test('realtime fetch and dial use the configured fixed user agent', async () => 
       return new Response('v=0', { status: 200 });
     }) as typeof fetch,
     proxy: null,
-    accountOptions: { userAgent: 'custom-agent' },
+    pluginOptions: { userAgent: 'custom-agent' },
     createWebSocket: (_url: string, init: { readonly headers: Record<string, string> }) => {
       dialHeaders.push(init.headers);
       return openSocketStub();

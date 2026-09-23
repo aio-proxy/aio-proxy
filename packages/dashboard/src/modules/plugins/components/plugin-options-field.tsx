@@ -75,11 +75,12 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
   }
 
   if (field.type === 'select') {
+    const selected = current === undefined ? field.defaultValue : current;
     return (
       <Field>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <Select
-          value={current === undefined ? '' : optionValue(current as string | number | boolean)}
+          value={selected === undefined ? '' : optionValue(selected as string | number | boolean)}
           onValueChange={(value) => setPublic(value === null ? undefined : JSON.parse(value))}
         >
           <SelectTrigger id={id} aria-describedby={descriptionId}>
@@ -127,6 +128,7 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
     );
   }
 
+  const displayed = current === undefined && field.type === 'text' ? field.defaultValue : current;
   return (
     <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -134,7 +136,7 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
         id={id}
         aria-describedby={descriptionId}
         type={field.type === 'number' ? 'number' : 'text'}
-        value={typeof current === 'string' || typeof current === 'number' ? current : ''}
+        value={typeof displayed === 'string' || typeof displayed === 'number' ? displayed : ''}
         placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
         onChange={(event) => {
           let value: string | number | undefined = event.target.value;

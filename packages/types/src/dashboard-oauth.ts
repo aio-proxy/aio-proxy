@@ -29,12 +29,17 @@ const dashboardOAuthFormField = <T extends z.ZodRawShape>(shape: T) =>
   z.strictObject({ ...DashboardOAuthFormFieldBaseSchema.shape, ...shape });
 
 export const DashboardOAuthFormFieldSchema = z.discriminatedUnion('type', [
-  dashboardOAuthFormField({ type: z.literal('text'), placeholder: DashboardLocalizedTextSchema.optional() }),
+  dashboardOAuthFormField({
+    type: z.literal('text'),
+    placeholder: DashboardLocalizedTextSchema.optional(),
+    defaultValue: z.string().optional(),
+  }),
   dashboardOAuthFormField({ type: z.literal('secret'), configured: z.boolean().default(false) }),
   dashboardOAuthFormField({ type: z.literal('number'), placeholder: DashboardLocalizedTextSchema.optional() }),
   dashboardOAuthFormField({ type: z.literal('boolean'), defaultValue: z.boolean().optional() }),
   dashboardOAuthFormField({
     type: z.literal('select'),
+    defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
     options: z.array(
       z.strictObject({
         value: z.union([z.string(), z.number(), z.boolean()]),

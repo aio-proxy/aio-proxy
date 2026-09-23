@@ -9,9 +9,9 @@ import {
 
 import packageJson from '../package.json' with { type: 'json' };
 import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '../src';
-import type { ChatGPTAccountOptions } from '../src/account-options';
-import { CHATGPT_USER_AGENT } from '../src/codex-client';
+import { DEFAULT_CHATGPT_USER_AGENT } from '../src/codex-client';
 import { base64url } from '../src/pkce';
+import type { ChatGPTPluginOptions } from '../src/plugin-options';
 
 const originalFetch = globalThis.fetch;
 
@@ -31,26 +31,22 @@ describe('OpenAI ChatGPT plugin', () => {
     expect(OPENAI_CHATGPT_PLUGIN_VERSION).toBe(packageJson.version);
   });
 
-  test('defaults a missing user agent and policy, and trims a blank user agent', async () => {
+  test('keeps account options empty so a stored user agent does not belong to the provider', async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
+    const pluginOptions = openAIChatGPTPlugin.metadata.options;
+    if (pluginOptions === undefined) throw new Error('ChatGPT plugin options are missing');
 
-    await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({
-      userAgent: CHATGPT_USER_AGENT,
+    expect(adapter.account.options.form).toEqual([]);
+    await expect(adapter.account.options.schema.parseAsync({ userAgent: 'custom-agent' })).resolves.toEqual({});
+    expect(pluginOptions.form.map((field) => field.key)).toEqual(['userAgent', 'userAgentPolicy']);
+    await expect(pluginOptions.schema.parseAsync({})).resolves.toEqual({
+      userAgent: DEFAULT_CHATGPT_USER_AGENT,
       userAgentPolicy: 'fixed',
     });
     await expect(
-      adapter.account.options.schema.parseAsync({
-        userAgent: '  custom-agent  ',
-        userAgentPolicy: 'preserveCodexClient',
-      }),
+      pluginOptions.schema.parseAsync({ userAgent: '  custom-agent  ', userAgentPolicy: 'preserveCodexClient' }),
     ).resolves.toEqual({ userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' });
-    await expect(adapter.account.options.schema.parseAsync({ userAgent: '   ' })).resolves.toMatchObject({
-      userAgent: CHATGPT_USER_AGENT,
-      userAgentPolicy: 'fixed',
-    });
-    await expect(adapter.account.options.schema.parseAsync({ userAgent: 'bad\nagent' })).rejects.toThrow();
-    await expect(adapter.account.options.schema.parseAsync({ userAgent: 'bad\u0000agent' })).rejects.toThrow();
-    await expect(adapter.account.options.schema.parseAsync({ userAgent: '测试' })).rejects.toThrow();
+    await expect(pluginOptions.schema.parseAsync({ userAgent: 'bad\nagent' })).rejects.toThrow();
   });
 
   test('supports injectable localized copy', async () => {
@@ -266,18 +262,20 @@ describe('OpenAI ChatGPT plugin', () => {
 });
 
 async function adapterFrom(
-  descriptor: PluginDescriptor,
-): Promise<OAuthAdapter<Partial<ChatGPTAccountOptions>, unknown>> {
-  let adapter: OAuthAdapter<Partial<ChatGPTAccountOptions>, unknown> | undefined;
+  descriptor: PluginDescriptor<ChatGPTPluginOptions>,
+): Promise<OAuthAdapter<Record<string, unknown>, unknown>> {
+  let adapter: OAuthAdapter<Record<string, unknown>, unknown> | undefined;
+  const options = descriptor.metadata.options?.schema.parse({});
+  if (options === undefined) throw new Error('ChatGPT plugin options are missing');
   await descriptor.setup(
     {
       oauth: {
         register: (registered) => {
-          adapter = registered as OAuthAdapter<Partial<ChatGPTAccountOptions>, unknown>;
+          adapter = registered as OAuthAdapter<Record<string, unknown>, unknown>;
         },
       },
     },
-    undefined,
+    options,
   );
   if (adapter === undefined) throw new Error('plugin did not register an OAuth adapter');
   return adapter;

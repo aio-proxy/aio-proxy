@@ -161,7 +161,13 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   expect(typeof cursor?.createRuntime).toBe('function');
 
   const chatgpt = snapshot.registry.resolveOAuth('@aio-proxy/plugin-openai-chatgpt', 'default');
-  expect(resolveLocalizedText(chatgpt?.account.options.form[0]?.label ?? '', 'zh-Hans')).toBe('User agent');
-  expect(resolveLocalizedText(chatgpt?.account.options.form[1]?.label ?? '', 'en')).toBe('User agent policy');
-  expect(resolveLocalizedText(chatgpt?.account.options.form[1]?.label ?? '', 'zh-Hans')).toBe('User agent 策略');
+  const chatgptPlugin = createEmbeddedBuiltIns().find(
+    (plugin) => plugin.packageName === '@aio-proxy/plugin-openai-chatgpt',
+  );
+  const chatgptForm = chatgptPlugin?.descriptor.metadata.options?.form ?? [];
+  expect(chatgpt?.account.options.form).toEqual([]);
+  expect(snapshot.plugins.get('@aio-proxy/plugin-openai-chatgpt')?.hasOptions).toBe(true);
+  expect(resolveLocalizedText(chatgptForm[0]?.label ?? '', 'zh-Hans')).toBe('User agent');
+  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'en')).toBe('User agent policy');
+  expect(resolveLocalizedText(chatgptForm[1]?.label ?? '', 'zh-Hans')).toBe('User agent 策略');
 });

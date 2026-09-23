@@ -11,7 +11,7 @@ describe('validateConfigSpec', () => {
     const result = validateConfigSpec({
       schema,
       form: [
-        { type: 'text', key: 'name', label: 'Name', placeholder: 'Ada' },
+        { type: 'text', key: 'name', label: 'Name', placeholder: 'Ada', defaultValue: 'Ada Lovelace' },
         { type: 'secret', key: 'token', label: 'Token' },
         { type: 'number', key: 'count', label: 'Count' },
         { type: 'boolean', key: 'enabled', label: 'Enabled', defaultValue: true },
@@ -20,6 +20,7 @@ describe('validateConfigSpec', () => {
           key: 'mode',
           label: 'Mode',
           when: { key: 'enabled', equals: true },
+          defaultValue: 'fast',
           options: [
             { value: 'fast', label: 'Fast' },
             { value: 2, label: 'Two' },
@@ -31,6 +32,8 @@ describe('validateConfigSpec', () => {
     });
 
     expect(result.spec.form).toHaveLength(6);
+    expect(result.spec.form[0]).toMatchObject({ defaultValue: 'Ada Lovelace' });
+    expect(result.spec.form[4]).toMatchObject({ defaultValue: 'fast' });
     expect([...result.secretKeys]).toEqual(['token']);
   });
 

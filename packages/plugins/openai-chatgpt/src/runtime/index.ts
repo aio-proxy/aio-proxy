@@ -1,4 +1,3 @@
-export { resolveChatGPTUserAgent } from '../account-options';
 export { CHATGPT_USER_AGENT } from '../codex-client';
 export {
   CODEX_REALTIME_MODELS,
