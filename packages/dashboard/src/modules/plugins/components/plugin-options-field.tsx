@@ -76,10 +76,15 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
 
   if (field.type === 'select') {
     const selected = current === undefined ? field.defaultValue : current;
+    const items = field.options.map((option) => ({
+      label: resolveDashboardText(option.label),
+      value: optionValue(option.value),
+    }));
     return (
       <Field>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <Select
+          items={items}
           value={selected === undefined ? '' : optionValue(selected as string | number | boolean)}
           onValueChange={(value) => setPublic(value === null ? undefined : JSON.parse(value))}
         >
@@ -87,9 +92,9 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {field.options.map((option) => (
-              <SelectItem key={optionValue(option.value)} value={optionValue(option.value)}>
-                {resolveDashboardText(option.label)}
+            {items.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
               </SelectItem>
             ))}
           </SelectContent>

@@ -257,12 +257,15 @@ test('clears unsaved replacement secrets and mutation errors before options can 
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
-test('shows text and select defaults without saving them until they change', async () => {
+test.each([
+  { publicValues: {}, selectedLabel: 'Fixed' },
+  { publicValues: { userAgentPolicy: 'preserve' }, selectedLabel: 'Preserve' },
+])('shows option labels for $selectedLabel without persisting defaults', async ({ publicValues, selectedLabel }) => {
   mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
   mocks.editView = {
     packageName: '@example/plugin',
     revision: 'sha256:current',
-    publicValues: {},
+    publicValues,
     form: [
       { defaultValue: 'codex-tui/{{latest_codex_rs_version}}', key: 'userAgent', label: 'User agent', type: 'text' },
       {
@@ -282,14 +285,11 @@ test('shows text and select defaults without saving them until they change', asy
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
   expect(await screen.findByLabelText('User agent')).toHaveValue('codex-tui/{{latest_codex_rs_version}}');
-  expect(screen.getByRole('combobox', { name: 'User agent policy' })).toHaveTextContent('fixed');
+  expect(screen.getByRole('combobox', { name: 'User agent policy' })).toHaveTextContent(selectedLabel);
   fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
 
   await waitFor(() => {
-    expect(mocks.options.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({ publicValues: {} }),
-      expect.any(Object),
-    );
+    expect(mocks.options.mutate).toHaveBeenCalledWith(expect.objectContaining({ publicValues }), expect.any(Object));
   });
 });
 
