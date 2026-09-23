@@ -297,6 +297,7 @@ describe('traces table', () => {
     expect(chatgptCell).toHaveTextContent('shared@example.com');
     expect(grokCell).toHaveTextContent('xAI Grok');
     expect(grokCell).toHaveTextContent('shared@example.com');
+    expect(within(grokCell).getByTitle('grok-provider')).toHaveClass('inline-block', 'min-w-0', 'max-w-48', 'truncate');
     expect(openrouterCell.textContent).toBe('OpenRouter');
   });
 });

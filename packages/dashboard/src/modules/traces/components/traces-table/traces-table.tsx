@@ -108,7 +108,7 @@ const traceColumns = (
         accountLabel === undefined ? (
           <ProviderIdLabel providerId={providerId} providers={providers} mark={false} className="max-w-48" />
         ) : (
-          <span className="max-w-48 truncate" title={providerId}>
+          <span className="inline-block max-w-48 min-w-0 truncate" title={providerId}>
             {accountLabel}
           </span>
         );
