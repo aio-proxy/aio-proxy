@@ -31,7 +31,8 @@ export async function withProtocolRequestObservation<TRequest, TContext>(
             lease.snapshot,
             options.adapter.bodyLimits(options.rawRequest, options.context).encoded,
           );
-    if (lease !== undefined && options.rawRequest.signal.aborted) {
+    // Sensitive preflight may have cancelled a stalled clone; never parse its retained body.
+    if (policy?.capturePayload === false && options.rawRequest.signal.aborted) {
       void cancelRetainedRequestBody(options.rawRequest, options.rawRequest.signal.reason);
       options.rawRequest.signal.throwIfAborted();
     }
