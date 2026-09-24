@@ -23,9 +23,10 @@ describe('applyHelpStyling', () => {
     const helper = root.createHelp();
     const esc = String.fromCharCode(0x1b);
     expect(helper.styleTitle('Usage:')).toContain(`${esc}[32m`);
-    expect(helper.styleSubcommandText('run')).toContain(`${esc}[96m`);
-    expect(helper.styleOptionText('--lang')).toContain(`${esc}[93m`);
-    expect(helper.styleDescriptionText('start')).toContain(`${esc}[37m`);
+    expect(helper.styleSubcommandText('run')).toContain(`${esc}[1m${esc}[32m`);
+    expect(helper.styleOptionText('--lang')).toContain(`${esc}[36m`);
+    expect(helper.styleDescriptionText('start')).toContain(`${esc}[2m`);
+    expect(helper.styleDescriptionText('start')).not.toContain(`${esc}[3`);
     expect(helper.styleArgumentText('<shell>')).toBe('<shell>');
     expect(helper.styleSubcommandText('run')).toContain('run');
     expect(helper.styleOptionText('--lang')).toContain('--lang');
