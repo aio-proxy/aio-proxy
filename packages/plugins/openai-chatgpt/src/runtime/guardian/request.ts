@@ -286,9 +286,11 @@ function inlineHistory(input: unknown[]): boolean {
         return false;
       if (item['role'] === 'developer') {
         if (policySeen || !matchesPolicy(item['content'].map((part) => part['text']).join('\n'))) {
+          const [permissionPart] = item['content'];
           const emptyPermissions =
+            permissionPart !== undefined &&
             item['content'].length === 1 &&
-            item['content'][0].text.trim() === '<permissions instructions>\n</permissions instructions>';
+            permissionPart.text.trim() === '<permissions instructions>\n</permissions instructions>';
           if (!emptyPermissions) return false;
         }
         policySeen = true;
