@@ -287,7 +287,7 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
       protocol: ProviderProtocol.TypeSafeSystemOne,
       invoke: async (request) => {
         evaluations++;
-        const body = await request.json();
+        await request.json();
         const deny =
           scenario === 'original' || ((scenario === 'retry' || scenario === 'failover') && evaluations === 1);
         const selected: Record<string, string> = {
@@ -298,7 +298,7 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
         };
         return Response.json({
           answers: Object.fromEntries(
-            Object.entries(guardianQuestions(body.state)).map(([id, question]) => [
+            Object.entries(guardianQuestions()).map(([id, question]) => [
               id,
               {
                 type: 'choice',
