@@ -21,7 +21,8 @@ describe('applyHelpStyling', () => {
     const root = program();
     applyHelpStyling(root, true);
     const helper = root.createHelp();
-    expect(helper.styleSubcommandText('run')).toContain(`${String.fromCharCode(0x1b)}[32m`);
+    expect(helper.styleOptionText('--lang')).toContain(`${String.fromCharCode(0x1b)}[93m`);
+    expect(helper.styleArgumentText('<shell>')).toContain(`${String.fromCharCode(0x1b)}[96m`);
     expect(helper.styleTitle('Usage:')).not.toContain('[38;2;');
     expect(helper.styleSubcommandText('run')).toContain('run');
     expect(helper.styleOptionText('--lang')).toContain('--lang');
