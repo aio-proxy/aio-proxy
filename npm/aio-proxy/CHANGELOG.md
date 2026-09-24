@@ -1,5 +1,17 @@
 # aio-proxy
 
+## 0.33.0
+
+### Minor Changes
+
+- [#422](https://github.com/aio-proxy/aio-proxy/pull/422) [`de76673`](https://github.com/aio-proxy/aio-proxy/commit/de76673fe07ae3be9f3d7e3a84d1bd541ca07479) Thanks [@baranwang](https://github.com/baranwang)! - Plugin Provider fields can declare the protocols they accept. Guardian now asks for a TypeSafe System One Provider, and the model control lists that Provider's routed models instead of accepting any ID.
+
+- [#422](https://github.com/aio-proxy/aio-proxy/pull/422) [`24a1468`](https://github.com/aio-proxy/aio-proxy/commit/24a14688083a14639af225a0d8d908373cf8f568) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth now offers optional Guardian approval strategies that evaluate with a selected System One Provider and model. The default keeps Codex behavior, and supported System One decisions can be final or send denials to the original model for review; unavailable evaluations fall back safely.
+
+### Patch Changes
+
+- [#420](https://github.com/aio-proxy/aio-proxy/pull/420) [`a85a7e0`](https://github.com/aio-proxy/aio-proxy/commit/a85a7e02e1c89f7311cd11cb961ec2f1db9885d1) Thanks [@baranwang](https://github.com/baranwang)! - Match OAuth service names in the trace list to the table body text, so they no longer appear heavier than the surrounding columns.
+
 ## 0.32.0
 
 ### Minor Changes
