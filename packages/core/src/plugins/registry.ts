@@ -3,8 +3,10 @@ import {
   type LocalizedText,
   LocalizedTextSchema,
   type Logger,
+  type LogicalRequestContext,
   type OAuthAdapter,
   type PluginApi,
+  type RawTransport,
 } from '@aio-proxy/plugin-sdk';
 import { isRecord } from '@aio-proxy/shared';
 import { CapabilityIdSchema } from '@aio-proxy/types';
@@ -14,11 +16,29 @@ import { isPluginZodSchema } from './schema';
 
 export type PluginRegistry = {
   readonly resolveOAuth: (plugin: string, capability: string) => OAuthAdapter | undefined;
+  readonly resolveResponsesRaw: (plugin: string) => ResponsesRawWrap | undefined;
   readonly oauthCapabilities: () => readonly {
     readonly plugin: string;
     readonly capability: string;
     readonly adapter: OAuthAdapter;
   }[];
+};
+
+export type ResponsesRawWrap = (input: {
+  readonly original: RawTransport['invoke'];
+  readonly evaluate?: (input: {
+    readonly providerId: string;
+    readonly modelId: string;
+    readonly body: unknown;
+    readonly signal: AbortSignal;
+    readonly logicalRequest: LogicalRequestContext;
+  }) => Promise<unknown>;
+}) => RawTransport['invoke'];
+
+export type BuiltInPluginApi = PluginApi & {
+  readonly raw: {
+    readonly wrap: (protocol: 'openai-response', wrap: ResponsesRawWrap) => void;
+  };
 };
 
 type OAuthCapability = ReturnType<PluginRegistry['oauthCapabilities']>[number];
@@ -154,7 +174,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
 }
 
 export type PluginStagingRegistry = {
-  readonly api: PluginApi;
+  readonly api: BuiltInPluginApi;
   readonly seal: () => void;
   readonly commit: () => void;
 };
@@ -166,6 +186,7 @@ export type PluginLoggerFactory = (
 
 export type PluginStagingOptions = {
   readonly redactSecretValues?: readonly string[];
+  readonly builtIn?: boolean;
 };
 
 export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory = createLogger): {
@@ -174,9 +195,13 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
 } {
   const committed = new Map<string, OAuthCapability>();
   const committedCpaTypes = new Map<string, string>();
+  const responsesRaw = new Map<string, ResponsesRawWrap>();
   const registry: PluginRegistry = {
     resolveOAuth(plugin, capability) {
       return committed.get(`${plugin}\0${capability}`)?.adapter;
+    },
+    resolveResponsesRaw(plugin) {
+      return responsesRaw.get(plugin);
     },
     oauthCapabilities() {
       return [...committed.values()];
@@ -188,25 +213,39 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
     stage(plugin, options = {}) {
       const staged = new Map<string, OAuthCapability>();
       const stagedCpaTypes = new Set<string>();
+      let stagedResponsesRaw: ResponsesRawWrap | undefined;
       let sealed = false;
-      return {
-        api: {
-          logger: createPluginLogger(['aio-proxy', 'plugin', plugin], options),
-          oauth: {
-            register(value) {
-              if (sealed) throw new Error('Plugin staging registry is sealed');
-              const { id, adapter } = validateAdapter(value);
-              if (staged.has(id)) throw new Error('Duplicate OAuth capability');
-              for (const type of adapter.credentialImports?.cpa?.types ?? []) {
-                if (stagedCpaTypes.has(type) || committedCpaTypes.has(type)) {
-                  throw new Error(`Duplicate OAuth credential import type: ${type}`);
-                }
-                stagedCpaTypes.add(type);
+      const api = {
+        logger: createPluginLogger(['aio-proxy', 'plugin', plugin], options),
+        oauth: {
+          register(value) {
+            if (sealed) throw new Error('Plugin staging registry is sealed');
+            const { id, adapter } = validateAdapter(value);
+            if (staged.has(id)) throw new Error('Duplicate OAuth capability');
+            for (const type of adapter.credentialImports?.cpa?.types ?? []) {
+              if (stagedCpaTypes.has(type) || committedCpaTypes.has(type)) {
+                throw new Error(`Duplicate OAuth credential import type: ${type}`);
               }
-              staged.set(id, { plugin, capability: id, adapter });
-            },
+              stagedCpaTypes.add(type);
+            }
+            staged.set(id, { plugin, capability: id, adapter });
           },
         },
+        ...(options.builtIn
+          ? {
+              raw: {
+                wrap(protocol: 'openai-response', wrap: ResponsesRawWrap) {
+                  if (sealed) throw new Error('Plugin staging registry is sealed');
+                  if (protocol !== 'openai-response') throw new Error('Unsupported raw wrapper protocol');
+                  if (stagedResponsesRaw !== undefined) throw new Error('Duplicate responses raw wrapper');
+                  stagedResponsesRaw = wrap;
+                },
+              },
+            }
+          : {}),
+      } as BuiltInPluginApi;
+      return {
+        api,
         seal() {
           sealed = true;
         },
@@ -218,6 +257,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
               committedCpaTypes.set(type, `${plugin}#${capability.capability}`);
             }
           }
+          if (stagedResponsesRaw !== undefined) responsesRaw.set(plugin, stagedResponsesRaw);
         },
       };
     },

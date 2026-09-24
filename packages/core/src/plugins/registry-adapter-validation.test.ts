@@ -7,6 +7,7 @@ import { definePlugin, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 import { npmPackageCacheDir } from '../npm';
 import type { DiagnosticFactory } from './diagnostic';
 import { loadPluginRegistry } from './loader/index';
+import { createPluginRegistryHost } from './registry';
 
 const homeEnv = 'AIO_PROXY_HOME';
 const originalHome = process.env[homeEnv];
@@ -69,6 +70,19 @@ const base = {
 };
 
 describe('PluginRegistry staging', () => {
+  test('commits one responses wrapper only for a built-in plugin', () => {
+    const { registry, stage } = createPluginRegistryHost();
+    const builtIn = stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
+    const wrap = ({ original }) => original;
+    builtIn.api.raw.wrap('openai-response', wrap);
+    builtIn.seal();
+    builtIn.commit();
+    expect(registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt')).toBe(wrap);
+
+    const thirdParty = stage('@example/oauth');
+    expect('raw' in thirdParty.api).toBe(false);
+  });
+
   test.each([
     ['blank adapter id', fakeAdapter(' ')],
     ['blank display name', fakeAdapter('blank-label', { displayName: ' ' })],
