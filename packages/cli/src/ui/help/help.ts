@@ -6,8 +6,7 @@ const RESET = '\u001B[0m';
 const BOLD = '\u001B[1m';
 
 const paint = (color: string, bold = false): ((text: string) => string) => {
-  // ansi-16 is the terminal palette (theme-aware). "ansi" is empty on current Bun,
-  // and ansi-16m would bake in a fixed RGB.
+  // ansi-16 follows the terminal theme. "ansi" is empty on current Bun.
   const open = Bun.color(color, 'ansi-16');
   if (open === null) return (text) => text;
   const prefix = bold ? `${open}${BOLD}` : open;
@@ -17,17 +16,22 @@ const paint = (color: string, bold = false): ((text: string) => string) => {
 // Commander measures columns with displayWidth, which already ignores ANSI.
 export function applyHelpStyling(program: Command, stdoutIsTTY = process.stdout.isTTY === true): void {
   if (!useColor(stdoutIsTTY, process.env)) return;
-  const title = paint('white', true);
-  // Brand primary is teal. Only command names use green; flags and arguments stay distinct.
-  const command = paint('green', true);
+  // Same roles as OpenClaw, on the terminal palette: bold accent headings,
+  // a brighter accent for command names, a warning color for flags, muted descriptions.
+  const heading = paint('green', true);
+  const command = paint('cyan');
   const option = paint('yellow');
-  const argument = paint('cyan');
+  const muted = paint('gray');
   // Copied onto the Help instance. Passing a Help instance is not a config object.
   program.configureHelp({
-    styleTitle: title,
+    styleTitle: heading,
     styleCommandText: command,
     styleSubcommandText: command,
     styleOptionText: option,
-    styleArgumentText: argument,
+    styleDescriptionText: muted,
+    styleCommandDescription: muted,
+    styleOptionDescription: muted,
+    styleSubcommandDescription: muted,
+    styleArgumentDescription: muted,
   });
 }
