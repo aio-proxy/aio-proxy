@@ -129,14 +129,14 @@ function matchesSchema(value: unknown): boolean {
   });
 }
 
-function textParts(value: unknown): value is { type: 'input_text'; text: string }[] {
+function textParts(value: unknown, output = false): value is { type: string; text: string }[] {
   return (
     Array.isArray(value) &&
     value.every(
       (part) =>
         isPlainObject(part) &&
         onlyKeys(part, ['type', 'text']) &&
-        part['type'] === 'input_text' &&
+        part['type'] === (output ? 'output_text' : 'input_text') &&
         typeof part['text'] === 'string',
     )
   );
@@ -273,20 +273,25 @@ function inlineHistory(input: unknown[]): boolean {
       )
         return false;
       if (
-        !onlyKeys(item, ['type', 'role', 'content', 'id', 'status', 'metadata']) ||
+        !onlyKeys(item, ['type', 'role', 'content', 'id', 'status', 'metadata', 'phase']) ||
         !['developer', 'user', 'assistant'].includes(item['role']) ||
-        !textParts(item['content'])
+        ('phase' in item && item['phase'] !== 'final_answer') ||
+        !textParts(item['content'], item['role'] === 'assistant')
       )
         return false;
       if (item['role'] === 'developer') {
         if (policySeen || !matchesPolicy(item['content'].map((part) => part['text']).join('\n'))) {
-          const [permissionPart] = item['content'];
-          const emptyPermissions =
+          const text = item['content']
+            .map((part) => part['text'])
+            .join('\n')
+            .trim();
+          const allowedFollowUp =
             policySeen &&
-            permissionPart !== undefined &&
             item['content'].length === 1 &&
-            permissionPart.text.trim() === '<permissions instructions>\n</permissions instructions>';
-          if (!emptyPermissions) return false;
+            (text === '<permissions instructions>\n</permissions instructions>' ||
+              text ===
+                'Use prior reviews as context, not binding precedent. Follow the Workspace Policy. If the user explicitly approves a previously rejected action after being informed of the concrete risks, set outcome to "allow" unless the policy explicitly disallows user overwrites in such cases.');
+          if (!allowedFollowUp) return false;
         }
         policySeen = true;
       }
@@ -326,7 +331,6 @@ function inlineHistory(input: unknown[]): boolean {
   }
   return policySeen && calls.size === 0;
 }
-
 function matchesGuardianProfile(value: unknown): value is MatchedGuardianBody {
   if (
     !isPlainObject(value) ||
@@ -386,23 +390,20 @@ function parseTerminalAction(input: readonly unknown[]): Record<string, unknown>
   if (!isPlainObject(last) || last['type'] !== 'message' || last['role'] !== 'user' || !textParts(last['content']))
     return;
   const parts = last['content'];
+  const startAt = parts.findLastIndex((part) => part['text'].trim() === start);
+  const labelAt = parts.findLastIndex((part) => part['text'].trim() === 'Planned action JSON:');
+  // Current Codex inserts assessment text between the marker and the JSON label.
+  // Earlier review rounds keep their own envelopes; the final one is authoritative.
+  // Quoted markers inside tool output are not separate parts, so they cannot match.
   if (
-    parts.length < 4 ||
-    parts.at(-4)?.['text'].trim() !== start ||
-    parts.at(-3)?.['text'].trim() !== 'Planned action JSON:' ||
-    parts.at(-1)?.['text'].trim() !== end
+    startAt < 0 ||
+    labelAt <= startAt ||
+    labelAt !== parts.length - 3 ||
+    parts.at(-1)?.['text'].trim() !== end ||
+    parts.filter((part) => part['text'].trim() === start).length !== 1 ||
+    parts.filter((part) => part['text'].trim() === end).length !== 1
   )
     return;
-  // Only separate-part markers in user messages are candidates; quoted strings
-  // in tool output or transcript text cannot replace the terminal action.
-  let starts = 0;
-  let ends = 0;
-  for (const item of input) {
-    if (!isPlainObject(item) || item['role'] !== 'user' || !textParts(item['content'])) continue;
-    starts += item['content'].filter((part) => part['text'].trim() === start).length;
-    ends += item['content'].filter((part) => part['text'].trim() === end).length;
-  }
-  if (starts !== 1 || ends !== 1) return;
   try {
     const action: unknown = JSON.parse(parts.at(-2)!['text']);
     if (isPlainObject(action)) return action;
