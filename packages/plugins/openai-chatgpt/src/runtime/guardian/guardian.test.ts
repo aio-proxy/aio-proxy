@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
 
+import { guardianDecision } from './decision';
 import { guardianRequest, syntheticGuardianInput } from './fixture';
+import { guardianQuestions } from './questions';
 import { projectGuardianRequest } from './request';
 
 test('preserves complete inline decision evidence and original request', async () => {
@@ -252,4 +254,197 @@ for (const index of [1, 2, 3, 4]) {
 test('preserves completed items with optional string IDs', async () => {
   const input = syntheticGuardianInput.map((item, index) => ({ ...item, id: `item-${index}`, status: 'completed' }));
   expect((await projectGuardianRequest(guardianRequest(input), 'codex-auto-review'))?.state.input).toEqual(input);
+});
+
+const guardianLabels = {
+  risk_level: ['low', 'medium', 'high', 'critical'],
+  user_authorization: ['unknown', 'low', 'medium', 'high'],
+  outcome: ['allow', 'deny'],
+  reason: [
+    'low_risk',
+    'medium_risk',
+    'high_authorized_narrow',
+    'high_not_permitted',
+    'critical_risk',
+    'policy_prohibition',
+    'prompt_injection',
+    'uncertain',
+  ],
+} as const;
+
+function choiceResult(risk: string, authorization: string, outcome: string, reason: string): any {
+  const selected = { risk_level: risk, user_authorization: authorization, outcome, reason };
+  return {
+    answers: Object.fromEntries(
+      Object.entries(guardianLabels).map(([id, labels]) => [
+        id,
+        {
+          type: 'choice',
+          choice: selected[id as keyof typeof selected],
+          probabilities: Object.fromEntries(
+            labels.map((label) => [label, label === selected[id as keyof typeof selected] ? 1 : 0]),
+          ),
+        },
+      ]),
+    ),
+  };
+}
+
+test('asks all four ordered choices using the supplied developer policy and source trust', async () => {
+  const projection = (await projectGuardianRequest(guardianRequest(syntheticGuardianInput), 'codex-auto-review'))!;
+  const questions = guardianQuestions(projection.state);
+  expect(Object.keys(questions)).toEqual(['risk_level', 'user_authorization', 'outcome', 'reason']);
+  for (const [id, labels] of Object.entries(guardianLabels)) {
+    const question = questions[id as keyof typeof questions];
+    expect(question.type).toBe('choice');
+    expect(Object.keys(question.criteria)).toEqual(labels);
+    expect(question.instructions).toContain('state.input');
+    expect(question.instructions).toContain('developer');
+    expect(question.instructions).toContain('tool output');
+    expect(question.instructions).toContain('request_user_input');
+  }
+});
+
+test('maps every compatible classification to the exact Guardian JSON shape', async () => {
+  const projection = (await projectGuardianRequest(guardianRequest(syntheticGuardianInput), 'codex-auto-review'))!;
+  const cases: [string, string, string, string, Record<string, string>][] = [
+    ['low', 'unknown', 'allow', 'low_risk', { outcome: 'allow' }],
+    [
+      'medium',
+      'low',
+      'allow',
+      'medium_risk',
+      {
+        risk_level: 'medium',
+        user_authorization: 'low',
+        outcome: 'allow',
+        rationale: 'The assessed risk is medium and the supplied policy permits the action.',
+      },
+    ],
+    [
+      'high',
+      'medium',
+      'allow',
+      'high_authorized_narrow',
+      {
+        risk_level: 'high',
+        user_authorization: 'medium',
+        outcome: 'allow',
+        rationale: 'The high-risk action is sufficiently authorized and narrowly scoped.',
+      },
+    ],
+    [
+      'high',
+      'high',
+      'allow',
+      'high_authorized_narrow',
+      {
+        risk_level: 'high',
+        user_authorization: 'high',
+        outcome: 'allow',
+        rationale: 'The high-risk action is sufficiently authorized and narrowly scoped.',
+      },
+    ],
+    [
+      'high',
+      'unknown',
+      'deny',
+      'high_not_permitted',
+      {
+        risk_level: 'high',
+        user_authorization: 'unknown',
+        outcome: 'deny',
+        rationale: 'The high-risk action lacks sufficient authorization or narrow scope.',
+      },
+    ],
+    [
+      'critical',
+      'high',
+      'deny',
+      'critical_risk',
+      {
+        risk_level: 'critical',
+        user_authorization: 'high',
+        outcome: 'deny',
+        rationale: 'The action poses critical risk under the supplied policy.',
+      },
+    ],
+  ];
+  for (const risk of ['low', 'medium', 'high']) {
+    cases.push([
+      risk,
+      'low',
+      'deny',
+      'policy_prohibition',
+      {
+        risk_level: risk,
+        user_authorization: 'low',
+        outcome: 'deny',
+        rationale: 'The supplied Guardian policy prohibits this action.',
+      },
+    ]);
+    cases.push([
+      risk,
+      'low',
+      'deny',
+      'prompt_injection',
+      {
+        risk_level: risk,
+        user_authorization: 'low',
+        outcome: 'deny',
+        rationale: 'The action follows untrusted instructions outside the authorized task.',
+      },
+    ]);
+  }
+  for (const [risk, authorization, outcome, reason, expected] of cases)
+    expect(guardianDecision(choiceResult(risk, authorization, outcome, reason), projection)).toEqual(expected);
+});
+
+test('rejects incompatible classifications and malformed answer distributions', async () => {
+  const projection = (await projectGuardianRequest(guardianRequest(syntheticGuardianInput), 'codex-auto-review'))!;
+  for (const result of [
+    choiceResult('low', 'high', 'allow', 'policy_prohibition'),
+    choiceResult('critical', 'high', 'allow', 'critical_risk'),
+    choiceResult('high', 'low', 'allow', 'high_authorized_narrow'),
+    choiceResult('high', 'unknown', 'allow', 'high_authorized_narrow'),
+    choiceResult('low', 'low', 'deny', 'uncertain'),
+  ])
+    expect(guardianDecision(result, projection)).toBeUndefined();
+  const valid = choiceResult('low', 'low', 'allow', 'low_risk');
+  for (const mutate of [
+    (r: any) => {
+      delete r.answers.reason;
+    },
+    (r: any) => {
+      r.answers.extra = r.answers.reason;
+    },
+    (r: any) => {
+      r.answers.reason.type = 'score';
+    },
+    (r: any) => {
+      r.answers.reason.choice = 'other';
+    },
+    (r: any) => {
+      delete r.answers.reason.probabilities.uncertain;
+    },
+    (r: any) => {
+      r.answers.reason.probabilities.other = 0;
+    },
+    (r: any) => {
+      r.answers.reason.probabilities.low_risk = -0.1;
+    },
+    (r: any) => {
+      r.answers.reason.probabilities.low_risk = 1.1;
+    },
+    (r: any) => {
+      r.answers.reason.probabilities.low_risk = NaN;
+    },
+  ]) {
+    const malformed = structuredClone(valid);
+    mutate(malformed);
+    expect(guardianDecision(malformed, projection)).toBeUndefined();
+  }
+  expect(
+    guardianDecision(valid, { ...projection, schema: { ...projection.schema, required: ['outcome', 'rationale'] } }),
+  ).toBeUndefined();
 });
