@@ -10,6 +10,8 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { refreshAccessToken } from '../oauth-flow';
 import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
+import { createGuardianRawInvoke, type GuardianEvaluate } from './guardian';
+import { guardianPayloadHint } from './guardian/request';
 import { stripOrphanReasoningIds } from './orphan-reasoning-id/index';
 import { createOpenAIChatGPTRealtime, mergeEndpointQuery } from './realtime';
 
@@ -24,6 +26,13 @@ export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, unknown>>,
   pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<OAuthRuntimeResult> {
+  const host = context as typeof context & {
+    readonly __aioRegisterPayloadHint?: (hint: typeof guardianPayloadHint) => void;
+    readonly __aioGuardianEvaluate?: GuardianEvaluate;
+  };
+  if (pluginOptions?.guardianStrategy === 'systemOne' || pluginOptions?.guardianStrategy === 'systemOneReviewDenied') {
+    host.__aioRegisterPayloadHint?.(guardianPayloadHint);
+  }
   const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch, pluginOptions);
   const openAI = createOpenAI({
     name: 'openai-chatgpt',
@@ -49,11 +58,21 @@ export async function createOpenAIChatGPTRuntime(
     // exists to keep an embedding or audio request off the responses/image
     // passthrough rather than to gate image routing. The ChatGPT backend has no
     // /v1/audio surface, so speech and transcription can only be declined.
-    raw: ({ protocol, capability }) =>
+    raw: ({ protocol, capability, modelId }) =>
       capability !== undefined && capability !== 'language'
         ? undefined
         : protocol === 'openai-response' || protocol === 'openai-image'
-          ? { invoke: (request, _context, options) => dynamicFetch(request, undefined, options) }
+          ? {
+              invoke:
+                protocol === 'openai-response' && modelId === 'codex-auto-review'
+                  ? createGuardianRawInvoke({
+                      resolvedModelId: modelId,
+                      pluginOptions: pluginOptions ?? {},
+                      original: (request, _context, options) => dynamicFetch(request, undefined, options),
+                      ...(host.__aioGuardianEvaluate === undefined ? {} : { evaluate: host.__aioGuardianEvaluate }),
+                    })
+                  : (request, _context, options) => dynamicFetch(request, undefined, options),
+            }
           : undefined,
   };
 }

@@ -1,7 +1,7 @@
 import { type PluginState, pluginConfigCommand } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { validateConfigSpec } from '../config-spec';
+import { validateConfigSpec } from '../config-spec/index';
 import { redactPluginError } from '../diagnostic/index';
 import { parsePluginSchema } from '../schema';
 import { type LoadablePluginDescriptor, PluginHostError } from './descriptor/index';

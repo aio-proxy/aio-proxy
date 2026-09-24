@@ -32,6 +32,39 @@ const chatgptUserAgentPolicyDescription = localized(
   '默认对所有请求使用上方配置的 User-Agent。选择保留 Codex 客户端的 User-Agent 时，会原样转发它；其他客户端仍使用上方配置的值。',
 );
 
+const chatgptGuardianText = {
+  guardianStrategyLabel: localized('Guardian review strategy', 'Guardian 审批策略'),
+  guardianStrategyDescription: localized(
+    'Choose how Codex Guardian approval requests are reviewed.',
+    '选择如何审核 Codex Guardian 审批请求。',
+  ),
+  defaultGuardianLabel: localized('Default', '默认'),
+  defaultGuardianDescription: localized(
+    'Use the original ChatGPT Guardian review.',
+    '使用原有的 ChatGPT Guardian 审核。',
+  ),
+  systemOneGuardianLabel: localized('System One', 'System One'),
+  systemOneGuardianDescription: localized(
+    'The selected model’s allow or deny decision is final.',
+    '所选模型的允许或拒绝决定即为最终结果。',
+  ),
+  systemOneReviewDeniedGuardianLabel: localized('System One + original-model review', 'System One + 原模型复核'),
+  systemOneReviewDeniedGuardianDescription: localized(
+    'The selected model may allow directly; its denials go to the original model for final review.',
+    '所选模型可以直接允许；拒绝结果交由原模型进行最终复核。',
+  ),
+  guardianProviderLabel: localized('Evaluation Provider', '评估 Provider'),
+  guardianProviderDescription: localized(
+    'Guardian approval context, including the proposed action and conversation evidence, is sent to the selected Provider.',
+    'Guardian 审批上下文（包括拟执行的操作和对话证据）会发送给所选 Provider。',
+  ),
+  guardianModelLabel: localized('Model ID', '模型 ID'),
+  guardianModelDescription: localized(
+    'Routable model ID on the selected Provider.',
+    '所选 Provider 上可路由的模型 ID。',
+  ),
+};
+
 export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
   return [
     {
@@ -141,6 +174,7 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         userAgentPolicyDescription: chatgptUserAgentPolicyDescription,
         fixedPolicyLabel: localized('Always use the configured User-Agent', '始终使用配置的 User-Agent'),
         preserveCodexClientLabel: localized('Keep the User-Agent from Codex clients', '保留 Codex 客户端的 User-Agent'),
+        ...chatgptGuardianText,
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

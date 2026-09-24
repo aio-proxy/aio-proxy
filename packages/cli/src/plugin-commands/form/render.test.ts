@@ -47,6 +47,54 @@ describe('renderConfigSpec', () => {
     expect(calls).toHaveLength(1);
   });
 
+  test('prompts for exact Provider IDs and model slugs only in systemOne mode', async () => {
+    const conditional = {
+      schema: zod.object({
+        strategy: zod.enum(['default', 'systemOne']),
+        providerId: zod.string().optional(),
+        modelId: zod.string().optional(),
+      }),
+      form: [
+        {
+          type: 'select',
+          key: 'strategy',
+          label: 'Strategy',
+          options: [
+            { label: 'Default', value: 'default' },
+            { label: 'System One', value: 'systemOne' },
+          ],
+        },
+        { type: 'provider', key: 'providerId', label: 'providerId', when: { key: 'strategy', notEquals: 'default' } },
+        {
+          type: 'provider-model',
+          key: 'modelId',
+          label: 'modelId',
+          providerKey: 'providerId',
+          when: { key: 'strategy', notEquals: 'default' },
+        },
+      ],
+    } as const;
+    const calls: PromptCall[] = [];
+    const result = await renderConfigSpec(conditional, {
+      prompts: prompts(['systemOne', ' system-one-local ', ' jev-latest '], calls),
+    });
+    expect(result.publicValues).toMatchObject({
+      strategy: 'systemOne',
+      providerId: 'system-one-local',
+      modelId: 'jev-latest',
+    });
+    expect(
+      calls.map((call) => (call.type === 'select' ? 'strategy' : (call.config as { message: string }).message)),
+    ).toEqual(['strategy', 'providerId', 'modelId']);
+
+    const defaultCalls: PromptCall[] = [];
+    const defaultResult = await renderConfigSpec(conditional, {
+      prompts: prompts(['default'], defaultCalls),
+    });
+    expect(defaultResult.publicValues).toEqual({ strategy: 'default' });
+    expect(defaultCalls).toHaveLength(1);
+  });
+
   test('uses current defaults only when their values are compatible with the field type', async () => {
     const defaultsSpec = {
       schema: zod.object({

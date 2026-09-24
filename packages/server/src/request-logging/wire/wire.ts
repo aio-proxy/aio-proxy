@@ -89,7 +89,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         ...debug.identity,
         ...requestMetadata(request),
       });
-      const hideVideoBodies = scope?.sourceProtocol === ProviderProtocol.OpenAIVideo;
+      const hideVideoBodies = scope?.capturePayload === false || scope?.sourceProtocol === ProviderProtocol.OpenAIVideo;
       const requestIdentity = { ...debug.identity, direction: 'upstream_request' as const };
       if (hideVideoBodies) logOmittedBody(debug.logger, requestIdentity);
       const delegated = hideVideoBodies ? request : requestWithObservedBody(request, requestIdentity, debug.logger);
@@ -140,7 +140,7 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
   });
   // Videos create 可能带 data URL / multipart。头照常记；正文不落 chunk，但要有终态，
   // 否则面板当没抓、hopsNeedNextDay 还会去扫下一天。
-  if (inboundProtocol === ProviderProtocol.OpenAIVideo) {
+  if (scope.capturePayload === false || inboundProtocol === ProviderProtocol.OpenAIVideo) {
     logOmittedBody(scope.logger, { requestId: scope.requestId, direction: 'inbound' });
     return request;
   }

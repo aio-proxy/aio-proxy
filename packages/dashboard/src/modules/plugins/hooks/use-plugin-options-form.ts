@@ -1,6 +1,8 @@
-import type { DashboardPluginEditView } from '@aio-proxy/types';
+import type { DashboardPluginEditView, DashboardProviderSummary } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { z } from 'zod';
+
+import { formFieldVisible } from '@/lib/form-field-visible';
 
 export interface PluginOptionsFormValues {
   readonly clearSecretKeys: readonly string[];
@@ -62,3 +64,41 @@ export const usePluginOptionsForm = (onSubmit: (value: PluginOptionsFormValues) 
     },
     onSubmit: ({ value }) => onSubmit(value as PluginOptionsFormValues),
   }) as unknown as PluginOptionsForm;
+
+export const selectablePluginProvider = (
+  provider: DashboardProviderSummary,
+  protocols: readonly string[] | undefined,
+): boolean =>
+  provider.enabled &&
+  provider.state.status === 'ready' &&
+  (protocols === undefined ||
+    provider.kind === 'ai-sdk' ||
+    provider.protocols.some((protocol) => protocols.includes(protocol)));
+
+export const pluginProviderOptionsValid = (
+  fields: DashboardPluginEditView['form'],
+  values: Readonly<Record<string, unknown>>,
+  providers: readonly DashboardProviderSummary[],
+): boolean => {
+  const combined = {
+    ...Object.fromEntries(
+      fields.flatMap((field) => ('defaultValue' in field ? [[field.key, field.defaultValue]] : [])),
+    ),
+    ...values,
+  };
+  return fields.every((field) => {
+    if (!formFieldVisible(field, combined)) return true;
+    if (field.type === 'provider')
+      return providers.some(
+        (provider) => provider.id === combined[field.key] && selectablePluginProvider(provider, field.protocols),
+      );
+    if (field.type === 'provider-model') {
+      const model = combined[field.key];
+      if (typeof model !== 'string' || model.trim().length === 0) return false;
+      const provider = providers.find((candidate) => candidate.id === combined[field.providerKey]);
+      const models = provider?.clientModels ?? [];
+      return models.length === 0 || models.includes(model);
+    }
+    return true;
+  });
+};

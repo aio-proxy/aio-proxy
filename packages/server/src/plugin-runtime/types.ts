@@ -9,7 +9,8 @@ import type {
 import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardProviderSummary, OAuthProvider, ProviderState } from '@aio-proxy/types';
 
-import type { RuntimeProviderInstance } from '../runtime';
+import type { PayloadCaptureHint, RuntimeProviderInstance } from '../runtime';
+import type { GuardianEvaluate } from './guardian-evaluation';
 
 export const PLUGIN_RUNTIME_TIMEOUT_MS = 5_000;
 
@@ -49,6 +50,7 @@ export type CatalogJobDescriptor = {
 };
 
 export type PluginRuntimeCacheEntry = {
+  readonly payloadCaptureHint?: PayloadCaptureHint;
   readonly identity: RuntimeIdentityKey;
   readonly provider: RuntimeProviderInstance;
   readonly credentials: CredentialPort<unknown>;
@@ -56,6 +58,7 @@ export type PluginRuntimeCacheEntry = {
 };
 
 export type PluginProviderMaterialization = {
+  readonly payloadCaptureHint?: PayloadCaptureHint;
   readonly provider?: RuntimeProviderInstance;
   readonly summary: Omit<DashboardProviderSummary, 'state'>;
   readonly state: ProviderState;
@@ -64,6 +67,7 @@ export type PluginProviderMaterialization = {
 };
 
 export type MaterializePluginProviderOptions = {
+  readonly guardianEvaluate?: (sourceProviderId: string) => GuardianEvaluate;
   readonly config: OAuthProvider;
   readonly plugins: PluginRegistrySnapshot;
   readonly repository: PluginRepository;

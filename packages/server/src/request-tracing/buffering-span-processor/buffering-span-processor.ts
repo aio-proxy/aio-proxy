@@ -1,6 +1,8 @@
 import type { StoredSpan } from '@aio-proxy/core/db';
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-node';
 
+import { markSensitiveSpan } from '../../request-logging/capture-policy';
+import { capturesRequestPayload } from '../../request-logging/context';
 import { spanToRecord } from '../span-record';
 
 export class BufferingSpanProcessor implements SpanProcessor {
@@ -32,6 +34,7 @@ export class BufferingSpanProcessor implements SpanProcessor {
   }
 
   onStart(span: Span, _parentContext: unknown): void {
+    markSensitiveSpan(span, !capturesRequestPayload());
     const context = span.spanContext();
     const sequences = this.#startSequences.get(context.traceId);
     if (sequences === undefined) return;

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 
+import { formFieldVisible } from '@/lib/form-field-visible';
 import { isValidJson, optionValue } from '@/lib/json-form-value';
 import { resolveDashboardText } from '@/lib/localized-text';
 
@@ -32,8 +33,8 @@ const selectPlaceholder = () => m['dashboard.providers.oauth.account_select_plac
 
 export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
   const { field, combined, publicField, jsonField, locked = false } = props;
-  if (field.when !== undefined && combined[field.when.key] !== field.when.equals) return null;
-  // `description` sits on the base schema, so every one of the six variants can carry one and every
+  if (!formFieldVisible(field, combined)) return null;
+  // `description` sits on the base schema, so every variant can carry one and every
   // branch below has to render it and point its control at it.
   const controlId = `oauth-${field.key}`;
   const label = resolveDashboardText(field.label);
@@ -150,7 +151,11 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
         type={field.type === 'number' ? 'number' : 'text'}
         value={typeof displayed === 'string' || typeof displayed === 'number' ? displayed : ''}
         disabled={locked}
-        placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
+        placeholder={
+          !('placeholder' in field) || field.placeholder === undefined
+            ? undefined
+            : resolveDashboardText(field.placeholder)
+        }
         onChange={(event) => {
           let value: string | number | undefined = event.target.value;
           if (field.type === 'number') value = value === '' ? undefined : Number(value);

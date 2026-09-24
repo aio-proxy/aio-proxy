@@ -1,4 +1,5 @@
 export {
+  capturesRequestPayload,
   currentDebugRequestLogScope,
   currentProviderAttemptContext,
   currentRequestLogContext,

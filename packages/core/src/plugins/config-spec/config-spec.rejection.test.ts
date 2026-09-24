@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { zod } from '@aio-proxy/plugin-sdk';
 
-import { validateConfigSpec } from '../../src/plugins/config-spec';
+import { validateConfigSpec } from './index';
 
 const schema = zod.object({});
 
@@ -17,6 +17,36 @@ describe('validateConfigSpec', () => {
   });
 
   test.each([
+    ['blank provider protocol', [{ type: 'provider', key: 'providerId', label: 'Provider', protocols: [' '] }]],
+    ['empty provider protocols', [{ type: 'provider', key: 'providerId', label: 'Provider', protocols: [] }]],
+    ['blank provider key', [{ type: 'provider-model', key: 'modelId', label: 'Model', providerKey: ' ' }]],
+    ['unknown provider key', [{ type: 'provider-model', key: 'modelId', label: 'Model', providerKey: 'missing' }]],
+    [
+      'later provider key',
+      [
+        { type: 'provider-model', key: 'modelId', label: 'Model', providerKey: 'providerId' },
+        { type: 'provider', key: 'providerId', label: 'Provider' },
+      ],
+    ],
+    [
+      'non-provider key',
+      [
+        { type: 'text', key: 'providerId', label: 'Provider' },
+        { type: 'provider-model', key: 'modelId', label: 'Model', providerKey: 'providerId' },
+      ],
+    ],
+    [
+      'condition with both operators',
+      [
+        { type: 'select', key: 'strategy', label: 'Strategy', options: [{ value: 'default', label: 'Default' }] },
+        {
+          type: 'provider',
+          key: 'providerId',
+          label: 'Provider',
+          when: { key: 'strategy', equals: 'default', notEquals: 'default' },
+        },
+      ],
+    ],
     ['blank key', [{ type: 'text', key: ' ', label: 'Name' }]],
     [
       'duplicate key',

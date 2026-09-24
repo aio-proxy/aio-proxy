@@ -1,3 +1,4 @@
+import type { RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { isRecord } from '@aio-proxy/shared';
 
 import { terminalCompletion } from '../../../route-observation';
@@ -13,7 +14,7 @@ import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot, RawCapableAttem
 import { cooldownTtlMs } from './cooldown-write';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
 import { attemptLog } from './emit';
-import { resolveRawRetry } from './raw-retry';
+import { resolveRawRetry, type RawInvocationResult } from './raw-retry';
 
 // Raw passthrough for one candidate. The attempt span opens before the provider
 // call so its duration covers the upstream request, not just post-response work.
@@ -71,28 +72,33 @@ export async function completeRawAttempt<TRequest, TContext>(
   const { index, candidate, startedAt, observation, hasNext, inAttempt } = slot;
   const provider = candidate.provider;
   observation.markTransportUnavailable();
-  const invokeRaw = async (request: Request): Promise<Response> => {
+  const invokeRaw = async (request: Request): Promise<RawInvocationResult> => {
+    const invocation = { originalTransportStarted: false, syntheticGuardianResponse: false };
     const result = await inAttempt(
       adapter.protocol,
-      () => raw.invoke(request, logicalRequest, { upstreamStream: ctx.streamRequested }),
+      () =>
+        raw.invoke(request, logicalRequest, {
+          upstreamStream: ctx.streamRequested,
+          __aioGuardianInvocation: invocation,
+        } as RawTransportOptions),
       raw.urlTemplate,
     );
     if (!(result instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
-    return result;
+    return { response: result, invocation };
   };
 
   // `rawRetry` is absent on embedding adapters, and the clone must happen before
   // the first invoke consumes the body.
   const hook = 'rawRetry' in adapter ? adapter.rawRetry : undefined;
   const retrySource = hook === undefined ? undefined : upstream.clone();
-  let response: Response;
+  let final: RawInvocationResult;
   try {
-    response = await resolveRawRetry({
+    final = await resolveRawRetry({
       hook,
       retrySource,
       request: ctx.request,
       context: ctx.context,
-      response: await invokeRaw(upstream),
+      result: await invokeRaw(upstream),
       streamRequested: ctx.streamRequested,
       guards: { signal: ctx.rawRequest.signal },
       invoke: invokeRaw,
@@ -103,6 +109,7 @@ export async function completeRawAttempt<TRequest, TContext>(
     void releaseInvokedRawBodies(upstream, retrySource, error);
     throw error;
   }
+  const { response, invocation } = final;
   // A plugin can return 4xx/5xx or a cached 2xx without reading. Parse already
   // cloned, so this copy can hold a full tee branch until GC — including across
   // fallback, which clones from the original again. Do not await: `upstream` is
@@ -135,12 +142,15 @@ export async function completeRawAttempt<TRequest, TContext>(
   slot.spanRef.current = undefined;
   let capturedResponseId: string | undefined;
   const normalizedResponse = withEventStreamContentType(response, ctx.streamRequested);
-  const configPrice = candidateConfigPrice(
-    ctx.routerModels,
-    publicSlug(ctx.requestedModelId, candidate),
-    provider.id,
-    provider.upstreamMetadata?.[candidate.modelId]?.cost,
-  );
+  const configPrice =
+    invocation.syntheticGuardianResponse && !invocation.originalTransportStarted
+      ? undefined
+      : candidateConfigPrice(
+          ctx.routerModels,
+          publicSlug(ctx.requestedModelId, candidate),
+          provider.id,
+          provider.upstreamMetadata?.[candidate.modelId]?.cost,
+        );
   const captured = source.usageCapture.passthrough({
     response: normalizedResponse,
     protocol: adapter.protocol,

@@ -26,6 +26,7 @@ import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
 import type { OAuthQuotaCache, OAuthQuotaOperations } from '../plugin-quota';
 import type { CatalogJobDescriptor } from '../plugin-runtime';
+import type { GuardianEvaluate } from '../plugin-runtime/guardian-evaluation';
 import type { RealtimeCallStore } from '../routes/realtime';
 import type { VideoJobStore } from '../routes/videos';
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
@@ -77,6 +78,7 @@ export type ServerStateTestHooks = {
 };
 
 export type InternalServerStateOptions = ServerStateOptions & {
+  readonly __guardianEvaluate?: (sourceProviderId: string) => GuardianEvaluate;
   readonly __dashboardAuthHealthChanged?: (available: boolean) => void;
   readonly __test?: ServerStateTestHooks;
 };

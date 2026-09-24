@@ -674,7 +674,12 @@
       "uninstall_description": "要从此 aio-proxy 实例卸载 {packageName} 吗？",
       "uninstall_dependencies": "请先移除以下依赖此插件的提供商：",
       "uninstall_failed": "无法卸载插件，请重试。",
-      "uninstall_confirm": "确认卸载"
+      "uninstall_confirm": "确认卸载",
+      "provider_placeholder": "选择 Provider",
+      "provider_invalid": "请选择已启用、可用且符合该字段的 Provider。",
+      "model_placeholder": "选择模型",
+      "model_invalid": "请选择所选 Provider 可路由的模型。",
+      "model_required": "请输入模型 ID。"
     },
     "routing": {
       "title": "路由",

@@ -113,6 +113,7 @@ export const eventName = {
 // suffixes differ from our projection, so we do not import them here.
 export const attributeName = {
   requestId: 'aio_proxy.request.id',
+  guardianParentRequestId: 'aio_proxy.guardian.parent_request_id',
   operation: 'aio_proxy.operation',
   capability: 'aio_proxy.capability',
   genAiOperationName: 'gen_ai.operation.name',

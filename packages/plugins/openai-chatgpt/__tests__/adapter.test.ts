@@ -38,14 +38,25 @@ describe('OpenAI ChatGPT plugin', () => {
 
     expect(adapter.account.options.form).toEqual([]);
     await expect(adapter.account.options.schema.parseAsync({ userAgent: 'custom-agent' })).resolves.toEqual({});
-    expect(pluginOptions.form.map((field) => field.key)).toEqual(['userAgent', 'userAgentPolicy']);
+    expect(pluginOptions.form.map((field) => field.key)).toEqual([
+      'userAgent',
+      'userAgentPolicy',
+      'guardianStrategy',
+      'guardianProviderId',
+      'guardianModelId',
+    ]);
     await expect(pluginOptions.schema.parseAsync({})).resolves.toEqual({
       userAgent: DEFAULT_CHATGPT_USER_AGENT,
       userAgentPolicy: 'fixed',
+      guardianStrategy: 'default',
     });
     await expect(
       pluginOptions.schema.parseAsync({ userAgent: '  custom-agent  ', userAgentPolicy: 'preserveCodexClient' }),
-    ).resolves.toEqual({ userAgent: 'custom-agent', userAgentPolicy: 'preserveCodexClient' });
+    ).resolves.toEqual({
+      userAgent: 'custom-agent',
+      userAgentPolicy: 'preserveCodexClient',
+      guardianStrategy: 'default',
+    });
     await expect(pluginOptions.schema.parseAsync({ userAgent: 'bad\nagent' })).rejects.toThrow();
   });
 

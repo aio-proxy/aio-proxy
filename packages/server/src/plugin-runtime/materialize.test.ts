@@ -581,3 +581,80 @@ test('stamps the account pin and hands the effective proxy to the plugin runtime
   expect(result.provider?.runtimeRevision).toBe(account?.runtimeRevision);
   expect(Reflect.get(result.provider ?? {}, 'genAiProviderName')).toBe('openrouter');
 });
+
+test('injects a source-bound private evaluator only into the built-in ChatGPT context', async () => {
+  for (const [plugin, builtIn] of [
+    ['@example/oauth', false],
+    ['@aio-proxy/plugin-openai-chatgpt', false],
+    ['@aio-proxy/plugin-openai-chatgpt', true],
+  ] as const) {
+    let context: unknown;
+    const hint = async () => 'sensitive' as const;
+    const fixture = runtimeFixture(
+      { kind: 'static' },
+      {
+        createRuntime: async (value) => {
+          context = value;
+          (value as typeof value & { __aioRegisterPayloadHint?: (hint: unknown) => void }).__aioRegisterPayloadHint?.(
+            hint,
+          );
+          return {
+            provider: {
+              specificationVersion: 'v4',
+              languageModel() {
+                throw new Error('unused');
+              },
+              imageModel() {
+                throw new Error('unused');
+              },
+              embeddingModel() {
+                throw new Error('unused');
+              },
+            },
+          } as never;
+        },
+      },
+    );
+    const account = fixture.repository.readAccount('person')!;
+    const adapter = fixture.plugins.registry.resolveOAuth('@example/oauth', 'default')!;
+    const calls: string[] = [];
+    const evaluate = async () => 'evaluated';
+    const options: Parameters<typeof materializePluginProvider>[0] = {
+      config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin, capability: 'default' },
+      repository: { ...fixture.repository, readAccount: () => ({ ...account, plugin }) },
+      plugins: {
+        ...fixture.plugins,
+        plugins: new Map([[plugin, { packageName: plugin, builtIn, version: '1.0.0', state: { status: 'ready' } }]]),
+        registry: { ...fixture.plugins.registry, resolveOAuth: () => adapter },
+      },
+      diagnostics,
+      logger: () => {},
+      onDiagnosticChanged: () => {},
+      guardianEvaluate: (sourceProviderId) => {
+        calls.push(sourceProviderId);
+        return evaluate;
+      },
+    };
+    const result = await materializePluginProvider(options);
+    expect(result.provider).toBeDefined();
+    const injected = (context as { __aioGuardianEvaluate?: unknown }).__aioGuardianEvaluate;
+    if (plugin === '@example/oauth' || !builtIn) {
+      expect(injected).toBeUndefined();
+      expect(result.payloadCaptureHint).toBeUndefined();
+      expect(calls).toEqual([]);
+    } else {
+      expect(result.payloadCaptureHint).toBe(hint);
+      expect(result.cacheEntry?.payloadCaptureHint).toBe(hint);
+      expect(injected).toBe(evaluate);
+      expect(calls).toEqual(['person']);
+      const reused = await materializePluginProvider({ ...options, previous: result.cacheEntry });
+      expect(reused.payloadCaptureHint).toBe(hint);
+      const disabled = await materializePluginProvider({
+        ...options,
+        config: { ...options.config, enabled: false },
+        previous: result.cacheEntry,
+      });
+      expect(disabled.payloadCaptureHint).toBeUndefined();
+    }
+  }
+});

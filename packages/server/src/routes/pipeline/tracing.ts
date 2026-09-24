@@ -1,5 +1,7 @@
 import { type Context, type Span, type SpanOptions, SpanStatusCode, context, trace } from '@opentelemetry/api';
 
+import { capturesRequestPayload } from '../../request-logging';
+import { safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { attributeName, getTraceRuntime } from '../../request-tracing';
 
 export type SpanTerminal = {
@@ -23,6 +25,7 @@ export function startPipelineSpan(parent: Context, name: string, options: SpanOp
   const { tracer } = getTraceRuntime();
   const span = tracer.startSpan(name, options, parent);
   const active = trace.setSpan(parent, span);
+  const capturePayload = capturesRequestPayload();
   let ended = false;
   return {
     context: active,
@@ -31,7 +34,7 @@ export function startPipelineSpan(parent: Context, name: string, options: SpanOp
     end(terminal) {
       if (ended) return;
       ended = true;
-      applySpanTerminal(span, terminal);
+      applySpanTerminal(span, capturePayload || terminal === undefined ? terminal : safeDiagnosticFields(terminal));
       span.end();
     },
   };

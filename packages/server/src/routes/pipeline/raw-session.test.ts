@@ -4,6 +4,12 @@ import { openAIResponsesAdapter } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { createGuardianRawInvoke } from '../../../../plugins/openai-chatgpt/src/runtime/guardian';
+import {
+  guardianRequest,
+  syntheticGuardianInput,
+} from '../../../../plugins/openai-chatgpt/src/runtime/guardian/fixture';
+import { guardianQuestions } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/questions';
 import {
   defineProviderRouteSource,
   jsonRequest,
@@ -11,6 +17,8 @@ import {
   rawProvider,
   settleRecording,
 } from '../../../__tests__/pipeline-helpers';
+import { createGuardianEvaluate } from '../../plugin-runtime/guardian-evaluation';
+import { createObservedFetch } from '../../request-logging';
 import { attributeName } from '../../request-tracing';
 import type { ProviderRouteSource } from '../../runtime';
 import { createUsageCapture } from '../../usage-capture';
@@ -229,5 +237,123 @@ function previous(source: ProviderRouteSource, responseId: string) {
   return source.logicalSessionStore.begin({
     headers: new Headers(),
     hints: { candidates: [], previousResponseId: responseId, transcript: 'different request' },
+  });
+}
+
+for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'] as const) {
+  test(`Guardian accounting preserves selected Provider fees for ${scenario}`, async () => {
+    let evaluations = 0;
+    let originalCalls = 0;
+    let source!: ProviderRouteSource;
+    const modelId = scenario === 'ordinary' ? 'ordinary-model' : 'codex-auto-review';
+    const chatgpt = rawProvider({
+      id: 'chatgpt',
+      modelId,
+      priority: 10,
+      protocol: ProviderProtocol.OpenAIResponse,
+      invoke: createGuardianRawInvoke({
+        resolvedModelId: modelId,
+        pluginOptions: {
+          guardianStrategy: 'systemOneReviewDenied',
+          guardianProviderId: 'system-one',
+          guardianModelId: 'review',
+        },
+        evaluate: (input) => createGuardianEvaluate(() => source, 'chatgpt')(input),
+        original: async (request) =>
+          createObservedFetch((async () => {
+            originalCalls++;
+            if (scenario === 'failover') return new Response(null, { status: 503 });
+            if (scenario === 'retry')
+              return Response.json(
+                {
+                  error: {
+                    type: 'invalid_request_error',
+                    code: 'invalid_encrypted_content',
+                    message: 'Invalid encrypted content',
+                  },
+                },
+                { status: 400 },
+              );
+            return Response.json({
+              id: 'resp_original',
+              status: 'completed',
+              usage: { input_tokens: 10, output_tokens: 2 },
+            });
+          }) as typeof fetch)(request),
+      }),
+    });
+    const evaluator = rawProvider({
+      id: 'system-one',
+      modelId: 'review',
+      protocol: ProviderProtocol.TypeSafeSystemOne,
+      invoke: async (request) => {
+        evaluations++;
+        const body = await request.json();
+        const deny =
+          scenario === 'original' || ((scenario === 'retry' || scenario === 'failover') && evaluations === 1);
+        const selected: Record<string, string> = {
+          risk_level: deny ? 'critical' : 'low',
+          user_authorization: 'unknown',
+          outcome: deny ? 'deny' : 'allow',
+          reason: deny ? 'critical_risk' : 'low_risk',
+        };
+        return Response.json({
+          answers: Object.fromEntries(
+            Object.entries(guardianQuestions(body.state)).map(([id, question]) => [
+              id,
+              {
+                type: 'choice',
+                choice: selected[id],
+                probabilities: Object.fromEntries(
+                  Object.keys(question.criteria).map((label) => [label, label === selected[id] ? 1 : 0]),
+                ),
+              },
+            ]),
+          ),
+          usage: { input_tokens: 5, output_tokens: 1 },
+        });
+      },
+    });
+    const route = defineProviderRouteSource([
+      { ...chatgpt, provider: { ...chatgpt.provider, upstreamMetadata: { [modelId]: { cost: { request: 0.1 } } } } },
+      ...(scenario === 'failover'
+        ? [{ ...chatgpt, provider: { ...chatgpt.provider, id: 'chatgpt-next', priority: 0 } }]
+        : []),
+      {
+        ...evaluator,
+        provider: {
+          ...evaluator.provider,
+          alias: {},
+          models: ['review'],
+          capabilityIndex: { review: new Set(['evaluation']) },
+          upstreamMetadata: { review: { cost: { request: 0.02 } } },
+        },
+      },
+    ]);
+    source = realUsageSource(route.source);
+    const body = await guardianRequest(syntheticGuardianInput).json();
+    body.model = REQUESTED_MODEL;
+    body.stream = false;
+    const response = await handleProtocolRequest({
+      adapter: openAIResponsesAdapter,
+      context: {},
+      rawRequest: new Request('http://localhost/v1/responses', jsonRequest(body)),
+      source,
+    });
+    expect({ status: response.status, evaluations, originalCalls }).toMatchObject({ status: 200 });
+    const result = await response.json();
+    await settleRecording(route.recording);
+    const chatgptRows = route.recording.finals.filter((entry) => entry.usage?.providerId === 'chatgpt');
+    const evaluationRows = route.recording.finals.filter((entry) => entry.usage?.providerId === 'system-one');
+    expect(originalCalls).toBe(scenario === 'synthetic' ? 0 : 1);
+    expect(evaluations).toBe(scenario === 'retry' || scenario === 'failover' ? 2 : scenario === 'ordinary' ? 0 : 1);
+    expect(evaluationRows).toHaveLength(evaluations);
+    expect(evaluationRows.map((entry) => entry.usage?.estimatedCostUsd)).toEqual(Array(evaluations).fill(0.02));
+    expect(chatgptRows).toHaveLength(scenario === 'original' || scenario === 'ordinary' ? 1 : 0);
+    if (chatgptRows.length)
+      expect(chatgptRows[0]?.usage).toMatchObject({ inputTokens: 10, outputTokens: 2, estimatedCostUsd: 0.1 });
+    if (scenario === 'retry')
+      expect(route.recording.spans.some((span) => span.attributes[attributeName.httpStatusCode] === 400)).toBe(true);
+    expect(previous(source, result.id).resolvedBy).toBe('previous-response');
   });
 }

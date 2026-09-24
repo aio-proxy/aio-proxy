@@ -13,10 +13,12 @@ import {
 } from '@opentelemetry/api';
 
 import type { LogicalSessionResolution } from '../../logical-session-store';
+import { safeDiagnosticFields } from '../../request-logging/capture-policy';
+import { capturesRequestPayload } from '../../request-logging/context';
 import { logServerEvent, type ServerLogSink, serverErrorType } from '../../server-log';
 import { getTraceRuntime } from '../runtime';
 import { attributeName, captureTraceDiagnostics } from '../semantic';
-import { applyTerminalAttributes, buildCompletion } from './completion';
+import { applyTerminalAttributes, buildCompletion, captureTraceFinish } from './completion';
 import type { RequestTraceFinishInput, RequestTraceIdentityInput } from './types';
 
 export type { RequestTraceFinishInput, RequestTraceIdentityInput } from './types';
@@ -67,6 +69,7 @@ export function createRequestTraceRecorder(options: {
 
   return {
     begin(input) {
+      const capturePayload = capturesRequestPayload();
       const current = now();
       if (current.getTime() - lastPrunedAt.getTime() >= PRUNE_INTERVAL_MS) {
         lastPrunedAt = current;
@@ -80,12 +83,15 @@ export function createRequestTraceRecorder(options: {
         input.httpRoute === undefined
           ? input.inboundRequest.method
           : `${input.inboundRequest.method} ${input.httpRoute}`;
-      const rootAttributes = {
-        [attributeName.requestId]: requestId,
-        [attributeName.inboundProtocol]: input.inboundProtocol,
-        ...requestHttpAttributes(input.inboundRequest, input.inboundProtocol, input.httpRoute),
-        ...(input.operation === 'token_count' ? { [attributeName.operation]: input.operation } : {}),
-      };
+      const rootAttributes = safeDiagnosticFields(
+        {
+          [attributeName.requestId]: requestId,
+          [attributeName.inboundProtocol]: input.inboundProtocol,
+          ...requestHttpAttributes(input.inboundRequest, input.inboundProtocol, input.httpRoute),
+          ...(input.operation === 'token_count' ? { [attributeName.operation]: input.operation } : {}),
+        },
+        capturePayload,
+      );
 
       const root = tracer.startSpan(
         rootName,
@@ -135,10 +141,10 @@ export function createRequestTraceRecorder(options: {
       const complete = (finish: RequestTraceFinishInput): void => {
         if (state === 'finished') return;
         state = 'finished';
+        finish = captureTraceFinish(finish, capturePayload);
         try {
-          if (finish.clientResponse !== undefined) {
-            root.setAttributes(responseHttpAttributes(finish.clientResponse));
-          }
+          if (finish.clientResponse !== undefined)
+            root.setAttributes(safeDiagnosticFields(responseHttpAttributes(finish.clientResponse), capturePayload));
           applyTerminalAttributes(root, finish, identity);
           root.end();
           const completion = buildCompletion({ traceId, rootSpanId, spans: processor.take(traceId), finish, identity });

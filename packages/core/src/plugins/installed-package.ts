@@ -6,7 +6,7 @@ import { type Diagnostic } from '@aio-proxy/types';
 import { resolvePluginOptionsTemplates } from '../config/index';
 import type { NpmPackageInfo } from '../npm';
 import { isAiSdkProviderModule } from '../provider/ai-sdk-loader/index';
-import { validateConfigSpec } from './config-spec';
+import { validateConfigSpec } from './config-spec/index';
 import type { DiagnosticFactory, PluginLogSink } from './diagnostic/index';
 import { observedPromiseDeadline, PLUGIN_IMPORT_TIMEOUT_MS, validateDescriptor } from './loader/descriptor/index';
 import type { PluginPackageImporter } from './loader/index';

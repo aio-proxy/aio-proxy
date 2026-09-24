@@ -8,6 +8,9 @@ export type ChatGPTUserAgentPolicy = 'fixed' | 'preserveCodexClient';
 export type ChatGPTPluginOptions = {
   readonly userAgent: string;
   readonly userAgentPolicy: ChatGPTUserAgentPolicy;
+  readonly guardianStrategy: 'default' | 'systemOne' | 'systemOneReviewDenied';
+  readonly guardianProviderId?: string;
+  readonly guardianModelId?: string;
 };
 
 export type ChatGPTPluginOptionsText = {
@@ -17,6 +20,18 @@ export type ChatGPTPluginOptionsText = {
   readonly userAgentPolicyDescription: LocalizedText;
   readonly fixedPolicyLabel: LocalizedText;
   readonly preserveCodexClientLabel: LocalizedText;
+  readonly guardianStrategyLabel: LocalizedText;
+  readonly guardianStrategyDescription: LocalizedText;
+  readonly defaultGuardianLabel: LocalizedText;
+  readonly defaultGuardianDescription: LocalizedText;
+  readonly systemOneGuardianLabel: LocalizedText;
+  readonly systemOneGuardianDescription: LocalizedText;
+  readonly systemOneReviewDeniedGuardianLabel: LocalizedText;
+  readonly systemOneReviewDeniedGuardianDescription: LocalizedText;
+  readonly guardianProviderLabel: LocalizedText;
+  readonly guardianProviderDescription: LocalizedText;
+  readonly guardianModelLabel: LocalizedText;
+  readonly guardianModelDescription: LocalizedText;
 };
 
 const CODEX_CLIENT_MARKERS = ['codex-tui', 'codex_cli_rs', 'codex desktop'] as const;
@@ -29,6 +44,20 @@ export const englishPluginOptionsText: ChatGPTPluginOptionsText = {
     'By default, all requests use the User-Agent configured above. Choose to keep Codex clients’ User-Agent to forward it unchanged; other clients still use the configured value.',
   fixedPolicyLabel: 'Always use the configured User-Agent',
   preserveCodexClientLabel: 'Keep the User-Agent from Codex clients',
+  guardianStrategyLabel: 'Guardian review strategy',
+  guardianStrategyDescription: 'Choose how Codex Guardian approval requests are reviewed.',
+  defaultGuardianLabel: 'Default',
+  defaultGuardianDescription: 'Use the original ChatGPT Guardian review.',
+  systemOneGuardianLabel: 'System One',
+  systemOneGuardianDescription: 'The selected model’s allow or deny decision is final.',
+  systemOneReviewDeniedGuardianLabel: 'System One + original-model review',
+  systemOneReviewDeniedGuardianDescription:
+    'The selected model may allow directly; its denials go to the original model for final review.',
+  guardianProviderLabel: 'Evaluation Provider',
+  guardianProviderDescription:
+    'Guardian approval context, including the proposed action and conversation evidence, is sent to the selected Provider.',
+  guardianModelLabel: 'Model ID',
+  guardianModelDescription: 'Routable model ID on the selected Provider.',
 };
 
 function isHttpHeaderValue(value: string): boolean {
@@ -58,6 +87,15 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
           .optional()
           .transform((value) => (value === undefined || value === '' ? DEFAULT_CHATGPT_USER_AGENT : value)),
         userAgentPolicy: zod.enum(['fixed', 'preserveCodexClient']).default('fixed'),
+        guardianStrategy: zod.enum(['default', 'systemOne', 'systemOneReviewDenied']).default('default'),
+        guardianProviderId: zod.string().trim().min(1).optional(),
+        guardianModelId: zod.string().trim().min(1).optional(),
+      })
+      .superRefine((value, ctx) => {
+        if (value.guardianStrategy === 'default') return;
+        for (const key of ['guardianProviderId', 'guardianModelId'] as const) {
+          if (value[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required` });
+        }
       })
       .transform((value): ChatGPTPluginOptions => value),
     form: [
@@ -79,6 +117,38 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
           { value: 'fixed', label: text.fixedPolicyLabel },
           { value: 'preserveCodexClient', label: text.preserveCodexClientLabel },
         ],
+      },
+      {
+        type: 'select',
+        key: 'guardianStrategy',
+        label: text.guardianStrategyLabel,
+        description: text.guardianStrategyDescription,
+        defaultValue: 'default',
+        options: [
+          { value: 'default', label: text.defaultGuardianLabel, description: text.defaultGuardianDescription },
+          { value: 'systemOne', label: text.systemOneGuardianLabel, description: text.systemOneGuardianDescription },
+          {
+            value: 'systemOneReviewDenied',
+            label: text.systemOneReviewDeniedGuardianLabel,
+            description: text.systemOneReviewDeniedGuardianDescription,
+          },
+        ],
+      },
+      {
+        type: 'provider',
+        key: 'guardianProviderId',
+        label: text.guardianProviderLabel,
+        description: text.guardianProviderDescription,
+        protocols: ['typesafe-systemone'],
+        when: { key: 'guardianStrategy', notEquals: 'default' },
+      },
+      {
+        type: 'provider-model',
+        key: 'guardianModelId',
+        label: text.guardianModelLabel,
+        description: text.guardianModelDescription,
+        providerKey: 'guardianProviderId',
+        when: { key: 'guardianStrategy', notEquals: 'default' },
       },
     ],
   };

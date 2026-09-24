@@ -2,7 +2,7 @@ export * from './account-login/index';
 export * from './builtins';
 export * from './catalog';
 export * from './config-file';
-export * from './config-spec';
+export * from './config-spec/index';
 export * from './credential-port';
 export * from './default-aliases';
 export {

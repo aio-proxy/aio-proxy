@@ -40,7 +40,9 @@ function promptMessage(field: FormField, locale: string): string {
 }
 
 function visible(field: FormField, values: Readonly<Record<string, unknown>>): boolean {
-  return field.when === undefined || values[field.when.key] === field.when.equals;
+  if (field.when === undefined) return true;
+  const actual = values[field.when.key];
+  return 'equals' in field.when ? actual === field.when.equals : actual !== field.when.notEquals;
 }
 
 type PromptFieldArgs = {
@@ -65,6 +67,14 @@ async function promptFieldValue(field: FormField, args: PromptFieldArgs): Promis
         },
         context,
       );
+    case 'provider':
+    case 'provider-model':
+      return (
+        await prompts.input(
+          { message, ...(typeof promptDefault === 'string' ? { defaultValue: promptDefault } : {}) },
+          context,
+        )
+      ).trim();
     case 'secret': {
       const value = await prompts.password({ message, mask: '*' }, context);
       if (clearSecrets.has(field.key)) return undefined;

@@ -3,6 +3,7 @@ import type { TraceTerminationReason } from '@aio-proxy/types';
 import { type Span, SpanStatusCode } from '@opentelemetry/api';
 
 import type { LogicalSessionResolution } from '../../logical-session-store';
+import { safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { attributeName } from '../semantic';
 import type { RequestTraceFinishInput } from './types';
 
@@ -101,4 +102,10 @@ export function buildCompletion(deps: {
         }
       : {}),
   };
+}
+
+export function captureTraceFinish(finish: RequestTraceFinishInput, capturePayload: boolean): RequestTraceFinishInput {
+  if (capturePayload || finish.outcome !== 'failure') return finish;
+  const { errorType: _errorType, errorCode, ...rest } = finish;
+  return { ...rest, ...safeDiagnosticFields({ errorCode }) };
 }

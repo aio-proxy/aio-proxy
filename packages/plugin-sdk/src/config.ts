@@ -3,10 +3,9 @@ import type { ZodType } from 'zod';
 import type { JsonValue } from './json';
 import type { LocalizedText } from './localized-text';
 
-export type FormCondition = {
-  readonly key: string;
-  readonly equals: string | number | boolean | null;
-};
+export type FormCondition =
+  | { readonly key: string; readonly equals: string | number | boolean | null }
+  | { readonly key: string; readonly notEquals: string | number | boolean | null };
 
 type FormFieldBase<TType extends string> = {
   readonly type: TType;
@@ -15,6 +14,11 @@ type FormFieldBase<TType extends string> = {
   readonly description?: LocalizedText;
   readonly when?: FormCondition;
 };
+
+export type ProviderField = FormFieldBase<'provider'> & {
+  readonly protocols?: readonly string[];
+};
+export type ProviderModelField = FormFieldBase<'provider-model'> & { readonly providerKey: string };
 
 export type FormField =
   | (FormFieldBase<'text'> & { readonly placeholder?: LocalizedText; readonly defaultValue?: string })
@@ -32,7 +36,9 @@ export type FormField =
   | (FormFieldBase<'json'> & {
       readonly placeholder?: LocalizedText;
       readonly defaultValue?: JsonValue;
-    });
+    })
+  | ProviderField
+  | ProviderModelField;
 
 export type ConfigSpec<T> = {
   readonly schema: ZodType<T>;

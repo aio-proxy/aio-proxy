@@ -1,9 +1,11 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 import type { TraceCompletion } from '@aio-proxy/core/db';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { attributeName, createRequestTraceRecorder } from '../../../../request-tracing';
+import { withRequestLogContext } from '../../../../request-logging';
+import { attributeName, createRequestTraceRecorder, getTraceRuntime } from '../../../../request-tracing';
+import { toExportableSpan } from '../../../../request-tracing/otel-export/safe-span';
 import { createAttemptResponseObservation } from '../../../../response-observation';
 import type { AttemptInfo } from '../../attempt-base';
 import { failureTerminal } from '../../failure';
@@ -179,4 +181,46 @@ test('an unambiguous observed endpoint is attached to the provider inference spa
   const attempt = completions[0]?.spans.find((span) => span.spanId !== session.rootSpanId);
   expect(attempt?.attributes[attributeName.serverAddress]).toBe('provider.test');
   expect(attempt?.attributes[attributeName.serverPort]).toBe(8443);
+});
+
+test('sensitive attempts omit identifier-shaped response models from persistence and export', () => {
+  const sentinel = 'private-evaluator-sentinel';
+  const completions: TraceCompletion[] = [];
+  const exported: unknown[] = [];
+  const exportSpan = spyOn(getTraceRuntime().exporter, 'onEnd').mockImplementation((span) => {
+    exported.push(toExportableSpan(span));
+  });
+  const recorder = createRequestTraceRecorder({
+    store: {
+      startRoot() {},
+      prune() {},
+      recover() {},
+      complete(value) {
+        completions.push(value);
+        return true;
+      },
+    },
+  });
+  try {
+    withRequestLogContext({ requestId: 'private-request', debug: true, capturePayload: false, logger() {} }, () => {
+      const session = recorder.begin({
+        inboundRequest: new Request('http://localhost'),
+        inboundProtocol: 'openai-response',
+      });
+      const emitter = createAttemptEmitter({ session, capability: 'language' });
+      const attempt = emitter.startAttempt(base, 0);
+      emitter.endAttempt(
+        attempt,
+        createAttemptResponseObservation({ startedAt: 0 }),
+        { outcome: 'success' },
+        { responseModelId: sentinel },
+      );
+      session.finish({ outcome: 'success', finalProviderId: base.providerId, finalModelId: base.modelId });
+    });
+    expect(JSON.stringify(completions)).not.toContain(sentinel);
+    expect(JSON.stringify(exported)).not.toContain(sentinel);
+    expect(completions[0]?.summary.finalProviderId).toBe(base.providerId);
+  } finally {
+    exportSpan.mockRestore();
+  }
 });

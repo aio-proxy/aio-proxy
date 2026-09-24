@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthFormField } from '@aio-proxy/types';
+import type { DashboardOAuthFormField, DashboardProviderSummary } from '@aio-proxy/types';
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
@@ -7,13 +7,18 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import type { AnyFieldApi } from '@tanstack/react-form';
 
+import { formFieldVisible } from '@/lib/form-field-visible';
 import { isValidJson, optionValue } from '@/lib/json-form-value';
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import type { PluginOptionsForm } from '../hooks/use-plugin-options-form';
+import { PluginProviderModelOptionsField } from './plugin-provider-model-options-field';
+import { PluginProviderOptionsField } from './plugin-provider-options-field';
 import { PluginSecretOptionsField } from './plugin-secret-options-field';
 
 interface PluginOptionsFieldProps {
+  readonly fields: readonly DashboardOAuthFormField[];
+  readonly providers: readonly DashboardProviderSummary[];
   readonly combined: Record<string, unknown>;
   readonly field: DashboardOAuthFormField;
   readonly form: PluginOptionsForm;
@@ -31,19 +36,35 @@ const setPublicOptionValue = (publicField: AnyFieldApi, key: string, value: unkn
 
 export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
   combined,
+  fields,
+  providers,
   field,
   form,
   jsonField,
   publicField,
   secretField,
 }) => {
-  if (field.when !== undefined && combined[field.when.key] !== field.when.equals) return null;
+  if (!formFieldVisible(field, combined)) return null;
   const id = `plugin-option-${field.key}`;
   const label = resolveDashboardText(field.label);
   const description = field.description === undefined ? undefined : resolveDashboardText(field.description);
   const descriptionId = description === undefined ? undefined : `${id}-description`;
   const current = publicField.state.value[field.key];
   const setPublic = (value: unknown) => setPublicOptionValue(publicField, field.key, value);
+
+  if (field.type === 'provider') {
+    return <PluginProviderOptionsField field={field} fields={fields} providers={providers} publicField={publicField} />;
+  }
+  if (field.type === 'provider-model') {
+    return (
+      <PluginProviderModelOptionsField
+        field={field}
+        providers={providers}
+        combined={combined}
+        publicField={publicField}
+      />
+    );
+  }
 
   if (field.type === 'secret') {
     return (

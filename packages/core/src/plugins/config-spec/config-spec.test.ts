@@ -2,11 +2,33 @@ import { describe, expect, test } from 'bun:test';
 
 import { zod } from '@aio-proxy/plugin-sdk';
 
-import { validateConfigSpec } from '../../src/plugins/config-spec';
+import { validateConfigSpec } from './index';
 
 const schema = zod.object({});
 
 describe('validateConfigSpec', () => {
+  test('retains provider targets and a not-equals condition', () => {
+    const fields = [
+      { type: 'select', key: 'strategy', label: 'Strategy', options: [{ value: 'default', label: 'Default' }] },
+      {
+        type: 'provider',
+        key: 'providerId',
+        label: 'Provider',
+        protocols: ['typesafe-systemone'],
+        when: { key: 'strategy', notEquals: 'default' },
+      },
+      {
+        type: 'provider-model',
+        key: 'modelId',
+        label: 'Model',
+        providerKey: 'providerId',
+        when: { key: 'strategy', notEquals: 'default' },
+      },
+    ] as const;
+
+    expect(validateConfigSpec({ schema, form: fields }).spec.form).toEqual(fields);
+  });
+
   test('accepts every field type and returns shared secret keys', () => {
     const result = validateConfigSpec({
       schema,

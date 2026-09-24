@@ -8,7 +8,7 @@ import {
 } from '@aio-proxy/plugin-sdk';
 import { isRecord } from '@aio-proxy/shared';
 
-import { isPluginZodSchema } from './schema';
+import { isPluginZodSchema } from '../schema';
 
 export type ValidatedConfigSpec<T = unknown> = {
   readonly spec: ConfigSpec<T>;
@@ -49,10 +49,14 @@ function optionalLocalizedText(value: unknown): LocalizedText | null | undefined
 function validateWhen(value: unknown, knownKeys: ReadonlySet<string>): value is FormCondition | undefined {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
-  const { key, equals } = value;
+  const { key } = value;
   if (typeof key !== 'string' || !knownKeys.has(key)) return false;
-  if (typeof equals === 'number') return Number.isFinite(equals);
-  return equals === null || ['string', 'number', 'boolean'].includes(typeof equals);
+  const hasEquals = 'equals' in value;
+  const hasNotEquals = 'notEquals' in value;
+  if (hasEquals === hasNotEquals) return false;
+  const comparison = hasEquals ? value['equals'] : value['notEquals'];
+  if (typeof comparison === 'number') return Number.isFinite(comparison);
+  return comparison === null || typeof comparison === 'string' || typeof comparison === 'boolean';
 }
 
 function primitiveKey(value: string | number | boolean): string {
@@ -93,7 +97,11 @@ function validateSelectOptions(value: unknown):
   return validated;
 }
 
-function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormField | undefined {
+function validateField(
+  value: unknown,
+  knownKeys: ReadonlySet<string>,
+  providerKeys: ReadonlySet<string>,
+): FormField | undefined {
   if (!isRecord(value)) return undefined;
   const { key, label, description, when, type, placeholder, defaultValue, options } = value;
   if (typeof key !== 'string' || key.trim() === '' || key !== key.trim()) return undefined;
@@ -105,7 +113,12 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
     key,
     label: validatedLabel,
     ...(validatedDescription === undefined ? {} : { description: validatedDescription }),
-    ...(when === undefined ? {} : { when: { key: when.key, equals: when.equals } }),
+    ...(when === undefined
+      ? {}
+      : {
+          when:
+            'equals' in when ? { key: when.key, equals: when.equals } : { key: when.key, notEquals: when.notEquals },
+        }),
   };
   const validatedPlaceholder = optionalLocalizedText(placeholder);
 
@@ -127,6 +140,23 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
         : { ...base, type, ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }) };
     case 'secret':
       return placeholder === undefined ? { ...base, type } : undefined;
+    case 'provider': {
+      const { protocols } = value;
+      return protocols === undefined ||
+        (Array.isArray(protocols) &&
+          protocols.length > 0 &&
+          protocols.every(
+            (protocol) => typeof protocol === 'string' && protocol.trim() !== '' && protocol === protocol.trim(),
+          ))
+        ? { ...base, type, ...(protocols === undefined ? {} : { protocols }) }
+        : undefined;
+    }
+    case 'provider-model': {
+      const { providerKey } = value;
+      return typeof providerKey === 'string' && providerKey.trim() === providerKey && providerKeys.has(providerKey)
+        ? { ...base, type, providerKey }
+        : undefined;
+    }
     case 'boolean':
       return defaultValue === undefined || typeof defaultValue === 'boolean'
         ? { ...base, type, ...(defaultValue === undefined ? {} : { defaultValue }) }
@@ -166,13 +196,15 @@ export function validateConfigSpec<T = unknown>(value: unknown): ValidatedConfig
   if (!isPluginZodSchema(schema) || !Array.isArray(form)) throw new ConfigSpecValidationError();
 
   const keys = new Set<string>();
+  const providerKeys = new Set<string>();
   const secretKeys = new Set<string>();
   const validatedForm: FormField[] = [];
   for (const field of form) {
-    const validated = validateField(field, keys);
+    const validated = validateField(field, keys, providerKeys);
     if (validated === undefined) throw new ConfigSpecValidationError();
     validatedForm.push(validated);
     keys.add(validated.key);
+    if (validated.type === 'provider') providerKeys.add(validated.key);
     if (validated.type === 'secret') secretKeys.add(validated.key);
   }
 

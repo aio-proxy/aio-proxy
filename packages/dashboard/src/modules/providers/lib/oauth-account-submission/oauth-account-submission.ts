@@ -1,5 +1,7 @@
 import type { DashboardOAuthFormField, DashboardOAuthSessionStart } from '@aio-proxy/types';
 
+import { formFieldVisible } from '@/lib/form-field-visible';
+
 interface OAuthAccountDraft {
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
@@ -19,7 +21,7 @@ export const oauthAccountSubmission = (
   draft: OAuthAccountDraft,
 ): OAuthAccountDraft => {
   const combined = { ...oauthFieldDefaults(fields), ...draft.publicValues, ...draft.secrets };
-  const visible = fields.filter((field) => field.when === undefined || combined[field.when.key] === field.when.equals);
+  const visible = fields.filter((field) => formFieldVisible(field, combined));
   const publicKeys = new Set(visible.filter((field) => field.type !== 'secret').map((field) => field.key));
   const secretKeys = new Set(visible.filter((field) => field.type === 'secret').map((field) => field.key));
   return {

@@ -38,7 +38,7 @@ import { createObservedFetch } from '../request-logging';
 import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
 import { resolveCatalogModalities } from './resolve-catalog-modalities/index';
 import { applyMetadataExtend } from './resolve-extend/index';
-import type { CreateRouter, ServerStateOptions } from './types';
+import type { CreateRouter, InternalServerStateOptions, ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
@@ -67,6 +67,7 @@ export async function buildSnapshot(
   createRouter: CreateRouter,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
+  const guardianEvaluate = (options as InternalServerStateOptions).__guardianEvaluate;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
     config,
     options,
@@ -95,6 +96,7 @@ export async function buildSnapshot(
       const resolvedProxy = effectiveProxy(configWithExtend.proxy, provider.proxy, configWithExtend, provider);
       const providerFetch = createProxyFetch(resolvedProxy, controlFetch);
       return materializePluginProvider({
+        ...(guardianEvaluate === undefined ? {} : { guardianEvaluate }),
         config: provider,
         plugins,
         repository,
@@ -124,6 +126,7 @@ export async function buildSnapshot(
   );
   return {
     config: configWithExtend,
+    payloadCaptureHints: compact(oauth.map((item) => item.payloadCaptureHint)),
     plugins,
     probes: base.probes,
     providers,

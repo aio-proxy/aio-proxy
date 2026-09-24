@@ -10,6 +10,7 @@ export const SERVER_LOG_LEVEL = {
   'config.reload_failed': 'error',
   'dashboard.auth_unavailable': 'error',
   'otel.export': 'warn',
+  'guardian.evaluation.unavailable': 'warn',
   'realtime.call_created': 'debug',
   'realtime.call_failed': 'error',
   'realtime.sideband_closed': 'debug',

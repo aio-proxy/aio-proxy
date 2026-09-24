@@ -16,10 +16,17 @@ import {
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
 import type { AnyFieldApi } from '@tanstack/react-form';
+import { useQuery } from '@tanstack/react-query';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 
+import { providerSummariesQueryOptions } from '@/lib/provider-summaries-query';
+
 import { usePluginOptionsMutation } from '../hooks/use-plugin-mutations';
-import { pluginOptionsFormValues, usePluginOptionsForm } from '../hooks/use-plugin-options-form';
+import {
+  pluginOptionsFormValues,
+  pluginProviderOptionsValid,
+  usePluginOptionsForm,
+} from '../hooks/use-plugin-options-form';
 import { usePluginEditViewQuery } from '../hooks/use-plugins-query';
 import { PluginRequestError } from '../services/plugins-service';
 import { PluginOptionsField } from './plugin-options-field';
@@ -46,10 +53,19 @@ const optionDefaults = (fields: readonly DashboardOAuthFormField[]): Readonly<Re
 export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) => {
   const [packageName, setPackageName] = useState<string | null>(null);
   const editViewQuery = usePluginEditViewQuery(packageName);
+  const providersQuery = useQuery({
+    ...providerSummariesQueryOptions(),
+    enabled: packageName !== null && editViewQuery.data?.form.some((field) => field.type === 'provider') === true,
+  });
+  const providers = providersQuery.data?.providers ?? [];
   const mutation = usePluginOptionsMutation();
   const isMobile = useIsMobile();
   const form = usePluginOptionsForm((value) => {
-    if (editViewQuery.data === undefined) return;
+    if (
+      editViewQuery.data === undefined ||
+      !pluginProviderOptionsValid(editViewQuery.data.form, value.publicValues, providers)
+    )
+      return;
     const parsed = DashboardPluginOptionsMutationSchema.safeParse({
       packageName: editViewQuery.data.packageName,
       revision: editViewQuery.data.revision,
@@ -131,6 +147,8 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
                                 <PluginOptionsField
                                   key={field.key}
                                   field={field}
+                                  fields={editViewQuery.data.form}
+                                  providers={providers}
                                   combined={combined}
                                   publicField={publicField}
                                   secretField={secretField}
@@ -157,11 +175,19 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
             <Button type="button" variant="outline" onClick={closeDrawer}>
               {m['dashboard.plugins.cancel']()}
             </Button>
-            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
-              {([canSubmit, isSubmitting]) => (
+            <form.Subscribe
+              selector={(state) => [
+                state.canSubmit,
+                state.isSubmitting,
+                pluginProviderOptionsValid(editViewQuery.data?.form ?? [], state.values.publicValues, providers),
+              ]}
+            >
+              {([canSubmit, isSubmitting, targetValid]) => (
                 <Button
                   type="submit"
-                  disabled={editViewQuery.data === undefined || !canSubmit || isSubmitting || mutation.isPending}
+                  disabled={
+                    editViewQuery.data === undefined || !canSubmit || !targetValid || isSubmitting || mutation.isPending
+                  }
                 >
                   {m['dashboard.plugins.options_save']()}
                 </Button>
