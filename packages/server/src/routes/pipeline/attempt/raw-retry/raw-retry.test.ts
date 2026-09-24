@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { classifyOpenAIResponsesRawRetry } from '@aio-proxy/core';
 
-import { preflightRawRetrySse, readBoundedJsonBody } from './raw-retry';
+import { preflightRawRetrySse, readBoundedJsonBody, resolveRawRetry } from './raw-retry';
 
 const created =
   'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}\n\n';
@@ -223,4 +223,23 @@ test('refuses a JSON body that stalls', async () => {
   expect(
     await readBoundedJsonBody(response, { signal: new AbortController().signal, idleTimeoutMs: 10 }),
   ).toBeUndefined();
+});
+
+test('raw retry preserves invocation identity through preflight and replaces it on replay', async () => {
+  const originalInvocation = { originalTransportStarted: true, syntheticGuardianResponse: false };
+  const syntheticInvocation = { originalTransportStarted: false, syntheticGuardianResponse: true };
+  for (const retry of [false, true]) {
+    const result = await resolveRawRetry({
+      hook: { classify: classifyOpenAIResponsesRawRetry, rewrite: async (request) => request },
+      retrySource: new Request('https://example.test', { method: 'POST', body: '{}' }),
+      request: {},
+      context: {},
+      result: { response: sse(retry ? created + encryptedError : created + delta), invocation: originalInvocation },
+      streamRequested: true,
+      guards: live(),
+      invoke: async () => ({ response: sse(created + delta), invocation: syntheticInvocation }),
+    });
+    expect(result.invocation).toBe(retry ? syntheticInvocation : originalInvocation);
+    expect(await result.response.text()).toBe(created + delta);
+  }
 });

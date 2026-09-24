@@ -244,7 +244,7 @@ function inlineHistory(input: unknown[]): boolean {
     } else if (item['type'] === 'reasoning') {
       if (
         !onlyKeys(item, ['type', 'id', 'summary', 'encrypted_content', 'status']) ||
-        typeof item['encrypted_content'] !== 'string' ||
+        ('encrypted_content' in item && typeof item['encrypted_content'] !== 'string') ||
         !Array.isArray(item['summary']) ||
         !item['summary'].every(
           (part) =>

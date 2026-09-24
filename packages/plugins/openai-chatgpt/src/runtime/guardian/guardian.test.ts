@@ -1,7 +1,10 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
+
+import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
 import { guardianDecision } from './decision';
 import { guardianRequest, syntheticGuardianInput } from './fixture';
+import { createGuardianRawInvoke } from './guardian';
 import { guardianQuestions } from './questions';
 import { guardianPayloadHint, projectGuardianRequest } from './request';
 import { guardianResponse } from './response';
@@ -545,4 +548,355 @@ test('capture hint stops a stalled clone when the inbound request aborts', async
   const pending = guardianPayloadHint(request, { maxBytes: 64 });
   controller.abort();
   expect(await Promise.race([pending, Bun.sleep(50).then(() => 'stalled')])).toBe('sensitive');
+});
+
+const wrapperContext = {
+  requestId: 'guardian-test',
+  session: { key: 'sha256:test', source: 'generated' },
+} as LogicalRequestContext;
+const wrapperOptions = {
+  userAgent: '',
+  userAgentPolicy: 'fixed',
+  guardianStrategy: 'systemOne',
+  guardianProviderId: 'system-one',
+  guardianModelId: 'review',
+} as const;
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const) {
+  for (const outcome of ['allow', 'deny'] as const) {
+    test(`wrapper ${strategy} returns final ${outcome} through the selected path`, async () => {
+      let calls = 0;
+      let evaluations = 0;
+      const request = guardianRequest(syntheticGuardianInput);
+      const expected = await request.clone().text();
+      const originalResponse = Response.json({ original: outcome });
+      const invocation = { originalTransportStarted: false, syntheticGuardianResponse: false };
+      const invoke = createGuardianRawInvoke({
+        resolvedModelId: 'codex-auto-review',
+        pluginOptions: { ...wrapperOptions, guardianStrategy: strategy },
+        original: async (original) => {
+          calls++;
+          expect(await original.text()).toBe(expected);
+          return originalResponse;
+        },
+        evaluate: async (input) => {
+          evaluations++;
+          expect(input.providerId).toBe('system-one');
+          expect(input.body.state.input).toEqual(syntheticGuardianInput);
+          return outcome === 'allow'
+            ? choiceResult('low', 'unknown', 'allow', 'low_risk')
+            : choiceResult('critical', 'unknown', 'deny', 'critical_risk');
+        },
+      });
+      const response = await invoke(request, wrapperContext, {
+        upstreamStream: true,
+        __aioGuardianInvocation: invocation,
+      } as never);
+      const fallback = strategy === 'systemOneReviewDenied' && outcome === 'deny';
+      expect(calls).toBe(fallback ? 1 : 0);
+      expect(evaluations).toBe(1);
+      expect(invocation).toEqual({ originalTransportStarted: fallback, syntheticGuardianResponse: !fallback });
+      if (fallback) expect(response).toBe(originalResponse);
+      else expect(await response.text()).toContain('response.completed');
+    });
+  }
+}
+
+test('wrapper bypasses defaults, other resolved models and missing request context', async () => {
+  for (const [strategy, model, context] of [
+    ['default', 'codex-auto-review', wrapperContext],
+    ['systemOne', 'gpt-6-sol', wrapperContext],
+    ['systemOne', 'codex-auto-review', undefined],
+  ] as const) {
+    let calls = 0;
+    let evaluations = 0;
+    const request = guardianRequest(syntheticGuardianInput);
+    const text = await request.clone().text();
+    const invoke = createGuardianRawInvoke({
+      resolvedModelId: model,
+      pluginOptions: { ...wrapperOptions, guardianStrategy: strategy },
+      original: async (request) => {
+        calls++;
+        expect(await request.text()).toBe(text);
+        return new Response();
+      },
+      evaluate: async () => {
+        evaluations++;
+        throw new Error('must not evaluate');
+      },
+    });
+    await invoke(request, context);
+    expect(calls).toBe(1);
+    expect(evaluations).toBe(0);
+  }
+});
+
+test('wrapper falls back once on invalid answers or evaluator failure', async () => {
+  for (const evaluate of [
+    async () => ({}),
+    async () => {
+      throw new Error('failed');
+    },
+  ]) {
+    let calls = 0;
+    const invoke = createGuardianRawInvoke({
+      resolvedModelId: 'codex-auto-review',
+      pluginOptions: wrapperOptions,
+      original: async () => {
+        calls++;
+        return new Response();
+      },
+      evaluate,
+    });
+    await invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
+    expect(calls).toBe(1);
+  }
+});
+
+test('synchronous evaluator abort handles its rejection and never falls back', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: wrapperOptions,
+    original: async () => {
+      calls++;
+      return new Response();
+    },
+    evaluate: () => {
+      controller.abort();
+      return Promise.reject(controller.signal.reason);
+    },
+  });
+  await expect(
+    invoke(new Request(guardianRequest(syntheticGuardianInput), { signal: controller.signal }), wrapperContext),
+  ).rejects.toThrow();
+  await Bun.sleep(0);
+  expect(calls).toBe(0);
+});
+
+test('abort while projection is pending prevents any dispatch after the body finishes', async () => {
+  const body = await guardianRequest(syntheticGuardianInput).text();
+  const controller = new AbortController();
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  let originalCalls = 0;
+  let evaluations = 0;
+  const request = new Request('https://example.test/v1/responses', {
+    method: 'POST',
+    signal: controller.signal,
+    body: new ReadableStream({
+      start(c) {
+        stream = c;
+      },
+    }),
+  });
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: wrapperOptions,
+    original: async () => {
+      originalCalls++;
+      return new Response();
+    },
+    evaluate: async () => {
+      evaluations++;
+      return {};
+    },
+  });
+  const pending = invoke(request, wrapperContext);
+  await Bun.sleep(0);
+  controller.abort();
+  stream.enqueue(new TextEncoder().encode(body));
+  stream.close();
+  await expect(pending).rejects.toThrow();
+  await Bun.sleep(0);
+  expect(originalCalls).toBe(0);
+  expect(evaluations).toBe(0);
+});
+
+test('caller abort in the evaluation settlement microtask wins over synthetic output', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: wrapperOptions,
+    original: async () => {
+      calls++;
+      return new Response();
+    },
+    evaluate: () => {
+      const result = Promise.resolve(choiceResult('low', 'unknown', 'allow', 'low_risk'));
+      void result.then(() => queueMicrotask(() => controller.abort()));
+      return result;
+    },
+  });
+  await expect(
+    invoke(new Request(guardianRequest(syntheticGuardianInput), { signal: controller.signal }), wrapperContext),
+  ).rejects.toThrow();
+  expect(calls).toBe(0);
+});
+
+for (const abort of [false, true])
+  test(`deadline remains authoritative during synchronous validation, caller aborted=${abort}`, async () => {
+    let now = 0;
+    const clock = spyOn(performance, 'now').mockImplementation(() => now);
+    const controller = new AbortController();
+    let calls = 0;
+    try {
+      const answer = choiceResult('low', 'unknown', 'allow', 'low_risk');
+      const evaluated = {
+        get answers() {
+          now = 8_001;
+          if (abort) controller.abort();
+          return answer.answers;
+        },
+      };
+      const invoke = createGuardianRawInvoke({
+        resolvedModelId: 'codex-auto-review',
+        pluginOptions: wrapperOptions,
+        original: async () => {
+          calls++;
+          return new Response('original');
+        },
+        evaluate: async () => evaluated,
+      });
+      const pending = invoke(
+        new Request(guardianRequest(syntheticGuardianInput), { signal: controller.signal }),
+        wrapperContext,
+      );
+      if (abort) await expect(pending).rejects.toThrow();
+      else expect(await (await pending).text()).toBe('original');
+      expect(calls).toBe(abort ? 0 : 1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+test('evaluation timeout falls back once and ignores its late allow', async () => {
+  const deadline = new AbortController();
+  const timer = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+  const started = Promise.withResolvers<void>();
+  const late = Promise.withResolvers<unknown>();
+  let calls = 0;
+  try {
+    const invoke = createGuardianRawInvoke({
+      resolvedModelId: 'codex-auto-review',
+      pluginOptions: wrapperOptions,
+      original: async () => {
+        calls++;
+        return new Response('original');
+      },
+      evaluate: () => {
+        started.resolve();
+        return late.promise;
+      },
+    });
+    const pending = invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
+    await started.promise;
+    deadline.abort(new DOMException('Timeout', 'TimeoutError'));
+    expect(await (await pending).text()).toBe('original');
+    late.resolve(choiceResult('low', 'unknown', 'allow', 'low_risk'));
+    await Bun.sleep(0);
+    expect(calls).toBe(1);
+  } finally {
+    timer.mockRestore();
+  }
+});
+
+test('original-model error after denial remains final without recursive evaluation', async () => {
+  let calls = 0;
+  let evaluations = 0;
+  const failure = new Error('original failure');
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: { ...wrapperOptions, guardianStrategy: 'systemOneReviewDenied' },
+    original: async () => {
+      calls++;
+      throw failure;
+    },
+    evaluate: async () => {
+      evaluations++;
+      return choiceResult('critical', 'unknown', 'deny', 'critical_risk');
+    },
+  });
+  await expect(invoke(guardianRequest(syntheticGuardianInput), wrapperContext)).rejects.toBe(failure);
+  expect(calls).toBe(1);
+  expect(evaluations).toBe(1);
+});
+
+test('reasoning metadata remains eligible after raw retry removes only encrypted_content', async () => {
+  const body = await guardianRequest(syntheticGuardianInput).json();
+  delete body.input[4].encrypted_content;
+  const projection = await projectGuardianRequest(
+    new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+    'codex-auto-review',
+  );
+  expect(projection?.state.input).toEqual(body.input);
+  body.input[4].encrypted_content = {};
+  expect(
+    await projectGuardianRequest(
+      new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+      'codex-auto-review',
+    ),
+  ).toBeUndefined();
+});
+
+for (const abort of [false, true])
+  test(`checks deadline and cancellation after building response, abort=${abort}`, async () => {
+    let now = 0;
+    const clock = spyOn(performance, 'now').mockImplementation(() => now);
+    const controller = new AbortController();
+    const wallClock = spyOn(Date, 'now').mockImplementation(() => {
+      now = 8_001;
+      if (abort) controller.abort();
+      return 0;
+    });
+    let calls = 0;
+    const invocation = { originalTransportStarted: false, syntheticGuardianResponse: false };
+    try {
+      const invoke = createGuardianRawInvoke({
+        resolvedModelId: 'codex-auto-review',
+        pluginOptions: wrapperOptions,
+        original: async () => {
+          calls++;
+          return new Response('original');
+        },
+        evaluate: async () => choiceResult('low', 'unknown', 'allow', 'low_risk'),
+      });
+      const pending = invoke(
+        new Request(guardianRequest(syntheticGuardianInput), { signal: controller.signal }),
+        wrapperContext,
+        { upstreamStream: true, __aioGuardianInvocation: invocation } as never,
+      );
+      if (abort) await expect(pending).rejects.toThrow();
+      else expect(await (await pending).text()).toBe('original');
+      expect(calls).toBe(abort ? 0 : 1);
+      expect(invocation.syntheticGuardianResponse).toBe(false);
+    } finally {
+      clock.mockRestore();
+      wallClock.mockRestore();
+    }
+  });
+
+test('already-expired evaluation signal never starts the lazy callback', async () => {
+  let evaluations = 0;
+  let originals = 0;
+  const timer = spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort());
+  try {
+    const invoke = createGuardianRawInvoke({
+      resolvedModelId: 'codex-auto-review',
+      pluginOptions: wrapperOptions,
+      original: async () => {
+        originals++;
+        return new Response();
+      },
+      evaluate: async () => {
+        evaluations++;
+        return {};
+      },
+    });
+    await invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
+    expect([originals, evaluations]).toEqual([1, 0]);
+  } finally {
+    timer.mockRestore();
+  }
 });

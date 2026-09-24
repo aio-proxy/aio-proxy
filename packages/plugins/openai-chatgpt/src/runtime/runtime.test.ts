@@ -4,6 +4,8 @@ import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_USER_AGENT, createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from '.';
 import type { ChatGPTCredential } from '../schema';
+import type { GuardianEvaluate } from './guardian';
+import { guardianRequest, syntheticGuardianInput } from './guardian/fixture';
 
 type FetchCall = {
   readonly body: string;
@@ -389,3 +391,63 @@ test.each(['default', 'systemOne', 'systemOneReviewDenied'] as const)(
     expect(typeof hint).toBe(guardianStrategy === 'default' ? 'undefined' : 'function');
   },
 );
+
+test('Guardian raw allow never reads or refreshes credentials or fetches ChatGPT', async () => {
+  let reads = 0;
+  let refreshes = 0;
+  let fetches = 0;
+  let evaluations = 0;
+  const context = {
+    credentials: {
+      ...staticCredentialPort(credential()),
+      read: async () => {
+        reads++;
+        throw new Error('credential read');
+      },
+      refresh: async () => {
+        refreshes++;
+        throw new Error('credential refresh');
+      },
+    },
+    options: {},
+    catalog: emptyCatalog(),
+    fetch: (async () => {
+      fetches++;
+      throw new Error('ChatGPT fetch');
+    }) as typeof fetch,
+    __aioGuardianEvaluate: (async ({ body }) => {
+      evaluations++;
+      const selected: Record<string, string> = {
+        risk_level: 'low',
+        user_authorization: 'unknown',
+        outcome: 'allow',
+        reason: 'low_risk',
+      };
+      return {
+        answers: Object.fromEntries(
+          Object.entries(body.questions).map(([id, question]) => [
+            id,
+            {
+              type: 'choice',
+              choice: selected[id],
+              probabilities: Object.fromEntries(
+                Object.keys(question.criteria).map((label) => [label, label === selected[id] ? 1 : 0]),
+              ),
+            },
+          ]),
+        ),
+      };
+    }) satisfies GuardianEvaluate,
+  };
+  const runtime = await createOpenAIChatGPTRuntime(context, {
+    guardianStrategy: 'systemOne',
+    guardianProviderId: 'selected',
+    guardianModelId: 'review',
+  });
+  const response = await runtime.raw!({ protocol: 'openai-response', modelId: 'codex-auto-review' })!.invoke(
+    guardianRequest(syntheticGuardianInput),
+    { requestId: 'parent', session: { key: 'sha256:parent', source: 'generated' } },
+  );
+  expect(await response.text()).toContain('response.completed');
+  expect([reads, refreshes, fetches, evaluations]).toEqual([0, 0, 0, 1]);
+});

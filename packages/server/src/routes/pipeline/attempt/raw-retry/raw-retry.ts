@@ -226,6 +226,11 @@ function replayBuffered(
   });
 }
 
+export type RawInvocationResult = {
+  readonly response: Response;
+  readonly invocation: { originalTransportStarted: boolean; syntheticGuardianResponse: boolean };
+};
+
 export type RawRetryResolution<TRequest, TContext> = {
   readonly hook:
     | Readonly<{
@@ -241,25 +246,26 @@ export type RawRetryResolution<TRequest, TContext> = {
   readonly retrySource: Request | undefined;
   readonly request: TRequest;
   readonly context: TContext;
-  readonly response: Response;
+  readonly result: RawInvocationResult;
   readonly streamRequested: boolean;
   readonly guards: RawRetryGuards;
-  readonly invoke: (request: Request) => Promise<Response>;
+  readonly invoke: (request: Request) => Promise<RawInvocationResult>;
 };
 
 // One replay at most, decided by the adapter. Runs before usage capture so a
-// hidden retry never reaches the client or the trace.
+// failed retry response never reaches the client or successful usage accounting.
 export async function resolveRawRetry<TRequest, TContext>(
   input: RawRetryResolution<TRequest, TContext>,
-): Promise<Response> {
-  const { hook, retrySource, response } = input;
-  if (hook === undefined || retrySource === undefined) return response;
+): Promise<RawInvocationResult> {
+  const { hook, retrySource, result } = input;
+  const { response } = result;
+  if (hook === undefined || retrySource === undefined) return result;
 
   // Replay only after the failed response is released. A slow or throwing retry
   // transport would otherwise leave the first SSE reader locked and its upstream
   // connection open and buffering for the whole second call, and a thrown replay
   // would skip cancellation entirely.
-  const replay = async (failed: Response, rejection: RawRetryFrame): Promise<Response | undefined> => {
+  const replay = async (failed: Response, rejection: RawRetryFrame): Promise<RawInvocationResult | undefined> => {
     const retryRequest = await hook.rewrite(retrySource, input.request, input.context, rejection);
     if (retryRequest === undefined) return undefined;
     void failed.body?.cancel().catch(() => undefined);
@@ -274,17 +280,18 @@ export async function resolveRawRetry<TRequest, TContext>(
 
   if (response.status === 400) {
     const bodyText = await readBoundedJsonBody(response, input.guards);
-    if (bodyText === undefined) return response;
+    if (bodyText === undefined) return result;
     const frame: RawRetryFrame = { data: bodyText };
-    if (hook.classify(frame) !== 'retry') return response;
-    return (await replay(response, frame)) ?? response;
+    if (hook.classify(frame) !== 'retry') return result;
+    return (await replay(response, frame)) ?? result;
   }
 
-  if (!response.ok || !input.streamRequested) return response;
+  if (!response.ok || !input.streamRequested) return result;
   const preflight = await preflightRawRetrySse(response, hook.classify, {
     ...input.guards,
     assumeEventStream: true,
   });
-  if (preflight.kind !== 'retry') return preflight.response;
-  return (await replay(preflight.response, preflight.rejection)) ?? preflight.response;
+  const preflightResult = { ...result, response: preflight.response };
+  if (preflight.kind !== 'retry') return preflightResult;
+  return (await replay(preflight.response, preflight.rejection)) ?? preflightResult;
 }
