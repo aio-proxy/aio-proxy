@@ -290,6 +290,24 @@ function inlineHistory(input: unknown[]): boolean {
         }
         policySeen = true;
       }
+    } else if (item['type'] === 'custom_tool_call') {
+      if (
+        !onlyKeys(item, ['type', 'id', 'status', 'call_id', 'name', 'input']) ||
+        typeof item['call_id'] !== 'string' ||
+        typeof item['name'] !== 'string' ||
+        typeof item['input'] !== 'string' ||
+        calls.has(item['call_id'])
+      )
+        return false;
+      calls.add(item['call_id']);
+    } else if (item['type'] === 'custom_tool_call_output') {
+      if (
+        !onlyKeys(item, ['type', 'id', 'call_id', 'output']) ||
+        typeof item['call_id'] !== 'string' ||
+        !calls.delete(item['call_id']) ||
+        !(typeof item['output'] === 'string' || textParts(item['output']))
+      )
+        return false;
     } else if (item['type'] === 'function_call') {
       if (
         !onlyKeys(item, ['type', 'id', 'call_id', 'name', 'arguments', 'status']) ||

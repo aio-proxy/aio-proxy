@@ -223,6 +223,32 @@ test('rejects a later developer message longer than the follow-up note limit', a
   }
 });
 
+test('accepts a paired custom tool call in Guardian history', async () => {
+  const body = await guardianRequest(syntheticGuardianInput).json();
+  body.input.splice(
+    -1,
+    0,
+    {
+      type: 'custom_tool_call',
+      id: 'custom-call',
+      status: 'completed',
+      call_id: 'call-custom',
+      name: 'exec',
+      input: 'const result = await tools.exec_command({ cmd: "git status" });',
+    },
+    {
+      type: 'custom_tool_call_output',
+      id: 'custom-output',
+      call_id: 'call-custom',
+      output: [{ type: 'input_text', text: 'clean' }],
+    },
+  );
+  const projection = await projectGuardianRequest(
+    new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+  );
+  expect(projection?.state.pending_action.tool).toBe('exec_command');
+});
+
 test('accepts current Codex review history and the assessed terminal action', async () => {
   const body = await guardianRequest(syntheticGuardianInput).json();
   const change = cases.find(([name]) => name === 'current assistant review history')?.[1];
