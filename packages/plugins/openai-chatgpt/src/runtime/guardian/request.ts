@@ -200,13 +200,15 @@ function matchesPolicy(text: string): boolean {
 }
 
 function boundedObject(value: unknown, maxBytes = 20_000, depth = 0): boolean {
-  if (!isPlainObject(value) || depth > 4) return false;
+  if ((!isPlainObject(value) && !Array.isArray(value)) || depth > 4) return false;
   try {
     if (JSON.stringify(value).length > maxBytes) return false;
   } catch {
     return false;
   }
-  return Object.values(value).every((v) => !isPlainObject(v) || boundedObject(v, maxBytes, depth + 1));
+  const values = Array.isArray(value) ? value : Object.values(value);
+  if (values.length > 1000) return false;
+  return values.every((v) => (isPlainObject(v) || Array.isArray(v) ? boundedObject(v, maxBytes, depth + 1) : true));
 }
 function additionalTools(value: unknown): boolean {
   if (

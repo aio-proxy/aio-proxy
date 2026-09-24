@@ -956,3 +956,78 @@ test('caller abort after original dispatch reaches the original transport unchan
   await expect(pending).rejects.toBe(caller.signal.reason);
   expect(calls).toBe(1);
 });
+
+test('current bounded additional tools and whitespace envelope are eligible', async () => {
+  const body = (await guardianRequest(syntheticGuardianInput).json()) as any;
+  body.input.unshift({
+    type: 'additional_tools',
+    role: 'developer',
+    id: 'tools',
+    tools: [
+      {
+        type: 'namespace',
+        name: 'functions',
+        description: '',
+        tools: [
+          {
+            type: 'custom',
+            name: 'exec',
+            description: '',
+            format: { type: 'grammar', syntax: 'lark', definition: 'x' },
+          },
+        ],
+      },
+    ],
+  });
+  const parts = body.input.at(-1).content;
+  parts.at(-4).text = `  ${parts.at(-4).text}  `;
+  parts.at(-3).text = ` ${parts.at(-3).text} `;
+  parts.at(-1).text = ` ${parts.at(-1).text} `;
+  expect(
+    await projectGuardianRequest(
+      new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+      'codex-auto-review',
+    ),
+  ).toBeDefined();
+});
+
+test('rejects unsafe additional tools and duplicate markers', async () => {
+  const body = (await guardianRequest(syntheticGuardianInput).json()) as any;
+  body.input.unshift({
+    type: 'additional_tools',
+    role: 'developer',
+    id: 'tools',
+    tools: [
+      {
+        type: 'namespace',
+        name: 'functions',
+        description: '',
+        tools: [
+          {
+            type: 'function',
+            name: 'wait',
+            description: '',
+            strict: false,
+            parameters: {
+              type: 'object',
+              properties: {
+                x: {
+                  type: 'array',
+                  items: {
+                    type: 'array',
+                    items: { type: 'array', items: { type: 'array', items: { type: 'object', evil: 'x' } } },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  });
+  const request = () =>
+    new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) });
+  expect(await projectGuardianRequest(request(), 'codex-auto-review')).toBeUndefined();
+  body.input.at(-1).content.push({ type: 'input_text', text: '>>> APPROVAL REQUEST START' });
+  expect(await projectGuardianRequest(request(), 'codex-auto-review')).toBeUndefined();
+});
