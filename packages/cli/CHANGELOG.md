@@ -1,5 +1,26 @@
 # @aio-proxy/cli
 
+## 0.33.0
+
+### Minor Changes
+
+- [#422](https://github.com/aio-proxy/aio-proxy/pull/422) [`24a1468`](https://github.com/aio-proxy/aio-proxy/commit/24a14688083a14639af225a0d8d908373cf8f568) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth now offers optional Guardian approval strategies that evaluate with a selected System One Provider and model. The default keeps Codex behavior, and supported System One decisions can be final or send denials to the original model for review; unavailable evaluations fall back safely.
+
+### Patch Changes
+
+- Updated dependencies [[`de76673`](https://github.com/aio-proxy/aio-proxy/commit/de76673fe07ae3be9f3d7e3a84d1bd541ca07479), [`a85a7e0`](https://github.com/aio-proxy/aio-proxy/commit/a85a7e02e1c89f7311cd11cb961ec2f1db9885d1), [`24a1468`](https://github.com/aio-proxy/aio-proxy/commit/24a14688083a14639af225a0d8d908373cf8f568)]:
+  - @aio-proxy/plugin-sdk@0.33.0
+  - @aio-proxy/dashboard@0.33.0
+  - @aio-proxy/core@0.33.0
+  - @aio-proxy/types@0.33.0
+  - @aio-proxy/server@0.33.0
+  - @aio-proxy/i18n@0.33.0
+  - @aio-proxy/logger@0.33.0
+  - @aio-proxy/opencode-provider@0.33.0
+  - @aio-proxy/pi-provider@0.33.0
+  - @aio-proxy/agent-provider-runtime@0.33.0
+  - @aio-proxy/shared@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes

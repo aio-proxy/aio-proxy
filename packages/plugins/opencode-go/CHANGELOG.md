@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-opencode-go
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies [[`de76673`](https://github.com/aio-proxy/aio-proxy/commit/de76673fe07ae3be9f3d7e3a84d1bd541ca07479), [`24a1468`](https://github.com/aio-proxy/aio-proxy/commit/24a14688083a14639af225a0d8d908373cf8f568)]:
+  - @aio-proxy/plugin-sdk@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
