@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { guardianDecision } from './decision';
 import { guardianRequest, syntheticGuardianInput } from './fixture';
 import { guardianQuestions } from './questions';
-import { projectGuardianRequest } from './request';
+import { guardianPayloadHint, projectGuardianRequest } from './request';
 import { guardianResponse } from './response';
 
 test('preserves complete inline decision evidence and original request', async () => {
@@ -513,4 +513,36 @@ test('streams one completed Guardian decision with coherent Responses events', a
         .join(''),
     ),
   ).toEqual({ outcome: 'allow' });
+});
+
+test('capture hint protects marker-only requests and ambiguous clones without consuming originals', async () => {
+  for (const body of ['{"client_metadata":{"x-openai-subagent":"guardian"}}', '{', ' '.repeat(65)]) {
+    const request = new Request('https://example.test/responses', { method: 'POST', body });
+    expect(await guardianPayloadHint(request, { maxBytes: 64 })).toBe('sensitive');
+    expect(await request.text()).toBe(body);
+  }
+  const ordinary = new Request('https://example.test/responses', { method: 'POST', body: '{"input":"ordinary"}' });
+  expect(await guardianPayloadHint(ordinary, { maxBytes: 64 })).toBe('normal');
+  expect(ordinary.bodyUsed).toBe(false);
+  const unreadable = new Request('https://example.test/responses', {
+    method: 'POST',
+    body: new ReadableStream({
+      start(c) {
+        c.error(new Error('unreadable'));
+      },
+    }),
+  });
+  expect(await guardianPayloadHint(unreadable, { maxBytes: 64 })).toBe('sensitive');
+});
+
+test('capture hint stops a stalled clone when the inbound request aborts', async () => {
+  const controller = new AbortController();
+  const request = new Request('https://example.test/responses', {
+    method: 'POST',
+    signal: controller.signal,
+    body: new ReadableStream({ pull() {} }),
+  });
+  const pending = guardianPayloadHint(request, { maxBytes: 64 });
+  controller.abort();
+  expect(await Promise.race([pending, Bun.sleep(50).then(() => 'stalled')])).toBe('sensitive');
 });

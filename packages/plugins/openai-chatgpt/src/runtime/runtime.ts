@@ -10,6 +10,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { refreshAccessToken } from '../oauth-flow';
 import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
+import { guardianPayloadHint } from './guardian/request';
 import { stripOrphanReasoningIds } from './orphan-reasoning-id/index';
 import { createOpenAIChatGPTRealtime, mergeEndpointQuery } from './realtime';
 
@@ -24,6 +25,12 @@ export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, unknown>>,
   pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<OAuthRuntimeResult> {
+  if (pluginOptions?.guardianStrategy === 'systemOne' || pluginOptions?.guardianStrategy === 'systemOneReviewDenied') {
+    const host = context as typeof context & {
+      readonly __aioRegisterPayloadHint?: (hint: typeof guardianPayloadHint) => void;
+    };
+    host.__aioRegisterPayloadHint?.(guardianPayloadHint);
+  }
   const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch, pluginOptions);
   const openAI = createOpenAI({
     name: 'openai-chatgpt',

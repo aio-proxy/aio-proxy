@@ -13,7 +13,7 @@ import {
   type PreparedOAuthPluginAccount,
   prepareOAuthPluginAccount,
 } from '../plugin-account';
-import type { RuntimeProviderInstance } from '../runtime';
+import type { PayloadCaptureHint, RuntimeProviderInstance } from '../runtime';
 import { createRuntimeProvider, type RuntimeAccountPin, withAccountPin, withRoutingConfig } from './capabilities';
 import {
   catalogDiagnostic,
@@ -120,6 +120,7 @@ async function createRuntimeMaterialization(
 ): Promise<PluginProviderMaterialization> {
   const { config } = options;
   const fetch = options.runtimeFetch ?? globalThis.fetch;
+  let payloadCaptureHint: PayloadCaptureHint | undefined;
   try {
     const result = await runtimeDeadline(
       Promise.resolve().then(async () =>
@@ -128,6 +129,14 @@ async function createRuntimeMaterialization(
           options.plugins.plugins.get(config.plugin)?.builtIn === true &&
           options.guardianEvaluate !== undefined
             ? { __aioGuardianEvaluate: options.guardianEvaluate(config.id) }
+            : {}),
+          ...(config.plugin === '@aio-proxy/plugin-openai-chatgpt' &&
+          options.plugins.plugins.get(config.plugin)?.builtIn === true
+            ? {
+                __aioRegisterPayloadHint: (hint: PayloadCaptureHint) => {
+                  payloadCaptureHint = hint;
+                },
+              }
             : {}),
           credentials: credentials as never,
           options: accountOptions,
@@ -146,8 +155,21 @@ async function createRuntimeMaterialization(
       ),
       runtime.pin,
     );
-    const cacheEntry = { identity, provider, credentials, fetch };
-    return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
+    const cacheEntry = {
+      identity,
+      provider,
+      credentials,
+      fetch,
+      ...(payloadCaptureHint === undefined ? {} : { payloadCaptureHint }),
+    };
+    return {
+      provider,
+      summary: persistedSummary(provider, storedCatalog),
+      state,
+      catalogJob,
+      cacheEntry,
+      ...(cacheEntry.payloadCaptureHint === undefined ? {} : { payloadCaptureHint: cacheEntry.payloadCaptureHint }),
+    };
   } catch (error) {
     options.logger({
       event: 'plugin.runtime.create.failed',
@@ -316,7 +338,14 @@ export async function materializePluginProvider(
   if (options.previous?.identity === identity) {
     const provider = pinnedRouting(options.previous.provider);
     const cacheEntry = { ...options.previous, provider };
-    return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
+    return {
+      provider,
+      summary: persistedSummary(provider, storedCatalog),
+      state,
+      catalogJob,
+      cacheEntry,
+      ...(cacheEntry.payloadCaptureHint === undefined ? {} : { payloadCaptureHint: cacheEntry.payloadCaptureHint }),
+    };
   }
 
   return createRuntimeMaterialization(

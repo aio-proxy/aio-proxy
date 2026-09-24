@@ -3,6 +3,7 @@ import type { SpanAttributesJson, SpanEventJson, SpanLinkJson } from '@aio-proxy
 import type { HrTime, Link, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-node';
 
+import { isSensitiveSpan, safeDiagnosticFields } from '../request-logging/capture-policy';
 import { ALLOWED_ATTRIBUTES } from './semantic';
 
 function epochMilliseconds([seconds, nanoseconds]: HrTime): number {
@@ -50,8 +51,10 @@ export function spanToRecord(span: ReadableSpan, startSequence?: number): Stored
     startedAt: new Date(epochMilliseconds(span.startTime)),
     endedAt: new Date(epochMilliseconds(span.endTime)),
     statusCode: span.status.code as SpanStatusCode,
-    attributes: sanitizeAttributes(span.attributes as SpanAttributesJson),
-    events: sanitizeEvents(span.events),
-    links: sanitizeLinks(span.links),
+    attributes: sanitizeAttributes(
+      (isSensitiveSpan(span) ? safeDiagnosticFields(span.attributes) : span.attributes) as SpanAttributesJson,
+    ),
+    events: sanitizeEvents(isSensitiveSpan(span) ? [] : span.events),
+    links: sanitizeLinks(isSensitiveSpan(span) ? span.links.map((link) => ({ context: link.context })) : span.links),
   };
 }

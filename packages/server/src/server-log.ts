@@ -1,3 +1,5 @@
+import { safeDiagnosticFields } from './request-logging/capture-policy';
+import { capturesRequestPayload } from './request-logging/context';
 import type { HttpRequestMetadata } from './request-logging/request-metadata';
 
 export type ConfigReloadLog = {
@@ -297,7 +299,7 @@ export type ServerLogSink = (entry: ServerLog) => void;
 
 export function logServerEvent(logger: ServerLogSink, entry: ServerLog): void {
   try {
-    logger(entry);
+    logger(capturesRequestPayload() ? entry : safeDiagnosticFields(entry));
   } catch {}
 }
 
@@ -318,6 +320,7 @@ export function serverErrorType(error: unknown): string {
 const MAX_ERROR_DETAIL_CHARACTERS = 512;
 
 export function serverErrorDetails(error: unknown): SafeExceptionLog {
+  if (!capturesRequestPayload()) return { errorType: 'Error' };
   const details: SafeExceptionLog = { errorType: serverErrorType(error).slice(0, MAX_ERROR_DETAIL_CHARACTERS) };
   if (typeof error !== 'object' || error === null) return details;
   const exceptionCode = ownString(error, 'code');

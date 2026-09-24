@@ -3,7 +3,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ProviderProtocol } from '@aio-proxy/types';
 import type { Context } from '@opentelemetry/api';
 
-import type { ServerLogSink } from '../server-log';
+import type { ServerLogSink } from '../../server-log';
+import { safeDiagnosticFields } from '../capture-policy';
 
 export type RequestLogContext = {
   readonly requestId: string;
@@ -27,6 +28,7 @@ export type AttemptLogContext = Required<Omit<RequestLogContext, 'requestId'>> &
 export type RequestLogScope = RequestLogContext &
   Partial<Omit<ProviderAttemptContext, 'providerId' | 'modelId'>> & {
     readonly debug: boolean;
+    readonly capturePayload?: boolean;
     readonly logger: ServerLogSink;
     readonly rootContext?: Context;
     /** 同一次 attempt 里多次 inAttempt 要共用计数；spread 会换对象，Map 要按引用带着走。 */
@@ -36,8 +38,14 @@ export type RequestLogScope = RequestLogContext &
 const storage = new AsyncLocalStorage<RequestLogScope>();
 
 export function withRequestLogContext<T>(input: RequestLogScope, operation: () => T): T {
+  const sensitive = input.capturePayload === false || storage.getStore()?.capturePayload === false;
   return storage.run(
-    input.sendCounts === undefined ? { ...input, sendCounts: new Map<number, number>() } : input,
+    {
+      ...input,
+      ...(sensitive ? { logger: (entry) => input.logger(safeDiagnosticFields(entry)) } : {}),
+      ...(storage.getStore()?.capturePayload === false ? { capturePayload: false } : {}),
+      sendCounts: input.sendCounts ?? new Map<number, number>(),
+    },
     operation,
   );
 }
@@ -88,4 +96,8 @@ export function currentUpstreamUrlTemplate(): string | undefined {
 export function currentDebugRequestLogScope(): RequestLogScope | undefined {
   const scope = storage.getStore();
   return scope?.debug === true ? scope : undefined;
+}
+
+export function capturesRequestPayload(): boolean {
+  return storage.getStore()?.capturePayload !== false;
 }

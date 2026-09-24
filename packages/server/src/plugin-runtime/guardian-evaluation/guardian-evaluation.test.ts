@@ -6,7 +6,12 @@ import { withRequestId } from '@aio-proxy/logger';
 import { ProviderKind } from '@aio-proxy/types';
 
 import { defineProviderRouteSource } from '../../../__tests__/pipeline-helpers';
-import { currentDebugRequestLogScope, withRequestLogContext } from '../../request-logging';
+import {
+  capturesRequestPayload,
+  createObservedFetch,
+  currentDebugRequestLogScope,
+  withRequestLogContext,
+} from '../../request-logging';
 import { attributeName, createRequestTraceRecorder } from '../../request-tracing';
 import * as evaluationTransport from '../../routes/pipeline/attempt/evaluation';
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -375,4 +380,27 @@ test('dispatches the exact candidate object returned by the leased snapshot', as
     select.mockRestore();
     lease.release();
   }
+});
+
+test('private evaluator inherits parent privacy even with debug disabled and bounds exception codes', async () => {
+  const sentinel = 'private-evaluation-error-code';
+  const h = harness([
+    provider('selected', async (request) => {
+      expect(capturesRequestPayload()).toBe(false);
+      const fetch = createObservedFetch((async () => {
+        throw Object.assign(new Error(sentinel), { code: sentinel, cause: { code: sentinel }, syscall: sentinel });
+      }) as typeof globalThis.fetch);
+      return fetch(request);
+    }),
+  ]);
+  await withRequestLogContext(
+    { requestId: 'parent', debug: true, capturePayload: false, logger: h.source.logger },
+    async () => {
+      await expect(h.host(input())).rejects.toMatchObject({ reason: 'transport_failed' });
+    },
+  );
+  await h.recording.settle();
+  expect(JSON.stringify(h.logs)).not.toContain(sentinel);
+  expect(JSON.stringify(h.recording.finals)).not.toContain(sentinel);
+  expect(h.releases()).toBe(1);
 });

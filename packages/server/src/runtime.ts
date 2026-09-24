@@ -219,7 +219,13 @@ export type RuntimeProviderInstance = RuntimeProviderBase & {
 
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 
+export type PayloadCaptureHint = (
+  request: Request,
+  options: { readonly maxBytes: number },
+) => Promise<'sensitive' | 'normal'>;
+
 export type ProviderRouteSnapshot = {
+  readonly payloadCaptureHints?: readonly PayloadCaptureHint[];
   readonly config?: Config;
   readonly plugins: PluginRegistrySnapshot;
   readonly providers: readonly RuntimeProviderInstance[];
@@ -239,6 +245,11 @@ export type RetiredProviderSnapshot = {
 };
 
 export type ProviderRouteSource = {
+  readonly preObservationCapturePolicy?: (
+    request: Request,
+    snapshot: ProviderRouteSnapshot,
+    maxBytes: number,
+  ) => Promise<{ readonly capturePayload: boolean }>;
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly cooldown: ProviderCooldownStore;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;

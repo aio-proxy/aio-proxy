@@ -7,16 +7,16 @@ import {
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import type { ProviderProtocol } from '@aio-proxy/types';
-import { context } from '@opentelemetry/api';
 
-import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
+import { observeInboundRequest } from '../../request-logging';
 import { attributeName, requestAsksFastMode, type RequestTraceSession, spanName } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
-import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
+import type { ProviderSnapshotLease, ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { attemptCandidates, type PipelineAdapter } from './attempt';
 import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { startInferenceSpan } from './inference-span';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
+import { withProtocolRequestObservation } from './observation';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 import { startPipelineSpan } from './tracing';
 
@@ -36,29 +36,15 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
 export async function handleProtocolRequest<TRequest, TContext>(
   options: HandleProtocolRequestOptions<TRequest, TContext>,
 ): Promise<Response> {
-  const inboundProtocol = options.adapter.protocol;
-  const session = options.source.requestRecorder.begin({
-    inboundRequest: options.rawRequest,
-    inboundProtocol,
-    ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
-  });
-  return await context.with(session.rootContext, () =>
-    withRequestLogContext(
-      {
-        requestId: session.requestId,
-        debug: options.source.debugLogging === true,
-        logger: options.source.logger,
-        rootContext: session.rootContext,
-      },
-      () => handleProtocolRequestInContext(options, session, inboundProtocol),
-    ),
-  );
+  return withProtocolRequestObservation(options, handleProtocolRequestInContext);
 }
 
 async function handleProtocolRequestInContext<TRequest, TContext>(
   options: HandleProtocolRequestOptions<TRequest, TContext>,
   session: RequestTraceSession,
   inboundProtocol: ProviderProtocol,
+  lease?: ProviderSnapshotLease,
+  transferLease?: () => void,
 ): Promise<Response> {
   const { adapter, context, source } = options;
   let { rawRequest } = options;
@@ -147,7 +133,9 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       requestedModelId: requestedModel,
       diagnostics: adapter.requestDiagnostics(request, context),
     });
+    transferLease?.();
     return await attemptResolvedRequest({
+      ...(lease === undefined ? {} : { lease }),
       adapter,
       context,
       ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
@@ -252,6 +240,7 @@ function rejectParsedRequest<TRequest, TContext>(
 }
 
 async function attemptResolvedRequest<TRequest, TContext>(options: {
+  readonly lease?: ProviderSnapshotLease;
   readonly adapter: PipelineAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly httpRoute?: string;
@@ -277,7 +266,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     source,
     streamRequested,
   } = options;
-  const lease = source.acquireProviderSnapshot();
+  const lease = options.lease ?? source.acquireProviderSnapshot();
   let deferred = false;
   const deferRelease = () => {
     deferred = true;

@@ -175,6 +175,16 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
   return {
     agentIdentity: parts.agentIdentity,
     acquireProviderSnapshot: manager.acquire,
+    async preObservationCapturePolicy(request, snapshot, maxBytes) {
+      for (const hint of snapshot.payloadCaptureHints ?? []) {
+        try {
+          if ((await hint(request, { maxBytes })) === 'sensitive') return { capturePayload: false };
+        } catch {
+          return { capturePayload: false };
+        }
+      }
+      return { capturePayload: true };
+    },
     cooldown: parts.cooldown,
     close() {
       if (runtime.closed) return;

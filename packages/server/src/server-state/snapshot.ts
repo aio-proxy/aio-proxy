@@ -126,6 +126,7 @@ export async function buildSnapshot(
   );
   return {
     config: configWithExtend,
+    payloadCaptureHints: compact(oauth.map((item) => item.payloadCaptureHint)),
     plugins,
     probes: base.probes,
     providers,

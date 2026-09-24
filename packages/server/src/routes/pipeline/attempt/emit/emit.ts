@@ -2,6 +2,7 @@ import type { InboundCapability } from '@aio-proxy/core';
 import type { UsageRow } from '@aio-proxy/types';
 import { type Attributes, SpanKind } from '@opentelemetry/api';
 
+import { capturesRequestPayload } from '../../../../request-logging';
 import { attributeName, type RequestTraceFinishInput, type RequestTraceSession } from '../../../../request-tracing';
 import type { AttemptResponseObservation } from '../../../../response-observation';
 import type { UsageCompletion } from '../../../../usage-capture';
@@ -93,6 +94,7 @@ export type AttemptEmitterOptions = {
 // says a span "SHOULD cover the duration of the logical operation with all
 // retries", and a retry is the same call, whereas a different provider is not.
 export function createAttemptEmitter({ session, capability, onAttemptEnd }: AttemptEmitterOptions): AttemptEmitter {
+  const capturePayload = capturesRequestPayload();
   const startedAt = new WeakMap<OpenSpan, number>();
   const startAttempt = (base: AttemptInfo, index: number, upstreamStream?: boolean): OpenSpan => {
     const span = startPipelineSpan(session.rootContext, `${OPERATION_NAME[capability]} ${base.modelId}`, {
@@ -137,10 +139,10 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     if (snapshot.maxSseFramesPerRead !== undefined) {
       attemptSpan.span.setAttribute(attributeName.maxSseFramesPerRead, snapshot.maxSseFramesPerRead);
     }
-    if (snapshot.contentEncoding !== undefined) {
+    if (capturePayload && snapshot.contentEncoding !== undefined) {
       attemptSpan.span.setAttribute(attributeName.contentEncoding, snapshot.contentEncoding);
     }
-    if (snapshot.serverAddress !== undefined) {
+    if (capturePayload && snapshot.serverAddress !== undefined) {
       attemptSpan.span.setAttribute(attributeName.serverAddress, snapshot.serverAddress);
     }
     if (snapshot.serverPort !== undefined) {
@@ -160,7 +162,7 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     if (facts?.responseModelId !== undefined) {
       attemptSpan.span.setAttribute(attributeName.genAiResponseModel, facts.responseModelId);
     }
-    if (facts?.responseId !== undefined) {
+    if (capturePayload && facts?.responseId !== undefined) {
       attemptSpan.span.setAttribute(attributeName.genAiResponseId, facts.responseId);
     }
     if (facts?.usage !== undefined) {

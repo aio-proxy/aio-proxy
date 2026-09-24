@@ -589,11 +589,15 @@ test('injects a source-bound private evaluator only into the built-in ChatGPT co
     ['@aio-proxy/plugin-openai-chatgpt', true],
   ] as const) {
     let context: unknown;
+    const hint = async () => 'sensitive' as const;
     const fixture = runtimeFixture(
       { kind: 'static' },
       {
         createRuntime: async (value) => {
           context = value;
+          (value as typeof value & { __aioRegisterPayloadHint?: (hint: unknown) => void }).__aioRegisterPayloadHint?.(
+            hint,
+          );
           return {
             provider: {
               specificationVersion: 'v4',
@@ -615,7 +619,7 @@ test('injects a source-bound private evaluator only into the built-in ChatGPT co
     const adapter = fixture.plugins.registry.resolveOAuth('@example/oauth', 'default')!;
     const calls: string[] = [];
     const evaluate = async () => 'evaluated';
-    const result = await materializePluginProvider({
+    const options: Parameters<typeof materializePluginProvider>[0] = {
       config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin, capability: 'default' },
       repository: { ...fixture.repository, readAccount: () => ({ ...account, plugin }) },
       plugins: {
@@ -630,15 +634,27 @@ test('injects a source-bound private evaluator only into the built-in ChatGPT co
         calls.push(sourceProviderId);
         return evaluate;
       },
-    });
+    };
+    const result = await materializePluginProvider(options);
     expect(result.provider).toBeDefined();
     const injected = (context as { __aioGuardianEvaluate?: unknown }).__aioGuardianEvaluate;
     if (plugin === '@example/oauth' || !builtIn) {
       expect(injected).toBeUndefined();
+      expect(result.payloadCaptureHint).toBeUndefined();
       expect(calls).toEqual([]);
     } else {
+      expect(result.payloadCaptureHint).toBe(hint);
+      expect(result.cacheEntry?.payloadCaptureHint).toBe(hint);
       expect(injected).toBe(evaluate);
       expect(calls).toEqual(['person']);
+      const reused = await materializePluginProvider({ ...options, previous: result.cacheEntry });
+      expect(reused.payloadCaptureHint).toBe(hint);
+      const disabled = await materializePluginProvider({
+        ...options,
+        config: { ...options.config, enabled: false },
+        previous: result.cacheEntry,
+      });
+      expect(disabled.payloadCaptureHint).toBeUndefined();
     }
   }
 });

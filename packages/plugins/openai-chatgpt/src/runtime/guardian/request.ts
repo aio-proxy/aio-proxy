@@ -15,6 +15,25 @@ type MatchedGuardianBody = {
 const start = '>>> APPROVAL REQUEST START';
 const end = '>>> APPROVAL REQUEST END';
 
+/** Privacy is deliberately broader than Guardian eligibility. */
+export async function guardianPayloadHint(
+  request: Request,
+  options: { readonly maxBytes: number },
+): Promise<'sensitive' | 'normal'> {
+  if (request.headers.has('content-encoding')) return 'sensitive';
+  try {
+    const body = await readGuardianJsonWithinBytes(request.clone(), options.maxBytes);
+    if (body === undefined) return 'sensitive';
+    return isPlainObject(body) &&
+      isPlainObject(body['client_metadata']) &&
+      body['client_metadata']['x-openai-subagent'] === 'guardian'
+      ? 'sensitive'
+      : 'normal';
+  } catch {
+    return 'sensitive';
+  }
+}
+
 export async function projectGuardianRequest(
   request: Request,
   resolvedModelId: string,
@@ -48,7 +67,12 @@ async function readGuardianJsonWithinBytes(request: Request, limit: number): Pro
   const decoder = new TextDecoder('utf-8', { fatal: true });
   let bytes = 0;
   let text = '';
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  request.signal.addEventListener('abort', abort, { once: true });
   try {
+    request.signal.throwIfAborted();
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -60,11 +84,13 @@ async function readGuardianJsonWithinBytes(request: Request, limit: number): Pro
       }
       text += decoder.decode(value, { stream: true });
     }
+    request.signal.throwIfAborted();
     return JSON.parse(text + decoder.decode());
   } catch {
     void reader.cancel().catch(() => {});
     return;
   } finally {
+    request.signal.removeEventListener('abort', abort);
     reader.releaseLock();
   }
 }

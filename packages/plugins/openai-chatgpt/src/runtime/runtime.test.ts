@@ -372,3 +372,20 @@ function requiredCall(calls: readonly FetchCall[], index: number): FetchCall {
   if (call === undefined) throw new Error(`missing fetch call ${index}`);
   return call;
 }
+
+test.each(['default', 'systemOne', 'systemOneReviewDenied'] as const)(
+  'registers a private capture hint only for active strategy %s',
+  async (guardianStrategy) => {
+    let hint: unknown;
+    const context = {
+      credentials: staticCredentialPort(credential()),
+      options: {},
+      catalog: emptyCatalog(),
+      __aioRegisterPayloadHint: (value: unknown) => {
+        hint = value;
+      },
+    };
+    await createOpenAIChatGPTRuntime(context, { guardianStrategy });
+    expect(typeof hint).toBe(guardianStrategy === 'default' ? 'undefined' : 'function');
+  },
+);

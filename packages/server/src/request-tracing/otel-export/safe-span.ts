@@ -1,6 +1,7 @@
 import type { Attributes, Link } from '@opentelemetry/api';
 import type { ReadableSpan, TimedEvent } from '@opentelemetry/sdk-trace-node';
 
+import { isSensitiveSpan, safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { ALLOWED_ATTRIBUTES } from '../semantic';
 
 function filterAttributes(attributes: Attributes | undefined): Attributes {
@@ -36,9 +37,9 @@ export function toExportableSpan(span: ReadableSpan): ReadableSpan {
     startTime: span.startTime,
     endTime: span.endTime,
     status: { code: span.status.code },
-    attributes: filterAttributes(span.attributes),
-    links: filterLinks(span.links),
-    events: filterEvents(span.events),
+    attributes: filterAttributes(isSensitiveSpan(span) ? safeDiagnosticFields(span.attributes) : span.attributes),
+    links: filterLinks(isSensitiveSpan(span) ? span.links.map((link) => ({ context: link.context })) : span.links),
+    events: filterEvents(isSensitiveSpan(span) ? [] : span.events),
     duration: span.duration,
     ended: span.ended,
     resource: span.resource,
