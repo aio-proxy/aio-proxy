@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/types",
-  "version": "0.33.2",
+  "version": "0.33.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aio-proxy/aio-proxy.git",

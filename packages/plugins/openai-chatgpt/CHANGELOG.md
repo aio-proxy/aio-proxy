@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.33.3
+
+### Patch Changes
+
+- [#428](https://github.com/aio-proxy/aio-proxy/pull/428) [`cd5971b`](https://github.com/aio-proxy/aio-proxy/commit/cd5971b2ab87856457a9291a245d74d0e5049739) Thanks [@baranwang](https://github.com/baranwang)! - Guardian approval now keeps requests eligible when their transcript contains paired custom tool calls, instead of falling back before evaluation.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.33.3
+  - @aio-proxy/types@0.33.3
+
 ## 0.33.2
 
 ### Patch Changes
