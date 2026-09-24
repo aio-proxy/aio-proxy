@@ -3,4 +3,4 @@
 'aio-proxy': patch
 ---
 
-Color CLI help on a terminal: section titles, command names, and option flags. Plain text stays plain when output is redirected or `NO_COLOR` is set.
+Color CLI help on a terminal using the terminal's own palette: section titles, command names, and option flags. Plain text stays plain when output is redirected or `NO_COLOR` is set.
