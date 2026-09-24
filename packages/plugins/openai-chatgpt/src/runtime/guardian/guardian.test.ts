@@ -4,6 +4,7 @@ import { guardianDecision } from './decision';
 import { guardianRequest, syntheticGuardianInput } from './fixture';
 import { guardianQuestions } from './questions';
 import { projectGuardianRequest } from './request';
+import { guardianResponse } from './response';
 
 test('preserves complete inline decision evidence and original request', async () => {
   const original = guardianRequest(syntheticGuardianInput);
@@ -447,4 +448,69 @@ test('rejects incompatible classifications and malformed answer distributions', 
   expect(
     guardianDecision(valid, { ...projection, schema: { ...projection.schema, required: ['outcome', 'rationale'] } }),
   ).toBeUndefined();
+});
+
+test('returns one completed Guardian decision in a JSON Responses envelope', async () => {
+  const response = guardianResponse({ outcome: 'allow' }, false);
+  expect(response.headers.get('Content-Type')).toContain('application/json');
+  const body = await response.json();
+  expect(body.model).toBe('codex-auto-review');
+  expect(body.object).toBe('response');
+  expect(body.status).toBe('completed');
+  expect(body.id).toMatch(/^resp_[0-9a-f-]+$/);
+  expect(body.output).toHaveLength(1);
+  expect(body.output[0]).toMatchObject({ type: 'message', role: 'assistant', status: 'completed' });
+  expect(body.output[0].id).toMatch(/^msg_[0-9a-f-]+$/);
+  expect(body.output[0].content).toEqual([
+    { type: 'output_text', text: '{"outcome":"allow"}', annotations: [], logprobs: [] },
+  ]);
+  expect(body.output_text).toBe('{"outcome":"allow"}');
+  expect(body.completed_at).toBe(body.created_at);
+  expect(body).not.toHaveProperty('usage');
+  // Codex's text consumer reads the assistant item's output_text.
+  expect(JSON.parse(body.output[0].content[0].text)).toEqual({ outcome: 'allow' });
+});
+
+test('streams one completed Guardian decision with coherent Responses events', async () => {
+  const response = guardianResponse({ outcome: 'allow' }, true);
+  expect(response.headers.get('Content-Type')).toContain('text/event-stream');
+  const frames = (await response.text()).trim().split('\n\n');
+  const events = frames.map((frame) => {
+    const [eventLine, dataLine] = frame.split('\n');
+    const event = JSON.parse(dataLine!.slice('data: '.length));
+    expect(eventLine).toBe(`event: ${event.type}`);
+    return event;
+  });
+  expect(events.map((event) => event.type)).toEqual([
+    'response.created',
+    'response.output_item.added',
+    'response.output_text.delta',
+    'response.output_item.done',
+    'response.completed',
+  ]);
+  expect(events.map((event) => event.sequence_number)).toEqual([0, 1, 2, 3, 4]);
+  expect(events[0].response.status).toBe('in_progress');
+  expect(events[0].response.output).toEqual([]);
+  expect(events[1].item).toMatchObject({ id: events[2].item_id, type: 'message', status: 'in_progress' });
+  expect(events[1].output_index).toBe(0);
+  expect(events[2]).toMatchObject({ output_index: 0, content_index: 0, delta: '{"outcome":"allow"}' });
+  expect(events[2].logprobs).toEqual([]);
+  expect(events[3].item).toEqual(events[4].response.output[0]);
+  expect(events[3].item.id).toBe(events[2].item_id);
+  expect(events[3].output_index).toBe(0);
+  expect(events[4].response.id).toBe(events[0].response.id);
+  expect(events[4].response.created_at).toBe(events[0].response.created_at);
+  expect(events[4].response.status).toBe('completed');
+  expect(events[4].response.output_text).toBe('{"outcome":"allow"}');
+  expect(events[4].response).not.toHaveProperty('usage');
+  expect(events[0].response).not.toHaveProperty('usage');
+  // Codex's streaming text consumer assembles output_text.delta frames.
+  expect(
+    JSON.parse(
+      events
+        .filter((event) => event.type === 'response.output_text.delta')
+        .map((event) => event.delta)
+        .join(''),
+    ),
+  ).toEqual({ outcome: 'allow' });
 });
