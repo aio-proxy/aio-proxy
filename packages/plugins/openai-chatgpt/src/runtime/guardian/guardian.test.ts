@@ -167,13 +167,80 @@ const cases: [string, (body: any) => void][] = [
     },
   ],
   [
+    'current assistant review history',
+    (b) => {
+      b.input.splice(
+        -1,
+        0,
+        {
+          type: 'message',
+          role: 'assistant',
+          phase: 'final_answer',
+          content: [{ type: 'output_text', text: '{"outcome":"deny"}' }],
+        },
+        {
+          type: 'message',
+          role: 'developer',
+          content: [
+            {
+              type: 'input_text',
+              text: 'Review this later round using the original policy.',
+            },
+          ],
+        },
+        {
+          type: 'message',
+          role: 'user',
+          content: [
+            { type: 'input_text', text: '>>> APPROVAL REQUEST START' },
+            { type: 'input_text', text: 'Assess the exact planned action below.' },
+            { type: 'input_text', text: 'Planned action JSON:' },
+            { type: 'input_text', text: '{"tool":"old"}' },
+            { type: 'input_text', text: '>>> APPROVAL REQUEST END' },
+          ],
+        },
+      );
+      const content = b.input.at(-1).content;
+      content.splice(-3, 0, { type: 'input_text', text: 'Assess the exact planned action below.' });
+    },
+  ],
+  [
     'nonobject action',
     (b) => {
       b.input.at(-1).content.at(-2).text = '[]';
     },
   ],
 ];
-for (const [name, change] of cases)
+test('rejects a later developer message longer than the follow-up note limit', async () => {
+  for (const text of ['x'.repeat(1_001)]) {
+    const body = await guardianRequest(syntheticGuardianInput).json();
+    body.input.splice(1, 0, { type: 'message', role: 'developer', content: [{ type: 'input_text', text }] });
+    expect(
+      await projectGuardianRequest(
+        new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+      ),
+    ).toBeUndefined();
+  }
+});
+
+test('accepts current Codex review history and the assessed terminal action', async () => {
+  const body = await guardianRequest(syntheticGuardianInput).json();
+  const change = cases.find(([name]) => name === 'current assistant review history')?.[1];
+  change(body);
+  const projection = await projectGuardianRequest(
+    new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+  );
+  expect(projection?.state.pending_action).toEqual({
+    tool: 'exec_command',
+    command: ['bun', 'test'],
+    cwd: '/workspace',
+    justification: 'Run the requested tests',
+    sandbox_permissions: 'use_default',
+    tty: false,
+  });
+});
+
+for (const [name, change] of cases.filter(([name]) => name !== 'current assistant review history'))
   test(`bypasses ${name} before disclosure`, async () => {
     const body = await guardianRequest(syntheticGuardianInput).json();
     change(body);
