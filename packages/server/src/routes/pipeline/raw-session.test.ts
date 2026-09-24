@@ -245,14 +245,13 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
     let evaluations = 0;
     let originalCalls = 0;
     let source!: ProviderRouteSource;
-    const modelId = scenario === 'ordinary' ? 'ordinary-model' : 'codex-auto-review';
+    const modelId = 'gpt-6-sol';
     const chatgpt = rawProvider({
       id: 'chatgpt',
       modelId,
       priority: 10,
       protocol: ProviderProtocol.OpenAIResponse,
       invoke: createGuardianRawInvoke({
-        resolvedModelId: modelId,
         pluginOptions: {
           guardianStrategy: 'systemOneReviewDenied',
           guardianProviderId: 'system-one',
@@ -334,6 +333,7 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
     const body = await guardianRequest(syntheticGuardianInput).json();
     body.model = REQUESTED_MODEL;
     body.stream = false;
+    if (scenario === 'ordinary') delete body.client_metadata;
     const response = await handleProtocolRequest({
       adapter: openAIResponsesAdapter,
       context: {},
