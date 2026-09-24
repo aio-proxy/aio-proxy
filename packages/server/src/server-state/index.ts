@@ -35,6 +35,7 @@ import { LogicalSessionStore } from '../logical-session-store';
 import { createModelRoutingControlPlane } from '../model-routing';
 import { createPluginControlPlane } from '../plugin-control-plane';
 import { createOAuthQuotaCache, createOAuthQuotaOperations } from '../plugin-quota';
+import { createGuardianEvaluate, GuardianEvaluationUnavailable } from '../plugin-runtime/guardian-evaluation';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder, syncOtelDestinations } from '../request-tracing';
@@ -123,7 +124,9 @@ async function initializeServerState(
   databaseOwnership: DatabaseOwnershipLock,
   registerStartupCleanup: (cleanup: () => void) => void,
 ): Promise<ServerState> {
-  const internalOptions = options as InternalServerStateOptions;
+  let activeState: ServerState | undefined;
+  const internalOptions = guardianRuntimeOptions(options, () => activeState);
+  options = internalOptions;
   const testHooks = internalOptions.__test;
   const agentIdentity = testHooks?.agentIdentity ?? createAgentIdentityService(dbHandle.sqlite);
   type StartupResource = NonNullable<ServerStateTestHooks['failStartupAfter']>;
@@ -206,17 +209,10 @@ async function initializeServerState(
     await queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'credential-diagnostic'));
   } else replaceCatalogJobs(runtime, initial.catalogJobs);
 
-  const traceStore = createTraceStore(dbHandle.db);
-  const usageCapture = createUsageCapture({ logger });
-  const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
+  const { traceStore, usageCapture, logicalSessionStore, requestRecorder } = createRequestServices(dbHandle, logger);
   const cooldown = new ProviderCooldownStore();
   const realtimeCalls = createRealtimeCallStore();
   const videoJobs = createVideoJobStore();
-  const requestRecorder = createRequestTraceRecorder({
-    store: traceStore,
-    logger,
-    onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
-  });
 
   const configStore = await startRecovery(
     runtime,
@@ -258,7 +254,7 @@ async function initializeServerState(
   if (watcher !== undefined) registerStartupCleanup(() => watcher.close());
   failAfter('watcher');
   syncOtelDestinations(options.config.server.otel.destinations, logger);
-  return assembleServerState(runtime, {
+  activeState = assembleServerState(runtime, {
     agentIdentity,
     manager,
     dbHandle,
@@ -283,6 +279,7 @@ async function initializeServerState(
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
   });
+  return activeState;
 }
 
 // The cache is published onto the runtime so `commitConfig` can invalidate the entries of Providers
@@ -341,3 +338,31 @@ export type {
   ServerState,
   ServerStateOptions,
 } from './types';
+
+function guardianRuntimeOptions(
+  options: ServerStateOptions,
+  getState: () => ServerState | undefined,
+): InternalServerStateOptions {
+  return {
+    ...options,
+    __guardianEvaluate: (sourceProviderId) =>
+      createGuardianEvaluate(() => {
+        const state = getState();
+        if (state === undefined) throw new GuardianEvaluationUnavailable('target_unavailable');
+        return state;
+      }, sourceProviderId),
+  };
+}
+
+function createRequestServices(dbHandle: OpenDbHandle, logger: ServerRuntime['logger']) {
+  const traceStore = createTraceStore(dbHandle.db);
+  const usageCapture = createUsageCapture({ logger });
+  const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
+  const requestRecorder = createRequestTraceRecorder({
+    store: traceStore,
+    logger,
+    onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
+  });
+
+  return { traceStore, usageCapture, logicalSessionStore, requestRecorder };
+}

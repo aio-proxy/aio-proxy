@@ -1,7 +1,8 @@
-import { EvaluationDistributionError } from '@aio-proxy/core';
+import { EvaluationDistributionError, type RouterCandidate } from '@aio-proxy/core';
+import type { ProviderProtocol } from '@aio-proxy/types';
 
 import { terminalCompletion } from '../../../route-observation';
-import type { LazyEvaluationTransport } from '../../../runtime';
+import type { LazyEvaluationTransport, RawTransport, RuntimeProviderInstance } from '../../../runtime';
 import { withoutCallerCredentialsOnRequest } from '../../../server/api-key-auth';
 import type { UsageCompletion } from '../../../usage-capture';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
@@ -27,14 +28,14 @@ export async function attemptEvaluationCandidate<TRequest, TContext>(
 ): Promise<AttemptStep> {
   const { adapter, context, rawRequest, request } = ctx;
   const { candidate } = slot;
-  const provider = candidate.provider;
-  const raw = provider.raw?.resolve({
+  const path = requestPathProperty(rawRequest, ctx.httpRoute);
+  const selected = selectEvaluationTransport({
+    candidate,
     protocol: adapter.protocol,
-    modelId: candidate.modelId,
-    capability: 'evaluation',
-    ...requestPathProperty(rawRequest, ctx.httpRoute),
+    ...path,
+    requestPath: path.requestPath!,
   });
-  if (raw !== undefined) {
+  if (selected.kind === 'raw') {
     slot.trace.transport = 'raw';
     slot.trace.targetProtocol = adapter.protocol;
     const attemptSpan = startRawAttempt(ctx, slot);
@@ -44,14 +45,13 @@ export async function attemptEvaluationCandidate<TRequest, TContext>(
     // runs. An anonymously admitted caller still carries its own secrets, and the
     // endpoint transport copies the inbound query onto the upstream URL verbatim.
     const upstream = withoutCallerCredentialsOnRequest(rewritten);
-    return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan);
+    return await completeRawAttempt(ctx, slot, selected.transport, upstream, attemptSpan);
   }
   // Absence of the field is the only thing it can answer. Presence proves nothing:
   // the transport is attached to every `ai-sdk` provider because no static signal
   // speaks for an arbitrary npm package, so the verdict comes from `discover()`.
-  const evaluation = provider.evaluation;
-  if (evaluation === undefined) return unsupportedConvert(ctx, slot);
-  return await convertEvaluationCandidate(ctx, slot, evaluation);
+  if (selected.kind === 'unsupported') return unsupportedConvert(ctx, slot);
+  return await convertEvaluationCandidate(ctx, slot, selected.transport);
 }
 
 async function convertEvaluationCandidate<TRequest, TContext>(
@@ -164,4 +164,27 @@ function discoveryFailure<TRequest, TContext>(
     error,
   });
   return emitReject(ctx, slot, response, 'unsupported_feature');
+}
+
+export function selectEvaluationTransport(input: {
+  readonly candidate: RouterCandidate<RuntimeProviderInstance>;
+  readonly protocol: ProviderProtocol;
+  readonly requestPath: string;
+  readonly urlTemplate?: string;
+}):
+  | { readonly kind: 'raw'; readonly transport: RawTransport }
+  | { readonly kind: 'convert'; readonly transport: LazyEvaluationTransport }
+  | { readonly kind: 'unsupported' } {
+  const { candidate, protocol, requestPath, urlTemplate } = input;
+  const raw = candidate.provider.raw?.resolve({
+    protocol,
+    modelId: candidate.modelId,
+    capability: 'evaluation',
+    requestPath,
+    ...(urlTemplate === undefined ? {} : { urlTemplate }),
+  });
+  if (raw !== undefined) return { kind: 'raw', transport: raw };
+  return candidate.provider.evaluation === undefined
+    ? { kind: 'unsupported' }
+    : { kind: 'convert', transport: candidate.provider.evaluation };
 }

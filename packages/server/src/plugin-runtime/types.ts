@@ -10,6 +10,7 @@ import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch } from '@
 import type { DashboardProviderSummary, OAuthProvider, ProviderState } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../runtime';
+import type { GuardianEvaluate } from './guardian-evaluation';
 
 export const PLUGIN_RUNTIME_TIMEOUT_MS = 5_000;
 
@@ -64,6 +65,7 @@ export type PluginProviderMaterialization = {
 };
 
 export type MaterializePluginProviderOptions = {
+  readonly guardianEvaluate?: (sourceProviderId: string) => GuardianEvaluate;
   readonly config: OAuthProvider;
   readonly plugins: PluginRegistrySnapshot;
   readonly repository: PluginRepository;

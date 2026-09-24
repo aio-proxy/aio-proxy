@@ -124,6 +124,11 @@ async function createRuntimeMaterialization(
     const result = await runtimeDeadline(
       Promise.resolve().then(async () =>
         adapter.createRuntime({
+          ...(config.plugin === '@aio-proxy/plugin-openai-chatgpt' &&
+          options.plugins.plugins.get(config.plugin)?.builtIn === true &&
+          options.guardianEvaluate !== undefined
+            ? { __aioGuardianEvaluate: options.guardianEvaluate(config.id) }
+            : {}),
           credentials: credentials as never,
           options: accountOptions,
           catalog: storedCatalog.catalog,
