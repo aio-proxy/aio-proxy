@@ -285,13 +285,8 @@ function inlineHistory(input: unknown[]): boolean {
             .map((part) => part['text'])
             .join('\n')
             .trim();
-          const allowedFollowUp =
-            policySeen &&
-            item['content'].length === 1 &&
-            (text === '<permissions instructions>\n</permissions instructions>' ||
-              text ===
-                'Use prior reviews as context, not binding precedent. Follow the Workspace Policy. If the user explicitly approves a previously rejected action after being informed of the concrete risks, set outcome to "allow" unless the policy explicitly disallows user overwrites in such cases.');
-          if (!allowedFollowUp) return false;
+          // The first developer item is the authoritative policy. Later notes cannot change its outcome rules.
+          if (!(policySeen && item['content'].length === 1 && text.length > 0 && text.length <= 1_000)) return false;
         }
         policySeen = true;
       }

@@ -184,7 +184,7 @@ const cases: [string, (body: any) => void][] = [
           content: [
             {
               type: 'input_text',
-              text: 'Use prior reviews as context, not binding precedent. Follow the Workspace Policy. If the user explicitly approves a previously rejected action after being informed of the concrete risks, set outcome to "allow" unless the policy explicitly disallows user overwrites in such cases.',
+              text: 'Review this later round using the original policy.',
             },
           ],
         },
@@ -211,6 +211,18 @@ const cases: [string, (body: any) => void][] = [
     },
   ],
 ];
+test('rejects a later developer message longer than the follow-up note limit', async () => {
+  for (const text of ['x'.repeat(1_001)]) {
+    const body = await guardianRequest(syntheticGuardianInput).json();
+    body.input.splice(1, 0, { type: 'message', role: 'developer', content: [{ type: 'input_text', text }] });
+    expect(
+      await projectGuardianRequest(
+        new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+      ),
+    ).toBeUndefined();
+  }
+});
+
 test('accepts current Codex review history and the assessed terminal action', async () => {
   const body = await guardianRequest(syntheticGuardianInput).json();
   const change = cases.find(([name]) => name === 'current assistant review history')?.[1];
