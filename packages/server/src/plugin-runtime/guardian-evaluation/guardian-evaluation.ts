@@ -14,6 +14,7 @@ import { selectEvaluationTransport } from '../../routes/pipeline/attempt/evaluat
 import { publicSlug } from '../../routes/pipeline/public-slug';
 import { cancelRetainedRequestBody } from '../../routes/pipeline/request';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
+import { logServerEvent, type GuardianEvaluationUnavailableLog } from '../../server-log';
 import { withoutCallerCredentialsOnRequest } from '../../server/api-key-auth';
 import { MAX_PASSTHROUGH_JSON_BYTES, type UsageCompletion } from '../../usage-capture';
 
@@ -38,13 +39,7 @@ export type GuardianEvaluate = (input: {
   readonly signal: AbortSignal;
   readonly logicalRequest: LogicalRequestContext;
 }) => Promise<unknown>;
-type Reason =
-  | 'target_unavailable'
-  | 'recursive_target'
-  | 'unsupported'
-  | 'transport_failed'
-  | 'invalid_response'
-  | 'response_too_large';
+type Reason = GuardianEvaluationUnavailableLog['errorCode'];
 export class GuardianEvaluationUnavailable extends Error {
   constructor(readonly reason: Reason) {
     super(reason);
@@ -60,7 +55,12 @@ export function createGuardianEvaluate(
     const source = getSource();
     const lease = source.acquireProviderSnapshot();
     try {
-      const matches = lease.snapshot.router.resolve(`${providerId}/${modelId}`);
+      let matches: RouterCandidate<RuntimeProviderInstance>[];
+      try {
+        matches = lease.snapshot.router.resolve(`${providerId}/${modelId}`);
+      } catch {
+        throw new GuardianEvaluationUnavailable('target_unavailable');
+      }
       const candidate = matches[0];
       if (
         matches.length !== 1 ||
@@ -78,6 +78,15 @@ export function createGuardianEvaluate(
         source,
         routerModels: lease.snapshot.config?.router.models,
       });
+    } catch (error) {
+      logServerEvent(source.logger, {
+        event: 'guardian.evaluation.unavailable',
+        requestId: logicalRequest.requestId,
+        targetProviderId: providerId,
+        targetModelId: modelId,
+        errorCode: error instanceof GuardianEvaluationUnavailable ? error.reason : 'transport_failed',
+      });
+      throw error;
     } finally {
       lease.release();
     }
@@ -102,8 +111,8 @@ function abortable<T>(operation: () => Promise<T>, signal: AbortSignal, late?: (
       .finally(() => signal.removeEventListener('abort', abort));
   });
 }
-function cancel(response: Response): void {
-  void response.body?.cancel().catch(() => {});
+async function cancel(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => {});
 }
 async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
   const reader = response.body?.getReader();
@@ -111,8 +120,10 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
   const decoder = new TextDecoder();
   let size = 0;
   let text = '';
+  let cancellation: Promise<void> | undefined;
+  const cancelReader = () => (cancellation ??= reader.cancel().catch(() => {}));
   const abort = () => {
-    void reader.cancel().catch(() => {});
+    void cancelReader();
   };
   signal.addEventListener('abort', abort, { once: true });
   try {
@@ -129,7 +140,7 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
     return result;
   } finally {
     signal.removeEventListener('abort', abort);
-    void reader.cancel().catch(() => {});
+    await cancelReader();
     reader.releaseLock();
   }
 }
@@ -255,7 +266,7 @@ export async function dispatchPrivateEvaluation(input: {
             void cancelRetainedRequestBody(upstream, 'evaluation settled');
           });
           if (!response.ok) {
-            cancel(response);
+            await cancel(response);
             throw new GuardianEvaluationUnavailable('transport_failed');
           }
           const captured = source.usageCapture.passthrough({

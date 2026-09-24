@@ -773,33 +773,29 @@ for (const abort of [false, true])
 
 test('evaluation timeout falls back once and ignores its late allow', async () => {
   const deadline = new AbortController();
-  const timer = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
   const started = Promise.withResolvers<void>();
   const late = Promise.withResolvers<unknown>();
   let calls = 0;
-  try {
-    const invoke = createGuardianRawInvoke({
-      resolvedModelId: 'codex-auto-review',
-      pluginOptions: wrapperOptions,
-      original: async () => {
-        calls++;
-        return new Response('original');
-      },
-      evaluate: () => {
-        started.resolve();
-        return late.promise;
-      },
-    });
-    const pending = invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
-    await started.promise;
-    deadline.abort(new DOMException('Timeout', 'TimeoutError'));
-    expect(await (await pending).text()).toBe('original');
-    late.resolve(choiceResult('low', 'unknown', 'allow', 'low_risk'));
-    await Bun.sleep(0);
-    expect(calls).toBe(1);
-  } finally {
-    timer.mockRestore();
-  }
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: wrapperOptions,
+    original: async () => {
+      calls++;
+      return new Response('original');
+    },
+    timeoutSignal: () => deadline.signal,
+    evaluate: () => {
+      started.resolve();
+      return late.promise;
+    },
+  });
+  const pending = invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
+  await started.promise;
+  deadline.abort(new DOMException('Timeout', 'TimeoutError'));
+  expect(await (await pending).text()).toBe('original');
+  late.resolve(choiceResult('low', 'unknown', 'allow', 'low_risk'));
+  await Bun.sleep(0);
+  expect(calls).toBe(1);
 });
 
 test('original-model error after denial remains final without recursive evaluation', async () => {
@@ -899,4 +895,64 @@ test('already-expired evaluation signal never starts the lazy callback', async (
   } finally {
     timer.mockRestore();
   }
+});
+
+test('private deadline seam keeps the production duration and cancels before fallback', async () => {
+  const deadline = new AbortController();
+  const caller = new AbortController();
+  const started = Promise.withResolvers<void>();
+  let timeoutMs: number | undefined;
+  let originals = 0;
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: wrapperOptions,
+    timeoutSignal: (milliseconds) => {
+      timeoutMs = milliseconds;
+      return deadline.signal;
+    },
+    evaluate: async () => {
+      started.resolve();
+      return new Promise(() => {});
+    },
+    original: async () => {
+      originals++;
+      return new Response();
+    },
+  });
+  const pending = invoke(
+    new Request(guardianRequest(syntheticGuardianInput), { signal: caller.signal }),
+    wrapperContext,
+  );
+  await started.promise;
+  expect(timeoutMs).toBe(8_000);
+  caller.abort(new DOMException('Aborted', 'AbortError'));
+  deadline.abort(new DOMException('Timeout', 'TimeoutError'));
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  expect(originals).toBe(0);
+});
+
+test('caller abort after original dispatch reaches the original transport unchanged', async () => {
+  const caller = new AbortController();
+  const started = Promise.withResolvers<void>();
+  let calls = 0;
+  const invoke = createGuardianRawInvoke({
+    resolvedModelId: 'codex-auto-review',
+    pluginOptions: wrapperOptions,
+    evaluate: async () => ({}),
+    original: (request) => {
+      calls++;
+      started.resolve();
+      return new Promise((_resolve, reject) =>
+        request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true }),
+      );
+    },
+  });
+  const pending = invoke(
+    new Request(guardianRequest(syntheticGuardianInput), { signal: caller.signal }),
+    wrapperContext,
+  );
+  await started.promise;
+  caller.abort(new DOMException('Aborted', 'AbortError'));
+  await expect(pending).rejects.toBe(caller.signal.reason);
+  expect(calls).toBe(1);
 });

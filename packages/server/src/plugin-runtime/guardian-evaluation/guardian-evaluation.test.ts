@@ -184,6 +184,7 @@ test('abort rejects ignored transport and cancels late body', async () => {
   );
   await Bun.sleep(0);
   expect(cancelled).toBe(true);
+  expect(h.releases()).toBe(1);
 });
 
 function converted(result: EvaluationResult | undefined): RuntimeProviderInstance {

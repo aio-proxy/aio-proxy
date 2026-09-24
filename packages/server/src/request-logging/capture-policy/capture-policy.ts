@@ -23,6 +23,8 @@ const reasons = new Set([
 const identifiers = new Set([
   'providerId',
   'modelId',
+  'targetProviderId',
+  'targetModelId',
   attributeName.providerId,
   attributeName.finalProviderId,
   attributeName.genAiRequestModel,

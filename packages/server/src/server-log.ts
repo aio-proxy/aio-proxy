@@ -270,11 +270,26 @@ export type OtelExportLog = {
   readonly statusCode?: number;
 };
 
+export type GuardianEvaluationUnavailableLog = {
+  readonly event: 'guardian.evaluation.unavailable';
+  readonly requestId: string;
+  readonly targetProviderId: string;
+  readonly targetModelId: string;
+  readonly errorCode:
+    | 'target_unavailable'
+    | 'recursive_target'
+    | 'unsupported'
+    | 'transport_failed'
+    | 'invalid_response'
+    | 'response_too_large';
+};
+
 export type ServerLog =
   | AutoUpdateFailedLog
   | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog
   | DashboardAuthUnavailableLog
+  | GuardianEvaluationUnavailableLog
   | OtelExportLog
   | RealtimeCallCreatedLog
   | RealtimeCallFailedLog

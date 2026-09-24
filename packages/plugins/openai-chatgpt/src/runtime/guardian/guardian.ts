@@ -28,6 +28,7 @@ export function createGuardianRawInvoke(input: {
   pluginOptions: Partial<ChatGPTPluginOptions>;
   original: RawTransport['invoke'];
   evaluate?: GuardianEvaluate;
+  timeoutSignal?: (milliseconds: number) => AbortSignal;
 }): RawTransport['invoke'] {
   const { resolvedModelId, pluginOptions, evaluate } = input;
   return async (request, context, options) => {
@@ -50,7 +51,7 @@ export function createGuardianRawInvoke(input: {
     request.signal.throwIfAborted();
     if (projected === undefined) return original();
     const deadlineAt = performance.now() + 8_000;
-    const evaluationSignal = AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]);
+    const evaluationSignal = AbortSignal.any([request.signal, (input.timeoutSignal ?? AbortSignal.timeout)(8_000)]);
     const expired = () => {
       request.signal.throwIfAborted();
       return evaluationSignal.aborted || performance.now() >= deadlineAt;
