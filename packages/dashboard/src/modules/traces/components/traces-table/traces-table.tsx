@@ -115,7 +115,7 @@ const traceColumns = (
       if (service === undefined || accountLabel === undefined || service === accountLabel) return label;
       return (
         <span className="inline-flex max-w-48 min-w-0 flex-col leading-tight">
-          <span className="truncate font-medium" title={service}>
+          <span className="truncate" title={service}>
             {service}
           </span>
           <span className="text-xs text-muted-foreground">{label}</span>
