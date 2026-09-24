@@ -5,6 +5,9 @@ import type { RouterModelPolicy } from '@aio-proxy/types';
 import { trace } from '@opentelemetry/api';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+const unitInterval = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+
 import { currentRequestTraceRootContext, withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import { attributeName } from '../../request-tracing';
 import { createAttemptResponseObservation, withAttemptResponseObservation } from '../../response-observation';
@@ -153,9 +156,7 @@ function validateResponse(result: unknown): void {
     if (answer['type'] === 'choice' || answer['type'] === 'score') {
       if (
         !isPlainObject(answer['probabilities']) ||
-        Object.values(answer['probabilities']).some(
-          (value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1,
-        )
+        Object.values(answer['probabilities']).some((value) => !unitInterval(value))
       )
         throw new GuardianEvaluationUnavailable('invalid_response');
     }

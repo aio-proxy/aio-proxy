@@ -414,8 +414,7 @@ function choiceResult(risk: string, authorization: string, outcome: string, reas
 }
 
 test('asks all four ordered choices using the supplied developer policy and source trust', async () => {
-  const projection = (await projectGuardianRequest(guardianRequest(syntheticGuardianInput)))!;
-  const questions = guardianQuestions(projection.state);
+  const questions = guardianQuestions();
   expect(Object.keys(questions)).toEqual(['risk_level', 'user_authorization', 'outcome', 'reason']);
   for (const [id, labels] of Object.entries(guardianLabels)) {
     const question = questions[id as keyof typeof questions];

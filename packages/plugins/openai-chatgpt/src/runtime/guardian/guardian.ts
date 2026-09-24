@@ -57,7 +57,7 @@ export function createGuardianRawInvoke(input: {
     const body: GuardianSystemOneBody = {
       model: pluginOptions.guardianModelId,
       state: projected.state,
-      questions: guardianQuestions(projected.state),
+      questions: guardianQuestions(),
     };
     if (expired()) return original();
     let evaluated: unknown;

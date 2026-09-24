@@ -2,6 +2,9 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { GuardianProjection } from './request';
 
+const unitInterval = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+
 const labels = {
   risk_level: ['low', 'medium', 'high', 'critical'],
   user_authorization: ['unknown', 'low', 'medium', 'high'],
@@ -68,14 +71,7 @@ export function guardianDecision(result: unknown, projection: GuardianProjection
     const probabilities = answer['probabilities'];
     if (
       Object.keys(probabilities).length !== choices.length ||
-      !choices.every(
-        (choice) =>
-          Object.hasOwn(probabilities, choice) &&
-          typeof probabilities[choice] === 'number' &&
-          Number.isFinite(probabilities[choice]) &&
-          probabilities[choice] >= 0 &&
-          probabilities[choice] <= 1,
-      )
+      !choices.every((choice) => Object.hasOwn(probabilities, choice) && unitInterval(probabilities[choice]))
     )
       return;
     selected[id] = answer['choice'];

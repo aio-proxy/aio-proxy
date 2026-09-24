@@ -36,7 +36,7 @@ function answer(deny = false) {
   return {
     id: sentinel,
     answers: Object.fromEntries(
-      Object.entries(guardianQuestions({ input: [], pending_action: {} })).map(([id, question]) => [
+      Object.entries(guardianQuestions()).map(([id, question]) => [
         id,
         {
           type: 'choice',
