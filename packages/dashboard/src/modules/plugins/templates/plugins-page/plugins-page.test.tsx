@@ -1,6 +1,13 @@
 /* oxlint-disable max-lines */
-import type { DashboardPluginEditView, DashboardPluginSummary } from '@aio-proxy/types';
+import {
+  ProviderKind,
+  ProviderProtocol,
+  type DashboardPluginEditView,
+  type DashboardPluginSummary,
+  type DashboardProviderSummary,
+} from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { PluginRequestError } from '../../services/plugins-service';
@@ -73,7 +80,11 @@ test('keeps Add Plugin in the page header and confirms the exact request after t
       callbacks.onError(error);
     }
   });
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
 
   const add = screen.getByRole('button', { name: /Add Plugin|添加插件|新增外掛/u });
   expect(add.closest('header')).not.toBeNull();
@@ -114,7 +125,11 @@ test('clears challenged trust when the package, registry, or drawer lifecycle ch
       callbacks.onError(error);
     }
   });
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
 
   fireEvent.click(screen.getByRole('button', { name: /Add Plugin|添加插件|新增外掛/u }));
   const packageName = screen.getByLabelText(/Package name|包名称|套件名稱/u);
@@ -160,7 +175,11 @@ test('clears challenged trust when the package, registry, or drawer lifecycle ch
 test('does not offer uninstall for a built-in Plugin', () => {
   mocks.plugins.data.plugins = [plugin({ builtin: true, packageName: '@aio-proxy/plugin-openai' })];
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
 
   const row = within(screen.getByTestId('plugin-row-@aio-proxy/plugin-openai'));
   expect(row.getByText(/Built-in|内置|內建/u)).toBeInTheDocument();
@@ -170,7 +189,11 @@ test('does not offer uninstall for a built-in Plugin', () => {
 test('requires confirmation before uninstalling a third-party Plugin', () => {
   mocks.plugins.data.plugins = [plugin()];
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Uninstall|卸载|解除安裝/u }));
 
   expect(screen.getByRole('alertdialog')).toHaveTextContent('@example/plugin');
@@ -192,7 +215,11 @@ test('loads the safe options edit-view without rendering a stored secret and sub
     ],
   };
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
   await waitFor(() => expect(screen.getByLabelText('Endpoint')).toHaveValue('https://api.example.com'));
@@ -235,7 +262,11 @@ test('clears unsaved replacement secrets and mutation errors before options can 
     mocks.options.error = null;
   });
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   const options = screen.getByRole('button', { name: /Options|选项|選項/u });
   fireEvent.click(options);
   const token = await screen.findByLabelText('Token');
@@ -281,7 +312,11 @@ test.each([
     ],
   };
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
   expect(await screen.findByLabelText('User-Agent')).toHaveValue('codex-tui/{{latest_codex_rs_version}}');
@@ -315,7 +350,11 @@ test('uses effective defaults when evaluating conditional option fields', async 
     ],
   };
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
   expect(await screen.findByLabelText('Mode')).toBeInTheDocument();
@@ -357,7 +396,11 @@ test('associates descriptions with boolean, select, JSON, and secret option cont
     ],
   };
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
 
   expect(await screen.findByRole('switch', { name: 'Advanced' })).toHaveAccessibleDescription(
@@ -377,7 +420,11 @@ test('keeps cleared public option values serializable', async () => {
     form: [{ key: 'retries', label: 'Retries', type: 'number' }],
   };
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
   await waitFor(() => expect(screen.getByLabelText('Retries')).toHaveValue(3));
   fireEvent.change(screen.getByLabelText('Retries'), { target: { value: '' } });
@@ -397,7 +444,11 @@ test('keeps uninstall open and lists dependent Provider IDs after a refusal', ()
     callbacks.onError(new PluginRequestError('dependent_providers', 409, ['primary', 'fallback']));
   });
 
-  render(<PluginsPage />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
   fireEvent.click(screen.getByRole('button', { name: /Uninstall|卸载|解除安裝/u }));
   fireEvent.click(screen.getByRole('button', { name: /Confirm uninstall|确认卸载|確認解除安裝/u }));
 
@@ -405,4 +456,161 @@ test('keeps uninstall open and lists dependent Provider IDs after a refusal', ()
   expect(dialog).toBeInTheDocument();
   expect(dialog).toHaveTextContent('primary');
   expect(dialog).toHaveTextContent('fallback');
+});
+
+const evaluationProvider = (values: Partial<DashboardProviderSummary> = {}): DashboardProviderSummary => ({
+  id: 'system-one-local',
+  name: 'Local evaluator',
+  enabled: true,
+  kind: ProviderKind.Api,
+  protocols: [ProviderProtocol.TypeSafeSystemOne],
+  clientModels: ['local-model'],
+  state: { status: 'ready' },
+  passthrough: false,
+  last_status: '',
+  last_latency: null,
+  hasQuota: false,
+  canRefreshCredential: false,
+  ...values,
+});
+
+const openGuardianOptions = (publicValues: DashboardPluginEditView['publicValues'] = {}) => {
+  mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
+  mocks.editView = {
+    packageName: '@example/plugin',
+    revision: 'sha256:guardian',
+    publicValues,
+    form: [
+      {
+        type: 'select',
+        key: 'strategy',
+        label: 'Guardian review strategy',
+        defaultValue: 'default',
+        options: [
+          { value: 'default', label: 'Default' },
+          { value: 'systemOne', label: 'System One' },
+          { value: 'systemOneReviewDenied', label: 'System One with review' },
+        ],
+      },
+      {
+        type: 'provider',
+        key: 'target',
+        label: 'Evaluation Provider',
+        description: 'Approval context is sent to the selected Provider.',
+        when: { key: 'strategy', notEquals: 'default' },
+      },
+      {
+        type: 'provider-model',
+        key: 'model',
+        providerKey: 'target',
+        label: 'Model ID',
+        when: { key: 'strategy', notEquals: 'default' },
+      },
+    ],
+  };
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
+  client.setQueryData(['providers'], {
+    providers: [
+      evaluationProvider(),
+      evaluationProvider({
+        id: 'sdk',
+        name: 'Unknown support',
+        kind: ProviderKind.AiSdk,
+        protocols: [],
+        clientModels: ['sdk-model'],
+      }),
+      evaluationProvider({ id: 'incompatible', protocols: [ProviderProtocol.OpenAICompatible] }),
+      evaluationProvider({ id: 'disabled', enabled: false }),
+    ],
+    routingRevision: 'test',
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <PluginsPage />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
+};
+
+const choose = async (label: string, option: string) => {
+  fireEvent.click(screen.getByRole('combobox', { name: label }));
+  fireEvent.keyDown(await screen.findByRole('option', { name: option }), { key: 'Enter' });
+};
+
+test.each(['System One', 'System One with review'])(
+  'shows generic evaluation controls for %s and persists exact IDs',
+  async (strategy) => {
+    openGuardianOptions();
+    expect(screen.queryByLabelText('Evaluation Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model ID')).toBeNull();
+    await choose('Guardian review strategy', strategy);
+    expect(screen.getByLabelText('Evaluation Provider')).toHaveAccessibleDescription(
+      expect.stringContaining('Approval context'),
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Evaluation Provider' }));
+    expect(await screen.findByRole('option', { name: 'Local evaluator (system-one-local)' })).toBeEnabled();
+    expect(screen.getByRole('option', { name: 'Unknown support (sdk)' })).toBeEnabled();
+    expect(screen.queryByRole('option', { name: /incompatible/ })).toBeNull();
+    expect(screen.queryByRole('option', { name: /disabled/ })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('option', { name: 'Local evaluator (system-one-local)' }), { key: 'Enter' });
+    const model = screen.getByLabelText('Model ID');
+    const suggestions = document.getElementById(model.getAttribute('list') ?? '');
+    expect(suggestions?.querySelector('option')?.value).toBe('local-model');
+    fireEvent.change(model, { target: { value: 'manual-model' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
+    await waitFor(() =>
+      expect(mocks.options.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicValues: {
+            strategy: strategy === 'System One' ? 'systemOne' : 'systemOneReviewDenied',
+            target: 'system-one-local',
+            model: 'manual-model',
+          },
+        }),
+        expect.any(Object),
+      ),
+    );
+    await choose('Evaluation Provider', 'Unknown support (sdk)');
+    expect(model).toHaveValue('');
+  },
+);
+
+test.each(['deleted', 'disabled', 'incompatible', ''])(
+  'blocks invalid saved evaluation Provider %s until default mode',
+  async (target) => {
+    openGuardianOptions({ strategy: 'systemOne', target, model: 'local-model' });
+    const provider = screen.getByLabelText('Evaluation Provider');
+    if (target !== '') expect(provider).toHaveTextContent(target);
+    expect(provider).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
+    const save = screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u });
+    fireEvent.submit(save.closest('form')!);
+    await act(async () => {});
+    expect(mocks.options.mutate).not.toHaveBeenCalled();
+    await choose('Guardian review strategy', 'Default');
+    fireEvent.click(save);
+    await waitFor(() => expect(mocks.options.mutate).toHaveBeenCalled());
+  },
+);
+
+test('requires a nonblank model and allows correcting an invalid saved Provider', async () => {
+  openGuardianOptions({ strategy: 'systemOne', target: 'deleted', model: 'old-model' });
+  await choose('Evaluation Provider', 'Local evaluator (system-one-local)');
+  expect(screen.getByLabelText('Model ID')).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: '   ' } });
+  const save = screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u });
+  fireEvent.submit(save.closest('form')!);
+  await act(async () => {});
+  expect(mocks.options.mutate).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'local-model' } });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
+  await waitFor(() =>
+    expect(mocks.options.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publicValues: { strategy: 'systemOne', target: 'system-one-local', model: 'local-model' },
+      }),
+      expect.any(Object),
+    ),
+  );
 });

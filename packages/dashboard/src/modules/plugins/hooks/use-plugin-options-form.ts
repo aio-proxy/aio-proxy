@@ -1,6 +1,8 @@
-import type { DashboardPluginEditView } from '@aio-proxy/types';
+import { ProviderProtocol, type DashboardPluginEditView, type DashboardProviderSummary } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { z } from 'zod';
+
+import { formFieldVisible } from '@/lib/form-field-visible';
 
 export interface PluginOptionsFormValues {
   readonly clearSecretKeys: readonly string[];
@@ -62,3 +64,31 @@ export const usePluginOptionsForm = (onSubmit: (value: PluginOptionsFormValues) 
     },
     onSubmit: ({ value }) => onSubmit(value as PluginOptionsFormValues),
   }) as unknown as PluginOptionsForm;
+
+export const selectablePluginProvider = (provider: DashboardProviderSummary): boolean =>
+  provider.enabled &&
+  provider.state.status === 'ready' &&
+  (provider.protocols.includes(ProviderProtocol.TypeSafeSystemOne) || provider.kind === 'ai-sdk');
+
+export const pluginProviderOptionsValid = (
+  fields: DashboardPluginEditView['form'],
+  values: Readonly<Record<string, unknown>>,
+  providers: readonly DashboardProviderSummary[],
+): boolean => {
+  const combined = {
+    ...Object.fromEntries(
+      fields.flatMap((field) => ('defaultValue' in field ? [[field.key, field.defaultValue]] : [])),
+    ),
+    ...values,
+  };
+  return fields.every((field) => {
+    if (!formFieldVisible(field, combined)) return true;
+    if (field.type === 'provider')
+      return providers.some((provider) => provider.id === combined[field.key] && selectablePluginProvider(provider));
+    if (field.type === 'provider-model') {
+      const model = combined[field.key];
+      return typeof model === 'string' && model.trim().length > 0;
+    }
+    return true;
+  });
+};

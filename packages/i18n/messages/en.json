@@ -674,7 +674,10 @@
       "uninstall_description": "Uninstall {packageName} from this aio-proxy instance?",
       "uninstall_dependencies": "Remove these dependent Providers before uninstalling the Plugin:",
       "uninstall_failed": "The Plugin could not be uninstalled. Try again.",
-      "uninstall_confirm": "Confirm uninstall"
+      "uninstall_confirm": "Confirm uninstall",
+      "provider_placeholder": "Select a Provider",
+      "provider_invalid": "Select an enabled, available Provider that supports evaluation.",
+      "model_required": "Enter a model ID."
     },
     "routing": {
       "title": "Routing",

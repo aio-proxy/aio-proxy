@@ -674,7 +674,10 @@
       "uninstall_description": "이 aio-proxy 인스턴스에서 {packageName}을 제거할까요?",
       "uninstall_dependencies": "플러그인을 제거하기 전에 다음 종속 프로바이더를 삭제하세요:",
       "uninstall_failed": "플러그인을 제거할 수 없습니다. 다시 시도하세요.",
-      "uninstall_confirm": "제거 확인"
+      "uninstall_confirm": "제거 확인",
+      "provider_placeholder": "Provider 선택",
+      "provider_invalid": "평가를 지원하며 활성화되어 사용 가능한 Provider를 선택하세요.",
+      "model_required": "모델 ID를 입력하세요."
     },
     "routing": {
       "title": "라우팅",

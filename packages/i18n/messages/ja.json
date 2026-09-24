@@ -674,7 +674,10 @@
       "uninstall_description": "この aio-proxy インスタンスから {packageName} をアンインストールしますか？",
       "uninstall_dependencies": "先に次の依存プロバイダーを削除してください：",
       "uninstall_failed": "プラグインをアンインストールできませんでした。もう一度お試しください。",
-      "uninstall_confirm": "アンインストールを確認"
+      "uninstall_confirm": "アンインストールを確認",
+      "provider_placeholder": "Provider を選択",
+      "provider_invalid": "評価に対応した、有効で利用可能な Provider を選択してください。",
+      "model_required": "モデル ID を入力してください。"
     },
     "routing": {
       "title": "ルーティング",
