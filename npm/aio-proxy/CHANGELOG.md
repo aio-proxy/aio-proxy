@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.33.2
+
+### Patch Changes
+
+- [#426](https://github.com/aio-proxy/aio-proxy/pull/426) [`7a104ac`](https://github.com/aio-proxy/aio-proxy/commit/7a104ac9de628d0d39fb830a710c8ad8366ac93a) Thanks [@baranwang](https://github.com/baranwang)! - Guardian approval now accepts the current Codex review transcript, including prior review rounds, assistant replies, and the assessment note inside the final approval envelope.
+
 ## 0.33.1
 
 ### Patch Changes
