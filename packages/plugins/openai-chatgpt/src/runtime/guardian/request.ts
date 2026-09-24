@@ -199,9 +199,19 @@ function matchesPolicy(text: string): boolean {
   );
 }
 
+function boundedObject(value: unknown, maxBytes = 20_000, depth = 0): boolean {
+  if (!isPlainObject(value) || depth > 4) return false;
+  try {
+    if (JSON.stringify(value).length > maxBytes) return false;
+  } catch {
+    return false;
+  }
+  return Object.values(value).every((v) => !isPlainObject(v) || boundedObject(v, maxBytes, depth + 1));
+}
 function additionalTools(value: unknown): boolean {
   if (
     !isPlainObject(value) ||
+    !onlyKeys(value, ['type', 'role', 'id', 'tools']) ||
     value['type'] !== 'additional_tools' ||
     value['role'] !== 'developer' ||
     !Array.isArray(value['tools'])
@@ -210,25 +220,36 @@ function additionalTools(value: unknown): boolean {
   return value['tools'].every((namespace) => {
     if (
       !isPlainObject(namespace) ||
+      !onlyKeys(namespace, ['type', 'name', 'description', 'tools']) ||
       namespace['type'] !== 'namespace' ||
       typeof namespace['name'] !== 'string' ||
+      namespace['name'].length < 1 ||
       namespace['name'].length > 100 ||
       typeof namespace['description'] !== 'string' ||
       namespace['description'].length > 1000 ||
       !Array.isArray(namespace['tools'])
     )
       return false;
-    return namespace['tools'].every(
-      (tool) =>
-        isPlainObject(tool) &&
-        (tool['type'] === 'custom' || tool['type'] === 'function') &&
-        typeof tool['name'] === 'string' &&
-        tool['name'].length > 0 &&
-        tool['name'].length <= 100 &&
-        typeof tool['description'] === 'string' &&
-        tool['description'].length <= 10_000 &&
-        (tool['type'] === 'custom' || (typeof tool['strict'] === 'boolean' && isPlainObject(tool['parameters']))),
-    );
+    return namespace['tools'].every((tool) => {
+      if (
+        !isPlainObject(tool) ||
+        typeof tool['type'] !== 'string' ||
+        typeof tool['name'] !== 'string' ||
+        tool['name'].length < 1 ||
+        tool['name'].length > 100 ||
+        typeof tool['description'] !== 'string' ||
+        tool['description'].length > 10_000
+      )
+        return false;
+      if (tool['type'] === 'custom')
+        return onlyKeys(tool, ['type', 'name', 'description', 'format']) && boundedObject(tool['format']);
+      return (
+        tool['type'] === 'function' &&
+        onlyKeys(tool, ['type', 'name', 'description', 'strict', 'parameters']) &&
+        typeof tool['strict'] === 'boolean' &&
+        boundedObject(tool['parameters'])
+      );
+    });
   });
 }
 
@@ -372,8 +393,8 @@ function parseTerminalAction(input: readonly unknown[]): Record<string, unknown>
   let ends = 0;
   for (const item of input) {
     if (!isPlainObject(item) || item['role'] !== 'user' || !textParts(item['content'])) continue;
-    starts += item['content'].filter((part) => part['text'] === start).length;
-    ends += item['content'].filter((part) => part['text'] === end).length;
+    starts += item['content'].filter((part) => part['text'].trim() === start).length;
+    ends += item['content'].filter((part) => part['text'].trim() === end).length;
   }
   if (starts !== 1 || ends !== 1) return;
   try {
