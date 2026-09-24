@@ -199,6 +199,39 @@ function matchesPolicy(text: string): boolean {
   );
 }
 
+function additionalTools(value: unknown): boolean {
+  if (
+    !isPlainObject(value) ||
+    value['type'] !== 'additional_tools' ||
+    value['role'] !== 'developer' ||
+    !Array.isArray(value['tools'])
+  )
+    return false;
+  return value['tools'].every((namespace) => {
+    if (
+      !isPlainObject(namespace) ||
+      namespace['type'] !== 'namespace' ||
+      typeof namespace['name'] !== 'string' ||
+      namespace['name'].length > 100 ||
+      typeof namespace['description'] !== 'string' ||
+      namespace['description'].length > 1000 ||
+      !Array.isArray(namespace['tools'])
+    )
+      return false;
+    return namespace['tools'].every(
+      (tool) =>
+        isPlainObject(tool) &&
+        (tool['type'] === 'custom' || tool['type'] === 'function') &&
+        typeof tool['name'] === 'string' &&
+        tool['name'].length > 0 &&
+        tool['name'].length <= 100 &&
+        typeof tool['description'] === 'string' &&
+        tool['description'].length <= 10_000 &&
+        (tool['type'] === 'custom' || (typeof tool['strict'] === 'boolean' && isPlainObject(tool['parameters']))),
+    );
+  });
+}
+
 function inlineHistory(input: unknown[]): boolean {
   let policySeen = false;
   const calls = new Set<string>();
@@ -206,7 +239,9 @@ function inlineHistory(input: unknown[]): boolean {
     if (!isPlainObject(item)) return false;
     if ('id' in item && (typeof item['id'] !== 'string' || item['id'].trim() === '')) return false;
     if ('status' in item && item['status'] !== 'completed') return false;
-    if (item['type'] === 'message') {
+    if (item['type'] === 'additional_tools') {
+      if (!additionalTools(item)) return false;
+    } else if (item['type'] === 'message') {
       if (
         item['metadata'] !== undefined &&
         (!isPlainObject(item['metadata']) ||
@@ -220,7 +255,12 @@ function inlineHistory(input: unknown[]): boolean {
       )
         return false;
       if (item['role'] === 'developer') {
-        if (policySeen || !matchesPolicy(item['content'].map((part) => part['text']).join('\n'))) return false;
+        if (policySeen || !matchesPolicy(item['content'].map((part) => part['text']).join('\n'))) {
+          const emptyPermissions =
+            item['content'].length === 1 &&
+            item['content'][0].text.trim() === '<permissions instructions>\n</permissions instructions>';
+          if (!emptyPermissions) return false;
+        }
         policySeen = true;
       }
     } else if (item['type'] === 'function_call') {
@@ -321,9 +361,9 @@ function parseTerminalAction(input: readonly unknown[]): Record<string, unknown>
   const parts = last['content'];
   if (
     parts.length < 4 ||
-    parts.at(-4)?.['text'] !== start ||
-    parts.at(-3)?.['text'] !== 'Planned action JSON:' ||
-    parts.at(-1)?.['text'] !== end
+    parts.at(-4)?.['text'].trim() !== start ||
+    parts.at(-3)?.['text'].trim() !== 'Planned action JSON:' ||
+    parts.at(-1)?.['text'].trim() !== end
   )
     return;
   // Only separate-part markers in user messages are candidates; quoted strings
