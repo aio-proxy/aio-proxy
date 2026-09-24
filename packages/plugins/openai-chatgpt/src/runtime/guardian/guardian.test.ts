@@ -1069,3 +1069,37 @@ test('rejects oversized additional tool arrays and serialized descriptors', asyn
   ];
   expect(await check()).toBeUndefined();
 });
+
+test('rejects root array descriptor schemas while accepting nested arrays', async () => {
+  const body = (await guardianRequest(syntheticGuardianInput).json()) as any;
+  const custom = {
+    type: 'custom',
+    name: 'exec',
+    description: '',
+    format: { type: 'grammar', syntax: 'lark', definition: 'x' },
+  };
+  const fn = {
+    type: 'function',
+    name: 'wait',
+    description: '',
+    strict: false,
+    parameters: { type: 'object', properties: { x: { type: 'array', items: { type: 'string' } } } },
+  };
+  const check = async () =>
+    projectGuardianRequest(
+      new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+      'codex-auto-review',
+    );
+  body.input.unshift({
+    type: 'additional_tools',
+    role: 'developer',
+    id: 'tools',
+    tools: [{ type: 'namespace', name: 'functions', description: '', tools: [custom, fn] }],
+  });
+  expect(await check()).toBeDefined();
+  body.input[0].tools[0].tools[0].format = [];
+  expect(await check()).toBeUndefined();
+  body.input[0].tools[0].tools[0].format = { type: 'grammar', syntax: 'lark', definition: 'x' };
+  body.input[0].tools[0].tools[1].parameters = [];
+  expect(await check()).toBeUndefined();
+});

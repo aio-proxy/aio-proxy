@@ -246,11 +246,16 @@ function additionalTools(value: unknown): boolean {
       )
         return false;
       if (tool['type'] === 'custom')
-        return onlyKeys(tool, ['type', 'name', 'description', 'format']) && boundedObject(tool['format']);
+        return (
+          onlyKeys(tool, ['type', 'name', 'description', 'format']) &&
+          isPlainObject(tool['format']) &&
+          boundedObject(tool['format'])
+        );
       return (
         tool['type'] === 'function' &&
         onlyKeys(tool, ['type', 'name', 'description', 'strict', 'parameters']) &&
         typeof tool['strict'] === 'boolean' &&
+        isPlainObject(tool['parameters']) &&
         boundedObject(tool['parameters'])
       );
     });
