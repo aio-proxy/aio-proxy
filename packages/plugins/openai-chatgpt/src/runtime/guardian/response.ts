@@ -1,4 +1,4 @@
-export function guardianResponse(decision: Record<string, string>, stream: boolean): Response {
+export function guardianResponse(decision: Record<string, string>, stream: boolean, model: string): Response {
   const decisionText = JSON.stringify(decision);
   const createdAt = Math.floor(Date.now() / 1000);
   const responseId = `resp_${crypto.randomUUID()}`;
@@ -15,7 +15,7 @@ export function guardianResponse(decision: Record<string, string>, stream: boole
     created_at: createdAt,
     completed_at: createdAt,
     object: 'response',
-    model: 'codex-auto-review',
+    model,
     status: 'completed',
     output_text: decisionText,
     output: [item],

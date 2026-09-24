@@ -24,13 +24,12 @@ type InvocationOptions = RawTransportOptions & {
 };
 
 export function createGuardianRawInvoke(input: {
-  resolvedModelId: string;
   pluginOptions: Partial<ChatGPTPluginOptions>;
   original: RawTransport['invoke'];
   evaluate?: GuardianEvaluate;
   timeoutSignal?: (milliseconds: number) => AbortSignal;
 }): RawTransport['invoke'] {
-  const { resolvedModelId, pluginOptions, evaluate } = input;
+  const { pluginOptions, evaluate } = input;
   return async (request, context, options) => {
     const invocation = (options as InvocationOptions | undefined)?.__aioGuardianInvocation;
     const original = () => {
@@ -40,14 +39,13 @@ export function createGuardianRawInvoke(input: {
     };
     if (
       (pluginOptions.guardianStrategy !== 'systemOne' && pluginOptions.guardianStrategy !== 'systemOneReviewDenied') ||
-      resolvedModelId !== 'codex-auto-review' ||
       evaluate === undefined ||
       !context?.requestId ||
       pluginOptions.guardianProviderId === undefined ||
       pluginOptions.guardianModelId === undefined
     )
       return original();
-    const projected = await projectGuardianRequest(request, resolvedModelId);
+    const projected = await projectGuardianRequest(request);
     request.signal.throwIfAborted();
     if (projected === undefined) return original();
     const deadlineAt = performance.now() + 8_000;
@@ -86,7 +84,7 @@ export function createGuardianRawInvoke(input: {
       (decision['outcome'] === 'deny' && pluginOptions.guardianStrategy === 'systemOneReviewDenied')
     )
       return original();
-    const response = guardianResponse(decision, projected.stream);
+    const response = guardianResponse(decision, projected.stream, projected.model);
     if (expired()) return original();
     if (invocation) invocation.syntheticGuardianResponse = true;
     return response;

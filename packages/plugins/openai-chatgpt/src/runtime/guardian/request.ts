@@ -1,6 +1,7 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export type GuardianProjection = {
+  readonly model: string;
   readonly state: { readonly input: readonly unknown[]; readonly pending_action: Record<string, unknown> };
   readonly schema: Record<string, unknown>;
   readonly stream: boolean;
@@ -34,16 +35,8 @@ export async function guardianPayloadHint(
   }
 }
 
-export async function projectGuardianRequest(
-  request: Request,
-  resolvedModelId: string,
-): Promise<GuardianProjection | undefined> {
-  if (
-    resolvedModelId !== 'codex-auto-review' ||
-    request.method !== 'POST' ||
-    !new URL(request.url).pathname.endsWith('/responses')
-  )
-    return;
+export async function projectGuardianRequest(request: Request): Promise<GuardianProjection | undefined> {
+  if (request.method !== 'POST' || !new URL(request.url).pathname.endsWith('/responses')) return;
   // Encoded transports have not been decoded at this boundary.
   if (request.headers.has('content-encoding')) return;
   try {
@@ -52,6 +45,7 @@ export async function projectGuardianRequest(
     const pending_action = parseTerminalAction(body['input']);
     if (pending_action === undefined) return;
     return {
+      model: body['model'],
       state: { input: body['input'], pending_action },
       schema: body['text']['format']['schema'],
       stream: body['stream'] === true,

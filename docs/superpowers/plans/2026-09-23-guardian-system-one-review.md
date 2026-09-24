@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Apply System One only to OpenAI Responses creation whose **resolved ChatGPT model ID** is exactly `codex-auto-review`, with `client_metadata["x-openai-subagent"] === "guardian"`, the observed Guardian JSON schema, and the unique final approval envelope. The supplied `gpt-6-sol` attachment is caused by the separate model-catalog bug and is not eligible.
+- Apply System One to OpenAI Responses creation with `client_metadata["x-openai-subagent"] === "guardian"`, the observed Guardian JSON schema, and the unique final approval envelope. The resolved ChatGPT model ID is not an eligibility gate; a Guardian request sent as `gpt-6-sol` is eligible, and the synthetic response echoes that model.
 - The absent/default strategy invokes the original transport without parsing the body. Every non-Guardian or unsupported profile uses the untouched original request before disclosing anything to the selected Provider.
 - Plugin settings are shared across ChatGPT accounts: `default`, `systemOne`, `systemOneReviewDenied`; the latter two require a configured Provider ID and a routable model slug. No second endpoint or API key is stored in the plugin.
 - Preserve the complete inline `input` array, including role/order/content/tool associations and permitted opaque metadata, as structured `state.input`; parse the terminal action into `state.pending_action`. Do not summarize or hydrate unresolved references. Reject incomplete, uninterpretable, or oversized context before dispatch.

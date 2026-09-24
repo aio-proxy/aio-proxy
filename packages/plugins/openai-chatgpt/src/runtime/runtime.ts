@@ -58,15 +58,14 @@ export async function createOpenAIChatGPTRuntime(
     // exists to keep an embedding or audio request off the responses/image
     // passthrough rather than to gate image routing. The ChatGPT backend has no
     // /v1/audio surface, so speech and transcription can only be declined.
-    raw: ({ protocol, capability, modelId }) =>
+    raw: ({ protocol, capability }) =>
       capability !== undefined && capability !== 'language'
         ? undefined
         : protocol === 'openai-response' || protocol === 'openai-image'
           ? {
               invoke:
-                protocol === 'openai-response' && modelId === 'codex-auto-review'
+                protocol === 'openai-response'
                   ? createGuardianRawInvoke({
-                      resolvedModelId: modelId,
                       pluginOptions: pluginOptions ?? {},
                       original: (request, _context, options) => dynamicFetch(request, undefined, options),
                       ...(host.__aioGuardianEvaluate === undefined ? {} : { evaluate: host.__aioGuardianEvaluate }),
