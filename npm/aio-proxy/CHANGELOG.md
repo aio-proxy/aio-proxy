@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.33.1
+
+### Patch Changes
+
+- [#424](https://github.com/aio-proxy/aio-proxy/pull/424) [`20b7733`](https://github.com/aio-proxy/aio-proxy/commit/20b7733ce0b7a6276e82bbfc582bb25923aac37a) Thanks [@baranwang](https://github.com/baranwang)! - Guardian approval now follows the Guardian agent marker on any ChatGPT model, instead of requiring the request to be routed as codex-auto-review.
+
 ## 0.33.0
 
 ### Minor Changes
