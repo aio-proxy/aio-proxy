@@ -216,7 +216,8 @@ function additionalTools(value: unknown): boolean {
     !onlyKeys(value, ['type', 'role', 'id', 'tools']) ||
     value['type'] !== 'additional_tools' ||
     value['role'] !== 'developer' ||
-    !Array.isArray(value['tools'])
+    !Array.isArray(value['tools']) ||
+    value['tools'].length > 1000
   )
     return false;
   return value['tools'].every((namespace) => {
@@ -229,7 +230,8 @@ function additionalTools(value: unknown): boolean {
       namespace['name'].length > 100 ||
       typeof namespace['description'] !== 'string' ||
       namespace['description'].length > 1000 ||
-      !Array.isArray(namespace['tools'])
+      !Array.isArray(namespace['tools']) ||
+      namespace['tools'].length > 1000
     )
       return false;
     return namespace['tools'].every((tool) => {
