@@ -288,6 +288,7 @@ function inlineHistory(input: unknown[]): boolean {
         if (policySeen || !matchesPolicy(item['content'].map((part) => part['text']).join('\n'))) {
           const [permissionPart] = item['content'];
           const emptyPermissions =
+            policySeen &&
             permissionPart !== undefined &&
             item['content'].length === 1 &&
             permissionPart.text.trim() === '<permissions instructions>\n</permissions instructions>';

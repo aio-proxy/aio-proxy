@@ -26,6 +26,38 @@ test('preserves complete inline decision evidence and original request', async (
   expect(await original.json()).toEqual(body);
 });
 
+test('requires the recognized policy before an empty permissions wrapper', async () => {
+  const firstWrapper = (await guardianRequest(syntheticGuardianInput).json()) as any;
+  firstWrapper.input[0].content = [
+    { type: 'input_text', text: '<permissions instructions>\n</permissions instructions>' },
+  ];
+  expect(
+    await projectGuardianRequest(
+      new Request('https://example.test/v1/responses', {
+        method: 'POST',
+        body: JSON.stringify(firstWrapper),
+      }),
+      'codex-auto-review',
+    ),
+  ).toBeUndefined();
+
+  const secondWrapper = (await guardianRequest(syntheticGuardianInput).json()) as any;
+  secondWrapper.input.splice(1, 0, {
+    type: 'message',
+    role: 'developer',
+    content: [{ type: 'input_text', text: '<permissions instructions>\n</permissions instructions>' }],
+  });
+  expect(
+    await projectGuardianRequest(
+      new Request('https://example.test/v1/responses', {
+        method: 'POST',
+        body: JSON.stringify(secondWrapper),
+      }),
+      'codex-auto-review',
+    ),
+  ).toBeDefined();
+});
+
 const cases: [string, (body: any) => void][] = [
   [
     'nested metadata reference',
