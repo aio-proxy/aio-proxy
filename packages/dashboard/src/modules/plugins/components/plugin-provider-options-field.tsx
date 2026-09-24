@@ -24,7 +24,7 @@ export const PluginProviderOptionsField: React.FC<PluginProviderOptionsFieldProp
   const id = `plugin-option-${field.key}`;
   const current = publicField.state.value[field.key];
   const selected = typeof current === 'string' ? current : '';
-  const selectable = providers.filter(selectablePluginProvider);
+  const selectable = providers.filter((provider) => selectablePluginProvider(provider, field.protocols));
   const invalid = !selectable.some((provider) => provider.id === selected);
   const items = selectable.map((provider) => ({
     value: provider.id,

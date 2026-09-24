@@ -676,7 +676,9 @@
       "uninstall_failed": "プラグインをアンインストールできませんでした。もう一度お試しください。",
       "uninstall_confirm": "アンインストールを確認",
       "provider_placeholder": "Provider を選択",
-      "provider_invalid": "評価に対応した、有効で利用可能な Provider を選択してください。",
+      "provider_invalid": "有効で利用可能、かつこの項目に一致する Provider を選択してください。",
+      "model_placeholder": "モデルを選択",
+      "model_invalid": "選択した Provider で経路指定できるモデルを選択してください。",
       "model_required": "モデル ID を入力してください。"
     },
     "routing": {

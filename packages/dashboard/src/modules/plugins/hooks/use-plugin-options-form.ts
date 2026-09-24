@@ -1,4 +1,4 @@
-import { ProviderProtocol, type DashboardPluginEditView, type DashboardProviderSummary } from '@aio-proxy/types';
+import type { DashboardPluginEditView, DashboardProviderSummary } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { z } from 'zod';
 
@@ -65,10 +65,15 @@ export const usePluginOptionsForm = (onSubmit: (value: PluginOptionsFormValues) 
     onSubmit: ({ value }) => onSubmit(value as PluginOptionsFormValues),
   }) as unknown as PluginOptionsForm;
 
-export const selectablePluginProvider = (provider: DashboardProviderSummary): boolean =>
+export const selectablePluginProvider = (
+  provider: DashboardProviderSummary,
+  protocols: readonly string[] | undefined,
+): boolean =>
   provider.enabled &&
   provider.state.status === 'ready' &&
-  (provider.protocols.includes(ProviderProtocol.TypeSafeSystemOne) || provider.kind === 'ai-sdk');
+  (protocols === undefined ||
+    provider.kind === 'ai-sdk' ||
+    provider.protocols.some((protocol) => protocols.includes(protocol)));
 
 export const pluginProviderOptionsValid = (
   fields: DashboardPluginEditView['form'],
@@ -84,10 +89,15 @@ export const pluginProviderOptionsValid = (
   return fields.every((field) => {
     if (!formFieldVisible(field, combined)) return true;
     if (field.type === 'provider')
-      return providers.some((provider) => provider.id === combined[field.key] && selectablePluginProvider(provider));
+      return providers.some(
+        (provider) => provider.id === combined[field.key] && selectablePluginProvider(provider, field.protocols),
+      );
     if (field.type === 'provider-model') {
       const model = combined[field.key];
-      return typeof model === 'string' && model.trim().length > 0;
+      if (typeof model !== 'string' || model.trim().length === 0) return false;
+      const provider = providers.find((candidate) => candidate.id === combined[field.providerKey]);
+      const models = provider?.clientModels ?? [];
+      return models.length === 0 || models.includes(model);
     }
     return true;
   });

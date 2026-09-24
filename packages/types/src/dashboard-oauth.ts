@@ -38,7 +38,10 @@ export const DashboardOAuthFormFieldSchema = z.discriminatedUnion('type', [
   dashboardOAuthFormField({ type: z.literal('secret'), configured: z.boolean().default(false) }),
   dashboardOAuthFormField({ type: z.literal('number'), placeholder: DashboardLocalizedTextSchema.optional() }),
   dashboardOAuthFormField({ type: z.literal('boolean'), defaultValue: z.boolean().optional() }),
-  dashboardOAuthFormField({ type: z.literal('provider') }),
+  dashboardOAuthFormField({
+    type: z.literal('provider'),
+    protocols: z.array(z.string().trim().min(1)).min(1).readonly().optional(),
+  }),
   dashboardOAuthFormField({
     type: z.literal('provider-model'),
     providerKey: z

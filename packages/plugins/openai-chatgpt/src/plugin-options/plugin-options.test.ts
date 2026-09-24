@@ -67,6 +67,7 @@ test('default strategy retains a saved target but does not require one', async (
   expect(provider).toMatchObject({
     type: 'provider',
     key: 'guardianProviderId',
+    protocols: ['typesafe-systemone'],
     when: { key: 'guardianStrategy', notEquals: 'default' },
   });
   expect(model).toMatchObject({

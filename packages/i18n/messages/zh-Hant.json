@@ -676,7 +676,9 @@
       "uninstall_failed": "無法解除安裝外掛，請再試一次。",
       "uninstall_confirm": "確認解除安裝",
       "provider_placeholder": "選擇 Provider",
-      "provider_invalid": "請選擇已啟用、可用且支援評估的 Provider。",
+      "provider_invalid": "請選擇已啟用、可用且符合該欄位的 Provider。",
+      "model_placeholder": "選擇模型",
+      "model_invalid": "請選擇所選 Provider 可路由的模型。",
       "model_required": "請輸入模型 ID。"
     },
     "routing": {

@@ -139,6 +139,7 @@ export function chatGPTPluginOptions(text: ChatGPTPluginOptionsText): ConfigSpec
         key: 'guardianProviderId',
         label: text.guardianProviderLabel,
         description: text.guardianProviderDescription,
+        protocols: ['typesafe-systemone'],
         when: { key: 'guardianStrategy', notEquals: 'default' },
       },
       {

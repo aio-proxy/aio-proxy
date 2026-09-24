@@ -15,7 +15,9 @@ type FormFieldBase<TType extends string> = {
   readonly when?: FormCondition;
 };
 
-export type ProviderField = FormFieldBase<'provider'>;
+export type ProviderField = FormFieldBase<'provider'> & {
+  readonly protocols?: readonly string[];
+};
 export type ProviderModelField = FormFieldBase<'provider-model'> & { readonly providerKey: string };
 
 export type FormField =

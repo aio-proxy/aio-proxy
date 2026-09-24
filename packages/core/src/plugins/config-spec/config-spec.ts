@@ -140,8 +140,17 @@ function validateField(
         : { ...base, type, ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }) };
     case 'secret':
       return placeholder === undefined ? { ...base, type } : undefined;
-    case 'provider':
-      return { ...base, type };
+    case 'provider': {
+      const { protocols } = value;
+      return protocols === undefined ||
+        (Array.isArray(protocols) &&
+          protocols.length > 0 &&
+          protocols.every(
+            (protocol) => typeof protocol === 'string' && protocol.trim() !== '' && protocol === protocol.trim(),
+          ))
+        ? { ...base, type, ...(protocols === undefined ? {} : { protocols }) }
+        : undefined;
+    }
     case 'provider-model': {
       const { providerKey } = value;
       return typeof providerKey === 'string' && providerKey.trim() === providerKey && providerKeys.has(providerKey)

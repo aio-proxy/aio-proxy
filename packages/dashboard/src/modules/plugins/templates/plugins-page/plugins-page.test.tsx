@@ -497,6 +497,7 @@ const openGuardianOptions = (publicValues: DashboardPluginEditView['publicValues
         key: 'target',
         label: 'Evaluation Provider',
         description: 'Approval context is sent to the selected Provider.',
+        protocols: [ProviderProtocol.TypeSafeSystemOne],
         when: { key: 'strategy', notEquals: 'default' },
       },
       {
@@ -553,10 +554,8 @@ test.each(['System One', 'System One with review'])(
     expect(screen.queryByRole('option', { name: /incompatible/ })).toBeNull();
     expect(screen.queryByRole('option', { name: /disabled/ })).toBeNull();
     fireEvent.keyDown(screen.getByRole('option', { name: 'Local evaluator (system-one-local)' }), { key: 'Enter' });
-    const model = screen.getByLabelText('Model ID');
-    const suggestions = document.getElementById(model.getAttribute('list') ?? '');
-    expect(suggestions?.querySelector('option')?.value).toBe('local-model');
-    fireEvent.change(model, { target: { value: 'manual-model' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Model ID' }));
+    fireEvent.keyDown(await screen.findByRole('option', { name: 'local-model' }), { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
     await waitFor(() =>
       expect(mocks.options.mutate).toHaveBeenCalledWith(
@@ -564,14 +563,14 @@ test.each(['System One', 'System One with review'])(
           publicValues: {
             strategy: strategy === 'System One' ? 'systemOne' : 'systemOneReviewDenied',
             target: 'system-one-local',
-            model: 'manual-model',
+            model: 'local-model',
           },
         }),
         expect.any(Object),
       ),
     );
     await choose('Evaluation Provider', 'Unknown support (sdk)');
-    expect(model).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Model ID' })).not.toHaveTextContent('local-model');
   },
 );
 
@@ -593,16 +592,15 @@ test.each(['deleted', 'disabled', 'incompatible', ''])(
   },
 );
 
-test('requires a nonblank model and allows correcting an invalid saved Provider', async () => {
+test('requires a routed model and allows correcting an invalid saved Provider', async () => {
   openGuardianOptions({ strategy: 'systemOne', target: 'deleted', model: 'old-model' });
   await choose('Evaluation Provider', 'Local evaluator (system-one-local)');
-  expect(screen.getByLabelText('Model ID')).toHaveValue('');
-  fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: '   ' } });
+  expect(screen.getByLabelText('Model ID')).not.toHaveTextContent('old-model');
   const save = screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u });
   fireEvent.submit(save.closest('form')!);
   await act(async () => {});
   expect(mocks.options.mutate).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'local-model' } });
+  await choose('Model ID', 'local-model');
   await waitFor(() => expect(save).toBeEnabled());
   fireEvent.click(save);
   await waitFor(() =>

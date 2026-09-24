@@ -676,7 +676,9 @@
       "uninstall_failed": "The Plugin could not be uninstalled. Try again.",
       "uninstall_confirm": "Confirm uninstall",
       "provider_placeholder": "Select a Provider",
-      "provider_invalid": "Select an enabled, available Provider that supports evaluation.",
+      "provider_invalid": "Select an enabled, available Provider that matches this field.",
+      "model_placeholder": "Select a model",
+      "model_invalid": "Select a model routed by the selected Provider.",
       "model_required": "Enter a model ID."
     },
     "routing": {

@@ -10,7 +10,13 @@ describe('validateConfigSpec', () => {
   test('retains provider targets and a not-equals condition', () => {
     const fields = [
       { type: 'select', key: 'strategy', label: 'Strategy', options: [{ value: 'default', label: 'Default' }] },
-      { type: 'provider', key: 'providerId', label: 'Provider', when: { key: 'strategy', notEquals: 'default' } },
+      {
+        type: 'provider',
+        key: 'providerId',
+        label: 'Provider',
+        protocols: ['typesafe-systemone'],
+        when: { key: 'strategy', notEquals: 'default' },
+      },
       {
         type: 'provider-model',
         key: 'modelId',

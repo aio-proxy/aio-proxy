@@ -17,6 +17,8 @@ describe('validateConfigSpec', () => {
   });
 
   test.each([
+    ['blank provider protocol', [{ type: 'provider', key: 'providerId', label: 'Provider', protocols: [' '] }]],
+    ['empty provider protocols', [{ type: 'provider', key: 'providerId', label: 'Provider', protocols: [] }]],
     ['blank provider key', [{ type: 'provider-model', key: 'modelId', label: 'Model', providerKey: ' ' }]],
     ['unknown provider key', [{ type: 'provider-model', key: 'modelId', label: 'Model', providerKey: 'missing' }]],
     [
