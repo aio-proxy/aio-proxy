@@ -17,11 +17,11 @@ const paint = (color: string, bold = false): ((text: string) => string) => {
 // Commander measures columns with displayWidth, which already ignores ANSI.
 export function applyHelpStyling(program: Command, stdoutIsTTY = process.stdout.isTTY === true): void {
   if (!useColor(stdoutIsTTY, process.env)) return;
-  // Brand primary is teal. The 16-color palette has no teal, so commands use green.
   const title = paint('white', true);
+  // Brand primary is teal. Only command names use green; flags and arguments stay distinct.
   const command = paint('green', true);
-  const option = paint('cyan');
-  const argument = paint('green');
+  const option = paint('yellow');
+  const argument = paint('cyan');
   // Copied onto the Help instance. Passing a Help instance is not a config object.
   program.configureHelp({
     styleTitle: title,
