@@ -180,7 +180,7 @@ test('sensitive Responses omit all bodies before raw dispatch and across fallbac
   expect(terminals(harness.logs, 'inbound')).toContainEqual(expect.objectContaining({ omitted: true }));
 });
 
-test('sensitive error codes, headers and response IDs never enter persisted or exported diagnostics', async () => {
+test('sensitive error codes, headers and response IDs/models never enter persisted or exported diagnostics', async () => {
   const sentinel = 'private-evaluator-sentinel';
   const stored: unknown[] = [];
   const exported: unknown[] = [];
@@ -206,7 +206,7 @@ test('sensitive error codes, headers and response IDs never enter persisted or e
           {
             id: sentinel,
             object: 'response',
-            model: 'second-model',
+            model: sentinel,
             output: [],
             usage: { input_tokens: 7, output_tokens: 2 },
           },

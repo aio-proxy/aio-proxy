@@ -159,7 +159,7 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     }
     // Response-side gen_ai.* only exist once the upstream answered, so they land
     // here rather than at span creation. A failed attempt simply omits them.
-    if (facts?.responseModelId !== undefined) {
+    if (capturePayload && facts?.responseModelId !== undefined) {
       attemptSpan.span.setAttribute(attributeName.genAiResponseModel, facts.responseModelId);
     }
     if (capturePayload && facts?.responseId !== undefined) {

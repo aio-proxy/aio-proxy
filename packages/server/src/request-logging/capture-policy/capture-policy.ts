@@ -26,7 +26,6 @@ const identifiers = new Set([
   attributeName.providerId,
   attributeName.finalProviderId,
   attributeName.genAiRequestModel,
-  attributeName.genAiResponseModel,
   attributeName.attemptModelId,
 ]);
 const localFields = new Set([
