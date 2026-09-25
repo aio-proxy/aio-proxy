@@ -29,15 +29,16 @@ const RoutingTrafficQuerySchema = z.object({ range: UsageOverviewRangeSchema });
 // A model id can contain slashes, so it travels as a query parameter rather than a path segment.
 const RoutingTrafficBucketsQuerySchema = RoutingTrafficQuerySchema.extend({ model: z.string().min(1) });
 
-const trafficValidator = validator('query', (raw, context) => {
-  const parsed = RoutingTrafficQuerySchema.safeParse(raw);
-  return parsed.success ? parsed.data : context.json({ error: 'validation_failed' } as const, 400);
-});
+// One factory keeps the rejection body identical across every query validator in this file.
+const queryValidator = <Schema extends z.ZodType>(schema: Schema) =>
+  validator('query', (raw, context) => {
+    const parsed = schema.safeParse(raw);
+    return parsed.success ? parsed.data : context.json({ error: 'validation_failed' } as const, 400);
+  });
 
-const trafficBucketsValidator = validator('query', (raw, context) => {
-  const parsed = RoutingTrafficBucketsQuerySchema.safeParse(raw);
-  return parsed.success ? parsed.data : context.json({ error: 'validation_failed' } as const, 400);
-});
+const trafficValidator = queryValidator(RoutingTrafficQuerySchema);
+
+const trafficBucketsValidator = queryValidator(RoutingTrafficBucketsQuerySchema);
 
 export const createDashboardRoutingRoutes = (state: ServerState) =>
   new Hono()
@@ -56,6 +57,9 @@ export const createDashboardRoutingRoutes = (state: ServerState) =>
       const { range, model } = context.req.valid('query');
       return context.json(state.traceStore.routingTrafficBuckets({ range, modelId: model }));
     })
-    .get('/routing/traffic', trafficValidator, (context) =>
-      context.json(state.traceStore.routingTraffic(context.req.valid('query'))),
-    );
+    .get('/routing/traffic', trafficValidator, (context) => {
+      // Only `range` is forwarded: `RoutingTrafficQuery.now` is the store's clock for resolving the
+      // time window, so it must never be reachable from the query string.
+      const { range } = context.req.valid('query');
+      return context.json(state.traceStore.routingTraffic({ range }));
+    });
