@@ -2,6 +2,9 @@ import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss';
 import { defineConfig } from '@rspress/core';
 import pluginMermaid from 'rspress-plugin-mermaid';
 
+// GitHub Pages serves `docs/public` at the apex. Crawlers require an absolute image URL.
+const ogImageUrl = 'https://aioproxy.dev/og-image.webp';
+
 export default defineConfig({
   root: 'docs',
   outDir: 'dist',
@@ -10,6 +13,12 @@ export default defineConfig({
   // runs `fileURLToPath` on the URL form. The dashboard's rsbuild config needs the opposite.
   icon: import.meta.resolve('@aio-proxy/brand/assets/aio-proxy-mark-favicon.svg'),
   description: 'Connect and manage multiple model providers through one API endpoint.',
+  head: [
+    ['meta', { property: 'og:image', content: ogImageUrl }],
+    // Rspress emits og:title and og:description, and does not emit a Twitter card.
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:image', content: ogImageUrl }],
+  ],
   lang: 'en',
   locales: [
     {
