@@ -196,11 +196,19 @@ Header：`modelId` + lab + `releaseDate` + 风险 chip；右上一个 **页面�
 
 ## 交付
 
-拆成两个 PR，因为数据层可独立验证、独立合并且 UI 无变化：
+**一个 PR。** 数据层与 UI 一起合并。
 
-**PR 1 — 数据层**：`types` 新 DTO 与 schema（沿用 `matchesDto` 模式）· `core` 索引迁移与 attempt 级聚合查询 · `server` 两个端点与 `catalog-facts.ts`。
+PR 内部仍按数据层先行的顺序推进，因为 UI 消费的契约必须先存在：
 
-**PR 2 — dashboard 重做**：消费 PR 1。
+1. `types` — 新 DTO 与 schema（沿用 `matchesDto` 模式），`DashboardRoutingModel.catalog`。
+2. `core` — 索引迁移（`0009_*.sql` + 更新 `migrations.test.ts`）与 attempt 级聚合查询。
+3. `server` — 两个 traffic 端点与 `catalog-facts.ts`。
+4. `dashboard` — 列表页重做、splat 详情路由、删除 `RoutingEditorDrawer`。
+5. i18n 键与 changeset。
+
+一个 changeset，同时列出 `aio-proxy` 与所有涉及的内部包。
+
+代价要认：这个 PR 会同时包含一条 SQLite 迁移、两个新端点和一次页面重写，review 面较大。缓解办法是让提交历史按上面五步分段，使 diff 可以逐段读，而不是把所有改动压成一个提交。
 
 ## 测试
 
