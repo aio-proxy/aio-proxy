@@ -646,7 +646,10 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
     name: 'aio_proxy.inference',
     startedAt,
     endedAt,
-    attributes,
+    // 只给模型属性，**不要**把 root 的全套 attributes 复制进来：其中的
+    // `aio_proxy.request.id` 会投影成 `trace_span.request_id`，而那一列全局唯一，
+    // 复制会让每次 seed 都抛 UNIQUE constraint failed。与 overview.test.ts 的做法一致。
+    attributes: { 'gen_ai.request.model': seed.requestedModelId },
   });
   const attempts: StoredSpan[] = seed.attempts.map((attempt, index) => {
     const failed = attempt.outcome === 'failure';
