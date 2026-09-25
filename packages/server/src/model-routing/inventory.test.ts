@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import { digestProviderEntry, parseRuntimeConfig } from '@aio-proxy/core';
 import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
@@ -9,7 +9,14 @@ import {
   type ProviderState,
 } from '@aio-proxy/types';
 
+import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../../__tests__/server.test-support';
 import { assembleRoutingInventory } from './inventory';
+
+// Only the catalog-facts test seeds a models.dev catalog; clearing after every
+// test keeps that isolated home from leaking into the rest of the file.
+afterEach(() => {
+  clearModelsDevCatalog();
+});
 
 const unavailable: ProviderState = {
   status: 'unavailable',
@@ -498,5 +505,17 @@ describe('model routing inventory', () => {
       cost: { input: 1 },
       limit: { context: 8_000 },
     });
+  });
+
+  test('carries models.dev lab and release date through to the emitted model', async () => {
+    // `shared` is served by the fixture Providers, so seeding the catalog under
+    // that id makes the assembled model carry catalog facts. The bare id pins no
+    // models.dev provider, so it resolves through OpenRouter and the slug is
+    // `openrouter/shared` — its prefix is the lab.
+    await seedModelsDevCatalog({ shared: modelsDevModel('shared', 'Shared Model', { release_date: '2026-04-09' }) });
+
+    const response = DashboardRoutingModelsResponseSchema.parse(await inventory());
+
+    expect(model(response, 'shared').catalog).toEqual({ lab: 'openrouter', releaseDate: '2026-04-09' });
   });
 });

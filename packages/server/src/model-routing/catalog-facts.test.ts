@@ -27,5 +27,7 @@ test('omits releaseDate entirely when the catalog entry has none', async () => {
   // branch is only reachable when a test clears it explicitly.
   await seedModelsDevCatalog({ 'gpt-5': modelsDevModel('gpt-5', 'GPT-5', { release_date: undefined }) });
 
-  expect(await routingCatalogFacts('gpt-5')).toEqual({ lab: 'openai' });
+  // toStrictEqual, not toEqual: toEqual ignores a present-but-undefined
+  // `releaseDate`, so it could not tell an omitted key from an explicit one.
+  expect(await routingCatalogFacts('gpt-5')).toStrictEqual({ lab: 'openai' });
 });
