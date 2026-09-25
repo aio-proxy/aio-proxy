@@ -2,7 +2,21 @@ import { expect, spyOn, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { configureCodexAgent, recoverPendingCodexOperations, runCodexAuthCommand } from './codex';
+import {
+  configureCodexAgent,
+  recoverPendingCodexOperations,
+  resolveCodexExecutable,
+  runCodexAuthCommand,
+} from './codex';
+
+test('uses the ChatGPT app Codex binary when codex is not on PATH', () => {
+  const app = '/Applications/ChatGPT.app/Contents/Resources/codex';
+  expect(resolveCodexExecutable(() => null, (path) => path === app, '/tmp/unused')).toBe(app);
+});
+
+test('prefers codex on PATH over the ChatGPT app bundle', () => {
+  expect(resolveCodexExecutable(() => '/usr/local/bin/codex', () => true, '/tmp/unused')).toBe('/usr/local/bin/codex');
+});
 
 test('rejects restore migration identifiers before touching Codex storage', async () => {
   await expect(configureCodexAgent({ restoreMigration: 'not-a-uuid' })).rejects.toThrow(

@@ -397,7 +397,8 @@
         "remove_blocked": "The command authorization could not be revoked; retry removal to finish cleanup.",
         "keys_retained": "Proxy keys were retained.",
         "restore_option": "Restore a Codex migration by operation UUID",
-        "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?"
+        "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?",
+        "not_installed": "Codex CLI was not found."
       },
       "grok_login": "Sign in with: grok login",
       "grok_models": "List models with grok models, then start a session with grok -m <model-id>.",

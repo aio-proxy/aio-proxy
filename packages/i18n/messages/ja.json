@@ -397,7 +397,8 @@
         "remove_blocked": "コマンド認証を取り消せなかったため、削除を完了できません。再試行してください。",
         "keys_retained": "プロキシキーは保持されました。",
         "restore_option": "操作 UUID で Codex 移行を復元",
-        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？"
+        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？",
+        "not_installed": "Codex CLI が見つかりません。"
       },
       "grok_login": "次のコマンドでサインインします: grok login",
       "grok_models": "grok models でモデルを一覧し、grok -m <model-id> でセッションを開始します。",

@@ -397,7 +397,8 @@
         "remove_blocked": "命令鉴权尚未撤销，无法完成清理；请重试移除。",
         "keys_retained": "代理密钥已保留。",
         "restore_option": "按操作 UUID 恢复 Codex 迁移",
-        "pending_recovery": "之前的 Codex 配置操作仍在等待处理。是否在继续前恢复？"
+        "pending_recovery": "之前的 Codex 配置操作仍在等待处理。是否在继续前恢复？",
+        "not_installed": "未找到 Codex CLI。"
       },
       "grok_login": "使用以下命令登录：grok login",
       "grok_models": "使用 grok models 列出模型，然后用 grok -m <model-id> 开始会话。",
