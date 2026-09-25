@@ -2,12 +2,43 @@ import { expect, spyOn, test } from 'bun:test';
 
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
+import { createOpenAIChatGPTPlugin, englishPresentationText } from '../../plugin/plugin';
 import { guardianDecision } from './decision';
 import { guardianRequest, syntheticGuardianInput } from './fixture';
 import { createGuardianRawInvoke } from './guardian';
 import { guardianQuestions } from './questions';
 import { guardianPayloadHint, projectGuardianRequest } from './request';
 import { guardianResponse } from './response';
+
+test('setup closes the wrapper over schema-parsed options', async () => {
+  let registered: Function | undefined;
+  const plugin = createOpenAIChatGPTPlugin(englishPresentationText);
+  await plugin.setup(
+    {
+      oauth: { register() {} },
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      raw: {
+        wrap(_protocol: 'openai-response', wrap: Function) {
+          registered = wrap;
+        },
+      },
+    } as never,
+    {},
+  );
+  const calls: string[] = [];
+  const invoke = registered!({
+    original: async () => {
+      calls.push('original');
+      return new Response();
+    },
+    evaluate: async () => {
+      calls.push('evaluate');
+      return {};
+    },
+  });
+  await invoke(new Request('http://localhost/v1/responses'), undefined, { upstreamStream: false });
+  expect(calls).toEqual(['original']);
+});
 
 test('preserves complete inline decision evidence and original request', async () => {
   const original = guardianRequest(syntheticGuardianInput);

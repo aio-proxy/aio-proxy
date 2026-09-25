@@ -16,6 +16,7 @@ import {
   englishPluginOptionsText,
 } from '../plugin-options';
 import { readOpenAIChatGPTQuota, resetOpenAIChatGPTQuota } from '../quota/index';
+import { createGuardianRawInvoke } from '../runtime/guardian';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
 
@@ -167,7 +168,12 @@ export function createOpenAIChatGPTPlugin(
 
   return definePlugin(
     async (api, options) => {
-      api.oauth.register(createAdapter(await pluginOptionsSpec.schema.parseAsync(options)));
+      const parsed = await pluginOptionsSpec.schema.parseAsync(options);
+      api.oauth.register(createAdapter(parsed));
+      if (!('raw' in api) || typeof api.raw?.wrap !== 'function') return;
+      api.raw.wrap('openai-response', ({ original, evaluate }) =>
+        createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
+      );
     },
     {
       displayName: presentationText.pluginLabel ?? 'OpenAI ChatGPT',

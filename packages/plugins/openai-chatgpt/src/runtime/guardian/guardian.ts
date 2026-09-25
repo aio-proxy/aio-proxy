@@ -38,7 +38,8 @@ export function createGuardianRawInvoke(input: {
       return input.original(request, context, options);
     };
     if (
-      (pluginOptions.guardianStrategy !== 'systemOne' && pluginOptions.guardianStrategy !== 'systemOneReviewDenied') ||
+      pluginOptions.guardianStrategy === 'default' ||
+      pluginOptions.guardianStrategy === undefined ||
       evaluate === undefined ||
       !context?.requestId ||
       pluginOptions.guardianProviderId === undefined ||

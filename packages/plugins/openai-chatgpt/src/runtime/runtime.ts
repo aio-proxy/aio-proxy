@@ -10,7 +10,6 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { refreshAccessToken } from '../oauth-flow';
 import { type ChatGPTPluginOptions, resolveChatGPTRequestIdentity } from '../plugin-options';
 import type { ChatGPTCredential } from '../schema';
-import { createGuardianRawInvoke, type GuardianEvaluate } from './guardian';
 import { guardianPayloadHint } from './guardian/request';
 import { stripOrphanReasoningIds } from './orphan-reasoning-id/index';
 import { createOpenAIChatGPTRealtime, mergeEndpointQuery } from './realtime';
@@ -28,7 +27,6 @@ export async function createOpenAIChatGPTRuntime(
 ): Promise<OAuthRuntimeResult> {
   const host = context as typeof context & {
     readonly __aioRegisterPayloadHint?: (hint: typeof guardianPayloadHint) => void;
-    readonly __aioGuardianEvaluate?: GuardianEvaluate;
   };
   if (pluginOptions?.guardianStrategy === 'systemOne' || pluginOptions?.guardianStrategy === 'systemOneReviewDenied') {
     host.__aioRegisterPayloadHint?.(guardianPayloadHint);
@@ -63,14 +61,7 @@ export async function createOpenAIChatGPTRuntime(
         ? undefined
         : protocol === 'openai-response' || protocol === 'openai-image'
           ? {
-              invoke:
-                protocol === 'openai-response'
-                  ? createGuardianRawInvoke({
-                      pluginOptions: pluginOptions ?? {},
-                      original: (request, _context, options) => dynamicFetch(request, undefined, options),
-                      ...(host.__aioGuardianEvaluate === undefined ? {} : { evaluate: host.__aioGuardianEvaluate }),
-                    })
-                  : (request, _context, options) => dynamicFetch(request, undefined, options),
+              invoke: (request, _context, options) => dynamicFetch(request, undefined, options),
             }
           : undefined,
   };
