@@ -24,10 +24,12 @@ export type DashboardRoutingNumber = {
   readonly wasNormalized: boolean;
 };
 
-/** models.dev 目录派生的客观事实。与 `metadata`（用户在 config 中授权的覆写）分离：
- * 未授权时 `metadata` 为 undefined，因此不能用它排序或展示厂商归属。
- * `lab` 是模型厂商（openai、anthropic）。models.dev 内部称其为 providerId，
- * 但本仓库 Provider ID 专指上游 provider，两者不可混名。 */
+/** Objective facts derived from the models.dev catalog. Kept separate from `metadata`
+ * (the user's authored override in config): `metadata` is undefined when unauthored,
+ * so it cannot be used for sorting or for displaying vendor attribution.
+ * `lab` is the model vendor (openai, anthropic). models.dev internally calls this
+ * prefix `providerId`, but in this repo Provider ID means the upstream provider,
+ * so the two must never share a name. */
 export type DashboardRoutingCatalog = {
   readonly lab: string;
   readonly releaseDate?: string;
@@ -103,9 +105,10 @@ export const DashboardRoutingNumberSchema = matchesDto<DashboardRoutingNumber>()
 
 export const DashboardRoutingCatalogSchema = matchesDto<DashboardRoutingCatalog>()(
   z.strictObject({
-    lab: z.string().min(1),
-    // models.dev 给的是 YYYY-MM 或 YYYY-MM-DD，两种都原样透传：
-    // 消费端按字符串比较排序，不解析为 Date，以免引入时区偏移。
+    lab: IdSchema,
+    // models.dev gives either YYYY-MM or YYYY-MM-DD; both are passed through verbatim.
+    // Consumers compare it as a string and must never parse it into a Date, which
+    // would introduce timezone drift.
     releaseDate: z.string().min(1).optional(),
   }),
 );
