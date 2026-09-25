@@ -1,1 +1,0 @@
-CREATE INDEX `trace_span_attempt_ended_idx` ON `trace_span` (`attempt_index`,`ended_at`) WHERE attempt_index IS NOT NULL;

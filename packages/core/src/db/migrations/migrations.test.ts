@@ -45,16 +45,6 @@ function expectCurrentPersistenceContract(sqlite: Database): void {
     ]),
   );
   expect(dailyColumns.some(({ name }) => name.includes('provider'))).toBeFalse();
-
-  const traceIndexes = sqlite
-    .query<{ name: string }, []>(
-      "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'trace_span' ORDER BY name",
-    )
-    .all()
-    .map(({ name }) => name);
-  // Without this index, scanning attempt spans by ended_at degenerates into a full table scan:
-  // every other index leads with parent_span_id and therefore only serves root spans.
-  expect(traceIndexes).toContain('trace_span_attempt_ended_idx');
 }
 
 test('runtime migrations match the committed Drizzle journal', () => {
