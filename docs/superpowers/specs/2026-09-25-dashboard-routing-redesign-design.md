@@ -37,6 +37,8 @@ readonly catalog?: { readonly lab: string; readonly releaseDate?: string };
 
 models.dev 冷缓存时 `catalog` 为 `undefined`。这是正常状态而非错误：lab 筛选把这些模型归入「未知」组，排序把该组置于末尾。
 
+**聚合商不是 lab。** `resolveModelEntry` 的最后一档 fallback 会扫 OpenRouter 的目录并返回 `openrouter/<vendor>/<model>` 形状的 slug（见 `resolve.ts:36` 的注释，OpenRouter 的键本身带厂商前缀）。因此不能无条件取 slug 的第一段：那会把 OpenRouter 这个转售方当成模型厂商。一个模型总归有厂商，OpenRouter 只是渠道。取值规则：首段是 `openrouter` 且还有后续段时，lab 取**第二段**；首段是 `openrouter` 而没有后续段时，说明这条记录不带厂商信息，`catalog` 返回 `undefined` 归入「未知」，而不是谎报成 `openrouter`。
+
 命名约束：models.dev 内部把 lab 前缀称为 `providerId`，但在 aio-proxy 域语言中 **Provider ID 指上游 provider**。此字段必须叫 `lab`，不得沿用 models.dev 的叫法。
 
 派生逻辑放 `packages/server/src/model-routing/catalog-facts.ts`。`inventory.ts` 已 280 行，接近 CLAUDE.md 要求「评估拆分」的 400 行线。
@@ -201,9 +203,9 @@ Header：`modelId` + lab + `releaseDate` + 风险 chip；右上一个 **页面�
 
 ## 交付
 
-**原定一个 PR，实际已拆开。** 数据层先行合并（`978b74d34..c8cae9c0e`），UI 另起一个 PR。
+**一个 PR。** 数据层与 UI 一起合并，数据层先在分支上落地但不单独合。
 
-⚠️ **changeset 是欠着的。** 数据层这一段故意不写 changeset：按 CLAUDE.md，只指向内部包的 note 会让 `aio-proxy` 的 CHANGELOG 为空，`scripts/release.ts` 随即跳过它的 GitHub Release，说明就静默消失了。所以合并后的状态是**两个新端点加一个 DTO 字段已经在树里，但没有任何 release note**。UI 的 PR 必须补上一份同时指向 `aio-proxy` 与 `@aio-proxy/core`、`@aio-proxy/server`、`@aio-proxy/types`、`@aio-proxy/dashboard` 的 changeset，描述**合并后的最终状态**（重新设计的 routing 页），而不是只描述 UI 那一半。若 UI 被无限期搁置，这份 note 仍然必须单独补，否则这批改动永远不会出现在任何 Release 里。
+changeset 因此只写一次，在 UI 落地后补上，同时指向 `aio-proxy` 与 `@aio-proxy/core`、`@aio-proxy/server`、`@aio-proxy/types`、`@aio-proxy/dashboard`，描述合并后的最终状态（重新设计的 routing 页）。数据层这一段不单独写 note：只指向内部包的 changeset 会让 `aio-proxy` 的 CHANGELOG 为空，`scripts/release.ts` 随即跳过它的 GitHub Release。
 
 PR 内部仍按数据层先行的顺序推进，因为 UI 消费的契约必须先存在：
 
