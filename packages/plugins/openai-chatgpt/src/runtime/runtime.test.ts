@@ -4,6 +4,7 @@ import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_USER_AGENT, createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from '.';
 import type { ChatGPTCredential } from '../schema';
+import { guardianRequest, syntheticGuardianInput } from './guardian/fixture';
 
 type FetchCall = {
   readonly body: string;
@@ -389,3 +390,30 @@ test.each(['default', 'systemOne', 'systemOneReviewDenied'] as const)(
     expect(typeof hint).toBe(guardianStrategy === 'default' ? 'undefined' : 'function');
   },
 );
+
+test('Guardian requests go straight to ChatGPT without runtime evaluation', async () => {
+  const calls: FetchCall[] = [];
+  let evaluations = 0;
+  const context = {
+    credentials: staticCredentialPort(credential()),
+    options: {},
+    catalog: emptyCatalog(),
+    fetch: captureFetch(calls),
+    __aioGuardianEvaluate: async () => {
+      evaluations++;
+      return {};
+    },
+  };
+  const runtime = await createOpenAIChatGPTRuntime(context, {
+    guardianStrategy: 'systemOne',
+    guardianProviderId: 'selected',
+    guardianModelId: 'review',
+  });
+  const raw = runtime.raw?.({ protocol: 'openai-response', modelId: 'codex-auto-review' });
+  await raw?.invoke(guardianRequest(syntheticGuardianInput), {
+    requestId: 'parent',
+    session: { key: 'sha256:parent', source: 'generated' },
+  });
+  expect(calls).toHaveLength(1);
+  expect(evaluations).toBe(0);
+});

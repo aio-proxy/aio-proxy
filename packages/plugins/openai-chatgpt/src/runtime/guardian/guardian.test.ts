@@ -778,6 +778,25 @@ test('wrapper bypasses defaults, other resolved models and missing request conte
   }
 });
 
+test('wrapper bypasses unrecognized strategies', async () => {
+  let calls = 0;
+  let evaluations = 0;
+  const invoke = createGuardianRawInvoke({
+    pluginOptions: { ...wrapperOptions, guardianStrategy: 'futureStrategy' as never },
+    original: async () => {
+      calls++;
+      return new Response();
+    },
+    evaluate: async () => {
+      evaluations++;
+      throw new Error('must not evaluate');
+    },
+  });
+  await invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
+  expect(calls).toBe(1);
+  expect(evaluations).toBe(0);
+});
+
 test('wrapper falls back once on invalid answers or evaluator failure', async () => {
   for (const evaluate of [
     async () => ({}),
