@@ -11,6 +11,12 @@ import type {
   DashboardRoutingNumber,
   DashboardRoutingProvider,
 } from './routing';
+import type {
+  DashboardRoutingTrafficBucketsResponse,
+  DashboardRoutingTrafficModel,
+  DashboardRoutingTrafficProvider,
+  DashboardRoutingTrafficResponse,
+} from './traffic';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
@@ -159,6 +165,10 @@ describe('dashboard routing contracts', () => {
     const tierProviderIsReadonly: AllKeysReadonly<DashboardRoutingModel['tiers'][number]['providers'][number]> = true;
     const responseIsReadonly: AllKeysReadonly<DashboardRoutingModelsResponse> = true;
     const mutationIsReadonly: AllKeysReadonly<DashboardRoutingModelMutation> = true;
+    const trafficProviderIsReadonly: AllKeysReadonly<DashboardRoutingTrafficProvider> = true;
+    const trafficModelIsReadonly: AllKeysReadonly<DashboardRoutingTrafficModel> = true;
+    const trafficTotalsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficResponse> = true;
+    const trafficBucketsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficBucketsResponse> = true;
 
     expect([
       providersAreReadonlyRecord,
@@ -173,6 +183,10 @@ describe('dashboard routing contracts', () => {
       tierProviderIsReadonly,
       responseIsReadonly,
       mutationIsReadonly,
-    ]).toEqual([true, true, true, true, true, true, true, true, true, true, true, true]);
+      trafficProviderIsReadonly,
+      trafficModelIsReadonly,
+      trafficTotalsIsReadonly,
+      trafficBucketsIsReadonly,
+    ]).toEqual([true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]);
   });
 });
