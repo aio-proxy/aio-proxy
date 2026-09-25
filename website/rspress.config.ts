@@ -3,7 +3,7 @@ import { defineConfig } from '@rspress/core';
 import pluginMermaid from 'rspress-plugin-mermaid';
 
 // GitHub Pages serves `docs/public` at the apex. Crawlers require an absolute image URL.
-const ogImageUrl = 'https://aioproxy.dev/og-image.png';
+const ogImageUrl = 'https://aioproxy.dev/og-image.webp';
 
 export default defineConfig({
   root: 'docs',
