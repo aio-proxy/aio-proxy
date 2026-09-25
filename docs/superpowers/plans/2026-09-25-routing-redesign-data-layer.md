@@ -194,8 +194,8 @@ describe('dashboard routing traffic contracts', () => {
     };
     const value = {
       range: '24h',
-      from: '2026-09-24T08:00:00.000Z',
-      to: '2026-09-25T08:00:00.000Z',
+      rangeStart: '2026-09-24T08:00:00.000Z',
+      rangeEnd: '2026-09-25T08:00:00.000Z',
       models: [{ modelId: 'anthropic/claude-sonnet-4.5', providers: [provider] }],
     };
 
@@ -208,8 +208,8 @@ describe('dashboard routing traffic contracts', () => {
     };
     const base = {
       range: '7d',
-      from: '2026-09-18T00:00:00.000Z',
-      to: '2026-09-25T08:00:00.000Z',
+      rangeStart: '2026-09-18T00:00:00.000Z',
+      rangeEnd: '2026-09-25T08:00:00.000Z',
       models: [{ modelId: 'gpt-5-codex', providers: [{ ...provider, p95LatencyMs: null }] }],
     };
 
@@ -227,8 +227,8 @@ describe('dashboard routing traffic contracts', () => {
     const value = {
       range: '24h',
       modelId: 'anthropic/claude-sonnet-4.5',
-      from: '2026-09-24T08:00:00.000Z',
-      to: '2026-09-25T08:00:00.000Z',
+      rangeStart: '2026-09-24T08:00:00.000Z',
+      rangeEnd: '2026-09-25T08:00:00.000Z',
       bucketUnit: 'hour',
       providerIds: ['primary', 'fallback'],
       buckets: [{ bucket: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
@@ -264,6 +264,10 @@ import { z } from 'zod';
 
 import { IdSchema } from '../../common';
 import { type UsageOverviewRange, UsageOverviewRangeSchema } from '../../usage';
+// Counts travel as decimal strings, matching the existing usage wire: SQLite integers can
+// exceed the JS safe-integer range, so the frontend decodes them with BigInt(). Reuse the
+// exported schema rather than re-spelling the regex — it is stricter (it rejects `007`).
+import { NonNegativeIntegerStringSchema } from '../dashboard';
 
 const matchesDto =
   <Dto>() =>
@@ -271,8 +275,9 @@ const matchesDto =
     schema;
 
 // 计数以十进制字符串上线，与既有 usage wire 一致：SQLite 的整数可超出 JS
-// 安全整数范围，前端统一用 BigInt() 解码。
-const CountSchema = z.string().regex(/^\d+$/u);
+// 安全整数范围，前端统一用 BigInt() 解码。**复用 `../dashboard` 导出的
+// `NonNegativeIntegerStringSchema`，不要在这里另写一个正则**——既有那条更严（拒绝 `007`），
+// 而 CLAUDE.md 要求新增工具前先搜代码库。
 
 export type DashboardRoutingTrafficProvider = {
   readonly providerId: string;
@@ -292,8 +297,8 @@ export type DashboardRoutingTrafficModel = {
 
 export type DashboardRoutingTrafficResponse = {
   readonly range: UsageOverviewRange;
-  readonly from: string;
-  readonly to: string;
+  readonly rangeStart: string;
+  readonly rangeEnd: string;
   readonly models: readonly DashboardRoutingTrafficModel[];
 };
 
@@ -305,8 +310,8 @@ export type DashboardRoutingTrafficBucket = {
 export type DashboardRoutingTrafficBucketsResponse = {
   readonly range: UsageOverviewRange;
   readonly modelId: string;
-  readonly from: string;
-  readonly to: string;
+  readonly rangeStart: string;
+  readonly rangeEnd: string;
   readonly bucketUnit: 'hour' | 'day';
   /** 该区间内出现过的 Provider ID，供图表固定系列顺序。 */
   readonly providerIds: readonly string[];
@@ -316,9 +321,9 @@ export type DashboardRoutingTrafficBucketsResponse = {
 export const DashboardRoutingTrafficProviderSchema = matchesDto<DashboardRoutingTrafficProvider>()(
   z.strictObject({
     providerId: IdSchema,
-    finalCount: CountSchema,
-    attemptCount: CountSchema,
-    successCount: CountSchema,
+    finalCount: NonNegativeIntegerStringSchema,
+    attemptCount: NonNegativeIntegerStringSchema,
+    successCount: NonNegativeIntegerStringSchema,
     p95LatencyMs: z.number().nonnegative().nullable(),
   }),
 );
@@ -333,8 +338,8 @@ export const DashboardRoutingTrafficModelSchema = matchesDto<DashboardRoutingTra
 export const DashboardRoutingTrafficResponseSchema = matchesDto<DashboardRoutingTrafficResponse>()(
   z.strictObject({
     range: UsageOverviewRangeSchema,
-    from: z.string().min(1),
-    to: z.string().min(1),
+    rangeStart: z.iso.datetime(),
+    rangeEnd: z.iso.datetime(),
     models: z.array(DashboardRoutingTrafficModelSchema).readonly(),
   }),
 );
@@ -342,7 +347,7 @@ export const DashboardRoutingTrafficResponseSchema = matchesDto<DashboardRouting
 export const DashboardRoutingTrafficBucketSchema = matchesDto<DashboardRoutingTrafficBucket>()(
   z.strictObject({
     bucket: z.string().min(1),
-    values: z.record(IdSchema, CountSchema),
+    values: z.record(IdSchema, NonNegativeIntegerStringSchema).readonly(),
   }),
 );
 
@@ -350,8 +355,8 @@ export const DashboardRoutingTrafficBucketsResponseSchema = matchesDto<Dashboard
   z.strictObject({
     range: UsageOverviewRangeSchema,
     modelId: IdSchema,
-    from: z.string().min(1),
-    to: z.string().min(1),
+    rangeStart: z.iso.datetime(),
+    rangeEnd: z.iso.datetime(),
     bucketUnit: z.enum(['hour', 'day']),
     providerIds: z.array(IdSchema).readonly(),
     buckets: z.array(DashboardRoutingTrafficBucketSchema).readonly(),
@@ -891,8 +896,8 @@ export function routingTraffic(db: BunSQLiteDatabase, query: RoutingTrafficQuery
 
   return {
     range: query.range,
-    from: range.start.toISOString(),
-    to: range.end.toISOString(),
+    rangeStart: range.start.toISOString(),
+    rangeEnd: range.end.toISOString(),
     models: [...models]
       .map(([modelId, providers]): DashboardRoutingTrafficModel => ({
         modelId,
@@ -923,8 +928,8 @@ export function routingTrafficBuckets(
   return {
     range: query.range,
     modelId: query.modelId,
-    from: range.start.toISOString(),
-    to: range.end.toISOString(),
+    rangeStart: range.start.toISOString(),
+    rangeEnd: range.end.toISOString(),
     bucketUnit: range.bucketUnit,
     providerIds: ordered,
     // 空桶补 '0'：缺键会让堆叠图出现缺口而不是一段零高度。

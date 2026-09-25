@@ -66,11 +66,13 @@ index('trace_span_attempt_ended_idx').on(table.attemptIndex, table.endedAt)
 
 ```
 GET /dashboard/api/routing/traffic?range=24h
-→ { range, from, to, models: [{
+→ { range, rangeStart, rangeEnd, models: [{
       modelId,
       providers: [{ providerId, finalCount, attemptCount, successCount, p95LatencyMs }]
     }] }
 ```
+
+字段名与校验沿用同一套 dashboard DTO 的既有约定：窗口边界叫 `rangeStart` / `rangeEnd` 且是 `z.iso.datetime()`（见 `dashboard.ts:94-95`），计数复用导出的 `NonNegativeIntegerStringSchema`（`dashboard.ts:59`）。不为同一个概念造第二套名字或第二条正则。
 
 列表页一次取全，**仅总量，不含分桶**。**实际份额 = `finalCount / Σ finalCount`（同 tier 内）**，与配置份额同分母，才可比。
 
