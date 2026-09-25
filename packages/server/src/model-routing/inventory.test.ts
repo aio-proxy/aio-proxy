@@ -12,7 +12,11 @@ import {
   type ProviderState,
 } from '@aio-proxy/types';
 
-import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../../__tests__/server.test-support';
+import {
+  clearModelsDevCatalog,
+  modelsDevModel,
+  seedModelsDevCatalogUnderVendor,
+} from '../../__tests__/server.test-support';
 import { assembleRoutingInventory } from './inventory';
 
 // Only the models.dev catalog test below seeds a catalog, and the cold-cache test
@@ -513,14 +517,17 @@ describe('model routing inventory', () => {
 
   test('carries models.dev lab and release date through to the emitted model', async () => {
     // `shared` is served by the fixture Providers, so seeding the catalog under
-    // that id makes the assembled model carry catalog facts. The bare id pins no
-    // models.dev provider, so it resolves through OpenRouter and the slug is
-    // `openrouter/shared` — its prefix is the lab.
-    await seedModelsDevCatalog({ shared: modelsDevModel('shared', 'Shared Model', { release_date: '2026-04-09' }) });
+    // that id makes the assembled model carry catalog facts. Seed it beneath a
+    // real vendor: the bare id pins no models.dev provider, so it resolves through
+    // OpenRouter, and the lab is the vendor segment behind that reselling channel
+    // — `openrouter` itself is never a maker.
+    await seedModelsDevCatalogUnderVendor('mistralai', {
+      shared: modelsDevModel('shared', 'Shared Model', { release_date: '2026-04-09' }),
+    });
 
     const response = DashboardRoutingModelsResponseSchema.parse(await inventory());
 
-    expect(model(response, 'shared').catalog).toEqual({ lab: 'openrouter', releaseDate: '2026-04-09' });
+    expect(model(response, 'shared').catalog).toEqual({ lab: 'mistralai', releaseDate: '2026-04-09' });
   });
 
   test('omits catalog facts for every model when no models.dev catalog is cached', async () => {

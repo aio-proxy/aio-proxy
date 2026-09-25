@@ -2,17 +2,24 @@ import { afterEach, expect, test } from 'bun:test';
 
 import { clearModelsCache, fileCacheStorage, type ModelsDevModel } from '@aio-proxy/core';
 
-import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../../__tests__/server.test-support';
+import {
+  clearModelsDevCatalog,
+  modelsDevModel,
+  seedModelsDevCatalog,
+  seedModelsDevCatalogUnderVendor,
+} from '../../__tests__/server.test-support';
 import { routingCatalogFacts } from './catalog-facts';
 
 afterEach(() => {
   clearModelsDevCatalog();
 });
 
-// seedModelsDevCatalog keys every model by a bare id, so it cannot express the
-// nested `openrouter/<vendor>/<model>` key real models.dev data uses. Borrow its
-// isolated catalog home (and its afterEach cleanup) by seeding once, then
-// overwrite the catalog with a hand-built provider map.
+// The one test below needs a vendor provider and OpenRouter populated at the
+// same time, to prove which of the two resolution wins. Neither shared seed
+// helper spans two providers, so borrow seedModelsDevCatalog's isolated catalog
+// home (and its afterEach cleanup) by seeding once, then overwrite the catalog
+// with a hand-built provider map. For the single-provider nested shape, use
+// seedModelsDevCatalogUnderVendor instead of this.
 async function seedNestedOpenRouterCatalog(providers: Record<string, Record<string, ModelsDevModel>>): Promise<void> {
   await seedModelsDevCatalog({});
   await fileCacheStorage.setItem(
@@ -33,18 +40,25 @@ test('derives the lab from the catalog slug prefix and carries the release date'
 
 test('reports the vendor as the lab for a model resolved through the OpenRouter fallback', async () => {
   // `mistral-large` matches no provider glob, so resolution falls through to
-  // OpenRouter, whose key is vendor-prefixed. The resulting slug is
+  // OpenRouter, whose key here is vendor-prefixed. The resulting slug is
   // `openrouter/mistralai/mistral-large`: OpenRouter resells the model, so the
   // lab is the vendor behind the channel segment.
-  await seedNestedOpenRouterCatalog({
-    openrouter: {
-      'mistralai/mistral-large': modelsDevModel('mistralai/mistral-large', 'Mistral Large', {
-        release_date: '2026-03-04',
-      }),
-    },
+  await seedModelsDevCatalogUnderVendor('mistralai', {
+    'mistral-large': modelsDevModel('mistral-large', 'Mistral Large', { release_date: '2026-03-04' }),
   });
 
   expect(await routingCatalogFacts('mistral-large')).toEqual({ lab: 'mistralai', releaseDate: '2026-03-04' });
+});
+
+test('reports no catalog at all when OpenRouter resells the model under a bare key', async () => {
+  // `shared` pins no models.dev provider, so seedModelsDevCatalog's bare
+  // OpenRouter key is the one that resolves it and the slug is `openrouter/shared`.
+  // Neither segment is a maker: `openrouter` is the reselling channel and
+  // `shared` is the model id. A model id reported as its own maker is the same
+  // lie as the channel, so the whole catalog block is withheld.
+  await seedModelsDevCatalog({ shared: modelsDevModel('shared', 'Shared Model', { release_date: '2026-04-09' }) });
+
+  expect(await routingCatalogFacts('shared')).toBeUndefined();
 });
 
 test('keeps the vendor as the lab when the vendor provider resolves the model directly', async () => {

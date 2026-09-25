@@ -7,16 +7,18 @@ import type { DashboardRoutingCatalog } from '@aio-proxy/types';
  * models.dev calls a slug's leading segment a providerId, but in this repo
  * Provider ID means the upstream provider a request is sent to, so the two must
  * never share a name. That segment is also not always a maker: the OpenRouter
- * fallback builds its slug from OpenRouter's own key, which is itself
- * vendor-prefixed (`openrouter/anthropic/claude-sonnet-4.5`), so a leading
- * `openrouter` names the channel reselling the model and the lab is the vendor
- * segment behind it. A bare `openrouter` carries no vendor at all, and claiming
- * the channel as a lab would stand a fake maker beside the real ones, so the
+ * fallback builds its slug from OpenRouter's own key, so a leading `openrouter`
+ * names the channel reselling the model rather than the vendor that made it.
+ * A maker is behind that channel segment only when OpenRouter's key was itself
+ * vendor-prefixed, leaving three or more segments
+ * (`openrouter/anthropic/claude-sonnet-4.5`). With exactly two the key was bare
+ * and the second segment is a model id, not a vendor. Naming `openrouter` or a
+ * model id as the lab would both stand a fake maker beside the real ones, so the
  * caller gets no catalog instead.
  */
 function catalogLab(slug: string): string | undefined {
   const segments = slug.split('/');
-  const lab = segments[0] === 'openrouter' ? segments[1] : segments[0];
+  const lab = segments[0] === 'openrouter' ? (segments.length >= 3 ? segments[1] : undefined) : segments[0];
   return lab === undefined || lab === '' ? undefined : lab;
 }
 
