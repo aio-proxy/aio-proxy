@@ -8,7 +8,7 @@ export function guardianRaw<TRequest, TContext>(
   raw: RawTransport,
 ): RawTransport {
   if (ctx.adapter.protocol !== 'openai-response' || ctx.adapter.capability !== 'language') return raw;
-  const wrap = ctx.snapshot?.plugins.registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt');
+  const wrap = ctx.snapshot?.plugins?.registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt');
   if (wrap === undefined) return raw;
   return {
     ...raw,
