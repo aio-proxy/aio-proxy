@@ -7,8 +7,12 @@ type ReadState = {
   done: boolean;
 };
 
-async function readInspected(response: Response, signal?: AbortSignal): Promise<Uint8Array | undefined> {
-  const body = response.clone().body;
+async function readInspected(
+  response: Response,
+  signal: AbortSignal | undefined,
+  consume: boolean,
+): Promise<Uint8Array | undefined> {
+  const body = consume ? response.body : response.clone().body;
   if (body === null) return undefined;
   const reader = body.getReader();
   const state: ReadState = { done: false };
@@ -39,7 +43,7 @@ async function readInspected(response: Response, signal?: AbortSignal): Promise<
 
 export async function hasExplicitNoCapacity(response: Response, signal?: AbortSignal): Promise<boolean> {
   try {
-    const bytes = await readInspected(response, signal);
+    const bytes = await readInspected(response, signal, false);
     return bytes === undefined ? false : explicitNoCapacity(bytes);
   } catch {
     throwIfAborted(signal);
@@ -81,15 +85,14 @@ const SAFE_DIAGNOSTIC_MAX_CHARS = 200;
 // beside the diagnostic. Only a short message, with nothing else at the root,
 // is safe to show the caller. ponytail: one shape check, not a phrase list.
 export async function readSafeDiagnostic(response: Response, signal?: AbortSignal): Promise<string | undefined> {
-  const bytes = await readInspected(response, signal);
-  if (bytes === undefined) return undefined;
   try {
+    const bytes = await readInspected(response, signal, true);
+    if (bytes === undefined) return undefined;
     const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
     return safeUpstreamDiagnostic(payload);
-  } catch (error) {
+  } catch {
     throwIfAborted(signal);
-    if (error instanceof SyntaxError) return undefined;
-    throw error;
+    return undefined;
   }
 }
 
