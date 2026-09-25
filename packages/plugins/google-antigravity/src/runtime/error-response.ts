@@ -7,17 +7,13 @@ type ReadState = {
   done: boolean;
 };
 
-type ErrorEnvelope = {
-  readonly error?: unknown;
-};
-
-type ErrorPayload = {
-  readonly message?: unknown;
-};
-
-export async function hasExplicitNoCapacity(response: Response, signal?: AbortSignal): Promise<boolean> {
-  const body = response.clone().body;
-  if (body === null) return false;
+async function readInspected(
+  response: Response,
+  signal: AbortSignal | undefined,
+  consume: boolean,
+): Promise<Uint8Array | undefined> {
+  const body = consume ? response.body : response.clone().body;
+  if (body === null) return undefined;
   const reader = body.getReader();
   const state: ReadState = { done: false };
   const reading = readBounded(reader, state);
@@ -33,11 +29,7 @@ export async function hasExplicitNoCapacity(response: Response, signal?: AbortSi
   try {
     throwIfAborted(signal);
     const bytes = await Promise.race([reading, interrupted]);
-    if (bytes === inspectionTimedOut || bytes === undefined) return false;
-    return explicitNoCapacity(bytes);
-  } catch {
-    throwIfAborted(signal);
-    return false;
+    return bytes === inspectionTimedOut ? undefined : bytes;
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
     signal?.removeEventListener('abort', abort);
@@ -46,6 +38,16 @@ export async function hasExplicitNoCapacity(response: Response, signal?: AbortSi
       await reading.catch(() => undefined);
     }
     reader.releaseLock();
+  }
+}
+
+export async function hasExplicitNoCapacity(response: Response, signal?: AbortSignal): Promise<boolean> {
+  try {
+    const bytes = await readInspected(response, signal, false);
+    return bytes === undefined ? false : explicitNoCapacity(bytes);
+  } catch {
+    throwIfAborted(signal);
+    return false;
   }
 }
 
@@ -77,11 +79,38 @@ function concatenate(chunks: readonly Uint8Array[], length: number): Uint8Array 
   return result;
 }
 
+const SAFE_DIAGNOSTIC_MAX_CHARS = 200;
+
+// A CCA failure may carry tool arguments, redirect targets, or request echoes
+// beside the diagnostic. Only a short message, with nothing else at the root,
+// is safe to show the caller. ponytail: one shape check, not a phrase list.
+export async function readSafeDiagnostic(response: Response, signal?: AbortSignal): Promise<string | undefined> {
+  try {
+    const bytes = await readInspected(response, signal, true);
+    if (bytes === undefined) return undefined;
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return safeUpstreamDiagnostic(payload);
+  } catch {
+    throwIfAborted(signal);
+    return undefined;
+  }
+}
+
+export function safeUpstreamDiagnostic(payload: unknown): string | undefined {
+  const root = record(payload);
+  const error = record(root?.['error']);
+  if (root === undefined || error === undefined || Object.keys(root).length !== 1) return undefined;
+  const message = error['message'];
+  if (typeof message !== 'string' || message.length === 0 || message.length > SAFE_DIAGNOSTIC_MAX_CHARS)
+    return undefined;
+  if (message.includes('://') || /[\r\n<>]/.test(message)) return undefined;
+  return message;
+}
+
 function explicitNoCapacity(bytes: Uint8Array): boolean {
   try {
     const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    const error = (record(payload) as ErrorEnvelope | undefined)?.error;
-    const message = (record(error) as ErrorPayload | undefined)?.message;
+    const message = safeUpstreamDiagnostic(payload);
     return typeof message === 'string' && message.toLowerCase().includes('no capacity');
   } catch {
     return false;

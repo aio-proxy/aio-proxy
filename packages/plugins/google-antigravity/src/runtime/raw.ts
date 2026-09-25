@@ -3,6 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { AntigravityThinkingError, bindAntigravityThinking } from '../protocol/thinking';
 import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
+import { readSafeDiagnostic } from './error-response';
 import { AntigravityUpstreamError } from './errors';
 import { unwrapCcaSse } from './stream';
 import type { CcaTransport } from './transport';
@@ -61,8 +62,8 @@ export function createGeminiRawResolver(
 
         if (!response.ok) {
           const status = response.status;
-          await response.body?.cancel().catch(() => undefined);
-          return createGeminiErrorResponse(status);
+          const message = await readSafeDiagnostic(response, request.signal);
+          return createGeminiErrorResponse(status, message);
         }
         if (stream) {
           if (response.body === null) return createGeminiErrorResponse(500);
@@ -148,13 +149,13 @@ async function readBody(request: Request): Promise<Record<string, unknown> | und
   }
 }
 
-export function createGeminiErrorResponse(status: number): Response {
+export function createGeminiErrorResponse(status: number, message?: string): Response {
   const code = validStatus(status) ? status : 500;
   return Response.json(
     {
       error: {
         code,
-        message: 'Google Antigravity request failed',
+        message: message ?? 'Google Antigravity request failed',
         status: geminiStatus(code),
       },
     },
