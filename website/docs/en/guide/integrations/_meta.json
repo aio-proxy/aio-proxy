@@ -1,0 +1,19 @@
+[
+  {
+    "type": "file",
+    "name": "third-party-clients",
+    "label": "Clients & Editors"
+  },
+  {
+    "type": "dir",
+    "name": "agents",
+    "label": "Native Agent Integrations",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "file",
+    "name": "sdks",
+    "label": "SDK Integration & Examples"
+  }
+]

@@ -21,7 +21,16 @@ export default defineConfig({
       label: '简体中文',
     },
   ],
-  plugins: [pluginMermaid()],
+  plugins: [
+    pluginMermaid({
+      mermaidConfig: {
+        theme: 'neutral',
+        flowchart: {
+          curve: 'monotoneY',
+        },
+      },
+    }),
+  ],
   builderConfig: {
     plugins: [pluginTailwindcss()],
     tools: {

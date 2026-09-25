@@ -1,59 +1,52 @@
 ---
-description: 安装并启动 AIO Proxy，添加第一个模型提供商，然后发出第一条请求。
+description: 启动 AIO Proxy，添加第一个模型提供商，然后发出第一条模型请求。
 ---
-
-import { CommandTabs } from '@rspress/core/theme';
 
 # 快速开始
 
-这篇指南会在本机启动 AIO Proxy，添加一个 OpenAI Responses 提供商，并通过本地端点发出第一条请求。
+本篇指南将带你在几分钟内启动 AIO Proxy，接入首个模型提供商，并通过统一端点发出第一条请求。
 
-## 安装
+> 如果你尚未安装 AIO Proxy，请先参阅 [安装指南](./install-deploy/installation)。
 
-<CommandTabs
-  commands={{
-    brew: 'brew install aio-proxy/tap/aio-proxy',
-    bun: 'bun add -g aio-proxy',
-    curl: 'curl -fsSL https://aioproxy.dev/install.sh | sh',
-  }}
-/>
+## 1. 启动服务
 
-## 启动服务
+在终端运行以下命令启动 AIO Proxy：
 
 ```sh
 aio-proxy run --open
 ```
 
-npm/bun 与 curl 安装脚本还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
+首次启动会自动在用户目录创建默认配置文件 `~/.aio-proxy/config.jsonc`，并在系统默认浏览器中打开 Dashboard 控制台：
 
-首次启动会创建 `~/.aio-proxy/config.jsonc`，并打开 Dashboard。默认地址为：
+- **API 服务端点**：`http://127.0.0.1:9317`
+- **Dashboard 控制台**：`http://127.0.0.1:9317/dashboard`
 
-- API：`http://127.0.0.1:9317`
-- Dashboard：`http://127.0.0.1:9317/dashboard`
+初始配置不包含任何提供商。接下来任选一种方式添加你的第一个提供商。
 
-初始配置不包含提供商。接下来任选一种方式添加第一个提供商。
+## 2. 添加模型提供商
 
-## 方式一：在 Dashboard 中添加
+### 方式一：在 Dashboard 中添加（推荐）
 
-在 Dashboard 的提供商页面添加一个 API 提供商。填写上游地址、认证信息和模型；模型名需要与客户端请求中的模型名一致。
+1. 在打开的 Dashboard 页面中，点击左侧导航栏的 **“提供商 (Providers)”**。
+2. 点击右上角 **“添加提供商”**，选择 API 提供商。
+3. 填写提供商名称、上游 Base URL（如 OpenAI 或任意兼容平台）、API 密钥以及公开的模型名称（例如 `gpt-5`）。
+4. 保存后点击提供商卡片上的 **“测试”** 探针按钮，确认上游连接正常。
 
-保存后，使用页面中的测试功能确认提供商可用。你可以随时回到 Dashboard 编辑、测试或删除提供商。
+### 方式二：直接编辑配置文件
 
-## 方式二：编辑配置文件
-
-先在终端设置 API 密钥：
+先在终端设置你的上游 API 密钥：
 
 ```sh
 export OPENAI_API_KEY='your-api-key'
 ```
 
-打开配置文件：
+使用内置命令打开配置文件：
 
 ```sh
 aio-proxy config edit
 ```
 
-加入下面的提供商配置：
+在 `providers` 对象中加入提供商配置：
 
 ```jsonc title="config.jsonc"
 {
@@ -70,18 +63,18 @@ aio-proxy config edit
 }
 ```
 
-验证并重新加载配置：
+校验并热重载配置：
 
 ```sh
 aio-proxy config validate
 aio-proxy reload
 ```
 
-`openai` 是这个提供商的提供商 ID；`gpt-5` 是它向客户端公开的模型名。后续可为同一个模型添加更多提供商。
+`openai` 是该提供商的稳定提供商 ID；`gpt-5` 是它向客户端公开的模型名。后续你可以为同一个模型名称添加更多提供商以实现多渠道自动故障切换。
 
-> 原生支持多种协议的上游（Moonshot、z.ai、聚合网关等）可以额外声明 `endpoints`，命中的请求会被原样转发而不经过协议转换。完整规则见 README 的“多协议端点”一节。
+## 3. 发出第一条请求
 
-## 发出第一条请求
+打开新终端窗口，使用 curl 发送一条测试请求：
 
 ```sh
 curl http://127.0.0.1:9317/v1/responses \
@@ -89,4 +82,12 @@ curl http://127.0.0.1:9317/v1/responses \
   -d '{"model":"gpt-5","input":"用一句话介绍 AIO Proxy。"}'
 ```
 
-请求成功后，响应会由已配置的提供商返回。也可以在 Dashboard 的请求记录中查看这次调用。
+请求成功后，响应会由已配置的上游提供商返回。
+
+回到 Dashboard 的 **“请求追踪 (Traces)”** 页面，你可以实时查看这次调用的完整链路详情、首字生成延迟 (TTFT)、Token 消耗量与往返耗时。
+
+## 下一步
+
+- **长期稳定运行**：参考 [后台守护服务](./install-deploy/service) 或 [Docker 部署](./install-deploy/docker) 将 AIO Proxy 部署为开机自启常驻服务。
+- **连接客户端**：参考 [客户端与 Agent 集成](../integrations/third-party-clients) 将 Cursor、VS Code、Claude Code 或业务代码指向本地代理。
+- **探索更多提供商**：了解 [OAuth 插件提供商](../providers/oauth/) 接入 ChatGPT / Claude 订阅账号或 [多协议端点](../routing/protocols)。

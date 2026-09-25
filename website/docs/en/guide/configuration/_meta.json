@@ -1,0 +1,27 @@
+[
+  {
+    "type": "file",
+    "name": "config-file",
+    "label": "Configuration Files & Env"
+  },
+  {
+    "type": "file",
+    "name": "server",
+    "label": "Server & Security"
+  },
+  {
+    "type": "file",
+    "name": "proxy",
+    "label": "Proxy & High Availability"
+  },
+  {
+    "type": "file",
+    "name": "transforms",
+    "label": "Request & Response Transforms"
+  },
+  {
+    "type": "file",
+    "name": "metadata",
+    "label": "Metadata & Catalog"
+  }
+]

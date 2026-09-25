@@ -1,0 +1,17 @@
+[
+  {
+    "type": "file",
+    "name": "installation",
+    "label": "安装指南"
+  },
+  {
+    "type": "file",
+    "name": "service",
+    "label": "后台守护服务"
+  },
+  {
+    "type": "file",
+    "name": "docker",
+    "label": "Docker 部署"
+  }
+]
