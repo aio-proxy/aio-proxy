@@ -1,0 +1,57 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "OAuth 概述与登录"
+  },
+  {
+    "type": "file",
+    "name": "openai-chatgpt",
+    "label": "OpenAI ChatGPT"
+  },
+  {
+    "type": "file",
+    "name": "claude-code",
+    "label": "Claude Pro / Team"
+  },
+  {
+    "type": "file",
+    "name": "cursor",
+    "label": "Cursor"
+  },
+  {
+    "type": "file",
+    "name": "github-copilot",
+    "label": "GitHub Copilot"
+  },
+  {
+    "type": "file",
+    "name": "google-antigravity",
+    "label": "Google Antigravity"
+  },
+  {
+    "type": "file",
+    "name": "kimi-code",
+    "label": "Kimi Code"
+  },
+  {
+    "type": "file",
+    "name": "muse-code",
+    "label": "Muse Code"
+  },
+  {
+    "type": "file",
+    "name": "opencode-go",
+    "label": "OpenCode Go"
+  },
+  {
+    "type": "file",
+    "name": "openrouter",
+    "label": "OpenRouter"
+  },
+  {
+    "type": "file",
+    "name": "xai-grok",
+    "label": "xAI Grok"
+  }
+]

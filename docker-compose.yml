@@ -14,6 +14,8 @@
 services:
   aio-proxy:
     image: ghcr.io/aio-proxy/aio-proxy:latest
+    container_name: aio-proxy
+    pull_policy: always
     # To build locally from source instead of pulling the published image,
     # comment out `image:` above and uncomment:
     # build: .
@@ -27,3 +29,8 @@ services:
     # container; the config schema forbids non-loopback hosts in config.jsonc.
     command: ['run', '--host', '0.0.0.0']
     restart: unless-stopped
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '20m'
+        max-file: '3'

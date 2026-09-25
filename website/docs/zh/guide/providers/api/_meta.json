@@ -1,0 +1,47 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "API 提供商概述"
+  },
+  {
+    "type": "file",
+    "name": "openai-response",
+    "label": "OpenAI Responses 协议"
+  },
+  {
+    "type": "file",
+    "name": "openai-compatible",
+    "label": "OpenAI 兼容协议"
+  },
+  {
+    "type": "file",
+    "name": "anthropic",
+    "label": "Anthropic Messages 协议"
+  },
+  {
+    "type": "file",
+    "name": "gemini",
+    "label": "Google Gemini 协议"
+  },
+  {
+    "type": "file",
+    "name": "openai-image",
+    "label": "OpenAI Images 图片协议"
+  },
+  {
+    "type": "file",
+    "name": "openai-audio",
+    "label": "OpenAI Audio 音频协议"
+  },
+  {
+    "type": "file",
+    "name": "openai-video",
+    "label": "OpenAI Video 视频协议"
+  },
+  {
+    "type": "file",
+    "name": "typesafe-systemone",
+    "label": "System One 评估协议"
+  }
+]

@@ -2,7 +2,7 @@
 
 import { CodeBlockRuntime, Tab, Tabs } from '@rspress/core/theme';
 
-import { BunIcon, HomebrewIcon, TerminalIcon } from '../icons';
+import { BunIcon, HomebrewIcon, NpmIcon, TerminalIcon } from '../icons';
 
 interface CommandTabsProps {
   readonly commands: Partial<Record<CommandId, string>>;
@@ -12,6 +12,7 @@ const commandIcon = {
   bun: BunIcon,
   brew: HomebrewIcon,
   curl: TerminalIcon,
+  npm: NpmIcon,
 } as const;
 
 type CommandId = keyof typeof commandIcon;
@@ -22,7 +23,7 @@ export const CommandTabs: React.FC<CommandTabsProps> = ({ commands }) => {
   return (
     <Tabs groupId="command-tabs">
       {entries.map(([key, command]) => {
-        const Icon = commandIcon[key];
+        const Icon = commandIcon[key] ?? TerminalIcon;
         return (
           <Tab
             key={key}
