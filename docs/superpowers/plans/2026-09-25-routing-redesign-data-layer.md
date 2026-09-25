@@ -178,21 +178,6 @@ import { describe, expect, test } from 'bun:test';
 
 import * as dashboard from '../index';
 
-import type {
-  DashboardRoutingTrafficBucketsResponse,
-  DashboardRoutingTrafficModel,
-  DashboardRoutingTrafficProvider,
-  DashboardRoutingTrafficResponse,
-} from './traffic';
-
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
-
-type ReadonlyKeys<T> = {
-  [K in keyof T]-?: Equal<Pick<T, K>, Readonly<Pick<T, K>>> extends true ? K : never;
-}[keyof T];
-
-type AllKeysReadonly<T extends object> = Equal<ReadonlyKeys<T>, keyof T>;
-
 const provider = {
   providerId: 'primary',
   finalCount: '120',
@@ -250,22 +235,19 @@ describe('dashboard routing traffic contracts', () => {
 
     expect(buckets.parse(value)).toEqual(value);
   });
-
-  test('keeps every traffic DTO property readonly', () => {
-    const providerIsReadonly: AllKeysReadonly<DashboardRoutingTrafficProvider> = true;
-    const modelIsReadonly: AllKeysReadonly<DashboardRoutingTrafficModel> = true;
-    const totalsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficResponse> = true;
-    const bucketsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficBucketsResponse> = true;
-
-    expect([providerIsReadonly, modelIsReadonly, totalsIsReadonly, bucketsIsReadonly]).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
-  });
 });
 ```
+
+readonly 断言**不放在这个文件**：`routing.test.ts` 已经有 `Equal` / `ReadonlyKeys` / `AllKeysReadonly` 三个类型级 helper 和一个集中的 readonly 测试，在这里重写一遍就是逐字复制一段逻辑。改为在 `routing.test.ts` 的 `'keeps public routing DTO properties and mutation providers readonly'` 测试里追加四行断言与四个 `true`：
+
+```ts
+    const trafficProviderIsReadonly: AllKeysReadonly<DashboardRoutingTrafficProvider> = true;
+    const trafficModelIsReadonly: AllKeysReadonly<DashboardRoutingTrafficModel> = true;
+    const trafficTotalsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficResponse> = true;
+    const trafficBucketsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficBucketsResponse> = true;
+```
+
+并在该文件的 type import 中加入这四个类型（从 `'./traffic'` 导入）。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -857,7 +839,7 @@ import type {
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import type { RoutingTrafficBucketsQuery, RoutingTrafficQuery } from '../types';
-import { type ResolvedUsageRange, resolveUsageRange, usageBucketKeys, usageLocalDate } from '../usage-range';
+import { type ResolvedUsageRange, resolveUsageRange, usageBucketKeys } from '../usage-range';
 
 type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 
@@ -897,9 +879,10 @@ export function routingTraffic(db: BunSQLiteDatabase, query: RoutingTrafficQuery
   const models = new Map<string, Map<string, Accumulated>>();
 
   for (const row of attemptRows(db, range)) {
-    entry(models, row.modelId, row.providerId).attemptCount = row.attemptCount;
-    entry(models, row.modelId, row.providerId).successCount = row.successCount;
-    entry(models, row.modelId, row.providerId).p95LatencyMs = percentile95(row.durations);
+    const accumulated = entry(models, row.modelId, row.providerId);
+    accumulated.attemptCount = row.attemptCount;
+    accumulated.successCount = row.successCount;
+    accumulated.p95LatencyMs = percentile95(row.durations);
   }
   for (const row of finalRows(db, range)) {
     entry(models, row.modelId, row.providerId).finalCount = row.finalCount;
@@ -1032,7 +1015,7 @@ function all<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQueryBin
 }
 ```
 
-`usageLocalDate` 在本文件不直接使用时，从 import 中移除它以免 lint 报未使用。
+`usageLocalDate` 不在本文件使用（分桶表达式直接写 SQL 的 `strftime`），所以不要导入它。
 
 创建 `packages/core/src/db/trace-store/routing-traffic/index.ts`：
 
@@ -1111,7 +1094,7 @@ git commit -m "feat(core): aggregate routing traffic by model and Provider"
 ```ts
 import { afterEach, expect, test } from 'bun:test';
 
-import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../__tests__/server.test-support';
+import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../../../__tests__/server.test-support';
 import { routingCatalogFacts } from './catalog-facts';
 
 afterEach(() => {
@@ -1132,18 +1115,17 @@ test('returns undefined for an unknown model so a cold catalog is not an error',
   expect(await routingCatalogFacts('not-in-catalog')).toBeUndefined();
 });
 
-test('omits releaseDate when the catalog has none', async () => {
-  await seedModelsDevCatalog({ 'gpt-5': modelsDevModel('gpt-5', 'GPT-5') });
+test('omits releaseDate entirely when the catalog entry has none', async () => {
+  // modelsDevModel 默认带 release_date: '2026-01-15'，必须显式清掉才能测到缺失分支。
+  await seedModelsDevCatalog({ 'gpt-5': modelsDevModel('gpt-5', 'GPT-5', { release_date: undefined }) });
 
   expect(await routingCatalogFacts('gpt-5')).toEqual({ lab: 'openai' });
 });
 ```
 
-先确认 `modelsDevModel` 的第三个参数能透传 `release_date`：
+导入路径已核对：`server.test-support.ts` 在 `packages/server/__tests__/`（与 `src/` 同级），从 `src/model-routing/` 出发是 `../../../__tests__/server.test-support`。
 
-Run: `grep -n "export function modelsDevModel" -A15 packages/server/src/__tests__/server.test-support.ts`
-
-若它不透传 `release_date`，在该 helper 的 overrides 展开中补上——它本就是 `Partial<CatalogModel>` 风格的 overrides，`release_date` 是 models.dev 原始字段名。
+`modelsDevModel` 的 `overrides` 是 `Partial<ModelsDevModel>`，`release_date` 直接透传，**helper 无需修改**。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1323,7 +1305,7 @@ const trafficBucketsValidator = validator('query', (raw, context) => {
 });
 ```
 
-在 `createDashboardRoutingRoutes` 的链上，`.put('/routing/models', ...)` 之后加两个 route（`/buckets` 必须写在前面，避免与更宽的路径产生歧义）：
+在 `createDashboardRoutingRoutes` 的链上，`.put('/routing/models', ...)` 之后加两个 route（两者都是字面路径，顺序不影响匹配）：
 
 ```ts
     .get('/routing/traffic/buckets', trafficBucketsValidator, (context) => {
