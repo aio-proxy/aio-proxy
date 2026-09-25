@@ -95,5 +95,11 @@ export const traceSpan = sqliteTable(
       table.startedAt,
     ),
     index('trace_span_trace_started_idx').on(table.traceId, table.startedAt),
+    // Time-range scans over attempt spans (aggregating traffic per model x Provider). Every other
+    // index leads with parent_span_id and only serves root spans, so none can serve an ended_at
+    // predicate restricted to attempt rows.
+    index('trace_span_attempt_ended_idx')
+      .on(table.attemptIndex, table.endedAt)
+      .where(sql.raw('attempt_index IS NOT NULL')),
   ],
 );
