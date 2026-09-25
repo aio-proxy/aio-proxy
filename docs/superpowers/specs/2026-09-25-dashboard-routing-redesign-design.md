@@ -215,7 +215,7 @@ PR 内部仍按数据层先行的顺序推进，因为 UI 消费的契约必须�
 按价值排序，不为覆盖率写测试：
 
 - `lib/routing-risk/` 与 `lib/routing-traffic/` 纯函数：阈值判定、实际份额与配置份额同分母对齐、缺失数据降级。
-- core 聚合查询：seed span 后断言 (model × provider) 的计数与 p95；range 边界；**只有 root span 而无 attempt span 的 trace 不产生行**。
+- core 聚合查询：seed span 后断言 (model × provider) 的计数与 p95；range 边界；**没有 attempt span 的 root-only trace 仍计入 `finalCount`**——它确实被那个 Provider 承接了，排除它会少算实际份额，而实际份额是这页的头号数字。此时 `attemptCount` 为 `0`、`p95LatencyMs` 为 `null`。由此 `successCount` 与 `finalCount` 在这一种情况下不一致，所以**消费端的成功率必须算 `successCount / attemptCount`，绝不能除以 `finalCount`**。
 - splat 路由解析含斜杠的 model id。
 - 未保存守卫与 tab 脏标记。
 - traffic 请求失败时列表仍完全可用。
