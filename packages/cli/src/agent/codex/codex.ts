@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -5,6 +6,7 @@ import { AtomicConfigFile, configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
 import packageJson from '../../../package.json' with { type: 'json' };
+import { CliExit, EXIT } from '../../exit';
 import { readServiceEnvironment } from '../../service-env';
 import { canPrompt, openProductionSession, type CommandSession } from '../../ui';
 import { formatAgentToken } from '../command-auth/token-output';
@@ -28,19 +30,36 @@ export type { CodexListResult, CodexRemoveResult } from './contracts';
 
 export type CodexConfigureOptions = { readonly restoreMigration?: string };
 
+const missingCodex = (): CliExit => new CliExit(EXIT.unrecoverable, m['cli.agent.codex.not_installed']());
+
+/** PATH first, then the Codex binary shipped inside the ChatGPT app. */
+export function resolveCodexExecutable(
+  which: (command: string) => string | null = Bun.which,
+  exists: (path: string) => boolean = existsSync,
+  home: string = homedir(),
+): string | undefined {
+  const onPath = which('codex');
+  if (onPath !== null) return onPath;
+  const bundled = [
+    '/Applications/ChatGPT.app/Contents/Resources/codex',
+    join(home, 'Applications/ChatGPT.app/Contents/Resources/codex'),
+  ];
+  return bundled.find((path) => exists(path));
+}
+
 const checkCodexInstalled = async (): Promise<string> => {
+  const executable = resolveCodexExecutable();
+  if (executable === undefined) throw missingCodex();
   let child: ReturnType<typeof Bun.spawn>;
   try {
-    child = Bun.spawn(['codex', '--version'], { stdout: 'pipe', stderr: 'pipe' });
+    child = Bun.spawn([executable, '--version'], { stdout: 'pipe', stderr: 'pipe' });
   } catch {
-    throw new Error('Codex installation is missing');
+    throw missingCodex();
   }
   const output = await new Response(child.stdout as ReadableStream<Uint8Array>).text();
   const exit = await child.exited;
   const version = output.match(/^codex-cli\s+(\d+\.\d+\.\d+)\b/m)?.[1];
-  if (exit !== 0 || version === undefined) {
-    throw new Error('Codex installation is missing');
-  }
+  if (exit !== 0 || version === undefined) throw missingCodex();
   return version;
 };
 
