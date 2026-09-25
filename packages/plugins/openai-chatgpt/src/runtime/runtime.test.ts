@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_USER_AGENT, createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from '.';
+import { createOpenAIChatGPTPlugin, englishPresentationText } from '../index';
 import type { ChatGPTCredential } from '../schema';
 import { guardianRequest, syntheticGuardianInput } from './guardian/fixture';
 
@@ -375,18 +376,20 @@ function requiredCall(calls: readonly FetchCall[], index: number): FetchCall {
 }
 
 test.each(['default', 'systemOne', 'systemOneReviewDenied'] as const)(
-  'registers a private capture hint only for active strategy %s',
+  'registers a payload hint from setup only for active strategy %s',
   async (guardianStrategy) => {
     let hint: unknown;
-    const context = {
-      credentials: staticCredentialPort(credential()),
-      options: {},
-      catalog: emptyCatalog(),
-      __aioRegisterPayloadHint: (value: unknown) => {
-        hint = value;
+    await createOpenAIChatGPTPlugin(englishPresentationText).setup(
+      {
+        oauth: { register() {} },
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        raw: { wrap() {} },
+        registerPayloadCaptureHint(value: unknown) {
+          hint = value;
+        },
       },
-    };
-    await createOpenAIChatGPTRuntime(context, { guardianStrategy });
+      { guardianStrategy, guardianProviderId: 'evaluation', guardianModelId: 'review' },
+    );
     expect(typeof hint).toBe(guardianStrategy === 'default' ? 'undefined' : 'function');
   },
 );

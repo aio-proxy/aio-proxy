@@ -14,9 +14,15 @@ import { CapabilityIdSchema } from '@aio-proxy/types';
 import { validateConfigSpec } from './config-spec/index';
 import { isPluginZodSchema } from './schema';
 
+export type PayloadCaptureHint = (
+  request: Request,
+  options: { readonly maxBytes: number },
+) => Promise<'sensitive' | 'normal'>;
+
 export type PluginRegistry = {
   readonly resolveOAuth: (plugin: string, capability: string) => OAuthAdapter | undefined;
   readonly resolveResponsesRaw: (plugin: string) => ResponsesRawWrap | undefined;
+  readonly payloadCaptureHints: () => readonly PayloadCaptureHint[];
   readonly oauthCapabilities: () => readonly {
     readonly plugin: string;
     readonly capability: string;
@@ -39,6 +45,7 @@ export type BuiltInPluginApi = PluginApi & {
   readonly raw: {
     readonly wrap: (protocol: 'openai-response', wrap: ResponsesRawWrap) => void;
   };
+  readonly registerPayloadCaptureHint: (hint: PayloadCaptureHint) => void;
 };
 
 type OAuthCapability = ReturnType<PluginRegistry['oauthCapabilities']>[number];
@@ -203,6 +210,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
   const committed = new Map<string, OAuthCapability>();
   const committedCpaTypes = new Map<string, string>();
   const responsesRaw = new Map<string, ResponsesRawWrap>();
+  const payloadCaptureHints: PayloadCaptureHint[] = [];
   const registry: PluginRegistry = {
     resolveOAuth(plugin, capability) {
       return committed.get(`${plugin}\0${capability}`)?.adapter;
@@ -213,6 +221,9 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
     oauthCapabilities() {
       return [...committed.values()];
     },
+    payloadCaptureHints() {
+      return payloadCaptureHints;
+    },
   };
 
   return {
@@ -221,6 +232,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
       const staged = new Map<string, OAuthCapability>();
       const stagedCpaTypes = new Set<string>();
       let stagedResponsesRaw: ResponsesRawWrap | undefined;
+      let stagedPayloadHint: PayloadCaptureHint | undefined;
       let sealed = false;
       const api = {
         logger: createPluginLogger(['aio-proxy', 'plugin', plugin], options),
@@ -248,6 +260,11 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
                   stagedResponsesRaw = wrap;
                 },
               },
+              registerPayloadCaptureHint(hint: PayloadCaptureHint) {
+                if (sealed) throw new Error('Plugin staging registry is sealed');
+                if (stagedPayloadHint !== undefined) throw new Error('Duplicate payload capture hint');
+                stagedPayloadHint = hint;
+              },
             }
           : {}),
       } as BuiltInPluginApi;
@@ -265,6 +282,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
             }
           }
           if (stagedResponsesRaw !== undefined) responsesRaw.set(plugin, stagedResponsesRaw);
+          if (stagedPayloadHint !== undefined) payloadCaptureHints.push(stagedPayloadHint);
         },
       };
     },

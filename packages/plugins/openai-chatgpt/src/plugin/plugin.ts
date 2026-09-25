@@ -24,6 +24,7 @@ import {
 } from '../plugin-options';
 import { readOpenAIChatGPTQuota, resetOpenAIChatGPTQuota } from '../quota/index';
 import { createGuardianRawInvoke } from '../runtime/guardian';
+import { guardianPayloadHint } from '../runtime/guardian/request';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
 
@@ -191,6 +192,13 @@ export function createOpenAIChatGPTPlugin(
       wrap?.('openai-response', ({ original, evaluate }) =>
         createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
       );
+      const registerPayloadCaptureHint =
+        'registerPayloadCaptureHint' in api && typeof api.registerPayloadCaptureHint === 'function'
+          ? (api.registerPayloadCaptureHint as (hint: typeof guardianPayloadHint) => void)
+          : undefined;
+      if (parsed.guardianStrategy === 'systemOne' || parsed.guardianStrategy === 'systemOneReviewDenied') {
+        registerPayloadCaptureHint?.(guardianPayloadHint);
+      }
     },
     {
       displayName: presentationText.pluginLabel ?? 'OpenAI ChatGPT',

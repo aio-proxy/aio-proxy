@@ -10,7 +10,6 @@ import {
   syntheticGuardianInput,
 } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/fixture';
 import { guardianQuestions } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/questions';
-import { guardianPayloadHint } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/request';
 import { defineProviderRouteSource, rawProvider } from '../../../__tests__/pipeline-helpers';
 import { createServerLogSink } from '../../logging/bridge';
 import { createObservedFetch } from '../../request-logging';
@@ -100,7 +99,7 @@ async function harness(
     modelId: 'codex-auto-review',
     protocol: ProviderProtocol.OpenAIResponse,
     invoke: async (request) => {
-      clean();
+      if (options.strategy !== 'default' && options.registerWrapper !== false) clean();
       apiReviewRequests.push(request);
       return options.original
         ? options.original(request)
@@ -183,6 +182,7 @@ async function harness(
   staged.commit();
   Object.assign(snapshot, {
     config,
+    payloadCaptureHints: pluginHost.registry.payloadCaptureHints(),
     plugins: {
       registry: pluginHost.registry,
       plugins: new Map([['@aio-proxy/plugin-openai-chatgpt', { builtIn: true, state: { status: 'ready' } }]]),
@@ -204,9 +204,12 @@ async function harness(
         },
       };
     },
-    preObservationCapturePolicy: async (request, _snapshot, maxBytes) => ({
-      capturePayload: (await guardianPayloadHint(request, { maxBytes })) !== 'sensitive',
-    }),
+    preObservationCapturePolicy: async (request, snapshot, maxBytes) => {
+      for (const hint of snapshot.payloadCaptureHints ?? []) {
+        if ((await hint(request, { maxBytes })) === 'sensitive') return { capturePayload: false };
+      }
+      return { capturePayload: true };
+    },
     requestRecorder: createRequestTraceRecorder({
       store: {
         startRoot: (value) => {
@@ -309,7 +312,7 @@ test('a reload after lease does not change this request', async () => {
   try {
     const current = h.source.acquireProviderSnapshot();
     current.release();
-    const reloaded = { ...current.snapshot, plugins: current.snapshot.plugins };
+    const reloaded = Object.assign(Object.create(Object.getPrototypeOf(current.snapshot)), current.snapshot);
     reloaded.config = {
       ...current.snapshot.config,
       plugins: [
@@ -407,6 +410,16 @@ for (const target of ['missing', 'disabled'] as const)
       h.close();
     }
   });
+
+test('a Guardian request hides its body without a ChatGPT account', async () => {
+  const h = await harness();
+  try {
+    await (await h.send()).text();
+    expect(JSON.stringify(h.logs)).not.toContain(sentinel);
+  } finally {
+    h.close();
+  }
+});
 
 test('non-Guardian Responses still records ordinary debug bodies', async () => {
   const h = await harness();

@@ -75,9 +75,13 @@ describe('PluginRegistry staging', () => {
     const builtIn = stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
     const wrap = ({ original }) => original;
     builtIn.api.raw.wrap('openai-response', wrap);
+    const hint = async () => 'sensitive' as const;
+    builtIn.api.registerPayloadCaptureHint(hint);
+    expect(registry.payloadCaptureHints()).toEqual([]);
     builtIn.seal();
     builtIn.commit();
     expect(registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt')).toBe(wrap);
+    expect(registry.payloadCaptureHints()).toEqual([hint]);
 
     const thirdParty = stage('@example/oauth');
     expect('raw' in thirdParty.api).toBe(false);

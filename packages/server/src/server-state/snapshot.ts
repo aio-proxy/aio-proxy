@@ -126,7 +126,10 @@ export async function buildSnapshot(
   );
   return {
     config: configWithExtend,
-    payloadCaptureHints: compact(oauth.map((item) => item.payloadCaptureHint)),
+    payloadCaptureHints: [
+      ...compact(oauth.map((item) => item.payloadCaptureHint)),
+      ...plugins.registry.payloadCaptureHints(),
+    ],
     plugins,
     probes: base.probes,
     providers,
@@ -288,7 +291,12 @@ export function buildSnapshotWithProviders(
 
 export function emptyPluginSnapshot(): PluginRegistrySnapshot {
   return {
-    registry: { resolveOAuth: () => undefined, resolveResponsesRaw: () => undefined, oauthCapabilities: () => [] },
+    registry: {
+      resolveOAuth: () => undefined,
+      resolveResponsesRaw: () => undefined,
+      oauthCapabilities: () => [],
+      payloadCaptureHints: () => [],
+    },
     plugins: new Map(),
   };
 }
