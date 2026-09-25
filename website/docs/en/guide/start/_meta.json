@@ -8,5 +8,12 @@
     "type": "file",
     "name": "getting-started",
     "label": "Quick Start"
+  },
+  {
+    "type": "dir",
+    "name": "install-deploy",
+    "label": "Installation & Deployment",
+    "collapsible": true,
+    "collapsed": false
   }
 ]

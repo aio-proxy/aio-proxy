@@ -3,5 +3,35 @@
     "type": "dir-section-header",
     "name": "start",
     "label": "Getting Started"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "routing",
+    "label": "Routing & Protocols"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "configuration",
+    "label": "Configuration"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "providers",
+    "label": "Model Providers"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "integrations",
+    "label": "Clients & Agents"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "observability",
+    "label": "Observability"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "reference",
+    "label": "CLI & Reference"
   }
 ]

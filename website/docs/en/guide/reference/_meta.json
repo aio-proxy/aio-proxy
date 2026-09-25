@@ -1,0 +1,12 @@
+[
+  {
+    "type": "file",
+    "name": "cli",
+    "label": "CLI Reference"
+  },
+  {
+    "type": "file",
+    "name": "troubleshooting",
+    "label": "FAQ & Troubleshooting"
+  }
+]

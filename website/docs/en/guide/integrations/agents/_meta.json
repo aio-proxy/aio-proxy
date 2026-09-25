@@ -1,0 +1,27 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "Native Agents Overview"
+  },
+  {
+    "type": "file",
+    "name": "codex",
+    "label": "OpenAI Codex"
+  },
+  {
+    "type": "file",
+    "name": "grok",
+    "label": "xAI Grok Build"
+  },
+  {
+    "type": "file",
+    "name": "opencode",
+    "label": "OpenCode"
+  },
+  {
+    "type": "file",
+    "name": "pi-omp",
+    "label": "Pi / OMP"
+  }
+]

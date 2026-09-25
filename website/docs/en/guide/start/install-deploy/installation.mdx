@@ -1,0 +1,82 @@
+---
+description: Multiple ways to install the AIO Proxy CLI across macOS, Linux, and Windows.
+---
+
+import { CommandTabs } from '@rspress/core/theme';
+
+# Installation Guide
+
+AIO Proxy offers prebuilt native standalone binaries as well as package manager distributions across macOS (Apple Silicon / Intel), Linux (x64 / arm64), and Windows (WSL2).
+
+---
+
+## Package Managers (Recommended)
+
+<CommandTabs
+  commands={{
+    brew: 'brew install aio-proxy/tap/aio-proxy',
+    bun: 'bun add -g aio-proxy',
+    npm: 'npm install -g aio-proxy',
+    pnpm: 'pnpm add -g aio-proxy',
+    curl: 'curl -fsSL https://aioproxy.dev/install.sh | sh',
+  }}
+/>
+
+:::tip Alias
+The npm, bun, and curl installation scripts simultaneously register the convenient shortcut alias `aiop`.
+:::
+
+---
+
+## Standalone Binary (curl Script)
+
+On macOS or Linux, install directly without requiring Node.js or Bun:
+
+```sh
+curl -fsSL https://aioproxy.dev/install.sh | sh
+```
+
+By default, the script places the executable in `~/.local/bin` (or `/usr/local/bin` if root). Ensure `~/.local/bin` is in your shell `PATH`.
+
+---
+
+## Verify Installation
+
+Check that the CLI is correctly installed:
+
+```sh
+aio-proxy --version
+```
+
+If it prints the current version (e.g. `aio-proxy 0.21.0`), the installation was successful.
+
+---
+
+## Upgrade
+
+### Upgrading with Package Managers
+
+```sh
+# Homebrew
+brew upgrade aio-proxy
+
+# npm
+npm install -g aio-proxy@latest
+
+# Bun
+bun add -g aio-proxy@latest
+```
+
+### Self-Upgrade via CLI
+
+AIO Proxy CLI includes a self-updating command:
+
+```sh
+aio-proxy upgrade
+```
+
+---
+
+## Next Steps
+
+After completing installation, proceed to [Quick Start](../getting-started) to run the server, or explore [Background Service](./service) and [Docker Deployment](./docker) for persistent setups.
