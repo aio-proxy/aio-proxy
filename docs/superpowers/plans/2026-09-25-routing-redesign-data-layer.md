@@ -28,7 +28,6 @@
 | `packages/types/src/dashboard/routing/routing.ts`（改） | `DashboardRoutingCatalog` + 挂到 `DashboardRoutingModel` |
 | `packages/types/src/dashboard/routing/traffic.ts`（新） | 两个流量端点的 DTO 与 schema |
 | `packages/types/src/dashboard/routing/index.ts`（改） | 导出 traffic |
-| `packages/core/src/db/schema/trace-span.ts`（改） | attempt span 的 partial index |
 | `packages/core/src/db/trace-store/routing-traffic/`（新） | 聚合查询（总量 + 分桶） |
 | `packages/core/src/db/trace-store/types.ts`（改） | `TraceStore` 增加两个方法与查询类型 |
 | `packages/core/src/db/trace-store/trace-store.ts`（改） | 接线 |
@@ -384,68 +383,22 @@ git commit -m "feat(types): add routing traffic DTOs"
 
 ---
 
-### Task 3: attempt span 的 partial index
+### Task 3: 已取消 —— 不需要新索引
 
-**Files:**
-- Modify: `packages/core/src/db/schema/trace-span.ts:97`（索引数组末尾，`trace_span_trace_started_idx` 之后）
-- Generated: `packages/core/src/db/migrations/0009_*.sql`、`meta/0009_snapshot.json`、`meta/_journal.json`、`migrations.manifest.ts`
-- Test: `packages/core/src/db/migrations/migrations.test.ts`
+**跳过这个任务。** 原计划在此处为 attempt span 加一条 partial index `trace_span_attempt_ended_idx`。已用 `EXPLAIN QUERY PLAN` 实测证伪，并已回退（commit `eeb4505f6` revert 了 `f2a158ccb`）。
 
-**Interfaces:**
-- Consumes: 无
-- Produces: 数据库索引 `trace_span_attempt_ended_idx`。Task 4 的查询依赖它，否则 45 天的 span 会全表扫。
+**证据：**
 
-**为什么需要：** `trace_span` 上现有索引全部以 `parent_span_id` 为首列（为 root span 优化）。Task 4 要按 `ended_at` 范围扫 attempt span（`attempt_index is not null`），没有任何现有索引能服务这个谓词。
+- 原查询把范围过滤放在 `attempt.ended_at`。此时无论索引是 `(attempt_index, ended_at)` 还是 `(ended_at) WHERE attempt_index IS NOT NULL`，planner **都不用它**，而是从 root 驱动：
+  `SEARCH root USING INDEX trace_span_root_model_started_idx (parent_span_id=? AND requested_model_id>?)` —— **完全没有时间谓词**，等于扫遍 45 天里所有 `requested_model_id` 非空的 root span。
+- 把范围过滤改到 `root.ended_at` 后，planner 用上**已经存在**的索引：
+  `SEARCH root USING INDEX trace_span_root_ended_idx (parent_span_id=? AND ended_at>? AND ended_at<?)` —— 真正的时间区间 seek。而且加不加新索引，执行计划**完全相同**。
+- 仓库里没有任何 `ANALYZE`，因此 SQLite 没有统计信息，skip-scan 永远不可能生效 —— `(attempt_index, ended_at)` 无法服务裸 `ended_at` 范围。这是结构性的，不是统计信息的偶然。
 
-- [ ] **Step 1: 写失败测试**
+**顺带修掉的一个正确性 bug：** 原设计里 `attemptRows` 按 `attempt.ended_at` 过滤，而 `finalRows` 按 root 的 `ended_at` 过滤 —— 同一个窗口的两个份额用了**两套时间基准**，窗口边界上会出现「attempt 计入了但 final 没计入」。Task 5 现在两个查询统一以 `root.ended_at` 为准。
 
-在 `migrations.test.ts` 的 `expectCurrentPersistenceContract` 函数内，`dailyColumns` 断言之后、函数结束前插入：
+**另一个教训（给未来真需要生成迁移的任务）：** 本任务原本的提交命令是 `git add packages/core/src/db/schema/trace-span.ts packages/core/src/db/migrations`，但 `migrations.manifest.ts` 位于 `packages/core/src/db/` 下、是 `migrations/` 目录的**兄弟**而不是其成员，因此那条命令从不 stage 它。实测后果：提交出的树里 manifest 缺少新迁移，`runtime migrations match the committed Drizzle journal` 在干净检出上会失败；而当时测试通过只是因为工作区里有未提交的 manifest。生成迁移后必须显式 `git add packages/core/src/db/migrations.manifest.ts`。
 
-```ts
-  const traceIndexes = sqlite
-    .query<{ name: string }, []>(
-      "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'trace_span' ORDER BY name",
-    )
-    .all()
-    .map(({ name }) => name);
-  // attempt span 按 ended_at 的范围扫描没有这条索引就会退化成全表扫：
-  // 其余索引首列都是 parent_span_id，只服务 root span。
-  expect(traceIndexes).toContain('trace_span_attempt_ended_idx');
-```
-
-- [ ] **Step 2: 跑测试确认失败**
-
-Run: `bun test packages/core/src/db/migrations/migrations.test.ts`
-Expected: FAIL —— `applied migrations deploy the trace persistence contract` 报 `expected [...] to contain 'trace_span_attempt_ended_idx'`。
-
-- [ ] **Step 3: 加索引到 schema**
-
-在 `packages/core/src/db/schema/trace-span.ts` 索引数组里，`index('trace_span_trace_started_idx')...` 之后加：
-
-```ts
-    // attempt span 的时间范围扫描（按模型 × Provider 聚合流量用）。其余索引首列
-    // 都是 parent_span_id，只服务 root span，对 attempt 行的 ended_at 谓词无效。
-    index('trace_span_attempt_ended_idx')
-      .on(table.attemptIndex, table.endedAt)
-      .where(sql.raw('attempt_index IS NOT NULL')),
-```
-
-- [ ] **Step 4: 生成迁移**
-
-Run: `bun run build:migrations`
-Expected: 输出 `Updated 10 migrations.`，并新增 `packages/core/src/db/migrations/0009_<随机名>.sql`（内容是一条 `CREATE INDEX ... WHERE attempt_index IS NOT NULL`）与 `meta/0009_snapshot.json`，`_journal.json` 多一条 entry，`migrations.manifest.ts` 被重写。
-
-- [ ] **Step 5: 跑测试确认通过**
-
-Run: `bun test packages/core/src/db/migrations/migrations.test.ts`
-Expected: PASS。`runtime migrations match the committed Drizzle journal` 也必须绿——它校验 manifest 与 journal 一致且每条 SQL 的 sha256 匹配，如果第 4 步漏跑就会在这里失败。
-
-- [ ] **Step 6: 提交**
-
-```bash
-git add packages/core/src/db/schema/trace-span.ts packages/core/src/db/migrations
-git commit -m "feat(core): index attempt spans by end time for routing traffic"
-```
 
 ---
 
@@ -628,7 +581,7 @@ git commit -m "refactor(core): extract usage range resolution for reuse"
 - Modify: `packages/core/src/db/trace-store/trace-store.ts`
 
 **Interfaces:**
-- Consumes: Task 2 的 DTO；Task 3 的索引；Task 4 的 `resolveUsageRange` / `usageBucketKeys` / `usageLocalDate`
+- Consumes: Task 2 的 DTO；Task 4 的 `resolveUsageRange` / `usageBucketKeys` / `usageLocalDate`
 - Produces:
   - `type RoutingTrafficQuery = { readonly range: UsageOverviewRange; readonly now?: Date }`
   - `type RoutingTrafficBucketsQuery = RoutingTrafficQuery & { readonly modelId: string }`
@@ -638,6 +591,8 @@ git commit -m "refactor(core): extract usage range resolution for reuse"
   Task 7 调用这两个方法。
 
 **两个维度来自两类行，必须 join `trace_id`：** root span 带 `requested_model_id` 与 `final_provider_id`；attempt span 带 `provider_id` 与 `termination_reason`。attempt span 的 `parent_span_id` 指向 inference span 而**不是** root span（见 `overview.test.ts` 的 seed 方式），所以只能按 `trace_id` 关联，不能按父子关系。
+
+**三个查询统一以 `root.ended_at` 为时间基准。** 不要改成 `attempt.ended_at`：那会让同一个窗口出现两套时间基准（窗口边界上 attempt 计入而 final 不计入），并且让 planner 拿不到驱动表上的时间谓词，退化成扫满整个 45 天保留窗口。已用 `EXPLAIN QUERY PLAN` 实测，详见已取消的 Task 3。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -963,17 +918,26 @@ function percentile95(durations: string): number | null {
 function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttemptRow[] {
   return all<RawAttemptRow>(
     db,
+    // Drive from the root span and filter on ITS ended_at. Two reasons, both verified:
+    // 1. Correctness — finalRows windows on the root's ended_at too, so both halves of a
+    //    share comparison must use the same time basis or an edge trace lands in one and
+    //    not the other.
+    // 2. Plan — this is the only shape SQLite can narrow by time here. It uses the existing
+    //    trace_span_root_ended_idx (parent_span_id=? AND ended_at>? AND ended_at<?).
+    //    Filtering on attempt.ended_at instead yields no time predicate on the driving
+    //    table at all, scanning the whole retention window.
     `select root.requested_model_id as modelId,
       attempt.provider_id as providerId,
       cast(count(*) as text) as attemptCount,
       cast(count(case when attempt.termination_reason is null then 1 end) as text) as successCount,
       json_group_array(max(0, attempt.ended_at - attempt.started_at)) as durations
-    from trace_span attempt
-      join trace_span root on root.trace_id = attempt.trace_id and root.parent_span_id is null
-    where attempt.attempt_index is not null
-      and attempt.provider_id is not null
-      and attempt.name != ?
-      and attempt.ended_at >= ? and attempt.ended_at <= ?
+    from trace_span root
+      join trace_span attempt on attempt.trace_id = root.trace_id
+        and attempt.attempt_index is not null
+        and attempt.provider_id is not null
+        and attempt.name != ?
+    where root.parent_span_id is null
+      and root.ended_at >= ? and root.ended_at <= ?
       and root.requested_model_id is not null
     group by root.requested_model_id, attempt.provider_id`,
     [SKIPPED_SPAN_NAME, range.start.getTime(), range.end.getTime()],

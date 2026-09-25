@@ -51,14 +51,12 @@ models.dev 冷缓存时 `catalog` 为 `undefined`。这是正常状态而非错�
 
 需要 attempt 级数据，因为「某 provider 失败后被 failover 掉」只存在于 attempt 层；仅读 root span 能得出实际份额，但得不出单个 provider 的失败率，流量 tab 就只能回答「偏了」而回答不了「为什么偏了」。
 
-**索引迁移。** 现有索引全部以 `parent_span_id` 为前缀（为 root span 优化），attempt span 按 `ended_at` 做范围扫描无索引可用，等于 45 天 span 全表扫。新增 partial index：
+**不需要新索引，但时间基准必须统一。** 三个聚合查询一律以 **`root.ended_at`** 为窗口边界，并从 root span 驱动。理由有两条，都经 `EXPLAIN QUERY PLAN` 实测：
 
-```ts
-index('trace_span_attempt_ended_idx').on(table.attemptIndex, table.endedAt)
-  .where(sql.raw('attempt_index IS NOT NULL'))
-```
+- **正确性。** 实际份额的分子（`finalCount`）来自 root span。如果 attempt 侧改按 `attempt.ended_at` 过滤，同一个窗口就有了两套时间基准，边界上的 trace 会出现「attempt 计入而 final 未计入」，份额随之失真。
+- **执行计划。** 以 `root.ended_at` 过滤会命中**已经存在**的 `trace_span_root_ended_idx`（`parent_span_id=? AND ended_at>? AND ended_at<?`），是真正的区间 seek。改用 `attempt.ended_at` 则驱动表上没有任何时间谓词，planner 退化成扫满 45 天保留窗口——而且此时无论加什么形状的 attempt 索引都不会被使用：仓库里没有 `ANALYZE`，SQLite 没有统计信息，skip-scan 永远不可能生效。
 
-走 `packages/core/src/db/migrations`（drizzle-kit 已在用，下一个序号 `0009`），并更新旁边的 `migrations.test.ts`。
+因此本次**不新增任何迁移**，`packages/core/src/db/schema/` 不改动。
 
 ### 两个端点
 
@@ -203,14 +201,14 @@ Header：`modelId` + lab + `releaseDate` + 风险 chip；右上一个 **页面�
 PR 内部仍按数据层先行的顺序推进，因为 UI 消费的契约必须先存在：
 
 1. `types` — 新 DTO 与 schema（沿用 `matchesDto` 模式），`DashboardRoutingModel.catalog`。
-2. `core` — 索引迁移（`0009_*.sql` + 更新 `migrations.test.ts`）与 attempt 级聚合查询。
+2. `core` — 抽出 usage range 解析（`24h/7d/14d/30d` 的边界算法现为 `usage-overview.ts` 私有函数，两处共用必须只有一个定义）与 attempt 级聚合查询。无 schema 改动。
 3. `server` — 两个 traffic 端点与 `catalog-facts.ts`。
 4. `dashboard` — 列表页重做、splat 详情路由、删除 `RoutingEditorDrawer`。
 5. i18n 键与 changeset。
 
 一个 changeset，同时列出 `aio-proxy` 与所有涉及的内部包。
 
-代价要认：这个 PR 会同时包含一条 SQLite 迁移、两个新端点和一次页面重写，review 面较大。缓解办法是让提交历史按上面五步分段，使 diff 可以逐段读，而不是把所有改动压成一个提交。
+代价要认：这个 PR 会同时包含两个新端点、一次 core 重构和一次页面重写，review 面较大。缓解办法是让提交历史按上面五步分段，使 diff 可以逐段读，而不是把所有改动压成一个提交。
 
 ## 测试
 
