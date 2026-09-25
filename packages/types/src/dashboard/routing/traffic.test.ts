@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { ZodType } from 'zod';
+
 import * as dashboard from '../index';
+
+const schema = (name: string): ZodType => {
+  expect(dashboard).toHaveProperty(name);
+  return Reflect.get(dashboard, name) as ZodType;
+};
 
 const provider = {
   providerId: 'primary',
@@ -10,15 +17,23 @@ const provider = {
   p95LatencyMs: 1_240,
 } as const;
 
+const buckets = {
+  range: '24h',
+  modelId: 'anthropic/claude-sonnet-4.5',
+  rangeStart: '2026-09-24T08:00:00.000Z',
+  rangeEnd: '2026-09-25T08:00:00.000Z',
+  bucketUnit: 'hour',
+  providerIds: ['primary', 'fallback'],
+  buckets: [{ bucket: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
+} as const;
+
 describe('dashboard routing traffic contracts', () => {
   test('parses a totals response and keeps counts as decimal strings', () => {
-    const totals = Reflect.get(dashboard, 'DashboardRoutingTrafficResponseSchema') as {
-      parse: (value: unknown) => unknown;
-    };
+    const totals = schema('DashboardRoutingTrafficResponseSchema');
     const value = {
       range: '24h',
-      from: '2026-09-24T08:00:00.000Z',
-      to: '2026-09-25T08:00:00.000Z',
+      rangeStart: '2026-09-24T08:00:00.000Z',
+      rangeEnd: '2026-09-25T08:00:00.000Z',
       models: [{ modelId: 'anthropic/claude-sonnet-4.5', providers: [provider] }],
     };
 
@@ -26,13 +41,11 @@ describe('dashboard routing traffic contracts', () => {
   });
 
   test('allows a null p95 when a provider has no completed attempt', () => {
-    const totals = Reflect.get(dashboard, 'DashboardRoutingTrafficResponseSchema') as {
-      safeParse: (value: unknown) => { success: boolean };
-    };
+    const totals = schema('DashboardRoutingTrafficResponseSchema');
     const base = {
       range: '7d',
-      from: '2026-09-18T00:00:00.000Z',
-      to: '2026-09-25T08:00:00.000Z',
+      rangeStart: '2026-09-18T00:00:00.000Z',
+      rangeEnd: '2026-09-25T08:00:00.000Z',
       models: [{ modelId: 'gpt-5-codex', providers: [{ ...provider, p95LatencyMs: null }] }],
     };
 
@@ -43,20 +56,30 @@ describe('dashboard routing traffic contracts', () => {
     ).toBe(false);
   });
 
-  test('parses a buckets response for one model', () => {
-    const buckets = Reflect.get(dashboard, 'DashboardRoutingTrafficBucketsResponseSchema') as {
-      parse: (value: unknown) => unknown;
-    };
+  test('rejects an unknown key on a traffic provider', () => {
+    const totals = schema('DashboardRoutingTrafficResponseSchema');
     const value = {
       range: '24h',
-      modelId: 'anthropic/claude-sonnet-4.5',
-      from: '2026-09-24T08:00:00.000Z',
-      to: '2026-09-25T08:00:00.000Z',
-      bucketUnit: 'hour',
-      providerIds: ['primary', 'fallback'],
-      buckets: [{ bucket: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
+      rangeStart: '2026-09-24T08:00:00.000Z',
+      rangeEnd: '2026-09-25T08:00:00.000Z',
+      models: [
+        {
+          modelId: 'anthropic/claude-sonnet-4.5',
+          providers: [{ ...provider, failureCount: '15' }],
+        },
+      ],
     };
 
-    expect(buckets.parse(value)).toEqual(value);
+    expect(totals.safeParse(value).success).toBe(false);
+  });
+
+  test('parses a buckets response for one model', () => {
+    expect(schema('DashboardRoutingTrafficBucketsResponseSchema').parse(buckets)).toEqual(buckets);
+  });
+
+  test('rejects a bucket unit outside the charted granularities', () => {
+    const response = schema('DashboardRoutingTrafficBucketsResponseSchema');
+
+    expect(response.safeParse({ ...buckets, bucketUnit: 'week' }).success).toBe(false);
   });
 });
