@@ -21,6 +21,30 @@ test('passes a safe upstream diagnostic through the masked CCA error', async () 
   expect(errorSurface(error)).toContain(message);
 });
 
+test('propagates caller cancellation while reading a CCA error diagnostic', async () => {
+  const reason = { kind: 'diagnostic-read-cancelled' };
+  const abort = new AbortController();
+  const model = createAntigravityLanguageModel(
+    'gemini-3-flash-agent',
+    fixtureRuntime({
+      execute: async () => {
+        const body = new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              abort.abort(reason);
+              controller.error(reason);
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        return new Response(body, { status: 400 });
+      },
+    }),
+  );
+
+  await expect(model.doGenerate({ ...callOptions(), abortSignal: abort.signal })).rejects.toBe(reason);
+});
+
 test('keeps masking a CCA error that carries anything besides a short message', async () => {
   const marker = 'tool-argument-secret';
   const model = createAntigravityLanguageModel(

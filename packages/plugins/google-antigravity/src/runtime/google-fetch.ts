@@ -52,7 +52,7 @@ export function createAntigravityGoogleFetch(
     if (response.body === null) return createGeminiErrorResponse(500);
     if (!response.ok) {
       const status = response.status;
-      const message = await readSafeDiagnostic(response);
+      const message = await readSafeDiagnostic(response, request.signal);
       return createGoogleCodecErrorResponse(status, message);
     }
     if (target.stream) {

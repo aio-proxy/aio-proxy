@@ -7,9 +7,9 @@ type ReadState = {
   done: boolean;
 };
 
-export async function hasExplicitNoCapacity(response: Response, signal?: AbortSignal): Promise<boolean> {
+async function readInspected(response: Response, signal?: AbortSignal): Promise<Uint8Array | undefined> {
   const body = response.clone().body;
-  if (body === null) return false;
+  if (body === null) return undefined;
   const reader = body.getReader();
   const state: ReadState = { done: false };
   const reading = readBounded(reader, state);
@@ -25,11 +25,7 @@ export async function hasExplicitNoCapacity(response: Response, signal?: AbortSi
   try {
     throwIfAborted(signal);
     const bytes = await Promise.race([reading, interrupted]);
-    if (bytes === inspectionTimedOut || bytes === undefined) return false;
-    return explicitNoCapacity(bytes);
-  } catch {
-    throwIfAborted(signal);
-    return false;
+    return bytes === inspectionTimedOut ? undefined : bytes;
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
     signal?.removeEventListener('abort', abort);
@@ -38,6 +34,16 @@ export async function hasExplicitNoCapacity(response: Response, signal?: AbortSi
       await reading.catch(() => undefined);
     }
     reader.releaseLock();
+  }
+}
+
+export async function hasExplicitNoCapacity(response: Response, signal?: AbortSignal): Promise<boolean> {
+  try {
+    const bytes = await readInspected(response, signal);
+    return bytes === undefined ? false : explicitNoCapacity(bytes);
+  } catch {
+    throwIfAborted(signal);
+    return false;
   }
 }
 
@@ -74,19 +80,24 @@ const SAFE_DIAGNOSTIC_MAX_CHARS = 200;
 // A CCA failure may carry tool arguments, redirect targets, or request echoes
 // beside the diagnostic. Only a short message, with nothing else at the root,
 // is safe to show the caller. ponytail: one shape check, not a phrase list.
-export async function readSafeDiagnostic(response: Response): Promise<string | undefined> {
+export async function readSafeDiagnostic(response: Response, signal?: AbortSignal): Promise<string | undefined> {
+  const bytes = await readInspected(response, signal);
+  if (bytes === undefined) return undefined;
   try {
-    return safeUpstreamDiagnostic(await response.json());
-  } catch {
-    return undefined;
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return safeUpstreamDiagnostic(payload);
+  } catch (error) {
+    throwIfAborted(signal);
+    if (error instanceof SyntaxError) return undefined;
+    throw error;
   }
 }
 
 export function safeUpstreamDiagnostic(payload: unknown): string | undefined {
   const root = record(payload);
-  const error = record(root?.error);
+  const error = record(root?.['error']);
   if (root === undefined || error === undefined || Object.keys(root).length !== 1) return undefined;
-  const message = error.message;
+  const message = error['message'];
   if (typeof message !== 'string' || message.length === 0 || message.length > SAFE_DIAGNOSTIC_MAX_CHARS)
     return undefined;
   if (message.includes('://') || /[\r\n<>]/.test(message)) return undefined;

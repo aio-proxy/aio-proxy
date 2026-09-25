@@ -62,7 +62,7 @@ export function createGeminiRawResolver(
 
         if (!response.ok) {
           const status = response.status;
-          const message = await readSafeDiagnostic(response);
+          const message = await readSafeDiagnostic(response, request.signal);
           return createGeminiErrorResponse(status, message);
         }
         if (stream) {
