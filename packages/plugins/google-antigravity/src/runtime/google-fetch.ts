@@ -6,6 +6,7 @@ import { repairGroundingSse, repairGroundingUrls } from '../protocol/grounding-u
 import { type AntigravityThinkingOption, bindAntigravityThinking } from '../protocol/thinking';
 import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
 import { ccaGoogleSearch, ccaWebSearchInstruction } from '../protocol/web-search';
+import { readSafeDiagnostic } from './error-response';
 import { createGeminiErrorResponse, unwrapCcaJson } from './raw';
 import { unwrapCcaSse } from './stream';
 import type { CcaTransport } from './transport';
@@ -51,8 +52,8 @@ export function createAntigravityGoogleFetch(
     if (response.body === null) return createGeminiErrorResponse(500);
     if (!response.ok) {
       const status = response.status;
-      await response.body?.cancel().catch(() => undefined);
-      return createGoogleCodecErrorResponse(status);
+      const message = await readSafeDiagnostic(response);
+      return createGoogleCodecErrorResponse(status, message);
     }
     if (target.stream) {
       const headers = new Headers(response.headers);
@@ -151,15 +152,15 @@ function parseGoogleTarget(url: string, modelId: string): { readonly modelId: st
   return { modelId, stream: match[2] === 'streamGenerateContent' };
 }
 
-function createGoogleCodecErrorResponse(status: number): Response {
+function createGoogleCodecErrorResponse(status: number, message?: string): Response {
   if (!Number.isInteger(status) || status < 300 || status > 399 || status === 304) {
-    return createGeminiErrorResponse(status);
+    return createGeminiErrorResponse(status, message);
   }
   return Response.json(
     {
       error: {
         code: status,
-        message: 'Google Antigravity request failed',
+        message: message ?? 'Google Antigravity request failed',
         status: 'UNKNOWN',
       },
     },
