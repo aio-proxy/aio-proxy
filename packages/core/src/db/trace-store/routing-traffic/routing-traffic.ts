@@ -106,6 +106,8 @@ export function routingTrafficBuckets(
   };
 }
 
+/** One row per (model, Provider): both queries group by exactly those two columns, so callers
+ * assign rather than accumulate. Adding a column to either `group by` breaks that silently. */
 function entry(models: Map<string, Map<string, Accumulated>>, modelId: string, providerId: string): Accumulated {
   const providers = models.get(modelId) ?? new Map<string, Accumulated>();
   models.set(modelId, providers);
@@ -137,6 +139,12 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
     //    table at all, scanning the whole retention window.
     // Attempt spans hang off the inference span rather than the root, so the only usable
     // relation is trace_id.
+    // `attempt.ended_at is not null` guards the duration array: ended_at is nullable and
+    // SQLite's max() returns NULL if any argument is NULL, so an unfinished attempt would
+    // contribute a null that sorts to the front and can displace the p95. The sibling
+    // diagnostics query gets this for free by windowing on the same span's ended_at; here the
+    // window is on root.ended_at, so the attempt side needs it spelled out. It also drops
+    // never-completed attempts from attemptCount, which is the correct reading.
     `select root.requested_model_id as modelId,
       attempt.provider_id as providerId,
       cast(count(*) as text) as attemptCount,
@@ -146,6 +154,7 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
       join trace_span attempt on attempt.trace_id = root.trace_id
         and attempt.attempt_index is not null
         and attempt.provider_id is not null
+        and attempt.ended_at is not null
         and attempt.name != ?
     where root.parent_span_id is null
       and root.ended_at >= ? and root.ended_at <= ?

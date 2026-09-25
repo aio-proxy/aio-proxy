@@ -30,6 +30,9 @@ const RoutingTrafficQuerySchema = z.object({ range: UsageOverviewRangeSchema });
 const RoutingTrafficBucketsQuerySchema = RoutingTrafficQuerySchema.extend({ model: z.string().min(1) });
 
 // One factory keeps the rejection body identical across every query validator in this file.
+// GET validation failures deliberately reuse the mutation error vocabulary: `validation_failed`
+// is a member of DashboardRoutingMutationErrorCodeSchema, and matching the mutation validator
+// above keeps one rejection shape across this file, even though overview/overview.ts differs.
 const queryValidator = <Schema extends z.ZodType>(schema: Schema) =>
   validator('query', (raw, context) => {
     const parsed = schema.safeParse(raw);
@@ -58,8 +61,10 @@ export const createDashboardRoutingRoutes = (state: ServerState) =>
       return context.json(state.traceStore.routingTrafficBuckets({ range, modelId: model }));
     })
     .get('/routing/traffic', trafficValidator, (context) => {
-      // Only `range` is forwarded: `RoutingTrafficQuery.now` is the store's clock for resolving the
-      // time window, so it must never be reachable from the query string.
+      // Destructure `range` rather than forwarding the validated object: the trace store's query
+      // type carries an optional `now` it uses as its clock for resolving the time window. The
+      // local schema cannot produce that key, so this is guarding the store's contract, not this
+      // schema's — forwarding wholesale would let a later schema edit reach the clock.
       const { range } = context.req.valid('query');
       return context.json(state.traceStore.routingTraffic({ range }));
     });

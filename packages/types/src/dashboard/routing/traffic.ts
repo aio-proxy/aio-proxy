@@ -22,7 +22,9 @@ export type DashboardRoutingTrafficProvider = {
   /** Attempts whose termination_reason was null, i.e. attempt-level successes. Compute a
    * success rate as successCount / attemptCount, never against finalCount. */
   readonly successCount: string;
-  /** Null when there is no sample. Never 0, which would read as "zero latency". */
+  /** Nearest-rank p95 over every attempt against this Provider, failures included, so a Provider
+   * that fails fast shows a low p95 beside a poor success rate — read it with successCount, never
+   * alone. Null when there is no sample; never 0, which would read as "zero latency". */
   readonly p95LatencyMs: number | null;
 };
 
@@ -82,7 +84,10 @@ export const DashboardRoutingTrafficResponseSchema = matchesDto<DashboardRouting
 
 export const DashboardRoutingTrafficBucketSchema = matchesDto<DashboardRoutingTrafficBucket>()(
   z.strictObject({
-    // Not z.iso.datetime(): a 'day' bucketUnit produces a day-granularity key like '2026-09-24'.
+    // Always a full ISO instant: usageBucketKeys returns .toISOString() on both branches, so a
+    // 'day' bucketUnit yields local midnight rather than a date-only string. Left loose to match
+    // the sibling DashboardUsageBucketSchema.key; tightening both to z.iso.datetime() is a
+    // separate change, and tightening only one would fork the convention again.
     key: z.string().min(1),
     values: z.record(IdSchema, NonNegativeIntegerStringSchema).readonly(),
   }),

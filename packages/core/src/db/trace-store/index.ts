@@ -2,6 +2,8 @@ export { createTraceStore } from './trace-store';
 export { decodeTraceCursor, encodeTraceCursor } from './trace-queries';
 export type {
   DashboardOverviewQuery,
+  RoutingTrafficBucketsQuery,
+  RoutingTrafficQuery,
   SessionAffinityObservation,
   SessionIdentity,
   SessionResponseOwner,

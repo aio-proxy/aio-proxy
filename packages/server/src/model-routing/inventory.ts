@@ -1,5 +1,6 @@
 import {
   digestProviderEntry,
+  hasCachedModelsCatalog,
   type PluginRepository,
   modelRoutes,
   type RoutableProvider,
@@ -75,10 +76,13 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
     if (!models.has(slug)) models.set(slug, emptyModel(slug, input.rawRecord));
   }
 
-  // Catalog facts read only the models.dev cache: a cold cache leaves the field
-  // empty rather than failing the inventory.
-  for (const model of models.values()) {
-    model.catalog = await routingCatalogFacts(model.modelId);
+  // One cache probe for the whole inventory. readCachedProviderMap memoizes only on a hit, so a
+  // cold or TTL-expired cache would otherwise re-read and re-parse the entire models.dev catalog
+  // once per model. A missing catalog leaves the field empty rather than failing the inventory.
+  if (await hasCachedModelsCatalog()) {
+    for (const model of models.values()) {
+      model.catalog = await routingCatalogFacts(model.modelId);
+    }
   }
 
   return {
