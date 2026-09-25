@@ -1067,7 +1067,7 @@ git commit -m "feat(core): aggregate routing traffic by model and Provider"
 ```ts
 import { afterEach, expect, test } from 'bun:test';
 
-import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../../../__tests__/server.test-support';
+import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from '../../__tests__/server.test-support';
 import { routingCatalogFacts } from './catalog-facts';
 
 afterEach(() => {
@@ -1096,7 +1096,7 @@ test('omits releaseDate entirely when the catalog entry has none', async () => {
 });
 ```
 
-导入路径已核对：`server.test-support.ts` 在 `packages/server/__tests__/`（与 `src/` 同级），从 `src/model-routing/` 出发是 `../../../__tests__/server.test-support`。
+导入路径：`server.test-support.ts` 在 `packages/server/__tests__/`（与 `src/` 同级），从 `src/model-routing/` 出发是 `../../__tests__/server.test-support`（`src/model-routing` → `..` 是 `src` → `../..` 是 `packages/server`）。与 `dashboard-routes/models-dev-lookup.test.ts:10` 的写法一致。
 
 `modelsDevModel` 的 `overrides` 是 `Partial<ModelsDevModel>`，`release_date` 直接透传，**helper 无需修改**。
 
@@ -1124,7 +1124,9 @@ export async function routingCatalogFacts(modelId: string): Promise<DashboardRou
   if (entry === undefined) return undefined;
   const lab = entry.slug.split('/')[0];
   if (lab === undefined || lab === '') return undefined;
-  const releaseDate = entry.metadata.releaseDate;
+  // releaseDate 挂在 catalog 派生的 capabilities 块里，不在 metadata 根上
+  // （见 catalog-metadata.ts:53 与 ModelCapabilitiesSchema）。写成 metadata.releaseDate 会挂 lint:types。
+  const releaseDate = entry.metadata.capabilities?.releaseDate;
   return { lab, ...(releaseDate === undefined ? {} : { releaseDate }) };
 }
 ```
