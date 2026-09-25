@@ -11,11 +11,23 @@ import {
 
 test('uses the ChatGPT app Codex binary when codex is not on PATH', () => {
   const app = '/Applications/ChatGPT.app/Contents/Resources/codex';
-  expect(resolveCodexExecutable(() => null, (path) => path === app, '/tmp/unused')).toBe(app);
+  expect(
+    resolveCodexExecutable(
+      () => null,
+      (path) => path === app,
+      '/tmp/unused',
+    ),
+  ).toBe(app);
 });
 
 test('prefers codex on PATH over the ChatGPT app bundle', () => {
-  expect(resolveCodexExecutable(() => '/usr/local/bin/codex', () => true, '/tmp/unused')).toBe('/usr/local/bin/codex');
+  expect(
+    resolveCodexExecutable(
+      () => '/usr/local/bin/codex',
+      () => true,
+      '/tmp/unused',
+    ),
+  ).toBe('/usr/local/bin/codex');
 });
 
 test('rejects restore migration identifiers before touching Codex storage', async () => {
