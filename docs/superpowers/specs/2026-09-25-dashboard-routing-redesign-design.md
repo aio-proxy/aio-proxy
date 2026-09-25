@@ -154,13 +154,14 @@ routing models 先到即渲染粗条，traffic 到达后补细条。traffic 请�
 
 ### 新增模块文件
 
+- `lib/routing-rows/` — 排序（lab → releaseDate 降序 → modelId）、lab 分组、筛选
 - `lib/routing-risk/` — 风险判定与偏离阈值
 - `lib/routing-traffic/` — 实际份额计算、与配置份额对齐同分母
 - `services/routing-traffic-service.ts` — 两个新端点的 queryOptions
 - `components/routing-health-strip.tsx`
 - `components/routing-share-bar.tsx`
 - `components/routing-lab-filter.tsx`
-- `components/routing-lab-group-header.tsx`
+- `components/routing-lab-group-row.tsx` —— 它渲染的是一个 `TableRow`，不是表头元素，所以叫 row
 
 ## 详情页
 
