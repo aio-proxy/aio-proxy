@@ -10,6 +10,7 @@
 
 ## Global Constraints
 
+- **代码注释一律写英文。** 本计划代码块里的中文注释是**意图说明**，不是要逐字抄进源码的字面内容——落地时把同样的理由用英文写出来。仓库里英文注释是绝对主流（types 3% / core 2% / server 4% 的文件含中文注释），新代码不要逆着这个惯例走。注释解释约束与理由，不复述代码。
 - 所有命令从仓库根目录运行。这是 Bun workspace + Turborepo monorepo。
 - **model id 绝不进 URL 路径段。** `IdSchema = z.string().min(1)`，model id 可含斜杠（OpenRouter 风格 id 字面就是 `anthropic/claude-sonnet-4.5`）。一律用查询参数。
 - **range 枚举复用既有 `UsageOverviewRangeSchema`**（`'24h' | '7d' | '14d' | '30d'`）。不新造枚举。不支持 `90d`：`trace_span` 保留窗口是 45 天。
