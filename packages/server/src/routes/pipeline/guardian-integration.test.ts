@@ -1,7 +1,8 @@
 import { expect, spyOn, test } from 'bun:test';
 
+import { createPluginRegistryHost } from '@aio-proxy/core';
 import type { TraceCompletion } from '@aio-proxy/core/db';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { openAIChatGPTClientId } from '../../../../plugins/openai-chatgpt/rslib.config';
 import {
@@ -9,10 +10,8 @@ import {
   syntheticGuardianInput,
 } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/fixture';
 import { guardianQuestions } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/questions';
-import type { guardianPayloadHint } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/request';
 import { defineProviderRouteSource, rawProvider } from '../../../__tests__/pipeline-helpers';
 import { createServerLogSink } from '../../logging/bridge';
-import { createGuardianEvaluate } from '../../plugin-runtime/guardian-evaluation';
 import { createObservedFetch } from '../../request-logging';
 import { waitFor } from '../../request-logging/test-support';
 import { attributeName, createRequestTraceRecorder, getTraceRuntime } from '../../request-tracing';
@@ -22,7 +21,8 @@ import { createUsageCapture } from '../../usage-capture';
 import { createOpenAIResponsesRoutes } from '../openai-responses';
 
 Object.assign(globalThis, { __AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__: openAIChatGPTClientId });
-const { createOpenAIChatGPTRuntime } = await import('../../../../plugins/openai-chatgpt/src/runtime');
+const { createOpenAIChatGPTPlugin, englishPresentationText } =
+  await import('../../../../plugins/openai-chatgpt/src/plugin');
 
 const sentinel = 'GUARDIAN_SENTINEL_7fbc4e';
 const rationale = 'The action poses critical risk under the supplied policy.';
@@ -61,20 +61,20 @@ const originalBody = JSON.stringify({
 
 async function harness(
   options: {
-    strategy?: 'systemOne' | 'systemOneReviewDenied';
+    strategy?: 'default' | 'systemOne' | 'systemOneReviewDenied';
     evaluate?: (request: Request) => Promise<Response>;
     original?: (request: Request) => Promise<Response>;
     target?: 'missing' | 'disabled';
+    registerWrapper?: boolean;
   } = {},
 ) {
-  const systemOneRequests: unknown[] = [];
-  const chatgptRequests: Request[] = [];
+  const evaluationRequests: unknown[] = [];
+  const apiReviewRequests: Request[] = [];
   const traces: TraceCompletion[] = [];
   const starts: unknown[] = [];
   const exported: unknown[] = [];
   const consoleDiagnostics: unknown[] = [];
   let source!: ProviderRouteSource;
-  let hint!: typeof guardianPayloadHint;
   let active = 0;
   const clean = () => {
     const leaked = JSON.stringify({
@@ -94,63 +94,27 @@ async function harness(
     ])
       expect(leaked).not.toContain(privateText);
   };
-  const runtime = await createOpenAIChatGPTRuntime(
-    {
-      credentials: {
-        read: async () => ({
-          revision: 1,
-          value: {
-            accessToken: 'oauth-private',
-            refreshToken: 'refresh-private',
-            accountId: 'account',
-            expiresAt: Date.now() + 60_000,
-          },
-        }),
-        refresh: async () => {
-          throw new Error('must not refresh');
-        },
-      },
-      options: {},
-      catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
-      fetch: createObservedFetch((async (input, init) => {
-        clean();
-        const request = new Request(input, init);
-        expect(request.headers.get('authorization')).toBe('Bearer oauth-private');
-        chatgptRequests.push(request);
-        return options.original
-          ? options.original(request)
-          : new Response(originalBody, { headers: { 'content-type': 'application/json', 'x-request-id': sentinel } });
-      }) as typeof fetch),
-      ...{
-        __aioGuardianEvaluate: (input: Parameters<ReturnType<typeof createGuardianEvaluate>>[0]) =>
-          createGuardianEvaluate(() => source, 'chatgpt')(input),
-        __aioRegisterPayloadHint: (value: typeof guardianPayloadHint) => {
-          hint = value;
-        },
-      },
-    },
-    {
-      userAgent: 'guardian-test',
-      guardianStrategy: options.strategy ?? 'systemOne',
-      guardianProviderId: 'system-one',
-      guardianModelId: 'review',
-    },
-  );
   const chatgpt = rawProvider({
-    id: 'chatgpt',
+    id: 'api-review',
     modelId: 'codex-auto-review',
     protocol: ProviderProtocol.OpenAIResponse,
-    invoke: runtime.raw!({ protocol: 'openai-response', modelId: 'codex-auto-review' })!.invoke,
+    invoke: async (request) => {
+      if (options.strategy !== 'default' && options.registerWrapper !== false) clean();
+      apiReviewRequests.push(request);
+      return options.original
+        ? options.original(request)
+        : new Response(originalBody, { headers: { 'content-type': 'application/json', 'x-request-id': sentinel } });
+    },
   });
   const evaluator = rawProvider({
-    id: 'system-one',
+    id: 'evaluation',
     modelId: 'review',
     protocol: ProviderProtocol.TypeSafeSystemOne,
     invoke: async (request) => {
       clean();
       expect(request.headers.has('authorization')).toBe(false);
       expect(request.headers.has('x-api-key')).toBe(false);
-      systemOneRequests.push(await request.clone().json());
+      evaluationRequests.push(await request.clone().json());
       return createObservedFetch((async () =>
         options.evaluate ? options.evaluate(request) : Response.json(answer())) as typeof fetch)(request);
     },
@@ -165,6 +129,7 @@ async function harness(
           alias: {},
           models: ['codex-auto-review'],
           upstreamMetadata: { 'codex-auto-review': { cost: { request: 0.1 } } },
+          plugin: '@aio-proxy/plugin-openai-chatgpt',
         },
       },
       ...(options.target === 'missing'
@@ -191,22 +156,60 @@ async function harness(
   };
   const logger = { debug: emit, info: emit, warn: emit, error: emit, child: () => logger };
   const snapshot = route.source.currentProviderSnapshot();
+  const config = ConfigSchema.parse({
+    plugins: [
+      [
+        '@aio-proxy/plugin-openai-chatgpt',
+        {
+          guardianStrategy: options.strategy ?? 'systemOne',
+          guardianProviderId: 'evaluation',
+          guardianModelId: 'review',
+        },
+      ],
+    ],
+    providers: {},
+  });
+  const pluginHost = createPluginRegistryHost();
+  const staged = pluginHost.stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
+  if (options.registerWrapper !== false) {
+    await createOpenAIChatGPTPlugin(englishPresentationText).setup(staged.api, {
+      guardianStrategy: options.strategy ?? 'systemOne',
+      guardianProviderId: 'evaluation',
+      guardianModelId: 'review',
+    });
+  }
+  staged.seal();
+  staged.commit();
+  Object.assign(snapshot, {
+    config,
+    payloadCaptureHints: pluginHost.registry.payloadCaptureHints(),
+    plugins: {
+      registry: pluginHost.registry,
+      plugins: new Map([['@aio-proxy/plugin-openai-chatgpt', { builtIn: true, state: { status: 'ready' } }]]),
+    },
+  });
+  const leasedSnapshot = snapshot;
+  let currentSnapshot = leasedSnapshot;
   source = {
     ...route.source,
     logger: createServerLogSink(logger),
     usageCapture: createUsageCapture(),
+    currentProviderSnapshot: () => currentSnapshot,
     acquireProviderSnapshot: () => {
       active++;
       return {
-        snapshot,
+        snapshot: leasedSnapshot,
         release: () => {
           active--;
         },
       };
     },
-    preObservationCapturePolicy: async (request, _snapshot, maxBytes) => ({
-      capturePayload: (await hint(request, { maxBytes })) !== 'sensitive',
-    }),
+    preObservationCapturePolicy: async (request, snapshot, maxBytes) => {
+      for (const hint of snapshot.payloadCaptureHints ?? []) {
+        if ((await hint(request, { maxBytes })) === 'sensitive') return { capturePayload: false };
+      }
+      return { capturePayload: true };
+    },
     requestRecorder: createRequestTraceRecorder({
       store: {
         startRoot: (value) => {
@@ -238,11 +241,14 @@ async function harness(
     app,
     body,
     source,
+    reloadCurrentSnapshot: (next: typeof leasedSnapshot) => {
+      currentSnapshot = next;
+    },
     traces,
     exported,
     logs: route.logs,
-    systemOneRequests,
-    chatgptRequests,
+    evaluationRequests,
+    apiReviewRequests,
     clean,
     activeLeases: () => active,
     close: () => {
@@ -274,9 +280,9 @@ for (const stream of [false, true])
         expect(result.output).toHaveLength(1);
         expect(JSON.parse(result.output[0].content[0].text).outcome).toBe(deny ? 'deny' : 'allow');
         if (stream) expect(text.match(/event: response.output_text.delta/g)).toHaveLength(1);
-        expect(h.systemOneRequests).toHaveLength(1);
-        expect(h.chatgptRequests).toHaveLength(0);
-        expect(h.systemOneRequests[0]).toMatchObject({
+        expect(h.evaluationRequests).toHaveLength(1);
+        expect(h.apiReviewRequests).toHaveLength(0);
+        expect(h.evaluationRequests[0]).toMatchObject({
           model: 'review',
           state: { input: h.body.input, pending_action: JSON.parse(h.body.input.at(-1).content[3].text) },
         });
@@ -284,7 +290,7 @@ for (const stream of [false, true])
         expect(h.traces.filter((trace) => trace.summary.usage !== undefined)).toHaveLength(1);
         const internal = h.traces.find((trace) => trace.summary.usage)!;
         expect(internal.summary.usage).toMatchObject({
-          providerId: 'system-one',
+          providerId: 'evaluation',
           inputTokens: 5,
           estimatedCostUsd: 0.02,
         });
@@ -300,6 +306,45 @@ for (const stream of [false, true])
         h.close();
       }
     });
+
+test('a reload after lease does not change this request', async () => {
+  const h = await harness({ strategy: 'default' });
+  try {
+    const current = h.source.acquireProviderSnapshot();
+    current.release();
+    const reloaded = Object.assign(Object.create(Object.getPrototypeOf(current.snapshot)), current.snapshot);
+    reloaded.config = {
+      ...current.snapshot.config,
+      plugins: [
+        [
+          '@aio-proxy/plugin-openai-chatgpt',
+          {
+            guardianStrategy: 'systemOne',
+            guardianProviderId: 'evaluation',
+            guardianModelId: 'review',
+          },
+        ],
+      ],
+    };
+    h.reloadCurrentSnapshot(reloaded);
+    expect((await h.send()).status).toBe(200);
+    expect(h.evaluationRequests).toHaveLength(0);
+    expect(h.apiReviewRequests).toHaveLength(1);
+  } finally {
+    h.close();
+  }
+});
+
+test('without a registered wrapper, the selected Responses transport runs directly', async () => {
+  const h = await harness({ registerWrapper: false });
+  try {
+    expect((await h.send()).status).toBe(200);
+    expect(h.evaluationRequests).toHaveLength(0);
+    expect(h.apiReviewRequests).toHaveLength(1);
+  } finally {
+    h.close();
+  }
+});
 
 for (const scenario of ['denial', 'malformed', 'non-2xx', 'error', 'retry'] as const)
   test(`real route keeps privacy and accounting across ${scenario} fallback`, async () => {
@@ -327,12 +372,12 @@ for (const scenario of ['denial', 'malformed', 'non-2xx', 'error', 'retry'] as c
       const text = await response.text();
       if (scenario !== 'retry') expect(text).toBe(originalBody);
       else expect(JSON.parse(JSON.parse(text).output_text)).toEqual({ outcome: 'allow' });
-      expect(h.chatgptRequests).toHaveLength(1);
-      expect(h.systemOneRequests).toHaveLength(scenario === 'retry' ? 2 : 1);
+      expect(h.apiReviewRequests).toHaveLength(1);
+      expect(h.evaluationRequests).toHaveLength(scenario === 'retry' ? 2 : 1);
       await waitFor(() => h.traces.length === evaluations + 1 && h.activeLeases() === 0);
       const rows = h.traces.flatMap((trace) => (trace.summary.usage ? [trace.summary.usage] : []));
-      expect(rows.filter((row) => row.providerId === 'chatgpt')).toHaveLength(scenario === 'retry' ? 0 : 1);
-      expect(rows.filter((row) => row.providerId === 'system-one')).toHaveLength(
+      expect(rows.filter((row) => row.providerId === 'api-review')).toHaveLength(scenario === 'retry' ? 0 : 1);
+      expect(rows.filter((row) => row.providerId === 'evaluation')).toHaveLength(
         ['error', 'non-2xx'].includes(scenario) ? 0 : evaluations,
       );
       expect(rows.reduce((sum, row) => sum + (row.estimatedCostUsd ?? 0), 0)).toBeCloseTo(
@@ -350,13 +395,13 @@ for (const target of ['missing', 'disabled'] as const)
     const h = await harness({ target });
     try {
       expect(await (await h.send()).text()).toBe(originalBody);
-      expect(h.systemOneRequests).toHaveLength(0);
-      expect(h.chatgptRequests).toHaveLength(1);
+      expect(h.evaluationRequests).toHaveLength(0);
+      expect(h.apiReviewRequests).toHaveLength(1);
       expect(h.logs).toContainEqual(
         expect.objectContaining({
           event: 'guardian.evaluation.unavailable',
           errorCode: 'target_unavailable',
-          targetProviderId: 'system-one',
+          targetProviderId: 'evaluation',
           targetModelId: 'review',
         }),
       );
@@ -366,13 +411,23 @@ for (const target of ['missing', 'disabled'] as const)
     }
   });
 
+test('a Guardian request hides its body without a ChatGPT account', async () => {
+  const h = await harness();
+  try {
+    await (await h.send()).text();
+    expect(JSON.stringify(h.logs)).not.toContain(sentinel);
+  } finally {
+    h.close();
+  }
+});
+
 test('non-Guardian Responses still records ordinary debug bodies', async () => {
   const h = await harness();
   try {
     delete h.body.client_metadata;
     h.body.input = 'ordinary-debug-capture';
     await (await h.send()).text();
-    expect(h.systemOneRequests).toHaveLength(0);
+    expect(h.evaluationRequests).toHaveLength(0);
     await waitFor(() => JSON.stringify(h.logs).includes('ordinary-debug-capture'));
   } finally {
     h.close();
@@ -407,7 +462,7 @@ test('evaluation abort waits for deferred body cancellation before releasing its
     await cancelling.promise;
     await pending;
     await Bun.sleep(0);
-    expect(h.chatgptRequests).toHaveLength(0);
+    expect(h.apiReviewRequests).toHaveLength(0);
     expect(h.activeLeases()).toBe(1);
     cancelled.resolve();
     await waitFor(() => h.activeLeases() === 0);
@@ -445,9 +500,9 @@ for (const gate of ['before-dispatch', 'before-fallback', 'after-fallback'] as c
       }
       const response = await pending;
       await response.text();
-      expect(h.chatgptRequests).toHaveLength(gate === 'after-fallback' ? 1 : 0);
+      expect(h.apiReviewRequests).toHaveLength(gate === 'after-fallback' ? 1 : 0);
       if (gate === 'after-fallback') expect(originalSignal?.aborted).toBe(true);
-      if (gate === 'before-dispatch') expect(h.systemOneRequests).toHaveLength(0);
+      if (gate === 'before-dispatch') expect(h.evaluationRequests).toHaveLength(0);
       await waitFor(() => h.activeLeases() === 0);
       h.clean();
     } finally {
@@ -474,7 +529,7 @@ test('timeout releases a non-returning transport and independently disposes its 
     await started.promise;
     deadline.abort(new DOMException('Timeout', 'TimeoutError'));
     expect(await (await pending).text()).toBe(originalBody);
-    expect(h.chatgptRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(1);
     await waitFor(() => h.activeLeases() === 0);
     late.resolve(
       new Response(
@@ -496,7 +551,7 @@ test('timeout releases a non-returning transport and independently disposes its 
     expect(h.activeLeases()).toBe(0);
     disposed.resolve();
     await waitFor(() => cancellationFinished && h.activeLeases() === 0);
-    expect(h.chatgptRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(1);
     h.clean();
   } finally {
     disposed.resolve();

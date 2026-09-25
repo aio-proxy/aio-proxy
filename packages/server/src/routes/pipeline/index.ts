@@ -335,6 +335,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         resolution,
         session: inference.session,
         source,
+        snapshot: lease.snapshot,
         streamRequested,
         onAttemptEnd: inference.noteAttempt,
         ...(options.onSuccessfulAttempt === undefined ? {} : { onSuccessfulAttempt: options.onSuccessfulAttempt }),

@@ -14,7 +14,7 @@ type GuardianSystemOneBody = {
 export type GuardianEvaluate = (input: {
   readonly providerId: string;
   readonly modelId: string;
-  readonly body: GuardianSystemOneBody;
+  readonly body: unknown;
   readonly signal: AbortSignal;
   readonly logicalRequest: LogicalRequestContext;
 }) => Promise<unknown>;

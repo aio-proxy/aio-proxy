@@ -3,8 +3,8 @@ import { describe, expect, test } from 'bun:test';
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_USER_AGENT, createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from '.';
+import { createOpenAIChatGPTPlugin, englishPresentationText } from '../index';
 import type { ChatGPTCredential } from '../schema';
-import type { GuardianEvaluate } from './guardian';
 import { guardianRequest, syntheticGuardianInput } from './guardian/fixture';
 
 type FetchCall = {
@@ -376,78 +376,47 @@ function requiredCall(calls: readonly FetchCall[], index: number): FetchCall {
 }
 
 test.each(['default', 'systemOne', 'systemOneReviewDenied'] as const)(
-  'registers a private capture hint only for active strategy %s',
+  'registers a payload hint from setup only for active strategy %s',
   async (guardianStrategy) => {
     let hint: unknown;
-    const context = {
-      credentials: staticCredentialPort(credential()),
-      options: {},
-      catalog: emptyCatalog(),
-      __aioRegisterPayloadHint: (value: unknown) => {
-        hint = value;
+    await createOpenAIChatGPTPlugin(englishPresentationText).setup(
+      {
+        oauth: { register() {} },
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        raw: { wrap() {} },
+        registerPayloadCaptureHint(value: unknown) {
+          hint = value;
+        },
       },
-    };
-    await createOpenAIChatGPTRuntime(context, { guardianStrategy });
+      { guardianStrategy, guardianProviderId: 'evaluation', guardianModelId: 'review' },
+    );
     expect(typeof hint).toBe(guardianStrategy === 'default' ? 'undefined' : 'function');
   },
 );
 
-test('Guardian raw allow never reads or refreshes credentials or fetches ChatGPT', async () => {
-  let reads = 0;
-  let refreshes = 0;
-  let fetches = 0;
+test('Guardian requests go straight to ChatGPT without runtime evaluation', async () => {
+  const calls: FetchCall[] = [];
   let evaluations = 0;
   const context = {
-    credentials: {
-      ...staticCredentialPort(credential()),
-      read: async () => {
-        reads++;
-        throw new Error('credential read');
-      },
-      refresh: async () => {
-        refreshes++;
-        throw new Error('credential refresh');
-      },
-    },
+    credentials: staticCredentialPort(credential()),
     options: {},
     catalog: emptyCatalog(),
-    fetch: (async () => {
-      fetches++;
-      throw new Error('ChatGPT fetch');
-    }) as typeof fetch,
-    __aioGuardianEvaluate: (async ({ body }) => {
+    fetch: captureFetch(calls),
+    __aioGuardianEvaluate: async () => {
       evaluations++;
-      const selected: Record<string, string> = {
-        risk_level: 'low',
-        user_authorization: 'unknown',
-        outcome: 'allow',
-        reason: 'low_risk',
-      };
-      return {
-        answers: Object.fromEntries(
-          Object.entries(body.questions).map(([id, question]) => [
-            id,
-            {
-              type: 'choice',
-              choice: selected[id],
-              probabilities: Object.fromEntries(
-                Object.keys(question.criteria).map((label) => [label, label === selected[id] ? 1 : 0]),
-              ),
-            },
-          ]),
-        ),
-      };
-    }) satisfies GuardianEvaluate,
+      return {};
+    },
   };
   const runtime = await createOpenAIChatGPTRuntime(context, {
     guardianStrategy: 'systemOne',
     guardianProviderId: 'selected',
     guardianModelId: 'review',
   });
-  const response = await runtime.raw!({ protocol: 'openai-response', modelId: 'codex-auto-review' })!.invoke(
-    guardianRequest(syntheticGuardianInput),
-    { requestId: 'parent', session: { key: 'sha256:parent', source: 'generated' } },
-  );
-  expect(await response.text()).toContain('response.completed');
-  expect([reads, refreshes, fetches, evaluations]).toEqual([0, 0, 0, 1]);
+  const raw = runtime.raw?.({ protocol: 'openai-response', modelId: 'codex-auto-review' });
+  await raw?.invoke(guardianRequest(syntheticGuardianInput), {
+    requestId: 'parent',
+    session: { key: 'sha256:parent', source: 'generated' },
+  });
+  expect(calls).toHaveLength(1);
+  expect(evaluations).toBe(0);
 });
