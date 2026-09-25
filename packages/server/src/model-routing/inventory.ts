@@ -8,6 +8,7 @@ import {
 import {
   type Config,
   type DashboardProviderSummary,
+  type DashboardRoutingCatalog,
   type DashboardRoutingModel,
   type DashboardRoutingModelsResponse,
   type DashboardRoutingNumber,
@@ -28,6 +29,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { routingCatalogFacts } from './catalog-facts';
 import { rawModelPolicySlugs, readRawModelPolicy, rawPolicyProviders } from './mutation';
 import { authoredNumber, routingNumberView } from './number-view';
 
@@ -73,6 +75,12 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
     if (!models.has(slug)) models.set(slug, emptyModel(slug, input.rawRecord));
   }
 
+  // Catalog facts read only the models.dev cache: a cold cache leaves the field
+  // empty rather than failing the inventory.
+  for (const model of models.values()) {
+    model.catalog = await routingCatalogFacts(model.modelId);
+  }
+
   return {
     writable: input.writable,
     models: [...models.values()].map(finalizeModel),
@@ -109,6 +117,7 @@ function finalizeModel(model: WritableModel): DashboardRoutingModel {
   return {
     modelId: model.modelId,
     ...(metadata === undefined ? {} : { metadata }),
+    ...(model.catalog === undefined ? {} : { catalog: model.catalog }),
     revision: model.revision,
     baselineProviderIds: providers.map((provider) => provider.id),
     providerCount: providers.length,
@@ -276,5 +285,6 @@ type WritableModel = {
   modelId: string;
   revision: string;
   rawMetadata: unknown;
+  catalog?: DashboardRoutingCatalog;
   providers: DashboardRoutingProvider[];
 };
