@@ -62,7 +62,7 @@ const originalBody = JSON.stringify({
 
 async function harness(
   options: {
-    strategy?: 'systemOne' | 'systemOneReviewDenied';
+    strategy?: 'default' | 'systemOne' | 'systemOneReviewDenied';
     evaluate?: (request: Request) => Promise<Response>;
     original?: (request: Request) => Promise<Response>;
     target?: 'missing' | 'disabled';
@@ -181,21 +181,20 @@ async function harness(
   }
   staged.seal();
   staged.commit();
-  const leasedSnapshot = {
-    ...snapshot,
+  Object.assign(snapshot, {
     config,
     plugins: {
       registry: pluginHost.registry,
       plugins: new Map([['@aio-proxy/plugin-openai-chatgpt', { builtIn: true, state: { status: 'ready' } }]]),
     },
-  };
+  });
+  const leasedSnapshot = snapshot;
+  let currentSnapshot = leasedSnapshot;
   source = {
     ...route.source,
     logger: createServerLogSink(logger),
     usageCapture: createUsageCapture(),
-    currentProviderSnapshot: () => ({
-      ...leasedSnapshot,
-    }),
+    currentProviderSnapshot: () => currentSnapshot,
     acquireProviderSnapshot: () => {
       active++;
       return {
@@ -239,6 +238,9 @@ async function harness(
     app,
     body,
     source,
+    reloadCurrentSnapshot: (next: typeof leasedSnapshot) => {
+      currentSnapshot = next;
+    },
     traces,
     exported,
     logs: route.logs,
@@ -301,6 +303,34 @@ for (const stream of [false, true])
         h.close();
       }
     });
+
+test('a reload after lease does not change this request', async () => {
+  const h = await harness({ strategy: 'default' });
+  try {
+    const current = h.source.acquireProviderSnapshot();
+    current.release();
+    const reloaded = { ...current.snapshot, plugins: current.snapshot.plugins };
+    reloaded.config = {
+      ...current.snapshot.config,
+      plugins: [
+        [
+          '@aio-proxy/plugin-openai-chatgpt',
+          {
+            guardianStrategy: 'systemOne',
+            guardianProviderId: 'evaluation',
+            guardianModelId: 'review',
+          },
+        ],
+      ],
+    };
+    h.reloadCurrentSnapshot(reloaded);
+    expect((await h.send()).status).toBe(200);
+    expect(h.evaluationRequests).toHaveLength(0);
+    expect(h.apiReviewRequests).toHaveLength(1);
+  } finally {
+    h.close();
+  }
+});
 
 test('without a registered wrapper, the selected Responses transport runs directly', async () => {
   const h = await harness({ registerWrapper: false });
