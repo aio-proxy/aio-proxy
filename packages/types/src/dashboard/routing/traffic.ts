@@ -39,7 +39,7 @@ export type DashboardRoutingTrafficResponse = {
 };
 
 export type DashboardRoutingTrafficBucket = {
-  readonly bucket: string;
+  readonly key: string;
   readonly values: Readonly<Record<string, string>>;
 };
 
@@ -60,7 +60,7 @@ export const DashboardRoutingTrafficProviderSchema = matchesDto<DashboardRouting
     finalCount: NonNegativeIntegerStringSchema,
     attemptCount: NonNegativeIntegerStringSchema,
     successCount: NonNegativeIntegerStringSchema,
-    p95LatencyMs: z.number().nonnegative().nullable(),
+    p95LatencyMs: z.number().int().min(0).nullable(),
   }),
 );
 
@@ -82,7 +82,8 @@ export const DashboardRoutingTrafficResponseSchema = matchesDto<DashboardRouting
 
 export const DashboardRoutingTrafficBucketSchema = matchesDto<DashboardRoutingTrafficBucket>()(
   z.strictObject({
-    bucket: z.string().min(1),
+    // Not z.iso.datetime(): a 'day' bucketUnit produces a day-granularity key like '2026-09-24'.
+    key: z.string().min(1),
     values: z.record(IdSchema, NonNegativeIntegerStringSchema).readonly(),
   }),
 );

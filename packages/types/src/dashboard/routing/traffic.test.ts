@@ -24,7 +24,15 @@ const buckets = {
   rangeEnd: '2026-09-25T08:00:00.000Z',
   bucketUnit: 'hour',
   providerIds: ['primary', 'fallback'],
-  buckets: [{ bucket: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
+  buckets: [{ key: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
+} as const;
+
+// Shared by the three totals contract checks below, each of which mutates one field.
+const nullP95Totals = {
+  range: '7d',
+  rangeStart: '2026-09-18T00:00:00.000Z',
+  rangeEnd: '2026-09-25T08:00:00.000Z',
+  models: [{ modelId: 'gpt-5-codex', providers: [{ ...provider, p95LatencyMs: null }] }],
 } as const;
 
 describe('dashboard routing traffic contracts', () => {
@@ -42,18 +50,24 @@ describe('dashboard routing traffic contracts', () => {
 
   test('allows a null p95 when a provider has no completed attempt', () => {
     const totals = schema('DashboardRoutingTrafficResponseSchema');
-    const base = {
-      range: '7d',
-      rangeStart: '2026-09-18T00:00:00.000Z',
-      rangeEnd: '2026-09-25T08:00:00.000Z',
-      models: [{ modelId: 'gpt-5-codex', providers: [{ ...provider, p95LatencyMs: null }] }],
+
+    expect(totals.safeParse(nullP95Totals).success).toBe(true);
+  });
+
+  test('rejects a range outside the charted windows', () => {
+    const totals = schema('DashboardRoutingTrafficResponseSchema');
+
+    expect(totals.safeParse({ ...nullP95Totals, range: '90d' }).success).toBe(false);
+  });
+
+  test('rejects a count that did not travel as a decimal string', () => {
+    const totals = schema('DashboardRoutingTrafficResponseSchema');
+    const value = {
+      ...nullP95Totals,
+      models: [{ modelId: 'gpt-5-codex', providers: [{ ...provider, finalCount: 120 }] }],
     };
 
-    expect(totals.safeParse(base).success).toBe(true);
-    expect(totals.safeParse({ ...base, range: '90d' }).success).toBe(false);
-    expect(
-      totals.safeParse({ ...base, models: [{ modelId: 'x', providers: [{ ...provider, finalCount: 120 }] }] }).success,
-    ).toBe(false);
+    expect(totals.safeParse(value).success).toBe(false);
   });
 
   test('rejects an unknown key on a traffic provider', () => {
