@@ -345,6 +345,11 @@ export const DashboardRoutingTrafficResponseSchema = matchesDto<DashboardRouting
 
 export const DashboardRoutingTrafficBucketSchema = matchesDto<DashboardRoutingTrafficBucket>()(
   z.strictObject({
+    // `key` 永远是完整的 ISO 时刻：`usageBucketKeys` 两个分支都返回 `.toISOString()`
+    // （day 分支是 `day.toISOString()`，即本地午夜）。天粒度的日期串是 `identity`，
+    // 只用于 SQL 侧对桶，从不上 wire。这里保持 `z.string().min(1)` 仅为与兄弟
+    // `DashboardUsageBucketSchema.key` 一致——那一条同样偏松。若要收紧成
+    // `z.iso.datetime()`，两处必须一起改，否则又是一次分叉。
     key: z.string().min(1),
     values: z.record(IdSchema, NonNegativeIntegerStringSchema).readonly(),
   }),

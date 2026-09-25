@@ -79,6 +79,11 @@ GET /dashboard/api/routing/traffic/buckets?range=24h&model=<encoded>
 → { buckets: [{ key, values: { [providerId]: count } }] }
 ```
 
+`key` 是完整 ISO 时刻（day 分桶时为本地午夜），不是天粒度日期串——天粒度串是服务端对桶用的 `identity`，不上 wire。字段名与偏松的校验都沿用兄弟 `DashboardUsageBucketSchema.key`。
+
+```
+```
+
 详情页流量 tab 的趋势图，一次只查一个模型。
 
 聚合查询放 `packages/core/src/db/trace-store/` 下，与 `overview/diagnostics.ts` 同构（后者已在做「按 provider 分组 + `termination_reason IS NULL` 计成功 + `json_group_array` 收集时长算 p95」，是可直接参照的先例）。
@@ -196,7 +201,9 @@ Header：`modelId` + lab + `releaseDate` + 风险 chip；右上一个 **页面�
 
 ## 交付
 
-**一个 PR。** 数据层与 UI 一起合并。
+**原定一个 PR，实际已拆开。** 数据层先行合并（`978b74d34..c8cae9c0e`），UI 另起一个 PR。
+
+⚠️ **changeset 是欠着的。** 数据层这一段故意不写 changeset：按 CLAUDE.md，只指向内部包的 note 会让 `aio-proxy` 的 CHANGELOG 为空，`scripts/release.ts` 随即跳过它的 GitHub Release，说明就静默消失了。所以合并后的状态是**两个新端点加一个 DTO 字段已经在树里，但没有任何 release note**。UI 的 PR 必须补上一份同时指向 `aio-proxy` 与 `@aio-proxy/core`、`@aio-proxy/server`、`@aio-proxy/types`、`@aio-proxy/dashboard` 的 changeset，描述**合并后的最终状态**（重新设计的 routing 页），而不是只描述 UI 那一半。若 UI 被无限期搁置，这份 note 仍然必须单独补，否则这批改动永远不会出现在任何 Release 里。
 
 PR 内部仍按数据层先行的顺序推进，因为 UI 消费的契约必须先存在：
 
