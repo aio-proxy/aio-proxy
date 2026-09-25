@@ -1,4 +1,11 @@
-import { definePlugin, type LocalizedText, type OAuthAdapter, type PluginDescriptor, zod } from '@aio-proxy/plugin-sdk';
+import {
+  definePlugin,
+  type LocalizedText,
+  type OAuthAdapter,
+  type PluginDescriptor,
+  type RawTransport,
+  zod,
+} from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
@@ -170,8 +177,18 @@ export function createOpenAIChatGPTPlugin(
     async (api, options) => {
       const parsed = await pluginOptionsSpec.schema.parseAsync(options);
       api.oauth.register(createAdapter(parsed));
-      if (!('raw' in api) || typeof api.raw?.wrap !== 'function') return;
-      api.raw.wrap('openai-response', ({ original, evaluate }) =>
+      const raw: unknown = 'raw' in api ? api.raw : undefined;
+      const wrap =
+        raw !== null && typeof raw === 'object' && 'wrap' in raw && typeof raw.wrap === 'function'
+          ? (raw.wrap as (
+              protocol: 'openai-response',
+              wrap: (input: {
+                readonly original: RawTransport['invoke'];
+                readonly evaluate?: Parameters<typeof createGuardianRawInvoke>[0]['evaluate'];
+              }) => RawTransport['invoke'],
+            ) => void)
+          : undefined;
+      wrap?.('openai-response', ({ original, evaluate }) =>
         createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
       );
     },

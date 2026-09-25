@@ -287,5 +287,8 @@ export function buildSnapshotWithProviders(
 }
 
 export function emptyPluginSnapshot(): PluginRegistrySnapshot {
-  return { registry: { resolveOAuth: () => undefined, oauthCapabilities: () => [] }, plugins: new Map() };
+  return {
+    registry: { resolveOAuth: () => undefined, resolveResponsesRaw: () => undefined, oauthCapabilities: () => [] },
+    plugins: new Map(),
+  };
 }
