@@ -231,7 +231,7 @@ describe('dashboard routing traffic contracts', () => {
       rangeEnd: '2026-09-25T08:00:00.000Z',
       bucketUnit: 'hour',
       providerIds: ['primary', 'fallback'],
-      buckets: [{ bucket: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
+      buckets: [{ key: '2026-09-24T08:00:00.000Z', values: { primary: '5', fallback: '1' } }],
     };
 
     expect(buckets.parse(value)).toEqual(value);
@@ -303,7 +303,7 @@ export type DashboardRoutingTrafficResponse = {
 };
 
 export type DashboardRoutingTrafficBucket = {
-  readonly bucket: string;
+  readonly key: string;
   readonly values: Readonly<Record<string, string>>;
 };
 
@@ -324,7 +324,7 @@ export const DashboardRoutingTrafficProviderSchema = matchesDto<DashboardRouting
     finalCount: NonNegativeIntegerStringSchema,
     attemptCount: NonNegativeIntegerStringSchema,
     successCount: NonNegativeIntegerStringSchema,
-    p95LatencyMs: z.number().nonnegative().nullable(),
+    p95LatencyMs: z.number().int().min(0).nullable(),
   }),
 );
 
@@ -346,7 +346,7 @@ export const DashboardRoutingTrafficResponseSchema = matchesDto<DashboardRouting
 
 export const DashboardRoutingTrafficBucketSchema = matchesDto<DashboardRoutingTrafficBucket>()(
   z.strictObject({
-    bucket: z.string().min(1),
+    key: z.string().min(1),
     values: z.record(IdSchema, NonNegativeIntegerStringSchema).readonly(),
   }),
 );
@@ -934,7 +934,7 @@ export function routingTrafficBuckets(
     providerIds: ordered,
     // 空桶补 '0'：缺键会让堆叠图出现缺口而不是一段零高度。
     buckets: usageBucketKeys(query.range, range.start, range.end).map(({ identity, key }) => ({
-      bucket: key,
+      key,
       values: Object.fromEntries(ordered.map((id) => [id, byBucket.get(identity)?.get(id) ?? '0'])),
     })),
   };

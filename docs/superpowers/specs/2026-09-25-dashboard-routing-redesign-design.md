@@ -78,7 +78,7 @@ GET /dashboard/api/routing/traffic?range=24h
 
 ```
 GET /dashboard/api/routing/traffic/buckets?range=24h&model=<encoded>
-→ { buckets: [{ bucket, values: { [providerId]: count } }] }
+→ { buckets: [{ key, values: { [providerId]: count } }] }
 ```
 
 详情页流量 tab 的趋势图，一次只查一个模型。
