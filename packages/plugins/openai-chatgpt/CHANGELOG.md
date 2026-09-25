@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.33.4
+
+### Patch Changes
+
+- [#430](https://github.com/aio-proxy/aio-proxy/pull/430) [`3279743`](https://github.com/aio-proxy/aio-proxy/commit/3279743ec7c8447decba5df6c8836405071261e1) Thanks [@baranwang](https://github.com/baranwang)! - Guardian evaluation now runs on the OpenAI Responses provider selected for that request, not only on a ChatGPT transport. A direct allow or deny does not charge the selected provider; evaluation cost stays on the configured evaluation provider.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.33.4
+  - @aio-proxy/types@0.33.4
+
 ## 0.33.3
 
 ### Patch Changes
