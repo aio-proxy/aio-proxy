@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-google-antigravity
 
+## 0.33.4
+
+### Patch Changes
+
+- [#431](https://github.com/aio-proxy/aio-proxy/pull/431) [`a223275`](https://github.com/aio-proxy/aio-proxy/commit/a22327585b8574fa08f7b40cc154a982a4999909) Thanks [@baranwang](https://github.com/baranwang)! - Google Antigravity upstream failures now pass a short diagnostic through to the client. A request rejected because the account region is unsupported reports that reason instead of a generic request failure. Responses that carry anything besides the diagnostic stay masked.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.33.4
+  - @aio-proxy/shared@0.33.4
+
 ## 0.33.3
 
 ### Patch Changes

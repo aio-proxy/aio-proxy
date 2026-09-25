@@ -1,5 +1,11 @@
 # @aio-proxy/i18n
 
+## 0.33.4
+
+### Patch Changes
+
+- [#433](https://github.com/aio-proxy/aio-proxy/pull/433) [`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65) Thanks [@baranwang](https://github.com/baranwang)! - `aiop agent configure codex` finds the Codex CLI shipped inside the ChatGPT app when `codex` is not on `PATH`. A missing CLI is reported directly instead of as an unexpected internal error.
+
 ## 0.33.3
 
 No changes in this release.

@@ -1,5 +1,17 @@
 # @aio-proxy/dashboard
 
+## 0.33.4
+
+### Patch Changes
+
+- Updated dependencies [[`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65)]:
+  - @aio-proxy/i18n@0.33.4
+  - @aio-proxy/server@0.33.4
+  - @aio-proxy/brand@0.33.4
+  - @aio-proxy/plugin-sdk@0.33.4
+  - @aio-proxy/types@0.33.4
+  - @aio-proxy/ui@0.33.4
+
 ## 0.33.3
 
 ### Patch Changes
