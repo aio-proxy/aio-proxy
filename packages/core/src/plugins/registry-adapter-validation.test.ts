@@ -81,6 +81,8 @@ describe('PluginRegistry staging', () => {
 
     const thirdParty = stage('@example/oauth');
     expect('raw' in thirdParty.api).toBe(false);
+    // @ts-expect-error Third-party staging only exposes the public PluginApi.
+    void thirdParty.api.raw;
   });
 
   test.each([

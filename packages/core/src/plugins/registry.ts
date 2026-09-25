@@ -174,10 +174,12 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
 }
 
 export type PluginStagingRegistry = {
-  readonly api: BuiltInPluginApi;
+  readonly api: PluginApi;
   readonly seal: () => void;
   readonly commit: () => void;
 };
+
+export type BuiltInPluginStagingRegistry = PluginStagingRegistry & { readonly api: BuiltInPluginApi };
 
 export type PluginLoggerFactory = (
   category: readonly string[],
@@ -189,10 +191,15 @@ export type PluginStagingOptions = {
   readonly builtIn?: boolean;
 };
 
-export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory = createLogger): {
+export type PluginRegistryHost = {
   readonly registry: PluginRegistry;
-  readonly stage: (plugin: string, options?: PluginStagingOptions) => PluginStagingRegistry;
-} {
+  readonly stage: {
+    (plugin: string, options: PluginStagingOptions & { readonly builtIn: true }): BuiltInPluginStagingRegistry;
+    (plugin: string, options?: PluginStagingOptions): PluginStagingRegistry;
+  };
+};
+
+export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory = createLogger): PluginRegistryHost {
   const committed = new Map<string, OAuthCapability>();
   const committedCpaTypes = new Map<string, string>();
   const responsesRaw = new Map<string, ResponsesRawWrap>();
