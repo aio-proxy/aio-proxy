@@ -178,8 +178,14 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       if (generation !== reloadGeneration.current) return;
       if (next == null || next.modelId !== initiatedId) return;
       if (latestModel.current.modelId !== initiatedId) return;
-      form.setFieldValue('providers', reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next));
-      metadataForm.reset(reconcileRoutingMetadataValues(metadataForm.state.values, next));
+      const nextFormDefaults = {
+        providers: reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next),
+      } satisfies RoutingFormValues;
+      const nextMetadataDefaults = reconcileRoutingMetadataValues(metadataForm.state.values, next);
+      setFormDefaults(nextFormDefaults);
+      setMetadataDefaults(nextMetadataDefaults);
+      form.reset(nextFormDefaults);
+      metadataForm.reset(nextMetadataDefaults);
     });
   };
 
