@@ -78,7 +78,7 @@ const renderTraffic = (options: {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 
-  renderComponent(<RouterProvider router={router} />, { wrapper });
+  return renderComponent(<RouterProvider router={router} />, { wrapper });
 };
 
 const providerTotals = (
@@ -164,6 +164,34 @@ test('links out to Traces filtered to this model', async () => {
 
   const link = await screen.findByRole('link', { name: /Traces/u });
   expect(link).toHaveAttribute('href', expect.stringContaining('requestedModelId'));
+});
+
+test('shows the summary table without a chart when only attempt-only providers have totals', async () => {
+  const { container } = renderTraffic({
+    buckets: { ...bucketsFixture([]), providerIds: [], buckets: [] },
+    traffic: {
+      range: RANGE,
+      rangeStart: '2026-09-25T08:00:00.000Z',
+      rangeEnd: '2026-09-26T08:00:00.000Z',
+      models: [
+        {
+          modelId: MODEL_ID,
+          providers: [
+            providerTotals('standby', {
+              finalCount: 0n,
+              attemptCount: 5n,
+              successCount: 0n,
+              p95LatencyMs: null,
+            }),
+          ],
+        },
+      ],
+    },
+  });
+
+  expect(await screen.findByText('standby')).toBeInTheDocument();
+  expect(screen.queryByText(/No traffic|无流量/u)).not.toBeInTheDocument();
+  expect(container.querySelector('.recharts-responsive-container')).toBeNull();
 });
 
 test('lists providers that were attempted but never became the final provider', async () => {

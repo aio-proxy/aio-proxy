@@ -102,43 +102,47 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     ]),
   ) satisfies ChartConfig;
 
+  const showChart = bucketsData.providerIds.length > 0;
+
   return (
     <div className="space-y-6">
-      <ChartContainer config={chartConfig} className="aspect-auto h-64 w-full sm:h-72">
-        <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
-          <CartesianGrid vertical={false} />
-          <XAxis
-            dataKey="bucket"
-            tickLine={false}
-            axisLine={false}
-            minTickGap={24}
-            tickFormatter={(value) => formatBucket(String(value), false)}
-          />
-          <YAxis tickLine={false} axisLine={false} width={56} />
-          <ChartTooltip
-            content={
-              <ChartTooltipContent
-                labelFormatter={(value) => formatBucket(String(value), true)}
-                formatter={(value, name) => (
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <span className="text-muted-foreground">{String(name)}</span>
-                    <span className="font-mono font-medium tabular-nums">{Number(value)}</span>
-                  </div>
-                )}
-              />
-            }
-          />
-          {bucketsData.providerIds.map((providerId, index) => (
-            <Bar
-              key={providerId}
-              dataKey={providerId}
-              fill={`var(--chart-${(index % 5) + 1})`}
-              stackId="traffic"
-              radius={index === bucketsData.providerIds.length - 1 ? [4, 4, 0, 0] : 0}
+      {showChart ? (
+        <ChartContainer config={chartConfig} className="aspect-auto h-64 w-full sm:h-72">
+          <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis
+              dataKey="bucket"
+              tickLine={false}
+              axisLine={false}
+              minTickGap={24}
+              tickFormatter={(value) => formatBucket(String(value), false)}
             />
-          ))}
-        </BarChart>
-      </ChartContainer>
+            <YAxis tickLine={false} axisLine={false} width={56} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(value) => formatBucket(String(value), true)}
+                  formatter={(value, name) => (
+                    <div className="flex w-full items-center justify-between gap-4">
+                      <span className="text-muted-foreground">{String(name)}</span>
+                      <span className="font-mono font-medium tabular-nums">{Number(value)}</span>
+                    </div>
+                  )}
+                />
+              }
+            />
+            {bucketsData.providerIds.map((providerId, index) => (
+              <Bar
+                key={providerId}
+                dataKey={providerId}
+                fill={`var(--chart-${(index % 5) + 1})`}
+                stackId="traffic"
+                radius={index === bucketsData.providerIds.length - 1 ? [4, 4, 0, 0] : 0}
+              />
+            ))}
+          </BarChart>
+        </ChartContainer>
+      ) : null}
 
       <Table>
         <TableHeader>
