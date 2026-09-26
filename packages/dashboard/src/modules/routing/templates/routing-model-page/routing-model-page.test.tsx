@@ -10,8 +10,8 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router';
-import { fireEvent, render as renderComponent, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, fireEvent, render as renderComponent, screen, waitFor } from '@testing-library/react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 
 import type { RoutingTrafficData } from '../../services/routing-traffic-service';
 import { RoutingModelPage } from './routing-model-page';
@@ -28,6 +28,8 @@ const routingQueryMocks = rs.hoisted(() => ({
   isLoading: false,
   isError: false,
   refetch: rs.fn(),
+  revision: 0,
+  listeners: new Set<() => void>(),
 }));
 
 const trafficMocks = rs.hoisted(() => ({
@@ -44,7 +46,16 @@ rs.mock('../../hooks/use-routing-mutation', () => ({
 }));
 
 rs.mock('../../hooks/use-routing-query', () => ({
-  useRoutingQuery: () => routingQueryMocks,
+  useRoutingQuery: () => {
+    useSyncExternalStore(
+      (listener) => {
+        routingQueryMocks.listeners.add(listener);
+        return () => routingQueryMocks.listeners.delete(listener);
+      },
+      () => routingQueryMocks.revision,
+    );
+    return routingQueryMocks;
+  },
 }));
 
 rs.mock('../../services/routing-traffic-service', () => ({
@@ -229,13 +240,19 @@ const renderPage = (options: RenderPageOptions) => {
     routeTree: rootRoute.addChildren([listRoute, splatRoute]),
     history: createMemoryHistory({ initialEntries: [`/routing/${modelId}`] }),
   });
-  renderComponent(<RouterProvider router={router} />, { wrapper });
+  const ui = <RouterProvider router={router} />;
+  return { ...renderComponent(ui, { wrapper }), router, ui };
 };
 
 const dirtyTopology = () => {
   fireEvent.change(screen.getByTestId('routing-share-slider-a').querySelector('input')!, {
     target: { value: '7000' },
   });
+};
+
+const rerenderRoutingQuery = () => {
+  routingQueryMocks.revision += 1;
+  for (const listener of routingQueryMocks.listeners) listener();
 };
 
 const selectRange = (range: '7d') => {
@@ -277,6 +294,24 @@ test('marks the tab that holds an unsaved change', async () => {
   dirtyTopology();
 
   expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).toHaveTextContent(/未保存|Unsaved/u);
+});
+
+test('keeps a dirty editor mounted when a refetch fails with cached inventory', async () => {
+  renderPage({ models: [modelFixture('sonnet')] });
+  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  dirtyTopology();
+
+  routingQueryMocks.isError = true;
+  act(rerenderRoutingQuery);
+
+  expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).toHaveTextContent(/未保存|Unsaved/u);
+  expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.routing.load_failed']());
+});
+
+test('does not show the range selector while the inventory is loading', () => {
+  renderPage({ models: [], isLoading: true });
+
+  expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
 });
 
 test('blocks leaving the page while a draft is unsaved', async () => {

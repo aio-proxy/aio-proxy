@@ -43,6 +43,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
   const trafficQuery = useQuery(routingTrafficQueryOptions(range));
   const models = query.data?.models ?? [];
   const model = models.find((entry) => entry.modelId === modelId);
+  const fullPageError = query.isError && query.data === undefined;
   const writable = query.data?.writable ?? false;
   const trafficIndex = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
   const totals = trafficIndex?.get(modelId);
@@ -91,6 +92,17 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
     return result.data?.models.find((entry) => entry.modelId === modelId);
   };
 
+  const loadError = (
+    <div className="space-y-3">
+      <p role="alert" className="text-sm text-destructive">
+        {m['dashboard.routing.load_failed']()}
+      </p>
+      <Button type="button" variant="outline" onClick={() => void query.refetch()}>
+        {m['dashboard.routing.retry']()}
+      </Button>
+    </div>
+  );
+
   const main = (() => {
     if (query.isLoading) {
       return (
@@ -101,18 +113,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
         </div>
       );
     }
-    if (query.isError) {
-      return (
-        <div className="space-y-3">
-          <p role="alert" className="text-sm text-destructive">
-            {m['dashboard.routing.load_failed']()}
-          </p>
-          <Button type="button" variant="outline" onClick={() => void query.refetch()}>
-            {m['dashboard.routing.retry']()}
-          </Button>
-        </div>
-      );
-    }
+    if (fullPageError) return loadError;
     if (model === undefined) {
       return (
         <Empty>
@@ -124,7 +125,17 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
       );
     }
     return (
-      <RoutingModelPageEditor model={model} writable={writable} range={range} actual={actual} onReload={onReload} />
+      <div className="space-y-4">
+        {query.isError ? loadError : null}
+        <RoutingModelPageEditor
+          key={model.modelId}
+          model={model}
+          writable={writable}
+          range={range}
+          actual={actual}
+          onReload={onReload}
+        />
+      </div>
     );
   })();
 
@@ -132,7 +143,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
     <PageContainer
       title={<span className="font-mono">{modelId}</span>}
       subtitle={subtitle}
-      extra={model === undefined && !query.isLoading && !query.isError ? undefined : rangeSelector}
+      extra={model !== undefined && !query.isLoading && !fullPageError ? rangeSelector : undefined}
       breadcrumbs={[
         { label: m['dashboard.menus.configuration']() },
         { label: m['dashboard.routing.title'](), to: '/routing/' },

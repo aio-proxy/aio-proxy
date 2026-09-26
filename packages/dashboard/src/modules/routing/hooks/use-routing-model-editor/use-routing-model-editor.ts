@@ -141,12 +141,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     metadataValid &&
     routingOverrideDraftsValid(metadataValues.overrides);
 
-  const navigationBlocked = useCallback((): boolean => {
-    const metadataTouched =
-      metadataValues.metadata.touched ||
-      Object.values(metadataValues.overrides).some((override) => override.cost.touched || override.limit.touched);
-    return topologyDirty || metadataTouched;
-  }, [metadataValues, topologyDirty]);
+  const navigationBlocked = useCallback((): boolean => dirtyTabs.length > 0, [dirtyTabs]);
   const blocker = useBlocker({
     shouldBlockFn: () => navigationBlocked(),
     enableBeforeUnload: () => navigationBlocked(),
