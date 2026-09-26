@@ -29,6 +29,8 @@ const provider = (
   ...values,
 });
 
+const modelFixture = (modelId: string, catalog?: { lab: string; releaseDate?: string }) => model({ modelId, catalog });
+
 const model = (
   values: Partial<DashboardRoutingModel> & Pick<DashboardRoutingModel, 'modelId'>,
 ): DashboardRoutingModel => {
@@ -136,9 +138,7 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-openai/gpt-5')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
-  expect(
-    within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(/Tier 1|ティア 1|단계 1|梯队 1|梯隊 1/u),
-  ).toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByLabelText(/^a,/u)).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
 });
 
@@ -176,4 +176,32 @@ test('paginates long model catalogs with the shared table pagination controls', 
   expect(screen.queryByTestId('routing-row-model-12')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Next|次|다음|下一|下一/u }));
   expect(screen.getByTestId('routing-row-model-12')).toBeInTheDocument();
+});
+
+test('groups rows by lab and repeats the header on each page', () => {
+  render(
+    <RoutingTable
+      models={[modelFixture('gpt-5', { lab: 'openai' }), modelFixture('claude', { lab: 'anthropic' })]}
+      traffic={undefined}
+      onEdit={() => {}}
+    />,
+  );
+
+  expect(screen.getByTestId('routing-lab-group-anthropic')).toBeInTheDocument();
+  expect(screen.getByTestId('routing-lab-group-openai')).toBeInTheDocument();
+});
+
+test('drops the lab group headers once the user sorts a column', () => {
+  render(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} onEdit={() => {}} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Model ID/u }));
+
+  expect(screen.getByRole('columnheader', { name: /Model ID/u })).toHaveAttribute('aria-sort', 'ascending');
+  expect(screen.queryByTestId('routing-lab-group-openai')).not.toBeInTheDocument();
+});
+
+test('shows no-traffic rather than zeros when traffic is absent', () => {
+  render(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} onEdit={() => {}} />);
+
+  expect(screen.getByText(/No traffic|无流量/u)).toBeInTheDocument();
 });
