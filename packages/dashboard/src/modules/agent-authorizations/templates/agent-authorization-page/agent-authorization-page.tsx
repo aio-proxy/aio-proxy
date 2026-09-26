@@ -14,10 +14,10 @@ import {
 import { Clock, Fingerprint, List, Sparkles, Tag, User } from 'lucide-react';
 import { Fragment, useState } from 'react';
 
+import { AgentAuthorizationCodeForm } from '../../components/agent-authorization-code-form';
+import { AgentAuthorizationCodeHeader } from '../../components/agent-authorization-code-header';
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
 import { AgentAuthorizationRequestError } from '../../services/agent-authorizations-service';
-import { AgentAuthorizationCodeForm } from './agent-authorization-code-form';
-import { AgentAuthorizationCodeHeader } from './agent-authorization-code-header';
 
 const terminalMessage = (status: 'approved' | 'denied' | 'expired' | 'consumed'): string => {
   if (status === 'approved') return m['dashboard.agent_authorization.approved']();
