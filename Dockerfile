@@ -46,6 +46,8 @@ COPY --from=build /out/THIRD_PARTY_NOTICES /usr/share/licenses/aio-proxy/THIRD_P
 # Config, SQLite db and logs all live under AIO_PROXY_HOME. Mount a volume at
 # /data to persist them across container restarts.
 ENV AIO_PROXY_HOME=/data
+# Agents live on the host, not in this container, so the dashboard must not offer local Agent setup.
+ENV AIO_PROXY_AGENT_HOST=disabled
 VOLUME /data
 USER aioproxy
 EXPOSE 9317

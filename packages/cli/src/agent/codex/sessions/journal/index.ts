@@ -1,6 +1,7 @@
 export {
   acquireSessionLock,
   createOperation,
+  latestRestorableMigration,
   operationPath,
   readJournal,
   updateJournal,

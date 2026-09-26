@@ -152,7 +152,9 @@ export type AgentOperationKind = AgentOperationRequest['kind'];
 export const AgentOperationErrorCodeSchema = z.enum([
   'host_missing',
   'path_unavailable',
+  'not_configured',
   'locked',
+  'invalid_provider_id',
   'occupied_provider_id',
   'endpoint_changed',
   'authorization_denied',
