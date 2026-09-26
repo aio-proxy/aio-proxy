@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import type { AgentAuthorizationDetails } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { CardContent, CardFooter } from '@aio-proxy/ui/components/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@aio-proxy/ui/components/empty';
 import {
   Item,
   ItemContent,
@@ -11,7 +12,7 @@ import {
   ItemSeparator,
   ItemTitle,
 } from '@aio-proxy/ui/components/item';
-import { Clock, Fingerprint, List, Sparkles, Tag, User } from 'lucide-react';
+import { CircleCheckIcon, CircleXIcon, Clock, Fingerprint, List, Sparkles, Tag, User } from 'lucide-react';
 import { Fragment } from 'react';
 
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
@@ -34,10 +35,9 @@ const requestErrorMessage = (error: unknown): string =>
 
 interface AgentAuthorizationReviewProps {
   readonly details: AgentAuthorizationDetails;
-  readonly onRetry: () => void;
 }
 
-export const AgentAuthorizationReview: React.FC<AgentAuthorizationReviewProps> = ({ details, onRetry }) => {
+export const AgentAuthorizationReview: React.FC<AgentAuthorizationReviewProps> = ({ details }) => {
   const { approve, deny } = useAgentAuthorization();
   const decision = approve.data ?? deny.data;
   const terminal = decision ?? (details.status === 'pending' ? undefined : details);
@@ -110,15 +110,15 @@ export const AgentAuthorizationReview: React.FC<AgentAuthorizationReviewProps> =
       )}
       {terminal === undefined ? null : (
         <CardContent>
-          <p role="status">{terminalMessage(terminal.status)}</p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                {terminal.status === 'approved' ? <CircleCheckIcon /> : <CircleXIcon />}
+              </EmptyMedia>
+              <EmptyDescription role="status">{terminalMessage(terminal.status)}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </CardContent>
-      )}
-      {terminal === undefined ? null : (
-        <CardFooter>
-          <Button variant="outline" onClick={onRetry}>
-            {m['dashboard.agent_authorization.retry']()}
-          </Button>
-        </CardFooter>
       )}
       {error === null || error === undefined ? null : (
         <CardContent>

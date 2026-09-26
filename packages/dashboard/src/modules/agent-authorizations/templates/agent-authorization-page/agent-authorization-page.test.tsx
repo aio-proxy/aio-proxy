@@ -81,10 +81,9 @@ test('consumes a fragment only after the authenticated page mounts and shows no 
   expect(view.container.textContent).not.toMatch(/aio_agent_|device[_-]code/iu);
 });
 
-test('approves and denies only the resolved opaque device id', async () => {
+test('approves only the resolved opaque device id', async () => {
   mocks.resolve.mockResolvedValue(PENDING);
   mocks.approve.mockResolvedValue({ status: 'approved' });
-  mocks.deny.mockResolvedValue({ status: 'denied' });
   renderPage();
   fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
@@ -92,13 +91,20 @@ test('approves and denies only the resolved opaque device id', async () => {
   fireEvent.click(screen.getByRole('button', { name: /approve/i }));
   await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(PENDING.deviceId));
   expect(await screen.findByText(/approved/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
+});
 
-  fireEvent.click(screen.getByRole('button', { name: /retry|another/i }));
+test('denies only the resolved opaque device id', async () => {
+  mocks.resolve.mockResolvedValue(PENDING);
+  mocks.deny.mockResolvedValue({ status: 'denied' });
+  renderPage();
   fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   await screen.findByText('opencode');
   fireEvent.click(screen.getByRole('button', { name: /deny/i }));
   await waitFor(() => expect(mocks.deny).toHaveBeenCalledWith(PENDING.deviceId));
+  expect(await screen.findByText(/denied/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
 });
 
 test.each([

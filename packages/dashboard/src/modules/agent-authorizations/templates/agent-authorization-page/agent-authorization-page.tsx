@@ -11,7 +11,7 @@ export const AgentAuthorizationPage: React.FC = () => {
       {details === undefined ? (
         <AgentAuthorizationCodeEntry onResolved={setDetails} />
       ) : (
-        <AgentAuthorizationReview details={details} onRetry={() => setDetails(undefined)} />
+        <AgentAuthorizationReview details={details} />
       )}
     </main>
   );
