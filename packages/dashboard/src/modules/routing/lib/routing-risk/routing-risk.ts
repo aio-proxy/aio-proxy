@@ -29,9 +29,12 @@ export const isDeviating = (
   if (summary === undefined || summary.finalCount < DEVIATION_MIN_SAMPLE) return false;
   return model.tiers.some((tier) => {
     const actual = tierActualShares(tier, totals);
+    // The query omits providers with no spans; an unused tier adds no observation and is not a bad split.
+    if (actual.length === 0) return false;
     return tier.providers.some((configured) => {
       const observed = actual.find((entry) => entry.providerId === configured.providerId);
-      return observed !== undefined && Math.abs(observed.actualShare - configured.share) >= DEVIATION_THRESHOLD;
+      const actualShare = observed?.actualShare ?? 0;
+      return Math.abs(actualShare - configured.share) >= DEVIATION_THRESHOLD;
     });
   });
 };

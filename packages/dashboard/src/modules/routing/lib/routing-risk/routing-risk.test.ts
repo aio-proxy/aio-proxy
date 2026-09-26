@@ -75,3 +75,39 @@ test('pins the thresholds as named constants so they are tunable in one place', 
   expect(DEVIATION_THRESHOLD).toBe(0.15);
   expect(DEVIATION_MIN_SAMPLE).toBe(50n);
 });
+
+test('flags a configured provider that received no traffic while its tier was active', () => {
+  const fourWay = model({
+    tiers: [
+      {
+        priority: 30,
+        providers: [
+          { providerId: 'silent', weight: 2, share: 0.4 },
+          { providerId: 'a', weight: 1, share: 0.2 },
+          { providerId: 'b', weight: 1, share: 0.2 },
+          { providerId: 'c', weight: 1, share: 0.2 },
+        ],
+      },
+    ],
+  });
+  expect(isDeviating(fourWay, [totals(30n, 'a'), totals(30n, 'b'), totals(30n, 'c')])).toBe(true);
+});
+
+test('does not flag an unused fallback tier with no traffic rows', () => {
+  const primaryOnly = model({
+    tiers: [
+      {
+        priority: 30,
+        providers: [{ providerId: 'primary', weight: 1, share: 1 }],
+      },
+      {
+        priority: 10,
+        providers: [
+          { providerId: 'fb-a', weight: 1, share: 0.5 },
+          { providerId: 'fb-b', weight: 1, share: 0.5 },
+        ],
+      },
+    ],
+  });
+  expect(isDeviating(primaryOnly, [totals(80n, 'primary')])).toBe(false);
+});
