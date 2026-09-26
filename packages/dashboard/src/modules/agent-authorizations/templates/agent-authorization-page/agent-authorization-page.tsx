@@ -2,8 +2,8 @@ import type { AgentAuthorizationDetails } from '@aio-proxy/types';
 import { Toaster } from '@aio-proxy/ui/components/toast';
 import { useState } from 'react';
 
-import { AgentAuthorizationCodeEntry } from '../../components/agent-authorization-code-entry';
-import { AgentAuthorizationReview } from '../../components/agent-authorization-review';
+import { CodeEntry } from '../../components/code-entry';
+import { Review } from '../../components/review';
 
 type PendingAuthorization = Extract<AgentAuthorizationDetails, { status: 'pending' }>;
 
@@ -12,11 +12,7 @@ export const AgentAuthorizationPage: React.FC = () => {
   return (
     <>
       <main className="min-h-dvh bg-card">
-        {details === undefined ? (
-          <AgentAuthorizationCodeEntry onResolved={setDetails} />
-        ) : (
-          <AgentAuthorizationReview details={details} />
-        )}
+        {details === undefined ? <CodeEntry onResolved={setDetails} /> : <Review details={details} />}
       </main>
       <Toaster />
     </>

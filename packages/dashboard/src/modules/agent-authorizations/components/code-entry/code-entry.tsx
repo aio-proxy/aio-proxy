@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
 import { normalizeAgentUserCode } from '../../lib/user-code';
 import { AgentAuthorizationRequestError } from '../../services/agent-authorizations-service';
-import { AgentAuthorizationCard } from '../card';
+import { Card } from '../card';
 
 const codeSchema = z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u);
 const otpSlots = [0, 1, 2, 3, 4, 5, 6, 7] as const;
@@ -33,11 +33,11 @@ const requestErrorMessage = (error: unknown): string =>
     ? m['dashboard.agent_authorization.password_required']()
     : m['dashboard.agent_authorization.network_error']();
 
-interface AgentAuthorizationCodeEntryProps {
+interface CodeEntryProps {
   readonly onResolved: (details: PendingAuthorization) => void;
 }
 
-export const AgentAuthorizationCodeEntry: React.FC<AgentAuthorizationCodeEntryProps> = ({ onResolved }) => {
+export const CodeEntry: React.FC<CodeEntryProps> = ({ onResolved }) => {
   const { resolve } = useAgentAuthorization();
   const form = useForm({
     defaultValues: { userCode: '' },
@@ -70,7 +70,7 @@ export const AgentAuthorizationCodeEntry: React.FC<AgentAuthorizationCodeEntryPr
         void form.handleSubmit();
       }}
     >
-      <AgentAuthorizationCard description={m['dashboard.agent_authorization.instructions']()}>
+      <Card description={m['dashboard.agent_authorization.instructions']()}>
         <CardContent>
           <form.Field
             name="userCode"
@@ -123,7 +123,7 @@ export const AgentAuthorizationCodeEntry: React.FC<AgentAuthorizationCodeEntryPr
             {m['dashboard.agent_authorization.resolve']()}
           </Button>
         </CardFooter>
-      </AgentAuthorizationCard>
+      </Card>
     </form>
   );
 };
