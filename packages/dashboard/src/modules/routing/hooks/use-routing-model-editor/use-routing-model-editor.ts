@@ -1,7 +1,7 @@
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { useStore } from '@tanstack/react-form';
 import { useBlocker } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   mergeRoutingMutationDrafts,
@@ -141,8 +141,26 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     metadataValid &&
     routingOverrideDraftsValid(metadataValues.overrides);
 
-  const navigationBlocked = () => dirtyTabs.length > 0;
-  useBlocker({ shouldBlockFn: navigationBlocked, enableBeforeUnload: navigationBlocked });
+  const navigationBlocked = useCallback((): boolean => {
+    const metadataTouched =
+      metadataValues.metadata.touched ||
+      Object.values(metadataValues.overrides).some((override) => override.cost.touched || override.limit.touched);
+    return topologyDirty || metadataTouched;
+  }, [metadataValues, topologyDirty]);
+  const blocker = useBlocker({
+    shouldBlockFn: () => navigationBlocked(),
+    enableBeforeUnload: () => navigationBlocked(),
+    withResolver: true,
+  });
+
+  const discard = () => {
+    reloadGeneration.current += 1;
+    setStale(false);
+    mutation.reset();
+    setMetadataValid(true);
+    form.reset(formDefaults);
+    metadataForm.reset(metadataDefaults);
+  };
 
   const save = () => {
     if (
@@ -176,8 +194,10 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     dirtyTabs,
     canSave,
     save,
+    discard,
     stale,
     reload,
+    blocker,
     saveFailed: mutation.error != null && !isStaleRoutingError(mutation.error),
     metadataValid,
     setMetadataValid,
