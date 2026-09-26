@@ -2,8 +2,6 @@ import { AioProxyLogo } from '@aio-proxy/brand';
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Field, FieldError } from '@aio-proxy/ui/components/field';
-import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@aio-proxy/ui/components/input-otp';
 import {
   Item,
   ItemContent,
@@ -13,17 +11,14 @@ import {
   ItemSeparator,
   ItemTitle,
 } from '@aio-proxy/ui/components/item';
-import { useForm } from '@tanstack/react-form';
 import { Clock, Fingerprint, List, Sparkles, Tag, User } from 'lucide-react';
-import { Fragment, useEffect, useState } from 'react';
-import { z } from 'zod';
+import { Fragment, useState } from 'react';
 
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
-import { normalizeAgentUserCode } from '../../lib/user-code';
 import { AgentAuthorizationRequestError } from '../../services/agent-authorizations-service';
+import { AgentAuthorizationCodeForm } from './agent-authorization-code-form';
+import { AgentAuthorizationCodeHeader } from './agent-authorization-code-header';
 
-const codeSchema = z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u);
-const otpSlots = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 const terminalMessage = (status: 'approved' | 'denied' | 'expired' | 'consumed'): string => {
   if (status === 'approved') return m['dashboard.agent_authorization.approved']();
   if (status === 'denied') return m['dashboard.agent_authorization.denied']();
@@ -34,22 +29,6 @@ const terminalMessage = (status: 'approved' | 'denied' | 'expired' | 'consumed')
 export const AgentAuthorizationPage: React.FC = () => {
   const authorization = useAgentAuthorization();
   const [dismissed, setDismissed] = useState(false);
-  const form = useForm({
-    defaultValues: { userCode: '' },
-    onSubmit: ({ value }) => {
-      setDismissed(false);
-      authorization.approve.reset();
-      authorization.deny.reset();
-      authorization.resolve.mutate(value.userCode);
-    },
-  });
-  useEffect(() => {
-    const code = new URLSearchParams(window.location.hash.slice(1)).get('code');
-    if (code !== null) form.setFieldValue('userCode', normalizeAgentUserCode(code));
-    if (window.location.hash !== '')
-      window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
-  }, [form]);
-
   const result = dismissed
     ? undefined
     : (authorization.approve.data ?? authorization.deny.data ?? authorization.resolve.data);
@@ -83,84 +62,37 @@ export const AgentAuthorizationPage: React.FC = () => {
         ];
 
   const codeEntry = result === undefined;
-  const alert =
-    error === null || error === undefined ? null : (
-      <p role="alert" className="text-sm text-destructive">
-        {errorMessage}
-      </p>
-    );
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-sidebar px-4 py-8">
       <Card className="w-full max-w-sm" size="sm">
-        <CardHeader className={codeEntry ? 'text-center' : undefined}>
-          <CardTitle>
-            <h1 className={`flex items-center gap-2 text-xl font-semibold ${codeEntry ? 'justify-center' : ''}`}>
-              {m['dashboard.agent_authorization.title']()}
-              <AioProxyLogo className="text-xl" />
-            </h1>
-          </CardTitle>
-          {codeEntry ? <CardDescription>{m['dashboard.agent_authorization.instructions']()}</CardDescription> : null}
-          {pending === undefined ? null : (
-            <CardDescription>{m['dashboard.agent_authorization.pending']()}</CardDescription>
-          )}
-        </CardHeader>
+        {codeEntry ? (
+          <AgentAuthorizationCodeHeader />
+        ) : (
+          <CardHeader>
+            <CardTitle>
+              <h1 className="flex items-center gap-2 text-xl font-semibold">
+                {m['dashboard.agent_authorization.title']()}
+                <AioProxyLogo className="text-xl" />
+              </h1>
+            </CardTitle>
+            {pending === undefined ? null : (
+              <CardDescription>{m['dashboard.agent_authorization.pending']()}</CardDescription>
+            )}
+          </CardHeader>
+        )}
 
         {codeEntry ? (
-          <CardContent>
-            <form
-              className="flex flex-col items-center gap-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void form.handleSubmit();
-              }}
-            >
-              <form.Field
-                name="userCode"
-                validators={{
-                  onSubmit: ({ value }) =>
-                    codeSchema.safeParse(value).success ? undefined : m['dashboard.agent_authorization.code_invalid'](),
-                }}
-              >
-                {(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                    <div className="flex justify-center">
-                      <InputOTP
-                        id="agent-user-code"
-                        aria-label={m['dashboard.agent_authorization.code_label']()}
-                        containerClassName="gap-2"
-                        maxLength={8}
-                        autoComplete="one-time-code"
-                        inputMode="text"
-                        aria-invalid={field.state.meta.errors.length > 0 || undefined}
-                        value={field.state.value.replaceAll('-', '')}
-                        pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
-                        onBlur={field.handleBlur}
-                        onChange={(value) => field.handleChange(normalizeAgentUserCode(value))}
-                      >
-                        <InputOTPGroup>
-                          {otpSlots.slice(0, 4).map((index) => (
-                            <InputOTPSlot key={index} index={index} />
-                          ))}
-                        </InputOTPGroup>
-                        <InputOTPSeparator />
-                        <InputOTPGroup>
-                          {otpSlots.slice(4).map((index) => (
-                            <InputOTPSlot key={index} index={index} />
-                          ))}
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-                    <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
-                  </Field>
-                )}
-              </form.Field>
-              {alert}
-              <Button type="submit" disabled={isPending}>
-                {m['dashboard.agent_authorization.resolve']()}
-              </Button>
-            </form>
-          </CardContent>
+          <AgentAuthorizationCodeForm
+            disabled={isPending}
+            errorMessage={error === null || error === undefined ? undefined : errorMessage}
+            onSubmit={(userCode) => {
+              setDismissed(false);
+              authorization.approve.reset();
+              authorization.deny.reset();
+              authorization.resolve.mutate(userCode);
+            }}
+          />
         ) : null}
 
         {pending === undefined ? null : (
@@ -221,7 +153,13 @@ export const AgentAuthorizationPage: React.FC = () => {
             </Button>
           </CardFooter>
         ) : null}
-        {codeEntry || alert === null ? null : <CardContent>{alert}</CardContent>}
+        {codeEntry || error === null || error === undefined ? null : (
+          <CardContent>
+            <p role="alert" className="text-sm text-destructive">
+              {errorMessage}
+            </p>
+          </CardContent>
+        )}
       </Card>
     </main>
   );
