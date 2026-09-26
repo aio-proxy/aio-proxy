@@ -92,7 +92,7 @@ export const AgentAuthorizationPage: React.FC = () => {
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-sidebar px-4 py-8">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm" size="sm">
         <CardHeader className={codeEntry ? 'text-center' : undefined}>
           <CardTitle>
             <h1 className={`flex items-center gap-2 text-xl font-semibold ${codeEntry ? 'justify-center' : ''}`}>
@@ -109,7 +109,7 @@ export const AgentAuthorizationPage: React.FC = () => {
         {codeEntry ? (
           <CardContent>
             <form
-              className="space-y-5"
+              className="flex flex-col items-center gap-5"
               onSubmit={(event) => {
                 event.preventDefault();
                 void form.handleSubmit();
@@ -156,7 +156,7 @@ export const AgentAuthorizationPage: React.FC = () => {
                 )}
               </form.Field>
               {alert}
-              <Button className="w-full" type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending}>
                 {m['dashboard.agent_authorization.resolve']()}
               </Button>
             </form>
@@ -171,14 +171,18 @@ export const AgentAuthorizationPage: React.FC = () => {
                   const Icon = detail.icon;
                   return (
                     <Fragment key={detail.label}>
-                      <Item size="sm">
+                      <Item size="xs">
                         <ItemMedia variant="icon">
                           <Icon />
                         </ItemMedia>
                         <ItemContent>
                           <ItemTitle>{detail.label}</ItemTitle>
-                          {detail.value === undefined ? null : <ItemDescription>{detail.value}</ItemDescription>}
                         </ItemContent>
+                        {detail.value === undefined ? null : (
+                          <ItemContent>
+                            <ItemDescription>{detail.value}</ItemDescription>
+                          </ItemContent>
+                        )}
                       </Item>
                       {index === details.length - 1 ? null : <ItemSeparator className="my-0" />}
                     </Fragment>
@@ -201,19 +205,21 @@ export const AgentAuthorizationPage: React.FC = () => {
 
         {result !== undefined && result.status !== 'pending' ? (
           <CardContent>
-            <section className="flex flex-col items-start gap-4" role="status">
-              <p>{terminalMessage(result.status)}</p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDismissed(true);
-                  authorization.reset();
-                }}
-              >
-                {m['dashboard.agent_authorization.retry']()}
-              </Button>
-            </section>
+            <p role="status">{terminalMessage(result.status)}</p>
           </CardContent>
+        ) : null}
+        {result !== undefined && result.status !== 'pending' ? (
+          <CardFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDismissed(true);
+                authorization.reset();
+              }}
+            >
+              {m['dashboard.agent_authorization.retry']()}
+            </Button>
+          </CardFooter>
         ) : null}
         {codeEntry || alert === null ? null : <CardContent>{alert}</CardContent>}
       </Card>
