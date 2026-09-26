@@ -1,7 +1,7 @@
 # Dashboard Agents page with local one-click setup
 
 Date: 2026-09-26
-Status: proposed for user review
+Status: accepted
 
 ## Goal
 
@@ -129,7 +129,7 @@ type AgentOperationState =
 - The dashboard polls `GET /operations/:id` with TanStack Query while the status is `running` or `awaiting_approval`.
 - `awaiting_approval` is entered through the existing `onDevice` callback of the Codex setup. The dashboard shows the user code for comparison and a single **Approve** / **Deny** pair. Approval calls the existing challenge store with the same audit source as the authorize page. The dashboard never auto-approves: clicking Configure is not treated as approving a device.
 - Operations are kept for 10 minutes after they finish, then dropped. They are not persisted. After a restart, the existing Codex setup journal handles recovery exactly as it does after an interrupted CLI run. The next snapshot reports `recovery_required` for that target.
-- `AgentOperationError` is a closed code set (`host_missing`, `path_unavailable`, `locked`, `occupied_provider_id`, `endpoint_changed`, `authorization_denied`, `authorization_expired`, `cancelled`, `unknown`) mapped from the errors the CLI implementations already throw. Only `unknown` carries a server-logged detail.
+- `AgentOperationError` is a closed code set (`host_missing`, `path_unavailable`, `not_configured`, `locked`, `invalid_provider_id`, `occupied_provider_id`, `endpoint_changed`, `authorization_denied`, `authorization_expired`, `recovery_required`, `plan_stale`, `cancelled`, `unknown`) mapped from the errors the CLI implementations already throw. Only `unknown` carries a server-logged detail.
 
 ### Login approval for plugin and Grok targets
 

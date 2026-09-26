@@ -454,6 +454,8 @@ aio-proxy agent remove <target>
 aiop agent remove codex
 ```
 
+The Dashboard's **Agents** page shows the same state and, when opened on the machine running aio-proxy (not in a container), configures, repairs, and removes each Agent with one click, including the Codex setup and device approval.
+
 Supported floors are OpenCode 1.17.10, Pi 0.84.2, and oh-my-pi 17.3.7. After configure, sign in with `opencode auth login --provider aio-proxy` or `/login aio-proxy` in Pi and oh-my-pi. Reload or restart the Agent so it loads the updated adapter. `aio-proxy upgrade` refreshes managed adapters the same way and also requires a reload.
 
 When caller keys are enforced, set `server.password` so Device Approval can authorize the Agent. `aio-proxy agent remove` revokes the installation and deletes aio-proxy's managed files; it does not log the Agent out of its own host account. If the local control plane is offline, remove refuses and leaves files in place.
