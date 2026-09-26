@@ -39,3 +39,34 @@ export const routingTrafficQueryOptions = (range: UsageOverviewRange) =>
       return decodeRoutingTraffic(await response.json());
     },
   });
+
+type RoutingTrafficBucketsWire = InferResponseType<
+  typeof dashboardClient.dashboard.api.routing.traffic.buckets.$get,
+  200
+>;
+
+/** Bucket counts are decimal strings for the same reason the totals are. `key` is passed through
+ * verbatim: it is a full ISO instant, local midnight for a day bucket, and the chart formats it. */
+export const decodeRoutingTrafficBuckets = (wire: RoutingTrafficBucketsWire) => ({
+  ...wire,
+  buckets: wire.buckets.map((bucket) => ({
+    key: bucket.key,
+    values: Object.fromEntries(Object.entries(bucket.values).map(([id, count]) => [id, BigInt(count)])),
+  })),
+});
+
+export type RoutingTrafficBucketsData = ReturnType<typeof decodeRoutingTrafficBuckets>;
+
+export const routingTrafficBucketsQueryOptions = (range: UsageOverviewRange, modelId: string) =>
+  queryOptions({
+    queryKey: queryKeys.routingTrafficBuckets(range, modelId),
+    queryFn: async (): Promise<RoutingTrafficBucketsData> => {
+      // The HTTP parameter is `model`; a model id never travels in a path segment because it
+      // can contain slashes.
+      const response = await dashboardClient.dashboard.api.routing.traffic.buckets.$get({
+        query: { range, model: modelId },
+      });
+      if (!response.ok) throw new Error(`routing traffic buckets failed: ${response.status}`);
+      return decodeRoutingTrafficBuckets(await response.json());
+    },
+  });

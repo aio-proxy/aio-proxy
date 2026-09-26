@@ -1,6 +1,6 @@
 import { expect, test } from '@rstest/core';
 
-import { decodeRoutingTraffic } from './routing-traffic-service';
+import { decodeRoutingTraffic, decodeRoutingTrafficBuckets } from './routing-traffic-service';
 
 const wire = {
   range: '24h' as const,
@@ -50,4 +50,34 @@ test('passes the window bounds through untouched', () => {
     rangeStart: wire.rangeStart,
     rangeEnd: wire.rangeEnd,
   });
+});
+
+const bucketsWire = {
+  range: '7d' as const,
+  modelId: 'anthropic/claude-sonnet-4.5',
+  rangeStart: '2026-09-19T00:00:00.000Z',
+  rangeEnd: '2026-09-26T08:00:00.000Z',
+  bucketUnit: 'day' as const,
+  providerIds: ['primary', 'fallback'],
+  buckets: [
+    { key: '2026-09-19T00:00:00.000Z', values: { primary: '10', fallback: '0' } },
+    { key: '2026-09-20T00:00:00.000Z', values: { primary: '9007199254740993', fallback: '1' } },
+  ],
+};
+
+test('decodes bucket counts to bigint and keeps the ISO key untouched', () => {
+  const decoded = decodeRoutingTrafficBuckets(bucketsWire);
+
+  expect(decoded.buckets[1]?.values['primary']).toBe(9_007_199_254_740_993n);
+  // A day bucket's key is local midnight as a full instant, not a date-only string.
+  expect(decoded.buckets[0]?.key).toBe('2026-09-19T00:00:00.000Z');
+});
+
+test('keeps an explicit zero bucket rather than dropping it', () => {
+  // A dropped key would leave a gap in the stacked chart instead of a zero-height band.
+  expect(decodeRoutingTrafficBuckets(bucketsWire).buckets[0]?.values['fallback']).toBe(0n);
+});
+
+test('carries the provider series order through for stable stacking', () => {
+  expect(decodeRoutingTrafficBuckets(bucketsWire).providerIds).toEqual(['primary', 'fallback']);
 });
