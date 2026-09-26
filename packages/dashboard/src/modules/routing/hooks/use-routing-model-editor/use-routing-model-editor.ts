@@ -133,6 +133,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       ? (['cost'] as const)
       : []),
   ];
+  const routeDirty = dirtyTabs.length > 0;
   const canSave =
     writable &&
     canSubmit &&
@@ -141,7 +142,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     metadataValid &&
     routingOverrideDraftsValid(metadataValues.overrides);
 
-  const navigationBlocked = useCallback((): boolean => dirtyTabs.length > 0, [dirtyTabs]);
+  const navigationBlocked = useCallback((): boolean => routeDirty, [routeDirty]);
   const blocker = useBlocker({
     shouldBlockFn: () => navigationBlocked(),
     enableBeforeUnload: () => navigationBlocked(),
