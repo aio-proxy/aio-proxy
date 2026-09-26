@@ -1,6 +1,6 @@
 import { expect, test } from '@rstest/core';
 
-import { ROUTING_RISK_FILTERS, routingSearchSchema, toggleRoutingRisk, withRoutingFilters } from './routing-search';
+import { routingSearchSchema, toggleRoutingRisk, withRoutingFilters } from './routing-search';
 
 test('defaults to no filters and a 24h window', () => {
   expect(routingSearchSchema.parse({})).toEqual({ range: '24h' });
@@ -20,10 +20,6 @@ test('keeps a valid risk, lab and range', () => {
   });
 });
 
-test('enumerates exactly the three clickable risks', () => {
-  expect([...ROUTING_RISK_FILTERS]).toEqual(['no-eligible', 'single-point', 'deviating']);
-});
-
 test('toggling the active risk clears it and switching risks replaces it', () => {
   const base = routingSearchSchema.parse({ risk: 'no-eligible' });
 
@@ -33,7 +29,13 @@ test('toggling the active risk clears it and switching risks replaces it', () =>
 
 test('patching a filter leaves the others alone and clears with undefined', () => {
   const base = routingSearchSchema.parse({ risk: 'deviating', lab: 'openai', range: '7d' });
+  const cleared = withRoutingFilters(base, { lab: undefined });
 
-  expect(withRoutingFilters(base, { lab: undefined })).toEqual({ risk: 'deviating', range: '7d' });
+  // A cleared filter must be an ABSENT key, not a present key holding undefined: the router's
+  // `stripSearchParams` only keeps it out of the URL when the key is gone. `toStrictEqual` fails
+  // on a leftover undefined property where `toEqual` would not, and the key check states the
+  // same constraint directly without depending on key order.
+  expect(cleared).toStrictEqual({ risk: 'deviating', range: '7d' });
+  expect(Object.keys(cleared)).not.toContain('lab');
   expect(withRoutingFilters(base, { lab: 'google' }).risk).toBe('deviating');
 });

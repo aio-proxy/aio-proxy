@@ -1,4 +1,6 @@
 import { UsageOverviewRangeSchema } from '@aio-proxy/types';
+import { omitBy } from 'es-toolkit/object';
+import { isUndefined } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 /** The three risks the health strip can filter by. Ordered as the strip renders them. */
@@ -20,14 +22,13 @@ export type RoutingFilterPatch = {
   readonly [Key in keyof RoutingSearch]?: RoutingSearch[Key] | undefined;
 };
 
-/** Clearing a filter means removing the key, so `stripSearchParams` keeps it out of the URL. */
-export const withRoutingFilters = (search: RoutingSearch, patch: RoutingFilterPatch): RoutingSearch => {
-  const next: Record<string, unknown> = { ...search, ...patch };
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined) delete next[key];
-  }
-  return next as RoutingSearch;
-};
+/**
+ * Clearing a filter means removing the key, so `stripSearchParams` keeps it out of the URL.
+ * Dropping every undefined value also discards a key Zod cleared while catching a malformed
+ * inbound URL, so junk cannot round-trip.
+ */
+export const withRoutingFilters = (search: RoutingSearch, patch: RoutingFilterPatch): RoutingSearch =>
+  omitBy({ ...search, ...patch }, isUndefined) as RoutingSearch;
 
 /** Clicking the active tile clears the filter; clicking another replaces it. */
 export const toggleRoutingRisk = (search: RoutingSearch, risk: RoutingRiskFilter): RoutingSearch =>
