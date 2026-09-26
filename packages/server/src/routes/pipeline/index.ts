@@ -8,6 +8,7 @@ import {
 } from '@aio-proxy/core';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
+import { createGuardianEvaluate } from '../../plugin-runtime/guardian-evaluation';
 import { observeInboundRequest } from '../../request-logging';
 import { attributeName, requestAsksFastMode, type RequestTraceSession, spanName } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
@@ -17,6 +18,7 @@ import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { startInferenceSpan } from './inference-span';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { withProtocolRequestObservation } from './observation';
+import { completePreRouteResponse, invokeResponsesPreRoute } from './pre-route';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 import { startPipelineSpan } from './tracing';
 
@@ -279,30 +281,58 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     // stay retrievable by model. requestedModel is already an argument here.
     const inference = startInferenceSpan(session, adapter.capability, requestedModel);
     const routeSpan = startPipelineSpan(inference.session.rootContext, spanName.route);
-    let eligible;
+    let candidates;
     try {
-      const candidates = routeSpan.run(() =>
+      candidates = routeSpan.run(() =>
         lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
           session: resolution.context.session,
         }),
       );
-      eligible = filterCandidatesByCapability(candidates, adapter.capability, {
-        requestedModelId: requestedModel,
-        routerModels: lease.snapshot.config?.router.models,
-      });
     } catch (error) {
-      // The outer catch turns RouterModelNotFoundError into a 404 and settles
-      // the root; both spans have to be closed first, innermost first.
       routeSpan.end({
         outcome: 'failure',
         ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
       });
-      inference.end({
-        outcome: 'failure',
-        ...(error instanceof RouterModelNotFoundError ? { errorCode: 'model_not_found' } : {}),
-      });
+      if (error instanceof RouterModelNotFoundError) {
+        const hook =
+          adapter.protocol === 'openai-response' && adapter.capability === 'language'
+            ? lease.snapshot.plugins.registry.resolveResponsesPreRoute('@aio-proxy/plugin-openai-chatgpt')
+            : undefined;
+        if (hook !== undefined) {
+          try {
+            const synthetic = await invokeResponsesPreRoute({
+              hook,
+              request: rawRequest,
+              logicalRequest: resolution.context,
+              evaluate: createGuardianEvaluate(() => source, { plugin: '@aio-proxy/plugin-openai-chatgpt' }),
+              signal: rawRequest.signal,
+            });
+            if (synthetic !== undefined) {
+              return completePreRouteResponse({
+                inference,
+                response: synthetic,
+                signal: rawRequest.signal,
+                release: lease.release,
+                deferRelease,
+              });
+            }
+          } catch (hookError) {
+            if (rawRequest.signal.aborted || isInboundAbort(hookError, rawRequest.signal)) {
+              inference.end({ outcome: 'cancelled' });
+              throw hookError;
+            }
+          }
+        }
+        inference.end({ outcome: 'failure', errorCode: 'model_not_found' });
+      } else {
+        inference.end({ outcome: 'failure' });
+      }
       throw error;
     }
+    const eligible = filterCandidatesByCapability(candidates, adapter.capability, {
+      requestedModelId: requestedModel,
+      routerModels: lease.snapshot.config?.router.models,
+    });
     routeSpan.span.setAttribute(attributeName.routeCandidateCount, eligible.length);
     if (eligible.length === 0) {
       routeSpan.end({ outcome: 'failure', errorCode: 'not_implemented' });

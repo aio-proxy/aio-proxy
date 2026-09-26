@@ -14,7 +14,10 @@ export function guardianRaw<TRequest, TContext>(
     ...raw,
     invoke: wrap({
       original: raw.invoke,
-      evaluate: createGuardianEvaluate(() => ctx.source, slot.candidate.provider.id),
+      evaluate: createGuardianEvaluate(() => ctx.source, {
+        providerId: slot.candidate.provider.id,
+        plugin: slot.candidate.provider.plugin,
+      }),
     }),
   };
 }

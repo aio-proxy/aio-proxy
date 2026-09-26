@@ -294,6 +294,7 @@ export function emptyPluginSnapshot(): PluginRegistrySnapshot {
     registry: {
       resolveOAuth: () => undefined,
       resolveResponsesRaw: () => undefined,
+      resolveResponsesPreRoute: () => undefined,
       oauthCapabilities: () => [],
       payloadCaptureHints: () => [],
     },

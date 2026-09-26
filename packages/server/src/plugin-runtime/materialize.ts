@@ -128,7 +128,12 @@ async function createRuntimeMaterialization(
           ...(config.plugin === '@aio-proxy/plugin-openai-chatgpt' &&
           options.plugins.plugins.get(config.plugin)?.builtIn === true &&
           options.guardianEvaluate !== undefined
-            ? { __aioGuardianEvaluate: options.guardianEvaluate(config.id) }
+            ? {
+                __aioGuardianEvaluate: options.guardianEvaluate({
+                  providerId: config.id,
+                  plugin: config.plugin,
+                }),
+              }
             : {}),
           ...(config.plugin === '@aio-proxy/plugin-openai-chatgpt' &&
           options.plugins.plugins.get(config.plugin)?.builtIn === true
