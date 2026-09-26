@@ -48,7 +48,7 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
           <DetailSection title={m['dashboard.agents.section.setup']()}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <AgentSetupPanel key={target} descriptor={descriptor} local={local} localSetup={data.localSetup} />
-              {removable ? <RemoveAgentDialog target={target} disabled={data.localSetup !== 'available'} /> : null}
+              <RemoveAgentDialog target={target} removable={removable} disabled={data.localSetup !== 'available'} />
             </div>
           </DetailSection>
         )}

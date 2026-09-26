@@ -21,12 +21,18 @@ import { createCliAutoUpdateHooks, migratePreMarkerManagedUnit } from './auto-up
 const VERSION = packageJson.version;
 
 // Loaded lazily: the Agent integration code is only needed when local one-click setup is allowed.
-const localAgentHost = async (host: string) => {
-  const { connectHost } = await import('../agent/control-plane');
+const localAgentHost = async (host: string, port: number) => {
+  const { connectHost, resolveAgentEndpoint } = await import('../agent/control-plane');
   const { createAgentHostPort, shouldEnableAgentHost } = await import('../agent/host-port');
   const enabled = await shouldEnableAgentHost({
     env: process.env,
-    resolveEndpoint: async () => connectHost(host),
+    // Agent files record the configured endpoint; a --host/--port override would point them elsewhere.
+    resolveEndpoint: async () => {
+      const configured = await resolveAgentEndpoint();
+      if (configured !== controlBaseUrl(connectHost(host), String(port)))
+        throw new Error('Agent endpoint differs from the bound address');
+      return configured;
+    },
     home: homedir,
   });
   return enabled ? createAgentHostPort() : undefined;
@@ -224,7 +230,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   assertPortAvailable(host, port);
   await migratePreMarkerManagedUnit();
   const dashboardAssets = deps.dashboardAssets();
-  const agentHost = await localAgentHost(host);
+  const agentHost = await localAgentHost(host, port);
   const app = await bootProxyServer({
     config: raw,
     configPath: resolvedConfigPath,

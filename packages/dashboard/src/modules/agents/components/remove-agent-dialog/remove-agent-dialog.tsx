@@ -22,13 +22,16 @@ import { OperationProgress } from '../operation-progress';
 
 interface RemoveAgentDialogProps {
   readonly target: AgentTarget;
+  /** False once nothing is left to remove; an open dialog stays to show the outcome. */
+  readonly removable: boolean;
   readonly disabled: boolean;
 }
 
-export const RemoveAgentDialog: React.FC<RemoveAgentDialogProps> = ({ target, disabled }) => {
+export const RemoveAgentDialog: React.FC<RemoveAgentDialogProps> = ({ target, removable, disabled }) => {
   const [open, setOpen] = useState(false);
   const operation = useAgentOperation();
   const name = AGENT_DISPLAY_NAMES[target];
+  if (!removable && !open) return null;
   return (
     <AlertDialog
       open={open}
