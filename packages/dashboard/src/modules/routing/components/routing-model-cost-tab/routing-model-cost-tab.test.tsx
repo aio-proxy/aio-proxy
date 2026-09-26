@@ -68,7 +68,7 @@ test('lays providers out as rows rather than stacked blocks', () => {
 test('keeps every provider editable through the shared override fields', () => {
   renderCost({ providers: [providerFixture('primary')], writable: true });
 
-  expect(screen.getByText('primary')).toBeInTheDocument();
+  for (const input of screen.getAllByRole('spinbutton')) expect(input).toBeEnabled();
 });
 
 test('renders read-only when the config cannot be written', () => {
