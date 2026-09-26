@@ -25,6 +25,7 @@ const mocks = rs.hoisted(() => ({
   mutationPending: false,
   mutationError: null as Error | null,
   mutationReset: rs.fn(),
+  trafficMode: 'pending' as 'pending' | 'error',
 }));
 
 rs.mock('../hooks/use-routing-query', () => ({
@@ -37,6 +38,16 @@ rs.mock('../hooks/use-routing-mutation', () => ({
     isPending: mocks.mutationPending,
     error: mocks.mutationError,
     reset: mocks.mutationReset,
+  }),
+}));
+
+rs.mock('../services/routing-traffic-service', () => ({
+  routingTrafficQueryOptions: (range: string) => ({
+    queryKey: ['routing-traffic', range],
+    queryFn: () => {
+      if (mocks.trafficMode === 'error') throw new Error('routing traffic failed');
+      return new Promise(() => undefined);
+    },
   }),
 }));
 
@@ -108,6 +119,26 @@ const model = (
   };
 };
 
+const modelFixture = (modelId: string, catalog?: DashboardRoutingModel['catalog']) =>
+  model({ modelId, ...(catalog === undefined ? {} : { catalog }) });
+
+const mockRoutingModels = (data: DashboardRoutingModelsResponse) => {
+  mocks.query.data = data;
+};
+
+const mockRoutingTrafficPending = () => {
+  mocks.trafficMode = 'pending';
+};
+
+const mockRoutingTrafficError = () => {
+  mocks.trafficMode = 'error';
+};
+
+const routingPageProps = {
+  search: { range: '24h' as const },
+  onSearchChange: rs.fn(),
+};
+
 afterEach(() => {
   queryClient.clear();
   mocks.query.data = undefined;
@@ -118,6 +149,28 @@ afterEach(() => {
   mocks.mutationPending = false;
   mocks.mutationError = null;
   mocks.mutationReset.mockReset();
+  mocks.trafficMode = 'pending';
+  routingPageProps.onSearchChange.mockReset();
+});
+
+test('renders the list from routing models alone when traffic has not landed', () => {
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+  mockRoutingTrafficPending();
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  expect(screen.getByTestId('routing-row-gpt-5')).toBeInTheDocument();
+  expect(screen.getByText(/Measuring|统计中/u)).toBeInTheDocument();
+});
+
+test('keeps the list fully usable when the traffic query fails', () => {
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+  mockRoutingTrafficError();
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  expect(screen.getByTestId('routing-row-gpt-5')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 test('renders all known models from the routing query including unavailable routes', () => {
@@ -147,7 +200,7 @@ test('renders all known models from the routing query including unavailable rout
     ],
   };
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
 
   expect(screen.getByTestId('routing-row-openai/gpt-5')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
@@ -157,7 +210,7 @@ test('renders all known models from the routing query including unavailable rout
 test('opens the editor drawer from a row Edit action', () => {
   mocks.query.data = { writable: true, models: [model({ modelId: 'solo-model' })] };
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
   fireEvent.click(
     within(screen.getByTestId('routing-row-solo-model')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
   );
@@ -169,7 +222,7 @@ test('opens the editor drawer from a row Edit action', () => {
 test('shows Retry when the routing query fails', () => {
   mocks.query.isError = true;
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
 
   expect(screen.getByRole('alert')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Retry|再試|다시|重试|重試/u }));
@@ -205,7 +258,7 @@ test('ordinary query refetch keeps the opened editor revision and draft', async 
   });
   mocks.query.data = { writable: true, models: [opened] };
 
-  const { rerender } = render(<RoutingPage />);
+  const { rerender } = render(<RoutingPage {...routingPageProps} />);
   openSoloModelEditor();
   fireEvent.click(screen.getByTestId('routing-reset-solo-model-provider'));
 
@@ -220,7 +273,7 @@ test('ordinary query refetch keeps the opened editor revision and draft', async 
       }),
     ],
   };
-  rerender(<RoutingPage />);
+  rerender(<RoutingPage {...routingPageProps} />);
 
   expect(screen.queryByTestId('routing-reset-solo-model-provider')).not.toBeInTheDocument();
   fireEvent.click(screen.getByTestId('routing-save'));
@@ -268,7 +321,7 @@ test('explicit stale reload adopts the new revision without clearing draft value
     ],
   };
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
   openSoloModelEditor();
   fireEvent.click(screen.getByTestId('routing-reset-solo-model-provider'));
   fireEvent.click(screen.getByTestId('routing-save'));
@@ -318,7 +371,7 @@ test('explicit reload appends a new Provider override from the refreshed model',
     ],
   };
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
   openSoloModelEditor();
   fireEvent.click(screen.getByTestId('routing-reset-kept'));
   fireEvent.click(screen.getByTestId('routing-save'));
@@ -374,7 +427,7 @@ test('explicit reload drops a disappeared Provider from the visible Save payload
     ],
   };
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
   openSoloModelEditor();
   fireEvent.click(screen.getByTestId('routing-reset-kept'));
   fireEvent.click(screen.getByTestId('routing-save'));
@@ -444,7 +497,7 @@ test('pending Reload does not reopen the editor after it is closed', async () =>
   };
   const resolveRefetch = deferRefetch();
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
   fireEvent.click(
     within(screen.getByTestId('routing-row-model-a')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
   );
@@ -498,7 +551,7 @@ test('pending Reload for one model does not replace another open editor draft', 
   };
   const resolveRefetch = deferRefetch();
 
-  render(<RoutingPage />);
+  render(<RoutingPage {...routingPageProps} />);
   fireEvent.click(
     within(screen.getByTestId('routing-row-model-a')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
   );

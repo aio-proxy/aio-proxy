@@ -4,21 +4,37 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
 import { RoutingEditorDrawer } from '../components/routing-editor-drawer';
+import { RoutingHealthStrip } from '../components/routing-health-strip';
+import { RoutingLabFilter } from '../components/routing-lab-filter';
 import { RoutingTable } from '../components/routing-table';
 import { useRoutingQuery } from '../hooks/use-routing-query';
+import { countRoutingRisks } from '../lib/routing-risk';
+import { filterRoutingModels, sortRoutingModels } from '../lib/routing-rows';
+import { toggleRoutingRisk, type RoutingSearch, withRoutingFilters } from '../lib/routing-search';
+import { indexRoutingTraffic } from '../lib/routing-traffic';
+import { routingTrafficQueryOptions } from '../services/routing-traffic-service';
 
-export const RoutingPage: React.FC = () => {
+interface RoutingPageProps {
+  readonly search: RoutingSearch;
+  readonly onSearchChange: (next: RoutingSearch) => void;
+}
+
+export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange }) => {
   const query = useRoutingQuery();
+  const trafficQuery = useQuery(routingTrafficQueryOptions(search.range));
   const [selected, setSelected] = useState<DashboardRoutingModel | null>(null);
   const editorGeneration = useRef(0);
   const models = query.data?.models ?? [];
   const writable = query.data?.writable ?? false;
+  const index = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
+  const visible = filterRoutingModels(sortRoutingModels(models), search, index);
 
   const selectModel = (model: DashboardRoutingModel | null) => {
     setSelected((current) => {
@@ -57,7 +73,16 @@ export const RoutingPage: React.FC = () => {
         </Empty>
       );
     }
-    return <RoutingTable models={models} traffic={undefined} onEdit={selectModel} />;
+    return (
+      <div className="space-y-4">
+        <RoutingLabFilter
+          models={models}
+          value={search.lab}
+          onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
+        />
+        <RoutingTable models={visible} traffic={index} onEdit={selectModel} />
+      </div>
+    );
   })();
 
   return (
@@ -70,6 +95,14 @@ export const RoutingPage: React.FC = () => {
         <p role="status" className="mb-3 rounded-lg border bg-muted p-3 text-sm">
           {m['dashboard.routing.read_only']()}
         </p>
+      ) : null}
+      {query.data !== undefined && models.length > 0 ? (
+        <RoutingHealthStrip
+          total={models.length}
+          counts={countRoutingRisks(models, index)}
+          active={search.risk}
+          onToggle={(risk) => onSearchChange(toggleRoutingRisk(search, risk))}
+        />
       ) : null}
       <Card>
         <CardContent>{content}</CardContent>
