@@ -5,4 +5,4 @@
 'aio-proxy': patch
 ---
 
-The agent authorization page is centered on the screen. The title shows the logo in place of the product name, the code is entered as two groups of four characters, and approve and deny sit side by side. Approving or denying shows a success or failure icon and the outcome. A code that is expired, already used, or already decided stays on the entry page and is reported with a toast.
+The agent authorization page is centered and shows the logo. A link that already includes a code shows that code with the request and approve and deny together. Typing a code stays on that screen and adds the request. An expired, used, or already decided code is reported with a toast. Approving or denying shows a success or failure icon and the outcome.
