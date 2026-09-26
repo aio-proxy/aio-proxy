@@ -22,6 +22,7 @@ export type PayloadCaptureHint = (
 export type PluginRegistry = {
   readonly resolveOAuth: (plugin: string, capability: string) => OAuthAdapter | undefined;
   readonly resolveResponsesRaw: (plugin: string) => ResponsesRawWrap | undefined;
+  readonly resolveResponsesPreRoute: (plugin: string) => ResponsesPreRouteWrap | undefined;
   readonly payloadCaptureHints: () => readonly PayloadCaptureHint[];
   readonly oauthCapabilities: () => readonly {
     readonly plugin: string;
@@ -30,20 +31,27 @@ export type PluginRegistry = {
   }[];
 };
 
+export type PrivateEvaluation = (input: {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly body: unknown;
+  readonly signal: AbortSignal;
+  readonly logicalRequest: LogicalRequestContext;
+}) => Promise<unknown>;
+
 export type ResponsesRawWrap = (input: {
   readonly original: RawTransport['invoke'];
-  readonly evaluate?: (input: {
-    readonly providerId: string;
-    readonly modelId: string;
-    readonly body: unknown;
-    readonly signal: AbortSignal;
-    readonly logicalRequest: LogicalRequestContext;
-  }) => Promise<unknown>;
+  readonly evaluate?: PrivateEvaluation;
 }) => RawTransport['invoke'];
+
+export type ResponsesPreRouteWrap = (input: {
+  readonly evaluate?: PrivateEvaluation;
+}) => (request: Request, context: LogicalRequestContext) => Promise<Response | undefined>;
 
 export type BuiltInPluginApi = PluginApi & {
   readonly raw: {
     readonly wrap: (protocol: 'openai-response', wrap: ResponsesRawWrap) => void;
+    readonly preRoute: (protocol: 'openai-response', wrap: ResponsesPreRouteWrap) => void;
   };
   readonly registerPayloadCaptureHint: (hint: PayloadCaptureHint) => void;
 };
@@ -210,6 +218,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
   const committed = new Map<string, OAuthCapability>();
   const committedCpaTypes = new Map<string, string>();
   const responsesRaw = new Map<string, ResponsesRawWrap>();
+  const responsesPreRoute = new Map<string, ResponsesPreRouteWrap>();
   const payloadCaptureHints: PayloadCaptureHint[] = [];
   const registry: PluginRegistry = {
     resolveOAuth(plugin, capability) {
@@ -217,6 +226,9 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
     },
     resolveResponsesRaw(plugin) {
       return responsesRaw.get(plugin);
+    },
+    resolveResponsesPreRoute(plugin) {
+      return responsesPreRoute.get(plugin);
     },
     oauthCapabilities() {
       return [...committed.values()];
@@ -232,6 +244,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
       const staged = new Map<string, OAuthCapability>();
       const stagedCpaTypes = new Set<string>();
       let stagedResponsesRaw: ResponsesRawWrap | undefined;
+      let stagedResponsesPreRoute: ResponsesPreRouteWrap | undefined;
       let stagedPayloadHint: PayloadCaptureHint | undefined;
       let sealed = false;
       const api = {
@@ -259,6 +272,14 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
                   if (stagedResponsesRaw !== undefined) throw new Error('Duplicate responses raw wrapper');
                   stagedResponsesRaw = wrap;
                 },
+                preRoute(protocol: 'openai-response', wrap: ResponsesPreRouteWrap) {
+                  if (sealed) throw new Error('Plugin staging registry is sealed');
+                  if (protocol !== 'openai-response') throw new Error('Unsupported pre-route protocol');
+                  if (stagedResponsesPreRoute !== undefined) {
+                    throw new Error('Duplicate responses pre-route hook');
+                  }
+                  stagedResponsesPreRoute = wrap;
+                },
               },
               registerPayloadCaptureHint(hint: PayloadCaptureHint) {
                 if (sealed) throw new Error('Plugin staging registry is sealed');
@@ -282,6 +303,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
             }
           }
           if (stagedResponsesRaw !== undefined) responsesRaw.set(plugin, stagedResponsesRaw);
+          if (stagedResponsesPreRoute !== undefined) responsesPreRoute.set(plugin, stagedResponsesPreRoute);
           if (stagedPayloadHint !== undefined) payloadCaptureHints.push(stagedPayloadHint);
         },
       };

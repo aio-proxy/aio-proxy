@@ -7,7 +7,7 @@ import { definePlugin, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 import { npmPackageCacheDir } from '../npm';
 import type { DiagnosticFactory } from './diagnostic';
 import { loadPluginRegistry } from './loader/index';
-import { createPluginRegistryHost } from './registry';
+import { createPluginRegistryHost, type ResponsesPreRouteWrap, type ResponsesRawWrap } from './registry';
 
 const homeEnv = 'AIO_PROXY_HOME';
 const originalHome = process.env[homeEnv];
@@ -73,14 +73,19 @@ describe('PluginRegistry staging', () => {
   test('commits one responses wrapper only for a built-in plugin', () => {
     const { registry, stage } = createPluginRegistryHost();
     const builtIn = stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
-    const wrap = ({ original }) => original;
+    const wrap: ResponsesRawWrap = ({ original }) => original;
+    const preRoute: ResponsesPreRouteWrap = () => async () => undefined;
     builtIn.api.raw.wrap('openai-response', wrap);
+    builtIn.api.raw.preRoute('openai-response', preRoute);
     const hint = async () => 'sensitive' as const;
     builtIn.api.registerPayloadCaptureHint(hint);
     expect(registry.payloadCaptureHints()).toEqual([]);
+    expect(registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt')).toBeUndefined();
+    expect(registry.resolveResponsesPreRoute('@aio-proxy/plugin-openai-chatgpt')).toBeUndefined();
     builtIn.seal();
     builtIn.commit();
     expect(registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt')).toBe(wrap);
+    expect(registry.resolveResponsesPreRoute('@aio-proxy/plugin-openai-chatgpt')).toBe(preRoute);
     expect(registry.payloadCaptureHints()).toEqual([hint]);
 
     const thirdParty = stage('@example/oauth');
