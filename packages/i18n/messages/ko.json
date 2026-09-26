@@ -696,6 +696,7 @@
         "columns": "열",
         "col_model": "모델 ID",
         "col_route": "라우트",
+        "col_traffic": "트래픽",
         "col_providers": "대상 / 알려진",
         "col_overrides": "재정의",
         "col_actions": "작업",
@@ -792,6 +793,34 @@
         "provider_overrides": "Provider 재정의",
         "provider_cost_overrides": "가격 재정의",
         "provider_limit_overrides": "제한 재정의"
+      },
+      "health": {
+        "total": "모델",
+        "no_eligible": "대상 Provider 없음",
+        "single_point": "단일, 페일오버 없음",
+        "deviating": "설정과 불일치",
+        "deviating_pending": "집계 중"
+      },
+      "risk": {
+        "no_eligible": "대상 Provider 없음",
+        "single_point": "단일",
+        "deviating": "불일치"
+      },
+      "lab": {
+        "unknown": "알 수 없는 랩",
+        "filter_label": "랩",
+        "filter_all": "모든 랩",
+        "model_count": "{count}개 모델",
+        "risk_count": "{count}개 주의 필요"
+      },
+      "share": {
+        "configured": "설정",
+        "actual": "실제",
+        "tier": "{value}단계"
+      },
+      "traffic": {
+        "none": "트래픽 없음",
+        "success_rate": "성공률 {value}"
       }
     },
     "pagination": {

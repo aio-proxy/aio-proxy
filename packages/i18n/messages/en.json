@@ -696,6 +696,7 @@
         "columns": "Columns",
         "col_model": "Model ID",
         "col_route": "Route",
+        "col_traffic": "Traffic",
         "col_providers": "Eligible / known",
         "col_overrides": "Overrides",
         "col_actions": "Actions",
@@ -792,6 +793,34 @@
         "provider_overrides": "Provider overrides",
         "provider_cost_overrides": "Cost overrides",
         "provider_limit_overrides": "Limit overrides"
+      },
+      "health": {
+        "total": "Models",
+        "no_eligible": "No eligible Provider",
+        "single_point": "Single point, no failover",
+        "deviating": "Diverged from config",
+        "deviating_pending": "Measuring"
+      },
+      "risk": {
+        "no_eligible": "No eligible Provider",
+        "single_point": "Single point",
+        "deviating": "Diverged"
+      },
+      "lab": {
+        "unknown": "Unknown lab",
+        "filter_label": "Lab",
+        "filter_all": "All labs",
+        "model_count": "{count} models",
+        "risk_count": "{count} need attention"
+      },
+      "share": {
+        "configured": "Configured",
+        "actual": "Actual",
+        "tier": "Tier {value}"
+      },
+      "traffic": {
+        "none": "No traffic",
+        "success_rate": "{value} success"
       }
     },
     "pagination": {

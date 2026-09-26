@@ -696,6 +696,7 @@
         "columns": "列",
         "col_model": "モデル ID",
         "col_route": "ルート",
+        "col_traffic": "トラフィック",
         "col_providers": "対象 / 既知",
         "col_overrides": "上書き",
         "col_actions": "操作",
@@ -792,6 +793,34 @@
         "provider_overrides": "Provider の上書き",
         "provider_cost_overrides": "価格の上書き",
         "provider_limit_overrides": "制限の上書き"
+      },
+      "health": {
+        "total": "モデル",
+        "no_eligible": "対象 Provider なし",
+        "single_point": "単一、フェイルオーバーなし",
+        "deviating": "設定から乖離",
+        "deviating_pending": "集計中"
+      },
+      "risk": {
+        "no_eligible": "対象 Provider なし",
+        "single_point": "単一",
+        "deviating": "乖離"
+      },
+      "lab": {
+        "unknown": "不明なラボ",
+        "filter_label": "ラボ",
+        "filter_all": "すべてのラボ",
+        "model_count": "{count} モデル",
+        "risk_count": "{count} 件要対応"
+      },
+      "share": {
+        "configured": "設定",
+        "actual": "実際",
+        "tier": "ティア {value}"
+      },
+      "traffic": {
+        "none": "トラフィックなし",
+        "success_rate": "成功率 {value}"
       }
     },
     "pagination": {

@@ -696,6 +696,7 @@
         "columns": "欄",
         "col_model": "模型 ID",
         "col_route": "路由",
+        "col_traffic": "流量",
         "col_overrides": "覆寫",
         "col_providers": "可用 / 已知",
         "col_actions": "操作",
@@ -792,6 +793,34 @@
         "provider_overrides": "Provider 覆寫",
         "provider_cost_overrides": "價格覆寫",
         "provider_limit_overrides": "限制覆寫"
+      },
+      "health": {
+        "total": "模型",
+        "no_eligible": "無可用 Provider",
+        "single_point": "單點，無 failover",
+        "deviating": "實際偏離設定",
+        "deviating_pending": "統計中"
+      },
+      "risk": {
+        "no_eligible": "無可用 Provider",
+        "single_point": "單點",
+        "deviating": "偏離"
+      },
+      "lab": {
+        "unknown": "未知廠商",
+        "filter_label": "廠商",
+        "filter_all": "全部廠商",
+        "model_count": "{count} 個模型",
+        "risk_count": "{count} 個需處理"
+      },
+      "share": {
+        "configured": "設定",
+        "actual": "實際",
+        "tier": "第 {value} 層"
+      },
+      "traffic": {
+        "none": "無流量",
+        "success_rate": "成功率 {value}"
       }
     },
     "pagination": {
