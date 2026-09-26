@@ -516,7 +516,8 @@
       "routing": "라우팅",
       "plugins": "플러그인",
       "models": "모델",
-      "settings": "설정"
+      "settings": "설정",
+      "agents": "Agent"
     },
     "update": {
       "available": "업데이트 있음"
@@ -1532,6 +1533,167 @@
       "description": "이 창을 닫아도 됩니다. 원래 Dashboard 탭이 자동으로 계속됩니다.",
       "close": "창 닫기",
       "close_unavailable": "브라우저가 자동 닫기를 차단했습니다. 이 탭을 직접 닫아 주세요."
+    },
+    "agents": {
+      "title": "Agent",
+      "description": "이 머신의 코딩 Agent를 aio-proxy에 연결합니다.",
+      "load_failed": "Agent를 불러오지 못했습니다.",
+      "not_found": "알 수 없는 Agent입니다.",
+      "open": "{target} 열기",
+      "kind": {
+        "plugin": "플러그인",
+        "auth_command": "인증 명령",
+        "static_config": "전역 설정"
+      },
+      "status": {
+        "not_installed": "설치되지 않음",
+        "not_configured": "구성되지 않음",
+        "configured": "구성됨",
+        "outdated": "업데이트 있음",
+        "modified": "수정됨",
+        "missing": "파일 누락",
+        "conflict": "충돌",
+        "recovery_required": "복구 필요",
+        "unknown": "알 수 없음"
+      },
+      "status_hint": {
+        "not_installed": "이 머신에서 {target}을(를) 찾을 수 없습니다.",
+        "conflict": "{target} 파일이 온전한 aio-proxy 관리 통합이 아닙니다. CLI로 해결하세요.",
+        "recovery_required": "중단된 설정을 먼저 복구해야 합니다. 터미널에서 configure 명령을 실행하세요.",
+        "modified": "aio-proxy가 관리하는 일부 필드가 수정되었습니다. 복구하면 되돌립니다.",
+        "missing": "일부 관리 파일이 없습니다. 복구하면 다시 설치합니다.",
+        "outdated": "이 aio-proxy 버전에 더 새로운 어댑터가 포함되어 있습니다."
+      },
+      "authorizations_summary": "활성 {active} · 만료 {expired} · 취소 {revoked}",
+      "banner": {
+        "password_required": "API 키가 필수일 때는 Agent를 승인하기 전에 대시보드 비밀번호를 설정하세요.",
+        "remote_request": "다른 머신에서 aio-proxy를 보고 있습니다. 원클릭 설정은 aio-proxy를 실행하는 머신의 브라우저에서만 사용할 수 있습니다.",
+        "unavailable": "이 aio-proxy에서는 원클릭 설정을 사용할 수 없습니다(예: 컨테이너에서 실행 중). Agent가 설치된 머신에서 아래 명령을 실행하세요."
+      },
+      "action": {
+        "configure": "구성",
+        "update": "업데이트",
+        "repair": "복구",
+        "reconfigure": "다시 구성",
+        "remove": "제거",
+        "approve": "승인",
+        "deny": "거부",
+        "cancel": "취소",
+        "revoke": "취소",
+        "restore_migration": "마지막 세션 이전 되돌리기",
+        "copy": "복사"
+      },
+      "operation": {
+        "running": "처리 중…",
+        "awaiting_approval": "이 기기를 승인하면 완료됩니다. Codex에 코드 {code}가 표시됩니다.",
+        "succeeded": "완료했습니다.",
+        "failed": "실패: {reason}"
+      },
+      "result": {
+        "login": "{target}에서 로그인하세요: {command}",
+        "reload": "{target}을(를) 다시 불러오거나 재시작해 통합을 불러오세요.",
+        "removed": "통합을 제거했습니다.",
+        "config_path": "{path}에 기록했습니다",
+        "migration": "세션 {migrated}개를 이전했습니다."
+      },
+      "error": {
+        "host_missing": "이 머신에 해당 Agent가 설치되어 있지 않습니다.",
+        "path_unavailable": "Agent의 설정 위치를 확인할 수 없습니다.",
+        "not_configured": "제거할 aio-proxy 통합이 없습니다.",
+        "locked": "다른 설정이 진행 중입니다. 끝난 뒤 다시 시도하세요.",
+        "invalid_provider_id": "프로바이더 ID가 비어 있거나 예약되어 있습니다.",
+        "occupied_provider_id": "해당 프로바이더 ID는 config.toml에서 이미 사용 중입니다.",
+        "endpoint_changed": "설정 중 aio-proxy 주소가 바뀌었습니다. 다시 시도하세요.",
+        "authorization_denied": "기기가 거부되었습니다.",
+        "authorization_expired": "승인 요청이 만료되었습니다.",
+        "recovery_required": "중단된 설정을 CLI로 먼저 복구하세요.",
+        "plan_stale": "입력하는 동안 Codex 상태가 바뀌었습니다. 확인 후 다시 저장하세요.",
+        "cancelled": "취소했습니다.",
+        "operation_in_progress": "이 Agent에 대한 작업이 이미 진행 중입니다.",
+        "unknown": "문제가 발생했습니다. aio-proxy 로그를 확인하세요.",
+        "request_failed": "aio-proxy에 연결할 수 없습니다. 서버를 확인한 뒤 다시 시도하세요."
+      },
+      "login": {
+        "title": "로그인",
+        "instructions": "{target}에서 다음을 실행해 로그인하세요:",
+        "waiting": "{target}의 접근 요청을 기다리는 중…",
+        "pending": "{target}이(가) 접근을 요청했습니다(Installation {installation}, 어댑터 {version}).",
+        "approved": "승인했습니다. {target}(으)로 돌아가세요."
+      },
+      "section": {
+        "status": "상태",
+        "setup": "설정",
+        "authorizations": "인가",
+        "manual": "수동 명령",
+        "notes": "참고"
+      },
+      "field": {
+        "config_path": "설정 경로",
+        "version": "버전",
+        "installation": "Installation ID",
+        "adapter": "어댑터 버전",
+        "provider_id": "Codex 프로바이더 ID",
+        "auth_mode": "인증",
+        "endpoint_mismatch": "이 통합은 다른 aio-proxy 주소를 가리킵니다. 복구하면 현재 주소로 바뀝니다."
+      },
+      "table": {
+        "label": "인가",
+        "installation": "Installation ID",
+        "adapter": "어댑터",
+        "created": "생성",
+        "last_authorized": "최근 인가",
+        "status": "상태",
+        "local": "위치",
+        "actions": "작업",
+        "empty": "아직 인가가 없습니다.",
+        "codex_keep": "ChatGPT 로그인 유지 모드는 API 키로 aio-proxy에 연결하므로 여기에 인가가 없습니다."
+      },
+      "authorization": {
+        "active": "활성",
+        "expired": "만료",
+        "revoked": "취소됨"
+      },
+      "local": {
+        "configured": "이 머신",
+        "orphaned": "이 머신 아님"
+      },
+      "note": {
+        "catalog_synced": "모델 목록은 aio-proxy에서 동기화됩니다.",
+        "catalog_host_managed": "{target}은(는) 자체 모델 목록을 관리합니다. 거기서 aio-proxy 모델 ID를 선택하세요.",
+        "platform_macos": "macOS에서만 검증되었습니다.",
+        "check_local": "로컬 파일 상태는 aio-proxy를 실행하는 머신의 브라우저에서만 표시됩니다."
+      },
+      "manual": {
+        "configure": "구성",
+        "remove": "제거",
+        "login": "로그인",
+        "check": "로컬 상태 확인"
+      },
+      "remove": {
+        "title": "{target} 통합을 제거할까요?",
+        "description": "인가를 취소하고 aio-proxy가 변경한 파일을 되돌립니다. 직접 수정한 내용은 유지됩니다.",
+        "skipped": "수정한 필드는 유지했습니다: {fields}",
+        "retained": "유지한 파일: {files}"
+      },
+      "codex": {
+        "title": "Codex 설정",
+        "provider_id": "프로바이더 ID",
+        "provider_id_help": "aio-proxy가 config.toml에 기록하는 model provider 항목입니다.",
+        "auth_mode": "인증",
+        "auth_keep": "ChatGPT 로그인 유지",
+        "auth_keep_help": "Codex는 ChatGPT 로그인을 유지하고 API 키로 aio-proxy에 연결합니다.",
+        "auth_command": "aio-proxy 인가",
+        "auth_command_help": "이 기기를 승인하면 Codex가 aio-proxy에서 단기 토큰을 받습니다.",
+        "key": "API 키",
+        "key_none": "API 키 없음",
+        "migrate": "기존 세션 이전",
+        "migrate_help": "이 프로바이더로 기록된 세션을 새 프로바이더로 옮겨 Codex에서 계속 보이도록 합니다.",
+        "migrate_group": "{providerId}(활성 {active}, 보관 {archived})",
+        "migrate_confirm": "선택한 세션 다시 쓰기",
+        "conflict": "config.toml의 aio-proxy 항목이 직접 수정한 내용과 충돌합니다. CLI로 해결하세요.",
+        "submit": "저장",
+        "current": "프로바이더 {providerId}, {mode}"
+      }
     }
   }
 }

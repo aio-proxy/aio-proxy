@@ -31,7 +31,7 @@ test('groups Dashboard and Traces under Observability', () => {
   expect(within(group as HTMLElement).getByRole('link', { name: /Traces|追踪/u })).toHaveAttribute('href', '/traces');
 });
 
-test('groups Providers, Routing, Plugins, and Settings under Configuration', () => {
+test('groups Providers, Routing, Plugins, Agents, and Settings under Configuration', () => {
   render(
     <SidebarProvider>
       <SideMenu />
@@ -53,6 +53,7 @@ test('groups Providers, Routing, Plugins, and Settings under Configuration', () 
     'href',
     '/plugins',
   );
+  expect(within(configuration).getByRole('link', { name: /^(Agents|Agent)$/u })).toHaveAttribute('href', '/agents');
   expect(within(configuration).getByRole('link', { name: /Settings|设置|設定|설정/u })).toHaveAttribute(
     'href',
     '/settings',

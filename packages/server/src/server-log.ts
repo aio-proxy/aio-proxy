@@ -30,6 +30,14 @@ export type AutoUpdateFailedLog = {
   readonly event: 'auto_update.failed';
 };
 
+export type AgentOperationFailedLog = {
+  readonly error: string;
+  readonly errorType: string;
+  readonly event: 'agent.operation_failed';
+  readonly kind: string;
+  readonly target: string;
+};
+
 export type RequestRejectedLog = {
   readonly event: 'request.rejected';
   readonly requestId: string;
@@ -285,6 +293,7 @@ export type GuardianEvaluationUnavailableLog = {
 };
 
 export type ServerLog =
+  | AgentOperationFailedLog
   | AutoUpdateFailedLog
   | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog

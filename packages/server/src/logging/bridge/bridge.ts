@@ -5,6 +5,7 @@ import { currentRequestLogContext } from '../../request-logging';
 import type { ServerLog, ServerLogSink } from '../../server-log';
 
 export const SERVER_LOG_LEVEL = {
+  'agent.operation_failed': 'error',
   'auto_update.failed': 'warn',
   'config.oauth_leftover_models': 'warn',
   'config.reload_failed': 'error',

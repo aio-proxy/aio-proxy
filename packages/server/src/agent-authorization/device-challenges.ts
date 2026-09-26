@@ -64,6 +64,11 @@ export type DeviceChallengeStore = {
   readonly approve: (deviceId: string, source: string) => 'approved' | 'denied' | 'expired' | 'consumed';
   readonly deny: (deviceId: string, source: string) => 'approved' | 'denied' | 'expired' | 'consumed';
   readonly poll: (input: PollInput, source: string) => PollResult;
+  /** Read-only lookup of the live pending challenge an installation started, for the dashboard Agents page. */
+  readonly pendingForInstallation: (
+    target: AgentTarget,
+    installationId: string,
+  ) => AgentAuthorizationDetails | undefined;
 };
 
 type DeviceChallengeStoreInput = {
@@ -274,9 +279,16 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
     return consumeApproved(input.identity, maps, challenge, timestamp);
   }
 
+  function pendingForInstallation(target: AgentTarget, installationId: string): AgentAuthorizationDetails | undefined {
+    pruneExpired(maps, now());
+    const challenge = maps.byInstallation.get(installationKey(AGENT_CLIENT_ID[target], installationId));
+    return challenge?.status === 'pending' && challenge.target === target ? terminal(challenge) : undefined;
+  }
+
   return {
     create,
     resolve,
+    pendingForInstallation,
     approve: (deviceId, source) => decide(deviceId, source, 'approved'),
     deny: (deviceId, source) => decide(deviceId, source, 'denied'),
     poll,

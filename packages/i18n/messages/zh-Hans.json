@@ -516,7 +516,8 @@
       "routing": "路由",
       "plugins": "插件",
       "models": "模型",
-      "settings": "设置"
+      "settings": "设置",
+      "agents": "Agent"
     },
     "update": {
       "available": "有可用更新"
@@ -1532,6 +1533,167 @@
       "description": "可以关闭此窗口。原来的 Dashboard 标签页会自动继续。",
       "close": "关闭窗口",
       "close_unavailable": "浏览器阻止了自动关闭，请手动关闭此标签页。"
+    },
+    "agents": {
+      "title": "Agent",
+      "description": "把本机的编码 Agent 接入 aio-proxy。",
+      "load_failed": "无法加载 Agent。",
+      "not_found": "未知的 Agent。",
+      "open": "打开 {target}",
+      "kind": {
+        "plugin": "插件",
+        "auth_command": "认证命令",
+        "static_config": "全局配置"
+      },
+      "status": {
+        "not_installed": "未安装",
+        "not_configured": "未配置",
+        "configured": "已配置",
+        "outdated": "有可用更新",
+        "modified": "已被修改",
+        "missing": "文件缺失",
+        "conflict": "冲突",
+        "recovery_required": "需要恢复",
+        "unknown": "未知"
+      },
+      "status_hint": {
+        "not_installed": "本机未找到 {target}。",
+        "conflict": "{target} 的文件不是完整的 aio-proxy 托管集成，请用 CLI 处理。",
+        "recovery_required": "有中断的配置需要先恢复，请在终端运行配置命令。",
+        "modified": "aio-proxy 管理的部分字段被改动过，修复会还原它们。",
+        "missing": "部分托管文件缺失，修复会重新安装。",
+        "outdated": "当前 aio-proxy 版本带有更新的适配器。"
+      },
+      "authorizations_summary": "{active} 个有效 · {expired} 个过期 · {revoked} 个已撤销",
+      "banner": {
+        "password_required": "启用 API Key 校验时，需要先设置控制台密码才能授权 Agent。",
+        "remote_request": "你正在从其他机器访问 aio-proxy。一键配置只能在运行 aio-proxy 的那台机器的浏览器里使用。",
+        "unavailable": "当前 aio-proxy 不支持一键配置（例如运行在容器中）。请在安装 Agent 的机器上运行下面的命令。"
+      },
+      "action": {
+        "configure": "配置",
+        "update": "更新",
+        "repair": "修复",
+        "reconfigure": "重新配置",
+        "remove": "移除",
+        "approve": "批准",
+        "deny": "拒绝",
+        "cancel": "取消",
+        "revoke": "撤销",
+        "restore_migration": "恢复上次会话迁移",
+        "copy": "复制"
+      },
+      "operation": {
+        "running": "处理中…",
+        "awaiting_approval": "批准此设备以完成配置。Codex 显示的代码为 {code}。",
+        "succeeded": "已完成。",
+        "failed": "失败：{reason}"
+      },
+      "result": {
+        "login": "现在在 {target} 中登录：{command}",
+        "reload": "重新加载或重启 {target} 以加载集成。",
+        "removed": "集成已移除。",
+        "config_path": "已写入 {path}",
+        "migration": "已迁移 {migrated} 个会话。"
+      },
+      "error": {
+        "host_missing": "本机未安装该 Agent。",
+        "path_unavailable": "无法确定该 Agent 的配置位置。",
+        "not_configured": "没有可移除的 aio-proxy 集成。",
+        "locked": "另一个配置操作正在进行，请稍后重试。",
+        "invalid_provider_id": "Provider ID 为空或是保留值。",
+        "occupied_provider_id": "该 Provider ID 已在 config.toml 中使用。",
+        "endpoint_changed": "配置过程中 aio-proxy 地址发生了变化，请重试。",
+        "authorization_denied": "设备已被拒绝。",
+        "authorization_expired": "授权请求已过期。",
+        "recovery_required": "有中断的配置需要先用 CLI 恢复。",
+        "plan_stale": "填写表单期间 Codex 状态发生了变化，请检查后重新保存。",
+        "cancelled": "已取消。",
+        "operation_in_progress": "该 Agent 已有操作在进行中。",
+        "unknown": "出现错误，请查看 aio-proxy 日志。",
+        "request_failed": "无法连接 aio-proxy，请检查服务后重试。"
+      },
+      "login": {
+        "title": "登录",
+        "instructions": "在 {target} 中运行以下命令登录：",
+        "waiting": "等待 {target} 发起授权请求…",
+        "pending": "{target} 请求授权（Installation {installation}，适配器 {version}）。",
+        "approved": "已批准，请回到 {target}。"
+      },
+      "section": {
+        "status": "状态",
+        "setup": "配置",
+        "authorizations": "授权",
+        "manual": "手动命令",
+        "notes": "说明"
+      },
+      "field": {
+        "config_path": "配置路径",
+        "version": "版本",
+        "installation": "Installation ID",
+        "adapter": "适配器版本",
+        "provider_id": "Codex Provider ID",
+        "auth_mode": "认证方式",
+        "endpoint_mismatch": "该集成指向另一个 aio-proxy 地址，修复后会改为当前地址。"
+      },
+      "table": {
+        "label": "授权",
+        "installation": "Installation ID",
+        "adapter": "适配器",
+        "created": "创建时间",
+        "last_authorized": "最近授权",
+        "status": "状态",
+        "local": "位置",
+        "actions": "操作",
+        "empty": "暂无授权。",
+        "codex_keep": "保留 ChatGPT 登录模式通过 API Key 访问 aio-proxy，因此这里没有授权记录。"
+      },
+      "authorization": {
+        "active": "有效",
+        "expired": "已过期",
+        "revoked": "已撤销"
+      },
+      "local": {
+        "configured": "本机",
+        "orphaned": "不在本机"
+      },
+      "note": {
+        "catalog_synced": "模型列表从 aio-proxy 同步。",
+        "catalog_host_managed": "{target} 自行管理模型列表，请在其中选择 aio-proxy 的模型 ID。",
+        "platform_macos": "目前只在 macOS 上验证过。",
+        "check_local": "只有在运行 aio-proxy 的机器上打开控制台才会显示本地文件状态。"
+      },
+      "manual": {
+        "configure": "配置",
+        "remove": "移除",
+        "login": "登录",
+        "check": "检查本地状态"
+      },
+      "remove": {
+        "title": "移除 {target} 集成？",
+        "description": "会撤销它的授权，并还原 aio-proxy 修改过的文件。你自己的改动会保留。",
+        "skipped": "保留了你修改过的字段：{fields}",
+        "retained": "保留的文件：{files}"
+      },
+      "codex": {
+        "title": "Codex 配置",
+        "provider_id": "Provider ID",
+        "provider_id_help": "aio-proxy 写入 config.toml 的 model provider 条目。",
+        "auth_mode": "认证方式",
+        "auth_keep": "保留 ChatGPT 登录",
+        "auth_keep_help": "Codex 保留 ChatGPT 登录，用 API Key 访问 aio-proxy。",
+        "auth_command": "aio-proxy 授权",
+        "auth_command_help": "批准此设备后，Codex 从 aio-proxy 获取短期令牌。",
+        "key": "API Key",
+        "key_none": "不使用 API Key",
+        "migrate": "迁移已有会话",
+        "migrate_help": "这些 provider 下的会话会迁移到新的 provider，在 Codex 中保持可见。",
+        "migrate_group": "{providerId}（{active} 个活跃，{archived} 个已归档）",
+        "migrate_confirm": "改写所选会话",
+        "conflict": "config.toml 中的 aio-proxy 条目与你的修改冲突，请用 CLI 处理。",
+        "submit": "保存",
+        "current": "Provider {providerId}，{mode}"
+      }
     }
   }
 }

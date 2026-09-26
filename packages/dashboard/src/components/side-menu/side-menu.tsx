@@ -13,7 +13,7 @@ import {
   SidebarMenuItem,
 } from '@aio-proxy/ui/components/sidebar';
 import { Link, useLocation } from '@tanstack/react-router';
-import { Blocks, ChartNoAxesCombined, HandPlatter, Settings2, Shuffle, Waypoints } from 'lucide-react';
+import { Blocks, Bot, ChartNoAxesCombined, HandPlatter, Settings2, Shuffle, Waypoints } from 'lucide-react';
 import type { ComponentProps, ComponentType } from 'react';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
@@ -81,6 +81,13 @@ export const SideMenu: React.FC = () => {
           icon: Blocks,
           to: '/plugins',
           isActive: (pathname) => pathname.startsWith('/plugins'),
+        },
+        {
+          id: 'agents',
+          label: m['dashboard.menus.agents'](),
+          icon: Bot,
+          to: '/agents',
+          isActive: (pathname) => pathname.startsWith('/agents'),
         },
         {
           id: 'settings',
