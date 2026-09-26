@@ -33,6 +33,7 @@ export const queryKeys = {
   providers: ['providers'],
   release: ['release'],
   routingModels: ['routing', 'models'],
+  routingTraffic: (range: string) => ['routing', 'traffic', range],
   settings: ['settings'],
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],
