@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test';
 
-import { createPluginRegistryHost } from '@aio-proxy/core';
+import { createPluginRegistryHost, Router } from '@aio-proxy/core';
 import type { TraceCompletion } from '@aio-proxy/core/db';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
@@ -78,9 +78,14 @@ async function harness(
     requestModelId?: string;
     guardianMarker?: string | null;
     streamedInboundBody?: boolean;
+    competingEvaluator?: boolean;
+    callerCredential?: string;
+    targetCredential?: string;
   } = {},
 ) {
   const evaluationRequests: unknown[] = [];
+  const evaluationTransportRequests: Request[] = [];
+  const competingEvaluationRequests: Request[] = [];
   const apiReviewRequests: Request[] = [];
   const traces: TraceCompletion[] = [];
   const starts: unknown[] = [];
@@ -103,7 +108,9 @@ async function harness(
       'Planned action JSON:',
       rationale,
       'Human user/developer messages',
-    ])
+      options.callerCredential,
+      options.targetCredential,
+    ].filter((value): value is string => value !== undefined))
       expect(leaked).not.toContain(privateText);
   };
   const chatgpt = rawProvider({
@@ -126,9 +133,30 @@ async function harness(
       clean();
       expect(request.headers.has('authorization')).toBe(false);
       expect(request.headers.has('x-api-key')).toBe(false);
-      evaluationRequests.push(await request.clone().json());
+      const transportRequest =
+        options.targetCredential === undefined
+          ? request
+          : new Request(request, {
+              headers: {
+                ...Object.fromEntries(request.headers),
+                authorization: `Bearer ${options.targetCredential}`,
+              },
+            });
+      evaluationTransportRequests.push(transportRequest.clone());
+      evaluationRequests.push(await transportRequest.clone().json());
       return createObservedFetch((async () =>
-        options.evaluate ? options.evaluate(request) : Response.json(answer())) as typeof fetch)(request);
+        options.evaluate ? options.evaluate(transportRequest) : Response.json(answer())) as typeof fetch)(
+        transportRequest,
+      );
+    },
+  });
+  const competingEvaluator = rawProvider({
+    id: 'competing-evaluation',
+    modelId: 'review',
+    protocol: ProviderProtocol.TypeSafeSystemOne,
+    invoke: async (request) => {
+      competingEvaluationRequests.push(request.clone());
+      return Response.json(answer());
     },
   });
   const route = defineProviderRouteSource(
@@ -164,6 +192,20 @@ async function harness(
                 upstreamMetadata: { review: { cost: { request: 0.02 } } },
               },
             },
+            ...(options.competingEvaluator
+              ? [
+                  {
+                    ...competingEvaluator,
+                    provider: {
+                      ...competingEvaluator.provider,
+                      alias: {},
+                      models: ['review'],
+                      capabilityIndex: { review: new Set(['evaluation'] as const) },
+                      upstreamMetadata: { review: { cost: { request: 0.03 } } },
+                    },
+                  },
+                ]
+              : []),
           ]),
     ],
     undefined,
@@ -208,15 +250,45 @@ async function harness(
   });
   const leasedSnapshot = snapshot;
   let currentSnapshot = leasedSnapshot;
+  let acquireCount = 0;
+  let replacementOnInitialAcquire: (() => typeof leasedSnapshot) | undefined;
+  const replacementSnapshot = (kind: 'valid' | 'recursive' | 'disabled' | 'deleted' | 'slash-collision') => {
+    const configuredEvaluator = leasedSnapshot.providers.find(({ id }) => id === 'evaluation');
+    if (configuredEvaluator === undefined) throw new Error('evaluation fixture is required for replacement tests');
+    const replacementProvider = {
+      ...configuredEvaluator,
+      ...(kind === 'recursive' ? { plugin: '@aio-proxy/plugin-openai-chatgpt' } : {}),
+      ...(kind === 'disabled' ? { enabled: false } : {}),
+      ...(kind === 'slash-collision'
+        ? {
+            id: 'slash-collision',
+            alias: { 'evaluation/review': { model: 'review', preserve: false } },
+            models: ['review'],
+          }
+        : {}),
+    };
+    const providers = kind === 'deleted' ? [] : [replacementProvider];
+    return {
+      ...leasedSnapshot,
+      providers,
+      router: new Router(providers, { models: leasedSnapshot.config?.router.models }),
+    };
+  };
   source = {
     ...route.source,
     logger: createServerLogSink(logger),
     usageCapture: createUsageCapture(),
     currentProviderSnapshot: () => currentSnapshot,
     acquireProviderSnapshot: () => {
+      const leased = currentSnapshot;
       active++;
+      acquireCount++;
+      if (acquireCount === 1 && replacementOnInitialAcquire !== undefined) {
+        currentSnapshot = replacementOnInitialAcquire();
+        replacementOnInitialAcquire = undefined;
+      }
       return {
-        snapshot: leasedSnapshot,
+        snapshot: leased,
         release: () => {
           active--;
         },
@@ -269,9 +341,15 @@ async function harness(
     exported,
     logs: route.logs,
     evaluationRequests,
+    evaluationTransportRequests,
+    competingEvaluationRequests,
     apiReviewRequests,
     clean,
     activeLeases: () => active,
+    replacementSnapshot,
+    replaceAfterInitialAcquire: (next: typeof leasedSnapshot) => {
+      replacementOnInitialAcquire = () => next;
+    },
     close: () => {
       exporter.mockRestore();
       consoleSink.mockRestore();
@@ -279,7 +357,15 @@ async function harness(
     send: (signal?: AbortSignal) =>
       app.request('/v1/responses', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(options.callerCredential === undefined
+            ? {}
+            : {
+                authorization: `Bearer ${options.callerCredential}`,
+                'x-api-key': options.callerCredential,
+              }),
+        },
         body: options.streamedInboundBody
           ? new ReadableStream<Uint8Array>({
               start(controller) {
@@ -320,6 +406,23 @@ test('route-miss systemOneReviewDenied preserves the original miss for a valid d
   try {
     const response = await h.send();
     expect(response.status).toBe(404);
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(0);
+  } finally {
+    h.close();
+  }
+});
+
+test('route-miss systemOne returns a synthetic deny for a valid deny', async () => {
+  const h = await harness({
+    strategy: 'systemOne',
+    includeChatGPTRoute: false,
+    evaluate: async () => Response.json(answer(true)),
+  });
+  try {
+    const response = await h.send();
+    expect(response.status).toBe(200);
+    expect(JSON.parse((await response.json()).output[0].content[0].text).outcome).toBe('deny');
     expect(h.evaluationRequests).toHaveLength(1);
     expect(h.apiReviewRequests).toHaveLength(0);
   } finally {
@@ -385,23 +488,24 @@ test('invalid evaluator output preserves the route miss but retains evaluator us
   }
 });
 
-for (const evaluate of [
-  async () => {
-    throw new Error(sentinel);
-  },
-  async () => Response.json({ answers: {} }),
-] satisfies readonly ((request: Request) => Promise<Response>)[])
-  test('route-miss evaluator decline preserves the original 404', async () => {
-    const h = await harness({ includeChatGPTRoute: false, evaluate });
-    try {
-      expect((await h.send()).status).toBe(404);
-      expect(h.evaluationRequests).toHaveLength(1);
-      expect(h.apiReviewRequests).toHaveLength(0);
-      h.clean();
-    } finally {
-      h.close();
-    }
-  });
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  for (const evaluate of [
+    async () => {
+      throw new Error(sentinel);
+    },
+    async () => Response.json({ answers: {} }),
+  ] satisfies readonly ((request: Request) => Promise<Response>)[])
+    test(`route-miss ${strategy} evaluator decline preserves the original 404`, async () => {
+      const h = await harness({ strategy, includeChatGPTRoute: false, evaluate });
+      try {
+        expect((await h.send()).status).toBe(404);
+        expect(h.evaluationRequests).toHaveLength(1);
+        expect(h.apiReviewRequests).toHaveLength(0);
+        h.clean();
+      } finally {
+        h.close();
+      }
+    });
 
 for (const [name, mutate] of [
   ['responses/compact', (_h: Awaited<ReturnType<typeof harness>>) => undefined],
@@ -423,6 +527,7 @@ for (const [name, mutate] of [
       h.body.input.at(-1).content = h.body.input.at(-1).content.slice(0, -1);
     },
   ],
+  ['opaque context', (_h: Awaited<ReturnType<typeof harness>>) => undefined],
 ] as const)
   test(`incompatible ${name} bypasses before disclosure`, async () => {
     const h = await harness({ includeChatGPTRoute: false, opaqueContext: name === 'opaque context' });
@@ -491,9 +596,24 @@ test('streamed inbound body remains available for route-miss projection and fall
   try {
     expect((await declined.send()).status).toBe(404);
     expect(declined.evaluationRequests).toHaveLength(0);
+    await waitFor(() => declined.activeLeases() === 0);
     expect(JSON.stringify(declined.logs)).toContain(sentinel);
   } finally {
     declined.close();
+  }
+});
+
+test('oversized streamed route-miss projection releases host resources at the size limit', async () => {
+  const h = await harness({ includeChatGPTRoute: false, streamedInboundBody: true });
+  try {
+    h.body.input[1].content[0].text = 'x'.repeat(1_048_576);
+    const response = await h.send();
+    expect(response.status).toBe(404);
+    expect(h.evaluationRequests).toHaveLength(0);
+    await waitFor(() => h.activeLeases() === 0);
+    h.clean();
+  } finally {
+    h.close();
   }
 });
 
@@ -512,6 +632,57 @@ for (const target of ['missing', 'disabled'] as const)
           targetModelId: 'review',
         }),
       );
+      h.clean();
+    } finally {
+      h.close();
+    }
+  });
+
+test('route-miss selects the exact evaluator and isolates caller and target credentials', async () => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const h = await harness({
+    includeChatGPTRoute: false,
+    competingEvaluator: true,
+    callerCredential: 'caller-credential-sentinel',
+    targetCredential: 'target-credential-sentinel',
+    evaluate: async (request) => {
+      started.resolve();
+      await release.promise;
+      expect(request.headers.get('authorization')).toBe('Bearer target-credential-sentinel');
+      expect(request.headers.get('x-api-key')).toBeNull();
+      return Response.json(answer());
+    },
+  });
+  try {
+    h.replaceAfterInitialAcquire(h.replacementSnapshot('valid'));
+    const pending = h.send();
+    await started.promise;
+    expect(h.activeLeases()).toBe(2);
+    release.resolve();
+    expect((await pending).status).toBe(200);
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.evaluationTransportRequests).toHaveLength(1);
+    expect(h.evaluationTransportRequests[0]?.headers.get('authorization')).toBe('Bearer target-credential-sentinel');
+    expect(h.competingEvaluationRequests).toHaveLength(0);
+    await waitFor(() => h.activeLeases() === 0);
+    h.clean();
+  } finally {
+    release.resolve();
+    h.close();
+  }
+});
+
+for (const replacement of ['recursive', 'disabled', 'deleted', 'slash-collision'] as const)
+  test(`route-miss snapshot replacement ${replacement} makes zero evaluator transport`, async () => {
+    const h = await harness({ includeChatGPTRoute: false, competingEvaluator: true });
+    try {
+      h.replaceAfterInitialAcquire(h.replacementSnapshot(replacement));
+      expect((await h.send()).status).toBe(404);
+      expect(h.evaluationRequests).toHaveLength(0);
+      expect(h.evaluationTransportRequests).toHaveLength(0);
+      expect(h.competingEvaluationRequests).toHaveLength(0);
+      await waitFor(() => h.activeLeases() === 0);
       h.clean();
     } finally {
       h.close();
@@ -765,6 +936,74 @@ for (const gate of ['before-dispatch', 'before-fallback', 'after-fallback'] as c
       await waitFor(() => h.activeLeases() === 0);
       h.clean();
     } finally {
+      h.close();
+    }
+  });
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  test(`route-miss ${strategy} caller cancellation has no late response`, async () => {
+    const caller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const late = Promise.withResolvers<Response>();
+    const h = await harness({
+      strategy,
+      includeChatGPTRoute: false,
+      evaluate: async () => {
+        started.resolve();
+        return late.promise;
+      },
+    });
+    try {
+      const pending = h.send(caller.signal);
+      await started.promise;
+      const settled = pending.then(
+        (response) => response,
+        () => undefined,
+      );
+      caller.abort(new DOMException('Aborted', 'AbortError'));
+      const response = await settled;
+      expect(response?.status).not.toBe(200);
+      late.resolve(Response.json(answer()));
+      await Bun.sleep(0);
+      expect(h.apiReviewRequests).toHaveLength(0);
+      expect(h.traces.some((trace) => trace.summary.terminationReason === 'cancelled')).toBe(true);
+      expect(h.traces.some((trace) => trace.summary.errorCode === 'model_not_found')).toBe(false);
+      await waitFor(() => h.activeLeases() === 0);
+      h.clean();
+    } finally {
+      late.resolve(Response.json(answer()));
+      h.close();
+    }
+  });
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  test(`route-miss ${strategy} timeout preserves the miss and ignores late evaluator output`, async () => {
+    const deadline = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const late = Promise.withResolvers<Response>();
+    const h = await harness({
+      strategy,
+      includeChatGPTRoute: false,
+      evaluate: async () => {
+        started.resolve();
+        return late.promise;
+      },
+    });
+    const timer = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    try {
+      const pending = h.send();
+      await started.promise;
+      deadline.abort(new DOMException('Timeout', 'TimeoutError'));
+      expect((await pending).status).toBe(404);
+      late.resolve(Response.json(answer()));
+      await Bun.sleep(0);
+      expect(h.apiReviewRequests).toHaveLength(0);
+      expect(h.evaluationRequests).toHaveLength(1);
+      await waitFor(() => h.activeLeases() === 0);
+      h.clean();
+    } finally {
+      late.resolve(Response.json(answer()));
+      timer.mockRestore();
       h.close();
     }
   });
