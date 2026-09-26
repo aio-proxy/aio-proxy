@@ -1,6 +1,7 @@
 import {
   definePlugin,
   type LocalizedText,
+  type LogicalRequestContext,
   type OAuthAdapter,
   type PluginDescriptor,
   type RawTransport,
@@ -23,7 +24,7 @@ import {
   englishPluginOptionsText,
 } from '../plugin-options';
 import { readOpenAIChatGPTQuota, resetOpenAIChatGPTQuota } from '../quota/index';
-import { createGuardianRawInvoke } from '../runtime/guardian';
+import { createGuardianPreRouteInvoke, createGuardianRawInvoke } from '../runtime/guardian/guardian';
 import { guardianPayloadHint } from '../runtime/guardian/request';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
@@ -191,6 +192,18 @@ export function createOpenAIChatGPTPlugin(
           : undefined;
       wrap?.('openai-response', ({ original, evaluate }) =>
         createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
+      );
+      const preRoute =
+        raw !== null && typeof raw === 'object' && 'preRoute' in raw && typeof raw.preRoute === 'function'
+          ? (raw.preRoute as (
+              protocol: 'openai-response',
+              wrap: (input: {
+                readonly evaluate?: Parameters<typeof createGuardianPreRouteInvoke>[0]['evaluate'];
+              }) => (request: Request, context: LogicalRequestContext) => Promise<Response | undefined>,
+            ) => void)
+          : undefined;
+      preRoute?.('openai-response', ({ evaluate }) =>
+        createGuardianPreRouteInvoke({ pluginOptions: parsed, evaluate }),
       );
       const registerPayloadCaptureHint =
         'registerPayloadCaptureHint' in api && typeof api.registerPayloadCaptureHint === 'function'
