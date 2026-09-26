@@ -1594,7 +1594,11 @@
         "reload": "Reload or restart {target} to load the integration.",
         "removed": "Integration removed.",
         "config_path": "Written to {path}",
-        "migration": "Moved {migrated} sessions."
+        "migration": "Moved {migrated} sessions.",
+        "partial": "Integration removed, but fields you edited were kept: {paths}",
+        "blocked": "Not removed: the authorization could not be revoked yet. Try again once aio-proxy is reachable.",
+        "cancelled": "Setup did not finish; nothing was written for the authorization.",
+        "revoke": "Authorization: {status}"
       },
       "error": {
         "host_missing": "The Agent is not installed on this machine.",
@@ -1651,7 +1655,9 @@
       "authorization": {
         "active": "Active",
         "expired": "Expired",
-        "revoked": "Revoked"
+        "revoked": "Revoked",
+        "missing": "Not found",
+        "pending": "Revoke pending"
       },
       "local": {
         "configured": "This machine",

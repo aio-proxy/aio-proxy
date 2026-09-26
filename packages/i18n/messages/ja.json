@@ -1594,7 +1594,11 @@
         "reload": "{target} を再読み込みまたは再起動して連携を読み込んでください。",
         "removed": "連携を削除しました。",
         "config_path": "{path} に書き込みました",
-        "migration": "{migrated} 件のセッションを移行しました。"
+        "migration": "{migrated} 件のセッションを移行しました。",
+        "partial": "連携を削除しましたが、編集済みのフィールドは保持しました: {paths}",
+        "blocked": "削除されていません: 認可をまだ取り消せません。aio-proxy に接続できるようになってから再試行してください。",
+        "cancelled": "セットアップは完了していません。認可に関する内容は書き込まれていません。",
+        "revoke": "認可: {status}"
       },
       "error": {
         "host_missing": "この Agent はこのマシンにインストールされていません。",
@@ -1651,7 +1655,9 @@
       "authorization": {
         "active": "有効",
         "expired": "期限切れ",
-        "revoked": "取り消し済み"
+        "revoked": "取り消し済み",
+        "missing": "見つかりません",
+        "pending": "取り消し待ち"
       },
       "local": {
         "configured": "このマシン",

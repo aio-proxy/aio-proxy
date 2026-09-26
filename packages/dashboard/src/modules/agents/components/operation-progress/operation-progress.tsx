@@ -12,15 +12,34 @@ interface OperationProgressProps {
   readonly deciding: boolean;
 }
 
-const resultLines = (result: AgentOperationResult): readonly string[] => {
+const INCOMPLETE = new Set<AgentOperationResult['status']>(['partial', 'blocked', 'cancelled']);
+
+const headline = (result: AgentOperationResult): string => {
+  if (result.status === 'removed') return m['dashboard.agents.result.removed']();
+  if (result.status === 'partial')
+    return m['dashboard.agents.result.partial']({ paths: (result.preservedPaths ?? []).join(', ') });
+  if (result.status === 'blocked') return m['dashboard.agents.result.blocked']();
+  if (result.status === 'cancelled') return m['dashboard.agents.result.cancelled']();
+  return m['dashboard.agents.operation.succeeded']();
+};
+
+const revokeLabel = (status: NonNullable<AgentOperationResult['revokeStatus']>): string => {
+  if (status === 'revoked') return m['dashboard.agents.authorization.revoked']();
+  if (status === 'expired') return m['dashboard.agents.authorization.expired']();
+  if (status === 'missing') return m['dashboard.agents.authorization.missing']();
+  return m['dashboard.agents.authorization.pending']();
+};
+
+const detailLines = (result: AgentOperationResult): readonly string[] => {
   const target = AGENT_DISPLAY_NAMES[result.target];
+  const removal = ['removed', 'partial', 'blocked'].includes(result.status);
   return [
-    ...(result.status === 'removed'
-      ? [m['dashboard.agents.result.removed']()]
-      : [m['dashboard.agents.operation.succeeded']()]),
-    ...(result.configPath === undefined || result.status === 'removed'
+    ...(result.configPath === undefined || removal
       ? []
       : [m['dashboard.agents.result.config_path']({ path: result.configPath })]),
+    ...(result.revokeStatus === undefined
+      ? []
+      : [m['dashboard.agents.result.revoke']({ status: revokeLabel(result.revokeStatus) })]),
     ...(result.migration?.migrated === undefined || result.migration.migrated === 0
       ? []
       : [m['dashboard.agents.result.migration']({ migrated: String(result.migration.migrated) })]),
@@ -66,9 +85,13 @@ export const OperationProgress: React.FC<OperationProgressProps> = ({ state, onD
         {m['dashboard.agents.operation.failed']({ reason: errorMessage(state.error) })}
       </p>
     );
+  const incomplete = INCOMPLETE.has(state.result.status);
   return (
     <div className="space-y-1 text-sm" role="status" data-testid="operation-result">
-      {resultLines(state.result).map((line) => (
+      <p role={incomplete ? 'alert' : undefined} className={incomplete ? 'text-destructive' : undefined}>
+        {headline(state.result)}
+      </p>
+      {detailLines(state.result).map((line) => (
         <p key={line}>{line}</p>
       ))}
     </div>

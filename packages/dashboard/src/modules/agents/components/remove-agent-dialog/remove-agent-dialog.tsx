@@ -68,7 +68,7 @@ export const RemoveAgentDialog: React.FC<RemoveAgentDialogProps> = ({ target, re
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{m['dashboard.agents.action.cancel']()}</AlertDialogCancel>
-          {operation.state?.status === 'succeeded' ? null : (
+          {operation.state?.status === 'succeeded' && operation.state.result.status === 'removed' ? null : (
             <AlertDialogAction
               variant="destructive"
               disabled={operation.busy}

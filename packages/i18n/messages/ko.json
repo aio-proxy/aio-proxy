@@ -1594,7 +1594,11 @@
         "reload": "{target}을(를) 다시 불러오거나 재시작해 통합을 불러오세요.",
         "removed": "통합을 제거했습니다.",
         "config_path": "{path}에 기록했습니다",
-        "migration": "세션 {migrated}개를 이전했습니다."
+        "migration": "세션 {migrated}개를 이전했습니다.",
+        "partial": "통합을 제거했지만 직접 수정한 필드는 유지했습니다: {paths}",
+        "blocked": "제거되지 않음: 아직 인가를 취소할 수 없습니다. aio-proxy에 연결할 수 있게 되면 다시 시도하세요.",
+        "cancelled": "설정이 완료되지 않아 인가 관련 내용은 기록되지 않았습니다.",
+        "revoke": "인가: {status}"
       },
       "error": {
         "host_missing": "이 머신에 해당 Agent가 설치되어 있지 않습니다.",
@@ -1651,7 +1655,9 @@
       "authorization": {
         "active": "활성",
         "expired": "만료",
-        "revoked": "취소됨"
+        "revoked": "취소됨",
+        "missing": "찾을 수 없음",
+        "pending": "취소 대기 중"
       },
       "local": {
         "configured": "이 머신",

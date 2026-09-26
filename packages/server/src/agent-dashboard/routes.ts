@@ -99,10 +99,13 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
     if (deviceId === undefined) return context.json({ error: 'not_awaiting_approval' as const }, 409);
     try {
       const status = challenges[decision === 'approve' ? 'approve' : 'deny'](deviceId, requestPeer(context));
+      // A challenge decided on the authorize page first keeps that decision; cancel always aborts.
       const state =
-        decision === 'approve' && status === 'approved'
-          ? operations.resume(operationId)
-          : operations.stop(operationId, decision === 'cancel' ? 'cancelled' : 'denied');
+        decision === 'cancel'
+          ? operations.stop(operationId, 'cancelled')
+          : status === 'approved' || status === 'consumed'
+            ? operations.resume(operationId)
+            : operations.stop(operationId, status);
       return context.json(state!);
     } catch (error) {
       if (error instanceof DeviceChallengeError) return context.json({ error: error.code }, error.status);

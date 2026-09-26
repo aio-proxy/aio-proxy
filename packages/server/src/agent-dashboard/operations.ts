@@ -16,11 +16,13 @@ export class AgentOperationBusyError extends Error {
   }
 }
 
+type StopOutcome = 'denied' | 'expired' | 'cancelled';
+
 type Entry = {
   state: AgentOperationState;
   readonly controller: AbortController;
   finishedAt?: number;
-  outcome?: 'denied' | 'cancelled';
+  outcome?: StopOutcome;
   deviceId?: string;
 };
 
@@ -47,7 +49,7 @@ export type AgentOperations = {
   /** The device awaiting approval for this operation, if it is in that state. */
   readonly device: (operationId: string) => string | undefined;
   readonly resume: (operationId: string) => AgentOperationState | undefined;
-  readonly stop: (operationId: string, outcome: 'denied' | 'cancelled') => AgentOperationState | undefined;
+  readonly stop: (operationId: string, outcome: StopOutcome) => AgentOperationState | undefined;
   /** Settles every in-flight operation; used by tests and shutdown. */
   readonly settled: () => Promise<void>;
 };
@@ -71,6 +73,7 @@ export function createAgentOperations(input: AgentOperationsInput): AgentOperati
   };
   const failure = (entry: Entry, error: unknown): AgentOperationErrorCode | undefined => {
     if (entry.outcome === 'denied') return 'authorization_denied';
+    if (entry.outcome === 'expired') return 'authorization_expired';
     if (entry.outcome === 'cancelled') return 'cancelled';
     if (error instanceof AgentOperationError) return error.code;
     return undefined;

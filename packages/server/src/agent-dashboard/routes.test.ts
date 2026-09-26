@@ -281,3 +281,27 @@ test('pending login lookup only answers for installations configured on this mac
   const pending = await (await f.request(`/installations/${INSTALLATION}/pending`)).json();
   expect(pending.authorization).toMatchObject({ status: 'pending', target: 'opencode', installationId: INSTALLATION });
 });
+
+test.each([
+  ['deny', 'failed'],
+  ['approve', 'succeeded'],
+] as const)('a challenge first decided with %s on the authorize page keeps that decision', async (elsewhere, final) => {
+  const approved = deferred();
+  const codes: { userCode?: string } = {};
+  let deviceCode: () => Promise<string> = async () => '';
+  const f = await fixture({ host: codexHost(approved, codes, () => deviceCode()) });
+  deviceCode = f.deviceCode;
+  const { operationId } = (await (await codexOperation(f)).json()) as AgentOperationState;
+  await f.until(operationId, 'awaiting_approval');
+  const authorizations = `${LOCAL_ORIGIN}/dashboard/api/agent-authorizations`;
+  const resolved = await (
+    await f.app.request(`${authorizations}/resolve`, post({ userCode: codes.userCode }), loopbackServer)
+  ).json();
+  await f.app.request(`${authorizations}/${resolved.deviceId}/${elsewhere}`, post(), loopbackServer);
+
+  const response = await f.request(`/operations/${operationId}/approve`, post());
+  expect(response.status).toBe(200);
+  approved.resolve();
+  const done = await f.until(operationId, final);
+  if (done.status === 'failed') expect(done.error).toBe('authorization_denied');
+});

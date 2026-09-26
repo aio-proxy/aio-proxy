@@ -32,3 +32,28 @@ test('a failed operation explains the closed error code', () => {
   );
   expect(screen.getByRole('alert').textContent).toMatch(/Codex/u);
 });
+
+test.each([
+  ['blocked', /could not be revoked|无法撤销/u],
+  ['partial', /model_providers\.aio-proxy\.name/u],
+] as const)('an incomplete %s removal is reported, not shown as done', (status, message) => {
+  render(
+    <OperationProgress
+      state={{
+        ...base,
+        kind: 'remove',
+        status: 'succeeded',
+        result: {
+          target: 'codex',
+          status,
+          preservedPaths: ['model_providers.aio-proxy.name'],
+          revokeStatus: 'pending',
+        },
+      }}
+      onDecide={rs.fn()}
+      deciding={false}
+    />,
+  );
+  expect(screen.getByRole('alert').textContent).toMatch(message);
+  expect(screen.queryByText(/^(Done\.|已完成。)$/u)).toBeNull();
+});

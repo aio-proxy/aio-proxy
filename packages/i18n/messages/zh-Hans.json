@@ -1594,7 +1594,11 @@
         "reload": "重新加载或重启 {target} 以加载集成。",
         "removed": "集成已移除。",
         "config_path": "已写入 {path}",
-        "migration": "已迁移 {migrated} 个会话。"
+        "migration": "已迁移 {migrated} 个会话。",
+        "partial": "集成已移除，但保留了你修改过的字段：{paths}",
+        "blocked": "未移除：授权暂时无法撤销。请在 aio-proxy 可访问后重试。",
+        "cancelled": "配置未完成，授权相关内容没有写入。",
+        "revoke": "授权：{status}"
       },
       "error": {
         "host_missing": "本机未安装该 Agent。",
@@ -1651,7 +1655,9 @@
       "authorization": {
         "active": "有效",
         "expired": "已过期",
-        "revoked": "已撤销"
+        "revoked": "已撤销",
+        "missing": "未找到",
+        "pending": "等待撤销"
       },
       "local": {
         "configured": "本机",
