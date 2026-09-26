@@ -17,7 +17,11 @@ const traffic = {
   models: [
     {
       modelId: 'sonnet',
-      providers: [totals('primary', 93n, 100n, 50n), totals('fallback', 7n, 7n, 7n)],
+      providers: [
+        totals('primary', 93n, 100n, 50n),
+        totals('fallback', 7n, 7n, 7n),
+        totals('standby', 1000n, 1000n, 1000n),
+      ],
     },
     // Traffic for a model the inventory no longer serves: it must never reach a denominator.
     { modelId: 'myprov/deleted', providers: [totals('primary', 1_000n, 1_000n, 1_000n)] },
@@ -79,10 +83,10 @@ test('summarises a model over every tier for the traffic column', () => {
   const index = indexRoutingTraffic(traffic);
 
   expect(modelTrafficSummary(index.get('sonnet'))).toEqual({
-    finalCount: 100n,
-    attemptCount: 107n,
-    successCount: 57n,
-    successRate: 57 / 107,
+    finalCount: 1100n,
+    attemptCount: 1107n,
+    successCount: 1057n,
+    successRate: 1057 / 1107,
   });
 });
 
