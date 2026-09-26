@@ -24,16 +24,14 @@ export async function agentFiles(
       ['package.json', json({ type: 'module' })],
     ]);
   }
+  if (target === 'omp') {
+    return new Map([
+      ['index.js', await bytes(paths.omp)],
+      ['package.json', json({ type: 'module', omp: { extensions: ['./index.js'] } })],
+    ]);
+  }
   return new Map([
-    ['dist/official-pi.js', await bytes(paths.officialPi)],
-    ['dist/omp.js', await bytes(paths.omp)],
-    [
-      'package.json',
-      json({
-        type: 'module',
-        pi: { extensions: ['./dist/official-pi.js'] },
-        omp: { extensions: ['./dist/omp.js'] },
-      }),
-    ],
+    ['index.js', await bytes(paths.officialPi)],
+    ['package.json', json({ type: 'module', pi: { extensions: ['./index.js'] } })],
   ]);
 }
