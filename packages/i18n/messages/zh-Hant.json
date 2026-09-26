@@ -516,7 +516,8 @@
       "routing": "路由",
       "plugins": "外掛",
       "models": "模型",
-      "settings": "設定"
+      "settings": "設定",
+      "agents": "Agent"
     },
     "update": {
       "available": "有可用更新"
@@ -1532,6 +1533,167 @@
       "description": "可以關閉此視窗。原本的 Dashboard 分頁會自動繼續。",
       "close": "關閉視窗",
       "close_unavailable": "瀏覽器阻止了自動關閉，請自行關閉此分頁。"
+    },
+    "agents": {
+      "title": "Agent",
+      "description": "把本機的程式設計 Agent 接入 aio-proxy。",
+      "load_failed": "無法載入 Agent。",
+      "not_found": "未知的 Agent。",
+      "open": "開啟 {target}",
+      "kind": {
+        "plugin": "外掛",
+        "auth_command": "認證指令",
+        "static_config": "全域設定"
+      },
+      "status": {
+        "not_installed": "未安裝",
+        "not_configured": "未設定",
+        "configured": "已設定",
+        "outdated": "有可用更新",
+        "modified": "已被修改",
+        "missing": "檔案缺失",
+        "conflict": "衝突",
+        "recovery_required": "需要復原",
+        "unknown": "未知"
+      },
+      "status_hint": {
+        "not_installed": "本機未找到 {target}。",
+        "conflict": "{target} 的檔案不是完整的 aio-proxy 託管整合，請用 CLI 處理。",
+        "recovery_required": "有中斷的設定需要先復原，請在終端機執行設定指令。",
+        "modified": "aio-proxy 管理的部分欄位被變更過，修復會還原它們。",
+        "missing": "部分託管檔案缺失，修復會重新安裝。",
+        "outdated": "目前 aio-proxy 版本帶有更新的轉接器。"
+      },
+      "authorizations_summary": "{active} 個有效 · {expired} 個過期 · {revoked} 個已撤銷",
+      "banner": {
+        "password_required": "啟用 API Key 驗證時，需要先設定Dashboard 密碼才能授權 Agent。",
+        "remote_request": "你正在從其他機器存取 aio-proxy。一鍵設定只能在執行 aio-proxy 的那台機器的瀏覽器裡使用。",
+        "unavailable": "目前 aio-proxy 不支援一鍵設定（例如執行在容器中）。請在安裝 Agent 的機器上執行下面的指令。"
+      },
+      "action": {
+        "configure": "設定",
+        "update": "更新",
+        "repair": "修復",
+        "reconfigure": "重新設定",
+        "remove": "移除",
+        "approve": "核准",
+        "deny": "拒絕",
+        "cancel": "取消",
+        "revoke": "撤銷",
+        "restore_migration": "復原上次工作階段遷移",
+        "copy": "複製"
+      },
+      "operation": {
+        "running": "處理中…",
+        "awaiting_approval": "核准此裝置以完成設定。Codex 顯示的代碼為 {code}。",
+        "succeeded": "已完成。",
+        "failed": "失敗：{reason}"
+      },
+      "result": {
+        "login": "現在在 {target} 中登入：{command}",
+        "reload": "重新載入或重新啟動 {target} 以載入整合。",
+        "removed": "整合已移除。",
+        "config_path": "已寫入 {path}",
+        "migration": "已遷移 {migrated} 個工作階段。"
+      },
+      "error": {
+        "host_missing": "本機未安裝該 Agent。",
+        "path_unavailable": "無法確定該 Agent 的設定位置。",
+        "not_configured": "沒有可移除的 aio-proxy 整合。",
+        "locked": "另一個設定操作正在進行，請稍後重試。",
+        "invalid_provider_id": "Provider ID 為空或是保留值。",
+        "occupied_provider_id": "該 Provider ID 已在 config.toml 中使用。",
+        "endpoint_changed": "設定過程中 aio-proxy 位址發生了變化，請重試。",
+        "authorization_denied": "裝置已被拒絕。",
+        "authorization_expired": "授權請求已過期。",
+        "recovery_required": "有中斷的設定需要先用 CLI 復原。",
+        "plan_stale": "填寫表單期間 Codex 狀態發生了變化，請檢查後重新儲存。",
+        "cancelled": "已取消。",
+        "operation_in_progress": "該 Agent 已有操作在進行中。",
+        "unknown": "發生錯誤，請查看 aio-proxy 日誌。",
+        "request_failed": "無法連線 aio-proxy，請檢查服務後重試。"
+      },
+      "login": {
+        "title": "登入",
+        "instructions": "在 {target} 中執行以下指令登入：",
+        "waiting": "等待 {target} 發起授權請求…",
+        "pending": "{target} 請求授權（Installation {installation}，轉接器 {version}）。",
+        "approved": "已核准，請回到 {target}。"
+      },
+      "section": {
+        "status": "狀態",
+        "setup": "設定",
+        "authorizations": "授權",
+        "manual": "手動指令",
+        "notes": "說明"
+      },
+      "field": {
+        "config_path": "設定路徑",
+        "version": "版本",
+        "installation": "Installation ID",
+        "adapter": "轉接器版本",
+        "provider_id": "Codex Provider ID",
+        "auth_mode": "認證方式",
+        "endpoint_mismatch": "該整合指向另一個 aio-proxy 位址，修復後會改為目前位址。"
+      },
+      "table": {
+        "label": "授權",
+        "installation": "Installation ID",
+        "adapter": "轉接器",
+        "created": "建立時間",
+        "last_authorized": "最近授權",
+        "status": "狀態",
+        "local": "位置",
+        "actions": "操作",
+        "empty": "暫無授權。",
+        "codex_keep": "保留 ChatGPT 登入模式通過 API Key 存取 aio-proxy，因此這裡沒有授權紀錄。"
+      },
+      "authorization": {
+        "active": "有效",
+        "expired": "已過期",
+        "revoked": "已撤銷"
+      },
+      "local": {
+        "configured": "本機",
+        "orphaned": "不在本機"
+      },
+      "note": {
+        "catalog_synced": "模型清單從 aio-proxy 同步。",
+        "catalog_host_managed": "{target} 自行管理模型清單，請在其中選擇 aio-proxy 的模型 ID。",
+        "platform_macos": "目前只在 macOS 上驗證過。",
+        "check_local": "只有在執行 aio-proxy 的機器上開啟 Dashboard 才會顯示本機檔案狀態。"
+      },
+      "manual": {
+        "configure": "設定",
+        "remove": "移除",
+        "login": "登入",
+        "check": "檢查本機狀態"
+      },
+      "remove": {
+        "title": "移除 {target} 整合？",
+        "description": "會撤銷它的授權，並還原 aio-proxy 修改過的檔案。你自己的變更會保留。",
+        "skipped": "保留了你修改過的欄位：{fields}",
+        "retained": "保留的檔案：{files}"
+      },
+      "codex": {
+        "title": "Codex 設定",
+        "provider_id": "Provider ID",
+        "provider_id_help": "aio-proxy 寫入 config.toml 的 model provider 項目。",
+        "auth_mode": "認證方式",
+        "auth_keep": "保留 ChatGPT 登入",
+        "auth_keep_help": "Codex 保留 ChatGPT 登入，用 API Key 存取 aio-proxy。",
+        "auth_command": "aio-proxy 授權",
+        "auth_command_help": "核准此裝置後，Codex 從 aio-proxy 取得短期權杖。",
+        "key": "API Key",
+        "key_none": "不使用 API Key",
+        "migrate": "遷移已有工作階段",
+        "migrate_help": "這些 provider 下的工作階段會遷移到新的 provider，在 Codex 中保持可見。",
+        "migrate_group": "{providerId}（{active} 個使用中，{archived} 個已封存）",
+        "migrate_confirm": "改寫所選工作階段",
+        "conflict": "config.toml 中的 aio-proxy 項目與你的修改衝突，請用 CLI 處理。",
+        "submit": "儲存",
+        "current": "Provider {providerId}，{mode}"
+      }
     }
   }
 }
