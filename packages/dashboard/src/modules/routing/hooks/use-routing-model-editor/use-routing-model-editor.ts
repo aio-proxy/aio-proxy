@@ -7,11 +7,18 @@ import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
   routingOverrideDraftsValid,
+  routingMetadataFormValues,
   type RoutingMetadataFormValues,
 } from '../../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../../lib/routing-summary';
 import { isStaleRoutingError } from '../../services/routing-service';
-import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../use-routing-form';
+import {
+  reconcileRoutingFormRows,
+  routingDraftRecord,
+  routingFormValues,
+  type RoutingFormValues,
+  useRoutingForm,
+} from '../use-routing-form';
 import { useRoutingMetadataForm } from '../use-routing-metadata-form';
 import { useRoutingMutation } from '../use-routing-mutation';
 
@@ -38,43 +45,68 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const mutation = useRoutingMutation();
   const [stale, setStale] = useState(false);
   const [metadataValid, setMetadataValid] = useState(true);
+  const [formDefaults, setFormDefaults] = useState<RoutingFormValues>(() => routingFormValues(model));
+  const [metadataDefaults, setMetadataDefaults] = useState<RoutingMetadataFormValues>(() =>
+    routingMetadataFormValues(model),
+  );
   const reloadGeneration = useRef(0);
-  const metadataForm = useRoutingMetadataForm(model);
-  const formRef = useRef<ReturnType<typeof useRoutingForm> | null>(null);
-  const form = useRoutingForm(model, (value) => {
-    const topologyAtSubmit = { providers: structuredClone(value.providers) };
-    const metadataAtSubmit = structuredClone(metadataForm.state.values);
-    const metadataValueAtSubmit = metadataForm.state.values.metadata.value;
-    mutation.mutate(
-      {
-        modelId: model.modelId,
-        revision: model.revision,
-        baselineProviderIds: model.baselineProviderIds,
-        ...mergeRoutingMutationDrafts(explicitRoutingOverrides(routingDraftRecord(value.providers)), metadataAtSubmit),
-      },
-      {
-        onSuccess: () => {
-          mutation.reset();
-          setStale(false);
-          const savedMetadata = metadataDraftsClean({
-            metadata: { touched: true, value: metadataValueAtSubmit },
-            overrides: metadataAtSubmit.overrides,
-          });
-          const editorForm = formRef.current;
-          if (editorForm === null) return;
-          editorForm.reset(editorForm.state.values);
-          editorForm.setFieldValue('providers', topologyAtSubmit.providers, { dontUpdateMeta: true });
-          metadataForm.reset(savedMetadata);
+  const latestModel = useRef(model);
+  const previousModelIdentity = useRef({ modelId: model.modelId, revision: model.revision });
+  // oxlint-disable-next-line react/refs -- the adoption effect must read the newest same-key model without depending on object identity
+  latestModel.current = model;
+  const metadataForm = useRoutingMetadataForm(model, metadataDefaults);
+  const form = useRoutingForm(
+    model,
+    (value, submittedForm) => {
+      const savedTopology = { providers: value.providers };
+      const metadataAtSubmit = metadataForm.state.values;
+      const savedMetadata = metadataDraftsClean(metadataAtSubmit);
+      mutation.mutate(
+        {
+          modelId: model.modelId,
+          revision: model.revision,
+          baselineProviderIds: model.baselineProviderIds,
+          ...mergeRoutingMutationDrafts(
+            explicitRoutingOverrides(routingDraftRecord(value.providers)),
+            metadataAtSubmit,
+          ),
         },
-        onError: (error) => {
-          if (isStaleRoutingError(error)) setStale(true);
+        {
+          onSuccess: () => {
+            mutation.reset();
+            setStale(false);
+            setFormDefaults(savedTopology);
+            setMetadataDefaults(savedMetadata);
+            submittedForm.reset(savedTopology);
+            metadataForm.reset(savedMetadata);
+          },
+          onError: (error) => {
+            if (isStaleRoutingError(error)) setStale(true);
+          },
         },
-      },
-    );
-  });
+      );
+    },
+    formDefaults,
+  );
   useEffect(() => {
-    formRef.current = form;
-  }, [form]);
+    const nextModel = latestModel.current;
+    const previous = previousModelIdentity.current;
+    if (previous.modelId === nextModel.modelId && previous.revision === nextModel.revision) return;
+    previousModelIdentity.current = { modelId: nextModel.modelId, revision: nextModel.revision };
+
+    const metadataValues = metadataForm.state.values;
+    const metadataTouched =
+      metadataValues.metadata.touched ||
+      Object.values(metadataValues.overrides).some((override) => override.cost.touched || override.limit.touched);
+    if (form.state.isDirty || metadataTouched) return;
+
+    const nextFormDefaults = routingFormValues(nextModel);
+    const nextMetadataDefaults = routingMetadataFormValues(nextModel);
+    setFormDefaults(nextFormDefaults);
+    setMetadataDefaults(nextMetadataDefaults);
+    form.reset(nextFormDefaults);
+    metadataForm.reset(nextMetadataDefaults);
+  }, [form, metadataForm, model.modelId, model.revision]);
 
   const topologyDirty = useStore(form.store, (state) => state.isDirty);
   const canSubmit = useStore(form.store, (state) => state.canSubmit);

@@ -64,11 +64,16 @@ export const routingDraftRecord = (rows: readonly RoutingFormProviderRow[]): Rec
     ]),
   );
 
-export const useRoutingForm = (model: DashboardRoutingModel | null, onSubmit: (value: RoutingFormValues) => void) =>
+export const useRoutingForm = (
+  model: DashboardRoutingModel | null,
+  onSubmit: (value: RoutingFormValues, form: { reset: (values?: RoutingFormValues) => void }) => void,
+  defaultValues?: RoutingFormValues,
+) =>
   useForm({
-    defaultValues: (model === null ? { providers: [] } : routingFormValues(model)) satisfies RoutingFormValues,
+    defaultValues:
+      defaultValues ?? ((model === null ? { providers: [] } : routingFormValues(model)) satisfies RoutingFormValues),
     validators: {
       onSubmit: ({ value }) => (RoutingFormValuesSchema.safeParse(value).success ? undefined : 'INVALID_ROUTING'),
     },
-    onSubmit: ({ value }) => onSubmit(value),
+    onSubmit: ({ value, formApi }) => onSubmit(value, formApi),
   });

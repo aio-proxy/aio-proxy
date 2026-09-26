@@ -198,6 +198,18 @@ test('returns to clean after a successful save without discarding edited values'
   expect(mutate.mock.calls[0]?.[0]).not.toHaveProperty('metadata');
 });
 
+test('keeps saved values when rerendered with an equivalent model object', async () => {
+  const { result, rerender } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  await act(() => result.current.save());
+  act(() => mocks.callbacks?.onSuccess?.());
+
+  rerender();
+
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
+});
+
 test('ignores a second synchronous save while the first submit is in flight', async () => {
   const { result, mutate } = renderEditor();
 
