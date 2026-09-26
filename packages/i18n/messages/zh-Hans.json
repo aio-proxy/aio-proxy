@@ -703,7 +703,9 @@
         "overrides_yes": "有覆盖",
         "overrides_no": "默认",
         "edit": "编辑",
-        "disabled": "已禁用"
+        "disabled": "已禁用",
+        "empty_filtered": "没有模型符合这些筛选条件。",
+        "clear_filters": "清除筛选"
       },
       "editor": {
         "title": "编辑 {modelId} 的路由",

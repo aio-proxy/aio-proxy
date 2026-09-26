@@ -60,6 +60,20 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
         </Empty>
       );
     }
+    if (visible.length === 0) {
+      return (
+        <Empty>
+          <p>{m['dashboard.routing.table.empty_filtered']()}</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onSearchChange(withRoutingFilters(search, { risk: undefined, lab: undefined }))}
+          >
+            {m['dashboard.routing.table.clear_filters']()}
+          </Button>
+        </Empty>
+      );
+    }
     return (
       <div className="space-y-4">
         <RoutingLabFilter

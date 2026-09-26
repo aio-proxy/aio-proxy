@@ -703,7 +703,9 @@
         "overrides_yes": "재정의",
         "overrides_no": "기본값",
         "edit": "편집",
-        "disabled": "사용 안 함"
+        "disabled": "사용 안 함",
+        "empty_filtered": "이 필터와 일치하는 모델이 없습니다.",
+        "clear_filters": "필터 지우기"
       },
       "editor": {
         "title": "{modelId} 라우팅 편집",

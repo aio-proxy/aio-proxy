@@ -178,6 +178,19 @@ test('renders all known models from the routing query including unavailable rout
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
 });
 
+test('distinguishes filters with no matches from an empty routing inventory', () => {
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+  const onSearchChange = rs.fn();
+
+  render(<RoutingPage search={{ range: '7d', risk: 'no-eligible', lab: 'openai' }} onSearchChange={onSearchChange} />);
+
+  expect(screen.getByText('No models match these filters.')).toBeInTheDocument();
+  expect(screen.queryByText(/Add a Provider/u)).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  expect(onSearchChange).toHaveBeenCalledWith({ range: '7d' });
+});
+
 test('no longer renders the editor drawer', () => {
   mockRoutingModels({ writable: true, models: [modelFixture('sonnet')] });
 

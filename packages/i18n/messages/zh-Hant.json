@@ -703,7 +703,9 @@
         "overrides_yes": "有覆寫",
         "overrides_no": "預設",
         "edit": "編輯",
-        "disabled": "已停用"
+        "disabled": "已停用",
+        "empty_filtered": "沒有模型符合這些篩選條件。",
+        "clear_filters": "清除篩選"
       },
       "editor": {
         "title": "編輯 {modelId} 的路由",

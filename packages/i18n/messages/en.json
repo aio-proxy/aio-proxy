@@ -703,7 +703,9 @@
         "overrides_yes": "Overrides",
         "overrides_no": "Defaults",
         "edit": "Edit",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "empty_filtered": "No models match these filters.",
+        "clear_filters": "Clear filters"
       },
       "editor": {
         "title": "Edit routing for {modelId}",

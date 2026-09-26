@@ -703,7 +703,9 @@
         "overrides_yes": "上書きあり",
         "overrides_no": "既定",
         "edit": "編集",
-        "disabled": "無効"
+        "disabled": "無効",
+        "empty_filtered": "この条件に一致するモデルはありません。",
+        "clear_filters": "フィルタをクリア"
       },
       "editor": {
         "title": "{modelId} のルーティングを編集",
