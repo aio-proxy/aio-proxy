@@ -23,7 +23,7 @@ type AgentOAuthRouteInput = {
 type AgentApprovalRouteInput = Pick<AgentOAuthRouteInput, 'challenges' | 'currentConfig'>;
 type AgentAdminRouteInput = Pick<AgentOAuthRouteInput, 'identity' | 'currentConfig'>;
 
-const requestPeer = (context: Context): string => {
+export const requestPeer = (context: Context): string => {
   const env = context.env as { requestIP?: (request: Request) => { address: string } | null } | undefined;
   const address = env?.requestIP?.(context.req.raw)?.address;
   if (address === undefined) throw new Error('loopback middleware admitted a request without a transport peer');
@@ -93,7 +93,7 @@ export const createAgentOAuthRoutes = ({ challenges, identity, currentConfig }: 
       });
     });
 
-const requireAgentApprovalOrigin: MiddlewareHandler = async (context, next) => {
+export const requireAgentApprovalOrigin: MiddlewareHandler = async (context, next) => {
   const origin = context.req.header('origin');
   const fetchSite = context.req.header('sec-fetch-site');
   if (
