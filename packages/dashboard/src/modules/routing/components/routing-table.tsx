@@ -18,13 +18,12 @@ import { createRoutingColumns } from './routing-table-columns';
 interface RoutingTableProps {
   readonly models: readonly DashboardRoutingModel[];
   readonly traffic: RoutingTrafficIndex | undefined;
-  readonly onEdit: (model: DashboardRoutingModel) => void;
 }
 
-export const RoutingTable: React.FC<RoutingTableProps> = ({ models, onEdit, traffic }) => {
+export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic }) => {
   'use no memo';
 
-  const columns = useMemo(() => createRoutingColumns({ onEdit, traffic }), [onEdit, traffic]);
+  const columns = useMemo(() => createRoutingColumns({ traffic }), [traffic]);
   const { table } = useDataTable(models, columns, { getRowId: (model) => model.modelId });
 
   const labStats = useMemo(() => {

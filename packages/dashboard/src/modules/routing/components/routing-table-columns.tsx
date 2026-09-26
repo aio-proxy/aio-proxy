@@ -1,7 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
-import { Button } from '@aio-proxy/ui/components/button';
+import { buttonVariants } from '@aio-proxy/ui/components/button';
+import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { tableHead } from '@/components/data-table/table-head';
@@ -34,12 +35,10 @@ const riskLabel = (risk: RoutingRiskFilter): string => {
 };
 
 interface CreateRoutingColumnsOptions {
-  readonly onEdit: (model: DashboardRoutingModel) => void;
   readonly traffic: RoutingTrafficIndex | undefined;
 }
 
 export const createRoutingColumns = ({
-  onEdit,
   traffic,
 }: CreateRoutingColumnsOptions): ColumnDef<DataTableFeatures, DashboardRoutingModel>[] => [
   {
@@ -153,9 +152,13 @@ export const createRoutingColumns = ({
     header: tableHead(() => m['dashboard.routing.table.col_actions']()),
     cell: ({ row }) => (
       <div className="text-right">
-        <Button type="button" size="sm" variant="outline" onClick={() => onEdit(row.original)}>
+        <Link
+          to="/routing/$"
+          params={{ _splat: row.original.modelId }}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
           {m['dashboard.routing.table.edit']()}
-        </Button>
+        </Link>
       </div>
     ),
   },

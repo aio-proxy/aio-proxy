@@ -1,16 +1,13 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { RoutingEditorDrawer } from '../components/routing-editor-drawer';
 import { RoutingHealthStrip } from '../components/routing-health-strip';
 import { RoutingLabFilter } from '../components/routing-lab-filter';
 import { RoutingTable } from '../components/routing-table';
@@ -29,19 +26,9 @@ interface RoutingPageProps {
 export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange }) => {
   const query = useRoutingQuery();
   const trafficQuery = useQuery(routingTrafficQueryOptions(search.range));
-  const [selected, setSelected] = useState<DashboardRoutingModel | null>(null);
-  const editorGeneration = useRef(0);
   const models = query.data?.models ?? [];
-  const writable = query.data?.writable ?? false;
   const index = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
   const visible = filterRoutingModels(sortRoutingModels(models), search, index);
-
-  const selectModel = (model: DashboardRoutingModel | null) => {
-    setSelected((current) => {
-      if (current?.modelId !== model?.modelId) editorGeneration.current += 1;
-      return model;
-    });
-  };
 
   const content = (() => {
     if (query.isLoading) {
@@ -80,7 +67,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
           value={search.lab}
           onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
         />
-        <RoutingTable models={visible} traffic={index} onEdit={selectModel} />
+        <RoutingTable models={visible} traffic={index} />
       </div>
     );
   })();
@@ -107,25 +94,6 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
       <Card>
         <CardContent>{content}</CardContent>
       </Card>
-      <RoutingEditorDrawer
-        key={selected?.modelId ?? 'closed'}
-        model={selected}
-        writable={writable}
-        onOpenChange={(open) => {
-          if (!open) selectModel(null);
-        }}
-        onReload={async () => {
-          const generation = editorGeneration.current;
-          const initiatedId = selected?.modelId;
-          if (initiatedId === undefined) return null;
-          const result = await query.refetch();
-          if (editorGeneration.current !== generation) return null;
-          const next = result.data?.models.find((model) => model.modelId === initiatedId);
-          if (next === undefined) return null;
-          setSelected(next);
-          return next;
-        }}
-      />
     </PageContainer>
   );
 };

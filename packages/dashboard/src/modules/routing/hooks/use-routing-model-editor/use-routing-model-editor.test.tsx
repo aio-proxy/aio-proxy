@@ -1,4 +1,4 @@
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ const mocks = rs.hoisted(() => ({
   shouldBlock: undefined as (() => boolean) | undefined,
   enableBeforeUnload: undefined as (() => boolean) | undefined,
   mutationError: null as Error | null,
+  mutationPending: false,
   callbacks: undefined as { onError?: (error: Error) => void; onSuccess?: () => void } | undefined,
 }));
 
@@ -26,13 +27,13 @@ rs.mock('@tanstack/react-router', () => ({
 rs.mock('../use-routing-mutation', () => ({
   useRoutingMutation: () => ({
     mutate: mocks.mutate,
-    isPending: false,
+    isPending: mocks.mutationPending,
     error: mocks.mutationError,
     reset: mocks.reset,
   }),
 }));
 
-const anthropicProvider = {
+const anthropicProvider: DashboardRoutingProvider = {
   id: 'anthropic',
   kind: ProviderKind.Api,
   enabled: true,
@@ -51,7 +52,7 @@ const anthropicProvider = {
   },
 };
 
-const openaiProvider = {
+const openaiProvider: DashboardRoutingProvider = {
   id: 'openai',
   kind: ProviderKind.Api,
   enabled: true,
@@ -97,6 +98,60 @@ const modelWithOpenai = (modelId = 'sonnet'): DashboardRoutingModel => ({
   providers: [anthropicProvider, openaiProvider],
 });
 
+const routingNumber = (effective: number, authored?: number) => ({
+  ...(authored === undefined ? {} : { authored }),
+  effective,
+  wasNormalized: authored !== undefined && authored !== effective,
+});
+
+const providerWithOverride = (
+  id: string,
+  override: DashboardRoutingProvider['override'],
+): DashboardRoutingProvider => ({
+  ...anthropicProvider,
+  id,
+  override,
+  effective: {
+    priority: override?.priority?.effective ?? 0,
+    weight: override?.weight?.effective ?? 1,
+    prioritySource: override?.priority === undefined ? 'provider' : 'model',
+    weightSource: override?.weight === undefined ? 'provider' : 'model',
+    eligible: (override?.weight?.effective ?? 1) > 0,
+    share: null,
+  },
+});
+
+const mutationModel = (): DashboardRoutingModel => {
+  const providers = [
+    providerWithOverride('a', { priority: routingNumber(30, 30), weight: routingNumber(6000, 6000) }),
+    providerWithOverride('b', undefined),
+    providerWithOverride('c', { weight: routingNumber(0, 0) }),
+    providerWithOverride('d', { weight: routingNumber(5, 5) }),
+  ];
+  return {
+    ...model('openai/gpt-5'),
+    revision: 'rev-exact',
+    baselineProviderIds: providers.map((provider) => provider.id),
+    providerCount: providers.length,
+    eligibleProviderCount: 3,
+    providers,
+  };
+};
+
+const dottedModel = (): DashboardRoutingModel => {
+  const providers = [
+    providerWithOverride('acme.us', { priority: routingNumber(30, 30), weight: routingNumber(6000, 6000) }),
+    providerWithOverride('edge[west]', { priority: routingNumber(30, 30), weight: routingNumber(4000, 4000) }),
+  ];
+  return {
+    ...model('gpt-5'),
+    baselineProviderIds: providers.map((provider) => provider.id),
+    providerCount: providers.length,
+    eligibleProviderCount: providers.length,
+    providers,
+  };
+};
+
 const renderEditor = (
   options: {
     readonly writable?: boolean;
@@ -139,6 +194,7 @@ afterEach(() => {
   mocks.shouldBlock = undefined;
   mocks.enableBeforeUnload = undefined;
   mocks.mutationError = null;
+  mocks.mutationPending = false;
   mocks.callbacks = undefined;
 });
 
@@ -180,7 +236,7 @@ test('blocks navigation while any tab is dirty and allows it when clean', () => 
   expect(beforeUnloadEnabledFor()).toBe(true);
 });
 
-test('refuses to save while the metadata draft is invalid', () => {
+test('invalid metadata blocks Save until the draft is repaired', async () => {
   const { result, mutate } = renderEditor();
 
   act(() => result.current.setMetadataValid(false));
@@ -189,6 +245,11 @@ test('refuses to save while the metadata draft is invalid', () => {
   expect(result.current.canSave).toBe(false);
   act(() => result.current.save());
   expect(mutate).not.toHaveBeenCalled();
+
+  act(() => result.current.setMetadataValid(true));
+  expect(result.current.canSave).toBe(true);
+  await act(() => result.current.save());
+  expect(mutate).toHaveBeenCalledTimes(1);
 });
 
 test('refuses to save when the config is read-only', () => {
@@ -205,6 +266,125 @@ test('submits one mutation carrying both forms', async () => {
 
   expect(mutate).toHaveBeenCalledTimes(1);
   expect(mutate.mock.calls[0]?.[0]).toMatchObject({ modelId: 'sonnet', revision: 'rev-1' });
+});
+
+test('Save sends the exact revision, baseline Provider IDs, and explicit override map', async () => {
+  const { result, mutate } = renderEditor({ model: mutationModel() });
+
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toEqual({
+    modelId: 'openai/gpt-5',
+    revision: 'rev-exact',
+    baselineProviderIds: ['a', 'b', 'c', 'd'],
+    providers: {
+      a: { priority: 30, weight: 6000 },
+      b: {},
+      c: { weight: 0 },
+      d: { weight: 5 },
+    },
+  });
+});
+
+test('saves dotted and bracketed Provider IDs as exact payload keys', async () => {
+  const { result, mutate } = renderEditor({ model: dottedModel() });
+
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0].providers).toEqual({
+    'acme.us': { priority: 30, weight: 6000 },
+    'edge[west]': { priority: 30, weight: 4000 },
+  });
+  expect(Object.keys(mutate.mock.calls[0]?.[0].providers ?? {})).toEqual(['acme.us', 'edge[west]']);
+});
+
+test('Reset on dotted and bracketed Provider IDs sends empty preservation patches', async () => {
+  const { result, mutate } = renderEditor({ model: dottedModel() });
+
+  act(() => result.current.form.setFieldValue('providers', [{ providerId: 'acme.us' }, { providerId: 'edge[west]' }]));
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0].providers).toEqual({ 'acme.us': {}, 'edge[west]': {} });
+});
+
+test('editing metadata and a Provider cost override puts both into the PUT body', async () => {
+  const { result, mutate } = renderEditor({ model: mutationModel() });
+
+  act(() => {
+    result.current.metadataForm.setFieldValue('metadata', { touched: true, value: { name: 'GPT Five' } });
+    result.current.metadataForm.setFieldValue('overrides.a.cost', { touched: true, value: { input: 0.25 } });
+  });
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({
+    metadata: { name: 'GPT Five' },
+    providers: { a: { priority: 30, weight: 6000, cost: { input: 0.25 } } },
+  });
+});
+
+test('clearing metadata and a cost override sends explicit null patches', async () => {
+  const authored = mutationModel();
+  authored.metadata = { name: 'Legacy' };
+  authored.providers[0] = {
+    ...authored.providers[0]!,
+    override: { ...authored.providers[0]!.override, cost: { input: 3 }, limit: { context: 200_000 } },
+  };
+  const { result, mutate } = renderEditor({ model: authored });
+
+  act(() => {
+    result.current.metadataForm.setFieldValue('metadata', { touched: true, value: undefined });
+    result.current.metadataForm.setFieldValue('overrides.a.cost', { touched: true, value: undefined });
+  });
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0].metadata).toBeNull();
+  expect(mutate.mock.calls[0]?.[0].providers.a).toEqual({ priority: 30, weight: 6000, cost: null });
+  expect(mutate.mock.calls[0]?.[0].providers.a).not.toHaveProperty('limit');
+});
+
+test('a board-only change produces a PUT body with no cost, limit, or metadata keys', async () => {
+  const authored = mutationModel();
+  authored.metadata = { name: 'Legacy' };
+  authored.providers[0] = {
+    ...authored.providers[0]!,
+    override: { ...authored.providers[0]!.override, cost: { input: 3 }, limit: { context: 200_000 } },
+  };
+  const { result, mutate } = renderEditor({ model: authored });
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 7000));
+  await act(() => result.current.save());
+
+  const body = mutate.mock.calls[0]?.[0];
+  expect(body).not.toHaveProperty('metadata');
+  expect(body.providers.a).toEqual({ priority: 30, weight: 7000 });
+  for (const entry of Object.values(body.providers)) {
+    expect(entry).not.toHaveProperty('cost');
+    expect(entry).not.toHaveProperty('limit');
+  }
+});
+
+test('an invalid per-Provider limit disables Save and blocks submit', () => {
+  const { result, mutate } = renderEditor();
+
+  act(() =>
+    result.current.metadataForm.setFieldValue('overrides.anthropic.limit', {
+      touched: true,
+      value: { context: 100, input: 200 },
+    }),
+  );
+
+  expect(result.current.canSave).toBe(false);
+  act(() => result.current.save());
+  expect(mutate).not.toHaveBeenCalled();
+});
+
+test('disables duplicate Save while a mutation is pending', () => {
+  mocks.mutationPending = true;
+  const { result, mutate } = renderEditor();
+
+  expect(result.current.canSave).toBe(false);
+  act(() => result.current.save());
+  expect(mutate).not.toHaveBeenCalled();
 });
 
 test('surfaces a stale revision as a reloadable state rather than a generic failure', async () => {
