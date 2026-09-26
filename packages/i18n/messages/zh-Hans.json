@@ -696,13 +696,16 @@
         "columns": "列",
         "col_model": "模型 ID",
         "col_route": "路由",
+        "col_traffic": "流量",
         "col_providers": "可用 / 已知",
         "col_overrides": "覆盖",
         "col_actions": "操作",
         "overrides_yes": "有覆盖",
         "overrides_no": "默认",
         "edit": "编辑",
-        "disabled": "已禁用"
+        "disabled": "已禁用",
+        "empty_filtered": "没有模型符合这些筛选条件。",
+        "clear_filters": "清除筛选"
       },
       "editor": {
         "title": "编辑 {modelId} 的路由",
@@ -792,6 +795,51 @@
         "provider_overrides": "Provider 覆盖",
         "provider_cost_overrides": "价格覆盖",
         "provider_limit_overrides": "限制覆盖"
+      },
+      "detail": {
+        "actual_share": "配 {configured} → 实际 {actual}",
+        "success_rate": "成功率 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "暂无流量数据",
+        "tab_topology": "拓扑",
+        "tab_metadata": "元数据",
+        "tab_cost": "成本与限额",
+        "tab_traffic": "流量",
+        "unsaved_title": "有未保存的改动",
+        "unsaved_body": "离开这个页面会丢弃未保存的改动。",
+        "unsaved_stay": "留在此页",
+        "unsaved_leave": "放弃改动",
+        "dirty_marker": "未保存",
+        "catalog_vs_override": "目录值 / 你的覆写",
+        "open_in_traces": "在 Traces 中查看"
+      },
+      "health": {
+        "total": "模型",
+        "no_eligible": "无可用 Provider",
+        "single_point": "单点，无 failover",
+        "deviating": "实际偏离配置",
+        "deviating_pending": "统计中"
+      },
+      "risk": {
+        "no_eligible": "无可用 Provider",
+        "single_point": "单点",
+        "deviating": "偏离"
+      },
+      "lab": {
+        "unknown": "未知厂商",
+        "filter_label": "厂商",
+        "filter_all": "全部厂商",
+        "model_count": "{count} 个模型",
+        "risk_count": "{count} 个需处理"
+      },
+      "share": {
+        "configured": "配置",
+        "actual": "实际",
+        "tier": "第 {value} 层"
+      },
+      "traffic": {
+        "none": "无流量",
+        "success_rate": "成功率 {value}"
       }
     },
     "pagination": {

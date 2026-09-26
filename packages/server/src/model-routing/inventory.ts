@@ -1,5 +1,6 @@
 import {
   digestProviderEntry,
+  hasCachedModelsCatalog,
   type PluginRepository,
   modelRoutes,
   type RoutableProvider,
@@ -8,6 +9,7 @@ import {
 import {
   type Config,
   type DashboardProviderSummary,
+  type DashboardRoutingCatalog,
   type DashboardRoutingModel,
   type DashboardRoutingModelsResponse,
   type DashboardRoutingNumber,
@@ -28,6 +30,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { routingCatalogFacts } from './catalog-facts';
 import { rawModelPolicySlugs, readRawModelPolicy, rawPolicyProviders } from './mutation';
 import { authoredNumber, routingNumberView } from './number-view';
 
@@ -73,6 +76,15 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
     if (!models.has(slug)) models.set(slug, emptyModel(slug, input.rawRecord));
   }
 
+  // One cache probe for the whole inventory. readCachedProviderMap memoizes only on a hit, so a
+  // cold or TTL-expired cache would otherwise re-read and re-parse the entire models.dev catalog
+  // once per model. A missing catalog leaves the field empty rather than failing the inventory.
+  if (await hasCachedModelsCatalog()) {
+    for (const model of models.values()) {
+      model.catalog = await routingCatalogFacts(model.modelId);
+    }
+  }
+
   return {
     writable: input.writable,
     models: [...models.values()].map(finalizeModel),
@@ -109,6 +121,7 @@ function finalizeModel(model: WritableModel): DashboardRoutingModel {
   return {
     modelId: model.modelId,
     ...(metadata === undefined ? {} : { metadata }),
+    ...(model.catalog === undefined ? {} : { catalog: model.catalog }),
     revision: model.revision,
     baselineProviderIds: providers.map((provider) => provider.id),
     providerCount: providers.length,
@@ -276,5 +289,6 @@ type WritableModel = {
   modelId: string;
   revision: string;
   rawMetadata: unknown;
+  catalog?: DashboardRoutingCatalog;
   providers: DashboardRoutingProvider[];
 };

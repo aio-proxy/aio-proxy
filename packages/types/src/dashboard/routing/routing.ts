@@ -24,6 +24,17 @@ export type DashboardRoutingNumber = {
   readonly wasNormalized: boolean;
 };
 
+/** Objective facts derived from the models.dev catalog. Kept separate from `metadata`
+ * (the user's authored override in config): `metadata` is undefined when unauthored,
+ * so it cannot be used for sorting or for displaying vendor attribution.
+ * `lab` is the model vendor (openai, anthropic). models.dev internally calls this
+ * prefix `providerId`, but in this repo Provider ID means the upstream provider,
+ * so the two must never share a name. */
+export type DashboardRoutingCatalog = {
+  readonly lab: string;
+  readonly releaseDate?: string;
+};
+
 export type DashboardRoutingProvider = {
   readonly id: string;
   readonly name?: string;
@@ -50,6 +61,7 @@ export type DashboardRoutingProvider = {
 export type DashboardRoutingModel = {
   readonly modelId: string;
   readonly metadata?: ModelMetadataInput;
+  readonly catalog?: DashboardRoutingCatalog;
   readonly revision: string;
   readonly baselineProviderIds: readonly string[];
   readonly providerCount: number;
@@ -91,6 +103,16 @@ export const DashboardRoutingNumberSchema = matchesDto<DashboardRoutingNumber>()
   }),
 );
 
+export const DashboardRoutingCatalogSchema = matchesDto<DashboardRoutingCatalog>()(
+  z.strictObject({
+    lab: IdSchema,
+    // models.dev gives either YYYY-MM or YYYY-MM-DD; both are passed through verbatim.
+    // Consumers compare it as a string and must never parse it into a Date, which
+    // would introduce timezone drift.
+    releaseDate: z.string().min(1).optional(),
+  }),
+);
+
 const DashboardRoutingProviderOverrideViewSchema = z.strictObject({
   priority: DashboardRoutingNumberSchema.optional(),
   weight: DashboardRoutingNumberSchema.optional(),
@@ -125,6 +147,7 @@ export const DashboardRoutingModelSchema = matchesDto<DashboardRoutingModel>()(
   z.strictObject({
     modelId: IdSchema,
     metadata: ModelMetadataSchema.optional(),
+    catalog: DashboardRoutingCatalogSchema.optional(),
     revision: z.string().min(1),
     baselineProviderIds: z.array(IdSchema).readonly(),
     providerCount: z.number().int().nonnegative(),

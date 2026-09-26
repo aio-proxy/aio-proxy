@@ -1,7 +1,15 @@
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
-import { expect, rs, test } from '@rstest/core';
+import { expect, test } from '@rstest/core';
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from '@tanstack/react-router';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
 import { RoutingTable } from './routing-table';
 
@@ -28,6 +36,8 @@ const provider = (
   },
   ...values,
 });
+
+const modelFixture = (modelId: string, catalog?: { lab: string; releaseDate?: string }) => model({ modelId, catalog });
 
 const model = (
   values: Partial<DashboardRoutingModel> & Pick<DashboardRoutingModel, 'modelId'>,
@@ -58,11 +68,30 @@ const model = (
   };
 };
 
-test('renders every known model including zero-eligible and single-Provider routes', () => {
-  const onEdit = rs.fn();
-  render(
+const renderTable = async (table: ReactElement) => {
+  const rootRoute = createRootRoute();
+  const listRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/routing/',
+    component: () => table,
+  });
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/routing/$',
+    component: () => null,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([listRoute, detailRoute]),
+    history: createMemoryHistory({ initialEntries: ['/routing/'] }),
+  });
+  await router.load();
+  return render(<RouterProvider router={router} />);
+};
+
+test('renders every known model including zero-eligible and single-Provider routes', async () => {
+  await renderTable(
     <RoutingTable
-      onEdit={onEdit}
+      traffic={undefined}
       models={[
         model({
           modelId: 'openai/gpt-5',
@@ -136,36 +165,27 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-openai/gpt-5')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
-  expect(
-    within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(/Tier 1|ティア 1|단계 1|梯队 1|梯隊 1/u),
-  ).toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByLabelText(/^a,/u)).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
 });
 
-test('filters models through the shared DataTable controls and opens Edit from a row', () => {
-  const onEdit = rs.fn();
-  const solo = model({ modelId: 'solo-model' });
-  render(
+test('filters models through the shared DataTable controls', async () => {
+  await renderTable(
     <RoutingTable
-      onEdit={onEdit}
-      models={[model({ modelId: 'openai/gpt-5' }), solo, model({ modelId: 'other-model' })]}
+      traffic={undefined}
+      models={[model({ modelId: 'openai/gpt-5' }), model({ modelId: 'solo-model' }), model({ modelId: 'other-model' })]}
     />,
   );
 
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'solo-model' } });
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.queryByTestId('routing-row-openai/gpt-5')).toBeNull();
-
-  fireEvent.click(
-    within(screen.getByTestId('routing-row-solo-model')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
-  );
-  expect(onEdit).toHaveBeenCalledWith(solo);
 });
 
-test('paginates long model catalogs with the shared table pagination controls', () => {
-  render(
+test('paginates long model catalogs with the shared table pagination controls', async () => {
+  await renderTable(
     <RoutingTable
-      onEdit={rs.fn()}
+      traffic={undefined}
       models={Array.from({ length: 12 }, (_, index) =>
         model({ modelId: `model-${String(index + 1).padStart(2, '0')}` }),
       )}
@@ -176,4 +196,40 @@ test('paginates long model catalogs with the shared table pagination controls', 
   expect(screen.queryByTestId('routing-row-model-12')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Next|次|다음|下一|下一/u }));
   expect(screen.getByTestId('routing-row-model-12')).toBeInTheDocument();
+});
+
+test('groups rows by lab and repeats the header on each page', async () => {
+  await renderTable(
+    <RoutingTable
+      models={[modelFixture('gpt-5', { lab: 'openai' }), modelFixture('claude', { lab: 'anthropic' })]}
+      traffic={undefined}
+    />,
+  );
+
+  expect(screen.getByTestId('routing-lab-group-anthropic')).toBeInTheDocument();
+  expect(screen.getByTestId('routing-lab-group-openai')).toBeInTheDocument();
+});
+
+test('drops the lab group headers once the user sorts a column', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Model ID/u }));
+
+  expect(screen.getByRole('columnheader', { name: /Model ID/u })).toHaveAttribute('aria-sort', 'ascending');
+  expect(screen.queryByTestId('routing-lab-group-openai')).not.toBeInTheDocument();
+});
+
+test('shows no-traffic rather than zeros when traffic is absent', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} />);
+
+  expect(screen.getByText(/No traffic|无流量/u)).toBeInTheDocument();
+});
+
+test('links each row to its detail page instead of opening a drawer', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('anthropic/claude-sonnet-4.5')]} traffic={undefined} />);
+
+  expect(await screen.findByRole('link', { name: /编辑|Edit/u })).toHaveAttribute(
+    'href',
+    '/routing/anthropic/claude-sonnet-4.5',
+  );
 });

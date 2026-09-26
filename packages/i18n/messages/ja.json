@@ -696,13 +696,16 @@
         "columns": "列",
         "col_model": "モデル ID",
         "col_route": "ルート",
+        "col_traffic": "トラフィック",
         "col_providers": "対象 / 既知",
         "col_overrides": "上書き",
         "col_actions": "操作",
         "overrides_yes": "上書きあり",
         "overrides_no": "既定",
         "edit": "編集",
-        "disabled": "無効"
+        "disabled": "無効",
+        "empty_filtered": "この条件に一致するモデルはありません。",
+        "clear_filters": "フィルタをクリア"
       },
       "editor": {
         "title": "{modelId} のルーティングを編集",
@@ -792,6 +795,51 @@
         "provider_overrides": "Provider の上書き",
         "provider_cost_overrides": "価格の上書き",
         "provider_limit_overrides": "制限の上書き"
+      },
+      "detail": {
+        "actual_share": "設定 {configured} → 実際 {actual}",
+        "success_rate": "成功率 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "トラフィックデータはまだありません",
+        "tab_topology": "トポロジ",
+        "tab_metadata": "メタデータ",
+        "tab_cost": "コストと上限",
+        "tab_traffic": "トラフィック",
+        "unsaved_title": "未保存の変更があります",
+        "unsaved_body": "このページを離れると、未保存の変更は破棄されます。",
+        "unsaved_stay": "このページに留まる",
+        "unsaved_leave": "変更を破棄",
+        "dirty_marker": "未保存",
+        "catalog_vs_override": "カタログ値 / あなたの上書き",
+        "open_in_traces": "Traces で表示"
+      },
+      "health": {
+        "total": "モデル",
+        "no_eligible": "対象 Provider なし",
+        "single_point": "単一、フェイルオーバーなし",
+        "deviating": "設定から乖離",
+        "deviating_pending": "集計中"
+      },
+      "risk": {
+        "no_eligible": "対象 Provider なし",
+        "single_point": "単一",
+        "deviating": "乖離"
+      },
+      "lab": {
+        "unknown": "不明なラボ",
+        "filter_label": "ラボ",
+        "filter_all": "すべてのラボ",
+        "model_count": "{count} モデル",
+        "risk_count": "{count} 件要対応"
+      },
+      "share": {
+        "configured": "設定",
+        "actual": "実際",
+        "tier": "ティア {value}"
+      },
+      "traffic": {
+        "none": "トラフィックなし",
+        "success_rate": "成功率 {value}"
       }
     },
     "pagination": {

@@ -696,13 +696,16 @@
         "columns": "欄",
         "col_model": "模型 ID",
         "col_route": "路由",
+        "col_traffic": "流量",
         "col_overrides": "覆寫",
         "col_providers": "可用 / 已知",
         "col_actions": "操作",
         "overrides_yes": "有覆寫",
         "overrides_no": "預設",
         "edit": "編輯",
-        "disabled": "已停用"
+        "disabled": "已停用",
+        "empty_filtered": "沒有模型符合這些篩選條件。",
+        "clear_filters": "清除篩選"
       },
       "editor": {
         "title": "編輯 {modelId} 的路由",
@@ -792,6 +795,51 @@
         "provider_overrides": "Provider 覆寫",
         "provider_cost_overrides": "價格覆寫",
         "provider_limit_overrides": "限制覆寫"
+      },
+      "detail": {
+        "actual_share": "配 {configured} → 實際 {actual}",
+        "success_rate": "成功率 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "暫無流量資料",
+        "tab_topology": "拓撲",
+        "tab_metadata": "元資料",
+        "tab_cost": "成本與限額",
+        "tab_traffic": "流量",
+        "unsaved_title": "有未儲存的變更",
+        "unsaved_body": "離開此頁面會捨棄未儲存的變更。",
+        "unsaved_stay": "留在此頁",
+        "unsaved_leave": "捨棄變更",
+        "dirty_marker": "未儲存",
+        "catalog_vs_override": "目錄值 / 你的覆寫",
+        "open_in_traces": "在 Traces 中查看"
+      },
+      "health": {
+        "total": "模型",
+        "no_eligible": "無可用 Provider",
+        "single_point": "單點，無 failover",
+        "deviating": "實際偏離設定",
+        "deviating_pending": "統計中"
+      },
+      "risk": {
+        "no_eligible": "無可用 Provider",
+        "single_point": "單點",
+        "deviating": "偏離"
+      },
+      "lab": {
+        "unknown": "未知廠商",
+        "filter_label": "廠商",
+        "filter_all": "全部廠商",
+        "model_count": "{count} 個模型",
+        "risk_count": "{count} 個需處理"
+      },
+      "share": {
+        "configured": "設定",
+        "actual": "實際",
+        "tier": "第 {value} 層"
+      },
+      "traffic": {
+        "none": "無流量",
+        "success_rate": "成功率 {value}"
       }
     },
     "pagination": {

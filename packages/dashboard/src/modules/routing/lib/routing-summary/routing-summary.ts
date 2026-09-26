@@ -76,6 +76,7 @@ export const formatRoutingTiers = (tiers: readonly RoutingTier[]): string =>
     .join(' → ');
 
 export const formatRoutingShareValue = (share: number): number | string => {
+  if (share === 0) return 0;
   const hundredths = Math.round(share * 10_000) / 100;
   if (hundredths > 0) return Number.isInteger(hundredths) ? hundredths : hundredths.toFixed(2);
   return (Math.round(share * 1_000_000) / 10_000).toFixed(4);

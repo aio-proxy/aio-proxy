@@ -9,20 +9,41 @@ import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { useDataTable } from '@/hooks/use-data-table';
 
+import { modelRisks } from '../lib/routing-risk';
+import { labOf } from '../lib/routing-rows';
+import type { RoutingTrafficIndex } from '../lib/routing-traffic';
+import { RoutingLabGroupRow } from './routing-lab-group-row';
 import { createRoutingColumns } from './routing-table-columns';
 
 interface RoutingTableProps {
   readonly models: readonly DashboardRoutingModel[];
-  readonly onEdit: (model: DashboardRoutingModel) => void;
+  readonly traffic: RoutingTrafficIndex | undefined;
 }
 
-export const RoutingTable: React.FC<RoutingTableProps> = ({ models, onEdit }) => {
+export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic }) => {
   'use no memo';
 
-  const columns = useMemo(() => createRoutingColumns(onEdit), [onEdit]);
+  const columns = useMemo(() => createRoutingColumns({ traffic }), [traffic]);
   const { table } = useDataTable(models, columns, { getRowId: (model) => model.modelId });
 
+  const labStats = useMemo(() => {
+    const stats = new Map<string, { modelCount: number; riskCount: number }>();
+    for (const model of models) {
+      const lab = labOf(model);
+      const current = stats.get(lab) ?? { modelCount: 0, riskCount: 0 };
+      current.modelCount += 1;
+      if (modelRisks(model, traffic?.get(model.modelId)).length > 0) {
+        current.riskCount += 1;
+      }
+      stats.set(lab, current);
+    }
+    return stats;
+  }, [models, traffic]);
+
   if (models.length === 0) return <Empty>{m['dashboard.routing.empty']()}</Empty>;
+
+  const showLabGroups = table.state.sorting.length === 0;
+  const columnCount = table.getVisibleLeafColumns().length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,15 +67,33 @@ export const RoutingTable: React.FC<RoutingTableProps> = ({ models, onEdit }) =>
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id} data-testid={`routing-row-${row.original.modelId}`}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className={cell.column.id === 'actions' ? 'text-right' : undefined}>
-                    <table.FlexRender cell={cell} />
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
+            {table.getRowModel().rows.flatMap((row, rowIndex, rowModel) => {
+              const lab = labOf(row.original);
+              const previousRow = rowIndex > 0 ? rowModel[rowIndex - 1] : undefined;
+              const previousLab = previousRow === undefined ? undefined : labOf(previousRow.original);
+              const groupRow =
+                showLabGroups && lab !== previousLab
+                  ? [
+                      <RoutingLabGroupRow
+                        key={`lab-${lab}-${row.id}`}
+                        lab={lab}
+                        modelCount={labStats.get(lab)?.modelCount ?? 0}
+                        riskCount={labStats.get(lab)?.riskCount ?? 0}
+                        columnCount={columnCount}
+                      />,
+                    ]
+                  : [];
+              return [
+                ...groupRow,
+                <TableRow key={row.id} data-testid={`routing-row-${row.original.modelId}`}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className={cell.column.id === 'actions' ? 'text-right' : undefined}>
+                      <table.FlexRender cell={cell} />
+                    </TableCell>
+                  ))}
+                </TableRow>,
+              ];
+            })}
           </TableBody>
         </Table>
       </div>

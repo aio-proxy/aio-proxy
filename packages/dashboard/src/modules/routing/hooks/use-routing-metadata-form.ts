@@ -13,9 +13,14 @@ import {
  * moves can never carry (or drop) metadata. No submit handler: the routing form's submit reads
  * these values and merges them into the one PUT body.
  */
-export const useRoutingMetadataForm = (model: DashboardRoutingModel | null) =>
+export const useRoutingMetadataForm = (
+  model: DashboardRoutingModel | null,
+  defaultValues?: RoutingMetadataFormValues,
+) =>
   useForm({
-    defaultValues: (model === null
-      ? emptyRoutingMetadataFormValues()
-      : routingMetadataFormValues(model)) satisfies RoutingMetadataFormValues,
+    defaultValues:
+      defaultValues ??
+      ((model === null
+        ? emptyRoutingMetadataFormValues()
+        : routingMetadataFormValues(model)) satisfies RoutingMetadataFormValues),
   });
