@@ -134,136 +134,134 @@ export const CodeEntry: React.FC = () => {
         ];
 
   return (
-    <div className="mx-auto flex min-h-dvh items-center justify-center md:max-w-sm lg:max-w-md">
-      <Card className="mb-16 shadow-none ring-0">
-        <CardHeader>
-          <CardTitle>
-            <h1 className="flex items-center gap-2 text-xl font-semibold">
-              {m['dashboard.agent_authorization.title']()}
-              <AioProxyLogo className="text-xl" />
-            </h1>
-          </CardTitle>
-          {description === undefined ? null : <CardDescription>{description}</CardDescription>}
-        </CardHeader>
-        {showRequest && knownCode !== undefined ? (
-          <>
-            <CardContent className="flex flex-col gap-6">
-              <p
-                aria-label={m['dashboard.agent_authorization.code_label']()}
-                className="text-center text-2xl font-semibold tracking-widest"
-              >
-                {knownCode}
-              </p>
-              {rows.length === 0 ? null : (
-                <section aria-label={m['dashboard.agent_authorization.permissions_title']()}>
-                  <ItemGroup className="gap-0">
-                    {rows.map((row, index) => {
-                      const Icon = row.icon;
-                      return (
-                        <Fragment key={row.label}>
-                          <Item size="xs">
-                            <ItemMedia variant="icon">
-                              <Icon />
-                            </ItemMedia>
+    <Card className="w-full max-w-sm">
+      <CardHeader>
+        <CardTitle>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            {m['dashboard.agent_authorization.title']()}
+            <AioProxyLogo className="text-xl" />
+          </h1>
+        </CardTitle>
+        {description === undefined ? null : <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      {showRequest && knownCode !== undefined ? (
+        <>
+          <CardContent className="flex flex-col gap-6">
+            <p
+              aria-label={m['dashboard.agent_authorization.code_label']()}
+              className="text-center text-2xl font-semibold tracking-widest"
+            >
+              {knownCode}
+            </p>
+            {rows.length === 0 ? null : (
+              <section aria-label={m['dashboard.agent_authorization.permissions_title']()}>
+                <ItemGroup className="gap-0">
+                  {rows.map((row, index) => {
+                    const Icon = row.icon;
+                    return (
+                      <Fragment key={row.label}>
+                        <Item size="xs">
+                          <ItemMedia variant="icon">
+                            <Icon />
+                          </ItemMedia>
+                          <ItemContent>
+                            <ItemTitle>{row.label}</ItemTitle>
+                          </ItemContent>
+                          {row.value === undefined ? null : (
                             <ItemContent>
-                              <ItemTitle>{row.label}</ItemTitle>
+                              <ItemDescription>{row.value}</ItemDescription>
                             </ItemContent>
-                            {row.value === undefined ? null : (
-                              <ItemContent>
-                                <ItemDescription>{row.value}</ItemDescription>
-                              </ItemContent>
-                            )}
-                          </Item>
-                          {index === rows.length - 1 ? null : <ItemSeparator className="my-0" />}
-                        </Fragment>
-                      );
-                    })}
-                  </ItemGroup>
-                </section>
-              )}
-              {error === null || error === undefined ? null : (
-                <p role="alert" className="text-sm text-destructive">
-                  {requestErrorMessage(error)}
-                </p>
-              )}
-            </CardContent>
-            {pending === undefined ? null : (
-              <CardFooter className="justify-end gap-2">
-                <Button
-                  variant="outline"
-                  disabled={approve.isPending || deny.isPending}
-                  onClick={() => deny.mutate(pending.deviceId)}
-                >
-                  {m['dashboard.agent_authorization.deny']()}
-                </Button>
-                <Button disabled={approve.isPending || deny.isPending} onClick={() => approve.mutate(pending.deviceId)}>
-                  {m['dashboard.agent_authorization.approve']()}
-                </Button>
-              </CardFooter>
+                          )}
+                        </Item>
+                        {index === rows.length - 1 ? null : <ItemSeparator className="my-0" />}
+                      </Fragment>
+                    );
+                  })}
+                </ItemGroup>
+              </section>
             )}
-          </>
-        ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void form.handleSubmit();
-            }}
-          >
-            <CardContent>
-              <form.Field
-                name="userCode"
-                validators={{
-                  onSubmit: ({ value }) =>
-                    codeSchema.safeParse(value).success ? undefined : m['dashboard.agent_authorization.code_invalid'](),
-                }}
+            {error === null || error === undefined ? null : (
+              <p role="alert" className="text-sm text-destructive">
+                {requestErrorMessage(error)}
+              </p>
+            )}
+          </CardContent>
+          {pending === undefined ? null : (
+            <CardFooter className="justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={approve.isPending || deny.isPending}
+                onClick={() => deny.mutate(pending.deviceId)}
               >
-                {(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                    <div className="flex justify-center">
-                      <InputOTP
-                        id="agent-user-code"
-                        aria-label={m['dashboard.agent_authorization.code_label']()}
-                        containerClassName="gap-2"
-                        maxLength={8}
-                        autoComplete="one-time-code"
-                        inputMode="text"
-                        aria-invalid={field.state.meta.errors.length > 0 || undefined}
-                        value={field.state.value.replaceAll('-', '')}
-                        pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
-                        onBlur={field.handleBlur}
-                        onChange={(value) => field.handleChange(normalizeAgentUserCode(value))}
-                      >
-                        <InputOTPGroup>
-                          {otpSlots.slice(0, 4).map((index) => (
-                            <InputOTPSlot key={index} index={index} />
-                          ))}
-                        </InputOTPGroup>
-                        <InputOTPSeparator />
-                        <InputOTPGroup>
-                          {otpSlots.slice(4).map((index) => (
-                            <InputOTPSlot key={index} index={index} />
-                          ))}
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-                    <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
-                  </Field>
-                )}
-              </form.Field>
-              {resolve.error === null || resolve.error === undefined ? null : (
-                <p role="alert" className="text-sm text-destructive">
-                  {requestErrorMessage(resolve.error)}
-                </p>
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" className="w-full" disabled={resolve.isPending}>
-                {m['dashboard.agent_authorization.resolve']()}
+                {m['dashboard.agent_authorization.deny']()}
+              </Button>
+              <Button disabled={approve.isPending || deny.isPending} onClick={() => approve.mutate(pending.deviceId)}>
+                {m['dashboard.agent_authorization.approve']()}
               </Button>
             </CardFooter>
-          </form>
-        )}
-      </Card>
-    </div>
+          )}
+        </>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <CardContent>
+            <form.Field
+              name="userCode"
+              validators={{
+                onSubmit: ({ value }) =>
+                  codeSchema.safeParse(value).success ? undefined : m['dashboard.agent_authorization.code_invalid'](),
+              }}
+            >
+              {(field) => (
+                <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                  <div className="flex justify-center">
+                    <InputOTP
+                      id="agent-user-code"
+                      aria-label={m['dashboard.agent_authorization.code_label']()}
+                      containerClassName="gap-2"
+                      maxLength={8}
+                      autoComplete="one-time-code"
+                      inputMode="text"
+                      aria-invalid={field.state.meta.errors.length > 0 || undefined}
+                      value={field.state.value.replaceAll('-', '')}
+                      pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
+                      onBlur={field.handleBlur}
+                      onChange={(value) => field.handleChange(normalizeAgentUserCode(value))}
+                    >
+                      <InputOTPGroup>
+                        {otpSlots.slice(0, 4).map((index) => (
+                          <InputOTPSlot key={index} index={index} />
+                        ))}
+                      </InputOTPGroup>
+                      <InputOTPSeparator />
+                      <InputOTPGroup>
+                        {otpSlots.slice(4).map((index) => (
+                          <InputOTPSlot key={index} index={index} />
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
+                  <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
+                </Field>
+              )}
+            </form.Field>
+            {resolve.error === null || resolve.error === undefined ? null : (
+              <p role="alert" className="text-sm text-destructive">
+                {requestErrorMessage(resolve.error)}
+              </p>
+            )}
+          </CardContent>
+          <CardFooter className="justify-end">
+            <Button type="submit" disabled={resolve.isPending}>
+              {m['dashboard.agent_authorization.resolve']()}
+            </Button>
+          </CardFooter>
+        </form>
+      )}
+    </Card>
   );
 };
