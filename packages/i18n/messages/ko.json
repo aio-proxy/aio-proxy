@@ -483,10 +483,9 @@
       }
     },
     "agent_authorization": {
-      "title": "aio-proxy 승인",
+      "title": "승인",
       "instructions": "Agent에 표시된 코드를 입력하세요.",
       "code_label": "승인 코드",
-      "code_placeholder": "ABCD-EFGH",
       "code_invalid": "8자리 코드를 입력하세요.",
       "permissions_title": "요청된 액세스",
       "permission_catalog": "모델 카탈로그 읽기",

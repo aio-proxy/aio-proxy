@@ -483,10 +483,9 @@
       }
     },
     "agent_authorization": {
-      "title": "Authorize aio-proxy",
+      "title": "Authorize",
       "instructions": "Enter the code shown by your Agent.",
       "code_label": "Authorization code",
-      "code_placeholder": "ABCD-EFGH",
       "code_invalid": "Enter the eight-character code.",
       "permissions_title": "Requested access",
       "permission_catalog": "Read the model catalog",

@@ -7,10 +7,9 @@ import { AgentAuthorizationPage } from './agent-authorization-page';
 const mocks = rs.hoisted(() => ({ approve: rs.fn(), deny: rs.fn(), resolve: rs.fn() }));
 rs.mock('@aio-proxy/i18n', () => ({
   m: {
-    'dashboard.agent_authorization.title': () => 'Authorize aio-proxy',
+    'dashboard.agent_authorization.title': () => 'Authorize',
     'dashboard.agent_authorization.instructions': () => 'Enter the code shown by your Agent.',
     'dashboard.agent_authorization.code_label': () => 'Authorization code',
-    'dashboard.agent_authorization.code_placeholder': () => 'ABCD-EFGH',
     'dashboard.agent_authorization.code_invalid': () => 'Enter the eight-character code.',
     'dashboard.agent_authorization.permissions_title': () => 'Requested access',
     'dashboard.agent_authorization.permission_catalog': () => 'Read the model catalog',
@@ -69,11 +68,12 @@ test('consumes a fragment only after the authenticated page mounts and shows no 
   expect(window.location.hash).toBe('#code=abcd-efgh');
   authGate.unmount();
   const view = renderPage();
-  expect(screen.getByLabelText(/code/i)).toHaveValue('ABCD-EFGH');
+  expect(screen.getByLabelText(/code/i)).toHaveValue('ABCDEFGH');
   expect(window.location.pathname).toBe('/dashboard/agents/authorize');
   expect(window.location.hash).toBe('');
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   expect(await screen.findByText('opencode')).toBeInTheDocument();
+  expect(mocks.resolve.mock.calls[0]?.[0]).toBe('ABCD-EFGH');
   expect(screen.getByText(PENDING.installationId)).toBeInTheDocument();
   expect(screen.getByText('1.2.3')).toBeInTheDocument();
   expect(screen.getByText(/model catalog/i)).toBeInTheDocument();
@@ -81,24 +81,30 @@ test('consumes a fragment only after the authenticated page mounts and shows no 
   expect(view.container.textContent).not.toMatch(/aio_agent_|device[_-]code/iu);
 });
 
-test('approves and denies only the resolved opaque device id', async () => {
+test('approves only the resolved opaque device id', async () => {
   mocks.resolve.mockResolvedValue(PENDING);
   mocks.approve.mockResolvedValue({ status: 'approved' });
-  mocks.deny.mockResolvedValue({ status: 'denied' });
   renderPage();
-  fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCD-EFGH' } });
+  fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   await screen.findByText('opencode');
   fireEvent.click(screen.getByRole('button', { name: /approve/i }));
   await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(PENDING.deviceId));
   expect(await screen.findByText(/approved/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
+});
 
-  fireEvent.click(screen.getByRole('button', { name: /retry|another/i }));
-  fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCD-EFGH' } });
+test('denies only the resolved opaque device id', async () => {
+  mocks.resolve.mockResolvedValue(PENDING);
+  mocks.deny.mockResolvedValue({ status: 'denied' });
+  renderPage();
+  fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   await screen.findByText('opencode');
   fireEvent.click(screen.getByRole('button', { name: /deny/i }));
   await waitFor(() => expect(mocks.deny).toHaveBeenCalledWith(PENDING.deviceId));
+  expect(await screen.findByText(/denied/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
 });
 
 test.each([
@@ -106,10 +112,12 @@ test.each([
   ['denied', /denied/i],
   ['expired', /expired/i],
   ['consumed', /already used/i],
-] as const)('renders the %s terminal state returned by resolve', async (status, message) => {
+] as const)('keeps the code entry page and toasts a %s resolve result', async (status, message) => {
   mocks.resolve.mockResolvedValue({ status });
   renderPage();
-  fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCD-EFGH' } });
+  fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Authorization code' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
 });
