@@ -480,16 +480,27 @@ test('reload merges new provider rows when the mounted model id is unchanged', a
 });
 
 test('discard resets to the reconciled model after reload', async () => {
-  const reloaded = { ...modelWithOpenai(), revision: 'rev-2' };
+  const reloaded = {
+    ...modelWithOpenai(),
+    revision: 'rev-2',
+    providers: [providerWithOverride('anthropic', { weight: routingNumber(7, 7) }), openaiProvider],
+  };
   let resolveReload!: (value: DashboardRoutingModel) => void;
   const reloadPromise = new Promise<DashboardRoutingModel>((resolve) => {
     resolveReload = resolve;
   });
-  const { result } = renderEditor({ onReload: rs.fn().mockReturnValue(reloadPromise) });
+  const { result, rerender } = renderEditor({ onReload: rs.fn().mockReturnValue(reloadPromise) });
   act(() => result.current.form.setFieldValue('providers[0].weight', 3));
 
   act(() => result.current.reload());
   await act(async () => resolveReload(reloaded));
+  rerender({ model: reloaded });
+
+  expect(result.current.form.state.values.providers).toEqual([
+    { providerId: 'anthropic', weight: 3 },
+    { providerId: 'openai' },
+  ]);
+
   act(() => result.current.discard());
 
   expect(result.current.form.state.values.providers).toEqual([

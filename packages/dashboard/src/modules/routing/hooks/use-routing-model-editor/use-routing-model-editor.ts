@@ -52,6 +52,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const reloadGeneration = useRef(0);
   const latestModel = useRef(model);
   const previousModelIdentity = useRef({ modelId: model.modelId, revision: model.revision });
+  const appliedReloadIdentity = useRef<{ modelId: string; revision: string } | null>(null);
   const previousReloadModelId = useRef(model.modelId);
   // oxlint-disable-next-line react/refs -- the adoption effect must read the newest same-key model without depending on object identity
   latestModel.current = model;
@@ -94,6 +95,11 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     const previous = previousModelIdentity.current;
     if (previous.modelId === nextModel.modelId && previous.revision === nextModel.revision) return;
     previousModelIdentity.current = { modelId: nextModel.modelId, revision: nextModel.revision };
+    const appliedReload = appliedReloadIdentity.current;
+    if (appliedReload?.modelId === nextModel.modelId && appliedReload.revision === nextModel.revision) {
+      appliedReloadIdentity.current = null;
+      return;
+    }
 
     const metadataValues = metadataForm.state.values;
     const metadataTouched =
@@ -179,6 +185,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       if (generation !== reloadGeneration.current) return;
       if (next == null || next.modelId !== initiatedId) return;
       if (latestModel.current.modelId !== initiatedId) return;
+      appliedReloadIdentity.current = { modelId: next.modelId, revision: next.revision };
       const nextFormDefaults = {
         providers: reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next),
       } satisfies RoutingFormValues;
