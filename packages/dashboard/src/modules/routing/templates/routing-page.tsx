@@ -57,7 +57,7 @@ export const RoutingPage: React.FC = () => {
         </Empty>
       );
     }
-    return <RoutingTable models={models} onEdit={selectModel} />;
+    return <RoutingTable models={models} traffic={undefined} onEdit={selectModel} />;
   })();
 
   return (

@@ -17,11 +17,11 @@ import { createRoutingColumns } from './routing-table-columns';
 
 interface RoutingTableProps {
   readonly models: readonly DashboardRoutingModel[];
-  readonly traffic?: RoutingTrafficIndex | undefined;
+  readonly traffic: RoutingTrafficIndex | undefined;
   readonly onEdit: (model: DashboardRoutingModel) => void;
 }
 
-export const RoutingTable: React.FC<RoutingTableProps> = ({ models, onEdit, traffic = undefined }) => {
+export const RoutingTable: React.FC<RoutingTableProps> = ({ models, onEdit, traffic }) => {
   'use no memo';
 
   const columns = useMemo(() => createRoutingColumns({ onEdit, traffic }), [onEdit, traffic]);

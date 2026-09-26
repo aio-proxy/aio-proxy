@@ -65,6 +65,7 @@ test('renders every known model including zero-eligible and single-Provider rout
   render(
     <RoutingTable
       onEdit={onEdit}
+      traffic={undefined}
       models={[
         model({
           modelId: 'openai/gpt-5',
@@ -148,6 +149,7 @@ test('filters models through the shared DataTable controls and opens Edit from a
   render(
     <RoutingTable
       onEdit={onEdit}
+      traffic={undefined}
       models={[model({ modelId: 'openai/gpt-5' }), solo, model({ modelId: 'other-model' })]}
     />,
   );
@@ -166,6 +168,7 @@ test('paginates long model catalogs with the shared table pagination controls', 
   render(
     <RoutingTable
       onEdit={rs.fn()}
+      traffic={undefined}
       models={Array.from({ length: 12 }, (_, index) =>
         model({ modelId: `model-${String(index + 1).padStart(2, '0')}` }),
       )}
