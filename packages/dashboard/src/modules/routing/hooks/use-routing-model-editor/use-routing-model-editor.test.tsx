@@ -11,12 +11,15 @@ const mocks = rs.hoisted(() => ({
   mutate: rs.fn(),
   reset: rs.fn(),
   shouldBlock: undefined as (() => boolean) | undefined,
+  enableBeforeUnload: undefined as (() => boolean) | undefined,
+  mutationError: null as Error | null,
   callbacks: undefined as { onError?: (error: Error) => void; onSuccess?: () => void } | undefined,
 }));
 
 rs.mock('@tanstack/react-router', () => ({
-  useBlocker: ({ shouldBlockFn }: { shouldBlockFn: () => boolean }) => {
-    mocks.shouldBlock = shouldBlockFn;
+  useBlocker: (options: { shouldBlockFn: () => boolean; enableBeforeUnload?: () => boolean }) => {
+    mocks.shouldBlock = options.shouldBlockFn;
+    mocks.enableBeforeUnload = options.enableBeforeUnload;
   },
 }));
 
@@ -24,7 +27,7 @@ rs.mock('../use-routing-mutation', () => ({
   useRoutingMutation: () => ({
     mutate: mocks.mutate,
     isPending: false,
-    error: null,
+    error: mocks.mutationError,
     reset: mocks.reset,
   }),
 }));
@@ -85,11 +88,14 @@ const renderEditor = (options: { readonly writable?: boolean } = {}) => {
 };
 
 const blockerEnabledFor = () => mocks.shouldBlock?.() ?? false;
+const beforeUnloadEnabledFor = () => mocks.enableBeforeUnload?.() ?? false;
 
 afterEach(() => {
   mocks.mutate.mockReset();
   mocks.reset.mockReset();
   mocks.shouldBlock = undefined;
+  mocks.enableBeforeUnload = undefined;
+  mocks.mutationError = null;
   mocks.callbacks = undefined;
 });
 
@@ -121,19 +127,25 @@ test('tracks the metadata form separately from the topology form', () => {
 
 test('blocks navigation while any tab is dirty and allows it when clean', () => {
   const { result } = renderEditor();
+  expect(typeof mocks.enableBeforeUnload).toBe('function');
   expect(blockerEnabledFor()).toBe(false);
+  expect(beforeUnloadEnabledFor()).toBe(false);
 
   act(() => result.current.form.setFieldValue('providers[0].weight', 3));
 
   expect(blockerEnabledFor()).toBe(true);
+  expect(beforeUnloadEnabledFor()).toBe(true);
 });
 
 test('refuses to save while the metadata draft is invalid', () => {
-  const { result } = renderEditor();
+  const { result, mutate } = renderEditor();
 
   act(() => result.current.setMetadataValid(false));
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
 
   expect(result.current.canSave).toBe(false);
+  act(() => result.current.save());
+  expect(mutate).not.toHaveBeenCalled();
 });
 
 test('refuses to save when the config is read-only', () => {
@@ -159,5 +171,53 @@ test('surfaces a stale revision as a reloadable state rather than a generic fail
   act(() => rejectWithStale());
 
   expect(result.current.stale).toBe(true);
+  expect(result.current.saveFailed).toBe(false);
+});
+
+test('returns to clean after a successful save without discarding edited values', async () => {
+  const { result, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  act(() => result.current.metadataForm.setFieldValue('metadata', { touched: true, value: { name: 'kept' } }));
+
+  await act(() => result.current.save());
+  act(() => mocks.callbacks?.onSuccess?.());
+  expect(result.current.dirtyTabs).toEqual([]);
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
+  expect(result.current.form.state.isDirty).toBe(false);
+  expect(result.current.metadataForm.state.values.metadata).toEqual({ touched: false, value: { name: 'kept' } });
+  expect(blockerEnabledFor()).toBe(false);
+  expect(beforeUnloadEnabledFor()).toBe(false);
+  expect(mocks.reset).toHaveBeenCalled();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 5));
+  mutate.mockClear();
+  await act(() => result.current.save());
+
+  expect(mutate).toHaveBeenCalledTimes(1);
+  expect(mutate.mock.calls[0]?.[0]).not.toHaveProperty('metadata');
+});
+
+test('ignores a second synchronous save while the first submit is in flight', async () => {
+  const { result, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  await act(async () => {
+    result.current.save();
+    result.current.save();
+  });
+
+  expect(mutate).toHaveBeenCalledTimes(1);
+});
+
+test('surfaces non-stale mutation errors as save failures', () => {
+  mocks.mutationError = new Error('network');
+  const { result, rerender } = renderEditor();
+
+  rerender();
+  expect(result.current.saveFailed).toBe(true);
+
+  mocks.mutationError = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
+  rerender();
   expect(result.current.saveFailed).toBe(false);
 });

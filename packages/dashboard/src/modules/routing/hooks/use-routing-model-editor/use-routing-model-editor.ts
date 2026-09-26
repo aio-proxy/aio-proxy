@@ -1,12 +1,13 @@
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { useStore } from '@tanstack/react-form';
 import { useBlocker } from '@tanstack/react-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
   routingOverrideDraftsValid,
+  type RoutingMetadataFormValues,
 } from '../../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../../lib/routing-summary';
 import { isStaleRoutingError } from '../../services/routing-service';
@@ -20,28 +21,50 @@ interface UseRoutingModelEditorOptions {
   readonly onReload: () => void | Promise<DashboardRoutingModel | null | undefined>;
 }
 
+const metadataDraftsClean = (values: RoutingMetadataFormValues): RoutingMetadataFormValues => ({
+  metadata: { touched: false, value: values.metadata.value },
+  overrides: Object.fromEntries(
+    Object.entries(values.overrides).map(([providerId, override]) => [
+      providerId,
+      {
+        cost: { touched: false, value: override.cost.value },
+        limit: { touched: false, value: override.limit.value },
+      },
+    ]),
+  ),
+});
+
 export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingModelEditorOptions) => {
   const mutation = useRoutingMutation();
   const [stale, setStale] = useState(false);
   const [metadataValid, setMetadataValid] = useState(true);
   const reloadGeneration = useRef(0);
-  // This separation is deliberate: topology edits must never carry or delete metadata drafts.
   const metadataForm = useRoutingMetadataForm(model);
+  const formRef = useRef<ReturnType<typeof useRoutingForm> | null>(null);
   const form = useRoutingForm(model, (value) => {
+    const topologyAtSubmit = { providers: structuredClone(value.providers) };
+    const metadataAtSubmit = structuredClone(metadataForm.state.values);
+    const metadataValueAtSubmit = metadataForm.state.values.metadata.value;
     mutation.mutate(
       {
         modelId: model.modelId,
         revision: model.revision,
         baselineProviderIds: model.baselineProviderIds,
-        ...mergeRoutingMutationDrafts(
-          explicitRoutingOverrides(routingDraftRecord(value.providers)),
-          metadataForm.state.values,
-        ),
+        ...mergeRoutingMutationDrafts(explicitRoutingOverrides(routingDraftRecord(value.providers)), metadataAtSubmit),
       },
       {
         onSuccess: () => {
           mutation.reset();
           setStale(false);
+          const savedMetadata = metadataDraftsClean({
+            metadata: { touched: true, value: metadataValueAtSubmit },
+            overrides: metadataAtSubmit.overrides,
+          });
+          const editorForm = formRef.current;
+          if (editorForm === null) return;
+          editorForm.reset(editorForm.state.values);
+          editorForm.setFieldValue('providers', topologyAtSubmit.providers, { dontUpdateMeta: true });
+          metadataForm.reset(savedMetadata);
         },
         onError: (error) => {
           if (isStaleRoutingError(error)) setStale(true);
@@ -49,9 +72,13 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       },
     );
   });
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
 
   const topologyDirty = useStore(form.store, (state) => state.isDirty);
   const canSubmit = useStore(form.store, (state) => state.canSubmit);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const metadataValues = useStore(metadataForm.store, (state) => state.values);
   const dirtyTabs = [
     ...(topologyDirty ? (['topology'] as const) : []),
@@ -63,13 +90,27 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const canSave =
     writable &&
     canSubmit &&
+    !isSubmitting &&
     !mutation.isPending &&
     metadataValid &&
     routingOverrideDraftsValid(metadataValues.overrides);
 
-  useBlocker({ shouldBlockFn: () => dirtyTabs.length > 0 });
+  const navigationBlocked = () => dirtyTabs.length > 0;
+  useBlocker({ shouldBlockFn: navigationBlocked, enableBeforeUnload: navigationBlocked });
 
-  const save = () => form.handleSubmit();
+  const save = () => {
+    if (
+      !writable ||
+      mutation.isPending ||
+      form.state.isSubmitting ||
+      !form.state.canSubmit ||
+      !metadataValid ||
+      !routingOverrideDraftsValid(metadataForm.state.values.overrides)
+    ) {
+      return;
+    }
+    void form.handleSubmit();
+  };
 
   const reload = () => {
     const generation = ++reloadGeneration.current;
