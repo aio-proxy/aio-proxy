@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.33.5
+
+### Patch Changes
+
+- [#438](https://github.com/aio-proxy/aio-proxy/pull/438) [`f72415a`](https://github.com/aio-proxy/aio-proxy/commit/f72415a1252cb887989c3cfffd77fc0dc99a49c6) Thanks [@baranwang](https://github.com/baranwang)! - Pi and OMP list the aio-proxy extension as aio-proxy. They previously showed an internal entry path.
+- Updated dependencies [[`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72)]:
+  - @aio-proxy/dashboard@0.33.5
+  - @aio-proxy/i18n@0.33.5
+  - @aio-proxy/core@0.33.5
+  - @aio-proxy/server@0.33.5
+  - @aio-proxy/opencode-provider@0.33.5
+  - @aio-proxy/pi-provider@0.33.5
+  - @aio-proxy/agent-provider-runtime@0.33.5
+  - @aio-proxy/logger@0.33.5
+  - @aio-proxy/plugin-sdk@0.33.5
+  - @aio-proxy/shared@0.33.5
+  - @aio-proxy/types@0.33.5
+
 ## 0.33.4
 
 ### Patch Changes

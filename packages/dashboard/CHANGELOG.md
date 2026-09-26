@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.33.5
+
+### Patch Changes
+
+- [#437](https://github.com/aio-proxy/aio-proxy/pull/437) [`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72) Thanks [@baranwang](https://github.com/baranwang)! - The agent authorization page is centered on the screen. The title shows the logo in place of the product name, the code is entered as two groups of four characters, and approve and deny sit side by side. Approving or denying shows a success or failure icon and the outcome. A code that is expired, already used, or already decided stays on the entry page and is reported with a toast.
+- Updated dependencies [[`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72)]:
+  - @aio-proxy/i18n@0.33.5
+  - @aio-proxy/ui@0.33.5
+  - @aio-proxy/server@0.33.5
+  - @aio-proxy/brand@0.33.5
+  - @aio-proxy/plugin-sdk@0.33.5
+  - @aio-proxy/types@0.33.5
+
 ## 0.33.4
 
 ### Patch Changes
