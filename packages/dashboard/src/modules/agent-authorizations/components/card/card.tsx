@@ -9,7 +9,7 @@ interface CardProps extends React.ComponentProps<typeof Surface> {
 
 export const Card: React.FC<CardProps> = ({ description, children, className, ...props }) => {
   return (
-    <div className="mx-auto flex min-h-dvh items-center md:max-w-sm lg:max-w-md">
+    <div className="mx-auto flex min-h-dvh items-center justify-center md:max-w-sm lg:max-w-md">
       <Surface className={cn('mb-16 shadow-none ring-0', className)} {...props}>
         <CardHeader>
           <CardTitle>
