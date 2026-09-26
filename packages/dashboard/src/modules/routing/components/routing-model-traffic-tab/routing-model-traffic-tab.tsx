@@ -35,7 +35,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     return new Map(model?.providers.map((row) => [row.providerId, row]) ?? []);
   }, [trafficQuery.data, modelId]);
 
-  if (bucketsQuery.isPending) {
+  if (bucketsQuery.isPending || trafficQuery.isPending) {
     return <Skeleton className="h-72 w-full" />;
   }
 
@@ -50,12 +50,30 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     );
   }
 
+  if (trafficQuery.isError) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-destructive">{m['dashboard.routing.load_failed']()}</p>
+        <Button type="button" variant="outline" onClick={() => void trafficQuery.refetch()}>
+          {m['dashboard.routing.retry']()}
+        </Button>
+      </div>
+    );
+  }
+
   const bucketsData = bucketsQuery.data;
   if (bucketsData === undefined) {
     return <Skeleton className="h-72 w-full" />;
   }
 
-  if (bucketsData.providerIds.length === 0) {
+  const totalsProviders = trafficQuery.data?.models.find((entry) => entry.modelId === modelId)?.providers ?? [];
+  const totalsProviderIds = totalsProviders.map((row) => row.providerId);
+  const summaryProviderIds = [
+    ...totalsProviderIds,
+    ...bucketsData.providerIds.filter((providerId) => !totalsProviderIds.includes(providerId)),
+  ];
+
+  if (bucketsData.providerIds.length === 0 && totalsProviders.length === 0) {
     return (
       <Empty>
         <p>{m['dashboard.routing.traffic.none']()}</p>
@@ -132,7 +150,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
           </TableRow>
         </TableHeader>
         <TableBody>
-          {bucketsData.providerIds.map((providerId) => {
+          {summaryProviderIds.map((providerId) => {
             const totals = totalsByProvider.get(providerId);
             const successRate = totals === undefined ? null : providerRate(totals.successCount, totals.attemptCount);
             return (

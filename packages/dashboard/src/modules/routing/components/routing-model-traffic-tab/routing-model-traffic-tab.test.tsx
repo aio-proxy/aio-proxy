@@ -165,3 +165,37 @@ test('links out to Traces filtered to this model', async () => {
   const link = await screen.findByRole('link', { name: /Traces/u });
   expect(link).toHaveAttribute('href', expect.stringContaining('requestedModelId'));
 });
+
+test('lists providers that were attempted but never became the final provider', async () => {
+  renderTraffic({
+    buckets: bucketsFixture(['primary']),
+    traffic: {
+      range: RANGE,
+      rangeStart: '2026-09-25T08:00:00.000Z',
+      rangeEnd: '2026-09-26T08:00:00.000Z',
+      models: [
+        {
+          modelId: MODEL_ID,
+          providers: [
+            providerTotals('primary', {
+              finalCount: 2n,
+              attemptCount: 10n,
+              successCount: 4n,
+              p95LatencyMs: null,
+            }),
+            providerTotals('standby', {
+              finalCount: 0n,
+              attemptCount: 5n,
+              successCount: 0n,
+              p95LatencyMs: null,
+            }),
+          ],
+        },
+      ],
+    },
+  });
+
+  expect(await screen.findByText('standby')).toBeInTheDocument();
+  expect(screen.getByText('5')).toBeInTheDocument();
+  expect(screen.getByText('0%')).toBeInTheDocument();
+});
