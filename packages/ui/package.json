@@ -28,6 +28,7 @@
     "class-variance-authority": "catalog:",
     "cn": "catalog:",
     "date-fns": "catalog:",
+    "input-otp": "^1.5.0",
     "lucide-react": "catalog:",
     "next-themes": "catalog:",
     "react-day-picker": "catalog:",

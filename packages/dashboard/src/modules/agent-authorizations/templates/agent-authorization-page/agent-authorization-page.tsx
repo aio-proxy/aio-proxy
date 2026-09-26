@@ -1,10 +1,20 @@
+import { AioProxyLogo } from '@aio-proxy/brand';
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
+import { Field, FieldError } from '@aio-proxy/ui/components/field';
+import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@aio-proxy/ui/components/input-otp';
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from '@aio-proxy/ui/components/item';
 import { useForm } from '@tanstack/react-form';
-import { useEffect, useState } from 'react';
+import { Clock, Fingerprint, List, Sparkles, Tag, User } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
 import { z } from 'zod';
 
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
@@ -12,6 +22,7 @@ import { normalizeAgentUserCode } from '../../lib/user-code';
 import { AgentAuthorizationRequestError } from '../../services/agent-authorizations-service';
 
 const codeSchema = z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u);
+const otpSlots = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 const terminalMessage = (status: 'approved' | 'denied' | 'expired' | 'consumed'): string => {
   if (status === 'approved') return m['dashboard.agent_authorization.approved']();
   if (status === 'denied') return m['dashboard.agent_authorization.denied']();
@@ -50,102 +61,162 @@ export const AgentAuthorizationPage: React.FC = () => {
     error.code === 'authorization_unavailable'
       ? m['dashboard.agent_authorization.password_required']()
       : m['dashboard.agent_authorization.network_error']();
+  const details =
+    pending === undefined
+      ? []
+      : [
+          { icon: User, label: m['dashboard.agent_authorization.target'](), value: pending.target },
+          {
+            icon: Fingerprint,
+            label: m['dashboard.agent_authorization.installation'](),
+            value: pending.installationId,
+          },
+          { icon: Tag, label: m['dashboard.agent_authorization.version'](), value: pending.adapterVersion },
+          {
+            icon: Clock,
+            label: m['dashboard.agent_authorization.expires'](),
+            value: new Date(pending.expiresAt).toLocaleString(),
+          },
+          { icon: List, label: m['dashboard.agent_authorization.permission_catalog']() },
+          { icon: Sparkles, label: m['dashboard.agent_authorization.permission_inference']() },
+        ];
 
   return (
-    <main className="mx-auto flex min-h-full max-w-2xl items-center px-4 py-8">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>
-            <h1>{m['dashboard.agent_authorization.title']()}</h1>
-          </CardTitle>
-          <CardDescription>{m['dashboard.agent_authorization.instructions']()}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    <main className="flex min-h-dvh w-full items-center justify-center px-4 py-8">
+      <div className="flex w-full max-w-xl flex-col gap-8">
+        <header
+          className={
+            pending === undefined ? 'flex flex-col items-center gap-2 text-center' : 'flex flex-col items-start gap-2'
+          }
+        >
+          {pending === undefined ? null : (
+            <p className="text-sm text-muted-foreground">{m['dashboard.agent_authorization.pending']()}</p>
+          )}
+          <h1 className="flex items-center gap-3 text-xl font-semibold">
+            {m['dashboard.agent_authorization.title']()}
+            <AioProxyLogo className="text-2xl" />
+          </h1>
           {result === undefined ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void form.handleSubmit();
+            <p className="text-sm text-muted-foreground">{m['dashboard.agent_authorization.instructions']()}</p>
+          ) : null}
+        </header>
+
+        {result === undefined ? (
+          <form
+            className="flex w-full flex-col gap-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void form.handleSubmit();
+            }}
+          >
+            <form.Field
+              name="userCode"
+              validators={{
+                onSubmit: ({ value }) =>
+                  codeSchema.safeParse(value).success ? undefined : m['dashboard.agent_authorization.code_invalid'](),
               }}
             >
-              <form.Field
-                name="userCode"
-                validators={{
-                  onSubmit: ({ value }) =>
-                    codeSchema.safeParse(value).success ? undefined : m['dashboard.agent_authorization.code_invalid'](),
-                }}
-              >
-                {(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                    <FieldLabel htmlFor="agent-user-code">{m['dashboard.agent_authorization.code_label']()}</FieldLabel>
-                    <Input
+              {(field) => (
+                <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                  <div className="flex justify-center">
+                    <InputOTP
                       id="agent-user-code"
+                      aria-label={m['dashboard.agent_authorization.code_label']()}
+                      maxLength={8}
                       autoComplete="one-time-code"
-                      value={field.state.value}
-                      placeholder={m['dashboard.agent_authorization.code_placeholder']()}
+                      inputMode="text"
+                      aria-invalid={field.state.meta.errors.length > 0 || undefined}
+                      value={field.state.value.replaceAll('-', '')}
+                      pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
                       onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(normalizeAgentUserCode(event.target.value))}
-                    />
-                    <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
-                  </Field>
-                )}
-              </form.Field>
-              <Button type="submit" disabled={isPending}>
-                {m['dashboard.agent_authorization.resolve']()}
-              </Button>
-            </form>
-          ) : null}
+                      onChange={(value) => field.handleChange(normalizeAgentUserCode(value))}
+                    >
+                      <InputOTPGroup>
+                        {otpSlots.slice(0, 4).map((index) => (
+                          <InputOTPSlot key={index} index={index} />
+                        ))}
+                      </InputOTPGroup>
+                      <InputOTPSeparator />
+                      <InputOTPGroup>
+                        {otpSlots.slice(4).map((index) => (
+                          <InputOTPSlot key={index} index={index} />
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
+                  <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
+                </Field>
+              )}
+            </form.Field>
+            <Button className="w-full" type="submit" disabled={isPending}>
+              {m['dashboard.agent_authorization.resolve']()}
+            </Button>
+          </form>
+        ) : null}
 
-          {pending === undefined ? null : (
-            <section aria-label={m['dashboard.agent_authorization.permissions_title']()}>
-              <h2>{m['dashboard.agent_authorization.permissions_title']()}</h2>
-              <p>{m['dashboard.agent_authorization.pending']()}</p>
-              <dl>
-                <dt>{m['dashboard.agent_authorization.target']()}</dt>
-                <dd>{pending.target}</dd>
-                <dt>{m['dashboard.agent_authorization.installation']()}</dt>
-                <dd>{pending.installationId}</dd>
-                <dt>{m['dashboard.agent_authorization.version']()}</dt>
-                <dd>{pending.adapterVersion}</dd>
-                <dt>{m['dashboard.agent_authorization.expires']()}</dt>
-                <dd>{new Date(pending.expiresAt).toLocaleString()}</dd>
-              </dl>
-              <ul>
-                <li>{m['dashboard.agent_authorization.permission_catalog']()}</li>
-                <li>{m['dashboard.agent_authorization.permission_inference']()}</li>
-              </ul>
-              <div className="flex gap-3">
-                <Button disabled={isPending} onClick={() => authorization.approve.mutate(pending.deviceId)}>
-                  {m['dashboard.agent_authorization.approve']()}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={isPending}
-                  onClick={() => authorization.deny.mutate(pending.deviceId)}
-                >
-                  {m['dashboard.agent_authorization.deny']()}
-                </Button>
-              </div>
-            </section>
-          )}
-
-          {result !== undefined && result.status !== 'pending' ? (
-            <section role="status">
-              <p>{terminalMessage(result.status)}</p>
+        {pending === undefined ? null : (
+          <section
+            className="flex w-full flex-col gap-6"
+            aria-label={m['dashboard.agent_authorization.permissions_title']()}
+          >
+            <ItemGroup>
+              {details.map((detail, index) => {
+                const Icon = detail.icon;
+                return (
+                  <Fragment key={detail.label}>
+                    <Item>
+                      <ItemMedia variant="icon">
+                        <Icon />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{detail.label}</ItemTitle>
+                      </ItemContent>
+                      {detail.value === undefined ? null : (
+                        <ItemContent>
+                          <ItemDescription>{detail.value}</ItemDescription>
+                        </ItemContent>
+                      )}
+                    </Item>
+                    {index === details.length - 1 ? null : <ItemSeparator />}
+                  </Fragment>
+                );
+              })}
+            </ItemGroup>
+            <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setDismissed(true);
-                  authorization.reset();
-                }}
+                disabled={isPending}
+                onClick={() => authorization.deny.mutate(pending.deviceId)}
               >
-                {m['dashboard.agent_authorization.retry']()}
+                {m['dashboard.agent_authorization.deny']()}
               </Button>
-            </section>
-          ) : null}
-          {error === null || error === undefined ? null : <p role="alert">{errorMessage}</p>}
-        </CardContent>
-      </Card>
+              <Button disabled={isPending} onClick={() => authorization.approve.mutate(pending.deviceId)}>
+                {m['dashboard.agent_authorization.approve']()}
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {result !== undefined && result.status !== 'pending' ? (
+          <section className="flex w-full flex-col items-start gap-4" role="status">
+            <p>{terminalMessage(result.status)}</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDismissed(true);
+                authorization.reset();
+              }}
+            >
+              {m['dashboard.agent_authorization.retry']()}
+            </Button>
+          </section>
+        ) : null}
+        {error === null || error === undefined ? null : (
+          <p role="alert" className="text-sm text-destructive">
+            {errorMessage}
+          </p>
+        )}
+      </div>
     </main>
   );
 };

@@ -483,10 +483,9 @@
       }
     },
     "agent_authorization": {
-      "title": "aio-proxy を承認",
+      "title": "承認",
       "instructions": "Agent に表示されたコードを入力してください。",
       "code_label": "承認コード",
-      "code_placeholder": "ABCD-EFGH",
       "code_invalid": "8 文字のコードを入力してください。",
       "permissions_title": "要求されたアクセス",
       "permission_catalog": "モデルカタログの読み取り",
