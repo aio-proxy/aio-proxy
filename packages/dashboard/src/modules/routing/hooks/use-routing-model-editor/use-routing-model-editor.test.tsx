@@ -32,37 +32,78 @@ rs.mock('../use-routing-mutation', () => ({
   }),
 }));
 
-const model = (): DashboardRoutingModel => ({
-  modelId: 'sonnet',
+const anthropicProvider = {
+  id: 'anthropic',
+  kind: ProviderKind.Api,
+  enabled: true,
+  state: { status: 'ready' as const },
+  defaults: {
+    priority: { effective: 0, wasNormalized: false },
+    weight: { effective: 1, wasNormalized: false },
+  },
+  effective: {
+    priority: 0,
+    weight: 1,
+    prioritySource: 'provider' as const,
+    weightSource: 'provider' as const,
+    eligible: true,
+    share: 1,
+  },
+};
+
+const openaiProvider = {
+  id: 'openai',
+  kind: ProviderKind.Api,
+  enabled: true,
+  state: { status: 'ready' as const },
+  defaults: {
+    priority: { effective: 0, wasNormalized: false },
+    weight: { effective: 1, wasNormalized: false },
+  },
+  effective: {
+    priority: 0,
+    weight: 1,
+    prioritySource: 'provider' as const,
+    weightSource: 'provider' as const,
+    eligible: true,
+    share: 0.5,
+  },
+};
+
+const model = (modelId = 'sonnet'): DashboardRoutingModel => ({
+  modelId,
   revision: 'rev-1',
   baselineProviderIds: ['anthropic'],
   providerCount: 1,
   eligibleProviderCount: 1,
   hasOverrides: false,
   tiers: [{ priority: 0, providers: [{ providerId: 'anthropic', weight: 1, share: 1 }] }],
-  providers: [
-    {
-      id: 'anthropic',
-      kind: ProviderKind.Api,
-      enabled: true,
-      state: { status: 'ready' },
-      defaults: {
-        priority: { effective: 0, wasNormalized: false },
-        weight: { effective: 1, wasNormalized: false },
-      },
-      effective: {
-        priority: 0,
-        weight: 1,
-        prioritySource: 'provider',
-        weightSource: 'provider',
-        eligible: true,
-        share: 1,
-      },
-    },
-  ],
+  providers: [anthropicProvider],
 });
 
-const renderEditor = (options: { readonly writable?: boolean } = {}) => {
+const modelWithOpenai = (modelId = 'sonnet'): DashboardRoutingModel => ({
+  ...model(modelId),
+  providerCount: 2,
+  eligibleProviderCount: 2,
+  tiers: [
+    {
+      priority: 0,
+      providers: [
+        { providerId: 'anthropic', weight: 1, share: 0.5 },
+        { providerId: 'openai', weight: 1, share: 0.5 },
+      ],
+    },
+  ],
+  providers: [anthropicProvider, openaiProvider],
+});
+
+const renderEditor = (
+  options: {
+    readonly writable?: boolean;
+    readonly model?: DashboardRoutingModel;
+    readonly onReload?: () => void | Promise<DashboardRoutingModel | null | undefined>;
+  } = {},
+) => {
   mocks.mutate.mockImplementation(
     (_body: unknown, callbacks?: { onError?: (error: Error) => void; onSuccess?: () => void }) => {
       mocks.callbacks = callbacks;
@@ -71,15 +112,17 @@ const renderEditor = (options: { readonly writable?: boolean } = {}) => {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   const wrapper = ({ children }: { readonly children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
+  const onReload = options.onReload ?? rs.fn();
+  const initialModel = options.model ?? model();
   return {
     ...renderHook(
-      () =>
+      (props: { model: DashboardRoutingModel }) =>
         useRoutingModelEditor({
-          model: model(),
+          model: props.model,
           writable: options.writable ?? true,
-          onReload: rs.fn(),
+          onReload,
         }),
-      { wrapper },
+      { wrapper, initialProps: { model: initialModel } },
     ),
     mutate: mocks.mutate,
     rejectWithStale: () =>
@@ -205,7 +248,7 @@ test('keeps saved values when rerendered with an equivalent model object', async
   await act(() => result.current.save());
   act(() => mocks.callbacks?.onSuccess?.());
 
-  rerender();
+  rerender({ model: model() });
 
   expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
 });
@@ -224,12 +267,55 @@ test('ignores a second synchronous save while the first submit is in flight', as
 
 test('surfaces non-stale mutation errors as save failures', () => {
   mocks.mutationError = new Error('network');
-  const { result, rerender } = renderEditor();
+  const initial = model();
+  const { result, rerender } = renderEditor({ model: initial });
 
-  rerender();
+  rerender({ model: initial });
   expect(result.current.saveFailed).toBe(true);
 
   mocks.mutationError = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
-  rerender();
+  rerender({ model: initial });
   expect(result.current.saveFailed).toBe(false);
+});
+
+test('reload merges new provider rows when the mounted model id is unchanged', async () => {
+  let resolveReload!: (value: DashboardRoutingModel) => void;
+  const reloadPromise = new Promise<DashboardRoutingModel>((resolve) => {
+    resolveReload = resolve;
+  });
+  const onReload = rs.fn().mockReturnValue(reloadPromise);
+  const { result, rerender } = renderEditor({ onReload });
+
+  act(() => {
+    result.current.reload();
+  });
+  rerender({ model: model() });
+
+  await act(async () => {
+    resolveReload(modelWithOpenai());
+  });
+
+  const providerIds = result.current.form.state.values.providers.map((row) => row.providerId);
+  expect(providerIds).toContain('openai');
+});
+
+test('reload drops a late payload when the mounted model id has changed', async () => {
+  let resolveReload!: (value: DashboardRoutingModel) => void;
+  const reloadPromise = new Promise<DashboardRoutingModel>((resolve) => {
+    resolveReload = resolve;
+  });
+  const onReload = rs.fn().mockReturnValue(reloadPromise);
+  const { result, rerender } = renderEditor({ onReload });
+
+  act(() => {
+    result.current.reload();
+  });
+  rerender({ model: model('gpt') });
+
+  await act(async () => {
+    resolveReload(modelWithOpenai('sonnet'));
+  });
+
+  const providerIds = result.current.form.state.values.providers.map((row) => row.providerId);
+  expect(providerIds).not.toContain('openai');
 });

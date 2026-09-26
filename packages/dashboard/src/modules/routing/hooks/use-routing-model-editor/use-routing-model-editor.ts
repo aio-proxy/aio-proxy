@@ -52,6 +52,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const reloadGeneration = useRef(0);
   const latestModel = useRef(model);
   const previousModelIdentity = useRef({ modelId: model.modelId, revision: model.revision });
+  const previousReloadModelId = useRef(model.modelId);
   // oxlint-disable-next-line react/refs -- the adoption effect must read the newest same-key model without depending on object identity
   latestModel.current = model;
   const metadataForm = useRoutingMetadataForm(model, metadataDefaults);
@@ -108,6 +109,19 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     metadataForm.reset(nextMetadataDefaults);
   }, [form, metadataForm, model.modelId, model.revision]);
 
+  useEffect(() => {
+    if (previousReloadModelId.current === model.modelId) return;
+    previousReloadModelId.current = model.modelId;
+    reloadGeneration.current += 1;
+  }, [model.modelId]);
+
+  useEffect(
+    () => () => {
+      reloadGeneration.current += 1;
+    },
+    [],
+  );
+
   const topologyDirty = useStore(form.store, (state) => state.isDirty);
   const canSubmit = useStore(form.store, (state) => state.canSubmit);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
@@ -150,6 +164,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     void Promise.resolve(onReload()).then((next) => {
       if (generation !== reloadGeneration.current) return;
       if (next == null || next.modelId !== initiatedId) return;
+      if (latestModel.current.modelId !== initiatedId) return;
       form.setFieldValue('providers', reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next));
       metadataForm.reset(reconcileRoutingMetadataValues(metadataForm.state.values, next));
     });
