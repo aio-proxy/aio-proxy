@@ -3,4 +3,4 @@
 'aio-proxy': patch
 ---
 
-Pi lists the aio-proxy extension as aio-proxy. It previously showed the internal entry filename.
+Pi and OMP list the aio-proxy extension as aio-proxy. They previously showed an internal entry path.

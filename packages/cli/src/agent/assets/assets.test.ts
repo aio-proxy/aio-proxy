@@ -14,23 +14,25 @@ test('projects fixed files for each managed target', async () => {
       omp: join(root, 'omp.js'),
     };
     for (const [name, path] of Object.entries(paths)) writeFileSync(path, `export default ${JSON.stringify(name)};`);
-    expect([...(await agentFiles('opencode', paths))].map(([path]) => path)).toEqual(['index.js', 'package.json']);
-    expect([...(await agentFiles('pi', paths))].map(([path]) => path)).toEqual([
-      'index.js',
-      'dist/omp.js',
-      'package.json',
-    ]);
-    expect([...(await agentFiles('omp', paths))].map(([path]) => path)).toEqual([
-      'index.js',
-      'dist/omp.js',
-      'package.json',
-    ]);
+    const decode = (files: ReadonlyMap<string, Uint8Array>, path: string): string => {
+      const raw = files.get(path);
+      if (raw === undefined) throw new Error(`missing ${path}`);
+      return new TextDecoder().decode(raw);
+    };
+    const opencode = await agentFiles('opencode', paths);
+    const pi = await agentFiles('pi', paths);
+    const omp = await agentFiles('omp', paths);
+    expect([...opencode.keys()]).toEqual(['index.js', 'package.json']);
+    expect([...pi.keys()]).toEqual(['index.js', 'package.json']);
+    expect([...omp.keys()]).toEqual(['index.js', 'package.json']);
+    expect(decode(pi, 'index.js')).toBe('export default "officialPi";');
+    expect(decode(omp, 'index.js')).toBe('export default "omp";');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('installed Pi-family manifest chooses distinct native entries', async () => {
+test('each host manifest points at its own index entry', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-assets-'));
   try {
     const paths = {
@@ -39,14 +41,13 @@ test('installed Pi-family manifest chooses distinct native entries', async () =>
       omp: join(root, 'omp.js'),
     };
     for (const path of Object.values(paths)) writeFileSync(path, 'export default () => {};');
-    const files = await agentFiles('pi', paths);
-    const raw = files.get('package.json');
-    if (raw === undefined) throw new Error('missing installed package manifest');
-    expect(JSON.parse(new TextDecoder().decode(raw))).toEqual({
-      type: 'module',
-      pi: { extensions: ['./index.js'] },
-      omp: { extensions: ['./dist/omp.js'] },
-    });
+    const manifest = async (target: 'pi' | 'omp') => {
+      const raw = (await agentFiles(target, paths)).get('package.json');
+      if (raw === undefined) throw new Error('missing installed package manifest');
+      return JSON.parse(new TextDecoder().decode(raw));
+    };
+    expect(await manifest('pi')).toEqual({ type: 'module', pi: { extensions: ['./index.js'] } });
+    expect(await manifest('omp')).toEqual({ type: 'module', omp: { extensions: ['./index.js'] } });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

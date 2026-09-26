@@ -19,7 +19,7 @@ type Host = {
   readonly packageName: string;
   readonly version: string;
   readonly binary: 'pi' | 'omp';
-  readonly manifestEntry: 'index.js' | 'omp.js';
+  readonly manifestEntry: 'index.js';
 };
 type CommandResult = { readonly exitCode: number; readonly stdout: string; readonly stderr: string };
 type Stats = {
@@ -99,7 +99,7 @@ const hosts: Host[] = [
     packageName: '@oh-my-pi/pi-coding-agent',
     version,
     binary: 'omp' as const,
-    manifestEntry: 'omp.js' as const,
+    manifestEntry: 'index.js' as const,
   })),
 ];
 
@@ -329,18 +329,15 @@ function startFakeProxy(target: Target) {
 
 async function installManagedPlugin(agentDir: string, target: Target, endpoint: string): Promise<void> {
   const pluginDir = join(agentDir, 'extensions', 'aio-proxy');
-  await mkdir(join(pluginDir, 'dist'), { recursive: true });
-  await Promise.all([
-    copyFile(new URL('../dist/official-pi.js', import.meta.url), join(pluginDir, 'index.js')),
-    copyFile(new URL('../dist/omp.js', import.meta.url), join(pluginDir, 'dist', 'omp.js')),
-  ]);
+  await mkdir(pluginDir, { recursive: true });
+  const entry = target === 'pi' ? 'official-pi.js' : 'omp.js';
+  await copyFile(new URL(`../dist/${entry}`, import.meta.url), join(pluginDir, 'index.js'));
   await writeFile(
     join(pluginDir, 'package.json'),
     JSON.stringify({
       name: '@aio-proxy/pi-provider',
       type: 'module',
-      pi: { extensions: ['./index.js'] },
-      omp: { extensions: ['./dist/omp.js'] },
+      ...(target === 'pi' ? { pi: { extensions: ['./index.js'] } } : { omp: { extensions: ['./index.js'] } }),
     }),
     { mode: 0o600 },
   );
