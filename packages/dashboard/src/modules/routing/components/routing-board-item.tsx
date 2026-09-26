@@ -4,6 +4,8 @@ import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 
 import type { useRoutingForm } from '../hooks/use-routing-form';
+import { formatRoutingShare } from '../lib/routing-summary';
+import type { RoutingTierShare } from '../lib/routing-traffic';
 
 interface RoutingBoardItemProps {
   readonly form: ReturnType<typeof useRoutingForm>;
@@ -12,6 +14,8 @@ interface RoutingBoardItemProps {
   readonly weight: number;
   readonly writable: boolean;
   readonly hasOverride: boolean;
+  readonly configuredShare?: number | null;
+  readonly actual?: RoutingTierShare;
 }
 
 export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
@@ -21,6 +25,8 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   weight,
   writable,
   hasOverride,
+  configuredShare = null,
+  actual,
 }) => {
   const stateLabel =
     provider.state.status === 'unavailable'
@@ -32,6 +38,24 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
       <div className="min-w-0 flex-1">
         {provider.name === undefined ? null : <div className="truncate font-medium">{provider.name}</div>}
         <div className="truncate font-mono text-xs text-muted-foreground">{provider.id}</div>
+        {configuredShare !== null && actual !== undefined ? (
+          <div className="text-xs text-muted-foreground">
+            {m['dashboard.routing.detail.actual_share']({
+              configured: formatRoutingShare(configuredShare),
+              actual: formatRoutingShare(actual.actualShare),
+            })}
+          </div>
+        ) : null}
+        {actual !== undefined && actual.successRate !== null ? (
+          <div className="text-xs text-muted-foreground">
+            {m['dashboard.routing.detail.success_rate']({ value: formatRoutingShare(actual.successRate) })}
+          </div>
+        ) : null}
+        {actual !== undefined && actual.p95LatencyMs !== null ? (
+          <div className="text-xs text-muted-foreground">
+            {m['dashboard.routing.detail.p95']({ value: `${actual.p95LatencyMs} ms` })}
+          </div>
+        ) : null}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <Badge variant="outline">{stateLabel}</Badge>

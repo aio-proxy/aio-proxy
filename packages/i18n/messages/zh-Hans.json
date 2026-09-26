@@ -794,6 +794,23 @@
         "provider_cost_overrides": "价格覆盖",
         "provider_limit_overrides": "限制覆盖"
       },
+      "detail": {
+        "actual_share": "配 {configured} → 实际 {actual}",
+        "success_rate": "成功率 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "暂无流量数据",
+        "tab_topology": "拓扑",
+        "tab_metadata": "元数据",
+        "tab_cost": "成本与限额",
+        "tab_traffic": "流量",
+        "unsaved_title": "有未保存的改动",
+        "unsaved_body": "离开这个页面会丢弃未保存的改动。",
+        "unsaved_stay": "留在此页",
+        "unsaved_leave": "放弃改动",
+        "dirty_marker": "未保存",
+        "catalog_vs_override": "目录值 / 你的覆写",
+        "open_in_traces": "在 Traces 中查看"
+      },
       "health": {
         "total": "模型",
         "no_eligible": "无可用 Provider",

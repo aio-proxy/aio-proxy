@@ -794,6 +794,23 @@
         "provider_cost_overrides": "가격 재정의",
         "provider_limit_overrides": "제한 재정의"
       },
+      "detail": {
+        "actual_share": "설정 {configured} → 실제 {actual}",
+        "success_rate": "성공률 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "아직 트래픽 데이터가 없습니다",
+        "tab_topology": "토폴로지",
+        "tab_metadata": "메타데이터",
+        "tab_cost": "비용 및 한도",
+        "tab_traffic": "트래픽",
+        "unsaved_title": "저장되지 않은 변경 사항",
+        "unsaved_body": "이 페이지를 나가면 저장되지 않은 변경 사항이 삭제됩니다.",
+        "unsaved_stay": "이 페이지에 머무르기",
+        "unsaved_leave": "변경 사항 삭제",
+        "dirty_marker": "저장 안 됨",
+        "catalog_vs_override": "카탈로그 값 / 내 재정의",
+        "open_in_traces": "Traces에서 보기"
+      },
       "health": {
         "total": "모델",
         "no_eligible": "대상 Provider 없음",

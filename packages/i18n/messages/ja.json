@@ -794,6 +794,23 @@
         "provider_cost_overrides": "価格の上書き",
         "provider_limit_overrides": "制限の上書き"
       },
+      "detail": {
+        "actual_share": "設定 {configured} → 実際 {actual}",
+        "success_rate": "成功率 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "トラフィックデータはまだありません",
+        "tab_topology": "トポロジ",
+        "tab_metadata": "メタデータ",
+        "tab_cost": "コストと上限",
+        "tab_traffic": "トラフィック",
+        "unsaved_title": "未保存の変更があります",
+        "unsaved_body": "このページを離れると、未保存の変更は破棄されます。",
+        "unsaved_stay": "このページに留まる",
+        "unsaved_leave": "変更を破棄",
+        "dirty_marker": "未保存",
+        "catalog_vs_override": "カタログ値 / あなたの上書き",
+        "open_in_traces": "Traces で表示"
+      },
       "health": {
         "total": "モデル",
         "no_eligible": "対象 Provider なし",

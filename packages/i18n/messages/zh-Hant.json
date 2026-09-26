@@ -794,6 +794,23 @@
         "provider_cost_overrides": "價格覆寫",
         "provider_limit_overrides": "限制覆寫"
       },
+      "detail": {
+        "actual_share": "配 {configured} → 實際 {actual}",
+        "success_rate": "成功率 {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "暫無流量資料",
+        "tab_topology": "拓撲",
+        "tab_metadata": "元資料",
+        "tab_cost": "成本與限額",
+        "tab_traffic": "流量",
+        "unsaved_title": "有未儲存的變更",
+        "unsaved_body": "離開此頁面會捨棄未儲存的變更。",
+        "unsaved_stay": "留在此頁",
+        "unsaved_leave": "捨棄變更",
+        "dirty_marker": "未儲存",
+        "catalog_vs_override": "目錄值 / 你的覆寫",
+        "open_in_traces": "在 Traces 中查看"
+      },
       "health": {
         "total": "模型",
         "no_eligible": "無可用 Provider",

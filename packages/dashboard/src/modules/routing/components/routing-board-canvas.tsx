@@ -18,6 +18,7 @@ import {
   type RoutingBoardItem as RoutingBoardItemModel,
 } from '../lib/routing-board';
 import { formatRoutingShareValue } from '../lib/routing-summary';
+import type { RoutingTierShare } from '../lib/routing-traffic';
 import { RoutingBoardItem } from './routing-board-item';
 
 interface RoutingBoardCanvasProps {
@@ -25,6 +26,7 @@ interface RoutingBoardCanvasProps {
   readonly model: DashboardRoutingModel;
   readonly rows: readonly RoutingFormProviderRow[];
   readonly writable: boolean;
+  readonly actual?: readonly RoutingTierShare[] | undefined;
 }
 
 interface RoutingBoardItemView {
@@ -34,8 +36,12 @@ interface RoutingBoardItemView {
   readonly provider: DashboardRoutingProvider;
 }
 
-export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, model, rows, writable }) => {
+export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, model, rows, writable, actual }) => {
   const board = useMemo(() => buildRoutingBoard(model.providers, rows), [model.providers, rows]);
+  const actualByProviderId = useMemo(
+    () => (actual === undefined ? undefined : new Map(actual.map((entry) => [entry.providerId, entry]))),
+    [actual],
+  );
   const providersById = new Map(model.providers.map((provider) => [provider.id, provider]));
   const rowsById = new Map(
     rows.map((row, index) => [
@@ -145,6 +151,8 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
             weight={item.weight}
             writable={writable}
             hasOverride={hasOverride}
+            configuredShare={item.share}
+            actual={actualByProviderId?.get(item.providerId)}
           />
         )}
         onLayoutChange={(nextLayout, operation) => {

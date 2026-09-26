@@ -794,6 +794,23 @@
         "provider_cost_overrides": "Cost overrides",
         "provider_limit_overrides": "Limit overrides"
       },
+      "detail": {
+        "actual_share": "Configured {configured} → actual {actual}",
+        "success_rate": "Success rate {value}",
+        "p95": "p95 {value}",
+        "no_traffic_yet": "No traffic yet",
+        "tab_topology": "Topology",
+        "tab_metadata": "Metadata",
+        "tab_cost": "Cost and limits",
+        "tab_traffic": "Traffic",
+        "unsaved_title": "Unsaved changes",
+        "unsaved_body": "Leaving this page discards unsaved changes.",
+        "unsaved_stay": "Stay on this page",
+        "unsaved_leave": "Discard changes",
+        "dirty_marker": "Unsaved",
+        "catalog_vs_override": "Catalog value / your override",
+        "open_in_traces": "View in Traces"
+      },
       "health": {
         "total": "Models",
         "no_eligible": "No eligible Provider",
