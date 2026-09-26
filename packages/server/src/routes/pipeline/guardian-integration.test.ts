@@ -93,7 +93,7 @@ async function harness(
   const consoleDiagnostics: unknown[] = [];
   let source!: ProviderRouteSource;
   let active = 0;
-  let preRouteCloneCancels = 0;
+  let preRouteCloneReleases = 0;
   let restoreCloneInstrumentation = () => {};
   if (options.streamedInboundBody) {
     const originalClone = Request.prototype.clone;
@@ -102,18 +102,20 @@ async function harness(
       const stack = new Error().stack ?? '';
       if (clone.body !== null) {
         const body = clone.body;
-        if (stack.includes('/pre-route.ts')) {
-          const originalCancel = body.cancel.bind(body);
-          Object.defineProperty(body, 'cancel', {
-            configurable: true,
-            value: (reason?: unknown) => {
-              preRouteCloneCancels++;
-              return originalCancel(reason);
+        if (stack.includes('at invokeResponsesPreRoute (') && !stack.includes('at projectGuardianRequest (')) {
+          const trackedBody = new ReadableStream<Uint8Array>({
+            cancel(reason) {
+              // The native tee cancellation can wait on the untouched ingress branch.
+              // Start it, but let this host-owned clone marker settle independently.
+              void body.cancel(reason).catch(() => undefined);
+              return Promise.resolve().then(() => {
+                preRouteCloneReleases++;
+              });
             },
           });
           Object.defineProperty(clone, 'body', {
             configurable: true,
-            get: () => body,
+            get: () => trackedBody,
           });
         }
       }
@@ -382,7 +384,7 @@ async function harness(
     apiReviewRequests,
     clean,
     activeLeases: () => active,
-    preRouteCloneCancels: () => preRouteCloneCancels,
+    preRouteCloneReleases: () => preRouteCloneReleases,
     replacementSnapshot,
     replaceAfterInitialAcquire: (next: typeof leasedSnapshot) => {
       replacementOnInitialAcquire = () => next;
@@ -631,26 +633,32 @@ test('streamed inbound body remains available for route-miss projection and fall
     streamedInboundBody: true,
     guardianMarker: 'not-guardian',
   });
+  const declinedLease = declined.source.acquireProviderSnapshot();
   try {
     expect((await declined.send()).status).toBe(404);
     expect(declined.evaluationRequests).toHaveLength(0);
-    await waitFor(() => declined.preRouteCloneCancels() > 0);
+    await waitFor(() => declined.preRouteCloneReleases() > 0);
+    expect(declined.activeLeases()).toBeGreaterThan(0);
     expect(JSON.stringify(declined.logs)).toContain(sentinel);
   } finally {
+    declinedLease.release();
     declined.close();
   }
 });
 
 test('oversized streamed route-miss projection releases host resources at the size limit', async () => {
   const h = await harness({ includeChatGPTRoute: false, streamedInboundBody: true });
+  const heldLease = h.source.acquireProviderSnapshot();
   try {
     h.body.input[1].content[0].text = 'x'.repeat(1_048_576);
     const response = await h.send();
     expect(response.status).toBe(404);
     expect(h.evaluationRequests).toHaveLength(0);
-    await waitFor(() => h.preRouteCloneCancels() > 0);
+    await waitFor(() => h.preRouteCloneReleases() > 0);
+    expect(h.activeLeases()).toBeGreaterThan(0);
     h.clean();
   } finally {
+    heldLease.release();
     h.close();
   }
 });
