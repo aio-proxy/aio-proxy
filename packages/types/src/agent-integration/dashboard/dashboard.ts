@@ -80,15 +80,6 @@ export const AgentLocalStateSchema = z.strictObject({
 });
 export type AgentLocalState = z.output<typeof AgentLocalStateSchema>;
 
-export const AgentsSnapshotSchema = z.strictObject({
-  localSetup: AgentLocalSetupSchema,
-  deviceAuthorization: z.enum(['available', 'password_required']),
-  adapterVersion: z.string(),
-  installations: z.array(AgentInstallationSummarySchema),
-  local: z.array(AgentLocalStateSchema).optional(),
-});
-export type AgentsSnapshot = z.output<typeof AgentsSnapshotSchema>;
-
 export const CodexKeySelectionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),
   z.strictObject({ kind: z.literal('existing'), id: z.string().min(1) }),
@@ -220,3 +211,14 @@ export const AgentOperationStateSchema = z.discriminatedUnion('status', [
   z.strictObject({ ...operationBase, status: z.literal('failed'), error: AgentOperationErrorCodeSchema }),
 ]);
 export type AgentOperationState = z.output<typeof AgentOperationStateSchema>;
+
+export const AgentsSnapshotSchema = z.strictObject({
+  localSetup: AgentLocalSetupSchema,
+  deviceAuthorization: z.enum(['available', 'password_required']),
+  adapterVersion: z.string(),
+  installations: z.array(AgentInstallationSummarySchema),
+  local: z.array(AgentLocalStateSchema).optional(),
+  /** Unfinished operations, so a reloaded page can resume following them. */
+  operations: z.array(AgentOperationStateSchema).optional(),
+});
+export type AgentsSnapshot = z.output<typeof AgentsSnapshotSchema>;

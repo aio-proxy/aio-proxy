@@ -43,6 +43,7 @@ type AgentOperationsInput = {
 export type AgentOperations = {
   readonly start: (request: AgentOperationRequest) => AgentOperationState;
   readonly get: (operationId: string) => AgentOperationState | undefined;
+  readonly active: () => AgentOperationState[];
   /** The device awaiting approval for this operation, if it is in that state. */
   readonly device: (operationId: string) => string | undefined;
   readonly resume: (operationId: string) => AgentOperationState | undefined;
@@ -122,6 +123,10 @@ export function createAgentOperations(input: AgentOperationsInput): AgentOperati
   return {
     start,
     get: (operationId) => lookup(operationId)?.state,
+    active: () => {
+      prune();
+      return [...entries.values()].filter((entry) => entry.finishedAt === undefined).map((entry) => entry.state);
+    },
     device: (operationId) => {
       const entry = lookup(operationId);
       return entry?.state.status === 'awaiting_approval' ? entry.deviceId : undefined;

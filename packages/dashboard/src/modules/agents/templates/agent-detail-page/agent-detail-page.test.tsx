@@ -10,6 +10,7 @@ const mocks = rs.hoisted(() => ({
   snapshot: { data: undefined as AgentsSnapshot | undefined, isError: false, isLoading: false },
   operation: {
     state: undefined as AgentOperationState | undefined,
+    adopted: false,
     start: rs.fn(),
     startError: null,
     isStarting: false,

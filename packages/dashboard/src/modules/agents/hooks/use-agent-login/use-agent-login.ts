@@ -7,12 +7,12 @@ import { agentPendingLoginQueryOptions, decideAgentLogin } from '../../services/
 /** Watches for the Agent-side login of a freshly configured installation and decides it. */
 export const useAgentLogin = (installationId: string) => {
   const queryClient = useQueryClient();
-  const pending = useQuery(agentPendingLoginQueryOptions(installationId));
   const decide = useMutation({
     mutationFn: ({ deviceId, decision }: { deviceId: string; decision: 'approve' | 'deny' }) =>
       decideAgentLogin(deviceId, decision),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
   });
+  const pending = useQuery({ ...agentPendingLoginQueryOptions(installationId), enabled: decide.data === undefined });
   const authorization = pending.data?.authorization;
   return {
     pending: authorization?.status === 'pending' ? authorization : undefined,

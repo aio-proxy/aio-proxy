@@ -19,11 +19,13 @@ interface AgentSetupPanelProps {
   readonly localSetup: AgentLocalSetup;
 }
 
+const SETUP_KINDS = ['configure', 'restore_migration'] as const;
+
 const requestError = (error: unknown): string =>
   errorMessage(error instanceof AgentsRequestError ? error.code : 'request_failed');
 
 export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({ descriptor, local, localSetup }) => {
-  const operation = useAgentOperation();
+  const operation = useAgentOperation(descriptor.target, SETUP_KINDS);
   const [codexOpen, setCodexOpen] = useState(false);
   const isCodex = descriptor.target === 'codex';
   const plan = useCodexPlan(isCodex && codexOpen && localSetup === 'available');

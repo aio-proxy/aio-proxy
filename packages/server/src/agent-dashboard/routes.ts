@@ -120,7 +120,7 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
         deviceAuthorization: server.requireApiKey && server.password === undefined ? 'password_required' : 'available',
         adapterVersion: input.adapterVersion,
         installations: [...identity.listInstallations()],
-        ...(local === undefined ? {} : { local: [...local] }),
+        ...(local === undefined ? {} : { local: [...local], operations: operations.active() }),
       };
       return context.json(snapshot);
     })

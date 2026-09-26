@@ -63,7 +63,8 @@ export const agentPendingLoginQueryOptions = (installationId: string) =>
     queryKey: queryKeys.agentPendingLogin(installationId),
     queryFn: async (): Promise<{ readonly authorization: AgentAuthorizationDetails | null }> =>
       requireOk(await agents.installations[':installationId'].pending.$get({ param: { installationId } })),
-    refetchInterval: (query) => (query.state.data?.authorization?.status === 'pending' ? false : LOGIN_POLL_MS),
+    // Keeps polling while pending so an expiry or a decision made elsewhere replaces stale controls.
+    refetchInterval: LOGIN_POLL_MS,
   });
 
 export const startAgentOperation = async (request: AgentOperationRequest): Promise<AgentOperationState> =>

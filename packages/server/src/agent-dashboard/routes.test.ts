@@ -213,6 +213,9 @@ test('a Codex command-mode configure waits for an explicit dashboard approval', 
   const { operationId } = (await (await codexOperation(f)).json()) as AgentOperationState;
   const waiting = await f.until(operationId, 'awaiting_approval');
   expect(waiting).toMatchObject({ installationId: INSTALLATION, userCode: codes.userCode });
+  // A reloaded page finds the operation it lost track of through the snapshot.
+  const listed = await (await f.request('')).json();
+  expect(listed.operations).toEqual([waiting]);
 
   expect((await f.request(`/operations/${operationId}/approve`, post(), remoteServer)).status).toBe(404);
   const resumed = await f.request(`/operations/${operationId}/approve`, post());
@@ -220,6 +223,7 @@ test('a Codex command-mode configure waits for an explicit dashboard approval', 
   approved.resolve();
   const done = await f.until(operationId, 'succeeded');
   expect(JSON.stringify(done)).not.toContain('aio_agent_');
+  expect((await (await f.request('')).json()).operations).toEqual([]);
 });
 
 test.each([

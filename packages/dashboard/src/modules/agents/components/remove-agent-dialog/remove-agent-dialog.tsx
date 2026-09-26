@@ -20,6 +20,8 @@ import { AGENT_DISPLAY_NAMES } from '../../lib/agent-state';
 import { AgentsRequestError } from '../../services/agents-service';
 import { OperationProgress } from '../operation-progress';
 
+const REMOVE_KINDS = ['remove'] as const;
+
 interface RemoveAgentDialogProps {
   readonly target: AgentTarget;
   /** False once nothing is left to remove; an open dialog stays to show the outcome. */
@@ -29,7 +31,13 @@ interface RemoveAgentDialogProps {
 
 export const RemoveAgentDialog: React.FC<RemoveAgentDialogProps> = ({ target, removable, disabled }) => {
   const [open, setOpen] = useState(false);
-  const operation = useAgentOperation();
+  const operation = useAgentOperation(target, REMOVE_KINDS);
+  // A remove left running by a reload reopens the dialog so its outcome is not lost.
+  const [adoptedShown, setAdoptedShown] = useState(false);
+  if (operation.adopted && !adoptedShown) {
+    setAdoptedShown(true);
+    setOpen(true);
+  }
   const name = AGENT_DISPLAY_NAMES[target];
   if (!removable && !open) return null;
   return (
