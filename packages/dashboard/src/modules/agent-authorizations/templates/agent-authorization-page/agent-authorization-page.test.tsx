@@ -68,10 +68,10 @@ test('consumes a fragment only after the authenticated page mounts and shows no 
   expect(window.location.hash).toBe('#code=abcd-efgh');
   authGate.unmount();
   const view = renderPage();
-  expect(screen.getByLabelText(/code/i)).toHaveValue('ABCDEFGH');
+  expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /continue|resolve/i })).not.toBeInTheDocument();
   expect(window.location.pathname).toBe('/dashboard/agents/authorize');
   expect(window.location.hash).toBe('');
-  fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   expect(await screen.findByText('opencode')).toBeInTheDocument();
   expect(mocks.resolve.mock.calls[0]?.[0]).toBe('ABCD-EFGH');
   expect(screen.getByText(PENDING.installationId)).toBeInTheDocument();
@@ -88,6 +88,8 @@ test('approves only the resolved opaque device id', async () => {
   fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   await screen.findByText('opencode');
+  expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /continue|resolve/i })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /approve/i }));
   await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(PENDING.deviceId));
   expect(await screen.findByText(/approved/i)).toBeInTheDocument();
@@ -105,6 +107,16 @@ test('denies only the resolved opaque device id', async () => {
   await waitFor(() => expect(mocks.deny).toHaveBeenCalledWith(PENDING.deviceId));
   expect(await screen.findByText(/denied/i)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
+});
+
+test('shows a link code and toasts when that code is already finished', async () => {
+  window.history.replaceState({}, '', '/dashboard/agents/authorize#code=abcd-efgh');
+  mocks.resolve.mockResolvedValue({ status: 'expired' });
+  renderPage();
+  expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument();
+  expect(await screen.findByText(/expired/i)).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: 'Authorization code' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /continue|approve|deny/i })).not.toBeInTheDocument();
 });
 
 test.each([
