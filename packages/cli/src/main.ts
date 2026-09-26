@@ -24,7 +24,7 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
-import { PromptCancelledError } from './ui';
+import { applyHelpStyling, PromptCancelledError } from './ui';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
@@ -169,6 +169,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     writeOut: (chunk) => process.stdout.write(chunk),
     writeErr: (chunk) => process.stderr.write(chunk),
   });
+  applyHelpStyling(program);
 
   program.hook('preAction', (_thisCommand, actionCommand) => {
     if (!shouldPrintUpdateBanner(commandChain(actionCommand), process.argv)) return;
