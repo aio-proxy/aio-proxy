@@ -26,48 +26,59 @@ export const RoutingShareBar: React.FC<RoutingShareBarProps> = ({ tiers, actual 
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      {tiers.map((tier) => (
-        <div key={tier.priority} className="flex h-3 w-full overflow-hidden rounded-sm bg-muted">
-          {tier.providers.map((provider, index) => {
-            const label = segmentLabel(provider.providerId, 'configured', provider.share);
-            return (
-              <Tooltip key={provider.providerId}>
-                <TooltipTrigger
-                  render={
-                    <div
-                      className={cn('h-full shrink-0 bg-primary', index > 0 && 'border-l border-background')}
-                      style={{ width: `${provider.share * 100}%` }}
-                      aria-label={label}
+      {tiers.map((tier) => {
+        const tierActual = actual?.filter((entry) =>
+          tier.providers.some((provider) => provider.providerId === entry.providerId),
+        );
+        return (
+          <div key={tier.priority} className="flex flex-col gap-1">
+            <div className="flex h-3 w-full overflow-hidden rounded-sm bg-muted">
+              {tier.providers.map((provider, index) => {
+                const label = segmentLabel(provider.providerId, 'configured', provider.share);
+                return (
+                  <Tooltip key={provider.providerId}>
+                    <TooltipTrigger
+                      render={
+                        <div
+                          className={cn('h-full shrink-0 bg-primary', index > 0 && 'border-l border-background')}
+                          style={{ width: `${provider.share * 100}%` }}
+                          aria-label={label}
+                          role="img"
+                          tabIndex={0}
+                        />
+                      }
                     />
-                  }
-                />
-                <TooltipContent>{label}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      ))}
-      {actual !== undefined ? (
-        <div data-testid="routing-share-actual" className="flex h-1 w-full overflow-hidden rounded-sm bg-muted">
-          {actual.map((entry, index) => {
-            const label = segmentLabel(entry.providerId, 'actual', entry.actualShare);
-            return (
-              <Tooltip key={entry.providerId}>
-                <TooltipTrigger
-                  render={
-                    <div
-                      className={cn('h-full shrink-0 bg-primary/70', index > 0 && 'border-l border-background')}
-                      style={{ width: `${entry.actualShare * 100}%` }}
-                      aria-label={label}
-                    />
-                  }
-                />
-                <TooltipContent>{label}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      ) : null}
+                    <TooltipContent>{label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+            {tierActual === undefined ? null : (
+              <div data-testid="routing-share-actual" className="flex h-1 w-full overflow-hidden rounded-sm bg-muted">
+                {tierActual.map((entry, index) => {
+                  const label = segmentLabel(entry.providerId, 'actual', entry.actualShare);
+                  return (
+                    <Tooltip key={entry.providerId}>
+                      <TooltipTrigger
+                        render={
+                          <div
+                            className={cn('h-full shrink-0 bg-primary/70', index > 0 && 'border-l border-background')}
+                            style={{ width: `${entry.actualShare * 100}%` }}
+                            aria-label={label}
+                            role="img"
+                            tabIndex={0}
+                          />
+                        }
+                      />
+                      <TooltipContent>{label}</TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
