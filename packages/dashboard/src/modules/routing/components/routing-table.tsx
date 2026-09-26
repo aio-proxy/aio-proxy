@@ -70,7 +70,8 @@ export const RoutingTable: React.FC<RoutingTableProps> = ({ models, onEdit, traf
           <TableBody>
             {table.getRowModel().rows.flatMap((row, rowIndex, rowModel) => {
               const lab = labOf(row.original);
-              const previousLab = rowIndex > 0 ? labOf(rowModel[rowIndex - 1].original) : undefined;
+              const previousRow = rowIndex > 0 ? rowModel[rowIndex - 1] : undefined;
+              const previousLab = previousRow === undefined ? undefined : labOf(previousRow.original);
               const groupRow =
                 showLabGroups && lab !== previousLab
                   ? [
