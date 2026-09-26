@@ -93,6 +93,36 @@ async function harness(
   const consoleDiagnostics: unknown[] = [];
   let source!: ProviderRouteSource;
   let active = 0;
+  let preRouteCloneCancels = 0;
+  let restoreCloneInstrumentation = () => {};
+  if (options.streamedInboundBody) {
+    const originalClone = Request.prototype.clone;
+    const cloneSpy = spyOn(Request.prototype, 'clone').mockImplementation(function (this: Request) {
+      const clone = originalClone.call(this);
+      const stack = new Error().stack ?? '';
+      if (clone.body !== null) {
+        const body = clone.body;
+        if (stack.includes('/pre-route.ts')) {
+          const originalCancel = body.cancel.bind(body);
+          Object.defineProperty(body, 'cancel', {
+            configurable: true,
+            value: (reason?: unknown) => {
+              preRouteCloneCancels++;
+              return originalCancel(reason);
+            },
+          });
+          Object.defineProperty(clone, 'body', {
+            configurable: true,
+            get: () => body,
+          });
+        }
+      }
+      return clone;
+    });
+    restoreCloneInstrumentation = () => {
+      cloneSpy.mockRestore();
+    };
+  }
   const clean = () => {
     const leaked = JSON.stringify({
       logs: route.logs,
@@ -255,6 +285,7 @@ async function harness(
   const replacementSnapshot = (kind: 'valid' | 'recursive' | 'disabled' | 'deleted' | 'slash-collision') => {
     const configuredEvaluator = leasedSnapshot.providers.find(({ id }) => id === 'evaluation');
     if (configuredEvaluator === undefined) throw new Error('evaluation fixture is required for replacement tests');
+    const configuredCompetitor = leasedSnapshot.providers.find(({ id }) => id === 'competing-evaluation');
     const replacementProvider = {
       ...configuredEvaluator,
       ...(kind === 'recursive' ? { plugin: '@aio-proxy/plugin-openai-chatgpt' } : {}),
@@ -267,7 +298,12 @@ async function harness(
           }
         : {}),
     };
-    const providers = kind === 'deleted' ? [] : [replacementProvider];
+    const providers =
+      kind === 'deleted'
+        ? configuredCompetitor === undefined
+          ? []
+          : [configuredCompetitor]
+        : [replacementProvider, ...(configuredCompetitor === undefined ? [] : [configuredCompetitor])];
     return {
       ...leasedSnapshot,
       providers,
@@ -346,11 +382,13 @@ async function harness(
     apiReviewRequests,
     clean,
     activeLeases: () => active,
+    preRouteCloneCancels: () => preRouteCloneCancels,
     replacementSnapshot,
     replaceAfterInitialAcquire: (next: typeof leasedSnapshot) => {
       replacementOnInitialAcquire = () => next;
     },
     close: () => {
+      restoreCloneInstrumentation();
       exporter.mockRestore();
       consoleSink.mockRestore();
     },
@@ -596,7 +634,7 @@ test('streamed inbound body remains available for route-miss projection and fall
   try {
     expect((await declined.send()).status).toBe(404);
     expect(declined.evaluationRequests).toHaveLength(0);
-    await waitFor(() => declined.activeLeases() === 0);
+    await waitFor(() => declined.preRouteCloneCancels() > 0);
     expect(JSON.stringify(declined.logs)).toContain(sentinel);
   } finally {
     declined.close();
@@ -610,7 +648,7 @@ test('oversized streamed route-miss projection releases host resources at the si
     const response = await h.send();
     expect(response.status).toBe(404);
     expect(h.evaluationRequests).toHaveLength(0);
-    await waitFor(() => h.activeLeases() === 0);
+    await waitFor(() => h.preRouteCloneCancels() > 0);
     h.clean();
   } finally {
     h.close();
@@ -981,10 +1019,12 @@ for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
     const deadline = new AbortController();
     const started = Promise.withResolvers<void>();
     const late = Promise.withResolvers<Response>();
+    let evaluatorSignal: AbortSignal | undefined;
     const h = await harness({
       strategy,
       includeChatGPTRoute: false,
-      evaluate: async () => {
+      evaluate: async (request) => {
+        evaluatorSignal = request.signal;
         started.resolve();
         return late.promise;
       },
@@ -995,10 +1035,17 @@ for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
       await started.promise;
       deadline.abort(new DOMException('Timeout', 'TimeoutError'));
       expect((await pending).status).toBe(404);
+      await waitFor(() => evaluatorSignal?.aborted === true);
       late.resolve(Response.json(answer()));
       await Bun.sleep(0);
       expect(h.apiReviewRequests).toHaveLength(0);
       expect(h.evaluationRequests).toHaveLength(1);
+      expect(h.traces.some((trace) => trace.summary.terminationReason === 'cancelled')).toBe(true);
+      expect(
+        h.traces
+          .filter((trace) => trace.summary.terminationReason === 'cancelled')
+          .some((trace) => trace.summary.errorCode === 'model_not_found'),
+      ).toBe(false);
       await waitFor(() => h.activeLeases() === 0);
       h.clean();
     } finally {
