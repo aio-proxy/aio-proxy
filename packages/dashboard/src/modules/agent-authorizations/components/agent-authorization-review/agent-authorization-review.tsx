@@ -34,14 +34,13 @@ const requestErrorMessage = (error: unknown): string =>
     : m['dashboard.agent_authorization.network_error']();
 
 interface AgentAuthorizationReviewProps {
-  readonly details: AgentAuthorizationDetails;
+  readonly details: Extract<AgentAuthorizationDetails, { status: 'pending' }>;
 }
 
 export const AgentAuthorizationReview: React.FC<AgentAuthorizationReviewProps> = ({ details }) => {
   const { approve, deny } = useAgentAuthorization();
-  const decision = approve.data ?? deny.data;
-  const terminal = decision ?? (details.status === 'pending' ? undefined : details);
-  const pending = terminal === undefined && details.status === 'pending' ? details : undefined;
+  const terminal = approve.data ?? deny.data;
+  const pending = terminal === undefined ? details : undefined;
   const error = approve.error ?? deny.error;
   const rows =
     pending === undefined

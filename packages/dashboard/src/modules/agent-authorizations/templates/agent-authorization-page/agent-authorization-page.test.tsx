@@ -112,10 +112,12 @@ test.each([
   ['denied', /denied/i],
   ['expired', /expired/i],
   ['consumed', /already used/i],
-] as const)('renders the %s terminal state returned by resolve', async (status, message) => {
+] as const)('keeps the code entry page and toasts a %s resolve result', async (status, message) => {
   mocks.resolve.mockResolvedValue({ status });
   renderPage();
   fireEvent.change(screen.getByLabelText(/code/i), { target: { value: 'ABCDEFGH' } });
   fireEvent.click(screen.getByRole('button', { name: /continue|resolve/i }));
   expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Authorization code' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /retry|another/i })).not.toBeInTheDocument();
 });
