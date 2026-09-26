@@ -1,8 +1,7 @@
-import { AioProxyLogo } from '@aio-proxy/brand';
 import { m } from '@aio-proxy/i18n';
 import type { AgentAuthorizationDetails } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { CardContent, CardFooter } from '@aio-proxy/ui/components/card';
 import { Field, FieldError } from '@aio-proxy/ui/components/field';
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@aio-proxy/ui/components/input-otp';
 import { useForm } from '@tanstack/react-form';
@@ -12,6 +11,7 @@ import { z } from 'zod';
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
 import { normalizeAgentUserCode } from '../../lib/user-code';
 import { AgentAuthorizationRequestError } from '../../services/agent-authorizations-service';
+import { AgentAuthorizationCard } from '../card';
 
 const codeSchema = z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u);
 const otpSlots = [0, 1, 2, 3, 4, 5, 6, 7] as const;
@@ -43,24 +43,14 @@ export const AgentAuthorizationCodeEntry: React.FC<AgentAuthorizationCodeEntryPr
   }, [form]);
 
   return (
-    <Card className="w-full max-w-sm" size="sm">
-      <CardHeader className="text-center">
-        <CardTitle>
-          <h1 className="flex items-center justify-center gap-2 text-xl font-semibold">
-            {m['dashboard.agent_authorization.title']()}
-            <AioProxyLogo className="text-xl" />
-          </h1>
-        </CardTitle>
-        <CardDescription>{m['dashboard.agent_authorization.instructions']()}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          className="flex flex-col items-center gap-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
-          }}
-        >
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <AgentAuthorizationCard description={m['dashboard.agent_authorization.instructions']()}>
+        <CardContent>
           <form.Field
             name="userCode"
             validators={{
@@ -106,11 +96,13 @@ export const AgentAuthorizationCodeEntry: React.FC<AgentAuthorizationCodeEntryPr
               {requestErrorMessage(resolve.error)}
             </p>
           )}
-          <Button type="submit" disabled={resolve.isPending}>
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" className="w-full" disabled={resolve.isPending}>
             {m['dashboard.agent_authorization.resolve']()}
           </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </CardFooter>
+      </AgentAuthorizationCard>
+    </form>
   );
 };

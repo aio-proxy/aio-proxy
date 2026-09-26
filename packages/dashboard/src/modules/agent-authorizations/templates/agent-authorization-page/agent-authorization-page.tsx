@@ -7,7 +7,7 @@ import { AgentAuthorizationReview } from '../../components/agent-authorization-r
 export const AgentAuthorizationPage: React.FC = () => {
   const [details, setDetails] = useState<AgentAuthorizationDetails>();
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-sidebar px-4 py-8">
+    <main className="min-h-dvh bg-card">
       {details === undefined ? (
         <AgentAuthorizationCodeEntry onResolved={setDetails} />
       ) : (

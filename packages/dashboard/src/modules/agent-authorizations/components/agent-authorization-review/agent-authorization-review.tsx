@@ -1,8 +1,7 @@
-import { AioProxyLogo } from '@aio-proxy/brand';
 import { m } from '@aio-proxy/i18n';
 import type { AgentAuthorizationDetails } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { CardContent, CardFooter } from '@aio-proxy/ui/components/card';
 import {
   Item,
   ItemContent,
@@ -17,6 +16,7 @@ import { Fragment } from 'react';
 
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
 import { AgentAuthorizationRequestError } from '../../services/agent-authorizations-service';
+import { AgentAuthorizationCard } from '../card';
 
 const terminalMessage = (status: 'approved' | 'denied' | 'expired' | 'consumed'): string => {
   if (status === 'approved') return m['dashboard.agent_authorization.approved']();
@@ -64,18 +64,7 @@ export const AgentAuthorizationReview: React.FC<AgentAuthorizationReviewProps> =
         ];
 
   return (
-    <Card className="w-full max-w-sm" size="sm">
-      <CardHeader>
-        <CardTitle>
-          <h1 className="flex items-center gap-2 text-xl font-semibold">
-            {m['dashboard.agent_authorization.title']()}
-            <AioProxyLogo className="text-xl" />
-          </h1>
-        </CardTitle>
-        {pending === undefined ? null : (
-          <CardDescription>{m['dashboard.agent_authorization.pending']()}</CardDescription>
-        )}
-      </CardHeader>
+    <AgentAuthorizationCard description={pending === undefined ? null : m['dashboard.agent_authorization.pending']()}>
       {pending === undefined ? null : (
         <CardContent>
           <section aria-label={m['dashboard.agent_authorization.permissions_title']()}>
@@ -138,6 +127,6 @@ export const AgentAuthorizationReview: React.FC<AgentAuthorizationReviewProps> =
           </p>
         </CardContent>
       )}
-    </Card>
+    </AgentAuthorizationCard>
   );
 };
