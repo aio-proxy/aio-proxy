@@ -16,12 +16,12 @@ test('projects fixed files for each managed target', async () => {
     for (const [name, path] of Object.entries(paths)) writeFileSync(path, `export default ${JSON.stringify(name)};`);
     expect([...(await agentFiles('opencode', paths))].map(([path]) => path)).toEqual(['index.js', 'package.json']);
     expect([...(await agentFiles('pi', paths))].map(([path]) => path)).toEqual([
-      'dist/official-pi.js',
+      'index.js',
       'dist/omp.js',
       'package.json',
     ]);
     expect([...(await agentFiles('omp', paths))].map(([path]) => path)).toEqual([
-      'dist/official-pi.js',
+      'index.js',
       'dist/omp.js',
       'package.json',
     ]);
@@ -44,7 +44,7 @@ test('installed Pi-family manifest chooses distinct native entries', async () =>
     if (raw === undefined) throw new Error('missing installed package manifest');
     expect(JSON.parse(new TextDecoder().decode(raw))).toEqual({
       type: 'module',
-      pi: { extensions: ['./dist/official-pi.js'] },
+      pi: { extensions: ['./index.js'] },
       omp: { extensions: ['./dist/omp.js'] },
     });
   } finally {

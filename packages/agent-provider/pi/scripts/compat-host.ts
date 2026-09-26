@@ -19,7 +19,7 @@ type Host = {
   readonly packageName: string;
   readonly version: string;
   readonly binary: 'pi' | 'omp';
-  readonly manifestEntry: 'official-pi.js' | 'omp.js';
+  readonly manifestEntry: 'index.js' | 'omp.js';
 };
 type CommandResult = { readonly exitCode: number; readonly stdout: string; readonly stderr: string };
 type Stats = {
@@ -92,7 +92,7 @@ const hosts: Host[] = [
     packageName: '@earendil-works/pi-coding-agent',
     version,
     binary: 'pi' as const,
-    manifestEntry: 'official-pi.js' as const,
+    manifestEntry: 'index.js' as const,
   })),
   ...versions('OMP_COMPAT_VERSIONS', '17.3.7').map((version) => ({
     target: 'omp' as const,
@@ -331,7 +331,7 @@ async function installManagedPlugin(agentDir: string, target: Target, endpoint: 
   const pluginDir = join(agentDir, 'extensions', 'aio-proxy');
   await mkdir(join(pluginDir, 'dist'), { recursive: true });
   await Promise.all([
-    copyFile(new URL('../dist/official-pi.js', import.meta.url), join(pluginDir, 'dist', 'official-pi.js')),
+    copyFile(new URL('../dist/official-pi.js', import.meta.url), join(pluginDir, 'index.js')),
     copyFile(new URL('../dist/omp.js', import.meta.url), join(pluginDir, 'dist', 'omp.js')),
   ]);
   await writeFile(
@@ -339,7 +339,7 @@ async function installManagedPlugin(agentDir: string, target: Target, endpoint: 
     JSON.stringify({
       name: '@aio-proxy/pi-provider',
       type: 'module',
-      pi: { extensions: ['./dist/official-pi.js'] },
+      pi: { extensions: ['./index.js'] },
       omp: { extensions: ['./dist/omp.js'] },
     }),
     { mode: 0o600 },

@@ -25,13 +25,13 @@ export async function agentFiles(
     ]);
   }
   return new Map([
-    ['dist/official-pi.js', await bytes(paths.officialPi)],
+    ['index.js', await bytes(paths.officialPi)],
     ['dist/omp.js', await bytes(paths.omp)],
     [
       'package.json',
       json({
         type: 'module',
-        pi: { extensions: ['./dist/official-pi.js'] },
+        pi: { extensions: ['./index.js'] },
         omp: { extensions: ['./dist/omp.js'] },
       }),
     ],
