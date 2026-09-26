@@ -50,11 +50,11 @@ export const RoutingHealthStrip: React.FC<RoutingHealthStripProps> = ({ total, c
             aria-pressed={pressed}
             className={cn(
               'h-auto flex-col items-start gap-1 rounded-lg border p-3 text-left font-normal',
-              pressed && 'border-primary bg-muted',
+              pressed && 'border-2 border-primary bg-muted',
             )}
             onClick={() => onToggle(risk)}
           >
-            <span className="text-sm text-muted-foreground">{riskLabel(risk)}</span>
+            <span className={cn('text-sm text-muted-foreground', pressed && 'font-semibold')}>{riskLabel(risk)}</span>
             <span className="text-2xl font-semibold tabular-nums">
               {deviatingPending ? m['dashboard.routing.health.deviating_pending']() : formatCount(value as number)}
             </span>
