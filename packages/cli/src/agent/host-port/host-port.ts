@@ -36,12 +36,16 @@ const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> 
   [/ is occupied$/u, 'occupied_provider_id'],
 ];
 
+// Filesystem failures that mean the Agent's directory cannot be used as configured.
+const PATH_ERROR_CODES: ReadonlySet<unknown> = new Set(['EACCES', 'EPERM', 'ENOTDIR', 'EISDIR', 'ELOOP', 'EROFS']);
+
 /** Maps the CLI's existing failures onto the dashboard's closed error codes. */
 export function classifyAgentError(error: unknown): AgentOperationError | undefined {
   if (error instanceof AgentOperationError) return error;
   const code = (error as { code?: unknown } | null)?.code;
   if (code === 'access_denied') return new AgentOperationError('authorization_denied');
   if (code === 'expired_token') return new AgentOperationError('authorization_expired');
+  if (PATH_ERROR_CODES.has(code)) return new AgentOperationError('path_unavailable');
   if (!(error instanceof Error)) return undefined;
   const match = ERROR_MESSAGES.find(([pattern]) => pattern.test(error.message));
   return match === undefined ? undefined : new AgentOperationError(match[1]);
@@ -165,6 +169,18 @@ export function createAgentHostPort(
   const requireCodex = (): void => {
     if (!deps.codexDetected()) throw new AgentOperationError('host_missing');
   };
+  // Plugin and Grok writes are short, lock-guarded file transactions; stopping one halfway would leave
+  // partial state, so cancellation is honoured before the write starts rather than during it. The
+  // location is resolved here too, because it may have become unusable since the snapshot.
+  const beforeWrite = async (target: Exclude<AgentTarget, 'codex'>, events: { readonly signal: AbortSignal }) => {
+    if (events.signal.aborted) throw new AgentOperationError('cancelled');
+    try {
+      await deps.command.resolveLocation(target);
+    } catch (error) {
+      const classified = classifyAgentError(error);
+      throw classified?.code === 'host_missing' ? classified : new AgentOperationError('path_unavailable');
+    }
+  };
   return {
     inspect,
     configure: (target, codex, events) =>
@@ -179,9 +195,7 @@ export function createAgentHostPort(
           );
           return codexResult(result);
         }
-        // Plugin and Grok installs are short, lock-guarded file writes; stopping one halfway would leave
-        // partial state, so cancellation is honoured before the write starts rather than during it.
-        if (events.signal.aborted) throw new AgentOperationError('cancelled');
+        await beforeWrite(target, events);
         const result = await agentConfigure(target, deps.command);
         // The files are written; a failing follow-up lookup only loses optional details, not the success.
         const installationId = await inspect().then(
@@ -201,7 +215,8 @@ export function createAgentHostPort(
       }),
     remove: (target, events) =>
       classified(async () => {
-        if (events.signal.aborted) throw new AgentOperationError('cancelled');
+        if (target !== 'codex') await beforeWrite(target, events);
+        else if (events.signal.aborted) throw new AgentOperationError('cancelled');
         const result = await agentRemove(target, deps.command);
         if ('revokeStatus' in result)
           return {
@@ -229,7 +244,11 @@ export function createAgentHostPort(
         requireCodex();
         return buildCodexSetupPlan(deps.codex());
       }),
-    restoreCodexMigration: (operationId) =>
-      classified(async () => codexResult(await restoreMigrationResult(deps.codex().location, operationId))),
+    restoreCodexMigration: (operationId, events) =>
+      classified(async () => {
+        // A restore rewrites session files under its own journal; it is only safe to stop before it starts.
+        if (events.signal.aborted) throw new AgentOperationError('cancelled');
+        return codexResult(await restoreMigrationResult(deps.codex().location, operationId));
+      }),
   };
 }

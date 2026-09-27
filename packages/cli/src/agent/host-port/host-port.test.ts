@@ -35,6 +35,7 @@ function portFixture(
     readonly codexDetected?: boolean;
     readonly failAfterInstall?: boolean;
     readonly grokNewer?: boolean;
+    readonly locationError?: Error;
   } = {},
 ) {
   let installed = false;
@@ -58,11 +59,14 @@ function portFixture(
       if (installed && options.failAfterInstall === true && target === 'omp') throw new Error('probe failed');
       return host(target, target !== 'pi');
     },
-    resolveLocation: async (target: AgentTarget): Promise<AgentLocation> => ({
-      target,
-      hostRoot: `/home/me/.${target}`,
-      managedDir: `/home/me/.${target}/aio-proxy`,
-    }),
+    resolveLocation: async (target: AgentTarget): Promise<AgentLocation> => {
+      if (options.locationError !== undefined && target === 'opencode') throw options.locationError;
+      return {
+        target,
+        hostRoot: `/home/me/.${target}`,
+        managedDir: `/home/me/.${target}/aio-proxy`,
+      };
+    },
     inspect: async (location: AgentLocation): Promise<LocalIntegrationStatus> =>
       location.target === 'opencode'
         ? opencode
@@ -153,6 +157,7 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
   expect(classifyAgentError(new Error('CODEX_SETUP_ENDPOINT_CHANGED'))?.code).toBe('endpoint_changed');
   expect(classifyAgentError(new Error('Codex provider aio is occupied'))?.code).toBe('occupied_provider_id');
   expect(classifyAgentError(new AgentOperationError('plan_stale'))?.code).toBe('plan_stale');
+  expect(classifyAgentError(Object.assign(new Error('denied'), { code: 'EACCES' }))?.code).toBe('path_unavailable');
   expect(classifyAgentError(new Error('disk full'))).toBeUndefined();
 });
 
@@ -165,6 +170,14 @@ test('a configure that wrote its files stays successful when the follow-up looku
   expect(result.installationId).toBeUndefined();
 });
 
+test('an Agent location that became unusable fails as path_unavailable before writing', async () => {
+  const { port, install } = portFixture({ locationError: new Error('opencode config path must be absolute') });
+  const events = { signal: new AbortController().signal, onDevice: () => undefined };
+  await expect(port.configure('opencode', undefined, events)).rejects.toMatchObject({ code: 'path_unavailable' });
+  await expect(port.remove('opencode', events)).rejects.toMatchObject({ code: 'path_unavailable' });
+  expect(install).not.toHaveBeenCalled();
+});
+
 test('a cancelled operation writes nothing', async () => {
   const { port, install } = portFixture();
   const controller = new AbortController();
@@ -172,5 +185,6 @@ test('a cancelled operation writes nothing', async () => {
   const events = { signal: controller.signal, onDevice: () => undefined };
   await expect(port.configure('opencode', undefined, events)).rejects.toMatchObject({ code: 'cancelled' });
   await expect(port.remove('opencode', events)).rejects.toMatchObject({ code: 'cancelled' });
+  await expect(port.restoreCodexMigration(INSTALLATION, events)).rejects.toMatchObject({ code: 'cancelled' });
   expect(install).not.toHaveBeenCalled();
 });
