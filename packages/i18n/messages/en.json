@@ -1598,7 +1598,8 @@
         "partial": "Integration removed, but fields you edited were kept: {paths}",
         "blocked": "Not removed: the authorization could not be revoked yet. Try again once aio-proxy is reachable.",
         "cancelled": "Setup did not finish; nothing was written for the authorization.",
-        "revoke": "Authorization: {status}"
+        "revoke": "Authorization: {status}",
+        "migration_incomplete": "Session migration did not finish: {migrated} moved, {conflicts} conflicts."
       },
       "error": {
         "host_missing": "The Agent is not installed on this machine.",

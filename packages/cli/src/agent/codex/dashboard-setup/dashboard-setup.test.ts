@@ -78,6 +78,12 @@ function setupFixture(options: { readonly recovery?: boolean } = {}) {
     addSession: () => {
       preview = { ...preview, groups: [...preview.groups, { providerId: 'new', active: 1, archived: 0 }] };
     },
+    reviseSession: () => {
+      preview = {
+        ...preview,
+        targets: preview.targets.map((item) => (item.id === 'a' ? { ...item, revision: 'a-r2' } : item)),
+      };
+    },
   };
 }
 
@@ -161,4 +167,18 @@ test('a submission is rejected when the state it was built from changed or is un
 
   const recovering = setupFixture({ recovery: true });
   await expect(buildCodexSetupPlan(recovering.deps)).rejects.toMatchObject({ code: 'recovery_required' });
+});
+
+test('a session rewritten after the plan was shown makes the submission stale even with equal counts', async () => {
+  const fixture = setupFixture();
+  const plan = await buildCodexSetupPlan(fixture.deps);
+  fixture.reviseSession();
+  await expect(
+    configureCodexFromDashboard(
+      { providerId: 'aio-proxy', auth: { mode: 'command' }, migrateFrom: ['openai'], planToken: plan.planToken },
+      events(),
+      fixture.deps,
+    ),
+  ).rejects.toMatchObject({ code: 'plan_stale' });
+  expect(fixture.migrateSessions).not.toHaveBeenCalled();
 });

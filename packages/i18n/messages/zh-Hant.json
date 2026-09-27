@@ -1598,7 +1598,8 @@
         "partial": "整合已移除，但保留了你修改過的欄位：{paths}",
         "blocked": "未移除：授權暫時無法撤銷。請在 aio-proxy 可存取後重試。",
         "cancelled": "設定未完成，授權相關內容沒有寫入。",
-        "revoke": "授權：{status}"
+        "revoke": "授權：{status}",
+        "migration_incomplete": "工作階段遷移未完成：已遷移 {migrated} 個，{conflicts} 個衝突。"
       },
       "error": {
         "host_missing": "本機未安裝該 Agent。",

@@ -41,6 +41,7 @@ rs.mock('../../hooks/use-codex-plan', () => ({ useCodexPlan: () => mocks.plan })
 rs.mock('../../hooks/use-agent-login', () => ({
   useAgentLogin: () => ({ pending: undefined, decide: rs.fn(), decision: undefined, isDeciding: false, failed: false }),
 }));
+
 rs.mock('../../hooks/use-revoke-installation', () => ({
   useRevokeInstallation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
@@ -139,4 +140,14 @@ test('an operation awaiting approval is shown inline on the detail page', () => 
   };
   render(<AgentDetailPage target="codex" />);
   expect(screen.getAllByTestId('operation-approval').length).toBeGreaterThan(0);
+});
+
+test.each([
+  ['expired', true],
+  ['active', false],
+] as const)('a configured plugin whose authorization is %s offers the login panel: %s', (authorization, shown) => {
+  const data = snapshot('opencode', 'configured');
+  mocks.snapshot.data = { ...data, installations: data.installations.map((item) => ({ ...item, authorization })) };
+  render(<AgentDetailPage target="opencode" />);
+  expect(screen.queryByTestId('login-panel') !== null).toBe(shown);
 });

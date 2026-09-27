@@ -57,3 +57,23 @@ test.each([
   expect(screen.getByRole('alert').textContent).toMatch(message);
   expect(screen.queryByText(/^(Done\.|已完成。)$/u)).toBeNull();
 });
+
+test('a configure whose session migration stopped part-way is reported as incomplete', () => {
+  render(
+    <OperationProgress
+      state={{
+        ...base,
+        status: 'succeeded',
+        result: {
+          target: 'codex',
+          status: 'configured',
+          migration: { status: 'partial', migrated: 1, skipped: 0, conflicts: 2 },
+        },
+      }}
+      onDecide={rs.fn()}
+      deciding={false}
+    />,
+  );
+  expect(screen.getByRole('alert')).toBeTruthy();
+  expect(screen.getByTestId('operation-result').textContent).toMatch(/1 moved, 2 conflicts|已迁移 1 个，2 个冲突/u);
+});

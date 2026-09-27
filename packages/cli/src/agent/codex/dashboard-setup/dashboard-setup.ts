@@ -85,6 +85,9 @@ const planToken = ({ inspection, occupied, keys, sessions }: PlanParts): string 
         [...occupied].sort(),
         keys.choices.map((choice) => choice.id),
         sessions.groups,
+        sessions.targets
+          .map((target) => [target.id, target.sourceProviderId, target.revision, target.archived] as const)
+          .sort(([left], [right]) => left.localeCompare(right)),
         sessions.blocked.length,
       ]),
     )

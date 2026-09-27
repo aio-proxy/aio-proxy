@@ -36,6 +36,15 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
     const data = snapshot.data;
     const local = data.local?.find((row) => row.target === target);
     const removable = local !== undefined && REMOVABLE.has(local.status);
+    const pendingLogin =
+      descriptor.loginCommand !== undefined &&
+      local?.installationId !== undefined &&
+      (local.status === 'configured' || local.status === 'outdated') &&
+      !data.installations.some(
+        (item) => item.installationId === local.installationId && item.authorization === 'active',
+      )
+        ? local.installationId
+        : undefined;
     return (
       <div className="space-y-4">
         <LocalSetupBanner snapshot={data} />
@@ -47,7 +56,13 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
         {data.localSetup === 'unavailable' ? null : (
           <DetailSection title={m['dashboard.agents.section.setup']()}>
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <AgentSetupPanel key={target} descriptor={descriptor} local={local} localSetup={data.localSetup} />
+              <AgentSetupPanel
+                key={target}
+                descriptor={descriptor}
+                local={local}
+                localSetup={data.localSetup}
+                {...(pendingLogin === undefined ? {} : { pendingLoginInstallationId: pendingLogin })}
+              />
               <RemoveAgentDialog target={target} removable={removable} disabled={data.localSetup !== 'available'} />
             </div>
           </DetailSection>

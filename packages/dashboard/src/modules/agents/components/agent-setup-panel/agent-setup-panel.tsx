@@ -17,6 +17,8 @@ interface AgentSetupPanelProps {
   readonly descriptor: AgentDescriptor;
   readonly local: AgentLocalState | undefined;
   readonly localSetup: AgentLocalSetup;
+  /** A configured installation that has not signed in yet, so a reloaded page can still offer the login. */
+  readonly pendingLoginInstallationId?: string;
 }
 
 const SETUP_KINDS = ['configure', 'restore_migration'] as const;
@@ -24,7 +26,12 @@ const SETUP_KINDS = ['configure', 'restore_migration'] as const;
 const requestError = (error: unknown): string =>
   errorMessage(error instanceof AgentsRequestError ? error.code : 'request_failed');
 
-export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({ descriptor, local, localSetup }) => {
+export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
+  descriptor,
+  local,
+  localSetup,
+  pendingLoginInstallationId,
+}) => {
   const operation = useAgentOperation(descriptor.target, SETUP_KINDS);
   const [codexOpen, setCodexOpen] = useState(false);
   const isCodex = descriptor.target === 'codex';
@@ -32,6 +39,12 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({ descriptor, lo
   const action = primaryAgentAction(local);
   const { state } = operation;
   const result = state?.status === 'succeeded' ? state.result : undefined;
+  const loginInstallationId =
+    result?.loginCommand === undefined
+      ? state === undefined
+        ? pendingLoginInstallationId
+        : undefined
+      : result.installationId;
 
   if (localSetup === 'unavailable') return null;
   return (
@@ -83,11 +96,11 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({ descriptor, lo
       {state === undefined ? null : (
         <OperationProgress state={state} onDecide={operation.decide} deciding={operation.isDeciding} />
       )}
-      {result?.installationId === undefined || result.loginCommand === undefined ? null : (
+      {loginInstallationId === undefined || descriptor.loginCommand === undefined ? null : (
         <LoginPanel
           target={descriptor.target}
-          installationId={result.installationId}
-          loginCommand={result.loginCommand}
+          installationId={loginInstallationId}
+          loginCommand={descriptor.loginCommand}
         />
       )}
       {localSetup === 'remote_request' ? (

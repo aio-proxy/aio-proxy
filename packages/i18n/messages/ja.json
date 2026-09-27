@@ -1598,7 +1598,8 @@
         "partial": "連携を削除しましたが、編集済みのフィールドは保持しました: {paths}",
         "blocked": "削除されていません: 認可をまだ取り消せません。aio-proxy に接続できるようになってから再試行してください。",
         "cancelled": "セットアップは完了していません。認可に関する内容は書き込まれていません。",
-        "revoke": "認可: {status}"
+        "revoke": "認可: {status}",
+        "migration_incomplete": "セッションの移行は完了していません: 移行 {migrated} 件、競合 {conflicts} 件。"
       },
       "error": {
         "host_missing": "この Agent はこのマシンにインストールされていません。",

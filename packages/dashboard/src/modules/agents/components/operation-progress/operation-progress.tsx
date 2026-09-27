@@ -14,6 +14,9 @@ interface OperationProgressProps {
 
 const INCOMPLETE = new Set<AgentOperationResult['status']>(['partial', 'blocked', 'cancelled']);
 
+const migrationIncomplete = (result: AgentOperationResult): boolean =>
+  result.migration?.status === 'partial' || result.migration?.status === 'blocked';
+
 const headline = (result: AgentOperationResult): string => {
   if (result.status === 'removed') return m['dashboard.agents.result.removed']();
   if (result.status === 'partial')
@@ -40,9 +43,16 @@ const detailLines = (result: AgentOperationResult): readonly string[] => {
     ...(result.revokeStatus === undefined
       ? []
       : [m['dashboard.agents.result.revoke']({ status: revokeLabel(result.revokeStatus) })]),
-    ...(result.migration?.migrated === undefined || result.migration.migrated === 0
-      ? []
-      : [m['dashboard.agents.result.migration']({ migrated: String(result.migration.migrated) })]),
+    ...(migrationIncomplete(result)
+      ? [
+          m['dashboard.agents.result.migration_incomplete']({
+            migrated: String(result.migration?.migrated ?? 0),
+            conflicts: String(result.migration?.conflicts ?? 0),
+          }),
+        ]
+      : result.migration?.migrated === undefined || result.migration.migrated === 0
+        ? []
+        : [m['dashboard.agents.result.migration']({ migrated: String(result.migration.migrated) })]),
     ...(result.skippedFields === undefined
       ? []
       : [m['dashboard.agents.remove.skipped']({ fields: result.skippedFields.join(', ') })]),
@@ -85,7 +95,7 @@ export const OperationProgress: React.FC<OperationProgressProps> = ({ state, onD
         {m['dashboard.agents.operation.failed']({ reason: errorMessage(state.error) })}
       </p>
     );
-  const incomplete = INCOMPLETE.has(state.result.status);
+  const incomplete = INCOMPLETE.has(state.result.status) || migrationIncomplete(state.result);
   return (
     <div className="space-y-1 text-sm" role="status" data-testid="operation-result">
       <p role={incomplete ? 'alert' : undefined} className={incomplete ? 'text-destructive' : undefined}>

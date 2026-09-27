@@ -1598,7 +1598,8 @@
         "partial": "통합을 제거했지만 직접 수정한 필드는 유지했습니다: {paths}",
         "blocked": "제거되지 않음: 아직 인가를 취소할 수 없습니다. aio-proxy에 연결할 수 있게 되면 다시 시도하세요.",
         "cancelled": "설정이 완료되지 않아 인가 관련 내용은 기록되지 않았습니다.",
-        "revoke": "인가: {status}"
+        "revoke": "인가: {status}",
+        "migration_incomplete": "세션 이전이 완료되지 않았습니다: {migrated}개 이전, {conflicts}개 충돌."
       },
       "error": {
         "host_missing": "이 머신에 해당 Agent가 설치되어 있지 않습니다.",
