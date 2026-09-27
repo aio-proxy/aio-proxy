@@ -110,6 +110,65 @@ test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit'
   expect(plist).not.toContain('service.env');
 });
 
+test('launchd plist serializes a valid launchd document', () => {
+  const document = Bun.XML.parse(
+    renderLaunchdPlist({
+      exec: '/usr/local/bin/aio-proxy',
+      configPath: '/Users/u/.aio-proxy/config.jsonc',
+    }),
+    { compact: false },
+  );
+  const elements = (children: Bun.XML.Node['children']): Bun.XML.Node[] =>
+    children.filter((child): child is Bun.XML.Node => typeof child !== 'string');
+  const text = (node: Bun.XML.Node): string => {
+    const [value] = node.children;
+    if (typeof value !== 'string') throw new Error(`Expected text in <${node.name}>`);
+    return value;
+  };
+
+  expect(document.name).toBe('plist');
+  expect(document.attributes).toEqual({ version: '1.0' });
+  const [dict] = elements(document.children);
+  if (dict === undefined) throw new Error('Expected plist dict');
+  expect(elements(dict.children).map((node) => node.name)).toEqual([
+    'key',
+    'string',
+    'key',
+    'array',
+    'key',
+    'dict',
+    'key',
+    'dict',
+    'key',
+    'true',
+  ]);
+  const topLevel = elements(dict.children);
+  const at = (index: number): Bun.XML.Node => {
+    const node = topLevel[index];
+    if (node === undefined) throw new Error(`Expected plist node at index ${index}`);
+    return node;
+  };
+  expect(text(at(0))).toBe('Label');
+  expect(text(at(1))).toBe('com.aio-proxy.agent');
+  expect(text(at(2))).toBe('ProgramArguments');
+  expect(elements(at(3).children).map(text)).toEqual([
+    '/bin/sh',
+    '-c',
+    '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"',
+    '/usr/local/bin/aio-proxy',
+  ]);
+  expect(text(at(4))).toBe('EnvironmentVariables');
+  expect(
+    elements(at(5).children).map((node) => (node.name === 'key' || node.name === 'string' ? text(node) : node.name)),
+  ).toEqual(['AIO_PROXY_HOME', '/Users/u/.aio-proxy', 'AIO_PROXY_MANAGED', '1']);
+  expect(text(at(6))).toBe('KeepAlive');
+  expect(elements(at(7).children).map((node) => (node.name === 'key' ? text(node) : node.name))).toEqual([
+    'SuccessfulExit',
+    'false',
+  ]);
+  expect(text(at(8))).toBe('RunAtLoad');
+});
+
 test('systemd unit quotes an ExecStart path containing spaces', () => {
   // Unquoted, systemd would split `/home/a user/bin/aio-proxy` and try to run
   // `/home/a`, so the daemon never starts. The value must be double-quoted.
