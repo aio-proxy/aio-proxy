@@ -11,6 +11,8 @@ type AttemptSeed = {
   readonly providerId: string;
   readonly durationMs: number;
   readonly outcome?: 'success' | 'failure';
+  /** The router records this on the attempt when the model string named its Provider. */
+  readonly selectionSource?: 'provider_qualified';
 };
 
 type TraceSeed = {
@@ -72,6 +74,9 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
       attributes: {
         'aio_proxy.attempt.index': index,
         'aio_proxy.provider.id': attempt.providerId,
+        ...(attempt.selectionSource === undefined
+          ? {}
+          : { 'aio_proxy.route.selection_source': attempt.selectionSource }),
         ...(failed ? { 'aio_proxy.termination.reason': 'failure' } : {}),
       },
     });
@@ -303,5 +308,33 @@ test('counts rows written before the operation attribute existed as generation',
     const totals = store.routingTraffic({ range: '24h', now: NOW });
 
     expect(totals.models[0]?.providers[0]?.finalCount).toBe('1');
+  });
+});
+
+test('keeps Provider-qualified requests out of the normal model they collide with', () => {
+  withStore((store) => {
+    // `openai/gpt-5` is both a Provider-qualified reference (Provider `openai`, model `gpt-5`) and a
+    // model OpenRouter exposes normally. The router takes the qualified route, so that traffic was
+    // never routed among this model's candidates — crediting it here would inflate the served and
+    // attempt totals and list a Provider the model's tiers never contained.
+    seedTrace(store, {
+      id: 40,
+      requestedModelId: 'openai/gpt-5',
+      attempts: [{ providerId: 'openai', durationMs: 5, selectionSource: 'provider_qualified' }],
+    });
+    seedTrace(store, {
+      id: 41,
+      requestedModelId: 'openai/gpt-5',
+      attempts: [{ providerId: 'openrouter', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const providers = totals.models[0]?.providers ?? [];
+
+    expect(providers.map((row) => row.providerId)).toEqual(['openrouter']);
+    expect(providers[0]?.finalCount).toBe('1');
+
+    const buckets = store.routingTrafficBuckets({ range: '24h', modelId: 'openai/gpt-5', now: NOW });
+    expect(buckets.providerIds).toEqual(['openrouter']);
   });
 });

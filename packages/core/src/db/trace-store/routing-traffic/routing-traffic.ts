@@ -32,6 +32,31 @@ const SKIPPED_SPAN_NAME = 'aio_proxy.token_count.candidate_skipped';
 const GENERATION = (alias: string) =>
   `coalesce(json_extract(${alias}.attributes_json, '$."aio_proxy.operation"'), 'model') = 'model'`;
 
+/**
+ * A Provider-qualified request names its Provider in the model string, so the router takes that
+ * route instead of resolving the model's own candidate list (AGENTS.md, provider selection step 1).
+ * Its `requested_model_id` can nonetheless collide with a configured normal model — a direct
+ * Provider `openai` serving `gpt-5` answers `openai/gpt-5`, which OpenRouter may also expose as a
+ * normal model — and the aggregation would then credit that traffic to the normal model's topology,
+ * inflating its served and attempt totals and listing a Provider its tiers never contained.
+ *
+ * `selection_source` sits on the attempt span and stays in the attributes JSON. Route resolution
+ * picks one path per request, so a qualified attempt anywhere in the trace marks the whole trace.
+ */
+const SELECTION_SOURCE = (alias: string) =>
+  `coalesce(json_extract(${alias}.attributes_json, '$."aio_proxy.route.selection_source"'), '')`;
+
+const QUALIFIED_SELECTION = `${SELECTION_SOURCE('attempt')} = 'provider_qualified'`;
+
+/** Written as a coalesced inequality rather than `not (... = ...)`: json_extract yields NULL when the
+ * attribute is absent, and `not (NULL = 'x')` is NULL, which would drop every ordinary attempt. */
+const QUALIFIED_SELECTION_EXCLUDED = `${SELECTION_SOURCE('attempt')} != 'provider_qualified'`;
+
+const NOT_QUALIFIED_ROOT = `not exists (
+        select 1 from trace_span attempt
+        where attempt.trace_id = root.trace_id and ${QUALIFIED_SELECTION}
+      )`;
+
 // A root that failed or was cancelled still names a final Provider: `finalFailure()` in the
 // pipeline sets finalProviderId alongside outcome 'failure', so the last Provider tried is recorded
 // even when nothing was served. `termination_reason is null` is therefore required, not optional —
@@ -42,6 +67,7 @@ const SERVED_ROOT = `root.parent_span_id is null
       and root.final_provider_id is not null
       and root.termination_reason is null
       and ${GENERATION('root')}
+      and ${NOT_QUALIFIED_ROOT}
       and root.ended_at >= ? and root.ended_at <= ?`;
 
 type RawAttemptRow = {
@@ -182,6 +208,7 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
         and attempt.provider_id is not null
         and attempt.ended_at is not null
         and attempt.name != ?
+        and ${QUALIFIED_SELECTION_EXCLUDED}
     where root.parent_span_id is null
       and ${GENERATION('root')}
       and root.ended_at >= ? and root.ended_at <= ?
