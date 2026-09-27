@@ -74,16 +74,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
         </Empty>
       );
     }
-    return (
-      <div className="space-y-4">
-        <RoutingLabFilter
-          models={models}
-          value={search.lab}
-          onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
-        />
-        <RoutingTable models={visible} traffic={index} />
-      </div>
-    );
+    return <RoutingTable models={visible} traffic={index} />;
   })();
 
   return (
@@ -107,7 +98,18 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
         />
       ) : null}
       <Card>
-        <CardContent>{content}</CardContent>
+        <CardContent className="space-y-4">
+          {/* Outside `content` on purpose: a filter that matches nothing must still be adjustable,
+              otherwise the only way out of an empty result is to clear every filter. */}
+          {query.data !== undefined && models.length > 0 ? (
+            <RoutingLabFilter
+              models={models}
+              value={search.lab}
+              onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
+            />
+          ) : null}
+          {content}
+        </CardContent>
       </Card>
     </PageContainer>
   );

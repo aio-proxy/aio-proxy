@@ -191,6 +191,17 @@ test('distinguishes filters with no matches from an empty routing inventory', ()
   expect(onSearchChange).toHaveBeenCalledWith({ range: '7d' });
 });
 
+test('keeps the lab filter adjustable when the current filters match nothing', () => {
+  // The risk tiles above stay clickable in this state, so hiding the lab select made clearing
+  // every filter the only way out of an empty result.
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+
+  render(<RoutingPage search={{ range: '24h', risk: 'no-eligible', lab: 'openai' }} onSearchChange={rs.fn()} />);
+
+  expect(screen.getByText('No models match these filters.')).toBeInTheDocument();
+  expect(screen.getByLabelText('Lab')).toBeInTheDocument();
+});
+
 test('no longer renders the editor drawer', () => {
   mockRoutingModels({ writable: true, models: [modelFixture('sonnet')] });
 
