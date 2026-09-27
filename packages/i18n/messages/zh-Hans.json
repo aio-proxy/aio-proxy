@@ -1651,7 +1651,10 @@
         "local": "位置",
         "actions": "操作",
         "empty": "暂无授权。",
-        "codex_keep": "保留 ChatGPT 登录模式通过 API Key 访问 aio-proxy，因此这里没有授权记录。"
+        "codex_keep": "保留 ChatGPT 登录模式通过 API Key 访问 aio-proxy，因此这里没有授权记录。",
+        "filter": "筛选授权",
+        "filter_placeholder": "搜索 Installation ID 或版本",
+        "columns": "列"
       },
       "authorization": {
         "active": "有效",

@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/u
 import type { ColumnDef } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
+import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
@@ -30,23 +31,27 @@ const authorizationLabel = (status: AgentInstallationRow['authorization']): stri
 const createColumns = (canRevoke: boolean): ColumnDef<DataTableFeatures, AgentInstallationRow>[] => [
   {
     id: 'installationId',
+    meta: { label: () => m['dashboard.agents.table.installation']() },
     accessorKey: 'installationId',
     header: tableHead(() => m['dashboard.agents.table.installation']()),
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.installationId}</span>,
   },
   {
     id: 'adapterVersion',
+    meta: { label: () => m['dashboard.agents.table.adapter']() },
     accessorKey: 'adapterVersion',
     header: tableHead(() => m['dashboard.agents.table.adapter']()),
   },
   {
     id: 'lastAuthorizedAt',
+    meta: { label: () => m['dashboard.agents.table.last_authorized']() },
     accessorKey: 'lastAuthorizedAt',
     header: tableHead(() => m['dashboard.agents.table.last_authorized']()),
     cell: ({ row }) => formatTime(row.original.lastAuthorizedAt),
   },
   {
     id: 'authorization',
+    meta: { label: () => m['dashboard.agents.table.status']() },
     accessorKey: 'authorization',
     header: tableHead(() => m['dashboard.agents.table.status']()),
     cell: ({ row }) => (
@@ -57,6 +62,7 @@ const createColumns = (canRevoke: boolean): ColumnDef<DataTableFeatures, AgentIn
   },
   {
     id: 'local',
+    meta: { label: () => m['dashboard.agents.table.local']() },
     accessorFn: (row) => row.local ?? '',
     header: tableHead(() => m['dashboard.agents.table.local']()),
     cell: ({ row }) =>
@@ -87,6 +93,12 @@ export const InstallationsTable: React.FC<InstallationsTableProps> = ({ installa
 
   return (
     <div className="flex flex-col gap-4">
+      <DataTableControls
+        table={table}
+        filterLabel={m['dashboard.agents.table.filter']()}
+        filterPlaceholder={m['dashboard.agents.table.filter_placeholder']()}
+        columnsLabel={m['dashboard.agents.table.columns']()}
+      />
       <Table aria-label={m['dashboard.agents.table.label']()} data-testid="agent-installations-table">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (

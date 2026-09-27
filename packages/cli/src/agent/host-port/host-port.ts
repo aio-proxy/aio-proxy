@@ -177,6 +177,9 @@ export function createAgentHostPort(
           );
           return codexResult(result);
         }
+        // Plugin and Grok installs are short, lock-guarded file writes; stopping one halfway would leave
+        // partial state, so cancellation is honoured before the write starts rather than during it.
+        if (events.signal.aborted) throw new AgentOperationError('cancelled');
         const result = await agentConfigure(target, deps.command);
         // The files are written; a failing follow-up lookup only loses optional details, not the success.
         const installationId = await inspect().then(
@@ -194,8 +197,9 @@ export function createAgentHostPort(
             : { loginCommand: agentDescriptor(target).loginCommand }),
         } satisfies AgentOperationResult;
       }),
-    remove: (target) =>
+    remove: (target, events) =>
       classified(async () => {
+        if (events.signal.aborted) throw new AgentOperationError('cancelled');
         const result = await agentRemove(target, deps.command);
         if ('revokeStatus' in result)
           return {

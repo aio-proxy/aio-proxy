@@ -1651,7 +1651,10 @@
         "local": "위치",
         "actions": "작업",
         "empty": "아직 인가가 없습니다.",
-        "codex_keep": "ChatGPT 로그인 유지 모드는 API 키로 aio-proxy에 연결하므로 여기에 인가가 없습니다."
+        "codex_keep": "ChatGPT 로그인 유지 모드는 API 키로 aio-proxy에 연결하므로 여기에 인가가 없습니다.",
+        "filter": "인가 필터",
+        "filter_placeholder": "Installation ID 또는 버전 검색",
+        "columns": "열"
       },
       "authorization": {
         "active": "활성",

@@ -1651,7 +1651,10 @@
         "local": "場所",
         "actions": "操作",
         "empty": "認可はまだありません。",
-        "codex_keep": "ChatGPT ログイン維持モードは API キーで aio-proxy に接続するため、ここに認可はありません。"
+        "codex_keep": "ChatGPT ログイン維持モードは API キーで aio-proxy に接続するため、ここに認可はありません。",
+        "filter": "認可を絞り込む",
+        "filter_placeholder": "Installation ID またはバージョンで検索",
+        "columns": "列"
       },
       "authorization": {
         "active": "有効",

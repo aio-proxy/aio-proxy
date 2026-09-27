@@ -6,7 +6,14 @@ import { useAgentLogin } from './use-agent-login';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 
-const mocks = rs.hoisted(() => ({ snapshotCalls: 0, pending: true, expiresIn: 600_000, active: true }));
+const mocks = rs.hoisted(() => ({
+  snapshotCalls: 0,
+  pending: true,
+  expiresIn: 600_000,
+  active: true,
+  deviceId: '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c',
+  decision: 'approved',
+}));
 
 rs.mock('../../services/agents-service', () => ({
   agentPendingLoginQueryOptions: (installationId: string) => ({
@@ -17,7 +24,7 @@ rs.mock('../../services/agents-service', () => ({
         ? null
         : {
             status: 'pending',
-            deviceId: '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c',
+            deviceId: mocks.deviceId,
             target: 'opencode',
             installationId,
             adapterVersion: '1.0.0',
@@ -50,7 +57,7 @@ rs.mock('../../services/agents-service', () => ({
       };
     },
   }),
-  decideAgentLogin: async () => ({ status: 'approved' }),
+  decideAgentLogin: async () => ({ status: mocks.decision }),
 }));
 
 test('after approving, the snapshot keeps refreshing until the installation is active', async () => {
@@ -104,4 +111,25 @@ test('an approval the Agent never redeems stops refreshing once the request woul
   expect(mocks.snapshotCalls).toBe(stoppedAt);
   mocks.active = true;
   mocks.expiresIn = 600_000;
+}, 20_000);
+
+test('after a denial, a retried login from the Agent is offered again', async () => {
+  mocks.pending = true;
+  mocks.decision = 'denied';
+  const client = new QueryClient();
+  const { result } = renderHook(() => useAgentLogin(INSTALLATION), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(result.current.pending).toBeDefined());
+  act(() => result.current.decide('deny'));
+  await waitFor(() => expect(result.current.decision).toBe('denied'));
+  expect(result.current.pending).toBeUndefined();
+  // The Agent retries, creating a new challenge for the same installation.
+  mocks.deviceId = '9a1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c';
+  await waitFor(() => expect(result.current.pending?.deviceId).toBe(mocks.deviceId), { timeout: 5_000 });
+  expect(result.current.decision).toBeUndefined();
+  mocks.decision = 'approved';
+  mocks.deviceId = '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c';
 }, 20_000);

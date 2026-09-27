@@ -158,3 +158,13 @@ test('a configure that wrote its files stays successful when the follow-up looku
   expect(result).toMatchObject({ target: 'opencode', status: 'installed' });
   expect(result.installationId).toBeUndefined();
 });
+
+test('a cancelled operation writes nothing', async () => {
+  const { port, install } = portFixture();
+  const controller = new AbortController();
+  controller.abort();
+  const events = { signal: controller.signal, onDevice: () => undefined };
+  await expect(port.configure('opencode', undefined, events)).rejects.toMatchObject({ code: 'cancelled' });
+  await expect(port.remove('opencode', events)).rejects.toMatchObject({ code: 'cancelled' });
+  expect(install).not.toHaveBeenCalled();
+});

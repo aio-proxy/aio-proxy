@@ -20,9 +20,15 @@ export const useAgentLogin = (installationId: string) => {
     // Also refreshes the pending request, so an expired or already-used one stops showing controls.
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
   });
-  const settled = decide.data?.status === 'approved' || decide.data?.status === 'denied';
-  const pending = useQuery({ ...agentPendingLoginQueryOptions(installationId), enabled: !settled });
-  const authorization = pending.data?.authorization;
+  // Keeps polling after a decision: the Agent may retry and start a new challenge for this installation.
+  const pending = useQuery(agentPendingLoginQueryOptions(installationId));
+  const pendingNow = pending.data?.authorization;
+  const decidedDevice = decide.variables?.deviceId;
+  // A challenge other than the one decided here is a fresh attempt, so the old decision no longer applies.
+  const retried =
+    pendingNow?.status === 'pending' && decidedDevice !== undefined && pendingNow.deviceId !== decidedDevice;
+  const decision = retried ? undefined : decide.data?.status;
+  const authorization = decide.data !== undefined && !retried ? undefined : pendingNow;
   // A pending request that disappears was decided here or on another page; either way the Agent
   // may be about to redeem it, so remember when it would have expired.
   const [seenUntil, setSeenUntil] = useState<number>();
@@ -30,8 +36,8 @@ export const useAgentLogin = (installationId: string) => {
   if (pendingUntil !== undefined && pendingUntil !== seenUntil) setSeenUntil(pendingUntil);
   // Approval issues the credential only on the Agent's next token poll, so keep refreshing the
   // snapshot until the installation shows as active.
-  const granted = decide.data?.status === 'approved' || decide.data?.status === 'consumed';
-  const decidedElsewhere = pendingUntil === undefined && seenUntil !== undefined && decide.data === undefined;
+  const granted = decision === 'approved' || decision === 'consumed';
+  const decidedElsewhere = pendingUntil === undefined && seenUntil !== undefined && decision === undefined;
   useQuery({
     ...agentsSnapshotQueryOptions(),
     enabled: granted || decidedElsewhere,
@@ -50,7 +56,7 @@ export const useAgentLogin = (installationId: string) => {
     decide: (decision: 'approve' | 'deny') => {
       if (authorization?.status === 'pending') decide.mutate({ deviceId: authorization.deviceId, decision });
     },
-    decision: decide.data?.status,
+    decision,
     isDeciding: decide.isPending,
     failed: decide.isError,
   };

@@ -89,6 +89,7 @@ test('a plugin Agent offers one-click configure, notes, and its authorizations',
   expect(mocks.operation.start).toHaveBeenCalledWith({ kind: 'configure', target: 'opencode' });
   expect(screen.getByTestId('agent-notes').textContent).toMatch(/synced|同步/u);
   expect(screen.getByTestId('agent-installations-table').textContent).toContain(INSTALLATION);
+  expect(screen.getByRole('textbox', { name: /Filter authorizations|筛选授权/u })).toBeTruthy();
   expect(screen.getByTestId('manual-commands').textContent).toContain('aio-proxy agent configure opencode');
 });
 

@@ -1651,7 +1651,10 @@
         "local": "Location",
         "actions": "Actions",
         "empty": "No authorizations yet.",
-        "codex_keep": "Keep-ChatGPT mode reaches aio-proxy with an API key, so it has no authorization here."
+        "codex_keep": "Keep-ChatGPT mode reaches aio-proxy with an API key, so it has no authorization here.",
+        "filter": "Filter authorizations",
+        "filter_placeholder": "Search installation ID or version",
+        "columns": "Columns"
       },
       "authorization": {
         "active": "Active",
