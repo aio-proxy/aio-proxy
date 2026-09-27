@@ -61,8 +61,10 @@ export const agentCodexPlanQueryOptions = () =>
 export const agentPendingLoginQueryOptions = (installationId: string) =>
   queryOptions({
     queryKey: queryKeys.agentPendingLogin(installationId),
-    queryFn: async (): Promise<{ readonly authorization: AgentAuthorizationDetails | null }> =>
-      requireOk(await agents.installations[':installationId'].pending.$get({ param: { installationId } })),
+    queryFn: async (): Promise<{
+      readonly authorization: AgentAuthorizationDetails | null;
+      readonly userCode: string | null;
+    }> => requireOk(await agents.installations[':installationId'].pending.$get({ param: { installationId } })),
     // Keeps polling while pending so an expiry or a decision made elsewhere replaces stale controls.
     refetchInterval: LOGIN_POLL_MS,
   });

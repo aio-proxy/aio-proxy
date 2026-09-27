@@ -155,7 +155,8 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
       if (!knownInstallations.has(installationId)) await inspectLocal();
       const target = knownInstallations.get(installationId);
       if (target === undefined) return context.json({ error: 'unknown_installation' as const }, 404);
-      return context.json({ authorization: challenges.pendingForInstallation(target, installationId) ?? null });
+      const pending = challenges.pendingForInstallation(target, installationId);
+      return context.json({ authorization: pending?.details ?? null, userCode: pending?.userCode ?? null });
     })
     .get('/codex/plan', requireLocalHost, async (context) => {
       try {

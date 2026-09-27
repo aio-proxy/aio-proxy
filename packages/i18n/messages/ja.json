@@ -1622,7 +1622,7 @@
         "title": "サインイン",
         "instructions": "{target} で次を実行してサインインします:",
         "waiting": "{target} からのアクセス要求を待っています…",
-        "pending": "{target} がアクセスを要求しています（Installation {installation}、アダプター {version}）。",
+        "pending": "{target} がコード {code} でアクセスを要求しています（Installation {installation}、アダプター {version}）。{target} に同じコードが表示されている場合のみ承認してください。",
         "approved": "承認しました。{target} に戻ってください。"
       },
       "section": {

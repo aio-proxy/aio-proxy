@@ -35,10 +35,16 @@ export const LoginPanel: React.FC<LoginPanelProps> = ({ target, installationId, 
         <p className="text-sm">
           {m['dashboard.agents.login.pending']({
             target: name,
+            code: login.userCode ?? 'N/A',
             installation: login.pending.installationId,
             version: login.pending.adapterVersion,
           })}
         </p>
+        {login.userCode === undefined ? null : (
+          <p className="font-mono text-lg tracking-widest" data-testid="login-user-code">
+            {login.userCode}
+          </p>
+        )}
         <div className="flex gap-2">
           <Button type="button" onClick={() => login.decide('approve')} disabled={login.isDeciding}>
             {m['dashboard.agents.action.approve']()}

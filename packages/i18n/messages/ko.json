@@ -1622,7 +1622,7 @@
         "title": "로그인",
         "instructions": "{target}에서 다음을 실행해 로그인하세요:",
         "waiting": "{target}의 접근 요청을 기다리는 중…",
-        "pending": "{target}이(가) 접근을 요청했습니다(Installation {installation}, 어댑터 {version}).",
+        "pending": "{target}이(가) 코드 {code}로 접근을 요청했습니다(Installation {installation}, 어댑터 {version}). {target}에 같은 코드가 표시될 때만 승인하세요.",
         "approved": "승인했습니다. {target}(으)로 돌아가세요."
       },
       "section": {

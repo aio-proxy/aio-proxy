@@ -58,6 +58,12 @@ type ChallengeMaps = {
   readonly byInstallation: Map<string, Challenge>;
 };
 
+/** The pending details plus the user code the Agent shows, so the dashboard can have them compared. */
+export type PendingInstallationChallenge = {
+  readonly details: AgentAuthorizationDetails;
+  readonly userCode: string;
+};
+
 export type DeviceChallengeStore = {
   readonly create: (input: AgentDeviceCodeRequest, source: string) => AgentDeviceCodeResponse;
   readonly resolve: (userCode: string, source: string) => AgentAuthorizationDetails;
@@ -68,7 +74,7 @@ export type DeviceChallengeStore = {
   readonly pendingForInstallation: (
     target: AgentTarget,
     installationId: string,
-  ) => AgentAuthorizationDetails | undefined;
+  ) => PendingInstallationChallenge | undefined;
 };
 
 type DeviceChallengeStoreInput = {
@@ -279,10 +285,15 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
     return consumeApproved(input.identity, maps, challenge, timestamp);
   }
 
-  function pendingForInstallation(target: AgentTarget, installationId: string): AgentAuthorizationDetails | undefined {
+  function pendingForInstallation(
+    target: AgentTarget,
+    installationId: string,
+  ): PendingInstallationChallenge | undefined {
     pruneExpired(maps, now());
     const challenge = maps.byInstallation.get(installationKey(AGENT_CLIENT_ID[target], installationId));
-    return challenge?.status === 'pending' && challenge.target === target ? terminal(challenge) : undefined;
+    return challenge?.status === 'pending' && challenge.target === target
+      ? { details: terminal(challenge), userCode: challenge.userCode }
+      : undefined;
   }
 
   return {

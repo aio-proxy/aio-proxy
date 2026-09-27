@@ -277,8 +277,10 @@ test('rate-source maps are bounded and expired buckets are reusable', () => {
 test('pendingForInstallation only exposes a live pending challenge of the matching target', () => {
   const { store, advance } = challengeFixture();
   expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();
-  store.create(DEVICE_REQUEST, 'peer');
-  const pending = store.pendingForInstallation('opencode', INSTALLATION);
+  const created = store.create(DEVICE_REQUEST, 'peer');
+  const found = store.pendingForInstallation('opencode', INSTALLATION);
+  expect(found?.userCode).toBe(created.user_code);
+  const pending = found?.details;
   expect(pending).toMatchObject({ status: 'pending', target: 'opencode', installationId: INSTALLATION });
   expect(store.pendingForInstallation('pi', INSTALLATION)).toBeUndefined();
   store.deny(pending?.status === 'pending' ? pending.deviceId : '', 'peer');

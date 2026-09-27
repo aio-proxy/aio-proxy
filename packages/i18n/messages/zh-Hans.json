@@ -1622,7 +1622,7 @@
         "title": "登录",
         "instructions": "在 {target} 中运行以下命令登录：",
         "waiting": "等待 {target} 发起授权请求…",
-        "pending": "{target} 请求授权（Installation {installation}，适配器 {version}）。",
+        "pending": "{target} 以代码 {code} 请求授权（Installation {installation}，适配器 {version}）。仅当 {target} 显示的代码相同时再批准。",
         "approved": "已批准，请回到 {target}。"
       },
       "section": {

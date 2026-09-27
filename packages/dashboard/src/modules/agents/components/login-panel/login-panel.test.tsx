@@ -10,6 +10,7 @@ const mocks = rs.hoisted(() => ({
     pending: undefined as Extract<AgentAuthorizationDetails, { status: 'pending' }> | undefined,
     decide: rs.fn(),
     decision: undefined as string | undefined,
+    userCode: undefined as string | undefined,
     isDeciding: false,
     failed: false,
   },
@@ -27,10 +28,15 @@ test('approval controls disappear once the pending request expires or is decided
     expiresAt: '2026-09-26T00:10:00.000Z',
     permissions: ['catalog', 'inference'],
   };
+  mocks.login.userCode = 'WXYZ-2345';
   const view = render(
     <LoginPanel target="opencode" installationId={INSTALLATION} loginCommand="opencode auth login" />,
   );
   expect(screen.getByRole('button', { name: /Approve|批准/u })).toBeTruthy();
+  // The Agent's own code is shown next to the controls so the user can compare before approving.
+  expect(screen.getByTestId('login-user-code').textContent).toBe('WXYZ-2345');
+  // The Agent's own code is shown next to the controls so the user can compare before approving.
+  expect(screen.getByTestId('login-user-code').textContent).toBe('WXYZ-2345');
 
   mocks.login.pending = undefined;
   view.rerender(<LoginPanel target="opencode" installationId={INSTALLATION} loginCommand="opencode auth login" />);

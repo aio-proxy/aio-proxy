@@ -1622,7 +1622,7 @@
         "title": "Sign in",
         "instructions": "Run this in {target} to sign in:",
         "waiting": "Waiting for {target} to request access…",
-        "pending": "{target} requested access (installation {installation}, adapter {version}).",
+        "pending": "{target} requested access with code {code} (installation {installation}, adapter {version}). Approve only if {target} shows the same code.",
         "approved": "Access approved. Return to {target}."
       },
       "section": {

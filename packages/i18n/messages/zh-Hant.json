@@ -1622,7 +1622,7 @@
         "title": "登入",
         "instructions": "在 {target} 中執行以下指令登入：",
         "waiting": "等待 {target} 發起授權請求…",
-        "pending": "{target} 請求授權（Installation {installation}，轉接器 {version}）。",
+        "pending": "{target} 以代碼 {code} 請求授權（Installation {installation}，轉接器 {version}）。僅在 {target} 顯示相同代碼時核准。",
         "approved": "已核准，請回到 {target}。"
       },
       "section": {
