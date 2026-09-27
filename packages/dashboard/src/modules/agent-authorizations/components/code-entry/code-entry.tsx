@@ -60,20 +60,26 @@ export const CodeEntry: React.FC = () => {
       const action = selectedAction.current;
       selectedAction.current = 'resolve';
       let details: PendingAuthorization | undefined;
-      try {
-        const resolved = await resolve.mutateAsync(value.userCode);
-        if (resolved.status !== 'pending') {
-          setPending(undefined);
-          reportTerminal(resolved.status);
+      if (action !== 'resolve' && pending !== undefined && pending.code === value.userCode) {
+        // Deciding reuses the reviewed challenge; resolving it again would spend a second rate-limited
+        // slot (10 per minute per peer) for information the panel already holds.
+        details = pending.details;
+      } else {
+        try {
+          const resolved = await resolve.mutateAsync(value.userCode);
+          if (resolved.status !== 'pending') {
+            setPending(undefined);
+            reportTerminal(resolved.status);
+            return;
+          }
+          details = resolved;
+          setPending({ code: value.userCode, details: resolved });
+        } catch {
+          // A failed resolve must not lock the code out of a retry; the alert invites trying again.
+          autoResolved.current = '';
+          // resolve.error renders the alert below the entry
           return;
         }
-        details = resolved;
-        setPending({ code: value.userCode, details: resolved });
-      } catch {
-        // A failed resolve must not lock the code out of a retry; the alert invites trying again.
-        autoResolved.current = '';
-        // resolve.error renders the alert below the entry
-        return;
       }
       if (action === 'resolve') return;
       try {
@@ -228,8 +234,15 @@ export const CodeEntry: React.FC = () => {
                             pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
                             onBlur={field.handleBlur}
                             onChange={(value) => {
+                              const previous = field.state.value;
                               const normalized = normalizeAgentUserCode(value);
                               field.handleChange(normalized);
+                              // A decision error belongs to the challenge it was decided against; a new code
+                              // starts a new lifecycle and must not inherit the old alert.
+                              if (previous !== normalized && !approve.isPending && !deny.isPending) {
+                                if (approve.error !== null) approve.reset();
+                                if (deny.error !== null) deny.reset();
+                              }
                               autoResolve(normalized);
                             }}
                           >

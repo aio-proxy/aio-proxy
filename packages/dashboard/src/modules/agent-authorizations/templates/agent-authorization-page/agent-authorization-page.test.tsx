@@ -182,3 +182,44 @@ test('retries the same code after a failed resolve', async () => {
   await waitFor(() => expect(mocks.resolve).toHaveBeenCalledTimes(2));
   expect(await screen.findByText('opencode')).toBeInTheDocument();
 });
+
+test('decides on the resolved challenge without a second resolve', async () => {
+  mocks.resolve.mockResolvedValue(PENDING);
+  mocks.approve.mockResolvedValue({ status: 'approved' });
+  renderPage();
+  fireEvent.change(entry(), { target: { value: 'ABCDEFGH' } });
+  await screen.findByText('opencode');
+  fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+  await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(PENDING.deviceId));
+  // The auto-resolve already spent the flow's one resolve slot; the decision must reuse the reviewed challenge.
+  expect(mocks.resolve).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText(/approved/i)).toBeInTheDocument();
+});
+
+test('re-resolves instead of deciding when the code changed since the last resolve', async () => {
+  mocks.resolve.mockResolvedValueOnce(PENDING).mockRejectedValue(new Error('boom'));
+  renderPage();
+  fireEvent.change(entry(), { target: { value: 'ABCDEFGH' } });
+  await screen.findByText('opencode');
+  // The new code cannot be resolved, so no reviewed challenge exists for it; the old one must not be decided on.
+  fireEvent.change(entry(), { target: { value: 'JKMNPQ23' } });
+  expect(await screen.findByText(/unavailable/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+  await waitFor(() => expect(mocks.resolve).toHaveBeenCalledTimes(3));
+  expect(mocks.approve).not.toHaveBeenCalled();
+});
+
+test('clears a failed decision error when the code changes', async () => {
+  mocks.resolve.mockResolvedValue(PENDING);
+  mocks.approve.mockRejectedValueOnce(new Error('boom'));
+  renderPage();
+  fireEvent.change(entry(), { target: { value: 'ABCDEFGH' } });
+  await screen.findByText('opencode');
+  fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+  expect(await screen.findByText(/unavailable/i)).toBeInTheDocument();
+  // The alert belongs to the failed decision on the old code; a different code starts a new lifecycle.
+  fireEvent.change(entry(), { target: { value: 'JKMNPQ23' } });
+  await waitFor(() => expect(mocks.resolve).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByText(/unavailable/i)).not.toBeInTheDocument());
+  expect(await screen.findByText('opencode')).toBeInTheDocument();
+});
