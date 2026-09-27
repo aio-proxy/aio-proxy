@@ -20,6 +20,12 @@ type TraceSeed = {
   readonly endedAt?: Date;
   /** Overrides the final owner. Used to build a root-only trace with no attempt spans. */
   readonly finalProviderId?: string;
+  /**
+   * Terminates the root while it still names a final Provider — the shape `finalFailure()` and a
+   * late cancellation actually persist. Without this the fixtures could only express "served" or
+   * "no Provider at all", which is why unsuccessful roots were counted as served.
+   */
+  readonly terminationReason?: 'failure' | 'cancelled';
 };
 
 function seedTrace(store: TraceStore, seed: TraceSeed): void {
@@ -36,6 +42,8 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
     ...(finalProviderId === undefined
       ? {}
       : { 'aio_proxy.route.final_provider_id': finalProviderId, 'gen_ai.response.model': seed.requestedModelId }),
+    // Production sets this on the root span as well as in the summary, so mirror both.
+    ...(seed.terminationReason === undefined ? {} : { 'aio_proxy.termination.reason': seed.terminationReason }),
   };
   store.startRoot(rootStart({ traceId, spanId, requestId: `request-${seed.id}`, startedAt, attributes }));
   const inference = rootSpan({
@@ -73,7 +81,11 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
       summary:
         finalProviderId === undefined
           ? { terminationReason: 'failure' as const }
-          : { finalProviderId, finalModelId: seed.requestedModelId },
+          : {
+              finalProviderId,
+              finalModelId: seed.requestedModelId,
+              ...(seed.terminationReason === undefined ? {} : { terminationReason: seed.terminationReason }),
+            },
     }),
   );
 }
@@ -174,5 +186,67 @@ test('buckets one model densely by Provider', () => {
     expect(buckets.buckets.some(({ values }) => values['fallback'] === '1')).toBe(true);
     // Empty buckets must exist and read 0, otherwise the chart shows a gap.
     expect(buckets.buckets.every(({ values }) => typeof values['fallback'] === 'string')).toBe(true);
+  });
+});
+
+test('leaves a request nobody served out of the served totals', () => {
+  withStore((store) => {
+    // `finalFailure()` records the last Provider tried alongside outcome 'failure', so a root that
+    // served nothing still names a Provider. Counting it would credit that Provider with traffic it
+    // never delivered and drag the configured-versus-actual comparison with it.
+    seedTrace(store, {
+      id: 20,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5, outcome: 'failure' }],
+      finalProviderId: 'primary',
+      terminationReason: 'failure',
+    });
+    seedTrace(store, {
+      id: 21,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+      finalProviderId: 'primary',
+      terminationReason: 'cancelled',
+    });
+    seedTrace(store, {
+      id: 22,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const primary = totals.models[0]?.providers.find((row) => row.providerId === 'primary');
+
+    // One of the three requests was actually served; all three were attempted.
+    expect(primary?.finalCount).toBe('1');
+    expect(primary?.attemptCount).toBe('3');
+  });
+});
+
+test('leaves a request nobody served out of the chart buckets too', () => {
+  withStore((store) => {
+    // The chart reads its own query, so the filter has to be on both or the bars and the table
+    // disagree about the same window.
+    seedTrace(store, {
+      id: 23,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5, outcome: 'failure' }],
+      finalProviderId: 'primary',
+      terminationReason: 'failure',
+    });
+    seedTrace(store, {
+      id: 24,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const buckets = store.routingTrafficBuckets({
+      range: '24h',
+      modelId: 'anthropic/claude-sonnet-4.5',
+      now: NOW,
+    });
+    const served = buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values.primary ?? '0'), 0n);
+
+    expect(served).toBe(1n);
   });
 });

@@ -164,6 +164,17 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
   );
 }
 
+// A root that failed or was cancelled still names a final Provider: `finalFailure()` in the
+// pipeline sets finalProviderId alongside outcome 'failure', so the last Provider tried is recorded
+// even when nothing was served. `termination_reason is null` is therefore required, not optional —
+// without it a request every candidate failed counts as traffic that Provider served, inflating the
+// served totals, both halves of the configured-versus-actual comparison, the deviation verdict and
+// the chart. It is the same discriminator the attempt query already uses for successCount.
+const SERVED_ROOT = `parent_span_id is null
+      and final_provider_id is not null
+      and termination_reason is null
+      and ended_at >= ? and ended_at <= ?`;
+
 function finalRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawFinalRow[] {
   return all<RawFinalRow>(
     db,
@@ -171,10 +182,8 @@ function finalRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawFinalRo
       final_provider_id as providerId,
       cast(count(*) as text) as finalCount
     from trace_span
-    where parent_span_id is null
+    where ${SERVED_ROOT}
       and requested_model_id is not null
-      and final_provider_id is not null
-      and ended_at >= ? and ended_at <= ?
     group by requested_model_id, final_provider_id`,
     [range.start.getTime(), range.end.getTime()],
   );
@@ -191,12 +200,10 @@ function bucketRows(db: BunSQLiteDatabase, range: ResolvedUsageRange, modelId: s
       final_provider_id as providerId,
       cast(count(*) as text) as finalCount
     from trace_span
-    where parent_span_id is null
+    where ${SERVED_ROOT}
       and requested_model_id = ?
-      and final_provider_id is not null
-      and ended_at >= ? and ended_at <= ?
     group by bucket, final_provider_id`,
-    [modelId, range.start.getTime(), range.end.getTime()],
+    [range.start.getTime(), range.end.getTime(), modelId],
   );
 }
 
