@@ -102,6 +102,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
           total={models.length}
           counts={countRoutingRisks(models, index)}
           active={search.risk}
+          trafficUnavailable={trafficQuery.isError && trafficQuery.data === undefined}
           onToggle={(risk) => onSearchChange(toggleRoutingRisk(search, risk))}
         />
       ) : null}

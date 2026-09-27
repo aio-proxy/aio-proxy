@@ -1,12 +1,31 @@
+import { m } from '@aio-proxy/i18n';
 import { expect, rs, test } from '@rstest/core';
 import { render, screen } from '@testing-library/react';
 
+import type { RoutingRiskCounts } from '../../lib/routing-risk';
+import type { RoutingRiskFilter } from '../../lib/routing-search';
 import { RoutingHealthStrip } from './routing-health-strip';
 
 const counts = { 'no-eligible': 3, 'single-point': 41, deviating: 7 } as const;
 
+const renderStrip = (options: {
+  readonly counts?: RoutingRiskCounts;
+  readonly active?: RoutingRiskFilter;
+  readonly trafficUnavailable?: boolean;
+  readonly onToggle?: (risk: RoutingRiskFilter) => void;
+}) =>
+  render(
+    <RoutingHealthStrip
+      total={217}
+      counts={options.counts ?? counts}
+      active={options.active}
+      trafficUnavailable={options.trafficUnavailable ?? false}
+      onToggle={options.onToggle ?? (() => {})}
+    />,
+  );
+
 test('shows every count and marks the active filter pressed', () => {
-  render(<RoutingHealthStrip total={217} counts={counts} active="no-eligible" onToggle={() => {}} />);
+  renderStrip({ active: 'no-eligible' });
 
   expect(screen.getByText('217')).toBeInTheDocument();
   expect(screen.getByRole('button', { pressed: true })).toHaveTextContent('3');
@@ -14,49 +33,51 @@ test('shows every count and marks the active filter pressed', () => {
 
 test('toggles the risk it was clicked with', () => {
   const onToggle = rs.fn();
-  render(<RoutingHealthStrip total={1} counts={counts} active={undefined} onToggle={onToggle} />);
+  renderStrip({ onToggle });
 
   screen.getByText('41').closest('button')?.click();
 
   expect(onToggle).toHaveBeenCalledWith('single-point');
 });
 
-test('never renders zero for an unmeasured deviation count', () => {
-  // A traffic query that has not landed or has failed is unknown, not "no deviation".
-  render(
-    <RoutingHealthStrip
-      total={1}
-      counts={{ ...counts, deviating: undefined }}
-      active={undefined}
-      onToggle={() => {}}
-    />,
-  );
+test('never renders zero for a deviation count that is still being measured', () => {
+  // A traffic query that has not landed yet is unknown, not "no deviation".
+  renderStrip({ counts: { ...counts, deviating: undefined } });
 
   expect(screen.queryByText('0')).not.toBeInTheDocument();
-  expect(screen.getByText(/Measuring|统计中/u)).toBeInTheDocument();
+  expect(screen.getByText(m['dashboard.routing.health.deviating_pending']())).toBeInTheDocument();
 });
 
-test('does not let an unmeasured deviation tile be filtered by', () => {
+test('does not let a deviation tile that is still measuring be filtered by', () => {
   const onToggle = rs.fn();
-  render(
-    <RoutingHealthStrip
-      total={1}
-      counts={{ ...counts, deviating: undefined }}
-      active={undefined}
-      onToggle={onToggle}
-    />,
-  );
+  renderStrip({ counts: { ...counts, deviating: undefined }, onToggle });
 
-  screen
-    .getByText(/Measuring|统计中/u)
-    .closest('button')
-    ?.click();
+  screen.getByText(m['dashboard.routing.health.deviating_pending']()).closest('button')?.click();
 
   expect(onToggle).not.toHaveBeenCalled();
 });
 
+test('drops the deviation tile entirely when traffic cannot be measured at all', () => {
+  // A failed traffic query is not a pending one: leaving the tile up as "measuring" would promise
+  // a number that never arrives, so the whole tile goes rather than showing a state it cannot leave.
+  renderStrip({ counts: { ...counts, deviating: undefined }, trafficUnavailable: true });
+
+  expect(screen.queryByText(m['dashboard.routing.health.deviating_pending']())).not.toBeInTheDocument();
+  expect(screen.queryByText(m['dashboard.routing.health.deviating']())).not.toBeInTheDocument();
+  // The configuration-derived risks do not need traffic and must survive the failure.
+  expect(screen.getAllByRole('button')).toHaveLength(2);
+});
+
+test('keeps a deviation count that was already measured when a later refetch fails', () => {
+  // React Query keeps the last successful payload, so a background refetch failure still has a
+  // real measurement to show. Hiding it there would discard a usable number.
+  renderStrip({ trafficUnavailable: false });
+
+  expect(screen.getByText('7')).toBeInTheDocument();
+});
+
 test('leaves the total tile unclickable', () => {
-  render(<RoutingHealthStrip total={217} counts={counts} active={undefined} onToggle={() => {}} />);
+  renderStrip({});
 
   // Three clickable risks, and the total is not one of them.
   expect(screen.getAllByRole('button')).toHaveLength(3);

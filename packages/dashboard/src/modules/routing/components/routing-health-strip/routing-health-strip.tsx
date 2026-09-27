@@ -26,10 +26,18 @@ interface RoutingHealthStripProps {
   readonly total: number;
   readonly counts: RoutingRiskCounts;
   readonly active: RoutingRiskFilter | undefined;
+  /** The traffic query failed with nothing to fall back on, so deviation cannot be reported at all. */
+  readonly trafficUnavailable: boolean;
   readonly onToggle: (risk: RoutingRiskFilter) => void;
 }
 
-export const RoutingHealthStrip: React.FC<RoutingHealthStripProps> = ({ total, counts, active, onToggle }) => (
+export const RoutingHealthStrip: React.FC<RoutingHealthStripProps> = ({
+  total,
+  counts,
+  active,
+  trafficUnavailable,
+  onToggle,
+}) => (
   <Card>
     <CardContent className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="flex flex-col gap-1 rounded-lg border bg-card p-3">
@@ -37,6 +45,10 @@ export const RoutingHealthStrip: React.FC<RoutingHealthStripProps> = ({ total, c
         <span className="text-2xl font-semibold tabular-nums">{formatCount(total)}</span>
       </div>
       {ROUTING_RISK_FILTERS.map((risk) => {
+        // Deviation is the only risk that needs traffic. With no traffic to measure, the tile is
+        // dropped rather than shown: `0` would claim nothing diverged, and a permanent "measuring"
+        // would promise a result that is never coming.
+        if (risk === 'deviating' && trafficUnavailable) return null;
         const deviatingPending = risk === 'deviating' && counts.deviating === undefined;
         const pressed = active === risk;
         const value = counts[risk];
