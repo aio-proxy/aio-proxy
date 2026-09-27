@@ -17,6 +17,7 @@ import type { RoutingTrafficData } from '../../services/routing-traffic-service'
 import { RoutingModelPage } from './routing-model-page';
 
 const mutationMocks = rs.hoisted(() => ({
+  callbacks: undefined as { onError?: (error: Error) => void; onSuccess?: (data: unknown) => void } | undefined,
   mutate: rs.fn(),
   isPending: false,
   error: null as Error | null,
@@ -221,6 +222,11 @@ interface RenderPageOptions {
 }
 
 const renderPage = (options: RenderPageOptions) => {
+  mutationMocks.mutate.mockImplementation(
+    (_body: unknown, callbacks?: { onError?: (error: Error) => void; onSuccess?: (data: unknown) => void }) => {
+      mutationMocks.callbacks = callbacks;
+    },
+  );
   const modelId = options.modelId ?? 'sonnet';
   routingQueryMocks.data = {
     writable: options.writable ?? true,
@@ -273,6 +279,7 @@ afterEach(() => {
   mutationMocks.reset.mockReset();
   mutationMocks.isPending = false;
   mutationMocks.error = null;
+  mutationMocks.callbacks = undefined;
   trafficMocks.fail = false;
   routingQueryMocks.refetch.mockReset();
 });
@@ -430,4 +437,59 @@ test('reports a measured absence of traffic once the query has answered', async 
 
   expect(await screen.findByText(m['dashboard.routing.detail.no_traffic_yet']())).toBeInTheDocument();
   expect(screen.queryByText(m['dashboard.routing.detail.traffic_unavailable']())).not.toBeInTheDocument();
+});
+
+test('keeps the stale warning up when the reload refetch fails', async () => {
+  // A failed refetch still resolves with the last successful payload. Handing that back looked like a
+  // reload that had fetched a new revision: the warning cleared and the next save was rejected as
+  // stale all over again, with nothing on screen explaining why.
+  renderPage({ models: [modelFixture('sonnet')] });
+  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  dirtyTopology();
+
+  // handleSubmit is async, so the mutation lands a microtask after the click.
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.editor.save']() }));
+  });
+  act(() => {
+    mutationMocks.callbacks?.onError?.(Object.assign(new Error('stale'), { code: 'stale_revision' }));
+  });
+  expect(screen.getByText(m['dashboard.routing.editor.stale']())).toBeInTheDocument();
+
+  // The refetch fails but the cache still holds the model it had before.
+  routingQueryMocks.refetch.mockResolvedValue({
+    isError: true,
+    data: { writable: true, models: [modelFixture('sonnet')] },
+  });
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.editor.reload']() }));
+  });
+
+  expect(screen.getByText(m['dashboard.routing.editor.stale']())).toBeInTheDocument();
+});
+
+test('clears the stale warning when the reload refetch succeeds', async () => {
+  renderPage({ models: [modelFixture('sonnet')] });
+  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  dirtyTopology();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.editor.save']() }));
+  });
+  act(() => {
+    mutationMocks.callbacks?.onError?.(Object.assign(new Error('stale'), { code: 'stale_revision' }));
+  });
+  expect(screen.getByText(m['dashboard.routing.editor.stale']())).toBeInTheDocument();
+
+  routingQueryMocks.refetch.mockResolvedValue({
+    isError: false,
+    data: { writable: true, models: [{ ...modelFixture('sonnet'), revision: 'rev-2' }] },
+  });
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.editor.reload']() }));
+  });
+
+  expect(screen.queryByText(m['dashboard.routing.editor.stale']())).not.toBeInTheDocument();
 });

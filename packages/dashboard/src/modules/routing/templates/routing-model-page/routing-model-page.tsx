@@ -94,6 +94,10 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
 
   const onReload = async (): Promise<DashboardRoutingModel | undefined> => {
     const result = await query.refetch();
+    // A failed refetch still resolves with the last successful payload, so returning it would look
+    // like a reload that fetched nothing: the editor would clear the stale warning and the next save
+    // would be rejected as stale all over again.
+    if (result.isError) return undefined;
     return result.data?.models.find((entry) => entry.modelId === modelId);
   };
 
