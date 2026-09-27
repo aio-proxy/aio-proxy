@@ -110,6 +110,16 @@ test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit'
   expect(plist).not.toContain('service.env');
 });
 
+test('launchd plist uses canonical indentation for the serialized body', () => {
+  const plist = renderLaunchdPlist({
+    exec: '/usr/local/bin/aio-proxy',
+    configPath: '/Users/u/.aio-proxy/config.jsonc',
+  });
+  expect(plist).toContain('\n<plist version="1.0">\n  <dict>');
+  expect(plist).toContain('\n    <key>Label</key>');
+  expect(plist).not.toContain('\n<dict>\n  <key>Label</key>');
+});
+
 test('systemd unit quotes an ExecStart path containing spaces', () => {
   // Unquoted, systemd would split `/home/a user/bin/aio-proxy` and try to run
   // `/home/a`, so the daemon never starts. The value must be double-quoted.
