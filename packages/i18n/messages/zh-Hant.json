@@ -1706,7 +1706,8 @@
         "active_authorizations": "{count} 個有效授權",
         "no_active_authorizations": "尚無有效授權"
       },
-      "docs": "接入文件"
+      "docs": "接入文件",
+      "revoke_failed": "授權未能撤銷"
     }
   }
 }

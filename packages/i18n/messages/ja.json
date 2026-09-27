@@ -1706,7 +1706,8 @@
         "active_authorizations": "有効な承認 {count} 件",
         "no_active_authorizations": "有効な承認はありません"
       },
-      "docs": "セットアップガイド"
+      "docs": "セットアップガイド",
+      "revoke_failed": "承認を取り消せませんでした"
     }
   }
 }

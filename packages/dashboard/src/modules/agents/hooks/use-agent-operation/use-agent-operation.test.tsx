@@ -66,3 +66,18 @@ test('starting an operation refreshes the snapshot so a remount can adopt it', a
   act(() => result.current.start({ kind: 'configure', target: 'grok' }));
   await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agents'], exact: true }));
 });
+
+test('a start refused because another tab already began one refreshes the snapshot to adopt it', async () => {
+  mocks.snapshot.data = undefined;
+  mocks.start.mockRejectedValue(new Error('operation_in_progress'));
+  const client = new QueryClient();
+  const invalidate = rs.spyOn(client, 'invalidateQueries');
+  const { result } = renderHook(() => useAgentOperation('codex', ['configure']), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  act(() => result.current.start({ kind: 'configure', target: 'grok' }));
+  await waitFor(() => expect(result.current.startError).not.toBeNull());
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agents'], exact: true });
+});

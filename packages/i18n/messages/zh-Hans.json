@@ -1706,7 +1706,8 @@
         "active_authorizations": "{count} 个有效授权",
         "no_active_authorizations": "暂无有效授权"
       },
-      "docs": "接入文档"
+      "docs": "接入文档",
+      "revoke_failed": "授权未能撤销"
     }
   }
 }

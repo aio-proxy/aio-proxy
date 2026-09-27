@@ -30,6 +30,9 @@ export const useAgentOperation = (target: AgentTarget, kinds: readonly AgentOper
       // The snapshot must list this operation so a remount within its stale time can adopt it.
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents, exact: true });
     },
+    // A refusal usually means another tab already started one for this target; the refreshed
+    // snapshot lists it so this page can adopt, approve, or cancel it.
+    onError: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents, exact: true }),
   });
   const decide = useMutation({
     mutationFn: (decision: 'approve' | 'deny' | 'cancel') => decideAgentOperation(operationId!, decision),

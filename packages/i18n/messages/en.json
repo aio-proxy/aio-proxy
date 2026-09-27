@@ -1706,7 +1706,8 @@
         "active_authorizations": "Active authorizations: {count}",
         "no_active_authorizations": "No active authorization"
       },
-      "docs": "Setup guide"
+      "docs": "Setup guide",
+      "revoke_failed": "The authorization was not revoked"
     }
   }
 }
