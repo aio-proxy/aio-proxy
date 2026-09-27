@@ -41,8 +41,9 @@ const snapshot = (overrides: Partial<AgentsSnapshot> = {}): AgentsSnapshot => ({
 test('lists every supported Agent with its local status when setup is available here', () => {
   mocks.snapshot.data = snapshot();
   render(<AgentsPage />);
-  for (const target of ['opencode', 'pi', 'omp', 'codex', 'grok'])
-    expect(screen.getByTestId(`agent-card-${target}`)).toBeTruthy();
+  expect(
+    screen.getAllByTestId(/^agent-card-/u).map((card) => card.getAttribute('data-testid')?.replace('agent-card-', '')),
+  ).toEqual(['codex', 'grok', 'opencode', 'pi', 'omp']);
   expect(within(screen.getByTestId('agent-card-pi')).getByText(/Not installed|未安装/u)).toBeTruthy();
   // The card links to the details page; it is not an action that opens the Agent itself.
   expect(screen.getByTestId('agent-card-opencode').getAttribute('href')).toBe('/agents/opencode');

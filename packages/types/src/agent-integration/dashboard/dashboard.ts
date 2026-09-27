@@ -25,6 +25,12 @@ const descriptor = (
 
 /** Display order of the dashboard Agents page. */
 export const AGENT_DESCRIPTORS: readonly AgentDescriptor[] = [
+  descriptor('codex', 'static-config', { catalog: 'not_applicable', platformSupport: 'verified' }),
+  descriptor('grok', 'auth-command', {
+    catalog: 'host_managed',
+    loginCommand: 'grok login',
+    platformSupport: 'macos_only_verified',
+  }),
   descriptor('opencode', 'plugin', {
     catalog: 'synced',
     loginCommand: 'opencode auth login --provider aio-proxy',
@@ -32,12 +38,6 @@ export const AGENT_DESCRIPTORS: readonly AgentDescriptor[] = [
   }),
   descriptor('pi', 'plugin', { catalog: 'synced', loginCommand: '/login aio-proxy', platformSupport: 'verified' }),
   descriptor('omp', 'plugin', { catalog: 'synced', loginCommand: '/login aio-proxy', platformSupport: 'verified' }),
-  descriptor('codex', 'static-config', { catalog: 'not_applicable', platformSupport: 'verified' }),
-  descriptor('grok', 'auth-command', {
-    catalog: 'host_managed',
-    loginCommand: 'grok login',
-    platformSupport: 'macos_only_verified',
-  }),
 ];
 
 export const agentDescriptor = (target: AgentTarget): AgentDescriptor =>
