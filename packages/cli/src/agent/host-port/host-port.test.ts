@@ -34,6 +34,7 @@ function portFixture(
     readonly codexRecovery?: boolean;
     readonly codexDetected?: boolean;
     readonly failAfterInstall?: boolean;
+    readonly grokNewer?: boolean;
   } = {},
 ) {
   let installed = false;
@@ -79,9 +80,9 @@ function portFixture(
     grok: {
       inspect: async () => ({
         integrationKind: 'auth-command',
-        integration: 'managed',
-        marker: marker('grok', '2.0.0'),
-        configuration: 'modified',
+        integration: options.grokNewer === true ? 'newer' : 'managed',
+        marker: marker('grok', options.grokNewer === true ? '3.0.0' : '2.0.0'),
+        configuration: options.grokNewer === true ? 'current' : 'modified',
         fields: [],
       }),
     },
@@ -112,6 +113,11 @@ test('inspect reports each Agent in dashboard order with its local status', asyn
     installationId: INSTALLATION,
     configPath: '/home/me/.grok',
   });
+});
+
+test('a Grok integration written by a newer adapter is a conflict, not a configurable install', async () => {
+  const rows = await portFixture({ grokNewer: true }).port.inspect();
+  expect(rows.find((row) => row.target === 'grok')?.status).toBe('conflict');
 });
 
 test('pending Codex recovery outranks every other Codex status', async () => {

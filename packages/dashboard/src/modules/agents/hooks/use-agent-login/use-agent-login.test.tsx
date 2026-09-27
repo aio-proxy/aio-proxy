@@ -113,7 +113,7 @@ test('an approval the Agent never redeems stops refreshing once the request woul
   mocks.expiresIn = 600_000;
 }, 20_000);
 
-test('after a denial, a retried login from the Agent is offered again', async () => {
+test('after a denial, a retried login is offered again and its outcome elsewhere is not the old denial', async () => {
   mocks.pending = true;
   mocks.decision = 'denied';
   const client = new QueryClient();
@@ -130,6 +130,13 @@ test('after a denial, a retried login from the Agent is offered again', async ()
   mocks.deviceId = '9a1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c';
   await waitFor(() => expect(result.current.pending?.deviceId).toBe(mocks.deviceId), { timeout: 5_000 });
   expect(result.current.decision).toBeUndefined();
+  // The retried request is approved on another page, so the old denial must not come back.
+  mocks.snapshotCalls = 0;
+  mocks.pending = false;
+  await waitFor(() => expect(result.current.pending).toBeUndefined(), { timeout: 5_000 });
+  expect(result.current.decision).toBeUndefined();
+  await waitFor(() => expect(mocks.snapshotCalls).toBeGreaterThanOrEqual(1), { timeout: 6_000 });
+  mocks.pending = true;
   mocks.decision = 'approved';
   mocks.deviceId = '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c';
 }, 20_000);

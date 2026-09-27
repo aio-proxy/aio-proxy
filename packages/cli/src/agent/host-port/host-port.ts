@@ -65,10 +65,12 @@ const isOlder = (version: string, current: string): boolean => {
 
 const pluginStatus = (row: AgentListTargetResult, adapterVersion: string): AgentLocalStatus => {
   if (!row.host.detected) return 'not_installed';
-  if (row.integration === 'unresolved' || row.integration === 'conflict') return 'conflict';
+  // Newer formats are refused by configure and remove, so the dashboard must not offer either.
+  if (row.integration === 'unresolved' || row.integration === 'conflict' || row.integration === 'newer')
+    return 'conflict';
   if (row.integration === 'absent') return 'not_configured';
   if ('configuration' in row) {
-    if (row.integration === 'newer' || row.configuration === 'current')
+    if (row.configuration === 'current')
       return row.marker !== undefined && isOlder(row.marker.adapterVersion, adapterVersion) ? 'outdated' : 'configured';
     return row.configuration;
   }
