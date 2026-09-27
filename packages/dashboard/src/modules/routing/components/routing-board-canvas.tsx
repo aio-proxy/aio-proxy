@@ -15,6 +15,7 @@ import {
   applyRoutingBoardLayout,
   applyRoutingShare,
   buildRoutingBoard,
+  providersWithSavedTierMembers,
   type RoutingBoardItem as RoutingBoardItemModel,
 } from '../lib/routing-board';
 import { formatRoutingShareValue } from '../lib/routing-summary';
@@ -42,6 +43,9 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
     () => (actual === undefined ? undefined : new Map(actual.map((entry) => [entry.providerId, entry]))),
     [actual],
   );
+  // Only these Providers may show the configured-versus-actual reading: for the rest the draft has
+  // moved them to a tier the measurement was never taken over.
+  const comparableShares = useMemo(() => providersWithSavedTierMembers(model.tiers, board), [model.tiers, board]);
   const providersById = new Map(model.providers.map((provider) => [provider.id, provider]));
   const rowsById = new Map(
     rows.map((row, index) => [
@@ -151,7 +155,7 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
             weight={item.weight}
             writable={writable}
             hasOverride={hasOverride}
-            configuredShare={item.share}
+            configuredShare={comparableShares.has(item.providerId) ? item.share : null}
             actual={actualByProviderId?.get(item.providerId)}
           />
         )}

@@ -76,6 +76,35 @@ export const buildRoutingBoard = (
   return { tiers, unused, blocked };
 };
 
+/**
+ * Provider ids whose draft tier still holds exactly the members of the saved tier they sit in.
+ *
+ * A measured share is a fraction of the tier it was observed over, so it is only comparable with a
+ * configured share taken across the same members. Dragging a Provider between tiers changes that
+ * member set while the measurement keeps describing the saved one, which would put two different
+ * denominators on the two halves of one "configured X, actual Y" reading.
+ */
+export const providersWithSavedTierMembers = (
+  savedTiers: readonly { readonly providers: readonly { readonly providerId: string }[] }[],
+  board: RoutingBoard,
+): ReadonlySet<string> => {
+  const savedMembersOf = new Map<string, readonly string[]>();
+  for (const tier of savedTiers) {
+    const members = tier.providers.map((entry) => entry.providerId);
+    for (const member of members) savedMembersOf.set(member, members);
+  }
+
+  const comparable = new Set<string>();
+  for (const tier of board.tiers) {
+    const members = tier.items.map((item) => item.providerId);
+    for (const id of members) {
+      const saved = savedMembersOf.get(id);
+      if (saved !== undefined && sameMembers(saved, members)) comparable.add(id);
+    }
+  }
+  return comparable;
+};
+
 const allocatePriority = (higher: number | undefined, lower: number | undefined): number | undefined => {
   if (higher === undefined && lower === undefined) return 10;
   if (higher === undefined)

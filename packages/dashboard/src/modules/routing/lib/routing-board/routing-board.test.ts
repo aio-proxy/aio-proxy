@@ -4,7 +4,12 @@ import { expect, test } from '@rstest/core';
 
 import type { WeightedTierLayout } from '@/lib/weighted-tier-layout';
 
-import { applyRoutingBoardLayout, applyRoutingShare, buildRoutingBoard } from './routing-board';
+import {
+  applyRoutingBoardLayout,
+  applyRoutingShare,
+  buildRoutingBoard,
+  providersWithSavedTierMembers,
+} from './routing-board';
 
 const routingNumber = (effective: number, authored?: number) => ({
   ...(authored === undefined ? {} : { authored }),
@@ -615,4 +620,44 @@ test('reassigns excess from a capped sibling instead of shrinking the tier', () 
       weight: 1,
     }),
   ).toEqual([{ providerId: 'a' }, { providerId: 'b' }, { providerId: 'e', weight: 10000 }]);
+});
+
+test('treats a share as comparable only while its tier keeps the members it was measured over', () => {
+  // The measured share is a fraction of the tier it was observed across. A draft that moves a
+  // Provider between tiers changes that denominator while the measurement still describes the
+  // saved one, so "configured X, actual Y" would put two different denominators in one sentence.
+  const providers = [provider({ id: 'a' }), provider({ id: 'b' }), provider({ id: 'c' })];
+  const savedTiers = [
+    { priority: 10, providers: [{ providerId: 'a' }, { providerId: 'b' }] },
+    { priority: 0, providers: [{ providerId: 'c' }] },
+  ];
+
+  const untouched = buildRoutingBoard(providers, [
+    { providerId: 'a', priority: 10 },
+    { providerId: 'b', priority: 10 },
+    { providerId: 'c', priority: 0 },
+  ]);
+  expect([...providersWithSavedTierMembers(savedTiers, untouched)].sort()).toStrictEqual(['a', 'b', 'c']);
+
+  // `c` joins a's tier: every member of that tier now has a denominator the measurement never used.
+  const moved = buildRoutingBoard(providers, [
+    { providerId: 'a', priority: 10 },
+    { providerId: 'b', priority: 10 },
+    { providerId: 'c', priority: 10 },
+  ]);
+  expect([...providersWithSavedTierMembers(savedTiers, moved)]).toStrictEqual([]);
+});
+
+test('keeps a share comparable when only the weights inside a tier change', () => {
+  // Re-weighting does not change who the tier's traffic was split across, so comparing the new
+  // intent against the observed split is still a comparison of one denominator.
+  const providers = [provider({ id: 'a' }), provider({ id: 'b' })];
+  const savedTiers = [{ priority: 10, providers: [{ providerId: 'a' }, { providerId: 'b' }] }];
+
+  const reweighted = buildRoutingBoard(providers, [
+    { providerId: 'a', priority: 10, weight: 7 },
+    { providerId: 'b', priority: 10, weight: 3 },
+  ]);
+
+  expect([...providersWithSavedTierMembers(savedTiers, reweighted)].sort()).toStrictEqual(['a', 'b']);
 });
