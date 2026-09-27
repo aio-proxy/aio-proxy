@@ -705,6 +705,7 @@
         "edit": "編集",
         "disabled": "無効",
         "empty_filtered": "この条件に一致するモデルはありません。",
+        "empty_deviation_unknown": "この期間のトラフィックが読み込まれていないため、設定された重みとの乖離は判定できません。",
         "clear_filters": "フィルタをクリア"
       },
       "editor": {

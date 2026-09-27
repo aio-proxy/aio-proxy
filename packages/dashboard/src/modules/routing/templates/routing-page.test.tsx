@@ -191,6 +191,22 @@ test('distinguishes filters with no matches from an empty routing inventory', ()
   expect(onSearchChange).toHaveBeenCalledWith({ range: '7d' });
 });
 
+test('does not claim nothing diverged while traffic is still unknown', () => {
+  // A bookmarked ?risk=deviating URL matches nothing until traffic lands, so the generic
+  // "no models match" copy would report a measured result from no measurement.
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+  mockRoutingTrafficError();
+
+  render(<RoutingPage search={{ range: '24h', risk: 'deviating' }} onSearchChange={rs.fn()} />);
+
+  expect(
+    screen.getByText(
+      'Traffic for this range has not loaded, so divergence from the configured weights cannot be evaluated.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText('No models match these filters.')).not.toBeInTheDocument();
+});
+
 test('keeps the lab filter adjustable when the current filters match nothing', () => {
   // The risk tiles above stay clickable in this state, so hiding the lab select made clearing
   // every filter the only way out of an empty result.

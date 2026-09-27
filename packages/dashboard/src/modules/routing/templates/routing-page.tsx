@@ -61,9 +61,16 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
       );
     }
     if (visible.length === 0) {
+      // A deviation filter with no traffic behind it cannot be answered. Saying "no models match"
+      // would report a measured result — that nothing diverged — from no measurement at all.
+      const unevaluable = search.risk === 'deviating' && index === undefined;
       return (
         <Empty>
-          <p>{m['dashboard.routing.table.empty_filtered']()}</p>
+          <p>
+            {unevaluable
+              ? m['dashboard.routing.table.empty_deviation_unknown']()
+              : m['dashboard.routing.table.empty_filtered']()}
+          </p>
           <Button
             type="button"
             variant="outline"

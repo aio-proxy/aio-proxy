@@ -705,6 +705,7 @@
         "edit": "编辑",
         "disabled": "已禁用",
         "empty_filtered": "没有模型符合这些筛选条件。",
+        "empty_deviation_unknown": "该时间范围的流量尚未加载，无法判断是否偏离配置的权重。",
         "clear_filters": "清除筛选"
       },
       "editor": {

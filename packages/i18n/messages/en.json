@@ -705,6 +705,7 @@
         "edit": "Edit",
         "disabled": "Disabled",
         "empty_filtered": "No models match these filters.",
+        "empty_deviation_unknown": "Traffic for this range has not loaded, so divergence from the configured weights cannot be evaluated.",
         "clear_filters": "Clear filters"
       },
       "editor": {

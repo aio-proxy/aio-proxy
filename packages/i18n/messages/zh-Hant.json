@@ -705,6 +705,7 @@
         "edit": "編輯",
         "disabled": "已停用",
         "empty_filtered": "沒有模型符合這些篩選條件。",
+        "empty_deviation_unknown": "該時間範圍的流量尚未載入，無法判斷是否偏離設定的權重。",
         "clear_filters": "清除篩選"
       },
       "editor": {
