@@ -6,22 +6,25 @@ import { useAgentLogin } from './use-agent-login';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 
-const mocks = rs.hoisted(() => ({ snapshotCalls: 0 }));
+const mocks = rs.hoisted(() => ({ snapshotCalls: 0, pending: true }));
 
 rs.mock('../../services/agents-service', () => ({
   agentPendingLoginQueryOptions: (installationId: string) => ({
     queryKey: ['agents', 'installations', installationId, 'pending'],
+    refetchInterval: 500,
     queryFn: async () => ({
-      authorization: {
-        status: 'pending',
-        deviceId: '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c',
-        target: 'opencode',
-        installationId,
-        adapterVersion: '1.0.0',
-        expiresAt: '2026-09-26T00:10:00.000Z',
-        permissions: ['catalog', 'inference'],
-      },
-      userCode: 'WXYZ-2345',
+      authorization: !mocks.pending
+        ? null
+        : {
+            status: 'pending',
+            deviceId: '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c',
+            target: 'opencode',
+            installationId,
+            adapterVersion: '1.0.0',
+            expiresAt: new Date(Date.now() + 600_000).toISOString(),
+            permissions: ['catalog', 'inference'],
+          },
+      userCode: mocks.pending ? 'WXYZ-2345' : null,
     }),
   }),
   agentsSnapshotQueryOptions: () => ({
@@ -64,3 +67,19 @@ test('after approving, the snapshot keeps refreshing until the installation is a
   await new Promise((resolve) => setTimeout(resolve, 2_500));
   expect(mocks.snapshotCalls).toBe(settledAt);
 }, 15_000);
+
+test('a request approved on another page also refreshes the snapshot until the installation is active', async () => {
+  mocks.snapshotCalls = 0;
+  mocks.pending = true;
+  const client = new QueryClient();
+  const { result } = renderHook(() => useAgentLogin(INSTALLATION), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(result.current.userCode).toBe('WXYZ-2345'));
+  // The code-entry page approves it; this hook never records a decision of its own.
+  mocks.pending = false;
+  await waitFor(() => expect(result.current.pending).toBeUndefined(), { timeout: 5_000 });
+  await waitFor(() => expect(mocks.snapshotCalls).toBeGreaterThanOrEqual(2), { timeout: 6_000 });
+}, 20_000);

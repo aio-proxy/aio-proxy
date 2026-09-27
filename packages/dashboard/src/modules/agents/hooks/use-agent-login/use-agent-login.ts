@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 
@@ -22,16 +23,23 @@ export const useAgentLogin = (installationId: string) => {
   const settled = decide.data?.status === 'approved' || decide.data?.status === 'denied';
   const pending = useQuery({ ...agentPendingLoginQueryOptions(installationId), enabled: !settled });
   const authorization = pending.data?.authorization;
+  // A pending request that disappears was decided here or on another page; either way the Agent
+  // may be about to redeem it, so remember when it would have expired.
+  const [seenUntil, setSeenUntil] = useState<number>();
+  const pendingUntil = authorization?.status === 'pending' ? Date.parse(authorization.expiresAt) : undefined;
+  if (pendingUntil !== undefined && pendingUntil !== seenUntil) setSeenUntil(pendingUntil);
   // Approval issues the credential only on the Agent's next token poll, so keep refreshing the
   // snapshot until the installation shows as active.
   const granted = decide.data?.status === 'approved' || decide.data?.status === 'consumed';
+  const decidedElsewhere = pendingUntil === undefined && seenUntil !== undefined && decide.data === undefined;
   useQuery({
     ...agentsSnapshotQueryOptions(),
-    enabled: granted,
+    enabled: granted || decidedElsewhere,
     refetchInterval: (query) =>
       query.state.data?.installations.some(
         (item) => item.installationId === installationId && item.authorization === 'active',
-      )
+      ) ||
+      (!granted && seenUntil !== undefined && Date.now() > seenUntil)
         ? false
         : SNAPSHOT_POLL_MS,
   });
