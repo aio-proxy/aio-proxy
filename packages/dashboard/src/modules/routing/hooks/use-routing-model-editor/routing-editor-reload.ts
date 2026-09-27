@@ -4,9 +4,12 @@ import type { RefObject } from 'react';
 import { routingMetadataTouched } from '../../lib/routing-metadata-draft';
 import type { useRoutingForm } from '../use-routing-form';
 import type { useRoutingMetadataForm } from '../use-routing-metadata-form';
-import { routingEditorRebase, type RoutingEditorBaseline } from './routing-editor-baseline';
-
-type RoutingModelIdentity = { modelId: string; revision: string };
+import {
+  routingEditorRebase,
+  routingModelIdentity,
+  type RoutingEditorBaseline,
+  type RoutingModelIdentity,
+} from './routing-editor-baseline';
 
 export type RoutingEditorReloadDeps = {
   /** The model this editor is mounted on, read at the moment Reload is pressed. */
@@ -41,7 +44,7 @@ export const createRoutingEditorReload = (deps: RoutingEditorReloadDeps) => (): 
     if (generation !== deps.generation.current) return;
     if (next == null || next.modelId !== initiatedId) return;
     if (deps.latestModel.current.modelId !== initiatedId) return;
-    deps.appliedIdentity.current = { modelId: next.modelId, revision: next.revision };
+    deps.appliedIdentity.current = routingModelIdentity(next);
     // The pre-reload baseline is the common ancestor of the three-way merge.
     const rebased = routingEditorRebase(
       next,

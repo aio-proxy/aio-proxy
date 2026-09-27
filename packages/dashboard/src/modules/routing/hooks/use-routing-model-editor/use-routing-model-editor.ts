@@ -15,7 +15,13 @@ import { isStaleRoutingError } from '../../services/routing-service';
 import { routingDraftRecord, useRoutingForm } from '../use-routing-form';
 import { useRoutingMetadataForm } from '../use-routing-metadata-form';
 import { useRoutingMutation } from '../use-routing-mutation';
-import { routingEditorBaseline, type RoutingEditorBaseline } from './routing-editor-baseline';
+import {
+  routingEditorBaseline,
+  routingModelIdentity,
+  sameRoutingModelIdentity,
+  type RoutingEditorBaseline,
+  type RoutingModelIdentity,
+} from './routing-editor-baseline';
 import { createRoutingEditorReload } from './routing-editor-reload';
 
 interface UseRoutingModelEditorOptions {
@@ -44,8 +50,8 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const [baseline, setBaseline] = useState<RoutingEditorBaseline>(() => routingEditorBaseline(model));
   const reloadGeneration = useRef(0);
   const latestModel = useRef(model);
-  const previousModelIdentity = useRef({ modelId: model.modelId, revision: model.revision });
-  const appliedReloadIdentity = useRef<{ modelId: string; revision: string } | null>(null);
+  const previousModelIdentity = useRef(routingModelIdentity(model));
+  const appliedReloadIdentity = useRef<RoutingModelIdentity | null>(null);
   const previousReloadModelId = useRef(model.modelId);
   // oxlint-disable-next-line react/refs -- the adoption effect must read the newest same-key model without depending on object identity
   latestModel.current = model;
@@ -92,11 +98,11 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   );
   useEffect(() => {
     const nextModel = latestModel.current;
-    const previous = previousModelIdentity.current;
-    if (previous.modelId === nextModel.modelId && previous.revision === nextModel.revision) return;
-    previousModelIdentity.current = { modelId: nextModel.modelId, revision: nextModel.revision };
+    const identity = routingModelIdentity(nextModel);
+    if (sameRoutingModelIdentity(previousModelIdentity.current, identity)) return;
+    previousModelIdentity.current = identity;
     const appliedReload = appliedReloadIdentity.current;
-    if (appliedReload?.modelId === nextModel.modelId && appliedReload.revision === nextModel.revision) {
+    if (appliedReload !== null && sameRoutingModelIdentity(appliedReload, identity)) {
       appliedReloadIdentity.current = null;
       return;
     }
@@ -107,7 +113,9 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     setBaseline(next);
     form.reset(next.form);
     metadataForm.reset(next.metadata);
-  }, [form, metadataForm, model.modelId, model.revision]);
+    // baselineProviderIds is a dependency because a Provider appearing or disappearing does not move
+    // the revision, and the effect must still reconcile.
+  }, [form, metadataForm, model.modelId, model.revision, model.baselineProviderIds]);
 
   useEffect(() => {
     if (previousReloadModelId.current === model.modelId) return;
@@ -162,7 +170,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     // the server has moved past and the next save earns an avoidable stale_revision.
     const latest = latestModel.current;
     const next = latest.revision === baseline.revision ? baseline : routingEditorBaseline(latest);
-    previousModelIdentity.current = { modelId: latest.modelId, revision: latest.revision };
+    previousModelIdentity.current = routingModelIdentity(latest);
     setBaseline(next);
     form.reset(next.form);
     metadataForm.reset(next.metadata);

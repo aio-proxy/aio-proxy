@@ -64,3 +64,24 @@ export const routingEditorRebase = (
   providers: reconcileRoutingFormRows(draft.providers, model, base),
   metadata: reconcileRoutingMetadataValues(draft.metadata, model),
 });
+
+/**
+ * What must match for a rendered model to be the one the drafts are already based on.
+ *
+ * The revision alone is not enough: it digests `router.models[modelId]` only, so adding or removing
+ * a Provider that serves this model leaves it untouched. Gating on the revision by itself left the
+ * form holding a row for a Provider the config no longer has, and the next save wrote that row back
+ * as an override on it — the server preserves entries outside `baselineProviderIds`, so a stale list
+ * also decided the wrong overrides to keep.
+ */
+export const routingModelIdentity = (model: DashboardRoutingModel) => ({
+  modelId: model.modelId,
+  revision: model.revision,
+  // The list the form's rows mirror, so the effect reconciles exactly when they would go stale.
+  providers: model.providers.map((provider) => provider.id).join('\u0000'),
+});
+
+export type RoutingModelIdentity = ReturnType<typeof routingModelIdentity>;
+
+export const sameRoutingModelIdentity = (left: RoutingModelIdentity, right: RoutingModelIdentity): boolean =>
+  left.modelId === right.modelId && left.revision === right.revision && left.providers === right.providers;

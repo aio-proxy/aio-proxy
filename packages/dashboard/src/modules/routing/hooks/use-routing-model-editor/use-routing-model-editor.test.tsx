@@ -715,3 +715,21 @@ test('adopts a revision that arrived while dirty when the draft is discarded', a
   await act(() => result.current.save());
   expect(mutate.mock.calls[0]?.[0]).toMatchObject({ revision: 'rev-7' });
 });
+
+test('reconciles a Provider that appears without a revision change', async () => {
+  // The revision digests router.models[modelId] only, so a Provider that starts serving this model
+  // leaves it untouched. Gating on the revision alone left the form's rows and the baseline Provider
+  // list stale — and the server preserves overrides for Providers outside that list, so a stale list
+  // also decided the wrong ones to keep.
+  const { result, rerender, mutate } = renderEditor();
+
+  expect(result.current.form.state.values.providers).toHaveLength(1);
+
+  rerender({ model: { ...modelWithOpenai(), baselineProviderIds: ['anthropic', 'openai'] } });
+
+  expect(result.current.form.state.values.providers.map((row) => row.providerId)).toEqual(['anthropic', 'openai']);
+
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({ baselineProviderIds: ['anthropic', 'openai'] });
+});
