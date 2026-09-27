@@ -266,6 +266,8 @@ afterEach(() => {
   queryClient.clear();
   mutationMocks.mutate.mockReset();
   mutationMocks.reset.mockReset();
+  mutationMocks.isPending = false;
+  mutationMocks.error = null;
   routingQueryMocks.refetch.mockReset();
 });
 
@@ -367,4 +369,38 @@ test('cancel clears the unsaved marker without saving', async () => {
 
   expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).not.toHaveTextContent(/未保存|Unsaved/u);
   expect(mutationMocks.mutate).not.toHaveBeenCalled();
+});
+
+test('stops accepting edits while a save is in flight', async () => {
+  // The save body and the defaults the forms snap back to on success are both snapshotted when Save
+  // is pressed, so anything typed while the request is in flight is neither sent nor kept. The
+  // controls lock until it settles.
+  mutationMocks.isPending = true;
+  renderPage({ models: [modelFixture('sonnet')] });
+
+  fireEvent.click(await screen.findByRole('tab', { name: m['dashboard.routing.detail.tab_cost']() }));
+
+  const inputs = await waitFor(() => {
+    const found = screen.getAllByRole('spinbutton');
+    expect(found.length).toBeGreaterThan(0);
+    return found;
+  });
+  for (const input of inputs) expect(input).toBeDisabled();
+
+  // The config is still writable — the lock is about the in-flight request, not permissions, so the
+  // read-only notice must stay away.
+  expect(screen.queryByText(m['dashboard.routing.read_only']())).not.toBeInTheDocument();
+});
+
+test('accepts edits again once no save is in flight', async () => {
+  renderPage({ models: [modelFixture('sonnet')] });
+
+  fireEvent.click(await screen.findByRole('tab', { name: m['dashboard.routing.detail.tab_cost']() }));
+
+  const inputs = await waitFor(() => {
+    const found = screen.getAllByRole('spinbutton');
+    expect(found.length).toBeGreaterThan(0);
+    return found;
+  });
+  for (const input of inputs) expect(input).toBeEnabled();
 });

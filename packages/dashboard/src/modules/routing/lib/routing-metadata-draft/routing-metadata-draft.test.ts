@@ -5,7 +5,9 @@ import { expect, test } from '@rstest/core';
 import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
+  routingDirtyTabs,
   routingMetadataFormValues,
+  routingMetadataTouched,
   routingOverrideDraftsValid,
 } from './routing-metadata-draft';
 
@@ -119,4 +121,43 @@ test('a touched valid or cleared limit stays valid', () => {
       b: { cost: { touched: false, value: undefined }, limit: { touched: true, value: undefined } },
     }),
   ).toBe(true);
+});
+
+const metadataValues = (over: {
+  readonly metadataTouched?: boolean;
+  readonly costTouched?: boolean;
+  readonly limitTouched?: boolean;
+}) => ({
+  metadata: { touched: over.metadataTouched ?? false, value: undefined },
+  overrides: {
+    a: {
+      cost: { touched: over.costTouched ?? false, value: undefined },
+      limit: { touched: over.limitTouched ?? false, value: undefined },
+    },
+  },
+});
+
+test('names the dirty tabs in the order the editor renders them', () => {
+  // The tab markers and the navigation guard both read this, so the order is part of the contract.
+  expect(routingDirtyTabs(true, metadataValues({ metadataTouched: true, costTouched: true }))).toStrictEqual([
+    'topology',
+    'metadata',
+    'cost',
+  ]);
+  expect(routingDirtyTabs(false, metadataValues({}))).toStrictEqual([]);
+});
+
+test('counts a touched limit group as cost-tab work, not metadata-tab work', () => {
+  // Cost and limit overrides share one tab, and neither is the metadata draft.
+  expect(routingDirtyTabs(false, metadataValues({ limitTouched: true }))).toStrictEqual(['cost']);
+  expect(routingDirtyTabs(false, metadataValues({ metadataTouched: true }))).toStrictEqual(['metadata']);
+});
+
+test('reports metadata work from either half of the form', () => {
+  // The model-identity resync refuses to overwrite drafts, so missing either half would silently
+  // discard the user's edits when a refetch brings a new revision.
+  expect(routingMetadataTouched(metadataValues({}))).toBe(false);
+  expect(routingMetadataTouched(metadataValues({ metadataTouched: true }))).toBe(true);
+  expect(routingMetadataTouched(metadataValues({ costTouched: true }))).toBe(true);
+  expect(routingMetadataTouched(metadataValues({ limitTouched: true }))).toBe(true);
 });

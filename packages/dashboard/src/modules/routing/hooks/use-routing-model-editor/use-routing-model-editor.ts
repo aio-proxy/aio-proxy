@@ -6,8 +6,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
-  routingOverrideDraftsValid,
+  routingDirtyTabs,
   routingMetadataFormValues,
+  routingMetadataTouched,
+  routingOverrideDraftsValid,
   type RoutingMetadataFormValues,
 } from '../../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../../lib/routing-summary';
@@ -101,11 +103,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       return;
     }
 
-    const metadataValues = metadataForm.state.values;
-    const metadataTouched =
-      metadataValues.metadata.touched ||
-      Object.values(metadataValues.overrides).some((override) => override.cost.touched || override.limit.touched);
-    if (form.state.isDirty || metadataTouched) return;
+    if (form.state.isDirty || routingMetadataTouched(metadataForm.state.values)) return;
 
     const nextFormDefaults = routingFormValues(nextModel);
     const nextMetadataDefaults = routingMetadataFormValues(nextModel);
@@ -132,13 +130,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const canSubmit = useStore(form.store, (state) => state.canSubmit);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const metadataValues = useStore(metadataForm.store, (state) => state.values);
-  const dirtyTabs = [
-    ...(topologyDirty ? (['topology'] as const) : []),
-    ...(metadataValues.metadata.touched ? (['metadata'] as const) : []),
-    ...(Object.values(metadataValues.overrides).some((override) => override.cost.touched || override.limit.touched)
-      ? (['cost'] as const)
-      : []),
-  ];
+  const dirtyTabs = routingDirtyTabs(topologyDirty, metadataValues);
   const routeDirty = dirtyTabs.length > 0;
   const canSave =
     writable &&
@@ -211,6 +203,9 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     stale,
     reload,
     blocker,
+    /** A save is in flight. Owners must stop accepting edits: the PUT body and the defaults the
+     * forms reset to on success are both snapshotted at submit time. */
+    saving: mutation.isPending,
     saveFailed: mutation.error != null && !isStaleRoutingError(mutation.error),
     metadataValid,
     setMetadataValid,

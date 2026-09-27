@@ -551,3 +551,19 @@ test('keeps the navigation guard callbacks stable while the dirty state is uncha
   expect(mocks.shouldBlock).not.toBe(firstShouldBlock);
   expect(blockerEnabledFor()).toBe(true);
 });
+
+test('reports a save in flight so owners can stop accepting edits', () => {
+  // Both the PUT body and the defaults the forms reset to on success are snapshotted when Save is
+  // pressed, so an edit made while the request is in flight is neither sent nor kept. Owners need
+  // this flag to lock their controls for the duration.
+  mocks.mutationPending = true;
+  const { result } = renderEditor();
+
+  expect(result.current.saving).toBe(true);
+});
+
+test('reports no save in flight while idle', () => {
+  const { result } = renderEditor();
+
+  expect(result.current.saving).toBe(false);
+});

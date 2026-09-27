@@ -84,6 +84,26 @@ export const routingOverrideDraftsValid = (overrides: RoutingMetadataFormValues[
     (draft) => touchedGroupValid(draft.cost, ModelCostSchema) && touchedGroupValid(draft.limit, ModelLimitSchema),
   );
 
+/** Which editor tab holds unsaved work. Drives both the per-tab markers and the navigation guard. */
+export type RoutingDirtyTab = 'topology' | 'metadata' | 'cost';
+
+/** True when any cost or limit override group has been touched. */
+export const routingOverrideDraftsTouched = (overrides: RoutingMetadataFormValues['overrides']): boolean =>
+  Object.values(overrides).some((override) => override.cost.touched || override.limit.touched);
+
+/** True when either half of the metadata form holds unsaved work. */
+export const routingMetadataTouched = (values: RoutingMetadataFormValues): boolean =>
+  values.metadata.touched || routingOverrideDraftsTouched(values.overrides);
+
+export const routingDirtyTabs = (
+  topologyDirty: boolean,
+  metadata: RoutingMetadataFormValues,
+): readonly RoutingDirtyTab[] => [
+  ...(topologyDirty ? (['topology'] as const) : []),
+  ...(metadata.metadata.touched ? (['metadata'] as const) : []),
+  ...(routingOverrideDraftsTouched(metadata.overrides) ? (['cost'] as const) : []),
+];
+
 const patchOf = <T extends object>(draft: RoutingMetadataDraft<T> | undefined): T | null | undefined => {
   if (draft === undefined || !draft.touched) return undefined;
   // A draft whose every field was cleared means "remove the stored override", not "store {}".

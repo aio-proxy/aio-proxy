@@ -38,6 +38,11 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
   onReload,
 }) => {
   const editor = useRoutingModelEditor({ model, writable, onReload });
+  // The save body and the defaults the forms snap back to are both captured when Save is pressed,
+  // so an edit made while the request is in flight would be neither sent nor kept. The controls stop
+  // accepting input until it settles. The read-only notice below stays keyed on the real `writable`,
+  // because an in-flight save is not the same thing as a config the dashboard cannot write.
+  const editable = writable && !editor.saving;
 
   return (
     <>
@@ -64,19 +69,19 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
           <TabsTrigger value="traffic">{m['dashboard.routing.detail.tab_traffic']()}</TabsTrigger>
         </TabsList>
         <TabsContent value="topology">
-          <RoutingModelTopologyTab form={editor.form} model={model} writable={writable} actual={actual} />
+          <RoutingModelTopologyTab form={editor.form} model={model} writable={editable} actual={actual} />
         </TabsContent>
         <TabsContent value="metadata">
           <RoutingModelMetadataTab
             metadataForm={editor.metadataForm}
             modelId={model.modelId}
             catalog={model.catalog}
-            writable={writable}
+            writable={editable}
             setMetadataValid={editor.setMetadataValid}
           />
         </TabsContent>
         <TabsContent value="cost">
-          <RoutingModelCostTab metadataForm={editor.metadataForm} providers={model.providers} writable={writable} />
+          <RoutingModelCostTab metadataForm={editor.metadataForm} providers={model.providers} writable={editable} />
         </TabsContent>
         <TabsContent value="traffic">
           <RoutingModelTrafficTab modelId={model.modelId} range={range} />
