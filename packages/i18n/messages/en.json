@@ -1539,7 +1539,6 @@
       "description": "Connect coding Agents on this machine to aio-proxy.",
       "load_failed": "Could not load Agents.",
       "not_found": "Unknown Agent.",
-      "open": "Open {target}",
       "kind": {
         "plugin": "Plugin",
         "auth_command": "Auth command",
@@ -1564,11 +1563,13 @@
         "missing": "Some managed files are missing. Repair reinstalls them.",
         "outdated": "A newer adapter ships with this aio-proxy version."
       },
-      "authorizations_summary": "{active} active · {expired} expired · {revoked} revoked",
       "banner": {
         "password_required": "Set a Dashboard password before Agents can be authorized while API keys are required.",
         "remote_request": "You are viewing aio-proxy from another machine. One-click setup only works in a browser on the machine running aio-proxy.",
-        "unavailable": "One-click setup is not available for this aio-proxy (for example, it runs in a container). Run the commands below where your Agents are installed."
+        "unavailable": "This aio-proxy cannot set up Agents with one click (for example, it runs in a container). Run the commands from each Agent's details page on the machine where it is installed.",
+        "unavailable_title": "One-click setup unavailable",
+        "remote_request_title": "One-click setup is local only",
+        "password_required_title": "Dashboard password required"
       },
       "action": {
         "configure": "Configure",
@@ -1703,6 +1704,15 @@
         "conflict": "config.toml has aio-proxy entries that conflict with your edits. Resolve them with the CLI.",
         "submit": "Save",
         "current": "Provider {providerId}, {mode}"
+      },
+      "card": {
+        "via": {
+          "plugin": "Connects through the aio-proxy plugin",
+          "auth_command": "Signs in with the Agent's login command",
+          "static_config": "Writes the Agent's global config"
+        },
+        "active_authorizations": "Active authorizations: {count}",
+        "no_active_authorizations": "No active authorization"
       }
     }
   }

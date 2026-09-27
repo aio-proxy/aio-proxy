@@ -1539,7 +1539,6 @@
       "description": "把本機的程式設計 Agent 接入 aio-proxy。",
       "load_failed": "無法載入 Agent。",
       "not_found": "未知的 Agent。",
-      "open": "開啟 {target}",
       "kind": {
         "plugin": "外掛",
         "auth_command": "認證指令",
@@ -1564,11 +1563,13 @@
         "missing": "部分託管檔案缺失，修復會重新安裝。",
         "outdated": "目前 aio-proxy 版本帶有更新的轉接器。"
       },
-      "authorizations_summary": "{active} 個有效 · {expired} 個過期 · {revoked} 個已撤銷",
       "banner": {
         "password_required": "啟用 API Key 驗證時，需要先設定Dashboard 密碼才能授權 Agent。",
         "remote_request": "你正在從其他機器存取 aio-proxy。一鍵設定只能在執行 aio-proxy 的那台機器的瀏覽器裡使用。",
-        "unavailable": "目前 aio-proxy 不支援一鍵設定（例如執行在容器中）。請在安裝 Agent 的機器上執行下面的指令。"
+        "unavailable": "目前 aio-proxy 不支援一鍵設定（例如執行在容器中）。請在安裝 Agent 的機器上執行詳情頁中的指令。",
+        "unavailable_title": "不支援一鍵設定",
+        "remote_request_title": "一鍵設定僅限本機",
+        "password_required_title": "需要設定 Dashboard 密碼"
       },
       "action": {
         "configure": "設定",
@@ -1703,6 +1704,15 @@
         "conflict": "config.toml 中的 aio-proxy 項目與你的修改衝突，請用 CLI 處理。",
         "submit": "儲存",
         "current": "Provider {providerId}，{mode}"
+      },
+      "card": {
+        "via": {
+          "plugin": "透過 aio-proxy 外掛接入",
+          "auth_command": "透過 Agent 的登入指令授權",
+          "static_config": "寫入 Agent 的全域設定"
+        },
+        "active_authorizations": "{count} 個有效授權",
+        "no_active_authorizations": "尚無有效授權"
       }
     }
   }

@@ -1539,7 +1539,6 @@
       "description": "이 머신의 코딩 Agent를 aio-proxy에 연결합니다.",
       "load_failed": "Agent를 불러오지 못했습니다.",
       "not_found": "알 수 없는 Agent입니다.",
-      "open": "{target} 열기",
       "kind": {
         "plugin": "플러그인",
         "auth_command": "인증 명령",
@@ -1564,11 +1563,13 @@
         "missing": "일부 관리 파일이 없습니다. 복구하면 다시 설치합니다.",
         "outdated": "이 aio-proxy 버전에 더 새로운 어댑터가 포함되어 있습니다."
       },
-      "authorizations_summary": "활성 {active} · 만료 {expired} · 취소 {revoked}",
       "banner": {
         "password_required": "API 키가 필수일 때는 Agent를 승인하기 전에 대시보드 비밀번호를 설정하세요.",
         "remote_request": "다른 머신에서 aio-proxy를 보고 있습니다. 원클릭 설정은 aio-proxy를 실행하는 머신의 브라우저에서만 사용할 수 있습니다.",
-        "unavailable": "이 aio-proxy에서는 원클릭 설정을 사용할 수 없습니다(예: 컨테이너에서 실행 중). Agent가 설치된 머신에서 아래 명령을 실행하세요."
+        "unavailable": "이 aio-proxy에서는 원클릭 설정을 사용할 수 없습니다(예: 컨테이너에서 실행 중). Agent가 설치된 머신에서 상세 페이지의 명령을 실행하세요.",
+        "unavailable_title": "원클릭 설정을 사용할 수 없음",
+        "remote_request_title": "원클릭 설정은 로컬 전용",
+        "password_required_title": "대시보드 비밀번호 필요"
       },
       "action": {
         "configure": "구성",
@@ -1703,6 +1704,15 @@
         "conflict": "config.toml의 aio-proxy 항목이 직접 수정한 내용과 충돌합니다. CLI로 해결하세요.",
         "submit": "저장",
         "current": "프로바이더 {providerId}, {mode}"
+      },
+      "card": {
+        "via": {
+          "plugin": "aio-proxy 플러그인으로 연결",
+          "auth_command": "Agent 로그인 명령으로 승인",
+          "static_config": "Agent 전역 설정에 기록"
+        },
+        "active_authorizations": "활성 승인 {count}개",
+        "no_active_authorizations": "활성 승인 없음"
       }
     }
   }

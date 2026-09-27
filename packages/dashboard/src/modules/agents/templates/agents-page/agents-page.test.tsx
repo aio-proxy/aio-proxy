@@ -44,11 +44,9 @@ test('lists every supported Agent with its local status when setup is available 
   for (const target of ['opencode', 'pi', 'omp', 'codex', 'grok'])
     expect(screen.getByTestId(`agent-card-${target}`)).toBeTruthy();
   expect(within(screen.getByTestId('agent-card-pi')).getByText(/Not installed|未安装/u)).toBeTruthy();
-  expect(
-    within(screen.getByTestId('agent-card-opencode'))
-      .getByRole('button', { name: /OpenCode/u })
-      .getAttribute('href'),
-  ).toBe('/agents/opencode');
+  // The card links to the details page; it is not an action that opens the Agent itself.
+  expect(screen.getByTestId('agent-card-opencode').getAttribute('href')).toBe('/agents/opencode');
+  expect(screen.queryByRole('button')).toBeNull();
   expect(screen.queryByTestId('agents-banner')).toBeNull();
 });
 
@@ -59,7 +57,7 @@ test.each([
   const { local: _local, ...rest } = snapshot();
   mocks.snapshot.data = { ...rest, localSetup };
   render(<AgentsPage />);
-  expect(screen.getByTestId('agents-banner').textContent).toMatch(message);
+  expect(within(screen.getByTestId('agents-banner')).getByRole('alert').textContent).toMatch(message);
 });
 
 test('warns when Agent authorization needs a Dashboard password', () => {

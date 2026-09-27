@@ -1539,7 +1539,6 @@
       "description": "このマシンのコーディング Agent を aio-proxy に接続します。",
       "load_failed": "Agent を読み込めませんでした。",
       "not_found": "不明な Agent です。",
-      "open": "{target} を開く",
       "kind": {
         "plugin": "プラグイン",
         "auth_command": "認証コマンド",
@@ -1564,11 +1563,13 @@
         "missing": "一部の管理ファイルがありません。修復すると再インストールします。",
         "outdated": "この aio-proxy には新しいアダプターが含まれています。"
       },
-      "authorizations_summary": "有効 {active} · 期限切れ {expired} · 取り消し済み {revoked}",
       "banner": {
         "password_required": "API キーが必須のときは、Agent を承認する前にダッシュボードのパスワードを設定してください。",
         "remote_request": "別のマシンから aio-proxy を表示しています。ワンクリック設定は aio-proxy を実行しているマシンのブラウザーでのみ使えます。",
-        "unavailable": "この aio-proxy ではワンクリック設定を利用できません（コンテナーで実行中など）。Agent がインストールされているマシンで以下のコマンドを実行してください。"
+        "unavailable": "この aio-proxy ではワンクリック設定を利用できません（コンテナーで実行中など）。Agent がインストールされているマシンで、詳細ページのコマンドを実行してください。",
+        "unavailable_title": "ワンクリック設定は利用できません",
+        "remote_request_title": "ワンクリック設定はローカル専用です",
+        "password_required_title": "ダッシュボードのパスワードが必要です"
       },
       "action": {
         "configure": "設定",
@@ -1703,6 +1704,15 @@
         "conflict": "config.toml の aio-proxy エントリーがあなたの編集と競合しています。CLI で解決してください。",
         "submit": "保存",
         "current": "プロバイダー {providerId}、{mode}"
+      },
+      "card": {
+        "via": {
+          "plugin": "aio-proxy プラグインで接続",
+          "auth_command": "Agent のログインコマンドで承認",
+          "static_config": "Agent のグローバル設定に書き込み"
+        },
+        "active_authorizations": "有効な承認 {count} 件",
+        "no_active_authorizations": "有効な承認はありません"
       }
     }
   }

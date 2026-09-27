@@ -1539,7 +1539,6 @@
       "description": "把本机的编码 Agent 接入 aio-proxy。",
       "load_failed": "无法加载 Agent。",
       "not_found": "未知的 Agent。",
-      "open": "打开 {target}",
       "kind": {
         "plugin": "插件",
         "auth_command": "认证命令",
@@ -1564,11 +1563,13 @@
         "missing": "部分托管文件缺失，修复会重新安装。",
         "outdated": "当前 aio-proxy 版本带有更新的适配器。"
       },
-      "authorizations_summary": "{active} 个有效 · {expired} 个过期 · {revoked} 个已撤销",
       "banner": {
         "password_required": "启用 API Key 校验时，需要先设置控制台密码才能授权 Agent。",
         "remote_request": "你正在从其他机器访问 aio-proxy。一键配置只能在运行 aio-proxy 的那台机器的浏览器里使用。",
-        "unavailable": "当前 aio-proxy 不支持一键配置（例如运行在容器中）。请在安装 Agent 的机器上运行下面的命令。"
+        "unavailable": "当前 aio-proxy 不支持一键配置（例如运行在容器中）。请在安装 Agent 的机器上运行详情页中的命令。",
+        "unavailable_title": "不支持一键配置",
+        "remote_request_title": "一键配置仅限本机",
+        "password_required_title": "需要设置控制台密码"
       },
       "action": {
         "configure": "配置",
@@ -1703,6 +1704,15 @@
         "conflict": "config.toml 中的 aio-proxy 条目与你的修改冲突，请用 CLI 处理。",
         "submit": "保存",
         "current": "Provider {providerId}，{mode}"
+      },
+      "card": {
+        "via": {
+          "plugin": "通过 aio-proxy 插件接入",
+          "auth_command": "通过 Agent 的登录命令授权",
+          "static_config": "写入 Agent 的全局配置"
+        },
+        "active_authorizations": "{count} 个有效授权",
+        "no_active_authorizations": "暂无有效授权"
       }
     }
   }
