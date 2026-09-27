@@ -122,6 +122,21 @@ test('command mode commits the submitted selection, forwards the device code, an
   expect(result).toMatchObject({ status: 'configured', providerId: 'aio-proxy', migration: { migrated: 2 } });
 });
 
+test('a shutdown during the config commit keeps the chosen sessions from being migrated', async () => {
+  const { deps, migrateSessions } = setupFixture();
+  const plan = await buildCodexSetupPlan(deps);
+  const controller = new AbortController();
+  const operation = { signal: controller.signal, onDevice: () => controller.abort() };
+  const result = await configureCodexFromDashboard(
+    { providerId: 'aio-proxy', auth: { mode: 'command' }, migrateFrom: ['openai'], planToken: plan.planToken },
+    operation,
+    deps,
+  );
+  // The committed config stands; the migration is reported as not done rather than started late.
+  expect(result).toMatchObject({ status: 'configured', migration: { status: 'blocked', migrated: 0 } });
+  expect(migrateSessions).not.toHaveBeenCalled();
+});
+
 test('keep-chatgpt without migration commits the chosen key and leaves sessions alone', async () => {
   const { deps, commitSetup, migrateSessions } = setupFixture();
   const plan = await buildCodexSetupPlan(deps);

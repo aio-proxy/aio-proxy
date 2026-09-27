@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 
@@ -20,6 +20,11 @@ export const useAgentLogin = (installationId: string) => {
     // Also refreshes the pending request, so an expired or already-used one stops showing controls.
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
   });
+  // The login panel shows only while the cached snapshot says the installation is not signed in. A
+  // challenge redeemed before this mount has already left the pending endpoint, so check once now.
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.agents, exact: true });
+  }, [installationId, queryClient]);
   // Keeps polling after a decision: the Agent may retry and start a new challenge for this installation.
   const pending = useQuery(agentPendingLoginQueryOptions(installationId));
   const pendingNow = pending.data?.authorization?.status === 'pending' ? pending.data.authorization : undefined;

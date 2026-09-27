@@ -159,6 +159,11 @@ export async function configureCodexFromDashboard(
         signal: events.signal,
         onDevice: async (device) => events.onDevice(device.user_code),
       }),
-    migrateSessions: deps.migrateSessions,
+    // The migration rewrites sessions under its own journal, so it is only stopped before it starts:
+    // a shutdown during the config commit leaves the sessions untouched.
+    migrateSessions: async (targets, providerId) => {
+      if (events.signal.aborted) throw new AgentOperationError('cancelled');
+      return deps.migrateSessions(targets, providerId);
+    },
   });
 }

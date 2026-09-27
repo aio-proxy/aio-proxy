@@ -184,3 +184,16 @@ test('a page opened after the request was approved elsewhere still follows it un
   mocks.pending = true;
   mocks.decidedElsewhere = undefined;
 }, 20_000);
+
+test('mounting the login panel re-checks the snapshot in case the Agent already signed in', async () => {
+  mocks.pending = false;
+  const client = new QueryClient();
+  const invalidate = rs.spyOn(client, 'invalidateQueries');
+  renderHook(() => useAgentLogin(INSTALLATION), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agents'], exact: true }));
+  mocks.pending = true;
+});
