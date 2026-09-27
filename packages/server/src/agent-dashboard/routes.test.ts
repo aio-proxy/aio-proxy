@@ -305,3 +305,22 @@ test.each([
   const done = await f.until(operationId, final);
   if (done.status === 'failed') expect(done.error).toBe('authorization_denied');
 });
+
+test('an unfinished operation is listed even when local inspection fails', async () => {
+  const codes: { userCode?: string } = {};
+  let deviceCode: () => Promise<string> = async () => '';
+  const f = await fixture({
+    host: {
+      ...codexHost(deferred(), codes, () => deviceCode()),
+      inspect: async () => {
+        throw new Error('unreadable Agent path');
+      },
+    },
+  });
+  deviceCode = f.deviceCode;
+  const { operationId } = (await (await codexOperation(f)).json()) as AgentOperationState;
+  const waiting = await f.until(operationId, 'awaiting_approval');
+  const snapshot = await (await f.request('')).json();
+  expect(snapshot.local).toBeUndefined();
+  expect(snapshot.operations).toEqual([waiting]);
+});

@@ -123,7 +123,9 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
         deviceAuthorization: server.requireApiKey && server.password === undefined ? 'password_required' : 'available',
         adapterVersion: input.adapterVersion,
         installations: [...identity.listInstallations()],
-        ...(local === undefined ? {} : { local: [...local], operations: operations.active() }),
+        ...(local === undefined ? {} : { local: [...local] }),
+        // Listed even when inspection fails: an unfinished operation still blocks new ones.
+        ...(setup === 'available' ? { operations: operations.active() } : {}),
       };
       return context.json(snapshot);
     })

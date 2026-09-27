@@ -9,7 +9,7 @@ const mocks = rs.hoisted(() => ({
   login: {
     pending: undefined as Extract<AgentAuthorizationDetails, { status: 'pending' }> | undefined,
     decide: rs.fn(),
-    decision: undefined,
+    decision: undefined as string | undefined,
     isDeciding: false,
     failed: false,
   },
@@ -35,4 +35,13 @@ test('approval controls disappear once the pending request expires or is decided
   mocks.login.pending = undefined;
   view.rerender(<LoginPanel target="opencode" installationId={INSTALLATION} loginCommand="opencode auth login" />);
   expect(screen.queryByRole('button', { name: /Approve|批准/u })).toBeNull();
+});
+
+test('an approval that lost the race to expiry says so instead of offering the request again', () => {
+  mocks.login.pending = undefined;
+  mocks.login.decision = 'expired';
+  render(<LoginPanel target="opencode" installationId={INSTALLATION} loginCommand="opencode auth login" />);
+  expect(screen.getByText(/expired|过期/u)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /Approve|批准/u })).toBeNull();
+  mocks.login.decision = undefined;
 });

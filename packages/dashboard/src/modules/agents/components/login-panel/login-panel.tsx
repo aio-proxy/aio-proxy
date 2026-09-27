@@ -17,7 +17,9 @@ export const LoginPanel: React.FC<LoginPanelProps> = ({ target, installationId, 
   const name = AGENT_DISPLAY_NAMES[target];
   const login = useAgentLogin(installationId);
   const body = (() => {
-    if (login.decision === 'approved')
+    if (login.decision === 'expired')
+      return <p className="text-sm">{m['dashboard.agents.error.authorization_expired']()}</p>;
+    if (login.decision === 'approved' || login.decision === 'consumed')
       return <p className="text-sm">{m['dashboard.agents.login.approved']({ target: name })}</p>;
     if (login.decision === 'denied')
       return <p className="text-sm">{m['dashboard.agents.error.authorization_denied']()}</p>;

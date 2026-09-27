@@ -1,7 +1,7 @@
 import type { AgentOperationState, AgentsSnapshot } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useAgentOperation } from './use-agent-operation';
 
@@ -51,4 +51,18 @@ test('a page reloaded mid-approval adopts the unfinished operation instead of st
 
   const other = renderHook(() => useAgentOperation('grok', ['configure']), { wrapper });
   expect(other.result.current.state).toBeUndefined();
+});
+
+test('starting an operation refreshes the snapshot so a remount can adopt it', async () => {
+  mocks.snapshot.data = undefined;
+  mocks.start.mockResolvedValue(waiting);
+  const client = new QueryClient();
+  const invalidate = rs.spyOn(client, 'invalidateQueries');
+  const { result } = renderHook(() => useAgentOperation('codex', ['configure']), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  act(() => result.current.start({ kind: 'configure', target: 'grok' }));
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agents'], exact: true }));
 });

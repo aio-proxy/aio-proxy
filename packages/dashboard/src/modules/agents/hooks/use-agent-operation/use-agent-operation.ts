@@ -27,6 +27,8 @@ export const useAgentOperation = (target: AgentTarget, kinds: readonly AgentOper
     onSuccess: (state) => {
       remember(state);
       setStartedId(state.operationId);
+      // The snapshot must list this operation so a remount within its stale time can adopt it.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents, exact: true });
     },
   });
   const decide = useMutation({

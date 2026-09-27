@@ -10,9 +10,11 @@ export const useAgentLogin = (installationId: string) => {
   const decide = useMutation({
     mutationFn: ({ deviceId, decision }: { deviceId: string; decision: 'approve' | 'deny' }) =>
       decideAgentLogin(deviceId, decision),
+    // Also refreshes the pending request, so an expired or already-used one stops showing controls.
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
   });
-  const pending = useQuery({ ...agentPendingLoginQueryOptions(installationId), enabled: decide.data === undefined });
+  const settled = decide.data?.status === 'approved' || decide.data?.status === 'denied';
+  const pending = useQuery({ ...agentPendingLoginQueryOptions(installationId), enabled: !settled });
   const authorization = pending.data?.authorization;
   return {
     pending: authorization?.status === 'pending' ? authorization : undefined,
