@@ -111,19 +111,21 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
       return undefined;
     }
   };
-  // Cancel also denies the challenge so the Agent side cannot redeem it after the dashboard gave up.
   const decide = (context: Context, operationId: string, decision: 'approve' | 'deny' | 'cancel') => {
     const deviceId = operations.device(operationId);
     if (deviceId === undefined) return context.json({ error: 'not_awaiting_approval' as const }, 409);
     try {
-      const status = challenges[decision === 'approve' ? 'approve' : 'deny'](deviceId, requestPeer(context));
-      // A challenge decided on the authorize page first keeps that decision; cancel always aborts.
+      if (decision === 'cancel') {
+        // Even an approval given on the authorize page is withdrawn, so no credential is minted afterwards.
+        challenges.cancel(deviceId);
+        return context.json(operations.stop(operationId, 'cancelled')!);
+      }
+      const status = challenges[decision](deviceId, requestPeer(context));
+      // A challenge decided on the authorize page first keeps that decision.
       const state =
-        decision === 'cancel'
-          ? operations.stop(operationId, 'cancelled')
-          : status === 'approved' || status === 'consumed'
-            ? operations.resume(operationId)
-            : operations.stop(operationId, status);
+        status === 'approved' || status === 'consumed'
+          ? operations.resume(operationId)
+          : operations.stop(operationId, status);
       return context.json(state!);
     } catch (error) {
       if (error instanceof DeviceChallengeError) return context.json({ error: error.code }, error.status);

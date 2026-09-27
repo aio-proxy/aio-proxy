@@ -152,3 +152,21 @@ test.each([
   render(<AgentDetailPage target="opencode" />);
   expect(screen.queryByTestId('login-panel') !== null).toBe(shown);
 });
+
+test('reconfiguring an Agent that is already signed in does not ask it to log in again', () => {
+  mocks.snapshot.data = snapshot('opencode', 'configured');
+  mocks.operation.state = {
+    operationId: '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c',
+    target: 'opencode',
+    kind: 'configure',
+    status: 'succeeded',
+    result: {
+      target: 'opencode',
+      status: 'updated',
+      installationId: INSTALLATION,
+      loginCommand: 'opencode auth login',
+    },
+  } as AgentOperationState;
+  render(<AgentDetailPage target="opencode" />);
+  expect(screen.queryByTestId('login-panel')).toBeNull();
+});

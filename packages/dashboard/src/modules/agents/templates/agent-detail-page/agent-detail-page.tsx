@@ -64,6 +64,13 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
                 local={local}
                 localSetup={data.localSetup}
                 {...(pendingLogin === undefined ? {} : { pendingLoginInstallationId: pendingLogin })}
+                activeInstallationIds={
+                  new Set(
+                    data.installations
+                      .filter((item) => item.authorization === 'active')
+                      .map((item) => item.installationId),
+                  )
+                }
               />
               <RemoveAgentDialog target={target} removable={removable} disabled={data.localSetup !== 'available'} />
             </div>

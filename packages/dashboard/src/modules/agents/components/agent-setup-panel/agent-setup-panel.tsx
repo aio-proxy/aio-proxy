@@ -19,6 +19,8 @@ interface AgentSetupPanelProps {
   readonly localSetup: AgentLocalSetup;
   /** A configured installation that has not signed in yet, so a reloaded page can still offer the login. */
   readonly pendingLoginInstallationId?: string;
+  /** Installations already signed in; reconfiguring one of them must not ask for another login. */
+  readonly activeInstallationIds: ReadonlySet<string>;
 }
 
 const SETUP_KINDS = ['configure', 'restore_migration'] as const;
@@ -31,6 +33,7 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
   local,
   localSetup,
   pendingLoginInstallationId,
+  activeInstallationIds,
 }) => {
   const operation = useAgentOperation(descriptor.target, SETUP_KINDS);
   const [codexOpen, setCodexOpen] = useState(false);
@@ -39,12 +42,13 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
   const action = primaryAgentAction(local);
   const { state } = operation;
   const result = state?.status === 'succeeded' ? state.result : undefined;
-  const loginInstallationId =
+  const candidate =
     result?.loginCommand === undefined
       ? state === undefined
         ? pendingLoginInstallationId
         : undefined
       : result.installationId;
+  const loginInstallationId = candidate === undefined || activeInstallationIds.has(candidate) ? undefined : candidate;
 
   if (localSetup === 'unavailable') return null;
   return (
