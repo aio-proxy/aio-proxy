@@ -170,3 +170,15 @@ test('shows an alert when the code cannot be resolved', async () => {
   expect(entry()).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
 });
+
+test('retries the same code after a failed resolve', async () => {
+  mocks.resolve.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(PENDING);
+  renderPage();
+  fireEvent.change(entry(), { target: { value: 'ABCDEFGH' } });
+  expect(await screen.findByText(/unavailable/i)).toBeInTheDocument();
+  expect(mocks.resolve).toHaveBeenCalledTimes(1);
+  // Re-pasting the same complete code must start a fresh resolve; the once-per-code latch must not survive a failure.
+  fireEvent.change(entry(), { target: { value: 'abcdefgh' } });
+  await waitFor(() => expect(mocks.resolve).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText('opencode')).toBeInTheDocument();
+});

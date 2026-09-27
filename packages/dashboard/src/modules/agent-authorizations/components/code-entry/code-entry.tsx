@@ -70,6 +70,8 @@ export const CodeEntry: React.FC = () => {
         details = resolved;
         setPending({ code: value.userCode, details: resolved });
       } catch {
+        // A failed resolve must not lock the code out of a retry; the alert invites trying again.
+        autoResolved.current = '';
         // resolve.error renders the alert below the entry
         return;
       }
