@@ -1692,6 +1692,7 @@
         "migrate_help": "これらのプロバイダーで記録されたセッションを新しいプロバイダーに移し、Codex で引き続き表示されるようにします。",
         "migrate_group": "{providerId}（使用中 {active}、アーカイブ {archived}）",
         "migrate_confirm": "選択したセッションを書き換える",
+        "migrate_confirm_required": "続行するにはセッションの移行を確認してください。",
         "conflict": "config.toml の AIO Proxy エントリーがあなたの編集と競合しています。CLI で解決してください。",
         "submit": "保存",
         "current": "プロバイダー {providerId}、{mode}"

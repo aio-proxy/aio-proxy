@@ -57,6 +57,35 @@ test('an occupied provider ID is rejected before anything is sent', async () => 
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
+test('a Codex built-in provider ID is refused like the CLI would', async () => {
+  const onSubmit = rs.fn();
+  render(<CodexSetupForm plan={plan()} busy={false} onSubmit={onSubmit} onRestoreMigration={rs.fn()} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: ' openai ' } });
+  fireEvent.submit(screen.getByTestId('codex-setup-form'));
+  await waitFor(() => expect(screen.getByRole('textbox').closest('[data-invalid]')).not.toBeNull());
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('selecting sessions to migrate without confirming explains why saving is blocked', async () => {
+  const onSubmit = rs.fn();
+  render(
+    <CodexSetupForm
+      plan={plan({
+        defaultAuthMode: 'keep-chatgpt',
+        sessions: { groups: [{ providerId: 'openai', active: 3, archived: 1 }], blocked: 0 },
+      })}
+      busy={false}
+      onSubmit={onSubmit}
+      onRestoreMigration={rs.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByText(/openai/u));
+  await waitFor(() => expect(screen.getAllByRole('checkbox')[0]).toBeChecked());
+  fireEvent.submit(screen.getByTestId('codex-setup-form'));
+  await waitFor(() => expect(screen.getByText(/Confirm the session migration|请先确认迁移会话/u)).toBeTruthy());
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 test('a conflicting config blocks saving', () => {
   render(
     <CodexSetupForm

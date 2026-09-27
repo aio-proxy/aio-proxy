@@ -1692,6 +1692,7 @@
         "migrate_help": "이 프로바이더로 기록된 세션을 새 프로바이더로 옮겨 Codex에서 계속 보이도록 합니다.",
         "migrate_group": "{providerId}(활성 {active}, 보관 {archived})",
         "migrate_confirm": "선택한 세션 다시 쓰기",
+        "migrate_confirm_required": "계속하려면 세션 마이그레이션을 확인하세요.",
         "conflict": "config.toml의 AIO Proxy 항목이 직접 수정한 내용과 충돌합니다. CLI로 해결하세요.",
         "submit": "저장",
         "current": "프로바이더 {providerId}, {mode}"

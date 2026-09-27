@@ -1692,6 +1692,7 @@
         "migrate_help": "这些 provider 下的会话会迁移到新的 provider，在 Codex 中保持可见。",
         "migrate_group": "{providerId}（{active} 个活跃，{archived} 个已归档）",
         "migrate_confirm": "改写所选会话",
+        "migrate_confirm_required": "请先确认迁移会话。",
         "conflict": "config.toml 中的 AIO Proxy 条目与你的修改冲突，请用 CLI 处理。",
         "submit": "保存",
         "current": "Provider {providerId}，{mode}"

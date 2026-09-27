@@ -1692,6 +1692,7 @@
         "migrate_help": "Sessions recorded under these providers move to the new provider so they stay visible in Codex.",
         "migrate_group": "{providerId} ({active} active, {archived} archived)",
         "migrate_confirm": "Rewrite the selected sessions",
+        "migrate_confirm_required": "Confirm the session migration to continue.",
         "conflict": "config.toml has AIO Proxy entries that conflict with your edits. Resolve them with the CLI.",
         "submit": "Save",
         "current": "Provider {providerId}, {mode}"

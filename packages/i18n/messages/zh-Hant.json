@@ -1692,6 +1692,7 @@
         "migrate_help": "這些 provider 下的工作階段會遷移到新的 provider，在 Codex 中保持可見。",
         "migrate_group": "{providerId}（{active} 個使用中，{archived} 個已封存）",
         "migrate_confirm": "改寫所選工作階段",
+        "migrate_confirm_required": "請先確認遷移工作階段。",
         "conflict": "config.toml 中的 AIO Proxy 項目與你的修改衝突，請用 CLI 處理。",
         "submit": "儲存",
         "current": "Provider {providerId}，{mode}"

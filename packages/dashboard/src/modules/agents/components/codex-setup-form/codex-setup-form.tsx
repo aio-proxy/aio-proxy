@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { CodexConfigureInput, CodexSetupPlan } from '@aio-proxy/types';
+import { CodexProviderIdSchema, type CodexConfigureInput, type CodexSetupPlan } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Checkbox } from '@aio-proxy/ui/components/checkbox';
 import { Field, FieldDescription, FieldError, FieldLabel, FieldSet, FieldLegend } from '@aio-proxy/ui/components/field';
@@ -46,9 +46,10 @@ export const CodexSetupForm: React.FC<CodexSetupFormProps> = ({ plan, busy, onSu
         name="providerId"
         validators={{
           onSubmit: ({ value }) => {
-            const id = value.trim();
-            if (id.length === 0) return m['dashboard.agents.error.invalid_provider_id']();
-            return plan.occupiedProviderIds.includes(id)
+            // The same rules the CLI enforces, so an invalid ID never starts an operation.
+            const id = CodexProviderIdSchema.safeParse(value);
+            if (!id.success) return m['dashboard.agents.error.invalid_provider_id']();
+            return plan.occupiedProviderIds.includes(id.data)
               ? m['dashboard.agents.error.occupied_provider_id']()
               : undefined;
           },
@@ -164,7 +165,7 @@ export const CodexSetupForm: React.FC<CodexSetupFormProps> = ({ plan, busy, onSu
                   onChangeListenTo: ['migrateFrom'],
                   onSubmit: ({ value, fieldApi }) =>
                     fieldApi.form.getFieldValue('migrateFrom').length > 0 && !value
-                      ? m['dashboard.agents.codex.migrate_confirm']()
+                      ? m['dashboard.agents.codex.migrate_confirm_required']()
                       : undefined,
                 }}
               >
@@ -177,6 +178,7 @@ export const CodexSetupForm: React.FC<CodexSetupFormProps> = ({ plan, busy, onSu
                       />
                       {m['dashboard.agents.codex.migrate_confirm']()}
                     </FieldLabel>
+                    <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
                   </Field>
                 )}
               </form.Field>

@@ -107,6 +107,27 @@ export const CodexSetupPlanSchema = z.strictObject({
 });
 export type CodexSetupPlan = z.output<typeof CodexSetupPlanSchema>;
 
+/** Codex's built-in model providers; aio-proxy never writes a managed provider under these IDs. */
+export const CODEX_RESERVED_PROVIDER_IDS: readonly string[] = ['openai', 'ollama', 'lmstudio', 'amazon-bedrock'];
+
+const hasControlCharacter = (value: string): boolean =>
+  [...value].some((character) => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+  });
+
+/** A Provider ID aio-proxy may manage in Codex's config.toml; parses to the trimmed ID. */
+export const CodexProviderIdSchema = z
+  .string()
+  .refine((value) => !hasControlCharacter(value), 'control_character')
+  .transform((value) => value.trim())
+  .pipe(
+    z
+      .string()
+      .min(1, 'empty')
+      .refine((id) => !CODEX_RESERVED_PROVIDER_IDS.includes(id), 'reserved'),
+  );
+
 export const CodexConfigureInputSchema = z.strictObject({
   providerId: z.string().min(1),
   auth: z.discriminatedUnion('mode', [

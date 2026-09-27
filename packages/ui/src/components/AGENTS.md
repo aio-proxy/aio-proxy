@@ -31,3 +31,7 @@ edited by hand.
   `onCheckedChange` to `(checked: boolean) => void`. The branch is deliberately limited to
   `size="default"`: `appearance: auto` honours only `accent-color`, so the `sm` geometry cannot be
   reproduced natively.
+- `card.tsx`: `Card` is built on `useRender` (with `mergeProps`, like `badge.tsx`) so it accepts a
+  `render` prop, and exposes `slot`/`size` as state instead of hand-written `data-*` attributes. The
+  dashboard's Agent cards render the whole card as a router link through it; wrapping a `Card` in an
+  `<a>` instead nests the card's ring and focus styles inside a second focus target.
