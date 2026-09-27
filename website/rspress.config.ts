@@ -1,5 +1,7 @@
 import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss';
 import { defineConfig } from '@rspress/core';
+import { pluginLlms } from '@rspress/plugin-llms';
+import { pluginSitemap } from '@rspress/plugin-sitemap';
 import pluginMermaid from 'rspress-plugin-mermaid';
 
 // GitHub Pages serves `docs/public` at the apex. Crawlers require an absolute image URL.
@@ -31,6 +33,7 @@ export default defineConfig({
     },
   ],
   plugins: [
+    pluginLlms(),
     pluginMermaid({
       mermaidConfig: {
         theme: 'neutral',
@@ -39,6 +42,7 @@ export default defineConfig({
         },
       },
     }),
+    pluginSitemap({ siteUrl: 'https://aioproxy.dev' }),
   ],
   builderConfig: {
     plugins: [pluginTailwindcss()],
