@@ -78,7 +78,10 @@ export type ServerStateTestHooks = {
 };
 
 export type InternalServerStateOptions = ServerStateOptions & {
-  readonly __guardianEvaluate?: (sourceProviderId: string) => GuardianEvaluate;
+  readonly __guardianEvaluate?: (source: {
+    readonly providerId?: string;
+    readonly plugin?: string;
+  }) => GuardianEvaluate;
   readonly __dashboardAuthHealthChanged?: (available: boolean) => void;
   readonly __test?: ServerStateTestHooks;
 };

@@ -345,12 +345,12 @@ function guardianRuntimeOptions(
 ): InternalServerStateOptions {
   return {
     ...options,
-    __guardianEvaluate: (sourceProviderId) =>
+    __guardianEvaluate: (source) =>
       createGuardianEvaluate(() => {
         const state = getState();
         if (state === undefined) throw new GuardianEvaluationUnavailable('target_unavailable');
         return state;
-      }, sourceProviderId),
+      }, source),
   };
 }
 

@@ -1,6 +1,7 @@
 import {
   definePlugin,
   type LocalizedText,
+  type LogicalRequestContext,
   type OAuthAdapter,
   type PluginDescriptor,
   type RawTransport,
@@ -23,7 +24,7 @@ import {
   englishPluginOptionsText,
 } from '../plugin-options';
 import { readOpenAIChatGPTQuota, resetOpenAIChatGPTQuota } from '../quota/index';
-import { createGuardianRawInvoke } from '../runtime/guardian';
+import { createGuardianPreRouteInvoke, createGuardianRawInvoke } from '../runtime/guardian/guardian';
 import { guardianPayloadHint } from '../runtime/guardian/request';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
@@ -179,19 +180,37 @@ export function createOpenAIChatGPTPlugin(
       const parsed = await pluginOptionsSpec.schema.parseAsync(options);
       api.oauth.register(createAdapter(parsed));
       const raw: unknown = 'raw' in api ? api.raw : undefined;
-      const wrap =
-        raw !== null && typeof raw === 'object' && 'wrap' in raw && typeof raw.wrap === 'function'
-          ? (raw.wrap as (
-              protocol: 'openai-response',
-              wrap: (input: {
-                readonly original: RawTransport['invoke'];
-                readonly evaluate?: Parameters<typeof createGuardianRawInvoke>[0]['evaluate'];
-              }) => RawTransport['invoke'],
-            ) => void)
+      const register =
+        raw !== null && typeof raw === 'object' && 'register' in raw && typeof raw.register === 'function'
+          ? (raw.register as {
+              (
+                protocol: 'openai-response',
+                phase: 'wrap',
+                hook: (input: {
+                  readonly original: RawTransport['invoke'];
+                  readonly evaluate?: Parameters<typeof createGuardianRawInvoke>[0]['evaluate'];
+                }) => RawTransport['invoke'],
+              ): void;
+              (
+                protocol: 'openai-response',
+                phase: 'pre-route',
+                hook: (input: {
+                  readonly evaluate?: Parameters<typeof createGuardianPreRouteInvoke>[0]['evaluate'];
+                }) => (request: Request, context: LogicalRequestContext) => Promise<Response | undefined>,
+              ): void;
+            })
           : undefined;
-      wrap?.('openai-response', ({ original, evaluate }) =>
+      register?.('openai-response', 'wrap', ({ original, evaluate }) =>
         createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
       );
+      register?.('openai-response', 'pre-route', ({ evaluate }) =>
+        createGuardianPreRouteInvoke({ pluginOptions: parsed, evaluate }),
+      );
+      /*
+       * The built-in API is injected by the host and is intentionally absent
+       * from the public plugin SDK type. The runtime guard above keeps this
+       * plugin loadable through the public descriptor contract.
+       */
       const registerPayloadCaptureHint =
         'registerPayloadCaptureHint' in api && typeof api.registerPayloadCaptureHint === 'function'
           ? (api.registerPayloadCaptureHint as (hint: typeof guardianPayloadHint) => void)

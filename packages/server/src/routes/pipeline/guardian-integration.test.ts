@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test';
 
-import { createPluginRegistryHost } from '@aio-proxy/core';
+import { createPluginRegistryHost, Router } from '@aio-proxy/core';
 import type { TraceCompletion } from '@aio-proxy/core/db';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
@@ -59,6 +59,12 @@ const originalBody = JSON.stringify({
   usage: { input_tokens: 10, output_tokens: 2 },
 });
 
+function eligibleGuardianInput(): readonly unknown[] {
+  return syntheticGuardianInput.filter(
+    (item) => !(typeof item === 'object' && item !== null && 'type' in item && item.type === 'reasoning'),
+  );
+}
+
 async function harness(
   options: {
     strategy?: 'default' | 'systemOne' | 'systemOneReviewDenied';
@@ -66,9 +72,20 @@ async function harness(
     original?: (request: Request) => Promise<Response>;
     target?: 'missing' | 'disabled';
     registerWrapper?: boolean;
+    includeChatGPTRoute?: boolean;
+    chatGPTModelId?: string;
+    opaqueContext?: boolean;
+    requestModelId?: string;
+    guardianMarker?: string | null;
+    streamedInboundBody?: boolean;
+    competingEvaluator?: boolean;
+    callerCredential?: string;
+    targetCredential?: string;
   } = {},
 ) {
   const evaluationRequests: unknown[] = [];
+  const evaluationTransportRequests: Request[] = [];
+  const competingEvaluationRequests: Request[] = [];
   const apiReviewRequests: Request[] = [];
   const traces: TraceCompletion[] = [];
   const starts: unknown[] = [];
@@ -76,6 +93,38 @@ async function harness(
   const consoleDiagnostics: unknown[] = [];
   let source!: ProviderRouteSource;
   let active = 0;
+  let preRouteCloneReleases = 0;
+  let restoreCloneInstrumentation = () => {};
+  if (options.streamedInboundBody) {
+    const originalClone = Request.prototype.clone;
+    const cloneSpy = spyOn(Request.prototype, 'clone').mockImplementation(function (this: Request) {
+      const clone = originalClone.call(this);
+      const stack = new Error().stack ?? '';
+      if (clone.body !== null) {
+        const body = clone.body;
+        if (stack.includes('at invokeResponsesPreRoute (') && !stack.includes('at projectGuardianRequest (')) {
+          const trackedBody = new ReadableStream<Uint8Array>({
+            cancel(reason) {
+              // The native tee cancellation can wait on the untouched ingress branch.
+              // Start it, but let this host-owned clone marker settle independently.
+              void body.cancel(reason).catch(() => undefined);
+              return Promise.resolve().then(() => {
+                preRouteCloneReleases++;
+              });
+            },
+          });
+          Object.defineProperty(clone, 'body', {
+            configurable: true,
+            get: () => trackedBody,
+          });
+        }
+      }
+      return clone;
+    });
+    restoreCloneInstrumentation = () => {
+      cloneSpy.mockRestore();
+    };
+  }
   const clean = () => {
     const leaked = JSON.stringify({
       logs: route.logs,
@@ -91,12 +140,14 @@ async function harness(
       'Planned action JSON:',
       rationale,
       'Human user/developer messages',
-    ])
+      options.callerCredential,
+      options.targetCredential,
+    ].filter((value): value is string => value !== undefined))
       expect(leaked).not.toContain(privateText);
   };
   const chatgpt = rawProvider({
     id: 'api-review',
-    modelId: 'codex-auto-review',
+    modelId: options.chatGPTModelId ?? 'codex-auto-review',
     protocol: ProviderProtocol.OpenAIResponse,
     invoke: async (request) => {
       if (options.strategy !== 'default' && options.registerWrapper !== false) clean();
@@ -114,24 +165,51 @@ async function harness(
       clean();
       expect(request.headers.has('authorization')).toBe(false);
       expect(request.headers.has('x-api-key')).toBe(false);
-      evaluationRequests.push(await request.clone().json());
+      const transportRequest =
+        options.targetCredential === undefined
+          ? request
+          : new Request(request, {
+              headers: {
+                ...Object.fromEntries(request.headers),
+                authorization: `Bearer ${options.targetCredential}`,
+              },
+            });
+      evaluationTransportRequests.push(transportRequest.clone());
+      evaluationRequests.push(await transportRequest.clone().json());
       return createObservedFetch((async () =>
-        options.evaluate ? options.evaluate(request) : Response.json(answer())) as typeof fetch)(request);
+        options.evaluate ? options.evaluate(transportRequest) : Response.json(answer())) as typeof fetch)(
+        transportRequest,
+      );
+    },
+  });
+  const competingEvaluator = rawProvider({
+    id: 'competing-evaluation',
+    modelId: 'review',
+    protocol: ProviderProtocol.TypeSafeSystemOne,
+    invoke: async (request) => {
+      competingEvaluationRequests.push(request.clone());
+      return Response.json(answer());
     },
   });
   const route = defineProviderRouteSource(
     [
-      {
-        ...chatgpt,
-        provider: {
-          ...chatgpt.provider,
-          kind: ProviderKind.OAuth,
-          alias: {},
-          models: ['codex-auto-review'],
-          upstreamMetadata: { 'codex-auto-review': { cost: { request: 0.1 } } },
-          plugin: '@aio-proxy/plugin-openai-chatgpt',
-        },
-      },
+      ...(options.includeChatGPTRoute === false
+        ? []
+        : [
+            {
+              ...chatgpt,
+              provider: {
+                ...chatgpt.provider,
+                kind: ProviderKind.Api,
+                alias: {},
+                models: [options.chatGPTModelId ?? 'codex-auto-review'],
+                upstreamMetadata: {
+                  [options.chatGPTModelId ?? 'codex-auto-review']: { cost: { request: 0.1 } },
+                },
+                plugin: '@aio-proxy/plugin-openai-chatgpt',
+              },
+            },
+          ]),
       ...(options.target === 'missing'
         ? []
         : [
@@ -146,6 +224,20 @@ async function harness(
                 upstreamMetadata: { review: { cost: { request: 0.02 } } },
               },
             },
+            ...(options.competingEvaluator
+              ? [
+                  {
+                    ...competingEvaluator,
+                    provider: {
+                      ...competingEvaluator.provider,
+                      alias: {},
+                      models: ['review'],
+                      capabilityIndex: { review: new Set(['evaluation'] as const) },
+                      upstreamMetadata: { review: { cost: { request: 0.03 } } },
+                    },
+                  },
+                ]
+              : []),
           ]),
     ],
     undefined,
@@ -190,15 +282,51 @@ async function harness(
   });
   const leasedSnapshot = snapshot;
   let currentSnapshot = leasedSnapshot;
+  let acquireCount = 0;
+  let replacementOnInitialAcquire: (() => typeof leasedSnapshot) | undefined;
+  const replacementSnapshot = (kind: 'valid' | 'recursive' | 'disabled' | 'deleted' | 'slash-collision') => {
+    const configuredEvaluator = leasedSnapshot.providers.find(({ id }) => id === 'evaluation');
+    if (configuredEvaluator === undefined) throw new Error('evaluation fixture is required for replacement tests');
+    const configuredCompetitor = leasedSnapshot.providers.find(({ id }) => id === 'competing-evaluation');
+    const replacementProvider = {
+      ...configuredEvaluator,
+      ...(kind === 'recursive' ? { plugin: '@aio-proxy/plugin-openai-chatgpt' } : {}),
+      ...(kind === 'disabled' ? { enabled: false } : {}),
+      ...(kind === 'slash-collision'
+        ? {
+            id: 'slash-collision',
+            alias: { 'evaluation/review': { model: 'review', preserve: false } },
+            models: ['review'],
+          }
+        : {}),
+    };
+    const providers =
+      kind === 'deleted'
+        ? configuredCompetitor === undefined
+          ? []
+          : [configuredCompetitor]
+        : [replacementProvider, ...(configuredCompetitor === undefined ? [] : [configuredCompetitor])];
+    return {
+      ...leasedSnapshot,
+      providers,
+      router: new Router(providers, { models: leasedSnapshot.config?.router.models }),
+    };
+  };
   source = {
     ...route.source,
     logger: createServerLogSink(logger),
     usageCapture: createUsageCapture(),
     currentProviderSnapshot: () => currentSnapshot,
     acquireProviderSnapshot: () => {
+      const leased = currentSnapshot;
       active++;
+      acquireCount++;
+      if (acquireCount === 1 && replacementOnInitialAcquire !== undefined) {
+        currentSnapshot = replacementOnInitialAcquire();
+        replacementOnInitialAcquire = undefined;
+      }
       return {
-        snapshot: leasedSnapshot,
+        snapshot: leased,
         release: () => {
           active--;
         },
@@ -233,8 +361,11 @@ async function harness(
       ),
     );
   });
-  const body = await guardianRequest(syntheticGuardianInput).json();
+  const body = await guardianRequest(options.opaqueContext ? syntheticGuardianInput : eligibleGuardianInput()).json();
   body.input[1].content[0].text += sentinel;
+  if (options.requestModelId !== undefined) body.model = options.requestModelId;
+  if (options.guardianMarker === null) delete body.client_metadata;
+  else if (options.guardianMarker !== undefined) body.client_metadata['x-openai-subagent'] = options.guardianMarker;
   body.stream = false;
   const app = createOpenAIResponsesRoutes(source);
   return {
@@ -248,22 +379,361 @@ async function harness(
     exported,
     logs: route.logs,
     evaluationRequests,
+    evaluationTransportRequests,
+    competingEvaluationRequests,
     apiReviewRequests,
     clean,
     activeLeases: () => active,
+    preRouteCloneReleases: () => preRouteCloneReleases,
+    replacementSnapshot,
+    replaceAfterInitialAcquire: (next: typeof leasedSnapshot) => {
+      replacementOnInitialAcquire = () => next;
+    },
     close: () => {
+      restoreCloneInstrumentation();
       exporter.mockRestore();
       consoleSink.mockRestore();
     },
     send: (signal?: AbortSignal) =>
       app.request('/v1/responses', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        headers: {
+          'content-type': 'application/json',
+          ...(options.callerCredential === undefined
+            ? {}
+            : {
+                authorization: `Bearer ${options.callerCredential}`,
+                'x-api-key': options.callerCredential,
+              }),
+        },
+        body: options.streamedInboundBody
+          ? new ReadableStream<Uint8Array>({
+              start(controller) {
+                const bytes = new TextEncoder().encode(JSON.stringify(body));
+                const midpoint = Math.max(1, Math.floor(bytes.byteLength / 2));
+                controller.enqueue(bytes.slice(0, midpoint));
+                controller.enqueue(bytes.slice(midpoint));
+                controller.close();
+              },
+            })
+          : JSON.stringify(body),
         signal,
       }),
   };
 }
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  test(`unregistered codex-auto-review reaches System One, strategy=${strategy}`, async () => {
+    const h = await harness({ strategy, includeChatGPTRoute: false });
+    try {
+      const response = await h.send();
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(JSON.parse(result.output[0].content[0].text).outcome).toBe('allow');
+      expect(h.evaluationRequests).toHaveLength(1);
+      expect(h.apiReviewRequests).toHaveLength(0);
+    } finally {
+      h.close();
+    }
+  });
+
+test('route-miss systemOneReviewDenied preserves the original miss for a valid deny', async () => {
+  const h = await harness({
+    strategy: 'systemOneReviewDenied',
+    includeChatGPTRoute: false,
+    evaluate: async () => Response.json(answer(true)),
+  });
+  try {
+    const response = await h.send();
+    expect(response.status).toBe(404);
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(0);
+  } finally {
+    h.close();
+  }
+});
+
+test('route-miss systemOne returns a synthetic deny for a valid deny', async () => {
+  const h = await harness({
+    strategy: 'systemOne',
+    includeChatGPTRoute: false,
+    evaluate: async () => Response.json(answer(true)),
+  });
+  try {
+    const response = await h.send();
+    expect(response.status).toBe(200);
+    expect(JSON.parse((await response.json()).output[0].content[0].text).outcome).toBe('deny');
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(0);
+  } finally {
+    h.close();
+  }
+});
+
+test('Guardian marker, not model id, controls route-miss evaluation', async () => {
+  const arbitraryModel = 'not-codex-auto-review';
+  const evaluated = await harness({ includeChatGPTRoute: false, requestModelId: arbitraryModel });
+  try {
+    expect((await evaluated.send()).status).toBe(200);
+    expect(evaluated.evaluationRequests).toHaveLength(1);
+  } finally {
+    evaluated.close();
+  }
+
+  for (const guardianMarker of [null, 'not-guardian'] as const) {
+    const bypassed = await harness({ includeChatGPTRoute: false, requestModelId: arbitraryModel, guardianMarker });
+    try {
+      expect((await bypassed.send()).status).toBe(404);
+      expect(bypassed.evaluationRequests).toHaveLength(0);
+      expect(bypassed.apiReviewRequests).toHaveLength(0);
+    } finally {
+      bypassed.close();
+    }
+  }
+});
+
+test('route-miss successful decisions have separated accounting', async () => {
+  const h = await harness({ includeChatGPTRoute: false });
+  try {
+    const response = await h.send();
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(0);
+    await waitFor(() => h.traces.length === 2 && h.activeLeases() === 0);
+    const usage = h.traces.flatMap((trace) => (trace.summary.usage === undefined ? [] : [trace.summary.usage]));
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({ providerId: 'evaluation', estimatedCostUsd: 0.02 });
+    expect(h.traces.find((trace) => trace.summary.usage === undefined)?.summary).not.toHaveProperty('usage');
+    h.clean();
+  } finally {
+    h.close();
+  }
+});
+
+test('invalid evaluator output preserves the route miss but retains evaluator usage', async () => {
+  const h = await harness({ includeChatGPTRoute: false, evaluate: async () => Response.json({ answers: {} }) });
+  try {
+    const response = await h.send();
+    expect(response.status).toBe(404);
+    expect(h.evaluationRequests).toHaveLength(1);
+    await waitFor(() => h.traces.length === 2 && h.activeLeases() === 0);
+    const usage = h.traces.flatMap((trace) => (trace.summary.usage === undefined ? [] : [trace.summary.usage]));
+    expect(usage).toHaveLength(1);
+    expect(usage[0]?.providerId).toBe('evaluation');
+    expect(h.traces.filter((trace) => trace.summary.usage?.providerId === 'api-review')).toHaveLength(0);
+    h.clean();
+  } finally {
+    h.close();
+  }
+});
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  for (const evaluate of [
+    async () => {
+      throw new Error(sentinel);
+    },
+    async () => Response.json({ answers: {} }),
+  ] satisfies readonly ((request: Request) => Promise<Response>)[])
+    test(`route-miss ${strategy} evaluator decline preserves the original 404`, async () => {
+      const h = await harness({ strategy, includeChatGPTRoute: false, evaluate });
+      try {
+        expect((await h.send()).status).toBe(404);
+        expect(h.evaluationRequests).toHaveLength(1);
+        expect(h.apiReviewRequests).toHaveLength(0);
+        h.clean();
+      } finally {
+        h.close();
+      }
+    });
+
+for (const [name, mutate] of [
+  ['responses/compact', (_h: Awaited<ReturnType<typeof harness>>) => undefined],
+  [
+    'extra schema property',
+    (h: Awaited<ReturnType<typeof harness>>) => {
+      h.body.text.format.schema.properties.extra = { type: 'string' };
+    },
+  ],
+  [
+    'nested-only outcome',
+    (h: Awaited<ReturnType<typeof harness>>) => {
+      h.body.text.format.schema.properties = { result: { type: 'object' } };
+    },
+  ],
+  [
+    'missing terminal envelope',
+    (h: Awaited<ReturnType<typeof harness>>) => {
+      h.body.input.at(-1).content = h.body.input.at(-1).content.slice(0, -1);
+    },
+  ],
+  ['opaque context', (_h: Awaited<ReturnType<typeof harness>>) => undefined],
+] as const)
+  test(`incompatible ${name} bypasses before disclosure`, async () => {
+    const h = await harness({ includeChatGPTRoute: false, opaqueContext: name === 'opaque context' });
+    try {
+      mutate(h);
+      const response =
+        name === 'responses/compact'
+          ? await h.app.request('/v1/responses/compact', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(h.body),
+            })
+          : await h.send();
+      expect(response.status).toBe(404);
+      expect(h.evaluationRequests).toHaveLength(0);
+      expect(h.apiReviewRequests).toHaveLength(0);
+      h.clean();
+    } finally {
+      h.close();
+    }
+  });
+
+test('opaque reasoning context is ineligible before evaluator dispatch', async () => {
+  const h = await harness({ includeChatGPTRoute: false, opaqueContext: true });
+  try {
+    expect((await h.send()).status).toBe(404);
+    expect(h.evaluationRequests).toHaveLength(0);
+    h.clean();
+  } finally {
+    h.close();
+  }
+});
+
+test('route-miss synthetic streaming response preserves the decision and accounting', async () => {
+  const h = await harness({ includeChatGPTRoute: false });
+  try {
+    h.body.stream = true;
+    const response = await h.send();
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    const result = JSON.parse(text.trim().split('\n\n').at(-1)!.split('data: ')[1]!).response;
+    expect(JSON.parse(result.output[0].content[0].text).outcome).toBe('allow');
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.apiReviewRequests).toHaveLength(0);
+    await waitFor(() => h.traces.length === 2 && h.activeLeases() === 0);
+    h.clean();
+  } finally {
+    h.close();
+  }
+});
+
+test('streamed inbound body remains available for route-miss projection and fallback', async () => {
+  const accepted = await harness({ includeChatGPTRoute: false, streamedInboundBody: true });
+  try {
+    expect((await accepted.send()).status).toBe(200);
+    expect(accepted.evaluationRequests).toHaveLength(1);
+  } finally {
+    accepted.close();
+  }
+
+  const declined = await harness({
+    includeChatGPTRoute: false,
+    streamedInboundBody: true,
+    guardianMarker: 'not-guardian',
+  });
+  const declinedLease = declined.source.acquireProviderSnapshot();
+  try {
+    expect((await declined.send()).status).toBe(404);
+    expect(declined.evaluationRequests).toHaveLength(0);
+    await waitFor(() => declined.preRouteCloneReleases() > 0);
+    expect(declined.activeLeases()).toBeGreaterThan(0);
+    expect(JSON.stringify(declined.logs)).toContain(sentinel);
+  } finally {
+    declinedLease.release();
+    declined.close();
+  }
+});
+
+test('oversized streamed route-miss projection releases host resources at the size limit', async () => {
+  const h = await harness({ includeChatGPTRoute: false, streamedInboundBody: true });
+  const heldLease = h.source.acquireProviderSnapshot();
+  try {
+    h.body.input[1].content[0].text = 'x'.repeat(1_048_576);
+    const response = await h.send();
+    expect(response.status).toBe(404);
+    expect(h.evaluationRequests).toHaveLength(0);
+    await waitFor(() => h.preRouteCloneReleases() > 0);
+    expect(h.activeLeases()).toBeGreaterThan(0);
+    h.clean();
+  } finally {
+    heldLease.release();
+    h.close();
+  }
+});
+
+for (const target of ['missing', 'disabled'] as const)
+  test(`route-miss ${target} evaluator target preserves the original miss`, async () => {
+    const h = await harness({ includeChatGPTRoute: false, target });
+    try {
+      expect((await h.send()).status).toBe(404);
+      expect(h.evaluationRequests).toHaveLength(0);
+      expect(h.apiReviewRequests).toHaveLength(0);
+      expect(h.logs).toContainEqual(
+        expect.objectContaining({
+          event: 'guardian.evaluation.unavailable',
+          errorCode: 'target_unavailable',
+          targetProviderId: 'evaluation',
+          targetModelId: 'review',
+        }),
+      );
+      h.clean();
+    } finally {
+      h.close();
+    }
+  });
+
+test('route-miss selects the exact evaluator and isolates caller and target credentials', async () => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const h = await harness({
+    includeChatGPTRoute: false,
+    competingEvaluator: true,
+    callerCredential: 'caller-credential-sentinel',
+    targetCredential: 'target-credential-sentinel',
+    evaluate: async (request) => {
+      started.resolve();
+      await release.promise;
+      expect(request.headers.get('authorization')).toBe('Bearer target-credential-sentinel');
+      expect(request.headers.get('x-api-key')).toBeNull();
+      return Response.json(answer());
+    },
+  });
+  try {
+    h.replaceAfterInitialAcquire(h.replacementSnapshot('valid'));
+    const pending = h.send();
+    await started.promise;
+    expect(h.activeLeases()).toBe(2);
+    release.resolve();
+    expect((await pending).status).toBe(200);
+    expect(h.evaluationRequests).toHaveLength(1);
+    expect(h.evaluationTransportRequests).toHaveLength(1);
+    expect(h.evaluationTransportRequests[0]?.headers.get('authorization')).toBe('Bearer target-credential-sentinel');
+    expect(h.competingEvaluationRequests).toHaveLength(0);
+    await waitFor(() => h.activeLeases() === 0);
+    h.clean();
+  } finally {
+    release.resolve();
+    h.close();
+  }
+});
+
+for (const replacement of ['recursive', 'disabled', 'deleted', 'slash-collision'] as const)
+  test(`route-miss snapshot replacement ${replacement} makes zero evaluator transport`, async () => {
+    const h = await harness({ includeChatGPTRoute: false, competingEvaluator: true });
+    try {
+      h.replaceAfterInitialAcquire(h.replacementSnapshot(replacement));
+      expect((await h.send()).status).toBe(404);
+      expect(h.evaluationRequests).toHaveLength(0);
+      expect(h.evaluationTransportRequests).toHaveLength(0);
+      expect(h.competingEvaluationRequests).toHaveLength(0);
+      await waitFor(() => h.activeLeases() === 0);
+      h.clean();
+    } finally {
+      h.close();
+    }
+  });
 
 for (const stream of [false, true])
   for (const deny of [false, true])
@@ -351,18 +821,24 @@ for (const scenario of ['denial', 'malformed', 'non-2xx', 'error', 'retry'] as c
     let evaluations = 0;
     const h = await harness({
       strategy: 'systemOneReviewDenied',
+      opaqueContext: scenario === 'retry',
       evaluate: async () => {
         evaluations++;
         if (scenario === 'error') throw Object.assign(new Error(sentinel), { code: sentinel });
         if (scenario === 'non-2xx') return new Response(sentinel, { status: 503 });
         return Response.json(
-          scenario === 'malformed' ? { ...answer(), answers: {} } : answer(scenario !== 'retry' || evaluations === 1),
+          scenario === 'malformed' ? { ...answer(), answers: {} } : answer(scenario !== 'retry' || evaluations !== 1),
         );
       },
       ...(scenario === 'retry'
         ? {
-            original: async () =>
-              Response.json({ error: { code: 'invalid_encrypted_content', message: sentinel } }, { status: 400 }),
+            original: async (request: Request) => {
+              const body = await request.clone().json();
+              return Response.json(
+                { error: { code: 'invalid_encrypted_content', message: sentinel }, input: body.input },
+                { status: 400 },
+              );
+            },
           }
         : {}),
     });
@@ -373,7 +849,7 @@ for (const scenario of ['denial', 'malformed', 'non-2xx', 'error', 'retry'] as c
       if (scenario !== 'retry') expect(text).toBe(originalBody);
       else expect(JSON.parse(JSON.parse(text).output_text)).toEqual({ outcome: 'allow' });
       expect(h.apiReviewRequests).toHaveLength(1);
-      expect(h.evaluationRequests).toHaveLength(scenario === 'retry' ? 2 : 1);
+      expect(h.evaluationRequests).toHaveLength(scenario === 'retry' ? 1 : 1);
       await waitFor(() => h.traces.length === evaluations + 1 && h.activeLeases() === 0);
       const rows = h.traces.flatMap((trace) => (trace.summary.usage ? [trace.summary.usage] : []));
       expect(rows.filter((row) => row.providerId === 'api-review')).toHaveLength(scenario === 'retry' ? 0 : 1);
@@ -506,6 +982,83 @@ for (const gate of ['before-dispatch', 'before-fallback', 'after-fallback'] as c
       await waitFor(() => h.activeLeases() === 0);
       h.clean();
     } finally {
+      h.close();
+    }
+  });
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  test(`route-miss ${strategy} caller cancellation has no late response`, async () => {
+    const caller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const late = Promise.withResolvers<Response>();
+    const h = await harness({
+      strategy,
+      includeChatGPTRoute: false,
+      evaluate: async () => {
+        started.resolve();
+        return late.promise;
+      },
+    });
+    try {
+      const pending = h.send(caller.signal);
+      await started.promise;
+      const settled = pending.then(
+        (response) => response,
+        () => undefined,
+      );
+      caller.abort(new DOMException('Aborted', 'AbortError'));
+      const response = await settled;
+      expect(response?.status).not.toBe(200);
+      late.resolve(Response.json(answer()));
+      await Bun.sleep(0);
+      expect(h.apiReviewRequests).toHaveLength(0);
+      expect(h.traces.some((trace) => trace.summary.terminationReason === 'cancelled')).toBe(true);
+      expect(h.traces.some((trace) => trace.summary.errorCode === 'model_not_found')).toBe(false);
+      await waitFor(() => h.activeLeases() === 0);
+      h.clean();
+    } finally {
+      late.resolve(Response.json(answer()));
+      h.close();
+    }
+  });
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  test(`route-miss ${strategy} timeout preserves the miss and ignores late evaluator output`, async () => {
+    const deadline = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const late = Promise.withResolvers<Response>();
+    let evaluatorSignal: AbortSignal | undefined;
+    const h = await harness({
+      strategy,
+      includeChatGPTRoute: false,
+      evaluate: async (request) => {
+        evaluatorSignal = request.signal;
+        started.resolve();
+        return late.promise;
+      },
+    });
+    const timer = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    try {
+      const pending = h.send();
+      await started.promise;
+      deadline.abort(new DOMException('Timeout', 'TimeoutError'));
+      expect((await pending).status).toBe(404);
+      await waitFor(() => evaluatorSignal?.aborted === true);
+      late.resolve(Response.json(answer()));
+      await Bun.sleep(0);
+      expect(h.apiReviewRequests).toHaveLength(0);
+      expect(h.evaluationRequests).toHaveLength(1);
+      expect(h.traces.some((trace) => trace.summary.terminationReason === 'cancelled')).toBe(true);
+      expect(
+        h.traces
+          .filter((trace) => trace.summary.terminationReason === 'cancelled')
+          .some((trace) => trace.summary.errorCode === 'model_not_found'),
+      ).toBe(false);
+      await waitFor(() => h.activeLeases() === 0);
+      h.clean();
+    } finally {
+      late.resolve(Response.json(answer()));
+      timer.mockRestore();
       h.close();
     }
   });

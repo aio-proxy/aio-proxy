@@ -383,7 +383,7 @@ test.each(['default', 'systemOne', 'systemOneReviewDenied'] as const)(
       {
         oauth: { register() {} },
         logger: { debug() {}, info() {}, warn() {}, error() {} },
-        raw: { wrap() {} },
+        raw: { register() {} },
         registerPayloadCaptureHint(value: unknown) {
           hint = value;
         },

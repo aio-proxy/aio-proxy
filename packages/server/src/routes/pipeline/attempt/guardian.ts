@@ -8,13 +8,16 @@ export function guardianRaw<TRequest, TContext>(
   raw: RawTransport,
 ): RawTransport {
   if (ctx.adapter.protocol !== 'openai-response' || ctx.adapter.capability !== 'language') return raw;
-  const wrap = ctx.snapshot?.plugins?.registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt');
+  const wrap = ctx.snapshot?.plugins?.registry.resolveResponses('@aio-proxy/plugin-openai-chatgpt')?.wrap;
   if (wrap === undefined) return raw;
   return {
     ...raw,
     invoke: wrap({
       original: raw.invoke,
-      evaluate: createGuardianEvaluate(() => ctx.source, slot.candidate.provider.id),
+      evaluate: createGuardianEvaluate(() => ctx.source, {
+        providerId: slot.candidate.provider.id,
+        plugin: slot.candidate.provider.plugin,
+      }),
     }),
   };
 }
