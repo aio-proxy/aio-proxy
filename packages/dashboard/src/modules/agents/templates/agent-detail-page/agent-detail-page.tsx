@@ -1,6 +1,8 @@
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import { agentDescriptor, type AgentLocalStatus, type AgentTarget } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { BookOpenIcon } from 'lucide-react';
 
 import { PageContainer } from '@/components/page-container';
 
@@ -11,9 +13,9 @@ import { AgentStatusPanel } from '../../components/agent-status-panel';
 import { DetailSection } from '../../components/detail-section';
 import { InstallationsTable } from '../../components/installations-table';
 import { LocalSetupBanner } from '../../components/local-setup-banner';
-import { ManualCommands } from '../../components/manual-commands';
 import { RemoveAgentDialog } from '../../components/remove-agent-dialog';
 import { useAgentsSnapshot } from '../../hooks/use-agents-snapshot';
+import { agentDocsUrl } from '../../lib/agent-docs';
 import { AGENT_DISPLAY_NAMES, agentInstallations } from '../../lib/agent-state';
 
 interface AgentDetailPageProps {
@@ -86,9 +88,6 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
         <DetailSection title={m['dashboard.agents.section.notes']()}>
           <AgentNotes descriptor={descriptor} localVisible={data.local !== undefined} />
         </DetailSection>
-        <DetailSection title={m['dashboard.agents.section.manual']()}>
-          <ManualCommands descriptor={descriptor} />
-        </DetailSection>
       </div>
     );
   })();
@@ -99,6 +98,17 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
           <Icon size={24} className="shrink-0" />
           {name}
         </span>
+      }
+      extra={
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={<a href={agentDocsUrl(target, getLocale())} target="_blank" rel="noreferrer" />}
+        >
+          <BookOpenIcon data-icon="inline-start" />
+          {m['dashboard.agents.docs']()}
+        </Button>
       }
       breadcrumbs={[
         { label: m['dashboard.menus.configuration']() },

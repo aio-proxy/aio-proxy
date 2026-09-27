@@ -9,8 +9,6 @@ export type AgentDescriptor = {
   readonly target: AgentTarget;
   readonly integrationKind: AgentIntegrationKind;
   readonly catalog: 'synced' | 'host_managed' | 'not_applicable';
-  readonly configureCommand: string;
-  readonly removeCommand: string;
   readonly loginCommand?: string;
   readonly platformSupport: 'verified' | 'macos_only_verified';
 };
@@ -22,8 +20,6 @@ const descriptor = (
 ): AgentDescriptor => ({
   target,
   integrationKind,
-  configureCommand: `aio-proxy agent configure ${target}`,
-  removeCommand: `aio-proxy agent remove ${target}`,
   ...rest,
 });
 

@@ -1534,7 +1534,7 @@
     },
     "agents": {
       "title": "Agents",
-      "description": "Connect coding Agents on this machine to aio-proxy.",
+      "description": "Connect coding Agents on this machine to AIO Proxy.",
       "load_failed": "Could not load Agents.",
       "not_found": "Unknown Agent.",
       "kind": {
@@ -1555,16 +1555,16 @@
       },
       "status_hint": {
         "not_installed": "{target} was not found on this machine.",
-        "conflict": "The {target} files are not an intact aio-proxy-managed integration. Resolve it with the CLI.",
+        "conflict": "The {target} files are not an intact integration managed by AIO Proxy. Resolve it with the CLI.",
         "recovery_required": "An interrupted setup must be recovered first. Run the configure command in a terminal.",
-        "modified": "Some fields aio-proxy manages were edited. Repair restores them.",
+        "modified": "Some fields AIO Proxy manages were edited. Repair restores them.",
         "missing": "Some managed files are missing. Repair reinstalls them.",
-        "outdated": "A newer adapter ships with this aio-proxy version."
+        "outdated": "A newer adapter ships with this AIO Proxy version."
       },
       "banner": {
         "password_required": "Set a Dashboard password before Agents can be authorized while API keys are required.",
-        "remote_request": "You are viewing aio-proxy from another machine. One-click setup only works in a browser on the machine running aio-proxy.",
-        "unavailable": "This aio-proxy cannot set up Agents with one click (for example, it runs in a container). Run the commands from each Agent's details page on the machine where it is installed.",
+        "remote_request": "You are viewing AIO Proxy from another machine. One-click setup only works in a browser on the machine running AIO Proxy.",
+        "unavailable": "This AIO Proxy cannot set up Agents with one click (for example, it runs in a container). Follow the setup guide on the machine where the Agent is installed.",
         "unavailable_title": "One-click setup unavailable",
         "remote_request_title": "One-click setup is local only",
         "password_required_title": "Dashboard password required"
@@ -1595,7 +1595,7 @@
         "config_path": "Written to {path}",
         "migration": "Moved {migrated} sessions.",
         "partial": "Integration removed, but fields you edited were kept: {paths}",
-        "blocked": "Not removed: the authorization could not be revoked yet. Try again once aio-proxy is reachable.",
+        "blocked": "Not removed: the authorization could not be revoked yet. Try again once AIO Proxy is reachable.",
         "cancelled": "Setup did not finish; nothing was written for the authorization.",
         "revoke": "Authorization: {status}",
         "migration_incomplete": "Session migration did not finish: {migrated} moved, {conflicts} conflicts."
@@ -1603,19 +1603,19 @@
       "error": {
         "host_missing": "The Agent is not installed on this machine.",
         "path_unavailable": "The Agent's config location could not be resolved.",
-        "not_configured": "There is no aio-proxy integration to remove.",
+        "not_configured": "There is no AIO Proxy integration to remove.",
         "locked": "Another setup is running. Try again when it finishes.",
         "invalid_provider_id": "That provider ID is empty or reserved.",
         "occupied_provider_id": "That provider ID is already used in config.toml.",
-        "endpoint_changed": "The aio-proxy address changed during setup. Try again.",
+        "endpoint_changed": "The AIO Proxy address changed during setup. Try again.",
         "authorization_denied": "The device was denied.",
         "authorization_expired": "The approval request expired.",
         "recovery_required": "An interrupted setup must be recovered with the CLI first.",
         "plan_stale": "Codex changed while you were filling in the form. Review it and save again.",
         "cancelled": "Cancelled.",
         "operation_in_progress": "An operation for this Agent is already running.",
-        "unknown": "Something went wrong. Check the aio-proxy logs.",
-        "request_failed": "aio-proxy is unavailable. Check the server and try again."
+        "unknown": "Something went wrong. Check the AIO Proxy logs.",
+        "request_failed": "AIO Proxy is unavailable. Check the server and try again."
       },
       "login": {
         "title": "Sign in",
@@ -1628,7 +1628,6 @@
         "status": "Status",
         "setup": "Setup",
         "authorizations": "Authorizations",
-        "manual": "Manual commands",
         "notes": "Notes"
       },
       "field": {
@@ -1638,7 +1637,7 @@
         "adapter": "Adapter version",
         "provider_id": "Codex provider ID",
         "auth_mode": "Authentication",
-        "endpoint_mismatch": "This integration points at a different aio-proxy address. Repair it to use this one."
+        "endpoint_mismatch": "This integration points at a different AIO Proxy address. Repair it to use this one."
       },
       "table": {
         "label": "Authorizations",
@@ -1650,7 +1649,7 @@
         "local": "Location",
         "actions": "Actions",
         "empty": "No authorizations yet.",
-        "codex_keep": "Keep-ChatGPT mode reaches aio-proxy with an API key, so it has no authorization here.",
+        "codex_keep": "Keep-ChatGPT mode reaches AIO Proxy with an API key, so it has no authorization here.",
         "filter": "Filter authorizations",
         "filter_placeholder": "Search installation ID or version",
         "columns": "Columns"
@@ -1667,51 +1666,46 @@
         "orphaned": "Not on this machine"
       },
       "note": {
-        "catalog_synced": "The model list is synced from aio-proxy.",
-        "catalog_host_managed": "{target} manages its own model list. Pick an aio-proxy model ID there.",
+        "catalog_synced": "The model list is synced from AIO Proxy.",
+        "catalog_host_managed": "{target} manages its own model list. Pick an AIO Proxy model ID there.",
         "platform_macos": "Verified on macOS only.",
-        "check_local": "Local file state is shown only in a browser on the machine running aio-proxy."
-      },
-      "manual": {
-        "configure": "Configure",
-        "remove": "Remove",
-        "login": "Sign in",
-        "check": "Check local state"
+        "check_local": "Local file state is shown only in a browser on the machine running AIO Proxy."
       },
       "remove": {
         "title": "Remove the {target} integration?",
-        "description": "This revokes its authorization and restores the files aio-proxy changed. Your own edits are kept.",
+        "description": "This revokes its authorization and restores the files AIO Proxy changed. Your own edits are kept.",
         "skipped": "Kept fields you edited: {fields}",
         "retained": "Kept files: {files}"
       },
       "codex": {
         "title": "Codex setup",
         "provider_id": "Provider ID",
-        "provider_id_help": "The model provider entry aio-proxy writes into config.toml.",
+        "provider_id_help": "The model provider entry AIO Proxy writes into config.toml.",
         "auth_mode": "Authentication",
         "auth_keep": "Keep ChatGPT login",
-        "auth_keep_help": "Codex keeps its ChatGPT login and reaches aio-proxy with an API key.",
-        "auth_command": "aio-proxy authorization",
-        "auth_command_help": "Codex gets short-lived tokens from aio-proxy after you approve this device.",
+        "auth_keep_help": "Codex keeps its ChatGPT login and reaches AIO Proxy with an API key.",
+        "auth_command": "AIO Proxy authorization",
+        "auth_command_help": "Codex gets short-lived tokens from AIO Proxy after you approve this device.",
         "key": "API key",
         "key_none": "No API key",
         "migrate": "Move existing sessions",
         "migrate_help": "Sessions recorded under these providers move to the new provider so they stay visible in Codex.",
         "migrate_group": "{providerId} ({active} active, {archived} archived)",
         "migrate_confirm": "Rewrite the selected sessions",
-        "conflict": "config.toml has aio-proxy entries that conflict with your edits. Resolve them with the CLI.",
+        "conflict": "config.toml has AIO Proxy entries that conflict with your edits. Resolve them with the CLI.",
         "submit": "Save",
         "current": "Provider {providerId}, {mode}"
       },
       "card": {
         "via": {
-          "plugin": "Connects through the aio-proxy plugin",
+          "plugin": "Connects through the AIO Proxy plugin",
           "auth_command": "Signs in with the Agent's login command",
           "static_config": "Writes the Agent's global config"
         },
         "active_authorizations": "Active authorizations: {count}",
         "no_active_authorizations": "No active authorization"
-      }
+      },
+      "docs": "Setup guide"
     }
   }
 }

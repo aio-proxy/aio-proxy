@@ -1534,7 +1534,7 @@
     },
     "agents": {
       "title": "Agent",
-      "description": "把本機的程式設計 Agent 接入 aio-proxy。",
+      "description": "把本機的程式設計 Agent 接入 AIO Proxy。",
       "load_failed": "無法載入 Agent。",
       "not_found": "未知的 Agent。",
       "kind": {
@@ -1555,16 +1555,16 @@
       },
       "status_hint": {
         "not_installed": "本機未找到 {target}。",
-        "conflict": "{target} 的檔案不是完整的 aio-proxy 託管整合，請用 CLI 處理。",
+        "conflict": "{target} 的檔案不是完整的 AIO Proxy 託管整合，請用 CLI 處理。",
         "recovery_required": "有中斷的設定需要先復原，請在終端機執行設定指令。",
-        "modified": "aio-proxy 管理的部分欄位被變更過，修復會還原它們。",
+        "modified": "AIO Proxy 管理的部分欄位被變更過，修復會還原它們。",
         "missing": "部分託管檔案缺失，修復會重新安裝。",
-        "outdated": "目前 aio-proxy 版本帶有更新的轉接器。"
+        "outdated": "目前 AIO Proxy 版本帶有更新的轉接器。"
       },
       "banner": {
         "password_required": "啟用 API Key 驗證時，需要先設定Dashboard 密碼才能授權 Agent。",
-        "remote_request": "你正在從其他機器存取 aio-proxy。一鍵設定只能在執行 aio-proxy 的那台機器的瀏覽器裡使用。",
-        "unavailable": "目前 aio-proxy 不支援一鍵設定（例如執行在容器中）。請在安裝 Agent 的機器上執行詳情頁中的指令。",
+        "remote_request": "你正在從其他機器存取 AIO Proxy。一鍵設定只能在執行 AIO Proxy 的那台機器的瀏覽器裡使用。",
+        "unavailable": "目前 AIO Proxy 不支援一鍵設定（例如執行在容器中）。請依照接入文件，在安裝 Agent 的機器上設定。",
         "unavailable_title": "不支援一鍵設定",
         "remote_request_title": "一鍵設定僅限本機",
         "password_required_title": "需要設定 Dashboard 密碼"
@@ -1595,7 +1595,7 @@
         "config_path": "已寫入 {path}",
         "migration": "已遷移 {migrated} 個工作階段。",
         "partial": "整合已移除，但保留了你修改過的欄位：{paths}",
-        "blocked": "未移除：授權暫時無法撤銷。請在 aio-proxy 可存取後重試。",
+        "blocked": "未移除：授權暫時無法撤銷。請在 AIO Proxy 可存取後重試。",
         "cancelled": "設定未完成，授權相關內容沒有寫入。",
         "revoke": "授權：{status}",
         "migration_incomplete": "工作階段遷移未完成：已遷移 {migrated} 個，{conflicts} 個衝突。"
@@ -1603,19 +1603,19 @@
       "error": {
         "host_missing": "本機未安裝該 Agent。",
         "path_unavailable": "無法確定該 Agent 的設定位置。",
-        "not_configured": "沒有可移除的 aio-proxy 整合。",
+        "not_configured": "沒有可移除的 AIO Proxy 整合。",
         "locked": "另一個設定操作正在進行，請稍後重試。",
         "invalid_provider_id": "Provider ID 為空或是保留值。",
         "occupied_provider_id": "該 Provider ID 已在 config.toml 中使用。",
-        "endpoint_changed": "設定過程中 aio-proxy 位址發生了變化，請重試。",
+        "endpoint_changed": "設定過程中 AIO Proxy 位址發生了變化，請重試。",
         "authorization_denied": "裝置已被拒絕。",
         "authorization_expired": "授權請求已過期。",
         "recovery_required": "有中斷的設定需要先用 CLI 復原。",
         "plan_stale": "填寫表單期間 Codex 狀態發生了變化，請檢查後重新儲存。",
         "cancelled": "已取消。",
         "operation_in_progress": "該 Agent 已有操作在進行中。",
-        "unknown": "發生錯誤，請查看 aio-proxy 日誌。",
-        "request_failed": "無法連線 aio-proxy，請檢查服務後重試。"
+        "unknown": "發生錯誤，請查看 AIO Proxy 日誌。",
+        "request_failed": "無法連線 AIO Proxy，請檢查服務後重試。"
       },
       "login": {
         "title": "登入",
@@ -1628,7 +1628,6 @@
         "status": "狀態",
         "setup": "設定",
         "authorizations": "授權",
-        "manual": "手動指令",
         "notes": "說明"
       },
       "field": {
@@ -1638,7 +1637,7 @@
         "adapter": "轉接器版本",
         "provider_id": "Codex Provider ID",
         "auth_mode": "認證方式",
-        "endpoint_mismatch": "該整合指向另一個 aio-proxy 位址，修復後會改為目前位址。"
+        "endpoint_mismatch": "該整合指向另一個 AIO Proxy 位址，修復後會改為目前位址。"
       },
       "table": {
         "label": "授權",
@@ -1650,7 +1649,7 @@
         "local": "位置",
         "actions": "操作",
         "empty": "暫無授權。",
-        "codex_keep": "保留 ChatGPT 登入模式通過 API Key 存取 aio-proxy，因此這裡沒有授權紀錄。",
+        "codex_keep": "保留 ChatGPT 登入模式通過 API Key 存取 AIO Proxy，因此這裡沒有授權紀錄。",
         "filter": "篩選授權",
         "filter_placeholder": "搜尋 Installation ID 或版本",
         "columns": "欄"
@@ -1667,51 +1666,46 @@
         "orphaned": "不在本機"
       },
       "note": {
-        "catalog_synced": "模型清單從 aio-proxy 同步。",
-        "catalog_host_managed": "{target} 自行管理模型清單，請在其中選擇 aio-proxy 的模型 ID。",
+        "catalog_synced": "模型清單從 AIO Proxy 同步。",
+        "catalog_host_managed": "{target} 自行管理模型清單，請在其中選擇 AIO Proxy 的模型 ID。",
         "platform_macos": "目前只在 macOS 上驗證過。",
-        "check_local": "只有在執行 aio-proxy 的機器上開啟 Dashboard 才會顯示本機檔案狀態。"
-      },
-      "manual": {
-        "configure": "設定",
-        "remove": "移除",
-        "login": "登入",
-        "check": "檢查本機狀態"
+        "check_local": "只有在執行 AIO Proxy 的機器上開啟 Dashboard 才會顯示本機檔案狀態。"
       },
       "remove": {
         "title": "移除 {target} 整合？",
-        "description": "會撤銷它的授權，並還原 aio-proxy 修改過的檔案。你自己的變更會保留。",
+        "description": "會撤銷它的授權，並還原 AIO Proxy 修改過的檔案。你自己的變更會保留。",
         "skipped": "保留了你修改過的欄位：{fields}",
         "retained": "保留的檔案：{files}"
       },
       "codex": {
         "title": "Codex 設定",
         "provider_id": "Provider ID",
-        "provider_id_help": "aio-proxy 寫入 config.toml 的 model provider 項目。",
+        "provider_id_help": "AIO Proxy 寫入 config.toml 的 model provider 項目。",
         "auth_mode": "認證方式",
         "auth_keep": "保留 ChatGPT 登入",
-        "auth_keep_help": "Codex 保留 ChatGPT 登入，用 API Key 存取 aio-proxy。",
-        "auth_command": "aio-proxy 授權",
-        "auth_command_help": "核准此裝置後，Codex 從 aio-proxy 取得短期權杖。",
+        "auth_keep_help": "Codex 保留 ChatGPT 登入，用 API Key 存取 AIO Proxy。",
+        "auth_command": "AIO Proxy 授權",
+        "auth_command_help": "核准此裝置後，Codex 從 AIO Proxy 取得短期權杖。",
         "key": "API Key",
         "key_none": "不使用 API Key",
         "migrate": "遷移已有工作階段",
         "migrate_help": "這些 provider 下的工作階段會遷移到新的 provider，在 Codex 中保持可見。",
         "migrate_group": "{providerId}（{active} 個使用中，{archived} 個已封存）",
         "migrate_confirm": "改寫所選工作階段",
-        "conflict": "config.toml 中的 aio-proxy 項目與你的修改衝突，請用 CLI 處理。",
+        "conflict": "config.toml 中的 AIO Proxy 項目與你的修改衝突，請用 CLI 處理。",
         "submit": "儲存",
         "current": "Provider {providerId}，{mode}"
       },
       "card": {
         "via": {
-          "plugin": "透過 aio-proxy 外掛接入",
+          "plugin": "透過 AIO Proxy 外掛接入",
           "auth_command": "透過 Agent 的登入指令授權",
           "static_config": "寫入 Agent 的全域設定"
         },
         "active_authorizations": "{count} 個有效授權",
         "no_active_authorizations": "尚無有效授權"
-      }
+      },
+      "docs": "接入文件"
     }
   }
 }

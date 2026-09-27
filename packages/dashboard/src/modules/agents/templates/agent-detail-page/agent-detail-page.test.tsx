@@ -28,9 +28,14 @@ rs.mock('@tanstack/react-router', () => ({
   ),
 }));
 rs.mock('@/components/page-container', () => ({
-  PageContainer: ({ children, title }: React.PropsWithChildren<{ title?: React.ReactNode }>) => (
+  PageContainer: ({
+    children,
+    title,
+    extra,
+  }: React.PropsWithChildren<{ title?: React.ReactNode; extra?: React.ReactNode }>) => (
     <main>
       <h1>{title}</h1>
+      {extra}
       {children}
     </main>
   ),
@@ -90,7 +95,10 @@ test('a plugin Agent offers one-click configure, notes, and its authorizations',
   expect(screen.getByTestId('agent-notes').textContent).toMatch(/synced|同步/u);
   expect(screen.getByTestId('agent-installations-table').textContent).toContain(INSTALLATION);
   expect(screen.getByRole('textbox', { name: /Filter authorizations|筛选授权/u })).toBeTruthy();
-  expect(screen.getByTestId('manual-commands').textContent).toContain('aio-proxy agent configure opencode');
+  // Manual setup lives on the docs site rather than as commands on this page.
+  expect(screen.getByRole('button', { name: /Setup guide|接入文档/u }).getAttribute('href')).toMatch(
+    /aioproxy\.dev\/(zh\/)?guide\/integrations\/agents\/opencode$/u,
+  );
 });
 
 test('Grok shows its platform note and can be removed when configured', () => {
@@ -119,13 +127,13 @@ test('Codex opens the setup form instead of configuring immediately', () => {
   expect(screen.getByTestId('codex-setup-form')).toBeTruthy();
 });
 
-test('a remote browser sees state and commands but cannot write', () => {
+test('a remote browser sees state and the setup guide but cannot write', () => {
   const { local: _local, ...remote } = snapshot('opencode', 'configured');
   mocks.snapshot.data = { ...remote, localSetup: 'remote_request' };
   render(<AgentDetailPage target="opencode" />);
   expect(screen.queryByTestId('agent-status-panel')).toBeNull();
   expect((screen.getByRole('button', { name: /^(Revoke|撤销)$/u }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByTestId('manual-commands')).toBeTruthy();
+  expect(screen.getByRole('button', { name: /Setup guide|接入文档/u })).toBeTruthy();
 });
 
 test('an operation awaiting approval is shown inline on the detail page', () => {
