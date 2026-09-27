@@ -6,7 +6,7 @@ import { useAgentLogin } from './use-agent-login';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 
-const mocks = rs.hoisted(() => ({ snapshotCalls: 0, pending: true }));
+const mocks = rs.hoisted(() => ({ snapshotCalls: 0, pending: true, expiresIn: 600_000, active: true }));
 
 rs.mock('../../services/agents-service', () => ({
   agentPendingLoginQueryOptions: (installationId: string) => ({
@@ -21,7 +21,7 @@ rs.mock('../../services/agents-service', () => ({
             target: 'opencode',
             installationId,
             adapterVersion: '1.0.0',
-            expiresAt: new Date(Date.now() + 600_000).toISOString(),
+            expiresAt: new Date(Date.now() + mocks.expiresIn).toISOString(),
             permissions: ['catalog', 'inference'],
           },
       userCode: mocks.pending ? 'WXYZ-2345' : null,
@@ -43,7 +43,7 @@ rs.mock('../../services/agents-service', () => ({
             adapterVersion: '1.0.0',
             createdAt: '2026-09-01T00:00:00.000Z',
             lastAuthorizedAt: '2026-09-01T00:00:00.000Z',
-            authorization: mocks.snapshotCalls >= 2 ? 'active' : 'expired',
+            authorization: mocks.active && mocks.snapshotCalls >= 2 ? 'active' : 'expired',
             accessExpiresAt: null,
           },
         ],
@@ -82,4 +82,26 @@ test('a request approved on another page also refreshes the snapshot until the i
   mocks.pending = false;
   await waitFor(() => expect(result.current.pending).toBeUndefined(), { timeout: 5_000 });
   await waitFor(() => expect(mocks.snapshotCalls).toBeGreaterThanOrEqual(2), { timeout: 6_000 });
+}, 20_000);
+
+test('an approval the Agent never redeems stops refreshing once the request would have expired', async () => {
+  mocks.snapshotCalls = 0;
+  mocks.pending = true;
+  mocks.active = false;
+  mocks.expiresIn = 1_500;
+  const client = new QueryClient();
+  const { result } = renderHook(() => useAgentLogin(INSTALLATION), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(result.current.userCode).toBe('WXYZ-2345'));
+  act(() => result.current.decide('approve'));
+  await waitFor(() => expect(mocks.snapshotCalls).toBeGreaterThanOrEqual(1), { timeout: 3_000 });
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  const stoppedAt = mocks.snapshotCalls;
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  expect(mocks.snapshotCalls).toBe(stoppedAt);
+  mocks.active = true;
+  mocks.expiresIn = 600_000;
 }, 20_000);

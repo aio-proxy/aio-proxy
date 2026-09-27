@@ -185,7 +185,11 @@ export const createRoutes = (
   loopbackPort: number = serverDefaults.port,
   loopbackHost: string = serverDefaults.host,
   controller?: AutoUpdateController,
-  agentDashboard: { readonly host?: AgentHostPort; readonly logger?: ServerLogSink } = {},
+  agentDashboard: {
+    readonly host?: AgentHostPort;
+    readonly logger?: ServerLogSink;
+    readonly shutdown?: AbortSignal;
+  } = {},
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -301,6 +305,7 @@ export const createRoutes = (
     challenges,
     currentConfig,
     logger: agentDashboard.logger ?? (() => undefined),
+    ...(agentDashboard.shutdown === undefined ? {} : { shutdown: agentDashboard.shutdown }),
     adapterVersion: version,
   });
   const dashboardRoutes = createDashboardRoutes(state, dashboardAuth, version, controller);

@@ -39,7 +39,8 @@ export const useAgentLogin = (installationId: string) => {
       query.state.data?.installations.some(
         (item) => item.installationId === installationId && item.authorization === 'active',
       ) ||
-      (!granted && seenUntil !== undefined && Date.now() > seenUntil)
+      // An approval the Agent never redeems must not keep scanning Agent hosts forever.
+      (seenUntil !== undefined && Date.now() > seenUntil)
         ? false
         : SNAPSHOT_POLL_MS,
   });

@@ -40,6 +40,8 @@ type AgentOperationsInput = {
   readonly onUnknownError: (request: AgentOperationRequest, error: unknown) => void;
   readonly now?: () => number;
   readonly randomUUID?: () => string;
+  /** Aborted on server shutdown; every unfinished operation is cancelled so none outlives the server. */
+  readonly shutdown?: AbortSignal;
 };
 
 export type AgentOperations = {
@@ -59,6 +61,13 @@ export function createAgentOperations(input: AgentOperationsInput): AgentOperati
   const randomUUID = input.randomUUID ?? (() => crypto.randomUUID());
   const entries = new Map<string, Entry>();
   const running = new Set<Promise<void>>();
+  input.shutdown?.addEventListener('abort', () => {
+    for (const entry of entries.values()) {
+      if (entry.finishedAt !== undefined) continue;
+      entry.outcome = 'cancelled';
+      entry.controller.abort();
+    }
+  });
 
   const prune = (): void => {
     const timestamp = now();
@@ -80,6 +89,7 @@ export function createAgentOperations(input: AgentOperationsInput): AgentOperati
   };
 
   function start(request: AgentOperationRequest): AgentOperationState {
+    if (input.shutdown?.aborted === true) throw new AgentOperationBusyError();
     prune();
     if (active(request.target)) throw new AgentOperationBusyError();
     const base = { operationId: randomUUID(), target: request.target, kind: request.kind };

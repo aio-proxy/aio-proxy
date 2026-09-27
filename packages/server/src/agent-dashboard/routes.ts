@@ -29,6 +29,7 @@ type AgentDashboardRouteInput = {
   readonly currentConfig: () => Config;
   readonly logger: ServerLogSink;
   readonly adapterVersion: string;
+  readonly shutdown?: AbortSignal;
 };
 
 const CHALLENGE_SOURCE = 'agent-dashboard';
@@ -62,6 +63,7 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
       if (row.installationId !== undefined) knownInstallations.set(row.installationId, row.target);
   };
   const operations = createAgentOperations({
+    ...(input.shutdown === undefined ? {} : { shutdown: input.shutdown }),
     run: async (request, events: AgentOperationEvents) => {
       if (host === undefined) throw new AgentOperationError('unknown');
       const result =

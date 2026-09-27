@@ -94,6 +94,8 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       });
     },
   });
+  // Cancels in-flight dashboard Agent operations before the state they use is closed.
+  const shutdown = new AbortController();
   try {
     const routes = (options.__test?.createRoutes ?? createRoutes)(
       state,
@@ -103,7 +105,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       options.port ?? state.currentConfig().server.port,
       options.host ?? state.currentConfig().server.host,
       controller,
-      { ...(options.agentHost === undefined ? {} : { host: options.agentHost }), logger },
+      { ...(options.agentHost === undefined ? {} : { host: options.agentHost }), logger, shutdown: shutdown.signal },
     );
     controller.start();
     let closed = false;
@@ -111,6 +113,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       close() {
         if (closed) return;
         closed = true;
+        shutdown.abort();
         controller.stop();
         state.close();
       },
