@@ -1,9 +1,9 @@
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import type { RefObject } from 'react';
 
-import { routingMetadataTouched } from '../../lib/routing-metadata-draft';
 import type { useRoutingForm } from '../use-routing-form';
 import type { useRoutingMetadataForm } from '../use-routing-metadata-form';
+import { applyRoutingEditorRebase } from './routing-editor-apply';
 import {
   routingEditorRebase,
   routingModelIdentity,
@@ -52,16 +52,6 @@ export const createRoutingEditorReload = (deps: RoutingEditorReloadDeps) => (): 
       deps.baseline.form.providers,
     );
     deps.onRebased(rebased.baseline);
-    // The baseline is what the server holds; the preserved edits go back on top as changes. Making
-    // them the baseline instead would leave the form pristine, so the dirty markers and the
-    // navigation guard would vanish while the edits were still unsaved, and Cancel would have
-    // nothing to fall back to.
-    deps.form.reset(rebased.baseline.form);
-    deps.form.setFieldValue('providers', rebased.providers);
-    deps.metadataForm.reset(rebased.baseline.metadata);
-    if (routingMetadataTouched(rebased.metadata)) {
-      deps.metadataForm.setFieldValue('metadata', rebased.metadata.metadata);
-      deps.metadataForm.setFieldValue('overrides', rebased.metadata.overrides);
-    }
+    applyRoutingEditorRebase(deps, rebased);
   });
 };

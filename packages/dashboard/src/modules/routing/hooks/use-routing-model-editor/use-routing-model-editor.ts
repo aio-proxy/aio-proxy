@@ -15,6 +15,7 @@ import { isStaleRoutingError } from '../../services/routing-service';
 import { routingDraftRecord, useRoutingForm } from '../use-routing-form';
 import { useRoutingMetadataForm } from '../use-routing-metadata-form';
 import { useRoutingMutation } from '../use-routing-mutation';
+import { rebaseRoutingEditorMembership } from './routing-editor-apply';
 import {
   routingEditorBaseline,
   routingModelIdentity,
@@ -107,7 +108,16 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       return;
     }
 
-    if (form.state.isDirty || routingMetadataTouched(metadataForm.state.values)) return;
+    if (form.state.isDirty || routingMetadataTouched(metadataForm.state.values)) {
+      // A dirty draft is kept on purpose when the policy has moved: the next save must be rejected as
+      // stale so Reload can rebase it deliberately. A Provider joining or leaving does not move the
+      // revision, though, so bailing outright left the rows holding one the config no longer has —
+      // and that save would pass the revision check and write its override back. Rebase membership
+      // alone, keeping the field edits and the revision they were made against.
+      if (nextModel.revision !== baseline.revision) return;
+      setBaseline(rebaseRoutingEditorMembership({ form, metadataForm }, nextModel, baseline));
+      return;
+    }
 
     const next = routingEditorBaseline(nextModel);
     setBaseline(next);

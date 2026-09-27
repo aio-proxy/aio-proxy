@@ -733,3 +733,39 @@ test('reconciles a Provider that appears without a revision change', async () =>
 
   expect(mutate.mock.calls[0]?.[0]).toMatchObject({ baselineProviderIds: ['anthropic', 'openai'] });
 });
+
+test('rebases Provider membership under a dirty draft without touching the field edits', async () => {
+  // A Provider joining does not move the revision, so the dirty guard skipped reconciliation while
+  // the identity was already recorded as seen — nothing would repair it later. The save then carried
+  // the stale rows and baseline Provider list past the server's revision check.
+  const { result, rerender, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  rerender({ model: { ...modelWithOpenai(), baselineProviderIds: ['anthropic', 'openai'] } });
+
+  // The field edit survives, the new Provider is present, and the draft is still unsaved.
+  expect(result.current.form.state.values.providers).toEqual([
+    { providerId: 'anthropic', weight: 3 },
+    { providerId: 'openai' },
+  ]);
+  expect(result.current.dirtyTabs).toEqual(['topology']);
+
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({ baselineProviderIds: ['anthropic', 'openai'] });
+});
+
+test('still refuses to adopt a dirty draft when the policy revision moved', async () => {
+  // The stale-revision path must survive the membership rebase: adopting a newer revision here would
+  // let the save pass the server's check and overwrite whatever changed underneath it.
+  const { result, rerender, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  rerender({
+    model: { ...modelWithOpenai(), revision: 'rev-9', baselineProviderIds: ['anthropic', 'openai'] },
+  });
+
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({ revision: 'rev-1', baselineProviderIds: ['anthropic'] });
+});
