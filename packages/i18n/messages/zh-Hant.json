@@ -848,7 +848,8 @@
         "served": "已服務",
         "chart_label": "各 Provider 已服務請求數隨時間變化",
         "filter": "篩選 Provider",
-        "filter_placeholder": "依 Provider ID 篩選"
+        "filter_placeholder": "依 Provider ID 篩選",
+        "refresh_failed": "正在顯示最後一次成功取得的資料，重新載入流量失敗。"
       }
     },
     "pagination": {

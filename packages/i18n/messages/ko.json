@@ -848,7 +848,8 @@
         "served": "처리됨",
         "chart_label": "Provider별 처리된 요청 추이",
         "filter": "Provider 필터",
-        "filter_placeholder": "Provider ID로 필터"
+        "filter_placeholder": "Provider ID로 필터",
+        "refresh_failed": "마지막으로 성공한 측정값을 표시합니다. 트래픽 새로 고침에 실패했습니다."
       }
     },
     "pagination": {

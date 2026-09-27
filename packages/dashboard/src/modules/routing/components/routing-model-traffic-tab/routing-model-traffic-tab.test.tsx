@@ -25,12 +25,17 @@ const RANGE: UsageOverviewRange = '24h';
 const mocks = rs.hoisted(() => ({
   buckets: undefined as RoutingTrafficBucketsData | undefined,
   traffic: undefined as RoutingTrafficData | undefined,
+  /** Throws on every call, standing in for a query that has never succeeded. */
+  bucketsFail: false,
 }));
 
 rs.mock('../../services/routing-traffic-service', () => ({
   routingTrafficBucketsQueryOptions: (range: UsageOverviewRange, modelId: string) => ({
     queryKey: ['routing-traffic-buckets', range, modelId],
-    queryFn: async () => mocks.buckets,
+    queryFn: async () => {
+      if (mocks.bucketsFail) throw new Error('routing traffic buckets failed');
+      return mocks.buckets;
+    },
   }),
   routingTrafficQueryOptions: (range: UsageOverviewRange) => ({
     queryKey: ['routing-traffic', range],
@@ -116,6 +121,7 @@ afterEach(() => {
   queryClient.clear();
   mocks.buckets = undefined;
   mocks.traffic = undefined;
+  mocks.bucketsFail = false;
 });
 
 test('stacks one series per provider in the order the response gave', async () => {
@@ -330,4 +336,28 @@ test('exposes filtering and column visibility on the provider metrics table', as
   // Filtering narrows the rows rather than just holding state nobody can reach.
   expect(screen.getByTestId('routing-traffic-row-primary')).toBeInTheDocument();
   expect(screen.queryByTestId('routing-traffic-row-fallback')).not.toBeInTheDocument();
+});
+
+test('shows the error screen when a traffic query has nothing cached', async () => {
+  // Nothing has ever succeeded, so there is no measurement to fall back on.
+  mocks.bucketsFail = true;
+  renderTraffic({ buckets: bucketsFixture(['primary']) });
+
+  expect(await screen.findByText(m['dashboard.routing.load_failed']())).toBeInTheDocument();
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+});
+
+test('keeps the cached measurements up when a later refetch fails', async () => {
+  // A query that has already succeeded keeps its payload when a later fetch fails. Blanking a working
+  // chart over a transient failure throws away the numbers the operator came here to read.
+  const cached = bucketsFixture(['primary']);
+  queryClient.setQueryData(['routing-traffic-buckets', RANGE, MODEL_ID], cached);
+  mocks.bucketsFail = true;
+
+  renderTraffic({ buckets: cached });
+
+  // The summary survives, behind a notice that the refresh failed rather than the error screen.
+  expect(await screen.findByRole('table')).toBeInTheDocument();
+  expect(screen.getByText(m['dashboard.routing.traffic.refresh_failed']())).toBeInTheDocument();
+  expect(screen.queryByText(m['dashboard.routing.load_failed']())).not.toBeInTheDocument();
 });

@@ -848,7 +848,8 @@
         "served": "已服务",
         "chart_label": "各 Provider 已服务请求数随时间变化",
         "filter": "筛选 Provider",
-        "filter_placeholder": "按 Provider ID 筛选"
+        "filter_placeholder": "按 Provider ID 筛选",
+        "refresh_failed": "正在显示最后一次成功获取的数据，刷新流量失败。"
       }
     },
     "pagination": {

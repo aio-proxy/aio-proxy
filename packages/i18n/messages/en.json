@@ -848,7 +848,8 @@
         "served": "Served",
         "chart_label": "Requests served per Provider over time",
         "filter": "Filter Providers",
-        "filter_placeholder": "Filter by Provider ID"
+        "filter_placeholder": "Filter by Provider ID",
+        "refresh_failed": "Showing the last successful measurement — refreshing traffic failed."
       }
     },
     "pagination": {

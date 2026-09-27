@@ -848,7 +848,8 @@
         "served": "処理済み",
         "chart_label": "Provider ごとの処理済みリクエストの推移",
         "filter": "Provider を絞り込む",
-        "filter_placeholder": "Provider ID で絞り込む"
+        "filter_placeholder": "Provider ID で絞り込む",
+        "refresh_failed": "最後に取得できた測定値を表示しています。トラフィックの再取得に失敗しました。"
       }
     },
     "pagination": {

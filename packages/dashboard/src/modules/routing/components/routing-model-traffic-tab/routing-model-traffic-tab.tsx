@@ -32,31 +32,34 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     return new Map(model?.providers.map((row) => [row.providerId, row]) ?? []);
   }, [trafficQuery.data, modelId]);
 
+  // A failed refetch keeps the last successful payload, so an error on its own must not replace a
+  // working chart with an error screen. Only a query holding nothing is unavailable; when the
+  // measurements are still there they stay up behind a notice, the same reading the rest of this
+  // feature takes of `isError` beside cached data.
+  const retryFailed = () => {
+    if (bucketsQuery.isError) void bucketsQuery.refetch();
+    if (trafficQuery.isError) void trafficQuery.refetch();
+  };
+
   if (bucketsQuery.isPending || trafficQuery.isPending) {
     return <Skeleton className="h-72 w-full" />;
   }
 
-  if (bucketsQuery.isError) {
+  if (
+    (bucketsQuery.isError && bucketsQuery.data === undefined) ||
+    (trafficQuery.isError && trafficQuery.data === undefined)
+  ) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-destructive">{m['dashboard.routing.load_failed']()}</p>
-        <Button type="button" variant="outline" onClick={() => void bucketsQuery.refetch()}>
+        <Button type="button" variant="outline" onClick={retryFailed}>
           {m['dashboard.routing.retry']()}
         </Button>
       </div>
     );
   }
 
-  if (trafficQuery.isError) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive">{m['dashboard.routing.load_failed']()}</p>
-        <Button type="button" variant="outline" onClick={() => void trafficQuery.refetch()}>
-          {m['dashboard.routing.retry']()}
-        </Button>
-      </div>
-    );
-  }
+  const refreshFailed = bucketsQuery.isError || trafficQuery.isError;
 
   const bucketsData = bucketsQuery.data;
   if (bucketsData === undefined) {
@@ -113,6 +116,16 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
 
   return (
     <div className="space-y-6">
+      {refreshFailed ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p role="status" className="text-sm text-muted-foreground">
+            {m['dashboard.routing.traffic.refresh_failed']()}
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={retryFailed}>
+            {m['dashboard.routing.retry']()}
+          </Button>
+        </div>
+      ) : null}
       {showChart ? (
         <ChartContainer
           config={chartConfig}
