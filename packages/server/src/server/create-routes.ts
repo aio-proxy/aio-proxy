@@ -298,7 +298,7 @@ export const createRoutes = (
   const currentConfig = () => state.currentConfig();
   const agentOAuthRoutes = createAgentOAuthRoutes({ challenges, identity: state.agentIdentity, currentConfig });
   const agentApprovalRoutes = createAgentApprovalRoutes({ challenges, currentConfig });
-  const agentAdminRoutes = createAgentAdminRoutes({ identity: state.agentIdentity, currentConfig });
+  const agentAdminRoutes = createAgentAdminRoutes({ challenges, identity: state.agentIdentity, currentConfig });
   const agentDashboardRoutes = createAgentDashboardRoutes({
     host: agentDashboard.host,
     identity: state.agentIdentity,

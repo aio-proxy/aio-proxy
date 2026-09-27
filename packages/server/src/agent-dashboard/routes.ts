@@ -150,6 +150,8 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
     .post('/:installationId/revoke', requireLocalWrite, (context) => {
       const installationId = context.req.param('installationId');
       if (!uuidParam.safeParse(installationId).success) return context.json({ error: 'invalid_request' as const }, 400);
+      // An approved challenge the Agent has not redeemed would otherwise mint a fresh credential after this.
+      challenges.cancelForInstallation(installationId);
       return context.json({ installationId, status: identity.revokeInstallation(installationId) });
     })
     .get('/installations/:installationId/pending', requireLocalHost, async (context) => {

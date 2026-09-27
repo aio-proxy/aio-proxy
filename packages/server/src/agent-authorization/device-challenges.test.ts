@@ -293,3 +293,17 @@ test('pendingForInstallation only exposes a live pending challenge of the matchi
   advance(600_001);
   expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();
 });
+
+test('revoking an installation stops an approved challenge from issuing a credential afterwards', () => {
+  const f = challengeFixture();
+  const created = f.store.create(DEVICE_REQUEST, '127.0.0.1');
+  const details = f.store.resolve(created.user_code, '127.0.0.1');
+  f.store.approve(details.status === 'pending' ? details.deviceId : '', '127.0.0.1');
+  f.store.cancelForInstallation(INSTALLATION);
+  f.advance(10_000);
+  expect(f.store.poll({ clientId: DEVICE_REQUEST.client_id, deviceCode: created.device_code }, '127.0.0.1')).toEqual({
+    ok: false,
+    error: 'access_denied',
+  });
+  expect(f.issueCredential).not.toHaveBeenCalled();
+});

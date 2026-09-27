@@ -75,6 +75,8 @@ export type DeviceChallengeStore = {
     target: AgentTarget,
     installationId: string,
   ) => PendingInstallationChallenge | undefined;
+  /** Denies the installation's undecided and approved-but-unredeemed challenges, so a revocation is not undone by a later token poll. */
+  readonly cancelForInstallation: (installationId: string) => void;
   /** The installation's latest challenge once decided but not yet redeemed, so a decision made elsewhere can be told apart. */
   readonly decidedForInstallation: (
     target: AgentTarget,
@@ -314,9 +316,17 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
       : undefined;
   }
 
+  function cancelForInstallation(installationId: string): void {
+    for (const challenge of maps.byDeviceId.values()) {
+      if (challenge.installationId !== installationId) continue;
+      if (challenge.status === 'pending' || challenge.status === 'approved') challenge.status = 'denied';
+    }
+  }
+
   return {
     create,
     resolve,
+    cancelForInstallation,
     pendingForInstallation,
     decidedForInstallation,
     approve: (deviceId, source) => decide(deviceId, source, 'approved'),
