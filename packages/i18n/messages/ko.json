@@ -800,6 +800,8 @@
         "success_rate": "성공률 {value}",
         "p95": "p95 {value}",
         "no_traffic_yet": "아직 트래픽 데이터가 없습니다",
+        "traffic_pending": "트래픽을 불러오는 중…",
+        "traffic_unavailable": "트래픽을 불러오지 못해 실제 비중을 표시할 수 없습니다.",
         "tab_topology": "토폴로지",
         "tab_metadata": "메타데이터",
         "tab_cost": "비용 및 한도",

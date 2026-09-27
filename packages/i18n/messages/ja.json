@@ -800,6 +800,8 @@
         "success_rate": "成功率 {value}",
         "p95": "p95 {value}",
         "no_traffic_yet": "トラフィックデータはまだありません",
+        "traffic_pending": "トラフィックを読み込み中…",
+        "traffic_unavailable": "トラフィックを読み込めなかったため、実際の配分は表示できません。",
         "tab_topology": "トポロジ",
         "tab_metadata": "メタデータ",
         "tab_cost": "コストと上限",

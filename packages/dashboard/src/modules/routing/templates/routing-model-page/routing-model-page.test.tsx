@@ -34,6 +34,7 @@ const routingQueryMocks = rs.hoisted(() => ({
 
 const trafficMocks = rs.hoisted(() => ({
   traffic: undefined as RoutingTrafficData | undefined,
+  fail: false,
 }));
 
 rs.mock('../../hooks/use-routing-mutation', () => ({
@@ -61,13 +62,17 @@ rs.mock('../../hooks/use-routing-query', () => ({
 rs.mock('../../services/routing-traffic-service', () => ({
   routingTrafficQueryOptions: (range: string) => ({
     queryKey: ['routing-traffic', range],
-    queryFn: async () =>
-      trafficMocks.traffic ?? {
-        range,
-        rangeStart: '',
-        rangeEnd: '',
-        models: [],
-      },
+    queryFn: async () => {
+      if (trafficMocks.fail) throw new Error('routing traffic failed');
+      return (
+        trafficMocks.traffic ?? {
+          range,
+          rangeStart: '',
+          rangeEnd: '',
+          models: [],
+        }
+      );
+    },
   }),
   routingTrafficBucketsQueryOptions: () => ({
     queryKey: ['routing-traffic-buckets'],
@@ -268,6 +273,7 @@ afterEach(() => {
   mutationMocks.reset.mockReset();
   mutationMocks.isPending = false;
   mutationMocks.error = null;
+  trafficMocks.fail = false;
   routingQueryMocks.refetch.mockReset();
 });
 
@@ -406,4 +412,22 @@ test('accepts edits again once no save is in flight', async () => {
     return found;
   });
   for (const input of inputs) expect(input).toBeEnabled();
+});
+
+test('does not report a measured absence of traffic when the query failed', async () => {
+  // `actual` is undefined both when the query cannot answer and when a measured window holds no
+  // traffic, so the page has to pass the query's state down or the topology tab reports "no traffic
+  // yet" forever after a failure — a measurement nobody took.
+  trafficMocks.fail = true;
+  renderPage({ models: [modelFixture('sonnet')] });
+
+  expect(await screen.findByText(m['dashboard.routing.detail.traffic_unavailable']())).toBeInTheDocument();
+  expect(screen.queryByText(m['dashboard.routing.detail.no_traffic_yet']())).not.toBeInTheDocument();
+});
+
+test('reports a measured absence of traffic once the query has answered', async () => {
+  renderPage({ models: [modelFixture('sonnet')] });
+
+  expect(await screen.findByText(m['dashboard.routing.detail.no_traffic_yet']())).toBeInTheDocument();
+  expect(screen.queryByText(m['dashboard.routing.detail.traffic_unavailable']())).not.toBeInTheDocument();
 });

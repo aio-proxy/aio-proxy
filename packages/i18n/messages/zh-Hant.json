@@ -800,6 +800,8 @@
         "success_rate": "成功率 {value}",
         "p95": "p95 {value}",
         "no_traffic_yet": "暫無流量資料",
+        "traffic_pending": "正在載入流量資料…",
+        "traffic_unavailable": "流量資料載入失敗，無法顯示實際份額。",
         "tab_topology": "拓撲",
         "tab_metadata": "元資料",
         "tab_cost": "成本與限額",

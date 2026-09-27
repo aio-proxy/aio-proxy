@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
@@ -5,7 +6,7 @@ import { render, screen } from '@testing-library/react';
 
 import { useRoutingForm } from '../../hooks/use-routing-form';
 import type { RoutingTierShare } from '../../lib/routing-traffic';
-import { RoutingModelTopologyTab } from './routing-model-topology-tab';
+import { RoutingModelTopologyTab, type RoutingTrafficState } from './routing-model-topology-tab';
 
 const routingNumber = (effective: number, authored?: number) => ({
   ...(authored === undefined ? {} : { authored }),
@@ -91,14 +92,21 @@ const share = (
   finalCount: 1n,
 });
 
-const TopologyHarness: React.FC<{ readonly actual: readonly RoutingTierShare[] | undefined }> = ({ actual }) => {
+const TopologyHarness: React.FC<{
+  readonly actual: readonly RoutingTierShare[] | undefined;
+  readonly trafficState: RoutingTrafficState;
+}> = ({ actual, trafficState }) => {
   const model = topologyModel();
   const form = useRoutingForm(model, rs.fn());
-  return <RoutingModelTopologyTab form={form} model={model} writable={true} actual={actual} />;
+  return (
+    <RoutingModelTopologyTab form={form} model={model} writable={true} actual={actual} trafficState={trafficState} />
+  );
 };
 
-const renderTopology = (options: { readonly actual: readonly RoutingTierShare[] | undefined }) =>
-  render(<TopologyHarness actual={options.actual} />);
+const renderTopology = (options: {
+  readonly actual: readonly RoutingTierShare[] | undefined;
+  readonly trafficState?: RoutingTrafficState;
+}) => render(<TopologyHarness actual={options.actual} trafficState={options.trafficState ?? 'ready'} />);
 
 test('shows configured and actual share side by side on a provider card', () => {
   // The page exists to answer "I configured 50/50, why is it 93/7?" — both numbers must be
@@ -114,12 +122,29 @@ test('shows the success rate that explains a collapsed share', () => {
   expect(screen.getByText(/41%/u)).toBeInTheDocument();
 });
 
-test('omits actual numbers entirely when traffic is unavailable', () => {
+test('says the window served nothing once traffic has actually been measured', () => {
   // Rendering "actual 0%" would claim the Provider served nothing, which is not known.
-  renderTopology({ actual: undefined });
+  renderTopology({ actual: undefined, trafficState: 'ready' });
 
   expect(screen.queryByText(/实际|actual/iu)).not.toBeInTheDocument();
-  expect(screen.getByText(/No traffic yet|暂无流量/u)).toBeInTheDocument();
+  expect(screen.getByText(m['dashboard.routing.detail.no_traffic_yet']())).toBeInTheDocument();
+});
+
+test('does not call an in-flight traffic query a measured absence of traffic', () => {
+  // This test used to cover the pending case under the "no traffic yet" copy, which reported a
+  // measurement nobody had taken.
+  renderTopology({ actual: undefined, trafficState: 'pending' });
+
+  expect(screen.getByText(m['dashboard.routing.detail.traffic_pending']())).toBeInTheDocument();
+  expect(screen.queryByText(m['dashboard.routing.detail.no_traffic_yet']())).not.toBeInTheDocument();
+});
+
+test('says so when traffic cannot be loaded at all', () => {
+  // A failed query never resolves into a number, so "no traffic yet" would be permanent and wrong.
+  renderTopology({ actual: undefined, trafficState: 'unavailable' });
+
+  expect(screen.getByText(m['dashboard.routing.detail.traffic_unavailable']())).toBeInTheDocument();
+  expect(screen.queryByText(m['dashboard.routing.detail.no_traffic_yet']())).not.toBeInTheDocument();
 });
 
 test('shows no p95 when the sample was empty', () => {

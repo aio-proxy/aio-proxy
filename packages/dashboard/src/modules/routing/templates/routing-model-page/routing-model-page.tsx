@@ -13,6 +13,7 @@ import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
+import type { RoutingTrafficState } from '../../components/routing-model-topology-tab';
 import { useRoutingQuery } from '../../hooks/use-routing-query';
 import { modelRisks } from '../../lib/routing-risk';
 import type { RoutingRiskFilter } from '../../lib/routing-search';
@@ -46,6 +47,10 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
   const fullPageError = query.isError && query.data === undefined;
   const writable = query.data?.writable ?? false;
   const trafficIndex = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
+  // A failed query with nothing cached can never answer; one merely in flight still might. Neither
+  // is a measured absence of traffic, which is what `actual === undefined` would otherwise imply.
+  const trafficState: RoutingTrafficState =
+    trafficQuery.data !== undefined ? 'ready' : trafficQuery.isError ? 'unavailable' : 'pending';
   const totals = trafficIndex?.get(modelId);
   const actual =
     model === undefined || totals === undefined
@@ -133,6 +138,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
           writable={writable}
           range={range}
           actual={actual}
+          trafficState={trafficState}
           onReload={onReload}
         />
       </div>

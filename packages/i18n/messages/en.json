@@ -800,6 +800,8 @@
         "success_rate": "Success rate {value}",
         "p95": "p95 {value}",
         "no_traffic_yet": "No traffic yet",
+        "traffic_pending": "Loading traffic…",
+        "traffic_unavailable": "Traffic could not be loaded, so actual shares are unavailable.",
         "tab_topology": "Topology",
         "tab_metadata": "Metadata",
         "tab_cost": "Cost and limits",

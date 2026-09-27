@@ -800,6 +800,8 @@
         "success_rate": "成功率 {value}",
         "p95": "p95 {value}",
         "no_traffic_yet": "暂无流量数据",
+        "traffic_pending": "正在加载流量数据…",
+        "traffic_unavailable": "流量数据加载失败，无法显示实际份额。",
         "tab_topology": "拓扑",
         "tab_metadata": "元数据",
         "tab_cost": "成本与限额",

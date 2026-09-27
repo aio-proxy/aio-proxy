@@ -17,7 +17,7 @@ import type React from 'react';
 
 import { RoutingModelCostTab } from '../../components/routing-model-cost-tab';
 import { RoutingModelMetadataTab } from '../../components/routing-model-metadata-tab';
-import { RoutingModelTopologyTab } from '../../components/routing-model-topology-tab';
+import { RoutingModelTopologyTab, type RoutingTrafficState } from '../../components/routing-model-topology-tab';
 import { RoutingModelTrafficTab } from '../../components/routing-model-traffic-tab';
 import { useRoutingModelEditor } from '../../hooks/use-routing-model-editor';
 import type { RoutingTierShare } from '../../lib/routing-traffic';
@@ -27,6 +27,7 @@ interface RoutingModelPageEditorProps {
   readonly writable: boolean;
   readonly range: UsageOverviewRange;
   readonly actual: readonly RoutingTierShare[] | undefined;
+  readonly trafficState: RoutingTrafficState;
   readonly onReload: () => void | Promise<DashboardRoutingModel | null | undefined>;
 }
 
@@ -35,6 +36,7 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
   writable,
   range,
   actual,
+  trafficState,
   onReload,
 }) => {
   const editor = useRoutingModelEditor({ model, writable, onReload });
@@ -69,7 +71,13 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
           <TabsTrigger value="traffic">{m['dashboard.routing.detail.tab_traffic']()}</TabsTrigger>
         </TabsList>
         <TabsContent value="topology">
-          <RoutingModelTopologyTab form={editor.form} model={model} writable={editable} actual={actual} />
+          <RoutingModelTopologyTab
+            form={editor.form}
+            model={model}
+            writable={editable}
+            actual={actual}
+            trafficState={trafficState}
+          />
         </TabsContent>
         <TabsContent value="metadata">
           <RoutingModelMetadataTab
