@@ -2,13 +2,15 @@ import type { DashboardRoutingModel } from '@aio-proxy/types';
 
 import type { RoutingTrafficProviderTotals } from '../../services/routing-traffic-service';
 import type { RoutingRiskFilter } from '../routing-search';
-import { type RoutingTrafficIndex, modelTrafficSummary, tierActualShares } from '../routing-traffic';
+import { type RoutingTrafficIndex, tierActualShares } from '../routing-traffic';
 
 /** Percentage points of divergence, within one tier, before a model is called deviating.
  * Chosen by judgement rather than measurement — tune against real traffic. */
 export const DEVIATION_THRESHOLD = 0.15;
 
-/** Below this many served requests the ratio is noise, so no deviation is reported at all. */
+/** Requests a single tier must have served before its split is judged. Below this the ratio is
+ * noise. Gated per tier rather than per model because the shares being compared are per tier: a
+ * busy primary tier would otherwise lend its sample to a fallback tier that saw one request. */
 export const DEVIATION_MIN_SAMPLE = 50n;
 
 /** Risks derivable from configuration alone, so they are available the moment the list renders. */
@@ -25,14 +27,15 @@ export const isDeviating = (
   totals: readonly RoutingTrafficProviderTotals[] | undefined,
 ): boolean | undefined => {
   if (totals === undefined) return undefined;
-  const summary = modelTrafficSummary(totals);
-  if (summary === undefined || summary.finalCount < DEVIATION_MIN_SAMPLE) return false;
   return model.tiers.some((tier) => {
     const actual = tierActualShares(tier, totals);
-    // The query omits providers with no spans; an unused tier adds no observation and is not a bad split.
-    if (actual.length === 0) return false;
+    // A tier that served nothing falls out here too: an unused tier adds no observation and is
+    // not a bad split.
+    if (actual.reduce((sum, entry) => sum + entry.finalCount, 0n) < DEVIATION_MIN_SAMPLE) return false;
     return tier.providers.some((configured) => {
       const observed = actual.find((entry) => entry.providerId === configured.providerId);
+      // The query omits providers with no spans, so a silent provider inside an active tier is a
+      // measured zero rather than a missing observation.
       const actualShare = observed?.actualShare ?? 0;
       return Math.abs(actualShare - configured.share) >= DEVIATION_THRESHOLD;
     });

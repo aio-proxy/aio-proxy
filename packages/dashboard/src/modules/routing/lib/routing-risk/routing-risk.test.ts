@@ -29,11 +29,16 @@ const model = (over: Partial<Parameters<typeof configuredRisks>[0]> = {}) =>
     ...over,
   }) as Parameters<typeof configuredRisks>[0];
 
+/**
+ * Every count gets a distinct value on purpose: deviation is judged off `finalCount` alone, and a
+ * fixture that reused one number for all three would let a swap to `attemptCount` or
+ * `successCount` pass unnoticed.
+ */
 const totals = (final: bigint, providerId: string) => ({
   providerId,
   finalCount: final,
-  attemptCount: final,
-  successCount: final,
+  attemptCount: final * 3n + 1n,
+  successCount: final * 2n + 1n,
   p95LatencyMs: 10,
 });
 
@@ -51,6 +56,13 @@ test('flags a split that ran far from its configuration', () => {
 test('stays silent when the sample is too small to mean anything', () => {
   // Same 93/7 ratio, but only 10 requests: the threshold would be pure noise here.
   expect(isDeviating(model(), [totals(9n, 'primary'), totals(1n, 'fallback')])).toBe(false);
+});
+
+test('sizes the sample from served requests, not from attempts', () => {
+  // Retries make attemptCount far larger than finalCount. This tier served 22 requests but
+  // attempted 68, so a gate reading attempts would judge it and report its 91/9 split as
+  // divergence off a sample that is still noise.
+  expect(isDeviating(model(), [totals(20n, 'primary'), totals(2n, 'fallback')])).toBe(false);
 });
 
 test('stays silent when the split matches its configuration', () => {
@@ -110,4 +122,30 @@ test('does not flag an unused fallback tier with no traffic rows', () => {
     ],
   });
   expect(isDeviating(primaryOnly, [totals(80n, 'primary')])).toBe(false);
+});
+
+test('judges the sample per tier, so a busy primary cannot vouch for a fallback tier', () => {
+  // The gate used to sum the whole model, so a single failover request was judged as if it had the
+  // primary tier's sample: fb-a read 100% against a configured 50% and the model went red while
+  // its live traffic was a perfectly balanced primary tier.
+  const withFallback = model({
+    tiers: [
+      { priority: 30, providers: [{ providerId: 'primary', weight: 1, share: 1 }] },
+      {
+        priority: 10,
+        providers: [
+          { providerId: 'fb-a', weight: 1, share: 0.5 },
+          { providerId: 'fb-b', weight: 1, share: 0.5 },
+        ],
+      },
+    ],
+  });
+
+  expect(isDeviating(withFallback, [totals(1000n, 'primary'), totals(1n, 'fb-a')])).toBe(false);
+  // Once the fallback tier itself carries a real sample, the same lopsided split is reported.
+  expect(isDeviating(withFallback, [totals(1000n, 'primary'), totals(60n, 'fb-a')])).toBe(true);
+});
+
+test('still judges a tier that alone clears the minimum inside a quiet model', () => {
+  expect(isDeviating(model(), [totals(50n, 'primary'), totals(1n, 'fallback')])).toBe(true);
 });
