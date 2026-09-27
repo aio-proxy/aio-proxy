@@ -26,6 +26,8 @@ type TraceSeed = {
    * "no Provider at all", which is why unsuccessful roots were counted as served.
    */
   readonly terminationReason?: 'failure' | 'cancelled';
+  /** Marks the root a token-count request, the way `begin({ operation: 'token_count' })` does. */
+  readonly operation?: 'token_count';
 };
 
 function seedTrace(store: TraceStore, seed: TraceSeed): void {
@@ -44,6 +46,7 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
       : { 'aio_proxy.route.final_provider_id': finalProviderId, 'gen_ai.response.model': seed.requestedModelId }),
     // Production sets this on the root span as well as in the summary, so mirror both.
     ...(seed.terminationReason === undefined ? {} : { 'aio_proxy.termination.reason': seed.terminationReason }),
+    ...(seed.operation === undefined ? {} : { 'aio_proxy.operation': seed.operation }),
   };
   store.startRoot(rootStart({ traceId, spanId, requestId: `request-${seed.id}`, startedAt, attributes }));
   const inference = rootSpan({
@@ -248,5 +251,57 @@ test('leaves a request nobody served out of the chart buckets too', () => {
     const served = buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values.primary ?? '0'), 0n);
 
     expect(served).toBe(1n);
+  });
+});
+
+test('keeps token-count requests out of routing traffic entirely', () => {
+  withStore((store) => {
+    // Counting tokens walks the same candidate list and records its attempts under the same span
+    // name with the same provider attributes, and its root carries a requested model and a final
+    // Provider. Clients count before most calls, so leaving these in would let the counts dominate
+    // every number on the page.
+    for (const id of [30, 31, 32]) {
+      seedTrace(store, {
+        id,
+        requestedModelId: 'anthropic/claude-sonnet-4.5',
+        attempts: [{ providerId: 'primary', durationMs: 5 }],
+        operation: 'token_count',
+      });
+    }
+    seedTrace(store, {
+      id: 33,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const primary = totals.models[0]?.providers.find((row) => row.providerId === 'primary');
+
+    // Only the one generation request counts, on both the attempt side and the served side.
+    expect(primary?.attemptCount).toBe('1');
+    expect(primary?.finalCount).toBe('1');
+
+    const buckets = store.routingTrafficBuckets({
+      range: '24h',
+      modelId: 'anthropic/claude-sonnet-4.5',
+      now: NOW,
+    });
+    const served = buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values.primary ?? '0'), 0n);
+    expect(served).toBe(1n);
+  });
+});
+
+test('counts rows written before the operation attribute existed as generation', () => {
+  withStore((store) => {
+    // Retention outlives the attribute, so a missing key must not silently drop real traffic.
+    seedTrace(store, {
+      id: 34,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+
+    expect(totals.models[0]?.providers[0]?.finalCount).toBe('1');
   });
 });

@@ -18,6 +18,32 @@ type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 // This is the same exclusion overview/diagnostics.ts applies.
 const SKIPPED_SPAN_NAME = 'aio_proxy.token_count.candidate_skipped';
 
+/**
+ * Generation traffic only. `aio_proxy.operation` stays in the attributes JSON rather than in a
+ * column, so this mirrors the coalesce-to-'model' shape trace-percentile already uses: rows written
+ * before the key existed are generation.
+ *
+ * Token counting routes through the same candidate list, records its attempts under the same span
+ * name with the same provider attributes, and finishes its root with a requested model and a final
+ * Provider — nothing distinguishes it downstream. Clients count tokens before most calls, so without
+ * this the counts would dominate the served shares, attempt totals, success rates and p95 of
+ * whichever Provider answered them.
+ */
+const GENERATION = (alias: string) =>
+  `coalesce(json_extract(${alias}.attributes_json, '$."aio_proxy.operation"'), 'model') = 'model'`;
+
+// A root that failed or was cancelled still names a final Provider: `finalFailure()` in the
+// pipeline sets finalProviderId alongside outcome 'failure', so the last Provider tried is recorded
+// even when nothing was served. `termination_reason is null` is therefore required, not optional —
+// without it a request every candidate failed counts as traffic that Provider served, inflating the
+// served totals, both halves of the configured-versus-actual comparison, the deviation verdict and
+// the chart. It is the same discriminator the attempt query already uses for successCount.
+const SERVED_ROOT = `root.parent_span_id is null
+      and root.final_provider_id is not null
+      and root.termination_reason is null
+      and ${GENERATION('root')}
+      and root.ended_at >= ? and root.ended_at <= ?`;
+
 type RawAttemptRow = {
   readonly modelId: string;
   readonly providerId: string;
@@ -157,6 +183,7 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
         and attempt.ended_at is not null
         and attempt.name != ?
     where root.parent_span_id is null
+      and ${GENERATION('root')}
       and root.ended_at >= ? and root.ended_at <= ?
       and root.requested_model_id is not null
     group by root.requested_model_id, attempt.provider_id`,
@@ -164,27 +191,16 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
   );
 }
 
-// A root that failed or was cancelled still names a final Provider: `finalFailure()` in the
-// pipeline sets finalProviderId alongside outcome 'failure', so the last Provider tried is recorded
-// even when nothing was served. `termination_reason is null` is therefore required, not optional —
-// without it a request every candidate failed counts as traffic that Provider served, inflating the
-// served totals, both halves of the configured-versus-actual comparison, the deviation verdict and
-// the chart. It is the same discriminator the attempt query already uses for successCount.
-const SERVED_ROOT = `parent_span_id is null
-      and final_provider_id is not null
-      and termination_reason is null
-      and ended_at >= ? and ended_at <= ?`;
-
 function finalRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawFinalRow[] {
   return all<RawFinalRow>(
     db,
-    `select requested_model_id as modelId,
-      final_provider_id as providerId,
+    `select root.requested_model_id as modelId,
+      root.final_provider_id as providerId,
       cast(count(*) as text) as finalCount
-    from trace_span
+    from trace_span root
     where ${SERVED_ROOT}
-      and requested_model_id is not null
-    group by requested_model_id, final_provider_id`,
+      and root.requested_model_id is not null
+    group by root.requested_model_id, root.final_provider_id`,
     [range.start.getTime(), range.end.getTime()],
   );
 }
@@ -192,17 +208,17 @@ function finalRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawFinalRo
 function bucketRows(db: BunSQLiteDatabase, range: ResolvedUsageRange, modelId: string): RawBucketRow[] {
   const bucket =
     range.bucketUnit === 'hour'
-      ? `min(23, cast((ended_at - ${range.start.getTime()}) / 3600000 as integer))`
-      : `strftime('%Y-%m-%d', ended_at / 1000, 'unixepoch', 'localtime')`;
+      ? `min(23, cast((root.ended_at - ${range.start.getTime()}) / 3600000 as integer))`
+      : `strftime('%Y-%m-%d', root.ended_at / 1000, 'unixepoch', 'localtime')`;
   return all<RawBucketRow>(
     db,
     `select ${bucket} as bucket,
-      final_provider_id as providerId,
+      root.final_provider_id as providerId,
       cast(count(*) as text) as finalCount
-    from trace_span
+    from trace_span root
     where ${SERVED_ROOT}
-      and requested_model_id = ?
-    group by bucket, final_provider_id`,
+      and root.requested_model_id = ?
+    group by bucket, root.final_provider_id`,
     [range.start.getTime(), range.end.getTime(), modelId],
   );
 }
