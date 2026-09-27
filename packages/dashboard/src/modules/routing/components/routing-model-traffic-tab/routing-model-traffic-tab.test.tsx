@@ -9,7 +9,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router';
-import { render as renderComponent, screen } from '@testing-library/react';
+import { fireEvent, render as renderComponent, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 import type {
@@ -260,4 +260,40 @@ test('lists providers that were attempted but never became the final provider', 
   expect(await screen.findByText('standby')).toBeInTheDocument();
   expect(screen.getByText('5')).toBeInTheDocument();
   expect(screen.getByText('0%')).toBeInTheDocument();
+});
+
+test('sorts the provider metrics table by served requests', async () => {
+  // The rule requires the real table capabilities here, and sorting is the one that matters: it
+  // answers "which Provider is carrying this model". 9 versus 10 also pins that the comparison is
+  // numeric — ordered as text, "10" would come first.
+  renderTraffic({
+    buckets: bucketsFixture(['low', 'high']),
+    traffic: {
+      range: RANGE,
+      rangeStart: '2026-09-25T08:00:00.000Z',
+      rangeEnd: '2026-09-26T08:00:00.000Z',
+      models: [
+        {
+          modelId: MODEL_ID,
+          providers: [
+            providerTotals('low', { finalCount: 9n, attemptCount: 9n, successCount: 9n, p95LatencyMs: 10 }),
+            providerTotals('high', { finalCount: 10n, attemptCount: 10n, successCount: 10n, p95LatencyMs: 20 }),
+          ],
+        },
+      ],
+    },
+  });
+
+  await screen.findByRole('table');
+  const order = () =>
+    screen
+      .getAllByRole('row')
+      .map((row) => row.getAttribute('data-testid'))
+      .filter((id): id is string => id !== null);
+
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.traffic.served']() }));
+  expect(order()).toStrictEqual(['routing-traffic-row-low', 'routing-traffic-row-high']);
+
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.traffic.served']() }));
+  expect(order()).toStrictEqual(['routing-traffic-row-high', 'routing-traffic-row-low']);
 });

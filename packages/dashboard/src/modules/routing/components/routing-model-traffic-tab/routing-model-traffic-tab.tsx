@@ -4,17 +4,14 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@aio-proxy/ui/components/chart';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { format, parseISO } from 'date-fns';
 import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
-import { formatDuration } from '@/lib/format-duration';
-
-import { formatRoutingShare } from '../../lib/routing-summary';
 import { routingTrafficBucketsQueryOptions, routingTrafficQueryOptions } from '../../services/routing-traffic-service';
+import { RoutingTrafficSummaryTable, type RoutingTrafficSummaryRow } from './routing-traffic-summary-table';
 
 export interface RoutingModelTrafficTabProps {
   readonly modelId: string;
@@ -72,6 +69,16 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     ...totalsProviderIds,
     ...bucketsData.providerIds.filter((providerId) => !totalsProviderIds.includes(providerId)),
   ];
+  const summaryRows: readonly RoutingTrafficSummaryRow[] = summaryProviderIds.map((providerId) => {
+    const totals = totalsByProvider.get(providerId);
+    return {
+      providerId,
+      finalCount: totals?.finalCount ?? null,
+      attemptCount: totals?.attemptCount ?? null,
+      successRate: totals === undefined ? null : providerRate(totals.successCount, totals.attemptCount),
+      p95LatencyMs: totals?.p95LatencyMs ?? null,
+    };
+  });
 
   if (bucketsData.providerIds.length === 0 && totalsProviders.length === 0) {
     return (
@@ -148,45 +155,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
         </ChartContainer>
       ) : null}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{m['dashboard.traces.provider']()}</TableHead>
-            {/* Served is the quantity the chart above plots. Attempts counts every try including
-                the failed ones, so the two columns legitimately disagree and both are shown rather
-                than leaving one number on the chart and a different one in the table. */}
-            <TableHead>{m['dashboard.routing.traffic.served']()}</TableHead>
-            <TableHead>{m['dashboard.traces.span_metric_attempts']()}</TableHead>
-            <TableHead>{m['dashboard.overview.success_rate']()}</TableHead>
-            <TableHead>{m['dashboard.overview.p95_latency']()}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {summaryProviderIds.map((providerId) => {
-            const totals = totalsByProvider.get(providerId);
-            const successRate = totals === undefined ? null : providerRate(totals.successCount, totals.attemptCount);
-            return (
-              <TableRow key={providerId}>
-                <TableCell className="font-mono text-xs">{providerId}</TableCell>
-                <TableCell className="tabular-nums">
-                  {totals === undefined ? null : String(totals.finalCount)}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {totals === undefined ? null : String(totals.attemptCount)}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {successRate === null ? null : formatRoutingShare(successRate)}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {totals === undefined || totals.p95LatencyMs === null
-                    ? null
-                    : formatDuration(totals.p95LatencyMs, uiLocale)}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <RoutingTrafficSummaryTable rows={summaryRows} />
 
       <Button render={<Link to="/traces" search={{ requestedModelId: modelId }} />}>
         {m['dashboard.routing.detail.open_in_traces']()}
