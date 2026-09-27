@@ -149,9 +149,13 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     routingOverrideDraftsValid(metadataValues.overrides);
 
   const navigationBlocked = useCallback((): boolean => routeDirty, [routeDirty]);
+  // Both callbacks are effect dependencies of useBlocker, so they are passed by reference rather
+  // than wrapped in an arrow. A fresh literal here re-registers history.block() on every render,
+  // including the render that opening the confirmation dialog itself causes — tearing down the
+  // subscription while the blocker is still waiting on the user's choice.
   const blocker = useBlocker({
-    shouldBlockFn: () => navigationBlocked(),
-    enableBeforeUnload: () => navigationBlocked(),
+    shouldBlockFn: navigationBlocked,
+    enableBeforeUnload: navigationBlocked,
     withResolver: true,
   });
 

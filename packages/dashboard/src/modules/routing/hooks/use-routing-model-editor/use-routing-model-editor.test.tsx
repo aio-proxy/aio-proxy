@@ -529,3 +529,25 @@ test('reload drops a late payload when the mounted model id has changed', async 
   const providerIds = result.current.form.state.values.providers.map((row) => row.providerId);
   expect(providerIds).not.toContain('openai');
 });
+
+test('keeps the navigation guard callbacks stable while the dirty state is unchanged', () => {
+  // Both are useBlocker effect dependencies, so a fresh function identity per render re-registers
+  // history.block() every render — including the render that opening the confirmation dialog
+  // causes, which would tear the subscription down while it waits on the user's choice.
+  const { rerender, result } = renderEditor();
+  const firstShouldBlock = mocks.shouldBlock;
+  const firstBeforeUnload = mocks.enableBeforeUnload;
+
+  rerender({ model: model() });
+
+  expect(mocks.shouldBlock).toBe(firstShouldBlock);
+  expect(mocks.enableBeforeUnload).toBe(firstBeforeUnload);
+
+  // A real dirty-state change must still produce a new identity, or the guard would answer stale.
+  act(() => {
+    result.current.form.setFieldValue('providers[0].weight', 9);
+  });
+
+  expect(mocks.shouldBlock).not.toBe(firstShouldBlock);
+  expect(blockerEnabledFor()).toBe(true);
+});
