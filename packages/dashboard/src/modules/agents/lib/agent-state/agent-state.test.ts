@@ -20,6 +20,8 @@ test('the primary action moves each repairable state forward and leaves CLI-only
   expect(primaryAgentAction(local('recovery_required'))).toBeUndefined();
   expect(primaryAgentAction(local('not_installed'))).toBeUndefined();
   expect(primaryAgentAction(undefined)).toBeUndefined();
+  // Config left behind by an uninstalled Agent is only removable.
+  expect(primaryAgentAction(local('modified', { host: { detected: false, support: 'unknown' } }))).toBeUndefined();
 });
 
 const installation = (installationId: string): AgentInstallationSummary => ({

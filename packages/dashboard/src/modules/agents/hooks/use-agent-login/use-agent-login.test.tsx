@@ -13,6 +13,7 @@ const mocks = rs.hoisted(() => ({
   active: true,
   deviceId: '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c',
   decision: 'approved',
+  decidedElsewhere: undefined as 'approved' | 'denied' | undefined,
 }));
 
 rs.mock('../../services/agents-service', () => ({
@@ -32,6 +33,8 @@ rs.mock('../../services/agents-service', () => ({
             permissions: ['catalog', 'inference'],
           },
       userCode: mocks.pending ? 'WXYZ-2345' : null,
+      decided:
+        mocks.decidedElsewhere === undefined ? null : { deviceId: mocks.deviceId, status: mocks.decidedElsewhere },
     }),
   }),
   agentsSnapshotQueryOptions: () => ({
@@ -139,4 +142,23 @@ test('after a denial, a retried login is offered again and its outcome elsewhere
   mocks.pending = true;
   mocks.decision = 'approved';
   mocks.deviceId = '3f1d0f6a-4f1e-4b8e-9d7e-2d6f0e7a1b2c';
+}, 20_000);
+
+test('a request denied on another page shows the denial and does not poll the snapshot', async () => {
+  mocks.snapshotCalls = 0;
+  mocks.pending = true;
+  const client = new QueryClient();
+  const { result } = renderHook(() => useAgentLogin(INSTALLATION), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(result.current.pending).toBeDefined());
+  mocks.pending = false;
+  mocks.decidedElsewhere = 'denied';
+  await waitFor(() => expect(result.current.decision).toBe('denied'), { timeout: 5_000 });
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  expect(mocks.snapshotCalls).toBe(0);
+  mocks.pending = true;
+  mocks.decidedElsewhere = undefined;
 }, 20_000);

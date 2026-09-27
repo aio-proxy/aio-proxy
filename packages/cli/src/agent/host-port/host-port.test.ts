@@ -36,6 +36,7 @@ function portFixture(
     readonly failAfterInstall?: boolean;
     readonly grokNewer?: boolean;
     readonly locationError?: Error;
+    readonly grokUninstalled?: boolean;
   } = {},
 ) {
   let installed = false;
@@ -57,7 +58,7 @@ function portFixture(
   const command = {
     detectHost: async (target: AgentTarget) => {
       if (installed && options.failAfterInstall === true && target === 'omp') throw new Error('probe failed');
-      return host(target, target !== 'pi');
+      return host(target, target !== 'pi' && !(target === 'grok' && options.grokUninstalled === true));
     },
     resolveLocation: async (target: AgentTarget): Promise<AgentLocation> => {
       if (options.locationError !== undefined && target === 'opencode') throw options.locationError;
@@ -122,6 +123,15 @@ test('inspect reports each Agent in dashboard order with its local status', asyn
 test('a Grok integration written by a newer adapter is a conflict, not a configurable install', async () => {
   const rows = await portFixture({ grokNewer: true }).port.inspect();
   expect(rows.find((row) => row.target === 'grok')?.status).toBe('conflict');
+});
+
+test('a Grok config left behind after its binary is uninstalled keeps a removable status', async () => {
+  const rows = await portFixture({ grokUninstalled: true }).port.inspect();
+  expect(rows.find((row) => row.target === 'grok')).toMatchObject({
+    host: { detected: false },
+    status: 'modified',
+    installationId: INSTALLATION,
+  });
 });
 
 test('pending Codex recovery outranks every other Codex status', async () => {

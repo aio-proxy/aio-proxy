@@ -68,7 +68,9 @@ const isOlder = (version: string, current: string): boolean => {
 };
 
 const pluginStatus = (row: AgentListTargetResult, adapterVersion: string): AgentLocalStatus => {
-  if (!row.host.detected) return 'not_installed';
+  // Grok's managed config can outlive its binary and is still removable, so its state is kept.
+  const leftover = 'configuration' in row && row.integration === 'managed';
+  if (!row.host.detected && !leftover) return 'not_installed';
   // Newer formats are refused by configure and remove, so the dashboard must not offer either.
   if (row.integration === 'unresolved' || row.integration === 'conflict' || row.integration === 'newer')
     return 'conflict';
@@ -102,7 +104,8 @@ async function inspectLocal(deps: AgentHostPortDeps): Promise<readonly AgentLoca
   const rows: AgentLocalState[] = [];
   for (const row of list.targets) {
     const marker = row.integration === 'managed' || row.integration === 'newer' ? row.marker : undefined;
-    const configPath = row.host.detected ? await configPathOf(row.target, deps.command) : undefined;
+    const configPath =
+      row.host.detected || marker !== undefined ? await configPathOf(row.target, deps.command) : undefined;
     const endpointMatches = 'endpointMatches' in row ? row.endpointMatches : undefined;
     rows.push({
       target: row.target,

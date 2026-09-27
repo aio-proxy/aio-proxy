@@ -75,6 +75,11 @@ export type DeviceChallengeStore = {
     target: AgentTarget,
     installationId: string,
   ) => PendingInstallationChallenge | undefined;
+  /** The installation's latest challenge once decided but not yet redeemed, so a decision made elsewhere can be told apart. */
+  readonly decidedForInstallation: (
+    target: AgentTarget,
+    installationId: string,
+  ) => { readonly deviceId: string; readonly status: 'approved' | 'denied' } | undefined;
 };
 
 type DeviceChallengeStoreInput = {
@@ -296,10 +301,24 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
       : undefined;
   }
 
+  function decidedForInstallation(
+    target: AgentTarget,
+    installationId: string,
+  ): { readonly deviceId: string; readonly status: 'approved' | 'denied' } | undefined {
+    pruneExpired(maps, now());
+    const challenge = maps.byInstallation.get(installationKey(AGENT_CLIENT_ID[target], installationId));
+    return challenge !== undefined &&
+      challenge.target === target &&
+      (challenge.status === 'approved' || challenge.status === 'denied')
+      ? { deviceId: challenge.deviceId, status: challenge.status }
+      : undefined;
+  }
+
   return {
     create,
     resolve,
     pendingForInstallation,
+    decidedForInstallation,
     approve: (deviceId, source) => decide(deviceId, source, 'approved'),
     deny: (deviceId, source) => decide(deviceId, source, 'denied'),
     poll,

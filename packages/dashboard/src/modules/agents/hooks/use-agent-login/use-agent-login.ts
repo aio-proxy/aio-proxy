@@ -34,7 +34,12 @@ export const useAgentLogin = (installationId: string) => {
   // even after the retried request is itself decided elsewhere and disappears.
   const decidedDevice = decide.variables?.deviceId;
   const stale = decidedDevice !== undefined && seen !== undefined && seen.deviceId !== decidedDevice;
-  const decision = stale ? undefined : decide.data?.status;
+  // A request decided on another page reports that outcome, so a denial there is not mistaken for an
+  // approval awaiting redemption.
+  const decidedThere = pending.data?.decided ?? undefined;
+  const external =
+    decidedThere !== undefined && decidedThere.deviceId === seen?.deviceId ? decidedThere.status : undefined;
+  const decision = (stale ? undefined : decide.data?.status) ?? external;
   const authorization = decide.data !== undefined && !stale ? undefined : pendingNow;
   const seenUntil = seen?.until;
   // Approval issues the credential only on the Agent's next token poll, so keep refreshing the

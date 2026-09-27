@@ -13,6 +13,8 @@ export type PrimaryAgentAction = 'configure' | 'update' | 'repair' | 'reconfigur
 
 /** The one action the Agent card offers, or none when only the CLI can move it forward. */
 export const primaryAgentAction = (local: AgentLocalState | undefined): PrimaryAgentAction | undefined => {
+  // A config left behind by an uninstalled Agent can only be removed, never rewritten.
+  if (local?.host.detected === false) return undefined;
   switch (local?.status) {
     case 'not_configured':
       return 'configure';

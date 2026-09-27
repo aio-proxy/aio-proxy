@@ -267,7 +267,7 @@ test('pending login lookup only answers for installations configured on this mac
   const f = await fixture();
   expect((await f.request('/installations/7d1e3b1e-7a41-4c1e-9d5e-7e7f5b3c2a10/pending')).status).toBe(404);
   const empty = await (await f.request(`/installations/${INSTALLATION}/pending`)).json();
-  expect(empty).toEqual({ authorization: null, userCode: null });
+  expect(empty).toEqual({ authorization: null, userCode: null, decided: null });
   const created = await f.app.request(
     '/oauth/device/code',
     form({
