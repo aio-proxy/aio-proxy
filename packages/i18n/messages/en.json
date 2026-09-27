@@ -494,17 +494,15 @@
       "installation": "Installation ID",
       "version": "Adapter version",
       "expires": "Expires",
-      "resolve": "Continue",
       "approve": "Approve",
       "deny": "Deny",
-      "pending": "Waiting for your decision.",
+      "pending": "The request is waiting for your decision. Review the permissions and approve or deny to finish.",
       "approved": "Authorization approved. Return to your Agent.",
       "denied": "Authorization denied.",
       "expired": "This authorization code expired.",
       "consumed": "This authorization code was already used.",
       "password_required": "Set a Dashboard password before approving Agent access.",
-      "network_error": "aio-proxy is unavailable. Check the server and try again.",
-      "retry": "Use another code"
+      "network_error": "aio-proxy is unavailable. Check the server and try again."
     },
     "menus": {
       "observability": "Observability",

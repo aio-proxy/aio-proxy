@@ -51,7 +51,7 @@ export class GuardianEvaluationUnavailable extends Error {
 }
 export function createGuardianEvaluate(
   getSource: () => ProviderRouteSource,
-  sourceProviderId: string,
+  origin: { readonly providerId?: string; readonly plugin?: string },
 ): GuardianEvaluate {
   return async ({ providerId, modelId, body, signal, logicalRequest }) => {
     if (
@@ -84,7 +84,11 @@ export function createGuardianEvaluate(
         !candidate.provider.enabled
       )
         throw new GuardianEvaluationUnavailable('target_unavailable');
-      if (candidate.provider.id === sourceProviderId) throw new GuardianEvaluationUnavailable('recursive_target');
+      if (
+        (origin.providerId !== undefined && candidate.provider.id === origin.providerId) ||
+        (origin.plugin !== undefined && candidate.provider.plugin === origin.plugin)
+      )
+        throw new GuardianEvaluationUnavailable('recursive_target');
       return await dispatchPrivateEvaluation({
         candidate,
         body: requestBody,

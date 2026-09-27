@@ -7,6 +7,12 @@ import { definePlugin, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 import { npmPackageCacheDir } from '../npm';
 import type { DiagnosticFactory } from './diagnostic';
 import { loadPluginRegistry } from './loader/index';
+import {
+  createPluginRegistryHost,
+  type BuiltInPluginApi,
+  type ResponsesPreRouteWrap,
+  type ResponsesRawWrap,
+} from './registry';
 
 const homeEnv = 'AIO_PROXY_HOME';
 const originalHome = process.env[homeEnv];
@@ -98,6 +104,48 @@ describe('PluginRegistry staging', () => {
       importPackage: async () => ({ default: descriptor }),
     });
     expect(snapshot.registry.oauthCapabilities()).toHaveLength(0);
+  });
+
+  test('rejects duplicate responses pre-route registration', () => {
+    const host = createPluginRegistryHost();
+    const staging = host.stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
+    const preRoute: ResponsesPreRouteWrap = () => async () => undefined;
+
+    staging.api.raw.register('openai-response', 'pre-route', preRoute);
+    expect(() => staging.api.raw.register('openai-response', 'pre-route', preRoute)).toThrow(
+      'Duplicate responses pre-route hook',
+    );
+  });
+
+  test('failed built-in setup commits neither responses capability', async () => {
+    const descriptor = definePlugin((api) => {
+      const builtInApi = api as BuiltInPluginApi;
+      const raw: ResponsesRawWrap = ({ original }) => original;
+      const preRoute: ResponsesPreRouteWrap = () => async () => undefined;
+      builtInApi.raw.register('openai-response', 'wrap', raw);
+      builtInApi.raw.register('openai-response', 'pre-route', preRoute);
+      throw new Error('setup failed');
+    });
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [
+        {
+          packageName: '@example/broken-built-in',
+          version: '1.0.0',
+          descriptor,
+        },
+      ],
+      enablements: [{ packageName: '@example/broken-built-in' }],
+      importPackage: async () => {
+        throw new Error('must not import');
+      },
+    });
+
+    expect(snapshot.registry.resolveResponses('@example/broken-built-in')).toBeUndefined();
+    expect(snapshot.plugins.get('@example/broken-built-in')?.state).toMatchObject({
+      status: 'failed',
+      diagnostic: { code: 'PLUGIN_LOAD_FAILED' },
+    });
   });
 
   test('duplicate CPA type rejects the whole second plugin', async () => {

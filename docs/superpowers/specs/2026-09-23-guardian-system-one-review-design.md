@@ -61,6 +61,17 @@ flowchart TD
 
 In `systemOneReviewDenied`, `codex-auto-review` is the final adjudicator after a valid System One denial: its allow may overturn that denial. Both System One modes use the original model if evaluation times out, fails, or returns an invalid result while the caller is still connected. Operational failure is separate from the user's “review denials” strategy.
 
+When an otherwise eligible OpenAI Responses creation request has no initial route and
+`router.resolve()` raises `RouterModelNotFoundError`, the private ChatGPT pre-route
+hook may still return a fully validated synthetic System One decision. This is the
+only route-miss exception: the hook does not invent an original transport, re-enter
+public routing, or run after a later candidate-attempt error. A live decline—including
+evaluator failure, timeout, invalid output, or a denial under
+`systemOneReviewDenied`—preserves the original route-miss response. Caller
+cancellation follows the cancellation path and is never converted to
+`model_not_found`; a successful synthetic response uses the provider-free completion
+path and does not create Provider ownership or usage for the parent request.
+
 The original path resumes the captured selected Responses transport below the Guardian wrapper with the untouched request; it does not re-enter public routing or add the evaluator's result to the prompt. Within one plugin raw-transport invocation, the wrapper calls that original path at most once and returns its response or error unchanged. Existing outer Responses raw retry and Provider failover may invoke the wrapper again after an upstream failure; this design preserves those routing rules and makes no inbound-request-wide once-only promise. Each actual send remains observable; usage and fees follow the existing successful-response accounting rules. It must not create an unbounded self-recursion loop.
 
 Guardian currently exposes only `allow` and `deny` in its response schema. This wrapper does not manufacture a “request manual confirmation” result. Any manual approval behavior after an `allow` remains Codex's responsibility.

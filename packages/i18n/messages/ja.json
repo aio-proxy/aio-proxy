@@ -494,17 +494,15 @@
       "installation": "インストール ID",
       "version": "アダプターバージョン",
       "expires": "有効期限",
-      "resolve": "続行",
       "approve": "承認",
       "deny": "拒否",
-      "pending": "承認待ちです。",
+      "pending": "リクエストはあなたの判断を待っています。権限を確認して承認または拒否してください。",
       "approved": "承認しました。Agent に戻ってください。",
       "denied": "承認を拒否しました。",
       "expired": "この承認コードは期限切れです。",
       "consumed": "この承認コードは使用済みです。",
       "password_required": "Agent アクセスを承認する前に Dashboard パスワードを設定してください。",
-      "network_error": "aio-proxy に接続できません。サーバーを確認して再試行してください。",
-      "retry": "別のコードを使う"
+      "network_error": "aio-proxy に接続できません。サーバーを確認して再試行してください。"
     },
     "menus": {
       "observability": "オブザーバビリティ",

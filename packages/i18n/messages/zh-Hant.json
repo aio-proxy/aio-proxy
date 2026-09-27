@@ -494,17 +494,15 @@
       "installation": "安裝 ID",
       "version": "轉接器版本",
       "expires": "到期時間",
-      "resolve": "繼續",
       "approve": "批准",
       "deny": "拒絕",
-      "pending": "等待你的決定。",
+      "pending": "請求正在等待你的決定。查看權限，然後批准或拒絕。",
       "approved": "已批准授權，請返回 Agent。",
       "denied": "已拒絕授權。",
       "expired": "此授權碼已過期。",
       "consumed": "此授權碼已使用。",
       "password_required": "請先設定 Dashboard 密碼，再批准 Agent 存取。",
-      "network_error": "無法連線 aio-proxy，請檢查服務後重試。",
-      "retry": "使用其他授權碼"
+      "network_error": "無法連線 aio-proxy，請檢查服務後重試。"
     },
     "menus": {
       "observability": "觀測",
