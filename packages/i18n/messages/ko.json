@@ -708,8 +708,6 @@
         "clear_filters": "필터 지우기"
       },
       "editor": {
-        "title": "{modelId} 라우팅 편집",
-        "description": "Provider를 단계 사이로 드래그하고 같은 단계의 비중을 슬라이더로 조정합니다. 저장하면 이 모델의 표시된 재정의가 한 번에 교체됩니다.",
         "preview": "실시간 라우트",
         "preview_empty": "대상 Provider가 없습니다. 이 모델은 일반 라우팅에서 사용되지 않습니다.",
         "inherit": "상속",

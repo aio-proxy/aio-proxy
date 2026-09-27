@@ -708,8 +708,6 @@
         "clear_filters": "フィルタをクリア"
       },
       "editor": {
-        "title": "{modelId} のルーティングを編集",
-        "description": "Provider をティア間でドラッグし、同じティア内の配分をスライダーで調整します。保存すると、このモデルの表示中の上書きが一度に置き換わります。",
         "preview": "ライブルート",
         "preview_empty": "対象 Provider がありません。このモデルは通常ルーティングでは無効です。",
         "inherit": "継承",

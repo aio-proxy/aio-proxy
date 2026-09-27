@@ -708,8 +708,6 @@
         "clear_filters": "清除筛选"
       },
       "editor": {
-        "title": "编辑 {modelId} 的路由",
-        "description": "拖动 Provider 调整所在梯队，再用滑块调整同梯队内的流量占比。保存会一次性替换此模型的可见覆盖。",
         "preview": "实时路由",
         "preview_empty": "没有可用 Provider。此模型已对普通路由禁用。",
         "inherit": "继承",

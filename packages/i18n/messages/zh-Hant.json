@@ -708,8 +708,6 @@
         "clear_filters": "清除篩選"
       },
       "editor": {
-        "title": "編輯 {modelId} 的路由",
-        "description": "拖曳 Provider 調整所在梯隊，再用滑桿調整同梯隊內的流量占比。儲存會一次取代此模型的可見覆寫。",
         "preview": "即時路由",
         "preview_empty": "沒有可用 Provider。此模型已對一般路由停用。",
         "inherit": "繼承",
