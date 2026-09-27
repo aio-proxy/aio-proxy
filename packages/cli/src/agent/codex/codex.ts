@@ -38,6 +38,8 @@ export function resolveCodexExecutable(
   const onPath = which('codex');
   if (onPath !== null) return onPath;
   const bundled = [
+    '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex',
+    join(home, 'Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex'),
     '/Applications/ChatGPT.app/Contents/Resources/codex',
     join(home, 'Applications/ChatGPT.app/Contents/Resources/codex'),
   ];
