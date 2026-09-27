@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 export type UnitOptions = {
   readonly exec: string;
   readonly configPath: string;
+  readonly path?: string;
   readonly upgradeMethod?: 'brew' | 'bun' | 'npm' | 'pnpm';
 };
 
@@ -28,7 +29,7 @@ const xmlEscape = (value: string): string =>
 // The daemon loads the optional service.env itself (see service-env), so no
 // EnvironmentFile= is needed and the env file is parsed identically on both
 // platforms without a shell.
-export function renderSystemdUnit({ exec, configPath, upgradeMethod }: UnitOptions): string {
+export function renderSystemdUnit({ exec, configPath, path, upgradeMethod }: UnitOptions): string {
   return `[Unit]
 Description=AIO Proxy
 After=network-online.target
@@ -41,7 +42,7 @@ Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=1
 Environment=${systemdQuote(`AIO_PROXY_HOME=${dirname(configPath)}`)}
-Environment=${systemdQuote('AIO_PROXY_MANAGED=1')}${upgradeMethod === undefined ? '' : `\nEnvironment=${systemdQuote(`AIO_PROXY_UPGRADE_METHOD=${upgradeMethod}`)}`}
+Environment=${systemdQuote('AIO_PROXY_MANAGED=1')}${path === undefined ? '' : `\nEnvironment=${systemdQuote(`PATH=${path}`)}`}${upgradeMethod === undefined ? '' : `\nEnvironment=${systemdQuote(`AIO_PROXY_UPGRADE_METHOD=${upgradeMethod}`)}`}
 
 [Install]
 WantedBy=default.target
@@ -57,7 +58,7 @@ WantedBy=default.target
 // (the daemon loads service.env itself), so no shell touches provider secrets.
 const LAUNCHD_EXEC_WRAPPER = '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
 
-export function renderLaunchdPlist({ exec, configPath, upgradeMethod }: UnitOptions): string {
+export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod }: UnitOptions): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -76,7 +77,7 @@ export function renderLaunchdPlist({ exec, configPath, upgradeMethod }: UnitOpti
     <key>AIO_PROXY_HOME</key>
     <string>${xmlEscape(dirname(configPath))}</string>
     <key>AIO_PROXY_MANAGED</key>
-    <string>1</string>${
+    <string>1</string>${path === undefined ? '' : `\n    <key>PATH</key>\n    <string>${xmlEscape(path)}</string>`}${
       upgradeMethod === undefined
         ? ''
         : `

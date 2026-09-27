@@ -10,7 +10,7 @@ import {
 } from './codex';
 
 test('uses the ChatGPT app Codex binary when codex is not on PATH', () => {
-  const app = '/Applications/ChatGPT.app/Contents/Resources/codex';
+  const app = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex';
   expect(
     resolveCodexExecutable(
       () => null,

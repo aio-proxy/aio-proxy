@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { CliExit } from '../exit';
@@ -134,6 +134,16 @@ test('launchd plist XML-escapes an ampersand in the exec path', () => {
   expect(plist).not.toContain('a&b/bin/aio-proxy');
 });
 
+test('managed service units retain executable search paths for local Agents', () => {
+  const path = '/Users/a&b/.local/bin:/Users/a&b/.npm-global/bin:/usr/bin';
+  const options = { exec: '/usr/local/bin/aio-proxy', configPath: '/Users/a&b/.aio-proxy/config.jsonc', path };
+  const plist = renderLaunchdPlist(options);
+  const unit = renderSystemdUnit(options);
+  expect(plist).toContain('<key>PATH</key>');
+  expect(plist).toContain('<string>/Users/a&amp;b/.local/bin:/Users/a&amp;b/.npm-global/bin:/usr/bin</string>');
+  expect(unit).toContain('Environment="PATH=/Users/a&b/.local/bin:/Users/a&b/.npm-global/bin:/usr/bin"');
+});
+
 test('resolveExec prefers the stable PATH launcher over its versioned symlink target', () => {
   // Regression: brew exposes /opt/homebrew/bin/aio-proxy -> Cellar/<ver>/bin/aio-proxy.
   // execPath resolves to the versioned target, but baking that breaks after
@@ -246,6 +256,22 @@ test('writeManagedUnit creates the unit and parent dir when none exists', async 
   expect(existsSync(plistPath)).toBe(false);
   await writeManagedUnit('darwin', '/opt/homebrew/bin/aio-proxy', plistPath);
   expect(existsSync(plistPath)).toBe(true);
+});
+
+test('rewriting an older launchd unit restores user Agent directories from a minimal PATH', async () => {
+  const plistPath = join(tmpdir(), `aio-svc-agent-path-${crypto.randomUUID()}`, 'com.aio-proxy.agent.plist');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin';
+  try {
+    await writeManagedUnit('darwin', '/opt/homebrew/bin/aio-proxy', plistPath);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain(`<string>/usr/bin:/bin:/usr/sbin:/sbin:${join(homedir(), '.opencode/bin')}`);
+  expect(contents).toContain(join(homedir(), '.local/bin'));
+  expect(contents).toContain(join(homedir(), '.npm-global/bin'));
 });
 
 test('resolveStableManagedExec maps a Cellar path to the stable Homebrew launcher', () => {

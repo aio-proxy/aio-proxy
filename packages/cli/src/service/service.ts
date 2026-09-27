@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 
 import { configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
@@ -18,6 +18,24 @@ export type ServiceInstallOptions = { readonly system?: boolean };
 type Printer = (line: string) => void;
 
 type SupportedPlatform = 'darwin' | 'linux';
+
+// Service managers do not inherit the user's shell PATH. Keep the configured
+// command directories across restarts, including upgrades initiated by the daemon.
+// The home fallbacks also migrate older units that had no PATH entry at all.
+const managedServicePath = (home: string, inherited: string | undefined): string => {
+  const userBins = ['.opencode/bin', '.npm-global/bin', '.local/bin', '.local/bin/node/bin', '.grok/bin', '.bun/bin'];
+  const dirs = [
+    ...(inherited?.split(':') ?? []),
+    ...userBins.map((suffix) => join(home, suffix)),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ];
+  return [...new Set(dirs.filter(isAbsolute))].join(':');
+};
 
 function requirePlatform(): SupportedPlatform {
   const current = platform();
@@ -109,7 +127,12 @@ export async function writeManagedUnit(
       }
     } catch {}
   }
-  const unit = { exec, configPath: cfg, ...(upgradeMethod === undefined ? {} : { upgradeMethod }) };
+  const unit = {
+    exec,
+    configPath: cfg,
+    path: managedServicePath(homedir(), process.env['PATH']),
+    ...(upgradeMethod === undefined ? {} : { upgradeMethod }),
+  };
   const body = os === 'darwin' ? renderLaunchdPlist(unit) : renderSystemdUnit(unit);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, body, { mode: 0o644 });
