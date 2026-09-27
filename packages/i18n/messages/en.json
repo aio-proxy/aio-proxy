@@ -842,7 +842,9 @@
       },
       "traffic": {
         "none": "No traffic",
-        "success_rate": "{value} success"
+        "success_rate": "{value} success",
+        "served": "Served",
+        "chart_label": "Requests served per Provider over time"
       }
     },
     "pagination": {

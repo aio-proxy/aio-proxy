@@ -842,7 +842,9 @@
       },
       "traffic": {
         "none": "トラフィックなし",
-        "success_rate": "成功率 {value}"
+        "success_rate": "成功率 {value}",
+        "served": "処理済み",
+        "chart_label": "Provider ごとの処理済みリクエストの推移"
       }
     },
     "pagination": {

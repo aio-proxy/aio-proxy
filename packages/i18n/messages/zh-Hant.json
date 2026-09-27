@@ -842,7 +842,9 @@
       },
       "traffic": {
         "none": "無流量",
-        "success_rate": "成功率 {value}"
+        "success_rate": "成功率 {value}",
+        "served": "已服務",
+        "chart_label": "各 Provider 已服務請求數隨時間變化"
       }
     },
     "pagination": {

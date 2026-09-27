@@ -107,7 +107,11 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
   return (
     <div className="space-y-6">
       {showChart ? (
-        <ChartContainer config={chartConfig} className="aspect-auto h-64 w-full sm:h-72">
+        <ChartContainer
+          config={chartConfig}
+          className="aspect-auto h-64 w-full sm:h-72"
+          aria-label={m['dashboard.routing.traffic.chart_label']()}
+        >
           <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
             <CartesianGrid vertical={false} />
             <XAxis
@@ -148,6 +152,10 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
         <TableHeader>
           <TableRow>
             <TableHead>{m['dashboard.traces.provider']()}</TableHead>
+            {/* Served is the quantity the chart above plots. Attempts counts every try including
+                the failed ones, so the two columns legitimately disagree and both are shown rather
+                than leaving one number on the chart and a different one in the table. */}
+            <TableHead>{m['dashboard.routing.traffic.served']()}</TableHead>
             <TableHead>{m['dashboard.traces.span_metric_attempts']()}</TableHead>
             <TableHead>{m['dashboard.overview.success_rate']()}</TableHead>
             <TableHead>{m['dashboard.overview.p95_latency']()}</TableHead>
@@ -160,6 +168,9 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
             return (
               <TableRow key={providerId}>
                 <TableCell className="font-mono text-xs">{providerId}</TableCell>
+                <TableCell className="tabular-nums">
+                  {totals === undefined ? null : String(totals.finalCount)}
+                </TableCell>
                 <TableCell className="tabular-nums">
                   {totals === undefined ? null : String(totals.attemptCount)}
                 </TableCell>

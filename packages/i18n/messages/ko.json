@@ -842,7 +842,9 @@
       },
       "traffic": {
         "none": "트래픽 없음",
-        "success_rate": "성공률 {value}"
+        "success_rate": "성공률 {value}",
+        "served": "처리됨",
+        "chart_label": "Provider별 처리된 요청 추이"
       }
     },
     "pagination": {

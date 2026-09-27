@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { UsageOverviewRange } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -151,6 +152,39 @@ test('summarises attempts, successes and p95 per provider', async () => {
   expect(screen.getByText('10')).toBeInTheDocument();
   expect(screen.getByText('40%')).toBeInTheDocument();
   expect(screen.queryByText(/0 ms/u)).not.toBeInTheDocument();
+});
+
+test('shows served alongside attempts so the chart and the table can be reconciled', async () => {
+  // The chart plots finalCount while the only count column used to show attemptCount, so a
+  // provider with 2 served and 10 attempted put bars summing to 2 directly above a row reading 10
+  // with nothing saying they measured different things.
+  renderTraffic({
+    buckets: bucketsFixture(['primary']),
+    traffic: {
+      range: RANGE,
+      rangeStart: '2026-09-25T08:00:00.000Z',
+      rangeEnd: '2026-09-26T08:00:00.000Z',
+      models: [
+        {
+          modelId: MODEL_ID,
+          providers: [
+            providerTotals('primary', { finalCount: 2n, attemptCount: 10n, successCount: 4n, p95LatencyMs: null }),
+          ],
+        },
+      ],
+    },
+  });
+
+  await screen.findByRole('table');
+  const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.trim());
+  expect(headers).toContain(m['dashboard.routing.traffic.served']());
+  expect(headers).toContain(m['dashboard.traces.span_metric_attempts']());
+
+  const cells = [...screen.getByText('primary').closest('tr')!.querySelectorAll('td')].map((cell) =>
+    cell.textContent?.trim(),
+  );
+  // Served then attempts, in the order the headers declare.
+  expect(cells.slice(0, 3)).toStrictEqual(['primary', '2', '10']);
 });
 
 test('shows an empty state rather than an empty chart when nothing was served', async () => {
