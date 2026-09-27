@@ -846,7 +846,9 @@
         "none": "트래픽 없음",
         "success_rate": "성공률 {value}",
         "served": "처리됨",
-        "chart_label": "Provider별 처리된 요청 추이"
+        "chart_label": "Provider별 처리된 요청 추이",
+        "filter": "Provider 필터",
+        "filter_placeholder": "Provider ID로 필터"
       }
     },
     "pagination": {

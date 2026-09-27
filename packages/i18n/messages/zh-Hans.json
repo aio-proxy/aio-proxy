@@ -846,7 +846,9 @@
         "none": "无流量",
         "success_rate": "成功率 {value}",
         "served": "已服务",
-        "chart_label": "各 Provider 已服务请求数随时间变化"
+        "chart_label": "各 Provider 已服务请求数随时间变化",
+        "filter": "筛选 Provider",
+        "filter_placeholder": "按 Provider ID 筛选"
       }
     },
     "pagination": {

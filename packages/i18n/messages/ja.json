@@ -846,7 +846,9 @@
         "none": "トラフィックなし",
         "success_rate": "成功率 {value}",
         "served": "処理済み",
-        "chart_label": "Provider ごとの処理済みリクエストの推移"
+        "chart_label": "Provider ごとの処理済みリクエストの推移",
+        "filter": "Provider を絞り込む",
+        "filter_placeholder": "Provider ID で絞り込む"
       }
     },
     "pagination": {

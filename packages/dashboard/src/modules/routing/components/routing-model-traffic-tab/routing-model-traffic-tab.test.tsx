@@ -297,3 +297,37 @@ test('sorts the provider metrics table by served requests', async () => {
   fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.traffic.served']() }));
   expect(order()).toStrictEqual(['routing-traffic-row-high', 'routing-traffic-row-low']);
 });
+
+test('exposes filtering and column visibility on the provider metrics table', async () => {
+  // useDataTable creates global-filter and column-visibility state, but it is unreachable unless the
+  // shared controls are rendered — the table had sorting and pagination only.
+  renderTraffic({
+    buckets: bucketsFixture(['primary', 'fallback']),
+    traffic: {
+      range: RANGE,
+      rangeStart: '2026-09-25T08:00:00.000Z',
+      rangeEnd: '2026-09-26T08:00:00.000Z',
+      models: [
+        {
+          modelId: MODEL_ID,
+          providers: [
+            providerTotals('primary', { finalCount: 9n, attemptCount: 9n, successCount: 9n, p95LatencyMs: 10 }),
+            providerTotals('fallback', { finalCount: 1n, attemptCount: 1n, successCount: 1n, p95LatencyMs: 20 }),
+          ],
+        },
+      ],
+    },
+  });
+
+  await screen.findByRole('table');
+  expect(screen.getByRole('button', { name: m['dashboard.routing.table.columns']() })).toBeInTheDocument();
+
+  const filter = screen.getByLabelText(m['dashboard.routing.traffic.filter']());
+  expect(screen.getByTestId('routing-traffic-row-fallback')).toBeInTheDocument();
+
+  fireEvent.change(filter, { target: { value: 'primary' } });
+
+  // Filtering narrows the rows rather than just holding state nobody can reach.
+  expect(screen.getByTestId('routing-traffic-row-primary')).toBeInTheDocument();
+  expect(screen.queryByTestId('routing-traffic-row-fallback')).not.toBeInTheDocument();
+});

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   mergeRoutingMutationDrafts,
-  reconcileRoutingMetadataValues,
   routingDirtyTabs,
   routingMetadataTouched,
   routingOverrideDraftsValid,
@@ -13,10 +12,11 @@ import {
 } from '../../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../../lib/routing-summary';
 import { isStaleRoutingError } from '../../services/routing-service';
-import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../use-routing-form';
+import { routingDraftRecord, useRoutingForm } from '../use-routing-form';
 import { useRoutingMetadataForm } from '../use-routing-metadata-form';
 import { useRoutingMutation } from '../use-routing-mutation';
 import { routingEditorBaseline, type RoutingEditorBaseline } from './routing-editor-baseline';
+import { createRoutingEditorReload } from './routing-editor-reload';
 
 interface UseRoutingModelEditorOptions {
   readonly model: DashboardRoutingModel;
@@ -156,8 +156,16 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     setStale(false);
     mutation.reset();
     setMetadataValid(true);
-    form.reset(baseline.form);
-    metadataForm.reset(baseline.metadata);
+    // A background refetch that arrived while the draft was dirty was deliberately not adopted, and
+    // the identity effect already recorded that revision, so it will never fire again for it.
+    // Discarding is the moment to take the server's truth; without this the editor stays on values
+    // the server has moved past and the next save earns an avoidable stale_revision.
+    const latest = latestModel.current;
+    const next = latest.revision === baseline.revision ? baseline : routingEditorBaseline(latest);
+    previousModelIdentity.current = { modelId: latest.modelId, revision: latest.revision };
+    setBaseline(next);
+    form.reset(next.form);
+    metadataForm.reset(next.metadata);
   };
 
   const save = () => {
@@ -174,34 +182,26 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     void form.handleSubmit();
   };
 
-  const reload = () => {
-    if (mutation.isPending) return;
-    const generation = ++reloadGeneration.current;
-    const initiatedId = model.modelId;
-    void Promise.resolve(onReload()).then((next) => {
-      if (generation !== reloadGeneration.current) return;
-      if (next == null || next.modelId !== initiatedId) return;
-      if (latestModel.current.modelId !== initiatedId) return;
-      appliedReloadIdentity.current = { modelId: next.modelId, revision: next.revision };
-      // The pre-reload baseline is the common ancestor: without it every untouched row would be
-      // replayed over the server's, reverting concurrent changes the user never made.
-      const providers = reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next, baseline.form.providers);
-      const metadata = reconcileRoutingMetadataValues(metadataForm.state.values, next);
-      const fresh = routingEditorBaseline(next);
-      setBaseline(fresh);
-      // The baseline is what the server holds; the preserved edits go back on top as changes. Making
-      // them the baseline instead would leave the form pristine, so the dirty markers and the
-      // navigation guard would vanish while the edits were still unsaved, and Cancel would have
-      // nothing to fall back to.
-      form.reset(fresh.form);
-      form.setFieldValue('providers', providers);
-      metadataForm.reset(fresh.metadata);
-      if (routingMetadataTouched(metadata)) {
-        metadataForm.setFieldValue('metadata', metadata.metadata);
-        metadataForm.setFieldValue('overrides', metadata.overrides);
-      }
-    });
-  };
+  // The refs are handed over unread: the returned callback is their only reader, and it runs from the
+  // Reload click rather than during render.
+  // oxlint-disable-next-line react/refs
+  const reload = createRoutingEditorReload({
+    model,
+    latestModel,
+    generation: reloadGeneration,
+    appliedIdentity: appliedReloadIdentity,
+    baseline,
+    form,
+    metadataForm,
+    fetch: onReload,
+    disabled: mutation.isPending,
+    // The draft is now based on the fetched revision, so the staleness Reload was offered for is
+    // resolved. Leaving it set kept the error and the Reload button up until some later save.
+    onRebased: (next) => {
+      setStale(false);
+      setBaseline(next);
+    },
+  });
 
   return {
     form,

@@ -846,7 +846,9 @@
         "none": "No traffic",
         "success_rate": "{value} success",
         "served": "Served",
-        "chart_label": "Requests served per Provider over time"
+        "chart_label": "Requests served per Provider over time",
+        "filter": "Filter Providers",
+        "filter_placeholder": "Filter by Provider ID"
       }
     },
     "pagination": {

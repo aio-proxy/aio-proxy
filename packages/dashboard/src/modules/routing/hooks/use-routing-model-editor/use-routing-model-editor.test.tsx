@@ -677,3 +677,41 @@ test('rebases a reload field by field instead of replaying the whole draft', asy
     { providerId: 'openai', weight: 4 },
   ]);
 });
+
+test('clears the stale state once a reload has been applied', async () => {
+  // Reload exists to resolve a stale save. Leaving the flag set kept the error and the Reload button
+  // on screen afterwards, so the only way out looked like reloading again.
+  const reloaded = { ...model(), revision: 'rev-2' };
+  let resolveReload!: (value: DashboardRoutingModel) => void;
+  const reloadPromise = new Promise<DashboardRoutingModel>((resolve) => {
+    resolveReload = resolve;
+  });
+  const { result, rejectWithStale } = renderEditor({ onReload: rs.fn().mockReturnValue(reloadPromise) });
+
+  await act(() => result.current.save());
+  act(() => rejectWithStale());
+  expect(result.current.stale).toBe(true);
+
+  act(() => result.current.reload());
+  await act(async () => resolveReload(reloaded));
+
+  expect(result.current.stale).toBe(false);
+});
+
+test('adopts a revision that arrived while dirty when the draft is discarded', async () => {
+  // A background refetch landing on a dirty draft is deliberately not adopted, and the identity
+  // effect records it as seen — so it never fires for that revision again. Cancel is the moment to
+  // take the server's truth; otherwise the editor sits on values the server moved past and the next
+  // save earns an avoidable stale_revision.
+  const { result, rerender, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  rerender({ model: { ...model(), revision: 'rev-7' } });
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
+
+  act(() => result.current.discard());
+
+  expect(result.current.dirtyTabs).toEqual([]);
+  await act(() => result.current.save());
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({ revision: 'rev-7' });
+});

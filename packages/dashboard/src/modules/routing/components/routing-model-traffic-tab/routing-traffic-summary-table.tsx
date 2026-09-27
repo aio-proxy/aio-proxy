@@ -3,6 +3,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/u
 import type { ColumnDef } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
+import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
@@ -111,6 +112,12 @@ export const RoutingTrafficSummaryTable: React.FC<RoutingTrafficSummaryTableProp
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
+      <DataTableControls
+        table={table}
+        filterLabel={m['dashboard.routing.traffic.filter']()}
+        filterPlaceholder={m['dashboard.routing.traffic.filter_placeholder']()}
+        columnsLabel={m['dashboard.routing.table.columns']()}
+      />
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
