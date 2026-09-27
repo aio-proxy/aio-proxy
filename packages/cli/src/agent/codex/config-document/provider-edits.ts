@@ -1,3 +1,5 @@
+import { CodexProviderIdSchema } from '@aio-proxy/types';
+
 import type { CodexAuthConfig } from '../contracts';
 import type { FieldEdit, ManagedValue } from './config-document';
 
@@ -46,15 +48,10 @@ export function codexProviderEdits(providerId: string, baseUrl: string, auth: Co
 }
 
 export function validateCodexProviderId(value: string): string {
-  const hasControlCharacter = [...value].some((character) => {
-    const codePoint = character.codePointAt(0)!;
-    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
-  });
-  if (hasControlCharacter) throw new Error('Codex provider ID cannot contain control characters');
-  const id = value.trim();
-  if (id.length === 0) throw new Error('Codex provider ID cannot be empty');
-  if (new Set(['openai', 'ollama', 'lmstudio', 'amazon-bedrock']).has(id)) {
-    throw new Error(`Codex provider ID is reserved: ${id}`);
-  }
-  return id;
+  const parsed = CodexProviderIdSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  const reason = parsed.error.issues[0]?.message;
+  if (reason === 'control_character') throw new Error('Codex provider ID cannot contain control characters');
+  if (reason === 'reserved') throw new Error(`Codex provider ID is reserved: ${value.trim()}`);
+  throw new Error('Codex provider ID cannot be empty');
 }

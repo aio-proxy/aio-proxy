@@ -1,5 +1,6 @@
 import { fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 
+import type { AgentHostPort } from '../agent-dashboard';
 import { createAutoUpdateController } from '../auto-update';
 import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import { warnUnenforcedApiKeys } from '../config-unenforced-api-keys';
@@ -36,6 +37,8 @@ export type CreateServerOptions = {
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
   readonly version?: string;
+  /** Local Agent file access for the dashboard Agents page; the CLI injects it only when safe. */
+  readonly agentHost?: AgentHostPort;
   readonly autoUpdate?: {
     readonly isManagedService: () => boolean;
     readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
@@ -91,6 +94,8 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       });
     },
   });
+  // Cancels in-flight dashboard Agent operations before the state they use is closed.
+  const shutdown = new AbortController();
   try {
     const routes = (options.__test?.createRoutes ?? createRoutes)(
       state,
@@ -100,6 +105,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       options.port ?? state.currentConfig().server.port,
       options.host ?? state.currentConfig().server.host,
       controller,
+      { ...(options.agentHost === undefined ? {} : { host: options.agentHost }), logger, shutdown: shutdown.signal },
     );
     controller.start();
     let closed = false;
@@ -107,6 +113,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       close() {
         if (closed) return;
         closed = true;
+        shutdown.abort();
         controller.stop();
         state.close();
       },

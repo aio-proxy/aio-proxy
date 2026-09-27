@@ -2,25 +2,22 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { AtomicConfigFile, configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
-import packageJson from '../../../package.json' with { type: 'json' };
 import { CliExit, EXIT } from '../../exit';
-import { readServiceEnvironment } from '../../service-env';
 import { canPrompt, openProductionSession, type CommandSession } from '../../ui';
 import { formatAgentToken } from '../command-auth/token-output';
 import { resolveAgentEndpoint } from '../control-plane';
 import { isCodexCancellation } from './cancellation';
 import { writeCodexAuthToken } from './command-auth';
 import { resolveCodexAuthCommand } from './command-location';
-import { readCodexDocument, validateCodexProviderId } from './config-document';
+import { validateCodexProviderId } from './config-document';
 import type { CodexLocation, CodexListResult, CodexRemoveResult } from './contracts';
 import { inspectProxyKeys, probeProxyApiKey } from './credentials';
 import { listCodexLifecycle, removeCodexLifecycle } from './lifecycle';
-import { resolveCodexLocation } from './location';
 import { inspectCodexConfig, recoverCodexConfigOperation } from './managed-config';
-import { inspectCodexSessions, isCodexUuid, migrateCodexSessions, restoreCodexMigration } from './sessions';
+import { authContext, configuredLocation, createCredentialDeps, occupiedIds, restoreMigrationResult } from './runtime';
+import { inspectCodexSessions, isCodexUuid, migrateCodexSessions } from './sessions';
 import { commitCodexSetup, recoverCodexAuthOperation } from './setup';
 import { assertCodexSetupEndpoint, runCodexWizard, type CodexConfigureResult, type CodexPrompts } from './wizard';
 
@@ -73,30 +70,6 @@ const cancelledCodexResult = (location: CodexLocation, reason?: 'non_interactive
   migration: { status: 'not_requested' },
   ...(reason === undefined ? {} : { reason }),
 });
-
-const configuredLocation = (): CodexLocation => resolveCodexLocation(join(homedir(), '.codex'), process.env);
-
-const occupiedIds = async (location: CodexLocation): Promise<readonly string[]> => {
-  try {
-    const config = await Bun.file(location.configPath).text();
-    const ids = readCodexDocument(config).providerIds;
-    const managed = (await inspectCodexConfig(location)).providerId;
-    return ids.filter((id) => id !== managed);
-  } catch {
-    return [];
-  }
-};
-
-const createCredentialDeps = (endpoint: string) => {
-  const path = configPath();
-  const file = new AtomicConfigFile(path);
-  return {
-    file,
-    loadEnvironment() {},
-    readEnvironment: () => readServiceEnvironment(path),
-    check: (token: string) => probeProxyApiKey({ endpoint, token }),
-  };
-};
 
 const createPrompts = (session: CommandSession): CodexPrompts => ({
   providerId: async (defaultId, occupied) => {
@@ -166,33 +139,12 @@ const createPrompts = (session: CommandSession): CodexPrompts => ({
     }),
 });
 
-const authSignal = (): AbortSignal => AbortSignal.timeout(600_000);
-
 const connectionStatus = async (baseUrl?: string, token?: string): Promise<CodexListResult['connection']> => {
   if (baseUrl === undefined) return 'offline';
   if (token === undefined || token.length === 0) return 'unauthorized';
   const endpoint = baseUrl.replace(/\/v1\/?$/u, '').replace(/\/+$/u, '');
   return probeProxyApiKey({ endpoint, token });
 };
-
-const authContext = (location: CodexLocation, endpoint: string) => ({
-  location,
-  endpoint,
-  adapterVersion: packageJson.version,
-  signal: authSignal(),
-  onDevice: async (device: import('@aio-proxy/types').AgentDeviceCodeResponse): Promise<void> => {
-    console.error(
-      m['cli.agent.codex.device_authorization']({
-        url: device.verification_uri_complete,
-        code: device.user_code,
-      }),
-    );
-  },
-  revoke: (boundEndpoint: string, installationId: string) =>
-    import('../control-plane').then(({ revokeAgentInstallation }) =>
-      revokeAgentInstallation(boundEndpoint, installationId),
-    ),
-});
 
 export async function recoverPendingCodexOperations(
   recoverConfig: (
@@ -213,20 +165,7 @@ export async function recoverPendingCodexOperations(
 
 export async function configureCodexAgent(options: CodexConfigureOptions = {}): Promise<CodexConfigureResult> {
   const location = configuredLocation();
-  if (options.restoreMigration !== undefined) {
-    if (!isCodexUuid(options.restoreMigration)) throw new Error('migration operation id must be a UUID');
-    const migration = await restoreCodexMigration(location, options.restoreMigration);
-    return {
-      target: 'codex',
-      integration: 'static-config',
-      status: 'unchanged',
-      configPath: location.configPath,
-      connection: 'not_checked',
-      credential: 'none',
-      migration,
-      migrationAction: 'restore',
-    };
-  }
+  if (options.restoreMigration !== undefined) return restoreMigrationResult(location, options.restoreMigration);
   const interactive = canPrompt({
     stdinIsTTY: process.stdin.isTTY === true,
     stderrIsTTY: process.stderr.isTTY === true,

@@ -7,7 +7,7 @@ Verified floor: Grok `1.0.24` on macOS arm64 during design probes. **Linux and o
 ## Shortest journey
 
 1. Start aio-proxy on loopback (default `http://127.0.0.1:9317`). Device approval needs a Dashboard password when `server.apiKeys` is set.
-2. `aio-proxy agent configure grok`
+2. `aio-proxy agent configure grok`, or **Configure** on the Dashboard's Agents → Grok Build page
 3. `grok login` — Grok starts the helper. Approve the device request in the Dashboard. Do not paste tokens.
 4. `grok models`
 5. `grok -m <aio-proxy-model-id>`

@@ -11,6 +11,7 @@ import {
   createAgentOAuthRoutes,
   createDeviceChallengeStore,
 } from '../agent-authorization';
+import { createAgentDashboardRoutes, type AgentHostPort } from '../agent-dashboard';
 import type { AutoUpdateController } from '../auto-update';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
@@ -33,6 +34,7 @@ import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
 import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
 import { createSystemOneRoutes } from '../routes/systemone';
 import { createOpenAIVideosRoutes, type VideosRouteSource } from '../routes/videos';
+import type { ServerLogSink } from '../server-log';
 import type { ServerState } from '../server-state';
 import { requireModelAuthentication } from './agent-auth';
 import { createDashboardArtifactRoutes } from './dashboard-artifacts';
@@ -183,6 +185,11 @@ export const createRoutes = (
   loopbackPort: number = serverDefaults.port,
   loopbackHost: string = serverDefaults.host,
   controller?: AutoUpdateController,
+  agentDashboard: {
+    readonly host?: AgentHostPort;
+    readonly logger?: ServerLogSink;
+    readonly shutdown?: AbortSignal;
+  } = {},
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -291,7 +298,16 @@ export const createRoutes = (
   const currentConfig = () => state.currentConfig();
   const agentOAuthRoutes = createAgentOAuthRoutes({ challenges, identity: state.agentIdentity, currentConfig });
   const agentApprovalRoutes = createAgentApprovalRoutes({ challenges, currentConfig });
-  const agentAdminRoutes = createAgentAdminRoutes({ identity: state.agentIdentity, currentConfig });
+  const agentAdminRoutes = createAgentAdminRoutes({ challenges, identity: state.agentIdentity, currentConfig });
+  const agentDashboardRoutes = createAgentDashboardRoutes({
+    host: agentDashboard.host,
+    identity: state.agentIdentity,
+    challenges,
+    currentConfig,
+    logger: agentDashboard.logger ?? (() => undefined),
+    ...(agentDashboard.shutdown === undefined ? {} : { shutdown: agentDashboard.shutdown }),
+    adapterVersion: version,
+  });
   const dashboardRoutes = createDashboardRoutes(state, dashboardAuth, version, controller);
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
@@ -311,6 +327,7 @@ export const createRoutes = (
   const routes = app
     .route('/oauth', agentOAuthRoutes)
     .route('/dashboard/api/agent-authorizations', agentApprovalRoutes)
+    .route('/dashboard/api/agents', agentDashboardRoutes)
     .route('/admin/agent-installations', agentAdminRoutes)
     .route('/', anthropicMessagesRoutes)
     .route('/', geminiGenerateContentRoutes)

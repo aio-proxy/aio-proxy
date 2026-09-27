@@ -273,3 +273,37 @@ test('rate-source maps are bounded and expired buckets are reusable', () => {
   f.advance(60_001);
   expect(() => f.store.resolve('ZZZZ-ZZZZ', '127.0.2.1')).not.toThrow();
 });
+
+test('pendingForInstallation only exposes a live pending challenge of the matching target', () => {
+  const { store, advance } = challengeFixture();
+  expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();
+  const created = store.create(DEVICE_REQUEST, 'peer');
+  const found = store.pendingForInstallation('opencode', INSTALLATION);
+  expect(found?.userCode).toBe(created.user_code);
+  const pending = found?.details;
+  expect(pending).toMatchObject({ status: 'pending', target: 'opencode', installationId: INSTALLATION });
+  expect(store.pendingForInstallation('pi', INSTALLATION)).toBeUndefined();
+  const deviceId = pending?.status === 'pending' ? pending.deviceId : '';
+  expect(store.decidedForInstallation('opencode', INSTALLATION)).toBeUndefined();
+  store.deny(deviceId, 'peer');
+  expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();
+  // A denial made elsewhere stays visible, so the dashboard does not mistake it for an approval.
+  expect(store.decidedForInstallation('opencode', INSTALLATION)).toMatchObject({ deviceId, status: 'denied' });
+  store.create(DEVICE_REQUEST, 'peer');
+  advance(600_001);
+  expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();
+});
+
+test('revoking an installation stops an approved challenge from issuing a credential afterwards', () => {
+  const f = challengeFixture();
+  const created = f.store.create(DEVICE_REQUEST, '127.0.0.1');
+  const details = f.store.resolve(created.user_code, '127.0.0.1');
+  f.store.approve(details.status === 'pending' ? details.deviceId : '', '127.0.0.1');
+  f.store.cancelForInstallation(INSTALLATION);
+  f.advance(10_000);
+  expect(f.store.poll({ clientId: DEVICE_REQUEST.client_id, deviceCode: created.device_code }, '127.0.0.1')).toEqual({
+    ok: false,
+    error: 'access_denied',
+  });
+  expect(f.issueCredential).not.toHaveBeenCalled();
+});

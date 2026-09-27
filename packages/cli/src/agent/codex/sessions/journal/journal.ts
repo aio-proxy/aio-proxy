@@ -1,4 +1,4 @@
-import { lstat, mkdir, rename, rm } from 'node:fs/promises';
+import { lstat, mkdir, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { processOwnerIsCurrent, processStarttime } from '@aio-proxy/core';
@@ -347,4 +347,21 @@ export async function updateJournal(location: CodexLocation, journal: SessionMig
     text: snapshot.text,
     stat: snapshot.stat,
   });
+}
+
+/** The newest migration that `restoreCodexMigration` can still undo, for the dashboard restore action. */
+export async function latestRestorableMigration(location: CodexLocation): Promise<string | undefined> {
+  let names: string[];
+  try {
+    names = await readdir(migrationRoot(location));
+  } catch {
+    return undefined;
+  }
+  let latest: SessionMigrationJournal | undefined;
+  for (const name of names.filter(isCodexUuid)) {
+    const journal = await readJournal(location, name).catch(() => undefined);
+    if (journal === undefined || (journal.status !== 'completed' && journal.status !== 'committed')) continue;
+    if (latest === undefined || journal.createdAt > latest.createdAt) latest = journal;
+  }
+  return latest?.operationId;
 }

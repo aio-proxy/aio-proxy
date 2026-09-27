@@ -2,6 +2,8 @@ import { Database } from 'bun:sqlite';
 import { lstat, readdir, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
+import { CODEX_RESERVED_PROVIDER_IDS } from '@aio-proxy/types';
+
 import { validateCodexProviderId } from '../config-document';
 import type { CodexLocation } from '../contracts';
 import { assertNoSymlinkParents } from '../managed-config/storage';
@@ -238,6 +240,6 @@ function isValidProviderId(value: string): boolean {
   } catch {
     // Built-in Codex providers are valid session owners even though they are
     // reserved as managed provider IDs.
-    return ['openai', 'ollama', 'lmstudio', 'amazon-bedrock'].includes(value);
+    return CODEX_RESERVED_PROVIDER_IDS.includes(value);
   }
 }
