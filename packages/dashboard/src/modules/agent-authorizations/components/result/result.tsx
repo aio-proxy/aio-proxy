@@ -14,12 +14,10 @@ const message = (status: ResultProps['status']): string => {
 };
 
 export const Result: React.FC<ResultProps> = ({ status }) => (
-  <div className="flex min-h-dvh items-center justify-center">
-    <Empty>
-      <EmptyHeader>
-        <EmptyMedia variant="icon">{status === 'approved' ? <CircleCheckIcon /> : <CircleXIcon />}</EmptyMedia>
-        <EmptyDescription role="status">{message(status)}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  </div>
+  <Empty>
+    <EmptyHeader>
+      <EmptyMedia variant="icon">{status === 'approved' ? <CircleCheckIcon /> : <CircleXIcon />}</EmptyMedia>
+      <EmptyDescription role="status">{message(status)}</EmptyDescription>
+    </EmptyHeader>
+  </Empty>
 );
