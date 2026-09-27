@@ -296,7 +296,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
       if (error instanceof RouterModelNotFoundError) {
         const hook =
           adapter.protocol === 'openai-response' && adapter.capability === 'language'
-            ? lease.snapshot.plugins.registry.resolveResponsesPreRoute('@aio-proxy/plugin-openai-chatgpt')
+            ? lease.snapshot.plugins.registry.resolveResponses('@aio-proxy/plugin-openai-chatgpt')?.preRoute
             : undefined;
         if (hook !== undefined) {
           try {

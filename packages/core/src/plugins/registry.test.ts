@@ -111,8 +111,10 @@ describe('PluginRegistry staging', () => {
     const staging = host.stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
     const preRoute: ResponsesPreRouteWrap = () => async () => undefined;
 
-    staging.api.raw.preRoute('openai-response', preRoute);
-    expect(() => staging.api.raw.preRoute('openai-response', preRoute)).toThrow('Duplicate responses pre-route hook');
+    staging.api.raw.register('openai-response', 'pre-route', preRoute);
+    expect(() => staging.api.raw.register('openai-response', 'pre-route', preRoute)).toThrow(
+      'Duplicate responses pre-route hook',
+    );
   });
 
   test('failed built-in setup commits neither responses capability', async () => {
@@ -120,8 +122,8 @@ describe('PluginRegistry staging', () => {
       const builtInApi = api as BuiltInPluginApi;
       const raw: ResponsesRawWrap = ({ original }) => original;
       const preRoute: ResponsesPreRouteWrap = () => async () => undefined;
-      builtInApi.raw.wrap('openai-response', raw);
-      builtInApi.raw.preRoute('openai-response', preRoute);
+      builtInApi.raw.register('openai-response', 'wrap', raw);
+      builtInApi.raw.register('openai-response', 'pre-route', preRoute);
       throw new Error('setup failed');
     });
     const snapshot = await loadPluginRegistry({
@@ -139,8 +141,7 @@ describe('PluginRegistry staging', () => {
       },
     });
 
-    expect(snapshot.registry.resolveResponsesRaw('@example/broken-built-in')).toBeUndefined();
-    expect(snapshot.registry.resolveResponsesPreRoute('@example/broken-built-in')).toBeUndefined();
+    expect(snapshot.registry.resolveResponses('@example/broken-built-in')).toBeUndefined();
     expect(snapshot.plugins.get('@example/broken-built-in')?.state).toMatchObject({
       status: 'failed',
       diagnostic: { code: 'PLUGIN_LOAD_FAILED' },

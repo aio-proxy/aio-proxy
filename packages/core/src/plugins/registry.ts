@@ -21,8 +21,7 @@ export type PayloadCaptureHint = (
 
 export type PluginRegistry = {
   readonly resolveOAuth: (plugin: string, capability: string) => OAuthAdapter | undefined;
-  readonly resolveResponsesRaw: (plugin: string) => ResponsesRawWrap | undefined;
-  readonly resolveResponsesPreRoute: (plugin: string) => ResponsesPreRouteWrap | undefined;
+  readonly resolveResponses: (plugin: string) => ResponsesHooks | undefined;
   readonly payloadCaptureHints: () => readonly PayloadCaptureHint[];
   readonly oauthCapabilities: () => readonly {
     readonly plugin: string;
@@ -48,10 +47,17 @@ export type ResponsesPreRouteWrap = (input: {
   readonly evaluate?: PrivateEvaluation;
 }) => (request: Request, context: LogicalRequestContext) => Promise<Response | undefined>;
 
+export type ResponsesHooks = {
+  readonly wrap?: ResponsesRawWrap;
+  readonly preRoute?: ResponsesPreRouteWrap;
+};
+
 export type BuiltInPluginApi = PluginApi & {
   readonly raw: {
-    readonly wrap: (protocol: 'openai-response', wrap: ResponsesRawWrap) => void;
-    readonly preRoute: (protocol: 'openai-response', wrap: ResponsesPreRouteWrap) => void;
+    readonly register: {
+      (protocol: 'openai-response', phase: 'wrap', hook: ResponsesRawWrap): void;
+      (protocol: 'openai-response', phase: 'pre-route', hook: ResponsesPreRouteWrap): void;
+    };
   };
   readonly registerPayloadCaptureHint: (hint: PayloadCaptureHint) => void;
 };
@@ -217,18 +223,14 @@ export type PluginRegistryHost = {
 export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory = createLogger): PluginRegistryHost {
   const committed = new Map<string, OAuthCapability>();
   const committedCpaTypes = new Map<string, string>();
-  const responsesRaw = new Map<string, ResponsesRawWrap>();
-  const responsesPreRoute = new Map<string, ResponsesPreRouteWrap>();
+  const responses = new Map<string, ResponsesHooks>();
   const payloadCaptureHints: PayloadCaptureHint[] = [];
   const registry: PluginRegistry = {
     resolveOAuth(plugin, capability) {
       return committed.get(`${plugin}\0${capability}`)?.adapter;
     },
-    resolveResponsesRaw(plugin) {
-      return responsesRaw.get(plugin);
-    },
-    resolveResponsesPreRoute(plugin) {
-      return responsesPreRoute.get(plugin);
+    resolveResponses(plugin) {
+      return responses.get(plugin);
     },
     oauthCapabilities() {
       return [...committed.values()];
@@ -243,10 +245,26 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
     stage(plugin, options = {}) {
       const staged = new Map<string, OAuthCapability>();
       const stagedCpaTypes = new Set<string>();
-      let stagedResponsesRaw: ResponsesRawWrap | undefined;
-      let stagedResponsesPreRoute: ResponsesPreRouteWrap | undefined;
+      let stagedResponses: { wrap?: ResponsesRawWrap; preRoute?: ResponsesPreRouteWrap } = {};
       let stagedPayloadHint: PayloadCaptureHint | undefined;
       let sealed = false;
+      function registerResponses(protocol: 'openai-response', phase: 'wrap', hook: ResponsesRawWrap): void;
+      function registerResponses(protocol: 'openai-response', phase: 'pre-route', hook: ResponsesPreRouteWrap): void;
+      function registerResponses(
+        protocol: 'openai-response',
+        phase: 'wrap' | 'pre-route',
+        hook: ResponsesRawWrap | ResponsesPreRouteWrap,
+      ): void {
+        if (sealed) throw new Error('Plugin staging registry is sealed');
+        if (protocol !== 'openai-response') throw new Error('Unsupported raw hook protocol');
+        if (phase === 'wrap') {
+          if (stagedResponses.wrap !== undefined) throw new Error('Duplicate responses wrap hook');
+          stagedResponses = { ...stagedResponses, wrap: hook as ResponsesRawWrap };
+          return;
+        }
+        if (stagedResponses.preRoute !== undefined) throw new Error('Duplicate responses pre-route hook');
+        stagedResponses = { ...stagedResponses, preRoute: hook as ResponsesPreRouteWrap };
+      }
       const api = {
         logger: createPluginLogger(['aio-proxy', 'plugin', plugin], options),
         oauth: {
@@ -266,20 +284,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
         ...(options.builtIn
           ? {
               raw: {
-                wrap(protocol: 'openai-response', wrap: ResponsesRawWrap) {
-                  if (sealed) throw new Error('Plugin staging registry is sealed');
-                  if (protocol !== 'openai-response') throw new Error('Unsupported raw wrapper protocol');
-                  if (stagedResponsesRaw !== undefined) throw new Error('Duplicate responses raw wrapper');
-                  stagedResponsesRaw = wrap;
-                },
-                preRoute(protocol: 'openai-response', wrap: ResponsesPreRouteWrap) {
-                  if (sealed) throw new Error('Plugin staging registry is sealed');
-                  if (protocol !== 'openai-response') throw new Error('Unsupported pre-route protocol');
-                  if (stagedResponsesPreRoute !== undefined) {
-                    throw new Error('Duplicate responses pre-route hook');
-                  }
-                  stagedResponsesPreRoute = wrap;
-                },
+                register: registerResponses,
               },
               registerPayloadCaptureHint(hint: PayloadCaptureHint) {
                 if (sealed) throw new Error('Plugin staging registry is sealed');
@@ -302,8 +307,9 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
               committedCpaTypes.set(type, `${plugin}#${capability.capability}`);
             }
           }
-          if (stagedResponsesRaw !== undefined) responsesRaw.set(plugin, stagedResponsesRaw);
-          if (stagedResponsesPreRoute !== undefined) responsesPreRoute.set(plugin, stagedResponsesPreRoute);
+          if (stagedResponses.wrap !== undefined || stagedResponses.preRoute !== undefined) {
+            responses.set(plugin, stagedResponses);
+          }
           if (stagedPayloadHint !== undefined) payloadCaptureHints.push(stagedPayloadHint);
         },
       };

@@ -75,17 +75,15 @@ describe('PluginRegistry staging', () => {
     const builtIn = stage('@aio-proxy/plugin-openai-chatgpt', { builtIn: true });
     const wrap: ResponsesRawWrap = ({ original }) => original;
     const preRoute: ResponsesPreRouteWrap = () => async () => undefined;
-    builtIn.api.raw.wrap('openai-response', wrap);
-    builtIn.api.raw.preRoute('openai-response', preRoute);
+    builtIn.api.raw.register('openai-response', 'wrap', wrap);
+    builtIn.api.raw.register('openai-response', 'pre-route', preRoute);
     const hint = async () => 'sensitive' as const;
     builtIn.api.registerPayloadCaptureHint(hint);
     expect(registry.payloadCaptureHints()).toEqual([]);
-    expect(registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt')).toBeUndefined();
-    expect(registry.resolveResponsesPreRoute('@aio-proxy/plugin-openai-chatgpt')).toBeUndefined();
+    expect(registry.resolveResponses('@aio-proxy/plugin-openai-chatgpt')).toBeUndefined();
     builtIn.seal();
     builtIn.commit();
-    expect(registry.resolveResponsesRaw('@aio-proxy/plugin-openai-chatgpt')).toBe(wrap);
-    expect(registry.resolveResponsesPreRoute('@aio-proxy/plugin-openai-chatgpt')).toBe(preRoute);
+    expect(registry.resolveResponses('@aio-proxy/plugin-openai-chatgpt')).toEqual({ wrap, preRoute });
     expect(registry.payloadCaptureHints()).toEqual([hint]);
 
     const thirdParty = stage('@example/oauth');

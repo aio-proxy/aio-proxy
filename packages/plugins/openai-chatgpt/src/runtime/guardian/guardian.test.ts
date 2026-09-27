@@ -30,11 +30,9 @@ test('setup closes the wrapper over schema-parsed options', async () => {
       oauth: { register() {} },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       raw: {
-        wrap(_protocol: 'openai-response', wrap: Function) {
-          registered = wrap;
-        },
-        preRoute(_protocol: 'openai-response', wrap: Function) {
-          preRouteRegistered = wrap;
+        register(_protocol: 'openai-response', phase: 'wrap' | 'pre-route', hook: Function) {
+          if (phase === 'wrap') registered = hook;
+          else preRouteRegistered = hook;
         },
       },
     } as never,
