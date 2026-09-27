@@ -219,8 +219,20 @@ test('drops the lab group headers once the user sorts a column', async () => {
   expect(screen.queryByTestId('routing-lab-group-openai')).not.toBeInTheDocument();
 });
 
-test('shows no-traffic rather than zeros when traffic is absent', async () => {
+test('withholds a traffic value while the query has produced no index', async () => {
+  // This test used to assert "No traffic" here, which encoded the bug: an in-flight or failed query
+  // is unknown, and labelling it "no traffic" claims the model served nothing — permanently, once
+  // the request has failed.
   await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} />);
+
+  expect(screen.queryByText(/No traffic|无流量/u)).not.toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-gpt-5')).getByText('—')).toBeInTheDocument();
+});
+
+test('shows no-traffic rather than zeros for a model the measured window has no rows for', async () => {
+  // The query landed and this model simply served nothing in the window — a measured result, so the
+  // label is the honest one here.
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={new Map()} />);
 
   expect(screen.getByText(/No traffic|无流量/u)).toBeInTheDocument();
 });

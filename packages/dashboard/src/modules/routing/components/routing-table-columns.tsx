@@ -129,7 +129,13 @@ export const createRoutingColumns = ({
     meta: { label: () => m['dashboard.routing.table.col_traffic']() },
     header: tableHead(() => m['dashboard.routing.table.col_traffic']()),
     cell: ({ row }) => {
-      const summary = modelTrafficSummary(traffic?.get(row.original.modelId));
+      // No index at all means the query is in flight or failed with nothing cached — traffic is
+      // unknown, which is not the same as measured and empty. Withhold a value rather than claim
+      // the model served nothing, the way the health strip and the deviation filter already do.
+      if (traffic === undefined) {
+        return <span className="text-sm text-muted-foreground">—</span>;
+      }
+      const summary = modelTrafficSummary(traffic.get(row.original.modelId));
       if (summary === undefined) {
         return <span className="text-sm text-muted-foreground">{m['dashboard.routing.traffic.none']()}</span>;
       }
