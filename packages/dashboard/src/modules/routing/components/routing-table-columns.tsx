@@ -113,6 +113,19 @@ export const createRoutingColumns = ({
       const summary = modelTrafficSummary(traffic?.get(model.modelId));
       return summary === undefined ? '' : String(summary.finalCount);
     },
+    // The accessor is a decimal string, so the automatic comparator orders it as text: "10" sorts
+    // before "9", and once counts pass MAX_SAFE_INTEGER no numeric coercion could separate
+    // neighbours either — which is why these counts are decoded as BigInt in the first place.
+    // Compare the BigInt totals. An unmeasured model sorts below every measured one, so the two
+    // ends of the sort stay predictable instead of interleaving "no traffic" with real counts.
+    sortFn: (rowA, rowB) => {
+      const left = modelTrafficSummary(traffic?.get(rowA.original.modelId))?.finalCount;
+      const right = modelTrafficSummary(traffic?.get(rowB.original.modelId))?.finalCount;
+      if (left === undefined || right === undefined) {
+        return left === right ? 0 : left === undefined ? -1 : 1;
+      }
+      return left === right ? 0 : left < right ? -1 : 1;
+    },
     meta: { label: () => m['dashboard.routing.table.col_traffic']() },
     header: tableHead(() => m['dashboard.routing.table.col_traffic']()),
     cell: ({ row }) => {

@@ -107,7 +107,8 @@ const metadataModel = (): DashboardRoutingModel => ({
 const MetadataHarness: React.FC<{
   readonly catalog?: DashboardRoutingCatalog;
   readonly setMetadataValid?: (valid: boolean) => void;
-}> = ({ catalog, setMetadataValid }) => {
+  readonly writable?: boolean;
+}> = ({ catalog, setMetadataValid, writable = true }) => {
   const model = metadataModel();
   const metadataForm = useRoutingMetadataForm(model);
   return (
@@ -115,6 +116,7 @@ const MetadataHarness: React.FC<{
       metadataForm={metadataForm}
       modelId={model.modelId}
       catalog={catalog}
+      writable={writable}
       setMetadataValid={setMetadataValid ?? rs.fn()}
     />
   );
@@ -124,8 +126,16 @@ const renderMetadata = (
   options: {
     readonly catalog?: DashboardRoutingCatalog;
     readonly setMetadataValid?: (valid: boolean) => void;
+    readonly writable?: boolean;
   } = {},
-) => render(<MetadataHarness catalog={options.catalog} setMetadataValid={options.setMetadataValid} />);
+) =>
+  render(
+    <MetadataHarness
+      catalog={options.catalog}
+      setMetadataValid={options.setMetadataValid}
+      writable={options.writable ?? true}
+    />,
+  );
 
 test('renders the models.dev catalog facts next to the authored override', () => {
   renderMetadata({ catalog: { lab: 'anthropic', releaseDate: '2026-08' } });
@@ -162,4 +172,23 @@ test('reports an invalid JSON draft upward so the page can gate saving', () => {
   renderMetadata({ catalog: undefined, setMetadataValid });
 
   expect(setMetadataValid).toHaveBeenCalled();
+});
+
+test('locks the metadata controls when the config cannot be written', () => {
+  // Topology and cost already disable their inputs on a read-only config. This tab did not, so a
+  // read-only user could edit metadata, which marks the route dirty and arms the unsaved-changes
+  // guard even though Save can never enable — a draft they can neither persist nor walk away from.
+  renderMetadata({ writable: false });
+
+  const inputs = screen.queryAllByRole('textbox').concat(screen.queryAllByRole('spinbutton'));
+  expect(inputs.length).toBeGreaterThan(0);
+  for (const input of inputs) expect(input).toBeDisabled();
+});
+
+test('leaves the metadata controls editable when the config is writable', () => {
+  renderMetadata({ writable: true });
+
+  const inputs = screen.queryAllByRole('textbox').concat(screen.queryAllByRole('spinbutton'));
+  expect(inputs.length).toBeGreaterThan(0);
+  for (const input of inputs) expect(input).toBeEnabled();
 });

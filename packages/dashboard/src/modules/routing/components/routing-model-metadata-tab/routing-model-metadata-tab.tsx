@@ -9,6 +9,7 @@ export interface RoutingModelMetadataTabProps {
   readonly metadataForm: ReturnType<typeof useRoutingMetadataForm>;
   readonly modelId: string;
   readonly catalog: DashboardRoutingCatalog | undefined;
+  readonly writable: boolean;
   readonly setMetadataValid: (valid: boolean) => void;
 }
 
@@ -16,6 +17,7 @@ export const RoutingModelMetadataTab: React.FC<RoutingModelMetadataTabProps> = (
   metadataForm,
   modelId,
   catalog,
+  writable,
   setMetadataValid,
 }) => {
   const inherit = m['dashboard.routing.editor.inherit']();
@@ -70,6 +72,7 @@ export const RoutingModelMetadataTab: React.FC<RoutingModelMetadataTabProps> = (
               value={field.state.value.value}
               onChange={(next) => field.handleChange({ touched: true, value: next })}
               onValidityChange={setMetadataValid}
+              readOnly={!writable}
             />
           )}
         </metadataForm.Field>

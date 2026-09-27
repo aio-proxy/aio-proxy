@@ -34,6 +34,8 @@ export interface ModelMetadataEditorProps {
    * what the user sees.
    */
   readonly onValidityChange?: (valid: boolean) => void;
+  /** Shows the metadata without letting it be edited, for a config the dashboard cannot write. */
+  readonly readOnly?: boolean;
 }
 
 const serialize = (value: ModelMetadataInput | undefined) => JSON.stringify(value ?? {}, null, 2);
@@ -55,6 +57,7 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   value,
   onChange,
   onValidityChange,
+  readOnly = false,
 }) => {
   const editorId = useId();
   const slugs = useQuery(modelsDevSlugsQueryOptions());
@@ -173,11 +176,13 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
         </TabsList>
         <TabsContent value="visual" className="pt-4">
           {rawValue === undefined ? null : (
-            <ModelMetadataVisualTab
-              model={model}
-              value={rawValue}
-              onChange={(next) => updateDraft(JSON.stringify(next, null, 2))}
-            />
+            <fieldset disabled={readOnly}>
+              <ModelMetadataVisualTab
+                model={model}
+                value={rawValue}
+                onChange={(next) => updateDraft(JSON.stringify(next, null, 2))}
+              />
+            </fieldset>
           )}
         </TabsContent>
         <TabsContent value="json" className="pt-4">
@@ -191,6 +196,7 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
               value={editorValue(draft, value)}
               schema={ModelMetadataJsonSchema}
               externalInvalid={!valid}
+              readOnly={readOnly}
               onDraftChange={updateDraft}
               onValueChange={handleJsonValueChange}
             />

@@ -233,3 +233,41 @@ test('links each row to its detail page instead of opening a drawer', async () =
     '/routing/anthropic/claude-sonnet-4.5',
   );
 });
+
+test('orders the traffic column numerically, across the whole BigInt range', async () => {
+  // The accessor is a decimal string. Sorted as text, "10" lands before "9", and no numeric
+  // coercion could separate neighbours past MAX_SAFE_INTEGER anyway — which is why these counts are
+  // decoded as BigInt. The last fixture sits above that boundary.
+  const totals = (providerId: string, finalCount: bigint) => ({
+    providerId,
+    finalCount,
+    attemptCount: finalCount,
+    successCount: finalCount,
+    p95LatencyMs: 10,
+  });
+
+  await renderTable(
+    <RoutingTable
+      models={[modelFixture('huge'), modelFixture('nine'), modelFixture('ten')]}
+      traffic={
+        new Map([
+          ['huge', [totals('huge-provider', 10_000_000_000_000_000n)]],
+          ['nine', [totals('nine-provider', 9n)]],
+          ['ten', [totals('ten-provider', 10n)]],
+        ])
+      }
+    />,
+  );
+
+  const idsInOrder = () =>
+    screen
+      .getAllByRole('row')
+      .map((row) => row.getAttribute('data-testid'))
+      .filter((id): id is string => id !== null);
+
+  fireEvent.click(screen.getByRole('button', { name: /Traffic|流量/u }));
+  expect(idsInOrder()).toStrictEqual(['routing-row-nine', 'routing-row-ten', 'routing-row-huge']);
+
+  fireEvent.click(screen.getByRole('button', { name: /Traffic|流量/u }));
+  expect(idsInOrder()).toStrictEqual(['routing-row-huge', 'routing-row-ten', 'routing-row-nine']);
+});

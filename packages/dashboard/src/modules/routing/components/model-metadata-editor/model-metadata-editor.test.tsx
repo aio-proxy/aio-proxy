@@ -22,21 +22,27 @@ rs.mock('@/components/json-editor/json-language-service', () => ({
   createJsonLanguageExtensions: () => [],
 }));
 
+// CodeMirror is not exercised in tests, so the stand-in mirrors `readOnly` onto the textarea it
+// renders. That keeps the prop's journey from ModelMetadataEditor down to the editor observable;
+// CodeEditor itself turns it into EditorState.readOnly / EditorView.editable.
 rs.mock('@/components/code-editor', () => ({
   CodeEditor: ({
     id,
     onChange,
     value,
     invalid,
+    readOnly,
   }: {
     id?: string;
     onChange?: (next: string) => void;
     value: string;
     invalid?: boolean;
+    readOnly?: boolean;
   }) => (
     <textarea
       id={id}
       value={value}
+      readOnly={readOnly}
       aria-invalid={invalid ? 'true' : undefined}
       onChange={(event) => onChange?.(event.target.value)}
     />
@@ -61,13 +67,17 @@ const wrapper = ({ children }: { readonly children: ReactNode }) => (
 // The value the controlled editor last handed its owner — what a save body would carry.
 let emitted: ModelMetadataInput | undefined;
 
-const Harness: React.FC<{ readonly initial?: ModelMetadataInput | undefined }> = ({ initial }) => {
+const Harness: React.FC<{
+  readonly initial?: ModelMetadataInput | undefined;
+  readonly readOnly?: boolean;
+}> = ({ initial, readOnly = false }) => {
   const [value, setValue] = useState(initial);
   emitted = value;
-  return <ModelMetadataEditor model="model-a" value={value} onChange={setValue} />;
+  return <ModelMetadataEditor model="model-a" value={value} onChange={setValue} readOnly={readOnly} />;
 };
 
-const renderEditor = (initial?: ModelMetadataInput) => render(<Harness initial={initial} />, { wrapper });
+const renderEditor = (initial?: ModelMetadataInput, options: { readonly readOnly?: boolean } = {}) =>
+  render(<Harness initial={initial} readOnly={options.readOnly ?? false} />, { wrapper });
 
 const jsonDraftField = async (scope: Pick<BoundFunctions<typeof queries>, 'findByTestId'> = screen) => {
   const host = await scope.findByTestId('metadata-json-draft');
@@ -415,4 +425,28 @@ describe('ModelMetadataEditor', () => {
       );
     });
   });
+});
+
+test('locks both tabs when the owner says the config cannot be written', async () => {
+  // A disabled fieldset reaches the visual inputs but never CodeMirror, so the JSON pane needs the
+  // prop of its own — otherwise a read-only user can still type a draft nothing can save.
+  renderEditor({ limit: { context: 1000 } }, { readOnly: true });
+
+  expect(screen.getByLabelText(limitContextLabel())).toBeDisabled();
+
+  fireEvent.click(screen.getByTestId('metadata-tab-json'));
+  await waitFor(() => expect(screen.getByTestId('metadata-tab-json')).toHaveAttribute('aria-selected', 'true'));
+
+  expect(await jsonDraftField()).toHaveAttribute('readonly');
+});
+
+test('leaves both tabs editable when the config is writable', async () => {
+  renderEditor({ limit: { context: 1000 } });
+
+  expect(screen.getByLabelText(limitContextLabel())).toBeEnabled();
+
+  fireEvent.click(screen.getByTestId('metadata-tab-json'));
+  await waitFor(() => expect(screen.getByTestId('metadata-tab-json')).toHaveAttribute('aria-selected', 'true'));
+
+  expect(await jsonDraftField()).not.toHaveAttribute('readonly');
 });

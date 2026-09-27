@@ -27,6 +27,8 @@ export type JsonEditorProps = {
   readonly onDraftChange?: (draft: string) => void;
   readonly onValidationChange?: (validation: JsonEditorValidation, draft: string) => void;
   readonly externalInvalid?: boolean;
+  /** Renders the draft without letting it be edited. Still selectable and scrollable. */
+  readonly readOnly?: boolean;
   readonly id?: string;
   readonly className?: string;
 };
@@ -145,6 +147,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   onDraftChange,
   onValidationChange,
   externalInvalid,
+  readOnly = false,
   id,
   className,
 }) => {
@@ -223,6 +226,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       {...(id === undefined ? {} : { id })}
       invalid={externalInvalid || !validation.valid}
       extensions={languageExtensions}
+      readOnly={readOnly}
       onChange={handleChange}
       value={draft}
     />

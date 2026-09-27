@@ -71,6 +71,7 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
             metadataForm={editor.metadataForm}
             modelId={model.modelId}
             catalog={model.catalog}
+            writable={writable}
             setMetadataValid={editor.setMetadataValid}
           />
         </TabsContent>
