@@ -12,11 +12,6 @@ export interface RoutingModelMetadataTabProps {
   readonly setMetadataValid: (valid: boolean) => void;
 }
 
-const catalogComparisonLabels = () => {
-  const [catalogValue, overrideValue] = m['dashboard.routing.detail.catalog_vs_override']().split(/\s*\/\s*/);
-  return { catalogValue: catalogValue?.trim() ?? '', overrideValue: overrideValue?.trim() ?? '' };
-};
-
 export const RoutingModelMetadataTab: React.FC<RoutingModelMetadataTabProps> = ({
   metadataForm,
   modelId,
@@ -24,7 +19,6 @@ export const RoutingModelMetadataTab: React.FC<RoutingModelMetadataTabProps> = (
   setMetadataValid,
 }) => {
   const inherit = m['dashboard.routing.editor.inherit']();
-  const { catalogValue, overrideValue } = catalogComparisonLabels();
 
   return (
     <div className="space-y-4">
@@ -32,25 +26,32 @@ export const RoutingModelMetadataTab: React.FC<RoutingModelMetadataTabProps> = (
         <metadataForm.Subscribe selector={(state) => state.values.metadata}>
           {(metadataDraft) => {
             const releaseDateOverride = metadataDraft.value?.capabilities?.releaseDate;
-            const overrideReleaseDate = typeof releaseDateOverride === 'string' ? releaseDateOverride : inherit;
+            const hasReleaseDateOverride = typeof releaseDateOverride === 'string';
+            const overrideReleaseDate = hasReleaseDateOverride ? releaseDateOverride : inherit;
 
             return (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{catalogValue}</TableHead>
-                    <TableHead>{overrideValue}</TableHead>
+                    <TableHead>{m['dashboard.routing.detail.catalog_column_field']()}</TableHead>
+                    <TableHead>{m['dashboard.routing.detail.catalog_column_catalog']()}</TableHead>
+                    <TableHead>{m['dashboard.routing.detail.catalog_column_override']()}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   <TableRow>
+                    <TableCell>{m['dashboard.routing.detail.catalog_field_lab']()}</TableCell>
                     <TableCell>{catalog.lab}</TableCell>
-                    <TableCell>{inherit}</TableCell>
+                    {/* No metadata field overrides the lab, so this column can only ever inherit. */}
+                    <TableCell className="text-muted-foreground">{inherit}</TableCell>
                   </TableRow>
                   {catalog.releaseDate === undefined ? null : (
                     <TableRow>
+                      <TableCell>{m['dashboard.routing.detail.catalog_field_release_date']()}</TableCell>
                       <TableCell>{catalog.releaseDate}</TableCell>
-                      <TableCell>{overrideReleaseDate}</TableCell>
+                      <TableCell className={hasReleaseDateOverride ? undefined : 'text-muted-foreground'}>
+                        {overrideReleaseDate}
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>

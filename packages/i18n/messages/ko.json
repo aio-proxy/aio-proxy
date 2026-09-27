@@ -810,7 +810,11 @@
         "unsaved_stay": "이 페이지에 머무르기",
         "unsaved_leave": "변경 사항 삭제",
         "dirty_marker": "저장 안 됨",
-        "catalog_vs_override": "카탈로그 값 / 내 재정의",
+        "catalog_column_field": "항목",
+        "catalog_column_catalog": "카탈로그 값",
+        "catalog_column_override": "내 재정의",
+        "catalog_field_lab": "랩",
+        "catalog_field_release_date": "출시일",
         "open_in_traces": "Traces에서 보기"
       },
       "health": {

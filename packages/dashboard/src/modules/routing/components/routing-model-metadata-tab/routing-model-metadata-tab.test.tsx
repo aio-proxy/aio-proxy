@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingCatalog, DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
@@ -133,10 +134,27 @@ test('renders the models.dev catalog facts next to the authored override', () =>
   expect(screen.getByText('2026-08')).toBeInTheDocument();
 });
 
+test('labels all three comparison columns and names the field each row compares', () => {
+  // The columns were once derived by splitting one translated message on "/", which left the
+  // second header empty in any locale that does not use that separator, and no column named the
+  // field at all — so a row read as two bare values.
+  renderMetadata({ catalog: { lab: 'anthropic', releaseDate: '2026-08' } });
+
+  const headers = screen.getAllByRole('columnheader');
+  expect(headers.map((header) => header.textContent?.trim())).toStrictEqual([
+    m['dashboard.routing.detail.catalog_column_field'](),
+    m['dashboard.routing.detail.catalog_column_catalog'](),
+    m['dashboard.routing.detail.catalog_column_override'](),
+  ]);
+
+  const releaseRow = screen.getByText('2026-08').closest('tr');
+  expect(releaseRow?.textContent).toContain(m['dashboard.routing.detail.catalog_field_release_date']());
+});
+
 test('omits the comparison entirely when models.dev has nothing cached', () => {
   renderMetadata({ catalog: undefined });
 
-  expect(screen.queryByText(/目录值|Catalog/u)).not.toBeInTheDocument();
+  expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
 });
 
 test('reports an invalid JSON draft upward so the page can gate saving', () => {

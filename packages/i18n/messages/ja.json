@@ -810,7 +810,11 @@
         "unsaved_stay": "このページに留まる",
         "unsaved_leave": "変更を破棄",
         "dirty_marker": "未保存",
-        "catalog_vs_override": "カタログ値 / あなたの上書き",
+        "catalog_column_field": "項目",
+        "catalog_column_catalog": "カタログ値",
+        "catalog_column_override": "あなたの上書き",
+        "catalog_field_lab": "ラボ",
+        "catalog_field_release_date": "リリース日",
         "open_in_traces": "Traces で表示"
       },
       "health": {

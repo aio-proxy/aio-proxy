@@ -810,7 +810,11 @@
         "unsaved_stay": "留在此页",
         "unsaved_leave": "放弃改动",
         "dirty_marker": "未保存",
-        "catalog_vs_override": "目录值 / 你的覆写",
+        "catalog_column_field": "字段",
+        "catalog_column_catalog": "目录值",
+        "catalog_column_override": "你的覆写",
+        "catalog_field_lab": "厂商",
+        "catalog_field_release_date": "发布日期",
         "open_in_traces": "在 Traces 中查看"
       },
       "health": {
