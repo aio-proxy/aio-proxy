@@ -1,3 +1,4 @@
+---
 '@aio-proxy/dashboard': patch
 '@aio-proxy/i18n': patch
 '@aio-proxy/ui': patch
