@@ -124,8 +124,10 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     form.reset(next.form);
     metadataForm.reset(next.metadata);
     // baselineProviderIds is a dependency because a Provider appearing or disappearing does not move
-    // the revision, and the effect must still reconcile.
-  }, [form, metadataForm, model.modelId, model.revision, model.baselineProviderIds]);
+    // the revision, and the effect must still reconcile. `baseline` is one because the dirty branch
+    // compares against the revision the drafts were made on; the identity guard above makes the extra
+    // runs it causes a no-op rather than a loop.
+  }, [form, metadataForm, model.modelId, model.revision, model.baselineProviderIds, baseline]);
 
   useEffect(() => {
     if (previousReloadModelId.current === model.modelId) return;
