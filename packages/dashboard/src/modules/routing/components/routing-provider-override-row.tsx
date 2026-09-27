@@ -1,13 +1,14 @@
 import { m } from '@aio-proxy/i18n';
 import { ModelLimitSchema, type ModelCostInput, type ModelLimitInput } from '@aio-proxy/types';
+import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
 
 import type { RoutingProviderOverrideDraft } from '../lib/routing-metadata-draft';
 import { ModelMetadataNumberField } from './model-metadata-visual-tab';
 
-const COST_FIELDS = ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'] as const;
-const LIMIT_FIELDS = ['context', 'input', 'output'] as const;
+export const COST_FIELDS = ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'] as const;
+export const LIMIT_FIELDS = ['context', 'input', 'output'] as const;
 
-const COST_LABEL: Readonly<Record<(typeof COST_FIELDS)[number], () => string>> = {
+export const COST_LABEL: Readonly<Record<(typeof COST_FIELDS)[number], () => string>> = {
   input: m['dashboard.routing.editor.metadata_cost_label_input'],
   output: m['dashboard.routing.editor.metadata_cost_label_output'],
   cacheRead: m['dashboard.routing.editor.metadata_cost_label_cache_read'],
@@ -15,7 +16,7 @@ const COST_LABEL: Readonly<Record<(typeof COST_FIELDS)[number], () => string>> =
   reasoning: m['dashboard.routing.editor.metadata_cost_label_reasoning'],
 };
 
-const LIMIT_LABEL: Readonly<Record<(typeof LIMIT_FIELDS)[number], () => string>> = {
+export const LIMIT_LABEL: Readonly<Record<(typeof LIMIT_FIELDS)[number], () => string>> = {
   context: m['dashboard.routing.editor.metadata_limit_label_context'],
   input: m['dashboard.routing.editor.metadata_limit_label_input'],
   output: m['dashboard.routing.editor.metadata_limit_label_output'],
@@ -35,18 +36,23 @@ const withNumber = <T extends Readonly<Record<string, unknown>>>(
 
 const numberValue = (value: unknown) => (typeof value === 'number' ? value : undefined);
 
-interface RoutingProviderOverrideFieldsProps {
+interface RoutingProviderOverrideRowProps {
   readonly providerId: string;
   readonly value: RoutingProviderOverrideDraft;
   readonly onChange: (next: RoutingProviderOverrideDraft) => void;
 }
 
 /**
- * The drawer's per-provider cost/limit editors. These are the ONLY inputs that ever put cost/limit
- * keys into the PUT body — the board rows stay priority/weight-only — and each group turns into a
- * tri-state draft: untouched groups are omitted, a group cleared to no fields sends `null`.
+ * One Provider's cost and limit overrides as a row of the overrides grid.
+ *
+ * These are the ONLY inputs that ever put cost/limit keys into the PUT body — the board rows stay
+ * priority/weight-only — and each group turns into a tri-state draft: untouched groups are omitted,
+ * a group cleared to no fields sends `null`.
+ *
+ * Field names live in the grid's column headers, so every input here hides its own label rather than
+ * repeating it in the cell.
  */
-export const RoutingProviderOverrideFields: React.FC<RoutingProviderOverrideFieldsProps> = ({
+export const RoutingProviderOverrideRow: React.FC<RoutingProviderOverrideRowProps> = ({
   providerId,
   value,
   onChange,
@@ -61,18 +67,15 @@ export const RoutingProviderOverrideFields: React.FC<RoutingProviderOverrideFiel
   const limitIssues = limitParsed.success ? [] : limitParsed.error.issues;
 
   return (
-    <div className="space-y-3 rounded-2xl border p-3" data-testid={`routing-overrides-${providerId}`}>
-      <p className="font-mono text-sm">{providerId}</p>
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground">
-          {m['dashboard.routing.editor.provider_cost_overrides']()}
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {COST_FIELDS.map((key) => (
+    <>
+      <TableRow data-testid={`routing-overrides-${providerId}`}>
+        <TableCell className="font-mono text-xs whitespace-nowrap">{providerId}</TableCell>
+        {COST_FIELDS.map((key) => (
+          <TableCell key={`cost-${key}`}>
             <ModelMetadataNumberField
-              key={key}
               id={`routing-cost-${providerId}-${key}`}
               label={COST_LABEL[key]()}
+              labelHidden
               min={0}
               step="any"
               placeholder={inherit}
@@ -84,19 +87,14 @@ export const RoutingProviderOverrideFields: React.FC<RoutingProviderOverrideFiel
                 })
               }
             />
-          ))}
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground">
-          {m['dashboard.routing.editor.provider_limit_overrides']()}
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {LIMIT_FIELDS.map((key) => (
+          </TableCell>
+        ))}
+        {LIMIT_FIELDS.map((key) => (
+          <TableCell key={`limit-${key}`}>
             <ModelMetadataNumberField
-              key={key}
               id={`routing-limit-${providerId}-${key}`}
               label={LIMIT_LABEL[key]()}
+              labelHidden
               min={1}
               step={1}
               placeholder={inherit}
@@ -108,29 +106,33 @@ export const RoutingProviderOverrideFields: React.FC<RoutingProviderOverrideFiel
                 })
               }
             />
-          ))}
-        </div>
-        {limitIssues.length === 0 ? null : (
-          <ul className="space-y-1" data-testid={`routing-overrides-${providerId}-limit-errors`}>
-            {limitIssues.map((issue) => {
-              const path = issue.path[0];
-              const field =
-                path === 'input'
-                  ? LIMIT_LABEL.input()
-                  : path === 'output'
-                    ? LIMIT_LABEL.output()
-                    : path === 'context'
-                      ? LIMIT_LABEL.context()
-                      : String(path ?? '');
-              return (
-                <li key={`${String(path)}:${issue.message}`} role="alert" className="text-xs text-destructive">
-                  {m['dashboard.routing.editor.metadata_schema_error']({ path: field })}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </div>
+          </TableCell>
+        ))}
+      </TableRow>
+      {limitIssues.length === 0 ? null : (
+        <TableRow data-testid={`routing-overrides-${providerId}-limit-errors`}>
+          <TableCell colSpan={1 + COST_FIELDS.length + LIMIT_FIELDS.length} className="pt-0">
+            <ul className="space-y-1">
+              {limitIssues.map((issue) => {
+                const path = issue.path[0];
+                const field =
+                  path === 'input'
+                    ? LIMIT_LABEL.input()
+                    : path === 'output'
+                      ? LIMIT_LABEL.output()
+                      : path === 'context'
+                        ? LIMIT_LABEL.context()
+                        : String(path ?? '');
+                return (
+                  <li key={`${String(path)}:${issue.message}`} role="alert" className="text-xs text-destructive">
+                    {m['dashboard.routing.editor.metadata_schema_error']({ path: field })}
+                  </li>
+                );
+              })}
+            </ul>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   );
 };

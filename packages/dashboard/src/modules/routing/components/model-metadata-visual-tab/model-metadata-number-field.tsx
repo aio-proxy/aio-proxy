@@ -10,6 +10,8 @@ interface ModelMetadataNumberFieldProps {
   /** Shown while empty, so a blank field reads as "inherit" rather than as zero. */
   readonly placeholder: string;
   readonly value: number | undefined;
+  /** Keeps the label for assistive tech but hides it, for grids where a column header names the field. */
+  readonly labelHidden?: boolean;
   readonly onValueChange: (next: number | undefined) => void;
 }
 
@@ -28,6 +30,7 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
   step,
   placeholder,
   value,
+  labelHidden = false,
   onValueChange,
 }) => {
   const [text, setText] = useState(value === undefined ? '' : String(value));
@@ -41,8 +44,10 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
   }
 
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <div className={labelHidden ? undefined : 'space-y-1.5'}>
+      <Label htmlFor={id} className={labelHidden ? 'sr-only' : undefined}>
+        {label}
+      </Label>
       <Input
         id={id}
         type="number"
