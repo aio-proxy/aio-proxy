@@ -30,13 +30,17 @@ export const useAgentLogin = (installationId: string) => {
   // A request's expiry is fixed when it is created, so only a new device ID moves it.
   if (pendingNow !== undefined && pendingNow.deviceId !== seen?.deviceId)
     setSeen({ deviceId: pendingNow.deviceId, until: Date.parse(pendingNow.expiresAt) });
+  // A page opened after the request was already decided elsewhere never saw it pending; the decided
+  // request then stands in for it, so an approval still gets followed until the Agent redeems it.
+  const decidedThere = pending.data?.decided ?? undefined;
+  if (pendingNow === undefined && seen === undefined && decidedThere !== undefined)
+    setSeen({ deviceId: decidedThere.deviceId, until: Date.parse(decidedThere.expiresAt) });
   // A decision made here covers only its own request; once the Agent retries, it no longer applies,
   // even after the retried request is itself decided elsewhere and disappears.
   const decidedDevice = decide.variables?.deviceId;
   const stale = decidedDevice !== undefined && seen !== undefined && seen.deviceId !== decidedDevice;
   // A request decided on another page reports that outcome, so a denial there is not mistaken for an
   // approval awaiting redemption.
-  const decidedThere = pending.data?.decided ?? undefined;
   const external =
     decidedThere !== undefined && decidedThere.deviceId === seen?.deviceId ? decidedThere.status : undefined;
   const decision = (stale ? undefined : decide.data?.status) ?? external;

@@ -288,7 +288,7 @@ test('pendingForInstallation only exposes a live pending challenge of the matchi
   store.deny(deviceId, 'peer');
   expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();
   // A denial made elsewhere stays visible, so the dashboard does not mistake it for an approval.
-  expect(store.decidedForInstallation('opencode', INSTALLATION)).toEqual({ deviceId, status: 'denied' });
+  expect(store.decidedForInstallation('opencode', INSTALLATION)).toMatchObject({ deviceId, status: 'denied' });
   store.create(DEVICE_REQUEST, 'peer');
   advance(600_001);
   expect(store.pendingForInstallation('opencode', INSTALLATION)).toBeUndefined();

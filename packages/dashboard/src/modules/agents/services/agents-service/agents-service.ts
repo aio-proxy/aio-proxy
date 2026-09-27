@@ -64,7 +64,11 @@ export const agentPendingLoginQueryOptions = (installationId: string) =>
     queryFn: async (): Promise<{
       readonly authorization: AgentAuthorizationDetails | null;
       readonly userCode: string | null;
-      readonly decided: { readonly deviceId: string; readonly status: 'approved' | 'denied' } | null;
+      readonly decided: {
+        readonly deviceId: string;
+        readonly status: 'approved' | 'denied';
+        readonly expiresAt: string;
+      } | null;
     }> => requireOk(await agents.installations[':installationId'].pending.$get({ param: { installationId } })),
     // Keeps polling while pending so an expiry or a decision made elsewhere replaces stale controls.
     refetchInterval: LOGIN_POLL_MS,

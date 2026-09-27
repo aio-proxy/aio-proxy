@@ -34,7 +34,13 @@ rs.mock('../../services/agents-service', () => ({
           },
       userCode: mocks.pending ? 'WXYZ-2345' : null,
       decided:
-        mocks.decidedElsewhere === undefined ? null : { deviceId: mocks.deviceId, status: mocks.decidedElsewhere },
+        mocks.decidedElsewhere === undefined
+          ? null
+          : {
+              deviceId: mocks.deviceId,
+              status: mocks.decidedElsewhere,
+              expiresAt: new Date(Date.now() + mocks.expiresIn).toISOString(),
+            },
     }),
   }),
   agentsSnapshotQueryOptions: () => ({
@@ -159,6 +165,22 @@ test('a request denied on another page shows the denial and does not poll the sn
   await waitFor(() => expect(result.current.decision).toBe('denied'), { timeout: 5_000 });
   await new Promise((resolve) => setTimeout(resolve, 2_500));
   expect(mocks.snapshotCalls).toBe(0);
+  mocks.pending = true;
+  mocks.decidedElsewhere = undefined;
+}, 20_000);
+
+test('a page opened after the request was approved elsewhere still follows it until the Agent redeems it', async () => {
+  mocks.snapshotCalls = 0;
+  mocks.pending = false;
+  mocks.decidedElsewhere = 'approved';
+  const client = new QueryClient();
+  const { result } = renderHook(() => useAgentLogin(INSTALLATION), {
+    wrapper: ({ children }: React.PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(result.current.decision).toBe('approved'), { timeout: 5_000 });
+  await waitFor(() => expect(mocks.snapshotCalls).toBeGreaterThanOrEqual(2), { timeout: 6_000 });
   mocks.pending = true;
   mocks.decidedElsewhere = undefined;
 }, 20_000);

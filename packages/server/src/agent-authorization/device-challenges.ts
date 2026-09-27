@@ -86,7 +86,7 @@ export type DeviceChallengeStore = {
   readonly decidedForInstallation: (
     target: AgentTarget,
     installationId: string,
-  ) => { readonly deviceId: string; readonly status: 'approved' | 'denied' } | undefined;
+  ) => { readonly deviceId: string; readonly status: 'approved' | 'denied'; readonly expiresAt: string } | undefined;
 };
 
 type DeviceChallengeStoreInput = {
@@ -311,13 +311,17 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
   function decidedForInstallation(
     target: AgentTarget,
     installationId: string,
-  ): { readonly deviceId: string; readonly status: 'approved' | 'denied' } | undefined {
+  ): { readonly deviceId: string; readonly status: 'approved' | 'denied'; readonly expiresAt: string } | undefined {
     pruneExpired(maps, now());
     const challenge = maps.byInstallation.get(installationKey(AGENT_CLIENT_ID[target], installationId));
     return challenge !== undefined &&
       challenge.target === target &&
       (challenge.status === 'approved' || challenge.status === 'denied')
-      ? { deviceId: challenge.deviceId, status: challenge.status }
+      ? {
+          deviceId: challenge.deviceId,
+          status: challenge.status,
+          expiresAt: new Date(challenge.expiresAt).toISOString(),
+        }
       : undefined;
   }
 
